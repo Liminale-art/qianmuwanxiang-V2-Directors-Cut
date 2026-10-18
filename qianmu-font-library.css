@@ -39,7 +39,7 @@
 .qm-font-library .qm-font-web-label+.qm-font-web-label { margin-top:8px; }
 .qm-font-library .qm-font-field-head { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
 .qm-font-library .qm-font-field-head>div { display:flex; align-items:center; gap:4px; }
-.qm-font-library .qm-font-imports { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:stretch; gap:6px; width:100%; }
+.qm-font-library .qm-font-imports { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; gap:6px; width:100%; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-imports>:is(label,button) { width:100%; min-width:0; height:34px; min-height:34px; max-height:34px; margin:0; padding:5px !important; justify-content:center; }
 .qm-font-library .qm-font-file-pick { position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
 .qm-font-library .qm-font-file-pick>input[type="file"] { position:absolute !important; inset:0 !important; width:100% !important; height:100% !important; margin:0 !important; padding:0 !important; opacity:0 !important; clip:auto !important; clip-path:none !important; cursor:pointer; }
@@ -47,8 +47,6 @@
 .qm-font-library .qm-font-preview-editor .qm-font-field-head { justify-content:flex-start; }
 .qm-font-library .qm-font-toolbar { display:flex; flex-wrap:nowrap; gap:8px; align-items:center; }
 .qm-font-library .qm-font-toolbar .sd-reader-search { flex:1; width:auto; min-width:0; }
-.qm-font-library .qm-font-folder-menu { left:auto; right:0; max-width:min(260px,calc(100vw - 70px)); max-height:240px; overflow:auto; }
-.qm-font-library .qm-font-folder-menu>button { overflow-wrap:anywhere; white-space:normal; }
 .qm-font-library .qm-font-bulk-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
 .qm-font-library .qm-font-bulk-actions>span { margin-left:auto; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-bulk-editor { display:flex; align-items:end; gap:8px; }
@@ -70,7 +68,8 @@
 .qm-font-library .qm-font-weight-pop output { min-width:3ch; font-variant-numeric:tabular-nums; font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-sample { margin:2px 0; font-size:18px; line-height:1.5; overflow-wrap:anywhere; white-space:pre-wrap; }
 .qm-font-library .qm-font-card-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
-.qm-font-library .qm-font-meta { flex:1 1 8em; min-width:0; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); overflow-wrap:anywhere; }
+.qm-font-library .qm-font-meta { display:flex; flex:1 1 8em; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+.qm-font-library .qm-font-tag { display:inline-block; min-width:0; max-width:100%; padding:2px 6px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:color-mix(in srgb,var(--sd-accent) 7%,var(--sd-glass-weak)); line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
 .qm-font-library .qm-font-meta:empty { display:none; }
 .qm-font-library .qm-font-card-foot:has(.qm-font-meta:empty) { display:none; }
 .qm-font-library .qm-font-rename-pop { position:absolute; top:44px; right:8px; z-index:35; display:flex; align-items:center; gap:5px; width:min(270px,calc(100% - 16px)); padding:8px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 6px 22px #0003; }

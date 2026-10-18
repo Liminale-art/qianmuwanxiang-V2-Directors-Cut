@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const bytes = await readFile(process.env.QIANMU_FONT_FIXTURE || 'C:/Windows/Fonts/arial.ttf');
+const secondBytes = await readFile(process.env.QIANMU_SECOND_FONT_FIXTURE || 'C:/Windows/Fonts/times.ttf');
+assert.ok(!bytes.equals(secondBytes), 'The multi-font package fixture must contain two genuinely different local originals');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ viewport: { width: 393, height: 850 }, serviceWorkers: 'block' });
 const page = await context.newPage(), checks = [], errors = [], unexpected = [];
@@ -51,6 +53,7 @@ try {
     await page.evaluate(async () => {
         const { createFontLibrary } = await import('./qianmu-font-library.js');
         const { createFontLocalStore } = await import('./qianmu-font-local-store.js');
+        const { createFontLibraryView } = await import('./qianmu-font-library-view.js');
         const { createQianmuAppearanceSession } = await import('./qianmu-appearance-session.js');
         const { updateAppearancePreferences } = await import('./qianmu-appearance-settings.js');
         window.saved = 0; window.downloads = []; window.notifications = []; window.localWrites = []; window.acceptDelete = true; window.prosePreviewSize = 19;
@@ -70,7 +73,8 @@ try {
         floor.querySelector('.sd-floor-backdrop').addEventListener('click', closeSyntheticFloor);
         window.createSyntheticLibrary = () => createFontLibrary({ getOwner: () => owner, resolveNamespace: async () => 'st-user:synthetic-font-browser', isCurrent: () => true,
             getPreviewFontSize: () => prosePreviewSize,
-            localStoreFactory: options => { const store = createFontLocalStore(options); return { ...store, put: async (...args) => { localWrites.push(args[0]); return store.put(...args); } }; },
+            viewFactory: options => createFontLibraryView({ ...options, initialSession: { folder: '旧会话隐藏分类', tags: ['失效标签筛选'], ...options.initialSession } }),
+            localStoreFactory: options => { const store = createFontLocalStore(options); window.localStore = store; return { ...store, put: async (...args) => { localWrites.push(args[0]); return store.put(...args); } }; },
             save: () => { saved++; }, download: async (blob, name) => { downloads.push({ name, text: await blob.text() }); }, confirm: async () => acceptDelete,
             closePanel: () => closeSyntheticFloor(),
             notify: message => notifications.push(message), document });
@@ -93,7 +97,9 @@ try {
     assert.equal(await page.locator('[data-font-enabled]').isChecked(), true, 'Old active assignments remain enabled by default');
     assert.equal(await page.locator('details.qm-font-add').evaluate(node => node.open), true, 'An empty catalogue initially expands its combined add-font card');
     assert.equal(await page.locator('details.qm-font-add summary').textContent(), '添加字体');
-    assert.equal(await page.locator('details.qm-font-add .qm-font-imports').count(), 1, 'Web and all three file actions share one collapsible add card');
+    assert.equal(await page.locator('details.qm-font-add .qm-font-imports').count(), 1, 'Web and file actions share one collapsible add card');
+    assert.deepEqual(await page.locator('.qm-font-imports>label').allTextContents(), ['上传本地', '导入字体包']);
+    assert.equal(await page.locator('[data-font-action="export-all"],[data-font-action="filter"],[data-font-action="bulk-folder"],[data-font-folder-choice],[data-font-tag],.sd-reader-tags').count(), 0, 'Folder controls, filter tags and top-level export are absent');
     assert.equal(await page.locator('[data-font-web-name]').isVisible(), true);
     assert.equal(await page.locator('[data-font-web-source]').isVisible(), true);
     assert.equal(await page.locator('[data-font-preview]').inputValue(), '一蝶振翅，万象入幕。');
@@ -302,10 +308,10 @@ try {
     assert.equal(await page.locator('[data-font-select]:checked').count(), 1);
     await page.locator('[data-font-action="select-page"]').click();
     record('Bookshelf-style management hides checkboxes until requested, supports row selection and clears picks on exit');
-    await page.locator('[data-font-action="bulk-folder"]').click(); await page.locator('[data-font-bulk-value]').fill('阅读'); await page.locator('[data-font-action="bulk-save"]').click(); await settled();
     await page.locator('[data-font-action="bulk-tags"]').click(); await page.locator('[data-font-bulk-value]').fill('中文,喜爱'); await page.locator('[data-font-action="bulk-save"]').click(); await settled();
-    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.fonts.map(font => [font.folder, font.tags])), [['阅读', ['中文', '喜爱']], ['阅读', ['中文', '喜爱']]]);
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.fonts.map(font => font.tags)), [['中文', '喜爱'], ['中文', '喜爱']]);
     await page.locator('[data-font-action="manage"]').click();
+    await page.evaluate(() => { owner.fontLibrary.fonts[0].folder = '保全旧分类'; owner.fontLibrary.folders = ['保全旧分类']; });
     const beforeWebEdit = await page.evaluate(() => owner.fontLibrary);
     const beforeEditedFamily = await page.evaluate(() => hostFonts()['host-prose'].family);
     await setAddOpen(false);
@@ -377,34 +383,93 @@ try {
     assert.equal(renamed.name, 'Local 已改名');
     assert.deepEqual([afterRename.body, afterRename.st, afterRename.shared], [beforeRename.body, beforeRename.st, beforeRename.shared]);
     record('Local name editing uses a small cancellable panel and changes only the name, not identity, source metadata or applied choices');
-    await page.locator('[data-font-action="manage"]').click(); await page.locator('[data-font-action="select-page"]').click();
+    await page.evaluate(async () => {
+        for (let index = 1; index <= 8; index++) await library.action('add-web', { name: `不选入包 ${index}`, source: `https://fonts.test/unselected-${index}.ttf` });
+    });
+    await setAddOpen(true);
+    await page.locator('[data-font-file="local"]').setInputFiles({ name: 'Second Original.ttf', mimeType: 'font/ttf', buffer: secondBytes });
+    await page.locator('[data-font-local-dialog]').waitFor();
+    await page.locator('[data-font-local-name="0"]').fill('第二种本地原件');
+    await page.locator('[data-font-local-tags="0"]').fill('衬线,第二原件');
+    await page.locator('[data-font-action="local-confirm"]').click(); await settled();
+    const secondLocalId = await page.evaluate(() => owner.fontLibrary.fonts.find(font => font.name === '第二种本地原件').id);
+    assert.notEqual(secondLocalId, localId);
+    assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 11);
+    await page.locator('[data-font-action="previous"]').click();
+    await page.locator('[data-font-action="manage"]').click();
+    await page.locator(`[data-font-select="${webId}"]`).check();
+    await page.locator(`[data-font-select="${localId}"]`).check();
+    await page.locator('[data-font-action="next"]').click();
+    await page.locator(`[data-font-select="${secondLocalId}"]`).check();
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
+    await page.locator('[data-font-action="select-page"]').click();
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /2/, 'Deselect page only changes the current page');
+    await page.locator('[data-font-action="select-page"]').click();
+    await page.locator('[data-font-action="previous"]').click();
+    assert.equal(await page.locator('[data-font-select]:checked').count(), 2, 'Selections on page one survive visiting page two');
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
+    const selectedRecords = await page.evaluate(ids => owner.fontLibrary.fonts.filter(font => ids.includes(font.id)), [webId, localId, secondLocalId]);
+    const beforeMissingOriginal = await page.evaluate(() => ({ state: owner.fontLibrary, saved }));
+    await page.evaluate(async id => { window.missingOriginal = await localStore.get(id); await localStore.delete([id]); }, secondLocalId);
+    await page.locator('[data-font-action="export-selected"]').click(); await settled();
+    assert.equal(await page.evaluate(() => downloads.length), 0, 'A missing selected local original refuses the whole export instead of downloading an incomplete package');
+    assert.match(await page.locator('.qm-font-status').textContent(), /缺少.*原件|不完整/);
+    assert.deepEqual(await page.evaluate(() => ({ state: owner.fontLibrary, saved })), beforeMissingOriginal);
+    await page.evaluate(async id => { await localStore.put(id, missingOriginal); delete window.missingOriginal; }, secondLocalId);
     await page.locator('[data-font-action="export-selected"]').click(); await settled(); await page.waitForFunction(() => downloads.length === 1);
-    const pack = await page.evaluate(() => downloads[0].text);
-    assert.ok(Object.values(JSON.parse(pack).localFiles || {}).some(value => typeof value === 'string' && value.length > 100), 'The retained local original is still exported after another font was removed');
-    assert.ok(Object.values(JSON.parse(pack).localFiles).some(value => Buffer.from(value, 'base64').equals(bytes)), 'Renaming a local font preserves its original binary byte for byte');
+    const pack = await page.evaluate(() => downloads[0].text), packed = JSON.parse(pack);
+    assert.equal(packed.fonts.length, 3, 'Cross-page selected fonts produce one package, not separate downloads');
+    assert.deepEqual(packed.fonts, selectedRecords, 'Only selected metadata and original source declarations enter the package');
+    assert.equal(packed.fonts.some(font => font.name.startsWith('不选入包')), false);
+    assert.deepEqual(Object.keys(packed.localFiles).sort(), [localId, secondLocalId].sort());
+    assert.ok(Buffer.from(packed.localFiles[localId], 'base64').equals(bytes));
+    assert.ok(Buffer.from(packed.localFiles[secondLocalId], 'base64').equals(secondBytes));
+    record('Cross-page multi-selection exports one exact Web-plus-two-local package, excludes every unselected entry and refuses export when any selected original is missing');
+    await page.locator('[data-font-action="select-page"]').click();
+    assert.match(await page.locator('[data-font-selection-count]').textContent(), /11/);
     await page.evaluate(() => { acceptDelete = false; }); await page.locator('[data-font-action="delete"]').click(); await settled();
-    assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 2);
+    assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 11);
     await page.evaluate(() => { acceptDelete = true; }); await page.locator('[data-font-action="delete"]').click(); await settled();
     assert.equal(await page.evaluate(() => owner.fontLibrary.fonts.length), 0);
-    await setAddOpen(true);
+    assert.equal(await page.evaluate(async ids => (await Promise.all(ids.map(id => localStore.get(id)))).every(blob => blob === null), [localId, secondLocalId]), true);
+    await page.evaluate(() => { library.dispose(); owner = {}; library = createSyntheticLibrary(); library.attach(document.getElementById('story-director-floor-nav')); });
+    await page.locator('[data-font-library]').click(); await page.locator('[data-font-web-source]').waitFor();
+    const invalidPack = structuredClone(packed); delete invalidPack.localFiles[secondLocalId];
+    const beforeIncompleteImport = await page.evaluate(() => ({ owner, writes: localWrites.length, saved }));
+    await page.locator('[data-font-file="import"]').setInputFiles({ name: 'incomplete.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalidPack)) }); await settled();
+    assert.deepEqual(await page.evaluate(() => ({ owner, writes: localWrites.length, saved })), beforeIncompleteImport, 'Incomplete import is rejected before any metadata or binary write');
     await page.locator('[data-font-file="import"]').setInputFiles({ name: 'roundtrip.json', mimeType: 'application/json', buffer: Buffer.from(pack) }); await settled();
-    await page.waitForFunction(() => document.querySelectorAll('[data-font-sample]').length === 2);
-    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.fonts.map(font => [font.folder, font.tags])), [['阅读', ['中文', '新增', '标签续改']], ['阅读', ['中文', '喜爱']]]);
-    assert.equal(await page.evaluate(() => owner.fontLibrary.body.enabled), false);
-    record('Multi-select folder/tags, complete Web+local export/import, cancellation and explicit remove round-trip without auto-applying imports');
+    await page.waitForFunction(() => document.querySelectorAll('[data-font-sample]').length === 3);
+    const importedRecords = await page.evaluate(() => owner.fontLibrary.fonts);
+    const metadataByName = values => values.map(({ id, ...font }) => font).sort((a, b) => a.name.localeCompare(b.name));
+    assert.deepEqual(metadataByName(importedRecords), metadataByName(selectedRecords), 'Fresh-account import restores all names, tags, legacy fields, variants and Web references');
+    assert.equal(await page.evaluate(() => owner.fontLibrary.previewText), packed.previewText, 'Import into an empty collection retains the packaged common preview text');
+    const importedBinaries = await page.evaluate(async () => {
+        const result = {};
+        for (const font of owner.fontLibrary.fonts.filter(item => item.source.kind === 'local')) {
+            const blob = await localStore.get(font.id); result[font.name] = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result.split(',')[1]); reader.readAsDataURL(blob); });
+        }
+        return result;
+    });
+    assert.ok(Buffer.from(importedBinaries['Local 已改名'], 'base64').equals(bytes));
+    assert.ok(Buffer.from(importedBinaries['第二种本地原件'], 'base64').equals(secondBytes));
+    assert.equal(await page.evaluate(() => owner.fontLibrary.body.enabled || owner.fontLibrary.st.enabled || owner.fontLibrary.shared.enabled), false);
+    await page.locator(`[data-font-action="delete-one"][data-font-id="${secondLocalId}"]`).click(); await settled();
+    assert.equal(await page.locator('[data-font-sample]').count(), 2);
+    await setPreviewSize(20);
+    record('A fresh synthetic account imports the mixed package with exact original bytes and metadata; incomplete packages save nothing and imports never auto-apply fonts');
     if (await page.locator('[data-font-action="manage"]').getAttribute('aria-expanded') === 'true') await page.locator('[data-font-action="manage"]').click();
     await page.locator('[data-font-search]').fill('Web 样本');
     assert.equal(await page.locator('[data-font-sample]').count(), 1);
+    await page.locator('[data-font-search]').fill('中文');
+    assert.equal(await page.locator('[data-font-sample]').count(), 2);
+    await page.locator('[data-font-search]').fill('保全旧分类');
+    assert.equal(await page.locator('[data-font-sample]').count(), 0, 'Archived folder metadata is no longer a search dimension');
     await page.locator('[data-font-search]').fill('');
-    await page.locator('[data-font-action="filter"]').click();
-    await page.locator('[data-font-folder-choice="阅读"]').click();
     assert.equal(await page.locator('[data-font-sample]').count(), 2);
-    await page.locator('[data-font-tag="中文"]').click();
-    assert.equal(await page.locator('[data-font-sample]').count(), 2);
-    await page.locator('[data-font-tag="中文"]').click();
-    await page.locator('[data-font-action="filter"]').click();
-    await page.locator('[data-font-folder-choice=""]').click();
-    record('Bookshelf-style search, folder popup and tag chips filter without applying fonts or changing stored records');
+    assert.equal(await page.locator('[data-font-action="filter"],[data-font-action="bulk-folder"],[data-font-folder-choice],[data-font-tag],.sd-reader-tags,[data-font-action="export-all"]').count(), 0);
+    record('Search matches names and tags only; removed folders and tag-filter bars cannot leave invisible legacy-session filtering');
+    await page.evaluate(async () => { const font = owner.fontLibrary.fonts[0]; await library.action('update-fonts', { ids: [font.id], tags: [...font.tags, '连续长标签'.repeat(12)] }); });
     for (const width of [320, 393, 1280]) for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) {
         await setAddOpen(true);
         await page.setViewportSize({ width, height: 850 }); await page.evaluate(async ({ family, mode }) => setTheme(family, mode), { family, mode });
@@ -429,14 +494,14 @@ try {
                     const tools = node.querySelector('.qm-font-card-tools'), name = node.querySelector('.qm-font-name'), select = tools?.querySelector('[data-font-apply]');
                     return { tail: !!tools?.lastElementChild?.contains(select), line: !!select && Math.abs(name.getBoundingClientRect().top + name.getBoundingClientRect().height / 2 - select.getBoundingClientRect().top - select.getBoundingClientRect().height / 2) <= 2 };
                 }),
-                toolbarOrder: [...host.querySelector('.qm-font-toolbar').children].map(node => node.matches('[data-font-search]') ? 'search' : node.querySelector('[data-font-action="filter"]') ? 'folder' : node.matches('[data-font-action="manage"]') ? 'manage' : '?'),
+                toolbarOrder: [...host.querySelector('.qm-font-toolbar').children].map(node => node.matches('[data-font-search]') ? 'search' : node.matches('[data-font-action="manage"]') ? 'manage' : '?'),
                 imports: [...host.querySelector('.qm-font-imports').children].map(node => ({ top: node.getBoundingClientRect().top, height: node.getBoundingClientRect().height, width: node.getBoundingClientRect().width, text: node.textContent.trim(), icons: node.querySelectorAll('.qm-glyph-icon').length })),
                 enable: (() => { const node = host.querySelector('.qm-font-enable'), label = node.querySelector('strong,span') || node, style = getComputedStyle(label); return { fontSize: style.fontSize, fontWeight: style.fontWeight }; })(),
                 bodyControls: [...host.querySelectorAll('[data-font-web-name],[data-font-web-source],[data-font-web-tags],[data-font-preview],[data-font-search],[data-font-apply],[data-font-preview-size]')].map(node => getComputedStyle(node).fontSize),
                 editor: (() => { const editor = host.querySelector('.qm-font-preview-editor').getBoundingClientRect(), card = host.querySelector('.qm-font-card').getBoundingClientRect(); return { left: editor.left - card.left, right: editor.right - card.right }; })(),
                 iconShapes: [...panel.querySelectorAll('.qm-font-icon,.qm-font-file-pick')].filter(node => node.offsetParent).map(node => ({ header: !!node.closest('.qm-font-header'), radius: getComputedStyle(node).borderTopLeftRadius, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height })),
                 filePicks: [...host.querySelectorAll('.qm-font-file-pick')].map(node => ({ color: getComputedStyle(node).color, opacity: getComputedStyle(node).opacity, display: getComputedStyle(node).display, input: { color: getComputedStyle(node.querySelector('input')).color, opacity: getComputedStyle(node.querySelector('input')).opacity, display: getComputedStyle(node.querySelector('input')).display } })),
-                exportButton: { color: getComputedStyle(host.querySelector('[data-font-action="export-all"]')).color, opacity: getComputedStyle(host.querySelector('[data-font-action="export-all"]')).opacity, background: getComputedStyle(host.querySelector('[data-font-action="export-all"]')).backgroundColor },
+                tagPills: [...host.querySelectorAll('.qm-font-tag')].map(node => { const style = getComputedStyle(node), rect = node.getBoundingClientRect(), card = node.closest('.qm-font-card').getBoundingClientRect(); return { text: node.textContent, color: style.color, background: style.backgroundColor, border: parseFloat(style.borderTopWidth), fits: rect.left >= card.left && rect.right <= card.right && node.scrollWidth <= node.clientWidth + 1, wrap: style.overflowWrap }; }),
                 previewFamilies: [...host.querySelectorAll('[data-font-sample]')].map(node => getComputedStyle(node).fontFamily),
                 previewSizes: [...host.querySelectorAll('[data-font-sample]')].map(node => getComputedStyle(node).fontSize),
                 manageVariants: [...host.querySelectorAll('[data-font-action="manage"] [data-qm-icon-variant]')].filter(node => getComputedStyle(node).display !== 'none').map(node => node.dataset.qmIconVariant),
@@ -447,8 +512,9 @@ try {
         assert.notEqual(measured.color, measured.bg); assert.equal(measured.titleSize, '14px'); assert.equal(measured.titleFamily, measured.mainTitleFamily);
         assert.deepEqual(measured.material, measured.mainMaterial, `${family}/${mode}: same main-panel surface, corner and filter treatment`);
         assert.ok(measured.titleRows.every(row => row.tail && row.line), `${width}/${family}/${mode} application is the title-tools tail on the same line`);
-        assert.deepEqual(measured.toolbarOrder, ['search', 'folder', 'manage']);
-        assert.ok(measured.imports.every(item => Math.abs(item.top - measured.imports[0].top) <= 1 && Math.abs(item.height - measured.imports[0].height) <= 1 && Math.abs(item.width - measured.imports[0].width) <= 1 && item.text && !item.icons), `${width}/${family}/${mode} upload, import and export are text-only, equal-width and equal-height`);
+        assert.deepEqual(measured.toolbarOrder, ['search', 'manage']);
+        assert.deepEqual(measured.imports.map(item => item.text), ['上传本地', '导入字体包']);
+        assert.ok(measured.imports.every(item => Math.abs(item.top - measured.imports[0].top) <= 1 && Math.abs(item.height - measured.imports[0].height) <= 1 && Math.abs(item.width - measured.imports[0].width) <= 1 && item.text && !item.icons), `${width}/${family}/${mode} local upload and package import are text-only, equal-width and equal-height`);
         assert.equal(measured.enable.fontSize, '14px'); assert.ok(Number(measured.enable.fontWeight) >= 600);
         assert.ok(measured.bodyControls.every(value => value === '12px'), 'Body controls share the main-panel 12px body tier');
         assert.ok(Math.abs(measured.editor.left) <= 1 && Math.abs(measured.editor.right) <= 1, `${width}/${family}/${mode} preview editor aligns with list-card edges`);
@@ -457,7 +523,9 @@ try {
             assert.equal(circular, family === 'glass' && shape.header, `${width}/${family}/${mode} only glass header navigation remains circular`);
             if (family === 'editorial') assert.equal(parseFloat(shape.radius), 0, 'Paper action controls keep square corners');
         }
-        assert.ok(measured.filePicks.every(pick => pick.opacity === '1' && pick.input.opacity === '0' && pick.color === measured.exportButton.color), 'Native file inputs stay transparent and their labels retain the same readable ink as adjacent actions');
+        assert.ok(measured.filePicks.every(pick => pick.opacity === '1' && pick.input.opacity === '0' && pick.color === measured.filePicks[0].color), 'Native file inputs stay transparent and both labels retain matching readable ink');
+        assert.ok(measured.tagPills.length >= 6 && measured.tagPills.every(pill => !pill.text.startsWith('#') && pill.fits && pill.color !== pill.background && (pill.border > 0 || !['transparent', 'rgba(0, 0, 0, 0)'].includes(pill.background))), `${width}/${family}/${mode} card tags have visible pill treatment without hash prefixes or clipping`);
+        assert.ok(measured.tagPills.some(pill => pill.text.length === 60 && pill.wrap === 'anywhere'), 'Long tag text can wrap inside its own card');
         assert.ok(measured.previewFamilies.every(value => value.includes('QianmuFont_')), `${family} list previews retain selected font despite theme CSS`);
         assert.ok(measured.previewSizes.every(value => value === '20px'), `${family} preview size remains session-local through theme changes`);
         assert.deepEqual(measured.iconVariants, [family === 'editorial' ? 'bold' : family === 'glass' ? 'twotone' : 'outline']);
@@ -470,6 +538,12 @@ try {
             await setAddOpen(false);
             await page.evaluate(() => { document.querySelector('.qm-font-window>.sd-body').scrollTop = 0; });
             await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}.png`, qa)) });
+            await setAddOpen(true);
+        }
+        if (width === 320) {
+            await setAddOpen(false);
+            await page.evaluate(() => { document.querySelector('.qm-font-window>.sd-body').scrollTop = 0; });
+            await page.screenshot({ path: fileURLToPath(new URL(`${family}-${mode}-tags-narrow.png`, qa)) });
             await setAddOpen(true);
         }
     }

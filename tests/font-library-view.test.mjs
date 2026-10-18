@@ -27,18 +27,18 @@ test('main panel shell uses real inline theme icons and removes the old mode/set
     assert.doesNotMatch(html, /qm-font-mode|qm-font-application|data-font-assignment|qm-font-note|qm-font-storage-note|文件默认字形|字体在下方列表预览/);
     assert.match(html, /class="sd-card qm-font-card"/);
 });
-test('one collapsible add card combines Web fields, tags and the three plain-text upload actions', () => {
+test('one collapsible add card combines Web fields and two plain-text upload actions without export', () => {
     const html = renderFontLibrary(state());
     assert.match(html, /<details class="sd-card qm-font-add"><summary><b>添加字体<\/b><\/summary>/); assert.match(html, /<span>字体链接<\/span><div>[\s\S]*?data-font-action="add-web"/);
     assert.match(html, /data-font-file="local"[^>]*multiple>/); assert.match(html, /data-font-file="import"/); assert.doesNotMatch(html, /data-font-file="(?:local|import)"[^>]*hidden/);
-    const uploads = html.match(/<div class="qm-font-imports">[\s\S]*?<\/div>/)?.[0]; assert.doesNotMatch(uploads, /<svg/); assert.match(uploads, />上传本地<input/); assert.match(uploads, />导入<input/); assert.match(uploads, />导出<\/button>/);
+    const uploads = html.match(/<div class="qm-font-imports">[\s\S]*?<\/div>/)?.[0]; assert.doesNotMatch(uploads, /<svg|导出|export/); assert.match(uploads, />上传本地<input/); assert.match(uploads, />导入字体包<input/); assert.equal((uploads.match(/class="sd-btn/g) || []).length, 2); assert.doesNotMatch(html, /export-all/);
     assert.ok(html.indexOf('data-font-web-source') < html.indexOf('data-font-web-tags')); assert.ok(html.indexOf('data-font-file="local"') < html.indexOf('</details>')); assert.match(html, /data-font-web-tags type="text" maxlength="2623"/);
     assert.match(renderFontLibrary(state({ entries: [] })), /<details class="sd-card qm-font-add" open>/); assert.match(renderFontLibrary(state(), { addOpen: true }), /<details class="sd-card qm-font-add" open>/);
     assert.match(html, /data-font-preview type="text" maxlength="500"/);
 });
-test('normal list hides checks and uses the real bookshelf search, filter menu and tag chips', () => {
+test('normal list hides checks and offers search with management but no folder or tag filter bar', () => {
     const html = renderFontLibrary(state({ entries: [entry('one', { tags: ['阅读'], folder: '中文' })] }));
-    assert.match(html, /class="sd-reader-search"/); assert.match(html, /sd-reader-sort-menu qm-font-folder-menu/); assert.match(html, /class="sd-reader-tags"/); assert.match(html, /data-font-tag="阅读"/);
+    assert.match(html, /class="sd-reader-search"/); assert.match(html, /placeholder="搜索字体 \/ 标签"/); assert.doesNotMatch(html, /data-font-folder|qm-font-folder|sd-reader-tags|data-font-tag=|bulk-folder|文件夹/); assert.match(html, /<span class="qm-font-tag">阅读<\/span>/); assert.doesNotMatch(html, /#阅读|>中文</);
     assert.match(html, /data-font-select="one"[^>]*hidden/); assert.match(html, /qm-font-bulk-actions" hidden/); assert.match(html, /data-font-action="manage"[^>]*aria-expanded="false"/);
     const managing = renderFontLibrary(state(), { managing: true, selected: ['one'] }); assert.match(managing, /data-font-select="one"[^>]*checked>/); assert.doesNotMatch(managing, /qm-font-bulk-actions" hidden/);
 });
@@ -67,9 +67,9 @@ test('ten visible previews and bounded paging replace the prior six-item page', 
     assert.equal(FONT_LIBRARY_PAGE_SIZE, 10); assert.equal(selectFontLibraryPage(input).entries.length, 10); assert.equal(selectFontLibraryPage(input, { page: 500 }).page, 2); assert.equal(selectFontLibraryPage(input, { page: 500 }).entries.length, 1);
     assert.equal((renderFontLibraryCards(input).match(/data-font-sample=/g) || []).length, 10);
 });
-test('folder, multiple tag chips and search compose without catalogue writes', () => {
+test('search matches names and tags only and ignores all legacy session filters without writes', () => {
     const input = state({ entries: [entry('one', { folder: '正文', tags: ['阅读', '中文'] }), entry('two', { folder: '正文', tags: ['阅读'] }), entry('three')] }), before = structuredClone(input);
-    assert.deepEqual(selectFontLibraryPage(input, { folder: '正文', tags: ['阅读', '中文'], query: 'one' }).entries.map(value => value.id), ['one']); assert.equal(selectFontLibraryPage(input, { folder: '__none__' }).entries[0].id, 'three'); assert.deepEqual(input, before);
+    assert.deepEqual(selectFontLibraryPage(input, { folder: '不存在', tags: ['不存在'], query: 'one' }).entries.map(value => value.id), ['one']); assert.deepEqual(selectFontLibraryPage(input, { query: '阅读' }).entries.map(value => value.id), ['one', 'two']); assert.equal(selectFontLibraryPage(input, { query: '正文' }).entries.length, 0); assert.equal(selectFontLibraryPage(input, { folder: '__none__', tags: ['不存在'] }).entries.length, 3); assert.deepEqual(input, before);
 });
 test('weight slider preserves continuous variable axes and exact discrete face steps', () => {
     const variable = fontLibraryWeightControl(entry('variable', { weights: ['100 900'] }), { weight: '563' });
@@ -81,11 +81,11 @@ test('weight choices respect the selected style, not synthetic Cartesian combina
     const font = entry('one', { faces: [{ weight: '400', style: 'normal' }, { weight: '700', style: 'italic' }] });
     assert.deepEqual(fontLibraryWeightControl(font, { style: 'normal' }).values, [400]); assert.deepEqual(fontLibraryWeightControl(font, { style: 'italic' }).values, [700]);
 });
-test('master enable is the first card, add collapses as a unit and search precedes folder/multi-select', () => {
+test('master enable is the first card, add collapses as a unit and search directly precedes multi-select', () => {
     const html = renderFontLibrary(state()); assert.ok(html.indexOf('data-font-enabled') < html.indexOf('qm-font-web-label'));
     assert.match(html, /data-font-enabled aria-label="启用字体库" checked/); assert.doesNotMatch(renderFontLibrary(state({ enabled: false })), /data-font-enabled[^>]*checked/);
     assert.match(html, /<details class="sd-card qm-font-add"><summary>/); assert.doesNotMatch(html, /Web 引入|字体链接或样式/); assert.match(html, />字体链接<\/span>/);
-    assert.ok(html.indexOf('data-font-search') < html.indexOf('data-font-action="filter"')); assert.ok(html.indexOf('data-font-action="filter"') < html.indexOf('data-font-action="manage"'));
+    assert.ok(html.indexOf('data-font-search') < html.indexOf('data-font-action="manage"')); assert.doesNotMatch(html, /data-font-action="filter"/);
     assert.match(html, /class="sd-card qm-font-preview-editor"/); assert.match(html, /data-font-preview-size/);
     assert.match(renderFontLibraryCards(state({ previewText: '' })), /一蝶振翅，万象入幕。/);
 });
@@ -178,8 +178,8 @@ test('local edit preserves name drafts across return and rename only writes the 
 });
 test('reveal clears blocking filters, selects the new ten-item page and cannot reopen a closed view', () => {
     const initial = state({ entries: Array.from({ length: 11 }, (_, index) => entry(String(index), { folder: index ? '' : '筛选', tags: index ? [] : ['选中'] })) });
-    const f = fixture(initial, () => {}, { query: '0', folder: '筛选', tags: ['选中'] }); assert.deepEqual(f.visible[0].ids, ['0']); assert.equal(f.view.revealFont('10'), true);
-    assert.deepEqual(f.visible.at(-1).ids, ['10']); const session = f.view.captureSession(); assert.equal(session.page, 1); assert.equal(session.query, ''); assert.equal(session.folder, ''); assert.deepEqual(session.tags, []); assert.equal(f.calls.length, 0); assert.equal(f.view.revealFont('missing'), false);
+    const f = fixture(initial, () => {}, { query: '字体 0', folder: '筛选', tags: ['选中'] }); assert.deepEqual(f.visible[0].ids, ['0']); assert.equal(f.view.revealFont('10'), true);
+    assert.deepEqual(f.visible.at(-1).ids, ['10']); const session = f.view.captureSession(); assert.equal(session.page, 1); assert.equal(session.query, ''); assert.equal(session.folder, undefined); assert.equal(session.tags, undefined); assert.equal(f.calls.length, 0); assert.equal(f.view.revealFont('missing'), false);
     f.view.destroy(); assert.equal(f.view.revealFont('0'), false);
 });
 test('successful add result reveals its own font after commit without another settings write', async () => {
@@ -220,19 +220,34 @@ test('Escape during confirmed local save does not pretend to cancel an in-flight
     const saving = f.click('local-confirm'); f.handlers.get('keydown')({ target: file, key: 'Escape', preventDefault() {}, stopPropagation() {} }); assert.match(f.root.innerHTML, /data-font-local-dialog/); await f.click('local-cancel'); assert.match(f.root.innerHTML, /data-font-local-dialog/); assert.equal(f.calls.length, 1);
     resolve(); await saving; assert.doesNotMatch(f.root.innerHTML, /data-font-local-dialog/); f.view.destroy();
 });
-test('management mode gates selection, exits clear it, and bulk folder/tags preserve exact ids', async () => {
+test('management mode gates selection, exits clear it, and bulk tags preserve exact ids', async () => {
     const f = fixture(state({ entries: [entry('one'), entry('two')] })), selected = f.node('[data-font-select]', { checked: true, dataset: { fontSelect: 'two' } });
     await f.emit('change', selected); await f.click('delete'); assert.equal(f.calls.length, 0);
     await f.click('manage'); await f.emit('change', selected); f.node('[data-font-bulk-value]');
-    await f.click('bulk-folder'); f.queries.get('[data-font-bulk-value]').value = ' 阅读 '; await f.click('bulk-save');
     await f.click('bulk-tags'); f.queries.get('[data-font-bulk-value]').value = '清楚，中文, 阅读 '; await f.click('bulk-save');
     await f.click('export-selected'); await f.click('delete');
-    assert.deepEqual(f.calls, [{ type: 'update-fonts', ids: ['two'], folder: '阅读' }, { type: 'update-fonts', ids: ['two'], tags: ['清楚', '中文', '阅读'] }, { type: 'export', ids: ['two'] }, { type: 'delete-fonts', ids: ['two'] }]);
-    await f.click('manage'); await f.click('delete'); assert.equal(f.calls.length, 4); f.view.destroy();
+    assert.deepEqual(f.calls, [{ type: 'update-fonts', ids: ['two'], tags: ['清楚', '中文', '阅读'] }, { type: 'export', ids: ['two'] }, { type: 'delete-fonts', ids: ['two'] }]);
+    await f.click('manage'); await f.click('delete'); assert.equal(f.calls.length, 3); f.view.destroy();
 });
 test('page select is bounded to ten and management collapse clears all selections', async () => {
     const f = fixture(state({ entries: Array.from({ length: 11 }, (_, index) => entry(String(index))) })); await f.click('manage'); await f.click('select-page'); await f.click('export-selected');
     assert.deepEqual(f.calls[0], { type: 'export', ids: Array.from({ length: 10 }, (_, index) => String(index)) }); await f.click('manage'); await f.click('delete'); assert.equal(f.calls.length, 1); f.view.destroy();
+});
+
+test('multiple pages keep checked fonts and export exactly one combined selection', async () => {
+    const f = fixture(state({ entries: Array.from({ length: 12 }, (_, index) => entry(String(index))) })); await f.click('manage'); await f.click('select-page'); await f.click('next');
+    await f.emit('change', f.node('[data-font-select]', { checked: true, dataset: { fontSelect: '10' } })); await f.click('export-selected');
+    assert.deepEqual(f.calls, [{ type: 'export', ids: Array.from({ length: 11 }, (_, index) => String(index)) }]); assert.equal(f.queries.get('[data-font-selection-count]').textContent, '已选 11');
+    await f.click('select-page'); await f.click('select-page'); await f.click('previous'); await f.click('export-selected'); assert.deepEqual(f.calls[1], { type: 'export', ids: Array.from({ length: 10 }, (_, index) => String(index)) });
+    await f.click('manage'); await f.click('export-selected'); assert.equal(f.calls.length, 2); f.view.destroy();
+});
+
+test('search and reveal clear transient choices, removed fonts are pruned and retired actions are inert', async () => {
+    const f = fixture(state({ entries: [entry('one'), entry('two')] })); await f.click('manage'); await f.click('select-page');
+    f.setState(state({ entries: [entry('two')] })); f.view.render(); await f.click('export-selected'); assert.deepEqual(f.calls[0], { type: 'export', ids: ['two'] });
+    f.emit('input', f.node('[data-font-search]', { value: 'two' })); await f.click('export-selected'); assert.equal(f.calls.length, 1);
+    await f.click('select-page'); f.view.revealFont('two'); await f.click('export-selected'); assert.equal(f.calls.length, 1);
+    await f.click('export-all'); await f.click('bulk-folder'); await f.click('filter'); assert.equal(f.calls.length, 1); f.view.destroy();
 });
 test('in-flight mutation is not sent twice and closed views discard late redraw', async () => {
     let resolve; const pending = new Promise(done => { resolve = done; }), f = fixture(state(), () => pending), first = f.apply('body'); await f.apply('st'); assert.equal(f.calls.length, 1); assert.equal(f.attributes.get('aria-busy'), 'true');
@@ -249,7 +264,7 @@ test('same-account session restores browsing, sample choices and scroll but neve
     const session = { page: 1, query: '字体', folder: '中文', tags: ['阅读'], variants: { '10': { weight: '623', style: 'italic' } }, previewDraft: '未失去的样字', webName: '待加入', webSource: 'https://example.test/font.woff2', scrollTop: 170, managing: true, selected: ['10'] };
     const f = fixture(input, () => {}, session); assert.deepEqual(f.visible[0].ids, ['10']); assert.deepEqual(f.visible[0].choices['10'], { weight: '623', style: 'italic' });
     assert.match(f.root.innerHTML, /value="字体"/); assert.match(f.root.innerHTML, /value="未失去的样字"/); assert.match(f.root.innerHTML, /value="待加入"/); assert.match(f.root.innerHTML, /qm-font-bulk-actions" hidden/);
-    assert.equal(f.queries.get('.sd-body').scrollTop, 170); const captured = f.view.captureSession(); assert.equal(captured.page, 1); assert.equal(captured.scrollTop, 170); assert.deepEqual(captured.tags, ['阅读']); assert.equal(captured.managing, undefined); assert.equal(captured.selected, undefined);
+    assert.equal(f.queries.get('.sd-body').scrollTop, 170); const captured = f.view.captureSession(); assert.equal(captured.page, 1); assert.equal(captured.scrollTop, 170); assert.equal(captured.tags, undefined); assert.equal(captured.folder, undefined); assert.equal(captured.managing, undefined); assert.equal(captured.selected, undefined);
     captured.variants['10'].weight = '100'; assert.equal(f.view.captureSession().variants['10'].weight, '623'); f.view.destroy();
 });
 test('field keyboard and focus events stop at the library without changing non-field behavior', () => {
@@ -257,13 +272,13 @@ test('field keyboard and focus events stop at the library without changing non-f
     for (const name of ['keydown', 'keyup', 'keypress', 'focusin']) f.handlers.get(name)({ target, key: 'x', stopPropagation: () => stopped.push(name) });
     assert.deepEqual(stopped, ['keydown', 'keyup', 'keypress', 'focusin']); f.handlers.get('keydown')({ target: f.node('button'), key: 'x', stopPropagation: () => stopped.push('bad') }); assert.equal(stopped.length, 4); f.view.destroy();
 });
-test('removing the final matching category cannot strand the list behind an invisible filter', () => {
+test('legacy folder and tag filters cannot strand the list behind an invisible filter', () => {
     const f = fixture(state({ entries: [entry('one', { folder: '旧目录', tags: ['旧标签'] }), entry('two')] }), () => {}, { folder: '旧目录', tags: ['旧标签'] });
-    assert.deepEqual(f.visible[0].ids, ['one']); f.setState(state({ entries: [entry('two')] })); f.view.render(); assert.deepEqual(f.visible.at(-1).ids, ['two']); assert.equal(f.view.captureSession().folder, ''); assert.deepEqual(f.view.captureSession().tags, []); f.view.destroy();
+    assert.deepEqual(f.visible[0].ids, ['one', 'two']); f.setState(state({ entries: [entry('two')] })); f.view.render(); assert.deepEqual(f.visible.at(-1).ids, ['two']); assert.equal(f.view.captureSession().folder, undefined); assert.equal(f.view.captureSession().tags, undefined); f.view.destroy();
 });
 test('status errors target only matching samples and unknown raw errors remain private', async () => {
     const f = fixture(state({ entries: [entry('one'), entry('two')] }), () => { throw Error('SECRET URL AND TOKEN'); }); f.view.setFontStatus('two', '来源暂不可访问'); assert.equal(f.statuses[0].textContent, ''); assert.equal(f.statuses[1].textContent, '来源暂不可访问');
-    await f.click('export-all'); assert.doesNotMatch(f.queries.get('.qm-font-status').textContent, /SECRET/); f.view.destroy();
+    await f.click('manage'); await f.click('select-page'); await f.click('export-selected'); assert.equal(f.calls.length, 1); assert.ok(f.queries.get('.qm-font-status').textContent); assert.doesNotMatch(f.queries.get('.qm-font-status').textContent, /SECRET/); f.view.destroy();
 });
 test('CSS adds layout and sample controls without rewriting theme fonts or old floor shell', async () => {
     const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
@@ -273,7 +288,8 @@ test('CSS adds layout and sample controls without rewriting theme fonts or old f
     assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /qm-font-apply-pick\)>select[^}]*opacity:0/); assert.match(css, /\.qm-font-card-foot \{[^}]*flex-wrap:wrap/);
     assert.match(css, /\.qm-font-entry>small \{[^}]*white-space:nowrap;[^}]*text-overflow:ellipsis/); assert.match(css, /\.qm-font-header h2[^}]*font-size:14px !important/);
     assert.match(css, /data-qm-theme="glass"\] \.qm-font-window \.qm-font-header \.qm-font-icon \{ border-radius:50% !important/); assert.match(css, /data-qm-theme="editorial"\][^\n]*border-radius:0 !important/);
-    assert.match(css, /input\[data-font-enabled\][^}]*border-radius:999px !important/); assert.match(css, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
+    assert.match(css, /input\[data-font-enabled\][^}]*border-radius:999px !important/); assert.match(css, /qm-font-imports \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
+    assert.match(css, /\.qm-font-tag \{[^}]*max-width:100%;[^}]*overflow-wrap:anywhere/); assert.doesNotMatch(css, /\.qm-font-folder-menu/);
     assert.match(css, /\.qm-font-preview-editor \.qm-font-field-head \{ justify-content:flex-start;/); assert.match(css, /\.qm-font-local-files \{[^}]*overflow:auto/); assert.match(css, /\.qm-font-local-dialog>footer \{[^}]*repeat\(2,minmax\(0,1fr\)\)/);
     assert.match(css, /\.qm-font-local-dialog \{[^}]*background:var\(--qm-raised,var\(--sd-sticky-bg,#f7f3eb\)\) !important/);
     assert.doesNotMatch(css, /\.qm-font-local-dialog \{[^}]*background:[^;]*--sd-folder-head/);

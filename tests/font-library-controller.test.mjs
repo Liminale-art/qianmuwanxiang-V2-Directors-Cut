@@ -169,6 +169,79 @@ test('complete export retains Web references and never downloads remote font bin
   const text = await f.downloads[0][0].text(); assert.ok(text.includes(webFont.source.url)); f.stop();
 });
 
+test('one selected mixed-font pack restores every selected original and metadata without replacing recipient choices', async () => {
+  const source = setup({ webResolver: resolveWebFontSource }), originals = [fontFile(), fontFile(), fontFile()];
+  originals.forEach((item, index) => { item.bytes[31] = index + 1; item.file.name = `本地${index + 1}.ttf`; });
+  for (const [index, url] of ['first', 'second', 'not-selected'].entries()) {
+    await source.library.action('add-web', { source: `https://font.example/${url}.woff2`, name: `网络${index + 1}`, tags: ['Web', `第${index + 1}款`] });
+  }
+  await source.library.action('add-local', { files: originals.map(item => item.file), metadata: originals.map((_item, index) => ({ name: `自定本地${index + 1}`, tags: ['本地', `第${index + 1}款`] })) });
+  const all = source.owner.fontLibrary.fonts, selected = [all[0], all[1], all[3], all[4]], excluded = [all[2], all[5]];
+  await source.library.action('update-fonts', { ids: [selected[0].id, selected[2].id], folder: '旧版阅读目录' });
+  await source.library.action('add-folder', { name: '旧版空目录' });
+  await source.library.action('set-preview', { text: '发送方预览，不替换接收方已有文案' });
+  const senderBefore = structuredClone(source.owner.fontLibrary), senderSaves = source.saves.length;
+  await source.library.action('export', { ids: selected.map(font => font.id).reverse() });
+  assert.equal(source.downloads.length, 1, 'all selected fonts share one download');
+  const [blob, filename] = source.downloads[0];
+  assert.equal(blob.type, 'application/json'); assert.match(filename, /^qianmu-fonts-\d+\.json$/);
+  const packedText = await blob.text(), packed = importFontPack(packedText), rawPack = JSON.parse(packedText);
+  const expected = senderBefore.fonts.filter(font => selected.some(item => item.id === font.id));
+  assert.deepEqual(packed.records, expected); assert.equal(packed.records.length, 4);
+  assert.deepEqual(Object.keys(packed.localFiles).sort(), selected.filter(font => font.source.kind === 'local').map(font => font.id).sort());
+  assert.deepEqual(packed.localFiles[selected[2].id], originals[0].bytes);
+  assert.deepEqual(packed.localFiles[selected[3].id], originals[1].bytes);
+  assert.deepEqual(packed.folders, senderBefore.folders, 'legacy folder metadata remains portable even without folder controls');
+  for (const font of excluded) { assert.ok(!packed.records.some(record => record.id === font.id)); assert.ok(!Object.hasOwn(packed.localFiles, font.id)); }
+  for (const key of ['body', 'st', 'shared', 'mode', 'enabled']) assert.equal(Object.hasOwn(rawPack, key), false);
+  assert.deepEqual(source.owner.fontLibrary, senderBefore); assert.equal(source.saves.length, senderSaves);
+
+  for (const mode of ['separate', 'shared']) for (const enabled of [true, false]) {
+    const receiver = setup({ webResolver: resolveWebFontSource });
+    await receiver.library.action('add-web', { source: 'https://font.example/recipient-body.woff2', name: '接收方正文', tags: ['原有'] });
+    await receiver.library.action('add-web', { source: 'https://font.example/recipient-ui.woff2', name: '接收方界面' });
+    const [body, st] = receiver.owner.fontLibrary.fonts;
+    await receiver.library.action('set-assignment', { target: 'body', fontId: body.id, weight: '700', style: 'italic' });
+    await receiver.library.action('set-assignment', { target: 'st', fontId: st.id, weight: '500' });
+    await receiver.library.action('set-assignment', { target: 'shared', fontId: body.id, weight: '600' });
+    await receiver.library.action('set-mode', { mode });
+    await receiver.library.action('set-enabled', { enabled });
+    await receiver.library.action('set-preview', { text: '接收方自己的样字' });
+    await receiver.library.action('add-folder', { name: '接收方旧目录' });
+    const before = structuredClone(receiver.owner.fontLibrary), saves = receiver.saves.length;
+    await receiver.library.action('import', { file: packFile(packedText) });
+    const after = receiver.owner.fontLibrary;
+    for (const key of ['body', 'st', 'shared', 'mode', 'enabled', 'previewText']) assert.deepEqual(after[key], before[key], `${mode}/${enabled}: ${key}`);
+    assert.deepEqual(after.fonts.slice(0, before.fonts.length), before.fonts);
+    assert.deepEqual(after.fonts.slice(before.fonts.length), expected);
+    assert.deepEqual(after.folders, [...before.folders, ...packed.folders]);
+    assert.equal(receiver.binaries.size, 2); assert.equal(receiver.saves.length, saves + 1);
+    for (const font of expected.filter(item => item.source.kind === 'local')) {
+      assert.deepEqual(new Uint8Array(await receiver.binaries.get('one' + font.id).arrayBuffer()), packed.localFiles[font.id]);
+    }
+    for (const font of excluded) assert.ok(!after.fonts.some(item => item.id === font.id));
+    assert.equal(receiver.applies.at(-1).state.enabled, enabled); assert.equal(receiver.applies.at(-1).state.mode, mode);
+    receiver.stop();
+  }
+  source.stop();
+});
+
+test('a missing second selected original blocks the entire pack, while unselected missing originals do not block export', async () => {
+  const f = setup({ webResolver: resolveWebFontSource }), first = fontFile(), second = fontFile(); second.bytes[31] = 9;
+  await f.library.action('add-local', { files: [first.file, second.file], metadata: [{ name: '完整原件', tags: ['保留'] }, { name: '缺失原件', tags: ['保留'] }] });
+  await f.library.action('add-web', { source: webFont.source.input, tags: ['网络'] });
+  const [complete, missing, web] = f.owner.fontLibrary.fonts, before = structuredClone(f.owner.fontLibrary), saves = f.saves.length;
+  f.binaries.delete('one' + missing.id);
+  await assert.rejects(f.library.action('export', { ids: [complete.id, web.id, missing.id] }), /缺少.*缺失原件.*原件/);
+  assert.equal(f.downloads.length, 0); assert.equal(f.saves.length, saves); assert.deepEqual(f.owner.fontLibrary, before);
+  await f.library.action('export', { ids: [web.id, complete.id] });
+  assert.equal(f.downloads.length, 1);
+  const packed = importFontPack(await f.downloads[0][0].text());
+  assert.deepEqual(packed.records.map(font => font.id), [complete.id, web.id]);
+  assert.deepEqual(Object.keys(packed.localFiles), [complete.id]); assert.deepEqual(packed.localFiles[complete.id], first.bytes);
+  assert.equal(f.binaries.size, 1); assert.deepEqual(f.owner.fontLibrary, before); assert.equal(f.saves.length, saves); f.stop();
+});
+
 test('master off survives import, selection changes and reopen without deleting local originals', async () => {
   const f = setup(); await f.library.action('add-local', { files: [fontFile().file] });
   const id = f.owner.fontLibrary.fonts[0].id;

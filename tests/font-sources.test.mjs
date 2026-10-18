@@ -224,6 +224,28 @@ test('Web-only packs need no local storage or embedded files', () => {
     assert.deepEqual(decoded.records, [webRecord()]); assert.deepEqual(Object.keys(decoded.localFiles), []);
 });
 
+test('a single v1 JSON pack carries multiple Web families and distinct local originals with legacy metadata intact', async () => {
+    const first = await createLocalFontRecord(file(makeFont('truetype'), '本地常规.ttf'), { name: '本地常规' });
+    const second = await createLocalFontRecord(file(makeFont('opentype'), '本地艺术.otf'), { name: '本地艺术' });
+    Object.assign(first.record, { id: 'local-first', folder: '旧版目录', tags: ['中文', '正文'] });
+    Object.assign(second.record, { id: 'local-second', folder: '', tags: ['艺术'] });
+    const otherWeb = { ...webRecord(), id: 'web-2', name: '另一款网络字体', source: { kind: 'web', input: 'https://fonts.example/second.css', url: 'https://fonts.example/second.css' },
+        faces: [{ urls: [{ url: 'https://fonts.example/second.woff2', format: 'woff2' }], weight: '100 900', style: 'normal', unicodeRange: 'U+4E00-9FFF' }], tags: ['可变字重'] };
+    const records = [webRecord(), first.record, otherWeb, second.record], localFiles = new Map([[first.record.id, first.bytes], [second.record.id, second.bytes]]);
+    const encoded = exportFontPack(records, { localFiles, folders: ['阅读', '旧版目录', '旧版空目录'], previewText: '一包多款，不含应用偏好' });
+    const wire = JSON.parse(encoded), decoded = importFontPack(encoded);
+    assert.equal(wire.type, 'qianmu-font-library'); assert.equal(wire.version, 1);
+    assert.equal(wire.fonts.length, 4); assert.deepEqual(Object.keys(wire.localFiles), [first.record.id, second.record.id]);
+    assert.deepEqual(decoded.records, records); assert.deepEqual(decoded.localFiles[first.record.id], first.bytes); assert.deepEqual(decoded.localFiles[second.record.id], second.bytes);
+    assert.notDeepEqual(decoded.localFiles[first.record.id], decoded.localFiles[second.record.id]);
+    assert.deepEqual(decoded.folders, ['阅读', '旧版目录', '旧版空目录']); assert.equal(decoded.previewText, '一包多款，不含应用偏好');
+    assert.throws(() => exportFontPack(records, { localFiles: { [first.record.id]: first.bytes } }), /文件数据/u);
+    const incomplete = structuredClone(wire); delete incomplete.localFiles[second.record.id];
+    assert.throws(() => importFontPack(JSON.stringify(incomplete)), /不一致/u);
+    const wrongSecond = structuredClone(wire); wrongSecond.localFiles[second.record.id] = wrongSecond.localFiles[first.record.id];
+    assert.throws(() => importFontPack(JSON.stringify(wrongSecond)), /不匹配/u);
+});
+
 test('pack rejects missing/unreferenced files, duplicate ids, invalid bytes and prototype fields', async () => {
     const local = await createLocalFontRecord(file(makeFont())); local.record.id = 'local-1';
     assert.throws(() => exportFontPack([local.record]), /文件数据/u);
