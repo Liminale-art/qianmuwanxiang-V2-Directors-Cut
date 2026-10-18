@@ -1,13 +1,13 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary } from './qianmu-font-library-state.js?v=1.59.466';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary } from './qianmu-font-library-state.js?v=1.59.467';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.466';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.466';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.467';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.467';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
 // Web references live in the ordinary ST extension settings. Uploaded originals
 // are device/account scoped and never enter chat metadata or ST user/files.
 export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent, document = globalThis.document,
-  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel,
+  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel, getPreviewFontSize = () => 18,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
   webResolver = resolveWebFontSource, localReader = createLocalFontRecord } = {}) {
   let owner = null, namespace = '', store = null, runtime = null, view = null, portal = null, container = null;
@@ -46,8 +46,9 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (!node) return;
     try {
       const state = read(), name = target => state[target].enabled ? state.fonts.find(font => font.id === state[target].fontId)?.name || '原生字体' : '原生字体';
-      node.textContent = state.mode === 'shared' ? `当前：共用 · ${name('shared')}` : `当前：正文 · ${name('body')} / 界面 · ${name('st')}`;
+      node.textContent = !state.enabled ? '当前：字体未启用' : state.mode === 'shared' ? `当前：全部 · ${name('shared')}` : `当前：正文 · ${name('body')} / 界面 · ${name('st')}`;
     } catch { node.textContent = '当前：配置待检查'; }
+    node.title = node.textContent;
   }
   async function sync() {
     if (disposed) return;
@@ -64,8 +65,9 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     updateEntry();
   }
   function uiState() {
-    const state = read();
-    return { ...state, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, variantKnown: font.source.variantKnown,
+    const state = read(), requestedSize = Number(getPreviewFontSize());
+    const defaultPreviewSize = Number.isFinite(requestedSize) && requestedSize >= 1 && requestedSize <= 200 ? requestedSize : 18;
+    return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, variantKnown: font.source.variantKnown,
       weights: [...new Set(font.faces.map(face => face.weight || '400'))],
       styles: [...new Set(font.faces.map(face => face.style || 'normal'))], status: statuses.get(font.id)?.status === 'error' ? statuses.get(font.id).message : '' })) };
   }
@@ -171,7 +173,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       await ensure(); if (!root.isConnected) return;
       close(); portal = root; root.classList.add('qm-font-library-open');
       container = document.createElement('section'); container.className = 'sd-window qm-font-window';
-      container.setAttribute('role', 'dialog'); container.setAttribute('aria-modal', 'true'); container.setAttribute('aria-label', '字体库');
+      container.setAttribute('role', 'dialog'); container.setAttribute('aria-modal', 'true'); container.setAttribute('aria-label', '字体库管理');
       root.querySelector('.sd-floor-shell').appendChild(container);
       view = viewFactory({ root: container, getState: uiState, onAction: action, onVisibleFonts: visible, initialSession: viewSession,
         onBack: () => { close(); root.querySelector('[data-font-library]')?.focus(); },

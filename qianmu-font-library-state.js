@@ -1,6 +1,7 @@
 import { validateFontRecord } from './qianmu-font-sources.js';
 
-export const FONT_LIBRARY_SAMPLE = '风过长街，故事仍在继续。The quick brown fox 0123456789.';
+export const FONT_LIBRARY_SAMPLE = '一蝶振翅，万象入幕。';
+const LEGACY_FONT_LIBRARY_SAMPLE = '风过长街，故事仍在继续。The quick brown fox 0123456789.';
 const fail = message => { throw new Error(message); };
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const text = (value, max, label) => {
@@ -24,9 +25,10 @@ export function fontAssignment(value = {}) {
   return { fontId, weight, style, enabled: Boolean(fontId && value.enabled !== false) };
 }
 export function normalizeFontLibrary(value) {
-  if (value == null) return { version: 1, fonts: [], folders: [], previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
+  if (value == null) return { version: 1, enabled: true, fonts: [], folders: [], previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
   if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
   if (JSON.stringify(value).length > 3 * 1024 * 1024) fail('字体库配置过大');
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail('字体启用设置无效');
   const seen = new Set();
   const fonts = value.fonts.map(font => {
     const id = fontLibraryId(font?.id);
@@ -37,8 +39,8 @@ export function normalizeFontLibrary(value) {
     return { ...record, id, folder: text(font.folder || '', 80, '文件夹').trim(), tags: names(font.tags || [], 32, '标签') };
   });
   const result = {
-    version: 1, fonts, folders: names(value.folders || [], 200, '文件夹'),
-    previewText: text(value.previewText ?? FONT_LIBRARY_SAMPLE, 500, '预览文案'),
+    version: 1, enabled: value.enabled !== false, fonts, folders: names(value.folders || [], 200, '文件夹'),
+    previewText: text(value.previewText == null || value.previewText === LEGACY_FONT_LIBRARY_SAMPLE ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
     mode: value.mode === 'shared' ? 'shared' : 'separate',
     body: fontAssignment(value.body), st: fontAssignment(value.st), shared: fontAssignment(value.shared),
   };
@@ -64,7 +66,10 @@ export function mergeFontLibraryRecords(state, records, makeId) {
 }
 export function updateFontLibrary(state, type, payload = {}) {
   const next = normalizeFontLibrary(state);
-  if (type === 'set-mode') {
+  if (type === 'set-enabled') {
+    if (typeof payload.enabled !== 'boolean') fail('字体启用设置无效');
+    next.enabled = payload.enabled;
+  } else if (type === 'set-mode') {
     if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
     next.mode = payload.mode;
   } else if (type === 'apply-font') {

@@ -61,6 +61,26 @@ test('complete export retains Web references and never downloads remote font bin
   assert.equal(f.downloads.length, 1); assert.equal(f.binaries.size, 0);
   const text = await f.downloads[0][0].text(); assert.ok(text.includes(webFont.source.url)); f.stop();
 });
+
+test('master off survives import, selection changes and reopen without deleting local originals', async () => {
+  const f = setup(); await f.library.action('add-local', { files: [fontFile().file] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await f.library.action('apply-font', { target: 'shared', fontId: id });
+  const original = structuredClone(f.owner.fontLibrary), originalBytes = f.binaries.get('one' + id);
+  await f.library.action('set-enabled', { enabled: false });
+  assert.deepEqual(f.owner.fontLibrary, { ...original, enabled: false });
+  const packed = exportFontPack([{ ...webFont, id: 'imported' }]);
+  await f.library.action('import', { file: packFile(packed) });
+  await f.library.action('apply-font', { target: 'body', fontId: 'imported' });
+  await f.library.sync();
+  assert.equal(f.applies.at(-1).state.enabled, false);
+  assert.equal(f.binaries.get('one' + id), originalBytes);
+  await f.library.action('set-enabled', { enabled: true });
+  assert.equal(f.applies.at(-1).state.enabled, true);
+  assert.equal(f.owner.fontLibrary.body.fontId, 'imported');
+  assert.deepEqual(f.owner.fontLibrary.shared, original.shared);
+  f.stop();
+});
 test('delete removes only selected entries and resets their assignments', async () => {
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
   const id = f.owner.fontLibrary.fonts[0].id;
@@ -199,10 +219,16 @@ test('library return restores only its same-account view session and release can
   const root = { isConnected: true, classList: { add: name => classes.add(name), remove: name => classes.delete(name) },
     querySelector: selector => selector === '[data-font-library]' ? entry : selector === '[data-font-library-summary]' ? summary : selector === '.sd-floor-shell' ? shell : null };
   const snapshot = { query: 'reading', page: 2, scrollTop: 120, variants: { test: { weight: '700' } } };
-  const f = setup({ document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
+  let fontSize = 19;
+  const f = setup({ getPreviewFontSize: () => fontSize, document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
     viewFactory: options => { const view = { options, destroyed: false, captureSession: () => structuredClone(snapshot), destroy() { this.destroyed = true; } }; views.push(view); return view; } });
   f.library.attach(root); assert.match(summary.textContent, /^当前：/);
   entry.click(); await waitUntil(() => views.length === 1);
+  assert.equal(views[0].options.getState().defaultPreviewSize, 19);
+  fontSize = 22;
+  assert.equal(views[0].options.getState().defaultPreviewSize, 22);
+  fontSize = NaN;
+  assert.equal(views[0].options.getState().defaultPreviewSize, 18);
   assert.equal(views[0].options.initialSession, null); assert.ok(classes.has('qm-font-library-open'));
   views[0].options.onBack(); assert.equal(views[0].destroyed, true); assert.equal(classes.has('qm-font-library-open'), false);
   entry.click(); await waitUntil(() => views.length === 2);

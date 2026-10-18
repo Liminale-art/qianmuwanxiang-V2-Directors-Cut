@@ -5,6 +5,37 @@ import { migrateQianmuSettingsV2 } from '../qianmu-data-migrations.js';
 const font = id => ({ id, name: id, source: { kind: 'web', input: `https://fonts.example/${id}.woff2`, url: `https://fonts.example/${id}.woff2` }, faces: [{ urls: [{ url: `https://fonts.example/${id}.woff2`, format: 'woff2' }], weight: '400', style: 'normal' }] });
 const fixture = () => normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [font('a'), font('b')] });
 
+test('master application gate defaults on for legacy libraries and strictly preserves dormant choices', () => {
+  const legacy = fixture(); delete legacy.enabled;
+  assert.equal(normalizeFontLibrary(legacy).enabled, true);
+  let state = updateFontLibrary(legacy, 'apply-font', { target: 'body', fontId: 'a', weight: '700' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a' });
+  const original = structuredClone(state);
+  state = updateFontLibrary(state, 'set-enabled', { enabled: false });
+  assert.deepEqual(state, { ...original, enabled: false });
+  state = updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'b' });
+  assert.equal(state.enabled, false);
+  assert.deepEqual(state.shared, original.shared);
+  state = mergeFontLibraryRecords(state, [font('c')], () => 'c').state;
+  assert.equal(state.enabled, false);
+  state = updateFontLibrary(state, 'delete-fonts', { ids: ['c'] });
+  assert.equal(state.enabled, false);
+  state = updateFontLibrary(state, 'set-enabled', { enabled: true });
+  assert.equal(state.body.fontId, 'b'); assert.equal(state.mode, 'separate');
+  for (const enabled of [null, 'false', 0, {}]) {
+    assert.throws(() => updateFontLibrary(state, 'set-enabled', { enabled }), /启用设置无效/);
+    assert.throws(() => normalizeFontLibrary({ ...state, enabled }), /启用设置无效/);
+  }
+});
+
+test('new sample replaces only the known legacy default and preserves custom or blank samples', () => {
+  assert.equal(normalizeFontLibrary().previewText, '一蝶振翅，万象入幕。');
+  const state = fixture();
+  assert.equal(normalizeFontLibrary({ ...state, previewText: '风过长街，故事仍在继续。The quick brown fox 0123456789.' }).previewText, '一蝶振翅，万象入幕。');
+  for (const previewText of ['', '人间万象 Aa 0123']) assert.equal(normalizeFontLibrary({ ...state, previewText }).previewText, previewText);
+});
+
 test('ordinary settings migration retains the full font catalogue and unrelated existing data', () => {
   const original = { fontLibrary: fixture(), proseLayout: { fontSize: 20 }, logHistory: [{ response: '保留原记录' }], custom: { untouched: true } };
   const before = structuredClone(original), result = migrateQianmuSettingsV2(original);

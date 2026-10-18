@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createFontLibraryView, renderFontLibrary, renderFontLibraryCards, selectFontLibraryPage, fontLibraryWeightControl, FONT_LIBRARY_PAGE_SIZE } from '../qianmu-font-library-view.js';
+import { createFontLibraryView, renderFontLibrary, renderFontLibraryCards, selectFontLibraryPage, fontLibraryWeightControl, fontLibraryPreviewSize, FONT_LIBRARY_PAGE_SIZE } from '../qianmu-font-library-view.js';
 const entry = (id = 'one', patch = {}) => ({ id, name: `字体 ${id}`, sourceType: 'web', folder: '', tags: [], weights: ['400', '700'], styles: ['normal', 'italic'], ...patch });
 const state = (patch = {}) => ({ entries: [entry()], mode: 'separate', previewText: '山海相逢 ABC 123', body: { enabled: false, fontId: '' }, st: { enabled: false, fontId: '' }, shared: { enabled: false, fontId: '' }, ...patch });
 
@@ -22,7 +22,7 @@ function fixture(initial = state(), action = () => {}, initialSession = {}) {
 
 test('main panel shell uses real inline theme icons and removes the old mode/settings prose', () => {
     const html = renderFontLibrary(state());
-    assert.match(html, /^<header class="sd-header qm-font-header">/); assert.match(html, /<h2>字体库<\/h2>/); assert.match(html, /<main class="sd-body">/);
+    assert.match(html, /^<header class="sd-header qm-font-header">/); assert.match(html, /<h2>字体库管理<\/h2>/); assert.match(html, /<main class="sd-body">/);
     assert.match(html, /data-font-action="back"[^>]*aria-label="返回正文排版"/); assert.match(html, /data-font-action="close"/); assert.match(html, /class="qm-glyph-svg"/); assert.match(html, /data-qm-icon-variant="bold"/);
     assert.doesNotMatch(html, /qm-font-mode|qm-font-application|data-font-assignment|qm-font-note|qm-font-storage-note|文件默认字形|字体在下方列表预览/);
     assert.match(html, /class="sd-card qm-font-card"/);
@@ -44,14 +44,16 @@ test('per-card dropdown always offers body, ST and shared; restore choices appea
     const plain = renderFontLibraryCards(state());
     for (const target of ['body', 'st', 'shared']) assert.match(plain, new RegExp(`option value="${target}"`)); assert.doesNotMatch(plain, /value="restore-/);
     const used = renderFontLibraryCards(state({ body: { enabled: true, fontId: 'one', weight: '700', style: 'normal' } }));
-    assert.match(used, /应用于 · 正文/); assert.match(used, /value="restore-body"/); assert.doesNotMatch(used, /value="restore-st"/);
+    assert.match(used, /<option value="" selected>正文/); assert.doesNotMatch(used, /value="restore-body"|value="restore-st"|应用于/);
     const shared = renderFontLibraryCards(state({ mode: 'shared', shared: { enabled: true, fontId: 'one' } }));
-    assert.match(shared, /value="restore-shared">取消共用/); assert.doesNotMatch(shared, /value="restore-body"/);
+    assert.match(shared, /value="restore-shared">取消全部/); assert.match(shared, /<option value="" selected>全部/); assert.doesNotMatch(shared, /value="restore-body"/);
+    const ui = renderFontLibraryCards(state({ st: { enabled: true, fontId: 'one' } })); assert.match(ui, /<option value="" selected>ST界面/); assert.match(ui, /value="restore-st">恢复界面/);
+    assert.match(plain, /<option value="" selected>应用/); assert.match(plain, /qm-font-card-tools[\s\S]*?data-font-apply="one"[\s\S]*?<\/div><\/div><p/); assert.doesNotMatch(plain.match(/<div class="qm-font-card-foot">[\s\S]*?<\/div>/)?.[0] || '', /data-font-apply/);
 });
 test('source tags and default-style explanations are gone; only varying styles have a menu', () => {
     const html = renderFontLibraryCards(state({ entries: [entry('local', { sourceType: 'local', variantKnown: false, styles: ['normal'], weights: ['400'] })] }));
-    assert.doesNotMatch(html, /qm-font-source|文件默认字形|>本机<|>Web<|data-font-style=/); assert.match(html, /固定字重 400/);
-    assert.match(renderFontLibraryCards(state()), /data-font-style="one"/);
+    assert.doesNotMatch(html, /qm-font-source|文件默认字形|>本机<|>Web<|data-font-style=|data-font-action="weight"|固定字重/);
+    assert.match(renderFontLibraryCards(state()), /data-font-style="one"/); assert.match(renderFontLibraryCards(state()), /<label class="sd-icon-btn qm-font-style-pick qm-font-icon"/);
 });
 test('untrusted metadata remains escaped and never becomes executable HTML or styles', () => {
     const evil = '"><img src=x onerror=alert(1)><script>bad</script>';
@@ -76,6 +78,30 @@ test('weight slider preserves continuous variable axes and exact discrete face s
 test('weight choices respect the selected style, not synthetic Cartesian combinations', () => {
     const font = entry('one', { faces: [{ weight: '400', style: 'normal' }, { weight: '700', style: 'italic' }] });
     assert.deepEqual(fontLibraryWeightControl(font, { style: 'normal' }).values, [400]); assert.deepEqual(fontLibraryWeightControl(font, { style: 'italic' }).values, [700]);
+});
+test('master enable is the first card, Web stays directly open and search precedes folder/multi-select', () => {
+    const html = renderFontLibrary(state()); assert.ok(html.indexOf('data-font-enabled') < html.indexOf('qm-font-web-label'));
+    assert.match(html, /data-font-enabled aria-label="启用字体库" checked/); assert.doesNotMatch(renderFontLibrary(state({ enabled: false })), /data-font-enabled[^>]*checked/);
+    assert.doesNotMatch(html, /<details|<summary|Web 引入|字体链接或样式/); assert.match(html, />字体链接<textarea/);
+    assert.ok(html.indexOf('data-font-search') < html.indexOf('data-font-action="filter"')); assert.ok(html.indexOf('data-font-action="filter"') < html.indexOf('data-font-action="manage"'));
+    assert.match(html, /class="sd-card qm-font-preview-editor"/); assert.match(html, /data-font-preview-size/);
+    assert.match(renderFontLibraryCards(state({ previewText: '' })), /一蝶振翅，万象入幕。/);
+});
+test('each font has an independent delete action outside the name tools and only sends its own id', async () => {
+    const f = fixture(state({ entries: [entry('one'), entry('two')] })), html = f.root.innerHTML;
+    assert.equal((html.match(/data-font-action="delete-one"/g) || []).length, 2); assert.match(html, /qm-font-card-foot[\s\S]*?data-font-action="delete-one"[\s\S]*?data-font-id="one"/);
+    await f.click('delete-one', { fontId: 'two' }); await f.click('delete-one', { fontId: 'missing' }); assert.deepEqual(f.calls, [{ type: 'delete-fonts', ids: ['two'] }]); f.view.destroy();
+});
+test('preview size follows body until adjusted, includes out-of-range body sizes and never writes settings', () => {
+    assert.deepEqual(fontLibraryPreviewSize({ defaultPreviewSize: 64 }), { min: 12, max: 64, value: 64 }); assert.deepEqual(fontLibraryPreviewSize({ defaultPreviewSize: 10 }), { min: 10, max: 48, value: 10 }); assert.equal(fontLibraryPreviewSize().value, 18);
+    const f = fixture(state({ defaultPreviewSize: 19 })); assert.equal(f.samples[0].style['font-size'], '19px'); f.setState(state({ defaultPreviewSize: 21 })); f.view.render(); assert.equal(f.samples[0].style['font-size'], '21px');
+    const slider = f.node('[data-font-preview-size]', { value: '31' }); f.emit('input', slider); assert.equal(f.samples[0].style['font-size'], '31px'); assert.equal(f.samples[0].style['font-size:priority'], 'important'); assert.equal(f.calls.length, 0); assert.equal(f.visible.length, 2);
+    const session = f.view.captureSession(); assert.equal(session.previewSizeOverride, 31); f.view.destroy(); const reopened = fixture(state({ defaultPreviewSize: 22 }), () => {}, session); assert.equal(reopened.samples[0].style['font-size'], '31px'); reopened.view.destroy();
+});
+test('master emits one explicit action, is disabled during save and restores checked state on failure', async () => {
+    let resolve; const pending = new Promise(done => { resolve = done; }), f = fixture(state(), () => pending), toggle = f.node('[data-font-enabled]', { checked: false });
+    const saving = f.emit('change', toggle); assert.deepEqual(f.calls, [{ type: 'set-enabled', enabled: false }]); assert.equal(toggle.disabled, true); resolve(); await saving; assert.equal(toggle.disabled, false); f.view.destroy();
+    const failed = fixture(state(), () => { throw Error('failed'); }), control = failed.node('[data-font-enabled]', { checked: false }); await failed.emit('change', control); assert.equal(control.checked, true); assert.equal(control.disabled, false); failed.view.destroy();
 });
 test('sample-only inline important beats theme font without host assignment or theme mutation', () => {
     const f = fixture(state({ entries: Array.from({ length: 9 }, (_, index) => entry(String(index))) }));
@@ -164,8 +190,11 @@ test('status errors target only matching samples and unknown raw errors remain p
 });
 test('CSS adds layout and sample controls without rewriting theme fonts or old floor shell', async () => {
     const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
-    assert.match(css, /\.qm-font-window \.qm-font-header/); assert.match(css, /\.qm-font-weight-pop/); assert.match(css, /\.qm-font-sample \{[^}]*font-size:22px/); assert.match(css, /@media\(max-width:440px\)/);
+    assert.match(css, /\.qm-font-window \.qm-font-header/); assert.match(css, /\.qm-font-weight-pop/); assert.match(css, /\.qm-font-sample \{[^}]*font-size:18px/); assert.match(css, /@media\(max-width:440px\)/);
     assert.doesNotMatch(css, /font-family\s*:|\.mes_text|body\s*\{|html\s*\{/); assert.match(css, /\.qm-font-file-pick>input\[type="file"\]/);
     assert.match(css, /#story-director-floor-nav\.qm-font-library-open \.sd-floor-panel \{ display:none !important; \}/); assert.match(css, /grid-template-columns:minmax\(0,1fr\) auto/);
-    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /select\.qm-font-apply \{[^}]*width:14em/); assert.match(css, /\.qm-font-card-foot \{[^}]*flex-wrap:wrap/);
+    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /select\.qm-font-apply \{[^}]*width:7em/); assert.match(css, /\.qm-font-card-foot \{[^}]*flex-wrap:wrap/);
+    assert.match(css, /\.qm-font-entry>small \{[^}]*white-space:nowrap;[^}]*text-overflow:ellipsis/); assert.match(css, /font-size:var\(--qm-type-feature-title,17px\) !important/);
+    assert.match(css, /data-qm-theme="glass"\] \.qm-font-window \.qm-font-header \.qm-font-icon \{ border-radius:50% !important/); assert.match(css, /data-qm-theme="editorial"\][^\n]*border-radius:0 !important/);
+    assert.match(css, /#story-director-floor-nav\.qm-font-library-open \.qm-font-window \.qm-font-card-foot>\.qm-font-icon \{ margin-left:auto !important; \}/);
 });

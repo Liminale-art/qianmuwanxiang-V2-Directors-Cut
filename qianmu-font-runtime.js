@@ -184,7 +184,8 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       if (disposed) return;
       const turn = ++generation;
       const fonts = new Map((Array.isArray(state.fonts) ? state.fonts : []).filter((font) => typeof font?.id === 'string').map((font) => [font.id, font]));
-      const choices = state.mode === 'shared' ? { body: state.shared, st: state.shared } : { body: state.body, st: state.st };
+      const choices = state.enabled === false ? { body: null, st: null }
+        : state.mode === 'shared' ? { body: state.shared, st: state.shared } : { body: state.body, st: state.st };
       const needed = new Set(previewIds.filter((id) => fonts.has(id)));
       for (const [scope, selection] of Object.entries(choices)) {
         if (applied.has(scope) && !fonts.has(applied.get(scope).id)) applied.delete(scope);

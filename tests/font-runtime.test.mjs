@@ -24,6 +24,52 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('master off removes both scopes immediately while preserving selected fonts and independent previews', async () => {
+  let finish;
+  const f = fixture({ load: async font => font.includes(fontPreviewFamily('preview')) ? new Promise(resolve => { finish = resolve; }) : [{}] });
+  const active = state([web('a'), web('b'), web('preview')], { body: choice('a'), st: choice('b'), shared: choice('a') });
+  const original = structuredClone(active);
+  await f.runtime.sync(active);
+  assert.match(f.css(), new RegExp(fontPreviewFamily('a')));
+  assert.match(f.css(), new RegExp(fontPreviewFamily('b')));
+  const disabled = f.runtime.sync({ ...active, enabled: false }, ['preview']);
+  assert.equal(f.css(), '', 'application styles are removed before preview loading completes');
+  await new Promise(resolve => setImmediate(resolve));
+  finish([{}]); await disabled;
+  assert.equal(f.css(), ''); assert.equal(f.faces.size, 1);
+  assert.deepEqual(active, original);
+  await f.runtime.sync({ ...active, enabled: true, mode: 'shared' });
+  assert.match(f.css(), new RegExp(fontPreviewFamily('a')));
+  assert.doesNotMatch(f.css(), new RegExp(fontPreviewFamily('b')));
+  await f.runtime.sync({ ...active, enabled: false, mode: 'shared' });
+  assert.equal(f.css(), ''); assert.equal(f.faces.size, 0); f.runtime.dispose();
+});
+
+test('late success or rejection cannot revive application after master-off or off-on-off ordering', async () => {
+  for (const rejects of [false, true]) {
+    const pending = [];
+    const f = fixture({ load: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
+    const s = state([web()], { body: choice('web1'), st: choice('web1') });
+    const first = f.runtime.sync(s);
+    await new Promise(resolve => setImmediate(resolve));
+    await f.runtime.sync({ ...s, enabled: false });
+    const second = f.runtime.sync({ ...s, enabled: true });
+    await new Promise(resolve => setImmediate(resolve));
+    await f.runtime.sync({ ...s, enabled: false });
+    for (const deferred of pending) rejects ? deferred.reject(new Error('late failure')) : deferred.resolve([{}]);
+    await Promise.all([first, second]);
+    assert.equal(f.css(), ''); assert.equal(f.faces.size, 0); f.runtime.dispose();
+  }
+});
+
+test('preview failure with master off never falls back to a retained active assignment', async () => {
+  const f = fixture({ load: async font => { if (font.includes(fontPreviewFamily('bad'))) throw new Error('network'); return [{}]; } });
+  const s = state([web('good'), web('bad')], { body: choice('good'), st: choice('good') });
+  await f.runtime.sync(s);
+  await f.runtime.sync({ ...s, enabled: false }, ['bad']);
+  assert.equal(f.css(), ''); assert.equal(f.statuses.at(-1).status, 'error'); f.runtime.dispose();
+});
+
 test('catalog registration and actual list verification do not apply to ST or prose', async () => {
   const f = fixture();
   await f.runtime.sync(state([web(), web('hidden')]), ['web1']);
