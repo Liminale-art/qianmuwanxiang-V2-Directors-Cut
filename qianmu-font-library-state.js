@@ -1,0 +1,92 @@
+import { validateFontRecord } from './qianmu-font-sources.js';
+
+export const FONT_LIBRARY_SAMPLE = '风过长街，故事仍在继续。The quick brown fox 0123456789.';
+const fail = message => { throw new Error(message); };
+const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const text = (value, max, label) => {
+  if (typeof value !== 'string' || value.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) fail(`${label}无效或过长`);
+  return value;
+};
+export function fontLibraryId(value) {
+  if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(value)) fail('字体标识无效');
+  return value;
+}
+const names = (values, limit, label) => {
+  if (!Array.isArray(values) || values.length > limit) fail(`${label}数量过多`);
+  return [...new Set(values.map(value => text(value, 80, label).trim()).filter(Boolean))];
+};
+const blankAssignment = () => ({ fontId: '', weight: '400', style: 'normal', enabled: false });
+export function fontAssignment(value = {}) {
+  if (!plain(value)) fail('字体应用设置无效');
+  const fontId = value.fontId ? fontLibraryId(value.fontId) : '';
+  const weight = String(value.weight ?? '400'), style = String(value.style ?? 'normal');
+  if (!/^(?:normal|bold|[1-9]\d{0,2}|1000)$/.test(weight) || !/^(?:normal|italic|oblique)$/.test(style)) fail('字重或字形无效');
+  return { fontId, weight, style, enabled: Boolean(fontId && value.enabled !== false) };
+}
+export function normalizeFontLibrary(value) {
+  if (value == null) return { version: 1, fonts: [], folders: [], previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
+  if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
+  if (JSON.stringify(value).length > 3 * 1024 * 1024) fail('字体库配置过大');
+  const seen = new Set();
+  const fonts = value.fonts.map(font => {
+    const id = fontLibraryId(font?.id);
+    if (seen.has(id)) fail('字体库包含重复标识');
+    seen.add(id);
+    const record = validateFontRecord(font);
+    if (record.source.kind === 'local' && record.faces.some(face => face.urls.length)) fail('本地字体原件不能存入扩展配置');
+    return { ...record, id, folder: text(font.folder || '', 80, '文件夹').trim(), tags: names(font.tags || [], 32, '标签') };
+  });
+  const result = {
+    version: 1, fonts, folders: names(value.folders || [], 200, '文件夹'),
+    previewText: text(value.previewText ?? FONT_LIBRARY_SAMPLE, 500, '预览文案'),
+    mode: value.mode === 'shared' ? 'shared' : 'separate',
+    body: fontAssignment(value.body), st: fontAssignment(value.st), shared: fontAssignment(value.shared),
+  };
+  for (const font of fonts) if (font.folder && !result.folders.includes(font.folder)) result.folders.push(font.folder);
+  for (const key of ['body', 'st', 'shared']) if (!seen.has(result[key].fontId)) result[key] = blankAssignment();
+  return result;
+}
+export function fontRecordSignature(font) {
+  return JSON.stringify([font.source.kind, font.source.kind === 'local' ? font.id : font.faces]);
+}
+export function mergeFontLibraryRecords(state, records, makeId) {
+  const next = normalizeFontLibrary(state), mapping = new Map();
+  for (const source of records) {
+    const record = validateFontRecord(source), sourceId = source.id || '';
+    const existing = next.fonts.find(item => fontRecordSignature(item) === fontRecordSignature({ ...record, id: sourceId }));
+    if (existing) { if (sourceId) mapping.set(sourceId, existing.id); continue; }
+    let id = sourceId || makeId();
+    if (next.fonts.some(item => item.id === id)) id = makeId();
+    next.fonts.push({ ...record, id: fontLibraryId(id), folder: source.folder || '', tags: source.tags || [] });
+    if (sourceId) mapping.set(sourceId, id);
+  }
+  return { state: normalizeFontLibrary(next), mapping };
+}
+export function updateFontLibrary(state, type, payload = {}) {
+  const next = normalizeFontLibrary(state);
+  if (type === 'set-mode') {
+    if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
+    next.mode = payload.mode;
+  } else if (type === 'set-assignment') {
+    if (!['body', 'st', 'shared'].includes(payload.target)) fail('字体目标无效');
+    next[payload.target] = fontAssignment(payload);
+    if (next[payload.target].fontId && !next.fonts.some(font => font.id === next[payload.target].fontId)) fail('字体已不在库中');
+  } else if (type === 'set-preview') next.previewText = text(payload.text, 500, '预览文案');
+  else if (type === 'add-folder') {
+    const folder = text(payload.name, 80, '文件夹').trim();
+    if (folder && !next.folders.includes(folder)) next.folders.push(folder);
+  } else if (type === 'delete-folder') {
+    const folder = text(payload.name, 80, '文件夹');
+    next.folders = next.folders.filter(name => name !== folder);
+    for (const font of next.fonts) if (font.folder === folder) font.folder = '';
+  } else if (type === 'update-fonts' || type === 'delete-fonts') {
+    const ids = new Set((payload.ids || []).map(fontLibraryId));
+    if (type === 'delete-fonts') next.fonts = next.fonts.filter(font => !ids.has(font.id));
+    else for (const font of next.fonts) if (ids.has(font.id)) {
+      if (payload.folder !== undefined) font.folder = text(payload.folder, 80, '文件夹').trim();
+      if (payload.tags !== undefined) font.tags = names(payload.tags, 32, '标签');
+      if (payload.name !== undefined) font.name = text(payload.name, 120, '字体名称').trim() || font.name;
+    }
+  } else fail('未知字体库操作');
+  return normalizeFontLibrary(next);
+}

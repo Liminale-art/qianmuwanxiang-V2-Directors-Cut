@@ -3,6 +3,13 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-font-library.js",
+    "qianmu-font-library-state.js",
+    "qianmu-font-library-view.js",
+    "qianmu-font-library.css",
+    "qianmu-font-sources.js",
+    "qianmu-font-runtime.js",
+    "qianmu-font-local-store.js",
     "qianmu-creative-prompts.js",
     "qianmu-creative-contract.js",
     "qianmu-creative-runtime.js",

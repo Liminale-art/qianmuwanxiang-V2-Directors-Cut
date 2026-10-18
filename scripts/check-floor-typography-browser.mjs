@@ -35,6 +35,7 @@ try {
         const noop = () => {};
         Object.assign(window, constants, {
             FLOOR_NAV_ID: 'story-director-floor-nav', THEME_KEYS: ['light', 'dark'], floorNavigatorView: 'jump',
+            fontLibrary: { attach() {}, detach() {} },
             ctx: () => ({ chat: Array.from({ length: 12 }, () => ({ mes: 'synthetic' })) }),
             closeQuickWheel: noop, closeFloorNavigator: () => document.getElementById('story-director-floor-nav')?.remove(),
             bindFloorNavigatorViewport: root => Object.assign(root.style, { left: '0px', top: '0px', width: '100vw', height: '100dvh' }),

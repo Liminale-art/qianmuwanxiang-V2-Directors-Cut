@@ -1,0 +1,77 @@
+/* Library-only samples. No host font or body layout rules belong in this sheet. */
+#story-director-floor-nav .qm-font-entry { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:9px; min-height:43px; padding:6px 11px; border:1px solid var(--sd-hairline); border-radius:13px; background:var(--sd-card); }
+#story-director-floor-nav .qm-font-entry>span { font-size:var(--qm-type-label,11px); }
+#story-director-floor-nav .qm-font-entry>small { min-width:0; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); overflow-wrap:anywhere; }
+#story-director-floor-nav .qm-font-entry>button { min-height:34px; padding:5px 10px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,9px); color:var(--sd-text); background:var(--sd-glass-weak); font-size:var(--qm-type-body,12px); }
+#story-director-floor-nav.qm-font-library-open .sd-floor-panel { width:min(760px,100%); }
+#story-director-floor-nav.qm-font-library-open .sd-floor-panel>.sd-floor-tabs,
+#story-director-floor-nav.qm-font-library-open .sd-floor-panel>.sd-floor-view,
+#story-director-floor-nav.qm-font-library-open .sd-floor-panel>header p { display:none !important; }
+#story-director-floor-nav.qm-font-library-open .sd-floor-panel>section.qm-font-library { max-height:min(760px,calc(100dvh - 140px)); overflow-y:auto; overscroll-behavior:contain; padding:2px 4px 4px 2px; }
+#story-director-floor-nav .qm-font-library { display:flex; flex-direction:column; gap:12px; min-width:0; font-size:var(--qm-type-body,12px); color:var(--sd-text); }
+#story-director-floor-nav .qm-font-library * { box-sizing:border-box; }
+#story-director-floor-nav .qm-font-library :is(button,input,select,textarea) { font:inherit; color:var(--sd-text); }
+#story-director-floor-nav .qm-font-library :is(input:not([type="checkbox"]),select,textarea) { width:100%; min-width:0; min-height:34px; padding:6px 8px; border:1px solid var(--sd-hairline); border-radius:8px; background:var(--sd-input-bg); box-shadow:none; }
+#story-director-floor-nav .qm-font-library textarea { resize:vertical; max-height:220px; }
+#story-director-floor-nav .qm-font-library button { min-height:34px; padding:5px 10px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,9px); background:var(--sd-glass-weak); line-height:1.4; cursor:pointer; }
+#story-director-floor-nav .qm-font-library button:disabled { opacity:.45; cursor:default; }
+#story-director-floor-nav .qm-font-library input[type="checkbox"] { flex:none; width:15px; height:15px; margin:0; accent-color:var(--sd-accent); }
+#story-director-floor-nav .qm-font-library :is(button,input,textarea,select):focus-visible { outline:2px solid var(--sd-accent); outline-offset:2px; }
+#story-director-floor-nav .qm-font-library [hidden] { display:none !important; }
+#story-director-floor-nav .qm-font-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+#story-director-floor-nav .qm-font-heading h4 { margin:0; font-size:var(--qm-type-card-title,13px); font-weight:700; }
+#story-director-floor-nav .qm-font-heading button { padding-inline:0; border:0; background:transparent; color:var(--sd-muted); }
+#story-director-floor-nav .qm-font-mode { display:flex; gap:7px; }
+#story-director-floor-nav .qm-font-mode button { flex:1; }
+#story-director-floor-nav .qm-font-mode button[aria-pressed="true"],
+#story-director-floor-nav .qm-font-apply button { border-color:color-mix(in srgb,var(--sd-accent) 35%,var(--sd-hairline)); background:color-mix(in srgb,var(--sd-accent) 12%,var(--sd-card)); }
+#story-director-floor-nav .qm-font-assignments { display:grid; gap:8px; }
+#story-director-floor-nav .qm-font-application { padding:9px 11px; border:1px solid var(--sd-hairline); border-radius:10px; background:var(--sd-card); }
+#story-director-floor-nav .qm-font-application>summary { cursor:pointer; min-height:24px; color:var(--sd-muted); }
+#story-director-floor-nav .qm-font-application[open]>summary { margin-bottom:8px; }
+#story-director-floor-nav .qm-font-assignment { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; align-items:end; }
+#story-director-floor-nav .qm-font-library label { display:flex; align-items:center; gap:6px; min-width:0; }
+#story-director-floor-nav .qm-font-library :is(.qm-font-target,.qm-font-preview-label,.qm-font-web label,.qm-font-bulk>label) { align-items:stretch; flex-direction:column; font-size:var(--qm-type-label,11px); }
+#story-director-floor-nav .qm-font-note { margin:0; font-size:var(--qm-type-caption,11px); line-height:1.6; color:var(--sd-muted); }
+#story-director-floor-nav .qm-font-web { padding:10px 12px; border:1px solid var(--sd-hairline); border-radius:12px; background:var(--sd-card); }
+#story-director-floor-nav .qm-font-web summary { cursor:pointer; font-weight:600; min-height:24px; }
+#story-director-floor-nav .qm-font-web[open] summary { margin-bottom:9px; }
+#story-director-floor-nav .qm-font-web label { margin-bottom:9px; }
+#story-director-floor-nav .qm-font-web>button { width:100%; }
+#story-director-floor-nav .qm-font-imports { display:flex; gap:7px; flex-wrap:wrap; }
+#story-director-floor-nav .qm-font-imports button { flex:1; white-space:nowrap; }
+#story-director-floor-nav .qm-font-filters { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap:6px; }
+#story-director-floor-nav .qm-font-selection { display:flex; align-items:center; flex-wrap:wrap; gap:10px; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+#story-director-floor-nav .qm-font-selection>button { margin-left:auto; border:0; min-height:30px; padding:3px 0; background:transparent; }
+#story-director-floor-nav .qm-font-bulk { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; padding:10px; border:1px solid var(--sd-hairline); border-radius:10px; }
+#story-director-floor-nav .qm-font-list { display:grid; gap:10px; }
+#story-director-floor-nav .qm-font-card { display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid var(--sd-hairline); border-radius:12px; background:var(--sd-card); min-width:0; }
+#story-director-floor-nav .qm-font-card:has([data-font-select]:checked) { border-color:color-mix(in srgb,var(--sd-accent) 58%,var(--sd-hairline)); }
+#story-director-floor-nav .qm-font-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+#story-director-floor-nav .qm-font-card-head strong { font-size:var(--qm-type-card-title,13px); overflow-wrap:anywhere; }
+#story-director-floor-nav .qm-font-source { flex:none; padding:2px 6px; border-radius:5px; color:var(--sd-muted); background:var(--sd-glass-weak); font-size:var(--qm-type-caption,11px); }
+#story-director-floor-nav .qm-font-meta { display:flex; flex-wrap:wrap; gap:4px 8px; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); overflow-wrap:anywhere; }
+#story-director-floor-nav .qm-font-meta:empty { display:none; }
+#story-director-floor-nav .qm-font-sample { margin:4px 0; font-size:22px; line-height:1.6; overflow-wrap:anywhere; white-space:pre-wrap; }
+#story-director-floor-nav .qm-font-load-state { font-size:var(--qm-type-caption,11px); line-height:1.5; color:var(--sd-muted); overflow-wrap:anywhere; }
+#story-director-floor-nav .qm-font-load-state:empty { display:none; }
+#story-director-floor-nav .qm-font-card-foot { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+#story-director-floor-nav .qm-font-variants { display:flex; flex-wrap:wrap; gap:7px; min-width:0; }
+#story-director-floor-nav .qm-font-variants label { gap:4px; white-space:nowrap; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+#story-director-floor-nav .qm-font-variants select { width:auto; min-width:58px; max-width:88px; padding-inline:4px; }
+#story-director-floor-nav .qm-font-apply { display:flex; flex-wrap:wrap; gap:6px; }
+#story-director-floor-nav .qm-font-pagination { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+#story-director-floor-nav .qm-font-empty { margin:18px 0; text-align:center; font-size:var(--qm-type-body,12px); color:var(--sd-muted); }
+#story-director-floor-nav .qm-font-status { margin:0; padding:8px 10px; border:1px solid var(--sd-hairline); border-radius:8px; font-size:var(--qm-type-caption,11px); line-height:1.5; overflow-wrap:anywhere; }
+#story-director-floor-nav .qm-font-status.is-error { color:var(--sd-text); border-color:color-mix(in srgb,#b86b70 50%,var(--sd-hairline)); }
+#story-director-floor-nav [aria-busy="true"]>.qm-font-library { cursor:progress; }
+#story-director-floor-nav [aria-busy="true"]>.qm-font-library :is(button,select,input,textarea) { pointer-events:none; }
+@media(max-width:440px) {
+    #story-director-floor-nav .qm-font-assignment { grid-template-columns:minmax(0,1fr); }
+    #story-director-floor-nav .qm-font-assignment>.qm-font-variants { justify-content:flex-end; }
+    #story-director-floor-nav .qm-font-filters { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    #story-director-floor-nav .qm-font-filters>[data-font-search] { grid-column:1/-1; }
+    #story-director-floor-nav .qm-font-card { padding:10px; }
+    #story-director-floor-nav .qm-font-card-foot { align-items:flex-start; flex-direction:column; }
+    #story-director-floor-nav .qm-font-apply { align-self:flex-end; }
+}

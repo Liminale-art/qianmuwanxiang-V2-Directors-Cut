@@ -5,7 +5,7 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.464';
+const releaseVersion = '1.59.465';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
@@ -48,7 +48,7 @@ test('creative release refreshes every literal consumer and remains reachable fr
     for (const next of graph.get(file) || []) visit(next);
   }
   visit('index.js');
-  for (const file of [...refreshed, ...retained.keys()]) {
+  for (const file of [...refreshed, ...retained.keys(), 'qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-library-view.js', 'qianmu-font-sources.js', 'qianmu-font-runtime.js', 'qianmu-font-local-store.js']) {
     assert.ok(files.includes(file), `${file} is included in the release`);
     assert.ok(reached.has(file), `${file} is reachable from the installed entry`);
   }
@@ -65,6 +65,9 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(manifest.js, `index.js?v=${releaseVersion}`);
   assert.equal(manifest.css, `style.css?v=${releaseVersion}`);
   assert.ok(files.includes('qianmu-creative-social.css'));
+  assert.ok(files.includes('qianmu-font-library.css'));
+  assert.match(sources.get('index.js'), /fontLibrary\.activate\(\);\s*void fontLibrary\.sync\(\)/);
+  assert.match(sources.get('index.js'), /initialized = false;\s*fontLibrary\.dispose\(\)/);
   for (const file of ['qianmu-director-leave-guard.js', 'qianmu-director-navigation.js', 'qianmu-director-save-confirmation.js', 'qianmu-director-host-state.js', 'qianmu-director-auto-refresh.js']) {
     assert.ok(files.includes(file), `${file} must ship with the frontend`);
     const query=file==='qianmu-director-leave-guard.js'?`?v=${retained.get(file)}`:'';

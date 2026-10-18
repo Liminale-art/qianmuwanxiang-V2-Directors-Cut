@@ -1,0 +1,258 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+    FONT_SOURCE_LIMITS, normalizeFontUrl, parseFontStylesheet, resolveWebFontSource,
+    validateLocalFontBytes, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack,
+} from '../qianmu-font-sources.js';
+
+const css = (src = './font.woff2', extra = '') => `@font-face {font-family: "春日字体"; src: local('Old'),url('${src}') format('woff2'); ${extra}}`;
+const response = (text, url = 'https://fonts.example/style.css', headers = {}) => ({ ok: true, url,
+    headers: { get: (key) => headers[key] || null }, text: async () => text });
+const webRecord = () => ({ id: 'web-1', name: '网络字体', source: { kind: 'web', input: 'https://fonts.example/a.woff2', url: 'https://fonts.example/a.woff2' },
+    faces: [{ urls: [{ url: 'https://fonts.example/a.woff2', format: 'woff2' }], weight: '400', style: 'normal' }], folder: '阅读', tags: ['中文', '正文'] });
+function makeFont(format = 'truetype') {
+    const size = format === 'woff' ? 68 : format === 'woff2' ? 52 : 32;
+    const bytes = new Uint8Array(size);
+    const view = new DataView(bytes.buffer);
+    if (format === 'woff' || format === 'woff2') {
+        bytes.set(new TextEncoder().encode(format === 'woff' ? 'wOFF' : 'wOF2'));
+        view.setUint32(4, 0x00010000); view.setUint32(8, size); view.setUint16(12, 1);
+        if (format === 'woff') { view.setUint32(48, 64); view.setUint32(52, 4); }
+    } else {
+        if (format === 'opentype') bytes.set(new TextEncoder().encode('OTTO'));
+        else view.setUint32(0, 0x00010000);
+        view.setUint16(4, 1); view.setUint32(20, 28); view.setUint32(24, 4);
+    }
+    return bytes;
+}
+const file = (bytes, name = '春日.ttf') => ({ size: bytes.length, name, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+
+test('direct web files resolve without fetching and keep query strings', async () => {
+    for (const [extension, format] of [['woff2', 'woff2'], ['woff', 'woff'], ['ttf', 'truetype'], ['otf', 'opentype']]) {
+        const records = await resolveWebFontSource(`https://fonts.example/春日.${extension}?v=3`, { fetchImpl: () => assert.fail('direct font should not prefetch') });
+        assert.equal(records[0].name, '春日'); assert.equal(records[0].faces[0].urls[0].format, format);
+        assert.match(records[0].faces[0].urls[0].url, /\?v=3$/u);
+    }
+});
+
+test('long Web references have one consistent 8192-character metadata limit', async () => {
+    const url = `https://fonts.example/a.woff2?signature=${'a'.repeat(3000)}`;
+    const [font] = await resolveWebFontSource(url); font.id = 'long-url';
+    assert.equal(validateFontRecord(font).source.input, url);
+    assert.equal(importFontPack(exportFontPack([font])).records[0].faces[0].urls[0].url, url);
+    assert.throws(() => normalizeFontUrl(`https://fonts.example/${'字'.repeat(3000)}.woff2`), /过长/u);
+});
+
+test('only font faces survive extraction; arbitrary CSS and URLs never reach returned records', () => {
+    const parsed = parseFontStylesheet(`body{display:none;background:url(https://evil.example/tracker)} .mes_text{font-size:999px} ${css()}`, { baseUrl: 'https://fonts.example/css/styles.css' });
+    assert.deepEqual(parsed, { imports: [], faces: [{ name: '春日字体', face: { urls: [{ url: 'https://fonts.example/css/font.woff2', format: 'woff2' }], weight: '400', style: 'normal' } }] });
+    assert.doesNotMatch(JSON.stringify(parsed), /evil|display|font-size/u);
+});
+
+test('Chinese subsets and variable descriptors are preserved, same-family faces remain one record', async () => {
+    const input = `${css('/latin.woff2', 'font-weight: 100 900; unicode-range: U+0000-00ff; font-style: oblique -10deg 10deg; font-stretch: 80% 120%;')}
+        ${css('/cjk.woff2', 'font-weight: 100 900; unicode-range: U+4E00-9FFF, U+3000-303f;')}`;
+    const records = await resolveWebFontSource(input, { baseUrl: 'https://fonts.example/' });
+    assert.equal(records.length, 1); assert.equal(records[0].faces.length, 2);
+    assert.equal(records[0].faces[0].weight, '100 900'); assert.equal(records[0].faces[0].style, 'oblique -10deg 10deg');
+    assert.equal(records[0].faces[0].stretch, '80% 120%'); assert.equal(records[0].faces[1].unicodeRange, 'U+4E00-9FFF, U+3000-303f');
+    assert.equal(records[0].source.input, '内嵌字体样式');
+});
+
+test('quoted CSS braces/semicolons, comments and CSS escapes do not break parsing', () => {
+    const parsed = parseFontStylesheet(`/* prefix */ @font-face {font-family:'A\\20 B';src:url("https://fonts.example/a;b{c}.woff2") format("woff2-variations");font-weight: bold}`);
+    assert.equal(parsed.faces[0].name, 'A B'); assert.equal(parsed.faces[0].face.weight, '700');
+    assert.equal(parsed.faces[0].face.urls[0].format, 'woff2');
+    assert.match(decodeURIComponent(parsed.faces[0].face.urls[0].url), /a;b\{c\}/u);
+});
+
+test('stylesheet import resolves relative paths, credentials omitted, cycles terminate', async () => {
+    const calls = [];
+    const sources = new Map([
+        ['https://fonts.example/a.css', '@import "./b.css"; ' + css('./a.woff2')],
+        ['https://fonts.example/b.css', '@import url("./a.css"); ' + css('./b.woff2')],
+    ]);
+    const records = await resolveWebFontSource('@import url("https://fonts.example/a.css");', { fetchImpl: async (url, options) => {
+        calls.push(url); assert.equal(options.credentials, 'omit'); assert.equal(options.referrerPolicy, 'no-referrer');
+        return response(sources.get(url), url);
+    } });
+    assert.deepEqual(calls, [...sources.keys()]); assert.equal(records[0].faces.length, 2);
+});
+
+test('stylesheet redirects provide the base for relative font files', async () => {
+    const result = await resolveWebFontSource('https://fonts.example/start', { fetchImpl: async () => response(css('../final.woff2'), 'https://cdn.example/css/a.css') });
+    assert.equal(result[0].faces[0].urls[0].url, 'https://cdn.example/final.woff2');
+});
+
+test('link/style snippets extract font sources only and decode URL entities', async () => {
+    const calls = [];
+    const result = await resolveWebFontSource(`<link rel="preconnect" href="https://ignored.example"><link rel='stylesheet' href='https://fonts.example/css?family=A&amp;display=swap'><script>alert(1)</script>
+        <style>body{color:red}${css('https://fonts.example/local.woff2')}</style>`, { fetchImpl: async (url) => { calls.push(url); return response(css('/remote.woff2'), url); } });
+    assert.deepEqual(calls, ['https://fonts.example/css?family=A&display=swap']); assert.equal(result[0].faces.length, 2);
+    assert.doesNotMatch(JSON.stringify(result), /alert|color:red/u);
+});
+
+test('nested media/supports/layer font faces are supported without applying conditional page CSS', () => {
+    const result = parseFontStylesheet(`@media screen { @supports (font-tech: variations) { @layer fonts { ${css('https://fonts.example/a.woff2')} } } }`);
+    assert.equal(result.faces.length, 1);
+});
+
+test('all unsafe URL forms and credential URLs are rejected, including inside CSS/imports', async () => {
+    for (const url of ['javascript:alert(1)', 'data:font/woff2;base64,aA==', 'file:///C:/a.ttf', 'https://a:b@fonts.example/a.woff2']) {
+        assert.throws(() => normalizeFontUrl(url));
+        assert.throws(() => parseFontStylesheet(css(url)));
+    }
+    await assert.rejects(resolveWebFontSource('@import "https://a:b@fonts.example/style.css";'));
+    await assert.rejects(resolveWebFontSource('https://fonts.example/a.css', { fetchImpl: async () => response(css('/a.woff2'), 'file:///C:/a.css') }));
+});
+
+test('missing cross-origin permission and HTTP failures are honest failures', async () => {
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { fetchImpl: async () => { throw new TypeError('Failed to fetch'); } }), /跨域权限/u);
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { fetchImpl: async () => ({ ok: false, status: 403 }) }), /403/u);
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { fetchImpl: async () => response('<html>login</html>') }), /未找到/u);
+});
+
+test('abort signal is forwarded and cancellation is not disguised as a CORS error', async () => {
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { signal: controller.signal, fetchImpl: async (_url, options) => {
+        assert.equal(options.signal, controller.signal); throw new DOMException('Aborted', 'AbortError');
+    } }), { name: 'AbortError' });
+});
+
+test('resolver timeout covers a stalled fetch and cancels the supplied fetch signal', async () => {
+    let forwarded;
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { timeoutMs: 5, fetchImpl: async (_url, options) => {
+        forwarded = options.signal; return new Promise(() => {});
+    } }), /读取超时/u);
+    assert.equal(forwarded.aborted, true);
+});
+
+test('caller cancellation aborts a stalled body and preserves AbortError', async () => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const stream = new ReadableStream({ cancel() { cancelled = true; } });
+    const pending = resolveWebFontSource('https://fonts.example/css', { signal: controller.signal,
+        fetchImpl: async () => ({ ok: true, body: stream, headers: { get: () => null } }) });
+    await Promise.resolve(); await Promise.resolve(); controller.abort();
+    await assert.rejects(pending, { name: 'AbortError' });
+    assert.equal(cancelled, true);
+});
+
+test('CSS fetch and parse are bounded by bytes, imports and nesting', async () => {
+    assert.throws(() => parseFontStylesheet(' '.repeat(FONT_SOURCE_LIMITS.cssBytes + 1)), /过大/u);
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { fetchImpl: async () => response('', undefined, { 'content-length': FONT_SOURCE_LIMITS.cssBytes + 1 }) }), /过大/u);
+    await assert.rejects(resolveWebFontSource('https://fonts.example/0.css', { fetchImpl: async (url) => {
+        const index = Number(new URL(url).pathname.match(/\d+/u)[0]); return response(`@import './${index + 1}.css';`, url);
+    } }), /层级过深/u);
+    assert.throws(() => parseFontStylesheet('@media a{'.repeat(10) + css('/a.woff2') + '}'.repeat(10), { baseUrl: 'https://fonts.example' }), /嵌套过深/u);
+});
+
+test('streamed CSS bytes are bounded and oversized stream is cancelled', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(FONT_SOURCE_LIMITS.cssBytes + 1)); }, cancel() { cancelled = true; } });
+    await assert.rejects(resolveWebFontSource('https://fonts.example/css', { fetchImpl: async () => ({ ok: true, body: stream, headers: { get: () => null } }) }), /过大/u);
+    assert.equal(cancelled, true);
+});
+
+test('descriptor injection and malformed ranges are rejected instead of being installed', () => {
+    for (const extra of ['font-weight: 900 100', 'font-style: italic !important', 'font-stretch: expression(alert(1))', 'unicode-range: U+110000', 'unicode-range: U+FFFF-0000']) {
+        assert.throws(() => parseFontStylesheet(css('https://fonts.example/a.woff2', extra)));
+    }
+    assert.throws(() => parseFontStylesheet('@font-face {font-family:"broken;src:url(a)'));
+});
+
+test('all four local font formats are accepted, bytes remain separate from record metadata', async () => {
+    for (const format of ['truetype', 'opentype', 'woff', 'woff2']) {
+        const bytes = makeFont(format); const created = await createLocalFontRecord(file(bytes), { name: '选择的名称' });
+        assert.equal(created.record.source.format, format); assert.equal(created.record.name, '选择的名称');
+        assert.deepEqual(created.bytes, bytes); assert.deepEqual(created.record.faces[0].urls, []);
+        assert.doesNotMatch(JSON.stringify(created.record), /base64|data:|blob:/u);
+    }
+});
+
+test('local SFNT OS/2 and fvar metadata supplies actual weight/style instead of filename guesses', async () => {
+    const bytes = new Uint8Array(160), view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x00010000); view.setUint16(4, 2);
+    bytes.set(new TextEncoder().encode('OS/2'), 12); view.setUint32(20, 44); view.setUint32(24, 64);
+    bytes.set(new TextEncoder().encode('fvar'), 28); view.setUint32(36, 108); view.setUint32(40, 36);
+    view.setUint16(48, 600); view.setUint16(106, 1);
+    view.setUint16(112, 16); view.setUint16(116, 1); view.setUint16(118, 20);
+    bytes.set(new TextEncoder().encode('wght'), 124); view.setInt32(128, 100 * 65536); view.setInt32(136, 900 * 65536);
+    const created = await createLocalFontRecord(file(bytes, 'misleading-normal.ttf'));
+    assert.equal(created.record.source.variantKnown, true);
+    assert.equal(created.record.faces[0].weight, '100 900'); assert.equal(created.record.faces[0].style, 'italic');
+    view.setUint16(118, 1000); // Invalid optional fvar cannot escape its table; retain trustworthy OS/2.
+    const staticOnly = await createLocalFontRecord(file(bytes));
+    assert.equal(staticOnly.record.faces[0].weight, '600');
+});
+
+test('compressed local files do not invent a variable family from their filename', async () => {
+    const created = await createLocalFontRecord(file(makeFont('woff2'), 'bold-italic-variable.woff2'));
+    assert.equal(created.record.source.variantKnown, false);
+    assert.equal(created.record.faces[0].weight, '400'); assert.equal(created.record.faces[0].style, 'normal');
+});
+
+test('local upload checks size before reading and rejects disguised files/truncated tables', async () => {
+    await assert.rejects(createLocalFontRecord({ size: FONT_SOURCE_LIMITS.fontBytes + 1, arrayBuffer: () => assert.fail('must not read oversized upload') }), /32 MB/u);
+    assert.throws(() => validateLocalFontBytes(new TextEncoder().encode('<svg><script>alert(1)</script></svg>')), /仅支持/u);
+    assert.throws(() => validateLocalFontBytes(makeFont('truetype').subarray(0, 12)), /表不完整/u);
+    const escaped = makeFont(); new DataView(escaped.buffer).setUint32(20, 999); assert.throws(() => validateLocalFontBytes(escaped), /超出边界/u);
+    const wrongLength = makeFont('woff'); new DataView(wrongLength.buffer).setUint32(8, 500); assert.throws(() => validateLocalFontBytes(wrongLength), /文件头/u);
+});
+
+test('record validation allows expected fields only and preserves classifications', () => {
+    const value = { ...webRecord(), arbitraryPageStyle: 'body{display:none}', tags: ['中文', '中文', '正文'] };
+    assert.deepEqual(validateFontRecord(value), webRecord());
+    assert.throws(() => validateFontRecord(JSON.parse('{"name":"x","__proto__":{"polluted":true}}')), /不安全/u);
+    assert.equal({}.polluted, undefined);
+    const invalid = webRecord(); invalid.faces[0].urls[0].url = 'blob:local'; assert.throws(() => validateFontRecord(invalid));
+});
+
+test('portable font pack round trips local bytes, web references, folders/tags and preview text', async () => {
+    const local = await createLocalFontRecord(file(makeFont())); local.record.id = 'local-1'; local.record.folder = '本地';
+    const original = [webRecord(), local.record];
+    const encoded = exportFontPack(original, { localFiles: { 'local-1': local.bytes }, previewText: '山有木兮木有枝 ABC 0123', folders: ['阅读', '本地'] });
+    const pack = importFontPack(encoded);
+    assert.deepEqual(pack.records, original); assert.deepEqual(pack.localFiles['local-1'], local.bytes);
+    assert.equal(pack.previewText, '山有木兮木有枝 ABC 0123'); assert.deepEqual(pack.folders, ['阅读', '本地']);
+    assert.equal(Object.getPrototypeOf(pack.localFiles), null);
+    assert.deepEqual(JSON.parse(encoded).fonts[1].faces[0].urls, []);
+});
+
+test('Web-only packs need no local storage or embedded files', () => {
+    const encoded = exportFontPack([webRecord()]); const decoded = importFontPack(encoded);
+    assert.deepEqual(decoded.records, [webRecord()]); assert.deepEqual(Object.keys(decoded.localFiles), []);
+});
+
+test('pack rejects missing/unreferenced files, duplicate ids, invalid bytes and prototype fields', async () => {
+    const local = await createLocalFontRecord(file(makeFont())); local.record.id = 'local-1';
+    assert.throws(() => exportFontPack([local.record]), /文件数据/u);
+    assert.throws(() => exportFontPack([webRecord(), webRecord()]), /重复/u);
+    const base = JSON.parse(exportFontPack([local.record], { localFiles: { 'local-1': local.bytes } }));
+    const missing = structuredClone(base); missing.localFiles = {}; assert.throws(() => importFontPack(JSON.stringify(missing)), /不一致/u);
+    const unknown = structuredClone(base); unknown.localFiles.other = unknown.localFiles['local-1']; assert.throws(() => importFontPack(JSON.stringify(unknown)), /不一致/u);
+    const invalid = structuredClone(base); invalid.localFiles['local-1'] = 'aA==not-base64'; assert.throws(() => importFontPack(JSON.stringify(invalid)), /编码/u);
+    assert.throws(() => importFontPack('{"type":"qianmu-font-library","version":1,"fonts":[],"localFiles":{},"__proto__":{}}'), /不安全/u);
+    const mismatch = structuredClone(base); mismatch.fonts[0].source.format = 'opentype'; assert.throws(() => importFontPack(JSON.stringify(mismatch)), /不匹配/u);
+});
+
+test('font count, preview text, malformed metadata and ranges are bounded on pack import', () => {
+    assert.throws(() => exportFontPack([webRecord()], { previewText: '字'.repeat(FONT_SOURCE_LIMITS.previewLength + 1) }), /预览文案/u);
+    assert.throws(() => exportFontPack(Array.from({ length: FONT_SOURCE_LIMITS.records + 1 }, (_, i) => ({ ...webRecord(), id: `f-${i}` }))), /字体数量/u);
+    assert.throws(() => importFontPack('not json'), /格式/u);
+    const metadata = JSON.parse(exportFontPack([webRecord()])); metadata.fonts[0].faces[0].weight = '400; color:red'; assert.throws(() => importFontPack(JSON.stringify(metadata)), /粗细/u);
+});
+
+test('multi-megabyte local exports round trip without regex or argument-stack overflow', async () => {
+    const bytes = new Uint8Array(2 * 1024 * 1024); bytes.set(makeFont());
+    new DataView(bytes.buffer).setUint32(24, bytes.length - 28);
+    const local = await createLocalFontRecord(file(bytes)); local.record.id = 'large';
+    const pack = importFontPack(exportFontPack([local.record], { localFiles: { large: bytes } }));
+    assert.deepEqual(pack.localFiles.large, bytes);
+});
+
+test('multiple Chinese subset families do not exhaust the per-source face allowance on export', () => {
+    const fonts = Array.from({ length: 3 }, (_, index) => ({ ...webRecord(), id: `font-${index}`,
+        faces: Array.from({ length: 200 }, (_, sub) => ({ urls: [{ url: `https://fonts.example/${index}/${sub}.woff2` }], weight: '400', style: 'normal', unicodeRange: 'U+4E00-9FFF' })) }));
+    assert.equal(importFontPack(exportFontPack(fonts)).records.length, 3);
+});

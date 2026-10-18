@@ -8,6 +8,7 @@ import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
+import {createFontLibrary} from './qianmu-font-library.js';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
@@ -313,7 +314,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.464';
+const VERSION = '1.59.465';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -321,6 +322,7 @@ let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const featureRuntime = createFeatureRuntime({
   imageZoom: { label: '全屏看图', load: () => import('./qianmu-image-zoom.js?v=1.59.440') },
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
@@ -5452,6 +5454,7 @@ let proseLayoutWidthObserver = null;
 let proseLayoutFrame = 0;
 let proseLayoutPendingRoots = new Set();
 let proseLayoutRestoreFrame = 0;
+let proseLayoutRestoreSnapshot = null;
 
 function proseLayoutSettings() {
   if (!isPlainObject(settings.proseLayout)) settings.proseLayout = clone(PROSE_LAYOUT_DEFAULTS);
@@ -5595,6 +5598,8 @@ function proseLayoutStartObserver() {
 function proseLayoutCaptureViewport() {
   const chat = document.getElementById('chat');
   if (!chat) return null;
+  const pending = proseLayoutRestoreSnapshot?.chat === chat ? proseLayoutRestoreSnapshot : null;
+  if (pending?.anchor?.isConnected) return { ...pending };
   const rect = chat.getBoundingClientRect();
   const messages = [...chat.querySelectorAll('.mes')];
   const anchor = messages.find((message) => {
@@ -5607,20 +5612,30 @@ function proseLayoutCaptureViewport() {
     offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0,
     scrollTop: chat.scrollTop,
     atBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop < 8,
-    overflowAnchor: chat.style.getPropertyValue('overflow-anchor'),
-    overflowAnchorPriority: chat.style.getPropertyPriority('overflow-anchor'),
+    overflowAnchor: pending ? pending.overflowAnchor : chat.style.getPropertyValue('overflow-anchor'),
+    overflowAnchorPriority: pending ? pending.overflowAnchorPriority : chat.style.getPropertyPriority('overflow-anchor'),
   };
+}
+
+function proseLayoutCancelViewportRestore() {
+  if (proseLayoutRestoreFrame) cancelAnimationFrame(proseLayoutRestoreFrame);
+  proseLayoutRestoreFrame = 0;
+  const snapshot = proseLayoutRestoreSnapshot; proseLayoutRestoreSnapshot = null;
+  if (!snapshot?.chat) return;
+  if (snapshot.overflowAnchor) snapshot.chat.style.setProperty('overflow-anchor', snapshot.overflowAnchor, snapshot.overflowAnchorPriority);
+  else snapshot.chat.style.removeProperty('overflow-anchor');
 }
 
 function proseLayoutScheduleViewportRestore(snapshot) {
   if (!snapshot?.chat) return;
-  if (proseLayoutRestoreFrame) cancelAnimationFrame(proseLayoutRestoreFrame);
+  proseLayoutCancelViewportRestore();
+  proseLayoutRestoreSnapshot = snapshot;
   const { chat } = snapshot;
   chat.style.setProperty('overflow-anchor', 'none', 'important');
   proseLayoutRestoreFrame = requestAnimationFrame(() => {
     proseLayoutRestoreFrame = requestAnimationFrame(() => {
       proseLayoutRestoreFrame = 0;
-      if (!chat.isConnected) return;
+      if (!chat.isConnected) { proseLayoutCancelViewportRestore(); return; }
       if (snapshot.atBottom) {
         chat.scrollTop = Math.max(0, chat.scrollHeight - chat.clientHeight);
       } else if (snapshot.anchor?.isConnected) {
@@ -5630,8 +5645,7 @@ function proseLayoutScheduleViewportRestore(snapshot) {
       } else {
         chat.scrollTop = snapshot.scrollTop;
       }
-      if (snapshot.overflowAnchor) chat.style.setProperty('overflow-anchor', snapshot.overflowAnchor, snapshot.overflowAnchorPriority);
-      else chat.style.removeProperty('overflow-anchor');
+      proseLayoutCancelViewportRestore();
     });
   });
 }
@@ -5644,8 +5658,7 @@ function stopProseLayout(cleanDom = true) {
   if (proseLayoutFrame) cancelAnimationFrame(proseLayoutFrame);
   proseLayoutFrame = 0;
   proseLayoutPendingRoots.clear();
-  if (proseLayoutRestoreFrame) cancelAnimationFrame(proseLayoutRestoreFrame);
-  proseLayoutRestoreFrame = 0;
+  proseLayoutCancelViewportRestore();
   document.body?.classList.remove(...PROSE_LAYOUT_BODY_CLASSES);
   PROSE_LAYOUT_CSS_VARS.forEach((name) => document.documentElement.style.removeProperty(name));
   if (cleanDom) {
@@ -5702,6 +5715,7 @@ let floorViewportCleanup = null;
 let floorNavigatorView = 'jump';
 
 function closeFloorNavigator() {
+  fontLibrary.detach();
   floorViewportCleanup?.();
   floorViewportCleanup = null;
   document.getElementById(FLOOR_NAV_ID)?.remove();
@@ -5818,6 +5832,7 @@ function floorProseLayoutMarkup() {
       <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
       <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
     </div>
+    <div class="qm-font-entry"><span>字体</span><small data-font-library-summary>沿用原生字体</small><button type="button" data-font-library>字体库</button></div>
     <div class="sd-prose-controls">${controls}</div>`;
 }
 
@@ -5916,6 +5931,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-top')?.addEventListener('click', () => jumpToChatFloor(0));
   root.querySelector('.sd-floor-bottom')?.addEventListener('click', () => jumpToChatFloor(chat.length - 1));
   bindFloorProseNumberControls(root);
+  fontLibrary.attach(root);
   root.querySelectorAll('[data-prose-toggle]').forEach((control) => control.addEventListener('change', () => {
     const layout = proseLayoutSettings();
     layout[control.dataset.proseToggle] = Boolean(control.checked);
@@ -35638,6 +35654,7 @@ function bindEvents() {
   // 此时读到的 floatPosition 仍是默认 → 悬浮球落默认中位。注水后重读 settings 并按保存位重绘，根治「重载后球回默认位」偶发。
   const appReadyHandler = async () => {
     settings = getSettings();
+    void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     focusClockState();
     focusClockRuntimeTick();
@@ -35736,6 +35753,8 @@ function init() {
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
     registerRuntimeInterceptor();
     initialized = true;
+    fontLibrary.activate();
+    void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
     storyboardScheduleGalleryPreservation();
     void focusClockRestoreLock();
     startFloatHostGuard();
@@ -35783,6 +35802,7 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
+  fontLibrary.dispose();
   resetCreativeSocialState();
   proseFloorTools.dispose();
   directorRun?.controller.abort(); directorLiveLog = null;
