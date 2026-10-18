@@ -7,10 +7,11 @@
 const historyTools = '.renameChatButton, .exportChatButton, .exportRawChatButton, .PastChat_cross';
 const fail = message => { throw Object.assign(new Error(message), { code: 'director_leave_guard' }); };
 const isOwner = value => value !== null && ['object', 'function', 'symbol'].includes(typeof value);
+const captureClose = intent => intent.kind === 'close' ? Object.freeze({ kind: 'close' }) : null;
 
-export function createDirectorLeaveGuard({ document, getContext, isHostGenerating = () => null, onNavigate = () => {}, notify = () => {}, now = Date.now } = {}) {
+export function createDirectorLeaveGuard({ document, getContext, isHostGenerating = () => null, captureIntent = captureClose, onNavigate = () => {}, notify = () => {}, now = Date.now } = {}) {
   if (typeof document?.addEventListener !== 'function' || typeof document?.removeEventListener !== 'function'
-    || typeof getContext !== 'function' || typeof isHostGenerating !== 'function' || typeof onNavigate !== 'function'
+    || typeof getContext !== 'function' || typeof isHostGenerating !== 'function' || typeof captureIntent !== 'function' || typeof onNavigate !== 'function'
     || typeof notify !== 'function' || typeof now !== 'function') fail('推演离开保护未就绪');
   let active = null, navigationEpoch = 0, disposed = false, attached = true;
   const detach = () => {
@@ -23,7 +24,10 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
     const element = typeof event.target?.closest === 'function' ? event.target : event.target?.parentElement;
     if (typeof element?.closest !== 'function') return '';
     const close = element.closest('#option_close_chat');
-    if (close?.closest('#options')) return 'close';
+    if (close?.closest('#options')) return { kind: 'close' };
+    const newChat = element.closest('#option_start_new_chat');
+    if (newChat?.closest('#options')) return { kind: 'new', confirm: true };
+    if (element.closest('#newChatFromManageScreenButton')) return { kind: 'new', confirm: false };
     const group = element.closest('.group_select');
     if (group) {
       const id = group.getAttribute('data-chid') || group.getAttribute('data-grid');
@@ -31,7 +35,7 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
       let context;
       try { context = getContext(); } catch (_) { /* Unknown live state: protect a potential group switch. */ }
       if (context?.groupId !== undefined && context.groupId !== null && String(context.groupId) === id) return '';
-      return 'group';
+      return { kind: 'group', id };
     }
     const character = element.closest('.character_select');
     if (character) {
@@ -41,10 +45,10 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
       try { context = getContext(); } catch (_) { /* Unknown live state: do not assume this is the same character. */ }
       if (context && (context.groupId === undefined || context.groupId === null || context.groupId === '')
         && String(context.characterId) === id) return '';
-      return 'character';
+      return { kind: 'character', id };
     }
     const history = element.closest('.select_chat_block');
-    if (history && !element.closest(historyTools) && history.getAttribute('file_name')) return 'history';
+    if (history && !element.closest(historyTools) && history.getAttribute('file_name')) return { kind: 'history', file: history.getAttribute('file_name') };
     return '';
   }
   function cancel(record) {
@@ -76,30 +80,55 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
   }
   function onClick(event) {
     if (!attached) return;
-    const kind = intent(event);
-    if (!kind) return;
+    const requested = intent(event);
+    if (!requested) return;
+    const { kind } = requested;
     const record = active;
-    const hostState = kind === 'close' ? hostGenerationState() : false;
+    const hostState = hostGenerationState();
     if (record?.saving) {
       stop(event);
-      if (kind === 'close' && !disposed && !record.finishing && hostState === false) {
-        if (!record.pendingClose) {
-          record.pendingClose = true;
-          // Cancel a queued automatic inference now, not after native close.
-          // Do not invalidate the saving owner's source/navigation epoch.
-          navigation('close');
-        }
-        notice(record, '正在保存，完成后将自动关闭聊天。');
-      } else {
-        notice(record, kind === 'close' && hostState !== false
-          ? '正文尚未结束，暂不能关闭聊天。' : '正在保存，请稍候再切换聊天。');
+      // Once execution begins, later clicks must not redirect the operation
+      // while its native confirmation or navigation is still in progress.
+      if (disposed || record.finishing) {
+        notice(record, '正在完成聊天操作，请稍候。');
+        return;
       }
+      if (hostState !== false) {
+        record.pendingIntent = null; record.pendingKey = '';
+        notice(record, '正文尚未结束，暂不能切换聊天。');
+        return;
+      }
+      let captured, key;
+      try {
+        captured = captureIntent(Object.freeze(requested));
+        if (!captured || !Object.isFrozen(captured) || captured.kind !== kind
+          || ![Object.prototype, null].includes(Object.getPrototypeOf(captured))) captured = null;
+        key = captured ? JSON.stringify(captured) : '';
+      } catch (_) { captured = null; }
+      if (!captured || !key) {
+        // The latest choice was not safe to capture. Never execute an older
+        // destination that the user has just tried to replace.
+        record.pendingIntent = null; record.pendingKey = '';
+        notice(record, '暂无法确认目标聊天，保存后请重试。');
+        return;
+      }
+      const changed = key !== record.pendingKey;
+      record.pendingIntent = captured; record.pendingKey = key;
+      // Cancel queued automatic inference now without invalidating this save's
+      // source. Keep just the latest destination, not a queue of future clicks.
+      if (changed) navigation(kind);
+      notice(record, kind === 'close' ? '正在保存，完成后将自动关闭聊天。' : '正在保存，完成后将继续聊天操作。');
       return;
     }
-    if (kind === 'close' && hostState !== false) {
-      // ST refuses close while generating. Do not cancel Q before that refusal.
-      // If the host state cannot be established, preserve an active Q run too.
-      if (record && hostState === null) { stop(event); notice(record, '暂无法确认正文状态，请稍后关闭聊天。'); }
+    if (hostState !== false) {
+      // Host busy also includes streaming tail work after its send flag clears;
+      // native navigation gates alone do not cover that window. Protect every
+      // recognized navigation while Q owns a run, without becoming a global
+      // ST UI lock when no Q task is active.
+      if (record) {
+        stop(event);
+        notice(record, hostState === null ? '暂无法确认正文状态，请稍后切换聊天。' : '正文尚未结束，暂不能切换聊天。');
+      }
       return;
     }
     navigationEpoch++;
@@ -112,7 +141,7 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
       if (disposed || !attached || active || !isOwner(owner) || typeof onLeave !== 'function') fail('推演离开保护尚未释放');
       const ticket = Object.freeze({});
       active = { owner, ticket, epoch: navigationEpoch, onLeave, cancelled: false, saving: false, notifiedAt: null,
-        pendingClose: false, finishing: false, finishPromise: null };
+        pendingIntent: null, pendingKey: '', finishing: false, finishPromise: null };
       return ticket;
     },
     acquire(ticket) {
@@ -124,33 +153,36 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
       if (!active || active.ticket !== ticket || active.finishing) return false;
       return release(active);
     },
-    hasPendingClose(ticket) { return !!active && active.ticket === ticket && active.pendingClose; },
-    finish(ticket, { confirmed = false, isCurrent, closeChat } = {}) {
+    hasPendingNavigation(ticket) { return !!active && active.ticket === ticket && !!active.pendingIntent; },
+    finish(ticket, { confirmed = false, isCurrent, navigate } = {}) {
       const record = active;
       if (!record || record.ticket !== ticket) return Promise.resolve(false);
       if (record.finishing) return record.finishPromise;
       record.finishing = true;
       record.finishPromise = Promise.resolve().then(async () => {
-        const requested = record.pendingClose;
-        record.pendingClose = false;
+        const requested = record.pendingIntent;
+        record.pendingIntent = null; record.pendingKey = '';
         try {
           if (!requested || !record.saving || confirmed !== true || disposed || record.cancelled
-            || typeof isCurrent !== 'function' || typeof closeChat !== 'function') return false;
+            || typeof isCurrent !== 'function' || typeof navigate !== 'function') return false;
           if (hostGenerationState() !== false) {
-            try { notify('正文尚未结束，暂未关闭聊天。', 'warning'); } catch (_) {}
+            try { notify('正文尚未结束，暂未继续聊天操作。', 'warning'); } catch (_) {}
             return false;
           }
-          // Keep this source check synchronous and immediately adjacent to the
-          // native close call. Native close may await before clearing the chat;
-          // the saving guard remains held for that whole promise, without a timer.
-          if (isCurrent() !== true) return false;
-          const closed = await closeChat();
-          if (closed !== true) {
-            try { notify('保存已确认，但聊天未能自动关闭。', 'warning'); } catch (_) {}
+          const stillCurrent = () => {
+            try { return !disposed && active === record && !record.cancelled && isCurrent() === true; } catch (_) { return false; }
+          };
+          // The adapter rechecks this callback and host idleness after each
+          // awaited import/confirmation, before invoking a native operation.
+          // Keep capture protection held until its entire promise finishes.
+          if (!stillCurrent()) return false;
+          const result = await navigate(requested, { isCurrent: stillCurrent });
+          if (result !== 'completed' && result !== 'cancelled') {
+            try { notify('保存已确认，但未能继续切换聊天。', 'warning'); } catch (_) {}
           }
-          return closed === true;
+          return result === 'completed';
         } catch (_) {
-          try { notify('保存已确认，但聊天未能自动关闭。', 'warning'); } catch (_) {}
+          try { notify('保存已确认，但未能继续切换聊天。', 'warning'); } catch (_) {}
           return false;
         } finally { release(record); }
       });
@@ -159,7 +191,7 @@ export function createDirectorLeaveGuard({ document, getContext, isHostGeneratin
     dispose() {
       if (disposed) return;
       disposed = true;
-      if (active) active.pendingClose = false;
+      if (active) { active.pendingIntent = null; active.pendingKey = ''; }
       // Do not drop an in-flight owner's protection just because Q is disabled
       // or its UI is being disposed. Only its eventual release can remove it.
       if (active?.saving) return;

@@ -9,6 +9,7 @@ import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
 import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 import { directorHostFixture } from './helpers/director-host-fixture.mjs';
+import { createDirectorNavigation } from '../qianmu-director-navigation.js';
 const entry=await fs.readFile(new URL('../index.js',import.meta.url),'utf8');
 const source=entry.slice(entry.indexOf('function makeStreamLogUpdater('),entry.indexOf('// MIGRATED to qianmu-storyboard-utils.js (commit 19)'));
 const normalizeSource=entry.slice(entry.indexOf('function normalizePlan('),entry.indexOf('// directorItemText -'));
@@ -21,6 +22,13 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 const closeClick=()=>{
   const close={closest:selector=>selector==='#options'?{}:null};
   return {type:'click',button:0,target:{closest:selector=>selector==='#option_close_chat'?close:null},prevented:false,stopped:false,
+    preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};
+};
+const navigationClick=(kind,{id='1',file='past',confirm=true}={})=>{
+  if(kind==='close')return closeClick();
+  const selector=kind==='character'?'.character_select':kind==='group'?'.group_select':kind==='history'?'.select_chat_block':confirm?'#option_start_new_chat':'#newChatFromManageScreenButton';
+  const element={closest:s=>s==='#options'?{}:null,getAttribute:name=>name==='file_name'?file:name==='data-chid'?id:null};
+  return {type:'click',button:0,target:{closest:s=>s===selector?element:null},prevented:false,stopped:false,
     preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};
 };
 const creativeOptions=Object.freeze({parallelSceneEnabled:false,interludeEnabled:false});
@@ -53,7 +61,7 @@ function fixture({ saveHook, confirmHook, captureHook, hostOverrides }={}){
   const host=directorHostFixture({closeCurrentChat:async()=>{closes++;return true;},...hostOverrides});
   const c={worldCompletions:[],busy:false,cancelRequested:false,abortController:null,directorRun:null,directorLiveLog:null,activeTab:'dashboard',MODAL_ID:'panel',
     settings:{enabled:true,providerMode:'external',streamEnabled:true,logHistory:[]},document:{getElementById:()=>null,querySelectorAll:selector=>selector==='.sd-generate-main'?[button]:[],addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:(type,fn)=>{if(listeners.get(type)===fn)listeners.delete(type);}},AbortController,Date,console,
-    directorLeaveGuard:null,directorHostState:host.state,directorAutoRefresh:null,directorUnconfirmedSaves:new WeakMap(),captureCurrentChatSource,
+    directorLeaveGuard:null,directorHostState:host.state,directorAutoRefresh:null,directorNavigation:null,createDirectorNavigation,directorUnconfirmedSaves:new WeakMap(),captureCurrentChatSource,
     createDirectorLeaveGuard:options=>{const owner=createDirectorLeaveGuard(options);return {...owner,finish:async(...args)=>{releases++;return await owner.finish(...args);}};},
     captureDirectorSaveSnapshot:options=>{saveStages.push('capture');return captureHook?captureHook(options):captureDirectorSaveSnapshot(options);},
     confirmDirectorSave:async(snapshot,options)=>{saveStages.push('confirm');await options.guard();if(confirmHook)return await confirmHook({c,context,store,snapshot,options});return {status:'confirmed'};},
@@ -72,6 +80,118 @@ function fixture({ saveHook, confirmHook, captureHook, hostOverrides }={}){
   return {c,gate,sent,saveStages,notices,listeners,button,host,run:()=>c.generateDirectorPlan(),get closes(){return closes;},get releases(){return releases;},get context(){return context;},get request(){return invocation;},get store(){return store;},get calls(){return calls;},get repairs(){return repairs;},get saves(){return saves;},get injects(){return injects;},
     switchChat(){store={plan:{other:true}};context={chat:[],chatId:'two',characterId:0,characters:[{chat:'two',avatar:'fixture.png'}],chatMetadata:{story_director_liminale:store},saveMetadata:async()=>{}};},switchAccount(){account='st-user:b';}};
 }
+
+// Exercise the real entry + guard + navigation adapter together. These native
+// boundaries are synthetic; official ST timing functions are tested separately.
+function navigationFixture(e,{group=false,confirmNew=async()=>true,beforeNative=async()=>{},presence=async()=>[{file_id:'past'}]}={}){
+  const context=e.context,actions=[],stages=[];let prompts=0,hidden=0;
+  context.characters.push({chat:'target',avatar:'target.png'});
+  context.groups=[{id:'g-one',chat_id:'one',chats:['one','past']},{id:'g-two',chat_id:'group-target',chats:['group-target']}];
+  if(group){context.groupId='g-one';context.characterId=undefined;}
+  const change=(chatId)=>{context.chatId=chatId;context.chat=[];context.chatMetadata={};};
+  const invoke=async(name,fn)=>{
+    assert.equal(e.c.settings.logHistory[0].saveState,'confirmed');
+    assert.equal(e.saves,1);assert.equal(e.injects,1);assert.equal(e.c.worldCompletions.length,0);
+    actions.push(name);await beforeNative(name);fn();
+  };
+  const main={
+    getPastCharacterChats:async index=>{stages.push('presence');assert.equal(index,0);return await presence();},
+    selectCharacterById:async index=>invoke('character',()=>{context.groupId=null;context.characterId=index;change(context.characters[index].chat);}),
+    openCharacterChat:async file=>invoke('history',()=>{context.characters[context.characterId].chat=file;change(file);}),
+    doNewChat:async options=>{
+      assert.equal(options.deleteCurrentChat,false,'deferred new never deletes the previous chat');
+      return invoke('new',()=>{const file='new-chat';if(context.groupId){const current=context.groups.find(g=>g.id===context.groupId);current.chats.push(file);current.chat_id=file;}else context.characters[context.characterId].chat=file;change(file);});
+    },
+  };
+  const groups={
+    openGroupById:async id=>invoke('group',()=>{context.groupId=id;context.characterId=undefined;change(context.groups.find(g=>g.id===id).chat_id);}),
+    openGroupChat:async(id,file)=>invoke('group-history',()=>{assert.equal(context.groupId,id);context.groups.find(g=>g.id===id).chat_id=file;change(file);}),
+  };
+  e.c.directorNavigation=createDirectorNavigation({getContext:()=>e.context,host:e.host.state,
+    loadMain:async()=>{stages.push('load-main');return main;},loadGroups:async()=>{stages.push('load-groups');return groups;},
+    confirmNew:async()=>{prompts++;return await confirmNew();},hideHistory:()=>{hidden++;}});
+  return {actions,stages,get prompts(){return prompts;},get hidden(){return hidden;}};
+}
+
+for(const scenario of [
+  {name:'another character',kind:'character',action:'character'},
+  {name:'another group',kind:'group',id:'g-two',action:'group'},
+  {name:'character history',kind:'history',action:'history'},
+  {name:'group history',group:true,kind:'history',action:'group-history'},
+  {name:'menu new character chat',kind:'new',action:'new',confirm:true},
+  {name:'manage new character chat',kind:'new',action:'new',confirm:false},
+  {name:'menu new group chat',group:true,kind:'new',action:'new',confirm:true},
+  {name:'manage new group chat',group:true,kind:'new',action:'new',confirm:false},
+])test(`actual entry defers ${scenario.name} until confirmed then continues once without another click`,async()=>{
+  const saved=deferred(),save=deferred(),checking=deferred(),checked=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;},confirmHook:async()=>{checking.resolve();await checked.promise;return {status:'confirmed'};}});
+  const nav=navigationFixture(e,scenario),oldStore=e.store,oldMetadata=e.context.chatMetadata,oldMessages=e.context.chat;
+  oldMessages.push({is_user:true,mes:'Keep this original prose.'});
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  for(let i=0;i<3;i++){const event=navigationClick(scenario.kind,scenario);e.listeners.get('click')(event);assert.equal(event.stopped,true);}
+  assert.deepEqual(nav.actions,[]);assert.deepEqual(nav.stages,[]);assert.equal(nav.prompts,0);
+  save.resolve();await checking.promise;assert.deepEqual(nav.actions,[]);assert.equal(nav.prompts,0);
+  checked.resolve();await run;
+  assert.deepEqual(nav.actions,[scenario.action]);assert.equal(nav.prompts,scenario.kind==='new'&&scenario.confirm?1:0);
+  assert.equal(nav.hidden,scenario.kind==='history'||scenario.kind==='new'&&!scenario.confirm?1:0);
+  assert.equal(oldMetadata.story_director_liminale,oldStore);assert.equal(oldStore.plan.quests[0].title,'first');
+  assert.equal(oldMessages[0].mes,'Keep this original prose.');assert.equal(e.saves,1);assert.equal(e.c.worldCompletions.length,0);
+  assert.equal(e.c.busy,false);assert.equal(e.c.directorPendingSave(oldStore),null);
+});
+
+test('actual latest valid intent replaces prior switch choices without queuing successive navigations',async()=>{
+  const saved=deferred(),save=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;}}),nav=navigationFixture(e);
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  for(const kind of ['character','history','new','new'])e.listeners.get('click')(navigationClick(kind));
+  save.resolve();await run;assert.deepEqual(nav.actions,['new']);assert.equal(nav.prompts,1);assert.equal(e.closes,0);
+});
+
+test('cancelled native new confirmation keeps the confirmed plan and does not create or retry a chat',async()=>{
+  const saved=deferred(),save=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;}}),nav=navigationFixture(e,{confirmNew:async()=>false});
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  e.listeners.get('click')(navigationClick('new'));save.resolve();await run;
+  assert.equal(nav.prompts,1);assert.deepEqual(nav.actions,[]);assert.equal(e.context.chatId,'one');assert.equal(e.saves,1);
+  assert.equal(e.store.plan.quests[0].title,'first');assert.ok(!e.notices.some(([text])=>/未能继续/.test(text)));
+});
+
+for(const kind of ['history','new'])test(`an unconfirmed save never begins deferred ${kind} preparation or navigation`,async()=>{
+  const saved=deferred(),save=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;},confirmHook:()=>{throw Error('unconfirmed');}}),nav=navigationFixture(e);
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  e.listeners.get('click')(navigationClick(kind));save.resolve();await run;
+  assert.deepEqual(nav.actions,[]);assert.deepEqual(nav.stages,[]);assert.equal(nav.prompts,0);assert.equal(e.context.chatId,'one');
+  assert.equal(e.store.plan.quests[0].title,'first');assert.ok(e.c.directorPendingSave(e.store));assert.equal(e.saves,1);
+});
+
+test('source edits during deferred new confirmation invalidate continuation without rolling back the saved plan',async()=>{
+  const saved=deferred(),save=deferred(),prompt=deferred(),answer=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;}}),nav=navigationFixture(e,{confirmNew:()=>{prompt.resolve();return answer.promise;}});
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  const owned=e.c.directorRun;e.listeners.get('click')(navigationClick('new'));save.resolve();await prompt.promise;
+  assert.equal(owned.source.isCurrent(),true);e.c.directorSourceFingerprint=()=>'edited-prose';
+  answer.resolve(true);await run;
+  assert.deepEqual(nav.actions,[]);assert.equal(e.context.chatId,'one');assert.equal(e.saves,1);assert.equal(e.store.plan.quests[0].title,'first');
+});
+
+test('the actual source guard remains held through the native switch await and blocks a second new action',async()=>{
+  const saved=deferred(),save=deferred(),switching=deferred(),switched=deferred();
+  const e=fixture({saveHook:()=>{saved.resolve();return save.promise;}}),nav=navigationFixture(e,{beforeNative:()=>{switching.resolve();return switched.promise;}});
+  const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
+  e.listeners.get('click')(navigationClick('character'));save.resolve();await switching.promise;
+  const owned=e.c.directorRun;assert.equal(owned.source.isCurrent(),true);assert.equal(e.c.busy,true);
+  const next=navigationClick('new');e.listeners.get('click')(next);assert.equal(next.stopped,true);
+  switched.resolve();await run;
+  assert.deepEqual(nav.actions,['character']);assert.equal(nav.prompts,0);assert.equal(e.context.chatId,'target');assert.equal(owned.source.isCurrent(),false);
+});
+
+for(const [kind,options] of [['history',{}],['new',{confirm:true}],['new',{confirm:false}]])test(`actual active-Q host generation protects ${kind} ${options.confirm??''} without cancelling the Q writer`,async()=>{
+  const e=fixture(),run=e.run();await e.sent.promise;let cancellations=0;e.c.directorAutoRefresh={cancel(){cancellations++;}};
+  e.host.module.isGenerating=()=>true;const event=navigationClick(kind,options);e.listeners.get('click')(event);
+  assert.equal(event.stopped,true);assert.equal(e.request.controller.signal.aborted,false);assert.equal(cancellations,0);
+  e.gate.resolve(JSON.stringify(completePlan()));await run;assert.equal(e.saves,0);assert.equal(e.store.plan.original,true);
+});
 
 test('actual director streams into its own log, stages complete cards, and commits only the completed final object',async()=>{
   const e=fixture(),run=e.run();await e.sent.promise;
@@ -216,12 +336,21 @@ test('host flags alone catch a missed start event before adopting temporarily un
   assert.equal(e.c.settings.logHistory[0].errorCode,'DIRECTOR_HOST_BUSY');
 });
 
-test('host-refused close does not first cancel Q or consume a queued automatic trigger',async()=>{
+test('host-busy close is stopped without cancelling Q or consuming a queued automatic trigger',async()=>{
   const e=fixture(),run=e.run();await e.sent.promise;let cancelled=0;
   e.c.directorAutoRefresh={cancel(){cancelled++;}};e.host.module.isGenerating=()=>true;
   const event=closeClick();e.listeners.get('click')(event);
-  assert.equal(event.prevented,false);assert.equal(e.request.controller.signal.aborted,false);assert.equal(cancelled,0);
+  assert.equal(event.prevented,true);assert.equal(e.request.controller.signal.aborted,false);assert.equal(cancelled,0);
   e.gate.resolve(JSON.stringify(completePlan()));await run;assert.equal(e.saves,0);
+});
+
+for(const kind of ['close','character','group'])test(`active Q also blocks ${kind} in the streaming tail after the native generating flag has cleared`,async()=>{
+  const e=fixture(),run=e.run();await e.sent.promise;
+  e.host.module.streamingProcessor={isFinished:true,isStopped:false};
+  const event=navigationClick(kind);e.listeners.get('click')(event);
+  assert.equal(event.stopped,true);assert.equal(e.request.controller.signal.aborted,false);
+  e.gate.resolve(JSON.stringify(completePlan()));await run;
+  assert.equal(e.saves,0);assert.equal(e.closes,0);assert.equal(e.store.plan.original,true);
 });
 
 test('generation close cancels pending automatic work and never saves the incomplete candidate',async()=>{
@@ -268,7 +397,7 @@ test('native close refusal preserves the successful save and does not create a r
   const run=e.run();await e.sent.promise;e.gate.resolve(JSON.stringify(completePlan()));await saved.promise;
   e.listeners.get('click')(closeClick());save.resolve();await run;
   assert.equal(closes,1);assert.equal(e.saves,1);assert.equal(e.c.settings.logHistory[0].saveState,'confirmed');
-  assert.ok(e.notices.some(([text])=>/未能自动关闭/.test(text)));assert.equal(e.c.busy,false);
+  assert.ok(e.notices.some(([text])=>/未能继续切换/.test(text)));assert.equal(e.c.busy,false);
 });
 
 for(const failure of ['host-rejection','readback-mismatch','readback-timeout'])test(`invoked save ${failure} preserves the candidate and response without rollback, retry or downstream admission`,async()=>{

@@ -5,7 +5,7 @@ import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 
 // Minimal capture/bubble DOM double. It models the native click dispatched by
 // ST's Enter-key handler, not browser layout or live ST acceptance.
-function fixture() {
+function fixture({ captureIntent = raw => Object.freeze({ ...raw }) } = {}) {
   const listeners = [], notices = [], calls = [], navigations = [];
   let time = 0, cancels = 0, hostGenerating = false;
   const context = { characterId: 0, groupId: null };
@@ -26,8 +26,10 @@ function fixture() {
   const close = new Element('#option_close_chat', {}, options), character = new Element('.character_select', { 'data-chid': '1' });
   const history = new Element('.select_chat_block', { file_name: 'Synthetic B' });
   const group = new Element('.group_select', { 'data-grid': 'group-B' });
+  const newChat = new Element('#option_start_new_chat', {}, options);
+  const newFromHistory = new Element('#newChatFromManageScreenButton');
   const f = {
-    context, document, notices, calls, navigations, listeners, Element, close, character, history, group,
+    context, document, notices, calls, navigations, listeners, Element, close, character, history, group, newChat, newFromHistory,
     set hostGenerating(value) { hostGenerating = value; },
     set time(value) { time = value; }, get cancels() { return cancels; },
     begin() { const owner = {}; return { owner, ticket: f.guard.begin(owner, () => { cancels++; calls.push('cancel'); }) }; },
@@ -40,12 +42,12 @@ function fixture() {
     },
   };
   f.guard = createDirectorLeaveGuard({ document, getContext: () => context,
-    isHostGenerating: () => hostGenerating, onNavigate: kind => navigations.push(kind),
+    isHostGenerating: () => hostGenerating, captureIntent, onNavigate: kind => navigations.push(kind),
     notify: (...args) => notices.push(args), now: () => time });
   return f;
 }
 
-for (const entry of ['close', 'character', 'history', 'group']) {
+for (const entry of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) {
   test(`${entry}: generation-stage leave synchronously cancels before host click and prevents later save admission`, () => {
     const f = fixture(), { ticket } = f.begin(), event = f.click(f[entry]);
     assert.deepEqual(f.calls, ['cancel', 'host']); assert.equal(event.defaultPrevented, false);
@@ -101,7 +103,7 @@ test('group list and hotswap use native data-grid/data-chid precedence; the curr
 
 test('malformed/template controls and non-primary clicks have no navigation side effect', () => {
   const f = fixture(), { ticket } = f.begin();
-  for (const target of [new f.Element('#option_close_chat'), new f.Element('.character_select'), new f.Element('.character_select', { 'data-chid': 'bad' }), new f.Element('.select_chat_block', { file_name: '' })]) f.click(target);
+  for (const target of [new f.Element('#option_close_chat'), new f.Element('#option_start_new_chat'), new f.Element('.character_select'), new f.Element('.character_select', { 'data-chid': 'bad' }), new f.Element('.select_chat_block', { file_name: '' })]) f.click(target);
   f.click(f.close, { button: 1 });
   assert.equal(f.cancels, 0); assert.equal(f.guard.acquire(ticket), true); f.guard.release(ticket); f.guard.dispose();
 });
@@ -184,42 +186,49 @@ test('no active run leaves host operations untouched and allows a later run', ()
   const { ticket } = f.begin(); assert.equal(f.guard.acquire(ticket), true); f.guard.release(ticket); f.guard.dispose();
 });
 
-test('a close refused by a generating ST never cancels Q or a queued automatic run first', () => {
+for (const entry of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) test(`${entry}: active Q blocks all navigation while the host is generating or finishing its stream tail`, () => {
   const f = fixture(), { ticket } = f.begin(); f.hostGenerating = true;
-  assert.equal(f.click(f.close).stopped, false);
-  assert.deepEqual(f.calls, ['host']); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
+  assert.equal(f.click(f[entry]).stopped, true);
+  assert.deepEqual(f.calls, []); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
+  assert.match(f.notices.at(-1)[0], /正文尚未结束/);
   assert.equal(f.guard.acquire(ticket), true);
-  assert.equal(f.click(f.close).stopped, true);
-  assert.equal(f.guard.hasPendingClose(ticket), false); assert.deepEqual(f.navigations, []);
+  assert.equal(f.click(f[entry]).stopped, true);
+  assert.equal(f.guard.hasPendingNavigation(ticket), false); assert.deepEqual(f.navigations, []);
   f.guard.release(ticket); f.guard.dispose();
 });
 
-test('unknown host state cannot cancel an active Q run or schedule a close during saving', () => {
+for (const entry of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) test(`${entry}: generation protection is scoped to an active Q run rather than becoming a global ST lock`, () => {
+  const f = fixture(); f.hostGenerating = true;
+  assert.equal(f.click(f[entry]).stopped, false); assert.deepEqual(f.calls, ['host']);
+  assert.equal(f.notices.length, 0); assert.deepEqual(f.navigations, []); f.guard.dispose();
+});
+
+for (const entry of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) test(`${entry}: unknown host state cannot cancel an active Q run or schedule navigation during saving`, () => {
   const f = fixture(), { ticket } = f.begin(); f.hostGenerating = undefined;
-  assert.equal(f.click(f.close).stopped, true); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
+  assert.equal(f.click(f[entry]).stopped, true); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
   assert.equal(f.guard.acquire(ticket), true);
-  assert.equal(f.click(f.close).stopped, true); assert.equal(f.guard.hasPendingClose(ticket), false);
+  assert.equal(f.click(f[entry]).stopped, true); assert.equal(f.guard.hasPendingNavigation(ticket), false);
   f.guard.release(ticket); f.guard.dispose();
 });
 
 test('allowed navigation cancels queued automatic work even without an active Q run', () => {
   const f = fixture();
-  for (const kind of ['close', 'character', 'history', 'group']) f.click(f[kind]);
-  assert.deepEqual(f.navigations, ['close', 'character', 'history', 'group']);
+  for (const kind of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) f.click(f[kind]);
+  assert.deepEqual(f.navigations, ['close', 'character', 'history', 'group', 'new', 'new']);
   f.hostGenerating = true; f.click(f.close);
-  assert.equal(f.navigations.length, 4); f.guard.dispose();
+  assert.equal(f.navigations.length, 6); f.guard.dispose();
 });
 
 test('close during saving records one intent and cancels queued automatic work only once', async () => {
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket);
   f.click(f.close); f.click(f.close); f.click(f.close);
-  assert.equal(f.guard.hasPendingClose(ticket), true); assert.equal(f.guard.hasPendingClose({}), false);
+  assert.equal(f.guard.hasPendingNavigation(ticket), true); assert.equal(f.guard.hasPendingNavigation({}), false);
   assert.deepEqual(f.navigations, ['close']); assert.deepEqual(f.calls, []);
   let closes = 0;
-  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), true);
-  assert.equal(closes, 1); assert.equal(f.guard.hasPendingClose(ticket), false);
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => { closes++; return 'completed'; } }), true);
+  assert.equal(closes, 1); assert.equal(f.guard.hasPendingNavigation(ticket), false);
   assert.equal(f.guard.release(ticket), false);
-  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => { closes++; return 'completed'; } }), false);
   assert.equal(closes, 1); f.guard.dispose();
 });
 
@@ -227,14 +236,14 @@ test('native asynchronous close retains saving protection and repeated finish sh
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
   let endClose, closes = 0;
   const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
-    closeChat: () => { closes++; return new Promise(resolve => { endClose = resolve; }); } });
+    navigate: () => { closes++; return new Promise(resolve => { endClose = resolve; }); } });
   assert.equal(f.guard.finish(ticket, { confirmed: false }), finish);
   await Promise.resolve();
   assert.equal(closes, 1); assert.equal(f.guard.release(ticket), false);
-  for (const kind of ['close', 'character', 'history', 'group']) assert.equal(f.click(f[kind]).stopped, true);
+  for (const kind of ['close', 'character', 'history', 'group', 'newChat', 'newFromHistory']) assert.equal(f.click(f[kind]).stopped, true);
   assert.deepEqual(f.navigations, ['close']); assert.equal(f.cancels, 0);
   f.time = 86_400_000; assert.equal(f.click(f.close).stopped, true);
-  endClose(true); assert.equal(await finish, true);
+  endClose('completed'); assert.equal(await finish, true);
   assert.equal(f.click(f.history).stopped, false); f.guard.dispose();
 });
 
@@ -243,23 +252,112 @@ test('source identity check immediately precedes the native close without an asy
   let current = true;
   assert.equal(await f.guard.finish(ticket, { confirmed: true,
     isCurrent: () => { queueMicrotask(() => { current = false; }); return current; },
-    closeChat: () => { assert.equal(current, true); return true; } }), true);
+    navigate: () => { assert.equal(current, true); return 'completed'; } }), true);
   f.guard.dispose();
 });
 
-test('blocked switches are never replayed and cannot replace the original close intent', async () => {
+test('the latest validated choice replaces the pending close rather than stacking host operations', async () => {
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
   for (const kind of ['character', 'history', 'group']) f.click(f[kind]);
-  let closes = 0;
-  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), true);
-  assert.equal(closes, 1); assert.deepEqual(f.calls, []); assert.deepEqual(f.navigations, ['close']); f.guard.dispose();
+  const intents = [];
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: intent => { intents.push(intent); return 'completed'; } }), true);
+  assert.deepEqual(intents, [{ kind: 'group', id: 'group-B' }]); assert.deepEqual(f.calls, []);
+  assert.deepEqual(f.navigations, ['close', 'character', 'history', 'group']); f.guard.dispose();
 });
 
-test('a blocked switch alone never becomes an automatic close after successful save', async () => {
+test('a saved history choice continues with that filename and never becomes an automatic close', async () => {
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.history);
-  let closes = 0;
-  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
-  assert.equal(closes, 0); assert.deepEqual(f.navigations, []); f.guard.dispose();
+  const intents = [];
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: intent => { intents.push(intent); return 'completed'; } }), true);
+  assert.deepEqual(intents, [{ kind: 'history', file: 'Synthetic B' }]); assert.deepEqual(f.navigations, ['history']); f.guard.dispose();
+});
+
+for (const [entry, expected] of [
+  ['close', { kind: 'close' }], ['character', { kind: 'character', id: '1' }],
+  ['group', { kind: 'group', id: 'group-B' }], ['history', { kind: 'history', file: 'Synthetic B' }],
+  ['newChat', { kind: 'new', confirm: true }], ['newFromHistory', { kind: 'new', confirm: false }],
+]) test(`${entry}: saving captures a frozen destination once and continues it without redispatching a click`, async () => {
+  const captures = [], actions = [];
+  const f = fixture({ captureIntent: raw => { assert.equal(Object.isFrozen(raw), true); captures.push(raw); return Object.freeze({ ...raw }); } });
+  const { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f[entry]);
+  assert.deepEqual(captures, [expected]); assert.deepEqual(f.calls, []);
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
+    navigate: (intent, state) => { assert.equal(Object.isFrozen(intent), true); assert.equal(state.isCurrent(), true); actions.push(intent); return 'completed'; } }), true);
+  assert.deepEqual(actions, [expected]); assert.deepEqual(f.calls, []); f.guard.dispose();
+});
+
+test('repeated destination coalesces but changed captured identity replaces even the same DOM index', async () => {
+  let avatar = 'first.png';
+  const f = fixture({ captureIntent: raw => Object.freeze({ ...raw, avatar }) }), { ticket } = f.begin(); f.guard.acquire(ticket);
+  f.click(f.character); f.click(f.character); assert.deepEqual(f.navigations, ['character']);
+  avatar = 'replacement.png'; f.click(f.character); f.click(f.character);
+  assert.deepEqual(f.navigations, ['character', 'character']);
+  let destination;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
+    navigate: intent => { destination = intent; return 'completed'; } }), true);
+  assert.deepEqual(destination, { kind: 'character', id: '1', avatar: 'replacement.png' }); f.guard.dispose();
+});
+
+for (const failure of ['null', 'throw', 'async', 'mutable', 'wrong-kind', 'cyclic']) test(`${failure}: an uncapturable latest choice clears an older pending destination`, async () => {
+  const f = fixture({ captureIntent: raw => {
+    if (raw.kind === 'close') return Object.freeze({ ...raw });
+    if (failure === 'throw') throw Error('unavailable target');
+    if (failure === 'async') return Promise.resolve(Object.freeze({ ...raw }));
+    if (failure === 'mutable') return { ...raw };
+    if (failure === 'wrong-kind') return Object.freeze({ kind: 'close' });
+    if (failure === 'cyclic') { const value = { ...raw }; value.self = value; return Object.freeze(value); }
+    return null;
+  } });
+  const { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close); f.time = 2000;
+  assert.equal(f.click(f.character).stopped, true); assert.equal(f.guard.hasPendingNavigation(ticket), false);
+  assert.match(f.notices.at(-1)[0], /暂无法确认目标/);
+  let invoked = false;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
+    navigate: () => { invoked = true; return 'completed'; } }), false);
+  assert.equal(invoked, false); assert.deepEqual(f.navigations, ['close']); f.guard.dispose();
+});
+
+test('without an injected target resolver only close can be captured safely', async () => {
+  const f = fixture({ captureIntent: undefined });
+  f.guard.dispose();
+  const guard = createDirectorLeaveGuard({ document: f.document, getContext: () => f.context, isHostGenerating: () => false });
+  const ticket = guard.begin({}, () => {}); guard.acquire(ticket);
+  f.click(f.close); assert.equal(guard.hasPendingNavigation(ticket), true);
+  f.click(f.history); assert.equal(guard.hasPendingNavigation(ticket), false);
+  assert.equal(await guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => assert.fail('no unsafe fallback') }), false);
+  guard.dispose();
+});
+
+test('generation-stage navigation never needs a deferred target resolver or bypasses the native new-chat confirmation', () => {
+  const f = fixture({ captureIntent: () => { assert.fail('capture belongs only to pending saves'); } }), { ticket } = f.begin();
+  assert.equal(f.click(f.newChat).stopped, false); assert.deepEqual(f.calls, ['cancel', 'host']);
+  assert.deepEqual(f.navigations, ['new']); assert.equal(f.guard.acquire(ticket), false); f.guard.release(ticket); f.guard.dispose();
+});
+
+test('a newly busy host clears an earlier pending choice instead of later executing a stale one', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  f.hostGenerating = true; f.click(f.character); f.hostGenerating = false;
+  assert.equal(f.guard.hasPendingNavigation(ticket), false);
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => assert.fail('old close discarded') }), false);
+  f.guard.dispose();
+});
+
+test('new-chat confirmation cancellation is not reported as navigation failure', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.newChat);
+  const noticesBefore = f.notices.length;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => 'cancelled' }), false);
+  assert.equal(f.notices.length, noticesBefore); assert.equal(f.guard.release(ticket), false); f.guard.dispose();
+});
+
+for (const change of ['source', 'dispose']) test(`${change}: asynchronous navigation can recheck ownership after awaiting its confirmation`, async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.newChat);
+  let sourceCurrent = true, proceed, ownership;
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => sourceCurrent,
+    navigate: async (_intent, state) => { ownership = state.isCurrent; await new Promise(resolve => { proceed = resolve; }); return state.isCurrent() ? 'completed' : 'cancelled'; } });
+  await Promise.resolve(); assert.equal(ownership(), true);
+  if (change === 'source') sourceCurrent = false; else f.guard.dispose();
+  assert.equal(ownership(), false); assert.equal(f.click(f.history).stopped, true);
+  proceed(); assert.equal(await finish, false); assert.equal(f.guard.release(ticket), false); f.guard.dispose();
 });
 
 for (const reason of ['unconfirmed', 'source-changed', 'disposed', 'host-generating', 'host-unknown', 'async-source-check']) {
@@ -271,10 +369,10 @@ for (const reason of ['unconfirmed', 'source-changed', 'disposed', 'host-generat
     let closes = 0;
     assert.equal(await f.guard.finish(ticket, { confirmed: reason !== 'unconfirmed',
       isCurrent: () => reason === 'async-source-check' ? Promise.resolve(true) : reason !== 'source-changed',
-      closeChat: () => { closes++; return true; } }), false);
-    assert.equal(closes, 0); assert.equal(f.guard.hasPendingClose(ticket), false);
+      navigate: () => { closes++; return 'completed'; } }), false);
+    assert.equal(closes, 0); assert.equal(f.guard.hasPendingNavigation(ticket), false);
     assert.equal(f.guard.release(ticket), false);
-    if (reason.startsWith('host-')) assert.match(f.notices.at(-1)[0], /暂未关闭/);
+    if (reason.startsWith('host-')) assert.match(f.notices.at(-1)[0], /暂未继续/);
     f.guard.dispose();
   });
 }
@@ -282,7 +380,7 @@ for (const reason of ['unconfirmed', 'source-changed', 'disposed', 'host-generat
 test('dispose before deferred completion starts discards the close and detaches after releasing owner', async () => {
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
   let closes = 0;
-  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } });
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => { closes++; return 'completed'; } });
   f.guard.dispose();
   assert.equal(f.listeners.length, 1); assert.equal(await finish, false);
   assert.equal(closes, 0); assert.equal(f.listeners.length, 0);
@@ -291,10 +389,10 @@ test('dispose before deferred completion starts discards the close and detaches 
 test('dispose during native close retains protection until that native operation finishes', async () => {
   const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
   let endClose;
-  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => new Promise(resolve => { endClose = resolve; }) });
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, navigate: () => new Promise(resolve => { endClose = resolve; }) });
   await Promise.resolve(); f.guard.dispose();
   assert.equal(f.listeners.length, 1); assert.equal(f.click(f.history).stopped, true);
-  endClose(true); assert.equal(await finish, true); assert.equal(f.listeners.length, 0);
+  endClose('completed'); assert.equal(await finish, true); assert.equal(f.listeners.length, 0);
 });
 
 for (const result of ['rejected', 'refused', 'undefined']) {
@@ -302,9 +400,9 @@ for (const result of ['rejected', 'refused', 'undefined']) {
     const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
     let closes = 0;
     assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
-      closeChat: () => { closes++; return result === 'rejected' ? Promise.reject(Error('close failed')) : result === 'refused' ? false : undefined; } }), false);
-    assert.equal(closes, 1); assert.match(f.notices.at(-1)[0], /未能自动关闭/);
-    assert.equal(f.guard.hasPendingClose(ticket), false); assert.equal(f.click(f.history).stopped, false); f.guard.dispose();
+      navigate: () => { closes++; return result === 'rejected' ? Promise.reject(Error('close failed')) : result === 'refused' ? 'unavailable' : undefined; } }), false);
+    assert.equal(closes, 1); assert.match(f.notices.at(-1)[0], /未能继续切换/);
+    assert.equal(f.guard.hasPendingNavigation(ticket), false); assert.equal(f.click(f.history).stopped, false); f.guard.dispose();
   });
 }
 
@@ -312,8 +410,8 @@ test('an old or foreign completion cannot close or release another ticket', asyn
   const f = fixture(), old = f.begin(); f.guard.release(old.ticket);
   const { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
   let closes = 0;
-  assert.equal(await f.guard.finish(old.ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
-  assert.equal(closes, 0); assert.equal(f.guard.hasPendingClose(ticket), true); assert.equal(f.click(f.history).stopped, true);
+  assert.equal(await f.guard.finish(old.ticket, { confirmed: true, isCurrent: () => true, navigate: () => { closes++; return 'completed'; } }), false);
+  assert.equal(closes, 0); assert.equal(f.guard.hasPendingNavigation(ticket), true); assert.equal(f.click(f.history).stopped, true);
   f.guard.release(ticket); f.guard.dispose();
 });
 

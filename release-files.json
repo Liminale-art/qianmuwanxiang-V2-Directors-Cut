@@ -213,6 +213,7 @@
     "qianmu-model-host.js",
     "qianmu-director-live.js",
     "qianmu-director-leave-guard.js",
+    "qianmu-director-navigation.js",
     "qianmu-director-host-state.js",
     "qianmu-director-auto-refresh.js",
     "qianmu-director-save-confirmation.js",

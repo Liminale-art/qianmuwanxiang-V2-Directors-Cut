@@ -12,6 +12,7 @@ import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
 import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 import { directorHostFixture } from './helpers/director-host-fixture.mjs';
+import { createDirectorNavigation } from '../qianmu-director-navigation.js';
 
 // Execute the real loader, input composition, generation, merge and clear
 // handlers. The fixture only replaces UI, storage and model transport boundaries.
@@ -91,7 +92,7 @@ function fixture({ responses = [], providerMode = 'external', persisted, chat, s
     memoryHostFixture: { findExtension: () => ({ enabled: true }) }, readGagaMemoryContext: () => ({ text: 'MEMORY_SOURCE', status: 'ready', diagnostics: [], snapshot: { fingerprint: 'memory-one' } }),
     estimateTokens: text => Math.ceil(text.length / 4), uid: prefix => `${prefix}-${++id}`,
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null,
-    directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null,
+    directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null, directorNavigation: null, createDirectorNavigation,
     directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
     confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); await saveConfirmationHook?.({ c, context, settings, store: c.getChatStore() }); return { status: 'confirmed' }; },
     activeTab: 'dashboard', worldPage: 'geopolitics', MODAL_ID: 'fixture-panel', document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} },

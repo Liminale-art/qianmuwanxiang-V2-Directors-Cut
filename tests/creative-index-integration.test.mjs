@@ -13,6 +13,7 @@ import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
 import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
 import { directorHostFixture } from './helpers/director-host-fixture.mjs';
+import { createDirectorNavigation } from '../qianmu-director-navigation.js';
 
 const entry = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
 function between(start, end) {
@@ -94,7 +95,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, recentInterludeHint,
     selectCreativeOptions: (value, options) => { selectionCount++; return selectCreativeOptions(value, { ...options, random: () => { randomCount++; return random(); } }); },
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, activeTab: 'dashboard', MODAL_ID: 'panel',
-    directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null,
+    directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null, directorNavigation: null, createDirectorNavigation,
     directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
     confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); return { status: 'confirmed' }; },
     document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} }, AbortController, Date, console, clone: structuredClone,

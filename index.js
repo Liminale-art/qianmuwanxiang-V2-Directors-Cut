@@ -31,7 +31,8 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.458';
-import { createDirectorLeaveGuard } from './qianmu-director-leave-guard.js?v=1.59.462';
+import { createDirectorLeaveGuard } from './qianmu-director-leave-guard.js?v=1.59.463';
+import { createDirectorNavigation } from './qianmu-director-navigation.js';
 import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
@@ -312,7 +313,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.462';
+const VERSION = '1.59.463';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1231,7 +1232,7 @@ let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染�
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
 let directorLeaveGuard = null;
-let directorHostState = null, directorAutoRefresh = null;
+let directorHostState = null, directorAutoRefresh = null, directorNavigation = null;
 // Session-only quarantine: a host call without a confirmed readback must not
 // become new injected canon. A freshly loaded host store is not this object.
 const directorUnconfirmedSaves = new WeakMap();
@@ -3716,9 +3717,21 @@ function refreshDirectorLiveUI() {
 function directorHostRuntime() {
   return directorHostState ||= createDirectorHostState({ loadHost: () => import(stMainScriptUrl()) });
 }
+function directorNavigationRuntime() {
+  return directorNavigation ||= createDirectorNavigation({ getContext: ctx, host: directorHostRuntime(),
+    loadMain: () => import(stMainScriptUrl()),
+    loadGroups: () => import(new URL('./scripts/group-chats.js', stMainScriptUrl()).href),
+    confirmNew: async () => {
+      const popup = ctx().Popup;
+      if (typeof popup?.show?.confirm !== 'function') throw Error('新聊天确认未就绪');
+      return await popup.show.confirm('开始新聊天？', '当前聊天将会保留。') === 1;
+    },
+    hideHistory: () => { const popup = document.getElementById('shadow_select_chat_popup'); if (popup) popup.style.display = 'none'; } });
+}
 function directorLeaveRuntime() {
   return directorLeaveGuard ||= createDirectorLeaveGuard({ document, getContext: ctx, notify: toast,
     isHostGenerating: () => { const state = directorHostRuntime().read(); return state.known ? state.generating || state.streaming : null; },
+    captureIntent: intent => directorNavigationRuntime().capture(intent),
     onNavigate: () => directorAutoRefresh?.cancel() });
 }
 function directorMainlineStarted(type, options, dryRun) {
@@ -3905,7 +3918,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     saveSettings();
     if (showSuccessToast) toast('推演完成，保存已确认。', 'success');
     const storyboard = storyboardState();
-    if (storyboard.enabled && storyboard.directorBridge?.worldSideShotsEnabled && !run.leaveGuard.hasPendingClose(run.leaveTicket)) {
+    if (storyboard.enabled && storyboard.directorBridge?.worldSideShotsEnabled && !run.leaveGuard.hasPendingNavigation(run.leaveTicket)) {
       void storyboardQueueNewWorldPlan(newPlan,{store,chatKey:key,namespace}).catch(()=>console.warn('[千幕] 造物之眼排程未就绪，本次推演结果保留。'));
     }
   } catch (error) {
@@ -3954,7 +3967,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     await run.leaveGuard?.finish(run.leaveTicket, { confirmed: run.saved === true,
       isCurrent: () => alive() && !run.hostInterrupted && !controller.signal.aborted && run.source?.isCurrent() === true
         && (!run.sourceFingerprint || run.sourceFingerprint === directorSourceFingerprint()),
-      closeChat: () => host.closeChat() });
+      navigate: (intent, options) => directorNavigationRuntime().navigate(intent, options) });
     run.source?.close();
     run.leaveGuard?.release(run.leaveTicket);
     if (directorRun === run) {
