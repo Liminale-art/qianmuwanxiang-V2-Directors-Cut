@@ -1,8 +1,24 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary } from './qianmu-font-library-state.js?v=1.59.467';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.467';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.467';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.468';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.468';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.468';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
+
+function fontInputName(value) {
+  if (value === undefined) return '';
+  if (typeof value !== 'string' || value.length > 160 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) throw new Error('字体名称无效或过长');
+  return value.trim();
+}
+
+// Reconstruct only validated font declarations for historical inline sources.
+// Never retain or re-execute unrelated page CSS supplied alongside a font.
+function editableWebSource(font) {
+  if (font.source.kind !== 'web') return '';
+  if (font.source.url) return font.source.url;
+  if (/^https?:\/\//i.test(font.source.input)) return font.source.input;
+  const quote = value => '"' + String(value).replace(/["\\\r\n\f]/g, char => `\\${char.codePointAt(0).toString(16)} `) + '"';
+  return font.faces.map(face => `@font-face {\n  font-family: ${quote(font.name)};\n  src: ${face.urls.map(source => `url(${quote(source.url)})${source.format ? ` format(${quote(source.format)})` : ''}`).join(', ')};\n  font-weight: ${face.weight || '400'};\n  font-style: ${face.style || 'normal'};${face.stretch ? `\n  font-stretch: ${face.stretch};` : ''}${face.unicodeRange ? `\n  unicode-range: ${face.unicodeRange};` : ''}\n}`).join('\n\n');
+}
 
 // Web references live in the ordinary ST extension settings. Uploaded originals
 // are device/account scoped and never enter chat metadata or ST user/files.
@@ -67,7 +83,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   function uiState() {
     const state = read(), requestedSize = Number(getPreviewFontSize());
     const defaultPreviewSize = Number.isFinite(requestedSize) && requestedSize >= 1 && requestedSize <= 200 ? requestedSize : 18;
-    return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, variantKnown: font.source.variantKnown,
+    return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, editableSource: editableWebSource(font), variantKnown: font.source.variantKnown,
       weights: [...new Set(font.faces.map(face => face.weight || '400'))],
       styles: [...new Set(font.faces.map(face => face.style || 'normal'))], status: statuses.get(font.id)?.status === 'error' ? statuses.get(font.id).message : '' })) };
   }
@@ -88,26 +104,59 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     try {
       const token = await ensure(), original = owner.fontLibrary;
       const guard = () => { assertCurrent(token); if (owner.fontLibrary !== original) throw new Error('字体库已变化，未覆盖新的选择'); };
-      let next;
-      if (type === 'add-web') {
+      let next, revealFontId = '', editedFontId = '';
+      if (type === 'add-web' || type === 'edit-web') {
+        const tags = payload.tags === undefined ? undefined : fontLibraryTags(payload.tags);
+        const name = fontInputName(payload.name);
+        const originalFont = type === 'edit-web' ? read().fonts.find(font => font.id === payload.id) : null;
+        if (type === 'edit-web' && originalFont?.source.kind !== 'web') throw new Error('原网络字体已变化，请重新打开编辑');
         webAbort = new AbortController();
         const aborter = webAbort;
         let records;
-        try { records = await webResolver(payload.source, { name: payload.name, baseUrl: document.baseURI, signal: aborter.signal }); }
+        try {
+          records = originalFont && payload.source === editableWebSource(originalFont)
+            ? [{ ...originalFont, name: name || originalFont.name }]
+            : await webResolver(payload.source, { name, baseUrl: document.baseURI, signal: aborter.signal });
+        }
         finally { if (webAbort === aborter) webAbort = null; }
         guard();
-        next = mergeFontLibraryRecords(read(), records, makeId).state;
+        if (originalFont) {
+          if (records.length !== 1) throw new Error('链接包含多个字体，请改用单一字体来源');
+          next = updateFontLibrary(read(), 'replace-web', { id: originalFont.id, record: records[0], tags });
+          if (JSON.stringify(originalFont.faces) !== JSON.stringify(next.fonts.find(font => font.id === originalFont.id).faces)) {
+            const replacement = next.fonts.find(font => font.id === originalFont.id);
+            const effective = next.mode === 'shared' ? ['shared'] : ['body', 'st'];
+            const target = effective.find(key => next[key].enabled && next[key].fontId === originalFont.id);
+            await runtime.verifyWebFont(replacement, target ? next[target] : replacement.faces[0], next.previewText);
+            guard();
+          }
+          editedFontId = originalFont.id;
+        } else {
+          next = mergeFontLibraryRecords(read(), records.map(record => ({ ...record, ...(tags === undefined ? {} : { tags }) })), makeId).state;
+          revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
+        }
       } else if (type === 'add-local') {
         const files = Array.from(payload.files || []);
         if (!files.length || files.length > 20) throw new Error('一次请选择1–20个字体文件');
+        const metadata = payload.metadata;
+        if (metadata !== undefined && (!Array.isArray(metadata) || metadata.length !== files.length)) throw new Error('字体名称与标签未对应全部文件');
+        const details = files.map((_file, index) => {
+          const value = metadata?.[index];
+          if (value === undefined && metadata === undefined) return null;
+          if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error('字体名称与标签无效');
+          return { name: fontInputName(value.name), tags: fontLibraryTags(value.tags === undefined ? [] : value.tags) };
+        });
         const parsed = [];
-        for (const file of files) {
+        for (const [index, file] of files.entries()) {
           const item = await localReader(file); guard();
           item.record.id = await localId(item.bytes); guard();
+          if (details[index]) item.record = { ...item.record, ...details[index], name: details[index].name || item.record.name };
+          validateFontRecord(item.record);
           parsed.push(item);
         }
         if (parsed.reduce((sum, item) => sum + item.bytes.byteLength, 0) > FONT_SOURCE_LIMITS.totalLocalBytes) throw new Error('本次上传字体总量过大');
         const merged = mergeFontLibraryRecords(read(), parsed.map(item => item.record), makeId); next = merged.state;
+        revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
         for (const item of parsed) { await store.put(merged.mapping.get(item.record.id), item.bytes, 'application/octet-stream'); guard(); }
       } else if (type === 'import') {
         if (!payload.file || payload.file.size > FONT_SOURCE_LIMITS.packBytes) throw new Error('字体包过大或不可读取');
@@ -119,6 +168,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           record.id = await localId(bytes); guard(); canonicalFiles[record.id] = bytes;
         }
         const merged = mergeFontLibraryRecords(read(), pack.records, makeId); next = merged.state;
+        revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
         next.folders = [...new Set([...next.folders, ...(pack.folders || [])])];
         for (const [id, bytes] of Object.entries(canonicalFiles)) {
           const target = merged.mapping.get(id); if (!target) continue;
@@ -145,17 +195,22 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         guard(); next = updateFontLibrary(read(), type, payload);
       }
       guard(); const previous = read(); commit(next, token);
-      if (type === 'add-web') {
-        if (viewSession?.webSource === payload.source && viewSession.webName === (payload.name || '')) {
-          viewSession = { ...viewSession, webSource: '', webName: '' };
+      if (type === 'add-web' || type === 'edit-web') {
+        const draftTags = typeof viewSession?.webTags === 'string' ? [...new Set(viewSession.webTags.split(/[,，]/).map(value => value.trim()).filter(Boolean))] : [];
+        if (viewSession?.webSource === payload.source && viewSession.webName === (payload.name || '') && (viewSession.editWebId || '') === (editedFontId || '') && JSON.stringify(draftTags) === JSON.stringify(payload.tags || [])) {
+          viewSession = { ...viewSession, webSource: '', webName: '', webTags: '', editWebId: '' };
         }
         view?.clearWebDraft?.(payload);
+      }
+      if (type === 'update-fonts' && typeof payload.name === 'string' && payload.ids?.length === 1 && viewSession?.renameId === payload.ids[0] && viewSession.renameDraft === payload.name) {
+        viewSession = { ...viewSession, renameId: '', renameDraft: '' };
       }
       if (type === 'delete-fonts') {
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));
         try { await store.delete(deleted.map(font => font.id)); } catch { view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
       if (current(token)) { view?.render(); await sync(); }
+      return { ...(revealFontId ? { revealFontId } : {}), ...(editedFontId ? { editedFontId } : {}) };
     } catch (error) {
       error.userMessage ||= error.message || '字体操作未完成，请保留原资料后重试';
       throw error;
@@ -186,8 +241,14 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     detach(); attached = root;
     const button = root.querySelector('[data-font-library]');
     const clicked = () => { void open(root); };
+    const outside = event => {
+      if (!container || portal !== root || ![root, root.querySelector('.sd-floor-shell'), root.querySelector('.sd-floor-backdrop')].includes(event.target)) return;
+      event.stopPropagation();
+      if (closePanel) closePanel(); else root.querySelector('.sd-floor-close')?.click();
+    };
     button?.addEventListener('click', clicked);
-    removeEntry = () => button?.removeEventListener('click', clicked);
+    root.addEventListener?.('click', outside, true);
+    removeEntry = () => { button?.removeEventListener('click', clicked); root.removeEventListener?.('click', outside, true); };
     updateEntry();
   }
   function detach() { close(); removeEntry?.(); removeEntry = null; attached = null; }

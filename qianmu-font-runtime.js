@@ -76,6 +76,16 @@ function faceSource(face) {
     return [`url(${quoted(url)})${format}`];
   }).join(', ');
 }
+function faceDescriptors(face) {
+  const descriptors = { weight: weightValue(face.weight), style: descriptorStyle(face.style), display: 'swap' };
+  if (face.unicodeRange) {
+    if (typeof face.unicodeRange !== 'string' || !/^\s*U\+[0-9a-f?]+(?:-[0-9a-f]+)?(?:\s*,\s*U\+[0-9a-f?]+(?:-[0-9a-f]+)?)*\s*$/i.test(face.unicodeRange)) throw new Error('字体字符分段无效');
+    descriptors.unicodeRange = face.unicodeRange;
+  }
+  const stretch = descriptorStretch(face.stretch);
+  if (stretch) descriptors.stretch = stretch;
+  return descriptors;
+}
 
 export function fontScopeCss(scope, family, selection = {}) {
   if (!/^QianmuFont_[a-zA-Z0-9_]+$/.test(family)) return '';
@@ -91,8 +101,8 @@ export function fontScopeCss(scope, family, selection = {}) {
 }
 
 export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {
-  const slots = new Map(), applied = new Map();
-  let generation = 0, disposed = false, styleElement = null;
+  const slots = new Map(), applied = new Map(), retired = new Set(), probes = new Set();
+  let generation = 0, revision = 0, disposed = false, styleElement = null;
   const notify = (id, status, message = '') => { try { onStatus(id, { status, message }); } catch (_) {} };
   function paint() {
     const css = ['body', 'st'].map((scope) => {
@@ -116,13 +126,19 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
     try { afterApply(anchor); } catch (_) {}
   }
   function removeSlot(slot) {
+    if (slot.released) return;
+    slot.released = true;
     for (const face of slot.faces) document.fonts?.delete(face);
     if (slot.objectUrl) UrlApi.revokeObjectURL(slot.objectUrl);
   }
   function ensure(font) {
+    const signature = JSON.stringify([font.source?.kind, font.faces]);
     let slot = slots.get(font.id);
-    if (slot) return slot.ready;
-    slot = { id: font.id, family: fontPreviewFamily(font.id), faces: [], specs: font.faces, objectUrl: '', ready: null };
+    if (slot?.signature === signature) return slot.ready;
+    // An edited source gets a fresh family. Keep only any still-applied old
+    // face until its replacement verifies; a failed edit must not erase it.
+    if (slot) retired.add(slot);
+    slot = { id: font.id, signature, family: `${fontPreviewFamily(font.id)}_r${++revision}`, faces: [], specs: font.faces, objectUrl: '', ready: null };
     slots.set(font.id, slot);
     slot.ready = (async () => {
       if (!FontFaceClass || !document.fonts?.add) throw new Error('此浏览器不支持字体加载');
@@ -138,21 +154,14 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       for (const face of Array.isArray(font.faces) ? font.faces : []) {
         const source = localSource || faceSource(face);
         if (!source) continue;
-        const descriptors = { weight: weightValue(face.weight), style: descriptorStyle(face.style), display: 'swap' };
-        if (face.unicodeRange) {
-          if (typeof face.unicodeRange !== 'string' || !/^\s*U\+[0-9a-f?]+(?:-[0-9a-f]+)?(?:\s*,\s*U\+[0-9a-f?]+(?:-[0-9a-f]+)?)*\s*$/i.test(face.unicodeRange)) throw new Error('字体字符分段无效');
-          descriptors.unicodeRange = face.unicodeRange;
-        }
-        const stretch = descriptorStretch(face.stretch);
-        if (stretch) descriptors.stretch = stretch;
-        const registered = new FontFaceClass(slot.family, source, descriptors);
+        const registered = new FontFaceClass(slot.family, source, faceDescriptors(face));
         document.fonts.add(registered); slot.faces.push(registered);
       }
       if (!slot.faces.length) throw new Error('没有可用的字体文件');
       notify(font.id, 'available');
       return slot;
     })().catch((error) => {
-      if (!disposed) notify(font.id, 'error', error?.message || '字体加载失败');
+      if (!disposed && slots.get(font.id) === slot) notify(font.id, 'error', error?.message || '字体加载失败');
       removeSlot(slot); if (slots.get(font.id) === slot) slots.delete(font.id);
       return null;
     });
@@ -179,7 +188,24 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
     } finally { finished = true; clearTimeout(timer); }
   }
   return {
-    family: fontPreviewFamily,
+    family: id => slots.get(id)?.family || fontPreviewFamily(id),
+    async verifyWebFont(font, selection, sample) {
+      if (disposed || font.source?.kind !== 'web' || !FontFaceClass || !document.fonts?.add) throw new Error('字体暂不可验证，已保留原条目');
+      const probe = { family: `${fontPreviewFamily(font.id)}_probe${++revision}`, faces: [], specs: font.faces };
+      probes.add(probe);
+      try {
+        for (const face of font.faces || []) {
+          const source = faceSource(face);
+          if (!source) throw new Error('字体链接无效');
+          const registered = new FontFaceClass(probe.family, source, faceDescriptors(face));
+          document.fonts.add(registered); probe.faces.push(registered);
+        }
+        if (!probe.faces.length) throw new Error('没有可用的字体文件');
+        const selected = selection || font.faces[0];
+        await load(probe, { ...selected, style: String(selected?.style || 'normal').split(' ')[0] }, sample, true);
+        if (disposed) throw new Error('字体库已关闭，未覆盖原条目');
+      } finally { removeSlot(probe); probes.delete(probe); }
+    },
     async sync(state = {}, previewIds = []) {
       if (disposed) return;
       const turn = ++generation;
@@ -210,11 +236,11 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
         const slot = await pending.get(selection.fontId);
         if (!slot || disposed || generation !== turn) return;
         const prior = applied.get(scope);
-        if (prior?.id === slot.id && prior.selection.weight === selection.weight && prior.selection.style === selection.style) return;
+        if (prior?.slot === slot && prior.selection.weight === selection.weight && prior.selection.style === selection.style) return;
         try {
           await verify(slot, selection, true);
           if (disposed || generation !== turn) return;
-          applied.set(scope, { id: slot.id, family: slot.family, selection: { ...selection } });
+          applied.set(scope, { id: slot.id, family: slot.family, slot, selection: { ...selection } });
           notify(slot.id, 'ready');
         } catch (error) {
           if (!disposed && generation === turn) notify(slot.id, 'error', error?.message || '字体加载失败，已保留原字体');
@@ -238,11 +264,17 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       paint();
       for (const entry of applied.values()) needed.add(entry.id);
       for (const [id, slot] of slots) if (!needed.has(id)) { removeSlot(slot); slots.delete(id); }
+      const retained = new Set([...applied.values()].map(entry => entry.slot));
+      for (const slot of retired) if (!retained.has(slot)) { removeSlot(slot); retired.delete(slot); }
     },
     dispose() {
       disposed = true; generation++;
       applied.clear(); paint();
       for (const slot of slots.values()) removeSlot(slot);
+      for (const slot of retired) removeSlot(slot);
+      retired.clear();
+      for (const probe of probes) removeSlot(probe);
+      probes.clear();
       slots.clear();
     },
   };

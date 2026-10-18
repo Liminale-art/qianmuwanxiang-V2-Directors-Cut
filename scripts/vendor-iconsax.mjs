@@ -5,7 +5,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { suppliedIcons } from './iconsax-selected-sources.mjs';
+import { suppliedIcons, officialSelectedIcons } from './iconsax-selected-sources.mjs';
 
 export const glyphs = {
   anchor:'qianmu-anchor', archive:'archive', 'arrow-clockwise':'refresh-arrow-02', 'arrow-counter-clockwise':'refresh-left',
@@ -22,6 +22,7 @@ export const glyphs = {
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
   'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
+  'font-manage':'document-filter', 'font-apply':'tick-square', 'font-applied':'tick-square',
   'folder-plus':'folder-add', funnel:'filter', gauge:'speedometer', gear:'setting-2', 'globe-hemisphere-east':'global',
   graph:'hierarchy-2', headphones:'headphone', highlighter:'brush', image:'gallery', 'image-regenerate':'refresh-arrow-02',
   images:'gallery', info:'info-circle', lightbulb:'lamp-on', link:'link', list:'menu', 'list-bullets':'task',
@@ -40,14 +41,14 @@ export const glyphs = {
   warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'qianmu-underline-wave', world:'global', 'world-map':'share', x:'qianmu-close',
 };
 
-export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline'};
+export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
 
 const endpoint = 'https://app.iconsax.io/api/mcp';
 const cache = path.join(tmpdir(), 'qianmu-iconsax-free-2026-10-01-exact');
 const styles = {outline:'linear',bold:'bold',twotone:'twotone'};
 // The supplied continuous-play controls are deliberately linear in every theme,
 // not replacements for any generic play, stop, headphones or focus artwork.
-const variantsFor = name => ['tts-play','tts-stop'].includes(name) ? ['outline'] : [...new Set([...Object.keys(styles), ...Object.entries(fixedVariants).filter(([semantic])=>glyphs[semantic]===name).map(([,variant])=>variant)])];
+const variantsFor = name => ['tts-play','tts-stop','document-filter'].includes(name) ? ['outline'] : [...new Set([...Object.keys(styles), ...Object.entries(fixedVariants).filter(([semantic])=>glyphs[semantic]===name).map(([,variant])=>variant)])];
 const sha = text => createHash('sha256').update(text).digest('hex');
 
 export function normalizeIcon(svg) {
@@ -73,7 +74,7 @@ export function normalizeIcon(svg) {
 
 export function suppliedArtwork(name, variant) {
   const key = (name === 'maximize-3' || name === 'maximize-4') && variant === 'bold' ? 'maximize/bold' : `${name}/${variant}`;
-  const svg = suppliedIcons[key];
+  const svg = suppliedIcons[key] || officialSelectedIcons[key];
   if (svg) return {markup:normalizeIcon(svg),sha256:sha(svg)};
   // The user supplied notification Bold and Twotone. Classic uses the exact
   // same line geometry as Twotone, at full opacity instead of guessing a name.
@@ -144,7 +145,7 @@ for(const [name,body] of Object.entries(familiar)) for(const variant of Object.k
     const renderer=new URL('../qianmu-icon-renderer.js',import.meta.url), previous=await readFile(renderer,'utf8');
     const tail=previous.slice(previous.indexOf('export const QIANMU_ICON_SYSTEM_VERSION'));
     const art=Object.fromEntries(names.map(name=>[name,Object.fromEntries(variantsFor(name).map(variant=>[variant,result[name][variant]]))]));
-    const header=`/** Icons by Iconsax - https://iconsax.io (Free License); familiar action subset Lucide 1.39.0 (ISC/MIT). See THIRD_PARTY_NOTICES.md. */\n// Generated functional subset, retrieved 2026-10-01/02 from the official free MCP endpoint.\n// Outline uses the corresponding linear artwork to expose an exact 2.5px stroke.\n// No icon fonts, remote assets, runtime downloads, observers or cache subsystem.\nexport const ICONSAX_STROKE_WIDTH = 2.5;\nexport const ICONSAX_FIXED_VARIANTS = Object.freeze(${JSON.stringify(fixedVariants,null,2)});\nexport const ICONSAX_GLYPH_NAMES = Object.freeze(${JSON.stringify(glyphs,null,2)});\nexport const ICONSAX_ICON_MARKUP = Object.freeze(${JSON.stringify(art,null,2)});\n\n`;
+    const header=`/** Icons by Iconsax - https://iconsax.io (Free License); familiar action subset Lucide 1.39.0 (ISC/MIT). See THIRD_PARTY_NOTICES.md. */\n// Generated functional subset, retrieved 2026-10-01/02 and extended 2026-10-18 from the official free MCP endpoint.\n// Outline uses the corresponding linear artwork to expose an exact 2.5px stroke.\n// No icon fonts, remote assets, runtime downloads, observers or cache subsystem.\nexport const ICONSAX_STROKE_WIDTH = 2.5;\nexport const ICONSAX_FIXED_VARIANTS = Object.freeze(${JSON.stringify(fixedVariants,null,2)});\nexport const ICONSAX_GLYPH_NAMES = Object.freeze(${JSON.stringify(glyphs,null,2)});\nexport const ICONSAX_ICON_MARKUP = Object.freeze(${JSON.stringify(art,null,2)});\n\n`;
     await writeFile(renderer,header+tail);
     await writeFile(path.join(cache,'SOURCE-SHA256.json'),JSON.stringify(hashes,null,2));
     console.log(JSON.stringify({icons:names.length,variants:names.reduce((count,name)=>count+variantsFor(name).length,0),bytes:Buffer.byteLength(header),hash:sha(JSON.stringify(hashes)),cache}));

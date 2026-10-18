@@ -24,6 +24,68 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('Web replacement verification is temporary and cannot change the applied face or catalogue slot', async () => {
+  const f = fixture(); await f.runtime.sync(state([web()], { body: choice('web1') }));
+  const css = f.css(), family = f.runtime.family('web1'), registered = [...f.faces], statuses = f.statuses.length;
+  await f.runtime.verifyWebFont(web('web1', { urls: [{ url: 'https://fonts.example/new.woff2' }] }), choice('web1'), '样字');
+  assert.equal(f.css(), css); assert.equal(f.runtime.family('web1'), family);
+  assert.deepEqual([...f.faces], registered); assert.equal(f.statuses.length, statuses);
+  f.runtime.dispose();
+});
+
+test('failed and disposed replacement probes release temporary faces without touching old data', async () => {
+  let finish;
+  const f = fixture({ load: async font => font.includes('_probe') ? new Promise(resolve => { finish = resolve; }) : [{}] });
+  await f.runtime.sync(state([web()], { body: choice('web1') }));
+  const pending = f.runtime.verifyWebFont(web(), choice('web1'), '字');
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(f.faces.size, 2);
+  f.runtime.dispose(); assert.equal(f.faces.size, 0); finish([{}]);
+  await assert.rejects(pending, /已关闭/); assert.equal(f.faces.size, 0); assert.equal(f.css(), '');
+  const failed = fixture({ load: async () => { throw Error('bad binary'); } });
+  await assert.rejects(failed.runtime.verifyWebFont(web(), choice('web1'), '字'), /bad binary/);
+  assert.equal(failed.faces.size, 0); assert.equal(failed.css(), ''); failed.runtime.dispose();
+});
+
+test('same-id Web source replacement loads a fresh family and releases its previous face only after success', async () => {
+  const f = fixture(), original = web(), selected = { body: choice('web1'), st: choice('web1') };
+  await f.runtime.sync(state([original], selected));
+  const firstFamily = f.runtime.family('web1'), firstFace = [...f.faces][0];
+  const edited = web('web1', { urls: [{ url: 'https://fonts.example/new.woff2' }] });
+  await f.runtime.sync(state([edited], selected));
+  assert.notEqual(f.runtime.family('web1'), firstFamily);
+  assert.ok(f.css().includes(f.runtime.family('web1'))); assert.ok(!f.css().includes('"' + firstFamily + '"'));
+  assert.equal(f.faces.has(firstFace), false); assert.equal(f.faces.size, 1);
+  const latestFamily = f.runtime.family('web1');
+  await f.runtime.sync(state([{ ...edited, name: '只改名' }], selected));
+  assert.equal(f.runtime.family('web1'), latestFamily); f.runtime.dispose(); assert.equal(f.faces.size, 0);
+});
+
+test('failed same-id replacement retains actual old application until successful edit or master-off', async () => {
+  let failNew = false;
+  const f = fixture({ load: async () => { if (failNew) throw new Error('new binary failed'); return [{}]; } });
+  const selected = { body: choice('web1'), st: choice('web1') };
+  await f.runtime.sync(state([web()], selected));
+  const firstCss = f.css(), oldFace = [...f.faces][0]; failNew = true;
+  const edited = web('web1', { urls: [{ url: 'https://fonts.example/invalid.woff2' }] });
+  await f.runtime.sync(state([edited], selected));
+  assert.equal(f.css(), firstCss); assert.equal(f.faces.has(oldFace), true);
+  assert.equal(f.statuses.at(-1).status, 'error');
+  await f.runtime.sync(state([edited], { ...selected, enabled: false }));
+  assert.equal(f.css(), ''); assert.equal(f.faces.size, 0); f.runtime.dispose();
+});
+
+test('an earlier same-id edit resolving late cannot replace a newer successful source', async () => {
+  let finish, loading = false;
+  const f = fixture({ load: async () => loading ? new Promise(resolve => { finish = resolve; loading = false; }) : [{}] });
+  const selected = { body: choice('web1') };
+  await f.runtime.sync(state([web()], selected)); loading = true;
+  const oldEdit = f.runtime.sync(state([web('web1', { urls: [{ url: 'https://fonts.example/slow.woff2' }] })], selected));
+  await new Promise(resolve => setImmediate(resolve));
+  await f.runtime.sync(state([web('web1', { urls: [{ url: 'https://fonts.example/latest.woff2' }] })], selected));
+  const css = f.css(); finish([{}]); await oldEdit;
+  assert.equal(f.css(), css); assert.equal(f.faces.size, 1); f.runtime.dispose();
+});
+
 test('master off removes both scopes immediately while preserving selected fonts and independent previews', async () => {
   let finish;
   const f = fixture({ load: async font => font.includes(fontPreviewFamily('preview')) ? new Promise(resolve => { finish = resolve; }) : [{}] });

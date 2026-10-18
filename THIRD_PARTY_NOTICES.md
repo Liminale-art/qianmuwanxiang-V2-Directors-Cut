@@ -18,7 +18,7 @@ Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (propri
 
 千幕将选用的免费图形作为功能性界面资源嵌入 `qianmu-icon-renderer.js`，不分发独立 SVG 图标包，不提供再许可或独立图标提取用途。图标著作权属于 Iconsax，不受千幕原创代码的 PolyForm Noncommercial 许可覆盖。
 
-- 官方来源：https://app.iconsax.io/api/mcp （2026-10-01 至 2026-10-02 取得的免费接口子集）
+- 官方来源：https://app.iconsax.io/api/mcp （2026-10-01 至 2026-10-02 取得的免费接口子集；2026-10-18 按用户参考补充 document-filter Linear）
 - 接口文档：https://docs.iconsax.io/mcp/ai-integration
 - 使用规则：https://docs.iconsax.io/license-and-terms/license
 - 完整条款：https://docs.iconsax.io/license-and-terms/usage-manifesto
@@ -26,6 +26,7 @@ Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (propri
 - 幕后采用 fire-9 烛台系列（不是同名 fire）：线性主题用用户指定的 Broken 四段轮廓并统一 2.5px，Bold/Twotone 使用官方同系列样式。
 - 用户指定的 Iconsax SVG 附件按实际轮廓保留：幕外采用 gift13（线性）、gift6（实心）、gift8（双色）的蝴蝶结爱心礼盒，内部同归 gift-9；附件编号不当作官方接口编号。配音采用三份 microphone，专注采用 notification 的 Bold/Twotone，经典复用同一双色轮廓并移除透明度；纸间两个展开别名采用所给 maximize 四角图形。附件只在开发侧保留来源，运行包仍为内联图形，颜色改 currentColor、线性／双色描边统一 2.5px，实心根填充保留。
 - 正文台词连续播放／停止采用用户附件 play.svg／stop.svg 的圆润三角及圆角方框，内部单独命名 tts-play／tts-stop，仅供连播按钮使用，三个主题均保留附件的线性形状、统一 2.5px。不替换通用播放／停止、逐条耳机或专注控件。
+- 字体管理采用用户截图指定的 document-filter Linear，新增仅此一个轮廓；字体应用／已应用采用现有 tick-square 的 Linear／Bold。三个专用语义别名独立固定样式，不修改其他管理或勾选控件；仍只以内联功能图形随源码分发。
 - 纸间的推演、世界格局与书架导入加号复用线性轮廓，纸间蜂巢原创心形使用填充；这些局部风格例外不改变图形许可或楼层收藏状态含义。
 - 开发侧只读取已选的功能子集；运行时无需连接 Iconsax、图标字体或 CDN。若需在其他产品单独复用图形，请直接向 Iconsax 获取相应许可与资源。
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFontLibrary } from '../qianmu-font-library.js';
 import { normalizeFontLibrary } from '../qianmu-font-library-state.js';
-import { createLocalFontRecord, exportFontPack, importFontPack } from '../qianmu-font-sources.js';
+import { createLocalFontRecord, exportFontPack, importFontPack, resolveWebFontSource } from '../qianmu-font-sources.js';
 const webFont = { name: 'Web', source: { kind: 'web', input: 'https://font.example/font.woff2', url: 'https://font.example/font.woff2' }, faces: [{ urls: [{ url: 'https://font.example/font.woff2', format: 'woff2' }], weight: '400', style: 'normal' }] };
 function setup(overrides = {}) {
   let owner = {}, active = true, namespace = 'one'; const saves = [], applies = [], binaries = new Map(), downloads = [];
@@ -10,7 +10,7 @@ function setup(overrides = {}) {
     save: current => saves.push(structuredClone(current)), document: { baseURI: 'https://st.example/' }, confirm: async () => true,
     download: (...args) => downloads.push(args), webResolver: async () => [webFont],
     localStoreFactory: ({ namespace }) => ({ get: async id => binaries.get(namespace + id) || null, put: async (id, bytes) => binaries.set(namespace + id, new Blob([bytes])), delete: async ids => ids.forEach(id => binaries.delete(namespace + id)), dispose() {} }),
-    runtimeFactory: () => ({ sync: async (state, ids) => applies.push({ state: structuredClone(state), ids }), family: id => id, dispose() {} }), ...overrides });
+    runtimeFactory: () => ({ sync: async (state, ids) => applies.push({ state: structuredClone(state), ids }), verifyWebFont: async () => {}, family: id => id, dispose() {} }), ...overrides });
   return { library, saves, applies, binaries, downloads, get owner() { return owner; }, replace() { owner = {}; namespace = 'two'; }, stop() { active = false; library.dispose(); } };
 }
 function fontFile() {
@@ -37,6 +37,113 @@ test('Web entries use ordinary settings with references only; adding never appli
   await f.library.action('set-assignment', { target: 'body', fontId: id, weight: '400' });
   assert.equal(f.applies.at(-1).state.body.fontId, id); assert.equal(f.applies.at(-1).state.st.enabled, false);
   f.stop();
+});
+
+test('Web add accepts normalized tags while duplicate additions preserve original name and classification', async () => {
+  const f = setup({ webResolver: resolveWebFontSource });
+  await f.library.action('add-web', { source: webFont.source.input, name: ' 原名称 ', tags: [' 衬线 ', '正文', '衬线', ''] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  assert.equal(f.owner.fontLibrary.fonts[0].name, '原名称'); assert.deepEqual(f.owner.fontLibrary.fonts[0].tags, ['衬线', '正文']);
+  await f.library.action('update-fonts', { ids: [id], folder: '阅读' });
+  const original = structuredClone(f.owner.fontLibrary);
+  const result = await f.library.action('add-web', { source: webFont.source.input, name: '不应覆盖', tags: [] });
+  assert.equal(result.revealFontId, undefined); assert.deepEqual(f.owner.fontLibrary, original); assert.equal(f.binaries.size, 0);
+  await f.library.action('add-web', { source: 'https://font.example/another.woff2', tags: ['新条目'] });
+  assert.deepEqual(f.owner.fontLibrary.fonts[0], original.fonts[0]); assert.deepEqual(f.owner.fontLibrary.fonts[1].tags, ['新条目']);
+  f.stop();
+});
+
+test('Web tag edits retain omitted tags, clear explicit arrays and preserve old tags on source or binary failure', async () => {
+  let resolveFailure = false, binaryFailure = false, resolutions = 0, verifications = 0;
+  const f = setup({ webResolver: async (...args) => { resolutions++; if (resolveFailure) throw Error('来源解析失败'); return resolveWebFontSource(...args); },
+    runtimeFactory: () => ({ sync: async () => {}, dispose() {}, verifyWebFont: async () => { verifications++; if (binaryFailure) throw Error('字形加载失败'); } }) });
+  await f.library.action('add-web', { source: webFont.source.input, tags: ['原标签'] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await f.library.action('edit-web', { id, source: webFont.source.input, name: '新名称' });
+  assert.deepEqual(f.owner.fontLibrary.fonts[0].tags, ['原标签']);
+  await f.library.action('edit-web', { id, source: webFont.source.input, tags: [] });
+  assert.deepEqual(f.owner.fontLibrary.fonts[0].tags, []);
+  await f.library.action('edit-web', { id, source: webFont.source.input, tags: [' 保留 ', '保留'] });
+  assert.deepEqual(f.owner.fontLibrary.fonts[0].tags, ['保留']); assert.equal(resolutions, 1); assert.equal(verifications, 0);
+  const original = f.owner.fontLibrary, saves = f.saves.length;
+  resolveFailure = true;
+  await assert.rejects(f.library.action('edit-web', { id, source: 'https://font.example/fail.woff2', tags: [] }), /来源解析失败/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves);
+  resolveFailure = false; binaryFailure = true;
+  await assert.rejects(f.library.action('edit-web', { id, source: 'https://font.example/fail.woff2', tags: ['不应覆盖'] }), /字形加载失败/);
+  assert.equal(f.owner.fontLibrary, original); assert.deepEqual(original.fonts[0].tags, ['保留']); assert.equal(f.saves.length, saves);
+  f.stop();
+});
+
+test('invalid Web names and tags are rejected before resolving a source or changing an existing record', async () => {
+  let resolutions = 0;
+  const f = setup({ webResolver: async (...args) => { resolutions++; return resolveWebFontSource(...args); } });
+  for (const invalid of [{ name: {} }, { name: null }, { name: 1 }, { name: '名'.repeat(161) }, { name: '坏\u0000名' }, { tags: null }, { tags: ['字'.repeat(81)] }, { tags: [1] }]) {
+    await assert.rejects(f.library.action('add-web', { source: webFont.source.input, ...invalid }), /名称|标签/);
+    assert.deepEqual(f.owner, {}); assert.equal(f.saves.length, 0); assert.equal(resolutions, 0);
+  }
+  await f.library.action('add-web', { source: webFont.source.input, name: '名'.repeat(160), tags: ['保留'] });
+  const original = f.owner.fontLibrary, id = original.fonts[0].id, saves = f.saves.length;
+  await assert.rejects(f.library.action('edit-web', { id, source: webFont.source.input, name: {}, tags: [] }), /名称/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); assert.equal(resolutions, 1);
+  f.stop();
+});
+
+test('local multi-file metadata follows file order and retains original filenames and bytes', async () => {
+  const f = setup(), first = fontFile(), second = fontFile();
+  second.bytes[31] = 7; second.file.name = '第二份.ttf';
+  const result = await f.library.action('add-local', { files: [first.file, second.file], metadata: [{ name: ' 自选正文 ', tags: [' 衬线 ', '衬线'] }, { name: '名'.repeat(160), tags: ['界面'] }] });
+  const [a, b] = f.owner.fontLibrary.fonts;
+  assert.equal(result.revealFontId, a.id); assert.equal(a.name, '自选正文'); assert.deepEqual(a.tags, ['衬线']);
+  assert.equal(b.name, '名'.repeat(160)); assert.deepEqual(b.tags, ['界面']);
+  assert.equal(a.source.fileName, '本地.ttf'); assert.equal(b.source.fileName, '第二份.ttf');
+  assert.equal(a.id, await digestId(first.bytes)); assert.equal(b.id, await digestId(second.bytes));
+  assert.deepEqual(new Uint8Array(await f.binaries.get('one' + a.id).arrayBuffer()), first.bytes);
+  assert.deepEqual(new Uint8Array(await f.binaries.get('one' + b.id).arrayBuffer()), second.bytes);
+  assert.equal(f.owner.fontLibrary.body.enabled, false); assert.equal(f.owner.fontLibrary.st.enabled, false); assert.equal(f.saves.length, 1);
+  f.stop();
+});
+
+test('invalid metadata anywhere in a local batch prevents every original-file write and settings save', async () => {
+  let reads = 0, puts = 0;
+  const f = setup({ localReader: async file => { reads++; return createLocalFontRecord(file); },
+    localStoreFactory: () => ({ put: async () => { puts++; }, dispose() {} }) });
+  const files = [fontFile().file, fontFile().file], original = normalizeFontLibrary(); f.owner.fontLibrary = original;
+  const badItems = [{ tags: null }, { tags: [1] }, { tags: ['字'.repeat(81)] }, { tags: Array(33).fill('标签') }, { name: {} }, { name: null }, { name: 1 }, { name: '名'.repeat(161) }, { name: '坏\u0000名' }, [], null, Object.create({ name: '继承值' })];
+  for (const item of badItems) {
+    await assert.rejects(f.library.action('add-local', { files, metadata: [{ name: '有效', tags: ['有效'] }, item] }), /名称|标签/);
+    assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, 0); assert.equal(puts, 0); assert.equal(reads, 0);
+  }
+  for (const metadata of [[], [{}], [{}, {}, {}], {}, null, new Array(2)]) {
+    await assert.rejects(f.library.action('add-local', { files, metadata }), /名称|标签/);
+    assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, 0); assert.equal(puts, 0);
+  }
+  f.stop();
+});
+
+test('duplicate local uploads retain saved metadata, application and byte contents while missing originals can be restored', async () => {
+  const f = setup(), { file, bytes } = fontFile();
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '原名称', tags: ['原标签'] }] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await f.library.action('update-fonts', { ids: [id], folder: '原目录' });
+  await f.library.action('apply-font', { target: 'body', fontId: id });
+  const original = structuredClone(f.owner.fontLibrary);
+  const result = await f.library.action('add-local', { files: [file], metadata: [{ name: '不应覆盖', tags: [] }] });
+  assert.equal(result.revealFontId, undefined); assert.deepEqual(f.owner.fontLibrary, original); assert.equal(f.binaries.size, 1);
+  assert.deepEqual(new Uint8Array(await f.binaries.get('one' + id).arrayBuffer()), bytes);
+  f.binaries.delete('one' + id);
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '补回原件', tags: ['不应覆盖'] }] });
+  assert.deepEqual(f.owner.fontLibrary, original); assert.deepEqual(new Uint8Array(await f.binaries.get('one' + id).arrayBuffer()), bytes);
+  f.stop();
+});
+
+test('legacy local payloads and blank optional metadata preserve the derived display name', async () => {
+  for (const metadata of [undefined, [{}], [{ name: '  ', tags: [] }]]) {
+    const f = setup();
+    await f.library.action('add-local', { files: [fontFile().file], ...(metadata === undefined ? {} : { metadata }) });
+    assert.equal(f.owner.fontLibrary.fonts[0].name, '本地'); assert.deepEqual(f.owner.fontLibrary.fonts[0].tags, []);
+    assert.equal(f.binaries.size, 1); assert.equal(f.saves.length, 1); f.stop();
+  }
 });
 test('late Web resolution after an account/settings change never writes to new owner', async () => {
   let finish; const f = setup({ webResolver: () => new Promise(resolve => { finish = resolve; }) });
@@ -87,6 +194,84 @@ test('delete removes only selected entries and resets their assignments', async 
   await f.library.action('set-assignment', { target: 'body', fontId: id });
   await f.library.action('delete-fonts', { ids: [id] });
   assert.equal(f.owner.fontLibrary.fonts.length, 0); assert.equal(f.owner.fontLibrary.body.enabled, false); f.stop();
+});
+
+test('adding reveals the first new entry, while duplicate addition never misreports a new font', async () => {
+  const f = setup(); const first = await f.library.action('add-web', { source: webFont.source.input });
+  assert.equal(first.revealFontId, f.owner.fontLibrary.fonts[0].id);
+  assert.equal((await f.library.action('add-web', { source: webFont.source.input })).revealFontId, undefined);
+  const local = await f.library.action('add-local', { files: [fontFile().file] });
+  assert.equal(local.revealFontId, f.owner.fontLibrary.fonts[1].id); f.stop();
+});
+
+test('Web editing replaces exactly one source in place and preserves target, classification and master-off', async () => {
+  let replacement = webFont, loads = 0;
+  const f = setup({ webResolver: async () => { loads++; return [replacement]; } });
+  await f.library.action('add-web', { source: webFont.source.input });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await f.library.action('update-fonts', { ids: [id], folder: '阅读', tags: ['衬线'] });
+  await f.library.action('apply-font', { target: 'body', fontId: id });
+  await f.library.action('set-enabled', { enabled: false });
+  const before = structuredClone(f.owner.fontLibrary);
+  const renamed = await f.library.action('edit-web', { id, name: '新名称', source: webFont.source.input });
+  assert.equal(renamed.editedFontId, id); assert.equal(loads, 1, 'name-only edit does not need network');
+  assert.equal(f.owner.fontLibrary.fonts[0].name, '新名称');
+  replacement = { ...webFont, name: '新来源', source: { kind: 'web', input: 'https://font.example/new.woff2', url: 'https://font.example/new.woff2' }, faces: [{ ...webFont.faces[0], urls: [{ url: 'https://font.example/new.woff2' }] }] };
+  await f.library.action('edit-web', { id, name: '新来源', source: replacement.source.input });
+  const edited = f.owner.fontLibrary;
+  assert.equal(edited.fonts.length, 1); assert.equal(edited.fonts[0].id, id);
+  assert.deepEqual(edited.fonts[0].faces, replacement.faces);
+  assert.equal(edited.fonts[0].folder, '阅读'); assert.deepEqual(edited.fonts[0].tags, ['衬线']);
+  for (const key of ['body', 'st', 'shared', 'enabled', 'mode']) assert.deepEqual(edited[key], before[key]);
+  f.stop();
+});
+
+test('failed or ambiguous Web edits and changed owners leave original records untouched', async () => {
+  let resolver = async () => [webFont];
+  const f = setup({ webResolver: (...args) => resolver(...args) });
+  await f.library.action('add-web', { source: webFont.source.input });
+  const original = f.owner.fontLibrary, id = original.fonts[0].id, saves = f.saves.length;
+  resolver = async () => { throw Error('503'); };
+  await assert.rejects(f.library.action('edit-web', { id, source: 'https://font.example/bad.css' }), /503/);
+  assert.equal(f.owner.fontLibrary, original);
+  resolver = async () => [webFont, { ...webFont, name: '另一款' }];
+  await assert.rejects(f.library.action('edit-web', { id, source: 'https://font.example/multi.css' }), /多个字体/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves);
+  let finish; resolver = () => new Promise(resolve => { finish = resolve; });
+  const pending = f.library.action('edit-web', { id, source: 'https://font.example/new.css' });
+  await waitUntil(() => finish); f.replace(); finish([webFont]);
+  await assert.rejects(pending, /设置已变化/); assert.deepEqual(f.owner, {});
+  assert.equal(original.fonts[0].source.url, webFont.source.url); f.stop();
+});
+
+test('local rename changes metadata only; source replacement refuses local originals', async () => {
+  const f = setup(); await f.library.action('add-local', { files: [fontFile().file] });
+  const font = structuredClone(f.owner.fontLibrary.fonts[0]), bytes = f.binaries.get('one' + font.id);
+  await f.library.action('update-fonts', { ids: [font.id], name: '新名字' });
+  assert.deepEqual(f.owner.fontLibrary.fonts[0], { ...font, name: '新名字' });
+  assert.equal(f.binaries.get('one' + font.id), bytes);
+  await assert.rejects(f.library.action('edit-web', { id: font.id, source: webFont.source.input }), /已变化/);
+  assert.equal(f.binaries.get('one' + font.id), bytes); f.stop();
+});
+
+test('unloadable Web replacement never commits over the saved source or clears the edit', async () => {
+  let replacement = webFont, verifies = 0;
+  const f = setup({ webResolver: async () => [replacement], runtimeFactory: () => ({ sync: async () => {}, dispose() {}, verifyWebFont: async () => { verifies++; throw Error('字体文件不可加载'); } }) });
+  await f.library.action('add-web', { source: webFont.source.input });
+  const original = f.owner.fontLibrary, id = original.fonts[0].id, saves = f.saves.length;
+  replacement = { ...webFont, faces: [{ ...webFont.faces[0], urls: [{ url: 'https://font.example/missing.woff2' }] }] };
+  await assert.rejects(f.library.action('edit-web', { id, source: 'https://font.example/missing.woff2' }), /不可加载/);
+  assert.equal(verifies, 1); assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); f.stop();
+});
+
+test('account change during binary verification cannot commit the edited source to either owner', async () => {
+  let finish;
+  const replacement = { ...webFont, faces: [{ ...webFont.faces[0], urls: [{ url: 'https://font.example/new.woff2' }] }] };
+  const f = setup({ webResolver: async () => [replacement], runtimeFactory: () => ({ sync: async () => {}, dispose() {}, verifyWebFont: () => new Promise(resolve => { finish = resolve; }) }) });
+  const original = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'original' }] }); f.owner.fontLibrary = original;
+  const oldOwner = f.owner, pending = f.library.action('edit-web', { id: 'original', source: 'https://font.example/new.woff2' });
+  await waitUntil(() => finish); f.replace(); finish(); await assert.rejects(pending, /设置已变化/);
+  assert.equal(oldOwner.fontLibrary, original); assert.deepEqual(f.owner, {}); assert.equal(f.saves.length, 0); f.stop();
 });
 
 test('local upload follows the merged id when an imported Web id collides with its digest', async () => {
@@ -225,6 +410,12 @@ test('library return restores only its same-account view session and release can
   f.library.attach(root); assert.match(summary.textContent, /^当前：/);
   entry.click(); await waitUntil(() => views.length === 1);
   assert.equal(views[0].options.getState().defaultPreviewSize, 19);
+  f.owner.fontLibrary = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'inline', name: '含"引号', source: { kind: 'web', input: '内嵌字体样式' } }] });
+  const editable = views[0].options.getState().entries[0].editableSource;
+  const reparsed = await resolveWebFontSource(editable);
+  assert.deepEqual(reparsed[0].faces, webFont.faces);
+  assert.equal(reparsed[0].name, '含"引号');
+  assert.match(editable, /^@font-face/); assert.doesNotMatch(editable, /body\s*\{/);
   fontSize = 22;
   assert.equal(views[0].options.getState().defaultPreviewSize, 22);
   fontSize = NaN;

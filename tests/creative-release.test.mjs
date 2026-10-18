@@ -5,7 +5,7 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.467';
+const releaseVersion = '1.59.468';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',

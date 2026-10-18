@@ -1,5 +1,5 @@
 /** Icons by Iconsax - https://iconsax.io (Free License); familiar action subset Lucide 1.39.0 (ISC/MIT). See THIRD_PARTY_NOTICES.md. */
-// Generated functional subset, retrieved 2026-10-01/02 from the official free MCP endpoint.
+// Generated functional subset, retrieved 2026-10-01/02 and extended 2026-10-18 from the official free MCP endpoint.
 // Outline uses the corresponding linear artwork to expose an exact 2.5px stroke.
 // No icon fonts, remote assets, runtime downloads, observers or cache subsystem.
 export const ICONSAX_STROKE_WIDTH = 2.5;
@@ -10,7 +10,10 @@ export const ICONSAX_FIXED_VARIANTS = Object.freeze({
   "voice-playall": "outline",
   "voice-stopall": "outline",
   "underline-wave": "outline",
-  "floor-tools": "outline"
+  "floor-tools": "outline",
+  "font-manage": "outline",
+  "font-apply": "outline",
+  "font-applied": "bold"
 });
 export const ICONSAX_GLYPH_NAMES = Object.freeze({
   "anchor": "qianmu-anchor",
@@ -76,6 +79,9 @@ export const ICONSAX_GLYPH_NAMES = Object.freeze({
   "focus": "notification",
   "folder": "folder",
   "folder-minus": "folder-minus",
+  "font-manage": "document-filter",
+  "font-apply": "tick-square",
+  "font-applied": "tick-square",
   "folder-plus": "folder-add",
   "funnel": "filter",
   "gauge": "speedometer",
@@ -313,6 +319,9 @@ export const ICONSAX_ICON_MARKUP = Object.freeze({
     "outline": "<g><path d=\"M9 17V11L7 13\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M9 11L11 13\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M22 10H18C15 10 14 9 14 6V2L22 10Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>",
     "bold": "<g><path d=\"M20.5 10.19H17.61C15.24 10.19 13.31 8.26 13.31 5.89V3C13.31 2.45 12.86 2 12.31 2H8.07C4.99 2 2.5 4 2.5 7.57V16.43C2.5 20 4.99 22 8.07 22H15.93C19.01 22 21.5 20 21.5 16.43V11.19C21.5 10.64 21.05 10.19 20.5 10.19ZM11.53 13.53C11.38 13.68 11.19 13.75 11 13.75C10.81 13.75 10.62 13.68 10.47 13.53L9.75 12.81V17C9.75 17.41 9.41 17.75 9 17.75C8.59 17.75 8.25 17.41 8.25 17V12.81L7.53 13.53C7.24 13.82 6.76 13.82 6.47 13.53C6.18 13.24 6.18 12.76 6.47 12.47L8.47 10.47C8.54 10.41 8.61 10.36 8.69 10.32C8.71 10.31 8.74 10.3 8.76 10.29C8.82 10.27 8.88 10.26 8.95 10.25C8.98 10.25 9 10.25 9.03 10.25C9.11 10.25 9.19 10.27 9.27 10.3C9.28 10.3 9.28 10.3 9.29 10.3C9.37 10.33 9.45 10.39 9.51 10.45C9.52 10.46 9.53 10.46 9.53 10.47L11.53 12.47C11.82 12.76 11.82 13.24 11.53 13.53Z\" fill=\"currentColor\"/><path d=\"M17.4299 8.81048C18.3799 8.82048 19.6999 8.82048 20.8299 8.82048C21.3999 8.82048 21.6999 8.15048 21.2999 7.75048C19.8599 6.30048 17.2799 3.69048 15.7999 2.21048C15.3899 1.80048 14.6799 2.08048 14.6799 2.65048V6.14048C14.6799 7.60048 15.9199 8.81048 17.4299 8.81048Z\" fill=\"currentColor\"/></g>",
     "twotone": "<g><g opacity=\"0.4\"><path d=\"M9 17V11L7 13\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M9 11L11 13\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g><path d=\"M22 10V15C22 20 20 22 15 22H9C4 22 2 20 2 15V9C2 4 4 2 9 2H14\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M22 10H18C15 10 14 9 14 6V2L22 10Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>"
+  },
+  "document-filter": {
+    "outline": "<g><path d=\"M3.34997 2H12.25C12.99 2 13.6 2.61001 13.6 3.35001V4.82999C13.6 5.36999 13.26 6.04 12.93 6.38L10.03 8.94C9.63003 9.28 9.35998 9.94999 9.35998 10.49V13.39C9.35998 13.79 9.09 14.33 8.75 14.54L7.81 15.15C6.93 15.69 5.71997 15.08 5.71997 14V10.43C5.71997 9.95999 5.44999 9.35001 5.17999 9.01001L2.61999 6.31C2.27999 5.97 2.01001 5.36999 2.01001 4.95999V3.41C2.00001 2.61 2.60997 2 3.34997 2Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-miterlimit=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M2 12.0002V15.0002C2 20.0002 4 22.0002 9 22.0002H15C20 22.0002 22 20.0002 22 15.0002V9.00024C22 5.88024 21.22 3.92024 19.41 2.90024C18.9 2.61024 17.88 2.39023 16.95 2.24023\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M13 13H18\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M11 17H18\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>"
   },
   "driver": {
     "outline": "<g><path d=\"M19.32 9.99977H4.69002C3.21002 9.99977 2.01001 8.78978 2.01001 7.31978V4.68977C2.01001 3.20977 3.22002 2.00977 4.69002 2.00977H19.32C20.8 2.00977 22 3.21977 22 4.68977V7.31978C22 8.78978 20.79 9.99977 19.32 9.99977Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M19.32 21.9998H4.69002C3.21002 21.9998 2.01001 20.7898 2.01001 19.3198V16.6898C2.01001 15.2098 3.22002 14.0098 4.69002 14.0098H19.32C20.8 14.0098 22 15.2198 22 16.6898V19.3198C22 20.7898 20.79 21.9998 19.32 21.9998Z\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6 5V7\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 5V7\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6 17V19\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10 17V19\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14 6H18\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14 18H18\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></g>",
@@ -839,7 +848,7 @@ export const ICONSAX_ICON_MARKUP = Object.freeze({
   }
 });
 
-export const QIANMU_ICON_SYSTEM_VERSION = 'iconsax-free-2026-10-02';
+export const QIANMU_ICON_SYSTEM_VERSION = 'iconsax-free-2026-10-18';
 export const QIANMU_ICON_SYSTEM_NAME = 'Iconsax · 千幕 2.5';
 
 export const QIANMU_SEMANTIC_ICONS = Object.freeze({
@@ -849,6 +858,9 @@ export const QIANMU_SEMANTIC_ICONS = Object.freeze({
   'coread-entry': 'qm-signature-coread',
   'character-profile': 'qm-signature-character',
   'floor-tools': 'qm-signature-floor-tools',
+  'font-manage': 'qm-signature-font-manage',
+  'font-apply': 'qm-signature-font-apply',
+  'font-applied': 'qm-signature-font-applied',
   backstage: 'qm-signature-backstage',
   assistant: 'qm-signature-assistant',
   notes: 'qm-signature-notes',

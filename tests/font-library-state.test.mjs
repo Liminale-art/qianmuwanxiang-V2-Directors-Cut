@@ -1,9 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeFontLibrary, updateFontLibrary, mergeFontLibraryRecords } from '../qianmu-font-library-state.js';
+import { normalizeFontLibrary, updateFontLibrary, mergeFontLibraryRecords, fontLibraryTags } from '../qianmu-font-library-state.js';
 import { migrateQianmuSettingsV2 } from '../qianmu-data-migrations.js';
 const font = id => ({ id, name: id, source: { kind: 'web', input: `https://fonts.example/${id}.woff2`, url: `https://fonts.example/${id}.woff2` }, faces: [{ urls: [{ url: `https://fonts.example/${id}.woff2`, format: 'woff2' }], weight: '400', style: 'normal' }] });
 const fixture = () => normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [font('a'), font('b')] });
+
+test('tag metadata is normalized strictly and an invalid edit cannot mutate the original library', () => {
+  assert.deepEqual(fontLibraryTags([' 正文 ', '衬线', '正文', '']), ['正文', '衬线']);
+  assert.deepEqual(fontLibraryTags([]), []);
+  const state = updateFontLibrary(fixture(), 'update-fonts', { ids: ['a'], folder: '阅读', tags: ['原标签'] });
+  const original = structuredClone(state);
+  for (const tags of [null, '正文', {}, [null], [123], [{}], ['字'.repeat(81)], ['坏\u0000标签'], Array(33).fill('标签')]) {
+    assert.throws(() => fontLibraryTags(tags), /标签/);
+    assert.throws(() => updateFontLibrary(state, 'replace-web', { id: 'a', record: font('a'), tags }), /标签/);
+    assert.deepEqual(state, original);
+  }
+});
+
+test('Web tag editing distinguishes omission, replacement and explicit clearing without changing classification or choices', () => {
+  let state = updateFontLibrary(fixture(), 'update-fonts', { ids: ['a'], folder: '阅读', tags: ['原标签'] });
+  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a', weight: '700' });
+  const original = structuredClone(state), record = { ...font('a'), name: '新名称', tags: ['来源默认标签'] };
+  const kept = updateFontLibrary(state, 'replace-web', { id: 'a', record });
+  assert.deepEqual(kept.fonts[0].tags, ['原标签']);
+  const changed = updateFontLibrary(state, 'replace-web', { id: 'a', record, tags: [' 新标签 ', '新标签'] });
+  assert.deepEqual(changed.fonts[0].tags, ['新标签']);
+  const cleared = updateFontLibrary(state, 'replace-web', { id: 'a', record, tags: [] });
+  assert.deepEqual(cleared.fonts[0].tags, []);
+  for (const result of [kept, changed, cleared]) {
+    assert.equal(result.fonts[0].id, 'a'); assert.equal(result.fonts[0].folder, '阅读');
+    for (const target of ['body', 'st', 'shared', 'enabled', 'mode']) assert.deepEqual(result[target], original[target]);
+    assert.deepEqual(result.fonts[1], original.fonts[1]);
+  }
+  assert.deepEqual(state, original);
+});
+
+test('merging new metadata never overwrites a duplicate source and renaming shares the 160-character limit', () => {
+  const state = updateFontLibrary(fixture(), 'update-fonts', { ids: ['a'], name: '原名称', folder: '原目录', tags: ['原标签'] });
+  const original = structuredClone(state);
+  const records = [{ ...font('a'), id: 'duplicate', name: '不应覆盖', folder: '新目录', tags: ['新标签'] }, { ...font('c'), name: ' 新字体 ', tags: [' 新标签 ', '新标签'] }];
+  const merged = mergeFontLibraryRecords(state, records, () => 'unused');
+  assert.deepEqual(merged.state.fonts[0], original.fonts[0]); assert.equal(merged.mapping.get('duplicate'), 'a');
+  assert.equal(merged.state.fonts[2].name, '新字体'); assert.deepEqual(merged.state.fonts[2].tags, ['新标签']);
+  assert.equal(updateFontLibrary(state, 'update-fonts', { ids: ['a'], name: '名'.repeat(160) }).fonts[0].name.length, 160);
+  for (const name of ['名'.repeat(161), {}, 12, null, '坏\u0000名称']) assert.throws(() => updateFontLibrary(state, 'update-fonts', { ids: ['a'], name }), /名称/);
+  assert.deepEqual(state, original);
+});
+
+test('in-place Web replacement preserves identity/classification and only reconciles unsupported variants', () => {
+  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'body', fontId: 'a', weight: '700', style: 'italic' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'a', weight: '650', style: 'normal' });
+  state = updateFontLibrary(state, 'update-fonts', { ids: ['a'], folder: '正文', tags: ['保留'] });
+  const original = structuredClone(state);
+  const renamed = updateFontLibrary(state, 'replace-web', { id: 'a', record: { ...font('a'), name: '改名字' } });
+  assert.deepEqual(renamed.body, original.body, 'name-only edit must not normalize existing preferences');
+  const record = { ...font('a'), faces: [{ ...font('a').faces[0], weight: '300 600' }] };
+  state = updateFontLibrary(state, 'replace-web', { id: 'a', record });
+  assert.deepEqual(state.body, { ...original.body, style: 'normal', weight: '600' });
+  assert.deepEqual(state.st, { ...original.st, weight: '600' });
+  assert.equal(state.fonts[0].id, 'a'); assert.equal(state.fonts[0].folder, '正文'); assert.deepEqual(state.fonts[0].tags, ['保留']);
+  assert.deepEqual(state.fonts[1], original.fonts[1]); assert.deepEqual(original.body, { fontId: 'a', weight: '700', style: 'italic', enabled: true });
+  assert.throws(() => updateFontLibrary(state, 'replace-web', { id: 'missing', record }), /已变化/);
+});
 
 test('master application gate defaults on for legacy libraries and strictly preserves dormant choices', () => {
   const legacy = fixture(); delete legacy.enabled;

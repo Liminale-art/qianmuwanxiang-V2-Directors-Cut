@@ -16,7 +16,19 @@ const names = (values, limit, label) => {
   if (!Array.isArray(values) || values.length > limit) fail(`${label}数量过多`);
   return [...new Set(values.map(value => text(value, 80, label).trim()).filter(Boolean))];
 };
+export const fontLibraryTags = values => names(values, 32, '标签');
 const blankAssignment = () => ({ fontId: '', weight: '400', style: 'normal', enabled: false });
+function supportedAssignment(assignment, faces) {
+  const styleOf = face => String(face.style || 'normal').split(' ')[0];
+  const style = faces.some(face => styleOf(face) === assignment.style) ? assignment.style : styleOf(faces[0]);
+  const desired = assignment.weight === 'bold' ? 700 : assignment.weight === 'normal' ? 400 : Number(assignment.weight);
+  const supported = faces.filter(face => styleOf(face) === style).map(face => {
+    const [low, high = low] = String(face.weight || '400').split(' ').map(Number);
+    return Math.max(low, Math.min(high, desired));
+  });
+  const weight = supported.reduce((best, value) => Math.abs(value - desired) < Math.abs(best - desired) ? value : best);
+  return { ...assignment, style, weight: String(weight) };
+}
 export function fontAssignment(value = {}) {
   if (!plain(value)) fail('字体应用设置无效');
   const fontId = value.fontId ? fontLibraryId(value.fontId) : '';
@@ -72,6 +84,16 @@ export function updateFontLibrary(state, type, payload = {}) {
   } else if (type === 'set-mode') {
     if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
     next.mode = payload.mode;
+  } else if (type === 'replace-web') {
+    const id = fontLibraryId(payload.id), index = next.fonts.findIndex(font => font.id === id);
+    if (index < 0 || next.fonts[index].source.kind !== 'web') fail('原网络字体已变化，请重新打开编辑');
+    const record = validateFontRecord(payload.record);
+    if (record.source.kind !== 'web') fail('只能替换网络字体来源');
+    const previous = next.fonts[index];
+    next.fonts[index] = { ...record, id, folder: previous.folder, tags: payload.tags === undefined ? previous.tags : fontLibraryTags(payload.tags) };
+    if (JSON.stringify(previous.faces) !== JSON.stringify(record.faces)) {
+      for (const target of ['body', 'st', 'shared']) if (next[target].fontId === id) next[target] = supportedAssignment(next[target], record.faces);
+    }
   } else if (type === 'apply-font') {
     if (!['body', 'st', 'shared'].includes(payload.target)) fail('字体目标无效');
     const assignment = fontAssignment({ ...payload, enabled: true });
@@ -105,7 +127,7 @@ export function updateFontLibrary(state, type, payload = {}) {
     else for (const font of next.fonts) if (ids.has(font.id)) {
       if (payload.folder !== undefined) font.folder = text(payload.folder, 80, '文件夹').trim();
       if (payload.tags !== undefined) font.tags = names(payload.tags, 32, '标签');
-      if (payload.name !== undefined) font.name = text(payload.name, 120, '字体名称').trim() || font.name;
+      if (payload.name !== undefined) font.name = text(payload.name, 160, '字体名称').trim() || font.name;
     }
   } else fail('未知字体库操作');
   return normalizeFontLibrary(next);

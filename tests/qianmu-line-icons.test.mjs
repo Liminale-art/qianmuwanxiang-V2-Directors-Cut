@@ -44,19 +44,19 @@ assert.match(QIANMU_ICON_SYSTEM_VERSION, /^iconsax-[a-z0-9.-]+$/);
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
 assert.equal(QIANMU_INLINE_GLYPH_COUNT, Object.keys(ICONSAX_ICON_MARKUP).length);
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Iconsax 本地子集应覆盖语义入口与高频工具');
-assert.equal(QIANMU_INLINE_GLYPH_COUNT, 135, 'audited subset contains 122 Iconsax, ten familiar actions and three original glyphs');
+assert.equal(QIANMU_INLINE_GLYPH_COUNT, 136, 'audited subset contains 123 Iconsax, ten familiar actions and three original glyphs');
 for(const body of Object.values(ICONSAX_ICON_MARKUP['qianmu-ellipsis'])) {
   assert.equal((body.match(/<circle\b/g)||[]).length,3);
   assert.deepEqual([...body.matchAll(/cy="([\d.]+)"/g)].map(match=>match[1]),['12','12','12'],'more is a horizontal ellipsis in every theme');
 }
-assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 403, 'three default styles, two extra Broken bodies and two dedicated linear-only controls');
+assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 404, 'three default styles, two extra Broken bodies and three dedicated linear-only controls');
 assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, Object.keys(QIANMU_FA_ICON_MAP).length);
 for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使用的 FA 类名 ${name} 必须有确定语义；保留旧映射不要求旧控件仍存在`);
 
 const glyphBody = (markup) => String(markup).match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] || '';
 const semanticName = symbol => symbol.replace(/^qm-(?:duotone|regular|fill|user|signature)-/, '');
 const variantNames = ['outline', 'bold', 'twotone'];
-const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline'};
+const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
 assert.deepEqual(ICONSAX_FIXED_VARIANTS, fixedVariants, 'only explicitly requested actions override appearance families');
 const artwork = (name, variant) => ICONSAX_ICON_MARKUP[name][['refresh-arrow-02','unlimited','share'].includes(name) && variant === 'bold' ? 'outline' : variant];
 const groups = body => [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone|broken)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)]
@@ -88,8 +88,8 @@ for (const name of currentFaNames) {
 }
 
 const semanticSymbols = Object.values(QIANMU_SEMANTIC_ICONS);
-assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 23);
-assert.equal(new Set(semanticSymbols).size, 23, '顶层语义图标不得复用同一签名');
+assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 26);
+assert.equal(new Set(semanticSymbols).size, 26, '顶层语义图标不得复用同一签名');
 for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
   assert.equal(resolveQianmuIcon(semantic), symbol);
   assert.match(symbol, /^qm-signature-/);
@@ -198,7 +198,7 @@ function assertSafeGlyph(body, label) {
   assert.equal(consumed.replace(/\s/g, ''), body.replace(/\s/g, ''), `${label}: no text or malformed markup`);
 }
 for (const [name, variants] of Object.entries(ICONSAX_ICON_MARKUP)) {
-  const expectedVariants = ['tts-play','tts-stop'].includes(name) ? ['outline'] : [...variantNames, ...(['message-notif','record-circle'].includes(name) ? ['broken'] : [])];
+  const expectedVariants = ['tts-play','tts-stop','document-filter'].includes(name) ? ['outline'] : [...variantNames, ...(['message-notif','record-circle'].includes(name) ? ['broken'] : [])];
   assert.deepEqual(Object.keys(variants).sort(), expectedVariants.sort(), `${name}: only requested fixed styles are bundled`);
   for (const [variant, body] of Object.entries(variants)) {
     assertSafeGlyph(body, `${name}/${variant}`);
