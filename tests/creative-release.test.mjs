@@ -5,15 +5,14 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.472';
+const releaseVersion = '1.59.473';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-sources.js'].map(file => [file, releaseVersion]),
-  ['qianmu-font-library-view.js', '1.59.471'],
-  ['qianmu-font-runtime.js', '1.59.468'],
+  ...['qianmu-font-library.js', 'qianmu-font-library-view.js', 'qianmu-font-runtime.js'].map(file => [file, releaseVersion]),
+  ...['qianmu-font-library-state.js', 'qianmu-font-sources.js'].map(file => [file, '1.59.472']),
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
   ['qianmu-director-live.js', '1.59.458'],

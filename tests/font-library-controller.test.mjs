@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createFontLibrary } from '../qianmu-font-library.js';
 import { normalizeFontLibrary } from '../qianmu-font-library-state.js';
 import { createLocalFontRecord, exportFontPack, importFontPack, resolveWebFontSource } from '../qianmu-font-sources.js';
+import { createFontRuntime, fontPreviewFamily } from '../qianmu-font-runtime.js';
 const webFont = { name: 'Web', source: { kind: 'web', input: 'https://font.example/font.woff2', url: 'https://font.example/font.woff2' }, faces: [{ urls: [{ url: 'https://font.example/font.woff2', format: 'woff2' }], weight: '400', style: 'normal' }] };
 function setup(overrides = {}) {
   let owner = {}, active = true, namespace = 'one'; const saves = [], applies = [], binaries = new Map(), downloads = [];
@@ -34,7 +35,7 @@ async function editableSetup(overrides = {}) {
   const f = setup({ document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
     viewFactory: options => { const view = { options, render() {}, setStatus() {}, destroy() {} }; views.push(view); return view; }, ...overrides });
   f.library.attach(root); entry.click(); await waitUntil(() => views.length === 1);
-  return { ...f, get owner() { return f.owner; }, entries: () => views.at(-1).options.getState().entries };
+  return { ...f, views, entry, get owner() { return f.owner; }, entries: () => views.at(-1).options.getState().entries };
 }
 test('Web entries use ordinary settings with references only; adding never applies a font', async () => {
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
@@ -670,4 +671,81 @@ test('a successful closed legacy edit clears only its matching draft including t
   assert.deepEqual(views[1].options.initialSession, { ...snapshot, webSource: '', webName: '', webTags: '', editWebId: '', editWebSourceMissing: false });
   assert.equal(f.owner.fontLibrary.fonts[0].name, '新名字'); assert.deepEqual(f.owner.fontLibrary.fonts[0].faces, webFont.faces);
   f.stop();
+});
+
+test('a UI save returns the reveal before deferred preview loading and does not redraw or sync the old page', async () => {
+  let finish, blocked = false, renders = 0; const held = new Promise(resolve => { finish = resolve; }), syncs = [];
+  const f = await editableSetup({ runtimeFactory: () => ({ family: id => id, dispose() {}, async sync(_state, ids) { syncs.push([...ids]); if (blocked) await held; } }) });
+  const opened = f.views[0]; opened.render = () => { renders++; void opened.options.onVisibleFonts(['old']); };
+  blocked = true; const olderPreview = opened.options.onVisibleFonts(['old']); await waitUntil(() => syncs.some(ids => ids.includes('old'))); const before = syncs.length;
+  let result; const saving = opened.options.onAction({ type: 'add-web', source: webFont.source.input }).then(value => { result = value; });
+  await settle(); assert.equal(f.saves.length, 1); assert.equal(result?.revealFontId, f.owner.fontLibrary.fonts[0].id); assert.equal(renders, 0); assert.equal(syncs.length, before, 'commit does not issue another old-page sync');
+  await saving; finish(); await olderPreview; f.stop();
+});
+
+test('a failed UI save neither redraws nor returns a reveal and leaves the prior settings intact', async () => {
+  let renders = 0; const f = await editableSetup({ save() { throw Error('保存失败'); } }), opened = f.views[0]; opened.render = () => { renders++; };
+  const original = normalizeFontLibrary(); f.owner.fontLibrary = original;
+  await assert.rejects(opened.options.onAction({ type: 'add-web', source: webFont.source.input }), /保存失败/);
+  assert.equal(f.owner.fontLibrary, original); assert.equal(renders, 0); f.stop();
+});
+
+test('a closed in-flight save refreshes only the reopened view without taking over its page or admitting old callbacks', async () => {
+  let finish; const f = await editableSetup({ webResolver: () => new Promise(resolve => { finish = resolve; }) }), old = f.views[0];
+  old.captureSession = () => ({ query: '旧草稿', page: 1, webName: '新草稿', webSource: 'https://font.example/different.woff2' });
+  let oldRenders = 0; old.render = () => { oldRenders++; };
+  const pending = old.options.onAction({ type: 'add-web', name: '已提交', source: webFont.source.input }); await waitUntil(() => finish);
+  old.options.onBack(); f.entry.click(); await waitUntil(() => f.views.length === 2); const newer = f.views[1], session = structuredClone(newer.options.initialSession); let newRenders = 0; newer.render = () => { newRenders++; };
+  finish([webFont]); const result = await pending; assert.ok(result.revealFontId); assert.equal(oldRenders, 0); assert.equal(newRenders, 1); assert.deepEqual(newer.options.initialSession, session);
+  const syncs = f.applies.length; await old.options.onVisibleFonts(['stale']); assert.equal(f.applies.length, syncs); await assert.rejects(old.options.onAction({ type: 'set-enabled', enabled: false }), /已关闭/); f.stop();
+});
+
+async function applicationSetup(load) {
+  const faces = new Set(), notices = [], styles = [], requests = [];
+  class FontFace { constructor(family, source, descriptors) { Object.assign(this, { family, source, descriptors }); } }
+  const document = { baseURI: 'https://st.example/', fonts: { add: face => faces.add(face), delete: face => faces.delete(face), async load(font, sample) { requests.push({ font, sample }); return load ? load(font, sample, faces) : [...faces].filter(face => font.includes(face.family)); } },
+    head: { appendChild(node) { styles.push(node); } }, createElement: () => ({ dataset: {}, textContent: '', setAttribute() {}, remove() { const index = styles.indexOf(this); if (index >= 0) styles.splice(index, 1); } }) };
+  const f = await editableSetup({ document, notify: (message, level) => notices.push({ message, level }), runtimeFactory: options => createFontRuntime({ ...options, FontFace, loadTimeout: 1000 }) });
+  f.owner.fontLibrary = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'a' }, { ...webFont, id: 'b', name: '另一款', source: { kind: 'web', url: 'https://font.example/b.woff2' }, faces: [{ ...webFont.faces[0], urls: [{ url: 'https://font.example/b.woff2', format: 'woff2' }] }] }] });
+  return { ...f, get owner() { return f.owner; }, notices, requests, styles };
+}
+
+test('only explicit real applications notify success once with the exact target, not previews or metadata saves', async () => {
+  const f = await applicationSetup(), opened = f.views[0]; await opened.options.onVisibleFonts(['a']); assert.deepEqual(f.notices, []);
+  for (const [target, label] of [['body', '正文'], ['st', '界面'], ['shared', '全部']]) {
+    await opened.options.onAction({ type: 'apply-font', target, fontId: 'a' }); const before = f.notices.length; assert.equal(before, target === 'body' ? 0 : target === 'st' ? 1 : 2);
+    await opened.options.onVisibleFonts(['a']); assert.deepEqual(f.notices.at(-1), { message: `字体已应用于${label}`, level: 'success' }); await opened.options.onVisibleFonts(['a']); assert.equal(f.notices.length, before + 1);
+  }
+  await opened.options.onAction({ type: 'update-fonts', ids: ['a'], name: '新名称' }); await opened.options.onVisibleFonts(['a']); await opened.options.onAction({ type: 'set-preview', text: '新样字' }); await settle(); assert.equal(f.notices.length, 3);
+  await opened.options.onAction({ type: 'set-enabled', enabled: false }); await opened.options.onVisibleFonts(['a']); await opened.options.onAction({ type: 'apply-font', target: 'st', fontId: 'b' });
+  assert.deepEqual(f.notices.at(-1), { message: '已保存界面字体选择，字体库尚未启用', level: 'info' }); await opened.options.onVisibleFonts(['b']); assert.equal(f.notices.length, 4); f.stop();
+});
+
+test('an application failure remains a warning even when the same font preview subsequently succeeds', async () => {
+  let failed = false; const f = await applicationSetup((font, _sample, faces) => { if (font.includes(fontPreviewFamily('b')) && !failed) { failed = true; throw Error('active face failure'); } return [...faces].filter(face => font.includes(face.family)); }), opened = f.views[0];
+  await opened.options.onAction({ type: 'apply-font', target: 'body', fontId: 'a' }); await opened.options.onVisibleFonts([]); assert.equal(f.notices.length, 1);
+  await opened.options.onAction({ type: 'apply-font', target: 'body', fontId: 'b' }); await opened.options.onVisibleFonts(['b']);
+  assert.deepEqual(f.notices.map(item => item.level), ['success', 'warning']); assert.match(f.notices[1].message, /应用未完成/); assert.equal(f.owner.fontLibrary.body.fontId, 'b'); assert.match(f.styles[0].textContent, new RegExp(fontPreviewFamily('a'))); assert.doesNotMatch(f.styles[0].textContent, new RegExp(fontPreviewFamily('b'))); f.stop();
+});
+
+test('application success is reported before unrelated held previews complete and superseded preview syncs cannot lose or repeat it', async () => {
+  let finish; const hold = new Promise(resolve => { finish = resolve; }); const f = await applicationSetup(async (font, _sample, faces) => { if (font.includes(fontPreviewFamily('b'))) await hold; return [...faces].filter(face => font.includes(face.family)); }), opened = f.views[0];
+  await opened.options.onAction({ type: 'apply-font', target: 'body', fontId: 'a' }); let done = false; const first = opened.options.onVisibleFonts(['b']); const latest = opened.options.onVisibleFonts(['b']).then(() => { done = true; });
+  await waitUntil(() => f.notices.length === 1); assert.equal(done, false); assert.equal(f.notices[0].level, 'success'); finish(); await Promise.all([first, latest]); assert.equal(f.notices.length, 1); f.stop();
+});
+
+test('a later explicit application supersedes a held one without a late success notice', async () => {
+  let finish; const hold = new Promise(resolve => { finish = resolve; }); const f = await applicationSetup(async (font, _sample, faces) => { if (font.includes(fontPreviewFamily('a'))) await hold; return [...faces].filter(face => font.includes(face.family)); }), opened = f.views[0];
+  await opened.options.onAction({ type: 'apply-font', target: 'body', fontId: 'a' }); const older = opened.options.onVisibleFonts([]); await waitUntil(() => f.requests.some(request => request.font.includes(fontPreviewFamily('a'))));
+  await opened.options.onAction({ type: 'apply-font', target: 'st', fontId: 'b' }); const newer = opened.options.onVisibleFonts([]); finish(); await Promise.all([older, newer]);
+  assert.deepEqual(f.notices, [{ message: '字体已应用于界面', level: 'success' }]); f.stop();
+});
+
+test('closing and reopening or changing account discards delayed application notices without reviving the former view', async () => {
+  for (const changeAccount of [false, true]) {
+    let finish; const hold = new Promise(resolve => { finish = resolve; }); const f = await applicationSetup(async (font, _sample, faces) => { await hold; return [...faces].filter(face => font.includes(face.family)); }), opened = f.views[0];
+    await opened.options.onAction({ type: 'apply-font', target: 'body', fontId: 'a' }); const pending = opened.options.onVisibleFonts([]); await waitUntil(() => f.requests.length > 0);
+    opened.options.onBack(); if (changeAccount) f.replace(); f.entry.click(); await waitUntil(() => f.views.length === 2); finish(); await pending; await f.views[1].options.onVisibleFonts([]); assert.deepEqual(f.notices, []);
+    if (changeAccount) assert.deepEqual(f.owner, {}); f.stop();
+  }
 });

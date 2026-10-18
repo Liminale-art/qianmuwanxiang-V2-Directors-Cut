@@ -7,7 +7,7 @@ const state = (patch = {}) => ({ entries: [entry()], mode: 'separate', previewTe
 
 function fixture(initial = state(), action = () => {}, initialSession = {}) {
     const handlers = new Map(), samples = [], statuses = [], applyPickers = [], queries = new Map(), allQueries = new Map(), calls = [], visible = [], attributes = new Map();
-    let html = '', current = structuredClone(initial);
+    let html = '', current = structuredClone(initial), reads = 0;
     function node(selector, fields = {}) {
         const item = { value: '', checked: false, hidden: false, disabled: false, textContent: '', dataset: {}, style: { setProperty(key, value, priority) { this[key] = value; this[key + ':priority'] = priority; } }, classList: { toggle() {} }, setAttribute(key, value) { this[key] = value; }, focus() {}, matches: candidate => candidate === selector, closest: candidate => candidate === selector ? item : null, ...fields };
         queries.set(selector, item); return item;
@@ -16,8 +16,8 @@ function fixture(initial = state(), action = () => {}, initialSession = {}) {
     const root = { get innerHTML() { return html; }, set innerHTML(value) { html = value; samples.length = 0; statuses.length = 0; applyPickers.length = 0; for (const match of value.matchAll(/data-font-sample="([^"]+)"/g)) samples.push(node('[data-font-sample]', { dataset: { fontSample: match[1] } })); for (const match of value.matchAll(/data-font-load-state="([^"]+)"/g)) statuses.push(node('[data-font-load-state]', { dataset: { fontLoadState: match[1] } })); for (const match of value.matchAll(/data-font-apply="([^"]+)"/g)) applyPickers.push(node('[data-font-apply]', { selectedIndex: 0, value: 'body', dataset: { fontApply: match[1] } })); },
         contains: () => true, setAttribute: (key, value) => attributes.set(key, value), querySelector: selector => queries.get(selector) || null,
         querySelectorAll: selector => allQueries.get(selector) || (selector === '[data-font-sample]' ? samples : selector === '[data-font-load-state]' ? statuses : selector === '[data-font-apply]' ? applyPickers : []), addEventListener: (event, handler) => handlers.set(event, handler), removeEventListener: event => handlers.delete(event) };
-    const view = createFontLibraryView({ root, getState: () => current, initialSession, onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
-    return { root, view, calls, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('change')?.({ target: node('[data-font-apply]', { value: target, dataset: { fontApply: id } }) }) };
+    const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
+    return { root, view, calls, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('change')?.({ target: node('[data-font-apply]', { value: target, dataset: { fontApply: id } }) }) };
 }
 
 test('main panel shell uses real inline theme icons and removes the old mode/settings prose', () => {
@@ -50,7 +50,7 @@ test('per-card dropdown has only actual scopes and the relevant ST restore choic
     assert.match(used, /data-applied="true" title="正文"/); assert.doesNotMatch(used, /value="restore-body"|value="restore-st"|应用于/);
     const shared = renderFontLibraryCards(state({ mode: 'shared', shared: { enabled: true, fontId: 'one' } }));
     assert.match(shared, /data-applied="true" title="全部"/); assert.doesNotMatch(shared, /value="restore-body"|restore-shared|取消全部/);
-    const ui = renderFontLibraryCards(state({ st: { enabled: true, fontId: 'one' } })); assert.match(ui, /data-applied="true" title="ST界面"/); assert.match(ui, /value="restore-st">恢复界面/);
+    const ui = renderFontLibraryCards(state({ st: { enabled: true, fontId: 'one' } })); assert.match(ui, /data-applied="true" title="界面"/); assert.match(ui, /value="st">界面/); assert.match(ui, /value="restore-st">恢复界面/); assert.doesNotMatch(ui, /ST界面/);
     assert.doesNotMatch(plain, /<option value=""|>应用<|取消全部/); assert.match(plain, /qm-font-apply-pick" data-applied="false"/); assert.match(shared, /qm-font-apply-pick" data-applied="true"/); assert.doesNotMatch(plain.match(/<div class="qm-font-card-foot">[\s\S]*?<\/div>/)?.[0] || '', /data-font-apply/);
 });
 test('source tags and default-style explanations are gone; only varying styles have a menu', () => {
@@ -81,6 +81,24 @@ test('weight slider preserves continuous variable axes and exact discrete face s
 test('weight choices respect the selected style, not synthetic Cartesian combinations', () => {
     const font = entry('one', { faces: [{ weight: '400', style: 'normal' }, { weight: '700', style: 'italic' }] });
     assert.deepEqual(fontLibraryWeightControl(font, { style: 'normal' }).values, [400]); assert.deepEqual(fontLibraryWeightControl(font, { style: 'italic' }).values, [700]);
+});
+
+test('hundreds of duplicate fragment weights preserve the exact deduplicated ranges, styles and fixed aliases', () => {
+    const unique = [{ weight: '200 900', style: 'normal' }, { weight: 'normal', style: 'normal' }, { weight: 'bold', style: 'normal' }, { weight: '50 100', style: 'normal' }, { weight: '300 500', style: 'italic' }, { weight: '950', style: 'italic' }];
+    const repeated = entry('many', { faces: Array.from({ length: 672 }, (_, index) => ({ ...unique[index % unique.length], unicodeRange: `U+${(0x4e00 + index).toString(16)}` })) }), compact = entry('compact', { faces: unique });
+    for (const current of [{ weight: '563' }, { weight: '75' }, { weight: '950', style: 'italic' }, { weight: '450', style: 'italic' }]) assert.deepEqual(fontLibraryWeightControl(repeated, current), fontLibraryWeightControl(compact, current));
+    const contiguous = entry('672', { faces: Array.from({ length: 672 }, () => ({ weight: '200 900', style: 'normal' })) });
+    assert.equal(fontLibraryWeightControl(contiguous).values.length, 701); assert.equal(fontLibraryWeightControl(contiguous, { weight: '563' }).value, 563);
+});
+
+test('render, sorted reveal and paging use one fresh state snapshot each, not one normalization per card', async () => {
+    const input = state({ entries: Array.from({ length: 12 }, (_, index) => entry(String(index))), pinnedIds: Array.from({ length: 10 }, (_, index) => String(index)) }), f = fixture(input);
+    for (let index = 0; index < 10; index++) attachCard(f, String(index));
+    f.node('[data-font-cards]'); let before = f.reads; f.view.render(); assert.equal(f.reads - before, 1); assert.equal(f.visible.at(-1).ids.length, 10);
+    before = f.reads; assert.equal(f.view.revealFont('11'), true); assert.equal(f.reads - before, 1); assert.equal(f.view.captureSession().page, 1);
+    before = f.reads; await f.click('previous'); assert.equal(f.reads - before, 1);
+    f.setState({ ...input, previewText: '新样字', entries: input.entries.map(font => ({ ...font, name: `最新 ${font.id}` })) });
+    before = f.reads; f.view.render(); assert.equal(f.reads - before, 1); assert.match(f.root.innerHTML, /最新 0/); assert.match(f.root.innerHTML, /新样字/); f.view.destroy();
 });
 test('master enable is the first card, add collapses as a unit and search directly precedes multi-select', () => {
     const html = renderFontLibrary(state()); assert.ok(html.indexOf('data-font-enabled') < html.indexOf('qm-font-web-label'));

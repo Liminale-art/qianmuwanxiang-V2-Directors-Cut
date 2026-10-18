@@ -25,8 +25,7 @@ function fontStyles(entry) {
 function supportedWeights(entry, style) {
     const matching = array(entry?.faces).filter(face => styles(face.style || 'normal') === style);
     const declared = matching.length ? matching.map(face => String(face.weight || '400')) : array(entry?.weights);
-    const values = declared.flatMap(raw => {
-        const value = raw === 'normal' ? '400' : raw === 'bold' ? '700' : String(raw);
+    const values = [...new Set(declared.map(raw => raw === 'normal' ? '400' : raw === 'bold' ? '700' : String(raw)))].flatMap(value => {
         if (!/^\d{1,4}(?: \d{1,4})?$/.test(value)) return [];
         const [first, last = first] = value.split(' ').map(Number);
         if (first < 1 || last > 1000 || last < first) return [];
@@ -51,10 +50,10 @@ function initialChoice(state, entry, draft) { const target = activeTargets(state
 function hasVariants(entry, selected) { return fontStyles(entry).length > 1 || !fontLibraryWeightControl(entry, selected).disabled; }
 function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || (hasVariants(entry, selected) && view.expandedId !== entry.id) ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
 function applyControl(state, entry) {
-    const active = activeTargets(state, entry.id), labels = { body: '正文', st: 'ST界面', shared: '全部' };
+    const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', shared: '全部' };
     const current = active.length > 1 ? '全部' : active.length ? labels[active[0]] : '应用字体';
     const restore = active.includes('st') ? '<option value="restore-st">恢复界面</option>' : '';
-    return `<label class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(current)}">${icon(active.length ? 'font-applied' : 'font-apply')}<select class="qm-font-apply" data-font-apply="${escape(entry.id)}" aria-label="${escape(entry.name)}应用"><option value="body">正文</option><option value="st">ST界面</option><option value="shared">全部</option>${restore}</select></label>`;
+    return `<label class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(current)}">${icon(active.length ? 'font-applied' : 'font-apply')}<select class="qm-font-apply" data-font-apply="${escape(entry.id)}" aria-label="${escape(entry.name)}应用"><option value="body">正文</option><option value="st">界面</option><option value="shared">全部</option>${restore}</select></label>`;
 }
 function variantTools(entry, current) {
     const selected = choice(entry, current), range = fontLibraryWeightControl(entry, selected), available = fontStyles(entry), id = escape(entry.id);
@@ -157,53 +156,53 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     function captureWeb() { if (q('[data-font-web-name]')) webName = q('[data-font-web-name]').value; if (q('[data-font-web-source]')) webSource = q('[data-font-web-source]').value; if (q('[data-font-web-tags]')) webTags = q('[data-font-web-tags]').value; if (q('.qm-font-add')) addOpen = q('.qm-font-add').open; }
     function clearWebDraft({ id = '', name = '', source = '', tags: submittedTags = [] } = {}) { if (disposed) return false; captureWeb(); if (editWebId !== String(id) || webName !== String(name) || webSource !== String(source) || JSON.stringify(parseTags(webTags)) !== JSON.stringify(parseTags(submittedTags))) return false; editWebId = ''; editWebSourceMissing = false; webName = ''; webSource = ''; webTags = ''; for (const selector of ['[data-font-web-name]', '[data-font-web-source]', '[data-font-web-tags]']) { const field = q(selector); if (field) field.value = ''; } return true; }
     function captureSession() { captureWeb(); return { page, query, variants: Object.fromEntries(Object.entries(variants).map(([id, value]) => [id, { ...value }])), previewDraft, previewSizeOverride, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, renameId, renameDraft, scrollTop: Math.max(0, Number(q('.sd-body')?.scrollTop) || 0) }; }
-    function sizeSamples() { const { value } = fontLibraryPreviewSize(state(), viewState()); for (const node of qa('[data-font-sample]')) node.style.setProperty('font-size', `${value}px`, 'important'); }
+    function sizeSamples(current = state()) { const { value } = fontLibraryPreviewSize(current, viewState()); for (const node of qa('[data-font-sample]')) node.style.setProperty('font-size', `${value}px`, 'important'); }
     function previewSize(target) { const range = fontLibraryPreviewSize(state(), viewState()), value = Number(target.value); if (!range.values.includes(value)) return; previewSizeOverride = value; sizeSamples(); }
     function setWebDraft(id, name, source, entryTags = [], missing = false) { editWebId = id; editWebSourceMissing = missing === true; webName = name; webSource = source; webTags = parseTags(entryTags).join(', '); addOpen = true; for (const [selector, value] of [['[data-font-web-name]', webName], ['[data-font-web-source]', webSource], ['[data-font-web-tags]', webTags]]) { const field = q(selector); if (field) field.value = value; } if (q('.qm-font-add')) q('.qm-font-add').open = true; render(); }
     function setBusy(value) { busy = value; root.setAttribute('aria-busy', String(value)); const enabled = q('[data-font-enabled]'); if (enabled) enabled.disabled = value; for (const control of qa('[data-font-local-dialog] input,[data-font-local-dialog] button,[data-font-tag-editor] input,[data-font-tag-editor] button')) control.disabled = value || control.dataset.fontTagUnavailable === 'true'; }
     function cancelLocal() { if (busy || !localUploads.length) return; localUploads = []; render(); q('[data-font-file="local"]')?.focus({ preventScroll: true }); }
-    function samples(notify = true) {
-        const current = state(), ids = [], previewChoices = {};
+    function samples(notify = true, current = state()) {
+        const ids = [], previewChoices = {};
         for (const node of qa('[data-font-sample]')) {
             const id = node.dataset.fontSample, entry = array(current.entries).find(item => item.id === id), variant = initialChoice(current, entry || {}, variants[id]), family = fontFamily(id);
             node.style.setProperty('font-family', typeof family === 'string' ? family : '', 'important'); node.style.setProperty('font-weight', variant.weight, 'important'); node.style.setProperty('font-style', variant.style, 'important');
             ids.push(id); previewChoices[id] = variant;
         }
         for (const node of qa('[data-font-load-state]')) if (loadingStates.has(node.dataset.fontLoadState)) node.textContent = loadingStates.get(node.dataset.fontLoadState);
-        sizeSamples();
+        sizeSamples(current);
         if (notify) try { Promise.resolve(onVisibleFonts?.(ids, previewChoices)).catch(() => { if (!disposed) message('部分字体预览暂未载入。', { error: true }); }); } catch { message('字体预览暂未载入。', { error: true }); }
     }
-    function selection() {
-        const visible = selectFontLibraryPage(state(), viewState()).entries, all = visible.length > 0 && visible.every(entry => selected.has(entry.id)); q('[data-font-action="select-page"]')?.setAttribute('aria-pressed', String(all));
+    function selection(current = state()) {
+        const visible = selectFontLibraryPage(current, viewState()).entries, all = visible.length > 0 && visible.every(entry => selected.has(entry.id)); q('[data-font-action="select-page"]')?.setAttribute('aria-pressed', String(all));
         const count = q('[data-font-selection-count]'); if (count) count.textContent = `已选 ${selected.size}`;
         const manager = q('[data-font-action="manage"]'); if (manager) { manager.setAttribute('aria-expanded', String(managing)); manager.setAttribute('aria-label', managing ? '退出多选' : '多选'); manager.title = managing ? '退出多选' : '多选'; manager.classList.toggle('active', managing); }
         const actions = q('.qm-font-bulk-actions'); if (actions) actions.hidden = !managing;
         for (const action of ['bulk-tags', 'export-selected', 'delete']) { const button = q(`[data-font-action="${action}"]`); if (button) button.disabled = !selected.size; }
         for (const card of qa('.qm-font-card')) {
-            const id = card.dataset.fontId, entry = array(state().entries).find(item => item.id === id);
+            const id = card.dataset.fontId, entry = array(current.entries).find(item => item.id === id);
             card.classList.toggle('is-selecting', managing); card.classList.toggle('is-selected', managing && selected.has(id));
             if (managing) { card.setAttribute('role', 'button'); card.setAttribute('tabindex', '0'); card.setAttribute('aria-label', `选择 ${entry?.name || ''}`); card.setAttribute('aria-pressed', String(selected.has(id))); }
             else for (const attribute of ['role', 'tabindex', 'aria-label', 'aria-pressed']) card.removeAttribute?.(attribute);
             const tools = card.querySelector?.('.qm-font-card-tools'); if (tools) tools.hidden = managing;
-            const rename = card.querySelector?.('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || (entry && hasVariants(entry, initialChoice(state(), entry, variants[id])) && expandedId !== id);
-            const mark = card.querySelector?.('.qm-font-pin-mark'); if (mark && entry) mark.hidden = !managing && (!hasVariants(entry, initialChoice(state(), entry, variants[id])) || expandedId === id);
+            const rename = card.querySelector?.('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || (entry && hasVariants(entry, initialChoice(current, entry, variants[id])) && expandedId !== id);
+            const mark = card.querySelector?.('.qm-font-pin-mark'); if (mark && entry) mark.hidden = !managing && (!hasVariants(entry, initialChoice(current, entry, variants[id])) || expandedId === id);
         }
         for (const picker of qa('[data-font-apply]')) picker.selectedIndex = -1;
         if (!managing || !selected.size) { const editor = q('[data-font-bulk-editor]'); if (editor) editor.hidden = true; bulk = false; if (tagTarget === 'bulk') closeTags(); }
     }
-    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; page = selectFontLibraryPage(state(), viewState()).page; host.innerHTML = renderFontLibraryCards(state(), viewState()); selection(); samples(); }
-    function render() {
+    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; const current = state(); page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); selection(current); samples(true, current); }
+    function render(snapshot) {
         if (disposed) return;
         const scrollTop = rendered ? Number(q('.sd-body')?.scrollTop) || 0 : Number(initialSession?.scrollTop) || 0; captureWeb();
-        const current = state(), liveIds = new Set(array(current.entries).map(entry => entry.id));
+        const current = snapshot || state(), liveIds = new Set(array(current.entries).map(entry => entry.id));
         for (const id of selected) if (!liveIds.has(id)) selected.delete(id);
-        page = selectFontLibraryPage(current, viewState()).page; tagTarget = ''; root.innerHTML = renderFontLibrary(current, viewState()); setBusy(busy); selection(); samples();
+        page = selectFontLibraryPage(current, viewState()).page; tagTarget = ''; root.innerHTML = renderFontLibrary(current, viewState()); setBusy(busy); selection(current); samples(true, current);
         const body = q('.sd-body'); if (body) body.scrollTop = Math.max(0, scrollTop); rendered = true;
     }
     function locateFont(id, { reveal = false } = {}) {
         if (disposed) return false;
-        const index = matchingEntries(state(), { query: reveal ? '' : query }).findIndex(entry => entry.id === id); if (index < 0) return false;
-        if (reveal) { query = ''; selected.clear(); } page = Math.floor(index / FONT_LIBRARY_PAGE_SIZE); render();
+        const current = state(), index = matchingEntries(current, { query: reveal ? '' : query }).findIndex(entry => entry.id === id); if (index < 0) return false;
+        if (reveal) { query = ''; selected.clear(); } page = Math.floor(index / FONT_LIBRARY_PAGE_SIZE); render(current);
         const card = qa('.qm-font-card').find(node => node.dataset.fontId === id), body = q('.sd-body');
         if (card) { card.setAttribute('data-font-revealed', 'true'); if (body && card.getBoundingClientRect && body.getBoundingClientRect) body.scrollTop += card.getBoundingClientRect().top - body.getBoundingClientRect().top - 6; }
         return true;

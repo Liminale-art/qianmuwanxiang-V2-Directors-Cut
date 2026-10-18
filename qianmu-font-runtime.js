@@ -189,6 +189,12 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
   }
   return {
     family: id => slots.get(id)?.family || fontPreviewFamily(id),
+    isApplied(scope, font, selection = {}) {
+      if (disposed || !font || !selection.enabled || selection.fontId !== font.id) return false;
+      const entry = applied.get(scope), slot = slots.get(font.id);
+      return !!entry && entry.slot === slot && entry.id === font.id && slot.signature === JSON.stringify([font.source?.kind, font.faces])
+        && selectedWeight(entry.selection.weight) === selectedWeight(selection.weight) && styleValue(entry.selection.style) === styleValue(selection.style);
+    },
     async verifyWebFont(font, selection, sample) {
       if (disposed || font.source?.kind !== 'web' || !FontFaceClass || !document.fonts?.add) throw new Error('字体暂不可验证，已保留原条目');
       const probe = { family: `${fontPreviewFamily(font.id)}_probe${++revision}`, faces: [], specs: font.faces };
@@ -206,7 +212,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
         if (disposed) throw new Error('字体库已关闭，未覆盖原条目');
       } finally { removeSlot(probe); probes.delete(probe); }
     },
-    async sync(state = {}, previewIds = []) {
+    async sync(state = {}, previewIds = [], { onApplied } = {}) {
       if (disposed) return;
       const turn = ++generation;
       const fonts = new Map((Array.isArray(state.fonts) ? state.fonts : []).filter((font) => typeof font?.id === 'string').map((font) => [font.id, font]));
@@ -246,7 +252,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
           if (!disposed && generation === turn) notify(slot.id, 'error', error?.message || '字体加载失败，已保留原字体');
         }
       }));
-      if (!disposed && generation === turn) paint();
+      if (!disposed && generation === turn) { paint(); try { onApplied?.(); } catch (_) {} }
       await Promise.all(previewIds.filter((id) => pending.has(id)).map(async (id) => {
         const slot = await pending.get(id);
         if (!slot || disposed || generation !== turn) return;

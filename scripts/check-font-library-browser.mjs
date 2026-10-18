@@ -38,7 +38,20 @@ await context.route('**/*', async route => {
 });
 const record = name => checks.push(name);
 const settled = async () => { await page.waitForFunction(() => !document.querySelector('[aria-busy="true"]')); };
-const apply = async (id, target) => { await page.locator(`[data-font-apply="${id}"]`).selectOption(target); await settled(); assert.equal(await page.locator(`[data-font-apply="${id}"]`).evaluate(node => node.selectedIndex), -1, 'Application menu remains action-only, so the same target can be applied again'); };
+const apply = async (id, target) => {
+    const prior = await page.evaluate(() => notifications.length), enabled = await page.evaluate(() => owner.fontLibrary.enabled);
+    await page.locator(`[data-font-apply="${id}"]`).selectOption(target); await settled();
+    await page.waitForFunction(prior => notifications.length > prior, prior);
+    const notices = await page.evaluate(prior => notifications.slice(prior), prior), label = { body: '正文', st: '界面', shared: '全部' }[target];
+    assert.equal(notices.length, 1, 'One explicit application produces exactly one result notice');
+    assert.equal(notices[0].level, enabled ? 'success' : 'info');
+    assert.equal(notices[0].message, enabled ? `字体已应用于${label}` : `已保存${label}字体选择，字体库尚未启用`);
+    if (enabled) {
+        const expected = (await page.locator(`[data-font-sample="${id}"]`).evaluate(node => getComputedStyle(node).fontFamily)).split(',')[0].replaceAll('"', '');
+        for (const key of target === 'shared' ? ['host-prose', 'host-button'] : [target === 'body' ? 'host-prose' : 'host-button']) assert.ok(notices[0].fonts[key].family.includes(expected), 'Success is emitted only after the requested host scope is actually painted');
+    }
+    assert.equal(await page.locator(`[data-font-apply="${id}"]`).evaluate(node => node.selectedIndex), -1, 'Application menu remains action-only, so the same target can be applied again');
+};
 const appliedLabel = id => page.locator(`[data-font-apply="${id}"]`).evaluate(node => node.parentElement.title);
 const visibleIconVariants = locator => locator.evaluate(node => [...node.querySelectorAll('[data-qm-icon-variant]')].filter(icon => getComputedStyle(icon).display !== 'none').map(icon => icon.dataset.qmIconVariant));
 const setPreviewSize = async value => page.locator('[data-font-preview-size]').selectOption(String(value));
@@ -120,7 +133,7 @@ try {
             localStoreFactory: options => { const store = createFontLocalStore(options); window.localStore = store; return { ...store, put: async (...args) => { localWrites.push(args[0]); return store.put(...args); } }; },
             save: () => { saved++; }, download: async (blob, name) => { downloads.push({ name, text: await blob.text() }); }, confirm: async (...args) => { confirmCalls.push(args); return acceptDelete; },
             closePanel: () => closeSyntheticFloor(),
-            notify: message => notifications.push(message), document });
+            notify: (message, level) => notifications.push({ message, level, fonts: hostFonts() }), document });
         window.library = createSyntheticLibrary();
         library.attach(document.getElementById('story-director-floor-nav'));
         window.hostFonts = () => Object.fromEntries(['host-button', 'host-input', 'host-prose', 'host-code', 'host-icon'].map(id => [id, { family: getComputedStyle(document.getElementById(id)).fontFamily, size: getComputedStyle(document.getElementById(id)).fontSize }]));
@@ -195,7 +208,7 @@ try {
     assert.equal(await page.locator('[data-font-preview-size] option:checked').evaluate(node => node.disabled), true, 'The prose-derived 19px initial value is preserved as a non-selectable current value');
     assert.equal(await page.locator('[data-font-sample]').evaluate(node => getComputedStyle(node).fontSize), '19px');
     assert.equal(await page.locator(`[data-font-apply="${webId}"]`).evaluate(node => node.selectedIndex), -1);
-    assert.deepEqual(await page.locator(`[data-font-apply="${webId}"] option`).allTextContents(), ['正文', 'ST界面', '全部']);
+    assert.deepEqual(await page.locator(`[data-font-apply="${webId}"] option`).allTextContents(), ['正文', '界面', '全部']);
     assert.equal(await page.locator('option[value="restore-shared"],.qm-font-apply option[value=""]').count(), 0, 'Application menus have no redundant placeholder or cancel-all item');
     assert.equal(await page.locator('[data-font-action="weight"],[data-font-style]').count(), 0, 'Fixed-weight, single-style fonts have no unusable variant buttons');
     assert.equal(await page.locator('[data-font-action="more"]').count(), 0, 'Fixed-variant fonts expose edit/remove/apply without a redundant more step');
@@ -206,6 +219,7 @@ try {
     assert.deepEqual(await page.evaluate(() => hostFonts()), await page.evaluate(() => before));
     assert.equal(await page.evaluate(() => document.querySelectorAll('[data-qianmu-font-runtime]').length), 0);
     assert.equal(await page.evaluate(() => getComputedStyle(document.body).color), 'rgb(22, 33, 44)');
+    assert.equal(await page.evaluate(() => notifications.filter(item => item.level === 'success').length), 0, 'Adding and previewing fonts cannot imply a successful host application');
     record('Real Web CSS parsing and FontFace list preview leave all host fonts/sizes and external non-font CSS untouched');
     const beforePreviewSizeSave = await page.evaluate(() => saved);
     await setPreviewSize(20);
@@ -271,6 +285,7 @@ try {
     assert.deepEqual(await page.evaluate(() => ({ fonts: owner.fontLibrary.fonts, body: owner.fontLibrary.body, st: owner.fontLibrary.st, shared: owner.fontLibrary.shared })), selectedBeforeDisable);
     assert.equal(await page.locator('[data-font-apply] option[value="restore-body"]').count(), 0, 'Body restore is replaced by the global enable control');
     record('Master off immediately removes host CSS while keeping all records and scope choices; preview and selection stay usable, and enabling restores the chosen scopes');
+    record('Explicit applications notify success once only after actual scope painting; disabled-library selections notify info and list preview never reports application success');
     await setAddOpen(true);
     const beforeLocalSelection = await page.evaluate(() => ({ state: owner.fontLibrary, writes: localWrites.length, saved }));
     await page.locator('[data-font-file="local"]').setInputFiles({ name: 'Local Fixture.ttf', mimeType: 'font/ttf', buffer: bytes }); await settled();
@@ -370,7 +385,7 @@ try {
     const localId = await page.evaluate(() => owner.fontLibrary.fonts.find(font => font.source.kind === 'local').id);
     await apply(webId, 'body'); await apply(localId, 'st');
     assert.equal(await appliedLabel(webId), '正文');
-    assert.equal(await appliedLabel(localId), 'ST界面');
+    assert.equal(await appliedLabel(localId), '界面');
     const independentFonts = await page.evaluate(() => hostFonts());
     assert.ok(independentFonts['host-prose'].family.includes('QianmuFont_') && independentFonts['host-button'].family.includes('QianmuFont_'));
     assert.notEqual(independentFonts['host-prose'].family, independentFonts['host-button'].family);
@@ -593,6 +608,7 @@ try {
     await page.locator('[data-font-library]').click(); await page.locator('[data-font-web-source]').waitFor();
     const invalidPack = structuredClone(packed); delete invalidPack.localFiles[secondLocalId];
     const beforeIncompleteImport = await page.evaluate(() => ({ owner, writes: localWrites.length, saved }));
+    const successBeforeImport = await page.evaluate(() => notifications.filter(item => item.level === 'success').length);
     await page.locator('[data-font-file="import"]').setInputFiles({ name: 'incomplete.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalidPack)) }); await settled();
     assert.deepEqual(await page.evaluate(() => ({ owner, writes: localWrites.length, saved })), beforeIncompleteImport, 'Incomplete import is rejected before any metadata or binary write');
     await page.locator('[data-font-file="import"]').setInputFiles({ name: 'roundtrip.json', mimeType: 'application/json', buffer: Buffer.from(pack) }); await settled();
@@ -611,6 +627,7 @@ try {
     assert.ok(Buffer.from(importedBinaries['B Local 包内记录'], 'base64').equals(bytes));
     assert.ok(Buffer.from(importedBinaries['Z 第二种本地原件'], 'base64').equals(secondBytes));
     assert.equal(await page.evaluate(() => owner.fontLibrary.body.enabled || owner.fontLibrary.st.enabled || owner.fontLibrary.shared.enabled), false);
+    assert.equal(await page.evaluate(() => notifications.filter(item => item.level === 'success').length), successBeforeImport, 'Package import previews records but must not emit host-application success');
     await page.locator(`[data-font-action="delete-one"][data-font-id="${secondLocalId}"]`).click(); await settled();
     await page.evaluate(async () => { for (const [oldName, name] of [['A Web 包内记录', 'Web 样本·已编辑'], ['B Local 包内记录', 'Local 已改名']]) { const font = owner.fontLibrary.fonts.find(item => item.name === oldName); await library.action('update-fonts', { ids: [font.id], name }); } });
     assert.equal(await page.locator('[data-font-sample]').count(), 2);

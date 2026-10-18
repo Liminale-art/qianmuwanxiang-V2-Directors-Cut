@@ -24,6 +24,49 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('actual application verification requires the exact current source, scope and selected variant', async () => {
+  let reject = false; const f = fixture({ load: async () => { if (reject) throw Error('new source failed'); return [{}]; } });
+  const font = web('exact', { weight: '200 900' }), selected = choice('exact', { weight: 600 });
+  await f.runtime.sync(state([font], { body: selected }));
+  assert.equal(f.runtime.isApplied('body', font, selected), true);
+  assert.equal(f.runtime.isApplied('body', font, { ...selected, weight: '600' }), true);
+  assert.equal(f.runtime.isApplied('st', font, selected), false);
+  assert.equal(f.runtime.isApplied('body', font, { ...selected, weight: 700 }), false);
+  assert.equal(f.runtime.isApplied('body', font, { ...selected, style: 'italic' }), false);
+  assert.equal(f.runtime.isApplied('body', font, { ...selected, fontId: 'another' }), false);
+  assert.equal(f.runtime.isApplied('body', font, { ...selected, enabled: false }), false);
+  assert.equal(f.runtime.isApplied('body', { ...font, source: { kind: 'local' } }, selected), false);
+  const replacement = web('exact', { weight: '200 900', urls: [{ url: 'https://fonts.example/replaced.woff2' }] }), before = f.css();
+  assert.equal(f.runtime.isApplied('body', replacement, selected), false);
+  reject = true; await f.runtime.sync(state([replacement], { body: selected }));
+  assert.equal(f.css(), before, 'failed replacement retains the real former application');
+  assert.equal(f.runtime.isApplied('body', replacement, selected), false, 'same ID does not make a failed new source applied');
+  reject = false; await f.runtime.sync(state([replacement], { body: selected }));
+  assert.equal(f.runtime.isApplied('body', replacement, selected), true);
+  assert.equal(f.runtime.isApplied('body', font, selected), false);
+  await f.runtime.sync(state([replacement], { enabled: false, body: selected })); assert.equal(f.runtime.isApplied('body', replacement, selected), false);
+  f.runtime.dispose(); assert.equal(f.runtime.isApplied('body', replacement, selected), false);
+});
+
+test('application completion follows actual paint and precedes unrelated preview completion', async () => {
+  let release, previewStarted = false; const hold = new Promise(resolve => { release = resolve; });
+  const f = fixture({ load: async font => { if (font.includes(fontPreviewFamily('preview'))) { previewStarted = true; await hold; } return [{}]; } });
+  const active = web('active'), selected = choice('active'); let callbacks = 0, done = false;
+  const pending = f.runtime.sync(state([active, web('preview')], { body: selected }), ['preview'], { onApplied() { callbacks++; assert.match(f.css(), new RegExp(fontPreviewFamily('active'))); assert.equal(f.runtime.isApplied('body', active, selected), true); } }).then(() => { done = true; });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(callbacks, 1); assert.equal(previewStarted, true); assert.equal(done, false);
+  release(); await pending; assert.equal(callbacks, 1); f.runtime.dispose();
+});
+
+test('superseded and disposed application generations never invoke their completion callbacks', async () => {
+  for (const dispose of [false, true]) {
+    let release; const hold = new Promise(resolve => { release = resolve; }), f = fixture({ load: async () => { await hold; return [{}]; } });
+    let older = 0, newer = 0; const pending = f.runtime.sync(state([web()], { body: choice('web1') }), [], { onApplied: () => older++ });
+    await new Promise(resolve => setImmediate(resolve));
+    if (dispose) f.runtime.dispose(); else await f.runtime.sync(state([], { enabled: false }), [], { onApplied: () => newer++ });
+    release(); await pending; assert.equal(older, 0); assert.equal(newer, dispose ? 0 : 1); assert.equal(f.css(), ''); f.runtime.dispose();
+  }
+});
+
 test('Web replacement verification is temporary and cannot change the applied face or catalogue slot', async () => {
   const f = fixture(); await f.runtime.sync(state([web()], { body: choice('web1') }));
   const css = f.css(), family = f.runtime.family('web1'), registered = [...f.faces], statuses = f.statuses.length;
