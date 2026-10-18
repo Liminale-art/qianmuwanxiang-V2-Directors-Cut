@@ -67,11 +67,21 @@ const tagPanelFits = async key => tagPanel(key).evaluate(node => {
         chipsFit: [...node.querySelectorAll('button')].every(chip => chip.getBoundingClientRect().right <= rect.right + 1 && chip.scrollWidth <= chip.clientWidth + 1) };
 });
 const cardFor = id => page.locator(`.qm-font-card[data-font-id="${id}"]`);
+const renameGeometry = id => page.locator(`[data-font-rename-pop="${id}"]`).evaluate(node => {
+    const cardNode = node.closest('.qm-font-card'), rect = node.getBoundingClientRect(), host = node.closest('.sd-body').getBoundingClientRect(), card = cardNode.getBoundingClientRect(), next = cardNode.nextElementSibling?.getBoundingClientRect();
+    const point = (x, y) => ({ x, y, hit: node.contains(document.elementFromPoint(x, y)) });
+    return { visible: rect.left >= host.left && rect.right <= host.right && rect.top >= host.top && rect.bottom <= host.bottom,
+        bounds: { popup: rect.toJSON(), viewport: host.toJSON() },
+        contained: rect.left >= card.left && rect.right <= card.right && rect.top >= card.top && rect.bottom <= card.bottom,
+        nextCardClear: !next || next.top >= card.bottom, bottom: point(rect.left + rect.width / 2, rect.bottom - 2),
+        actions: [...node.querySelectorAll('[data-font-action="rename-save"],[data-font-action="rename-cancel"]')].map(button => { const bounds = button.getBoundingClientRect(), x = bounds.left + bounds.width / 2, y = bounds.top + bounds.height / 2; return { action: button.dataset.fontAction, x, y, hit: button.contains(document.elementFromPoint(x, y)) }; }) };
+});
 const setSelected = async (id, selected) => { if ((await cardFor(id).getAttribute('aria-pressed') === 'true') !== selected) await cardFor(id).locator('.qm-font-name strong').click(); assert.equal(await cardFor(id).getAttribute('aria-pressed'), String(selected)); };
 const orderedFonts = state => {
     const pinned = new Map((state.pinnedIds || []).map((id, index) => [id, index])), compare = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' }).compare;
     return state.fonts.map((font, index) => ({ ...font, insertion: index })).sort((a, b) => {
         if (pinned.has(a.id) || pinned.has(b.id)) return (pinned.get(a.id) ?? Infinity) - (pinned.get(b.id) ?? Infinity);
+        if (state.sortBy === 'added') return (state.sortOrder === 'desc' ? -1 : 1) * (a.insertion - b.insertion);
         return (state.sortOrder === 'desc' ? -1 : 1) * compare(a.name, b.name) || a.insertion - b.insertion;
     });
 };
@@ -112,7 +122,7 @@ try {
         const { createFontLibraryView } = await import('./qianmu-font-library-view.js');
         const { createQianmuAppearanceSession } = await import('./qianmu-appearance-session.js');
         const { updateAppearancePreferences } = await import('./qianmu-appearance-settings.js');
-        window.saved = 0; window.downloads = []; window.notifications = []; window.localWrites = []; window.confirmCalls = []; window.acceptDelete = true; window.prosePreviewSize = 19;
+        window.saved = 0; window.downloads = []; window.notifications = []; window.localWrites = []; window.confirmCalls = []; window.acceptDelete = true; window.prosePreviewSize = 19; window.rejectNextFontSave = false;
         window.owner = {};
         document.body.classList.add('sd-prose-layout');
         document.body.innerHTML = '<aside id="host"><button id="host-button">ST 界面</button><input id="host-input" value="ST 输入"><i id="host-icon" class="fa-solid">★</i><strong id="host-strong">标题</strong></aside><div id="chat"><div class="mes"><div class="mes_text"><p id="host-prose">正文 ABC <em id="host-em">斜体</em><strong id="host-bold">粗体</strong></p><code id="host-code">const x = 1;</code></div></div></div><div id="story-director-modal"><section class="sd-window"><header class="sd-header"><h2 id="main-title">千幕</h2></header></section></div><div id="story-director-floor-nav"><div class="sd-floor-shell"><section class="sd-floor-panel"><header><div><h3>楼层工具</h3><p>共 12 层</p></div><button type="button" class="sd-floor-close">×</button></header><nav class="sd-floor-tabs"><button>楼层跳转</button><button>正文排版</button></nav><section class="sd-floor-view"><div class="qm-font-entry"><small data-font-library-summary>当前：原生字体</small><button data-font-library>字体库</button></div><p>原排版控件</p></section></section></div></div>';
@@ -131,7 +141,7 @@ try {
             getPreviewFontSize: () => prosePreviewSize,
             viewFactory: options => createFontLibraryView({ ...options, initialSession: { folder: '旧会话隐藏分类', tags: ['失效标签筛选'], ...options.initialSession } }),
             localStoreFactory: options => { const store = createFontLocalStore(options); window.localStore = store; return { ...store, put: async (...args) => { localWrites.push(args[0]); return store.put(...args); } }; },
-            save: () => { saved++; }, download: async (blob, name) => { downloads.push({ name, text: await blob.text() }); }, confirm: async (...args) => { confirmCalls.push(args); return acceptDelete; },
+            save: () => { if (rejectNextFontSave) { rejectNextFontSave = false; throw new Error('Synthetic font settings save rejected'); } saved++; }, download: async (blob, name) => { downloads.push({ name, text: await blob.text() }); }, confirm: async (...args) => { confirmCalls.push(args); return acceptDelete; },
             closePanel: () => closeSyntheticFloor(),
             notify: (message, level) => notifications.push({ message, level, fonts: hostFonts() }), document });
         window.library = createSyntheticLibrary();
@@ -153,6 +163,7 @@ try {
     assert.equal(await page.locator('[data-font-action="close"]').count(), 0);
     assert.equal(await page.locator('.qm-font-header').evaluate(node => node.lastElementChild.matches('[data-font-action="back"]')), true, 'Only the trailing return action remains in the header');
     assert.equal(await page.locator('[data-font-enabled]').isChecked(), true, 'Old active assignments remain enabled by default');
+    assert.deepEqual(await page.locator('[data-font-sort-order] option').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])), [['asc', '名称正序'], ['desc', '名称倒序'], ['added-asc', '添加时间正序'], ['added-desc', '添加时间倒序']]);
     assert.equal(await page.locator('details.qm-font-add').evaluate(node => node.open), true, 'An empty catalogue initially expands its combined add-font card');
     assert.equal(await page.locator('details.qm-font-add summary').textContent(), '添加字体');
     assert.equal(await page.locator('details.qm-font-add .qm-font-imports').count(), 1, 'Web and file actions share one collapsible add card');
@@ -531,20 +542,76 @@ try {
     assert.deepEqual(afterLegacyEdit, { ...beforeLegacyEdit, name: '旧档只改名称', tags: ['旧档', '全角', '半角'] }, 'A blank legacy source edit preserves all original faces while changing only requested metadata');
     await page.locator(`[data-font-action="delete-one"][data-font-id="${legacyId}"]`).click(); await settled();
     record('Web editing retains concise original references across updates; old segmented records without references allow blank-source metadata edits without losing faces');
-    const beforeRename = await page.evaluate(() => owner.fontLibrary);
+    const beforeCompactRename = await page.evaluate(() => owner.fontLibrary), previousPreviewSize = await page.locator('[data-font-preview-size]').inputValue();
+    await page.evaluate(async id => library.action('update-fonts', { ids: [id], tags: [] }), localId);
+    await page.locator('[data-font-preview]').fill('Aa'); await page.locator('[data-font-preview]').dispatchEvent('change'); await settled(); await setPreviewSize(12);
+    await setAddOpen(false); await page.setViewportSize({ width: 320, height: 650 });
+    for (const family of ['classic', 'editorial', 'glass']) for (const mode of ['light', 'dark']) {
+        await page.evaluate(async ({ family, mode }) => setTheme(family, mode), { family, mode });
+        for (const order of ['asc', 'desc']) {
+            await page.locator('[data-font-sort-order]').selectOption(order); await settled();
+            assert.equal(await page.locator('.qm-font-card').nth(order === 'asc' ? 0 : 1).getAttribute('data-font-id'), localId, 'Compact local fixture covers both a following-card neighbor and the final list position');
+            const beforeDraft = await page.evaluate(() => owner.fontLibrary);
+            await cardFor(localId).locator('[data-font-action="edit"]').click();
+            let geometry = await renameGeometry(localId);
+            assert.equal(geometry.visible, true, `${family}/${mode}/${order}: the entire rename panel is visible inside the scroll viewport: ${JSON.stringify(geometry.bounds)}`);
+            assert.equal(geometry.contained, true, 'The expanded name/tag editor is contained in its own card rather than overlapping a neighboring card');
+            assert.equal(geometry.nextCardClear, true, 'A following card remains below the expanded editor card');
+            assert.equal(geometry.bottom.hit, true, `${family}/${mode}/${order}: the popup bottom is not clipped or covered by the next card`);
+            assert.ok(geometry.actions.length === 2 && geometry.actions.every(action => action.hit), `${family}/${mode}/${order}: save and cancel receive actual pointer hits`);
+            await tagToggle(`rename-${localId}`).click();
+            geometry = await renameGeometry(localId);
+            assert.equal(geometry.visible, true, `${family}/${mode}/${order}: opening reusable tags keeps the whole editor visible without test scrolling`);
+            assert.equal(geometry.contained && geometry.nextCardClear && geometry.actions.every(action => action.hit), true);
+            assert.equal((await tagPanelFits(`rename-${localId}`)).fits, true);
+            if (order === 'asc') await page.screenshot({ path: fileURLToPath(new URL(`local-rename-${family}-${mode}.png`, qa)) });
+            await page.keyboard.press('Escape');
+            assert.equal(await tagPanel(`rename-${localId}`).isVisible(), false, 'Escape dismisses reusable tags before closing the local editor');
+            assert.equal(await page.locator(`[data-font-rename-pop="${localId}"]`).isVisible(), true);
+            const saving = family === 'glass' && mode === 'dark' && order === 'desc';
+            await page.locator(`[data-font-rename="${localId}"]`).fill(saving ? beforeDraft.fonts.find(font => font.id === localId).name : '取消草稿不写入');
+            geometry = await renameGeometry(localId);
+            const action = geometry.actions.find(action => action.action === (saving ? 'rename-save' : 'rename-cancel'));
+            await page.mouse.click(action.x, action.y); await settled();
+            assert.equal(await page.locator(`[data-font-rename-pop="${localId}"]`).isVisible(), false);
+            assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeDraft, 'Cancelling or saving the unchanged name never alters original font metadata or assignments');
+        }
+    }
+    await page.evaluate(async ({ id, tags }) => library.action('update-fonts', { ids: [id], tags }), { id: localId, tags: beforeCompactRename.fonts.find(font => font.id === localId).tags });
+    await page.locator('[data-font-preview]').fill(beforeCompactRename.previewText); await page.locator('[data-font-preview]').dispatchEvent('change'); await settled();
+    await setPreviewSize(previousPreviewSize); await page.locator('[data-font-sort-order]').selectOption('asc'); await settled();
+    await page.setViewportSize({ width: 393, height: 850 }); await page.evaluate(async () => setTheme('classic', 'light'));
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeCompactRename);
+    assert.deepEqual(Buffer.from(await page.evaluate(async id => [...new Uint8Array(await (await localStore.get(id)).arrayBuffer())], localId)), bytes);
+    record('At 320px all themes expand local name/tag editors inside their own card; first and last items and reusable tags remain fully visible without test scrolling, and real save/cancel hits preserve originals');
+    const beforeRename = await page.evaluate(() => owner.fontLibrary), beforeRenameWrites = await page.evaluate(() => ({ saved, localWrites: [...localWrites] }));
     await page.locator(`[data-font-action="edit"][data-font-id="${localId}"]`).click();
     assert.equal(await page.locator(`[data-font-rename-pop="${localId}"]`).isVisible(), true);
     await page.locator(`[data-font-rename="${localId}"]`).fill('未保存的本地改名');
+    await page.locator(`[data-font-rename-tags="${localId}"]`).fill('手输,全角，半角');
+    await tagToggle(`rename-${localId}`).click(); await tagChip(`rename-${localId}`, '中文').click();
+    assert.deepEqual(await parsedTags(page.locator(`[data-font-rename-tags="${localId}"]`)), ['手输', '全角', '半角', '中文']);
+    assert.equal(await tagChip(`rename-${localId}`, '中文').getAttribute('aria-pressed'), 'true');
     await page.locator(`[data-font-action="rename-cancel"][data-font-id="${localId}"]`).click();
     assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeRename);
+    assert.deepEqual(await page.evaluate(() => ({ saved, localWrites: [...localWrites] })), beforeRenameWrites);
     await page.locator(`[data-font-action="edit"][data-font-id="${localId}"]`).click();
     await page.locator(`[data-font-rename="${localId}"]`).fill('Local 已改名');
+    await page.locator(`[data-font-rename-tags="${localId}"]`).fill('本地,续改，中文,续改');
+    await page.evaluate(() => { rejectNextFontSave = true; });
+    await page.locator(`[data-font-action="rename-save"][data-font-id="${localId}"]`).click(); await settled();
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary), beforeRename, 'A failed local metadata save preserves original records and assignments');
+    assert.equal(await page.locator(`[data-font-rename="${localId}"]`).inputValue(), 'Local 已改名');
+    assert.equal(await page.locator(`[data-font-rename-tags="${localId}"]`).inputValue(), '本地,续改，中文,续改');
     await page.locator(`[data-font-action="rename-save"][data-font-id="${localId}"]`).click(); await settled();
     const afterRename = await page.evaluate(() => owner.fontLibrary), renamed = afterRename.fonts.find(font => font.id === localId), originalLocal = beforeRename.fonts.find(font => font.id === localId);
-    assert.deepEqual({ ...renamed, name: originalLocal.name }, originalLocal);
+    assert.deepEqual({ ...renamed, name: originalLocal.name, tags: originalLocal.tags }, originalLocal);
     assert.equal(renamed.name, 'Local 已改名');
+    assert.deepEqual(renamed.tags, ['本地', '续改', '中文']);
     assert.deepEqual([afterRename.body, afterRename.st, afterRename.shared], [beforeRename.body, beforeRename.st, beforeRename.shared]);
-    record('Local name editing uses a small cancellable panel and changes only the name, not identity, source metadata or applied choices');
+    assert.deepEqual(await page.evaluate(() => localWrites), beforeRenameWrites.localWrites, 'Editing local metadata never rewrites the stored original binary');
+    assert.deepEqual(Buffer.from(await page.evaluate(async id => [...new Uint8Array(await (await localStore.get(id)).arrayBuffer())], localId)), bytes);
+    record('Local editing supports reusable/mixed-comma tags, cancels without writes, retains drafts on failure, and saves only name/tags while preserving identity, applied choices and original bytes');
     await page.evaluate(async ({ webId, localId }) => {
         await library.action('update-fonts', { ids: [webId], name: 'A Web 包内记录' });
         await library.action('update-fonts', { ids: [localId], name: 'B Local 包内记录' });
@@ -854,8 +921,17 @@ try {
     const crossPageId = orderedFonts(await page.evaluate(() => owner.fontLibrary)).at(-1).id;
     await showFont(crossPageId); await setSelected(crossPageId, true);
     assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
-    await page.locator('[data-font-sort-order]').selectOption('asc'); await settled();
-    for (const id of [...pinIds, crossPageId]) { await showFont(id); assert.equal(await cardFor(id).getAttribute('aria-pressed'), 'true', 'Sorting does not lose managed selections across pages'); }
+    for (const mode of ['asc', 'desc', 'added-asc', 'added-desc']) {
+        await page.locator('[data-font-sort-order]').selectOption(mode); await settled();
+        const state = await page.evaluate(() => owner.fontLibrary), sorted = orderedFonts(state);
+        assert.equal(state.sortBy, mode.startsWith('added-') ? 'added' : 'name');
+        assert.equal(state.sortOrder, mode.endsWith('desc') ? 'desc' : 'asc');
+        assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId)), sorted.slice(0, 10).map(font => font.id), `${mode}: ordering is applied before ten-card pagination`);
+        assert.deepEqual(sorted.slice(0, 2).map(font => font.id), [pinIds[1], pinIds[0]], `${mode}: pinned entries retain pin-time order`);
+        await cataloguePage(1);
+        assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId)), sorted.slice(10).map(font => font.id));
+        for (const id of [...pinIds, crossPageId]) { await showFont(id); assert.equal(await cardFor(id).getAttribute('aria-pressed'), 'true', `${mode}: sorting does not lose managed selections across pages`); }
+    }
     await page.locator('[data-font-sort-order]').selectOption('desc'); await settled();
     assert.match(await page.locator('[data-font-selection-count]').textContent(), /3/);
     await page.locator('[data-font-action="manage"]').click();
@@ -867,6 +943,46 @@ try {
     assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'desc', 'Sorting restores from persisted settings in a fresh view instance');
     assert.deepEqual(await page.evaluate(() => owner.fontLibrary.pinnedIds), [pinIds[1], pinIds[0]]);
     assert.deepEqual(await page.evaluate(() => ({ fonts: owner.fontLibrary.fonts, enabled: owner.fontLibrary.enabled, body: owner.fontLibrary.body, st: owner.fontLibrary.st, shared: owner.fontLibrary.shared })), beforeOrdering, 'Pins and sorting never rewrite font records, original sources or application choices');
+    for (const mode of ['added-asc', 'added-desc']) {
+        await page.locator('[data-font-sort-order]').selectOption(mode); await settled();
+        const name = mode === 'added-asc' ? 'AAA 最新添加' : 'ZZZ 最新添加';
+        await setAddOpen(true); await page.locator('[data-font-web-name]').fill(name); await page.locator('[data-font-web-source]').fill(`https://fonts.test/${mode}.ttf`);
+        await page.locator('[data-font-action="add-web"]').click(); await settled();
+        const state = await page.evaluate(() => owner.fontLibrary), added = state.fonts.at(-1), sorted = orderedFonts(state);
+        assert.equal(added.name, name, 'New records append to the persistent array independently of display order');
+        const index = sorted.findIndex(font => font.id === added.id);
+        assert.equal(index, mode === 'added-asc' ? state.fonts.length - 1 : state.pinnedIds.length);
+        assert.equal(await cardFor(added.id).getAttribute('data-font-revealed'), 'true');
+        assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId)), sorted.slice(Math.floor(index / 10) * 10, Math.floor(index / 10) * 10 + 10).map(font => font.id), `${mode}: new-font reveal locates the added-order page`);
+    }
+    const beforeAddedRename = await page.evaluate(() => owner.fontLibrary), latestAdded = beforeAddedRename.fonts.at(-1);
+    await cardFor(latestAdded.id).locator('[data-font-action="edit"]').click();
+    await page.locator('[data-font-web-name]').fill('A 改名但不改变添加顺序');
+    await page.locator('[data-font-action="add-web"]').click(); await settled();
+    const afterAddedRename = await page.evaluate(() => owner.fontLibrary);
+    assert.deepEqual(afterAddedRename.fonts.map(font => font.id), beforeAddedRename.fonts.map(font => font.id));
+    assert.deepEqual({ ...afterAddedRename.fonts.at(-1), name: latestAdded.name }, latestAdded);
+    assert.equal(await page.locator('.qm-font-card').nth(afterAddedRename.pinnedIds.length).getAttribute('data-font-id'), latestAdded.id, 'Editing a name does not move an entry in added-desc ordering');
+    const beforeFailedSort = await page.evaluate(() => ({ state: owner.fontLibrary, saved, page: document.querySelector('.qm-font-pagination>span').textContent }));
+    const beforeFailedSortIds = await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId));
+    await page.evaluate(() => { rejectNextFontSave = true; });
+    await page.locator('[data-font-sort-order]').selectOption('asc'); await settled();
+    assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'added-desc', 'A rejected preference save restores both the prior criterion and direction');
+    assert.deepEqual(await page.evaluate(() => ({ state: owner.fontLibrary, saved, page: document.querySelector('.qm-font-pagination>span').textContent })), beforeFailedSort);
+    assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId)), beforeFailedSortIds);
+    await page.locator('[data-font-sort-order]').selectOption('added-asc'); await settled();
+    assert.equal(await page.evaluate(() => owner.fontLibrary.sortBy), 'added');
+    assert.equal(await page.evaluate(() => owner.fontLibrary.sortOrder), 'asc');
+    record('A failed sort-preference save restores the previous combined option, records and page; retry changes the intended criterion/direction only');
+    await page.locator('[data-font-sort-order]').selectOption('added-desc'); await settled();
+    await page.locator('[data-font-action="back"]').click(); await page.locator('[data-font-library]').click(); await page.locator('[data-font-sort-order]').waitFor();
+    assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'added-desc');
+    await page.evaluate(() => { library.dispose(); library = createSyntheticLibrary(); library.attach(document.getElementById('story-director-floor-nav')); });
+    await page.locator('[data-font-library]').click(); await page.locator('[data-font-sort-order]').waitFor();
+    assert.equal(await page.locator('[data-font-sort-order]').inputValue(), 'added-desc');
+    assert.deepEqual(await page.locator('.qm-font-card').evaluateAll(nodes => nodes.map(node => node.dataset.fontId)), orderedFonts(await page.evaluate(() => owner.fontLibrary)).slice(0, 10).map(font => font.id));
+    assert.deepEqual(await page.evaluate(() => owner.fontLibrary.fonts), afterAddedRename.fonts, 'Reopening preserves append order without fabricating timestamps or rewriting existing metadata');
+    record('Name/added-order each support ascending and descending, preserve pins and cross-page selection, restore on reopen, and reveal new entries in the correct page without moving edited entries');
     for (const id of [...pinIds].reverse()) { await showFont(id); await cardFor(id).locator('[data-font-action="pin"]').click(); await settled(); }
     await page.locator('[data-font-sort-order]').selectOption('asc'); await settled(); await setPreviewSize(20);
     record('Multiple pins retain pin-time order across name sorting, filtering and reopen; unpin/re-pin is stable and sorting preserves managed selections without rewriting font data');

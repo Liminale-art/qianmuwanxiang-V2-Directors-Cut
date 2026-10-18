@@ -1,7 +1,7 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.472';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.474';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.472';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.473';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.473';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.474';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.474';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
 function fontInputName(value) {
@@ -219,7 +219,9 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         if (!originView || originView !== viewIdentity) view?.clearWebDraft?.(payload);
       }
       if (type === 'update-fonts' && typeof payload.name === 'string' && payload.ids?.length === 1 && viewSession?.renameId === payload.ids[0] && viewSession.renameDraft === payload.name) {
-        viewSession = { ...viewSession, renameId: '', renameDraft: '' };
+        const draft = viewSession.renameTags, tags = payload.tags ?? next.fonts.find(font => font.id === payload.ids[0])?.tags ?? [];
+        const sameTags = (payload.tags === undefined && draft === undefined) || (typeof draft === 'string' && (draft === tags.join(', ') || JSON.stringify([...new Set(draft.split(/[,，]/).map(value => value.trim()).filter(Boolean))]) === JSON.stringify(tags)));
+        if (sameTags) viewSession = { ...viewSession, renameId: '', renameDraft: '', renameTags: '' };
       }
       if (type === 'delete-fonts' || type === 'delete-font') {
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));

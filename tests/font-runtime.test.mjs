@@ -24,6 +24,36 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('chat composer belongs only to the body assignment without introducing size or placeholder overrides', () => {
+  const body = fontScopeCss('body', fontPreviewFamily('body-font'), { weight: '700', style: 'italic' });
+  const st = fontScopeCss('st', fontPreviewFamily('ui-font'));
+  assert.match(body, /textarea#send_textarea,\n#chat /);
+  assert.match(body, /font-weight:700 !important; font-style:italic !important;/);
+  assert.match(st, /:not\(:is\(textarea#send_textarea,/);
+  assert.ok(st.includes(':not(:has(textarea#send_textarea, .mes_text,'), 'the interface must not change composer ancestors either');
+  assert.ok(st.includes('button, input, textarea, select'), 'other host controls remain in the interface scope');
+  for (const css of [body, st]) assert.doesNotMatch(css, /font-size:|line-height:|::placeholder/);
+});
+
+test('composer body rules share failure retention, restore, shared selection and master disable semantics', async () => {
+  const f = fixture({ load: async request => { if (request.includes(fontPreviewFamily('bad'))) throw Error('unavailable'); return [{}]; } });
+  const fonts = [web('body-font'), web('ui-font'), web('bad')], body = choice('body-font', { weight: '700', style: 'italic' }), st = choice('ui-font');
+  await f.runtime.sync(state(fonts, { body, st }));
+  const applied = f.css();
+  assert.ok(applied.startsWith(fontScopeCss('body', f.runtime.family('body-font'), body)));
+  assert.match(applied, /textarea#send_textarea,\n#chat /);
+  await f.runtime.sync(state(fonts, { body: choice('bad'), st }));
+  assert.equal(f.css(), applied, 'failed body replacement leaves both prose and composer on their previous font');
+  await f.runtime.sync(state(fonts, { st }));
+  assert.equal(f.css(), fontScopeCss('st', f.runtime.family('ui-font'), st), 'no body assignment leaves no composer override');
+  const shared = choice('ui-font');
+  await f.runtime.sync({ ...state(fonts), mode: 'shared', shared });
+  assert.equal(f.css(), [fontScopeCss('body', f.runtime.family('ui-font'), shared), fontScopeCss('st', f.runtime.family('ui-font'), shared)].join('\n'));
+  await f.runtime.sync({ ...state(fonts), enabled: false, mode: 'shared', shared }); assert.equal(f.css(), '');
+  await f.runtime.sync(state(fonts, { body })); assert.match(f.css(), /textarea#send_textarea,\n#chat /);
+  f.runtime.dispose(); assert.equal(f.css(), '');
+});
+
 test('actual application verification requires the exact current source, scope and selected variant', async () => {
   let reject = false; const f = fixture({ load: async () => { if (reject) throw Error('new source failed'); return [{}]; } });
   const font = web('exact', { weight: '200 900' }), selected = choice('exact', { weight: 600 });
@@ -290,7 +320,7 @@ test('unsafe URL/CSS inputs cannot insert stylesheet rules or broaden invalid su
 
 test('ST scope explicitly excludes message/rich prose, icons, code, Qianmu and their ancestors', () => {
   const css = fontScopeCss('st', fontPreviewFamily('sample'));
-  for (const part of ['.mes_text *', 'pre *', 'code *', '[class*="fa-"]', '[class*="icon"]', '[id^="story-director-"]', ':not(:has(.mes_text', '[data-sd-prose-exempt]']) assert.ok(css.includes(part), part);
+  for (const part of ['.mes_text *', 'pre *', 'code *', '[class*="fa-"]', '[class*="icon"]', '[id^="story-director-"]', ':not(:has(textarea#send_textarea, .mes_text', '[data-sd-prose-exempt]']) assert.ok(css.includes(part), part);
   assert.doesNotMatch(css, /html body\s*\{/);
   assert.ok(css.includes(':not(html):not(body)'), 'body-level Qianmu state classes must not exempt every ST descendant');
   const prose = fontScopeCss('body', fontPreviewFamily('sample'));

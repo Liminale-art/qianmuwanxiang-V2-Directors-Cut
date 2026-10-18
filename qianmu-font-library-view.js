@@ -11,6 +11,8 @@ const styleLabel = value => ({ normal: '常规', italic: '斜体', oblique: '倾
 const options = (values, selected, label = value => value) => values.map(value => `<option value="${escape(value)}"${String(value) === String(selected) ? ' selected' : ''}>${escape(label(value))}</option>`).join('');
 const icon = name => qianmuIconMarkup(name);
 const nameOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+const sortLabels = { asc: '名称正序', desc: '名称倒序', 'added-asc': '添加时间正序', 'added-desc': '添加时间倒序' };
+const sortValue = state => `${state.sortBy === 'added' ? 'added-' : ''}${state.sortOrder === 'desc' ? 'desc' : 'asc'}`;
 const validPreviewSize = value => Number.isFinite(Number(value)) && Number(value) >= 1 && Number(value) <= 256;
 function iconButton(action, name, title, attributes = '', classes = '') {
     return `<button type="button" class="sd-icon-btn qm-font-icon ${classes}" data-font-action="${action}" aria-label="${escape(title)}" title="${escape(title)}" ${attributes}>${icon(name)}</button>`;
@@ -78,7 +80,7 @@ export function sortFontLibraryEntries(state = {}) {
     return array(state.entries).map((entry, index) => ({ entry, index })).filter(({ entry }) => entry && typeof entry.id === 'string').sort((left, right) => {
         const a = pinned.get(left.entry.id), b = pinned.get(right.entry.id);
         if (a !== undefined || b !== undefined) return a === undefined ? 1 : b === undefined ? -1 : a - b || left.index - right.index;
-        return direction * nameOrder.compare(String(left.entry.name || ''), String(right.entry.name || '')) || left.index - right.index;
+        return direction * (state.sortBy === 'added' ? left.index - right.index : nameOrder.compare(String(left.entry.name || ''), String(right.entry.name || ''))) || left.index - right.index;
     }).map(({ entry }) => entry);
 }
 function matchingEntries(state, view) {
@@ -95,7 +97,8 @@ export function renderFontLibraryCards(state = {}, view = {}) {
     const cards = page.entries.map(entry => {
         const value = initialChoice(state, entry, view.variants?.[entry.id]), id = escape(entry.id), metadata = strings(entry.tags).map(tag => `<span class="qm-font-tag">${escape(tag)}</span>`).join('');
         const pinned = array(state.pinnedIds).includes(entry.id), renameVisible = !view.managing && view.renameId === entry.id && (!hasVariants(entry, value) || view.expandedId === entry.id);
-        return `<article class="sd-card qm-font-card${view.managing ? ` is-selecting${selected.has(entry.id) ? ' is-selected' : ''}` : ''}" data-font-id="${id}"${view.managing ? ` role="button" tabindex="0" aria-label="选择 ${escape(entry.name)}" aria-pressed="${selected.has(entry.id)}"` : ''}><div class="qm-font-card-head"><div class="qm-font-name"><strong title="${escape(entry.name)}">${escape(entry.name)}</strong>${pinned ? pinMarker(entry, value, view) : ''}</div><div class="qm-font-card-tools"${view.managing ? ' hidden' : ''}>${cardTools(state, entry, value, view)}</div></div><div class="qm-font-rename-pop" data-font-rename-pop="${id}"${renameVisible ? '' : ' hidden'}><input data-font-rename="${id}" aria-label="字体名称" maxlength="160" value="${escape(view.renameId === entry.id ? view.renameDraft : entry.name)}">${iconButton('rename-save', 'fa-check', '保存名称', `data-font-id="${id}"`)}${iconButton('rename-cancel', 'fa-xmark', '取消改名', `data-font-id="${id}"`)}</div><p class="qm-font-sample qm-font-preview" data-font-sample="${id}">${escape(state.previewText || FONT_LIBRARY_PREVIEW_TEXT)}</p><div class="qm-font-card-foot"><span class="qm-font-meta">${metadata}</span></div><span class="qm-font-load-state" data-font-load-state="${id}" aria-live="polite">${escape(entry.status || '')}</span></article>`;
+        const editor = `<div class="qm-font-rename-pop" data-font-rename-pop="${id}"${renameVisible ? '' : ' hidden'}><div class="qm-font-rename-row"><input data-font-rename="${id}" aria-label="字体名称" maxlength="160" value="${escape(view.renameId === entry.id ? view.renameDraft : entry.name)}">${iconButton('rename-save', 'fa-check', '保存字体修改', `data-font-id="${id}"`)}${iconButton('rename-cancel', 'fa-xmark', '取消编辑字体', `data-font-id="${id}"`)}</div>${tagEditor(`rename-${entry.id}`, `<input data-font-rename-tags="${id}" type="text" maxlength="2623" placeholder="如：宋体,黑体，多个标签用逗号分隔" value="${escape(view.renameId === entry.id ? view.renameTags ?? array(entry.tags).join(', ') : array(entry.tags).join(', '))}" aria-label="字体标签">`)}</div>`;
+        return `<article class="sd-card qm-font-card${view.managing ? ` is-selecting${selected.has(entry.id) ? ' is-selected' : ''}` : ''}" data-font-id="${id}"${view.managing ? ` role="button" tabindex="0" aria-label="选择 ${escape(entry.name)}" aria-pressed="${selected.has(entry.id)}"` : ''}><div class="qm-font-card-head"><div class="qm-font-name"><strong title="${escape(entry.name)}">${escape(entry.name)}</strong>${pinned ? pinMarker(entry, value, view) : ''}</div><div class="qm-font-card-tools"${view.managing ? ' hidden' : ''}>${cardTools(state, entry, value, view)}</div></div>${editor}<p class="qm-font-sample qm-font-preview" data-font-sample="${id}">${escape(state.previewText || FONT_LIBRARY_PREVIEW_TEXT)}</p><div class="qm-font-card-foot"><span class="qm-font-meta">${metadata}</span></div><span class="qm-font-load-state" data-font-load-state="${id}" aria-live="polite">${escape(entry.status || '')}</span></article>`;
     }).join('');
     return `<div class="qm-font-list">${cards || '<p class="sd-muted qm-font-empty">没有符合条件的字体</p>'}</div><div class="qm-font-pagination">${iconButton('previous', 'fa-chevron-left', '上一页字体', page.page ? '' : 'disabled')}<span>${page.page + 1} / ${page.pages} · ${page.total} 款</span><div class="qm-font-page-end">${iconButton('top', 'fa-arrow-up', '回到顶部')}${iconButton('next', 'fa-chevron-right', '下一页字体', page.page + 1 < page.pages ? '' : 'disabled')}</div></div>`;
 }
@@ -107,7 +110,7 @@ export function renderFontLibrary(state = {}, view = {}) {
       <div class="qm-font-imports"><label class="sd-btn qm-font-file-pick" title="上传本地字体">上传本地字体<input class="sd-reader-native-file" type="file" data-font-file="local" accept=".woff2,.woff,.ttf,.otf" aria-label="上传本地字体" multiple></label><label class="sd-btn qm-font-file-pick" title="导入字体包">导入字体包<input class="sd-reader-native-file" type="file" data-font-file="import" accept=".json,application/json" aria-label="导入字体包"></label></div>
       </details>
       <section class="sd-card qm-font-preview-editor"><div class="qm-font-field-head"><span>预览文案</span><label class="sd-icon-btn qm-font-icon qm-font-size-pick" title="预览字号">${icon('font-preview-size')}<select data-font-preview-size aria-label="预览字号">${previewSize.values.includes(previewSize.value) ? '' : `<option value="${previewSize.value}" selected disabled>当前 ${previewSize.value}px</option>`}${options(previewSize.values, previewSize.value, value => `${value}px`)}</select></label></div><input data-font-preview type="text" maxlength="500" value="${escape(state.previewText || FONT_LIBRARY_PREVIEW_TEXT)}" aria-label="预览文案"></section>
-      <div class="sd-reader-lib-bar qm-font-toolbar"><input type="search" class="sd-reader-search" data-font-search value="${escape(view.query || '')}" placeholder="搜索字体 / 标签" aria-label="搜索字体">${iconButton('manage', 'font-manage', view.managing ? '退出多选' : '多选', `aria-expanded="${!!view.managing}"`, `sd-reader-batch-mode${view.managing ? ' active' : ''}`)}<label class="sd-icon-btn qm-font-icon qm-font-sort-pick" title="按名称排序；置顶顺序不变">${icon('fa-arrow-down-wide-short')}<select data-font-sort-order aria-label="名称排序">${options(['asc', 'desc'], state.sortOrder === 'desc' ? 'desc' : 'asc', value => value === 'asc' ? '正序' : '倒序')}</select></label></div>
+      <div class="sd-reader-lib-bar qm-font-toolbar"><input type="search" class="sd-reader-search" data-font-search value="${escape(view.query || '')}" placeholder="搜索字体 / 标签" aria-label="搜索字体">${iconButton('manage', 'font-manage', view.managing ? '退出多选' : '多选', `aria-expanded="${!!view.managing}"`, `sd-reader-batch-mode${view.managing ? ' active' : ''}`)}<label class="sd-icon-btn qm-font-icon qm-font-sort-pick" title="按名称或添加时间排序；置顶顺序不变">${icon('fa-arrow-down-wide-short')}<select data-font-sort-order aria-label="字体排序">${options(Object.keys(sortLabels), sortValue(state), value => sortLabels[value])}</select></label></div>
       <div class="sd-reader-batch-actions qm-font-bulk-actions"${view.managing ? '' : ' hidden'}>${iconButton('select-page', 'fa-check-double', '全选 / 取消本页', 'aria-pressed="false"', 'sd-reader-batch-toggle-all')}${iconButton('bulk-tags', 'fa-tags', '设置选中标签', selected ? '' : 'disabled')}${iconButton('export-selected', 'fa-file-export', '导出选中字体包', selected ? '' : 'disabled')}${iconButton('delete', 'fa-trash', '移除选中', selected ? '' : 'disabled')}<span data-font-selection-count>已选 ${selected}</span></div>
       <div class="qm-font-bulk-editor" data-font-bulk-editor hidden><div class="qm-font-bulk-field"><span>设置标签</span>${tagEditor('bulk', '<input data-font-bulk-value maxlength="2623" placeholder="逗号分隔；留空清除" aria-label="选中字体的标签">')}</div>${iconButton('bulk-save', 'fa-check', '保存标签')}</div><div data-font-cards>${renderFontLibraryCards(state, view)}</div><p class="qm-font-status" role="status" aria-live="polite" hidden></p>
     </div></main>${localUploadDialog(view)}`;
@@ -121,13 +124,13 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         previewSizeOverride = validPreviewSize(initialSession?.previewSizeOverride) ? Number(initialSession.previewSizeOverride) : undefined,
         webName = String(initialSession?.webName || ''), webSource = String(initialSession?.webSource || ''), webTags = String(initialSession?.webTags || ''), editWebId = String(initialSession?.editWebId || ''), editWebSourceMissing = initialSession?.editWebSourceMissing === true,
         addOpen = typeof initialSession?.addOpen === 'boolean' ? initialSession.addOpen : !!initialSession?.editWebId || !array(getState().entries).length,
-        renameId = String(initialSession?.renameId || ''), renameDraft = String(initialSession?.renameDraft || ''), expandedId = String(initialSession?.renameId || ''), bulk = false, localUploads = [], tagTarget = '';
+        renameId = String(initialSession?.renameId || ''), renameDraft = String(initialSession?.renameDraft || ''), renameTags = typeof initialSession?.renameTags === 'string' ? initialSession.renameTags : undefined, expandedId = String(initialSession?.renameId || ''), bulk = false, localUploads = [], tagTarget = '';
     const selected = new Set(), variants = Object.create(null), loadingStates = new Map();
-    for (const entry of array(getState().entries)) if (initialSession?.variants?.[entry.id]) variants[entry.id] = choice(entry, initialSession.variants[entry.id]);
+    for (const entry of array(getState().entries)) { if (initialSession?.variants?.[entry.id]) variants[entry.id] = choice(entry, initialSession.variants[entry.id]); if (renameId === entry.id && renameTags === undefined) renameTags = array(entry.tags).join(', '); }
     const state = () => ({ ...getState(), ...(previewDraft === undefined ? {} : { previewText: previewDraft }) });
-    const viewState = () => ({ page, query, selected: [...selected], variants, managing, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, localUploads, renameId, renameDraft, expandedId, previewSizeOverride });
+    const viewState = () => ({ page, query, selected: [...selected], variants, managing, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, localUploads, renameId, renameDraft, renameTags, expandedId, previewSizeOverride });
     const q = selector => root.querySelector(selector), qa = selector => [...root.querySelectorAll(selector)];
-    const tagInput = key => key === 'web' ? q('[data-font-web-tags]') : key === 'bulk' ? q('[data-font-bulk-value]') : /^local-\d+$/.test(key) ? q(`[data-font-local-tags="${Number(key.slice(6))}"]`) : null;
+    const tagInput = key => key === 'web' ? q('[data-font-web-tags]') : key === 'bulk' ? q('[data-font-bulk-value]') : key.startsWith('rename-') ? qa('[data-font-rename-tags]').find(node => node.dataset.fontRenameTags === key.slice(7)) : /^local-\d+$/.test(key) ? q(`[data-font-local-tags="${Number(key.slice(6))}"]`) : null;
     const tagPanel = key => qa('[data-font-tag-options]').find(node => node.dataset.fontTagOptions === key);
     function closeTags({ focus = false } = {}) {
         if (!tagTarget) return false;
@@ -143,23 +146,24 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (!tagInput(key) || !tagPanel(key)) return;
         if (tagTarget === key) { closeTags(); return; } closeTags(); tagTarget = key; renderTagOptions(); tagPanel(key).hidden = false;
         qa('[data-font-action="tags"]').find(node => node.dataset.fontTagTarget === key)?.setAttribute('aria-expanded', 'true');
+        if (key === `rename-${renameId}`) showLocalEditor();
     }
     function toggleTag(key, tag) {
         const input = tagInput(key); if (busy || tagTarget !== key || !input || /[,，]/.test(tag) || !collectFontLibraryTags(state()).includes(tag)) return;
         const tags = parseTags(input.value), existed = tags.includes(tag); if (!existed && tags.length >= 32) { message('每款字体最多 32 个标签。', { error: true }); return; }
         input.value = (existed ? tags.filter(value => value !== tag) : [...tags, tag]).join(', ');
-        if (key === 'web') webTags = input.value; else if (/^local-\d+$/.test(key) && localUploads[Number(key.slice(6))]) localUploads[Number(key.slice(6))].tags = input.value;
+        if (key === 'web') webTags = input.value; else if (key === `rename-${renameId}`) renameTags = input.value; else if (/^local-\d+$/.test(key) && localUploads[Number(key.slice(6))]) localUploads[Number(key.slice(6))].tags = input.value;
         renderTagOptions(); qa('[data-font-action="tag-toggle"]').find(node => node.dataset.fontTagTarget === key && node.dataset.fontTag === tag)?.focus({ preventScroll: true });
     }
     function closeTagsOutside(target) { if (tagTarget && target.closest?.('[data-font-tag-editor]')?.dataset.fontTagEditor !== tagTarget) closeTags(); }
     function message(text, { error = false } = {}) { const node = (localUploads.length && q('[data-font-local-status]')) || q('.qm-font-status'); if (!node || disposed) return; node.textContent = String(text || ''); node.hidden = !text; node.classList.toggle('is-error', error); }
     function captureWeb() { if (q('[data-font-web-name]')) webName = q('[data-font-web-name]').value; if (q('[data-font-web-source]')) webSource = q('[data-font-web-source]').value; if (q('[data-font-web-tags]')) webTags = q('[data-font-web-tags]').value; if (q('.qm-font-add')) addOpen = q('.qm-font-add').open; }
     function clearWebDraft({ id = '', name = '', source = '', tags: submittedTags = [] } = {}) { if (disposed) return false; captureWeb(); if (editWebId !== String(id) || webName !== String(name) || webSource !== String(source) || JSON.stringify(parseTags(webTags)) !== JSON.stringify(parseTags(submittedTags))) return false; editWebId = ''; editWebSourceMissing = false; webName = ''; webSource = ''; webTags = ''; for (const selector of ['[data-font-web-name]', '[data-font-web-source]', '[data-font-web-tags]']) { const field = q(selector); if (field) field.value = ''; } return true; }
-    function captureSession() { captureWeb(); return { page, query, variants: Object.fromEntries(Object.entries(variants).map(([id, value]) => [id, { ...value }])), previewDraft, previewSizeOverride, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, renameId, renameDraft, scrollTop: Math.max(0, Number(q('.sd-body')?.scrollTop) || 0) }; }
+    function captureSession() { captureWeb(); return { page, query, variants: Object.fromEntries(Object.entries(variants).map(([id, value]) => [id, { ...value }])), previewDraft, previewSizeOverride, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, renameId, renameDraft, renameTags: renameTags ?? '', scrollTop: Math.max(0, Number(q('.sd-body')?.scrollTop) || 0) }; }
     function sizeSamples(current = state()) { const { value } = fontLibraryPreviewSize(current, viewState()); for (const node of qa('[data-font-sample]')) node.style.setProperty('font-size', `${value}px`, 'important'); }
     function previewSize(target) { const range = fontLibraryPreviewSize(state(), viewState()), value = Number(target.value); if (!range.values.includes(value)) return; previewSizeOverride = value; sizeSamples(); }
     function setWebDraft(id, name, source, entryTags = [], missing = false) { editWebId = id; editWebSourceMissing = missing === true; webName = name; webSource = source; webTags = parseTags(entryTags).join(', '); addOpen = true; for (const [selector, value] of [['[data-font-web-name]', webName], ['[data-font-web-source]', webSource], ['[data-font-web-tags]', webTags]]) { const field = q(selector); if (field) field.value = value; } if (q('.qm-font-add')) q('.qm-font-add').open = true; render(); }
-    function setBusy(value) { busy = value; root.setAttribute('aria-busy', String(value)); const enabled = q('[data-font-enabled]'); if (enabled) enabled.disabled = value; for (const control of qa('[data-font-local-dialog] input,[data-font-local-dialog] button,[data-font-tag-editor] input,[data-font-tag-editor] button')) control.disabled = value || control.dataset.fontTagUnavailable === 'true'; }
+    function setBusy(value) { busy = value; root.setAttribute('aria-busy', String(value)); const enabled = q('[data-font-enabled]'); if (enabled) enabled.disabled = value; for (const selector of ['[data-font-local-dialog] input,[data-font-local-dialog] button,[data-font-tag-editor] input,[data-font-tag-editor] button', '[data-font-rename-pop] input,[data-font-rename-pop] button']) for (const control of qa(selector)) control.disabled = value || control.dataset.fontTagUnavailable === 'true'; }
     function cancelLocal() { if (busy || !localUploads.length) return; localUploads = []; render(); q('[data-font-file="local"]')?.focus({ preventScroll: true }); }
     function samples(notify = true, current = state()) {
         const ids = [], previewChoices = {};
@@ -190,7 +194,16 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         for (const picker of qa('[data-font-apply]')) picker.selectedIndex = -1;
         if (!managing || !selected.size) { const editor = q('[data-font-bulk-editor]'); if (editor) editor.hidden = true; bulk = false; if (tagTarget === 'bulk') closeTags(); }
     }
-    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; const current = state(); page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); selection(current); samples(true, current); }
+    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; closeTags(); const current = state(); page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); setBusy(busy); selection(current); samples(true, current); }
+    function showLocalEditor({ focus = false } = {}) {
+        const panel = qa('[data-font-rename-pop]').find(node => node.dataset.fontRenamePop === renameId), body = q('.sd-body');
+        if (!panel || panel.hidden) return;
+        if (panel.getBoundingClientRect && body?.getBoundingClientRect) {
+            const rect = panel.getBoundingClientRect(), bounds = body.getBoundingClientRect(), top = bounds.top + 6, bottom = bounds.bottom - 6;
+            body.scrollTop += rect.height > bottom - top || rect.top < top ? rect.top - top : rect.bottom > bottom ? rect.bottom - bottom : 0;
+        }
+        if (focus) qa('[data-font-rename]').find(node => node.dataset.fontRename === renameId)?.focus({ preventScroll: true });
+    }
     function render(snapshot) {
         if (disposed) return;
         const scrollTop = rendered ? Number(q('.sd-body')?.scrollTop) || 0 : Number(initialSession?.scrollTop) || 0; captureWeb();
@@ -210,8 +223,8 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     function revealFont(id) { return locateFont(id, { reveal: true }); }
     async function dispatch(type, payload = {}, { refresh = true, exclusive = true } = {}) {
         if (disposed || (exclusive && busy)) return; if (exclusive) setBusy(true); message('');
-        try { const result = await onAction({ type, ...payload }); if (!disposed && refresh) { if (type === 'add-web' || type === 'edit-web') clearWebDraft(payload); if (type === 'add-local') localUploads = []; if (type === 'update-fonts' && 'name' in payload && payload.ids?.[0] === renameId) { renameId = ''; renameDraft = ''; } if (type === 'set-sort-order') page = 0; if (result?.revealFontId) revealFont(result.revealFontId); else if (type !== 'set-font-pinned' || !locateFont(payload.id)) render(); } }
-        catch (error) { if (!disposed) { if (type === 'set-enabled') { const enabled = q('[data-font-enabled]'); if (enabled) enabled.checked = getState().enabled !== false; } if (type === 'set-sort-order') { const order = q('[data-font-sort-order]'); if (order) order.value = getState().sortOrder === 'desc' ? 'desc' : 'asc'; } message(error?.userMessage || '操作未完成，请检查输入或稍后重试。', { error: true }); } }
+        try { const result = await onAction({ type, ...payload }); if (!disposed && refresh) { if (type === 'add-web' || type === 'edit-web') clearWebDraft(payload); if (type === 'add-local') localUploads = []; if (type === 'update-fonts' && 'name' in payload && payload.ids?.[0] === renameId) { renameId = ''; renameDraft = ''; renameTags = ''; } if (type === 'set-sort-order') page = 0; if (result?.revealFontId) revealFont(result.revealFontId); else if (type !== 'set-font-pinned' || !locateFont(payload.id)) render(); } }
+        catch (error) { if (!disposed) { if (type === 'set-enabled') { const enabled = q('[data-font-enabled]'); if (enabled) enabled.checked = getState().enabled !== false; } if (type === 'set-sort-order') { const order = q('[data-font-sort-order]'); if (order) order.value = sortValue(getState()); } message(error?.userMessage || '操作未完成，请检查输入或稍后重试。', { error: true }); } }
         finally { if (exclusive) { busy = false; if (!disposed) setBusy(false); } }
     }
     function closePopovers() { for (const pop of qa('[data-font-weight-pop]')) pop.hidden = true; for (const button of qa('[data-font-action="weight"]')) button.setAttribute('aria-expanded', 'false'); }
@@ -269,17 +282,17 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (action === 'local-confirm' && localUploads.length) return dispatch('add-local', { files: localUploads.map(item => item.file), metadata: localUploads.map(item => ({ name: item.name, tags: parseTags(item.tags) })) });
         if (action === 'weight') { const pop = qa('[data-font-weight-pop]').find(node => node.dataset.fontWeightPop === button.dataset.fontId); if (pop) { const opening = pop.hidden; closePopovers(); pop.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); if (opening) pop.querySelector('input,button')?.focus(); } return; }
         closePopovers();
-        if (action === 'more') { const id = button.dataset.fontId; expandedId = expandedId === id ? '' : id; return refreshTools(id); }
+        if (action === 'more') { const id = button.dataset.fontId; expandedId = expandedId === id ? '' : id; refreshTools(id); if (expandedId === renameId) showLocalEditor(); return; }
         if (action === 'pin') { const id = button.dataset.fontId; if (array(state().entries).some(entry => entry.id === id)) return dispatch('set-font-pinned', { id, pinned: !array(state().pinnedIds).includes(id) }); return; }
         if (action === 'edit') {
             const entry = array(state().entries).find(item => item.id === button.dataset.fontId); if (!entry) return;
-            if (entry.sourceType === 'local' || entry.source?.kind === 'local') { if (renameId !== entry.id) renameDraft = entry.name; renameId = entry.id; renderCards(); qa('[data-font-rename]').find(node => node.dataset.fontRename === entry.id)?.focus(); }
+            if (entry.sourceType === 'local' || entry.source?.kind === 'local') { if (renameId !== entry.id) { renameDraft = entry.name; renameTags = array(entry.tags).join(', '); } renameId = entry.id; renderCards(); showLocalEditor({ focus: true }); }
             else { const source = entry.editableSource ?? entry.source?.url ?? (/^https?:/i.test(entry.source?.input || '') ? entry.source.input : ''); setWebDraft(entry.id, entry.name, source, entry.tags, entry.editableSourceMissing); const body = q('.sd-body'), card = q('.qm-font-add'); if (body && card?.getBoundingClientRect && body.getBoundingClientRect) body.scrollTop += card.getBoundingClientRect().top - body.getBoundingClientRect().top - 6; q('[data-font-web-name]')?.focus({ preventScroll: true }); }
             return;
         }
         if (action === 'cancel-web') return setWebDraft('', '', '');
-        if (action === 'rename-cancel') { renameId = ''; renameDraft = ''; return renderCards(); }
-        if (action === 'rename-save' && renameId === button.dataset.fontId) { const name = qa('[data-font-rename]').find(node => node.dataset.fontRename === renameId)?.value ?? renameDraft; return dispatch('update-fonts', { ids: [renameId], name }); }
+        if (action === 'rename-cancel') { renameId = ''; renameDraft = ''; renameTags = ''; return renderCards(); }
+        if (action === 'rename-save' && renameId === button.dataset.fontId) { const entry = array(state().entries).find(item => item.id === renameId); if (!entry) return; const name = qa('[data-font-rename]').find(node => node.dataset.fontRename === renameId)?.value ?? renameDraft, draft = tagInput(`rename-${renameId}`)?.value ?? renameTags ?? '', tags = draft === array(entry.tags).join(', ') ? [...array(entry.tags)] : parseTags(draft); return dispatch('update-fonts', { ids: [renameId], name, tags }); }
         if (action === 'top') { const body = q('.sd-body'); if (body?.scrollTo) body.scrollTo({ top: 0, behavior: root.ownerDocument?.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ? 'instant' : 'smooth' }); else if (body) body.scrollTop = 0; return; }
         if (action === 'previous' || action === 'next') { page += action === 'next' ? 1 : -1; return renderCards(); }
         if (action === 'manage') { managing = !managing; if (!managing) selected.clear(); return selection(); }
@@ -295,12 +308,13 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     function input(event) {
         const target = event.target; if (!root.contains(target) || disposed) return;
         isolateField(event);
-        if (busy && target.closest?.('[data-font-tag-editor]')) return;
+        if (busy && (target.closest?.('[data-font-tag-editor]') || target.closest?.('[data-font-rename-pop]'))) return;
         if (target.matches?.('[data-font-preview]')) { previewDraft = target.value; for (const sample of qa('[data-font-sample]')) sample.textContent = previewDraft || FONT_LIBRARY_PREVIEW_TEXT; }
         if (target.matches?.('[data-font-search]')) { query = target.value; page = 0; selected.clear(); renderCards(); }
         if (target.matches?.('[data-font-weight]')) dragWeight(target, false);
         if (target.matches?.('[data-font-preview-size]')) previewSize(target);
         if (target.matches?.('[data-font-rename]') && target.dataset.fontRename === renameId) renameDraft = target.value;
+        if (target.matches?.('[data-font-rename-tags]') && target.dataset.fontRenameTags === renameId) renameTags = target.value;
         if (target.matches?.('[data-font-local-name]') && localUploads[Number(target.dataset.fontLocalName)]) localUploads[Number(target.dataset.fontLocalName)].name = target.value;
         if (target.matches?.('[data-font-local-tags]') && localUploads[Number(target.dataset.fontLocalTags)]) localUploads[Number(target.dataset.fontLocalTags)].tags = target.value;
         if (tagTarget && target === tagInput(tagTarget)) renderTagOptions();
@@ -310,7 +324,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const target = event.target; if (!root.contains(target) || disposed || busy) return;
         if (target.matches?.('[data-font-enabled]')) return dispatch('set-enabled', { enabled: target.checked === true });
         if (target.matches?.('[data-font-preview-size]')) return previewSize(target);
-        if (target.matches?.('[data-font-sort-order]')) { if (!['asc', 'desc'].includes(target.value)) return; collapseMore(); return dispatch('set-sort-order', { order: target.value }); }
+        if (target.matches?.('[data-font-sort-order]')) { if (!Object.hasOwn(sortLabels, target.value)) return; collapseMore(); return dispatch('set-sort-order', { by: target.value.startsWith('added-') ? 'added' : 'name', order: target.value.endsWith('desc') ? 'desc' : 'asc' }); }
         if (target.matches?.('[data-font-preview]')) return dispatch('set-preview', { text: target.value }, { refresh: false, exclusive: false });
         if (target.matches?.('[data-font-file]')) { const files = [...(target.files || [])]; target.value = ''; if (!files.length) return; if (target.dataset.fontFile === 'local') { localUploads = files.map(file => ({ file, fileName: file.name, name: String(file.name || '').replace(/\.(?:woff2?|ttf|otf)$/i, '').slice(0, 160), tags: '' })); closePopovers(); render(); q('[data-font-local-name="0"]')?.focus(); return; } return dispatch('import', { file: files[0] }); }
         if (target.matches?.('[data-font-weight]')) return dragWeight(target, true);

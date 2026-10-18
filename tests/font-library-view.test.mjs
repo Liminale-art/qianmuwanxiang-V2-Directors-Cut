@@ -200,11 +200,12 @@ test('missing historic Web source uses a concise preservation hint that survives
     const captured = f.view.captureSession(); assert.equal(captured.editWebSourceMissing, true); assert.equal(captured.webSource, ''); const reopened = fixture(state(), () => {}, captured); assert.match(reopened.root.innerHTML, /留空保留当前来源/); reopened.view.destroy();
     await f.click('add-web'); assert.deepEqual(f.calls[0], { type: 'edit-web', id: 'one', name: '字体 one', source: '', tags: [] }); assert.equal(f.view.captureSession().editWebSourceMissing, false); assert.doesNotMatch(f.root.innerHTML, /留空保留当前来源/); f.view.destroy();
 });
-test('local edit preserves name drafts across return and rename only writes the selected name', async () => {
-    const f = fixture(state({ entries: [entry('one', { sourceType: 'local' })] })); await f.click('edit', { fontId: 'one' });
+test('local edit preserves name and tag drafts across return and saves only the selected metadata', async () => {
+    const f = fixture(state({ entries: [entry('one', { sourceType: 'local', tags: ['原标签'] })] })); await f.click('edit', { fontId: 'one' });
     assert.equal(f.view.captureSession().renameId, 'one'); f.emit('input', f.node('[data-font-rename]', { value: '本地新名称', dataset: { fontRename: 'one' } }));
-    const restored = fixture(state(), () => {}, f.view.captureSession()); assert.match(restored.root.innerHTML, /value="本地新名称"/); restored.view.destroy();
-    await f.click('rename-save', { fontId: 'one' }); assert.deepEqual(f.calls, [{ type: 'update-fonts', ids: ['one'], name: '本地新名称' }]); assert.equal(f.view.captureSession().renameId, '');
+    f.emit('input', f.node('[data-font-rename-tags]', { value: '衬线， 阅读,衬线', dataset: { fontRenameTags: 'one' } }));
+    const restored = fixture(state(), () => {}, f.view.captureSession()); assert.match(restored.root.innerHTML, /value="本地新名称"/); assert.match(restored.root.innerHTML, /value="衬线， 阅读,衬线"/); restored.view.destroy();
+    await f.click('rename-save', { fontId: 'one' }); assert.deepEqual(f.calls, [{ type: 'update-fonts', ids: ['one'], name: '本地新名称', tags: ['衬线', '阅读'] }]); assert.equal(f.view.captureSession().renameId, ''); assert.equal(f.view.captureSession().renameTags, '');
     await f.click('edit', { fontId: 'one' }); await f.click('rename-cancel', { fontId: 'one' }); assert.equal(f.calls.length, 1); assert.equal(f.view.captureSession().renameId, ''); f.view.destroy();
 });
 test('reveal clears blocking filters, selects the new ten-item page and cannot reopen a closed view', () => {
@@ -320,7 +321,7 @@ test('pinned sequence is independent of numeric Chinese name sorting and stable 
 });
 test('sort control is beside management and pin status stays recognizable without duplicate visible pins', () => {
     const input = state({ entries: [entry('one'), entry('fixed', { weights: ['400'], styles: ['normal'] })], pinnedIds: ['one', 'fixed'], sortOrder: 'desc' }), html = renderFontLibrary(input);
-    assert.ok(html.indexOf('data-font-action="manage"') < html.indexOf('data-font-sort-order')); assert.match(html, /data-font-sort-order aria-label="名称排序"><option value="asc">正序<\/option><option value="desc" selected>倒序/);
+    assert.ok(html.indexOf('data-font-action="manage"') < html.indexOf('data-font-sort-order')); assert.match(html, /data-font-sort-order aria-label="字体排序"><option value="asc">名称正序<\/option><option value="desc" selected>名称倒序<\/option><option value="added-asc">添加时间正序<\/option><option value="added-desc">添加时间倒序/);
     const collapsed = renderFontLibraryCards(state({ pinnedIds: ['one'] })); assert.match(collapsed, /qm-font-pin-mark" aria-label="已置顶" title="已置顶">/); assert.doesNotMatch(collapsed, /data-font-action="pin"/);
     const expanded = renderFontLibraryCards(state({ pinnedIds: ['one'] }), { expandedId: 'one' }); assert.match(expanded, /qm-font-pin-mark"[^>]* hidden>/); assert.match(expanded, /data-font-action="pin"[^>]*aria-pressed="true"/);
     const fixed = renderFontLibraryCards(state({ entries: [entry('one', { weights: ['400'], styles: ['normal'] })], pinnedIds: ['one'] })); assert.match(fixed, /qm-font-pin-mark"[^>]* hidden>/); assert.match(fixed, /data-font-action="pin"[^>]*aria-pressed="true"/);
@@ -339,6 +340,32 @@ test('sort success returns to its first page while keeping cross-page selection 
     await f.emit('change', f.node('[data-font-sort-order]', { value: 'desc' })); assert.equal(f.view.captureSession().page, 0); assert.deepEqual(f.visible.at(-1).ids.slice(0, 3), ['5', '11', '10']);
     await f.click('export-selected'); assert.deepEqual(f.calls.at(-1), { type: 'export', ids: ['5', '11'] }); f.view.destroy();
     const failed = fixture(state({ sortOrder: 'asc' }), () => { throw Error('failure'); }), picker = failed.node('[data-font-sort-order]', { value: 'desc' }); await failed.emit('change', picker); assert.equal(picker.value, 'asc'); assert.equal(failed.queries.get('.qm-font-status').hidden, false); failed.view.destroy();
+});
+
+test('addition ordering uses preserved insertion sequence, leaves pins fixed and filters before pagination', () => {
+    const input = state({ entries: [entry('first', { name: 'Z', tags: ['阅读'] }), entry('second', { name: 'A', tags: ['阅读'] }), entry('pin-a'), entry('last', { name: 'B', tags: ['阅读'] }), entry('pin-b')], pinnedIds: ['pin-b', 'pin-a'], sortBy: 'added' }), before = structuredClone(input);
+    assert.deepEqual(sortFontLibraryEntries(input).map(item => item.id), ['pin-b', 'pin-a', 'first', 'second', 'last']);
+    assert.deepEqual(sortFontLibraryEntries({ ...input, sortOrder: 'desc' }).map(item => item.id), ['pin-b', 'pin-a', 'last', 'second', 'first']);
+    assert.deepEqual(selectFontLibraryPage({ ...input, sortOrder: 'desc' }, { query: '阅读' }).entries.map(item => item.id), ['last', 'second', 'first']);
+    assert.deepEqual(input, before);
+    const long = state({ entries: Array.from({ length: 12 }, (_, index) => entry(String(index))), pinnedIds: ['5'], sortBy: 'added', sortOrder: 'asc' });
+    const asc = fixture(long); asc.view.revealFont('11'); assert.equal(asc.view.captureSession().page, 1); assert.deepEqual(asc.visible.at(-1).ids, ['10', '11']); asc.view.destroy();
+    const desc = fixture({ ...long, sortOrder: 'desc' }); desc.view.revealFont('11'); assert.equal(desc.view.captureSession().page, 0); assert.deepEqual(desc.visible.at(-1).ids.slice(0, 3), ['5', '11', '10']); desc.view.destroy();
+});
+
+test('all four sort choices dispatch basis and direction, keep selection and restore full choice after failure', async () => {
+    let input = state({ entries: [entry('first', { name: 'Z' }), entry('last', { name: 'A' })] }), f;
+    f = fixture(input, payload => { if (payload.type === 'set-sort-order') { input = { ...input, sortBy: payload.by, sortOrder: payload.order }; f.setState(input); } });
+    await f.click('manage'); await f.clickCard('first');
+    for (const [value, by, order, ids] of [['asc', 'name', 'asc', ['last', 'first']], ['added-asc', 'added', 'asc', ['first', 'last']], ['added-desc', 'added', 'desc', ['last', 'first']], ['desc', 'name', 'desc', ['first', 'last']]]) {
+        await f.emit('change', f.node('[data-font-sort-order]', { value }));
+        assert.deepEqual(f.calls.at(-1), { type: 'set-sort-order', by, order }); assert.deepEqual(f.visible.at(-1).ids, ids);
+        assert.match(f.root.innerHTML, new RegExp(`option value="${value}" selected`));
+    }
+    await f.click('export-selected'); assert.deepEqual(f.calls.at(-1), { type: 'export', ids: ['first'] });
+    const count = f.calls.length; for (const value of ['', 'random', 'constructor']) await f.emit('change', f.node('[data-font-sort-order]', { value })); assert.equal(f.calls.length, count); f.view.destroy();
+    const failed = fixture(state({ sortBy: 'added', sortOrder: 'desc' }), () => { throw Error('failure'); }), picker = failed.node('[data-font-sort-order]', { value: 'asc' });
+    await failed.emit('change', picker); assert.equal(picker.value, 'added-desc'); assert.equal(failed.queries.get('.qm-font-status').hidden, false); failed.view.destroy();
 });
 
 function attachCard(f, id) {
@@ -378,10 +405,11 @@ test('back-to-top is immediately before next and scrolls only the font body with
     f.root.ownerDocument.defaultView.matchMedia = () => ({ matches: false }); await f.click('top'); assert.equal(calls[1].behavior, 'smooth'); f.view.destroy();
 });
 function attachTagEditor(f, key, value = '') {
-    const editor = { dataset: { fontTagEditor: key } }, local = key.startsWith('local-'), index = key.slice(6), selector = key === 'web' ? '[data-font-web-tags]' : key === 'bulk' ? '[data-font-bulk-value]' : `[data-font-local-tags="${index}"]`;
-    const input = f.node(selector, { value, dataset: local ? { fontLocalTags: index } : {} }), panel = f.node('[data-font-tag-options]', { dataset: { fontTagOptions: key }, hidden: true, innerHTML: '' });
-    input.matches = candidate => candidate === selector || (local && candidate === '[data-font-local-tags]');
-    const link = node => { node.closest = candidate => candidate === '[data-font-action]' && node.dataset.fontAction ? node : candidate === '[data-font-tag-editor]' ? editor : candidate === '[data-font-local-dialog]' && local ? editor : null; return node; };
+    const editor = { dataset: { fontTagEditor: key } }, local = key.startsWith('local-'), rename = key.startsWith('rename-'), index = key.slice(6), renameId = key.slice(7), selector = key === 'web' ? '[data-font-web-tags]' : key === 'bulk' ? '[data-font-bulk-value]' : rename ? `[data-font-rename-tags="${renameId}"]` : `[data-font-local-tags="${index}"]`;
+    const input = f.node(selector, { value, dataset: local ? { fontLocalTags: index } : rename ? { fontRenameTags: renameId } : {} }), panel = f.node('[data-font-tag-options]', { dataset: { fontTagOptions: key }, hidden: true, innerHTML: '' });
+    if (rename) f.allQueries.set('[data-font-rename-tags]', [...(f.allQueries.get('[data-font-rename-tags]') || []), input]);
+    input.matches = candidate => candidate === selector || (local && candidate === '[data-font-local-tags]') || (rename && candidate === '[data-font-rename-tags]');
+    const link = node => { node.closest = candidate => candidate === '[data-font-action]' && node.dataset.fontAction ? node : candidate === '[data-font-tag-editor]' ? editor : candidate === '[data-font-local-dialog]' && local ? editor : candidate === '[data-font-rename-pop]' && rename ? editor : candidate === '.qm-font-card' && rename ? { dataset: { fontId: renameId } } : null; return node; };
     link(input); const button = link(f.node('[data-font-action]', { dataset: { fontAction: 'tags', fontTagTarget: key } }));
     f.allQueries.set('[data-font-tag-options]', [...(f.allQueries.get('[data-font-tag-options]') || []), panel]);
     f.allQueries.set('[data-font-action="tags"]', [...(f.allQueries.get('[data-font-action="tags"]') || []), button]);
@@ -396,6 +424,49 @@ test('existing tag suggestions are account-local deduplicated metadata and rende
     const editIcon = renderFontLibrary(input, { editWebId: 'one' }).match(/data-font-action="add-web"[\s\S]*?<\/button>/)?.[0]; assert.match(editIcon, /qm-regular-check/);
     const f = fixture(input), web = attachTagEditor(f, 'web'); await web.open(); assert.equal((web.panel.innerHTML.match(/data-font-action="tag-toggle"/g) || []).length, 3);
     f.setState(state({ entries: [entry('new', { tags: ['另一账户'] })] })); await web.open(); assert.equal(web.panel.innerHTML, ''); await web.open(); assert.match(web.panel.innerHTML, /另一账户/); assert.doesNotMatch(web.panel.innerHTML, /正文|标题|手写/); assert.equal(f.calls.length, 0); f.view.destroy();
+});
+
+test('local metadata uses existing tag suggestions only as a draft until explicit save and cancellation writes nothing', async () => {
+    const initial = state({ entries: [entry('one', { sourceType: 'local', tags: ['阅读'], weights: ['400'], styles: ['normal'] }), entry('two', { tags: ['衬线'] })] }), f = fixture(initial);
+    await f.click('edit', { fontId: 'one' }); const tags = attachTagEditor(f, 'rename-one', '阅读');
+    await tags.open(); assert.match(tags.panel.innerHTML, /data-font-tag="衬线"/); await tags.toggle('衬线'); assert.equal(tags.input.value, '阅读, 衬线'); assert.equal(f.view.captureSession().renameTags, '阅读, 衬线'); assert.equal(f.calls.length, 0);
+    f.handlers.get('keydown')({ target: tags.input, key: 'Escape', preventDefault() {}, stopPropagation() {} }); assert.equal(tags.panel.hidden, true); assert.equal(f.view.captureSession().renameId, 'one');
+    await f.click('rename-cancel', { fontId: 'one' }); assert.equal(f.calls.length, 0); assert.equal(f.view.captureSession().renameTags, '');
+    await f.click('edit', { fontId: 'one' }); tags.input.value = ''; f.emit('input', tags.input); await f.click('rename-save', { fontId: 'one' });
+    assert.deepEqual(f.calls, [{ type: 'update-fonts', ids: ['one'], name: '字体 one', tags: [] }]); assert.deepEqual(initial.entries[0].tags, ['阅读']); f.view.destroy();
+});
+
+test('unchanged local legacy comma tags stay intact and a failed metadata save retains exact raw drafts', async () => {
+    const initial = state({ entries: [entry('one', { sourceType: 'local', tags: ['中文,西文', '装饰，标题'] })] }), f = fixture(initial);
+    await f.click('edit', { fontId: 'one' }); f.emit('input', f.node('[data-font-rename]', { value: '只改名', dataset: { fontRename: 'one' } }));
+    await f.click('rename-save', { fontId: 'one' }); assert.deepEqual(f.calls[0], { type: 'update-fonts', ids: ['one'], name: '只改名', tags: ['中文,西文', '装饰，标题'] }); f.view.destroy();
+    const rejected = fixture(initial, () => { throw Error('failed save'); }); await rejected.click('edit', { fontId: 'one' });
+    const tags = attachTagEditor(rejected, 'rename-one', ' 手写 ，重复,重复  '); rejected.emit('input', tags.input); rejected.emit('input', rejected.node('[data-font-rename]', { value: ' 未保存名称 ', dataset: { fontRename: 'one' } }));
+    await tags.open(); assert.match(tags.panel.innerHTML, /data-font-tag-unavailable="true" disabled/); await rejected.click('rename-save', { fontId: 'one' });
+    const savedSession = rejected.view.captureSession(); assert.equal(savedSession.renameDraft, ' 未保存名称 '); assert.equal(savedSession.renameTags, ' 手写 ，重复,重复  '); assert.equal(savedSession.renameId, 'one');
+    const restored = fixture(initial, () => {}, savedSession); assert.match(restored.root.innerHTML, /value=" 手写 ，重复,重复  "/); assert.equal(rejected.queries.get('.qm-font-status').hidden, false); restored.view.destroy(); rejected.view.destroy();
+});
+
+test('opening local metadata and tag collection scrolls only the font body enough for the full editor', async () => {
+    const f = fixture(state({ entries: [entry('one', { sourceType: 'local', tags: ['阅读'], weights: ['400'], styles: ['normal'] })] })), body = f.queries.get('.sd-body');
+    body.getBoundingClientRect = () => ({ top: 100, bottom: 400 }); let rect = { top: 350, bottom: 470, height: 120 }, focused;
+    const panel = f.node('[data-font-rename-pop]', { dataset: { fontRenamePop: 'one' }, hidden: false, getBoundingClientRect: () => rect }); f.allQueries.set('[data-font-rename-pop]', [panel]);
+    const name = f.node('[data-font-rename]', { dataset: { fontRename: 'one' }, focus: options => { focused = options; } }); f.allQueries.set('[data-font-rename]', [name]);
+    f.root.ownerDocument = { defaultView: { scrollTo() { throw Error('host scroll forbidden'); } } };
+    await f.click('edit', { fontId: 'one' }); assert.equal(body.scrollTop, 76); assert.deepEqual(focused, { preventScroll: true });
+    const tags = attachTagEditor(f, 'rename-one', '阅读'); rect = { top: 200, bottom: 440, height: 240 }; await tags.open(); assert.equal(body.scrollTop, 122); assert.equal(f.calls.length, 0);
+    await tags.open(); rect = { top: 100, bottom: 240, height: 140 }; await tags.open(); assert.equal(body.scrollTop, 116); f.view.destroy();
+});
+
+test('pending local metadata saves disable both fields and buttons without consuming newer raw drafts', async () => {
+    let finish; const f = fixture(state({ entries: [entry('one', { sourceType: 'local', tags: ['阅读'] })] }), () => new Promise(resolve => { finish = resolve; })); await f.click('edit', { fontId: 'one' });
+    const name = f.node('[data-font-rename]', { value: '已提交名称', dataset: { fontRename: 'one' }, closest: selector => selector === '[data-font-rename-pop]' ? {} : null }), tags = attachTagEditor(f, 'rename-one', '阅读'); f.emit('input', name);
+    const save = f.node('[save]'), cancel = f.node('[cancel]'); f.allQueries.set('[data-font-rename-pop] input,[data-font-rename-pop] button', [name, tags.input, save, cancel]);
+    const pending = f.click('rename-save', { fontId: 'one' }); assert.ok([name, tags.input, save, cancel].every(node => node.disabled));
+    f.node('[data-font-cards]', { set innerHTML(_html) { for (const node of [name, tags.input, save, cancel]) node.disabled = false; } }); f.emit('input', f.node('[data-font-search]', { value: '字体' }));
+    assert.ok([name, tags.input, save, cancel].every(node => node.disabled), 'search redraw reapplies the pending editor disabled state');
+    name.value = '不应覆盖'; tags.input.value = '不应覆盖'; f.emit('input', name); f.emit('input', tags.input); assert.equal(f.view.captureSession().renameDraft, '已提交名称'); assert.equal(f.view.captureSession().renameTags, '阅读');
+    finish(); await pending; assert.ok([name, tags.input, save, cancel].every(node => !node.disabled)); assert.deepEqual(f.calls[0], { type: 'update-fonts', ids: ['one'], name: '已提交名称', tags: ['阅读'] }); f.view.destroy();
 });
 test('opening, outside clicks and Escape preserve raw tag text; only explicit chip toggles normalize a draft', async () => {
     const f = fixture(state({ entries: [entry('one', { tags: ['手写', '重复', '新增'] })] })), raw = ' 手写 ，重复,重复  ', web = attachTagEditor(f, 'web', raw), original = web.input;
@@ -432,6 +503,14 @@ test('empty suggestions stay concise and busy mutations disable tag drafts witho
     const first = local.node('[first]', { focus() { focused = 'first'; } }), last = local.node('[last]', { focus() { focused = 'last'; } }), hidden = local.node('[hidden-chip]', { closest: selector => selector === '[hidden]' ? {} : null, focus() { throw Error('hidden chip received focus'); } });
     local.allQueries.set('[data-font-local-dialog] input,[data-font-local-dialog] button', [first, last, hidden]); local.handlers.get('keydown')({ target: last, key: 'Tab', preventDefault() {} }); assert.equal(focused, 'first'); local.handlers.get('keydown')({ target: first, key: 'Tab', shiftKey: true, preventDefault() {} }); assert.equal(focused, 'last'); local.view.destroy();
 });
+test('local metadata editor occupies card layout only while open rather than overlapping sibling cards', async () => {
+    const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
+    const editor = css.match(/\.qm-font-library \.qm-font-rename-pop \{[^}]+\}/)?.[0] || '';
+    assert.match(editor, /display:flex; flex-direction:column; gap:8px; width:100%/); assert.doesNotMatch(editor, /position:absolute|z-index|top:|right:/);
+    assert.doesNotMatch(css, /\.qm-font-library \.qm-font-card \{[^}]*z-index/);
+    assert.doesNotMatch(css, /qm-font-card:has\(>\.qm-font-rename-pop/); assert.match(css, /\.qm-font-library \[hidden\] \{ display:none !important; \}/);
+});
+
 test('CSS adds layout and sample controls without rewriting theme fonts or old floor shell', async () => {
     const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
     assert.match(css, /\.qm-font-window \.qm-font-header/); assert.match(css, /\.qm-font-weight-pop/); assert.match(css, /\.qm-font-sample \{[^}]*font-size:18px/); assert.match(css, /@media\(max-width:440px\)/);

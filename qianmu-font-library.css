@@ -92,8 +92,9 @@
 .qm-font-library .qm-font-tag { display:inline-block; min-width:0; max-width:100%; padding:2px 6px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:color-mix(in srgb,var(--sd-accent) 7%,var(--sd-glass-weak)); line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
 .qm-font-library .qm-font-meta:empty { display:none; }
 .qm-font-library .qm-font-card-foot:has(.qm-font-meta:empty) { display:none; }
-.qm-font-library .qm-font-rename-pop { position:absolute; top:44px; right:8px; z-index:35; display:flex; align-items:center; gap:5px; width:min(270px,calc(100% - 16px)); padding:8px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 6px 22px #0003; }
-.qm-font-library .qm-font-rename-pop>input { flex:1; min-width:0; }
+.qm-font-library .qm-font-rename-pop { display:flex; flex-direction:column; gap:8px; width:100%; min-width:0; padding:8px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 6px 22px #0003; }
+.qm-font-library .qm-font-rename-row { display:flex; align-items:center; gap:5px; min-width:0; }
+.qm-font-library .qm-font-rename-row>input { flex:1; min-width:0; }
 .qm-font-library .qm-font-card[data-font-revealed="true"] { animation:qm-font-reveal .6s ease-out; }
 @keyframes qm-font-reveal { from { opacity:.3; } to { opacity:1; } }
 @media(prefers-reduced-motion:reduce) { .qm-font-library .qm-font-card[data-font-revealed="true"] { animation:none; } }

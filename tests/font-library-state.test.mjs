@@ -2,17 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeFontLibrary, updateFontLibrary, mergeFontLibraryRecords, fontLibraryTags } from '../qianmu-font-library-state.js';
 import { migrateQianmuSettingsV2 } from '../qianmu-data-migrations.js';
+import { createLocalFontRecord, exportFontPack, importFontPack } from '../qianmu-font-sources.js';
 const font = id => ({ id, name: id, source: { kind: 'web', input: `https://fonts.example/${id}.woff2`, url: `https://fonts.example/${id}.woff2` }, faces: [{ urls: [{ url: `https://fonts.example/${id}.woff2`, format: 'woff2' }], weight: '400', style: 'normal' }] });
 const fixture = () => normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [font('a'), font('b')] });
 
 test('legacy management preferences default without reordering or changing font records and applications', () => {
-  const legacy = fixture(); delete legacy.pinnedIds; delete legacy.sortOrder;
+  const legacy = fixture(); delete legacy.pinnedIds; delete legacy.sortBy; delete legacy.sortOrder;
   const before = structuredClone(legacy), normalized = normalizeFontLibrary(legacy);
-  assert.deepEqual(normalized, { ...before, pinnedIds: [], sortOrder: 'asc' });
+  assert.deepEqual(normalized, { ...before, pinnedIds: [], sortBy: 'name', sortOrder: 'asc' });
   assert.deepEqual(legacy, before); assert.equal(normalized.version, 1);
   const stale = { ...normalized, pinnedIds: ['b', 'missing', 'a'] };
   assert.deepEqual(normalizeFontLibrary(stale).pinnedIds, ['b', 'a']);
   assert.deepEqual(stale.pinnedIds, ['b', 'missing', 'a']);
+  const previousVersion = { ...fixture(), sortOrder: 'desc', pinnedIds: ['b'] }; delete previousVersion.sortBy;
+  assert.deepEqual(normalizeFontLibrary(previousVersion), { ...previousVersion, sortBy: 'name' });
+});
+
+test('name and added-order preferences change atomically without reordering fonts, pins or dormant applications', () => {
+  const original = normalizeFontLibrary({ ...fixture(), enabled: false, pinnedIds: ['b', 'a'], previewText: '保留样字',
+    body: { fontId: 'a', enabled: true, weight: '700' }, st: { fontId: 'b', enabled: true }, mode: 'shared', shared: { fontId: 'a', enabled: true } });
+  let state = original;
+  for (const by of ['added', 'name']) for (const order of ['desc', 'asc']) {
+    state = updateFontLibrary(state, 'set-sort-order', { by, order });
+    assert.deepEqual(state, { ...original, sortBy: by, sortOrder: order });
+    assert.deepEqual(normalizeFontLibrary(JSON.parse(JSON.stringify(state))), state);
+  }
+  state = updateFontLibrary(state, 'set-sort-order', { by: 'added', order: 'desc' });
+  assert.deepEqual(updateFontLibrary(state, 'set-sort-order', { order: 'asc' }), { ...original, sortBy: 'added', sortOrder: 'asc' });
+  assert.deepEqual(original.fonts.map(item => item.id), ['a', 'b']); assert.equal(original.sortBy, 'name');
 });
 
 test('pinning is ordered, idempotent and independent from name sorting or the original catalogue order', () => {
@@ -37,20 +54,27 @@ test('pinning is ordered, idempotent and independent from name sorting or the or
 });
 
 test('adding, editing and merging retain management preferences while deletion prunes only removed pins', () => {
-  let state = updateFontLibrary(fixture(), 'set-sort-order', { order: 'desc' });
+  let state = updateFontLibrary(fixture(), 'set-sort-order', { by: 'added', order: 'desc' });
   state = updateFontLibrary(state, 'set-font-pinned', { id: 'b', pinned: true });
   state = updateFontLibrary(state, 'set-font-pinned', { id: 'a', pinned: true });
   const before = structuredClone(state);
   state = mergeFontLibraryRecords(state, [font('c'), { ...font('a'), id: 'duplicate' }], () => 'unused').state;
-  assert.deepEqual(state.pinnedIds, ['b', 'a']); assert.equal(state.sortOrder, 'desc');
+  assert.deepEqual(state.pinnedIds, ['b', 'a']); assert.equal(state.sortOrder, 'desc'); assert.equal(state.sortBy, 'added');
   assert.deepEqual(state.fonts.map(item => item.id), ['a', 'b', 'c']);
   state = updateFontLibrary(state, 'replace-web', { id: 'b', record: { ...font('replacement'), name: '最先的名称' } });
   state = updateFontLibrary(state, 'update-fonts', { ids: ['a'], name: '最后的名称', tags: ['已改'] });
-  assert.deepEqual(state.pinnedIds, ['b', 'a']); assert.equal(state.sortOrder, 'desc');
+  assert.deepEqual(state.pinnedIds, ['b', 'a']); assert.equal(state.sortOrder, 'desc'); assert.equal(state.sortBy, 'added');
   assert.deepEqual(state.fonts.map(item => item.id), ['a', 'b', 'c']);
+  const edited = structuredClone(state);
+  state = mergeFontLibraryRecords(state, [font('c'), { ...font('replacement'), id: 'duplicate-edit' }], () => 'unused').state;
+  assert.deepEqual(state, edited, 'reimporting existing sources does not move their original slots');
   state = updateFontLibrary(state, 'delete-fonts', { ids: ['b', 'c'] });
-  assert.deepEqual(state.pinnedIds, ['a']); assert.equal(state.sortOrder, 'desc');
+  assert.deepEqual(state.pinnedIds, ['a']); assert.equal(state.sortOrder, 'desc'); assert.equal(state.sortBy, 'added');
   assert.equal(state.fonts[0].id, 'a'); assert.deepEqual(before.pinnedIds, ['b', 'a']);
+  state = mergeFontLibraryRecords(state, [font('c'), font('b')], () => 'unused').state;
+  assert.deepEqual(state.fonts.map(item => item.id), ['a', 'c', 'b'], 'deleted then re-added fonts append in their new import order');
+  assert.deepEqual(state.pinnedIds, ['a']); assert.equal(state.sortBy, 'added'); assert.equal(state.sortOrder, 'desc');
+  assert.ok(state.fonts.every(item => !('addedAt' in item) && !('createdAt' in item)), 'no historical timestamps are invented');
 });
 
 test('invalid management preferences and stale pin actions reject without mutating the original library', () => {
@@ -63,10 +87,39 @@ test('invalid management preferences and stale pin actions reject without mutati
     assert.throws(() => normalizeFontLibrary({ ...state, sortOrder: order }), /排序设置无效/);
     assert.throws(() => updateFontLibrary(state, 'set-sort-order', { order }), /排序设置无效/);
   }
+  for (const by of [null, '', 'NAME', 'time', 'createdAt', 1, true, {}, [], ['added']]) {
+    const value = { ...state, sortBy: by }, before = structuredClone(value);
+    assert.throws(() => normalizeFontLibrary(value), /排序设置无效/); assert.deepEqual(value, before);
+    assert.throws(() => updateFontLibrary(state, 'set-sort-order', { by, order: 'desc' }), /排序设置无效/);
+  }
+  assert.throws(() => updateFontLibrary(state, 'set-sort-order', { by: 'added' }), /排序设置无效/);
   for (const pinned of [undefined, null, 'true', 1, {}]) assert.throws(() => updateFontLibrary(state, 'set-font-pinned', { id: 'a', pinned }), /置顶设置无效/);
   for (const pinned of [false, true]) assert.throws(() => updateFontLibrary(state, 'set-font-pinned', { id: 'missing', pinned }), /已不在库中/);
   for (const id of [undefined, null, {}, '../a']) assert.throws(() => updateFontLibrary(state, 'set-font-pinned', { id, pinned: true }), /标识无效/);
   assert.deepEqual(state, original);
+});
+
+test('v1 mixed font packs preserve record order and originals without replacing receiver sorting or application preferences', async () => {
+  const bytes = new Uint8Array(32), header = new DataView(bytes.buffer);
+  header.setUint32(0, 0x00010000); header.setUint16(4, 1); header.setUint32(20, 28); header.setUint32(24, 4);
+  const local = await createLocalFontRecord({ name: '原件.ttf', size: bytes.length, arrayBuffer: async () => bytes.buffer });
+  Object.assign(local.record, { id: 'local-pack', folder: '旧资料', tags: ['原件'] });
+  const records = [font('c'), { ...font('a'), id: 'duplicate-a', name: '不覆盖原名称' }, local.record, font('d')];
+  const text = exportFontPack(records, { localFiles: { 'local-pack': bytes }, previewText: '来源样字', folders: ['旧资料'] });
+  const encoded = JSON.parse(text), pack = importFontPack(text);
+  assert.equal(encoded.version, 1);
+  for (const key of ['sortBy', 'sortOrder', 'pinnedIds', 'mode', 'enabled', 'body', 'st', 'shared']) assert.equal(key in encoded, false);
+  assert.deepEqual(pack.records.map(item => item.id), ['c', 'duplicate-a', 'local-pack', 'd']); assert.deepEqual(pack.localFiles['local-pack'], bytes);
+  const receiver = normalizeFontLibrary({ ...fixture(), enabled: false, pinnedIds: ['b', 'a'], sortBy: 'added', sortOrder: 'desc', previewText: '接收方样字',
+    body: { fontId: 'a', enabled: true }, st: { fontId: 'b', enabled: true }, mode: 'shared', shared: { fontId: 'b', enabled: true } });
+  const before = structuredClone(receiver), merged = mergeFontLibraryRecords(receiver, pack.records, () => 'unused');
+  assert.deepEqual(merged.state.fonts.map(item => item.id), ['a', 'b', 'c', 'local-pack', 'd']);
+  assert.deepEqual(merged.state.fonts.slice(0, 2), before.fonts); assert.equal(merged.mapping.get('duplicate-a'), 'a');
+  assert.deepEqual(merged.state.fonts[3], local.record);
+  for (const key of ['sortBy', 'sortOrder', 'pinnedIds', 'mode', 'enabled', 'body', 'st', 'shared', 'previewText']) assert.deepEqual(merged.state[key], before[key]);
+  assert.deepEqual(mergeFontLibraryRecords(merged.state, pack.records, () => 'unused').state, merged.state, 'reimporting the same pack is order-idempotent');
+  assert.deepEqual(importFontPack(exportFontPack(merged.state.fonts, { localFiles: pack.localFiles })).localFiles['local-pack'], bytes);
+  assert.deepEqual(receiver, before); assert.deepEqual(pack.localFiles['local-pack'], bytes);
 });
 
 test('tag metadata is normalized strictly and an invalid edit cannot mutate the original library', () => {

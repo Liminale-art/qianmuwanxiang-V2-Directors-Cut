@@ -37,7 +37,7 @@ export function fontAssignment(value = {}) {
   return { fontId, weight, style, enabled: Boolean(fontId && value.enabled !== false) };
 }
 export function normalizeFontLibrary(value) {
-  if (value == null) return { version: 1, enabled: true, fonts: [], folders: [], pinnedIds: [], sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
+  if (value == null) return { version: 1, enabled: true, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
   if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
   if (JSON.stringify(value).length > 3 * 1024 * 1024) fail('字体库配置过大');
   if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail('字体启用设置无效');
@@ -54,11 +54,11 @@ export function normalizeFontLibrary(value) {
   if (!Array.isArray(pinned) || pinned.length > 200) fail('字体置顶设置无效');
   const pinnedIds = Array.from(pinned, fontLibraryId);
   if (new Set(pinnedIds).size !== pinnedIds.length) fail('字体置顶设置包含重复条目');
-  const sortOrder = value.sortOrder === undefined ? 'asc' : value.sortOrder;
-  if (!['asc', 'desc'].includes(sortOrder)) fail('字体排序设置无效');
+  const sortBy = value.sortBy === undefined ? 'name' : value.sortBy, sortOrder = value.sortOrder === undefined ? 'asc' : value.sortOrder;
+  if (!['name', 'added'].includes(sortBy) || !['asc', 'desc'].includes(sortOrder)) fail('字体排序设置无效');
   const result = {
     version: 1, enabled: value.enabled !== false, fonts, folders: names(value.folders || [], 200, '文件夹'),
-    pinnedIds: pinnedIds.filter(id => seen.has(id)), sortOrder,
+    pinnedIds: pinnedIds.filter(id => seen.has(id)), sortBy, sortOrder,
     previewText: text(value.previewText == null || value.previewText === LEGACY_FONT_LIBRARY_SAMPLE ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
     mode: value.mode === 'shared' ? 'shared' : 'separate',
     body: fontAssignment(value.body), st: fontAssignment(value.st), shared: fontAssignment(value.shared),
@@ -95,8 +95,9 @@ export function updateFontLibrary(state, type, payload = {}) {
     if (!payload.pinned) next.pinnedIds = next.pinnedIds.filter(item => item !== id);
     else if (!next.pinnedIds.includes(id)) next.pinnedIds.push(id);
   } else if (type === 'set-sort-order') {
-    if (!['asc', 'desc'].includes(payload.order)) fail('字体排序设置无效');
-    next.sortOrder = payload.order;
+    const by = payload.by === undefined ? next.sortBy : payload.by;
+    if (!['name', 'added'].includes(by) || !['asc', 'desc'].includes(payload.order)) fail('字体排序设置无效');
+    next.sortBy = by; next.sortOrder = payload.order;
   } else if (type === 'set-mode') {
     if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
     next.mode = payload.mode;
