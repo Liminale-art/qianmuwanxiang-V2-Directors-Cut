@@ -9,6 +9,44 @@ import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOption
 import { directorSectionStatus } from '../qianmu-director-live.js';
 
 const next = { systemPrompt: CREATIVE_SYSTEM_PROMPT, outputSchemaText: createCreativeSchema(), blueprint: CREATIVE_BLUEPRINT };
+
+test('exact shipped v463 relationship defaults migrate without overwriting DIY prose, backups or saved plans', () => {
+  // Reconstruct only the replaced sentence and verify against hashes measured
+  // from bc3eeb0f before editing; unlike a hash stub, this checks the actual text.
+  const previous = {
+    systemPrompt: next.systemPrompt.replace(
+      'named participants each. Choose participants for the relationship and its narrative value; do not add people merely to vary group sizes.',
+      'named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape.'),
+    outputSchemaText: next.outputSchemaText.replace(
+      'Every relation uses an array of 2–3 exact participant names, chosen for the relationship and its narrative value rather than a required mix of group sizes; at least two relations include neither USER nor CHAR.',
+      'Every relation uses an array of 2–3 exact participant names; across the three minimum relations include both a two-person and a three-person relation, and at least two relations include neither USER nor CHAR.'),
+  };
+  assert.equal(hashText(previous.systemPrompt), '473373cb');
+  assert.equal(hashText(previous.outputSchemaText), '8c9d7978');
+  for (const marker of [undefined, '__legacy__', 'applied']) {
+    const settings = { ...previous,
+      appliedPromptDefaultHash: marker === 'applied' ? hashText(previous.systemPrompt) : marker,
+      appliedSchemaDefaultHash: marker === 'applied' ? hashText(previous.outputSchemaText) : marker,
+      systemPromptBackup: previous.systemPrompt, outputSchemaBackup: previous.outputSchemaText,
+      templates: [{ id: 'my-template', content: '我的关系写作偏好' }],
+      plan: { relation_undercurrents: [{ parties: ['甲', '乙'], tension: '原文保留' }] }, history: [{ text: '旧历史原文' }] };
+    const before = structuredClone(settings);
+    upgradeCreativeDefaults(settings, next);
+    assert.equal(settings.systemPrompt, next.systemPrompt);
+    assert.equal(settings.outputSchemaText, next.outputSchemaText);
+    for (const field of ['systemPromptBackup', 'outputSchemaBackup', 'templates', 'plan', 'history']) assert.deepEqual(settings[field], before[field]);
+    const after = structuredClone(settings);
+    upgradeCreativeDefaults(settings, next);
+    assert.deepEqual(settings, after, 'initialization is idempotent');
+    const edited = { ...before, systemPrompt: previous.systemPrompt + '\n我的补充。', outputSchemaText: previous.outputSchemaText + '\n我的格式。' };
+    const privateText = structuredClone(edited);
+    upgradeCreativeDefaults(edited, next);
+    assert.equal(edited.systemPrompt, privateText.systemPrompt);
+    assert.equal(edited.outputSchemaText, privateText.outputSchemaText);
+    for (const field of ['systemPromptBackup', 'outputSchemaBackup', 'templates', 'plan', 'history']) assert.deepEqual(edited[field], privateText[field]);
+  }
+});
+
 test('known defaults migrate, custom identity/schema/templates and backups survive repeated initialization', () => {
   const old = 'known installed default';
   const settings = { systemPrompt: old, appliedPromptDefaultHash: hashText(old), outputSchemaText: 'my schema',

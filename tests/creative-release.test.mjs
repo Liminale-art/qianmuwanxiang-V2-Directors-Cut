@@ -4,13 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
-const version = '1.59.460';
-const releaseVersion = '1.59.463';
+const version = '1.59.464';
+const releaseVersion = '1.59.464';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
-  'qianmu-creative-runtime.js', 'qianmu-creative-social.js',
+  'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
+  ['qianmu-creative-social.js', '1.59.460'],
+  ['qianmu-director-leave-guard.js', '1.59.463'],
   ['qianmu-director-live.js', '1.59.458'],
   ['qianmu-theme-menu.js', '1.59.455'],
   ...['qianmu-model-response.js', 'qianmu-model-host.js', 'qianmu-model-external.js',
@@ -65,7 +67,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(files.includes('qianmu-creative-social.css'));
   for (const file of ['qianmu-director-leave-guard.js', 'qianmu-director-navigation.js', 'qianmu-director-save-confirmation.js', 'qianmu-director-host-state.js', 'qianmu-director-auto-refresh.js']) {
     assert.ok(files.includes(file), `${file} must ship with the frontend`);
-    const query=file==='qianmu-director-leave-guard.js'?`?v=${releaseVersion}`:'';
+    const query=file==='qianmu-director-leave-guard.js'?`?v=${retained.get(file)}`:'';
     assert.ok(sources.get('index.js').includes(`from './${file}${query}'`), `${file} is used by the real entry with a refreshed identity when updated`);
   }
   assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.458'\)/);

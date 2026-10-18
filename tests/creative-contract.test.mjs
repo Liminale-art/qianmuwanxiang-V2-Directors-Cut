@@ -395,11 +395,30 @@ test('relations exclude USER–CHAR pairs even with a third party and require tw
   assert.deepEqual(normalizeCreativeSections(legacy).relation_undercurrents, legacy.relation_undercurrents, 'legacy text remains unsplit and untouched');
 });
 
-test('relation output keeps a deliberate two-person and three-person mix', () => {
-  const plan = complete(OFF), options = { ...OFF, characterNames: ['阿岚'] };
-  assert.deepEqual(validateCreativePlan(plan, options), []);
-  plan.relation_undercurrents = plan.relation_undercurrents.map(item => ({ ...item, parties: item.parties.slice(0, 2) }));
-  assert.ok(validateCreativePlan(plan, options).some(issue => issue.field === 'relation_undercurrents' && /双人关系.*三人关系/.test(issue.reason)));
+test('relations accept all pairs, all trios or a mix without changing or pruning the supplied participants', () => {
+  const options = { ...OFF, characterNames: ['阿岚'] };
+  for (const sizes of [[2, 2, 2], [3, 3, 3], [2, 3, 2]]) {
+    const plan = complete(OFF);
+    plan.relation_undercurrents.forEach((item, i) => { item.parties = [`店主${i}`, `邻居${i}`, `调度员${i}`].slice(0, sizes[i]); });
+    const original = structuredClone(plan);
+    assert.deepEqual(validateCreativePlan(plan, options), [], sizes.join(','));
+    assert.deepEqual(pruneInvalidCreativeItems(plan, options).plan.relation_undercurrents, original.relation_undercurrents);
+    assert.deepEqual(plan, original, 'validation does not rewrite existing content to fit a participant mix');
+  }
+});
+
+test('each relation still requires two or three distinct named participants and substantive content', () => {
+  for (const parties of [['店主'], ['店主', '邻居', '调度员', '门卫'], ['店主', '店主'], ['店主', '']]) {
+    const plan = complete(OFF);
+    plan.relation_undercurrents[0].parties = parties;
+    const issues = validateCreativePlan(plan, OFF).filter(issue => issue.field === 'relation_undercurrents');
+    assert.ok(issues.some(issue => issue.indices?.includes(0)), JSON.stringify(parties));
+    assert.ok(issues.some(issue => issue.missing === 1), 'an invalid row does not satisfy the unchanged three-entry minimum');
+    assert.deepEqual(pruneInvalidCreativeItems(plan, OFF).plan.relation_undercurrents, plan.relation_undercurrents.slice(1));
+  }
+  const plan = complete(OFF);
+  plan.relation_undercurrents[0].tension = '';
+  assert.ok(validateCreativePlan(plan, OFF).some(issue => issue.field === 'relation_undercurrents' && issue.indices?.includes(0)));
 });
 
 test('label brevity is a generation rule and never discards otherwise valid NPC or CHAR affairs', () => {

@@ -9,11 +9,26 @@ import { createCreativeSchema } from '../qianmu-creative-contract.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 
+test('relationship guidance and output contract agree on two or three people without a mandatory batch mix', () => {
+  assert.deepEqual(CREATIVE_DETAIL_COUNTS.relationParties, { min: 2, max: 3 });
+  assert.equal(CREATIVE_COUNTS.relation_undercurrents.min, 3);
+  assert.equal(CREATIVE_DETAIL_COUNTS.supportingRelations.min, 2);
+  assert.match(CREATIVE_LAWS, /Choose participants for the relationship and its narrative value; do not add people merely to vary group sizes/);
+  assert.match(CREATIVE_GUIDES.relation_undercurrents, /每条围绕 2–3 位明确参与者/);
+  assert.match(CREATIVE_GUIDES.relation_undercurrents, /人数依人物关系与叙事价值自然决定，不为凑齐双人、三人组合硬添参与者/);
+  for (const options of [{}, { interludeEnabled: false, parallelSceneEnabled: false }, { geopoliticsEnabled: true }]) {
+    const schema = createCreativeSchema(options);
+    assert.match(schema, /Every relation uses an array of 2–3 exact participant names, chosen for the relationship and its narrative value rather than a required mix of group sizes/);
+    assert.match(schema, /at least two relations include neither USER nor CHAR/);
+    assert.doesNotMatch([CREATIVE_LAWS, CREATIVE_GUIDES.relation_undercurrents, schema].join('\n'), /mixed set with at least one|include both a two-person and a three-person|三条中至少一条是双人关系/);
+  }
+});
+
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
   assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
-  assert.equal(digest(CREATIVE_LAWS), 'fbe4be2ed3eb386b35e459aaa05d627465764ad5f64e9dd604181c3e1d9c6203');
+  assert.equal(digest(CREATIVE_LAWS), '5a7b5d2a96641ec91b1bd34a6efc76970ac6d81239e93f4a889a46f22c1e9501');
   assert.equal(digest(CREATIVE_BLUEPRINT), 'e2451abdca74390ae2608a3edcf118993d247074a311348998a5eeb64f91a8e2');
-  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '8e7db797189a8a25651e8ca954fc486f8e64bdd1685ae0725be3226750d1c7b9');
+  assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '6984f7f5017097132f16018e5016b99ae9c230ed384605e76cb896dec08e2943');
   assert.equal(CREATIVE_SYSTEM_PROMPT, `## Code of Being\n\n${CREATIVE_IDENTITY}\n\n## Laws of the Ensemble\n\n${CREATIVE_LAWS}`);
   assert.equal(CREATIVE_SECTION_LABELS.character_dynamics, '此间一人');
   assert.equal(CREATIVE_SECTION_LABELS.npc_updates, '各自人间');
