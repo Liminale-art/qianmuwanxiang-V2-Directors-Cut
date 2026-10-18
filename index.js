@@ -31,7 +31,9 @@ import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composit
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
 import {renderQianmuMainTabs,preserveQianmuMainTabs,bindQianmuMainTabNavigation,keepQianmuTabVisible,animateQianmuTabSelection,bindTabsScrollControls,updateTabsFade} from './qianmu-main-tabs.js?v=1.59.421';
 import { directorPreviewPlan, directorSectionEnabled, directorSectionStatus, directorQualitySummary, paintModelLog, renderModelDiagnostics, modelFailureText, parseDirectorFinal } from './qianmu-director-live.js?v=1.59.458';
-import { createDirectorLeaveGuard } from './qianmu-director-leave-guard.js';
+import { createDirectorLeaveGuard } from './qianmu-director-leave-guard.js?v=1.59.462';
+import { createDirectorHostState } from './qianmu-director-host-state.js';
+import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
@@ -310,7 +312,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.461';
+const VERSION = '1.59.462';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1229,6 +1231,7 @@ let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染�
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
 let directorLeaveGuard = null;
+let directorHostState = null, directorAutoRefresh = null;
 // Session-only quarantine: a host call without a confirmed readback must not
 // become new injected canon. A freshly loaded host store is not this object.
 const directorUnconfirmedSaves = new WeakMap();
@@ -3710,10 +3713,33 @@ function refreshDirectorLiveUI() {
   bindDirectorReadingEvents(host);
   if (worldBody && worldPage === 'geopolitics') bindGeopoliticsTabEvents(host);
 }
+function directorHostRuntime() {
+  return directorHostState ||= createDirectorHostState({ loadHost: () => import(stMainScriptUrl()) });
+}
+function directorLeaveRuntime() {
+  return directorLeaveGuard ||= createDirectorLeaveGuard({ document, getContext: ctx, notify: toast,
+    isHostGenerating: () => { const state = directorHostRuntime().read(); return state.known ? state.generating || state.streaming : null; },
+    onNavigate: () => directorAutoRefresh?.cancel() });
+}
+function directorMainlineStarted(type, options, dryRun) {
+  if (dryRun || type === 'quiet' && !options?.quietToLoud) return;
+  directorAutoRefresh?.cancel();
+  const run = directorRun;
+  if (!run) return;
+  run.hostInterrupted = true;
+  // Do not cancel an invoked native writer. Its normal return/readback path
+  // determines the result; no rollback or replacement write follows.
+  if (run.phase === 'generating') run.controller.abort();
+}
 async function generateDirectorPlan(showSuccessToast = true, silentFailure = false, options = {}) {
   const background = Boolean(options?.background);
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
   if (busy) return;
+  const host = directorHostRuntime();
+  if (host.read().known && !host.read().idle) {
+    if (!silentFailure) toast('正文正在生成或保存，请稍后推演。', 'info');
+    return;
+  }
   if (!validateApiSettings()) {
     pushLog({ id: uid('log'), kind: 'director', status: 'error', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '请检查API设置' });
     rerenderIfOpen();
@@ -3742,22 +3768,27 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   };
   const guard = async () => {
     run.source?.assertCurrent();
+    if (run.hostInterrupted) throw Object.assign(new Error('正文开始生成，本轮推演已停止。'), { name: 'AbortError' });
+    host.assertIdle({ allowSaving: run.saveStarted === true });
     if (modelKeys.some((field, i) => settings[field] !== modelValues[i])) throw new Error(run.saved ? '模型配置已变更，后续注入已停止。' : '模型配置已变更，本次原文保留但未采用；请按新配置重新推演。');
     if (!alive() || controller.signal.aborted || namespace && namespace !== await resolveDirectorAccount()) {
       controller.abort(); throw Object.assign(new Error('生成所属的聊天或账户已变化，未写入其他聊天'), { name: 'AbortError' });
     }
     if (!alive() || controller.signal.aborted) throw Object.assign(new Error('已取消生成'), { name: 'AbortError' });
     run.source?.assertCurrent();
+    if (run.hostInterrupted) throw Object.assign(new Error('正文开始生成，本轮推演已停止。'), { name: 'AbortError' });
+    host.assertIdle({ allowSaving: run.saveStarted === true });
     if (run.sourceFingerprint && run.sourceFingerprint !== directorSourceFingerprint()) throw new Error(run.saved ? '正文、记忆或创作设置已变化，后续注入已停止。' : '正文、记忆或创作设置已变化，本次原文保留但未采用；请重新推演。');
     return true;
   };
   const paintResponse = makeStreamLogUpdater(log);
   const updateResponse = response => { if (alive()) { log.response = response.text; log.reasoning = response.reasoning; log.completion = { ...response }; delete log.completion.text; delete log.completion.reasoning; paintResponse(response.text); } };
   try {
-    const leaveGuard = directorLeaveGuard ||= createDirectorLeaveGuard({ document, getContext: ctx, notify: toast });
+    const leaveGuard = directorLeaveRuntime();
     run.leaveGuard = leaveGuard;
     run.leaveTicket = leaveGuard.begin(run, () => { cancelRequested = true; controller.abort(); });
     run.source = captureCurrentChatSource({ getContext: () => ({ ...ctx(), eventTypes: ctx().event_types }), epoch: () => 0 });
+    await host.ready();
     namespace = await resolveDirectorAccount(); await guard();
     const userPrompt = await buildPrompt(run);
     await guard();
@@ -3874,7 +3905,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     saveSettings();
     if (showSuccessToast) toast('推演完成，保存已确认。', 'success');
     const storyboard = storyboardState();
-    if (storyboard.enabled && storyboard.directorBridge?.worldSideShotsEnabled) {
+    if (storyboard.enabled && storyboard.directorBridge?.worldSideShotsEnabled && !run.leaveGuard.hasPendingClose(run.leaveTicket)) {
       void storyboardQueueNewWorldPlan(newPlan,{store,chatKey:key,namespace}).catch(()=>console.warn('[千幕] 造物之眼排程未就绪，本次推演结果保留。'));
     }
   } catch (error) {
@@ -3895,7 +3926,7 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
     log.error = run.saved ? '推演结果已保存，后续同步未完成。'
       : msg === 'INVALID_API_SETTINGS' ? '请检查API设置'
-      : msg === 'USER_CANCELLED' ? '已中断。'
+      : msg === 'USER_CANCELLED' ? run.hostInterrupted ? '正文开始生成，本轮推演已停止。' : '已中断。'
       : isJsonFail ? '模型输出格式有误。'
       : error?.code === 'MODEL_OUTPUT_INCOMPLETE' ? '本次推演未完整完成；已收到的条目仍可查看。'
       : msg;
@@ -3913,12 +3944,17 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
     const summary = directorQualitySummary(log);
     if (alive() && (!silentFailure || summary)) {
       if (run.saved) toast('推演结果已保存，后续同步未完成。', 'warning');
-      else if (msg === 'USER_CANCELLED') toast('已取消生成。', 'warning');
+      else if (msg === 'USER_CANCELLED') toast(run.hostInterrupted ? '正文开始生成，本轮推演已停止。' : '已取消生成。', run.hostInterrupted ? 'info' : 'warning');
+      else if (error?.code === 'DIRECTOR_HOST_BUSY' || error?.code === 'DIRECTOR_HOST_UNAVAILABLE') toast(error.message, 'warning');
       else if (error?.code === 'DIRECTOR_SAVE_UNCONFIRMED') toast('推演保存未确认，请查看日志。', 'warning');
       else if (log.hasValidContent) toast('本次推演有内容缺失，详情见日志。', 'warning');
       else toast('推演失败，请查看日志。', 'error');
     }
   } finally {
+    await run.leaveGuard?.finish(run.leaveTicket, { confirmed: run.saved === true,
+      isCurrent: () => alive() && !run.hostInterrupted && !controller.signal.aborted && run.source?.isCurrent() === true
+        && (!run.sourceFingerprint || run.sourceFingerprint === directorSourceFingerprint()),
+      closeChat: () => host.closeChat() });
     run.source?.close();
     run.leaveGuard?.release(run.leaveTicket);
     if (directorRun === run) {
@@ -35515,6 +35551,7 @@ function storyboardCreateStreamHost() {
 }
 
 function unbindEvents() {
+  directorAutoRefresh?.dispose(); directorAutoRefresh = null;
   storyboardStreamRuntime?.close();storyboardStreamRuntime=null;
   storyboardContinuationRuntime?.close();storyboardContinuationRuntime=null;
   const source = ctx().eventSource;
@@ -35536,41 +35573,22 @@ function bindEvents() {
     enabled:()=>settings.enabled&&storyboardState().enabled,ensureStore:getChatStore,createReference:createStoryboardMessageReference,notify:message=>toast(message,'warning'),onSaved:floor=>storyboardScheduleInlineRender(0,floor),
     resolveNamespace:async()=>(await featureRuntime.load('imageAdmission')).resolveImageAccountNamespace()});
   storyboardStreamRuntime=storyboardCreateStreamHost();
-  // 自动推演触发：每有新角色回复（MESSAGE_RECEIVED）就照实数一遍——以 lastPlanIdx 为基准，统计其后真正新增的
-  // 角色回复层，满阈值即刻推演、读取当下完整聊天。重 roll 同层改写不新增索引、天然不计；删楼则把基准夹回当前末尾自动重算。
-  const runBackgroundDirectorRefresh = async () => {
-    try {
-      if (!settings.enabled) return;
-      const chat = ctx().chat;
-      const len = Array.isArray(chat) ? chat.length : 0;
-      const store = getChatStore();
-      let mark = Number(store.lastPlanIdx ?? -1);
-      if (mark < 0 || mark > len - 1) {
-        mark = len - 1;   // 首次启用/删楼后：基准夹到当前末尾，既不漏数也不让历史楼层一次触发
-        if (Number(store.lastPlanIdx) !== mark) store.lastPlanIdx = mark;
-      }
-      let layers = 0;                                    // 基准之后真正新增的「角色回复」层（你发的楼、system 都不计）
-      for (let i = mark + 1; i < len; i++) {
-        const m = chat[i];
-        if (m && !m.is_user && !m.is_system) layers++;
-      }
-      if (settings.autoRefresh && settings.autoRefreshEvery > 0 && !busy && layers >= settings.autoRefreshEvery) {
-        store.lastPlanIdx = len - 1;                     // 以当前末尾为新基准，下一轮重新累积
-        // The successful generation persists this counter with its guarded
-        // result save. Do not open a second, unprotected whole-chat save first.
-        await generateDirectorPlan(false, true, { background: true });
-      }
-    } catch (error) {
-      console.warn(`[${MODULE_NAME}] auto refresh handler failed`, error);
-    }
-  };
+  // Received messages only schedule a source-bound check. Native streaming and
+  // saving tails must settle before a single automatic request is admitted.
+  const host = directorHostRuntime();
+  void host.ready().catch(() => {}); // Read-only preload; an unavailable host never admits inference.
+  directorLeaveRuntime();
+  directorAutoRefresh = createDirectorAutoRefresh({ getContext: ctx, getStore: getChatStore, getSettings: () => settings,
+    captureSource: () => captureCurrentChatSource({ getContext: () => ({ ...ctx(), eventTypes: ctx().event_types }), epoch: () => 0 }),
+    host, isBusy: () => busy, run: () => generateDirectorPlan(false, true, { background: true }), notify: toast });
   const refreshHandler = (messageIndex, generationType) => {
     resetDirectorNarrativeBridge();
     storyboardScheduleInlineRender(120);
     void storyboardHandleAutomaticCapture(messageIndex,generationType).catch((error) => console.warn(`[${MODULE_NAME}] automatic storyboard capture failed`, error));
-    queueMicrotask(() => void runBackgroundDirectorRefresh());
+    directorAutoRefresh?.received(messageIndex, generationType);
   };
   const rerenderHandler = async () => {
+    directorAutoRefresh?.cancel();
     storyboardCaptureView?.closeStoryboardCaptureChooser(document);
     storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
     directorRun?.controller.abort(); directorLiveLog = null;
@@ -35647,6 +35665,7 @@ function bindEvents() {
   // model extraction, generation, or unrelated host refresh work.
   const collectionRenderedHandler = () => proseFloorTools.refreshCollection(document.getElementById('chat'));
   const pairs = [
+    [types.GENERATION_STARTED || 'generation_started', directorMainlineStarted],
     [types.USER_MESSAGE_RENDERED || 'user_message_rendered', collectionRenderedHandler],
     [types.CHARACTER_MESSAGE_RENDERED || 'character_message_rendered', collectionRenderedHandler],
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）

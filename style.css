@@ -2506,7 +2506,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   min-height: 48px;
   margin: 0;
   padding: 12px 0;
-  font-size: var(--qm-type-label, 12px);
+  font-size: var(--qm-type-empty, 1.05em);
   text-align: center;
 }
 

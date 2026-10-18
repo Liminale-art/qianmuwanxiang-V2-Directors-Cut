@@ -6,8 +6,8 @@ import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 // Minimal capture/bubble DOM double. It models the native click dispatched by
 // ST's Enter-key handler, not browser layout or live ST acceptance.
 function fixture() {
-  const listeners = [], notices = [], calls = [];
-  let time = 0, cancels = 0;
+  const listeners = [], notices = [], calls = [], navigations = [];
+  let time = 0, cancels = 0, hostGenerating = false;
   const context = { characterId: 0, groupId: null };
   const document = {
     addEventListener(type, callback, capture) { listeners.push({ type, callback, capture }); },
@@ -27,7 +27,8 @@ function fixture() {
   const history = new Element('.select_chat_block', { file_name: 'Synthetic B' });
   const group = new Element('.group_select', { 'data-grid': 'group-B' });
   const f = {
-    context, document, notices, calls, listeners, Element, close, character, history, group,
+    context, document, notices, calls, navigations, listeners, Element, close, character, history, group,
+    set hostGenerating(value) { hostGenerating = value; },
     set time(value) { time = value; }, get cancels() { return cancels; },
     begin() { const owner = {}; return { owner, ticket: f.guard.begin(owner, () => { cancels++; calls.push('cancel'); }) }; },
     click(target, extra = {}) {
@@ -38,7 +39,9 @@ function fixture() {
       return event;
     },
   };
-  f.guard = createDirectorLeaveGuard({ document, getContext: () => context, notify: (...args) => notices.push(args), now: () => time });
+  f.guard = createDirectorLeaveGuard({ document, getContext: () => context,
+    isHostGenerating: () => hostGenerating, onNavigate: kind => navigations.push(kind),
+    notify: (...args) => notices.push(args), now: () => time });
   return f;
 }
 
@@ -179,6 +182,139 @@ test('a failing toast cannot unblock a saving-stage navigation event', () => {
 test('no active run leaves host operations untouched and allows a later run', () => {
   const f = fixture(); f.click(f.close); assert.deepEqual(f.calls, ['host']); assert.equal(f.notices.length, 0);
   const { ticket } = f.begin(); assert.equal(f.guard.acquire(ticket), true); f.guard.release(ticket); f.guard.dispose();
+});
+
+test('a close refused by a generating ST never cancels Q or a queued automatic run first', () => {
+  const f = fixture(), { ticket } = f.begin(); f.hostGenerating = true;
+  assert.equal(f.click(f.close).stopped, false);
+  assert.deepEqual(f.calls, ['host']); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
+  assert.equal(f.guard.acquire(ticket), true);
+  assert.equal(f.click(f.close).stopped, true);
+  assert.equal(f.guard.hasPendingClose(ticket), false); assert.deepEqual(f.navigations, []);
+  f.guard.release(ticket); f.guard.dispose();
+});
+
+test('unknown host state cannot cancel an active Q run or schedule a close during saving', () => {
+  const f = fixture(), { ticket } = f.begin(); f.hostGenerating = undefined;
+  assert.equal(f.click(f.close).stopped, true); assert.equal(f.cancels, 0); assert.deepEqual(f.navigations, []);
+  assert.equal(f.guard.acquire(ticket), true);
+  assert.equal(f.click(f.close).stopped, true); assert.equal(f.guard.hasPendingClose(ticket), false);
+  f.guard.release(ticket); f.guard.dispose();
+});
+
+test('allowed navigation cancels queued automatic work even without an active Q run', () => {
+  const f = fixture();
+  for (const kind of ['close', 'character', 'history', 'group']) f.click(f[kind]);
+  assert.deepEqual(f.navigations, ['close', 'character', 'history', 'group']);
+  f.hostGenerating = true; f.click(f.close);
+  assert.equal(f.navigations.length, 4); f.guard.dispose();
+});
+
+test('close during saving records one intent and cancels queued automatic work only once', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket);
+  f.click(f.close); f.click(f.close); f.click(f.close);
+  assert.equal(f.guard.hasPendingClose(ticket), true); assert.equal(f.guard.hasPendingClose({}), false);
+  assert.deepEqual(f.navigations, ['close']); assert.deepEqual(f.calls, []);
+  let closes = 0;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), true);
+  assert.equal(closes, 1); assert.equal(f.guard.hasPendingClose(ticket), false);
+  assert.equal(f.guard.release(ticket), false);
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
+  assert.equal(closes, 1); f.guard.dispose();
+});
+
+test('native asynchronous close retains saving protection and repeated finish shares one promise', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  let endClose, closes = 0;
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
+    closeChat: () => { closes++; return new Promise(resolve => { endClose = resolve; }); } });
+  assert.equal(f.guard.finish(ticket, { confirmed: false }), finish);
+  await Promise.resolve();
+  assert.equal(closes, 1); assert.equal(f.guard.release(ticket), false);
+  for (const kind of ['close', 'character', 'history', 'group']) assert.equal(f.click(f[kind]).stopped, true);
+  assert.deepEqual(f.navigations, ['close']); assert.equal(f.cancels, 0);
+  f.time = 86_400_000; assert.equal(f.click(f.close).stopped, true);
+  endClose(true); assert.equal(await finish, true);
+  assert.equal(f.click(f.history).stopped, false); f.guard.dispose();
+});
+
+test('source identity check immediately precedes the native close without an asynchronous gap', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  let current = true;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true,
+    isCurrent: () => { queueMicrotask(() => { current = false; }); return current; },
+    closeChat: () => { assert.equal(current, true); return true; } }), true);
+  f.guard.dispose();
+});
+
+test('blocked switches are never replayed and cannot replace the original close intent', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  for (const kind of ['character', 'history', 'group']) f.click(f[kind]);
+  let closes = 0;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), true);
+  assert.equal(closes, 1); assert.deepEqual(f.calls, []); assert.deepEqual(f.navigations, ['close']); f.guard.dispose();
+});
+
+test('a blocked switch alone never becomes an automatic close after successful save', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.history);
+  let closes = 0;
+  assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
+  assert.equal(closes, 0); assert.deepEqual(f.navigations, []); f.guard.dispose();
+});
+
+for (const reason of ['unconfirmed', 'source-changed', 'disposed', 'host-generating', 'host-unknown', 'async-source-check']) {
+  test(`${reason}: finish discards close intent without closing or retrying a write`, async () => {
+    const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+    if (reason === 'disposed') f.guard.dispose();
+    if (reason === 'host-generating') f.hostGenerating = true;
+    if (reason === 'host-unknown') f.hostGenerating = null;
+    let closes = 0;
+    assert.equal(await f.guard.finish(ticket, { confirmed: reason !== 'unconfirmed',
+      isCurrent: () => reason === 'async-source-check' ? Promise.resolve(true) : reason !== 'source-changed',
+      closeChat: () => { closes++; return true; } }), false);
+    assert.equal(closes, 0); assert.equal(f.guard.hasPendingClose(ticket), false);
+    assert.equal(f.guard.release(ticket), false);
+    if (reason.startsWith('host-')) assert.match(f.notices.at(-1)[0], /暂未关闭/);
+    f.guard.dispose();
+  });
+}
+
+test('dispose before deferred completion starts discards the close and detaches after releasing owner', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  let closes = 0;
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } });
+  f.guard.dispose();
+  assert.equal(f.listeners.length, 1); assert.equal(await finish, false);
+  assert.equal(closes, 0); assert.equal(f.listeners.length, 0);
+});
+
+test('dispose during native close retains protection until that native operation finishes', async () => {
+  const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  let endClose;
+  const finish = f.guard.finish(ticket, { confirmed: true, isCurrent: () => true, closeChat: () => new Promise(resolve => { endClose = resolve; }) });
+  await Promise.resolve(); f.guard.dispose();
+  assert.equal(f.listeners.length, 1); assert.equal(f.click(f.history).stopped, true);
+  endClose(true); assert.equal(await finish, true); assert.equal(f.listeners.length, 0);
+});
+
+for (const result of ['rejected', 'refused', 'undefined']) {
+  test(`native close ${result}: do not replay and report that chat remains open`, async () => {
+    const f = fixture(), { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+    let closes = 0;
+    assert.equal(await f.guard.finish(ticket, { confirmed: true, isCurrent: () => true,
+      closeChat: () => { closes++; return result === 'rejected' ? Promise.reject(Error('close failed')) : result === 'refused' ? false : undefined; } }), false);
+    assert.equal(closes, 1); assert.match(f.notices.at(-1)[0], /未能自动关闭/);
+    assert.equal(f.guard.hasPendingClose(ticket), false); assert.equal(f.click(f.history).stopped, false); f.guard.dispose();
+  });
+}
+
+test('an old or foreign completion cannot close or release another ticket', async () => {
+  const f = fixture(), old = f.begin(); f.guard.release(old.ticket);
+  const { ticket } = f.begin(); f.guard.acquire(ticket); f.click(f.close);
+  let closes = 0;
+  assert.equal(await f.guard.finish(old.ticket, { confirmed: true, isCurrent: () => true, closeChat: () => { closes++; return true; } }), false);
+  assert.equal(closes, 0); assert.equal(f.guard.hasPendingClose(ticket), true); assert.equal(f.click(f.history).stopped, true);
+  f.guard.release(ticket); f.guard.dispose();
 });
 
 test('module has no timer-based unlock, host lock mutation, global network interception or storage', async () => {

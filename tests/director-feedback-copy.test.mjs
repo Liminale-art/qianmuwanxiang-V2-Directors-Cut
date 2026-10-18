@@ -17,11 +17,14 @@ function fixture(history = [], providerMode = 'sillytavern') {
   return { context, store, settings };
 }
 
-test('history empty state is short, centered and one typography step below body', () => {
+test('history empty state is short, centered and matches the plot placeholder typography', () => {
   const { context } = fixture();
   assert.match(context.renderHistorySection(), /<p class="sd-muted sd-history-empty">暂无记录<\/p>/);
   assert.doesNotMatch(context.renderHistorySection(), /暂无历史记录|暂无记录。/);
-  assert.match(css, /\.sd-history-empty \{[^}]*align-items: center;[^}]*justify-content: center;[^}]*font-size: var\(--qm-type-label, 12px\);[^}]*text-align: center;/);
+  assert.match(css, /\.sd-history-empty \{[^}]*align-items: center;[^}]*justify-content: center;[^}]*text-align: center;/);
+  const fontSize = selector => css.match(new RegExp(`#story-director-modal \\.${selector} \\{[^}]*font-size:\\s*([^;]+);`))?.[1];
+  assert.equal(fontSize('sd-empty'), 'var(--qm-type-empty, 1.05em)');
+  assert.equal(fontSize('sd-history-empty'), fontSize('sd-empty'), 'both placeholders use the same theme-relative token and fallback');
 });
 
 test('history changes neither populated rows nor retention, escaping or stored records', () => {

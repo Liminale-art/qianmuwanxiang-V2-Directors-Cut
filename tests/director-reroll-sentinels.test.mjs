@@ -11,6 +11,7 @@ import { migrateQianmuChatStoreV2 } from '../qianmu-data-migrations.js';
 import { captureCurrentChatSource } from '../qianmu-current-chat-source.js';
 import { createDirectorLeaveGuard } from '../qianmu-director-leave-guard.js';
 import { captureDirectorSaveSnapshot } from '../qianmu-director-save-confirmation.js';
+import { directorHostFixture } from './helpers/director-host-fixture.mjs';
 
 // Exercise the actual composition and generation functions up to the transport
 // boundary. Synthetic sentinels identify sources; no real model/network is used.
@@ -89,7 +90,8 @@ function fixture({ responses = [], providerMode = 'external', persisted } = {}) 
     selectCreativeOptions: (s, options) => runtime.selectCreativeOptions(s, { ...options, random: () => 2.5 / 7 }),
     estimateTokens: text => Math.ceil(text.length / 4), uid: prefix => `${prefix}-${++id}`,
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null,
-    directorLeaveGuard: null, directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
+    directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null,
+    directorUnconfirmedSaves: new WeakMap(), captureCurrentChatSource, createDirectorLeaveGuard, captureDirectorSaveSnapshot,
     confirmDirectorSave: async (_snapshot, { guard }) => { await guard(); return { status: 'confirmed' }; },
     activeTab: 'dashboard', MODAL_ID: 'fixture-panel', document: { getElementById: () => null, addEventListener() {}, removeEventListener() {} },
     AbortController, Date, console, structuredClone, clone: structuredClone,
