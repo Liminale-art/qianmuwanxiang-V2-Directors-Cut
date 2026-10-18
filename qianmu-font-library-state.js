@@ -67,6 +67,21 @@ export function updateFontLibrary(state, type, payload = {}) {
   if (type === 'set-mode') {
     if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
     next.mode = payload.mode;
+  } else if (type === 'apply-font') {
+    if (!['body', 'st', 'shared'].includes(payload.target)) fail('字体目标无效');
+    const assignment = fontAssignment({ ...payload, enabled: true });
+    if (!assignment.fontId || !next.fonts.some(font => font.id === assignment.fontId)) fail('字体已不在库中');
+    next[payload.target] = assignment;
+    next.mode = payload.target === 'shared' ? 'shared' : 'separate';
+  } else if (type === 'restore-font') {
+    if (!['body', 'st', 'shared'].includes(payload.target)) fail('字体目标无效');
+    const id = fontLibraryId(payload.fontId);
+    // A stale dropdown must not clear a newer choice or a dormant preference.
+    const effective = next.mode === 'shared' ? payload.target === 'shared' : payload.target !== 'shared';
+    if (effective && next[payload.target].enabled && next[payload.target].fontId === id) {
+      if (payload.target === 'shared') next.mode = 'separate';
+      else next[payload.target] = blankAssignment();
+    }
   } else if (type === 'set-assignment') {
     if (!['body', 'st', 'shared'].includes(payload.target)) fail('字体目标无效');
     next[payload.target] = fontAssignment(payload);

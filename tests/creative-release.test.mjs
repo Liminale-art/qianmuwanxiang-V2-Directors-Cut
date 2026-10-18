@@ -5,12 +5,13 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.465';
+const releaseVersion = '1.59.466';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
+  ...['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-library-view.js', 'qianmu-font-runtime.js'].map(file => [file, releaseVersion]),
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
   ['qianmu-director-live.js', '1.59.458'],
@@ -66,6 +67,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(manifest.css, `style.css?v=${releaseVersion}`);
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));
+  assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-font-library\.css\?v=1\.59\.466'\)/);
   assert.match(sources.get('index.js'), /fontLibrary\.activate\(\);\s*void fontLibrary\.sync\(\)/);
   assert.match(sources.get('index.js'), /initialized = false;\s*fontLibrary\.dispose\(\)/);
   for (const file of ['qianmu-director-leave-guard.js', 'qianmu-director-navigation.js', 'qianmu-director-save-confirmation.js', 'qianmu-director-host-state.js', 'qianmu-director-auto-refresh.js']) {

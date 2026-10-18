@@ -89,15 +89,18 @@
 }
 
 /* No geometry override for the main window: retain saved/host-constrained dimensions. */
-#story-director-modal[data-qm-theme] .sd-window {
+#story-director-modal[data-qm-theme] .sd-window,
+#story-director-floor-nav[data-qm-theme] .qm-font-window {
   background: var(--qm-skin-window) !important;
   border-color: var(--qm-line) !important;
   border-radius: 12px !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-#story-director-modal[data-qm-theme="glass"] .sd-window { border-radius: 30px !important; }
-#story-director-modal[data-qm-theme="editorial"] .sd-window { border-radius: 0 !important; }
+#story-director-modal[data-qm-theme="glass"] .sd-window,
+#story-director-floor-nav[data-qm-theme="glass"] .qm-font-window { border-radius: 30px !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window,
+#story-director-floor-nav[data-qm-theme="editorial"] .qm-font-window { border-radius: 0 !important; }
 /* Classic's backdrop-filter anchors the shelf's fixed native import button to
    this window. New skins remove that filter, so retain its containing block
    only while the shelf is mounted; do not introduce a second import control. */
@@ -111,7 +114,8 @@
 #story-director-modal[data-qm-theme="glass"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close),
 #story-director-modal[data-qm-theme="glass"] .sd-storyboard-titlebar > .sd-storyboard-close { border-radius: 50% !important; }
 #story-director-modal[data-qm-theme] .sd-window::before { display: none; animation: none; }
-#story-director-modal[data-qm-theme] :is(.sd-header, .sd-tabs, .sd-storyboard-titlebar) {
+#story-director-modal[data-qm-theme] :is(.sd-header, .sd-tabs, .sd-storyboard-titlebar),
+#story-director-floor-nav[data-qm-theme] .qm-font-window .sd-header {
   background: transparent !important;
   box-shadow: none !important;
 }
@@ -130,7 +134,8 @@
   font-weight: 400;
   letter-spacing: .08em;
 }
-#story-director-modal[data-qm-theme="editorial"] .sd-header h2 {
+#story-director-modal[data-qm-theme="editorial"] .sd-header h2,
+#story-director-floor-nav[data-qm-theme="editorial"] .qm-font-window .sd-header h2 {
   background: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;

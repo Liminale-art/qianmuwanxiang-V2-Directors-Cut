@@ -192,3 +192,24 @@ test('explicit activate restores operation but cannot revive an old ensure or un
   resolves[2]('one'); await nextWork;
   assert.equal(f.saves.length, 1); assert.equal(f.owner.fontLibrary.fonts.length, 1); f.stop();
 });
+
+test('library return restores only its same-account view session and release cannot leak it to another owner', async () => {
+  const views = [], classes = new Set(), entry = { addEventListener(_type, handler) { this.click = handler; }, removeEventListener() {}, focus() {} };
+  const summary = { textContent: '' }, shell = { appendChild() {} };
+  const root = { isConnected: true, classList: { add: name => classes.add(name), remove: name => classes.delete(name) },
+    querySelector: selector => selector === '[data-font-library]' ? entry : selector === '[data-font-library-summary]' ? summary : selector === '.sd-floor-shell' ? shell : null };
+  const snapshot = { query: 'reading', page: 2, scrollTop: 120, variants: { test: { weight: '700' } } };
+  const f = setup({ document: { baseURI: 'https://st.example/', createElement: () => ({ remove() {}, setAttribute() {} }) },
+    viewFactory: options => { const view = { options, destroyed: false, captureSession: () => structuredClone(snapshot), destroy() { this.destroyed = true; } }; views.push(view); return view; } });
+  f.library.attach(root); assert.match(summary.textContent, /^当前：/);
+  entry.click(); await waitUntil(() => views.length === 1);
+  assert.equal(views[0].options.initialSession, null); assert.ok(classes.has('qm-font-library-open'));
+  views[0].options.onBack(); assert.equal(views[0].destroyed, true); assert.equal(classes.has('qm-font-library-open'), false);
+  entry.click(); await waitUntil(() => views.length === 2);
+  assert.deepEqual(views[1].options.initialSession, snapshot);
+  f.replace(); await f.library.sync();
+  assert.equal(views[1].destroyed, true); assert.equal(classes.has('qm-font-library-open'), false);
+  entry.click(); await waitUntil(() => views.length === 3);
+  assert.equal(views[2].options.initialSession, null); assert.equal(f.saves.length, 0);
+  f.stop();
+});

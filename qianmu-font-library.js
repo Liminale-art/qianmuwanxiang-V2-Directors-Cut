@@ -1,17 +1,17 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary } from './qianmu-font-library-state.js';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary } from './qianmu-font-library-state.js?v=1.59.466';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js';
-import { createFontLibraryView } from './qianmu-font-library-view.js';
-import { createFontRuntime } from './qianmu-font-runtime.js';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.466';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.466';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
 // Web references live in the ordinary ST extension settings. Uploaded originals
 // are device/account scoped and never enter chat metadata or ST user/files.
 export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent, document = globalThis.document,
-  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply,
+  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
   webResolver = resolveWebFontSource, localReader = createLocalFontRecord } = {}) {
   let owner = null, namespace = '', store = null, runtime = null, view = null, portal = null, container = null;
-  let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null;
+  let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null;
   const statuses = new Map();
   const makeId = () => `f_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
   const localId = async bytes => 'local_' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
@@ -24,7 +24,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   }
   function release() {
     webAbort?.abort(); webAbort = null;
-    generation++; runtime?.dispose(); store?.dispose(); runtime = null; store = null; namespace = ''; owner = null; statuses.clear();
+    generation++; runtime?.dispose(); store?.dispose(); runtime = null; store = null; namespace = ''; owner = null; viewSession = null; statuses.clear();
   }
   async function ensure() {
     const candidate = getOwner(), epoch = lifecycle;
@@ -34,7 +34,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     catch { throw new Error('暂未确认当前 ST 账户，请稍后再打开字体库'); }
     if (disposed || epoch !== lifecycle || !isCurrent() || getOwner() !== candidate) throw new Error('设置来源已变化');
     if (owner !== candidate || namespace !== resolved || !runtime) {
-      release(); owner = candidate; namespace = resolved;
+      close(false); release(); owner = candidate; namespace = resolved;
       store = localStoreFactory({ namespace });
       runtime = runtimeFactory({ document, readLocal: id => store.get(id), accountKey: namespace, onStatus: status, beforeApply, afterApply });
     }
@@ -46,8 +46,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (!node) return;
     try {
       const state = read(), name = target => state[target].enabled ? state.fonts.find(font => font.id === state[target].fontId)?.name || '原生字体' : '原生字体';
-      node.textContent = state.mode === 'shared' ? `共用 · ${name('shared')}` : `正文 · ${name('body')} / 界面 · ${name('st')}`;
-    } catch { node.textContent = '配置待检查'; }
+      node.textContent = state.mode === 'shared' ? `当前：共用 · ${name('shared')}` : `当前：正文 · ${name('body')} / 界面 · ${name('st')}`;
+    } catch { node.textContent = '当前：配置待检查'; }
   }
   async function sync() {
     if (disposed) return;
@@ -143,6 +143,12 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         guard(); next = updateFontLibrary(read(), type, payload);
       }
       guard(); const previous = read(); commit(next, token);
+      if (type === 'add-web') {
+        if (viewSession?.webSource === payload.source && viewSession.webName === (payload.name || '')) {
+          viewSession = { ...viewSession, webSource: '', webName: '' };
+        }
+        view?.clearWebDraft?.(payload);
+      }
       if (type === 'delete-fonts') {
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));
         try { await store.delete(deleted.map(font => font.id)); } catch { view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
@@ -153,21 +159,26 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       throw error;
     } finally { if (operationToken === operation) busy = false; }
   }
-  function close() {
+  function close(syncRuntime = true) {
+    if (view?.captureSession) viewSession = view.captureSession();
     view?.destroy(); view = null; container?.remove(); container = null; previewIds = []; previewChoices = {};
-    if (portal) { portal.classList.remove('qm-font-library-open'); const title = portal.querySelector('.sd-floor-panel > header h3'); if (title) title.textContent = '楼层工具'; }
+    if (portal) portal.classList.remove('qm-font-library-open');
     portal = null;
-    if (!disposed && runtime && isCurrent()) void sync().catch(() => {});
+    if (syncRuntime && !disposed && runtime && isCurrent()) void sync().catch(() => {});
   }
   async function open(root) {
     try {
       await ensure(); if (!root.isConnected) return;
       close(); portal = root; root.classList.add('qm-font-library-open');
-      const title = root.querySelector('.sd-floor-panel > header h3'); if (title) title.textContent = '字体库';
-      container = document.createElement('section'); container.className = 'qm-font-library';
-      root.querySelector('.sd-floor-panel').appendChild(container);
-      view = viewFactory({ root: container, getState: uiState, onAction: action, onVisibleFonts: visible, onBack: close, fontFamily: id => runtime.family(id) });
-    } catch (error) { notify(error.message || '字体库打开失败', 'warning'); }
+      container = document.createElement('section'); container.className = 'sd-window qm-font-window';
+      container.setAttribute('role', 'dialog'); container.setAttribute('aria-modal', 'true'); container.setAttribute('aria-label', '字体库');
+      root.querySelector('.sd-floor-shell').appendChild(container);
+      view = viewFactory({ root: container, getState: uiState, onAction: action, onVisibleFonts: visible, initialSession: viewSession,
+        onBack: () => { close(); root.querySelector('[data-font-library]')?.focus(); },
+        onClose: () => closePanel ? closePanel() : root.querySelector('.sd-floor-close')?.click(),
+        fontFamily: id => runtime.family(id) });
+      container.querySelector?.('[data-font-action="back"]')?.focus({ preventScroll: true });
+    } catch (error) { if (portal === root) close(); notify(error.message || '字体库打开失败', 'warning'); }
   }
   function attach(root) {
     detach(); attached = root;

@@ -8,7 +8,7 @@ import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
-import {createFontLibrary} from './qianmu-font-library.js';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.466';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
@@ -314,7 +314,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.465';
+const VERSION = '1.59.466';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -322,7 +322,7 @@ let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
-const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
+const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const featureRuntime = createFeatureRuntime({
   imageZoom: { label: '全屏看图', load: () => import('./qianmu-image-zoom.js?v=1.59.440') },
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
@@ -5832,7 +5832,7 @@ function floorProseLayoutMarkup() {
       <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
       <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
     </div>
-    <div class="qm-font-entry"><span>字体</span><small data-font-library-summary>沿用原生字体</small><button type="button" data-font-library>字体库</button></div>
+    <div class="qm-font-entry"><small data-font-library-summary>当前：沿用原生字体</small><button type="button" data-font-library>字体库</button></div>
     <div class="sd-prose-controls">${controls}</div>`;
 }
 

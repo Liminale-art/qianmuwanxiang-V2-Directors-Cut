@@ -1,6 +1,6 @@
 @import url('./qianmu-text-collection-floor.css');
 @import url('./qianmu-creative-social.css?v=1.59.458');
-@import url('./qianmu-font-library.css');
+@import url('./qianmu-font-library.css?v=1.59.466');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -362,7 +362,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 推演下一幕 / 新角入场 等宽：两按钮各占一半，文字长短不再撑出大小差 */
 #story-director-modal .sd-button-row > .sd-btn { flex: 1 1 0; }
 
-#story-director-modal .sd-btn {
+#story-director-modal .sd-btn,
+#story-director-floor-nav .qm-font-window .sd-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
@@ -389,8 +390,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   transition: transform .15s ease, filter .15s ease, background .2s ease, color .2s ease;
 }
 
-#story-director-modal .sd-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
-#story-director-modal .sd-btn:disabled { cursor: not-allowed; opacity: .46; }
+#story-director-modal .sd-btn:hover:not(:disabled),
+#story-director-floor-nav .qm-font-window .sd-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+#story-director-modal .sd-btn:disabled,
+#story-director-floor-nav .qm-font-window .sd-btn:disabled { cursor: not-allowed; opacity: .46; }
 #story-director-modal .sd-btn i { font-size: .92em; opacity: .85; }
 
 #story-director-modal .sd-primary {
@@ -413,7 +416,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   font-size: .9em !important;
 }
 
-#story-director-modal .sd-icon-btn {
+#story-director-modal .sd-icon-btn,
+#story-director-floor-nav .qm-font-window .sd-icon-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
@@ -433,7 +437,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 }
 
 #story-director-modal .sd-icon-btn i { font-size: 14px; }
-#story-director-modal .sd-icon-btn:hover:not(:disabled) { filter: brightness(1.08); }
+#story-director-modal .sd-icon-btn:hover:not(:disabled),
+#story-director-floor-nav .qm-font-window .sd-icon-btn:hover:not(:disabled) { filter: brightness(1.08); }
 #story-director-modal .sd-icon-btn.sd-danger i { color: inherit; }
 
 #story-director-modal .sd-file-label { position: relative; overflow: hidden; }
@@ -829,7 +834,11 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   z-index: 2147483001;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)) !important;
   color-scheme: light;                  /* 原生控件按亮色渲染 */
-
+}
+/* The font library shares the main classic palette; the compact floor tool
+   retains its own more opaque material. New skins keep their mounted tokens. */
+#story-director-modal, .qm-classic-theme-probe,
+#story-director-floor-nav.sd-theme-light:not([data-qm-theme]) .qm-font-window {
   /* 日间：暖纸杂志 */
   --sd-text: #3c352e;
   --sd-muted: rgba(60, 53, 46, .64);
@@ -1036,7 +1045,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   -webkit-backdrop-filter: blur(5px);
 }
 
-#story-director-modal .sd-window {
+#story-director-modal .sd-window,
+#story-director-floor-nav .qm-font-window {
   position: relative;
   width: min(940px, calc(100vw - 28px)) !important;
   height: min(760px, calc(100dvh - 28px)) !important;
@@ -1058,7 +1068,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 /* ---------- 5. 头部 ---------- */
-#story-director-modal .sd-header {
+#story-director-modal .sd-header,
+#story-director-floor-nav .qm-font-window .sd-header {
   position: relative;
   flex: 0 0 auto;
   display: flex;
@@ -1080,7 +1091,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   text-align: left !important;
 }
 
-#story-director-modal .sd-header h2 {
+#story-director-modal .sd-header h2,
+#story-director-floor-nav .qm-font-window .sd-header h2 {
   margin: 0;
   flex: 0 0 auto;
   font-family: Georgia, 'Times New Roman', serif !important;
@@ -1348,7 +1360,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @media (prefers-reduced-motion: reduce) { #story-director-modal .sd-tab { transition: none; } }
 
 /* ---------- 7. 内容区 / 卡片 / 表单 ---------- */
-#story-director-modal .sd-body {
+#story-director-modal .sd-body,
+#story-director-floor-nav .qm-font-window .sd-body {
   flex: 1 1 auto;
   min-height: 0 !important;
   overflow: auto;
@@ -1357,7 +1370,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   scrollbar-width: none;                /* 隐藏滚动条视觉，保留滚动功能 */
 }
 
-#story-director-modal .sd-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+#story-director-modal .sd-body::-webkit-scrollbar,
+#story-director-floor-nav .qm-font-window .sd-body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* PC/宽屏：数据卡片页自适应两列。
    关键：multicol 必须作用在 .sd-body 内的「高度自适应」内层容器上，而非定高滚动的 .sd-body 本身——
@@ -1390,7 +1404,9 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 #story-director-modal .sd-card,
-#story-director-modal .sd-accordion {
+#story-director-modal .sd-accordion,
+#story-director-floor-nav .qm-font-window .sd-card,
+#story-director-floor-nav .qm-font-window .sd-accordion {
   border: 1px solid var(--sd-border) !important;
   border-radius: 16px !important;
   background: var(--sd-card) !important;
@@ -2861,7 +2877,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 @supports not (height: 100dvh) {
   #story-director-modal { height: 100vh !important; }
 
-  #story-director-modal .sd-window {
+  #story-director-modal .sd-window,
+  #story-director-floor-nav .qm-font-window {
     height: min(760px, calc(100vh - 28px)) !important;
     max-height: calc(100vh - 28px) !important;
   }
@@ -2872,7 +2889,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
   #story-director-modal { padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)) !important; }
 
-  #story-director-modal .sd-window {
+  #story-director-modal .sd-window,
+  #story-director-floor-nav .qm-font-window {
     width: calc(100vw - 32px) !important;
     height: calc(100dvh - 108px) !important;   /* 上下各留约 54px：露出 ST 顶栏与输入框，窄屏不再瘦长 */
     max-width: calc(100vw - 32px) !important;
@@ -2880,7 +2898,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
     border-radius: 16px !important;
   }
 
-  #story-director-modal .sd-header {
+  #story-director-modal .sd-header,
+  #story-director-floor-nav .qm-font-window .sd-header {
     min-height: 58px;
     padding: 10px 10px 10px 18px !important;
     gap: 8px;
@@ -2893,9 +2912,11 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
   #story-director-modal .sd-header p { flex: 1 1 100%; max-width: none; font-size: 11px; }
 
-  #story-director-modal .sd-header h2 { font-size: 22px !important; }
+  #story-director-modal .sd-header h2,
+  #story-director-floor-nav .qm-font-window .sd-header h2 { font-size: 22px !important; }
 
-  #story-director-modal .sd-body { padding: 12px 12px 24px; }
+  #story-director-modal .sd-body,
+  #story-director-floor-nav .qm-font-window .sd-body { padding: 12px 12px 24px; }
 
   #story-director-modal .sd-base-row .sd-depth-field { margin-left: 0; }
 
@@ -2926,7 +2947,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 @media (max-height: 620px) {
-  #story-director-modal .sd-window {
+  #story-director-modal .sd-window,
+  #story-director-floor-nav .qm-font-window {
     height: calc(100dvh - 12px) !important;
     max-height: calc(100dvh - 12px) !important;
   }
@@ -2938,7 +2960,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* ---------- 15. 降级 ---------- */
 @supports not (backdrop-filter: blur(1px)) {
-  #story-director-modal .sd-window { background: var(--sd-window-bg) !important; }
+  #story-director-modal .sd-window,
+  #story-director-floor-nav .qm-font-window { background: var(--sd-window-bg) !important; }
   #story-director-modal, .qm-classic-theme-probe { --sd-card: rgba(252, 249, 243, .94); --sd-glass: rgba(255, 255, 255, .7); }
   #story-director-modal.sd-theme-dark, .qm-classic-theme-probe.sd-theme-dark { --sd-card: rgba(36, 38, 42, .96); --sd-glass: rgba(255, 255, 255, .1); }
 }
@@ -3185,12 +3208,14 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ---------- 16. ST 主题隔离层 ----------
    字体跟随 ST（JS 将 body 计算字体写入 --sd-font），其余视觉属性全部隔离。排除 FA 图标与等宽内容。 */
 #story-director-modal,
-#story-director-modal .sd-window {
+#story-director-modal .sd-window,
+#story-director-floor-nav .qm-font-window {
   font-family: var(--sd-font, var(--mainFontFamily, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif)) !important;
   font-size: 14.5px !important;
 }
 
-#story-director-modal *:not(i):not(pre):not(code):not(.sd-term) {
+#story-director-modal *:not(i):not(pre):not(code):not(.sd-term),
+#story-director-floor-nav .qm-font-window *:not(i):not(pre):not(code):not(.sd-term) {
   font-family: inherit !important;
   text-shadow: none !important;
 }
@@ -8960,7 +8985,8 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-focus-settings > summary { font-size: var(--qm-type-card-title) !important; }
 #story-director-modal .sd-btn,
 #story-director-modal button.sd-btn,
-#story-director-modal label.sd-btn { min-height: var(--qm-control-height); font-size: 12px !important; }
+#story-director-modal label.sd-btn,
+#story-director-floor-nav .qm-font-window .sd-btn { min-height: var(--qm-control-height); font-size: 12px !important; }
 #story-director-modal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
 #story-director-modal select,
 #story-director-modal .text_pole:not(textarea) {
@@ -8981,7 +9007,8 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal button:not(.sd-backdrop):not(.sd-world-edge) { border-radius: 9px !important; }
 
 /* 标识组改为竖向三级：标语 / 千幕 / 版本；更新后的小绿点由版本确认状态驱动。 */
-#story-director-modal .sd-header { min-height: 61px; padding-block: 8px !important; }
+#story-director-modal .sd-header,
+#story-director-floor-nav .qm-font-window .sd-header { min-height: 61px; padding-block: 8px !important; }
 #story-director-modal .sd-titlebox {
   display: grid !important;
   grid-template-columns: auto;

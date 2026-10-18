@@ -6,10 +6,12 @@ const PROSE_RUN = '#chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run
 // wrappers. Only their ordinary direct paragraphs are safe to select; raw
 // text beside authored cards deliberately retains native typography.
 const PROSE_MIXED_PARAGRAPH = '#chat .mes .mes_text:not([data-sd-prose-mixed="1"]):has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style])) > :is(p, div):not([class], [style]):not(:has(style, .np-min-card, [data-sd-prose-exempt], :is(div, section, article, p):is([class], [style])))';
+const PROSE_TEXT_EXEMPT = 'pre, code, kbd, samp, svg, canvas, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="icon"], .np-min-card, [data-sd-prose-exempt], [id^="story-director-"], :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)';
+const PROSE_TEXT_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) :is(p, div, span, a, b, strong, em, i, u, s, q, blockquote, ul, ol, li, h1, h2, h3, h4, h5, h6, sub, sup, small):not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
 // Body carries state classes such as sd-prose-layout; those are not a Qianmu
 // window and must not accidentally exempt the whole host interface.
 const OWN_SURFACE = '[id^="story-director-"], :is([class^="sd-"], [class*=" sd-"], [class^="qm-"], [class*=" qm-"]):not(html):not(body)';
-const EXEMPT = '.mes_text, .mes_text *, pre, pre *, code, code *, kbd, kbd *, samp, samp *, svg, svg *, canvas, i, [class*="fa-"], [class*="fa-"] *, [class*="icon"], [class*="icon"] *, [data-sd-prose-exempt], [data-sd-prose-exempt] *, [style*="font-family" i], [style*="font-family" i] *';
+const EXEMPT = '.mes_text, .mes_text *, pre, pre *, code, code *, kbd, kbd *, samp, samp *, svg, svg *, canvas, i, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="fa-"] *, [class*="icon"], [class*="icon"] *, [data-sd-prose-exempt], [data-sd-prose-exempt] *, [style*="font-family" i], [style*="font-family" i] *';
 // Do not style body or message/Qianmu ancestors: an excluded descendant must
 // not inherit a changed font from an otherwise eligible host container.
 const ST_TARGET = `html body :is(div, span, p, a, label, button, input, textarea, select, option, summary, legend, h1, h2, h3, h4, h5, h6, li, td, th, small):not(:is(${EXEMPT})):not(:is(${OWN_SURFACE})):not(:is(${OWN_SURFACE}) *):not(:has(.mes_text, ${OWN_SURFACE}))`;
@@ -78,9 +80,14 @@ function faceSource(face) {
 export function fontScopeCss(scope, family, selection = {}) {
   if (!/^QianmuFont_[a-zA-Z0-9_]+$/.test(family)) return '';
   const weight = selectedWeight(selection.weight), style = styleValue(selection.style);
-  if (scope === 'body') return `${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH} { font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important; font-weight:${weight} !important; font-style:${style} !important; }`;
+  // Important declarations in this narrowly scoped layer outrank unlayered
+  // host/font-provider rules. This avoids an unbounded specificity contest and
+  // never rewrites another extension's stylesheet or its enabled state.
+  const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
+  const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
+  if (scope === 'body') return layer(`${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
-  return `${ST_TARGET} { font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important; }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`;
+  return layer(`${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
 }
 
 export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {

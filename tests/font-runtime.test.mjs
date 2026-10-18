@@ -148,6 +148,19 @@ test('ST scope explicitly excludes message/rich prose, icons, code, Qianmu and t
   assert.ok(prose.includes('> :is(p, div):not([class], [style]):not(:has(style, .np-min-card'));
 });
 
+test('explicit application has a bounded cascade scope and fonts ordinary descendants directly', () => {
+  const prose = fontScopeCss('body', fontPreviewFamily('sample'));
+  const st = fontScopeCss('st', fontPreviewFamily('sample'));
+  for (const css of [prose, st]) {
+    assert.match(css, /^@layer qianmu-font-application \{/);
+    assert.doesNotMatch(css, /#chat#chat|:root:root|--mainFontFamily\s*:/);
+  }
+  assert.match(prose, /:is\(p, div, span, a, b, strong, em, i, u, s, q,/);
+  assert.ok(prose.includes('pre, code, kbd, samp, svg, canvas, .fa'));
+  assert.ok(prose.includes('.np-min-card, [data-sd-prose-exempt]'));
+  assert.ok(prose.includes(':not(.mes_text :is(pre, code, kbd, samp,'), 'authored-block ancestor exclusions stay within message content');
+});
+
 test('preview text outside declared ranges is reported without an unrelated probe', async () => {
   const f = fixture({ load: async () => [] });
   await f.runtime.sync(state([web('greek', { unicodeRange: 'U+0391-03A9' })]), ['greek']);

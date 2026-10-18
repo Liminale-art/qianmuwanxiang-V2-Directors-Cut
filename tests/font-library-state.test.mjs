@@ -35,6 +35,31 @@ test('library classification and selection changes are local and preserve unrela
   state = updateFontLibrary(state, 'delete-fonts', { ids: ['a'] });
   assert.equal(state.fonts.length, 1); assert.equal(state.st.fontId, 'b');
 });
+
+test('list application atomically chooses its mode and retains independent preferences', () => {
+  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'body', fontId: 'a', weight: '700' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
+  const separate = structuredClone(state);
+  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a' });
+  assert.equal(state.mode, 'shared');
+  assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st);
+  state = updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'b' });
+  assert.equal(state.mode, 'separate'); assert.equal(state.body.fontId, 'b'); assert.deepEqual(state.st, separate.st);
+  assert.throws(() => updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'missing' }));
+});
+
+test('restore actions preserve other scopes and ignore stale or dormant choices', () => {
+  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'body', fontId: 'a' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
+  assert.deepEqual(updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'b' }), state);
+  const separate = structuredClone(state);
+  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'b' });
+  assert.deepEqual(updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'a' }), state);
+  state = updateFontLibrary(state, 'restore-font', { target: 'shared', fontId: 'b' });
+  assert.equal(state.mode, 'separate'); assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st);
+  state = updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'a' });
+  assert.equal(state.body.enabled, false); assert.deepEqual(state.st, separate.st); assert.equal(state.fonts.length, 2);
+});
 test('imports deduplicate sources, remap collisions and do not activate fonts', () => {
   const base = fixture();
   const duplicate = { ...font('a'), id: 'other', name: '另一个名字' };

@@ -12,8 +12,9 @@ test('new-theme shelf keeps the native fixed import button anchored without rest
   assert.equal(rulesWithContainment.length,1);
   assert.equal(rulesWithContainment[0].selector,'#story-director-modal:is([data-qm-theme="editorial"], [data-qm-theme="glass"]) .sd-window:has(.sd-reader-lib)');
   assert.equal(rulesWithContainment[0].body,'contain: layout;','restore only the containing block, not window dimensions or a second import widget');
-  const windowSkin=rules.find(rule=>rule.selector==='#story-director-modal[data-qm-theme] .sd-window');
+  const windowSkin=rules.find(rule=>rule.selector.split(/,\s*\n/).includes('#story-director-modal[data-qm-theme] .sd-window'));
   assert.ok(windowSkin);
+  assert.equal(windowSkin.selector,'#story-director-modal[data-qm-theme] .sd-window,\n#story-director-floor-nav[data-qm-theme] .qm-font-window','font library shares the material without changing the existing main window');
   assert.match(windowSkin.body,/backdrop-filter:\s*none\s*!important/);
   assert.match(css,/#story-director-modal \.sd-reader-import-fab\s*\{[^}]*position:\s*fixed;[^}]*right:\s*26px;[^}]*bottom:\s*26px;/);
   assert.match(css,/#story-director-modal \.sd-reader-import-fab\s*\{[^}]*width:\s*58px;[^}]*height:\s*58px;/);
