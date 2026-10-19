@@ -14,9 +14,9 @@ const source = file => baseline
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
-const context = await browser.newContext(), page = await context.newPage(), checks = [], errors = [], screenshots = [];
+const context = await browser.newContext({ hasTouch: true }), page = await context.newPage(), checks = [], errors = [], screenshots = [];
 const contrasts = [];
-const qa = new URL('../dist/local-qa/theme-color-fields-455/', import.meta.url);
+const qa = new URL('../dist/local-qa/theme-color-fields-476/', import.meta.url);
 let external = 0;
 const deadline = setTimeout(() => { void browser.close(); }, 120000);
 const ok = (label, result) => { assert.ok(result, label); checks.push(label); };
@@ -64,7 +64,7 @@ try {
             applyQianmuIcons(root);
         };
         window.fieldState = () => {
-            const fields = [...document.querySelectorAll('.sd-theme-rgb input')], menu = document.querySelector('.sd-theme-menu');
+            const fields = [...document.querySelectorAll('.sd-theme-rgb input')], menu = document.querySelector('.sd-theme-menu'), hue = document.querySelector('.sd-theme-hue');
             const rect = node => { const r = node.getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
             const rgba = value => { const rgb=value.match(/[\d.]+/g)?.map(Number)||[0,0,0,0];return [...rgb.slice(0,3),rgb[3]??1]; };
             const over = (front,back) => [...front.slice(0,3).map((value,i)=>value*front[3]+back[i]*(1-front[3])),1];
@@ -76,6 +76,8 @@ try {
                 attempts: fixture.saveAttempts, saves: fixture.saves, channels, hex: document.querySelector('.sd-theme-hex')?.value,
                 native: document.querySelector('.sd-theme-color').value,
                 sv: document.querySelector('.sd-theme-sv').style.backgroundImage,
+                svRect: rect(document.querySelector('.sd-theme-sv')),
+                hue: hue ? { value: Number(hue.value), min:hue.min, max:hue.max, step:hue.step, rect:rect(hue), thumb:hue.style.getPropertyValue('--sd-hue-thumb'), label:hue.getAttribute('aria-label'), background:getComputedStyle(hue).backgroundColor } : null,
                 marker: [document.querySelector('.sd-theme-sv i').style.left, document.querySelector('.sd-theme-sv i').style.top],
                 fields: fields.map(node => { const css = getComputedStyle(node), r = rect(node), hit = document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
                     return { value:node.value, rect:r, color:css.color, fill:css.webkitTextFillColor, background:css.backgroundColor,
@@ -85,7 +87,7 @@ try {
                 error: document.querySelector('.sd-theme-status').textContent };
         };
     });
-    const trigger = page.locator('.sd-theme-btn'), custom = page.locator('.sd-theme-custom-color'), hex = page.locator('.sd-theme-hex');
+    const trigger = page.locator('.sd-theme-btn'), custom = page.locator('.sd-theme-custom-color'), hex = page.locator('.sd-theme-hex'), hue = page.locator('.sd-theme-hue');
     const channel = name => page.locator(`[data-channel="${name}"]`);
     const state = () => page.evaluate(() => fieldState());
     const open = async options => { await page.evaluate(options => setup(options), options); await trigger.click(); await custom.click(); await settled(); };
@@ -102,7 +104,9 @@ try {
                 continue;
             }
             await custom.click(); await settled(); let s = await state();
-            ok(label+' removes hue slider and keeps SV/preset dots', await page.locator('.sd-theme-hue').count()===0 && await page.locator('.sd-theme-sv').isVisible() && await page.locator('[data-appearance-accent]').count()===6);
+            ok(label+' shows labelled HSV hue range with SV/preset dots', await hue.isVisible() && s.hue.min==='0' && s.hue.max==='360' && s.hue.step==='1' && s.hue.label==='色相' && await page.locator('.sd-theme-sv').isVisible() && await page.locator('[data-appearance-accent]').count()===6);
+            ok(label+' hue fits between SV and RGB without clipping its endpoints', s.hue.rect.top>=s.svRect.bottom-1 && s.hue.rect.bottom<=s.fields[0].rect.top+1 && Math.abs(s.hue.rect.width-s.svRect.width)<1 && s.hue.rect.left>=s.menu.left+12 && s.hue.rect.right<=s.menu.right-12 && s.hue.rect.height>=24 && !s.overflow);
+            ok(label+' hue hit area stays transparent instead of inheriting the generic range background', s.hue.background==='rgba(0, 0, 0, 0)');
             ok(label+' RGB and Hex fit one compact clickable row', s.fields.length===4 && s.fields.every(field=>field.rect.top===s.fields[0].rect.top && field.rect.height<=30 && field.clickable && field.textFits) && !s.overflow && s.fields[0].rect.left>=s.menu.left && s.fields[3].rect.right<=s.menu.right);
             ok(label+' themed text-fill has at least 4.5:1 contrast after alpha composition', s.fields.every(field=>field.color===field.fill&&field.contrast>=4.5));
             contrasts.push({label,minimum:Math.min(...s.fields.map(field=>field.contrast))});
@@ -110,7 +114,11 @@ try {
             s=await state(); ok(label+' RGB commits synchronize Hex/native/SV and switch to manual', s.accent==='#c84a6e'&&s.hex==='#c84a6e'&&s.native==='#c84a6e'&&s.source==='manual');
             const beforeSv=s.sv;
             await hex.fill('#0Cf'); await hex.press('Enter'); s=await state();
-            ok(label+' #RGB expands and selects another hue without slider', s.accent==='#00ccff'&&s.hex==='#00ccff'&&s.native==='#00ccff'&&s.channels.join(',')==='0,204,255'&&s.sv!==beforeSv);
+            ok(label+' #RGB synchronizes hue slider and numeric/SV views', s.accent==='#00ccff'&&s.hex==='#00ccff'&&s.native==='#00ccff'&&s.channels.join(',')==='0,204,255'&&s.sv!==beforeSv&&s.hue.value===192);
+            await hex.fill('#ff0000'); await hex.press('Enter'); await hue.focus(); await hue.press('End'); s=await state();
+            ok(label+' keyboard End keeps true red at hue 360 rather than magenta', s.hue.value===360&&s.hex==='#ff0000'&&s.accent==='#ff0000'&&s.hue.thumb==='hsl(360 100% 50%)');
+            await hue.press('Home'); await hue.press('ArrowRight'); s=await state();
+            ok(label+' native Home/Arrow keys update hue, RGB and Hex together', s.hue.value===1&&s.accent==='#ff0400'&&s.hex===s.accent&&s.native===s.accent&&s.channels.join(',')==='255,4,0'&&!s.hidden);
             await hex.fill('#527C69'); await hex.press('Enter'); s=await state();
             ok(label+' #RRGGBB canonicalizes and synchronizes numeric channels', s.accent==='#527c69'&&s.hex==='#527c69'&&s.channels.join(',')==='82,124,105');
             if ((width===393&&family==='editorial'&&mode==='dark')||(width===320&&family==='glass'&&mode==='dark')||(width===393&&family==='editorial'&&mode==='light')) {
@@ -157,11 +165,37 @@ try {
         const beforePointer=s.accent; const box=await page.locator('.sd-theme-sv').boundingBox();
         await page.locator('.sd-theme-sv').click({position:{x:box.width*.72,y:box.height*.28}}); s=await state();
         ok('SV surface remains interactive and synchronizes both representations', s.accent!==beforePointer&&s.hex===s.accent&&s.native===s.accent);
+        await hex.fill('#00ff00'); await hex.press('Enter'); await hex.fill('#000000'); await hex.press('Enter'); s=await state();
+        ok('black keeps the prior hue and saturation editing coordinates',s.hue.value===120&&s.marker[0]==='100%'&&s.marker[1]==='100%');
+        await hue.focus(); await hue.press('End'); await page.locator('.sd-theme-sv').focus(); await page.keyboard.press('Shift+ArrowUp'); s=await state();
+        ok('hue selected while black is used when keyboard SV restores brightness',s.hue.value===360&&s.hex==='#1a0000'&&s.accent===s.hex&&s.native===s.hex);
+        await hex.fill('#808080'); await hex.press('Enter'); await hue.focus(); await hue.press('Home'); await hue.press('ArrowRight'); s=await state();
+        ok('neutral gray retains selected hue without inventing saturation',s.hue.value===1&&s.hex==='#808080'&&s.marker[0]==='0%');
+        await hex.fill('#ff0000'); await hex.press('Enter');
+        const beforeBurst=(await state()).attempts;
+        const burst=await page.evaluate(()=>{const input=document.querySelector('.sd-theme-hue');for(let value=1;value<=120;value++){input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));}return {attempts:fixture.saveAttempts,hex:document.querySelector('.sd-theme-hex').value};});
+        ok('a burst of pointer-like hue inputs updates preview without repeated synchronous saves',burst.attempts===beforeBurst&&burst.hex==='#00ff00');
+        await settled();s=await state();ok('one paint commits only the final queued hue',s.attempts===beforeBurst+1&&s.accent==='#00ff00'&&s.hue.value===120);
+        const touchHue=await hue.boundingBox();await page.touchscreen.tap(touchHue.x+touchHue.width*.72,touchHue.y+touchHue.height/2);await settled();s=await state();
+        ok('native hue range accepts touch and synchronizes the chosen color',s.hue.value>200&&s.hue.value<300&&s.accent===s.hex&&s.native===s.hex);
+        const touchSv=await page.locator('.sd-theme-sv').boundingBox();const beforeTouch=s.accent;
+        await page.touchscreen.tap(touchSv.x+touchSv.width*.55,touchSv.y+touchSv.height*.35);await settled();s=await state();
+        ok('touch SV updates channels and releases its pointer capture',s.accent!==beforeTouch&&s.accent===s.hex&&s.native===s.hex);
+        await hex.fill('#ff0000');await hex.press('Enter');await hue.focus();await hue.press('End');
+        await page.evaluate(()=>{fixture.failSave=true;});const beforeHueFailure=(await state()).attempts;
+        await hue.press('ArrowLeft');s=await state();
+        ok('failed native hue input/change restores hue endpoint, RGB and source with error retained',s.attempts===beforeHueFailure+1&&s.hue.value===360&&s.accent==='#ff0000'&&s.hex==='#ff0000'&&s.channels.join(',')==='255,0,0'&&!!s.error);
+        await page.evaluate(()=>{fixture.failSave=false;});await hue.press('ArrowLeft');s=await state();
+        ok('valid hue retry clears failure and commits once',s.attempts===beforeHueFailure+2&&s.hue.value===359&&s.accent==='#ff0004'&&!s.error);
+        const beforeAbandon=s;
+        await page.evaluate(()=>{const input=document.querySelector('.sd-theme-hue');input.value='180';input.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.sd-theme-btn').click();});await settled();s=await state();
+        ok('closing before a queued paint cancels that color update',s.hidden&&s.attempts===beforeAbandon.attempts&&s.accent===beforeAbandon.accent&&s.hue.value===359);
+        await trigger.click();await custom.click();
         await page.locator('[data-appearance-accent="#7b65a7"]').click(); s=await state();
         ok('preset dot updates RGB and Hex without closing editor', s.accent==='#7b65a7'&&s.hex==='#7b65a7'&&s.channels.join(',')==='123,101,167'&&await hex.isVisible());
         await page.locator('.fixture-following').click(); ok('outside click closes without stealing destination focus',(await state()).hidden&&(await state()).active==='fixture-following');
         await trigger.click();await custom.click(); const beforeDispose=(await state()).attempts;
-        await page.evaluate(()=>{const input=document.querySelector('.sd-theme-hex');unbind();unbind();input.value='#123abc';input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));for(const node of document.querySelectorAll('[data-channel]')){node.value='42';node.dispatchEvent(new Event('change',{bubbles:true}));}document.querySelector('.sd-theme-sv').dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:100,bubbles:true}));});
+        await page.evaluate(()=>{const input=document.querySelector('.sd-theme-hex'),hue=document.querySelector('.sd-theme-hue');hue.value='180';hue.dispatchEvent(new Event('input',{bubbles:true}));unbind();unbind();hue.value='240';hue.dispatchEvent(new Event('input',{bubbles:true}));hue.dispatchEvent(new Event('change',{bubbles:true}));input.value='#123abc';input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));for(const node of document.querySelectorAll('[data-channel]')){node.value='42';node.dispatchEvent(new Event('change',{bubbles:true}));}document.querySelector('.sd-theme-sv').dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:100,bubbles:true}));});await settled();
         ok('dispose removes color field, pointer and keyboard actions', (await state()).attempts===beforeDispose&&(await state()).hidden);
     }
     ok('no page errors or external requests', errors.length===0&&external===0);

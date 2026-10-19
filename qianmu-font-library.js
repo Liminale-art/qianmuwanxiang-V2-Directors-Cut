@@ -1,7 +1,7 @@
 import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.475';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.475';
 import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.475';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.475';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.476';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
 function fontInputName(value) {

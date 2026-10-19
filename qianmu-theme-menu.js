@@ -25,6 +25,7 @@ export function renderQianmuThemeMenu(themes, selected, { settings, supported = 
             <div class="sd-theme-swatches"><button type="button" class="sd-theme-opt sd-theme-mode-toggle" role="menuitem" data-appearance-mode-toggle aria-label="切换至${preference.mode === 'dark' ? '日间' : '夜间'}" title="切换至${preference.mode === 'dark' ? '日间' : '夜间'}">${modeIcon(preference.mode)}</button>${swatches}<label class="sd-theme-custom-color sd-theme-swatch${accents.some(([accent]) => accent === preference.accent) ? '' : ' active'}" title="自定强调色"><span aria-hidden="true"></span><input class="sd-theme-color" type="color" value="${preference.accent}" aria-label="自定强调色"></label></div>
             <div class="sd-theme-custom-picker" hidden aria-label="自定义强调色编辑器">
               <div class="sd-theme-sv" role="slider" aria-label="饱和度与明度" tabindex="0"><i aria-hidden="true"></i></div>
+              <input class="sd-theme-hue" type="range" min="0" max="360" step="1" value="0" aria-label="色相">
               <div class="sd-theme-rgb"><label>R<input type="number" min="0" max="255" step="1" data-channel="r" aria-label="红色"></label><label>G<input type="number" min="0" max="255" step="1" data-channel="g" aria-label="绿色"></label><label>B<input type="number" min="0" max="255" step="1" data-channel="b" aria-label="蓝色"></label><label>Hex<input class="sd-theme-hex" type="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Hex 颜色"></label></div>
             </div>
           </div>
@@ -41,12 +42,13 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     const keys = new Map(buttons.map(button => [button, { classic: button.dataset.theme, family: button.dataset.appearanceFamily, accent: button.dataset.appearanceAccent }]));
     const classicOptions = menu.querySelector?.('.sd-theme-classic-options'), accentOptions = menu.querySelector?.('.sd-theme-accent-options');
     const color = menu.querySelector?.('.sd-theme-color'), customColor = menu.querySelector?.('.sd-theme-custom-color'), mode = menu.querySelector?.('.sd-theme-mode-toggle');
-    const customPicker = menu.querySelector?.('.sd-theme-custom-picker'), sv = customPicker?.querySelector?.('.sd-theme-sv'), hexInput = customPicker?.querySelector?.('.sd-theme-hex');
+    const customPicker = menu.querySelector?.('.sd-theme-custom-picker'), sv = customPicker?.querySelector?.('.sd-theme-sv'), hue = customPicker?.querySelector?.('.sd-theme-hue'), hexInput = customPicker?.querySelector?.('.sd-theme-hex');
     const rgbInputs = customPicker ? [...customPicker.querySelectorAll?.('[data-channel]') || []] : [];
     const feedback = menu.querySelector?.('.sd-theme-feedback'), status = menu.querySelector?.('.sd-theme-status'), retry = menu.querySelector?.('.sd-theme-retry');
     let disposed = false, listening = false, actionError = '', sequence = 0;
     let boundsObserver = null;
     let pickerHsv = { h: 0, s: 0, v: 1 };
+    let pickerHex = '', committedPicker = null, pendingHsv = null, pickerFrame = null, svPointer = null, svBounds = null;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     function positionMenu() {
         if (disposed || menu.hidden || !menu.style || !view || !menu.getBoundingClientRect) return;
@@ -104,15 +106,32 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         return { h: (h * 60 + 360) % 360, s: max ? d / max : 0, v: max };
     }
     function hsvRgb({ h, s, v }) {
+        h = ((h % 360) + 360) % 360;
         const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
         const rgb = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
         return { r: (rgb[0] + m) * 255, g: (rgb[1] + m) * 255, b: (rgb[2] + m) * 255 };
     }
-    function syncPicker(hex) {
+    function syncPicker(hex, hsv = null) {
         if (!customPicker) return;
-        pickerHsv = rgbHsv(hexRgb(hex));
+        hex = hex.toLowerCase();
+        if (hsv) pickerHsv = { ...hsv };
+        else if (hex !== pickerHex) {
+            const next = rgbHsv(hexRgb(hex));
+            // Neutral colors have no hue; black has no measurable saturation.
+            // Preserve those editing coordinates, including red's 360 endpoint.
+            pickerHsv = { h: next.s ? next.h : pickerHsv.h, s: next.v ? next.s : pickerHsv.s, v: next.v };
+        }
+        pickerHex = hex;
+        if (hue) {
+            hue.value = String(pickerHsv.h);
+            hue.style.setProperty('--sd-hue-thumb', `hsl(${pickerHsv.h} 100% 50%)`);
+            hue.setAttribute('aria-valuetext', `${Math.round(pickerHsv.h)}°`);
+        }
         if (sv) {
             sv.style.backgroundImage = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${pickerHsv.h} 100% 50%))`;
+            sv.setAttribute('aria-valuemin', '0'); sv.setAttribute('aria-valuemax', '100');
+            sv.setAttribute('aria-valuenow', String(Math.round(pickerHsv.s * 100)));
+            sv.setAttribute('aria-valuetext', `饱和度 ${Math.round(pickerHsv.s * 100)}%，明度 ${Math.round(pickerHsv.v * 100)}%`);
             const marker = sv.querySelector?.('i');
             if (marker) { marker.style.left = `${pickerHsv.s * 100}%`; marker.style.top = `${(1 - pickerHsv.v) * 100}%`; }
         }
@@ -120,39 +139,91 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         for (const input of rgbInputs) input.value = String(rgb[input.dataset.channel] ?? 0);
         if (hexInput) hexInput.value = hex.toLowerCase();
     }
-    function applyCustomHex(hex) {
+    function applyCustomHex(hex, hsv = null) {
         if (disposed || !appearance || appearance.read().family === 'classic' || !/^#[a-f\d]{6}$/i.test(hex)) return;
         hex = hex.toLowerCase();
         // Enter can be followed by a native change event. Do not save twice,
         // or let a failed edit's rolled-back value clear its error/source.
         const preference = appearance.read();
-        if (hex === preference.accent && (preference.source === 'manual' || actionError)) { syncPicker(hex); return; }
+        if (hex === preference.accent && (preference.source === 'manual' || actionError)) {
+            syncPicker(hex, hsv); committedPicker = { hex, hsv: { ...pickerHsv } }; return;
+        }
+        const before = committedPicker;
         if (color) color.value = hex.toLowerCase();
         actionError = ''; sequence++;
-        try { const result = appearance.change({ accent: hex.toLowerCase(), source: 'manual' }); refresh(); settle(result); }
-        catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
+        try {
+            const result = appearance.change({ accent: hex.toLowerCase(), source: 'manual' });
+            syncPicker(hex, hsv); refresh(); settle(result);
+        }
+        catch {
+            if (before) syncPicker(before.hex, before.hsv);
+            actionError = '颜色切换未完成，已保留原设置。'; refresh();
+        }
     }
-    function updatePickerFromHsv() { syncPicker(rgbHex(hsvRgb(pickerHsv))); applyCustomHex(rgbHex(hsvRgb(pickerHsv))); }
+    function flushPicker() {
+        if (pickerFrame !== null) view?.cancelAnimationFrame?.(pickerFrame);
+        pickerFrame = null;
+        const hsv = pendingHsv; pendingHsv = null;
+        if (!hsv || disposed || menu.hidden || customPicker?.hidden || appearance?.read().family === 'classic') return;
+        applyCustomHex(rgbHex(hsvRgb(hsv)), hsv);
+    }
+    function updatePickerFromHsv() {
+        syncPicker(rgbHex(hsvRgb(pickerHsv)), pickerHsv);
+        pendingHsv = { ...pickerHsv };
+        // Immediate local feedback, at most one settings update per paint.
+        if (pickerFrame === null) {
+            if (view?.requestAnimationFrame) pickerFrame = view.requestAnimationFrame(flushPicker);
+            else flushPicker();
+        }
+    }
+    function releaseSv() {
+        const pointer = svPointer; svPointer = null; svBounds = null;
+        if (pointer !== null) { try { sv?.releasePointerCapture?.(pointer); } catch { /* Already released by the browser. */ } }
+    }
+    function cancelPicker() {
+        if (pickerFrame !== null) view?.cancelAnimationFrame?.(pickerFrame);
+        pickerFrame = null; pendingHsv = null; releaseSv();
+        if (committedPicker) syncPicker(committedPicker.hex, committedPicker.hsv);
+    }
+    function updateHue() {
+        if (disposed || menu.hidden || customPicker?.hidden || !appearance || appearance.read().family === 'classic') return;
+        const value = Number(hue.value);
+        if (!Number.isFinite(value)) return;
+        pickerHsv.h = clamp(value, 0, 360); updatePickerFromHsv();
+    }
     function updateSv(event) {
-        if (!sv || !appearance || appearance.read().family === 'classic') return;
-        const rect = sv.getBoundingClientRect?.();
+        if (disposed || menu.hidden || customPicker?.hidden || !sv || !appearance || appearance.read().family === 'classic') return;
+        const rect = svBounds || sv.getBoundingClientRect?.();
         if (!rect?.width || !rect?.height) return;
         pickerHsv.s = clamp((event.clientX - rect.left) / rect.width, 0, 1);
         pickerHsv.v = clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1);
         event.preventDefault(); updatePickerFromHsv();
     }
+    function startSv(event) {
+        if (event.isPrimary === false || (event.button !== undefined && event.button !== 0) || svPointer !== null || disposed || menu.hidden || customPicker?.hidden) return;
+        // Focusing can synchronously commit the old RGB/Hex field on blur.
+        // Let that edit cancel its own draft before claiming this pointer.
+        sv.focus({ preventScroll: true });
+        if (disposed || menu.hidden || customPicker?.hidden) return;
+        svPointer = event.pointerId; svBounds = sv.getBoundingClientRect?.();
+        try { sv.setPointerCapture?.(svPointer); } catch { /* Pointer may already have ended. */ }
+        updateSv(event);
+    }
+    const onSvMove = event => { if (svPointer !== null && event.pointerId === svPointer) updateSv(event); };
+    const endSv = event => { if (svPointer !== null && event.pointerId === svPointer) { flushPicker(); releaseSv(); } };
+    const cancelSv = event => { if (svPointer !== null && event.pointerId === svPointer) cancelPicker(); };
     function updateRgb() {
         const rgb = { r: 0, g: 0, b: 0 };
         for (const input of rgbInputs) {
             if (!/^\d{1,3}$/.test(input.value) || Number(input.value) > 255) return;
             rgb[input.dataset.channel] = Number(input.value);
         }
-        applyCustomHex(rgbHex(rgb));
+        cancelPicker(); applyCustomHex(rgbHex(rgb));
     }
     function updateHex() {
         const value = hexInput?.value.trim();
         if (!/^#(?:[a-f\d]{3}|[a-f\d]{6})$/i.test(value || '')) return;
-        applyCustomHex(value.length === 4 ? '#' + [...value.slice(1)].map(char => char + char).join('') : value);
+        cancelPicker(); applyCustomHex(value.length === 4 ? '#' + [...value.slice(1)].map(char => char + char).join('') : value);
     }
     function refresh(preserveDraft = false) {
         if (disposed || !appearance) return;
@@ -171,7 +242,10 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (color && color.value !== preference.accent) color.value = preference.accent;
         // A resource promise can finish while a field contains an unfinished
         // draft. Only explicit edits/rollback, not that late refresh, replace it.
-        if (!preserveDraft || !customPicker?.contains(document.activeElement)) syncPicker(preference.accent);
+        if (!pendingHsv && (!preserveDraft || !customPicker?.contains(document.activeElement))) {
+            syncPicker(preference.accent);
+            committedPicker = { hex: preference.accent, hsv: { ...pickerHsv } };
+        }
         if (customColor) {
             customColor.classList[accents.some(([accent]) => accent === preference.accent) ? 'remove' : 'add']('active');
         }
@@ -200,6 +274,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         });
     }
     function close(restoreFocus = false) {
+        cancelPicker();
         menu.hidden = true; pick.classList.remove('open'); trigger.setAttribute('aria-expanded', 'false');
         if (customPicker) customPicker.hidden = true;
         if (listening) { document.removeEventListener('click', outside, true); unwatchBounds(); listening = false; }
@@ -231,7 +306,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         }
         if (key.family || key.accent || button === mode) {
             if (!appearance || button.dataset.appearanceFamily !== key.family || button.dataset.appearanceAccent !== key.accent) return;
-            event.stopPropagation(); actionError = ''; sequence++;
+            cancelPicker(); event.stopPropagation(); actionError = ''; sequence++;
             try {
                 const result = key.family === 'classic' ? onSelect(appearance.read().classic)
                     : appearance.change(key.family ? { family: key.family } : key.accent ? { accent: key.accent, source: 'manual' } : { mode: appearance.read().mode === 'dark' ? 'light' : 'dark' });
@@ -262,18 +337,18 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         // A failed native input is rolled back by refresh. Its trailing change
         // must not clear the failure by "successfully" applying the old color.
         if (event.type === 'change' && actionError && color.value === appearance.read().accent) return;
-        actionError = ''; sequence++;
-        try { const result = appearance.change({ accent: color.value, source: 'manual' }); refresh(); settle(result); }
+        const value = color.value; cancelPicker(); actionError = ''; sequence++;
+        try { const result = appearance.change({ accent: value, source: 'manual' }); refresh(); settle(result); }
         catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
     }
     function toggleCustomPicker(event) {
         if (!customColor || !customPicker || !appearance || appearance.read().family === 'classic') return;
         event.preventDefault(); event.stopPropagation();
+        cancelPicker();
         customPicker.hidden = !customPicker.hidden;
         if (!customPicker.hidden) syncPicker(appearance.read().accent);
         positionMenu();
     }
-    const onSvMove = event => { if (event.buttons) updateSv(event); };
     function keydown(event) {
         if (disposed) return;
         if (menu.hidden) {
@@ -284,6 +359,13 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         }
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); return; }
         if (event.target.closest?.('.sd-theme-custom-picker')) {
+            if (event.target === sv && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault(); event.stopPropagation();
+                const step = event.shiftKey ? 0.1 : 0.01;
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') pickerHsv.s = clamp(pickerHsv.s + (event.key === 'ArrowRight' ? step : -step), 0, 1);
+                else pickerHsv.v = clamp(pickerHsv.v + (event.key === 'ArrowUp' ? step : -step), 0, 1);
+                updatePickerFromHsv(); flushPicker();
+            }
             if (event.key === 'Enter' && (event.target === hexInput || rgbInputs.includes(event.target))) {
                 event.preventDefault(); event.stopPropagation();
                 if (event.target === hexInput) updateHex(); else updateRgb();
@@ -303,7 +385,9 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     trigger.addEventListener('click', toggle); menu.addEventListener('click', select); pick.addEventListener('keydown', keydown); pick.addEventListener('focusout', focusout);
     color?.addEventListener('input', chooseColor); color?.addEventListener('change', chooseColor);
     customColor?.addEventListener('click', toggleCustomPicker);
-    sv?.addEventListener('pointerdown', updateSv); sv?.addEventListener('pointermove', onSvMove);
+    hue?.addEventListener('input', updateHue); hue?.addEventListener('change', flushPicker); hue?.addEventListener('pointercancel', cancelPicker);
+    sv?.addEventListener('pointerdown', startSv); sv?.addEventListener('pointermove', onSvMove);
+    sv?.addEventListener('pointerup', endSv); sv?.addEventListener('pointercancel', cancelSv); sv?.addEventListener('lostpointercapture', cancelSv);
     rgbInputs.forEach(input => input.addEventListener('change', updateRgb));
     hexInput?.addEventListener('change', updateHex);
     if (appearance) { refresh(); settle(appearance.sync()); }
@@ -312,8 +396,10 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         trigger.removeEventListener('click', toggle); menu.removeEventListener('click', select); pick.removeEventListener('keydown', keydown); pick.removeEventListener('focusout', focusout);
         color?.removeEventListener('input', chooseColor); color?.removeEventListener('change', chooseColor);
         customColor?.removeEventListener('click', toggleCustomPicker);
-        sv?.removeEventListener('pointerdown', updateSv);
+        hue?.removeEventListener('input', updateHue); hue?.removeEventListener('change', flushPicker); hue?.removeEventListener('pointercancel', cancelPicker);
+        sv?.removeEventListener('pointerdown', startSv);
         sv?.removeEventListener('pointermove', onSvMove);
+        sv?.removeEventListener('pointerup', endSv); sv?.removeEventListener('pointercancel', cancelSv); sv?.removeEventListener('lostpointercapture', cancelSv);
         rgbInputs.forEach(input => input.removeEventListener('change', updateRgb));
         hexInput?.removeEventListener('change', updateHex);
     };

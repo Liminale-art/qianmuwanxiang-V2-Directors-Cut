@@ -9,11 +9,12 @@ function fixture() {
     function node(className, parent = null) {
         const events = new Map(), attributes = new Map(), classes = new Set([className]);
         return { className, parent, events, hidden: false, disabled: false, isConnected: true, dataset: {},
+            style: { setProperty(key, value) { this[key] = value; } },
             classList: { add: key => classes.add(key), remove: key => classes.delete(key), contains: key => classes.has(key) },
             setAttribute: (key, value) => attributes.set(key, value), getAttribute: key => attributes.get(key) ?? null,
             addEventListener(type, listener) { if (!events.has(type)) events.set(type, new Set()); events.get(type).add(listener); },
             removeEventListener(type, listener) { events.get(type)?.delete(listener); },
-            emit(type, data = {}) { const event = { target: this, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...data }; for (const listener of [...events.get(type) || []]) listener(event); return event; },
+            emit(type, data = {}) { const event = { type, target: this, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...data }; for (const listener of [...events.get(type) || []]) listener(event); return event; },
             contains(other) { for (let current = other; current; current = current.parent) if (current === this) return true; return false; },
             closest(selector) { return selector === '.' + className ? this : parent?.closest(selector); },
             focus() { document.activeElement = this; },
@@ -29,25 +30,35 @@ function fixture() {
     return { document, root, pick, trigger, menu, buttons, outside, node, listenerCount: () => document.events.get('click')?.size || 0 };
 }
 
-function colorFixture() {
+function colorFixture(initial = {}) {
     const f = fixture(), picker = f.node('sd-theme-custom-picker', f.menu), color = f.node('sd-theme-color', f.menu), custom = f.node('sd-theme-custom-color', f.menu);
     const hex = f.node('sd-theme-hex', picker), rgb = ['r','g','b'].map(channel => { const input=f.node('channel',picker);input.dataset.channel=channel;return input; });
-    picker.hidden=true;picker.querySelector=selector=>selector==='.sd-theme-hex'?hex:null;picker.querySelectorAll=()=>rgb;
+    const hue=f.node('sd-theme-hue',picker),sv=f.node('sd-theme-sv',picker),marker=f.node('i',sv),captures=[];
+    sv.querySelector=()=>marker;sv.getBoundingClientRect=()=>({left:10,top:20,width:100,height:100});
+    sv.setPointerCapture=id=>captures.push(['capture',id]);sv.releasePointerCapture=id=>captures.push(['release',id]);
+    picker.hidden=true;picker.querySelector=selector=>({'.sd-theme-hex':hex,'.sd-theme-hue':hue,'.sd-theme-sv':sv}[selector]||null);picker.querySelectorAll=()=>rgb;
     f.menu.querySelector=selector=>({'.sd-theme-custom-picker':picker,'.sd-theme-color':color,'.sd-theme-custom-color':custom}[selector]||null);
-    let preference={family:'glass',mode:'dark',accent:'#527c69',source:'cover',classic:'dark'}, fail=false;
-    const changes=[], appearance={read:()=>preference,status:()=> 'ready',sync:()=>Promise.resolve(),change:patch=>{changes.push(patch);if(fail)throw new Error('test save failure');preference={...preference,...patch};return Promise.resolve();}};
-    const dispose=bindQianmuThemeMenu(f.root,()=>{},appearance);
+    const frames=new Map(),view=f.node('view');let frameId=0;
+    view.requestAnimationFrame=callback=>{frames.set(++frameId,callback);return frameId;};view.cancelAnimationFrame=id=>frames.delete(id);f.document.defaultView=view;
+    const accentButton=f.node('sd-theme-opt',f.menu);accentButton.dataset.appearanceAccent='#b86773';f.buttons.push(accentButton);
+    const classicFamily=f.node('sd-theme-opt',f.menu);classicFamily.dataset.appearanceFamily='classic';f.buttons.push(classicFamily);
+    let preference={family:'glass',mode:'dark',accent:'#527c69',source:'cover',classic:'dark',...initial}, fail=false, resource='ready', nextResult=null;
+    const changes=[], appearance={read:()=>preference,status:()=>resource,sync:()=>Promise.resolve(),change:patch=>{changes.push(patch);if(fail)throw new Error('test save failure');preference={...preference,...patch};const result=nextResult;nextResult=null;return result||Promise.resolve();}};
+    const dispose=bindQianmuThemeMenu(f.root,()=>{preference={...preference,family:'classic'};},appearance);
     f.trigger.emit('click');custom.emit('click');
-    return {...f,picker,color,custom,hex,rgb,appearance,changes,dispose,fail:()=>{fail=true;},press:(target,key)=>f.pick.emit('keydown',{target,key})};
+    return {...f,picker,color,custom,hex,rgb,hue,sv,marker,captures,frames,accentButton,classicFamily,appearance,changes,dispose,
+        frame:()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(callback=>callback());},
+        result:promise=>{nextResult=promise;},status:value=>{resource=value;},
+        fail:(value=true)=>{fail=value;},press:(target,key,extra={})=>f.pick.emit('keydown',{target,key,...extra})};
 }
 
-test('custom color markup keeps SV and four labelled fields without a hue slider',async()=>{
+test('custom color markup places an accessible native hue slider between SV and four labelled fields',async()=>{
     const html=renderQianmuThemeMenu([], 'light', {supported:true});
     assert.match(html,/sd-theme-sv/);assert.equal((html.match(/data-channel=/g)||[]).length,3);
     assert.match(html,/>Hex<input class="sd-theme-hex" type="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Hex 颜色"/);
-    assert.doesNotMatch(html,/sd-theme-hue|aria-label="色相"/);
-    const source=await readFile(new URL('../qianmu-theme-menu.js',import.meta.url),'utf8');
-    assert.doesNotMatch(source,/onHueInput|sd-theme-hue/);
+    assert.match(html,/<input class="sd-theme-hue" type="range" min="0" max="360" step="1" value="0" aria-label="色相">/);
+    assert.ok(html.indexOf('sd-theme-sv')<html.indexOf('sd-theme-hue'));
+    assert.ok(html.indexOf('sd-theme-hue')<html.indexOf('sd-theme-rgb'));
     const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
     assert.match(css,/\.sd-theme-rgb \{[^}]+repeat\(3, minmax\(0, 1fr\)\) minmax\(0, 1\.8fr\)/);
     assert.match(css,/#story-director-modal#story-director-modal \.sd-theme-rgb input \{[^}]+color: var\(--sd-text\) !important; -webkit-text-fill-color: currentColor !important/);
@@ -86,6 +97,141 @@ test('failed custom field save rolls back once and disposer removes every added 
 test('pending resource settlement leaves the focused uncommitted draft intact',async()=>{
     const f=colorFixture();f.hex.focus();f.hex.value='#12';await Promise.resolve();await Promise.resolve();
     assert.equal(f.hex.value,'#12');assert.equal(f.appearance.read().accent,'#527c69');assert.equal(f.changes.length,0);f.dispose();
+});
+
+test('hue covers all HSV primaries and preserves the red 360 endpoint through refresh and reopen',async()=>{
+    const f=colorFixture({accent:'#ff0000',source:'manual'});
+    for(const [value,hex] of [[0,'#ff0000'],[60,'#ffff00'],[120,'#00ff00'],[180,'#00ffff'],[240,'#0000ff'],[300,'#ff00ff'],[360,'#ff0000']]){
+        f.hue.value=String(value);f.hue.emit('input');
+        assert.equal(f.hex.value,hex,'local RGB feedback is immediate');
+        assert.equal(f.hue.value,String(value));assert.equal(f.hue.style['--sd-hue-thumb'],`hsl(${value} 100% 50%)`);
+        f.hue.emit('change');assert.equal(f.appearance.read().accent,hex);assert.equal(f.color.value,hex);
+        await Promise.resolve();assert.equal(f.hue.value,String(value));
+    }
+    f.trigger.emit('click');f.trigger.emit('click');f.custom.emit('click');
+    assert.equal(f.hue.value,'360');assert.equal(f.hex.value,'#ff0000');
+    f.dispose();
+});
+
+test('gray and black retain latent hue and black retains saturation until SV restores visibility',()=>{
+    const f=colorFixture({accent:'#808080',source:'manual'});
+    f.hue.value='240';f.hue.emit('input');f.hue.emit('change');
+    assert.equal(f.appearance.read().accent,'#808080');assert.equal(f.changes.length,0);assert.equal(f.hue.value,'240');
+    assert.match(f.sv.style.backgroundImage,/hsl\(240 100% 50%\)/);
+    f.sv.emit('pointerdown',{pointerId:1,button:0,clientX:110,clientY:20});f.sv.emit('pointerup',{pointerId:1});
+    assert.equal(f.appearance.read().accent,'#0000ff');assert.equal(f.hue.value,'240');
+    f.hex.value='#000000';f.hex.emit('change');assert.equal(f.hue.value,'240');assert.equal(f.marker.style.left,'100%');
+    f.hue.value='120';f.hue.emit('input');f.frame();assert.equal(f.hex.value,'#000000');assert.equal(f.hue.value,'120');
+    f.press(f.sv,'ArrowUp',{shiftKey:true});assert.equal(f.appearance.read().accent,'#001a00');
+    f.hex.value='#fff';f.hex.emit('change');assert.equal(f.hue.value,'120');assert.equal(f.marker.style.left,'0%');
+    f.press(f.sv,'ArrowRight',{shiftKey:true});assert.equal(f.appearance.read().accent,'#e6ffe6');
+    f.dispose();
+});
+
+test('RGB and Hex edits synchronize hue and native range keyboard handling remains available',()=>{
+    const f=colorFixture();f.hex.value='#00ffff';f.hex.emit('change');assert.equal(f.hue.value,'180');
+    f.rgb[0].value='255';f.rgb[1].value='0';f.rgb[2].value='255';f.rgb[2].emit('change');assert.equal(f.hue.value,'300');
+    for(const key of ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown','Tab']){
+        assert.equal(f.press(f.hue,key).prevented,undefined);assert.equal(f.menu.hidden,false);
+    }
+    f.press(f.sv,'ArrowLeft',{shiftKey:true});assert.equal(f.hex.value,'#ff19ff');
+    assert.equal(f.sv.getAttribute('aria-valuetext'),'饱和度 90%，明度 100%');
+    f.dispose();
+});
+
+test('continuous hue and touch SV drags coalesce updates and capture only the active pointer',async()=>{
+    const f=colorFixture({accent:'#ff0000',source:'manual'});
+    for(let h=1;h<=120;h++){f.hue.value=String(h);f.hue.emit('input');}
+    assert.equal(f.frames.size,1);assert.equal(f.changes.length,0);assert.equal(f.hex.value,'#00ff00');
+    await Promise.resolve();assert.equal(f.hex.value,'#00ff00','late resource sync must not replace queued coordinates');
+    f.frame();assert.equal(f.changes.length,1);assert.equal(f.appearance.read().accent,'#00ff00');
+    f.sv.emit('pointerdown',{pointerId:9,button:0,pointerType:'touch',clientX:10,clientY:20});
+    assert.deepEqual(f.captures,[['capture',9]]);
+    f.sv.emit('pointermove',{pointerId:10,clientX:110,clientY:120});assert.equal(f.hex.value,'#ffffff');
+    for(let x=11;x<=60;x++)f.sv.emit('pointermove',{pointerId:9,buttons:0,pointerType:'touch',clientX:x,clientY:70});
+    assert.equal(f.frames.size,1);assert.equal(f.changes.length,1);
+    f.sv.emit('pointerup',{pointerId:9});assert.equal(f.frames.size,0);assert.equal(f.changes.length,2);
+    assert.equal(f.appearance.read().accent,'#408040');assert.deepEqual(f.captures,[['capture',9],['release',9]]);
+    f.frame();assert.equal(f.changes.length,2);f.dispose();
+});
+
+test('SV focuses before pointer ownership so the previous Hex blur cannot swallow pointerup commit',()=>{
+    const f=colorFixture();f.hex.value='#8b584a';f.press(f.hex,'Enter');f.hex.focus();
+    const focus=f.sv.focus.bind(f.sv);
+    f.sv.focus=()=>{f.hex.emit('change');focus();};
+    // Real browsers synchronously send lostpointercapture on release. It must
+    // neither undo pointerup's saved value nor cancel a subsequent interaction.
+    f.sv.releasePointerCapture=id=>{f.captures.push(['release',id]);f.sv.emit('lostpointercapture',{pointerId:id});};
+    f.sv.emit('pointerdown',{pointerId:4,button:0,clientX:82,clientY:48});
+    assert.deepEqual(f.captures,[['capture',4]]);assert.equal(f.changes.length,1);assert.equal(f.frames.size,1);
+    f.sv.emit('pointerup',{pointerId:4});
+    assert.equal(f.frames.size,0);assert.equal(f.changes.length,2);
+    assert.notEqual(f.appearance.read().accent,'#8b584a');assert.equal(f.hex.value,f.appearance.read().accent);assert.equal(f.color.value,f.hex.value);
+    assert.deepEqual(f.captures,[['capture',4],['release',4]]);f.frame();assert.equal(f.changes.length,2);f.dispose();
+});
+
+test('async resource failures preserve accepted settings and ignore superseded requests',async()=>{
+    const f=colorFixture({accent:'#ff0000',source:'manual'});
+    let reject;f.result(new Promise((_,no)=>{reject=no;}));
+    f.hue.value='120';f.hue.emit('input');f.frame();reject(new Error('resource paint rejected'));
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(f.appearance.read().accent,'#00ff00');assert.equal(f.hex.value,'#00ff00');assert.equal(f.hue.value,'120');
+    assert.match(f.trigger.getAttribute('aria-label'),/外观切换未完成/);
+    f.result(new Promise((_,no)=>{reject=no;}));f.hue.value='180';f.hue.emit('input');f.frame();
+    f.hue.value='240';f.hue.emit('input');f.frame();reject(new Error('stale resource failure'));
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(f.appearance.read().accent,'#0000ff');assert.equal(f.hex.value,'#0000ff');assert.equal(f.hue.value,'240');
+    assert.equal(f.trigger.getAttribute('aria-label'),'外观主题');
+    let resolve;f.result(new Promise(yes=>{resolve=yes;}));f.hue.value='300';f.hue.emit('input');f.frame();
+    f.status('error');resolve(false);await Promise.resolve();await Promise.resolve();
+    assert.equal(f.appearance.read().accent,'#ff00ff');assert.equal(f.hex.value,'#ff00ff');assert.equal(f.appearance.read().source,'manual');
+    assert.match(f.trigger.getAttribute('aria-label'),/外观资源未加载/);f.dispose();
+});
+
+test('an old resource rejection cannot replace queued HSV preview or write after disposal',async()=>{
+    const f=colorFixture({accent:'#ff0000',source:'manual'});
+    let reject;f.result(new Promise((_,no)=>{reject=no;}));f.hue.value='120';f.hue.emit('input');f.frame();
+    f.hue.value='240';f.hue.emit('input');reject(new Error('resource failed before next paint'));
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(f.hex.value,'#0000ff');assert.equal(f.hue.value,'240');assert.equal(f.appearance.read().accent,'#00ff00');
+    f.frame();assert.equal(f.appearance.read().accent,'#0000ff');assert.equal(f.trigger.getAttribute('aria-label'),'外观主题');
+    f.result(new Promise((_,no)=>{reject=no;}));f.hue.value='300';f.hue.emit('input');f.frame();
+    const attempts=f.changes.length;f.dispose();reject(new Error('resource rejected after disposal'));
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(f.changes.length,attempts);assert.equal(f.trigger.getAttribute('aria-label'),'外观主题');assert.equal(f.menu.hidden,true);
+});
+
+test('a failed hue or SV save restores exact editing coordinates and trailing change preserves the error',()=>{
+    const f=colorFixture({accent:'#ff0000',source:'manual'});
+    f.hue.value='360';f.hue.emit('input');f.hue.emit('change');assert.equal(f.changes.length,0);
+    f.fail();f.hue.value='120';f.hue.emit('input');f.frame();
+    assert.equal(f.appearance.read().accent,'#ff0000');assert.equal(f.hue.value,'360');assert.equal(f.hex.value,'#ff0000');
+    assert.match(f.trigger.getAttribute('aria-label'),/颜色切换未完成/);
+    f.hue.emit('change');assert.equal(f.changes.length,1);assert.match(f.trigger.getAttribute('aria-label'),/颜色切换未完成/);
+    f.sv.emit('pointerdown',{pointerId:3,button:0,clientX:60,clientY:70});f.sv.emit('pointerup',{pointerId:3});
+    assert.equal(f.marker.style.left,'100%');assert.equal(f.marker.style.top,'0%');assert.equal(f.hue.value,'360');
+    f.fail(false);f.hue.value='240';f.hue.emit('input');f.hue.emit('change');
+    assert.equal(f.appearance.read().accent,'#0000ff');assert.equal(f.trigger.getAttribute('aria-label'),'外观主题');f.dispose();
+});
+
+test('closing, cancellation, preset selection and disposal never save an abandoned queued drag',()=>{
+    for(const exit of ['close','custom','outside','cancel','lostcapture','preset','classic','dispose']){
+        const f=colorFixture({accent:'#ff0000',source:'manual'});
+        f.sv.emit('pointerdown',{pointerId:5,button:0,clientX:60,clientY:70});assert.equal(f.frames.size,1);
+        if(exit==='close')f.press(f.hue,'Escape');
+        if(exit==='custom')f.custom.emit('click');
+        if(exit==='outside')f.document.emit('click',{target:f.outside});
+        if(exit==='cancel')f.sv.emit('pointercancel',{pointerId:5});
+        if(exit==='lostcapture')f.sv.emit('lostpointercapture',{pointerId:5});
+        if(exit==='preset')f.menu.emit('click',{target:f.accentButton});
+        if(exit==='classic')f.menu.emit('click',{target:f.classicFamily});
+        if(exit==='dispose')f.dispose();
+        assert.equal(f.frames.size,0,exit);f.frame();
+        assert.equal(f.changes.length,exit==='preset'?1:0,exit);
+        assert.equal(f.appearance.read().accent,exit==='preset'?'#b86773':'#ff0000',exit);
+        assert.deepEqual(f.captures,[['capture',5],['release',5]],exit);f.dispose();
+        for(const node of [f.hue,f.sv])for(const listeners of node.events.values())assert.equal(listeners.size,0,exit);
+    }
 });
 
 test('theme markup preserves radio semantics, explicit button types and escaped descriptors', () => {

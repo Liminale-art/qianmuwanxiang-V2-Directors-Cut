@@ -9,13 +9,14 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
 const page = await context.newPage();
-const checks = [], errors = [], unexpectedRequests = [], fixtureFontRequests = [], minimalFontRequests = [];
+const checks = [], errors = [], unexpectedRequests = [], fixtureFontRequests = [], minimalFontRequests = [], typography = [];
 const fontUrl = 'https://fontsapi.zeoseven.com/161/main/result.css';
+const paperFontUrl = 'https://fontsapi.zeoseven.com/309/main/result.css';
 let fontMode = 'font-error';
 const check = (name, actual) => { assert.ok(actual, name); checks.push(name); };
 const uiIds = ['heading', 'hero', 'navigation', 'label', 'input', 'textarea', 'select', 'button', 'prose', 'prose-child',
     'reader', 'notes', 'capture', 'capture-prose', 'dialog', 'dialog-title', 'dialog-input', 'dialog-button', 'art-preview', 'version'];
-const preserveIds = ['code', 'code-child', 'term', 'fa'];
+const preserveIds = ['code', 'code-child', 'term', 'fa', 'font-sample'];
 const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   :root { --mainFontFamily: Georgia, serif; }
@@ -38,6 +39,8 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
     <small class="sd-version-tag" id="version">v1.59.441</small><pre><code id="code">request <span id="code-child">json</span></code></pre>
     <span class="sd-term" id="term">local-token</span><i class="fa-solid" id="fa" aria-hidden="true"></i>
     <div class="sd-storyboard-artist-type-preview"><b id="art-preview">艺术字样例</b></div>
+    <section class="sd-card"><div class="sd-card-title-row"><h3 id="card-title">相同标题字号</h3></div><p class="sd-help" id="caption">相同辅助字号</p></section>
+    <p data-font-sample="fixture" id="font-sample" style="font-family:'Times New Roman',serif!important;font-weight:700!important;font-style:italic!important;font-size:19px!important">Aa 独立字体样张</p>
     <div id="svg-icons"><i class="fa-solid fa-film"></i></div>
     <canvas id="excerpt" width="120" height="50"></canvas>
   </div>
@@ -55,16 +58,18 @@ await context.route('**/*', async route => {
     if (url.origin === 'https://fontsapi.zeoseven.com') {
         minimalFontRequests.push({ path: url.pathname, mode: fontMode });
         const headers = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
-        if (url.href !== fontUrl || fontMode === 'css-error') return route.fulfill({ status: 404, headers, body: '' });
-        // Entirely synthetic network results: no real Sarasa or provider download.
-        const src = fontMode === 'success' ? 'local("Microsoft YaHei"),local("PingFang SC"),local("Noto Sans CJK SC")' : 'url("./fixture.woff2")';
-        return route.fulfill({ headers, contentType: 'text/css', body: `@font-face{font-family:"Sarasa Gothic SC";src:${src};font-style:normal;font-weight:400;font-display:swap}` });
+        if (![fontUrl, paperFontUrl].includes(url.href) || fontMode === 'css-error') return route.fulfill({ status: 404, headers, body: '' });
+        // Entirely synthetic network results: real provider assets are not downloaded.
+        const paper = url.href === paperFontUrl;
+        const src = fontMode === 'success' ? (paper ? 'local("SimSun"),local("Songti SC"),local("Noto Serif CJK SC")' : 'local("Microsoft YaHei"),local("PingFang SC"),local("Noto Sans CJK SC")') : 'url("./fixture.woff2")';
+        return route.fulfill({ headers, contentType: 'text/css', body: `@font-face{font-family:"${paper ? 'KingHwaOldSong' : 'Sarasa Gothic SC'}";src:${src};font-style:normal;font-weight:400;font-display:swap}` });
     }
     if (url.origin === 'https://host-font.invalid') {
         fixtureFontRequests.push(url.pathname);
         return route.fulfill({ status: 404, body: '' }); // Simulated ST web-font failure, never sent externally.
     }
     if (url.origin === 'https://qianmu.test' && url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+    if (url.origin === 'https://qianmu.test' && url.pathname === '/interface.ttf') return route.fulfill({ contentType: 'font/ttf', body: await readFile('C:/Windows/Fonts/arial.ttf') });
     if (url.origin === 'https://qianmu.test' && /^(?:\/style\.css|\/qianmu-[a-z0-9-]+\.(?:js|css))$/.test(url.pathname)) {
         return route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
     }
@@ -80,6 +85,9 @@ async function snapshot() {
         return {
             ui: fonts(uiIds), preserve: fonts(preserveIds),
             weights: weights(['heading', 'hero', 'art-preview', ...preserveIds]),
+            sizes: Object.fromEntries(['heading', 'hero', 'card-title', 'label', 'caption', 'font-sample'].map(id => [id, getComputedStyle(document.getElementById(id)).fontSize])),
+            headings: Object.fromEntries(['heading', 'hero', 'card-title'].map(id => { const style = getComputedStyle(document.getElementById(id)); return [id, { background: style.backgroundImage, clip: style.backgroundClip, fill: style.webkitTextFillColor }]; })),
+            sampleStyle: getComputedStyle(document.getElementById('font-sample')).fontStyle,
             baselineWeight: getComputedStyle(document.getElementById('story-director-modal')).fontWeight,
             host: fonts(['host-heading', 'host-prose', 'host-input']),
             pseudo: getComputedStyle(document.getElementById('fa'), '::before').fontFamily,
@@ -100,7 +108,7 @@ async function theme(family, mode = 'light') {
     await page.waitForFunction(url => {
         const link = [...document.querySelectorAll('link[rel="stylesheet"]')].find(node => node.href === url);
         return !link || Boolean(link.sheet);
-    }, fontUrl);
+    }, family === 'editorial' ? paperFontUrl : fontUrl);
     await page.evaluate(() => document.fonts.ready);
 }
 
@@ -124,8 +132,10 @@ try {
     });
     const classic = await snapshot();
     await theme('editorial'); const editorial = await snapshot();
-    check('classic and editorial keep their original serif/host fonts before glass', classic.ui.heading.includes('Georgia') && editorial.ui.navigation.includes('Georgia'));
-    check('classic and editorial never request the minimal-theme font', minimalFontRequests.length === 0);
+    check('classic follows the native host while paper prefers its dedicated KingHwaOldSong', classic.ui.heading.includes('Georgia') && editorial.ui.navigation.startsWith('KingHwaOldSong'));
+    check('paper requests only its dedicated font, not the minimal-theme font', minimalFontRequests.some(row => row.path === '/309/main/result.css') && minimalFontRequests.every(row => !row.path.startsWith('/161/')));
+    for (const [id, font] of Object.entries(editorial.ui).filter(([id]) => id !== 'version')) check(`paper ${id} prefers the dedicated Song family`, font.startsWith('KingHwaOldSong'));
+    assert.deepEqual(editorial.preserve, classic.preserve); checks.push('paper preserves font samples, technical text and icons');
     await theme('glass'); const glass = await snapshot();
     for (const [id, font] of Object.entries(glass.ui)) check(`minimal ${id} prefers Sarasa with private local Heiti fallback`, font.startsWith('"Sarasa Gothic SC"') && font.includes('Qianmu Glass Local Heiti'));
     check('font asset failure is simulated without any external network', minimalFontRequests.some(row => row.path.endsWith('fixture.woff2')));
@@ -135,6 +145,21 @@ try {
     checks.push('code/term/legacy icon fonts remain unchanged');
     check('legacy icon pseudo font and actual SVG artwork remain intact', glass.pseudo === classic.pseudo && Boolean(glass.svg) && glass.svg === classic.svg);
     check('custom excerpt canvas content remains byte-identical', glass.canvas === classic.canvas);
+    for (const width of [393, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        let baseline;
+        for (const family of ['classic', 'editorial', 'glass']) {
+            await theme(family); const result = await snapshot();
+            baseline ??= result.sizes; assert.deepEqual(result.sizes, baseline, `${width}px ${family} retains the same shared type scale`);
+            check(`${width}px ${family} keeps list sample family, weight and style independent`, result.preserve['font-sample'] === classic.preserve['font-sample'] && result.weights['font-sample'] === '700' && result.sampleStyle === 'italic');
+            // This fixture's bare .sd-hero h3 is not the renderer's
+            // .sd-hero-top > h3, so it has never been a gradient consumer.
+            check(`${width}px ${family} headings use the selected plain/gradient treatment: ${JSON.stringify(result.headings)}`, Object.entries(result.headings).every(([id, value]) => family === 'glass' && id !== 'hero' ? value.background.includes('gradient') && value.fill === 'rgba(0, 0, 0, 0)' : value.background === 'none' && value.fill !== 'rgba(0, 0, 0, 0)'));
+            typography.push({ width, family, sizes: result.sizes, font: result.ui.label, textWidth: result.width });
+        }
+        checks.push(`${width}px three themes retain the same computed heading/body/caption sizes`);
+    }
+    await page.setViewportSize({ width: 390, height: 844 }); await theme('glass');
     const face = await page.evaluate(() => [...document.styleSheets].filter(sheet => !sheet.href || new URL(sheet.href).origin === location.origin).flatMap(sheet => [...sheet.cssRules]).filter(rule => rule.type === CSSRule.FONT_FACE_RULE && rule.style.fontFamily.includes('Qianmu Glass Local Heiti')).map(rule => ({ src: rule.style.getPropertyValue('src'), display: rule.style.getPropertyValue('font-display') })));
     check('private Heiti face resolves installed fonts only, with no URL/import', face.length > 0 && face.every(row => row.src.includes('local(') && !/url\(/i.test(row.src)));
     const cdp = await context.newCDPSession(page);
@@ -200,11 +225,33 @@ try {
     check('switching glass to classic restores every original UI font', JSON.stringify(backClassic.ui) === JSON.stringify(classic.ui));
     check('leaving minimal releases its external font stylesheet', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
     await theme('editorial'); const backEditorial = await snapshot();
-    check('switching glass to editorial restores every original UI font', JSON.stringify(backEditorial.ui) === JSON.stringify(editorial.ui));
+    check('switching glass to editorial restores its dedicated font stack', JSON.stringify(backEditorial.ui) === JSON.stringify(editorial.ui));
 
     fontMode = 'css-error'; await theme('glass');
     check('failed font stylesheet leaves minimal ready and legible', await page.evaluate(() => session.status === 'ready') && JSON.stringify((await snapshot()).ui) === JSON.stringify(glass.ui));
     check('failed font stylesheet is released rather than leaving a blocking link', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
+    await theme('editorial');
+    check('failed paper stylesheet leaves paper ready with its local Song fallback', await page.evaluate(() => session.status === 'ready') && JSON.stringify((await snapshot()).ui) === JSON.stringify(editorial.ui));
+    check('failed paper stylesheet releases its link', await page.locator(`link[href="${paperFontUrl}"]`).count() === 0);
+    await theme('classic'); fontMode = 'success'; await theme('editorial');
+    check('mocked successful paper font loads the requested family', await page.evaluate(async () => { await document.fonts.load('16px "KingHwaOldSong"', '中文 Text'); return [...document.fonts].some(face => face.family.includes('KingHwaOldSong') && face.status === 'loaded'); }));
+    await page.evaluate(async () => {
+        const { createFontRuntime } = await import('/qianmu-font-runtime.js');
+        window.fontRuntime = createFontRuntime({ document });
+        window.libraryFont = { id: 'interface', source: { kind: 'web' }, faces: [{ urls: [{ url: 'https://qianmu.test/interface.ttf', format: 'truetype' }], weight: '400', style: 'normal' }] };
+        window.libraryState = { fonts: [libraryFont], mode: 'separate', st: { fontId: 'interface', enabled: true, weight: 400, style: 'normal' }, previewText: 'ABC' };
+        await fontRuntime.sync(libraryState);
+    });
+    check('font-library interface assignment does not replace the dedicated paper font', JSON.stringify((await snapshot()).ui) === JSON.stringify(editorial.ui));
+    await theme('classic'); const interfaceFamily = await page.evaluate(() => fontRuntime.family('interface'));
+    check('classic follows the actual verified interface font despite an older host snapshot', (await snapshot()).ui.heading.includes(interfaceFamily));
+    await theme('glass'); check('interface assignment does not alter minimal typography', JSON.stringify((await snapshot()).ui) === JSON.stringify(glass.ui));
+    await theme('editorial'); await page.evaluate(() => fontRuntime.sync({ ...libraryState, enabled: false }));
+    check('turning off the font library does not remove paper typography or its stylesheet', JSON.stringify((await snapshot()).ui) === JSON.stringify(editorial.ui) && await page.locator(`link[href="${paperFontUrl}"]`).count() === 1);
+    await theme('classic');
+    check('classic returns to native host font after interface assignment is disabled', JSON.stringify((await snapshot()).ui) === JSON.stringify(classic.ui));
+    check('leaving paper removes its dedicated stylesheet', await page.locator(`link[href="${paperFontUrl}"]`).count() === 0);
+    await page.evaluate(() => fontRuntime.dispose());
     await theme('classic'); fontMode = 'success'; await theme('glass');
     const loadedSarasa = await page.evaluate(async () => {
         await document.fonts.load('16px "Sarasa Gothic SC"', '中文 Text');
@@ -221,5 +268,5 @@ try {
     check('session disposal removes its optional font stylesheet', await page.locator(`link[href="${fontUrl}"]`).count() === 0);
     check('no unrelated network requests or page errors', unexpectedRequests.length === 0 && errors.length === 0);
     await cdp.detach();
-    console.log(JSON.stringify({ passed: checks.length, checks, blockedRemotePlatformFonts: onlineFonts, forcedFallbackFonts, errors, unexpectedRequests, simulatedMinimalFontRequests: minimalFontRequests, simulatedHostFontRequests: fixtureFontRequests.length, externalNetwork: 0, productionWrites: 0, providerRequests: 0 }, null, 2));
+    console.log(JSON.stringify({ passed: checks.length, checks, typography, blockedRemotePlatformFonts: onlineFonts, forcedFallbackFonts, errors, unexpectedRequests, simulatedThemeFontRequests: minimalFontRequests, simulatedHostFontRequests: fixtureFontRequests.length, externalNetwork: 0, productionWrites: 0, providerRequests: 0 }, null, 2));
 } finally { await context.close(); await browser.close(); }

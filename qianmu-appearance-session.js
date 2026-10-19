@@ -5,7 +5,10 @@ import { THEME_KEYS } from './qianmu-classic-palettes.js';
 import { mountQianmuInputBoundary } from './qianmu-input-boundary.js';
 
 const SCROLL_TARGETS = '.sd-body,.sd-storyboard-scroll,.sd-note-list,.sd-notes-list-view,.sd-scroll,.sd-reader-body,.sd-reader-prose,.sd-theater-reader-scroll,.sd-theater-fs-body,.sd-storage-cleanup-list,.sd-storage-chat-groups,.sd-storyboard-lightbox-stage,.sd-storyboard-lightbox-detail,.sd-storyboard-video-viewer > aside,.sd-storyboard-video-draft-body,.sd-storyboard-video-draft-picker-grid,.sd-video-confirmation-body,.sd-storyboard-film-viewer > aside,.sd-storyboard-film-viewer-segments,.sd-storyboard-film-source-grid,dialog.sd-bundle-dialog > main,.sd-focus-voice-menu,.sd-focus-library-body,.sd-focus-voice-drawer-list,.sd-comfy-route-picker,.sd-comfy-route-dialog .popup-content,.sd-ensemble-target-picker,.sd-ensemble-target-dialog .popup-content,textarea';
-const MINIMAL_FONT_URL = 'https://fontsapi.zeoseven.com/161/main/result.css';
+const THEME_FONT_URLS = Object.freeze({
+    glass: 'https://fontsapi.zeoseven.com/161/main/result.css',
+    editorial: 'https://fontsapi.zeoseven.com/309/main/result.css',
+});
 
 // Load once, after the existing stylesheet. Classic sessions make no request.
 export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, schedule = setTimeout, cancelSchedule = clearTimeout, external = false } = {}) {
@@ -26,10 +29,10 @@ export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, sc
 /** App-owned mount boundaries, not a document observer. Never renders or saves. */
 export function createQianmuAppearanceSession({ readSettings, styleUrl, document = globalThis.document,
     readCoverAccent, loadStyles = () => loadQianmuAppearanceStyles(document, styleUrl),
-    loadFont = () => loadQianmuAppearanceStyles(document, MINIMAL_FONT_URL, { external: true }),
+    loadFont = family => loadQianmuAppearanceStyles(document, THEME_FONT_URLS[family], { external: true }),
     onError = () => {}, WeakReference = globalThis.WeakRef } = {}) {
     if (typeof readSettings !== 'function' || typeof loadStyles !== 'function' || typeof onError !== 'function') throw new TypeError('Appearance session callbacks are required.');
-    let ready = false, loading = null, fontLoading = null, failed = false, epoch = 0, mounted = new WeakMap();
+    let ready = false, loading = null, fontLoading = null, fontFamily = '', failed = false, epoch = 0, mounted = new WeakMap();
     // Weak ownership preserves the existing detached-portal collection behavior.
     const roots = new Set();
     const createRuntime = () => createQianmuAppearanceRuntime({
@@ -37,13 +40,15 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
     });
     let runtime = createRuntime();
     function syncFont() {
-        if (!ready || !runtime.supported || readAppearancePreferences(readSettings()).family !== 'glass') {
-            fontLoading?.cancel(); fontLoading = null; return;
+        const family = readAppearancePreferences(readSettings()).family;
+        if (!ready || !runtime.supported || !Object.hasOwn(THEME_FONT_URLS, family)) {
+            fontLoading?.cancel(); fontLoading = null; fontFamily = ''; return;
         }
-        if (fontLoading) return;
+        if (fontLoading && fontFamily === family) return;
+        fontLoading?.cancel(); fontLoading = null; fontFamily = family;
         // Decorative network dependency only: never delay/roll back a usable skin,
         // retry on every mount, or turn a font outage into an appearance error.
-        try { fontLoading = loadFont(); void Promise.resolve(fontLoading.promise).catch(() => {}); }
+        try { fontLoading = loadFont(family); void Promise.resolve(fontLoading.promise).catch(() => {}); }
         catch { fontLoading = { cancel() {} }; }
     }
     function sync() {
@@ -122,7 +127,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         reset() {
             epoch++;
             for (const reference of roots) { const root = reference.deref(); if (root) mounted.get(root)?.off(); }
-            roots.clear(); runtime.dispose(); loading?.cancel(); fontLoading?.cancel(); loading = null; fontLoading = null; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
+            roots.clear(); runtime.dispose(); loading?.cancel(); fontLoading?.cancel(); loading = null; fontLoading = null; fontFamily = ''; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
         },
     });
 }

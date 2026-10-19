@@ -1099,12 +1099,18 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   font-size: clamp(19px, 1.9vw, 26px) !important;
   letter-spacing: .10em;
   white-space: nowrap;
-  /* 标题随主题渐变：默认走 accent→text 双色，各主题在自身块内覆写 --sd-title-grad */
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: var(--sd-text) !important;
+}
+#story-director-modal[data-qm-theme="glass"] .sd-header h2,
+#story-director-floor-nav[data-qm-theme="glass"] .qm-font-window .sd-header h2 {
   background: var(--sd-title-grad, linear-gradient(92deg, var(--sd-accent), var(--sd-text))) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
-  color: var(--sd-text) !important;
 }
 
 /* 版本号 pill 小标签 */
@@ -1130,12 +1136,17 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  /* 小字文案同样随主题：accent→muted 浅渐变，比纯灰更有层次 */
+  background: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: currentColor !important;
+  color: var(--sd-muted);
+}
+#story-director-modal[data-qm-theme="glass"] .sd-header p {
   background: var(--sd-subtitle-grad, linear-gradient(90deg, var(--sd-accent), var(--sd-muted) 70%)) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
-  color: var(--sd-muted);
 }
 
 #story-director-modal .sd-header-actions {
@@ -3208,11 +3219,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 }
 
 /* ---------- 16. ST 主题隔离层 ----------
-   字体跟随 ST（JS 将 body 计算字体写入 --sd-font），其余视觉属性全部隔离。排除 FA 图标与等宽内容。 */
+   经典先跟随已应用的 ST 界面字库，再回退宿主原生字体；其他主题保留专属字体。
+   不更改共享字号标尺，排除 FA 图标、样张与等宽内容。 */
 #story-director-modal,
 #story-director-modal .sd-window,
 #story-director-floor-nav .qm-font-window {
-  font-family: var(--sd-font, var(--mainFontFamily, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif)) !important;
+  font-family: var(--qm-interface-font, var(--sd-font, var(--mainFontFamily, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif))) !important;
   font-size: 14.5px !important;
 }
 
@@ -3222,9 +3234,10 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   text-shadow: none !important;
 }
 
-#story-director-modal .sd-header h2,
-#story-director-modal .sd-hero h3 {
-  font-family: Georgia, 'Times New Roman', serif !important;
+#story-director-modal:not([data-qm-theme]) .sd-header h2,
+#story-director-modal:not([data-qm-theme]) .sd-hero h3,
+#story-director-floor-nav:not([data-qm-theme]) .qm-font-window .sd-header h2 {
+  font-family: inherit !important;
 }
 
 #story-director-modal .sd-version-tag,
@@ -11630,15 +11643,12 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   line-height: 1.7;
 }
 
-/* final visual correction pass
-   Card headings are one continuous ink→accent gradient.  The previous tail
-   ornament made the heading itself look unfinished, especially on the
-   editorial skin. */
+/* Minimal keeps its ink→accent headings; classic and paper use plain ink. */
 #story-director-modal {
   --qm-card-title-gradient: linear-gradient(102deg, var(--sd-text) 0%, var(--sd-text) 30%, var(--sd-accent) 100%);
   --qm-source-control-height: 42px;
 }
-#story-director-modal :is(
+#story-director-modal[data-qm-theme="glass"] :is(
   .sd-card-title-row > h3,
   .sd-section-title h3,
   .sd-hero-top > h3,
@@ -11698,6 +11708,37 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+/* A native range keeps keyboard/touch handling while the fixed spectrum and
+   white-rimmed thumb match the same hue control in both custom-color themes. */
+#story-director-modal#story-director-modal input[type=range].sd-theme-hue {
+  appearance: none; -webkit-appearance: none;
+  display: block; box-sizing: border-box;
+  width: 100%; min-width: 0; height: 32px !important; min-height: 32px !important;
+  margin: 0 !important; padding: 0 !important;
+  border: 0 !important; border-radius: 0 !important;
+  background: transparent !important; box-shadow: none !important;
+  cursor: pointer; direction: ltr; touch-action: pan-y;
+}
+#story-director-modal#story-director-modal input[type=range].sd-theme-hue::-webkit-slider-runnable-track {
+  height: 8px; border: 0; border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+#story-director-modal#story-director-modal input[type=range].sd-theme-hue::-moz-range-track {
+  height: 8px; border: 0; border-radius: 999px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+#story-director-modal#story-director-modal input[type=range].sd-theme-hue::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; box-sizing: border-box;
+  width: 24px; height: 24px; margin-top: -8px;
+  border: 2px solid #fff; border-radius: 50%;
+  background: var(--sd-hue-thumb, #f00); box-shadow: 0 0 0 1px #18202a33;
+}
+#story-director-modal#story-director-modal input[type=range].sd-theme-hue::-moz-range-thumb {
+  box-sizing: border-box; width: 24px; height: 24px;
+  border: 2px solid #fff; border-radius: 50%;
+  background: var(--sd-hue-thumb, #f00); box-shadow: 0 0 0 1px #18202a33;
+}
+#story-director-modal .sd-theme-hue:focus-visible { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
 #story-director-modal .sd-theme-rgb { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.8fr); gap: 4px; }
 #story-director-modal .sd-theme-rgb label { display: grid; min-width: 0; gap: 3px; color: var(--sd-muted); font-size: var(--qm-type-caption) !important; text-align: center; }
 #story-director-modal#story-director-modal .sd-theme-rgb input {
@@ -12038,11 +12079,11 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   line-height: 1.35;
 }
 
-/* 这两块标题仍保留主题的黑→强调色渐变，而不是退回纯色。 */
-#story-director-modal .sd-inject-title > b,
-#story-director-modal .sd-injection-card > h3,
-#story-director-modal .sd-derivative-card > h3,
-#story-director-modal .sd-director-law-fold > summary > b {
+/* 极简保留既有标题渐变；经典与纸间为纯色。 */
+#story-director-modal[data-qm-theme="glass"] .sd-inject-title > b,
+#story-director-modal[data-qm-theme="glass"] .sd-injection-card > h3,
+#story-director-modal[data-qm-theme="glass"] .sd-derivative-card > h3,
+#story-director-modal[data-qm-theme="glass"] .sd-director-law-fold > summary > b {
   background-image: var(--qm-card-title-gradient) !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
@@ -12317,9 +12358,8 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 }
 #story-director-modal[data-qm-theme="glass"] [data-lib="script"] .sd-lib-list { padding-inline: 2px; }
 
-/* 所有千幕卡片标题最终走同一套黑→主题强调色渐变，避免幕外、配音和幕后
-   的局部规则再次把标题拉大或退回纯色。 */
-#story-director-modal :is(
+/* 极简卡片标题保留黑→强调色渐变，字号仍由三主题共用标尺决定。 */
+#story-director-modal[data-qm-theme="glass"] :is(
   .sd-focus-settings > summary > span:first-child,
   .sd-card > h3,
   .sd-card-title-row > h3,

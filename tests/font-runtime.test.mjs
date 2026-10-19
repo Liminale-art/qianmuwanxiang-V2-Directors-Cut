@@ -24,6 +24,24 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('classic theme receives only the verified interface family token and restores it with interface disable', async () => {
+  let reject = false;
+  const f = fixture({ load: async () => { if (reject) throw Error('offline'); return [{}]; } });
+  const fonts = [web('body'), web('interface'), web('next')];
+  await f.runtime.sync(state(fonts, { body: choice('body') }));
+  assert.doesNotMatch(f.css(), /--qm-interface-font:/, 'a body-only choice never becomes the interface font');
+  await f.runtime.sync(state(fonts, { body: choice('body'), st: choice('interface') }));
+  const previous = f.css();
+  assert.ok(previous.includes(`:root { --qm-interface-font:"${f.runtime.family('interface')}",var(--mainFontFamily,system-ui,sans-serif); }`));
+  assert.doesNotMatch(previous, /--mainFontFamily\s*:/);
+  reject = true; await f.runtime.sync(state(fonts, { body: choice('body'), st: choice('next') }));
+  assert.equal(f.css(), previous, 'a failed interface replacement preserves the real previous family');
+  await f.runtime.sync(state(fonts, { body: choice('body') })); assert.doesNotMatch(f.css(), /--qm-interface-font:/);
+  reject = false; await f.runtime.sync({ ...state(fonts), mode: 'shared', shared: choice('interface') }); assert.match(f.css(), /--qm-interface-font:/);
+  await f.runtime.sync({ ...state(fonts), enabled: false }); assert.equal(f.css(), '');
+  f.runtime.dispose(); assert.equal(f.css(), '');
+});
+
 test('native message metadata and recent-chat text are exact body targets, excluded from interface inheritance', () => {
   const body = fontScopeCss('body', fontPreviewFamily('body')), st = fontScopeCss('st', fontPreviewFamily('interface'));
   for (const leaf of ['.mesIDDisplay', '.mes_timer', '.tokenCounterDisplay', '.name_text', '.timestamp', '.swipes-counter', '.chatName', '.chatDate', '.chatMessage', '.chatStats small']) {

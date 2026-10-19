@@ -27,6 +27,22 @@
 )) {
   font-family: var(--qm-glass-font) !important;
 }
+/* Paper owns only its typography, not the host interface or font-library
+   assignments. A missing network face remains readable in a local Song font.
+   Do not override preview samples, icon glyphs or technical monospace. */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] {
+  --qm-editorial-font: "KingHwaOldSong", "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
+  font-family: var(--qm-editorial-font) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :not(:is(
+  i, svg, svg *, pre, pre *, code, code *, kbd, kbd *, samp, samp *,
+  .sd-term, .sd-term *, .sd-version-tag, .sd-npc-index,
+  .sd-storyboard-workflow, .sd-comfy-library-json,
+  [data-font-sample], [data-font-sample] *,
+  .fa, .fas, .far, .fab, .fal, .fad, .fat, [class^="fa-"], [class*=" fa-"]
+)) {
+  font-family: var(--qm-editorial-font) !important;
+}
 :is(#story-director-modal, [data-qm-theme]):is([data-qm-theme="editorial"], [data-qm-theme="glass"]) {
   --sd-window-glow: none;
   /* A classic dream class can remain on the modal while a new skin is
@@ -130,7 +146,7 @@
 #story-director-modal[data-qm-theme="glass"] .sd-tab.active { color: var(--qm-action-ink) !important; }
 #story-director-modal[data-qm-theme="glass"][data-qm-mode="dark"] .sd-tab.active { color: var(--qm-accent) !important; }
 #story-director-modal[data-qm-theme="editorial"] .sd-storyboard-titlebar > [role="heading"] {
-  font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+  font-family: var(--qm-editorial-font);
   font-weight: 400;
   letter-spacing: .08em;
 }

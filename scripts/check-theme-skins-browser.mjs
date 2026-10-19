@@ -18,6 +18,10 @@ page.on('pageerror', error => errors.push(error.message));
 await context.route('**/*', async route => {
   const url = route.request().url();
   if (url === 'https://qianmu.test/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' });
+  const parsed = new URL(url);
+  if (parsed.origin === 'https://qianmu.test' && /^\/qianmu-[a-z0-9-]+\.css$/.test(parsed.pathname)) {
+    return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + parsed.pathname, import.meta.url), 'utf8') });
+  }
   for (const file of ['qianmu-theme-surfaces.js', 'qianmu-theme-palette.js', 'qianmu-icon-renderer.js']) {
     if (url === `https://qianmu.test/${file}`) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('../' + file, import.meta.url), 'utf8') });
   }

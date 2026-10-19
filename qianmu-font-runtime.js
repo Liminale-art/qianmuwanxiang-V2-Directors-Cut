@@ -104,7 +104,11 @@ export function fontScopeCss(scope, family, selection = {}) {
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
   if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
-  return layer(`${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
+  // Classic Qianmu panels may follow the applied interface family without
+  // widening ST_TARGET or changing the host's native --mainFontFamily. Paper
+  // and minimal themes keep their own fonts; removing this sheet restores the
+  // original cascade, including while an unverified replacement is loading.
+  return layer(`:root { --qm-interface-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\n${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
 }
 
 export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {
