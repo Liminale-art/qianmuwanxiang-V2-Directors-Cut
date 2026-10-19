@@ -28,7 +28,7 @@ test('classic notification uses the supplied tone geometry without muted paths; 
   assert.equal(suppliedArtwork('maximize-4','twotone'), null);
 });
 test('font-management artwork is the exact selected official linear subset; application state stays local', () => {
-  assert.deepEqual(Object.keys(officialSelectedIcons).sort(), ['document-filter/outline', 'smallcaps/bold', 'smallcaps/outline', 'smallcaps/twotone']);
+  assert.deepEqual(Object.keys(officialSelectedIcons).sort(), ['document-filter/outline', 'firstline/bold', 'firstline/outline', 'firstline/twotone', 'smallcaps/bold', 'smallcaps/outline', 'smallcaps/twotone']);
   const svg = officialSelectedIcons['document-filter/outline'];
   assert.deepEqual(Object.keys(ICONSAX_ICON_MARKUP['document-filter']), ['outline']);
   assert.equal(ICONSAX_ICON_MARKUP['document-filter'].outline, normalizeIcon(svg));
@@ -63,6 +63,22 @@ test('font preview uses the exact smallcaps family without replacing generic tex
     assert.doesNotMatch(body, /https?:|clip-path|<defs|href=/i);
   }
   assert.equal(QIANMU_FA_ICON_MAP['fa-font'], 'qm-regular-text-aa');
+});
+test('chat-tool entrance keeps the screenshot firstline geometry in the three existing theme families', () => {
+  assert.equal(ICONSAX_GLYPH_NAMES['floor-tools'], 'firstline');
+  const rendered = parts(qianmuIconMarkup('floor-tools'));
+  assert.deepEqual(rendered.map(([,variant]) => variant), ['outline', 'bold', 'twotone']);
+  for (const [,variant,body] of rendered) {
+    const svg = officialSelectedIcons[`firstline/${variant}`];
+    assert.equal(body, normalizeIcon(svg));
+    assert.equal(body, ICONSAX_ICON_MARKUP.firstline[variant]);
+    assert.deepEqual([...body.matchAll(/ d="([^"]+)"/g)].map(m => m[1]), [...svg.matchAll(/ d="([^"]+)"/g)].map(m => m[1]));
+    assert.doesNotMatch(body, /https?:|clip-path|<defs|href=/i);
+  }
+  assert.match(ICONSAX_ICON_MARKUP.firstline.bold, /M7.92 3.5H5.08/);
+  assert.equal((ICONSAX_ICON_MARKUP.firstline.bold.match(/<path/g)||[]).length, 5);
+  assert.doesNotMatch(qianmuIconMarkup('floor-tools'), /data-qm-icon-fixed|scale\(1 -1\)/);
+  assert.equal(QIANMU_FA_ICON_MAP['fa-layer-group'], 'qm-duotone-stack', 'unrelated memory-layer icons remain unchanged');
 });
 test('only the paper entrance heart is solid, independent of floor collection state', async () => {
   const rendered=parts(qianmuIconMarkup('bookmarks'));

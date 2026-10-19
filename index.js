@@ -210,7 +210,7 @@ import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './q
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.425';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
-import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.440';
+import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.478';
 import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
@@ -315,7 +315,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.477';
+const VERSION = '1.59.478';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -358,7 +358,7 @@ async function mountFloorChatRecovery(root) {
   if (!host || chatRecoveryPanel?.root === root) return;
   host.textContent = '正在载入聊天找回…';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.477'), import('./qianmu-chat-recovery-view.js?v=1.59.477')]);
+    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.478'), import('./qianmu-chat-recovery-view.js?v=1.59.478')]);
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
     const namespace = await resolveImageAccountNamespace();
@@ -12495,7 +12495,7 @@ function renderQuickWheelSettings() {
   const occupied = settings.quickWheelCustomEnabled.length;
   return `<div class="sd-wheel-settings">
     <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list" role="group" aria-label="蜂巢入口">${ordered.map(item => `
-      <button type="button" class="sd-widget-toggle sd-wheel-command-toggle ${settings.quickWheelCustomEnabled.includes(item.id) ? 'active' : ''}" data-command="${item.id}" aria-pressed="${settings.quickWheelCustomEnabled.includes(item.id)}"><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.label)}</span></button>`).join('')}</div>
+      <button type="button" class="sd-widget-toggle sd-wheel-command-toggle ${settings.quickWheelCustomEnabled.includes(item.id) ? 'active' : ''}" data-command="${item.id}" aria-pressed="${settings.quickWheelCustomEnabled.includes(item.id)}"><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.id === 'floor' ? '聊天工具' : item.id === 'plug' ? '设置' : item.label)}</span></button>`).join('')}</div>
     </details>
   </div>`;
 }

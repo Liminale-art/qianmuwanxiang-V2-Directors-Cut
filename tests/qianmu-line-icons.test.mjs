@@ -56,7 +56,7 @@ for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使�
 const glyphBody = (markup) => String(markup).match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] || '';
 const semanticName = symbol => symbol.replace(/^qm-(?:duotone|regular|fill|user|signature)-/, '');
 const variantNames = ['outline', 'bold', 'twotone'];
-const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
+const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
 assert.deepEqual(ICONSAX_FIXED_VARIANTS, fixedVariants, 'only explicitly requested actions override appearance families');
 const artwork = (name, variant) => ICONSAX_ICON_MARKUP[name][['refresh-arrow-02','unlimited','share'].includes(name) && variant === 'bold' ? 'outline' : variant];
 const groups = body => [...body.matchAll(/<g data-qm-icon-variant="(outline|bold|twotone|broken)"([^>]*)>([\s\S]*?)<\/g>(?=<g data-qm-icon-variant=|$)/g)]
@@ -123,8 +123,8 @@ for (const action of ['fa-rotate', 'fa-rotate-right', 'image-regenerate']) {
 }
 assert.match(indexSource, /data-style="wavy"[^\n]*data-qm-icon="underline-wave"/);
 assert.equal(ICONSAX_GLYPH_NAMES[semanticName(resolveQianmuIcon('fa-wave-square'))], 'sound', 'unrelated injection status retains its own waveform');
-assert.match(ICONSAX_ICON_MARKUP['align-bottom'].outline, /transform="translate\(0 24\) scale\(1 -1\)"/);
-assert.match(ICONSAX_ICON_MARKUP['align-bottom'].outline, /d="M2 5H22"/, 'the reference baseline becomes y=19 after mirroring, not an unrailed align-top');
+assert.match(ICONSAX_ICON_MARKUP.firstline.outline, /d="M14 4.5H21"/);
+assert.match(ICONSAX_ICON_MARKUP.firstline.bold, /d="M7.92 3.5H5.08/, 'the supplied firstline family keeps its upper-left solid rounded square');
 
 assert.doesNotMatch(rendererSource, /new URL\(|fetch\(|XMLHttpRequest|<use\b|xlink:href/i, '图标渲染器不得依赖任何二次资源请求');
 assert.match(rendererSource, /ICONSAX_STROKE_WIDTH = 2\.5/);
@@ -158,7 +158,7 @@ for (const [semantic, official] of Object.entries({
   assistant:'ai-commentary', backstage:'fire-9', notes:'note-text', theater:'gift-9', bookmarks:'qianmu-heart',
   context:'shapes', world:'global', 'world-map':'share', tasks:'task-square', focus:'notification', aperture:'video-play', dashboard:'unlimited',
   'voice-lines':'message-search', 'voice-reextract':'message-notif', 'voice-regenerate':'record-circle', 'voice-playall':'tts-play', 'voice-stopall':'tts-stop',
-  'floor-tools':'align-bottom', 'underline-wave':'qianmu-underline-wave', pen:'edit', 'pencil-simple':'edit', 'arrow-clockwise':'refresh-arrow-02',
+  'floor-tools':'firstline', 'underline-wave':'qianmu-underline-wave', pen:'edit', 'pencil-simple':'edit', 'arrow-clockwise':'refresh-arrow-02',
 })) assert.equal(ICONSAX_GLYPH_NAMES[semantic], official, `${semantic}: user-selected entry remains distinct from unrelated generic actions`);
 assert.deepEqual([...ICONSAX_ICON_MARKUP['fire-9'].outline.matchAll(/<path d="([^"]+)"/g)].map(match => match[1]), [
   'M21.9992 17.56H3.61921C2.87921 17.56 2.38921 18.34 2.72921 19.01L3.94921 21.45C4.11921 21.79 4.46921 22 4.83921 22H19.1592C19.5392 22 19.8892 21.79 20.0492 21.45L21.9992 17.56Z',

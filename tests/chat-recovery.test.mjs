@@ -22,6 +22,7 @@ function fixture(options = {}) {
         const form = config.body instanceof FormData, body = form ? config.body : JSON.parse(config.body);
         const call = { path, body, config, account }; calls.push(call);
         const overridden = await options.before?.(call, { sources, files, characters }); if (overridden) return overridden;
+        if (path.startsWith('/api/plugins/qianmu-tts/chat-backups/')) return new Response('', { status: 404 });
         if (path === '/api/backups/chat/get') return respond([...sources].map(([name, raw]) => ({ file_name: name, file_size: String(raw.length) + ' B', chat_items: inspectChatRecoveryJsonl(raw).messageCount, last_mes: '2026-10-19T03:00:00Z', mes: '<script>must be text</script>', chat_metadata: { doNotExpose: true } })));
         if (path === '/api/backups/chat/download') return new Response(sources.get(body.name) || '', { status: sources.has(body.name) ? 200 : 404 });
         if (path === '/api/characters/chats') return respond([...files.get(body.avatar_url).keys()].map(file_name => ({ file_name })));
@@ -51,8 +52,8 @@ test('list and preview are account-scoped reads with safe text summaries, not ra
     const preview = await f.controller.preview(backup);
     assert.equal(preview.preview.messageCount, 2); assert.ok(preview.preview.text.includes('<img src=x onerror=alert(1)>'));
     assert.deepEqual(preview.preview.participants, ['用户', '角色']); assert.equal(f.imports().length, 0);
-    assert.deepEqual(f.calls.map(call => call.path), ['/api/backups/chat/get', '/api/backups/chat/download']);
-    await assert.rejects(f.controller.preview('chat_another.jsonl'), /当前账户/); assert.equal(f.calls.length, 2);
+    assert.deepEqual(f.calls.map(call => call.path), ['/api/backups/chat/get', '/api/plugins/qianmu-tts/chat-backups/list', '/api/backups/chat/download']);
+    await assert.rejects(f.controller.preview('chat_another.jsonl'), /当前账户/); assert.equal(f.calls.length, 3);
 });
 
 test('every successful same-name preview has a new revision and failed previews cannot advance it', async () => {
@@ -271,4 +272,128 @@ test('module uses only read routes plus import, with no delete/save/open/storage
     const source = await readFile(new URL('../qianmu-chat-recovery.js', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /\/api\/chats\/(?:save|delete|rename)|\/api\/backups\/chat\/delete|innerHTML|localStorage|indexedDB|saveMetadata|openCharacterChat/);
     assert.match(source, /NOT exclusive-create/);
+});
+
+const backupApi = '/api/plugins/qianmu-tts/chat-backups';
+const autoStatus = patch => ({ ok: true, version: 1, enabled: false, intervalMinutes: 30, limitMiB: 1024, usedBytes: 0,
+    lastRunAt: null, lastSuccessAt: null, nextRunAt: null, lastResult: { created: 0, unchanged: 0, skipped: 0 }, retention: 'rotate-oldest-keep-one', ...patch });
+const jsonResponse = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
+
+test('HTTP failures describe actual status without treating server errors as login failures', async () => {
+    for (const [status, pattern] of [[401, /登录.*401/], [403, /校验.*403/], [404, /接口.*404/], [500, /读取或处理.*500/], [502, /代理.*502/], [206, /未预期.*206/]]) {
+        const f = fixture({ before: call => call.path === '/api/backups/chat/get' ? new Response('{}', { status, headers: { 'content-type': 'application/json' } }) : undefined });
+        await assert.rejects(f.controller.load(), pattern);
+        assert.equal(f.imports().length, 0);
+        if (![401, 403].includes(status)) assert.doesNotMatch(f.controller.snapshot().error, /登录/);
+        else assert.equal(f.calls.length, 1, 'auth rejection cannot continue into another catalog');
+    }
+});
+
+test('native recovery remains available when the optional service is absent', async () => {
+    const f = fixture(); await f.prepare(); assert.equal(f.controller.snapshot().automaticBackup.availability, 'unavailable');
+    await assert.rejects(f.controller.inspectAutomaticBackup(), /v1.59.478/);
+    const restored = await f.controller.recover('role.png'); assert.equal(restored.result.status, 'verified');
+});
+
+test('automatic settings require a read, validate bounds and preserve the confirmed owner', async () => {
+    const f = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus()) : call.path === backupApi + '/configure' ? jsonResponse(autoStatus(call.body)) : undefined });
+    await f.controller.inspectAutomaticBackup();
+    for (const input of [{ enabled: true, intervalMinutes: 14, limitMiB: 1024 }, { enabled: true, intervalMinutes: 1441, limitMiB: 1024 }, { enabled: true, intervalMinutes: 30, limitMiB: 255 }]) await assert.rejects(f.controller.configureAutomaticBackup(input));
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 0);
+    await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 15, limitMiB: 512 });
+    assert.equal(f.controller.snapshot().automaticBackup.status.enabled, true);
+    assert.equal(f.calls.find(call => call.path.endsWith('/configure')).body.expectedAccount, 'account-a');
+    f.setAccount('account-b');
+    await assert.rejects(f.controller.configureAutomaticBackup({ enabled: false, intervalMinutes: 30, limitMiB: 1024 }), /账户/);
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 1, 'old confirmation cannot bind a new owner');
+});
+
+test('legacy automatic status defaults to unlimited and omitted count updates preserve the read limit', async () => {
+    let stored = autoStatus();
+    const f = fixture({ before: call => {
+        if (call.path === backupApi + '/status') return jsonResponse(stored);
+        if (call.path === backupApi + '/configure') { stored = autoStatus(call.body); return jsonResponse(stored); }
+    } });
+    await f.controller.inspectAutomaticBackup();
+    assert.equal(f.controller.snapshot().automaticBackup.status.maxVersionsPerChat, 0);
+    await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1536, maxVersionsPerChat: 7 });
+    assert.equal(f.controller.snapshot().automaticBackup.status.maxVersionsPerChat, 7);
+    await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 45, limitMiB: 3000 });
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).at(-1).body.maxVersionsPerChat, 7);
+    assert.equal(f.controller.snapshot().automaticBackup.status.limitMiB, 3000);
+    await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 45, limitMiB: 3000, maxVersionsPerChat: 0 });
+    assert.equal(f.controller.snapshot().automaticBackup.status.maxVersionsPerChat, 0);
+});
+
+test('invalid automatic version limits are rejected before writes and invalid receipts remain unknown', async () => {
+    const bad = [-1, 0.5, 20001, '3', null, false, {}, Number.MAX_SAFE_INTEGER];
+    const f = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus()) : undefined });
+    await f.controller.inspectAutomaticBackup();
+    for (const maxVersionsPerChat of bad) await assert.rejects(f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1024, maxVersionsPerChat }));
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 0);
+    for (const maxVersionsPerChat of bad) {
+        const other = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus({ maxVersionsPerChat })) : undefined });
+        await assert.rejects(other.controller.inspectAutomaticBackup(), /不完整/);
+    }
+    for (const response of [autoStatus({ enabled: true }), autoStatus({ enabled: true, maxVersionsPerChat: 3 }), autoStatus({ enabled: true, maxVersionsPerChat: '5' })]) {
+        const other = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus()) : call.path === backupApi + '/configure' ? jsonResponse(response) : undefined });
+        await other.controller.inspectAutomaticBackup();
+        await assert.rejects(other.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1024, maxVersionsPerChat: 5 }));
+        assert.equal(other.controller.snapshot().automaticBackup.configurationUnknown, true);
+        await assert.rejects(other.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1024, maxVersionsPerChat: 5 }), /未确认/);
+        assert.equal(other.calls.filter(call => call.path.endsWith('/configure')).length, 1);
+    }
+});
+
+test('unknown settings writes stay locked through failed verification and transient auth loss', async () => {
+    let mode = 'ok', status = autoStatus();
+    const f = fixture({ before: call => {
+        if (call.path === backupApi + '/status') return mode === 'ok' ? jsonResponse(status) : new Response('{}', { status: mode === 'auth' ? 403 : 503, headers: { 'content-type': 'application/json' } });
+        if (call.path === backupApi + '/configure') { status = autoStatus(call.body); throw Error('response lost'); }
+    } });
+    const input = { enabled: true, intervalMinutes: 30, limitMiB: 1024 };
+    await f.controller.inspectAutomaticBackup(); await assert.rejects(f.controller.configureAutomaticBackup(input));
+    assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, true);
+    mode = 'fail'; await assert.rejects(f.controller.inspectAutomaticBackup());
+    assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, true);
+    await assert.rejects(f.controller.configureAutomaticBackup(input), /未确认/);
+    mode = 'auth'; await assert.rejects(f.controller.inspectAutomaticBackup());
+    await assert.rejects(f.controller.configureAutomaticBackup(input), /未确认/);
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 1);
+    mode = 'ok'; await f.controller.inspectAutomaticBackup();
+    assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, false);
+    assert.equal(f.controller.snapshot().automaticBackup.status.enabled, true);
+});
+
+test('an incomplete or mismatched configure receipt is never treated as success', async () => {
+    for (const response of [autoStatus(), { ok: true }, autoStatus({ usedBytes: 0.5 }), autoStatus({ retention: 'delete-all' })]) {
+        const f = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus()) : call.path === backupApi + '/configure' ? jsonResponse(response) : undefined });
+        await f.controller.inspectAutomaticBackup();
+        await assert.rejects(f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 15, limitMiB: 512 }));
+        assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, true);
+    }
+});
+
+test('optional-service failures use bounded known codes, never arbitrary returned message HTML', async () => {
+    const f = fixture({ before: call => call.path === backupApi + '/status' ? new Response(JSON.stringify({ ok: false, version: 1, code: 'chat_backup_disk_full', message: '<script>secret</script>' }), { status: 507, headers: { 'content-type': 'application/json' } }) : undefined });
+    await assert.rejects(f.controller.inspectAutomaticBackup(), /剩余空间不足/);
+    assert.doesNotMatch(f.controller.snapshot().error, /script|secret/);
+});
+
+test('automatic snapshots can be previewed and restored unchanged through native import', async () => {
+    const entry = { id: '10000000-0000-4000-8000-000000000001', avatar: 'role.png', chatFile: '原聊天.jsonl', createdAt: '2026-10-19T05:00:00.000Z', messageCount: 2, sizeBytes: new TextEncoder().encode(jsonl(originalRows())).length, sha256: 'a'.repeat(64) };
+    for (const nativeFailed of [false, true]) {
+        const f = fixture({ before: call => {
+            if (nativeFailed && call.path === '/api/backups/chat/get') return new Response('', { status: 500 });
+            if (call.path === backupApi + '/list') return jsonResponse({ ok: true, version: 1, entries: [entry] });
+            if (call.path === backupApi + '/read') return new Response(jsonl(originalRows()), { headers: { 'content-type': 'text/plain' } });
+        } });
+        const listed = await f.controller.load();
+        if (nativeFailed) assert.match(listed.error, /仅显示千幕/);
+        await f.controller.preview('qianmu:' + entry.id);
+        const done = await f.controller.recover('role.png'); assert.equal(done.result.status, 'verified');
+        const reads = f.calls.filter(call => call.path === backupApi + '/read');
+        assert.equal(reads.length, 2); assert.deepEqual(reads[0].body, { expectedAccount: 'account-a', id: entry.id });
+        assert.equal(f.imports().length, 1);
+    }
 });

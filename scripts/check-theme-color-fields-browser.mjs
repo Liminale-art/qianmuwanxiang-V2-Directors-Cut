@@ -35,7 +35,9 @@ try {
     await page.goto('https://qianmu.test/');
     // ST's public/style.css input/select/button rule inherits the host's body
     // color, which may stay dark while this extension independently goes dark.
-    await page.addStyleTag({ content: ':root{--SmartThemeBodyColor:rgb(32,32,32)}input,select,button{color:var(--SmartThemeBodyColor)}' });
+    // The official ST 1.19 range rules dim every idle input and brighten hover.
+    // Include both so a picker cannot pass only in the isolated unfiltered shell.
+    await page.addStyleTag({ content: ':root{--SmartThemeBodyColor:rgb(32,32,32)}input,select,button{color:var(--SmartThemeBodyColor)}input[type="range"]{filter:brightness(.75)}input[type="range"]:hover{filter:brightness(1.25)}' });
     for (const file of ['style.css', 'qianmu-theme-skins.css']) await page.addStyleTag({ content: await source(file) });
     // Fixture positioning only; none of the picker/menu/input styling is replaced.
     await page.addStyleTag({ content: 'body{margin:0}#story-director-modal{position:relative!important;display:block!important;inset:auto!important;transform:none!important;width:100%!important;height:100dvh!important}#story-director-modal>.sd-window{position:relative!important;inset:auto!important;transform:none!important;margin:0!important;width:100%!important;max-width:900px!important;height:100dvh!important;max-height:none!important}.fixture-following{position:fixed;bottom:10px;right:10px;z-index:2147483647}' });
@@ -77,7 +79,7 @@ try {
                 native: document.querySelector('.sd-theme-color').value,
                 sv: document.querySelector('.sd-theme-sv').style.backgroundImage,
                 svRect: rect(document.querySelector('.sd-theme-sv')),
-                hue: hue ? { value: Number(hue.value), min:hue.min, max:hue.max, step:hue.step, rect:rect(hue), thumb:hue.style.getPropertyValue('--sd-hue-thumb'), label:hue.getAttribute('aria-label'), background:getComputedStyle(hue).backgroundColor } : null,
+                hue: hue ? { value: Number(hue.value), min:hue.min, max:hue.max, step:hue.step, rect:rect(hue), thumb:hue.style.getPropertyValue('--sd-hue-thumb'), label:hue.getAttribute('aria-label'), background:getComputedStyle(hue).backgroundColor, filter:getComputedStyle(hue).filter } : null,
                 marker: [document.querySelector('.sd-theme-sv i').style.left, document.querySelector('.sd-theme-sv i').style.top],
                 fields: fields.map(node => { const css = getComputedStyle(node), r = rect(node), hit = document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
                     return { value:node.value, rect:r, color:css.color, fill:css.webkitTextFillColor, background:css.backgroundColor,
@@ -107,6 +109,15 @@ try {
             ok(label+' shows labelled HSV hue range with SV/preset dots', await hue.isVisible() && s.hue.min==='0' && s.hue.max==='360' && s.hue.step==='1' && s.hue.label==='色相' && await page.locator('.sd-theme-sv').isVisible() && await page.locator('[data-appearance-accent]').count()===6);
             ok(label+' hue fits between SV and RGB without clipping its endpoints', s.hue.rect.top>=s.svRect.bottom-1 && s.hue.rect.bottom<=s.fields[0].rect.top+1 && Math.abs(s.hue.rect.width-s.svRect.width)<1 && s.hue.rect.left>=s.menu.left+12 && s.hue.rect.right<=s.menu.right-12 && s.hue.rect.height>=24 && !s.overflow);
             ok(label+' hue hit area stays transparent instead of inheriting the generic range background', s.hue.background==='rgba(0, 0, 0, 0)');
+            await page.mouse.move(0, 0); await settled(); s=await state();
+            ok(label+' idle hue spectrum has no host brightness filter', s.hue.filter==='none');
+            const beforeHover=s.accent;
+            await hue.hover(); s=await state();
+            ok(label+' hover hue spectrum keeps the same brightness and selected color', s.hue.filter==='none'&&s.accent===beforeHover);
+            await page.mouse.down(); s=await state();
+            ok(label+' active hue spectrum keeps normal brightness', s.hue.filter==='none');
+            await page.mouse.up(); await page.mouse.move(0, 0); await settled();
+            ok(label+' released hue spectrum does not dim again', (await state()).hue.filter==='none');
             ok(label+' RGB and Hex fit one compact clickable row', s.fields.length===4 && s.fields.every(field=>field.rect.top===s.fields[0].rect.top && field.rect.height<=30 && field.clickable && field.textFits) && !s.overflow && s.fields[0].rect.left>=s.menu.left && s.fields[3].rect.right<=s.menu.right);
             ok(label+' themed text-fill has at least 4.5:1 contrast after alpha composition', s.fields.every(field=>field.color===field.fill&&field.contrast>=4.5));
             contrasts.push({label,minimum:Math.min(...s.fields.map(field=>field.contrast))});
@@ -197,6 +208,19 @@ try {
         await trigger.click();await custom.click(); const beforeDispose=(await state()).attempts;
         await page.evaluate(()=>{const input=document.querySelector('.sd-theme-hex'),hue=document.querySelector('.sd-theme-hue');hue.value='180';hue.dispatchEvent(new Event('input',{bubbles:true}));unbind();unbind();hue.value='240';hue.dispatchEvent(new Event('input',{bubbles:true}));hue.dispatchEvent(new Event('change',{bubbles:true}));input.value='#123abc';input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));for(const node of document.querySelectorAll('[data-channel]')){node.value='42';node.dispatchEvent(new Event('change',{bubbles:true}));}document.querySelector('.sd-theme-sv').dispatchEvent(new PointerEvent('pointerdown',{clientX:100,clientY:100,bubbles:true}));});await settled();
         ok('dispose removes color field, pointer and keyboard actions', (await state()).attempts===beforeDispose&&(await state()).hidden);
+        for (const owner of ['body', '#story-director-modal']) {
+            await page.evaluate(owner => {
+                document.querySelector('.fixture-other-range')?.remove();
+                const input=document.createElement('input');input.type='range';input.className='fixture-other-range';
+                input.style.cssText='position:fixed;left:10px;bottom:70px;width:120px;height:30px;z-index:2147483647';
+                document.querySelector(owner).append(input);
+            }, owner);
+            const other=page.locator('.fixture-other-range');
+            await page.mouse.move(0,0);
+            ok(owner+' unrelated range retains the host idle treatment',await other.evaluate(node=>getComputedStyle(node).filter)==='brightness(0.75)');
+            await other.hover();
+            ok(owner+' unrelated range retains the host hover treatment',await other.evaluate(node=>getComputedStyle(node).filter)==='brightness(1.25)');
+        }
     }
     ok('no page errors or external requests', errors.length===0&&external===0);
     console.log(JSON.stringify({pass:checks.length,fail:0,errors,external,screenshots,contrasts,checks},null,2));

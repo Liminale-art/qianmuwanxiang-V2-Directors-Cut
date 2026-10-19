@@ -728,6 +728,28 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-status { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-tools { display: flex; gap: 8px; }
 #story-director-floor-nav .qm-recovery-tools input { min-width: 0; flex: 1; }
+#story-director-floor-nav .qm-recovery-character-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+#story-director-floor-nav .qm-recovery-character-tools input { grid-column: 1 / -1; width: 100%; }
+#story-director-floor-nav .qm-recovery-character-select { min-width: 0; width: 100%; text-overflow: ellipsis; }
+#story-director-floor-nav .qm-recovery-character-tools .qm-recovery-character-more { grid-column: 1 / -1; justify-self: start; font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-target-tools { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#story-director-floor-nav .qm-recovery-target-tools :is(input, select) { width: 100%; min-width: 0; }
+#story-director-floor-nav .qm-recovery-target-tools .qm-recovery-character-more { align-self: flex-start; font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-day { margin: 8px 0 2px; color: var(--sd-muted); font-size: var(--qm-type-caption); font-weight: 500; }
+#story-director-floor-nav .qm-recovery-source { overflow-wrap: anywhere; }
+#story-director-floor-nav .qm-recovery-target-fixed { margin: 0; font-size: var(--qm-type-label); overflow-wrap: anywhere; }
+#story-director-floor-nav .qm-recovery-file-details { font-size: var(--qm-type-caption); color: var(--sd-muted); }
+#story-director-floor-nav .qm-recovery-file-details p { margin: 6px 0 0; overflow-wrap: anywhere; }
+#story-director-floor-nav .qm-recovery-auto { min-width: 0; border: 1px solid var(--sd-border); border-radius: var(--qm-card-radius, 12px); padding: 12px; background: var(--sd-card); }
+#story-director-floor-nav .qm-recovery-auto summary { cursor: pointer; font-size: var(--qm-type-label); }
+#story-director-floor-nav .qm-recovery-auto > :not(summary) { margin-top: 12px; }
+#story-director-floor-nav .qm-recovery-auto-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+#story-director-floor-nav .qm-recovery-auto-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-auto-fields :is(input, select) { width: 100%; min-width: 0; }
+#story-director-floor-nav .qm-recovery-auto-fields .qm-recovery-auto-toggle { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+#story-director-floor-nav .qm-recovery-auto-toggle input { width: 20px; min-height: 20px; margin: 0; }
+#story-director-floor-nav .qm-recovery-auto-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#story-director-floor-nav .qm-recovery-auto-status { margin: 0; white-space: pre-line; overflow-wrap: anywhere; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav [data-floor-view="recovery"] :is(input, select, button) { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
 #story-director-floor-nav [data-floor-view="recovery"] button:disabled { opacity: .5; cursor: default; }
 #story-director-floor-nav .qm-recovery-list { display: grid; gap: 6px; }
@@ -11739,6 +11761,8 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   margin: 0 !important; padding: 0 !important;
   border: 0 !important; border-radius: 0 !important;
   background: transparent !important; box-shadow: none !important;
+  /* ST dims idle ranges and brightens hover; the spectrum must stay color-true. */
+  filter: none !important;
   cursor: pointer; direction: ltr; touch-action: pan-y;
 }
 #story-director-modal#story-director-modal input[type=range].sd-theme-hue::-webkit-slider-runnable-track {

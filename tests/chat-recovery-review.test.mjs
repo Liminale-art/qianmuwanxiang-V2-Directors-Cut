@@ -17,6 +17,7 @@ function fixture(options = {}) {
     crypto: { randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` },
     fetch: async (path, init) => {
       calls.push(path);
+      if (path === '/api/plugins/qianmu-tts/chat-backups/list') return new Response('{"error":"optional service absent"}', { status: 404, headers: { 'content-type': 'application/json' } });
       if (path === '/api/backups/chat/get') return jsonResponse([{ file_name: backup }]);
       if (path === '/api/backups/chat/download') return new Response(raw);
       if (path === '/api/characters/chats') return jsonResponse([...files.keys()].map(file_name => ({ file_name })));
@@ -95,6 +96,8 @@ for (const change of ['same-name source re-preview', 'same-avatar target rename'
     f.view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters,
       confirm: () => { asked.resolve(); return waiting.promise; } });
     const target = ui.find(node => node.tag === 'select'); target.value = 'Synthetic.png'; target.handlers.change();
+    const item = ui.find(node => node.className === 'qm-recovery-item');
+    await item.handlers.click();
     const recover = ui.find(node => node.tag === 'button' && node.textContent === '另建找回副本');
     const clicking = recover.handlers.click(); await asked.promise;
     if (change === 'same-name source re-preview') {
@@ -105,3 +108,82 @@ for (const change of ['same-name source re-preview', 'same-avatar target rename'
     assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 0, 'changed confirmation inputs require a fresh explicit confirmation');
   });
 }
+
+function automaticFixture() {
+  const calls = [], ui = dom(); let account = 'account:A', statusFailure = 0, loseConfiguration = false, view;
+  const status = { ok: true, version: 1, enabled: false, intervalMinutes: 30, limitMiB: 1024, usedBytes: 0, retention: 'rotate-oldest-keep-one' };
+  const controller = createChatRecovery({ origin: 'https://synthetic.invalid', resolveAccount: async () => account,
+    getCharacters: () => [], getRequestHeaders: () => ({}), onChange: snapshot => view?.render(snapshot),
+    fetch: async (path, init) => {
+      calls.push({ path, body: JSON.parse(init.body) });
+      if (path.endsWith('/status')) return statusFailure ? new Response('{}', { status: statusFailure, headers: { 'content-type': 'application/json' } }) : jsonResponse(status);
+      if (path.endsWith('/configure')) {
+        Object.assign(status, JSON.parse(init.body));
+        if (loseConfiguration) throw new Error('synthetic lost configuration response');
+        return jsonResponse(status);
+      }
+      assert.fail('unexpected automatic route');
+    } });
+  const mount = confirm => { view?.dispose(); view = mountChatRecoveryView({ root: ui.root, controller, getCharacters: () => [], confirm }); return view; };
+  const edit = minutes => { const input = ui.find(node => node.type === 'number'); input.value = String(minutes); input.handlers.input(); };
+  const button = text => ui.find(node => node.tag === 'button' && node.textContent === text);
+  return { controller, calls, ui, mount, edit, button, setAccount: value => { account = value; }, setStatusFailure: value => { statusFailure = value; }, loseNextConfiguration: () => { loseConfiguration = true; } };
+}
+
+test('automatic settings confirmation cannot be rebound into a different ST account', async () => {
+  const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
+  const waiting = deferred(), asked = deferred(); f.mount(() => { asked.resolve(); return waiting.promise; }); f.edit(60);
+  const clicking = f.button('保存设置').handlers.click(); await asked.promise;
+  f.setAccount('account:B'); waiting.resolve(true); await clicking;
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
+  assert.equal(f.controller.snapshot().automaticBackup.status, null);
+});
+
+test('automatic settings readback invalidates a previously pending UI confirmation', async () => {
+  const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
+  const waiting = deferred(), asked = deferred(); f.mount(() => { asked.resolve(); return waiting.promise; }); f.edit(60);
+  const clicking = f.button('保存设置').handlers.click(); await asked.promise;
+  await f.button('读取状态').handlers.click(); waiting.resolve(true); await clicking;
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
+  assert.equal(f.ui.find(node => node.type === 'number').value, '60', 'status refresh preserves the unsaved draft while cancelling its old confirmation');
+});
+
+test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {
+  const f = automaticFixture(); await f.controller.inspectAutomaticBackup(); f.mount(async () => true); f.edit(60); f.loseNextConfiguration();
+  await f.button('保存设置').handlers.click(); assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, true);
+  f.mount(async () => true); assert.equal(f.button('保存设置').disabled, true); assert.equal(f.ui.find(node => node.type === 'number').disabled, true);
+  f.setStatusFailure(401); await assert.rejects(f.controller.inspectAutomaticBackup());
+  f.mount(async () => true); assert.equal(f.button('保存设置').disabled, true);
+  f.setStatusFailure(500); await assert.rejects(f.controller.inspectAutomaticBackup());
+  await assert.rejects(f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 15, limitMiB: 512 }));
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 1);
+  f.setStatusFailure(0); await f.button('读取状态').handlers.click();
+  assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, false);
+  assert.equal(f.ui.find(node => node.type === 'number').value, '60');
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 1);
+});
+
+for (const field of ['capacity', 'versions']) {
+  test(`changing ${field} revokes its automatic policy confirmation`, async () => {
+    const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
+    const waiting = deferred(), asked = deferred(); f.mount(() => { asked.resolve(); return waiting.promise; }); f.edit(60);
+    const clicking = f.button('保存设置').handlers.click(); await asked.promise;
+    const input = f.ui.find(node => node.type === 'number' && node.min === (field === 'capacity' ? '256' : '1'));
+    input.value = field === 'capacity' ? '1536' : '5'; input.handlers.input(); waiting.resolve(true); await clicking;
+    assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
+  });
+}
+
+test('UI validates capacity and finite version integers before write, while only blank versions serialize as unlimited', async () => {
+  const f = automaticFixture(); await f.controller.inspectAutomaticBackup(); f.mount(async () => true);
+  const capacity = f.ui.find(node => node.type === 'number' && node.min === '256');
+  const versions = f.ui.find(node => node.type === 'number' && node.min === '1');
+  assert.equal(versions.value, '', 'legacy status missing the optional field means unlimited');
+  capacity.value = ''; capacity.handlers.input(); await f.button('保存设置').handlers.click();
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
+  capacity.value = '1536'; capacity.handlers.input(); versions.value = '1.5'; versions.handlers.input(); await f.button('保存设置').handlers.click();
+  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
+  versions.value = ''; versions.handlers.input(); await f.button('保存设置').handlers.click();
+  const writes = f.calls.filter(row => row.path.endsWith('/configure'));
+  assert.equal(writes.length, 1); assert.equal(writes[0].body.limitMiB, 1536); assert.equal(writes[0].body.maxVersionsPerChat, 0);
+});

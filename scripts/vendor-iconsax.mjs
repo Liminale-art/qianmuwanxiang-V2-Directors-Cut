@@ -21,7 +21,7 @@ export const glyphs = {
   crosshair:'gps', database:'driver', 'dots-three':'qianmu-ellipsis', 'download-simple':'document-download', eraser:'eraser',
   eye:'eye', 'eye-slash':'eye-slash', feather:'pen-tool', 'file-arrow-down':'document-download',
   'file-arrow-up':'document-upload', 'film-slate':'video-play', 'film-strip':'video-horizontal', flask:'lamp-charge',
-  'floor-tools':'align-bottom', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
+  'floor-tools':'firstline', 'floppy-disk':'save-2', focus:'notification', folder:'folder', 'folder-minus':'folder-minus',
   'font-manage':'document-filter', 'font-apply':'tick-square', 'font-applied':'tick-square', 'font-preview-size':'smallcaps',
   'folder-plus':'folder-add', funnel:'filter', gauge:'speedometer', gear:'setting-2', 'globe-hemisphere-east':'global',
   graph:'hierarchy-2', headphones:'headphone', highlighter:'brush', image:'gallery', 'image-regenerate':'refresh-arrow-02',
@@ -41,7 +41,7 @@ export const glyphs = {
   warning:'warning-2', 'wave-sine':'sound', 'underline-wave':'qianmu-underline-wave', world:'global', 'world-map':'share', x:'qianmu-close',
 };
 
-export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','floor-tools':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
+export const fixedVariants = {'voice-lines':'outline','voice-reextract':'broken','voice-regenerate':'broken','voice-playall':'outline','voice-stopall':'outline','underline-wave':'outline','font-manage':'outline','font-apply':'outline','font-applied':'bold'};
 
 const endpoint = 'https://app.iconsax.io/api/mcp';
 const cache = path.join(tmpdir(), 'qianmu-iconsax-free-2026-10-01-exact');
@@ -132,9 +132,7 @@ for(const [name,body] of Object.entries(familiar)) for(const variant of Object.k
     for(;;) { const item=pending.shift(); if(!item) break;
       try {
         const value=suppliedArtwork(item.name,item.variant) || await get(item.name,item.style);
-        // The MCP's align-top has no baseline. Its align-bottom has a top rail:
-        // mirror vertically to match the user's explicit bottom-rail reference.
-        (result[item.name]||={})[item.variant]=item.name==='align-bottom' ? `<g transform="translate(0 24) scale(1 -1)">${value.markup}</g>` : value.markup;
+        (result[item.name]||={})[item.variant]=value.markup;
         hashes[`${item.name}/${item.style}`]=value.sha256;
       }
       catch(error) {errors.push(error.message);}
