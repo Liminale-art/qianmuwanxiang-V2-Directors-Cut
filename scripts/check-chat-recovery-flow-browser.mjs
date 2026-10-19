@@ -9,6 +9,8 @@ const { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
 const context = await browser.newContext(), page = await context.newPage();
 const origin = 'https://recovery-flow-fixture.test';
+const fastList = process.env.QIANMU_TEST_FAST_BACKUPS === '1';
+const listPath = fastList ? '/api/plugins/baibaoku/v1/chat-backups/fast-list' : '/api/backups/chat/get';
 const errors = [], external = [], checks = [], calls = [], imports = [];
 const ok = (label, value) => { assert.ok(value, label); checks.push(label); };
 const backupName = 'chat_role_20261019-110000.jsonl';
@@ -51,7 +53,7 @@ await context.route('**/*', async route => {
     }
     const body = request.postDataJSON();
     if (path === '/api/plugins/qianmu-tts/chat-backups/list') return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"synthetic optional service absent"}' });
-    if (path === '/api/backups/chat/get') return fulfillJson(route, [...backups].map(([file_name, raw]) => ({ file_name, file_size: `${Buffer.byteLength(raw)} B`, chat_items: raw.split('\n').length - 1, last_mes: '2026-10-19T02:01:00Z', mes: '<script>window.injected=true</script>' })));
+    if (path === listPath) return fulfillJson(route, [...backups].map(([file_name, raw]) => ({ file_name, file_size: `${Buffer.byteLength(raw)} B`, chat_items: raw.split('\n').length - 1, last_mes: '2026-10-19T02:01:00Z', mes: '<script>window.injected=true</script>' })));
     if (path === '/api/backups/chat/download') {
         assert.ok(backups.has(body.name)); return route.fulfill({ status: 200, contentType: 'application/jsonl', body: backups.get(body.name) });
     }
@@ -68,22 +70,35 @@ await context.route('**/*', async route => {
 });
 try {
     await page.goto(origin);
-    await page.evaluate(async () => {
+    await page.evaluate(async ({ fastList, listPath }) => {
         const { createChatRecovery } = await import('/qianmu-chat-recovery.js');
         const { mountChatRecoveryView } = await import('/qianmu-chat-recovery-view.js');
+        if (fastList) {
+            // Reproduce the public BaiBai Tools request contract with native browser
+            // Responses, not a mocked url property. Only in-memory fixture traffic.
+            const originalFetch = window.fetch;
+            window.fetch = async (input, init) => {
+                const url = new URL(input instanceof Request ? input.url : String(input), location.origin);
+                const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+                if (method === 'POST' && url.origin === location.origin && url.pathname === '/api/backups/chat/get') {
+                    return originalFetch(listPath, { method: 'POST', headers: { 'X-CSRF-Token': 'synthetic-csrf', 'Content-Type': 'application/json' }, body: '{}', signal: init?.signal });
+                }
+                return originalFetch(input, init);
+            };
+        }
         window.characters = [{ avatar: 'role.png', name: '合成目标角色' }, { avatar: 'other.png', name: '另一合成角色' }];
         window.notices = []; window.confirmations = []; window.confirmation = true;
         window.controller = createChatRecovery({ getRequestHeaders: () => ({ 'X-CSRF-Token': 'synthetic-csrf' }), resolveAccount: async () => 'synthetic-account', getCharacters: () => characters, onChange: snapshot => window.view?.render(snapshot) });
         window.mount = () => { window.view = mountChatRecoveryView({ root: document.getElementById('recovery'), controller, getCharacters: () => characters,
             confirm: async message => { confirmations.push(message); return typeof confirmation === 'boolean' ? confirmation : await confirmation; }, notify: message => notices.push(message) }); };
         mount();
-    });
+    }, { fastList, listPath });
     const idle = () => page.waitForFunction(() => !controller.snapshot().busy);
     const recover = () => page.getByRole('button', { name: '另建找回副本', exact: true, includeHidden: true });
     ok('Opening the real view/controller performs no backup or chat request', calls.length === 0);
     await page.getByRole('combobox', { name: '选择要找回的角色', exact: true }).selectOption('role.png');
     await page.getByRole('button', { name: '读取备份', exact: true }).click(); await idle();
-    ok('Explicit load reaches native and optional listings; absent service does not block native recovery', calls.length === 2 && calls[0] === '/api/backups/chat/get' && calls[1] === '/api/plugins/qianmu-tts/chat-backups/list');
+    ok('Explicit load reaches the expected list and optional service; absent service does not block native recovery', calls.length === 2 && calls[0] === listPath && calls[1] === '/api/plugins/qianmu-tts/chat-backups/list');
     await page.locator('.qm-recovery-item').click(); await idle();
     ok('Real preview downloads the backup without writing and renders untrusted text literally', imports.length === 0
         && await page.evaluate(() => !window.injected && !document.querySelector('.qm-recovery-list script,.qm-recovery-preview img') && controller.snapshot().preview.messageCount === 2));
@@ -131,7 +146,7 @@ try {
     const secondRows = chats.get('role.png').get(second.result.fileName).split('\n').map(line => JSON.parse(line));
     secondRows[0].chat_metadata.integrity = originalRows[0].chat_metadata.integrity; assert.deepEqual(secondRows, originalRows);
     ok('Original backup and both existing chats remain byte-identical, with no extra destination changes', backups.get(backupName) === originalBackup && chats.get('role.png').get('原聊天.jsonl') === originalChat && chats.get('other.png').get('其他原聊天.jsonl') === originalChat && chats.get('role.png').size === 3 && chats.get('other.png').size === 1);
-    ok('Only the documented read routes and explicit native import were used', calls.every(path => ['/api/backups/chat/get', '/api/backups/chat/download', '/api/characters/chats', '/api/chats/import', '/api/chats/export', '/api/plugins/qianmu-tts/chat-backups/list'].includes(path)));
+    ok('Only the documented read routes and explicit native import were used', calls.every(path => [listPath, '/api/backups/chat/download', '/api/characters/chats', '/api/chats/import', '/api/chats/export', '/api/plugins/qianmu-tts/chat-backups/list'].includes(path)));
     ok('No external requests or page errors occurred', external.length === 0 && errors.length === 0);
-    console.log(JSON.stringify({ passed: checks.length, checks, imports: imports.length, nativeContract: 'ST 1.19 synthetic APIs', actualController: true, actualView: true, realST: false, externalNetwork: false, persistentProfile: false, errors }));
+    console.log(JSON.stringify({ passed: checks.length, checks, imports: imports.length, nativeContract: 'ST 1.19 synthetic APIs', transport: fastList ? 'BaiBai fast-list wrapper contract' : 'native fetch', actualController: true, actualView: true, realST: false, externalNetwork: false, persistentProfile: false, errors }));
 } finally { await browser.close(); }

@@ -171,7 +171,13 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 try {
                     check(); await guard(token); check();
                     const mime = result.headers?.get?.('content-type') || '';
-                    need(!result.redirected && !['opaque', 'opaqueredirect'].includes(result.type) && (!result.url || result.url === new URL(path, base).href), 'source', 'ST 请求被转向其他地址，未读取备份；请核对访问地址或代理配置');
+                    need(!result.redirected && !['opaque', 'opaqueredirect'].includes(result.type), 'source', 'ST 请求发生跳转或无法核实来源，未读取备份；请核对访问地址或代理配置');
+                    // BaiBai Tools replaces only the native list with its account-scoped
+                    // fast-list response. This exact alias is not valid for any readback
+                    // or write route, and does not admit queries, fragments or redirects.
+                    const nativeListAlias = path === '/api/backups/chat/get'
+                        && result.url === new URL('/api/plugins/baibaoku/v1/chat-backups/fast-list', base).href;
+                    need(!result.url || result.url === new URL(path, base).href || nativeListAlias, 'source', '备份响应地址与预期不符，未读取数据；请核对相关插件或代理配置');
                     if (!result.ok && path.startsWith(BACKUP_API) && ![401, 403].includes(result.status) && /^application\/json(?:\s*;|$)/i.test(mime)) {
                         let detail;
                         try { detail = parse(await boundedText(result, 4096, controller.signal, check), 4096); } catch {}
