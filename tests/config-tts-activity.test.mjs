@@ -24,7 +24,7 @@ test('preparation and post-extraction NPC persistence remain inside one protecte
 test('concurrent syntheses stay protected until model persistence and cache pruning complete',async()=>{
   const synth=deferred(),write=deferred(),prune=deferred();let c;
   c=fixture({ttsBuildParams:()=>({providerId:'doubao',model:'auto'}),getTtsProvider:()=>({label:'fixture'}),ttsProviderHasCredentials:()=>true,cacheKeyForTts:()=> 'key',
-    synthesizeTts:()=>synth.promise,ttsPersistResolvedDoubaoModel(){assert.ok(c.ttsRestoreTasks>0);},
+    synthesizeTts:()=>synth.promise,ttsCaptureResolvedModelOwner:()=>()=>true,ttsPersistResolvedDoubaoModel(){assert.ok(c.ttsRestoreTasks>0);},
     blobStore:{blobStoreAvailable:()=>true,putAudio:()=>write.promise,pruneAudio:()=>prune.promise}});
   const tasks=[c.ttsSynthCached({speaker:'a'},true),c.ttsSynthCached({speaker:'b'},true)];assert.equal(c.ttsRestoreTasks,2);
   synth.resolve({blob:{},resolvedModel:'resolved'});await Promise.resolve();assert.equal(c.ttsRestoreTasks,2);

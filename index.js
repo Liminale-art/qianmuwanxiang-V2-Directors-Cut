@@ -11,7 +11,7 @@ import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} f
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.476';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
-import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
+import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.422';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -37,6 +37,7 @@ import { createDirectorNavigation } from './qianmu-director-navigation.js';
 import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
+import { createChatWriteGuard } from './qianmu-chat-write-guard.js?v=1.59.477';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -314,7 +315,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.476';
+const VERSION = '1.59.477';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -323,6 +324,65 @@ let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),getPreviewFontSize:()=>settings.proseLayout?.fontSize??PROSE_LAYOUT_DEFAULTS.fontSize,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
+let chatWriteGuard = null, chatWriteFetchBefore = null;
+let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
+
+function installChatWriteGuard() {
+  if (chatWriteGuard || typeof globalThis.fetch !== 'function') return;
+  chatWriteFetchBefore = globalThis.fetch;
+  chatWriteGuard = createChatWriteGuard({ fetchImpl: chatWriteFetchBefore.bind(globalThis), getContext: ctx,
+    resolveAccount: resolveImageAccountNamespace, baseUrl: globalThis.location?.origin,
+    isEnabled: () => initialized && isRuntimeOwner(),
+    onBlock: () => {
+      toast('已拦下加载期间的一次异常空聊天保存，原聊天未被这次请求覆盖。请暂时关闭自动记忆记录并刷新页面。', 'warning');
+      pushLog({ id: uid('guard'), time: new Date().toLocaleString(), kind: 'chat-protection', status: 'blocked',
+        error: '加载期间异常空写已阻止；原聊天未被本次请求覆盖，未重放请求。' });
+    } });
+  globalThis.fetch = chatWriteGuard.fetch;
+}
+
+function observeChatWriteBaseline() {
+  void chatWriteGuard?.observeCurrent().catch(() => {});
+}
+
+function disposeChatWriteGuard() {
+  if (!chatWriteGuard) return;
+  const guard = chatWriteGuard;
+  guard.dispose();
+  if (globalThis.fetch === guard.fetch) globalThis.fetch = chatWriteFetchBefore;
+  chatWriteGuard = null; chatWriteFetchBefore = null;
+}
+
+async function mountFloorChatRecovery(root) {
+  const host = root.querySelector('[data-floor-view="recovery"]');
+  if (!host || chatRecoveryPanel?.root === root) return;
+  host.textContent = '正在载入聊天找回…';
+  try {
+    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.477'), import('./qianmu-chat-recovery-view.js?v=1.59.477')]);
+    const [runtime, view] = await chatRecoveryLoading;
+    if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
+    const namespace = await resolveImageAccountNamespace();
+    if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
+    if (chatRecoveryNamespace !== namespace) {
+      chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
+      chatRecoveryClient?.dispose(); chatRecoveryClient = null; chatRecoveryNamespace = namespace;
+    }
+    if (!chatRecoveryClient) chatRecoveryClient = runtime.createChatRecovery({
+      fetch: (...args) => fetch(...args), getRequestHeaders: () => ctx().getRequestHeaders?.() || {},
+      resolveAccount: resolveImageAccountNamespace, getCharacters: () => ctx().characters || [],
+      isCurrent: () => initialized && isRuntimeOwner(),
+      onChange: snapshot => chatRecoveryPanel?.view.render(snapshot),
+    });
+    // Concurrent tab clicks share module loading and mount only one set of listeners.
+    if (chatRecoveryPanel?.root === root) return;
+    chatRecoveryPanel?.view.dispose();
+    chatRecoveryPanel = { root, view: view.mountChatRecoveryView({ root: host, controller: chatRecoveryClient,
+      getCharacters: () => ctx().characters || [], confirm: message => confirmDialog('找回聊天', htmlEscape(message)), notify: toast }) };
+  } catch (_) {
+    chatRecoveryLoading = null;
+    if (root.isConnected) host.textContent = '聊天找回暂未载入，请关闭工具包后重试。';
+  }
+}
 const featureRuntime = createFeatureRuntime({
   imageZoom: { label: '全屏看图', load: () => import('./qianmu-image-zoom.js?v=1.59.440') },
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
@@ -1378,7 +1438,6 @@ let storyboardDeliveryDrainPromise = null;
 const storyboardCollapsedInlineFloors = new Set();
 const storyboardInlineTaskActions = new Set();
 const storyboardPreparationRetries = new Set();
-let storyboardLinkSaveQueued = false;
 const storyboardGallerySelection = new Set();
 const storyboardGalleryNarrative = createGalleryNarrativeSession({reuseUnchanged:true});
 let storyboardGallerySelectMode = false;
@@ -5778,6 +5837,7 @@ let floorViewportCleanup = null;
 let floorNavigatorView = 'jump';
 
 function closeFloorNavigator() {
+  chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   fontLibrary.detach();
   floorViewportCleanup?.();
   floorViewportCleanup = null;
@@ -5951,19 +6011,20 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  floorNavigatorView = initialView === 'layout' ? 'layout' : 'jump';
+  floorNavigatorView = ['layout', 'recovery'].includes(initialView) ? initialView : 'jump';
   const root = document.createElement('div');
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
-    <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="楼层与正文排版">
-        <header><div><h3>楼层工具</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前聊天没有可定位的楼层'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button></nav>
+    <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="聊天工具包">
+        <header><div><h3>聊天工具包</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button><button type="button" role="tab" data-floor-tab="recovery">聊天找回</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
           <div class="sd-floor-actions"><button type="button" class="sd-floor-top">跳转至顶部</button><button type="button" class="sd-floor-bottom">跳转至底部</button></div>
         </section>
         <section class="sd-floor-view" data-floor-view="layout">${floorProseLayoutMarkup()}</section>
+        <section class="sd-floor-view" data-floor-view="recovery"></section>
       </section></div>`;
   document.body.appendChild(root);
   applyQianmuIcons(root);
@@ -5975,13 +6036,14 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
   const setView = (view) => {
-    floorNavigatorView = view === 'layout' ? 'layout' : 'jump';
+    floorNavigatorView = ['layout', 'recovery'].includes(view) ? view : 'jump';
     root.querySelectorAll('[data-floor-tab]').forEach((button) => {
       const active = button.dataset.floorTab === floorNavigatorView;
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-selected', String(active));
     });
     root.querySelectorAll('[data-floor-view]').forEach((section) => { section.hidden = section.dataset.floorView !== floorNavigatorView; });
+    if (floorNavigatorView === 'recovery') void mountFloorChatRecovery(root);
   };
   root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
   setView(floorNavigatorView);
@@ -9450,8 +9512,8 @@ function renderDirectorSettingsTab() {
     </section>`;
 }
 
-const LOG_STATUS_LABELS = Object.freeze({ success: '成功', error: '失败', cancelled: '已取消', loading: '生成中', none: '状态未知' });
-const LOG_KIND_LABELS = { director: '推演', theater: '小剧场' };
+const LOG_STATUS_LABELS = Object.freeze({ success: '成功', error: '失败', blocked: '已拦截', cancelled: '已取消', loading: '生成中', none: '状态未知' });
+const LOG_KIND_LABELS = { director: '推演', theater: '小剧场', 'chat-protection': '聊天保护' };
 
 // 日志详情平铺展示，无二级折叠
 function renderLogEntry(log, index, expanded = settings.logOpenState?.[String(log.id || index)] === true) {
@@ -9470,6 +9532,7 @@ function renderLogEntry(log, index, expanded = settings.logOpenState?.[String(lo
 }
 
 function renderLogDetail(log) {
+  if (log.kind === 'chat-protection') return `<pre class="sd-term sd-term-error">${htmlEscape(log.error || '已拦截一次异常空聊天保存。')}</pre>`;
   const failure = modelFailureText(log);
   return `<div class="sd-log-failure">${failure ? `<div class="sd-log-error-panel"><pre class="sd-term sd-term-error">${htmlEscape(failure)}</pre>${renderModelDiagnostics(log, { failure: true })}</div>` : ''}</div>
       <div class="sd-log-cap"><i class="fa-solid fa-arrow-up"></i>发送${log.request ? infoTag(`约 ${estimateTokens(log.request)} token`) : ''}</div>
@@ -10834,6 +10897,7 @@ function ttsPruneLineAnchors(keyByMes, lines, limit = TTS_LOCAL_LINE_LIMIT * 2) 
 
 function ttsScheduleLocalLineSave() {
   if (!ttsLineStoreState.loaded || !ttsLineStoreState.chatKey || !blobStore.blobStoreAvailable()) return;
+  ttsLineStoreState.dirty = true;
   if (ttsLineStoreSaveTimer) clearTimeout(ttsLineStoreSaveTimer);
   const chatKey = ttsLineStoreState.chatKey;
   ttsLineStoreSaveTimer = setTimeout(async () => {
@@ -10850,15 +10914,15 @@ function ttsScheduleLocalLineSave() {
 
 function ttsFlushLocalLineStore() {
   if (ttsLineStoreSaveTimer) { clearTimeout(ttsLineStoreSaveTimer); ttsLineStoreSaveTimer = null; }
-  if (!ttsLineStoreState.loaded || !ttsLineStoreState.chatKey || !blobStore.blobStoreAvailable()) return;
+  if (!ttsLineStoreState.loaded || !ttsLineStoreState.dirty || !ttsLineStoreState.chatKey || !blobStore.blobStoreAvailable()) return;
   const { chatKey, lines, keyByMes } = ttsLineStoreState;
   blobStore.putTtsLineCache(chatKey, { lines, keyByMes })
     .catch((error) => console.warn(`[${MODULE_NAME}] flush TTS line cache failed`, error));
 }
 
-function ttsPortableSnapshot(store = getChatStore()) {
-  const lines = isPlainObject(store.ttsLines) ? store.ttsLines : (store.ttsLines = {});
-  const keyByMes = isPlainObject(store.ttsLineKeyByMes) ? store.ttsLineKeyByMes : (store.ttsLineKeyByMes = {});
+function ttsPortableSnapshot(store = ctx().chatMetadata?.[MODULE_NAME] || {}) {
+  const lines = isPlainObject(store.ttsLines) ? store.ttsLines : {};
+  const keyByMes = isPlainObject(store.ttsLineKeyByMes) ? store.ttsLineKeyByMes : {};
   return { lines, keyByMes };
 }
 
@@ -10870,6 +10934,7 @@ function ttsPrunePortableSnapshot(store = getChatStore()) {
 
 async function ttsPrepareLineStore() {
   const chatKey = getChatKey();
+  const metadata = ctx().chatMetadata;
   if (ttsLineStoreState.chatKey === chatKey && ttsLineStoreState.loaded) return ttsLineStoreState;
   if (ttsLineStorePromise && ttsLineStoreState.chatKey === chatKey) return ttsLineStorePromise;
   if (ttsLineStoreState.chatKey && ttsLineStoreState.chatKey !== chatKey) ttsFlushLocalLineStore();
@@ -10878,20 +10943,21 @@ async function ttsPrepareLineStore() {
   ttsLineStorePromise = (async () => {
     let local = null;
     try { if (blobStore.blobStoreAvailable()) local = await blobStore.getTtsLineCache(chatKey); } catch (_) {}
-    if (token !== ttsLineStoreToken || ttsLineStoreState.chatKey !== chatKey) return ttsLineStoreState;
-    const store = getChatStore();
-    const portable = ttsPortableSnapshot(store);
+    if (token !== ttsLineStoreToken || ttsLineStoreState.chatKey !== chatKey
+      || getChatKey() !== chatKey || ctx().chatMetadata !== metadata) {
+      if (token === ttsLineStoreToken) ttsLineStorePromise = null;
+      return ttsLineStoreState;
+    }
+    const portable = ttsPortableSnapshot(metadata?.[MODULE_NAME] || {});
     // 聊天内快照可能来自另一设备或比本机缓存新，合并时让它覆盖同 key 的旧本机值。
     ttsLineStoreState.lines = { ...(isPlainObject(local?.lines) ? local.lines : {}), ...portable.lines };
     ttsLineStoreState.keyByMes = { ...(isPlainObject(local?.keyByMes) ? local.keyByMes : {}), ...portable.keyByMes };
     ttsPruneLineStore(ttsLineStoreState.lines, TTS_LOCAL_LINE_LIMIT);
     ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
-    const oldPortableSize = Object.keys(portable.lines).length;
-    ttsPrunePortableSnapshot(store);
+    // Reading an older chat never trims its portable snapshot or saves the chat.
+    // Only an explicit extraction/edit updates the bounded portable cache.
     ttsLineStoreState.loaded = true;
     ttsLineStorePromise = null;
-    ttsScheduleLocalLineSave();
-    if (oldPortableSize > TTS_PORTABLE_LINE_LIMIT) saveMetadata(); // 旧版最多100份；升级后一次性瘦身
     return ttsLineStoreState;
   })();
   return ttsLineStorePromise;
@@ -10901,17 +10967,17 @@ function ttsPersistedLines(key) {
   if (!key) return null;
   const local = ttsLineStoreState.chatKey === getChatKey() ? ttsLineStoreState.lines?.[key] : null;
   if (Array.isArray(local)) return local;
-  try { const portable = getChatStore().ttsLines?.[key]; return Array.isArray(portable) ? portable : null; } catch (_) { return null; }
+  try { const portable = ttsPortableSnapshot().lines[key]; return Array.isArray(portable) ? portable : null; } catch (_) { return null; }
 }
 
 function ttsPersistedAnchor(mesid) {
   if (mesid === '') return '';
   const local = ttsLineStoreState.chatKey === getChatKey() ? ttsLineStoreState.keyByMes?.[mesid] : '';
   if (local) return local;
-  try { return getChatStore().ttsLineKeyByMes?.[mesid] || ''; } catch (_) { return ''; }
+  try { return ttsPortableSnapshot().keyByMes[mesid] || ''; } catch (_) { return ''; }
 }
 
-function ttsStoreLines(key, lines, mesid = '') {
+function ttsStoreLines(key, lines, mesid = '', { persist = true } = {}) {
   if (!key || !Array.isArray(lines)) return;
   if (ttsLineStoreState.chatKey !== getChatKey()) {
     ttsLineStoreState = { chatKey: getChatKey(), lines: {}, keyByMes: {}, loaded: true };
@@ -10922,6 +10988,7 @@ function ttsStoreLines(key, lines, mesid = '') {
   if (mesid !== '') ttsLineStoreState.keyByMes[mesid] = key;
   ttsPruneLineStore(ttsLineStoreState.lines, TTS_LOCAL_LINE_LIMIT);
   ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
+  if (!persist) return; // Passive cache reuse must not write chat metadata.
   ttsScheduleLocalLineSave();
 
   // 保留最近少量台词在聊天内，兼顾跨设备打开；完整100份只在本机，不再拖累聊天文件。
@@ -10939,7 +11006,7 @@ function ttsStoreLineAnchor(key, mesid) {
   if (!key || mesid === '' || ttsLineStoreState.chatKey !== getChatKey()) return;
   ttsLineStoreState.keyByMes[mesid] = key;
   ttsPruneLineAnchors(ttsLineStoreState.keyByMes, ttsLineStoreState.lines);
-  ttsScheduleLocalLineSave();
+  // A rendered anchor is session state. Explicit line edits persist their anchor.
 }
 
 // 台词列表的「内容指纹」：按消息正文本身算 key，而非楼层 mesid——
@@ -10952,7 +11019,7 @@ function ttsContentKey(raw) {
 }
 // 原地编正文后的缓存迁移：内容指纹随正文一变即漂移、新 key 查不到旧台词列表。
 // 凭楼层 mesid 锚到「最近一次该楼的 key」，再以**台词原文是否仍逐字在场**为闸门——
-// 全部台词句仍出现在新正文清洗后的 passage 里（即只改了旁白/非台词）→ 把旧 lines 迁到新 key（含持久化 speed/emotion override），免重提、音频逐句仍命中；
+// 全部台词句仍出现在新正文清洗后的 passage 里（即只改了旁白/非台词）→ 仅在会话缓存复用旧 lines（含 speed/emotion override），免重提、音频逐句仍命中；
 // 任一句台词原文消失（真改了台词）→ 不迁移，该条回 🎧 等用户手动重提。mesid 锚点 + 逐字闸门双保险，不靠模糊猜测。
 function ttsMigrateLinesOnEdit(mesEl, newKey) {
   const mesid = ttsMesId(mesEl);
@@ -10972,7 +11039,7 @@ function ttsMigrateLinesOnEdit(mesEl, newKey) {
   // 迁移：旧 lines 落到新 key、更新锚点。**不删旧 key**——内容指纹寻址下，内容相同的别的楼层可能也指向旧 key，
   // 删了会把那些楼层的缓存一并打掉（串楼）。孤儿键无害，由 ttsPruneLineStore 统一按上限裁剪。
   ttsLineCache.set(newKey, oldLines);
-  ttsStoreLines(newKey, oldLines, mesid);
+  ttsStoreLines(newKey, oldLines, mesid, { persist: false });
   return oldLines;
 }
 // 取消息原始正文：只认 chat[mesid].mes（原始文本，正则不改它，故指纹免疫正则开关）。
@@ -11136,8 +11203,31 @@ function ttsBuildParams(line, voiceOverride = null) {
   };
 }
 
-function ttsPersistResolvedDoubaoModel(params, resolvedModel) {
+function ttsCaptureResolvedModelOwner(params) {
+  if (params?.providerId !== 'doubao' || params.model !== 'auto') return () => false;
+  const owner = settings, provider = ttsProviderConfig('doubao'), kind = params.voiceSourceType;
+  const context = ctx(), metadata = context.chatMetadata, chat = context.chat, chatKey = getChatKey();
+  const rows = kind === 'map' ? ttsActiveVoiceMap()
+    : kind === 'library' ? provider.voiceLibrary : kind === 'npc' ? provider.npcArchetypes : null;
+  const entry = Array.isArray(rows) ? rows.find(item => kind === 'map'
+    ? item.voiceId === params.voiceId && (!params.voiceSourceId || String(item.name || '').trim() === params.voiceSourceId)
+    : item.id === params.voiceSourceId) : null;
+  const before = entry ? JSON.stringify(entry) : '';
+  return () => {
+    if (!entry || settings !== owner || settings.tts?.providers?.doubao !== provider) return false;
+    // Check the captured chat before consulting the live map: a stale response
+    // must not even initialize metadata in a newly selected chat.
+    if (kind === 'map' && (ctx().chatMetadata !== metadata || ctx().chat !== chat
+      || getChatKey() !== chatKey || ttsProviderId() !== 'doubao')) return false;
+    const currentRows = kind === 'map' ? metadata?.[MODULE_NAME]?.ttsVoiceMaps?.doubao
+      : kind === 'library' ? provider.voiceLibrary : provider.npcArchetypes;
+    return currentRows === rows && rows.includes(entry) && JSON.stringify(entry) === before;
+  };
+}
+
+function ttsPersistResolvedDoubaoModel(params, resolvedModel, isCurrent = () => true) {
   if (params?.providerId !== 'doubao' || params.model !== 'auto') return false;
+  if (!isCurrent()) return false;
   const model = ttsDoubaoVoiceModel(resolvedModel, '');
   if (!model || model === 'auto') return false;
   if (params.voiceSourceType === 'focus-character') {
@@ -11231,6 +11321,8 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
   if (!params) throw new Error(`「${line.speaker}」未配置音色`);
   const provider = getTtsProvider(params.providerId);
   if (!ttsProviderHasCredentials(params.providerId, params)) throw new Error(`未配置 ${provider.label} 凭证`);
+  const modelOwnerCurrent = params.providerId === 'doubao' && params.model === 'auto'
+    ? ttsCaptureResolvedModelOwner(params) : null;
   let key = cacheKeyForTts(params.providerId, params);
   const useCache = blobStore.blobStoreAvailable();
   if (!force && useCache) {
@@ -11242,7 +11334,7 @@ async function ttsSynthCached(line, force = false, source = 'tts') {
   const result = await synthesizeTts(params.providerId, params);
   const blob = result.blob;
   if (params.providerId === 'doubao' && params.model === 'auto' && result.resolvedModel) {
-    ttsPersistResolvedDoubaoModel(params, result.resolvedModel);
+    ttsPersistResolvedDoubaoModel(params, result.resolvedModel, modelOwnerCurrent);
     params.model = result.resolvedModel;
     key = cacheKeyForTts(params.providerId, params);
   }
@@ -11664,10 +11756,6 @@ function ttsRefreshProviderChat(expand = false) {
   const chat = document.getElementById('chat');
   if (!chat) return;
   ttsScheduleInitialScan(chat, { forceProvider: true, expand });
-  try {
-    const store = getChatStore();
-    if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
-  } catch (_) {}
 }
 
 function ttsRenderLines(bar, lines) {
@@ -12299,8 +12387,6 @@ function ttsStartChat() {
   const t = settings.tts || {};
   if (!t.enabled || !t.injectInChat) {
     ttsStopChat();
-    // 即使暂时关闭正文配音，也迁移/裁剪旧版聊天内的重台词缓存，让历史聊天立即瘦身。
-    ttsPrepareLineStore().catch(() => {});
     return;
   }
   const chat = document.getElementById('chat');
@@ -12313,20 +12399,17 @@ function ttsStartChat() {
     ttsChatElement = chat;
     ttsChatBound = true;
   }
-  let providerChanged = false;
-  try {
-    const store = getChatStore();
-    providerChanged = !!store.ttsLastProvider && store.ttsLastProvider !== ttsProviderId();
-  } catch (_) {}
+  // Provider rendering state belongs to the current controls, not the chat file.
+  const providerChanged = Array.from(chat.querySelectorAll(`.${TTS_BAR_CLASS}`))
+    .some(bar => bar.dataset.provider && bar.dataset.provider !== ttsProviderId());
   const expectedChatKey = getChatKey();
+  const expectedMetadata = ctx().chatMetadata;
   ttsPrepareLineStore().then(() => {
-    if (getChatKey() !== expectedChatKey || chat !== ttsChatElement) return;
+    if (getChatKey() !== expectedChatKey || ctx().chatMetadata !== expectedMetadata || chat !== ttsChatElement) return;
     ttsScheduleInitialScan(chat, { forceProvider: providerChanged, expand: providerChanged });
-    try {
-      const store = getChatStore();
-      if (store.ttsLastProvider !== ttsProviderId()) { store.ttsLastProvider = ttsProviderId(); saveMetadata(); }
-    } catch (_) {}
-  }).catch(() => ttsScheduleInitialScan(chat));
+  }).catch(() => {
+    if (getChatKey() === expectedChatKey && ctx().chatMetadata === expectedMetadata && chat === ttsChatElement) ttsScheduleInitialScan(chat);
+  });
 }
 function ttsStopChat() {
   if (!ttsChatBound) return;
@@ -13886,16 +13969,6 @@ function storyboardReconcileShotPlans() {
   return changed;
 }
 
-function storyboardScheduleLinkSave() {
-  if (storyboardLinkSaveQueued) return;
-  storyboardLinkSaveQueued = true;
-  queueMicrotask(async () => {
-    storyboardLinkSaveQueued = false;
-    try { await saveMetadata(); }
-    catch (error) { console.warn(`[${MODULE_NAME}] storyboard message-link save failed`, error); }
-  });
-}
-
 function storyboardRecoverLegacyMessageReference(record, chat, chatKey) {
   if (record?.restoreLinkReview) return null;
   const expectedHash = String(record?.messageHash || '');
@@ -13916,7 +13989,7 @@ function storyboardRecoverLegacyMessageReference(record, chat, chatKey) {
   return createStoryboardMessageReference({ message: candidates[0].message, chatKey, floor: candidates[0].floor });
 }
 
-function storyboardReconcileGalleryLinks({ persist = true } = {}) {
+function storyboardReconcileGalleryLinks() {
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
   const chatKey = String(getChatKey() || '');
   let changed = false;
@@ -13943,7 +14016,8 @@ function storyboardReconcileGalleryLinks({ persist = true } = {}) {
     record.linkState = resolved.state;
     if (previousFloor !== record.floor || previousState !== record.linkState) changed = true;
   }
-  if (changed && persist) storyboardScheduleLinkSave();
+  // These derived links keep the current view aligned; viewing never saves a chat.
+  // Explicit gallery edits retain their own save path.
   return changed;
 }
 
@@ -22107,7 +22181,7 @@ async function storyboardRedrawRecord(record, { artistPreset = undefined, artist
   const state = storyboardState();
   if (!state.enabled) return toast('请先启用分镜。', 'warning');
   const world = Boolean(storyboardProductionContext(record).packetId);
-  storyboardReconcileGalleryLinks({ persist: false });
+  storyboardReconcileGalleryLinks();
   const hasProseFloor=Number.isInteger(record?.floor)&&Boolean(ctx().chat?.[record.floor]);
   if (!world && record.linkState === 'inactive_swipe') return toast('请先切回这张图对应的回复版本。', 'warning');
 
@@ -35684,6 +35758,7 @@ function bindEvents() {
     directorAutoRefresh?.received(messageIndex, generationType);
   };
   const rerenderHandler = async () => {
+    observeChatWriteBaseline();
     directorAutoRefresh?.cancel();
     storyboardCaptureView?.closeStoryboardCaptureChooser(document);
     storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
@@ -35718,6 +35793,7 @@ function bindEvents() {
   // APP_READY：ST 注水 extensionSettings 完成的信号。init 经 setTimeout 抢跑可能早于注水，
   // 此时读到的 floatPosition 仍是默认 → 悬浮球落默认中位。注水后重读 settings 并按保存位重绘，根治「重载后球回默认位」偶发。
   const appReadyHandler = async () => {
+    observeChatWriteBaseline();
     settings = getSettings();
     void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
@@ -35786,6 +35862,7 @@ function init() {
   try {
     const initStartedAt = globalThis.performance?.now?.() ?? Date.now();
     settings = getSettings();
+    installChatWriteGuard();
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     focusClockState();
     startFocusClockRuntime();
@@ -35818,6 +35895,7 @@ function init() {
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
     registerRuntimeInterceptor();
     initialized = true;
+    observeChatWriteBaseline();
     fontLibrary.activate();
     void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
     storyboardScheduleGalleryPreservation();
@@ -35867,6 +35945,10 @@ function cleanupRuntime(resetSettings = false) {
   cancelStartupFallback();
   if (!isRuntimeOwner()) return;
   initialized = false;
+  disposeChatWriteGuard();
+  chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
+  chatRecoveryClient?.dispose(); chatRecoveryClient = null;
+  chatRecoveryNamespace = null;
   fontLibrary.dispose();
   resetCreativeSocialState();
   proseFloorTools.dispose();
