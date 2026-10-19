@@ -1,7 +1,7 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.474';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.472';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.474';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.474';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.475';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.475';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.475';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.475';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 
 function fontInputName(value) {
@@ -199,7 +199,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         }
         const packed = exportFontPack(fonts, { localFiles, folders: state.folders, previewText: state.previewText }); guard();
         download(new Blob([packed], { type: 'application/json' }), `qianmu-fonts-${Date.now()}.json`);
-        view?.setStatus('字体包已导出'); return;
+        if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包已导出'); return;
       } else {
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
         guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
@@ -225,7 +225,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       }
       if (type === 'delete-fonts' || type === 'delete-font') {
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));
-        try { await store.delete(deleted.map(font => font.id)); } catch { view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
+        try { await store.delete(deleted.map(font => font.id)); } catch { if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
       if (current(token)) {
         // The originating view owns its one final redraw/reveal. Preview loading
@@ -259,6 +259,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       root.querySelector('.sd-floor-shell').appendChild(container);
       const identity = {}; viewIdentity = identity;
       view = viewFactory({ root: container, getState: uiState, onAction: payload => action(payload, {}, identity), onVisibleFonts: (ids, choices) => visible(ids, choices, identity), initialSession: viewSession,
+        notify: (text, level) => { if (identity === viewIdentity && current(generation)) notify(text, level); },
         onBack: () => { close(); root.querySelector('[data-font-library]')?.focus(); },
         onClose: () => closePanel ? closePanel() : root.querySelector('.sd-floor-close')?.click(),
         fontFamily: id => runtime.family(id) });

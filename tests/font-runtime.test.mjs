@@ -24,6 +24,18 @@ const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
 const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
 
+test('native message metadata and recent-chat text are exact body targets, excluded from interface inheritance', () => {
+  const body = fontScopeCss('body', fontPreviewFamily('body')), st = fontScopeCss('st', fontPreviewFamily('interface'));
+  for (const leaf of ['.mesIDDisplay', '.mes_timer', '.tokenCounterDisplay', '.name_text', '.timestamp', '.swipes-counter', '.chatName', '.chatDate', '.chatMessage', '.chatStats small']) {
+    assert.ok(body.includes(leaf), leaf);
+  }
+  assert.ok(body.includes('#chat > .mes > .mes_block > .ch_name'));
+  assert.ok(body.includes('.welcomePanel .recentChatList > .recentChat > .recentChatInfo'));
+  assert.ok(st.includes(':not(:is(#chat > .mes > .mesAvatarWrapper,'));
+  assert.ok(st.includes('.ch_name .name_text, .ch_name .timestamp, .recentChatInfo))'));
+  assert.doesNotMatch(body, /\.recentChat\s*\*|\.mes\s*\*|font-size:|line-height:/);
+});
+
 test('chat composer belongs only to the body assignment without introducing size or placeholder overrides', () => {
   const body = fontScopeCss('body', fontPreviewFamily('body-font'), { weight: '700', style: 'italic' });
   const st = fontScopeCss('st', fontPreviewFamily('ui-font'));

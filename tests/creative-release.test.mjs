@@ -5,14 +5,14 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 
 const root = new URL('../', import.meta.url);
 const version = '1.59.464';
-const releaseVersion = '1.59.474';
+const releaseVersion = '1.59.475';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
   ...['qianmu-font-library.js', 'qianmu-font-library-view.js', 'qianmu-font-library-state.js', 'qianmu-font-runtime.js'].map(file => [file, releaseVersion]),
-  ['qianmu-font-sources.js', '1.59.472'],
+  ['qianmu-font-sources.js', releaseVersion],
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
   ['qianmu-director-live.js', '1.59.458'],
@@ -69,9 +69,9 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));
   assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${releaseVersion}')`));
-  assert.ok(sources.get('qianmu-font-library.js').includes("from './qianmu-font-sources.js?v=1.59.472'"));
+  assert.ok(sources.get('qianmu-font-library.js').includes(`from './qianmu-font-sources.js?v=${releaseVersion}'`));
   assert.ok(sources.get('qianmu-font-library-view.js').includes("from './qianmu-icon-renderer.js?v=1.59.470'"));
-  assert.ok(sources.get('qianmu-font-library-state.js').includes("from './qianmu-font-sources.js?v=1.59.472'"), 'source and validator consumers share the compatible fragment limit');
+  assert.ok(sources.get('qianmu-font-library-state.js').includes(`from './qianmu-font-sources.js?v=${releaseVersion}'`), 'source and validator consumers share the compatible fragment limit');
   assert.match(sources.get('index.js'), /fontLibrary\.activate\(\);\s*void fontLibrary\.sync\(\)/);
   assert.match(sources.get('index.js'), /initialized = false;\s*fontLibrary\.dispose\(\)/);
   for (const file of ['qianmu-director-leave-guard.js', 'qianmu-director-navigation.js', 'qianmu-director-save-confirmation.js', 'qianmu-director-host-state.js', 'qianmu-director-auto-refresh.js']) {

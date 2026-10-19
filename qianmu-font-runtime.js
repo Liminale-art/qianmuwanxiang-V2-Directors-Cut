@@ -11,10 +11,17 @@ const PROSE_TEXT_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGR
 // Body carries state classes such as sd-prose-layout; those are not a Qianmu
 // window and must not accidentally exempt the whole host interface.
 const OWN_SURFACE = '[id^="story-director-"], :is([class^="sd-"], [class*=" sd-"], [class^="qm-"], [class*=" qm-"]):not(html):not(body)';
+// Native ST message chrome/recent-chat text belongs to reading typography.
+// Select the native leaves, not .mes or rich-card containers, so authored
+// regex cards and icon/control typography never inherit this assignment.
+const MESSAGE_META = '#chat > .mes > .mesAvatarWrapper > :is(.mesIDDisplay, .mes_timer, .tokenCounterDisplay), #chat > .mes > .mes_block > .ch_name :is(.name_text, .timestamp), #chat > .mes > .swipeRightBlock > .swipes-counter';
+const RECENT_TEXT = '.welcomePanel .recentChatList > .recentChat > .recentChatInfo :is(.chatName, .chatName > strong, .chatName > span, .chatDate, .chatMessage, .chatStats small)';
+const READING_META = `${MESSAGE_META}, ${RECENT_TEXT}`;
+const READING_META_CONTAINERS = '#chat > .mes > .mesAvatarWrapper, #chat > .mes > .mes_block > .ch_name, #chat > .mes > .swipeRightBlock, .welcomePanel .recentChatList > .recentChat > .recentChatInfo';
 const EXEMPT = 'textarea#send_textarea, .mes_text, .mes_text *, pre, pre *, code, code *, kbd, kbd *, samp, samp *, svg, svg *, canvas, i, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="fa-"] *, [class*="icon"], [class*="icon"] *, [data-sd-prose-exempt], [data-sd-prose-exempt] *, [style*="font-family" i], [style*="font-family" i] *';
 // Do not style body or message/Qianmu ancestors: an excluded descendant must
 // not inherit a changed font from an otherwise eligible host container.
-const ST_TARGET = `html body :is(div, span, p, a, label, button, input, textarea, select, option, summary, legend, h1, h2, h3, h4, h5, h6, li, td, th, small):not(:is(${EXEMPT})):not(:is(${OWN_SURFACE})):not(:is(${OWN_SURFACE}) *):not(:has(textarea#send_textarea, .mes_text, ${OWN_SURFACE}))`;
+const ST_TARGET = `html body :is(div, span, p, a, label, button, input, textarea, select, option, summary, legend, h1, h2, h3, h4, h5, h6, li, td, th, small):not(:is(${EXEMPT})):not(:is(${READING_META_CONTAINERS})):not(:is(${READING_META_CONTAINERS}) *):not(:is(${OWN_SURFACE})):not(:is(${OWN_SURFACE}) *):not(:has(textarea#send_textarea, .mes_text, ${OWN_SURFACE}, .ch_name .name_text, .ch_name .timestamp, .recentChatInfo))`;
 
 export function fontPreviewFamily(id) {
   return `QianmuFont_${Array.from(String(id || '')).map((character) => character.codePointAt(0).toString(16)).join('_') || 'none'}`;
@@ -95,7 +102,7 @@ export function fontScopeCss(scope, family, selection = {}) {
   // never rewrites another extension's stylesheet or its enabled state.
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
-  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
   return layer(`${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
 }

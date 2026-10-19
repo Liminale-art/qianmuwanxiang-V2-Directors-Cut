@@ -5,19 +5,29 @@ import { createFontLibraryView, renderFontLibrary, renderFontLibraryCards, selec
 const entry = (id = 'one', patch = {}) => ({ id, name: `字体 ${id}`, sourceType: 'web', folder: '', tags: [], weights: ['400', '700'], styles: ['normal', 'italic'], ...patch });
 const state = (patch = {}) => ({ entries: [entry()], mode: 'separate', previewText: '山海相逢 ABC 123', body: { enabled: false, fontId: '' }, st: { enabled: false, fontId: '' }, shared: { enabled: false, fontId: '' }, ...patch });
 
+test('card-header submission prevents disclosure toggling and sends one trusted toast on failure', async () => {
+    const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE'), { userMessage: '链接不可为空' }); });
+    let prevented = 0; const button = f.node('[data-font-action]', { dataset: { fontAction: 'add-web' } });
+    button.closest = selector => selector === '[data-font-action]' ? button : selector === '.qm-font-add>summary' ? {} : null;
+    await f.handlers.get('click')({ target: button, preventDefault() { prevented++; } });
+    assert.equal(prevented, 1); assert.equal(f.calls.length, 1); assert.deepEqual(f.notices, [{ text: '链接不可为空', level: 'warning' }]);
+    f.view.setStatus(''); assert.equal(f.notices.length, 1); f.view.setStatus('字体包已导出'); assert.equal(f.notices.at(-1).level, 'info');
+    f.view.destroy(); f.view.setStatus('迟到失败', { error: true }); assert.equal(f.notices.length, 2);
+});
+
 function fixture(initial = state(), action = () => {}, initialSession = {}) {
-    const handlers = new Map(), samples = [], statuses = [], applyPickers = [], queries = new Map(), allQueries = new Map(), calls = [], visible = [], attributes = new Map();
+    const handlers = new Map(), samples = [], statuses = [], applyPickers = [], queries = new Map(), allQueries = new Map(), calls = [], notices = [], visible = [], attributes = new Map();
     let html = '', current = structuredClone(initial), reads = 0;
     function node(selector, fields = {}) {
         const item = { value: '', checked: false, hidden: false, disabled: false, textContent: '', dataset: {}, style: { setProperty(key, value, priority) { this[key] = value; this[key + ':priority'] = priority; } }, classList: { toggle() {} }, setAttribute(key, value) { this[key] = value; }, focus() {}, matches: candidate => candidate === selector, closest: candidate => candidate === selector ? item : null, ...fields };
         queries.set(selector, item); return item;
     }
-    node('.qm-font-status'); node('[data-font-selection-count]'); node('.qm-font-bulk-actions'); node('.sd-body', { scrollTop: 0 });
+    node('[data-font-selection-count]'); node('.qm-font-bulk-actions'); node('.sd-body', { scrollTop: 0 });
     const root = { get innerHTML() { return html; }, set innerHTML(value) { html = value; samples.length = 0; statuses.length = 0; applyPickers.length = 0; for (const match of value.matchAll(/data-font-sample="([^"]+)"/g)) samples.push(node('[data-font-sample]', { dataset: { fontSample: match[1] } })); for (const match of value.matchAll(/data-font-load-state="([^"]+)"/g)) statuses.push(node('[data-font-load-state]', { dataset: { fontLoadState: match[1] } })); for (const match of value.matchAll(/data-font-apply="([^"]+)"/g)) applyPickers.push(node('[data-font-apply]', { selectedIndex: 0, value: 'body', dataset: { fontApply: match[1] } })); },
         contains: () => true, setAttribute: (key, value) => attributes.set(key, value), querySelector: selector => queries.get(selector) || null,
         querySelectorAll: selector => allQueries.get(selector) || (selector === '[data-font-sample]' ? samples : selector === '[data-font-load-state]' ? statuses : selector === '[data-font-apply]' ? applyPickers : []), addEventListener: (event, handler) => handlers.set(event, handler), removeEventListener: event => handlers.delete(event) };
-    const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
-    return { root, view, calls, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('change')?.({ target: node('[data-font-apply]', { value: target, dataset: { fontApply: id } }) }) };
+    const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, notify: (text, level) => notices.push({ text, level }), onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
+    return { root, view, calls, notices, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('change')?.({ target: node('[data-font-apply]', { value: target, dataset: { fontApply: id } }) }) };
 }
 
 test('main panel shell uses real inline theme icons and removes the old mode/settings prose', () => {
@@ -29,7 +39,7 @@ test('main panel shell uses real inline theme icons and removes the old mode/set
 });
 test('one collapsible add card combines Web fields and two plain-text upload actions without export', () => {
     const html = renderFontLibrary(state());
-    assert.match(html, /<details class="sd-card qm-font-add"><summary><b>添加字体<\/b><\/summary>/); assert.match(html, /<span>字体链接<\/span><div>[\s\S]*?data-font-action="add-web"/);
+    assert.match(html, /<details class="sd-card qm-font-add"><summary><b>添加字体<\/b><div class="qm-font-add-actions">[\s\S]*?data-font-action="add-web"[\s\S]*?<\/summary>/); assert.doesNotMatch(html, /qm-font-status|data-font-local-status/); assert.ok(html.indexOf('data-font-action="add-web"') < html.indexOf('data-font-web-name'));
     assert.match(html, /data-font-file="local"[^>]*multiple>/); assert.match(html, /data-font-file="import"/); assert.doesNotMatch(html, /data-font-file="(?:local|import)"[^>]*hidden/);
     const uploads = html.match(/<div class="qm-font-imports">[\s\S]*?<\/div>/)?.[0]; assert.doesNotMatch(uploads, /<svg|导出|export/); assert.match(uploads, />上传本地字体<input/); assert.match(uploads, />导入字体包<input/); assert.equal((uploads.match(/class="sd-btn/g) || []).length, 2); assert.doesNotMatch(html, /export-all/);
     assert.ok(html.indexOf('data-font-web-source') < html.indexOf('data-font-web-tags')); assert.ok(html.indexOf('data-font-file="local"') < html.indexOf('</details>')); assert.match(html, /data-font-web-tags type="text" maxlength="2623"/);
@@ -160,7 +170,7 @@ test('web source drafts survive rejected and unrelated updates with precise trus
     const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE RAW'), { userMessage: '未找到可用的字体声明。' }); });
     f.node('[data-font-web-name]', { value: '我的字体' }); f.node('[data-font-web-source]', { value: '@import url(https://example.test/fonts.css);' });
     f.node('[data-font-web-tags]', { value: '阅读， 中文, 阅读' }); const before = f.root.innerHTML; await f.click('add-web'); assert.deepEqual(f.calls[0], { type: 'add-web', name: '我的字体', source: '@import url(https://example.test/fonts.css);', tags: ['阅读', '中文'] });
-    assert.equal(f.root.innerHTML, before); assert.equal(f.queries.get('.qm-font-status').textContent, '未找到可用的字体声明。'); f.view.render(); assert.match(f.root.innerHTML, /value="我的字体"/); assert.equal(f.view.captureSession().webTags, '阅读， 中文, 阅读'); f.view.destroy();
+    assert.equal(f.root.innerHTML, before); assert.equal(f.notices.at(-1)?.text, '未找到可用的字体声明。'); f.view.render(); assert.match(f.root.innerHTML, /value="我的字体"/); assert.equal(f.view.captureSession().webTags, '阅读， 中文, 阅读'); f.view.destroy();
 });
 test('completed Web request clears only its exact draft and preserves newer input', () => {
     const f = fixture(), name = f.node('[data-font-web-name]', { value: '旧稿' }), source = f.node('[data-font-web-source]', { value: 'https://example.test/old.woff' });
@@ -241,10 +251,10 @@ test('cancel, backdrop and Escape discard uncommitted local uploads without writ
     await f.emit('change', local); const session = f.view.captureSession(); f.view.destroy(); const reopened = fixture(state(), () => {}, session); assert.doesNotMatch(reopened.root.innerHTML, /data-font-local-dialog/); reopened.view.destroy();
 });
 
-test('failed local upload keeps all metadata and shows its trusted error inside the dialog', async () => {
-    const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE'), { userMessage: '每个标签最多 80 字。' }); }), status = f.node('[data-font-local-status]');
+test('failed local upload keeps all metadata and shows its trusted error through the shared toast', async () => {
+    const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE'), { userMessage: '每个标签最多 80 字。' }); });
     await f.emit('change', f.node('[data-font-file]', { files: [{ name: '<bad>.woff2' }], dataset: { fontFile: 'local' } })); f.emit('input', f.node('[data-font-local-name]', { value: '本地稿', dataset: { fontLocalName: '0' } })); f.emit('input', f.node('[data-font-local-tags]', { value: '长'.repeat(81), dataset: { fontLocalTags: '0' } }));
-    await f.click('local-confirm'); assert.equal(status.textContent, '每个标签最多 80 字。'); assert.equal(status.hidden, false); assert.equal(f.calls[0].metadata[0].tags[0].length, 81); f.view.render();
+    await f.click('local-confirm'); assert.deepEqual(f.notices, [{ text: '每个标签最多 80 字。', level: 'warning' }]); assert.equal(f.calls[0].metadata[0].tags[0].length, 81); f.view.render();
     assert.match(f.root.innerHTML, /value="本地稿"/); assert.match(f.root.innerHTML, /&lt;bad&gt;.woff2/); assert.doesNotMatch(f.root.innerHTML, /<bad>/); await f.click('local-cancel'); assert.equal(f.calls.length, 1); f.view.destroy();
 });
 
@@ -311,7 +321,7 @@ test('legacy folder and tag filters cannot strand the list behind an invisible f
 });
 test('status errors target only matching samples and unknown raw errors remain private', async () => {
     const f = fixture(state({ entries: [entry('one'), entry('two')] }), () => { throw Error('SECRET URL AND TOKEN'); }); f.view.setFontStatus('two', '来源暂不可访问'); assert.equal(f.statuses[0].textContent, ''); assert.equal(f.statuses[1].textContent, '来源暂不可访问');
-    await f.click('manage'); await f.click('select-page'); await f.click('export-selected'); assert.equal(f.calls.length, 1); assert.ok(f.queries.get('.qm-font-status').textContent); assert.doesNotMatch(f.queries.get('.qm-font-status').textContent, /SECRET/); f.view.destroy();
+    await f.click('manage'); await f.click('select-page'); await f.click('export-selected'); assert.equal(f.calls.length, 1); assert.ok(f.notices.at(-1)?.text); assert.doesNotMatch(f.notices.at(-1)?.text, /SECRET/); f.view.destroy();
 });
 test('pinned sequence is independent of numeric Chinese name sorting and stable equal-name ties', () => {
     const input = state({ entries: [entry('ten', { name: '字体10' }), entry('two', { name: '字体2' }), entry('equal-a', { name: 'a' }), entry('equal-b', { name: 'A' }), entry('pin-z', { name: 'z' }), entry('pin-a', { name: 'a' })], pinnedIds: ['pin-z', 'missing', 'pin-a', 'pin-z'] }), before = structuredClone(input);
@@ -339,7 +349,7 @@ test('sort success returns to its first page while keeping cross-page selection 
     await f.click('manage'); await f.clickCard('5'); await f.click('next'); await f.clickCard('11');
     await f.emit('change', f.node('[data-font-sort-order]', { value: 'desc' })); assert.equal(f.view.captureSession().page, 0); assert.deepEqual(f.visible.at(-1).ids.slice(0, 3), ['5', '11', '10']);
     await f.click('export-selected'); assert.deepEqual(f.calls.at(-1), { type: 'export', ids: ['5', '11'] }); f.view.destroy();
-    const failed = fixture(state({ sortOrder: 'asc' }), () => { throw Error('failure'); }), picker = failed.node('[data-font-sort-order]', { value: 'desc' }); await failed.emit('change', picker); assert.equal(picker.value, 'asc'); assert.equal(failed.queries.get('.qm-font-status').hidden, false); failed.view.destroy();
+    const failed = fixture(state({ sortOrder: 'asc' }), () => { throw Error('failure'); }), picker = failed.node('[data-font-sort-order]', { value: 'desc' }); await failed.emit('change', picker); assert.equal(picker.value, 'asc'); assert.equal(failed.notices.at(-1)?.level, 'warning'); failed.view.destroy();
 });
 
 test('addition ordering uses preserved insertion sequence, leaves pins fixed and filters before pagination', () => {
@@ -365,7 +375,7 @@ test('all four sort choices dispatch basis and direction, keep selection and res
     await f.click('export-selected'); assert.deepEqual(f.calls.at(-1), { type: 'export', ids: ['first'] });
     const count = f.calls.length; for (const value of ['', 'random', 'constructor']) await f.emit('change', f.node('[data-font-sort-order]', { value })); assert.equal(f.calls.length, count); f.view.destroy();
     const failed = fixture(state({ sortBy: 'added', sortOrder: 'desc' }), () => { throw Error('failure'); }), picker = failed.node('[data-font-sort-order]', { value: 'asc' });
-    await failed.emit('change', picker); assert.equal(picker.value, 'added-desc'); assert.equal(failed.queries.get('.qm-font-status').hidden, false); failed.view.destroy();
+    await failed.emit('change', picker); assert.equal(picker.value, 'added-desc'); assert.equal(failed.notices.at(-1)?.level, 'warning'); failed.view.destroy();
 });
 
 function attachCard(f, id) {
@@ -444,7 +454,7 @@ test('unchanged local legacy comma tags stay intact and a failed metadata save r
     const tags = attachTagEditor(rejected, 'rename-one', ' 手写 ，重复,重复  '); rejected.emit('input', tags.input); rejected.emit('input', rejected.node('[data-font-rename]', { value: ' 未保存名称 ', dataset: { fontRename: 'one' } }));
     await tags.open(); assert.match(tags.panel.innerHTML, /data-font-tag-unavailable="true" disabled/); await rejected.click('rename-save', { fontId: 'one' });
     const savedSession = rejected.view.captureSession(); assert.equal(savedSession.renameDraft, ' 未保存名称 '); assert.equal(savedSession.renameTags, ' 手写 ，重复,重复  '); assert.equal(savedSession.renameId, 'one');
-    const restored = fixture(initial, () => {}, savedSession); assert.match(restored.root.innerHTML, /value=" 手写 ，重复,重复  "/); assert.equal(rejected.queries.get('.qm-font-status').hidden, false); restored.view.destroy(); rejected.view.destroy();
+    const restored = fixture(initial, () => {}, savedSession); assert.match(restored.root.innerHTML, /value=" 手写 ，重复,重复  "/); assert.equal(rejected.notices.at(-1)?.level, 'warning'); restored.view.destroy(); rejected.view.destroy();
 });
 
 test('opening local metadata and tag collection scrolls only the font body enough for the full editor', async () => {
@@ -480,7 +490,7 @@ test('opening, outside clicks and Escape preserve raw tag text; only explicit ch
 test('tag picker escapes long metadata, rejects ambiguous comma tags and the thirty-third tag without truncating', async () => {
     const unsafe = '"><img src=x onerror=alert(1)>', long = '很长'.repeat(40), values = Array.from({ length: 33 }, (_, index) => `标签${index}`), f = fixture(state({ entries: [entry('one', { tags: [...values, unsafe, long, '中，文', 'a,b'] })] })), web = attachTagEditor(f, 'web', values.slice(0, 32).join(', '));
     await web.open(); assert.doesNotMatch(web.panel.innerHTML, /<img|<script/); assert.match(web.panel.innerHTML, /&lt;img/); assert.match(web.panel.innerHTML, /data-font-tag="中，文"[^>]*disabled[^>]*title="标签含逗号/); assert.match(web.panel.innerHTML, /data-font-tag="a,b"[^>]*disabled/);
-    const before = web.input.value; await web.toggle('标签32'); await web.toggle('中，文'); assert.equal(web.input.value, before); assert.match(f.queries.get('.qm-font-status').textContent, /最多 32/);
+    const before = web.input.value; await web.toggle('标签32'); await web.toggle('中，文'); assert.equal(web.input.value, before); assert.match(f.notices.at(-1)?.text, /最多 32/);
     await web.toggle('标签0'); await web.toggle('标签32'); assert.equal(web.input.value.split(', ').length, 32); assert.ok(!web.input.value.split(', ').includes('标签0')); assert.ok(web.input.value.endsWith('标签32')); assert.equal(f.calls.length, 0); f.view.destroy();
 });
 test('local upload pickers isolate files and Escape closes the current picker before canceling the uncommitted upload', async () => {

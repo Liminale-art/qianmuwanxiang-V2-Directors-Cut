@@ -35,7 +35,9 @@
 #story-director-floor-nav#story-director-floor-nav .qm-font-window input[data-font-enabled]:focus-visible { outline:2px solid var(--sd-accent) !important; outline-offset:2px; }
 .qm-font-library .qm-font-enable:has(input:disabled) { opacity:.55; cursor:progress; }
 .qm-font-library .qm-font-web { margin:0; }
-.qm-font-library .qm-font-add>summary { display:block; list-style:none; cursor:pointer; font-size:14px; line-height:1.5; }
+.qm-font-library .qm-font-add>summary { display:flex; align-items:center; justify-content:space-between; gap:8px; list-style:none; cursor:pointer; font-size:14px; line-height:1.5; }
+.qm-font-library .qm-font-add-actions { display:flex; flex:none; align-items:center; gap:3px; }
+#story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-add-actions .qm-font-icon { width:28px; height:28px; min-width:28px; min-height:28px; }
 .qm-font-library .qm-font-add>summary::marker { content:""; }
 .qm-font-library .qm-font-add>summary::-webkit-details-marker { display:none; }
 .qm-font-library .qm-font-add[open]>summary { margin-bottom:12px; }
@@ -103,8 +105,6 @@
 .qm-font-library .qm-font-pagination { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-page-end { display:flex; align-items:center; gap:4px; }
 .qm-font-library .qm-font-empty { margin:20px 0; text-align:center; }
-.qm-font-library .qm-font-status { margin:0; padding:8px 10px; border:1px solid var(--sd-border); border-radius:var(--qm-card-radius,8px); font-size:var(--qm-type-caption,11px); line-height:1.5; overflow-wrap:anywhere; }
-.qm-font-library .qm-font-status.is-error { border-color:color-mix(in srgb,#b86b70 50%,var(--sd-border)); }
 .qm-font-window[aria-busy="true"] .qm-font-library { cursor:progress; }
 .qm-font-window[aria-busy="true"] .qm-font-library :is(button,select,input,textarea) { pointer-events:none; }
 .qm-font-window .qm-font-local-layer { position:absolute; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:12px; background:#0005; border-radius:inherit; }
@@ -121,6 +121,4 @@
 .qm-font-window .qm-font-local-dialog>footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex:none; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-local-dialog>footer>button { min-width:0; margin:0; }
 .qm-font-window .qm-font-local-dialog :disabled { opacity:.5; cursor:progress; }
-.qm-font-window .qm-font-local-dialog .qm-font-status { margin:0; line-height:1.5; overflow-wrap:anywhere; }
-.qm-font-window .qm-font-local-dialog .qm-font-status.is-error { color:var(--sd-danger,#b86b70); }
 @media(max-width:440px) { .qm-font-library { gap:10px; } .qm-font-library .qm-font-toolbar { gap:6px; } .qm-font-library .qm-font-card-foot { gap:6px; } .qm-font-library .qm-font-bulk-actions { gap:5px; } }

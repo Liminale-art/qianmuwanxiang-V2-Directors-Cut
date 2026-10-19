@@ -229,7 +229,7 @@ function htmlDecode(value) {
 
 function inputSource(input, baseUrl) {
     const value = boundedText(input, FONT_SOURCE_LIMITS.cssBytes, '字体来源');
-    if (!value) fail('请填写字体网址或字体样式');
+    if (!value) fail('链接不可为空');
     // Use the existing bounded metadata field, not the expanded remote CSS.
     // Long pasted styles still retain every parsed face; no origin is guessed.
     const remembered = value.length <= 8192 ? value : '内嵌字体样式';

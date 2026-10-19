@@ -9,7 +9,7 @@ function rules(selector) {
     return [...css.matchAll(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`, 'g'))].map(match => match[1]);
 }
 
-test('widget toggles stay in two columns and hive choices stay in three at every breakpoint', () => {
+test('widget toggles stay in two columns and hive choices stay in four at every breakpoint', () => {
     const toggles = rules('#story-director-modal .sd-widget-toggle-row');
     const choices = rules('#story-director-modal .sd-wheel-custom-list');
     assert.equal(toggles.length, 1, 'a mobile override must not change the two-toggle layout');
@@ -17,18 +17,23 @@ test('widget toggles stay in two columns and hive choices stay in three at every
     assert.match(toggles[0], /display:\s*grid/);
     assert.match(toggles[0], /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
     assert.match(choices[0], /display:\s*grid/);
-    assert.match(choices[0], /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+    assert.match(choices[0], /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
     assert.doesNotMatch(css, /\.sd-wheel-custom-row\b/, 'the former checkbox/order row is retired');
 });
 
-test('hive labels can wrap without shrinking their icons or forcing a fourth column', () => {
+test('hive choices stack icons above wrapping labels in compact near-square cells', () => {
     const base = rules('#story-director-modal .sd-widget-toggle:not(.sd-btn)').join('\n');
     const icons = rules('#story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon)').join('\n');
     const labels = rules('#story-director-modal .sd-wheel-command-toggle > span').join('\n');
+    const choices = rules('#story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle').join('\n');
     assert.match(base, /min-width:\s*0/);
     assert.match(base, /min-height:\s*31px/);
     assert.match(icons, /flex:\s*0\s+0\s+14px/);
+    assert.match(choices, /flex-direction:\s*column/);
+    assert.match(choices, /width:\s*100%/);
+    assert.match(choices, /aspect-ratio:\s*1\.12/);
     assert.match(labels, /min-width:\s*0/);
+    assert.match(labels, /max-width:\s*100%/);
     assert.match(labels, /white-space:\s*normal/);
     assert.match(labels, /overflow-wrap:\s*anywhere/);
 });

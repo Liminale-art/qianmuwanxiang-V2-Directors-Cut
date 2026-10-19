@@ -33,6 +33,7 @@ function fixture() {
   const cache = {presets:{},worldBooks:{},presetNames:[],worldBookNames:[]};
   const store = {blueprint:'OWN_BLUEPRINT'};
   const c = vm.createContext({...utils,...sources,structuredClone,settings,directorUnconfirmedSaves:new WeakMap(),contextScanCache:cache,ctx:()=>context,getChatKey:()=>state.chatKey,
+    contextWorldEpoch:0,contextWorldPreviewRevision:0,lastWorldView:'',
     saveSettings:()=>state.saved++,rerenderIfOpen:()=>{},toast:()=>{},resolveMacro:async text=>text,cleanContextText:text=>String(text||''),
     getCharacterName:()=> 'CHAR',getPersonaName:()=> 'USER',getCharacterDescription:()=> 'CHAR_DESCRIPTION',getPersonaDescription:()=> 'USER_DESCRIPTION',
     prepareDirectorMemoryHost:async()=>{},directorSourceFingerprint:()=> 'unchanged',getChatStore:()=>store,
@@ -41,7 +42,7 @@ function fixture() {
     htmlEscape:text=>String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
   });
   const names=['getCurrentPresetName','getPresetEntries','listPresetNames','getWorldBookEntries','listWorldBooks','detectBoundWorldBookNames',
-    'refreshPresets','refreshWorldBooks','getPresetNameStore','getPresetSelectionStore','getWorldNameStore','getWorldSelectionStore',
+    'refreshPresets','contextWorldReadCurrent','ensureContextWorldBook','refreshWorldBooks','getPresetNameStore','getPresetSelectionStore','getWorldNameStore','getWorldSelectionStore',
     'getSelectedPresetNames','setPresetNameSelected','getGlobalWorldBookStore','setWorldBookGlobal','getSelectedWorldBookNames','setWorldBookNameSelected',
     'isPresetItemSelected','setPresetItemSelected','isWorldItemSelected','setWorldItemSelected','getContextItemId','getContextSelectionReviewStore',
     'contextSourceNeedsSelectionReview','confirmContextSourceSelection','renderContextSelectionReview','initializeSelectedContextState',
@@ -57,6 +58,32 @@ test('empty dedicated material selection never implicitly opts into active ST pr
   assert.deepEqual(f.json(f.settings.selectedPresetNames),{});
   assert.deepEqual(f.json(f.settings.selectedWorldBookNamesByChat['chat-A']),{});
   assert.deepEqual(f.calls,[]);
+});
+
+test('browsing an unselected book cannot create enabled item defaults during an unrelated preset refresh',async()=>{
+  const f=fixture();
+  await f.c.ensureContextWorldBook('Book');
+  assert.equal(f.state.saved,0);
+  await f.c.refreshPresets(false);
+  assert.equal(f.settings.selectedWorldBookItemsByChat['chat-A'].Book,undefined);
+  assert.deepEqual(f.json(f.settings.selectedWorldBookNamesByChat['chat-A']),{});
+  assert.doesNotMatch(await f.c.buildPrompt(),/BOOK_ON|BOOK_OFF|BOOK_UNCHECKED/);
+  await f.c.setWorldBookNameSelected('Book',true);
+  assert.deepEqual(f.json(f.settings.selectedWorldBookItemsByChat['chat-A'].Book),{0:true,1:false,2:true});
+});
+
+test('a selected-book read that finishes after switching chats cannot initialize the new chat',async()=>{
+  const f=fixture(); let release;
+  f.context.loadWorldInfo=()=>new Promise(resolve=>{release=resolve;});
+  const pending=f.c.setWorldBookNameSelected('Book',true);
+  assert.equal(f.settings.selectedWorldBookNamesByChat['chat-A'].Book,true);
+  const saved=f.state.saved;
+  f.state.chatKey='chat-B';
+  release(f.books.Book);
+  assert.equal(await pending,false);
+  assert.equal(f.settings.selectedWorldBookItemsByChat['chat-B'],undefined);
+  assert.equal(f.cache.worldBooks.Book,undefined);
+  assert.equal(f.state.saved,saved,'late completion must not save against another chat');
 });
 
 test('actual full prompt includes only the chosen preset and its enabled dedicated entries plus chosen book entries',async()=>{

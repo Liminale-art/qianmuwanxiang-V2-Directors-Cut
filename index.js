@@ -8,7 +8,7 @@ import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
-import {createFontLibrary} from './qianmu-font-library.js?v=1.59.474';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.475';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.446';
@@ -314,7 +314,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.474';
+const VERSION = '1.59.475';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1230,6 +1230,7 @@ let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBook
 let contextAutoScanned = false;    // 保留旧状态字段，实际刷新由时间戳与 in-flight 守卫共同决定
 let contextRefreshPromise = null;
 let presetRefreshPromise = null;
+let contextWorldEpoch = 0, contextWorldPreviewRevision = 0;
 let modalJustOpened = false;        // 仅本次「打开」后的首帧渲染加入场动画，之后的静默重渲染（刷新/扫描/切换）不再重播，消除闪动
 let busy = false;                  // 推演忙碌态
 let directorRun = null, directorLiveLog = null;
@@ -2058,7 +2059,9 @@ function renderLibrarySection(cfg) {
     ? all.filter((it) => String(cfg.getName(it) || '').toLowerCase().includes(search.toLowerCase()))
     : all;
   const exportBar = cfg.exportMode
-    ? `<div class="sd-export-bar"><button type="button" class="sd-btn sd-mini-btn sd-lib-select-all">全选</button><span class="sd-export-hint">已选 <span class="sd-lib-sel-count">${cfg.selection.size}</span> 项</span><button type="button" class="sd-btn sd-mini-btn sd-danger sd-lib-batch-delete">删除</button><button type="button" class="sd-btn sd-mini-btn sd-lib-confirm-export">导出</button><button type="button" class="sd-btn sd-mini-btn sd-lib-cancel-export">取消</button></div>`
+    ? cfg.compactSelectionActions
+      ? `<div class="sd-export-bar sd-lib-icon-selection"><button type="button" class="sd-icon-btn sd-icon-sm sd-lib-select-all" title="全选/取消全选" aria-label="全选/取消全选"><i class="fa-solid fa-check-double"></i></button><span class="sd-export-hint">已选 <span class="sd-lib-sel-count">${cfg.selection.size}</span> 项</span><button type="button" class="sd-icon-btn sd-icon-sm sd-danger sd-lib-batch-delete" title="删除选中" aria-label="删除选中"><i class="fa-solid fa-trash-can"></i></button><button type="button" class="sd-icon-btn sd-icon-sm sd-lib-confirm-export" title="导出选中" aria-label="导出选中"><i class="fa-solid fa-file-export"></i></button></div>`
+      : `<div class="sd-export-bar"><button type="button" class="sd-btn sd-mini-btn sd-lib-select-all">全选</button><span class="sd-export-hint">已选 <span class="sd-lib-sel-count">${cfg.selection.size}</span> 项</span><button type="button" class="sd-btn sd-mini-btn sd-danger sd-lib-batch-delete">删除</button><button type="button" class="sd-btn sd-mini-btn sd-lib-confirm-export">导出</button><button type="button" class="sd-btn sd-mini-btn sd-lib-cancel-export">取消</button></div>`
     : '';
   return `
       <div class="sd-lib-scope" data-lib="${htmlEscape(cfg.ns)}">
@@ -2358,8 +2361,8 @@ function getPresetEntries(name) {
   return stPresetEntries(ctx(), name, globalThis);
 }
 
-async function getWorldBookEntries(name) {
-  return stWorldBookEntries(ctx(), name, globalThis);
+async function getWorldBookEntries(name, options) {
+  return stWorldBookEntries(ctx(), name, globalThis, options);
 }
 
 /* ============================================================
@@ -2559,29 +2562,81 @@ async function refreshPresets(showToast = true) {
   rerenderIfOpen();
 }
 
+function contextWorldReadCurrent(epoch, chatKey) {
+  return epoch === contextWorldEpoch && chatKey === getChatKey();
+}
+
+function invalidateContextWorldCache() {
+  contextWorldEpoch++;
+  contextWorldPreviewRevision++;
+  lastWorldView = '';
+  contextScanCache.worldBooks = {};
+  contextScanCache.worldBookNames = [];
+  contextScanCache.boundWorldBookNames = [];
+  contextScanCache.worldScannedAt = '';
+  contextAutoScanned = false;
+  contextRefreshPromise = null;
+}
+
+async function ensureContextWorldBook(name) {
+  if (Object.hasOwn(contextScanCache.worldBooks, name)) return true;
+  const epoch = contextWorldEpoch, chatKey = getChatKey();
+  const entries = await getWorldBookEntries(name, { strict: true });
+  if (!contextWorldReadCurrent(epoch, chatKey)) return false;
+  contextScanCache.worldBooks[name] = entries;
+  return true;
+}
+
+async function previewContextWorldBook(name) {
+  const epoch = contextWorldEpoch, chatKey = getChatKey(), revision = ++contextWorldPreviewRevision;
+  const previous = lastWorldView;
+  lastWorldView = name;
+  try {
+    if (!await ensureContextWorldBook(name)) return;
+    if (contextWorldReadCurrent(epoch, chatKey) && revision === contextWorldPreviewRevision) renderModal();
+  } catch (_) {
+    if (!contextWorldReadCurrent(epoch, chatKey) || revision !== contextWorldPreviewRevision) return;
+    lastWorldView = previous;
+    toast('世界书未能读取，请重试。', 'warning');
+  }
+}
+
 async function refreshWorldBooks(showToast = true) {
+  const epoch = contextWorldEpoch, chatKey = getChatKey();
   const boundNames = detectBoundWorldBookNames();
-  const allWorldNames = await listWorldBooks();
   const selectedWorldNames = getSelectedWorldBookNames();
+  const allWorldNames = await listWorldBooks();
+  if (!contextWorldReadCurrent(epoch, chatKey)) return false;
+  const available = new Set([...allWorldNames, ...boundNames]), refreshed = new Map();
+  // Viewing is not permission to inject. Refresh the current preview too, and
+  // keep books opened while this asynchronous directory read was in flight.
+  for (const name of new Set([...selectedWorldNames, lastWorldView].filter(Boolean))) {
+    if (!available.has(name)) continue;
+    const before = contextScanCache.worldBooks[name];
+    refreshed.set(name, { before, entries: await getWorldBookEntries(name, { strict: true }) });
+    if (!contextWorldReadCurrent(epoch, chatKey)) return false;
+  }
   contextScanCache.boundWorldBookNames = boundNames;
   contextScanCache.worldBookNames = allWorldNames;
-  contextScanCache.worldBooks = {};
-  for (const name of selectedWorldNames) {
-    if (allWorldNames.includes(name) || boundNames.includes(name)) {
-      contextScanCache.worldBooks[name] = await getWorldBookEntries(name);
-    }
+  const retained = Object.fromEntries(Object.entries(contextScanCache.worldBooks).filter(([name]) => available.has(name)));
+  for (const [name, result] of refreshed) {
+    // A name click may finish a newer read of this same book while scanning.
+    if (contextScanCache.worldBooks[name] === result.before) retained[name] = result.entries;
   }
+  contextScanCache.worldBooks = retained;
   contextScanCache.worldScannedAt = new Date().toISOString();
   initializeSelectedContextState(contextScanCache);
   saveSettings();
   if (showToast) toast('世界书已读取。', 'success');
   rerenderIfOpen();
+  return true;
 }
 
 async function refreshContextSources(showToast = false) {
+  const epoch = contextWorldEpoch, chatKey = getChatKey();
   // 幕外正在读预设时复用该次读取，随后仍补齐取材需要的世界书。
   await (presetRefreshPromise || refreshPresets(false));
-  await refreshWorldBooks(false);
+  if (!contextWorldReadCurrent(epoch, chatKey) || !await refreshWorldBooks(false)) return;
   if (showToast) toast('已刷新。', 'success');
 }
 
@@ -2605,10 +2660,12 @@ function requestContextRefreshIfStale(maxAge = 15000) {
   const worldAt = Date.parse(contextScanCache.worldScannedAt || '');
   const fresh = presetAt && worldAt && Date.now() - Math.min(presetAt, worldAt) < maxAge;
   if (fresh) return;
-  contextRefreshPromise = Promise.resolve()
-    .then(() => refreshContextSources(false))
+  const epoch = contextWorldEpoch;
+  const pending = Promise.resolve()
+    .then(() => epoch === contextWorldEpoch && refreshContextSources(false))
     .catch((error) => console.warn(`[${MODULE_NAME}] context directory refresh failed`, error))
-    .finally(() => { contextRefreshPromise = null; });
+    .finally(() => { if (contextRefreshPromise === pending) contextRefreshPromise = null; });
+  contextRefreshPromise = pending;
   return contextRefreshPromise;
 }
 
@@ -2692,11 +2749,15 @@ function getSelectedWorldBookNames() {
 }
 
 async function setWorldBookNameSelected(name, selected) {
+  const epoch = contextWorldEpoch, chatKey = getChatKey();
   const store = getWorldNameStore();
   store[name] = selected;
-  if (selected && !contextScanCache.worldBooks?.[name]) contextScanCache.worldBooks[name] = await getWorldBookEntries(name);
+  saveSettings();
+  if (selected && !await ensureContextWorldBook(name)) return false;
+  if (!contextWorldReadCurrent(epoch, chatKey)) return false;
   initializeSelectedContextState(contextScanCache);
   saveSettings();
+  return true;
 }
 
 function isPresetItemSelected(presetName, itemId) {
@@ -2773,7 +2834,9 @@ function initializeSelectedContextState(cache) {
     if (complete && !contextSourceNeedsSelectionReview('preset', name, entries)) getContextSelectionReviewStore('preset')[name] = [...knownIds];
   }
   const worldStore = getWorldSelectionStore();
+  const selectedWorldNames = new Set(getSelectedWorldBookNames());
   for (const [name, entries] of Object.entries(cache.worldBooks || {})) {
+    if (!selectedWorldNames.has(name)) continue;
     const firstImport = !Object.hasOwn(worldStore, name);
     if (!worldStore[name]) worldStore[name] = {};
     (entries || []).forEach((item, index) => {
@@ -24770,23 +24833,23 @@ function bindActiveTabEvents(root) {
     renderModal();
   }));
   root.querySelectorAll('.sd-toggle-worldbook').forEach((el) => el.addEventListener('change', async () => {
-    await setWorldBookNameSelected(el.dataset.name, el.checked);
+    const epoch = contextWorldEpoch, chatKey = getChatKey(), revision = ++contextWorldPreviewRevision;
     // 勾选时顺带把它作为下方查看项；取消时若取消的正是当前查看项，则清空查看
     if (el.checked) lastWorldView = el.dataset.name;
     else if (lastWorldView === el.dataset.name) lastWorldView = '';
-    renderModal();
+    try {
+      if (await setWorldBookNameSelected(el.dataset.name, el.checked) && revision === contextWorldPreviewRevision) renderModal();
+    } catch (_) {
+      if (contextWorldReadCurrent(epoch, chatKey)) toast('世界书未能读取，请重试。', 'warning');
+    }
   }));
   root.querySelectorAll('.sd-world-name').forEach((el) => el.addEventListener('click', async () => {
     // 点书名只切换下方查看的条目，不改变选中状态
-    const name = el.dataset.name;
-    if (!contextScanCache.worldBooks?.[name]) {
-      contextScanCache.worldBooks[name] = await getWorldBookEntries(name);
-    }
-    lastWorldView = name;
-    renderModal();
+    await previewContextWorldBook(el.dataset.name);
   }));
   root.querySelectorAll('.sd-world-global').forEach((el) => el.addEventListener('click', async (event) => {
     event.stopPropagation();
+    const epoch = contextWorldEpoch, chatKey = getChatKey();
     const name = el.dataset.name;
     const turnOn = !isWorldBookGlobal(name);
     setWorldBookGlobal(name, turnOn);
@@ -24794,7 +24857,10 @@ function bindActiveTabEvents(root) {
       // 设为全局时清掉本聊天可能存在的显式取消，并确保已扫描其条目
       const nameStore = getWorldNameStore();
       if (nameStore[name] === false) delete nameStore[name];
-      if (!contextScanCache.worldBooks?.[name]) contextScanCache.worldBooks[name] = await getWorldBookEntries(name);
+      saveSettings();
+      try { if (!await ensureContextWorldBook(name)) return; }
+      catch (_) { if (contextWorldReadCurrent(epoch, chatKey)) toast('世界书未能读取，请重试。', 'warning'); return; }
+      if (!contextWorldReadCurrent(epoch, chatKey)) return;
       initializeSelectedContextState(contextScanCache);
       saveSettings();
     }
@@ -34663,6 +34729,7 @@ function theaterScriptLibraryCfg() {
     setSearch: (v) => { getTheater().scriptSearch = v; },
     exportMode: theaterExportMode,
     selection: theaterExportSelection,
+    compactSelectionActions: true,
     inlineCount: true,
     emptyText: '剧札空空，写一幕番外吧',
     searchPlaceholder: '搜索剧札标题…',
@@ -35633,9 +35700,7 @@ function bindEvents() {
     injectSelection.clear();   // 切换聊天后旧写入勾选失效
     resetCreativeSocialState();
     // 新角色/聊天可能绑定了不同世界书：作废世界书扫描态，下次推演或开取材页自动补扫（预设不随角色变，留存）
-    contextScanCache.worldScannedAt = '';
-    contextScanCache.boundWorldBookNames = [];
-    contextAutoScanned = false;
+    invalidateContextWorldCache();
     ttsLineCache.clear();      // 切聊天：旧消息台词缓存失效
     coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留

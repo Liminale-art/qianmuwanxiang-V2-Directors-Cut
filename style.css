@@ -1,6 +1,6 @@
 @import url('./qianmu-text-collection-floor.css');
 @import url('./qianmu-creative-social.css?v=1.59.458');
-@import url('./qianmu-font-library.css?v=1.59.474');
+@import url('./qianmu-font-library.css?v=1.59.475');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -2395,6 +2395,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   color: var(--sd-muted);
   font-size: .9em;
 }
+#story-director-modal .sd-lib-icon-selection { flex-wrap: nowrap; }
+#story-director-modal .sd-lib-icon-selection > .sd-icon-btn { flex-shrink: 0; }
 
 /* ---------- 12. 扩展 ---------- */
 #story-director-modal .sd-accordion { padding: 0 !important; overflow: hidden; }
@@ -9047,9 +9049,10 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-widget-toggle :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; }
 #story-director-modal .sd-wheel-settings { margin-top: 0; }
 #story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; font-size: calc(1em - 2px); }
-#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding-top: 5px; }
+#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding-top: 5px; }
+#story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle { flex-direction: column; width: 100%; aspect-ratio: 1.12; min-height: 62px; }
 #story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon) { flex: 0 0 14px; }
-#story-director-modal .sd-wheel-command-toggle > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#story-director-modal .sd-wheel-command-toggle > span { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; }
 
 /* 专注页沿用圆弧矩形，不再出现与系统规范割裂的大胶囊或圆形播放底框。 */
 #story-director-modal :is(.sd-focus-phase-tabs, .sd-focus-activity-tabs, .sd-focus-sound-sources, .sd-focus-segments) { border-radius: 10px !important; }

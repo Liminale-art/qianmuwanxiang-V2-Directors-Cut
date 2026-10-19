@@ -8,6 +8,7 @@ function fixture({ worldScannedAt = '', failWorld = false } = {}) {
   const cache = { presets: {}, worldBooks: {}, presetNames: [], worldBookNames: [], presetScannedAt: '', worldScannedAt };
   const sandbox = vm.createContext({
     contextScanCache: cache, contextRefreshPromise: null, presetRefreshPromise: null,
+    contextWorldEpoch: 0, contextWorldPreviewRevision: 0, lastWorldView: '', getChatKey: () => 'chat-A',
     contextAutoScanned: false, activeTab: 'context', MODULE_NAME: 'test', MODAL_ID: 'test-modal',
     settings: { contextOptions: {} },
     document: { getElementById: () => ({ classList: { contains: () => true } }) },
@@ -30,7 +31,7 @@ function fixture({ worldScannedAt = '', failWorld = false } = {}) {
       if (sandbox.activeTab === 'theater') sandbox.requestPresetRefreshIfStale();
     },
   });
-  const names = ['rerenderIfOpen', 'refreshPresets', 'refreshWorldBooks', 'refreshContextSources',
+  const names = ['rerenderIfOpen', 'refreshPresets', 'contextWorldReadCurrent', 'invalidateContextWorldCache', 'ensureContextWorldBook', 'previewContextWorldBook', 'refreshWorldBooks', 'refreshContextSources',
     'requestPresetRefreshIfStale', 'requestContextRefreshIfStale', 'maybeAutoScanContext', 'renderContextTab'];
   vm.runInContext(names.map(storyboardFunctionSource).join('\n'), sandbox);
   const settle = async () => {
@@ -167,4 +168,98 @@ test('fresh renders reuse cached data but reentering materials refreshes the inv
   assert.equal(f.calls.presets, 2);
   assert.equal(f.calls.worlds, 2);
   assert.deepEqual([...f.cache.presetNames], ['Current', 'New']);
+});
+
+test('directory refresh retains an unselected book opened for preview without selecting it', async () => {
+  const f = fixture();
+  f.sandbox.getSelectedWorldBookNames = () => [];
+  f.sandbox.lastWorldView = 'Book';
+  f.cache.worldBooks.Book = [{ content: 'previewed world entry' }];
+  await f.sandbox.refreshWorldBooks(false);
+  assert.ok(f.cache.worldBooks.Book?.length, 'refresh must not turn an unselected preview into an empty book');
+  assert.deepEqual(f.sandbox.getSelectedWorldBookNames(), []);
+});
+
+test('an old directory read cannot populate or initialize another chat', async () => {
+  const f = fixture();
+  let chat = 'chat-A', release;
+  f.sandbox.getChatKey = () => chat;
+  f.sandbox.listWorldBooks = () => new Promise(resolve => { release = resolve; });
+  const pending = f.sandbox.refreshWorldBooks(false);
+  chat = 'chat-B';
+  f.cache.worldBooks = { New: [{ content: 'new chat view' }] };
+  f.cache.worldBookNames = ['New'];
+  release(['Book']); await pending;
+  assert.deepEqual([...f.cache.worldBookNames], ['New']);
+  assert.equal(f.cache.worldBooks.Book, undefined);
+  assert.equal(f.calls.saves, 0);
+});
+
+test('chat invalidation clears only ephemeral world view and old finally cannot release the new refresh guard', async () => {
+  const f = fixture(), releases = [];
+  f.sandbox.listWorldBooks = () => new Promise(resolve => releases.push(resolve));
+  const old = f.sandbox.requestContextRefreshIfStale(0);
+  await new Promise(resolve => setImmediate(resolve));
+  f.sandbox.lastWorldView = 'Book'; f.cache.worldBooks.Book = [{ content: 'old' }];
+  f.sandbox.invalidateContextWorldCache();
+  assert.equal(f.sandbox.lastWorldView, ''); assert.deepEqual(Object.keys(f.cache.worldBooks), []);
+  assert.deepEqual([...f.cache.worldBookNames], []); assert.equal(f.cache.worldScannedAt, '');
+  const current = f.sandbox.requestContextRefreshIfStale(0);
+  await new Promise(resolve => setImmediate(resolve));
+  releases[0](['Old']); await old;
+  assert.equal(f.sandbox.contextRefreshPromise, current);
+  releases[1](['Book']); await current;
+  assert.deepEqual([...f.cache.worldBookNames], ['Book']);
+  assert.equal(f.sandbox.contextRefreshPromise, null);
+});
+
+test('unselected previews remain read-only and the latest clicked book wins out-of-order responses', async () => {
+  const f = fixture(), releases = {};
+  f.sandbox.renderModal = () => { f.calls.renders++; };
+  f.sandbox.getSelectedWorldBookNames = () => [];
+  f.sandbox.getWorldBookEntries = name => new Promise(resolve => { releases[name] = resolve; });
+  const first = f.sandbox.previewContextWorldBook('First');
+  const second = f.sandbox.previewContextWorldBook('Second');
+  releases.Second([{ content: 'second' }]); await second;
+  releases.First([{ content: 'first' }]); await first;
+  assert.equal(f.sandbox.lastWorldView, 'Second'); assert.equal(f.calls.renders, 1);
+  assert.equal(f.calls.saves, 0);
+  assert.deepEqual(f.sandbox.getSelectedWorldBookNames(), []);
+});
+
+test('late preview success or failure after leaving a chat cannot restore its view or cache', async () => {
+  for (const fail of [false, true]) {
+    const f = fixture(); let complete;
+    f.sandbox.renderModal = () => { f.calls.renders++; };
+    f.sandbox.getWorldBookEntries = () => new Promise((resolve, reject) => { complete = () => fail ? reject(Error('read failed')) : resolve([{ content: 'old' }]); });
+    const pending = f.sandbox.previewContextWorldBook('Book');
+    f.sandbox.invalidateContextWorldCache(); complete(); await pending;
+    assert.equal(f.sandbox.lastWorldView, ''); assert.deepEqual(Object.keys(f.cache.worldBooks), []);
+    assert.equal(f.calls.renders, 0); assert.equal(f.calls.saves, 0);
+  }
+});
+
+test('a preview completed during a directory refresh is not erased when only selected books finish later', async () => {
+  const f = fixture(); let finishSelected;
+  f.sandbox.renderModal = () => { f.calls.renders++; };
+  f.sandbox.listWorldBooks = async () => ['Book', 'Preview'];
+  f.sandbox.getWorldBookEntries = name => name === 'Book' ? new Promise(resolve => { finishSelected = resolve; }) : Promise.resolve([{ content: 'preview' }]);
+  const refresh = f.sandbox.refreshWorldBooks(false);
+  await new Promise(resolve => setImmediate(resolve));
+  await f.sandbox.previewContextWorldBook('Preview');
+  finishSelected([{ content: 'selected' }]); await refresh;
+  assert.equal(f.cache.worldBooks.Preview[0].content, 'preview');
+  assert.equal(f.sandbox.lastWorldView, 'Preview');
+});
+
+test('a late refresh of the same book cannot overwrite a newer clicked preview', async () => {
+  const f = fixture(), releases = [];
+  f.sandbox.renderModal = () => { f.calls.renders++; };
+  f.sandbox.getWorldBookEntries = () => new Promise(resolve => releases.push(resolve));
+  const refresh = f.sandbox.refreshWorldBooks(false);
+  await new Promise(resolve => setImmediate(resolve));
+  const preview = f.sandbox.previewContextWorldBook('Book');
+  releases[1]([{ content: 'newer clicked preview' }]); await preview;
+  releases[0]([{ content: 'older refresh response' }]); await refresh;
+  assert.equal(f.cache.worldBooks.Book[0].content, 'newer clicked preview');
 });

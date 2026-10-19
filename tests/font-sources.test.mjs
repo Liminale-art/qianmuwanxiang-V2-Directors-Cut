@@ -6,6 +6,10 @@ import {
 } from '../qianmu-font-sources.js';
 
 const css = (src = './font.woff2', extra = '') => `@font-face {font-family: "春日字体"; src: local('Old'),url('${src}') format('woff2'); ${extra}}`;
+
+test('empty links have the concise user-facing error without attempting a request', async () => {
+    for (const input of ['', '  \n\t']) await assert.rejects(() => resolveWebFontSource(input, { fetch: () => assert.fail('Empty sources must not request the network') }), /^Error: 链接不可为空$/);
+});
 const response = (text, url = 'https://fonts.example/style.css', headers = {}) => ({ ok: true, url,
     headers: { get: (key) => headers[key] || null }, text: async () => text });
 const webRecord = () => ({ id: 'web-1', name: '网络字体', source: { kind: 'web', input: 'https://fonts.example/a.woff2', url: 'https://fonts.example/a.woff2' },

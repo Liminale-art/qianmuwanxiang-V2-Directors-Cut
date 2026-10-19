@@ -37,6 +37,50 @@ async function editableSetup(overrides = {}) {
   f.library.attach(root); entry.click(); await waitUntil(() => views.length === 1);
   return { ...f, views, entry, get owner() { return f.owner; }, entries: () => views.at(-1).options.getState().entries };
 }
+test('view operation notices share the ST toast but closed or changed accounts cannot report late results', async () => {
+  const notices = [], f = await editableSetup({ notify: (text, level) => notices.push({ text, level }) });
+  const first = f.views[0].options;
+  first.notify('链接不可为空', 'warning'); assert.deepEqual(notices, [{ text: '链接不可为空', level: 'warning' }]);
+  first.onBack(); first.notify('迟到失败', 'warning'); assert.equal(notices.length, 1);
+  f.entry.click(); await waitUntil(() => f.views.length === 2); const second = f.views.at(-1).options;
+  first.notify('旧视图失败', 'warning'); second.notify('字体包已导出', 'info'); assert.equal(notices.length, 2);
+  f.replace(); second.notify('旧账户失败', 'warning'); assert.equal(notices.length, 2); f.stop();
+});
+
+test('an export read finishing after close/reopen cannot notify the replacement view', async () => {
+  const notices = [], blobs = new Map(); let held = false, finishRead;
+  const f = await editableSetup({ notify: (text, level) => notices.push({ text, level }), localStoreFactory: () => ({
+    put: async (id, bytes) => blobs.set(id, new Blob([bytes])), get: async id => held ? new Promise(resolve => { finishRead = () => resolve(blobs.get(id)); }) : blobs.get(id), delete: async () => {}, dispose() {},
+  }) });
+  const wire = view => { view.setStatus = (text, { error = false } = {}) => view.options.notify(text, error ? 'warning' : 'info'); };
+  wire(f.views[0]); await f.library.action('add-local', { files: [fontFile().file] }); const before = structuredClone(f.owner.fontLibrary);
+  held = true; const pending = f.views[0].options.onAction({ type: 'export' }); await waitUntil(() => finishRead);
+  f.views[0].options.onBack(); f.entry.click(); await waitUntil(() => f.views.length === 2); wire(f.views[1]);
+  finishRead(); await pending; assert.deepEqual(notices, [], 'old export must not speak through a new view');
+  assert.deepEqual(f.owner.fontLibrary, before); assert.equal(f.downloads.length, 1, 'the completed requested export itself is not cancelled or repeated');
+  held = false; await f.views[1].options.onAction({ type: 'export' }); assert.deepEqual(notices, [{ text: '字体包已导出', level: 'info' }]);
+  assert.equal(f.downloads.length, 2); f.stop();
+});
+
+test('local cleanup failures notify only the originating active view and account', async () => {
+  for (const phase of ['stay', 'reopen', 'account']) {
+    const notices = []; let rejectDelete;
+    const f = await editableSetup({ notify: (text, level) => notices.push({ text, level }), localStoreFactory: () => ({
+      put: async () => {}, get: async () => null, delete: () => new Promise((_resolve, reject) => { rejectDelete = reject; }), dispose() {},
+    }) });
+    const wire = view => { view.setStatus = (text, { error = false } = {}) => view.options.notify(text, error ? 'warning' : 'info'); };
+    wire(f.views[0]); await f.library.action('add-local', { files: [fontFile().file] }); const id = f.owner.fontLibrary.fonts[0].id;
+    const pending = f.views[0].options.onAction({ type: 'delete-font', id }); await waitUntil(() => rejectDelete);
+    assert.equal(f.owner.fontLibrary.fonts.length, 0, 'record removal already succeeded before cleanup');
+    if (phase === 'reopen') { f.views[0].options.onBack(); f.entry.click(); await waitUntil(() => f.views.length === 2); wire(f.views[1]); }
+    if (phase === 'account') f.replace();
+    rejectDelete(Error('Synthetic original cleanup failure')); await pending;
+    assert.deepEqual(notices, phase === 'stay' ? [{ text: '已移除条目，本机原件清理未完成', level: 'warning' }] : [], phase);
+    if (phase === 'account') assert.deepEqual(f.owner, {}, 'the new account stays untouched');
+    f.stop();
+  }
+});
+
 test('Web entries use ordinary settings with references only; adding never applies a font', async () => {
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
   assert.equal(f.owner.fontLibrary.fonts.length, 1); assert.equal(f.binaries.size, 0);
@@ -409,7 +453,7 @@ test('legacy inline source stays blank; empty edits retain validated faces and d
   assert.equal(resolutions, 0); assert.equal(verifications, 0); assert.deepEqual(f.owner.fontLibrary.body, applied);
   assert.deepEqual(f.owner.fontLibrary.fonts[1], local); assert.equal(f.binaries.get('one' + local.id), bytes);
   const original = f.owner.fontLibrary, saves = f.saves.length;
-  await assert.rejects(f.library.action('add-web', { source: '' }), /填写/);
+  await assert.rejects(f.library.action('add-web', { source: '' }), /链接不可为空/);
   await assert.rejects(f.library.action('edit-web', { id: legacy.id, source: '@font-face {font-family:"broken', tags: [] }));
   assert.equal(f.owner.fontLibrary, original); assert.equal(f.saves.length, saves); assert.equal(verifications, 0);
   f.stop();
