@@ -6,8 +6,10 @@ import {createAccountDocumentFiles} from './qianmu-account-document-files.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {createChatBackupHost} from './qianmu-chat-backup-host.js';
 
-const MIB=1024*1024,MINUTE=60000,DIR='qianmu-chat-backups';
+const MIB=1024*1024,MINUTE=60000,DAY=24*60*MINUTE,DIR='qianmu-chat-backups';
 export const CHAT_BACKUP_LIMITS=Object.freeze({fileBytes:16*MIB,roundBytes:256*MIB,files:20000,folders:5000,versions:20000,roundMs:30000,diskReserveBytes:64*MIB});
+export const CHAT_BACKUP_RETENTION_DAYS=Object.freeze([3,7,15,30]);
+export const DEFAULT_CHAT_BACKUP_RETENTION_DAYS=30;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const SHA=/^[a-f0-9]{64}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -23,7 +25,7 @@ export const chatBackupError=(code,message,status=409)=>Object.assign(new Error(
 const fail=(code,message,status)=>{throw chatBackupError(code,message,status);};
 const result=()=>({created:0,unchanged:0,skipped:0});
 const known=error=>String(error?.code||'').startsWith('chat_backup_')?error:chatBackupError('storage','自动备份存储暂不可用，已有聊天和备份保持不变',503);
-const empty=namespace=>({version:1,expectedAccount:namespace,enabled:false,intervalMinutes:30,limitMiB:1024,maxVersionsPerChat:0,lastRunAt:null,lastSuccessAt:null,nextRunAt:null,lastResult:result()});
+const empty=namespace=>({version:1,expectedAccount:namespace,enabled:false,intervalMinutes:30,limitMiB:1024,maxVersionsPerChat:0,retentionDays:DEFAULT_CHAT_BACKUP_RETENTION_DAYS,lastRunAt:null,lastSuccessAt:null,nextRunAt:null,lastResult:result()});
 
 function parseChat(bytes) {
   let text;
@@ -43,19 +45,25 @@ function parseChat(bytes) {
 function validateConfig(raw,context) {
   const keys=['version','expectedAccount','enabled','intervalMinutes','limitMiB','lastRunAt','lastSuccessAt','nextRunAt','lastResult','checksum'];
   const hasCount=object(raw)&&Object.hasOwn(raw,'maxVersionsPerChat');if(hasCount)keys.push('maxVersionsPerChat');
+  const hasRetention=object(raw)&&Object.hasOwn(raw,'retentionDays');if(hasRetention)keys.push('retentionDays');
   if(!exact(raw,keys)||raw.version!==1||raw.expectedAccount!==context.namespace||typeof raw.enabled!=='boolean'
     ||!Number.isInteger(raw.intervalMinutes)||raw.intervalMinutes<15||raw.intervalMinutes>1440
     ||!Number.isInteger(raw.limitMiB)||raw.limitMiB<256||raw.limitMiB>10240
     ||hasCount&&(!Number.isInteger(raw.maxVersionsPerChat)||raw.maxVersionsPerChat<0||raw.maxVersionsPerChat>20000)
+    ||hasRetention&&!CHAT_BACKUP_RETENTION_DAYS.includes(raw.retentionDays)
     ||![raw.lastRunAt,raw.lastSuccessAt,raw.nextRunAt].every(value=>value===null||number(value))
     ||!object(raw.lastResult)||!['created','unchanged','skipped'].every(key=>number(raw.lastResult[key]))
     ||Object.keys(raw.lastResult).some(key=>!['created','unchanged','skipped','error'].includes(key))
     ||raw.lastResult.error!==undefined&&(typeof raw.lastResult.error!=='string'||raw.lastResult.error.length>300))fail('corrupt','自动备份配置损坏，未覆盖配置或旧备份',503);
   const {checksum,...state}=raw;
   if(typeof checksum!=='string'||checksum!==hash(JSON.stringify(state)))fail('corrupt','自动备份配置校验失败，未覆盖配置或旧备份',503);
-  // Verify the original schema-1 bytes/field order before adding the new default.
-  // Existing installations remain unlimited until the user explicitly opts in.
-  return hasCount?state:{...state,maxVersionsPerChat:0};
+  // Verify the original schema-1 bytes/field order before adding new defaults.
+  // Existing installations retain their previous version policy while adopting
+  // the bounded default retention policy on the next atomic config write.
+  return {...state,
+    ...(hasCount?null:{maxVersionsPerChat:0}),
+    ...(hasRetention?null:{retentionDays:DEFAULT_CHAT_BACKUP_RETENTION_DAYS}),
+  };
 }
 
 function validateEntry(raw,namespace,id) {
@@ -218,6 +226,15 @@ export function createChatBackupService({dataRoot,accounts,hostDirectory=process
       if(!sources.has(entryKey))sources.set(entryKey,await rotationSource(c,entry,source));
       const live=sources.get(entryKey);if(!live)return false;
       const checked=compactVersion(await checkedEntry(c,entry));plan.push({...checked,source:live});selected.add(entry.id);projected-=checked.bytes;counts.set(entryKey,counts.get(entryKey)-1);return true;
+    }
+    // Time retention is evaluated before the byte/count caps. The oldest
+    // verified copy of each source is kept even when it is beyond the window,
+    // so a quiet or deleted chat can still be recovered. A source that cannot
+    // be matched to its current native chat is not eligible for deletion.
+    const cutoff=time()-state.retentionDays*DAY;
+    for(const entry of oldest) {
+      if(Date.parse(entry.createdAt)>=cutoff)break;
+      await select(entry);
     }
     // Count is per exact source, not per character. Only this round's verified
     // source converges its count; unvisited or empty sources keep their history.
@@ -386,18 +403,21 @@ export function createChatBackupService({dataRoot,accounts,hostDirectory=process
   }
   async function status(req,input){const c=await capture(req,input);return serial(c.namespace,()=>statusFor(c));}
   async function configure(req,input) {
-    const c=await capture(req,input,['enabled','intervalMinutes','limitMiB','maxVersionsPerChat']);
+    const c=await capture(req,input,['enabled','intervalMinutes','limitMiB','maxVersionsPerChat','retentionDays']);
     const hasCount=Object.hasOwn(input,'maxVersionsPerChat');
+    const hasRetention=Object.hasOwn(input,'retentionDays');
     if(typeof input.enabled!=='boolean'||!Number.isInteger(input.intervalMinutes)||input.intervalMinutes<15||input.intervalMinutes>1440
       ||!Number.isInteger(input.limitMiB)||input.limitMiB<256||input.limitMiB>10240
-      ||hasCount&&(!Number.isInteger(input.maxVersionsPerChat)||input.maxVersionsPerChat<0||input.maxVersionsPerChat>20000))fail('contract','备份间隔须为 15–1440 整数分钟，空间上限须为 256–10240 MiB，每份聊天保留份数须为 0–20000 的整数（0 为不限）',400);
+      ||hasCount&&(!Number.isInteger(input.maxVersionsPerChat)||input.maxVersionsPerChat<0||input.maxVersionsPerChat>20000)
+      ||hasRetention&&!CHAT_BACKUP_RETENTION_DAYS.includes(input.retentionDays))fail('contract','备份间隔须为 15–1440 整数分钟，空间上限须为 256–10240 MiB，每份聊天保留份数须为 0–20000 的整数（0 为不限），保留周期须为 3、7、15 或 30 天',400);
     const response=await serial(c.namespace,async()=>{
       await ensure(c);if(input.enabled)await disk(c,16384);
       await docs.exclusive(c,async()=>{const prior=await docs.read(c),state=prior.state;
         const maxVersionsPerChat=hasCount?input.maxVersionsPerChat:state.maxVersionsPerChat;
-        const changed=state.enabled!==input.enabled||state.intervalMinutes!==input.intervalMinutes||state.limitMiB!==input.limitMiB||state.maxVersionsPerChat!==maxVersionsPerChat;
+        const retentionDays=hasRetention?input.retentionDays:state.retentionDays;
+        const changed=state.enabled!==input.enabled||state.intervalMinutes!==input.intervalMinutes||state.limitMiB!==input.limitMiB||state.maxVersionsPerChat!==maxVersionsPerChat||state.retentionDays!==retentionDays;
         if(!changed)return;
-        const next={...state,enabled:input.enabled,intervalMinutes:input.intervalMinutes,limitMiB:input.limitMiB,maxVersionsPerChat,
+        const next={...state,enabled:input.enabled,intervalMinutes:input.intervalMinutes,limitMiB:input.limitMiB,maxVersionsPerChat,retentionDays,
           nextRunAt:input.enabled?state.enabled&&state.intervalMinutes===input.intervalMinutes?(state.nextRunAt??time()):time():null};
         await authorize(c);await docs.writeAtomic(c,next,prior.fingerprint);diagnostics.delete(c.namespace);retryAfter.delete(c.namespace);
       });return statusFor(c);

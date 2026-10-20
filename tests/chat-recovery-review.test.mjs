@@ -71,6 +71,7 @@ function dom() {
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = children; }
     addEventListener(type, handler) { this.handlers[type] = handler; }
+    focus() {}
     setAttribute() {}
   }
   const root = new Element('root');
@@ -146,6 +147,20 @@ test('automatic settings readback preserves an unsaved draft', async () => {
   await f.controller.inspectAutomaticBackup();
   assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
   assert.equal(f.ui.find(node => node.type === 'number').value, '60', 'status refresh preserves the unsaved draft while cancelling its old confirmation');
+});
+
+test('role autocomplete binds the selected avatar, keeps the controls icon-only, and nests load-more in the scroller', async () => {
+  const f = fixture(); await f.controller.load();
+  const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const input = ui.find(node => node.tag === 'input' && node.placeholder === '搜索角色名');
+  input.value = '合'; input.handlers.input(); await wait(140);
+  const suggestion = ui.find(node => node.className === 'qm-recovery-suggestion');
+  assert.ok(suggestion, 'typed query shows a custom suggestion, not a native datalist');
+  suggestion.handlers.click();
+  const load = ui.find(node => node.tag === 'button' && node.innerHTML?.includes('fa-rotate'));
+  assert.equal(load.disabled, false, 'choosing a suggestion binds the role for reading');
+  const list = ui.find(node => node.className === 'qm-recovery-list');
+  assert.equal(list.children.at(-1), ui.find(node => node.className === 'qm-recovery-load-more'), 'load-more is inside the scroll container');
 });
 
 test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {

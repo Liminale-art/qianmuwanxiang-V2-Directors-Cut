@@ -117,9 +117,25 @@ test('multiple operation-prefix matches are not guessed or deleted', async () =>
     assert.equal(result.result.status, 'conflict'); assert.equal(f.calls.some(call => call.path === '/api/chats/export'), false); assert.equal(f.files.get('role.png').size, 3);
 });
 
-test('a collision detected before submission never imports', async () => {
-    const f = fixture(); f.files.get('role.png').set(`千幕找回-${uuid(1)} - existing imported.jsonl`, jsonl(originalRows()));
-    await f.prepare(); await assert.rejects(f.controller.recover('role.png'), /已存在/); assert.equal(f.imports().length, 0);
+test('repeated recovery uses the human descriptor without a message-count suffix', async () => {
+    let sequence = 0;
+    const f = fixture({ importer: async ({ files, avatar, prefix, raw, respond }) => {
+        const name = `${prefix} - 2026-10-19@11h00m00s00${++sequence}ms imported.jsonl`;
+        files.get(avatar).set(name, raw);
+        return respond({ res: true, fileNames: [name] });
+    } });
+    await f.prepare();
+    const first = await f.controller.recover('role.png');
+    assert.equal(first.result.status, 'verified');
+    await f.controller.load();
+    await f.controller.preview(backup);
+    const second = await f.controller.recover('role.png');
+    assert.equal(second.result.status, 'verified');
+    assert.equal(f.imports().length, 2);
+    for (const call of f.imports()) {
+        assert.equal(call.body.get('character_name'), '千幕备份');
+        assert.doesNotMatch(call.body.get('character_name'), /\d+条/);
+    }
 });
 
 test('changed or removed source requires a new preview with no write', async () => {
@@ -294,7 +310,7 @@ test('HTTP failures describe actual status without treating server errors as log
 
 test('native recovery remains available when the optional service is absent', async () => {
     const f = fixture(); await f.prepare(); assert.equal(f.controller.snapshot().automaticBackup.availability, 'unavailable');
-    await assert.rejects(f.controller.inspectAutomaticBackup(), /v1.59.478/);
+    await assert.rejects(f.controller.inspectAutomaticBackup(), /v1.59.482/);
     const restored = await f.controller.recover('role.png'); assert.equal(restored.result.status, 'verified');
 });
 
@@ -311,7 +327,20 @@ test('automatic settings require a read, validate bounds and preserve the confir
     assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 1, 'old confirmation cannot bind a new owner');
 });
 
-test('legacy automatic status defaults to unlimited and omitted count updates preserve the read limit', async () => {
+test('automatic retention accepts only 3, 7, 15 or 30 days and sends the selected period', async () => {
+    const f = fixture({ before: call => call.path === backupApi + '/status' ? jsonResponse(autoStatus()) : call.path === backupApi + '/configure' ? jsonResponse(autoStatus(call.body)) : undefined });
+    await f.controller.inspectAutomaticBackup();
+    for (const retentionDays of [2, 0, 31, 14, '7', null]) {
+        await assert.rejects(f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1024, retentionDays }));
+    }
+    assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).length, 0);
+    for (const retentionDays of [3, 7, 15, 30]) {
+        await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1024, retentionDays });
+        assert.equal(f.calls.filter(call => call.path.endsWith('/configure')).at(-1).body.retentionDays, retentionDays);
+    }
+});
+
+test('legacy automatic status defaults to a bounded period and omitted count updates preserve the read limit', async () => {
     let stored = autoStatus();
     const f = fixture({ before: call => {
         if (call.path === backupApi + '/status') return jsonResponse(stored);
@@ -319,6 +348,7 @@ test('legacy automatic status defaults to unlimited and omitted count updates pr
     } });
     await f.controller.inspectAutomaticBackup();
     assert.equal(f.controller.snapshot().automaticBackup.status.maxVersionsPerChat, 0);
+    assert.equal(f.controller.snapshot().automaticBackup.status.retentionDays, 30);
     await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 30, limitMiB: 1536, maxVersionsPerChat: 7 });
     assert.equal(f.controller.snapshot().automaticBackup.status.maxVersionsPerChat, 7);
     await f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 45, limitMiB: 3000 });

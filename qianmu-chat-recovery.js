@@ -6,6 +6,8 @@ import { buildNativeBackupCatalog, normalizeAutomaticBackupEntries } from './qia
 // preflight listing reduce collisions, but cannot provide a server transaction.
 export const CHAT_RECOVERY_PREVIEW_FLOORS = 5;
 export const CHAT_RECOVERY_LIMITS = Object.freeze({ bytes: 16 * 1024 * 1024, messages: 50000, previewChars: 14000 });
+export const CHAT_BACKUP_RETENTION_DAYS = Object.freeze([3, 7, 15, 30]);
+export const DEFAULT_CHAT_BACKUP_RETENTION_DAYS = 30;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const fault = (code, message) => Object.assign(new Error(message), { code });
@@ -19,7 +21,7 @@ const automaticState = () => ({ availability: 'unknown', busy: false, error: '',
 const identityFailure = error => ['account', 'http-401', 'http-403'].includes(error?.code);
 function httpFailure(status, path) {
     if (status === 401 || status === 403) return '登录或请求校验未通过，请刷新 ST 后重试（' + status + '）';
-    if (status === 404) return path.startsWith(BACKUP_API) ? '自动备份需要安装或更新千幕增强服务至 v1.59.478'
+    if (status === 404) return path.startsWith(BACKUP_API) ? '自动备份需要安装或更新千幕增强服务至 v1.59.482'
         : path.endsWith('/download') ? '这份备份已不存在，请刷新备份列表（404）' : '当前 ST 未提供此备份接口（404）';
     if (status === 500) return 'ST 读取或处理备份失败（500），请查看 ST 服务日志';
     if ([502, 503, 504].includes(status)) return 'ST 服务或连接代理暂不可用（' + status + '），请稍后重试';
@@ -40,13 +42,15 @@ const automaticFailures = Object.freeze({
 });
 function automaticStatus(value) {
     const maxVersionsPerChat = value?.maxVersionsPerChat === undefined ? 0 : value.maxVersionsPerChat;
+    const retentionDays = value?.retentionDays === undefined ? DEFAULT_CHAT_BACKUP_RETENTION_DAYS : value.retentionDays;
     need(value?.ok === true && value.version === 1 && typeof value.enabled === 'boolean'
         && Number.isInteger(value.intervalMinutes) && value.intervalMinutes >= 15 && value.intervalMinutes <= 1440
         && Number.isInteger(value.limitMiB) && value.limitMiB >= 256 && value.limitMiB <= 10240
         && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000
+        && Number.isInteger(retentionDays) && CHAT_BACKUP_RETENTION_DAYS.includes(retentionDays)
         && Number.isSafeInteger(value.usedBytes) && value.usedBytes >= 0
         && value.retention === 'rotate-oldest-keep-one', 'response', '增强服务返回的备份状态不完整，请更新服务后重试');
-    return { ...value, maxVersionsPerChat };
+    return { ...value, maxVersionsPerChat, retentionDays, retentionDaysSupported: Object.hasOwn(value, 'retentionDays') };
 }
 function automaticEntries(result) {
     const ids = new Set();
@@ -236,7 +240,10 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     async function verifyPending(token) {
         need(pending?.submitted, 'verify', '没有需要核实的找回操作');
         const names = await listChats(pending.target, token);
-        const candidates = names.filter(name => name.startsWith(pending.prefix + ' - '));
+        const existing = pending.existingNames instanceof Set
+            ? pending.existingNames
+            : new Set(Array.isArray(pending.existingNames) ? pending.existingNames : []);
+        const candidates = names.filter(name => name.startsWith(pending.prefix + ' - ') && !existing.has(name));
         if (candidates.length !== 1 || pending.fileName && candidates[0] !== pending.fileName) {
             state.result = publicResult(candidates.length > 1 ? 'conflict' : 'unknown', pending.fileName || '');
             state.phase = 'unknown';
@@ -336,17 +343,20 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             const phase = state.phase;
             return run(phase, async token => {
                 const maxVersionsPerChat = input?.maxVersionsPerChat === undefined ? state.automaticBackup.status?.maxVersionsPerChat ?? 0 : input.maxVersionsPerChat;
+                const retentionDays = input?.retentionDays === undefined ? state.automaticBackup.status?.retentionDays ?? DEFAULT_CHAT_BACKUP_RETENTION_DAYS : input.retentionDays;
                 need(typeof input?.enabled === 'boolean' && Number.isInteger(input.intervalMinutes) && input.intervalMinutes >= 15 && input.intervalMinutes <= 1440
                     && Number.isInteger(input.limitMiB) && input.limitMiB >= 256 && input.limitMiB <= 10240
-                    && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000,
-                'configuration', '备份间隔为15–1440整数分钟，空间为256–10240 MB；版本数为1–20000整数，留空不限');
+                    && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000
+                    && Number.isInteger(retentionDays) && CHAT_BACKUP_RETENTION_DAYS.includes(retentionDays),
+                'configuration', '备份间隔为15–1440整数分钟，空间为256–10240 MB；版本数为1–20000整数，留空不限；保留周期只能是3、7、15或30天');
                 need(!uncertainConfiguration, 'configuration', '上次设置结果未确认，请重新展开自动备份后核对');
                 need(state.automaticBackup.availability === 'available' && state.automaticBackup.status, 'configuration', '请先读取当前账户的备份设置');
                 state.automaticBackup.busy = true; uncertainConfiguration = true; state.automaticBackup.configurationUnknown = true; emit();
                 try {
-                    const value = automaticStatus(await json(BACKUP_API + '/configure', { expectedAccount: owner, enabled: input.enabled, intervalMinutes: input.intervalMinutes, limitMiB: input.limitMiB, maxVersionsPerChat }, token));
+                    const value = automaticStatus(await json(BACKUP_API + '/configure', { expectedAccount: owner, enabled: input.enabled, intervalMinutes: input.intervalMinutes, limitMiB: input.limitMiB, maxVersionsPerChat, retentionDays }, token));
                     need(value.enabled === input.enabled && value.intervalMinutes === input.intervalMinutes && value.limitMiB === input.limitMiB
-                        && value.maxVersionsPerChat === maxVersionsPerChat, 'configuration', '备份设置未完整确认，请重新展开自动备份核对');
+                        && value.maxVersionsPerChat === maxVersionsPerChat && value.retentionDays === retentionDays && value.retentionDaysSupported === true,
+                    'configuration', '备份设置未完整确认，请重新展开自动备份核对；如服务较旧，请先同步更新增强服务');
                     uncertainConfiguration = false;
                     state.automaticBackup = { availability: 'available', busy: false, error: '', status: value, configurationUnknown: false };
                 } catch (error) {
@@ -373,13 +383,16 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 const id = crypto.randomUUID(); need(/^[a-f\d-]{36}$/i.test(id), 'random', '安全标识生成失败，未创建副本');
                 const integrity = crypto.randomUUID(); need(/^[a-f\d-]{36}$/i.test(integrity) && integrity !== original.rows[0].chat_metadata?.integrity, 'random', '新副本校验标识生成失败');
                 const rows = clone(original.rows); rows[0].chat_metadata ??= {}; rows[0].chat_metadata.integrity = integrity;
-                const prefix = `千幕找回-${id}`;
+                // ST appends its own timestamp to character_name. A human
+                // descriptor is more useful in the recent-chat list than a
+                // message-count suffix or an exposed operation UUID. The
+                // preflight snapshot below keeps repeated recoveries distinct.
+                const prefix = '千幕备份';
                 const names = await listChats(target, token);
-                need(!names.some(name => name.startsWith(prefix + ' - ')), 'collision', '副本名称已存在，未创建新文件');
                 const form = new FormData(); form.set('file_type', 'jsonl'); form.set('avatar_url', target.avatar); form.set('character_name', prefix); form.set('user_name', 'User');
                 form.set('file', new Blob([rows.map(row => JSON.stringify(row)).join('\n')], { type: 'application/jsonl' }), prefix + '.jsonl');
                 await guard(token); sameTarget(target);
-                pending = { id, prefix, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, fileName: '' };
+                pending = { id, prefix, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, fileName: '' };
                 try {
                     const raw = await response('/api/chats/import', form, token, { form: true, beforeSend: () => { sameTarget(target); pending.submitted = true; state.result = publicResult('unknown'); } });
                     let result; try { result = parse(raw, CHAT_RECOVERY_LIMITS.bytes); } catch {}

@@ -739,6 +739,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-character-tools .qm-recovery-character-more { grid-column: 1 / -1; justify-self: start; font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-tools .is-loading i { animation: qm-recovery-spin .8s linear infinite; }
 @keyframes qm-recovery-spin { to { transform: rotate(360deg); } }
+#story-director-floor-nav .qm-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+#story-director-floor-nav .qm-recovery-role-suggestions { display: grid; gap: 4px; max-height: 220px; overflow: auto; padding: 5px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+#story-director-floor-nav .qm-recovery-role-suggestions[hidden] { display: none !important; }
+#story-director-floor-nav .qm-recovery-suggestion { width: 100%; min-width: 0; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-floor-nav .qm-recovery-suggestion[role="option"] { min-height: 32px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--sd-text); }
+#story-director-floor-nav .qm-recovery-suggestion[role="option"]:hover,
+#story-director-floor-nav .qm-recovery-suggestion[role="option"]:focus-visible { background: var(--sd-glass-weak); }
 #story-director-floor-nav .qm-recovery-target-tools { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 #story-director-floor-nav .qm-recovery-target-tools :is(input, select) { width: 100%; min-width: 0; }
 #story-director-floor-nav .qm-recovery-target-tools .qm-recovery-character-more { align-self: flex-start; font-size: var(--qm-type-caption); }
@@ -756,7 +763,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-auto { min-width: 0; border: 1px solid var(--sd-border); border-radius: var(--qm-card-radius, 12px); padding: 12px; background: var(--sd-card); }
 #story-director-floor-nav .qm-recovery-auto-title { margin: 0; font-size: var(--qm-type-label); font-weight: 500; line-height: 1.3; }
 #story-director-floor-nav .qm-recovery-auto > :not(.qm-recovery-auto-title) { margin-top: 12px; }
-#story-director-floor-nav .qm-recovery-auto-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+#story-director-floor-nav .qm-recovery-auto-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 #story-director-floor-nav .qm-recovery-auto-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-auto-fields :is(input, select) { width: 100%; min-width: 0; }
 #story-director-floor-nav .qm-recovery-auto-fields .qm-recovery-auto-toggle { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
@@ -817,6 +824,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 @media (max-width: 520px) {
   #story-director-floor-nav .sd-floor-shell { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   #story-director-floor-nav .sd-floor-panel { padding: 15px; border-radius: 18px; }
+  #story-director-floor-nav .qm-recovery-auto-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   #story-director-floor-nav .sd-prose-control { grid-template-columns: 56px minmax(70px, 1fr) 58px 24px; gap: 6px; padding-inline: 8px; }
   #story-director-floor-nav .sd-prose-checks { grid-template-columns: .9fr 1.35fr .9fr; gap: 5px; }
   #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 5px; white-space: nowrap; }

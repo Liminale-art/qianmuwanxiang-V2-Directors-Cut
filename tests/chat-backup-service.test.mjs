@@ -59,7 +59,8 @@ test('service restart restores opt-in schedule without an HTTP request or open p
 test('disable cancels next tick and re-enabling runs once without creating missed-time history',async t=>{
   const f=await fixture(t);await first(f);await f.service.configure(f.req,configure({enabled:false}));assert.equal(f.time.scheduled.size,0);
   f.time.set(f.time.now()+365*24*60*60000);await f.write(chat('long afterward'));await f.service.run();assert.equal((await f.service.list(f.req,input())).entries.length,1);
-  await f.service.configure(f.req,configure());await f.service.run();assert.equal((await f.service.list(f.req,input())).entries.length,2);
+  await f.service.configure(f.req,configure());await f.service.run();const entries=await f.service.list(f.req,input());assert.equal(entries.entries.length,1);
+  assert.match((await f.service.read(f.req,input('alice',{id:entries.entries[0].id}))).text,/long afterward/);
 });
 test('account boundaries reject forged handles/paths and native account revocation stops the scheduler',async t=>{
   const f=await fixture(t);await first(f);const bob=await f.add('bob');await f.write(chat('bob'),'角色1','session.jsonl',bob);
@@ -81,6 +82,13 @@ test('invalid count limits are rejected before storage is created, while both in
   for(const maxVersionsPerChat of [0,20000])assert.equal((await f.service.configure(f.req,configure({maxVersionsPerChat}))).maxVersionsPerChat,maxVersionsPerChat);
 });
 
+test('retention policy accepts only fixed day windows and reports the bounded default',async t=>{
+  const f=await fixture(t);assert.equal((await f.service.status(f.req,input())).retentionDays,30);
+  for(const retentionDays of [0,1,2,4,6,8,14,16,29,31,90,-1,1.5,NaN,Infinity,'7',null,undefined])
+    await assert.rejects(f.service.configure(f.req,configure({retentionDays})),{status:400});
+  for(const retentionDays of [3,7,15,30])assert.equal((await f.service.configure(f.req,configure({retentionDays}))).retentionDays,retentionDays);
+});
+
 test('legacy schema-1 configuration validates its original checksum and restarts as unlimited without a browser',async t=>{
   const f=await fixture(t);await first(f);await f.service.close();
   const file=path.join(f.backup,'.settings-v1.json'),current=JSON.parse(await fs.readFile(file,'utf8'));
@@ -91,6 +99,7 @@ test('legacy schema-1 configuration validates its original checksum and restarts
   assert.equal((await restarted.status(f.req,input())).maxVersionsPerChat,0);await f.time.fire();await restarted.run();
   assert.equal((await restarted.list(f.req,input())).entries.length,2);
   const {checksum,...upgraded}=JSON.parse(await fs.readFile(file,'utf8'));assert.equal(upgraded.maxVersionsPerChat,0);assert.equal(checksum,sha(JSON.stringify(upgraded)));
+  assert.equal(upgraded.retentionDays,30);
   await restarted.close();const again=f.make();await again.start();assert.equal((await again.status(f.req,input())).maxVersionsPerChat,0);
 });
 
@@ -126,6 +135,24 @@ test('different chat files under one avatar have independent count limits',async
   }
   const entries=(await f.service.list(f.req,input())).entries;assert.equal(entries.length,4);
   for(const file of ['a.jsonl','b.jsonl'])assert.equal(entries.filter(entry=>entry.chatFile===file&&entry.avatar==='角色1.png').length,2);
+});
+
+test('retention removes expired versions while preserving the newest valid copy per chat',async t=>{
+  const f=await fixture(t);await f.write(chat('day zero'));await f.service.configure(f.req,configure({retentionDays:3}));await f.service.run();
+  f.time.set(f.time.now()+2*24*60*60000);await f.write(chat('day two'));await f.service.run();
+  assert.equal((await f.service.list(f.req,input())).entries.length,2);
+  f.time.set(f.time.now()+2*24*60*60000+31*60000);await f.write(chat('day four'));await f.service.run();
+  const entries=(await f.service.list(f.req,input())).entries;assert.equal(entries.length,2);
+  assert.deepEqual(entries.map(entry=>entry.messageCount),[1,1]);
+  const texts=await Promise.all(entries.map(entry=>f.service.read(f.req,input('alice',{id:entry.id})).then(value=>value.text)));
+  assert.ok(texts.some(text=>text.includes('day two')));assert.ok(texts.some(text=>text.includes('day four')));
+});
+
+test('retention never removes the sole copy of an expired chat',async t=>{
+  const f=await fixture(t);await f.write(chat('old'));await f.service.configure(f.req,configure({retentionDays:3}));await f.service.run();
+  f.time.set(f.time.now()+10*24*60*60000+31*60000);await f.service.run();
+  const entries=(await f.service.list(f.req,input())).entries;assert.equal(entries.length,1);
+  assert.match((await f.service.read(f.req,input('alice',{id:entries[0].id}))).text,/old/);
 });
 
 test('unknown configure-write result retains the count setting and never deletes versions itself',async t=>{
