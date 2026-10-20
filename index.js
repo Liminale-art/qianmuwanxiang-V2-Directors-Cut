@@ -315,7 +315,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.479';
+const VERSION = '1.59.480';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -356,9 +356,9 @@ function disposeChatWriteGuard() {
 async function mountFloorChatRecovery(root) {
   const host = root.querySelector('[data-floor-view="recovery"]');
   if (!host || chatRecoveryPanel?.root === root) return;
-  host.textContent = '正在载入聊天找回…';
+  host.textContent = '正在载入聊天备份…';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.479'), import('./qianmu-chat-recovery-view.js?v=1.59.478')]);
+    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.480'), import('./qianmu-chat-recovery-view.js?v=1.59.480')]);
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
     const namespace = await resolveImageAccountNamespace();
@@ -377,10 +377,10 @@ async function mountFloorChatRecovery(root) {
     if (chatRecoveryPanel?.root === root) return;
     chatRecoveryPanel?.view.dispose();
     chatRecoveryPanel = { root, view: view.mountChatRecoveryView({ root: host, controller: chatRecoveryClient,
-      getCharacters: () => ctx().characters || [], confirm: message => confirmDialog('找回聊天', htmlEscape(message)), notify: toast }) };
+      getCharacters: () => ctx().characters || [], confirm: message => confirmDialog('聊天备份', htmlEscape(message)), notify: toast }) };
   } catch (_) {
     chatRecoveryLoading = null;
-    if (root.isConnected) host.textContent = '聊天找回暂未载入，请关闭工具包后重试。';
+    if (root.isConnected) host.textContent = '聊天备份暂未载入，请关闭工具包后重试。';
   }
 }
 const featureRuntime = createFeatureRuntime({
@@ -6017,9 +6017,10 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="聊天工具包">
-        <header><div><h3>聊天工具包</h3><p>${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button><button type="button" role="tab" data-floor-tab="recovery">聊天找回</button></nav>
+        <header><div><h3>聊天工具包</h3></div><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">楼层跳转</button><button type="button" role="tab" data-floor-tab="layout">正文排版</button><button type="button" role="tab" data-floor-tab="recovery">聊天备份</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
+          <p class="sd-floor-chat-count">${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p>
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
           <div class="sd-floor-actions"><button type="button" class="sd-floor-top">跳转至顶部</button><button type="button" class="sd-floor-bottom">跳转至底部</button></div>
         </section>

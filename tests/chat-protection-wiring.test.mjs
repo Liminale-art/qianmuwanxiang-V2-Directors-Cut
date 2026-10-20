@@ -54,14 +54,14 @@ test('init, loaded events and cleanup use the actual protection lifecycle', () =
     assert.match(cleanup, /initialized = false;\s*disposeChatWriteGuard\(\)/);
 });
 
-test('toolbox opens without an active chat and backup scans stay behind the explicit recovery action', () => {
+test('toolbox opens without an active chat and backup scans stay behind the explicit backup action', () => {
     const open = storyboardFunctionSource('openFloorNavigator'), mount = storyboardFunctionSource('mountFloorChatRecovery');
     assert.match(open, /聊天工具包/); assert.match(open, /data-floor-tab="recovery"/);
     assert.match(open, /if \(floorNavigatorView === 'recovery'\) void mountFloorChatRecovery\(root\)/);
     assert.doesNotMatch(open, /if \(!chat\.length\) return/);
     assert.doesNotMatch(mount, /chatRecoveryClient\.(?:load|recover|verify)\(/);
     assert.match(mount, /chatRecoveryNamespace !== namespace/);
-    assert.match(mount, /confirmDialog\('找回聊天', htmlEscape\(message\)\)/);
+    assert.match(mount, /confirmDialog\('聊天备份', htmlEscape\(message\)\)/);
     assert.doesNotMatch(storyboardFunctionSource('closeFloorNavigator'), /chatRecoveryClient.*dispose/);
     assert.match(source, /chatRecoveryClient\?\.dispose\(\); chatRecoveryClient = null/);
 });

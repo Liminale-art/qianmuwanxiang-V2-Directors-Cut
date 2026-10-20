@@ -96,14 +96,26 @@ export function inspectChatRecoveryJsonl(text) {
 }
 
 function previewOf(name, source) {
-    const messages = source.rows.slice(1), positions = [...new Set([0, 1, 2, messages.length - 3, messages.length - 2, messages.length - 1])].filter(index => index >= 0 && index < messages.length);
-    let previous = -1;
-    const text = positions.map(index => {
-        const row = messages[index], gap = previous >= 0 && index > previous + 1 ? '\n（中间消息未在预览中展开）\n' : '';
-        previous = index;
-        return `${gap}第 ${index + 1} 条 · ${String(row.name || '未命名').slice(0, 100)}\n${row.mes.slice(0, 1800)}${row.mes.length > 1800 ? '\n（本条预览已节略）' : ''}`;
-    }).join('\n\n').slice(0, CHAT_RECOVERY_LIMITS.previewChars);
-    return { name, messageCount: source.messageCount, participants: [...new Set(messages.map(row => String(row.name || '').trim()).filter(Boolean))].slice(0, 20), text, canRecover: true };
+    const messages = source.rows.slice(1);
+    // Keep preview work bounded for very long chats without altering the source
+    // used by recovery. The newest ten complete floors are the most useful
+    // identity check; every selected floor remains fully readable and collapsible.
+    const start = Math.max(0, messages.length - 10);
+    const previewMessages = messages.slice(start).map((row, index) => ({
+        floor: start + index + 1,
+        name: String(row.name || '未命名'),
+        text: row.mes,
+    }));
+    const text = previewMessages.map(row => `第 ${row.floor} 条 · ${row.name}\n${row.text}`).join('\n\n');
+    return {
+        name,
+        messageCount: source.messageCount,
+        previewStart: start + 1,
+        previewMessages,
+        participants: [...new Set(messages.map(row => String(row.name || '').trim()).filter(Boolean))].slice(0, 20),
+        text,
+        canRecover: true,
+    };
 }
 
 async function boundedText(response, maxBytes, signal, check) {
@@ -324,17 +336,17 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     && Number.isInteger(input.limitMiB) && input.limitMiB >= 256 && input.limitMiB <= 10240
                     && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000,
                 'configuration', '备份间隔为15–1440整数分钟，空间为256–10240 MB；版本数为1–20000整数，留空不限');
-                need(!uncertainConfiguration, 'configuration', '上次设置结果未确认，请先重新读取状态');
+                need(!uncertainConfiguration, 'configuration', '上次设置结果未确认，请重新展开自动备份后核对');
                 need(state.automaticBackup.availability === 'available' && state.automaticBackup.status, 'configuration', '请先读取当前账户的备份设置');
                 state.automaticBackup.busy = true; uncertainConfiguration = true; state.automaticBackup.configurationUnknown = true; emit();
                 try {
                     const value = automaticStatus(await json(BACKUP_API + '/configure', { expectedAccount: owner, enabled: input.enabled, intervalMinutes: input.intervalMinutes, limitMiB: input.limitMiB, maxVersionsPerChat }, token));
                     need(value.enabled === input.enabled && value.intervalMinutes === input.intervalMinutes && value.limitMiB === input.limitMiB
-                        && value.maxVersionsPerChat === maxVersionsPerChat, 'configuration', '备份设置未完整确认，请重新读取状态');
+                        && value.maxVersionsPerChat === maxVersionsPerChat, 'configuration', '备份设置未完整确认，请重新展开自动备份核对');
                     uncertainConfiguration = false;
                     state.automaticBackup = { availability: 'available', busy: false, error: '', status: value, configurationUnknown: false };
                 } catch (error) {
-                    state.automaticBackup.error = '设置结果尚未确认，请重新读取状态；不会自动重复提交。';
+                    state.automaticBackup.error = '设置结果尚未确认，请重新展开自动备份核对；不会自动重复提交。';
                     throw error;
                 } finally { state.automaticBackup.busy = false; state.phase = phase; }
             });

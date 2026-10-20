@@ -260,10 +260,13 @@ test('a timed-out submitted import remains unknown and verification never sends 
     await f.controller.verify(); await f.controller.recover('other.png'); assert.equal(f.imports().length, 1);
 });
 
-test('preview is bounded while the entire valid source remains restorable', async () => {
+test('preview shows the newest ten complete floors while the entire source remains restorable', async () => {
     const f = fixture(), rows = originalRows(); rows.push(...Array.from({ length: 20 }, (_, i) => ({ name: '角色' + i, mes: '长文'.repeat(1800), extra: { index: i } })));
     f.sources.set(backup, jsonl(rows)); const preview = await f.prepare();
-    assert.ok(preview.preview.text.length <= CHAT_RECOVERY_LIMITS.previewChars); assert.match(preview.preview.text, /预览已节略|未在预览中展开/);
+    assert.equal(preview.preview.previewMessages.length, 10);
+    assert.equal(preview.preview.previewMessages[0].floor, rows.length - 10);
+    assert.equal(preview.preview.previewMessages.at(-1).floor, rows.length - 1);
+    assert.equal(preview.preview.previewMessages.at(-1).text, rows.at(-1).mes);
     const result = await f.controller.recover('role.png'); assert.equal(result.result.messageCount, rows.length - 1);
     assert.equal(inspectChatRecoveryJsonl(f.files.get('role.png').get(result.result.fileName)).rows.length, rows.length);
 });
