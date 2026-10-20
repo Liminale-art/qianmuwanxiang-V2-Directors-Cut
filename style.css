@@ -732,7 +732,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-character-control { position: relative; width: 40px; min-width: 40px; min-height: 36px; }
 #story-director-floor-nav .qm-recovery-icon-button { width: 100%; height: 100%; padding: 0 !important; display: inline-flex; align-items: center; justify-content: center; }
 #story-director-floor-nav .qm-recovery-character-control:focus-within .qm-recovery-icon-button { border-color: var(--sd-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent) 22%, transparent); }
-#story-director-floor-nav .qm-recovery-character-control .qm-recovery-character-select { position: absolute; inset: 0; z-index: 1; width: 100%; min-height: 36px; opacity: 0; cursor: pointer; }
+#story-director-floor-nav .qm-recovery-character-control .qm-recovery-character-select { position: absolute; inset: 0; z-index: 1; width: 100%; min-height: 36px; opacity: 0; appearance: none; -webkit-appearance: none; background: transparent; cursor: pointer; }
+#story-director-floor-nav .qm-recovery-character-control .qm-recovery-character-select::-ms-expand { display: none; }
 #story-director-floor-nav .qm-recovery-character-tools input { width: 100%; }
 #story-director-floor-nav .qm-recovery-character-select { min-width: 0; width: 100%; text-overflow: ellipsis; }
 #story-director-floor-nav .qm-recovery-character-tools .qm-recovery-character-more { grid-column: 1 / -1; justify-self: start; font-size: var(--qm-type-caption); }
@@ -753,22 +754,23 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-file-details { font-size: var(--qm-type-caption); color: var(--sd-muted); }
 #story-director-floor-nav .qm-recovery-file-details p { margin: 6px 0 0; overflow-wrap: anywhere; }
 #story-director-floor-nav .qm-recovery-auto { min-width: 0; border: 1px solid var(--sd-border); border-radius: var(--qm-card-radius, 12px); padding: 12px; background: var(--sd-card); }
-#story-director-floor-nav .qm-recovery-auto summary { cursor: pointer; list-style: none; font-size: var(--qm-type-label); }
-#story-director-floor-nav .qm-recovery-auto summary::-webkit-details-marker { display: none; }
-#story-director-floor-nav .qm-recovery-auto summary::marker { display: none; }
-#story-director-floor-nav .qm-recovery-auto > :not(summary) { margin-top: 12px; }
+#story-director-floor-nav .qm-recovery-auto-title { margin: 0; font-size: var(--qm-type-label); font-weight: 500; line-height: 1.3; }
+#story-director-floor-nav .qm-recovery-auto > :not(.qm-recovery-auto-title) { margin-top: 12px; }
 #story-director-floor-nav .qm-recovery-auto-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 #story-director-floor-nav .qm-recovery-auto-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-auto-fields :is(input, select) { width: 100%; min-width: 0; }
-#story-director-floor-nav .qm-recovery-auto-used { color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-auto-fields .qm-recovery-auto-toggle { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
-#story-director-floor-nav .qm-recovery-auto-toggle input { appearance: none; position: relative; width: 44px; min-height: 24px; height: 24px; margin: 0; padding: 0; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); transition: background .18s ease, border-color .18s ease; }
-#story-director-floor-nav .qm-recovery-auto-toggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--sd-muted); transition: transform .18s ease, background .18s ease; }
-#story-director-floor-nav .qm-recovery-auto-toggle input:checked { border-color: var(--sd-accent); background: var(--sd-accent); }
-#story-director-floor-nav .qm-recovery-auto-toggle input:checked::after { background: var(--sd-primary-text, #fff); transform: translateX(20px); }
+#story-director-floor-nav .qm-recovery-toggle { position: relative; display: inline-flex; width: 44px; height: 24px; flex: 0 0 44px; align-items: center; }
+#story-director-floor-nav .qm-recovery-toggle input { position: absolute; inset: 0; z-index: 1; width: 100% !important; min-height: 24px; height: 24px; margin: 0; padding: 0 !important; border: 0 !important; border-radius: 999px; opacity: 0; cursor: pointer; }
+#story-director-floor-nav .qm-recovery-toggle-track { position: absolute; inset: 0; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); transition: background .18s ease, border-color .18s ease; pointer-events: none; }
+#story-director-floor-nav .qm-recovery-toggle-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--sd-muted); transition: transform .18s ease, background .18s ease; }
+#story-director-floor-nav .qm-recovery-toggle input:checked + .qm-recovery-toggle-track { border-color: var(--sd-accent); background: var(--sd-accent); }
+#story-director-floor-nav .qm-recovery-toggle input:checked + .qm-recovery-toggle-track::after { background: var(--sd-primary-text, #fff); transform: translateX(20px); }
+#story-director-floor-nav .qm-recovery-toggle input:focus-visible + .qm-recovery-toggle-track { box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent) 26%, transparent); }
 #story-director-floor-nav .qm-recovery-auto-status { margin: 0; padding: 8px 10px; border: 1px solid var(--sd-border); border-radius: 10px; white-space: pre-line; overflow-wrap: anywhere; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-auto-status[hidden] { display: none !important; }
 #story-director-floor-nav [data-floor-view="recovery"] :is(input, select, button) { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
+#story-director-floor-nav [data-floor-view="recovery"] .qm-recovery-toggle input { min-height: 24px !important; height: 24px; border: 0; }
 #story-director-floor-nav [data-floor-view="recovery"] button:disabled { opacity: .5; cursor: default; }
 #story-director-floor-nav .qm-recovery-list { display: grid; gap: 5px; max-height: min(60vh, 640px); overflow: auto; padding-right: 2px; }
 #story-director-floor-nav .qm-recovery-row { display: grid; gap: 5px; }
@@ -786,8 +788,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav [data-floor-view="recovery"] [hidden] { display: none !important; }
 #story-director-floor-nav .qm-recovery-preview h4 { margin: 0; font-size: var(--qm-type-label); }
 #story-director-floor-nav .qm-recovery-preview-body { display: grid; gap: 6px; }
+#story-director-floor-nav .qm-recovery-preview-hint { display: block; margin: 0 0 2px; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-message { border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-glass-weak); }
-#story-director-floor-nav .qm-recovery-message summary { cursor: pointer; padding: 7px 9px; color: var(--sd-text); font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-message summary { cursor: pointer; list-style: none; padding: 7px 9px; color: var(--sd-text); font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-message summary::-webkit-details-marker { display: none; }
+#story-director-floor-nav .qm-recovery-message summary::marker { display: none; }
 #story-director-floor-nav .qm-recovery-message pre { margin: 0; padding: 0 9px 9px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: var(--qm-type-body); background: transparent; }
 #story-director-floor-nav .qm-recovery-preview label { display: flex; flex-direction: column; gap: 6px; font-size: var(--qm-type-label); }
 #story-director-floor-nav .qm-recovery-preview select { width: 100%; min-width: 0; }

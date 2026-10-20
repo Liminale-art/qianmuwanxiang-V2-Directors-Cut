@@ -54,7 +54,15 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             : !!selection && (row.candidateAvatars || []).includes(selection));
         // Native timestamps have no UTC offset. Keep timezone groups explicit;
         // never present server wall-clock and local instants as one exact order.
+        // A longer conversation has a later final floor. Prefer that signal
+        // over backup creation time so the newest usable story context is
+        // surfaced first; creation time remains a deterministic tie-breaker.
+        const floorOf = row => Number.isSafeInteger(row.lastMessageFloor)
+            ? row.lastMessageFloor
+            : Number.isSafeInteger(row.messageCount) ? row.messageCount : -1;
         return rows.sort((a, b) => {
+            const floorDelta = floorOf(b) - floorOf(a);
+            if (floorDelta) return floorDelta;
             const knownA = Number.isFinite(a.backupSort), knownB = Number.isFinite(b.backupSort);
             if (knownA !== knownB) return knownA ? -1 : 1;
             const dayA = a.backupDay || '', dayB = b.backupDay || '';
@@ -70,7 +78,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const tools = element('div', 'qm-recovery-tools qm-recovery-character-tools');
     const input = element('input'); input.type = 'search'; input.placeholder = '搜索角色名'; input.setAttribute('aria-label', '搜索角色名');
     const suggestions = element('datalist', 'qm-recovery-role-suggestions'); suggestions.id = `qm-recovery-role-suggestions-${Math.random().toString(36).slice(2)}`;
-    input.setAttribute('list', suggestions.id);
     input.addEventListener('input', () => {
         invalidatePreview(); preview.hidden = true; recover.disabled = true;
         clearTimeout(searchTimer);
@@ -137,22 +144,23 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const receiptText = element('p'); receiptText.setAttribute('role', 'status');
     const verify = button('核实上次结果', () => run(() => controller.verify())); receipt.append(receiptText, verify);
 
-    const automatic = element('details', 'qm-recovery-auto');
-    automatic.append(element('summary', '', '自动备份'));
+    const automatic = element('section', 'qm-recovery-auto');
+    automatic.append(element('h4', 'qm-recovery-auto-title', '自动备份'));
     const automaticFields = element('div', 'qm-recovery-auto-fields');
     const enabledLabel = element('label', 'qm-recovery-auto-toggle', '启用自动备份');
-    const enabled = element('input'); enabled.type = 'checkbox'; enabled.setAttribute('aria-label', '启用自动备份'); enabledLabel.append(enabled);
+    const enabled = element('input'); enabled.type = 'checkbox'; enabled.setAttribute('aria-label', '启用自动备份');
+    const toggleTrack = element('span', 'qm-recovery-toggle-track');
+    const toggle = element('span', 'qm-recovery-toggle'); toggle.append(enabled, toggleTrack); enabledLabel.append(toggle);
     const intervalLabel = element('label', '', '备份间隔（分钟）');
     const interval = element('input'); interval.type = 'number'; interval.min = '15'; interval.max = '1440'; interval.step = '1'; interval.value = '30'; interval.setAttribute('aria-label', '备份间隔（分钟）'); intervalLabel.append(interval);
     const capacityLabel = element('label', '', '备份空间（MB）');
     const capacity = element('input'); capacity.type = 'number'; capacity.min = '256'; capacity.max = '10240'; capacity.step = '1'; capacity.setAttribute('aria-label', '备份空间（MB）');
     capacity.value = '1024';
-    const autoUsed = element('small', 'qm-recovery-auto-used');
-    capacityLabel.append(capacity, autoUsed);
-    const versionsLabel = element('label', '', '每份聊天版本数保留上限');
-    const versions = element('input'); versions.type = 'number'; versions.min = '1'; versions.max = '20000'; versions.step = '1'; versions.value = ''; versions.placeholder = '留空不限'; versions.setAttribute('aria-label', '每份聊天版本数保留上限');
-    versionsLabel.append(versions, element('small', '', '留空不限；至少保留 1 份有效副本'));
-    let automaticSaveTimer = null;
+    capacityLabel.append(capacity);
+    const versionsLabel = element('label', '', '单聊版本上限');
+    const versions = element('input'); versions.type = 'number'; versions.min = '1'; versions.max = '20000'; versions.step = '1'; versions.value = ''; versions.placeholder = '不限'; versions.setAttribute('aria-label', '单聊版本上限');
+    versionsLabel.append(versions);
+    let automaticSaveTimer = null, automaticInspectTimer = null;
     const dirty = () => {
         automaticDirty = true; automaticRevision++; render();
         clearTimeout(automaticSaveTimer);
@@ -178,14 +186,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             }
         } finally { automaticBusy = false; render(); }
     };
-    automatic.addEventListener('toggle', () => { if (automatic.open) void run(inspectAutomatic); });
     const persistAutomaticDraft = async () => run(async () => {
         const current = controller.snapshot().automaticBackup;
         if (automaticBusy || controller.snapshot().busy || current?.busy || current?.configurationUnknown || automaticUnknown || current?.availability !== 'available' || typeof controller.configureAutomaticBackup !== 'function') return;
         const draft = { enabled: enabled.checked, intervalMinutes: Number(interval.value), limitMiB: Number(capacity.value), maxVersionsPerChat: versions.value === '' ? 0 : Number(versions.value) };
         if (!Number.isSafeInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 1440) { notify('备份间隔请填写 15–1440 的整数分钟。', 'warning'); return; }
-        if (capacity.validity?.badInput || !capacity.value.trim() || !Number.isSafeInteger(draft.limitMiB) || draft.limitMiB < 256 || draft.limitMiB > 10240) { notify('有效备份空间请填写 256–10240 的整数 MB，不能为空。', 'warning'); return; }
-        if (versions.validity?.badInput || !Number.isSafeInteger(draft.maxVersionsPerChat) || draft.maxVersionsPerChat < 0 || draft.maxVersionsPerChat > 20000 || (versions.value !== '' && draft.maxVersionsPerChat === 0)) { notify('每份聊天的版本数请留空表示不限，或填写 1–20000 的整数。', 'warning'); return; }
+        if (capacity.validity?.badInput || !capacity.value.trim() || !Number.isSafeInteger(draft.limitMiB) || draft.limitMiB < 256 || draft.limitMiB > 10240) { notify('备份空间请填写 256–10240 的整数 MB，不能为空。', 'warning'); return; }
+        if (versions.validity?.badInput || !Number.isSafeInteger(draft.maxVersionsPerChat) || draft.maxVersionsPerChat < 0 || draft.maxVersionsPerChat > 20000 || (versions.value !== '' && draft.maxVersionsPerChat === 0)) { notify('单聊版本上限请留空表示不限，或填写 1–20000 的整数。', 'warning'); return; }
         const revision = automaticRevision;
         if (disposed || revision !== automaticRevision || automaticBusy || controller.snapshot().busy || controller.snapshot().automaticBackup?.busy || controller.snapshot().automaticBackup?.configurationUnknown) return;
         automaticBusy = true; render();
@@ -211,8 +218,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             versions.value = stored.maxVersionsPerChat ? String(stored.maxVersionsPerChat) : '';
         }
         for (const node of [enabled, interval, capacity, versions]) node.disabled = !available || busy || unknown;
-        const used = stored && Number.isFinite(stored.usedBytes) ? `${(stored.usedBytes / 1048576).toFixed(1)} MB` : '暂无';
-        autoUsed.textContent = `已用 ${used}`;
         if (busy) {
             automaticStatus.hidden = false;
             automaticStatus.textContent = automaticDirty ? '正在保存备份设置…' : '正在读取备份设置…';
@@ -267,7 +272,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         } else if (snapshot.error) status.textContent = snapshot.error;
         input.disabled = !!snapshot.busy;
         const indexForSuggestions = readCharacterIndex();
-        suggestions.replaceChildren(...indexForSuggestions.rows.slice(0, 50).map(row => option(row.label, row.name)));
+        const suggestionQuery = input.value.trim().toLocaleLowerCase();
+        const suggestionRows = suggestionQuery
+            ? indexForSuggestions.rows.filter(row => row.searchName.includes(suggestionQuery)).slice(0, 50)
+            : [];
+        if (suggestionQuery) input.setAttribute('list', suggestions.id);
+        else if (typeof input.removeAttribute === 'function') input.removeAttribute('list');
+        suggestions.replaceChildren(...suggestionRows.map(row => option(row.label, row.name)));
         loadedCount.textContent = snapshot.busy ? '正在读取备份…' : hasRead ? `已加载 ${rows.length} 份聊天记录` : '';
         loadedCount.hidden = !snapshot.busy && !hasRead;
         preview.hidden = !currentPreview;
@@ -295,7 +306,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             const title = element('span', 'qm-recovery-name', displayName);
             const sourceBadge = element('small', 'qm-recovery-source', row.sourceLabel || 'ST备份');
             const titleLine = element('span', 'qm-recovery-title-line'); titleLine.append(title, sourceBadge);
-            const metadata = [count, row.size, row.backupTimeLabel || '时间未知'].filter(Boolean).join(' · ');
+            const metadata = [count, row.size].filter(Boolean).join(' · ');
             const lastMessage = formatLastMessage(row.lastMessageAt);
             item.append(titleLine, element('small', 'qm-recovery-meta', metadata + (lastMessage ? ` · 最后对话 ${lastMessage}` : '')));
             if (row.excerpt) item.append(element('span', 'qm-recovery-excerpt', row.excerpt));
@@ -311,7 +322,11 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         if (currentPreview) {
             const previewRow = rows.find(row => row.name === currentPreview.name);
             previewTitle.textContent = previewRow?.chatFile || currentPreview.name;
+            const floorLimit = currentPreview.previewFloorLimit || 5;
+            const previewHint = element('small', 'qm-recovery-preview-hint',
+                `仅预览最后 ${floorLimit} 层正文${currentPreview.messageCount > floorLimit ? '' : '（不足则全部）'}`);
             previewBody.replaceChildren();
+            previewBody.append(previewHint);
             for (const message of currentPreview.previewMessages || []) {
                 const details = element('details', 'qm-recovery-message');
                 const summary = element('summary', '', `第 ${message.floor} 层 · ${message.name}`);
@@ -344,5 +359,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         renderAutomatic(snapshot);
     }
     render();
-    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); clearTimeout(automaticSaveTimer); root.replaceChildren(); } });
+    // A fixed, expanded card should be useful on first render. Avoid a
+    // duplicate request when a host already read the status before mounting.
+    if (!controller.snapshot().automaticBackup?.status && !controller.snapshot().automaticBackup?.busy) {
+        automaticInspectTimer = setTimeout(() => {
+            automaticInspectTimer = null;
+            if (!disposed) void run(inspectAutomatic);
+        }, 0);
+    }
+    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); clearTimeout(automaticSaveTimer); clearTimeout(automaticInspectTimer); root.replaceChildren(); } });
 }

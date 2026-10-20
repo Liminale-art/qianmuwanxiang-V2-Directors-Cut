@@ -260,13 +260,13 @@ test('a timed-out submitted import remains unknown and verification never sends 
     await f.controller.verify(); await f.controller.recover('other.png'); assert.equal(f.imports().length, 1);
 });
 
-test('preview shows the newest ten complete floors while the entire source remains restorable', async () => {
+test('preview shows the newest five complete floors while the entire source remains restorable', async () => {
     const f = fixture(), rows = originalRows(); rows.push(...Array.from({ length: 20 }, (_, i) => ({ name: '角色' + i, mes: '长文'.repeat(1800), extra: { index: i } })));
     f.sources.set(backup, jsonl(rows)); const preview = await f.prepare();
-    assert.equal(preview.preview.previewMessages.length, 10);
-    assert.equal(preview.preview.previewMessages[0].floor, rows.length - 10);
-    assert.equal(preview.preview.previewMessages.at(-1).floor, rows.length - 1);
-    assert.equal(preview.preview.previewMessages.at(-1).text, rows.at(-1).mes);
+    assert.equal(preview.preview.previewMessages.length, 5);
+    assert.equal(preview.preview.previewMessages[0].floor, rows.length - 1);
+    assert.equal(preview.preview.previewMessages.at(-1).floor, rows.length - 5);
+    assert.equal(preview.preview.previewMessages[0].text, rows.at(-1).mes);
     const result = await f.controller.recover('role.png'); assert.equal(result.result.messageCount, rows.length - 1);
     assert.equal(inspectChatRecoveryJsonl(f.files.get('role.png').get(result.result.fileName)).rows.length, rows.length);
 });

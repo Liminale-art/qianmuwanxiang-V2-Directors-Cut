@@ -4,6 +4,7 @@ import { buildNativeBackupCatalog, normalizeAutomaticBackupEntries } from './qia
 // Native ST 1.19 backup-to-character-copy recovery. No open-chat state is changed.
 // The import route is NOT exclusive-create: a random operation prefix and a
 // preflight listing reduce collisions, but cannot provide a server transaction.
+export const CHAT_RECOVERY_PREVIEW_FLOORS = 5;
 export const CHAT_RECOVERY_LIMITS = Object.freeze({ bytes: 16 * 1024 * 1024, messages: 50000, previewChars: 14000 });
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
@@ -98,19 +99,22 @@ export function inspectChatRecoveryJsonl(text) {
 function previewOf(name, source) {
     const messages = source.rows.slice(1);
     // Keep preview work bounded for very long chats without altering the source
-    // used by recovery. The newest ten complete floors are the most useful
+    // used by recovery. The newest five complete floors are the most useful
     // identity check; every selected floor remains fully readable and collapsible.
-    const start = Math.max(0, messages.length - 10);
+    // Show the newest floor first without changing the source row order used
+    // by recovery.
+    const start = Math.max(0, messages.length - CHAT_RECOVERY_PREVIEW_FLOORS);
     const previewMessages = messages.slice(start).map((row, index) => ({
         floor: start + index + 1,
         name: String(row.name || '未命名'),
         text: row.mes,
-    }));
+    })).reverse();
     const text = previewMessages.map(row => `第 ${row.floor} 条 · ${row.name}\n${row.text}`).join('\n\n');
     return {
         name,
         messageCount: source.messageCount,
         previewStart: start + 1,
+        previewFloorLimit: CHAT_RECOVERY_PREVIEW_FLOORS,
         previewMessages,
         participants: [...new Set(messages.map(row => String(row.name || '').trim()).filter(Boolean))].slice(0, 20),
         text,

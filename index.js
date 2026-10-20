@@ -315,7 +315,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.480';
+const VERSION = '1.59.481';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -358,7 +358,7 @@ async function mountFloorChatRecovery(root) {
   if (!host || chatRecoveryPanel?.root === root) return;
   host.textContent = '正在载入聊天备份…';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.480'), import('./qianmu-chat-recovery-view.js?v=1.59.480')]);
+    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.481'), import('./qianmu-chat-recovery-view.js?v=1.59.481')]);
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
     const namespace = await resolveImageAccountNamespace();

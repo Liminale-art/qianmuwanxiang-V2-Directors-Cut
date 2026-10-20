@@ -127,7 +127,7 @@ function automaticFixture() {
     } });
   const mount = confirm => { view?.dispose(); view = mountChatRecoveryView({ root: ui.root, controller, getCharacters: () => [], confirm }); return view; };
   const edit = minutes => { const input = ui.find(node => node.type === 'number'); input.value = String(minutes); input.handlers.input(); };
-  const openAutomatic = async () => { const details = ui.find(node => node.tag === 'details'); details.open = true; await details.handlers.toggle(); };
+  const openAutomatic = async () => { await wait(0); assert.ok(ui.find(node => node.className === 'qm-recovery-auto'), 'automatic backup card stays expanded'); };
   const button = text => ui.find(node => node.tag === 'button' && node.textContent === text);
   return { controller, calls, ui, mount, edit, openAutomatic, button, setAccount: value => { account = value; }, setStatusFailure: value => { statusFailure = value; }, loseNextConfiguration: () => { loseConfiguration = true; } };
 }
