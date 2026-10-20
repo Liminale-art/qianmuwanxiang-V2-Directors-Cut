@@ -10,6 +10,12 @@ PLUGIN="$ST_ROOT/plugins/Omniscene"
 BRANCH='refactor/storyboard-modularization'
 REPO='https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git'
 PM2_NAME='sillytavern'
+EXPECTED_VERSION='1.59.482'
+# Optional live check for deployments that expose ST on a known local URL.
+# The package check below is always required; this extra check confirms that
+# the restarted process reports the same version rather than only that files
+# on disk were updated.
+HEALTH_URL="${QIANMU_HEALTH_URL:-}"
 INSTALLER=''
 
 fail() {
@@ -69,11 +75,25 @@ curl -fL --retry 2 --connect-timeout 15 --max-time 120 \
 QIANMU_SERVER_STOPPED=1 sh "$INSTALLER" || fail '插件更新失败。'
 
 COMMIT=$(git -C "$PLUGIN" rev-parse HEAD) || fail '无法读取更新后的提交节点。'
+SERVICE_VERSION=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*$/\1/p' "$PLUGIN/package.json" | head -n 1)
+[ "$SERVICE_VERSION" = "$EXPECTED_VERSION" ] || fail "服务端插件版本为 ${SERVICE_VERSION:-未知}，期望 $EXPECTED_VERSION；未继续报告更新成功。"
 
 step "启动 PM2：$PM2_NAME"
 pm2 start "$PM2_NAME" || fail '插件已更新，但 PM2 启动失败。'
 sleep 2
 pm2 describe "$PM2_NAME" | grep -Eqi 'status[[:space:]]+online|online' || fail 'PM2 没有回到 online 状态。'
 
-printf '\n更新完成：PM2=%s，服务端提交=%s\n' "$PM2_NAME" "$COMMIT"
-printf '现在刷新 ST 页面；如需核对接口，再访问 /api/plugins/qianmu-tts/health。\n'
+if [ -n "$HEALTH_URL" ]; then
+  step '核对在线增强服务版本'
+  HEALTH_JSON=$(curl -fsSL --retry 1 --connect-timeout 5 --max-time 15 "$HEALTH_URL") || fail "在线健康检查失败：$HEALTH_URL"
+  printf '%s' "$HEALTH_JSON" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' || fail '在线健康检查未返回 ok=true。'
+  printf '%s' "$HEALTH_JSON" | grep -Eq '"plugin"[[:space:]]*:[[:space:]]*"qianmu-tts"' || fail '在线健康检查返回的插件不是 qianmu-tts。'
+  LIVE_VERSION=$(printf '%s' "$HEALTH_JSON" | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)
+  [ "$LIVE_VERSION" = "$EXPECTED_VERSION" ] || fail "在线增强服务版本为 ${LIVE_VERSION:-未知}，期望 $EXPECTED_VERSION。"
+  printf '在线增强服务版本校验通过：v%s\n' "$LIVE_VERSION"
+else
+  printf '已核对插件包版本：v%s；未设置 QIANMU_HEALTH_URL，未执行在线接口核对。\n' "$SERVICE_VERSION"
+fi
+
+printf '\n更新完成：PM2=%s，服务端版本=v%s，插件提交=%s\n' "$PM2_NAME" "$SERVICE_VERSION" "$COMMIT"
+printf '现在刷新 ST 页面；如需额外核对接口，可设置 QIANMU_HEALTH_URL 指向 /api/plugins/qianmu-tts/health 后重跑。\n'

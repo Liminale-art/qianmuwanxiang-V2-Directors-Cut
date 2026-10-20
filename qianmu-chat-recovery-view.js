@@ -30,6 +30,14 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     };
     // ST already owns the loaded character array. Index it in one linear pass;
     // batching below controls DOM size, never changes the full search source.
+    // The permanent native Assistant is a ST utility chat, not a user role.
+    // Its avatar is stable even when a host localizes or otherwise changes the
+    // displayed name, so hide it before building the picker and suggestions.
+    const isNativeAssistant = row => {
+        const avatar = String(row?.avatar || '').split(/[\\/]/).pop().toLocaleLowerCase();
+        const name = String(row?.name || '').trim().toLocaleLowerCase();
+        return avatar === 'default_assistant.png' || (avatar === 'assistant.png' && name === 'assistant');
+    };
     const readCharacterIndex = () => {
         const raw = getCharacters?.() || [];
         let changed = !characterIndex || characterIndex.sources.length !== raw.length;
@@ -38,9 +46,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             changed = old.avatar !== row?.avatar || old.name !== row?.name;
         }
         if (!changed) return characterIndex;
-        const sources = [], rows = [], names = new Map(), avatarCounts = new Map();
+        const sources = [], rows = [], names = new Map(), avatarCounts = new Map(), hiddenAvatars = new Set();
         for (const row of raw) {
             sources.push({ avatar: row?.avatar, name: row?.name });
+            if (isNativeAssistant(row)) {
+                if (typeof row?.avatar === 'string' && row.avatar) hiddenAvatars.add(row.avatar);
+                continue;
+            }
             if (typeof row?.avatar !== 'string' || !row.avatar) continue;
             const name = typeof row.name === 'string' ? row.name : '';
             rows.push({ avatar: row.avatar, name, searchName: name.toLocaleLowerCase() });
@@ -48,7 +60,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             avatarCounts.set(row.avatar, (avatarCounts.get(row.avatar) || 0) + 1);
         }
         for (const row of rows) row.label = names.get(row.name) > 1 ? `${row.name || '未命名角色'} · ${row.avatar}` : row.name || row.avatar;
-        return characterIndex = { sources, rows, avatarCounts, revision: ++characterIndexRevision };
+        return characterIndex = { sources, rows, avatarCounts, hiddenAvatars, revision: ++characterIndexRevision };
     };
     const characters = () => readCharacterIndex().rows;
     const option = (label, value) => { const node = element('option', '', label); node.value = value; return node; };
@@ -56,7 +68,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const unresolved = snapshot => !!snapshot.result && snapshot.result.status !== 'verified';
     const filteredRows = snapshot => {
         const currentCharacters = readCharacterIndex();
-        const rows = (snapshot.backups || []).filter(row => selection === OTHER
+        const rows = (snapshot.backups || []).filter(row => !(Array.isArray(row.candidateAvatars)
+            && row.candidateAvatars.some(avatar => currentCharacters.hiddenAvatars.has(avatar)))).filter(row => selection === OTHER
             ? row.match !== 'candidate' || !(row.candidateAvatars || []).some(avatar => currentCharacters.avatarCounts.get(avatar) === 1)
             : !!selection && (row.candidateAvatars || []).includes(selection));
         // Native timestamps have no UTC offset. Keep timezone groups explicit;
@@ -154,7 +167,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const verify = button('核实上次结果', () => run(() => controller.verify())); receipt.append(receiptText, verify);
 
     const automatic = element('section', 'qm-recovery-auto');
-    automatic.append(element('h4', 'qm-recovery-auto-title', '自动备份'));
     const automaticFields = element('div', 'qm-recovery-auto-fields');
     const enabledLabel = element('label', 'qm-recovery-auto-toggle', '启用自动备份');
     const enabled = element('input'); enabled.type = 'checkbox'; enabled.setAttribute('aria-label', '启用自动备份');

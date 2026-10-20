@@ -36,7 +36,15 @@ QIANMU_SERVER_STOPPED=1 curl -fsSL https://raw.githubusercontent.com/Liminale-ar
 bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
 ```
 
-最后看到 `更新完成：PM2=...，服务端提交=...`，才算更新成功。没有看到这行就保留错误输出，不要连续重跑；如果 PM2 已停止，先按提示处理。
+最后看到 `更新完成：PM2=...，服务端版本=v1.59.482，插件提交=...`，才算版本校验通过。脚本会先核对插件包版本；如果设置了 `QIANMU_HEALTH_URL`，还会在 PM2 重启后核对在线健康接口返回的版本。没有看到这行就保留错误输出，不要连续重跑；如果 PM2 已停止，先按提示处理。
+
+如果 ST 在本机有稳定的访问地址，可在执行更新命令前设置在线核对地址，例如：
+
+```bash
+QIANMU_HEALTH_URL='http://127.0.0.1:8000/api/plugins/qianmu-tts/health' bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
+```
+
+不设置时仍会执行本地插件包版本校验，适合反向代理、容器或 ST 端口不固定的部署。
 
 更新脚本位于仓库的 [update-server-plugin.sh](update-server-plugin.sh)，不再把大段 heredoc 代码直接粘到交互终端，避免终端停在 `>` 续行状态。
 

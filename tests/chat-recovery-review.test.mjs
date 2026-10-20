@@ -163,6 +163,19 @@ test('role autocomplete binds the selected avatar, keeps the controls icon-only,
   assert.equal(list.children.at(-1), ui.find(node => node.className === 'qm-recovery-load-more'), 'load-more is inside the scroll container');
 });
 
+test('native ST Assistant is omitted from the recovery role picker and suggestions', async () => {
+  const f = fixture();
+  f.characters.unshift({ avatar: 'default_Assistant.png', name: 'Assistant' });
+  await f.controller.load();
+  const ui = dom();
+  mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const picker = ui.find(node => node.className === 'qm-recovery-character-select');
+  assert.equal(picker.children.some(node => node.value === 'default_Assistant.png'), false);
+  const input = ui.find(node => node.tag === 'input' && node.placeholder === '搜索角色名');
+  input.value = 'Assistant'; input.handlers.input(); await wait(140);
+  assert.equal(ui.find(node => node.className === 'qm-recovery-suggestion'), undefined);
+});
+
 test('loaded count identifies the selected role and preview rows toggle independently without reloading', async () => {
   const revisions = new Map(), calls = [];
   const backups = ['one', 'two'].map((name, index) => ({
