@@ -76,7 +76,7 @@ function dom() {
   }
   const root = new Element('root');
   const all = () => { const out = []; function visit(node) { out.push(node); node.children.forEach(visit); } visit(root); return out; };
-  return { root, find: predicate => all().find(predicate) };
+  return { root, find: predicate => all().find(predicate), findAll: predicate => all().filter(predicate) };
 }
 
 test('native importer retains unknown header/metadata/message fields with new integrity only', async () => {
@@ -161,6 +161,41 @@ test('role autocomplete binds the selected avatar, keeps the controls icon-only,
   assert.equal(load.disabled, false, 'choosing a suggestion binds the role for reading');
   const list = ui.find(node => node.className === 'qm-recovery-list');
   assert.equal(list.children.at(-1), ui.find(node => node.className === 'qm-recovery-load-more'), 'load-more is inside the scroll container');
+});
+
+test('loaded count identifies the selected role and preview rows toggle independently without reloading', async () => {
+  const revisions = new Map(), calls = [];
+  const backups = ['one', 'two'].map((name, index) => ({
+    name: `${name}.jsonl`, chatFile: `${name}.jsonl`, size: '1 KB', messageCount: 2,
+    lastMessageAt: `2026-10-19T0${index + 1}:00:00Z`, backupSort: index + 1,
+    candidateAvatars: ['Synthetic.png'], match: 'candidate', sourceLabel: 'ST备份',
+  }));
+  const state = { busy: false, error: '', backups, preview: null, result: null, automaticBackup: { availability: 'unavailable', busy: false } };
+  const controller = {
+    snapshot: () => structuredClone(state),
+    preview: async name => {
+      calls.push(name);
+      const revision = (revisions.get(name) || 0) + 1; revisions.set(name, revision);
+      state.preview = { name, revision, messageCount: 2, previewFloorLimit: 5, previewMessages: [{ floor: 2, name: '合成角色', text: name }] , canRecover: true };
+    },
+    load: async () => {},
+  };
+  const ui = dom();
+  mountChatRecoveryView({ root: ui.root, controller, getCharacters: () => [{ avatar: 'Synthetic.png', name: '合成角色' }], confirm: async () => true });
+  const character = ui.find(node => node.className === 'qm-recovery-character-select');
+  character.value = 'Synthetic.png'; await character.handlers.change();
+  await ui.find(node => node.tag === 'button' && node.innerHTML?.includes('fa-rotate')).handlers.click();
+  const items = () => ui.findAll(node => node.className === 'qm-recovery-item');
+  const firstName = items()[0].title, secondName = items()[1].title;
+  await items()[0].handlers.click(); await items()[1].handlers.click();
+  assert.deepEqual(calls, [firstName, secondName]);
+  assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 3, 'two row previews plus shared recovery actions remain visible');
+  const loaded = ui.find(node => node.className === 'qm-recovery-loaded');
+  assert.match(loaded.textContent, /当前已加载 2 份/);
+  assert.match(loaded.textContent, /合成角色 · 共 2 份聊天记录/);
+  await items()[0].handlers.click();
+  assert.deepEqual(calls, [firstName, secondName], 'collapsing an open row does not download it again');
+  assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 2);
 });
 
 test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {

@@ -50,7 +50,7 @@ function fixture({ listAlias = true, responseUrl, responseType = 'basic', redire
     const transport = async (input, init) => {
         const path = new URL(typeof input === 'string' ? input : input.url, origin).pathname;
         calls.push({ path, init });
-        if (path === nativeList || path === alias) return reply(path, [{ file_name: backup, chat_items: 1 }], { type: mime });
+        if (path === nativeList || path === alias) return reply(path, [{ file_name: backup, chat_items: 1, last_mes: '2026-10-19T03:01:00Z' }], { type: mime });
         if (path === '/api/plugins/qianmu-tts/chat-backups/list') return reply(path, {}, { status: 404 });
         if (path === '/api/plugins/qianmu-tts/chat-backups/status') return reply(path, {});
         if (path === '/api/backups/chat/download') return reply(path, raw, { type: 'application/jsonl' });
@@ -76,6 +76,7 @@ test('native list accepts only the exact fast-list response despite the wrapper 
     const f = fixture(); t.after(() => f.controller.dispose());
     const state = await f.controller.load();
     assert.equal(state.backups[0].name, backup);
+    assert.equal(state.backups[0].lastMessageAt, '2026-10-19T03:01:00Z', 'native display time comes from ST last_mes, not the filename timestamp');
     assert.equal(f.calls[0].path, alias);
     assert.equal(f.calls[0].init.method, 'POST');
     assert.deepEqual(Object.keys(f.calls[0].init).sort(), ['body', 'headers', 'method', 'signal']);

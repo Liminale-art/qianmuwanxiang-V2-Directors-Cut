@@ -299,6 +299,10 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 } catch (error) { if (identityFailure(error) || error?.code === 'context') throw error; nativeError = error; rows = []; }
                 const natives = await buildNativeBackupCatalog(rows.filter(row => backupName(row?.file_name)).map(row => ({
                     name: row.file_name, size: String(row.file_size || ''), messageCount: Number.isSafeInteger(row.chat_items) && row.chat_items >= 0 ? row.chat_items : null,
+                    // ST's native `/api/backups/chat/get` computes last_mes from
+                    // the final JSONL floor's send_date (falling back to the
+                    // file mtime only for an empty chat). Do not replace this
+                    // with the backup filename timestamp.
                     lastMessageAt: typeof row.last_mes === 'string' || typeof row.last_mes === 'number' ? row.last_mes : '', excerpt: String(row.mes || '').slice(0, 240),
                 })), getCharacters(), { yieldToMain: async () => { await new Promise(resolve => setTimeout(resolve, 0)); live(token); } });
                 await guard(token);
