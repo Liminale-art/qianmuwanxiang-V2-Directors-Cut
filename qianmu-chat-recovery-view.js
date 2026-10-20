@@ -119,6 +119,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     // Recovery actions remain shared because only one target can be active at
     // a time; the preview bodies themselves are rendered per row below.
     const previewActions = element('section', 'qm-recovery-preview qm-recovery-preview-actions');
+    const previewActionsTitle = element('h4');
     const fixedTarget = element('p', 'qm-recovery-target-fixed');
     const targetLabel = element('label', '', '找回至角色');
     const targetTools = element('div', 'qm-recovery-target-tools');
@@ -147,7 +148,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             || currentCharacters.length !== 1 || currentCharacters[0].name !== characterName) return;
         await controller.recover(avatar);
     }));
-    previewActions.append(fixedTarget, targetLabel, recover);
+    previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
     const receipt = element('section', 'qm-recovery-receipt');
     const receiptText = element('p'); receiptText.setAttribute('role', 'status');
     const verify = button('核实上次结果', () => run(() => controller.verify())); receipt.append(receiptText, verify);
@@ -342,6 +343,9 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             : hasRead ? `当前已加载 ${loadedVisible} 份\n${loadedRole} · 共 ${rows.length} 份聊天记录` : '';
         loadedCount.hidden = !snapshot.busy && !hasRead;
         previewActions.hidden = !currentPreview;
+        previewActionsTitle.textContent = currentPreview
+            ? `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
+            : '';
         list.replaceChildren();
         const shownRows = rows.slice(0, visibleLimit);
         const formatLastMessage = value => {
@@ -373,6 +377,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             item.className = 'qm-recovery-item'; item.disabled = !!snapshot.busy || locked; item.title = displayName;
             const expanded = expandedPreviews.has(row.name);
             item.classList.toggle('is-selected', expanded);
+            item.classList.toggle('is-active', activePreviewName === row.name);
             item.setAttribute('aria-pressed', String(expanded));
             const count = Number.isFinite(row.messageCount) ? `${row.messageCount} 条消息` : '消息数待预览';
             const title = element('span', 'qm-recovery-name', displayName);

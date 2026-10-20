@@ -783,6 +783,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-row { display: grid; gap: 5px; }
 #story-director-floor-nav .qm-recovery-list .qm-recovery-item { display: flex; flex-direction: column; align-items: stretch; gap: 4px; text-align: start; background: var(--sd-card); }
 #story-director-floor-nav .qm-recovery-list .qm-recovery-item.is-selected { border-color: var(--sd-accent); }
+#story-director-floor-nav .qm-recovery-list .qm-recovery-item.is-active { box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent) 18%, transparent); }
 #story-director-floor-nav .qm-recovery-title-line { display: flex; align-items: center; gap: 7px; min-width: 0; }
 #story-director-floor-nav .qm-recovery-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--qm-type-label); font-weight: 400; }
 #story-director-floor-nav .qm-recovery-item small,
