@@ -36,6 +36,11 @@ function fixture(options = {}) {
         if (options.deferImport) { drafts.set(name, result); throw new Error('synthetic response lost'); }
         files.set(name, result); options.onImport?.(); return jsonResponse({ res: true, fileNames: [name] });
       }
+      if (path === '/api/chats/rename') {
+        const original = JSON.parse(init.body).original_file, renamed = JSON.parse(init.body).renamed_file;
+        if (!files.has(original) || files.has(renamed)) return new Response(JSON.stringify({ error: true }), { status: 400, headers: { 'content-type': 'application/json' } });
+        const value = files.get(original); files.delete(original); files.set(renamed, value); return jsonResponse({ ok: true });
+      }
       if (path === '/api/chats/export') return jsonResponse({ result: files.get(JSON.parse(init.body).file) });
       assert.fail('unexpected route');
     } });

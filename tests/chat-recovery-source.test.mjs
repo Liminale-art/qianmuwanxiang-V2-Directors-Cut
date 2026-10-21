@@ -62,6 +62,11 @@ function fixture({ listAlias = true, responseUrl, responseType = 'basic', redire
             if (aliasFor !== path) files.set(name, await init.body.get('avatar').text());
             return reply(path, { res: true, fileNames: [name] });
         }
+        if (path === '/api/chats/rename') {
+            const body = JSON.parse(init.body), value = files.get(body.original_file);
+            if (!files.has(body.original_file) || files.has(body.renamed_file)) return reply(path, { error: true }, { status: 400 });
+            files.delete(body.original_file); files.set(body.renamed_file, value); return reply(path, { ok: true });
+        }
         if (path === '/api/chats/export') return reply(path, { result: files.get(JSON.parse(init.body).file) });
         assert.fail('Unexpected synthetic route: ' + path);
     };

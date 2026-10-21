@@ -38,6 +38,9 @@ test('real routes and disk service integrate with the real recovery controller, 
       const form=options.body;assert.ok(form instanceof FormData);assert.equal(form.get('avatar_url'),'角色1.png');assert.equal(form.get('file_type'),'jsonl');assert.ok(form.get('avatar') instanceof Blob);assert.equal(form.get('file'),null);
       const fileName=form.get('character_name')+' - synthetic imported.jsonl';await fs.writeFile(path.join(role,fileName),await form.get('avatar').text(),{flag:'wx'});return respond({res:true,fileNames:[fileName]});
     }
+    if(url==='/api/chats/rename'){
+      const body=JSON.parse(options.body);assert.equal(body.avatar_url,'角色1.png');assert.equal(body.is_group,false);await fs.rename(path.join(role,body.original_file),path.join(role,body.renamed_file));return respond({ok:true,sanitizedFileName:body.renamed_file.replace(/\.jsonl$/,'')});
+    }
     if(url==='/api/chats/export'){const body=JSON.parse(options.body);assert.equal(body.avatar_url,'角色1.png');assert.equal(body.is_group,false);return respond({result:await fs.readFile(path.join(role,body.file),'utf8')});}
     assert.fail('No native save or other live network is permitted: '+url);
   };
@@ -57,7 +60,7 @@ test('real routes and disk service integrate with the real recovery controller, 
   await controller.preview(entry.name);assert.equal(controller.snapshot().preview.messageCount,2);assert.match(controller.snapshot().preview.text,/第二条正文/);
   const result=await controller.recover('角色1.png');assert.equal(result.result.status,'verified');const restored=inspectChatRecoveryJsonl(await fs.readFile(path.join(role,result.result.fileName),'utf8')).rows;
   assert.notEqual(restored[0].chat_metadata.integrity,rows()[0].chat_metadata.integrity);restored[0].chat_metadata.integrity=rows()[0].chat_metadata.integrity;assert.deepEqual(restored,rows());
-  assert.deepEqual(await fs.readFile(originalPath),original);assert.equal(calls.filter(call=>call.url==='/api/chats/import').length,1);assert.equal(calls.filter(call=>call.url==='/api/chats/save').length,0);await controller.verify();assert.equal(calls.filter(call=>call.url==='/api/chats/import').length,1);
+  assert.deepEqual(await fs.readFile(originalPath),original);assert.equal(calls.filter(call=>call.url==='/api/chats/import').length,1);assert.equal(calls.filter(call=>call.url==='/api/chats/rename').length,1);assert.doesNotMatch(result.result.fileName,/ imported\.jsonl$/);assert.equal(calls.filter(call=>call.url==='/api/chats/save').length,0);await controller.verify();assert.equal(calls.filter(call=>call.url==='/api/chats/import').length,1);
   controller.dispose();await registered[0].close();assert.equal(pendingTimers.size,0);const networkBefore=calls.length;
   const updated=rows();updated[2].mes='停页之后的已保存正文';await fs.writeFile(originalPath,jsonl(updated));const restarted=await boot();
   assert.equal(pendingTimers.size,1,'startup restores the persisted schedule before any HTTP call');

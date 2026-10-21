@@ -16,9 +16,9 @@ const fileName = value => typeof value === 'string' && value.length > 0 && new T
 const backupName = value => fileName(value) && value.startsWith('chat_') && value.endsWith('.jsonl');
 const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function importPrefix(target, existingNames) {
-    // ST appends its own humanized date/time and `imported.jsonl` suffix. Keep
-    // the same native naming shape while adding a stable Qianmu sequence to
-    // distinguish recovered copies from ordinary imports.
+    // Feed ST's native importer a stable Qianmu sequence. It supplies the
+    // humanized date/time; the temporary `imported` suffix is removed after
+    // the write has been confirmed.
     const label = String(target?.name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim() || '角色';
     const base = `${label}-QM`, matcher = new RegExp(`^${escapeRegExp(base)}(\\d+)\\s+-\\s+`);
     let highest = 0;
@@ -250,6 +250,19 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         need(Array.isArray(rows) && rows.every(row => fileName(row?.file_name) && row.file_name.endsWith('.jsonl')), 'target-list', '暂未确认目标角色的聊天目录，未创建副本');
         return rows.map(row => row.file_name);
     }
+    const withoutImportedSuffix = name => typeof name === 'string' && / imported\.jsonl$/.test(name)
+        ? name.replace(/ imported\.jsonl$/, '.jsonl') : name;
+    async function renameImportedChat(target, name, token) {
+        const renamed = withoutImportedSuffix(name);
+        if (renamed === name) return name;
+        need(fileName(renamed), 'rename', '聊天备份已导入，但目标文件名无效，请稍后核实');
+        const result = await json('/api/chats/rename', {
+            avatar_url: target.avatar, original_file: name, renamed_file: renamed, is_group: false,
+        }, token);
+        need(result?.ok === true, 'rename', '聊天备份已导入，但文件名调整未确认，请稍后核实');
+        sameTarget(target);
+        return renamed;
+    }
     function publicResult(status, file = '') {
         return { status, target: clone(pending.target), fileName: file, operationId: pending.id, messageCount: pending.messageCount };
     }
@@ -259,7 +272,19 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         const existing = pending.existingNames instanceof Set
             ? pending.existingNames
             : new Set(Array.isArray(pending.existingNames) ? pending.existingNames : []);
-        const candidates = names.filter(name => name.startsWith(pending.prefix + ' - ') && !existing.has(name));
+        let candidates = names.filter(name => name.startsWith(pending.prefix + ' - ') && !existing.has(name));
+        // ST's native importer appends ` imported.jsonl`. If the import
+        // response was lost, or the rename response was lost, discover that
+        // one candidate and finish the same operation without reposting it.
+        if (candidates.length === 1) {
+            const candidate = candidates[0], renamed = withoutImportedSuffix(candidate);
+            if (renamed !== candidate && (!pending.fileName || pending.fileName === renamed)) {
+                pending.fileName = renamed;
+                await renameImportedChat(pending.target, candidate, token);
+                const refreshed = await listChats(pending.target, token);
+                candidates = refreshed.filter(name => name.startsWith(pending.prefix + ' - ') && !existing.has(name));
+            }
+        }
         if (candidates.length !== 1 || pending.fileName && candidates[0] !== pending.fileName) {
             state.result = publicResult(candidates.length > 1 ? 'conflict' : 'unknown', pending.fileName || '');
             state.phase = 'unknown';
@@ -436,18 +461,26 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 // empty and the native route rejects the import with 400.
                 form.set('avatar', new Blob([rows.map(row => JSON.stringify(row)).join('\n')], { type: 'application/jsonl' }), prefix + '.jsonl');
                 await guard(token); sameTarget(target);
-                pending = { id, prefix, sourceName: original.name, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, fileName: '' };
+                pending = { id, prefix, sourceName: original.name, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, renamePending: false, fileName: '' };
                 try {
                     const raw = await response('/api/chats/import', form, token, { form: true, beforeSend: () => { sameTarget(target); pending.submitted = true; state.result = publicResult('unknown'); } });
                     let result; try { result = parse(raw, CHAT_RECOVERY_LIMITS.bytes); } catch {}
                     if (result?.res === false) throw fault('import', '聊天备份找回失败：ST 未创建副本');
-                    if (result?.res === true && Array.isArray(result.fileNames) && result.fileNames.length === 1 && fileName(result.fileNames[0]) && result.fileNames[0].startsWith(prefix + ' - ') && result.fileNames[0].endsWith('.jsonl')) pending.fileName = result.fileNames[0];
+                    if (result?.res === true && Array.isArray(result.fileNames) && result.fileNames.length === 1 && fileName(result.fileNames[0]) && result.fileNames[0].startsWith(prefix + ' - ') && result.fileNames[0].endsWith('.jsonl')) {
+                        const importedName = result.fileNames[0];
+                        pending.fileName = withoutImportedSuffix(importedName);
+                        if (pending.fileName !== importedName) {
+                            pending.renamePending = true;
+                            await renameImportedChat(target, importedName, token);
+                            pending.renamePending = false;
+                        }
+                    }
                 } catch (error) {
                     // A 4xx response is a definitive server rejection (for
                     // example the wrong multipart field). It cannot represent
                     // a write that succeeded after the response was lost, so
                     // clear the receipt and let the caller try another file.
-                    if (/^http-4\d\d$/.test(error?.code) || error?.code === 'import') {
+                    if ((/^http-4\d\d$/.test(error?.code) || error?.code === 'import') && !pending?.renamePending) {
                         pending = null; state.result = null; state.error = error.message;
                         throw error;
                     }

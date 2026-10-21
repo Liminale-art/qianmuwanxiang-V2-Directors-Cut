@@ -33,6 +33,13 @@ function fixture(options = {}) {
             if (options.importer) return options.importer(context);
             files.get(avatar).set(name, raw); return respond({ res: true, fileNames: [name] });
         }
+        if (path === '/api/chats/rename') {
+            const chats = files.get(body.avatar_url);
+            if (!chats?.has(body.original_file) || chats.has(body.renamed_file)) return new Response(JSON.stringify({ error: true }), { status: 400, headers: { 'content-type': 'application/json' } });
+            const raw = chats.get(body.original_file); chats.delete(body.original_file); chats.set(body.renamed_file, raw);
+            if (options.renameResponseLoss?.()) throw Error('rename response lost');
+            return respond({ ok: true, sanitizedFileName: body.renamed_file.replace(/\.jsonl$/, '') });
+        }
         if (path === '/api/chats/export') return respond({ result: files.get(body.avatar_url).get(body.file) });
         throw Error('Unexpected network route: ' + path);
     };
@@ -71,6 +78,7 @@ test('recovery preserves every metadata/message/swipe field and original files, 
     const f = fixture(), beforeSource = f.sources.get(backup), old = f.files.get('role.png').get('原聊天.jsonl');
     await f.prepare(); const result = await f.controller.recover('role.png');
     assert.equal(result.phase, 'verified'); assert.equal(result.busy, false); assert.equal(result.result.status, 'verified');
+    assert.doesNotMatch(result.result.fileName, / imported\.jsonl$/);
     assert.equal(f.imports().length, 1); const imported = f.imports()[0];
     assert.equal(imported.body.get('file_type'), 'jsonl'); assert.equal(imported.body.get('avatar_url'), 'role.png'); assert.ok(imported.body.get('avatar') instanceof Blob); assert.equal(imported.body.get('file'), null);
     assert.equal(imported.config.headers.has('content-type'), false); assert.equal(imported.config.headers.get('x-csrf-token'), 'fixture-only');
@@ -86,8 +94,15 @@ test('recovery preserves every metadata/message/swipe field and original files, 
 test('response loss after a successful write is resolved by readback, never reposted', async () => {
     const f = fixture({ importer: async ({ files, avatar, name, raw }) => { files.get(avatar).set(name, raw); throw Error('connection lost'); } });
     await f.prepare(); const result = await f.controller.recover('role.png');
-    assert.equal(result.result.status, 'verified'); assert.equal(f.imports().length, 1);
+    assert.equal(result.result.status, 'verified'); assert.doesNotMatch(result.result.fileName, / imported\.jsonl$/); assert.equal(f.imports().length, 1);
     await f.controller.verify(); assert.equal(f.imports().length, 1);
+});
+
+test('rename response loss after a successful import is resolved without reposting', async () => {
+    let lose = true;
+    const f = fixture({ renameResponseLoss: () => { if (!lose) return false; lose = false; return true; } }); await f.prepare();
+    const result = await f.controller.recover('role.png');
+    assert.equal(result.result.status, 'verified'); assert.doesNotMatch(result.result.fileName, / imported\.jsonl$/); assert.equal(f.imports().length, 1);
 });
 
 test('verified recovery markers survive a fresh list read without keeping the old banner or re-importing', async () => {
@@ -325,9 +340,9 @@ test('preview shows the newest five complete floors while the entire source rema
     assert.equal(inspectChatRecoveryJsonl(f.files.get('role.png').get(result.result.fileName)).rows.length, rows.length);
 });
 
-test('module uses only read routes plus import, with no delete/save/open/storage or raw HTML path', async () => {
+test('module uses only read routes plus import/rename, with no delete/save/open/storage or raw HTML path', async () => {
     const source = await readFile(new URL('../qianmu-chat-recovery.js', import.meta.url), 'utf8');
-    assert.doesNotMatch(source, /\/api\/chats\/(?:save|delete|rename)|\/api\/backups\/chat\/delete|innerHTML|localStorage|indexedDB|saveMetadata|openCharacterChat/);
+    assert.doesNotMatch(source, /\/api\/chats\/(?:save|delete)|\/api\/backups\/chat\/delete|innerHTML|localStorage|indexedDB|saveMetadata|openCharacterChat/);
     assert.match(source, /NOT exclusive-create/);
 });
 
