@@ -55,6 +55,17 @@ test('unknown import survives view close/reopen and later readback without anoth
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
 });
 
+test('verified recovery asks the host to refresh the welcome recent-chat list', async () => {
+  const f = fixture(); await f.prepare(); const ui = dom(); let refreshed = 0;
+  const view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true,
+    onRecovered: async result => { refreshed++; assert.equal(result.result.status, 'verified'); } });
+  f.view = view;
+  const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
+  const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
+  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至')); await recover.handlers.click();
+  assert.equal(refreshed, 1);
+});
+
 test('account changes after submission hide old private state and cannot resubmit the unknown operation', async () => {
   const f = fixture({ onImport: () => f.setAccount('account:other') }); await f.prepare();
   await assert.rejects(f.controller.recover('Synthetic.png'), /账户/);
@@ -101,7 +112,7 @@ test('recovery action does not open a confirmation popup', async () => {
   const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至'));
   await recover.handlers.click();
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
-  assert.match(ui.find(node => node.className === 'qm-recovery-status').textContent, /^已找回：/);
+  assert.match(ui.find(node => node.className === 'qm-recovery-status').textContent, /^已将此聊天备份找回至/);
   assert.equal(recover.disabled, true, 'the source recovery action is disabled after a verified import');
   await f.controller.load();
   assert.equal(ui.find(node => node.className === 'qm-recovery-status').hidden, true, 'a fresh list read clears the old success banner');

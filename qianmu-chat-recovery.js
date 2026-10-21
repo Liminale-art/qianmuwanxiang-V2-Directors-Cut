@@ -14,6 +14,22 @@ const fault = (code, message) => Object.assign(new Error(message), { code });
 const need = (ok, code, message) => { if (!ok) throw fault(code, message); };
 const fileName = value => typeof value === 'string' && value.length > 0 && new TextEncoder().encode(value).length <= 255 && !/[<>:"|?*\\/\u0000-\u001f\u007f-\u009f]/.test(value) && !/[. ]$/.test(value) && !/^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(value) && value !== '.' && value !== '..';
 const backupName = value => fileName(value) && value.startsWith('chat_') && value.endsWith('.jsonl');
+const escapeRegExp = value => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function importPrefix(target, existingNames) {
+    // ST appends its own humanized date/time and `imported.jsonl` suffix. Keep
+    // the same native naming shape while adding a stable Qianmu sequence to
+    // distinguish recovered copies from ordinary imports.
+    const label = String(target?.name || '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/g, '').trim() || '角色';
+    const base = `${label}-QM`, matcher = new RegExp(`^${escapeRegExp(base)}(\\d+)\\s+-\\s+`);
+    let highest = 0;
+    for (const name of Array.isArray(existingNames) ? existingNames : []) {
+        const match = typeof name === 'string' ? matcher.exec(name) : null;
+        if (!match) continue;
+        const number = Number(match[1]);
+        if (Number.isSafeInteger(number) && number > highest) highest = number;
+    }
+    return `${base}${highest + 1}`;
+}
 const parse = (text, maxBytes) => parseBoundedJson(text, { maxBytes, maxDepth: 40, maxNodes: 500000, label: '聊天找回' });
 const cancelQuietly = stream => { try { Promise.resolve(stream?.cancel?.()).catch(() => {}); } catch {} };
 const BACKUP_API = '/api/plugins/qianmu-tts/chat-backups';
@@ -412,12 +428,8 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 const id = crypto.randomUUID(); need(/^[a-f\d-]{36}$/i.test(id), 'random', '安全标识生成失败，未创建副本');
                 const integrity = crypto.randomUUID(); need(/^[a-f\d-]{36}$/i.test(integrity) && integrity !== original.rows[0].chat_metadata?.integrity, 'random', '新副本校验标识生成失败');
                 const rows = clone(original.rows); rows[0].chat_metadata ??= {}; rows[0].chat_metadata.integrity = integrity;
-                // ST appends its own timestamp to character_name. A human
-                // descriptor is more useful in the recent-chat list than a
-                // message-count suffix or an exposed operation UUID. The
-                // preflight snapshot below keeps repeated recoveries distinct.
-                const prefix = '千幕备份';
                 const names = await listChats(target, token);
+                const prefix = importPrefix(target, names);
                 const form = new FormData(); form.set('file_type', 'jsonl'); form.set('avatar_url', target.avatar); form.set('character_name', prefix); form.set('user_name', 'User');
                 // SillyTavern's global upload middleware binds the import
                 // upload under `avatar`; using `file` leaves request.file

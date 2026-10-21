@@ -162,9 +162,18 @@ test('verified recovery cannot import the same source into the same target twice
     assert.equal(second.result, null);
     assert.equal(f.imports().length, 1);
     for (const call of f.imports()) {
-        assert.equal(call.body.get('character_name'), '千幕备份');
+        assert.equal(call.body.get('character_name'), '目标角色-QM1');
         assert.doesNotMatch(call.body.get('character_name'), /\d+条/);
     }
+});
+
+test('recovery prefixes continue the target role QM sequence', async () => {
+    const f = fixture();
+    f.files.get('role.png').set('目标角色-QM7 - 2026-10-18@10h00m00s000ms imported.jsonl', jsonl(originalRows()));
+    await f.prepare();
+    const result = await f.controller.recover('role.png');
+    assert.equal(result.result.status, 'verified');
+    assert.equal(f.imports()[0].body.get('character_name'), '目标角色-QM8');
 });
 
 test('changed or removed source requires a new preview with no write', async () => {

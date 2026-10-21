@@ -379,8 +379,21 @@ async function mountFloorChatRecovery(root) {
     // Concurrent tab clicks share module loading and mount only one set of listeners.
     if (chatRecoveryPanel?.root === root) return;
     chatRecoveryPanel?.view.dispose();
+    const refreshRecentChats = async () => {
+      const context = ctx();
+      const currentChatId = typeof context.getCurrentChatId === 'function' ? context.getCurrentChatId() : context.chatId;
+      // Never emit CHAT_CHANGED while a real chat is open: the event is used
+      // by many extensions as a source-invalidation signal. On the welcome
+      // screen currentChatId is undefined, and passing force:true makes ST
+      // rebuild its recent-chat panel instead of reusing the greeting DOM.
+      if (currentChatId !== undefined && currentChatId !== null) return;
+      const eventSource = context.eventSource;
+      const eventType = context.eventTypes?.CHAT_CHANGED || context.event_types?.CHAT_CHANGED || 'chat_id_changed';
+      if (typeof eventSource?.emit === 'function') await eventSource.emit(eventType, { force: true });
+    };
     chatRecoveryPanel = { root, view: view.mountChatRecoveryView({ root: host, controller: chatRecoveryClient,
-      getCharacters: () => ctx().characters || [], confirm: message => confirmDialog('聊天备份', htmlEscape(message)), notify: toast }) };
+      getCharacters: () => ctx().characters || [], confirm: message => confirmDialog('聊天备份', htmlEscape(message)), notify: toast,
+      onRecovered: refreshRecentChats }) };
   } catch (_) {
     chatRecoveryLoading = null;
     if (root.isConnected) host.textContent = '聊天备份暂未载入，请关闭工具包后重试。';

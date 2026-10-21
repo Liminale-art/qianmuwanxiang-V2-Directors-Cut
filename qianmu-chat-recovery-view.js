@@ -17,7 +17,7 @@ const searchTokensFor = (name, avatar, aliases = []) => {
     return [...new Set([lower, pinyin, initials, String(avatar || '').toLocaleLowerCase(), ...aliases.map(value => String(value).toLocaleLowerCase())])];
 };
 const matchesSearch = (row, query) => !query || (row.searchTokens || [row.searchName]).some(token => token.includes(query));
-export function mountChatRecoveryView({ root, controller, getCharacters, confirm, notify = () => {} } = {}) {
+export function mountChatRecoveryView({ root, controller, getCharacters, confirm, notify = () => {}, onRecovered = () => {} } = {}) {
     const document = root.ownerDocument, OTHER = '__qianmu_other_backups__';
     let disposed = false, visibleLimit = 10, selectedAvatar = '', selection = '', search = '', selectionRevision = 0, suggestionDismissed = false, pickerOpen = false;
     // Keep preview data in the view so each expanded row owns its own
@@ -201,7 +201,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         if (disposed || selectedAvatar !== avatar || selectionRevision !== selectionToken || afterPreview?.name !== name || afterPreview?.revision !== revision
             || after.preview?.name !== name || after.preview?.revision !== revision || after.busy
             || currentCharacters.length !== 1 || currentCharacters[0].name !== characterName) return;
-        await controller.recover(avatar);
+        const result = await controller.recover(avatar);
+        // The native import route writes the file on disk, but ST's welcome
+        // page keeps its recent-chat panel in the current DOM. Let the host
+        // refresh that view after the controller has verified the new copy;
+        // a refresh failure must not turn a successful recovery into an
+        // error or invite a second import.
+        try { await onRecovered(result); } catch {}
     }));
     previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
 
@@ -401,7 +407,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         if (snapshot.busy) {
             status.append(element('span', 'qm-recovery-loading-dot'), element('span', '', '正在读取，请稍候…'));
         } else if (snapshot.error) status.append(element('span', '', snapshot.error));
-        else if (result?.status === 'verified') status.textContent = `已找回：${result.fileName || '副本'}`;
+        else if (result?.status === 'verified') status.textContent = `已将此聊天备份找回至${result.target?.name || '所选角色'}`;
         else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。' : '找回未完成，未创建副本。'));
         input.disabled = !!snapshot.busy;
         const indexForSuggestions = readCharacterIndex();
@@ -436,7 +442,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         loadedCount.hidden = !snapshot.busy && !hasRead;
         previewActions.hidden = !currentPreview;
         previewActionsTitle.textContent = currentPreview
-            ? recoveredCurrent ? `已找回：${recoveredCurrent.fileName}` : `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
+            ? recoveredCurrent ? `已将此聊天备份找回至${recoveredCurrent.target?.name || '所选角色'}` : `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
             : '';
         list.replaceChildren();
         const shownRows = rows.slice(0, visibleLimit);
