@@ -356,12 +356,15 @@ function disposeChatWriteGuard() {
 async function mountFloorChatRecovery(root) {
   const host = root.querySelector('[data-floor-view="recovery"]');
   if (!host || chatRecoveryPanel?.root === root) return;
-  host.textContent = '正在载入聊天备份…';
+  // Paint a local shell immediately so opening the tab has visible feedback
+  // while the recovery modules and account namespace resolve in the background.
+  host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div><div class="qm-recovery-loading-block"></div><div class="qm-recovery-loading-block"></div><div class="qm-recovery-loading-block"></div></div>';
   try {
     chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.482'), import('./qianmu-chat-recovery-view.js?v=1.59.482')]);
+    const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
-    const namespace = await resolveImageAccountNamespace();
+    const namespace = await namespacePromise;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
     if (chatRecoveryNamespace !== namespace) {
       chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;

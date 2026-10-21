@@ -91,13 +91,14 @@ test('response loss after a successful write is resolved by readback, never repo
     await f.controller.verify(); assert.equal(f.imports().length, 1);
 });
 
-test('unknown write stays unknown with zero blind retries, later verification uses the same frozen target', async () => {
+test('unknown write stays unknown with zero blind retries, while other backups remain readable', async () => {
     let deferred;
     const f = fixture({ importer: async value => { deferred = value; throw Error('still running remotely'); } });
     await f.prepare(); const first = await f.controller.recover('role.png');
     assert.equal(first.phase, 'unknown'); assert.equal(first.result.status, 'unknown');
     await f.controller.recover('other.png'); await f.controller.verify(); assert.equal(f.imports().length, 1);
-    await assert.rejects(f.controller.preview(backup), /先核实/);
+    await f.controller.preview(backup); assert.equal(f.controller.snapshot().result.status, 'unknown');
+    assert.equal(f.imports().length, 1);
     deferred.files.get(deferred.avatar).set(deferred.name, deferred.raw);
     const done = await f.controller.verify(); assert.equal(done.result.status, 'verified'); assert.equal(done.result.target.avatar, 'role.png'); assert.equal(f.imports().length, 1);
 });

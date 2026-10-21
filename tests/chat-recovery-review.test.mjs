@@ -163,6 +163,19 @@ test('role autocomplete binds the selected avatar, keeps the controls icon-only,
   assert.equal(list.children.at(-1), ui.find(node => node.className === 'qm-recovery-load-more'), 'load-more is inside the scroll container');
 });
 
+test('role picker is an in-panel list and writes the chosen role into the search field', async () => {
+  const f = fixture(); await f.controller.load();
+  const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const icon = ui.find(node => node.className === 'qm-recovery-icon-button'); await icon.handlers.click();
+  const picker = ui.find(node => node.className === 'qm-recovery-role-picker');
+  assert.equal(picker.hidden, false, 'role picker opens inside the panel');
+  assert.equal(ui.find(node => node.className === 'qm-recovery-character-select').hidden, true, 'native select stays out of the touch path');
+  const choice = ui.find(node => node.className?.includes('qm-recovery-role-option') && node.textContent === '合成角色');
+  await choice.handlers.click();
+  assert.equal(ui.find(node => node.tag === 'input' && node.placeholder === '搜索角色名').value, '合成角色');
+  assert.equal(ui.find(node => node.tag === 'button' && node.innerHTML?.includes('fa-rotate')).disabled, false);
+});
+
 test('native ST Assistant is omitted from the recovery role picker and suggestions', async () => {
   const f = fixture();
   f.characters.unshift({ avatar: 'default_Assistant.png', name: 'Assistant' });
@@ -209,6 +222,20 @@ test('loaded count identifies the selected role and preview rows toggle independ
   await items()[0].handlers.click();
   assert.deepEqual(calls, [firstName, secondName], 'collapsing an open row does not download it again');
   assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 2);
+});
+
+test('an unconfirmed recovery keeps browsing and preview available while the result remains frozen', async () => {
+  const f = fixture({ deferImport: true }); await f.prepare();
+  const first = await f.controller.recover('Synthetic.png'); assert.equal(first.result.status, 'unknown');
+  const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const character = ui.find(node => node.className === 'qm-recovery-character-select'); character.value = 'Synthetic.png'; character.handlers.change();
+  const item = ui.find(node => node.className === 'qm-recovery-item');
+  assert.equal(item.disabled, false, 'an uncertain write does not disable backup reading');
+  await item.handlers.click();
+  assert.equal(f.controller.snapshot().result.status, 'unknown', 'the frozen write receipt remains available for later verification');
+  assert.equal(ui.find(node => node.className === 'qm-recovery-receipt'), undefined, 'the duplicate lower receipt is removed');
+  const status = ui.find(node => node.className === 'qm-recovery-status');
+  assert.ok(status.children.some(node => node.textContent === '核实上次结果'), 'verification stays in the top status box');
 });
 
 test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {

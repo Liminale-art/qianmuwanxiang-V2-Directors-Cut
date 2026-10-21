@@ -247,7 +247,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         if (candidates.length !== 1 || pending.fileName && candidates[0] !== pending.fileName) {
             state.result = publicResult(candidates.length > 1 ? 'conflict' : 'unknown', pending.fileName || '');
             state.phase = 'unknown';
-            state.error = candidates.length > 1 ? '找到多份同次副本，未继续创建，请核对聊天文件' : '尚未确认副本，请稍后点“核实结果”，不要重复创建';
+            state.error = candidates.length > 1 ? '找到多份同次副本，未继续创建，请核对聊天文件' : '本次核实暂未发现新副本；可以继续读取其他备份，稍后再核实。';
             return snapshot();
         }
         const name = candidates[0]; pending.fileName = name;
@@ -325,7 +325,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 // again; a different account has already cleared pending above.
                 if (pending?.submitted) {
                     state.result = publicResult(pending.verified ? 'verified' : 'unknown', pending.fileName || '');
-                    if (!pending.verified) state.error = '尚未确认副本，请先点“核实上次结果”，不要重复创建';
+                    if (!pending.verified) state.error = '本次找回尚未确认；可以继续读取其他备份，稍后再核实。';
                 }
             }, { bind: true });
         },
@@ -371,10 +371,16 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         },
         preview(name) {
             return run('previewing', async token => {
-                need(!pending?.submitted || pending.verified, 'unverified', '请先核实上一份副本，不要重复创建');
                 need(state.backups.some(row => row.name === name), 'source', '请从当前账户的备份清单中选择');
                 const candidate = await download(name, token);
-                source = { ...candidate, name }; pending = null; state.result = null; state.preview = { ...previewOf(name, source), revision: ++previewRevision }; state.phase = 'ready';
+                // An unconfirmed import remains frozen for verification, but it
+                // must not prevent the user from reading other backups. Clear a
+                // completed receipt when a new source is chosen; keep an
+                // unconfirmed receipt until verification resolves it.
+                const unresolvedPending = pending?.submitted && !pending.verified;
+                source = { ...candidate, name };
+                if (!unresolvedPending) { pending = null; state.result = null; state.error = ''; }
+                state.preview = { ...previewOf(name, source), revision: ++previewRevision }; state.phase = 'ready';
             });
         },
         recover(avatar) {

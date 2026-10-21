@@ -3,7 +3,7 @@ const CHAT_BACKUP_RETENTION_DAYS = Object.freeze([3, 7, 15, 30]);
 const DEFAULT_CHAT_BACKUP_RETENTION_DAYS = 30;
 export function mountChatRecoveryView({ root, controller, getCharacters, confirm, notify = () => {} } = {}) {
     const document = root.ownerDocument, OTHER = '__qianmu_other_backups__';
-    let disposed = false, visibleLimit = 10, selectedAvatar = '', selection = '', search = '', selectionRevision = 0, suggestionDismissed = false;
+    let disposed = false, visibleLimit = 10, selectedAvatar = '', selection = '', search = '', selectionRevision = 0, suggestionDismissed = false, pickerOpen = false;
     // Keep preview data in the view so each expanded row owns its own
     // disclosure state. The controller still performs the bounded, verified
     // download; switching back to an already-open row never reloads it.
@@ -65,7 +65,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const characters = () => readCharacterIndex().rows;
     const option = (label, value) => { const node = element('option', '', label); node.value = value; return node; };
     const invalidatePreview = () => { expandedPreviews.clear(); activePreviewName = ''; selectionRevision++; visibleLimit = 10; };
-    const unresolved = snapshot => !!snapshot.result && snapshot.result.status !== 'verified';
     const filteredRows = snapshot => {
         const currentCharacters = readCharacterIndex();
         const rows = (snapshot.backups || []).filter(row => !(Array.isArray(row.candidateAvatars)
@@ -102,28 +101,36 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { searchTimer = null; if (disposed) return; search = input.value; characterLimit = CHARACTER_BATCH; render(); }, 120);
     });
-    const character = element('select', 'qm-recovery-character-select'); character.setAttribute('aria-label', '选择要找回的角色');
+    const character = element('select', 'qm-recovery-character-select'); character.setAttribute('aria-label', '选择要找回的角色'); character.hidden = true; character.tabIndex = -1; character.setAttribute('aria-hidden', 'true');
     character.addEventListener('change', () => {
-        selection = character.value; selectedAvatar = selection === OTHER ? '' : selection; hasRead = false; invalidatePreview(); render();
+        selection = character.value; selectedAvatar = selection === OTHER ? '' : selection;
+        const picked = readCharacterIndex().rows.find(row => row.avatar === selection);
+        input.value = selection === OTHER ? '其他备份' : picked?.name || '';
+        search = input.value;
+        pickerOpen = false; hasRead = false; invalidatePreview(); render();
     });
     const characterControl = element('span', 'qm-recovery-character-control');
+    const rolePicker = element('div', 'qm-recovery-role-picker'); rolePicker.hidden = true; rolePicker.setAttribute('role', 'listbox');
+    const rolePickerList = element('div', 'qm-recovery-role-picker-list'); rolePicker.append(rolePickerList);
     const characterIcon = button('', () => {
-        character.focus();
-        try { if (typeof character.showPicker === 'function') character.showPicker(); else character.click(); }
-        catch { try { character.click(); } catch {} }
+        search = input.value;
+        characterLimit = CHARACTER_BATCH;
+        pickerOpen = !pickerOpen;
+        render();
     });
     characterIcon.className = 'qm-recovery-icon-button'; characterIcon.innerHTML = '<i class="fa-solid fa-filter"></i><span class="qm-sr-only">选择角色</span>';
     characterIcon.setAttribute('aria-label', '选择角色');
-    characterControl.append(characterIcon, character);
     const moreCharacters = button('加载更多角色', () => { characterLimit += CHARACTER_BATCH; render(); });
     moreCharacters.className = 'qm-recovery-character-more'; moreCharacters.setAttribute('aria-label', '加载更多角色');
+    rolePicker.append(moreCharacters);
+    characterControl.append(characterIcon, character, rolePicker);
     const load = button('读取备份', () => run(async () => {
         if (!selection) return;
         invalidatePreview(); hasRead = true; render(); await controller.load();
     }));
     load.innerHTML = '<i class="fa-solid fa-rotate"></i><span class="qm-sr-only">读取备份</span>';
     load.setAttribute('aria-label', '读取备份');
-    tools.append(characterControl, input, load, moreCharacters);
+    tools.append(characterControl, input, load);
     const status = element('p', 'qm-recovery-status'); status.setAttribute('role', 'status');
     const loadedCount = element('small', 'qm-recovery-loaded');
     const list = element('div', 'qm-recovery-list');
@@ -162,9 +169,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         await controller.recover(avatar);
     }));
     previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
-    const receipt = element('section', 'qm-recovery-receipt');
-    const receiptText = element('p'); receiptText.setAttribute('role', 'status');
-    const verify = button('核实上次结果', () => run(() => controller.verify())); receipt.append(receiptText, verify);
+    const verify = button('核实上次结果', () => run(() => controller.verify())); verify.hidden = true;
 
     const automatic = element('section', 'qm-recovery-auto');
     const automaticFields = element('div', 'qm-recovery-auto-fields');
@@ -238,7 +243,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         finally { automaticBusy = false; render(); }
     });
     automatic.append(automaticFields, automaticStatus);
-    root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions, receipt, automatic);
+    root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions, automatic);
 
     const createPreviewSection = (displayName, currentPreview) => {
         const section = element('section', 'qm-recovery-preview');
@@ -312,17 +317,52 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const index = readCharacterIndex(), allCharacters = index.rows;
         renderCharacterPicker(character, moreCharacters, index, search, characterLimit, selection, true);
         if (character.value !== selection) { selection = ''; selectedAvatar = ''; hasRead = false; invalidatePreview(); }
+        const pickerQuery = input.value.trim().toLocaleLowerCase();
+        const pickerRows = index.rows.filter(row => !pickerQuery || row.searchName.includes(pickerQuery));
+        rolePicker.hidden = !pickerOpen || !!snapshot.busy;
+        if (!rolePicker.hidden) {
+            const choices = pickerRows.slice(0, characterLimit).map(row => {
+                const choice = button(row.label, () => {
+                    input.value = row.name;
+                    search = row.name;
+                    selection = row.avatar;
+                    selectedAvatar = row.avatar;
+                    character.value = row.avatar;
+                    hasRead = false;
+                    suggestionDismissed = true;
+                    pickerOpen = false;
+                    invalidatePreview();
+                    render();
+                    input.focus();
+                });
+                choice.className = `qm-recovery-role-option${selection === row.avatar ? ' is-selected' : ''}`;
+                choice.setAttribute('role', 'option');
+                choice.setAttribute('aria-selected', String(selection === row.avatar));
+                return choice;
+            });
+            const other = button('其他／未匹配备份', () => {
+                input.value = '其他备份'; search = ''; selection = OTHER; selectedAvatar = '';
+                character.value = OTHER; hasRead = false; suggestionDismissed = true; pickerOpen = false; invalidatePreview(); render();
+            });
+            other.className = `qm-recovery-role-option${selection === OTHER ? ' is-selected' : ''}`; other.setAttribute('role', 'option');
+            rolePickerList.replaceChildren(...choices, other);
+        } else rolePickerList.replaceChildren();
         const rows = filteredRows(snapshot), currentPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null;
-        const locked = unresolved(snapshot);
         load.classList.toggle('is-loading', !!snapshot.busy);
         load.disabled = !!snapshot.busy || !selection; input.disabled = !!snapshot.busy; character.disabled = !!snapshot.busy; characterIcon.disabled = !!snapshot.busy;
         moreCharacters.disabled = !!snapshot.busy;
-        status.hidden = !(snapshot.busy || snapshot.error);
+        const result = snapshot.result;
+        status.hidden = !(snapshot.busy || snapshot.error || result);
         status.classList.toggle('is-loading', !!snapshot.busy);
         status.replaceChildren();
         if (snapshot.busy) {
             status.append(element('span', 'qm-recovery-loading-dot'), element('span', '', '正在读取，请稍候…'));
-        } else if (snapshot.error) status.textContent = snapshot.error;
+        } else if (snapshot.error) status.append(element('span', '', snapshot.error));
+        else if (result?.status === 'verified') status.textContent = `已找回 ${result.messageCount} 条消息至“${result.target?.name || '所选角色'}”。请从该角色的聊天记录打开副本：${result.fileName}`;
+        else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。请保留原件并核对。' : '尚未确认是否已创建副本，请先核实结果。'));
+        if (!snapshot.busy && result && result.status !== 'verified') {
+            verify.hidden = false; verify.disabled = false; status.append(verify);
+        } else verify.hidden = true;
         input.disabled = !!snapshot.busy;
         const indexForSuggestions = readCharacterIndex();
         const suggestionQuery = input.value.trim().toLocaleLowerCase();
@@ -368,7 +408,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         for (const row of shownRows) {
             const item = button('', () => run(async () => {
                 const before = controller.snapshot(), epoch = selectionRevision;
-                if (before.busy || unresolved(before) || !filteredRows(before).some(candidate => candidate.name === row.name)) return;
+                if (before.busy || !filteredRows(before).some(candidate => candidate.name === row.name)) return;
                 if (expandedPreviews.has(row.name)) {
                     expandedPreviews.delete(row.name);
                     if (activePreviewName === row.name) {
@@ -386,7 +426,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
                 render();
             }));
             const displayName = typeof row.chatFile === 'string' && row.chatFile ? row.chatFile : row.name;
-            item.className = 'qm-recovery-item'; item.disabled = !!snapshot.busy || locked; item.title = displayName;
+            item.className = 'qm-recovery-item'; item.disabled = !!snapshot.busy; item.title = displayName;
             const expanded = expandedPreviews.has(row.name);
             item.classList.toggle('is-selected', expanded);
             item.classList.toggle('is-active', activePreviewName === row.name);
@@ -419,15 +459,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         targetInput.disabled = !!snapshot.busy; moreTargets.disabled = !!snapshot.busy;
         recover.textContent = `找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
         recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!snapshot.result;
-        receipt.hidden = !snapshot.result;
-        if (snapshot.result) {
-            const result = snapshot.result;
-            receiptText.textContent = result.status === 'verified'
-                ? `已找回 ${result.messageCount} 条消息至“${result.target?.name || '所选角色'}”。请从该角色的聊天记录打开副本：${result.fileName}`
-                : result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。请保留原件并核对。'
-                    : '尚未确认是否已创建副本。请先核实上次结果，不要重复找回。';
-            verify.hidden = result.status === 'verified'; verify.disabled = !!snapshot.busy;
-        }
         renderAutomatic(snapshot);
     }
     render();
