@@ -90,6 +90,20 @@ test('response loss after a successful write is resolved by readback, never repo
     await f.controller.verify(); assert.equal(f.imports().length, 1);
 });
 
+test('verified recovery markers survive a fresh list read without keeping the old banner or re-importing', async () => {
+    const f = fixture(); await f.prepare();
+    const first = await f.controller.recover('role.png');
+    assert.equal(first.result.status, 'verified');
+    assert.equal(f.controller.snapshot().recovered.length, 1);
+    await f.controller.load();
+    assert.equal(f.controller.snapshot().result, null);
+    assert.equal(f.controller.snapshot().recovered.length, 1);
+    await f.controller.preview(backup);
+    const again = await f.controller.recover('role.png');
+    assert.equal(again.result, null);
+    assert.equal(f.imports().length, 1);
+});
+
 test('definitive ST import rejection clears the receipt and allows a later recovery', async () => {
     let reject = true;
     const f = fixture({ importer: async ({ files, avatar, name, raw, respond }) => {
@@ -132,7 +146,7 @@ test('multiple operation-prefix matches are not guessed or deleted', async () =>
     assert.equal(result.result.status, 'conflict'); assert.equal(f.calls.some(call => call.path === '/api/chats/export'), false); assert.equal(f.files.get('role.png').size, 3);
 });
 
-test('repeated recovery uses the human descriptor without a message-count suffix', async () => {
+test('verified recovery cannot import the same source into the same target twice', async () => {
     let sequence = 0;
     const f = fixture({ importer: async ({ files, avatar, prefix, raw, respond }) => {
         const name = `${prefix} - 2026-10-19@11h00m00s00${++sequence}ms imported.jsonl`;
@@ -145,8 +159,8 @@ test('repeated recovery uses the human descriptor without a message-count suffix
     await f.controller.load();
     await f.controller.preview(backup);
     const second = await f.controller.recover('role.png');
-    assert.equal(second.result.status, 'verified');
-    assert.equal(f.imports().length, 2);
+    assert.equal(second.result, null);
+    assert.equal(f.imports().length, 1);
     for (const call of f.imports()) {
         assert.equal(call.body.get('character_name'), '千幕备份');
         assert.doesNotMatch(call.body.get('character_name'), /\d+条/);

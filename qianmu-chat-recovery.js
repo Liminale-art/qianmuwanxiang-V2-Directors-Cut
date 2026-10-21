@@ -155,7 +155,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     need(Number.isFinite(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 15000, 'configuration', '聊天找回读取时限无效');
     const requests = new Set();
     let disposed = false, operation = 0, previewRevision = 0, active = false, owner = '', source = null, pending = null, uncertainConfiguration = false;
-    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, automaticBackup: automaticState() };
+    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], automaticBackup: automaticState() };
     const snapshot = () => clone(state);
     const emit = () => { if (!disposed && isCurrent()) { try { onChange(snapshot()); } catch {} } };
     const live = token => { need(!disposed && token === operation && isCurrent(), 'context', '找回页面已变化，请重新打开'); };
@@ -260,7 +260,11 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             state.result = publicResult('conflict', name); state.phase = 'unknown'; state.error = '副本内容与备份不一致，未覆盖或删除任何文件，请核对';
             return snapshot();
         }
-        pending.verified = true; state.result = publicResult('verified', name); state.phase = 'verified'; state.error = '';
+        pending.verified = true;
+        const recovered = Array.isArray(state.recovered) ? state.recovered.filter(row => row.sourceName !== pending.sourceName || row.target?.avatar !== pending.target.avatar) : [];
+        recovered.push({ sourceName: pending.sourceName, fileName: name, target: clone(pending.target), operationId: pending.id, messageCount: pending.messageCount });
+        state.recovered = recovered;
+        state.result = publicResult('verified', name); state.phase = 'verified'; state.error = '';
         return snapshot();
     }
     async function run(phase, action, { bind = false } = {}) {
@@ -270,7 +274,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             if (bind) {
                 const account = await accountNow(); live(token);
                 need(typeof account === 'string' && account, 'account', '暂未确认当前 ST 账户');
-                if (owner && owner !== account) { source = null; pending = null; uncertainConfiguration = false; state.backups = []; state.preview = null; state.result = null; state.automaticBackup = automaticState(); }
+                if (owner && owner !== account) { source = null; pending = null; uncertainConfiguration = false; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.automaticBackup = automaticState(); }
                 owner = account;
                 state.automaticBackup.configurationUnknown = uncertainConfiguration;
             }
@@ -279,7 +283,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             if (!disposed && token === operation) {
                 state.phase = pending?.submitted && !pending.verified && !identityFailure(error) ? 'unknown' : 'error';
                 state.error = error?.code ? error.message : '操作未完成，请稍后核实';
-                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.automaticBackup = automaticState(); }
+                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.automaticBackup = automaticState(); }
                 else if (pending?.submitted && !pending.verified) state.result = publicResult('unknown', pending.fileName || '');
             }
             throw error;
@@ -292,6 +296,13 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         snapshot,
         load() {
             return run('loading', async token => {
+                // A fresh list read starts a new browsing round. Keep the
+                // durable recovered markers, but do not keep the old success
+                // banner pinned above the newly loaded list.
+                state.result = null;
+                state.error = '';
+                state.phase = 'loading';
+                emit();
                 let rows = [], nativeError = null, automaticRows = [];
                 try {
                     rows = await json('/api/backups/chat/get', {}, token);
@@ -319,12 +330,12 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 if (nativeError && !automaticRows.length) throw nativeError;
                 state.backups = [...natives, ...automaticRows];
                 if (nativeError) state.error = nativeError.message + '；当前仅显示千幕定时备份。';
-                state.phase = pending?.submitted ? pending.verified ? 'verified' : 'unknown' : 'ready';
+                state.phase = pending?.submitted && !pending.verified ? 'unknown' : 'ready';
                 // A transient identity lookup failure hides private details.
                 // Rebinding the SAME confirmed account may reveal its receipt
                 // again; a different account has already cleared pending above.
-                if (pending?.submitted) {
-                    state.result = publicResult(pending.verified ? 'verified' : 'unknown', pending.fileName || '');
+                if (pending?.submitted && !pending.verified) {
+                    state.result = publicResult('unknown', pending.fileName || '');
                     if (!pending.verified) state.error = '本次找回尚未确认；可以继续读取其他备份，稍后再核实。';
                 }
             }, { bind: true });
@@ -389,6 +400,9 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             // pair. A different target or a newly previewed source is a
             // separate recovery operation and must remain usable; the old
             // operation is never reposted automatically.
+            if (source?.name && Array.isArray(state.recovered)
+                && state.recovered.some(row => row.sourceName === source.name && row.target?.avatar === avatar)) return snapshot();
+            if (pending?.verified && source?.name === pending.sourceName && avatar === pending.target?.avatar) return snapshot();
             if (pending?.submitted && source?.name === pending.sourceName && avatar === pending.target?.avatar) return run('recovering', verifyPending);
             return run('recovering', async token => {
                 need(source && state.preview?.canRecover, 'source', '请先预览要找回的备份');
@@ -434,6 +448,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             });
         },
         verify() { return run('recovering', verifyPending); },
-        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, automaticBackup: automaticState() }; },
+        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], automaticBackup: automaticState() }; },
     });
 }

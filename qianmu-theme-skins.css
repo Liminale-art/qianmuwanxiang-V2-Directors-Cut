@@ -45,10 +45,10 @@
 }
 :is(#story-director-modal, [data-qm-theme]):is([data-qm-theme="editorial"], [data-qm-theme="glass"]) {
   --sd-window-glow: none;
-  /* A classic dream class can remain on the modal while a new skin is
-     mounted. Rebind the heading gradients to live skin tokens so the old
-     dream rainbow cannot leak into minimal/editorial or stale after an
-     accent-color change. */
+  /* The classic sd-theme-* class may remain for rollback compatibility while
+     a new skin is mounted. Rebind heading gradients to live skin tokens so
+     the old dream rainbow cannot leak into minimal/editorial or remain stale
+     after an accent-color change. */
   --sd-title-grad: linear-gradient(92deg, var(--qm-accent), var(--qm-ink));
   --sd-subtitle-grad: linear-gradient(90deg, var(--qm-accent), var(--qm-muted) 70%);
   --qm-card-radius: 5px;

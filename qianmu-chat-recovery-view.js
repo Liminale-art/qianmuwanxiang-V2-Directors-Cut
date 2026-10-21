@@ -24,6 +24,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     // disclosure state. The controller still performs the bounded, verified
     // download; switching back to an already-open row never reloads it.
     const expandedPreviews = new Map();
+    const expandedRows = new Set();
     let activePreviewName = '';
     const CHARACTER_BATCH = 50;
     let characterLimit = CHARACTER_BATCH, targetLimit = CHARACTER_BATCH, targetSearch = '', searchTimer = null, targetSearchTimer = null;
@@ -81,24 +82,42 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     };
     const characters = () => readCharacterIndex().rows;
     const option = (label, value) => { const node = element('option', '', label); node.value = value; return node; };
-    const invalidatePreview = () => { expandedPreviews.clear(); activePreviewName = ''; selectionRevision++; visibleLimit = 10; };
+    const invalidatePreview = () => { expandedPreviews.clear(); expandedRows.clear(); activePreviewName = ''; selectionRevision++; visibleLimit = 10; };
     const filteredRows = snapshot => {
         const currentCharacters = readCharacterIndex();
         const rows = (snapshot.backups || []).filter(row => !(Array.isArray(row.candidateAvatars)
             && row.candidateAvatars.some(avatar => currentCharacters.hiddenAvatars.has(avatar)))).filter(row => selection === OTHER
             ? row.match !== 'candidate' || !(row.candidateAvatars || []).some(avatar => currentCharacters.avatarCounts.get(avatar) === 1)
             : !!selection && (row.candidateAvatars || []).includes(selection));
-        // Native timestamps have no UTC offset. Keep timezone groups explicit;
-        // never present server wall-clock and local instants as one exact order.
-        // A longer conversation has a later final floor. Prefer that signal
-        // over backup creation time so the newest usable story context is
-        // surfaced first; creation time remains a deterministic tie-breaker.
-        const floorOf = row => Number.isSafeInteger(row.lastMessageFloor)
-            ? row.lastMessageFloor
-            : Number.isSafeInteger(row.messageCount) ? row.messageCount : -1;
+        // Match ST's own chat list: the timestamp of the final conversation
+        // floor is the primary order, regardless of file creation time or
+        // message count. ST accepts both Unix milliseconds and its compact
+        // humanized UTC form, while Qianmu snapshots normally carry ISO dates.
+        const timestampOf = value => {
+            if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+            if (typeof value !== 'string' || !value.trim()) return null;
+            const text = value.trim();
+            if (/^\d+$/.test(text)) {
+                const number = Number(text);
+                return Number.isFinite(number) ? number : null;
+            }
+            const humanized = /^(\d{4})-(\d{1,2})-(\d{1,2})@?(?:\s*)?(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s(?:\s*(\d{1,3})ms)?$/.exec(text)
+                || /^(\d{4})-(\d{1,2})-(\d{1,2})\s*@\s*(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s(?:\s*(\d{1,3})ms)?$/.exec(text);
+            if (humanized) {
+                const [, year, month, day, hour, minute, second, millisecond = '0'] = humanized;
+                const date = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second), Number(millisecond.padEnd(3, '0')));
+                return Number.isFinite(date) ? date : null;
+            }
+            const date = Date.parse(text);
+            return Number.isFinite(date) ? date : null;
+        };
         return rows.sort((a, b) => {
-            const floorDelta = floorOf(b) - floorOf(a);
-            if (floorDelta) return floorDelta;
+            const timeA = timestampOf(a.lastMessageAt), timeB = timestampOf(b.lastMessageAt);
+            if (timeA !== null || timeB !== null) {
+                if (timeA === null) return 1;
+                if (timeB === null) return -1;
+                if (timeB !== timeA) return timeB - timeA;
+            }
             const knownA = Number.isFinite(a.backupSort), knownB = Number.isFinite(b.backupSort);
             if (knownA !== knownB) return knownA ? -1 : 1;
             const dayA = a.backupDay || '', dayB = b.backupDay || '';
@@ -260,9 +279,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     automatic.append(automaticFields, automaticStatus);
     root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions, automatic);
 
-    const createPreviewSection = (displayName, currentPreview) => {
+    const createPreviewSection = currentPreview => {
         const section = element('section', 'qm-recovery-preview');
-        section.append(element('h4', '', displayName));
         const floorLimit = currentPreview.previewFloorLimit || 5;
         const previewHint = element('small', 'qm-recovery-preview-hint',
             `预览仅加载最后${floorLimit}层`);
@@ -370,6 +388,9 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             }
         } else rolePickerList.replaceChildren();
         const rows = filteredRows(snapshot), currentPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null;
+        const recoveredCurrent = currentPreview && Array.isArray(snapshot.recovered)
+            ? snapshot.recovered.find(row => row.sourceName === currentPreview.name && row.target?.avatar === selectedAvatar)
+            : null;
         load.classList.toggle('is-loading', !!snapshot.busy);
         load.disabled = !!snapshot.busy || !selection; input.disabled = !!snapshot.busy; character.disabled = !!snapshot.busy; characterIcon.disabled = !!snapshot.busy;
         moreCharacters.disabled = !!snapshot.busy;
@@ -380,7 +401,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         if (snapshot.busy) {
             status.append(element('span', 'qm-recovery-loading-dot'), element('span', '', '正在读取，请稍候…'));
         } else if (snapshot.error) status.append(element('span', '', snapshot.error));
-        else if (result?.status === 'verified') status.textContent = `已找回 ${result.messageCount} 条消息至“${result.target?.name || '所选角色'}”。请从该角色的聊天记录打开副本：${result.fileName}`;
+        else if (result?.status === 'verified') status.textContent = `已找回：${result.fileName || '副本'}`;
         else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。' : '找回未完成，未创建副本。'));
         input.disabled = !!snapshot.busy;
         const indexForSuggestions = readCharacterIndex();
@@ -415,7 +436,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         loadedCount.hidden = !snapshot.busy && !hasRead;
         previewActions.hidden = !currentPreview;
         previewActionsTitle.textContent = currentPreview
-            ? `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
+            ? recoveredCurrent ? `已找回：${recoveredCurrent.fileName}` : `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
             : '';
         list.replaceChildren();
         const shownRows = rows.slice(0, visibleLimit);
@@ -428,12 +449,18 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             const item = button('', () => run(async () => {
                 const before = controller.snapshot(), epoch = selectionRevision;
                 if (before.busy || !filteredRows(before).some(candidate => candidate.name === row.name)) return;
-                if (expandedPreviews.has(row.name)) {
-                    expandedPreviews.delete(row.name);
+                if (expandedRows.has(row.name)) {
+                    expandedRows.delete(row.name);
                     if (activePreviewName === row.name) {
-                        const last = [...expandedPreviews.keys()].at(-1);
+                        const last = [...expandedRows].at(-1);
                         activePreviewName = last || '';
                     }
+                    render();
+                    return;
+                }
+                if (expandedPreviews.has(row.name)) {
+                    expandedRows.add(row.name);
+                    activePreviewName = row.name;
                     render();
                     return;
                 }
@@ -441,12 +468,13 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
                 const after = controller.snapshot();
                 if (disposed || epoch !== selectionRevision || after.preview?.name !== row.name || !filteredRows(after).some(candidate => candidate.name === row.name)) return;
                 expandedPreviews.set(row.name, after.preview);
+                expandedRows.add(row.name);
                 activePreviewName = row.name;
                 render();
             }));
             const displayName = typeof row.chatFile === 'string' && row.chatFile ? row.chatFile : row.name;
             item.className = 'qm-recovery-item'; item.disabled = !!snapshot.busy; item.title = displayName;
-            const expanded = expandedPreviews.has(row.name);
+            const expanded = expandedRows.has(row.name);
             item.classList.toggle('is-selected', expanded);
             item.classList.toggle('is-active', activePreviewName === row.name);
             item.setAttribute('aria-pressed', String(expanded));
@@ -459,8 +487,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             item.append(titleLine, element('small', 'qm-recovery-meta', metadata + (lastMessage ? ` · 最后对话 ${lastMessage}` : '')));
             if (row.excerpt) item.append(element('span', 'qm-recovery-excerpt', row.excerpt));
             const wrap = element('article', 'qm-recovery-row'); wrap.append(item);
-            const rowPreview = expandedPreviews.get(row.name);
-            if (rowPreview) wrap.append(createPreviewSection(displayName, rowPreview));
+            const rowPreview = expanded ? expandedPreviews.get(row.name) : null;
+            if (rowPreview) wrap.append(createPreviewSection(rowPreview));
             list.append(wrap);
         }
         list.append(loadMoreBackups);
@@ -477,7 +505,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         target.disabled = !!snapshot.busy;
         targetInput.disabled = !!snapshot.busy; moreTargets.disabled = !!snapshot.busy;
         recover.textContent = `找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
-        recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover;
+        recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!recoveredCurrent;
         renderAutomatic(snapshot);
     }
     render();

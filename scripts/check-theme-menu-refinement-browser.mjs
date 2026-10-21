@@ -136,6 +136,16 @@ try {
             const selected = await page.evaluate(() => menuState());
             assert.equal(selected.theme, family); assert.equal(selected.preference.family, family);
             assert.equal(await familyButton(family).getAttribute('aria-expanded'), null);
+            const titleAfterFamily = await page.evaluate(() => {
+                const title = fixture.root.querySelector('.sd-header h2'), style = getComputedStyle(title), rootStyle = getComputedStyle(fixture.root);
+                return { titleBackground: style.backgroundImage, titleInk: style.webkitTextFillColor,
+                    titleVariable: rootStyle.getPropertyValue('--sd-title-grad').trim(), subtitleVariable: rootStyle.getPropertyValue('--sd-subtitle-grad').trim() };
+            });
+            assert.doesNotMatch(titleAfterFamily.titleVariable, /#c79ad6|#8f9fe0|#79c7c0/i, `${width}/${family}: classic dream gradient leaked into new theme`);
+            assert.match(titleAfterFamily.titleVariable, /^linear-gradient\(92deg, #[0-9a-f]+, #[0-9a-f]+\)$/i);
+            assert.match(titleAfterFamily.subtitleVariable, /^linear-gradient\(90deg, #[0-9a-f]+, #[0-9a-f]+ 70%\)$/i);
+            if (family === 'editorial') assert.equal(titleAfterFamily.titleBackground, 'none');
+            else assert.match(titleAfterFamily.titleBackground, /linear-gradient/i);
             assert.ok(await page.locator('[data-appearance-accent]:visible').count() >= 3, 'new themes need real selectable preset accents');
             assert.equal(await page.locator('input.sd-theme-color[type=color]:visible').count(), 1);
             assert.equal(await page.locator('.sd-theme-mode-toggle:visible').count(), 1);
@@ -171,7 +181,8 @@ try {
             assert.equal(afterPreset.visible, true);
             checks.push(`${width}/${family}: preset accent and native color value stay synchronized; manual source avoids cover override`);
 
-            const beforeColor = await page.evaluate(() => ({ saves: fixture.saveCalls, accent: fixture.root.style.getPropertyValue('--sd-accent'), notes: getComputedStyle(fixture.floating).color }));
+            const beforeColor = await page.evaluate(() => ({ saves: fixture.saveCalls, accent: fixture.root.style.getPropertyValue('--sd-accent'), notes: getComputedStyle(fixture.floating).color,
+                title: getComputedStyle(fixture.root.querySelector('.sd-header h2')).backgroundImage }));
             await page.locator('.sd-theme-color').evaluate(input => {
                 input.focus(); input.value = '#c84e78';
                 input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -184,6 +195,7 @@ try {
             assert.equal(afterColor.preference.accent, '#c84e78'); assert.equal(afterColor.preference.source, 'manual');
             assert.equal(afterColor.saves, beforeColor.saves + 1, 'native input + change commits same color once');
             assert.equal(afterColor.focused, true); assert.notEqual(afterColor.accent, beforeColor.accent); assert.equal(afterColor.notesAccent, afterColor.accent);
+            if (family === 'glass') assert.notEqual(afterColor.title, beforeColor.title, 'glass title gradient must follow accent changes');
             assert.equal(await details.isVisible(), true);
             const swatches = await page.locator('.sd-theme-accent-options .sd-theme-swatch > span').evaluateAll(nodes => nodes.map(node => {
                 const rect = node.getBoundingClientRect(), css = getComputedStyle(node);

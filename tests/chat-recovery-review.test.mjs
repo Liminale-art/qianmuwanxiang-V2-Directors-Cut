@@ -94,13 +94,18 @@ test('preflight rejects unknown header swipe shapes that native import would sil
 
 test('recovery action does not open a confirmation popup', async () => {
   const f = fixture(); await f.prepare(); const ui = dom();
-  mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters,
+  f.view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters,
     confirm: () => { throw new Error('confirmation popup should not be called'); } });
   const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
   const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
   const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至'));
   await recover.handlers.click();
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
+  assert.match(ui.find(node => node.className === 'qm-recovery-status').textContent, /^已找回：/);
+  assert.equal(recover.disabled, true, 'the source recovery action is disabled after a verified import');
+  await f.controller.load();
+  assert.equal(ui.find(node => node.className === 'qm-recovery-status').hidden, true, 'a fresh list read clears the old success banner');
+  assert.equal(recover.disabled, true, 'the recovered source remains protected after reloading the list');
 });
 
 function automaticFixture() {
@@ -195,8 +200,9 @@ test('role autocomplete accepts pinyin and avatar-letter aliases', async () => {
 test('loaded count identifies the selected role and preview rows toggle independently without reloading', async () => {
   const revisions = new Map(), calls = [];
   const backups = ['one', 'two'].map((name, index) => ({
-    name: `${name}.jsonl`, chatFile: `${name}.jsonl`, size: '1 KB', messageCount: 2,
-    lastMessageAt: `2026-10-19T0${index + 1}:00:00Z`, backupSort: index + 1,
+    name: `${name}.jsonl`, chatFile: `${name}.jsonl`, size: '1 KB',
+    lastMessageAt: index === 0 ? '2026-10-19T03:00:00Z' : '2026-10-19T01:00:00Z', backupSort: index + 1,
+    messageCount: index === 0 ? 99 : 2,
     candidateAvatars: ['Synthetic.png'], match: 'candidate', sourceLabel: 'ST备份',
   }));
   const state = { busy: false, error: '', backups, preview: null, result: null, automaticBackup: { availability: 'unavailable', busy: false } };
@@ -216,15 +222,22 @@ test('loaded count identifies the selected role and preview rows toggle independ
   await ui.find(node => node.tag === 'button' && node.innerHTML?.includes('fa-rotate')).handlers.click();
   const items = () => ui.findAll(node => node.className === 'qm-recovery-item');
   const firstName = items()[0].title, secondName = items()[1].title;
+  assert.equal(firstName, 'one.jsonl', 'the newest final conversation time wins over message count and backup time');
+  assert.equal(secondName, 'two.jsonl');
   await items()[0].handlers.click(); await items()[1].handlers.click();
   assert.deepEqual(calls, [firstName, secondName]);
   assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 3, 'two row previews plus shared recovery actions remain visible');
+  const firstPreview = ui.findAll(node => node.className === 'qm-recovery-preview')[0];
+  assert.equal(firstPreview.children.some(node => node.tag === 'h4'), false, 'a row preview does not repeat the file title');
   const loaded = ui.find(node => node.className === 'qm-recovery-loaded');
   assert.match(loaded.textContent, /当前已加载 2 份/);
   assert.match(loaded.textContent, /合成角色 · 共 2 份聊天记录/);
   await items()[0].handlers.click();
   assert.deepEqual(calls, [firstName, secondName], 'collapsing an open row does not download it again');
   assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 2);
+  await items()[0].handlers.click();
+  assert.deepEqual(calls, [firstName, secondName], 'reopening a cached row does not download it again');
+  assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 3);
 });
 
 test('an unconfirmed recovery keeps browsing and preview available while the result remains frozen', async () => {
