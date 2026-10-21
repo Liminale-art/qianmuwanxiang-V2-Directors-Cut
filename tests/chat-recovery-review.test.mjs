@@ -23,7 +23,7 @@ function fixture(options = {}) {
       if (path === '/api/backups/chat/download') return new Response(raw);
       if (path === '/api/characters/chats') return jsonResponse([...files.keys()].map(file_name => ({ file_name })));
       if (path === '/api/chats/import') {
-        const form = init.body, imported = await form.get('file').text();
+        const form = init.body, imported = await form.get('avatar').text();
         // Native 1.19 JSONL import runs flattenChubChat on every row (header
         // included), then uses character_name only for the new file prefix.
         const result = imported.split('\n').map(line => {
@@ -49,7 +49,7 @@ test('unknown import survives view close/reopen and later readback without anoth
   const mount = () => mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
   const firstView = mount(); f.view = firstView; firstView.dispose(); f.view = mount();
   assert.equal(f.controller.snapshot().result.operationId, first.result.operationId);
-  await f.controller.recover('not-a-new-target.png');
+  await f.controller.recover('Synthetic.png');
   for (const [key, value] of f.drafts) f.files.set(key, value);
   const result = await f.controller.verify(); assert.equal(result.result.status, 'verified');
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
@@ -92,30 +92,23 @@ test('preflight rejects unknown header swipe shapes that native import would sil
   assert.throws(() => inspectChatRecoveryJsonl(encode(rows)));
 });
 
-for (const change of ['same-name source re-preview', 'same-avatar target rename']) {
-  test(`confirmation is bound to its original preview and target: ${change}`, async () => {
-    const f = fixture(); await f.prepare(); const ui = dom(), waiting = deferred(), asked = deferred();
-    f.view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters,
-      confirm: () => { asked.resolve(); return waiting.promise; } });
-    const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; target.handlers.change();
-    const item = ui.find(node => node.className === 'qm-recovery-item');
-    await item.handlers.click();
-    const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至'));
-    const clicking = recover.handlers.click(); await asked.promise;
-    if (change === 'same-name source re-preview') {
-      const rows = data(); rows[0].chat_metadata.unknownPlugin.hiddenState[2].value = '确认等待时换了隐藏资料';
-      f.raw = encode(rows); await f.controller.preview(backup);
-    } else f.characters[0].name = '确认后不是刚才展示的角色名';
-    waiting.resolve(true); await clicking;
-    assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 0, 'changed confirmation inputs require a fresh explicit confirmation');
-  });
-}
+test('recovery action does not open a confirmation popup', async () => {
+  const f = fixture(); await f.prepare(); const ui = dom();
+  mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters,
+    confirm: () => { throw new Error('confirmation popup should not be called'); } });
+  const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
+  const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
+  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至'));
+  await recover.handlers.click();
+  assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
+});
 
 function automaticFixture() {
-  const calls = [], ui = dom(); let account = 'account:A', statusFailure = 0, loseConfiguration = false, view;
+  const calls = [], ui = dom(); let account = 'account:A', statusFailure = 0, loseConfiguration = false, view, sequence = 0;
   const status = { ok: true, version: 1, enabled: false, intervalMinutes: 30, limitMiB: 1024, usedBytes: 0, retention: 'rotate-oldest-keep-one' };
   const controller = createChatRecovery({ origin: 'https://synthetic.invalid', resolveAccount: async () => account,
     getCharacters: () => [], getRequestHeaders: () => ({}), onChange: snapshot => view?.render(snapshot),
+    crypto: { randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` },
     fetch: async (path, init) => {
       calls.push({ path, body: JSON.parse(init.body) });
       if (path.endsWith('/status')) return statusFailure ? new Response('{}', { status: statusFailure, headers: { 'content-type': 'application/json' } }) : jsonResponse(status);
@@ -189,6 +182,16 @@ test('native ST Assistant is omitted from the recovery role picker and suggestio
   assert.equal(ui.find(node => node.className === 'qm-recovery-suggestion'), undefined);
 });
 
+test('role autocomplete accepts pinyin and avatar-letter aliases', async () => {
+  const f = fixture(); f.characters.push({ avatar: 'char.png', name: '琮' });
+  const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const input = ui.find(node => node.tag === 'input' && node.placeholder === '搜索角色名');
+  input.value = 'cong'; input.handlers.input(); await wait(140);
+  assert.equal(ui.find(node => node.className === 'qm-recovery-suggestion')?.textContent, '琮');
+  input.value = 'char'; input.handlers.input(); await wait(140);
+  assert.equal(ui.find(node => node.className === 'qm-recovery-suggestion')?.textContent, '琮');
+});
+
 test('loaded count identifies the selected role and preview rows toggle independently without reloading', async () => {
   const revisions = new Map(), calls = [];
   const backups = ['one', 'two'].map((name, index) => ({
@@ -235,7 +238,7 @@ test('an unconfirmed recovery keeps browsing and preview available while the res
   assert.equal(f.controller.snapshot().result.status, 'unknown', 'the frozen write receipt remains available for later verification');
   assert.equal(ui.find(node => node.className === 'qm-recovery-receipt'), undefined, 'the duplicate lower receipt is removed');
   const status = ui.find(node => node.className === 'qm-recovery-status');
-  assert.ok(status.children.some(node => node.textContent === '核实上次结果'), 'verification stays in the top status box');
+  assert.equal(status.children.some(node => node.textContent === '核实上次结果'), false, 'verification is not exposed in the view');
 });
 
 test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {

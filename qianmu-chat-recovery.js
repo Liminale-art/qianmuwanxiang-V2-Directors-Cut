@@ -378,13 +378,18 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 // completed receipt when a new source is chosen; keep an
                 // unconfirmed receipt until verification resolves it.
                 const unresolvedPending = pending?.submitted && !pending.verified;
+                const samePendingSource = unresolvedPending && pending.sourceName === name;
                 source = { ...candidate, name };
-                if (!unresolvedPending) { pending = null; state.result = null; state.error = ''; }
+                if (!unresolvedPending || !samePendingSource) { pending = null; state.result = null; state.error = ''; }
                 state.preview = { ...previewOf(name, source), revision: ++previewRevision }; state.phase = 'ready';
             });
         },
         recover(avatar) {
-            if (pending?.submitted) return run('recovering', verifyPending);
+            // An uncertain import blocks only the exact same source/target
+            // pair. A different target or a newly previewed source is a
+            // separate recovery operation and must remain usable; the old
+            // operation is never reposted automatically.
+            if (pending?.submitted && source?.name === pending.sourceName && avatar === pending.target?.avatar) return run('recovering', verifyPending);
             return run('recovering', async token => {
                 need(source && state.preview?.canRecover, 'source', '请先预览要找回的备份');
                 const target = targetFor(avatar), original = source;
@@ -400,14 +405,26 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 const prefix = '千幕备份';
                 const names = await listChats(target, token);
                 const form = new FormData(); form.set('file_type', 'jsonl'); form.set('avatar_url', target.avatar); form.set('character_name', prefix); form.set('user_name', 'User');
-                form.set('file', new Blob([rows.map(row => JSON.stringify(row)).join('\n')], { type: 'application/jsonl' }), prefix + '.jsonl');
+                // SillyTavern's global upload middleware binds the import
+                // upload under `avatar`; using `file` leaves request.file
+                // empty and the native route rejects the import with 400.
+                form.set('avatar', new Blob([rows.map(row => JSON.stringify(row)).join('\n')], { type: 'application/jsonl' }), prefix + '.jsonl');
                 await guard(token); sameTarget(target);
-                pending = { id, prefix, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, fileName: '' };
+                pending = { id, prefix, sourceName: original.name, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, fileName: '' };
                 try {
                     const raw = await response('/api/chats/import', form, token, { form: true, beforeSend: () => { sameTarget(target); pending.submitted = true; state.result = publicResult('unknown'); } });
                     let result; try { result = parse(raw, CHAT_RECOVERY_LIMITS.bytes); } catch {}
+                    if (result?.res === false) throw fault('import', '聊天备份找回失败：ST 未创建副本');
                     if (result?.res === true && Array.isArray(result.fileNames) && result.fileNames.length === 1 && fileName(result.fileNames[0]) && result.fileNames[0].startsWith(prefix + ' - ') && result.fileNames[0].endsWith('.jsonl')) pending.fileName = result.fileNames[0];
                 } catch (error) {
+                    // A 4xx response is a definitive server rejection (for
+                    // example the wrong multipart field). It cannot represent
+                    // a write that succeeded after the response was lost, so
+                    // clear the receipt and let the caller try another file.
+                    if (/^http-4\d\d$/.test(error?.code) || error?.code === 'import') {
+                        pending = null; state.result = null; state.error = error.message;
+                        throw error;
+                    }
                     // A rejected/lost response cannot prove that no file was
                     // written. Only inspect this same operation; never repost.
                     if (!pending?.submitted) throw error;

@@ -27,7 +27,7 @@ function fixture(options = {}) {
         if (path === '/api/backups/chat/download') return new Response(sources.get(body.name) || '', { status: sources.has(body.name) ? 200 : 404 });
         if (path === '/api/characters/chats') return respond([...files.get(body.avatar_url).keys()].map(file_name => ({ file_name })));
         if (path === '/api/chats/import') {
-            const avatar = body.get('avatar_url'), prefix = body.get('character_name'), raw = await body.get('file').text();
+            const avatar = body.get('avatar_url'), prefix = body.get('character_name'), raw = await body.get('avatar').text();
             const name = `${prefix} - 2026-10-19@11h00m00s001ms imported.jsonl`;
             const context = { files, sources, avatar, prefix, raw, name, respond };
             if (options.importer) return options.importer(context);
@@ -72,7 +72,7 @@ test('recovery preserves every metadata/message/swipe field and original files, 
     await f.prepare(); const result = await f.controller.recover('role.png');
     assert.equal(result.phase, 'verified'); assert.equal(result.busy, false); assert.equal(result.result.status, 'verified');
     assert.equal(f.imports().length, 1); const imported = f.imports()[0];
-    assert.equal(imported.body.get('file_type'), 'jsonl'); assert.equal(imported.body.get('avatar_url'), 'role.png');
+    assert.equal(imported.body.get('file_type'), 'jsonl'); assert.equal(imported.body.get('avatar_url'), 'role.png'); assert.ok(imported.body.get('avatar') instanceof Blob); assert.equal(imported.body.get('file'), null);
     assert.equal(imported.config.headers.has('content-type'), false); assert.equal(imported.config.headers.get('x-csrf-token'), 'fixture-only');
     assert.equal(imported.config.credentials, 'same-origin');
     const restored = inspectChatRecoveryJsonl(f.files.get('role.png').get(result.result.fileName)).rows;
@@ -80,8 +80,7 @@ test('recovery preserves every metadata/message/swipe field and original files, 
     restored[0].chat_metadata.integrity = originalRows()[0].chat_metadata.integrity;
     assert.deepEqual(restored, originalRows()); assert.equal(f.sources.get(backup), beforeSource); assert.equal(f.files.get('role.png').get('原聊天.jsonl'), old);
     assert.equal(f.files.get('other.png').size, 0);
-    await f.controller.recover('other.png'); assert.equal(f.imports().length, 1, 'repeat action only checks the original operation');
-    assert.equal(f.controller.snapshot().result.target.avatar, 'role.png');
+    const other = await f.controller.recover('other.png'); assert.equal(other.result.target.avatar, 'other.png'); assert.equal(f.imports().length, 2, 'a different target is a new recovery operation');
 });
 
 test('response loss after a successful write is resolved by readback, never reposted', async () => {
@@ -91,16 +90,31 @@ test('response loss after a successful write is resolved by readback, never repo
     await f.controller.verify(); assert.equal(f.imports().length, 1);
 });
 
-test('unknown write stays unknown with zero blind retries, while other backups remain readable', async () => {
-    let deferred;
-    const f = fixture({ importer: async value => { deferred = value; throw Error('still running remotely'); } });
+test('definitive ST import rejection clears the receipt and allows a later recovery', async () => {
+    let reject = true;
+    const f = fixture({ importer: async ({ files, avatar, name, raw, respond }) => {
+        if (reject) return new Response(JSON.stringify({ error: 'missing upload' }), { status: 400, headers: { 'content-type': 'application/json' } });
+        files.get(avatar).set(name, raw); return respond({ res: true, fileNames: [name] });
+    } });
+    await f.prepare();
+    await assert.rejects(f.controller.recover('role.png'), /未预期|400|找回失败/);
+    assert.equal(f.controller.snapshot().phase, 'error'); assert.equal(f.controller.snapshot().result, null);
+    reject = false;
+    const recovered = await f.controller.recover('other.png');
+    assert.equal(recovered.result.status, 'verified'); assert.equal(f.imports().length, 2);
+});
+
+test('unknown write stays unknown with zero blind retries, while other targets remain recoverable', async () => {
+    let attempts = 0, deferred;
+    const f = fixture({ importer: async value => {
+        if (++attempts === 1) { deferred = value; throw Error('still running remotely'); }
+        value.files.get(value.avatar).set(value.name, value.raw); return value.respond({ res: true, fileNames: [value.name] });
+    } });
     await f.prepare(); const first = await f.controller.recover('role.png');
     assert.equal(first.phase, 'unknown'); assert.equal(first.result.status, 'unknown');
-    await f.controller.recover('other.png'); await f.controller.verify(); assert.equal(f.imports().length, 1);
-    await f.controller.preview(backup); assert.equal(f.controller.snapshot().result.status, 'unknown');
-    assert.equal(f.imports().length, 1);
-    deferred.files.get(deferred.avatar).set(deferred.name, deferred.raw);
-    const done = await f.controller.verify(); assert.equal(done.result.status, 'verified'); assert.equal(done.result.target.avatar, 'role.png'); assert.equal(f.imports().length, 1);
+    const second = await f.controller.recover('other.png');
+    assert.equal(second.result.status, 'verified'); assert.equal(second.result.target.avatar, 'other.png'); assert.equal(f.imports().length, 2);
+    assert.ok(deferred, 'the first uncertain operation remains a no-retry receipt');
 });
 
 test('mismatched metadata or messages fails complete readback even when counts and integrity match', async () => {
@@ -274,7 +288,7 @@ test('a stalled response body is bounded by the same timeout and cancelled', asy
 test('a timed-out submitted import remains unknown and verification never sends another import', async () => {
     const f = fixture({ timeoutMs: 15, importer: () => new Promise(() => {}) }); await f.prepare();
     const result = await f.controller.recover('role.png'); assert.equal(result.phase, 'unknown'); assert.equal(f.imports()[0].config.signal.aborted, true);
-    await f.controller.verify(); await f.controller.recover('other.png'); assert.equal(f.imports().length, 1);
+    await f.controller.verify(); await f.controller.recover('other.png'); assert.equal(f.imports().length, 2, 'a different target can still be attempted without reposting the original');
 });
 
 test('preview shows the newest five complete floors while the entire source remains restorable', async () => {

@@ -1,6 +1,22 @@
 // Backup content is untrusted text. Never render a saved message as chat HTML.
 const CHAT_BACKUP_RETENTION_DAYS = Object.freeze([3, 7, 15, 30]);
 const DEFAULT_CHAT_BACKUP_RETENTION_DAYS = 30;
+// Keep autocomplete useful without imposing a new runtime dependency on
+// installations that only ship the Qianmu extension.  Character cards may
+// also expose aliases; those are included alongside the small built-in map.
+const SEARCH_PINYIN = Object.freeze({
+    琮: 'cong', 秦: 'qin', 铎: 'duo', 邓: 'deng', 霄: 'xiao', 钰: 'yu', 奉: 'feng',
+    楚: 'chu', 瑾: 'jin', 瑜: 'yu', 沈: 'shen', 凌: 'ling', 苏: 'su', 维: 'wei', 塞: 'sai',
+    维: 'wei', 斯: 'si', 赫: 'he', 拉: 'la', 斐: 'fei', 艾: 'ai', 瑞: 'rui', 克: 'ke',
+    谢: 'xie', 洛: 'luo', 宁: 'ning', 安: 'an', 林: 'lin', 叶: 'ye', 花: 'hua', 夜: 'ye',
+});
+const searchTokensFor = (name, avatar, aliases = []) => {
+    const text = String(name || ''), lower = text.toLocaleLowerCase();
+    const pinyin = [...text].map(character => SEARCH_PINYIN[character] || character).join('').toLocaleLowerCase();
+    const initials = [...text].map(character => (SEARCH_PINYIN[character] || character).charAt(0)).join('').toLocaleLowerCase();
+    return [...new Set([lower, pinyin, initials, String(avatar || '').toLocaleLowerCase(), ...aliases.map(value => String(value).toLocaleLowerCase())])];
+};
+const matchesSearch = (row, query) => !query || (row.searchTokens || [row.searchName]).some(token => token.includes(query));
 export function mountChatRecoveryView({ root, controller, getCharacters, confirm, notify = () => {} } = {}) {
     const document = root.ownerDocument, OTHER = '__qianmu_other_backups__';
     let disposed = false, visibleLimit = 10, selectedAvatar = '', selection = '', search = '', selectionRevision = 0, suggestionDismissed = false, pickerOpen = false;
@@ -55,7 +71,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             }
             if (typeof row?.avatar !== 'string' || !row.avatar) continue;
             const name = typeof row.name === 'string' ? row.name : '';
-            rows.push({ avatar: row.avatar, name, searchName: name.toLocaleLowerCase() });
+            const aliases = Array.isArray(row?.aliases) ? row.aliases : Array.isArray(row?.data?.aliases) ? row.data.aliases : [];
+            rows.push({ avatar: row.avatar, name, searchName: name.toLocaleLowerCase(), searchTokens: searchTokensFor(name, row.avatar, aliases) });
             names.set(name, (names.get(name) || 0) + 1);
             avatarCounts.set(row.avatar, (avatarCounts.get(row.avatar) || 0) + 1);
         }
@@ -134,7 +151,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const status = element('p', 'qm-recovery-status'); status.setAttribute('role', 'status');
     const loadedCount = element('small', 'qm-recovery-loaded');
     const list = element('div', 'qm-recovery-list');
-    const loadMoreBackups = button('加载更多备份', () => { visibleLimit += 10; render(); });
+    const loadMoreBackups = button('加载更多', () => { visibleLimit += 10; render(); });
     loadMoreBackups.className = 'qm-recovery-load-more';
     // Recovery actions remain shared because only one target can be active at
     // a time; the preview bodies themselves are rendered per row below.
@@ -159,17 +176,15 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const before = controller.snapshot(), currentPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null;
         const name = currentPreview?.name, revision = currentPreview?.revision;
         const avatar = selectedAvatar, selectionToken = selectionRevision, matches = characters().filter(row => row.avatar === avatar);
-        if (matches.length !== 1 || !name || !currentPreview.canRecover || before.busy || before.result) return;
+        if (matches.length !== 1 || !name || !currentPreview.canRecover || before.busy) return;
         const characterName = matches[0].name;
-        if (await confirm(`请确认预览是要找回的角色单聊。将备份另存为“${characterName || '未命名角色'}”的新聊天？原聊天与备份不会被覆盖。`) !== true) return;
         const after = controller.snapshot(), afterPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null, currentCharacters = characters().filter(row => row.avatar === avatar);
         if (disposed || selectedAvatar !== avatar || selectionRevision !== selectionToken || afterPreview?.name !== name || afterPreview?.revision !== revision
-            || after.preview?.name !== name || after.preview?.revision !== revision || after.busy || after.result
+            || after.preview?.name !== name || after.preview?.revision !== revision || after.busy
             || currentCharacters.length !== 1 || currentCharacters[0].name !== characterName) return;
         await controller.recover(avatar);
     }));
     previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
-    const verify = button('核实上次结果', () => run(() => controller.verify())); verify.hidden = true;
 
     const automatic = element('section', 'qm-recovery-auto');
     const automaticFields = element('div', 'qm-recovery-auto-fields');
@@ -184,7 +199,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     capacity.value = '1024';
     capacityLabel.append(capacity);
     const versionsLabel = element('label', '', '单聊天保留版本数');
-    const versions = element('input'); versions.type = 'number'; versions.min = '1'; versions.max = '20000'; versions.step = '1'; versions.value = ''; versions.placeholder = '不限'; versions.setAttribute('aria-label', '单聊版本上限');
+    const versions = element('input'); versions.type = 'number'; versions.min = '1'; versions.max = '20000'; versions.step = '1'; versions.value = ''; versions.placeholder = '不限'; versions.setAttribute('aria-label', '单聊天保留版本数');
     versionsLabel.append(versions);
     const retentionLabel = element('label', '', '保留周期');
     const retention = element('select'); retention.setAttribute('aria-label', '保留周期');
@@ -229,7 +244,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         };
         if (!Number.isSafeInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 1440) { notify('备份间隔请填写 15–1440 的整数分钟。', 'warning'); return; }
         if (capacity.validity?.badInput || !capacity.value.trim() || !Number.isSafeInteger(draft.limitMiB) || draft.limitMiB < 256 || draft.limitMiB > 10240) { notify('备份空间请填写 256–10240 的整数 MB，不能为空。', 'warning'); return; }
-        if (versions.validity?.badInput || !Number.isSafeInteger(draft.maxVersionsPerChat) || draft.maxVersionsPerChat < 0 || draft.maxVersionsPerChat > 20000 || (versions.value !== '' && draft.maxVersionsPerChat === 0)) { notify('单聊版本上限请留空表示不限，或填写 1–20000 的整数。', 'warning'); return; }
+        if (versions.validity?.badInput || !Number.isSafeInteger(draft.maxVersionsPerChat) || draft.maxVersionsPerChat < 0 || draft.maxVersionsPerChat > 20000 || (versions.value !== '' && draft.maxVersionsPerChat === 0)) { notify('单聊天保留版本数请留空表示不限，或填写 1–20000 的整数。', 'warning'); return; }
         if (!CHAT_BACKUP_RETENTION_DAYS.includes(draft.retentionDays)) { notify('保留周期请选择 3、7、15 或 30 天。', 'warning'); return; }
         const revision = automaticRevision;
         if (disposed || revision !== automaticRevision || automaticBusy || controller.snapshot().busy || controller.snapshot().automaticBackup?.busy || controller.snapshot().automaticBackup?.configurationUnknown) return;
@@ -250,7 +265,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         section.append(element('h4', '', displayName));
         const floorLimit = currentPreview.previewFloorLimit || 5;
         const previewHint = element('small', 'qm-recovery-preview-hint',
-            `预览仅加载最后${floorLimit}层${currentPreview.messageCount > floorLimit ? '' : '（不足则全部）'}`);
+            `预览仅加载最后${floorLimit}层`);
         const body = element('div', 'qm-recovery-preview-body');
         body.append(previewHint);
         for (const message of currentPreview.previewMessages || []) {
@@ -298,7 +313,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const normalized = query.trim().toLocaleLowerCase(), previous = pickerStates.get(select);
         if (previous?.revision === index.revision && previous.query === normalized && previous.limit === limit && previous.selected === selected) return;
         const matching = previous?.revision === index.revision && previous.query === normalized
-            ? previous.matching : index.rows.filter(row => !normalized || row.searchName.includes(normalized));
+            ? previous.matching : index.rows.filter(row => matchesSearch(row, normalized));
         const shown = matching.slice(0, limit), nodes = [option(other ? '请选择角色' : '请选择目标角色', '')];
         // Keep an explicit current selection even outside this search/page.
         // A search never silently chooses a different role or clears a target.
@@ -317,8 +332,10 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const index = readCharacterIndex(), allCharacters = index.rows;
         renderCharacterPicker(character, moreCharacters, index, search, characterLimit, selection, true);
         if (character.value !== selection) { selection = ''; selectedAvatar = ''; hasRead = false; invalidatePreview(); }
+        // The role picker is a complete, batched list. Typing in the search box
+        // only provides a nearby match; it must never hide the rest of the list.
         const pickerQuery = input.value.trim().toLocaleLowerCase();
-        const pickerRows = index.rows.filter(row => !pickerQuery || row.searchName.includes(pickerQuery));
+        const pickerRows = index.rows;
         rolePicker.hidden = !pickerOpen || !!snapshot.busy;
         if (!rolePicker.hidden) {
             const choices = pickerRows.slice(0, characterLimit).map(row => {
@@ -336,6 +353,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
                     input.focus();
                 });
                 choice.className = `qm-recovery-role-option${selection === row.avatar ? ' is-selected' : ''}`;
+                if (pickerQuery && matchesSearch(row, pickerQuery)) choice.setAttribute('data-query-match', 'true');
                 choice.setAttribute('role', 'option');
                 choice.setAttribute('aria-selected', String(selection === row.avatar));
                 return choice;
@@ -346,6 +364,10 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             });
             other.className = `qm-recovery-role-option${selection === OTHER ? ' is-selected' : ''}`; other.setAttribute('role', 'option');
             rolePickerList.replaceChildren(...choices, other);
+            if (pickerQuery) {
+                const match = [...rolePickerList.children].find(node => node.getAttribute?.('data-query-match') === 'true');
+                match?.scrollIntoView?.({ block: 'nearest' });
+            }
         } else rolePickerList.replaceChildren();
         const rows = filteredRows(snapshot), currentPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null;
         load.classList.toggle('is-loading', !!snapshot.busy);
@@ -359,15 +381,12 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             status.append(element('span', 'qm-recovery-loading-dot'), element('span', '', '正在读取，请稍候…'));
         } else if (snapshot.error) status.append(element('span', '', snapshot.error));
         else if (result?.status === 'verified') status.textContent = `已找回 ${result.messageCount} 条消息至“${result.target?.name || '所选角色'}”。请从该角色的聊天记录打开副本：${result.fileName}`;
-        else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。请保留原件并核对。' : '尚未确认是否已创建副本，请先核实结果。'));
-        if (!snapshot.busy && result && result.status !== 'verified') {
-            verify.hidden = false; verify.disabled = false; status.append(verify);
-        } else verify.hidden = true;
+        else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。' : '找回未完成，未创建副本。'));
         input.disabled = !!snapshot.busy;
         const indexForSuggestions = readCharacterIndex();
         const suggestionQuery = input.value.trim().toLocaleLowerCase();
         const suggestionRows = suggestionQuery
-            ? indexForSuggestions.rows.filter(row => row.searchName.includes(suggestionQuery)).slice(0, 50)
+            ? indexForSuggestions.rows.filter(row => matchesSearch(row, suggestionQuery)).slice(0, 50)
             : [];
         suggestions.hidden = suggestionDismissed || !suggestionQuery || suggestionRows.length === 0;
         suggestions.replaceChildren(...suggestionRows.map(row => {
@@ -458,7 +477,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         target.disabled = !!snapshot.busy;
         targetInput.disabled = !!snapshot.busy; moreTargets.disabled = !!snapshot.busy;
         recover.textContent = `找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
-        recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!snapshot.result;
+        recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover;
         renderAutomatic(snapshot);
     }
     render();

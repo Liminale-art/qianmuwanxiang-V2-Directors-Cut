@@ -59,7 +59,7 @@ function fixture({ listAlias = true, responseUrl, responseType = 'basic', redire
             const name = `${init.body.get('character_name')} - synthetic imported.jsonl`;
             // An invalid import acknowledgement may have reached the server;
             // leave an unknown result rather than pretending it is safe to retry.
-            if (aliasFor !== path) files.set(name, await init.body.get('file').text());
+            if (aliasFor !== path) files.set(name, await init.body.get('avatar').text());
             return reply(path, { res: true, fileNames: [name] });
         }
         if (path === '/api/chats/export') return reply(path, { result: files.get(JSON.parse(init.body).file) });

@@ -35,8 +35,8 @@ test('real routes and disk service integrate with the real recovery controller, 
     if(url==='/api/backups/chat/get')return respond([]);
     if(url==='/api/characters/chats')return respond((await fs.readdir(role)).filter(name=>name.endsWith('.jsonl')).map(file_name=>({file_name})));
     if(url==='/api/chats/import'){
-      const form=options.body;assert.ok(form instanceof FormData);assert.equal(form.get('avatar_url'),'角色1.png');assert.equal(form.get('file_type'),'jsonl');
-      const fileName=form.get('character_name')+' - synthetic imported.jsonl';await fs.writeFile(path.join(role,fileName),await form.get('file').text(),{flag:'wx'});return respond({res:true,fileNames:[fileName]});
+      const form=options.body;assert.ok(form instanceof FormData);assert.equal(form.get('avatar_url'),'角色1.png');assert.equal(form.get('file_type'),'jsonl');assert.ok(form.get('avatar') instanceof Blob);assert.equal(form.get('file'),null);
+      const fileName=form.get('character_name')+' - synthetic imported.jsonl';await fs.writeFile(path.join(role,fileName),await form.get('avatar').text(),{flag:'wx'});return respond({res:true,fileNames:[fileName]});
     }
     if(url==='/api/chats/export'){const body=JSON.parse(options.body);assert.equal(body.avatar_url,'角色1.png');assert.equal(body.is_group,false);return respond({result:await fs.readFile(path.join(role,body.file),'utf8')});}
     assert.fail('No native save or other live network is permitted: '+url);
@@ -53,7 +53,7 @@ test('real routes and disk service integrate with the real recovery controller, 
   assert.equal(controller.snapshot().automaticBackup.status.lastResult.created,1);await controller.load();const entry=controller.snapshot().backups[0];assert.equal(entry.source,'qianmu');
   const read=await route('read',{expectedAccount:'st-user:default-user',id:entry.id}),bytes=Buffer.from(await read.arrayBuffer());
   assert.equal(read.headers.get('content-type'),'text/plain; charset=utf-8');assert.deepEqual(bytes,original,'BOM, CRLF and full original bytes are served unchanged');
-  const list=await(await route('list',{expectedAccount:'st-user:default-user'})).json();assert.equal(list.entries[0].sha256,sha(original));assert.equal(list.entries[0].sizeBytes,original.length);
+  const list=await(await route('list',{expectedAccount:'st-user:default-user'})).json();assert.equal(list.entries[0].sha256,sha(original));assert.equal(list.entries[0].sizeBytes,original.length);assert.equal(list.entries[0].lastMessageAt,'2026-10-19T01:01:00Z');
   await controller.preview(entry.name);assert.equal(controller.snapshot().preview.messageCount,2);assert.match(controller.snapshot().preview.text,/第二条正文/);
   const result=await controller.recover('角色1.png');assert.equal(result.result.status,'verified');const restored=inspectChatRecoveryJsonl(await fs.readFile(path.join(role,result.result.fileName),'utf8')).rows;
   assert.notEqual(restored[0].chat_metadata.integrity,rows()[0].chat_metadata.integrity);restored[0].chat_metadata.integrity=rows()[0].chat_metadata.integrity;assert.deepEqual(restored,rows());

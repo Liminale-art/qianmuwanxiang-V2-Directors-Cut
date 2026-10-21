@@ -358,7 +358,7 @@ async function mountFloorChatRecovery(root) {
   if (!host || chatRecoveryPanel?.root === root) return;
   // Paint a local shell immediately so opening the tab has visible feedback
   // while the recovery modules and account namespace resolve in the background.
-  host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div><div class="qm-recovery-loading-block"></div><div class="qm-recovery-loading-block"></div><div class="qm-recovery-loading-block"></div></div>';
+  host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
     chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.482'), import('./qianmu-chat-recovery-view.js?v=1.59.482')]);
     const namespacePromise = resolveImageAccountNamespace();

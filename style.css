@@ -728,8 +728,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-hint { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-loading-shell { display: grid; gap: 10px; }
 #story-director-floor-nav .qm-recovery-loading-line { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px 10px; border: 1px solid var(--sd-border); border-radius: 10px; color: var(--sd-muted); font-size: var(--qm-type-caption); }
-#story-director-floor-nav .qm-recovery-loading-block { height: 42px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: linear-gradient(90deg, var(--sd-glass-weak), color-mix(in srgb, var(--sd-accent) 8%, var(--sd-glass-weak)), var(--sd-glass-weak)); background-size: 220% 100%; animation: qm-recovery-loading-sweep 1.2s ease-in-out infinite; }
-@keyframes qm-recovery-loading-sweep { 0% { background-position: 100% 0; opacity: .68; } 50% { opacity: 1; } 100% { background-position: -100% 0; opacity: .68; } }
 #story-director-floor-nav .qm-recovery-tools { display: flex; gap: 8px; align-items: stretch; }
 #story-director-floor-nav .qm-recovery-tools input { min-width: 0; flex: 1; }
 #story-director-floor-nav .qm-recovery-character-tools { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; }

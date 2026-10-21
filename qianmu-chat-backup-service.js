@@ -34,12 +34,14 @@ function parseChat(bytes) {
   if(lines.at(-1)==='')lines.pop();
   if(lines.length<2)fail('empty','检测到空聊天，已保留此前的非空备份');
   if(lines.length>50001)fail('file_limit','聊天条目超过单份核对上限，未截断备份');
+  let lastMessageAt='';
   for(let index=0;index<lines.length;index++) {
     let row;
     try{row=parseBoundedJson(lines[index],{maxBytes:CHAT_BACKUP_LIMITS.fileBytes,maxDepth:60,maxNodes:500000,label:'聊天'});}catch{fail('format','聊天结构异常，已跳过而未改写原件');}
     if(!object(row)||index===0&&(!object(row.chat_metadata)||Object.hasOwn(row,'mes'))||index>0&&typeof row.mes!=='string')fail('format','聊天结构异常，已跳过而未改写原件');
+    if(index>0&&(typeof row.send_date==='string'||typeof row.send_date==='number'))lastMessageAt=row.send_date;
   }
-  return {text,messageCount:lines.length-1};
+  return {text,messageCount:lines.length-1,lastMessageAt};
 }
 
 function validateConfig(raw,context) {
@@ -424,7 +426,7 @@ export function createChatBackupService({dataRoot,accounts,hostDirectory=process
     });
     started=true;await schedule();return response;
   }
-  async function list(req,input){const c=await capture(req,input);return serial(c.namespace,async()=>{const data=await inventory(c);await authorize(c);return {ok:true,version:1,entries:data.entries};});}
+  async function list(req,input){const c=await capture(req,input);return serial(c.namespace,async()=>{const data=await inventory(c),entries=[];for(const entry of data.entries){let lastMessageAt='';try{const {bytes}=await readBytes(c,path.join(c.folder,entry.id+'.jsonl'),limit.fileBytes);lastMessageAt=parseChat(bytes).lastMessageAt||'';}catch{}entries.push({...entry,lastMessageAt});}await authorize(c);return {ok:true,version:1,entries};});}
   async function read(req,input){const c=await capture(req,input,['id']);if(!UUID.test(input.id||''))fail('contract','备份编号无效',400);
     return serial(c.namespace,async()=>{const store=await inventory(c),entry=store.entries.find(row=>row.id===input.id);if(!entry)fail('missing','这份备份不存在于当前账户',404);
       const {bytes}=await readBytes(c,path.join(c.folder,entry.id+'.jsonl'),limit.fileBytes),parsed=parseChat(bytes);

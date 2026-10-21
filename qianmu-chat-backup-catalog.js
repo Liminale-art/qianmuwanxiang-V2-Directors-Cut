@@ -5,6 +5,20 @@ const nativeName = /^chat_(.+)_(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.json
 const utcTime = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/;
 const pad = value => String(value).padStart(2, '0');
 const yieldToMainThread = () => new Promise(resolve => setTimeout(resolve, 0));
+const BYTE_UNITS = Object.freeze(['B', 'KB', 'MB', 'GB', 'TB']);
+
+// Match ST's native backup list formatting: binary units, at most two
+// fractional digits, and no space between the value and unit (for example
+// `172.47KB`). Keeping this local lets the Qianmu list look identical without
+// coupling the extension to ST's internal utility module.
+export function formatBackupBytes(value) {
+    if (!Number.isSafeInteger(value) || value < 0) return '';
+    if (value === 0) return '0B';
+    const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), BYTE_UNITS.length - 1);
+    const amount = value / (1024 ** exponent);
+    const rounded = Number(amount.toFixed(exponent === 0 ? 0 : 2));
+    return `${rounded}${BYTE_UNITS[exponent]}`;
+}
 
 // Input avatars must already be safe filenames. No path cleanup, truncation or
 // Unicode normalization may turn an invalid/ambiguous avatar into a candidate.
@@ -100,8 +114,9 @@ export function normalizeAutomaticBackupEntries(entries) {
         const parts = parsed ? parsed.slice(1, 7).map(Number) : [];
         const stamp = parsed ? calendarValue(...parts, Number((parsed[7] || '').padEnd(3, '0'))) : null;
         const candidateAvatars = validAvatar(row?.avatar) ? [row.avatar] : [];
-        return { ...row, name: `qianmu:${String(row?.id || '')}`, size: Number.isSafeInteger(row?.sizeBytes) && row.sizeBytes >= 0 ? `${row.sizeBytes} B` : '',
-            excerpt: '', lastMessageAt: '', candidateAvatars, match: candidateAvatars.length ? 'candidate' : 'unmatched',
+        const lastMessageAt = typeof row?.lastMessageAt === 'string' || typeof row?.lastMessageAt === 'number' ? row.lastMessageAt : '';
+        return { ...row, name: `qianmu:${String(row?.id || '')}`, size: formatBackupBytes(row?.sizeBytes),
+            excerpt: '', lastMessageAt, candidateAvatars, match: candidateAvatars.length ? 'candidate' : 'unmatched',
             ...dateFields(parts, stamp, true), timeZoneLabel: '本机时间', backupTimeZone: 'local', source: 'qianmu', sourceLabel: '千幕备份' };
     });
 }

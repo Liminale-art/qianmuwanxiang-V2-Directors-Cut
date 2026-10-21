@@ -2,10 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { buildNativeBackupCatalog, normalizeAutomaticBackupEntries } from '../qianmu-chat-backup-catalog.js';
+import { buildNativeBackupCatalog, formatBackupBytes, normalizeAutomaticBackupEntries } from '../qianmu-chat-backup-catalog.js';
 
 const row = name => ({ name, size: '120 B', messageCount: 2, lastMessageAt: 'not-backup-time', excerpt: '合成摘要' });
 const file = (key, stamp = '20261019-032016') => `chat_${key}_${stamp}.jsonl`;
+
+test('automatic backup sizes use ST-compatible binary units', () => {
+    assert.equal(formatBackupBytes(176613), '172.47KB');
+    assert.equal(formatBackupBytes(341156), '333.16KB');
+    assert.equal(formatBackupBytes(0), '0B');
+});
 const character = avatar => ({ avatar, name: '显示名不参与关联' });
 const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 8);
 
@@ -95,7 +101,7 @@ test('automatic backup fields preserve receipt information but use explicit UTC 
     const before = structuredClone(input), result = normalizeAutomaticBackupEntries(input)[0];
     assert.equal(result.name, 'qianmu:synthetic-id'); assert.equal(result.source, 'qianmu'); assert.equal(result.sourceLabel, '千幕备份');
     assert.equal(result.backupSort, Date.parse(input[0].createdAt)); assert.equal(result.timeZoneLabel, '本机时间'); assert.equal(result.backupTimeZone, 'local');
-    assert.deepEqual(result.candidateAvatars, ['角色.png']); assert.equal(result.size, '1234 B'); assert.equal(result.sha256, input[0].sha256); assert.deepEqual(input, before);
+    assert.deepEqual(result.candidateAvatars, ['角色.png']); assert.equal(result.size, '1.21KB'); assert.equal(result.sha256, input[0].sha256); assert.deepEqual(input, before);
 });
 
 test('automatic non-UTC or invalid timestamps are not silently normalized', () => {
