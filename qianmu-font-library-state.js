@@ -37,10 +37,11 @@ export function fontAssignment(value = {}) {
   return { fontId, weight, style, enabled: Boolean(fontId && value.enabled !== false) };
 }
 export function normalizeFontLibrary(value) {
-  if (value == null) return { version: 1, enabled: true, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
+  if (value == null) return { version: 1, enabled: true, syncLocalOriginals: false, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
   if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
   if (JSON.stringify(value).length > 3 * 1024 * 1024) fail('字体库配置过大');
   if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail('字体启用设置无效');
+  if (value.syncLocalOriginals !== undefined && typeof value.syncLocalOriginals !== 'boolean') fail('字体原件同步设置无效');
   const seen = new Set();
   const fonts = value.fonts.map(font => {
     const id = fontLibraryId(font?.id);
@@ -57,7 +58,7 @@ export function normalizeFontLibrary(value) {
   const sortBy = value.sortBy === undefined ? 'name' : value.sortBy, sortOrder = value.sortOrder === undefined ? 'asc' : value.sortOrder;
   if (!['name', 'added'].includes(sortBy) || !['asc', 'desc'].includes(sortOrder)) fail('字体排序设置无效');
   const result = {
-    version: 1, enabled: value.enabled !== false, fonts, folders: names(value.folders || [], 200, '文件夹'),
+    version: 1, enabled: value.enabled !== false, syncLocalOriginals: value.syncLocalOriginals === true, fonts, folders: names(value.folders || [], 200, '文件夹'),
     pinnedIds: pinnedIds.filter(id => seen.has(id)), sortBy, sortOrder,
     previewText: text(value.previewText == null || value.previewText === LEGACY_FONT_LIBRARY_SAMPLE ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
     mode: value.mode === 'shared' ? 'shared' : 'separate',
@@ -68,7 +69,7 @@ export function normalizeFontLibrary(value) {
   return result;
 }
 export function fontRecordSignature(font) {
-  return JSON.stringify([font.source.kind, font.source.kind === 'local' ? font.id : font.faces]);
+  return JSON.stringify([font.source.kind, font.source.kind === 'local' ? font.id : font.source.kind === 'builtin' ? font.source.key : font.faces]);
 }
 export function mergeFontLibraryRecords(state, records, makeId) {
   const next = normalizeFontLibrary(state), mapping = new Map();
@@ -88,6 +89,9 @@ export function updateFontLibrary(state, type, payload = {}) {
   if (type === 'set-enabled') {
     if (typeof payload.enabled !== 'boolean') fail('字体启用设置无效');
     next.enabled = payload.enabled;
+  } else if (type === 'set-sync-local-originals') {
+    if (typeof payload.enabled !== 'boolean') fail('字体原件同步设置无效');
+    next.syncLocalOriginals = payload.enabled;
   } else if (type === 'set-font-pinned') {
     const id = fontLibraryId(payload.id);
     if (typeof payload.pinned !== 'boolean') fail('字体置顶设置无效');

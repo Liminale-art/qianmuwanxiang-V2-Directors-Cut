@@ -9,6 +9,7 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.476';
+import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
@@ -323,7 +324,7 @@ let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
-const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),getPreviewFontSize:()=>settings.proseLayout?.fontSize??PROSE_LAYOUT_DEFAULTS.fontSize,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
+const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),getPreviewFontSize:()=>settings.proseLayout?.fontSize??PROSE_LAYOUT_DEFAULTS.fontSize,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 let chatWriteGuard = null, chatWriteFetchBefore = null;
 let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
 

@@ -293,6 +293,13 @@ test('record validation allows expected fields only and preserves classification
     const invalid = webRecord(); invalid.faces[0].urls[0].url = 'blob:local'; assert.throws(() => validateFontRecord(invalid));
 });
 
+test('built-in font sources use a bounded code-owned key and carry no user URL', () => {
+    const font = { name: '内置示例', source: { kind: 'builtin', key: 'system-sans', format: 'woff2' }, faces: [{ urls: [], weight: '400', style: 'normal' }] };
+    assert.deepEqual(validateFontRecord(font), font);
+    assert.throws(() => validateFontRecord({ ...font, source: { ...font.source, key: 'https://evil.invalid/font.woff2' } }), /字体标识/u);
+    assert.throws(() => validateFontRecord({ ...font, source: { ...font.source, format: 'bad' } }), /格式/u);
+});
+
 test('portable font pack round trips local bytes, web references, folders/tags and preview text', async () => {
     const local = await createLocalFontRecord(file(makeFont())); local.record.id = 'local-1'; local.record.folder = '本地';
     const original = [webRecord(), local.record];

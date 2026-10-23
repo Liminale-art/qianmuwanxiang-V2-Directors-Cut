@@ -18,7 +18,6 @@ function fixture(options = {}) {
     crypto: { randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` },
     fetch: async (path, init) => {
       calls.push(path);
-      if (path === '/api/plugins/qianmu-tts/chat-backups/list') return new Response('{"error":"optional service absent"}', { status: 404, headers: { 'content-type': 'application/json' } });
       if (path === '/api/backups/chat/get') return jsonResponse([{ file_name: backup }]);
       if (path === '/api/backups/chat/download') return new Response(raw);
       if (path === '/api/characters/chats') return jsonResponse([...files.keys()].map(file_name => ({ file_name })));
@@ -59,7 +58,6 @@ test('unknown import survives view close/reopen and later readback without anoth
   const result = await f.controller.verify(); assert.equal(result.result.status, 'verified');
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
 });
-
 test('verified recovery asks the host to refresh the welcome recent-chat list', async () => {
   const f = fixture(); await f.prepare(); const ui = dom(); let refreshed = 0;
   const view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true,
@@ -124,45 +122,6 @@ test('recovery action does not open a confirmation popup', async () => {
   assert.equal(recover.disabled, true, 'the recovered source remains protected after reloading the list');
 });
 
-function automaticFixture() {
-  const calls = [], ui = dom(); let account = 'account:A', statusFailure = 0, loseConfiguration = false, view, sequence = 0;
-  const status = { ok: true, version: 1, enabled: false, intervalMinutes: 30, limitMiB: 1024, usedBytes: 0, retention: 'rotate-oldest-keep-one' };
-  const controller = createChatRecovery({ origin: 'https://synthetic.invalid', resolveAccount: async () => account,
-    getCharacters: () => [], getRequestHeaders: () => ({}), onChange: snapshot => view?.render(snapshot),
-    crypto: { randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` },
-    fetch: async (path, init) => {
-      calls.push({ path, body: JSON.parse(init.body) });
-      if (path.endsWith('/status')) return statusFailure ? new Response('{}', { status: statusFailure, headers: { 'content-type': 'application/json' } }) : jsonResponse(status);
-      if (path.endsWith('/configure')) {
-        Object.assign(status, JSON.parse(init.body));
-        if (loseConfiguration) throw new Error('synthetic lost configuration response');
-        return jsonResponse(status);
-      }
-      assert.fail('unexpected automatic route');
-    } });
-  const mount = confirm => { view?.dispose(); view = mountChatRecoveryView({ root: ui.root, controller, getCharacters: () => [], confirm }); return view; };
-  const edit = minutes => { const input = ui.find(node => node.type === 'number'); input.value = String(minutes); input.handlers.input(); };
-  const openAutomatic = async () => { await wait(0); assert.ok(ui.find(node => node.className === 'qm-recovery-auto'), 'automatic backup card stays expanded'); };
-  const button = text => ui.find(node => node.tag === 'button' && node.textContent === text);
-  return { controller, calls, ui, mount, edit, openAutomatic, button, setAccount: value => { account = value; }, setStatusFailure: value => { statusFailure = value; }, loseNextConfiguration: () => { loseConfiguration = true; } };
-}
-
-test('automatic settings auto-save cannot be rebound into a different ST account', async () => {
-  const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
-  f.mount(async () => true); await f.openAutomatic(); f.edit(60);
-  f.setAccount('account:B'); await wait(360);
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
-  assert.equal(f.controller.snapshot().automaticBackup.status, null);
-});
-
-test('automatic settings readback preserves an unsaved draft', async () => {
-  const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
-  f.mount(async () => true); f.edit(60);
-  await f.controller.inspectAutomaticBackup();
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
-  assert.equal(f.ui.find(node => node.type === 'number').value, '60', 'status refresh preserves the unsaved draft while cancelling its old confirmation');
-});
-
 test('role autocomplete binds the selected avatar, keeps the controls icon-only, and nests load-more in the scroller', async () => {
   const f = fixture(); await f.controller.load();
   const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
@@ -221,7 +180,7 @@ test('loaded count identifies the selected role and preview rows toggle independ
     messageCount: index === 0 ? 99 : 2,
     candidateAvatars: ['Synthetic.png'], match: 'candidate', sourceLabel: 'ST备份',
   }));
-  const state = { busy: false, error: '', backups, preview: null, result: null, automaticBackup: { availability: 'unavailable', busy: false } };
+  const state = { busy: false, error: '', backups, preview: null, result: null };
   const controller = {
     snapshot: () => structuredClone(state),
     preview: async name => {
@@ -268,44 +227,4 @@ test('an unconfirmed recovery keeps browsing and preview available while the res
   assert.equal(ui.find(node => node.className === 'qm-recovery-receipt'), undefined, 'the duplicate lower receipt is removed');
   const status = ui.find(node => node.className === 'qm-recovery-status');
   assert.equal(status.children.some(node => node.textContent === '核实上次结果'), false, 'verification is not exposed in the view');
-});
-
-test('unknown automatic configuration survives view remount and failed identity readback until a successful status read', async () => {
-  const f = automaticFixture(); await f.controller.inspectAutomaticBackup(); f.mount(async () => true); await f.openAutomatic(); f.edit(60); f.loseNextConfiguration();
-  await wait(360); assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, true);
-  f.mount(async () => true); assert.equal(f.ui.find(node => node.type === 'number').disabled, true);
-  f.setStatusFailure(401); await assert.rejects(f.controller.inspectAutomaticBackup());
-  f.mount(async () => true); assert.equal(f.ui.find(node => node.type === 'number').disabled, true);
-  f.setStatusFailure(500); await assert.rejects(f.controller.inspectAutomaticBackup());
-  await assert.rejects(f.controller.configureAutomaticBackup({ enabled: true, intervalMinutes: 15, limitMiB: 512 }));
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 1);
-  f.setStatusFailure(0); await f.controller.inspectAutomaticBackup();
-  assert.equal(f.controller.snapshot().automaticBackup.configurationUnknown, false);
-  assert.equal(f.ui.find(node => node.type === 'number').value, '60');
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 1);
-});
-
-for (const field of ['capacity', 'versions']) {
-  test(`changing ${field} is persisted by the automatic draft saver`, async () => {
-    const f = automaticFixture(); await f.controller.inspectAutomaticBackup();
-    f.mount(async () => true); await f.openAutomatic(); f.edit(60); await wait(360);
-    const input = f.ui.find(node => node.type === 'number' && node.min === (field === 'capacity' ? '256' : '1'));
-    input.value = field === 'capacity' ? '1536' : '5'; input.handlers.input();
-    await wait(360);
-    assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 2);
-  });
-}
-
-test('UI validates capacity and finite version integers before write, while only blank versions serialize as unlimited', async () => {
-  const f = automaticFixture(); await f.controller.inspectAutomaticBackup(); f.mount(async () => true);
-  const capacity = f.ui.find(node => node.type === 'number' && node.min === '256');
-  const versions = f.ui.find(node => node.type === 'number' && node.min === '1');
-  assert.equal(versions.value, '', 'legacy status missing the optional field means unlimited');
-  capacity.value = ''; capacity.handlers.input(); await wait(360);
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
-  capacity.value = '1536'; capacity.handlers.input(); versions.value = '1.5'; versions.handlers.input(); await wait(360);
-  assert.equal(f.calls.filter(row => row.path.endsWith('/configure')).length, 0);
-  versions.value = ''; versions.handlers.input(); await wait(360);
-  const writes = f.calls.filter(row => row.path.endsWith('/configure'));
-  assert.equal(writes.length, 1); assert.equal(writes[0].body.limitMiB, 1536); assert.equal(writes[0].body.maxVersionsPerChat, 0);
 });

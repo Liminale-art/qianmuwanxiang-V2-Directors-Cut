@@ -14,7 +14,6 @@ import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contr
 import {installGalleryDiscoveryRoutes} from './qianmu-gallery-discovery-routes.js';
 import {installAssistantStorageRoutes} from './qianmu-assistant-storage-service.js';
 import {installGalleryOriginalRoutes} from './qianmu-gallery-original-routes.js';
-import { installChatBackupRoutes } from './qianmu-chat-backup-service.js';
 import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
 import { createRecipeArchiveService } from './qianmu-recipe-archive-service.js';
 import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
@@ -208,7 +207,6 @@ export async function init(router, options = {}) {
     return path.resolve(hostWorkingDirectory, value);
   };
   installStoryboardServerBatchV2Routes(router,{dataRoot:hostDataRoot,register:service=>imageTaskServices.add(service)});
-  installChatBackupRoutes(router, { dataRoot: hostDataRoot, hostDirectory: hostWorkingDirectory, register: service => imageTaskServices.add(service), serviceOptions: options.chatBackupOptions || {} });
   let notesSync;
   for (const [method, route] of [['get','/notes'],['post','/notes/write']]) router[method](route, async (req,res) => {
     prepareImageResponse(res);

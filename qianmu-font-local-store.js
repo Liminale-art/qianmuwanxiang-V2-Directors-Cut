@@ -1,5 +1,6 @@
-// Local font bytes stay in this browser/account. Catalog metadata belongs to the
-// existing ST settings; this store never reads or writes chat/files endpoints.
+// Local font bytes stay in this browser/account by default. The font directory
+// may be synchronized separately; this store never reads or writes chat/files
+// endpoints.
 const STORE = 'fonts';
 const MAX_BYTES = 32 * 1024 * 1024;
 

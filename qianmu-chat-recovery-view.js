@@ -1,6 +1,4 @@
 // Backup content is untrusted text. Never render a saved message as chat HTML.
-const CHAT_BACKUP_RETENTION_DAYS = Object.freeze([3, 7, 15, 30]);
-const DEFAULT_CHAT_BACKUP_RETENTION_DAYS = 30;
 // Keep autocomplete useful without imposing a new runtime dependency on
 // installations that only ship the Qianmu extension.  Character cards may
 // also expose aliases; those are included alongside the small built-in map.
@@ -30,7 +28,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     let characterLimit = CHARACTER_BATCH, targetLimit = CHARACTER_BATCH, targetSearch = '', searchTimer = null, targetSearchTimer = null;
     let characterIndex = null, characterIndexRevision = 0;
     const pickerStates = new WeakMap();
-    let hasRead = false, automaticBusy = false, automaticMissing = false, automaticUnknown = false, automaticDirty = false, automaticRevision = 0;
+    let hasRead = false;
     const element = (tag, className, text) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -211,79 +209,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     }));
     previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
 
-    const automatic = element('section', 'qm-recovery-auto');
-    const automaticFields = element('div', 'qm-recovery-auto-fields');
-    const enabledLabel = element('label', 'qm-recovery-auto-toggle', '启用自动备份');
-    const enabled = element('input'); enabled.type = 'checkbox'; enabled.setAttribute('aria-label', '启用自动备份');
-    const toggleTrack = element('span', 'qm-recovery-toggle-track');
-    const toggle = element('span', 'qm-recovery-toggle'); toggle.append(enabled, toggleTrack); enabledLabel.append(toggle);
-    const intervalLabel = element('label', '', '备份间隔（分钟）');
-    const interval = element('input'); interval.type = 'number'; interval.min = '15'; interval.max = '1440'; interval.step = '1'; interval.value = '30'; interval.setAttribute('aria-label', '备份间隔（分钟）'); intervalLabel.append(interval);
-    const capacityLabel = element('label', '', '备份空间（MB）');
-    const capacity = element('input'); capacity.type = 'number'; capacity.min = '256'; capacity.max = '10240'; capacity.step = '1'; capacity.setAttribute('aria-label', '备份空间（MB）');
-    capacity.value = '1024';
-    capacityLabel.append(capacity);
-    const versionsLabel = element('label', '', '单聊天保留版本数');
-    const versions = element('input'); versions.type = 'number'; versions.min = '1'; versions.max = '20000'; versions.step = '1'; versions.value = ''; versions.placeholder = '不限'; versions.setAttribute('aria-label', '单聊天保留版本数');
-    versionsLabel.append(versions);
-    const retentionLabel = element('label', '', '保留周期');
-    const retention = element('select'); retention.setAttribute('aria-label', '保留周期');
-    for (const days of CHAT_BACKUP_RETENTION_DAYS) retention.append(option(`${days} 天`, String(days)));
-    retention.value = String(DEFAULT_CHAT_BACKUP_RETENTION_DAYS);
-    retentionLabel.append(retention);
-    let automaticSaveTimer = null, automaticInspectTimer = null;
-    const dirty = () => {
-        automaticDirty = true; automaticRevision++; render();
-        clearTimeout(automaticSaveTimer);
-        automaticSaveTimer = setTimeout(() => void persistAutomaticDraft(), 280);
-    };
-    enabled.addEventListener('change', dirty); interval.addEventListener('input', dirty); capacity.addEventListener('input', dirty); versions.addEventListener('input', dirty); retention.addEventListener('change', dirty);
-    automaticFields.append(enabledLabel, intervalLabel, capacityLabel, versionsLabel, retentionLabel);
-    const automaticStatus = element('p', 'qm-recovery-auto-status'); automaticStatus.setAttribute('role', 'status');
-    const inspectAutomatic = async () => {
-        if (automaticBusy || controller.snapshot().busy || controller.snapshot().automaticBackup?.busy) return;
-        if (typeof controller.inspectAutomaticBackup !== 'function') { automaticMissing = true; render(); return; }
-        const resolvingUnknown = automaticUnknown || controller.snapshot().automaticBackup?.configurationUnknown === true;
-        automaticRevision++;
-        automaticBusy = true; render();
-        try {
-            await controller.inspectAutomaticBackup();
-            const current = controller.snapshot().automaticBackup;
-            if (current?.availability === 'available' && current.status && !current.error) {
-                automaticUnknown = false;
-                // An ordinary status refresh must not discard unsaved inputs.
-                // A previously submitted unknown draft is resolved by readback.
-                if (resolvingUnknown) automaticDirty = false;
-            }
-        } finally { automaticBusy = false; render(); }
-    };
-    const persistAutomaticDraft = async () => run(async () => {
-        const current = controller.snapshot().automaticBackup;
-        if (automaticBusy || controller.snapshot().busy || current?.busy || current?.configurationUnknown || automaticUnknown || current?.availability !== 'available' || typeof controller.configureAutomaticBackup !== 'function') return;
-        const draft = {
-            enabled: enabled.checked,
-            intervalMinutes: Number(interval.value),
-            limitMiB: Number(capacity.value),
-            maxVersionsPerChat: versions.value === '' ? 0 : Number(versions.value),
-            retentionDays: Number(retention.value),
-        };
-        if (!Number.isSafeInteger(draft.intervalMinutes) || draft.intervalMinutes < 15 || draft.intervalMinutes > 1440) { notify('备份间隔请填写 15–1440 的整数分钟。', 'warning'); return; }
-        if (capacity.validity?.badInput || !capacity.value.trim() || !Number.isSafeInteger(draft.limitMiB) || draft.limitMiB < 256 || draft.limitMiB > 10240) { notify('备份空间请填写 256–10240 的整数 MB，不能为空。', 'warning'); return; }
-        if (versions.validity?.badInput || !Number.isSafeInteger(draft.maxVersionsPerChat) || draft.maxVersionsPerChat < 0 || draft.maxVersionsPerChat > 20000 || (versions.value !== '' && draft.maxVersionsPerChat === 0)) { notify('单聊天保留版本数请留空表示不限，或填写 1–20000 的整数。', 'warning'); return; }
-        if (!CHAT_BACKUP_RETENTION_DAYS.includes(draft.retentionDays)) { notify('保留周期请选择 3、7、15 或 30 天。', 'warning'); return; }
-        const revision = automaticRevision;
-        if (disposed || revision !== automaticRevision || automaticBusy || controller.snapshot().busy || controller.snapshot().automaticBackup?.busy || controller.snapshot().automaticBackup?.configurationUnknown) return;
-        automaticBusy = true; render();
-        try {
-            await controller.configureAutomaticBackup(draft);
-            const result = controller.snapshot().automaticBackup;
-            if (result?.error) automaticUnknown = true;
-            else automaticDirty = false;
-        } catch (error) { automaticUnknown = true; throw error; }
-        finally { automaticBusy = false; render(); }
-    });
-    automatic.append(automaticFields, automaticStatus);
-    root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions, automatic);
+    root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions);
 
     const createPreviewSection = currentPreview => {
         const section = element('section', 'qm-recovery-preview');
@@ -302,36 +228,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         section.append(body);
         return section;
     };
-
-    function renderAutomatic(snapshot) {
-        const state = snapshot.automaticBackup || { availability: 'unknown', busy: false }, stored = state.status;
-        const busy = automaticBusy || !!state.busy || !!snapshot.busy, available = !automaticMissing && state.availability === 'available';
-        const unknown = automaticUnknown || state.configurationUnknown === true;
-        if (stored && !automaticDirty && !busy) {
-            enabled.checked = stored.enabled === true;
-            interval.value = String(stored.intervalMinutes || 30);
-            capacity.value = String(stored.limitMiB || 1024);
-            versions.value = stored.maxVersionsPerChat ? String(stored.maxVersionsPerChat) : '';
-            retention.value = String(CHAT_BACKUP_RETENTION_DAYS.includes(stored.retentionDays) ? stored.retentionDays : DEFAULT_CHAT_BACKUP_RETENTION_DAYS);
-        }
-        for (const node of [enabled, interval, capacity, versions, retention]) node.disabled = !available || busy || unknown;
-        if (busy) {
-            automaticStatus.hidden = false;
-            automaticStatus.textContent = automaticDirty ? '正在保存备份设置…' : '正在读取备份设置…';
-        } else if (unknown) {
-            automaticStatus.hidden = false;
-            automaticStatus.textContent = '设置结果尚未确认，请稍后重新打开自动备份。';
-        } else if (automaticMissing || state.availability === 'unavailable') {
-            automaticStatus.hidden = false;
-            automaticStatus.textContent = '自动备份需要千幕增强服务 v1.59.482；不影响读取 ST 现有备份。';
-        } else if (state.error) {
-            automaticStatus.hidden = false;
-            automaticStatus.textContent = state.error;
-        } else {
-            automaticStatus.hidden = true;
-            automaticStatus.textContent = '';
-        }
-    }
 
     function renderCharacterPicker(select, more, index, query, limit, selected, other = false) {
         const normalized = query.trim().toLocaleLowerCase(), previous = pickerStates.get(select);
@@ -512,16 +408,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         targetInput.disabled = !!snapshot.busy; moreTargets.disabled = !!snapshot.busy;
         recover.textContent = `找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
         recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!recoveredCurrent;
-        renderAutomatic(snapshot);
     }
     render();
-    // A fixed, expanded card should be useful on first render. Avoid a
-    // duplicate request when a host already read the status before mounting.
-    if (!controller.snapshot().automaticBackup?.status && !controller.snapshot().automaticBackup?.busy) {
-        automaticInspectTimer = setTimeout(() => {
-            automaticInspectTimer = null;
-            if (!disposed) void run(inspectAutomatic);
-        }, 0);
-    }
-    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); clearTimeout(automaticSaveTimer); clearTimeout(automaticInspectTimer); root.replaceChildren(); } });
+    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren(); } });
 }

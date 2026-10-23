@@ -40,7 +40,7 @@ await context.route('**/*', async route => {
         const parsed = await new Request(url.href, { method: 'POST', headers: request.headers(), body: request.postDataBuffer() }).formData();
         assert.equal(parsed.get('file_type'), 'jsonl'); assert.equal(parsed.has('file_name'), false);
         const avatar = parsed.get('avatar_url'), prefix = parsed.get('character_name');
-        assert.ok(chats.has(avatar)); assert.match(prefix, /^千幕找回-[\da-f-]{36}$/i);
+        assert.ok(chats.has(avatar)); assert.match(prefix, /^.+-QM\d+$/);
         const raw = await parsed.get('file').text();
         // Native import parses and serializes JSONL; it chooses the final name
         // from character_name + its own timestamp, not an input file_name.
@@ -52,7 +52,6 @@ await context.route('**/*', async route => {
         return fulfillJson(route, { res: true, fileNames: [name] });
     }
     const body = request.postDataJSON();
-    if (path === '/api/plugins/qianmu-tts/chat-backups/list') return route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"synthetic optional service absent"}' });
     if (path === listPath) return fulfillJson(route, [...backups].map(([file_name, raw]) => ({ file_name, file_size: `${Buffer.byteLength(raw)} B`, chat_items: raw.split('\n').length - 1, last_mes: '2026-10-19T02:01:00Z', mes: '<script>window.injected=true</script>' })));
     if (path === '/api/backups/chat/download') {
         assert.ok(backups.has(body.name)); return route.fulfill({ status: 200, contentType: 'application/jsonl', body: backups.get(body.name) });
@@ -98,7 +97,7 @@ try {
     ok('Opening the real view/controller performs no backup or chat request', calls.length === 0);
     await page.getByRole('combobox', { name: '选择要找回的角色', exact: true }).selectOption('role.png');
     await page.getByRole('button', { name: '读取备份', exact: true }).click(); await idle();
-    ok('Explicit load reaches the expected list and optional service; absent service does not block native recovery', calls.length === 2 && calls[0] === listPath && calls[1] === '/api/plugins/qianmu-tts/chat-backups/list');
+    ok('Explicit load reaches the expected native list without a Qianmu backup service probe', calls.length === 1 && calls[0] === listPath);
     await page.locator('.qm-recovery-item').click(); await idle();
     ok('Real preview downloads the backup without writing and renders untrusted text literally', imports.length === 0
         && await page.evaluate(() => !window.injected && !document.querySelector('.qm-recovery-list script,.qm-recovery-preview img') && controller.snapshot().preview.messageCount === 2));
@@ -146,7 +145,7 @@ try {
     const secondRows = chats.get('role.png').get(second.result.fileName).split('\n').map(line => JSON.parse(line));
     secondRows[0].chat_metadata.integrity = originalRows[0].chat_metadata.integrity; assert.deepEqual(secondRows, originalRows);
     ok('Original backup and both existing chats remain byte-identical, with no extra destination changes', backups.get(backupName) === originalBackup && chats.get('role.png').get('原聊天.jsonl') === originalChat && chats.get('other.png').get('其他原聊天.jsonl') === originalChat && chats.get('role.png').size === 3 && chats.get('other.png').size === 1);
-    ok('Only the documented read routes and explicit native import were used', calls.every(path => [listPath, '/api/backups/chat/download', '/api/characters/chats', '/api/chats/import', '/api/chats/export', '/api/plugins/qianmu-tts/chat-backups/list'].includes(path)));
+    ok('Only the documented native read routes and explicit native import were used', calls.every(path => [listPath, '/api/backups/chat/download', '/api/characters/chats', '/api/chats/import', '/api/chats/export'].includes(path)));
     ok('No external requests or page errors occurred', external.length === 0 && errors.length === 0);
     console.log(JSON.stringify({ passed: checks.length, checks, imports: imports.length, nativeContract: 'ST 1.19 synthetic APIs', transport: fastList ? 'BaiBai fast-list wrapper contract' : 'native fetch', actualController: true, actualView: true, realST: false, externalNetwork: false, persistentProfile: false, errors }));
 } finally { await browser.close(); }

@@ -1,13 +1,11 @@
 import { parseBoundedJson } from './qianmu-json-input.js';
-import { buildNativeBackupCatalog, normalizeAutomaticBackupEntries } from './qianmu-chat-backup-catalog.js';
+import { buildNativeBackupCatalog } from './qianmu-chat-backup-catalog.js';
 
 // Native ST 1.19 backup-to-character-copy recovery. No open-chat state is changed.
 // The import route is NOT exclusive-create: a random operation prefix and a
 // preflight listing reduce collisions, but cannot provide a server transaction.
 export const CHAT_RECOVERY_PREVIEW_FLOORS = 5;
 export const CHAT_RECOVERY_LIMITS = Object.freeze({ bytes: 16 * 1024 * 1024, messages: 50000, previewChars: 14000 });
-export const CHAT_BACKUP_RETENTION_DAYS = Object.freeze([3, 7, 15, 30]);
-export const DEFAULT_CHAT_BACKUP_RETENTION_DAYS = 30;
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const fault = (code, message) => Object.assign(new Error(message), { code });
@@ -32,55 +30,14 @@ function importPrefix(target, existingNames) {
 }
 const parse = (text, maxBytes) => parseBoundedJson(text, { maxBytes, maxDepth: 40, maxNodes: 500000, label: '聊天找回' });
 const cancelQuietly = stream => { try { Promise.resolve(stream?.cancel?.()).catch(() => {}); } catch {} };
-const BACKUP_API = '/api/plugins/qianmu-tts/chat-backups';
-const automaticState = () => ({ availability: 'unknown', busy: false, error: '', status: null, configurationUnknown: false });
 const identityFailure = error => ['account', 'http-401', 'http-403'].includes(error?.code);
 function httpFailure(status, path) {
     if (status === 401 || status === 403) return '登录或请求校验未通过，请刷新 ST 后重试（' + status + '）';
-    if (status === 404) return path.startsWith(BACKUP_API) ? '自动备份需要安装或更新千幕增强服务至 v1.59.482'
-        : path.endsWith('/download') ? '这份备份已不存在，请刷新备份列表（404）' : '当前 ST 未提供此备份接口（404）';
+    if (status === 404) return path.endsWith('/download') ? '这份备份已不存在，请刷新备份列表（404）' : '当前 ST 未提供此备份接口（404）';
     if (status === 500) return 'ST 读取或处理备份失败（500），请查看 ST 服务日志';
     if ([502, 503, 504].includes(status)) return 'ST 服务或连接代理暂不可用（' + status + '），请稍后重试';
     return 'ST 返回了未预期的状态（' + status + '），未继续操作';
 }
-const automaticFailures = Object.freeze({
-    chat_backup_host: '当前 ST 无法提供可靠的后台账户目录，请核对增强服务与 ST 版本',
-    chat_backup_capacity: '保留每份聊天的有效副本后空间不足，请提高备份上限；未删除保底副本',
-    chat_backup_disk_unknown: '无法核实设备剩余空间，自动备份已暂停',
-    chat_backup_disk_full: '设备剩余空间不足，自动备份已暂停并保留旧副本',
-    chat_backup_corrupt: '备份索引或设置校验失败，请保留文件并核查增强服务日志',
-    chat_backup_verify: '备份内容校验失败，未覆盖原聊天或自动重试',
-    chat_backup_changed: '文件在处理期间变化，请稍后重新核对',
-    chat_backup_path: '聊天或备份目录无法安全核对，请检查目录权限与链接',
-    chat_backup_storage: '备份存储暂不可用，已有聊天和备份保持不变',
-    chat_backup_missing: '这份自动备份已不存在，请刷新备份列表',
-    chat_backup_busy: '备份任务正在处理，请稍后再试',
-});
-function automaticStatus(value) {
-    const maxVersionsPerChat = value?.maxVersionsPerChat === undefined ? 0 : value.maxVersionsPerChat;
-    const retentionDays = value?.retentionDays === undefined ? DEFAULT_CHAT_BACKUP_RETENTION_DAYS : value.retentionDays;
-    need(value?.ok === true && value.version === 1 && typeof value.enabled === 'boolean'
-        && Number.isInteger(value.intervalMinutes) && value.intervalMinutes >= 15 && value.intervalMinutes <= 1440
-        && Number.isInteger(value.limitMiB) && value.limitMiB >= 256 && value.limitMiB <= 10240
-        && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000
-        && Number.isInteger(retentionDays) && CHAT_BACKUP_RETENTION_DAYS.includes(retentionDays)
-        && Number.isSafeInteger(value.usedBytes) && value.usedBytes >= 0
-        && value.retention === 'rotate-oldest-keep-one', 'response', '增强服务返回的备份状态不完整，请更新服务后重试');
-    return { ...value, maxVersionsPerChat, retentionDays, retentionDaysSupported: Object.hasOwn(value, 'retentionDays') };
-}
-function automaticEntries(result) {
-    const ids = new Set();
-    need(result?.ok === true && result.version === 1 && Array.isArray(result.entries) && result.entries.every(row => {
-        if (!plain(row) || typeof row.id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(row.id) || ids.has(row.id)
-            || !fileName(row.avatar) || !row.avatar.endsWith('.png') || !fileName(row.chatFile) || !row.chatFile.endsWith('.jsonl')
-            || !Number.isSafeInteger(row.messageCount) || row.messageCount < 1 || row.messageCount > CHAT_RECOVERY_LIMITS.messages
-            || !Number.isSafeInteger(row.sizeBytes) || row.sizeBytes < 1 || row.sizeBytes > CHAT_RECOVERY_LIMITS.bytes
-            || typeof row.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(row.sha256) || typeof row.createdAt !== 'string') return false;
-        ids.add(row.id); return true;
-    }), 'response', '定时备份列表不完整，请重新读取，不猜测损坏记录');
-    return normalizeAutomaticBackupEntries(result.entries);
-}
-
 // Canonical JSON equality checks every retained metadata/message field, not
 // only the count, last message, or integrity token. Object key order may change
 // in ST's native JSONL importer; array order and all actual values must not.
@@ -170,8 +127,8 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     need(['http:', 'https:'].includes(base.protocol) && base.pathname === '/' && !base.username && !base.password && !base.search && !base.hash && (!globalThis.location?.origin || globalThis.location.origin === base.origin), 'configuration', '聊天找回来源无效');
     need(Number.isFinite(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 15000, 'configuration', '聊天找回读取时限无效');
     const requests = new Set();
-    let disposed = false, operation = 0, previewRevision = 0, active = false, owner = '', source = null, pending = null, uncertainConfiguration = false;
-    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], automaticBackup: automaticState() };
+    let disposed = false, operation = 0, previewRevision = 0, active = false, owner = '', source = null, pending = null;
+    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [] };
     const snapshot = () => clone(state);
     const emit = () => { if (!disposed && isCurrent()) { try { onChange(snapshot()); } catch {} } };
     const live = token => { need(!disposed && token === operation && isCurrent(), 'context', '找回页面已变化，请重新打开'); };
@@ -208,18 +165,13 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     check(); await guard(token); check();
                     const mime = result.headers?.get?.('content-type') || '';
                     need(!result.redirected && !['opaque', 'opaqueredirect'].includes(result.type), 'source', 'ST 请求发生跳转或无法核实来源，未读取备份；请核对访问地址或代理配置');
-                    // BaiBai Tools replaces only the native list with its account-scoped
-                    // fast-list response. This exact alias is not valid for any readback
-                    // or write route, and does not admit queries, fragments or redirects.
+                    // The optional BaiBai acceleration may serve ST's native
+                    // chat list through its exact fast-list alias. It is still
+                    // the native list contract; no Qianmu backup route is
+                    // accepted here.
                     const nativeListAlias = path === '/api/backups/chat/get'
                         && result.url === new URL('/api/plugins/baibaoku/v1/chat-backups/fast-list', base).href;
                     need(!result.url || result.url === new URL(path, base).href || nativeListAlias, 'source', '备份响应地址与预期不符，未读取数据；请核对相关插件或代理配置');
-                    if (!result.ok && path.startsWith(BACKUP_API) && ![401, 403].includes(result.status) && /^application\/json(?:\s*;|$)/i.test(mime)) {
-                        let detail;
-                        try { detail = parse(await boundedText(result, 4096, controller.signal, check), 4096); } catch {}
-                        await guard(token); check();
-                        if (detail?.ok === false && detail.version === 1 && Object.hasOwn(automaticFailures, detail.code)) throw fault('http-' + result.status, automaticFailures[detail.code]);
-                    }
                     need(result.ok && result.status === 200, 'http-' + result.status, httpFailure(result.status, path));
                     need((download ? /^(?:application\/(?:jsonl|x-ndjson|ndjson|octet-stream|json)|text\/plain)(?:\s*;|$)/i : /^application\/json(?:\s*;|$)/i).test(mime), 'response', 'ST 返回的不是预期备份数据，请刷新后重试；仍失败时核对服务或代理配置');
                     const raw = await boundedText(result, maxBytes, controller.signal, check);
@@ -235,10 +187,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     }
     async function download(name, token) {
         const entry = state.backups.find(row => row.name === name);
-        if (entry?.source === 'qianmu') {
-            const text = await response(BACKUP_API + '/read', { expectedAccount: owner, id: entry.id }, token, { download: true });
-            return { text, ...inspectChatRecoveryJsonl(text) };
-        }
         need(backupName(name), 'source', '备份名称无效');
         const text = await response('/api/backups/chat/download', { name }, token, { download: true });
         return { text, ...inspectChatRecoveryJsonl(text) };
@@ -315,16 +263,15 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             if (bind) {
                 const account = await accountNow(); live(token);
                 need(typeof account === 'string' && account, 'account', '暂未确认当前 ST 账户');
-                if (owner && owner !== account) { source = null; pending = null; uncertainConfiguration = false; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.automaticBackup = automaticState(); }
+                if (owner && owner !== account) { source = null; pending = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; }
                 owner = account;
-                state.automaticBackup.configurationUnknown = uncertainConfiguration;
             }
             await guard(token); await action(token); state.busy = false; return snapshot();
         } catch (error) {
             if (!disposed && token === operation) {
                 state.phase = pending?.submitted && !pending.verified && !identityFailure(error) ? 'unknown' : 'error';
                 state.error = error?.code ? error.message : '操作未完成，请稍后核实';
-                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.automaticBackup = automaticState(); }
+                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; }
                 else if (pending?.submitted && !pending.verified) state.result = publicResult('unknown', pending.fileName || '');
             }
             throw error;
@@ -344,7 +291,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 state.error = '';
                 state.phase = 'loading';
                 emit();
-                let rows = [], nativeError = null, automaticRows = [];
+                let rows = [], nativeError = null;
                 try {
                     rows = await json('/api/backups/chat/get', {}, token);
                     need(Array.isArray(rows), 'response', 'ST 备份清单暂不可用');
@@ -358,19 +305,8 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     lastMessageAt: typeof row.last_mes === 'string' || typeof row.last_mes === 'number' ? row.last_mes : '', excerpt: String(row.mes || '').slice(0, 240),
                 })), getCharacters(), { yieldToMain: async () => { await new Promise(resolve => setTimeout(resolve, 0)); live(token); } });
                 await guard(token);
-                try {
-                    const result = await json(BACKUP_API + '/list', { expectedAccount: owner }, token);
-                    automaticRows = automaticEntries(result);
-                    state.automaticBackup.availability = 'available';
-                    state.automaticBackup.error = '';
-                } catch (error) {
-                    if (identityFailure(error) || error?.code === 'context') throw error;
-                    state.automaticBackup.error = error?.message || '定时备份暂不可读取';
-                    state.automaticBackup.availability = error?.code === 'http-404' ? 'unavailable' : 'unknown';
-                }
-                if (nativeError && !automaticRows.length) throw nativeError;
-                state.backups = [...natives, ...automaticRows];
-                if (nativeError) state.error = nativeError.message + '；当前仅显示千幕定时备份。';
+                if (nativeError) throw nativeError;
+                state.backups = natives;
                 state.phase = pending?.submitted && !pending.verified ? 'unknown' : 'ready';
                 // A transient identity lookup failure hides private details.
                 // Rebinding the SAME confirmed account may reveal its receipt
@@ -380,46 +316,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     if (!pending.verified) state.error = '本次找回尚未确认；可以继续读取其他备份，稍后再核实。';
                 }
             }, { bind: true });
-        },
-        inspectAutomaticBackup() {
-            const phase = state.phase;
-            return run(phase, async token => {
-                state.automaticBackup.busy = true; emit();
-                try {
-                    const value = automaticStatus(await json(BACKUP_API + '/status', { expectedAccount: owner }, token));
-                    uncertainConfiguration = false;
-                    state.automaticBackup = { availability: 'available', busy: false, error: '', status: value, configurationUnknown: false };
-                } catch (error) {
-                    state.automaticBackup = { ...automaticState(), configurationUnknown: state.automaticBackup.configurationUnknown, availability: error?.code === 'http-404' ? 'unavailable' : 'unknown', error: error.message };
-                    throw error;
-                } finally { state.automaticBackup.busy = false; state.phase = phase; }
-            }, { bind: true });
-        },
-        configureAutomaticBackup(input) {
-            const phase = state.phase;
-            return run(phase, async token => {
-                const maxVersionsPerChat = input?.maxVersionsPerChat === undefined ? state.automaticBackup.status?.maxVersionsPerChat ?? 0 : input.maxVersionsPerChat;
-                const retentionDays = input?.retentionDays === undefined ? state.automaticBackup.status?.retentionDays ?? DEFAULT_CHAT_BACKUP_RETENTION_DAYS : input.retentionDays;
-                need(typeof input?.enabled === 'boolean' && Number.isInteger(input.intervalMinutes) && input.intervalMinutes >= 15 && input.intervalMinutes <= 1440
-                    && Number.isInteger(input.limitMiB) && input.limitMiB >= 256 && input.limitMiB <= 10240
-                    && Number.isSafeInteger(maxVersionsPerChat) && maxVersionsPerChat >= 0 && maxVersionsPerChat <= 20000
-                    && Number.isInteger(retentionDays) && CHAT_BACKUP_RETENTION_DAYS.includes(retentionDays),
-                'configuration', '备份间隔为15–1440整数分钟，空间为256–10240 MB；版本数为1–20000整数，留空不限；保留周期只能是3、7、15或30天');
-                need(!uncertainConfiguration, 'configuration', '上次设置结果未确认，请重新展开自动备份后核对');
-                need(state.automaticBackup.availability === 'available' && state.automaticBackup.status, 'configuration', '请先读取当前账户的备份设置');
-                state.automaticBackup.busy = true; uncertainConfiguration = true; state.automaticBackup.configurationUnknown = true; emit();
-                try {
-                    const value = automaticStatus(await json(BACKUP_API + '/configure', { expectedAccount: owner, enabled: input.enabled, intervalMinutes: input.intervalMinutes, limitMiB: input.limitMiB, maxVersionsPerChat, retentionDays }, token));
-                    need(value.enabled === input.enabled && value.intervalMinutes === input.intervalMinutes && value.limitMiB === input.limitMiB
-                        && value.maxVersionsPerChat === maxVersionsPerChat && value.retentionDays === retentionDays && value.retentionDaysSupported === true,
-                    'configuration', '备份设置未完整确认，请重新展开自动备份核对；如服务较旧，请先同步更新增强服务');
-                    uncertainConfiguration = false;
-                    state.automaticBackup = { availability: 'available', busy: false, error: '', status: value, configurationUnknown: false };
-                } catch (error) {
-                    state.automaticBackup.error = '设置结果尚未确认，请重新展开自动备份核对；不会自动重复提交。';
-                    throw error;
-                } finally { state.automaticBackup.busy = false; state.phase = phase; }
-            });
         },
         preview(name) {
             return run('previewing', async token => {
@@ -493,6 +389,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             });
         },
         verify() { return run('recovering', verifyPending); },
-        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], automaticBackup: automaticState() }; },
+        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [] }; },
     });
 }

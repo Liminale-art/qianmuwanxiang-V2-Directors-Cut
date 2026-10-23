@@ -3,6 +3,8 @@ import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, valida
 import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.475';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.476';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
+import { createFontAccountSync } from './qianmu-font-account-sync.js';
+import { readBuiltinFont } from './qianmu-font-builtins.js';
 
 function fontInputName(value) {
   if (value === undefined) return '';
@@ -19,13 +21,16 @@ function editableWebSource(font) {
   return font.source.input && font.source.input !== '内嵌字体样式' ? font.source.input : '';
 }
 
-// Web references live in the ordinary ST extension settings. Uploaded originals
-// are device/account scoped and never enter chat metadata or ST user/files.
+// The local ST settings remain the source of truth for this device. A separate
+// account catalog mirrors directory metadata; uploaded originals are opt-in and
+// never enter chat metadata or ordinary ST user/files.
 export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent, document = globalThis.document,
   notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel, getPreviewFontSize = () => 18,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
-  webResolver = resolveWebFontSource, localReader = createLocalFontRecord } = {}) {
-  let owner = null, namespace = '', store = null, runtime = null, view = null, portal = null, container = null;
+  webResolver = resolveWebFontSource, localReader = createLocalFontRecord, accountSyncFactory = createFontAccountSync,
+  builtinReader = readBuiltinFont } = {}) {
+  let owner = null, namespace = '', store = null, runtime = null, accountSync = null, view = null, portal = null, container = null;
+  let accountSyncHydrated = false;
   let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
   const statuses = new Map();
   const makeId = () => `f_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
@@ -39,7 +44,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   }
   function release() {
     webAbort?.abort(); webAbort = null;
-    generation++; runtime?.dispose(); store?.dispose(); runtime = null; store = null; namespace = ''; owner = null; viewSession = null; applicationNotice = null; statuses.clear();
+    generation++; runtime?.dispose(); store?.dispose(); accountSync?.close?.(); runtime = null; store = null; accountSync = null; accountSyncHydrated = false; namespace = ''; owner = null; viewSession = null; applicationNotice = null; statuses.clear();
   }
   async function ensure() {
     const candidate = getOwner(), epoch = lifecycle;
@@ -51,7 +56,19 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (owner !== candidate || namespace !== resolved || !runtime) {
       close(false); release(); owner = candidate; namespace = resolved;
       store = localStoreFactory({ namespace });
-      runtime = runtimeFactory({ document, readLocal: id => store.get(id), accountKey: namespace, onStatus: status, beforeApply, afterApply });
+      try { accountSync = accountSyncFactory?.({}); } catch { accountSync = null; }
+      runtime = runtimeFactory({ document, readLocal: id => store.get(id), readBuiltin: builtinReader, accountKey: namespace, onStatus: status, beforeApply, afterApply });
+      if (accountSync && !accountSyncHydrated) {
+        try {
+          const local = normalizeFontLibrary(candidate.fontLibrary);
+          const hydrated = await accountSync.hydrate(local, { syncLocalOriginals: local.syncLocalOriginals === true, localStore: store });
+          if (current(generation) && JSON.stringify(hydrated.state) !== JSON.stringify(local)) {
+            candidate.fontLibrary = hydrated.state;
+            save(candidate);
+          }
+        } catch (error) { try { notify(error?.message || '字体目录跨端同步未完成，已保留本机字体', 'warning'); } catch (_) {} }
+        accountSyncHydrated = true;
+      }
     }
     return generation;
   }
@@ -87,6 +104,11 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     try { save(target); } catch (error) { if (target.fontLibrary === staged) target.fontLibrary = previous; throw error; }
     updateEntry();
   }
+  async function pushAccount(token) {
+    if (!accountSync || !current(token)) return;
+    try { await accountSync.push(read(), { syncLocalOriginals: read().syncLocalOriginals === true, localStore: store }); }
+    catch (error) { if (current(token)) { try { notify(error?.message || '字体目录已保存，但跨端同步未完成', 'warning'); } catch (_) {} } }
+  }
   function uiState() {
     const state = read(), requestedSize = Number(getPreviewFontSize());
     const defaultPreviewSize = Number.isFinite(requestedSize) && requestedSize >= 1 && requestedSize <= 200 ? requestedSize : 18;
@@ -106,6 +128,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (typeof type === 'object') { payload = type.payload || type; type = type.type; }
     if (type === 'set-preview' && owner && current(generation)) {
       commit(updateFontLibrary(read(), type, payload), generation);
+      void pushAccount(generation);
       void visible(previewIds); return;
     }
     if (busy) throw new Error('上一项字体操作尚未完成');
@@ -204,7 +227,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
         guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
       }
-      guard(); const previous = read(); commit(next, token);
+      guard(); const previous = read(); commit(next, token); await pushAccount(token);
       if (type === 'apply-font' && current(token) && (!originView || originView === viewIdentity)) {
         const target = payload.target, label = { body: '正文', st: '界面', shared: '全部' }[target], scopes = target === 'shared' ? ['body', 'st'] : [target];
         if (next.enabled === false) { try { notify(`已保存${label}字体选择，字体库尚未启用`, 'info'); } catch (_) {} }

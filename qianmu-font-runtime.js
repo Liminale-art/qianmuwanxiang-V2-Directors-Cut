@@ -111,7 +111,7 @@ export function fontScopeCss(scope, family, selection = {}) {
   return layer(`:root { --qm-interface-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\n${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
 }
 
-export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {
+export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, readBuiltin = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, Blob: BlobClass = globalThis.Blob, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {
   const slots = new Map(), applied = new Map(), retired = new Set(), probes = new Set();
   let generation = 0, revision = 0, disposed = false, styleElement = null;
   const notify = (id, status, message = '') => { try { onStatus(id, { status, message }); } catch (_) {} };
@@ -143,7 +143,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
     if (slot.objectUrl) UrlApi.revokeObjectURL(slot.objectUrl);
   }
   function ensure(font) {
-    const signature = JSON.stringify([font.source?.kind, font.faces]);
+    const signature = JSON.stringify([font.source?.kind, font.source?.key, font.faces]);
     let slot = slots.get(font.id);
     if (slot?.signature === signature) return slot.ready;
     // An edited source gets a fresh family. Keep only any still-applied old
@@ -161,6 +161,17 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
         if (!blob?.size) throw new Error('此设备没有该字体，请重新上传或导入');
         slot.objectUrl = UrlApi.createObjectURL(blob);
         localSource = `url(${quoted(slot.objectUrl)})`;
+      } else if (font.source?.kind === 'builtin') {
+        const builtin = await readBuiltin(font.source.key);
+        if (disposed || slots.get(font.id) !== slot) return null;
+        if (!builtin) throw new Error('内置字体未随当前版本提供');
+        if (typeof builtin === 'string') localSource = `url(${quoted(builtin)})`;
+        else {
+          const bytes = BlobClass && builtin instanceof BlobClass ? builtin : BlobClass ? new BlobClass([builtin], { type: 'font/woff2' }) : null;
+          if (!bytes?.size) throw new Error('内置字体原件为空');
+          slot.objectUrl = UrlApi.createObjectURL(bytes);
+          localSource = `url(${quoted(slot.objectUrl)})`;
+        }
       }
       for (const face of Array.isArray(font.faces) ? font.faces : []) {
         const source = localSource || faceSource(face);
@@ -203,8 +214,8 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
     isApplied(scope, font, selection = {}) {
       if (disposed || !font || !selection.enabled || selection.fontId !== font.id) return false;
       const entry = applied.get(scope), slot = slots.get(font.id);
-      return !!entry && entry.slot === slot && entry.id === font.id && slot.signature === JSON.stringify([font.source?.kind, font.faces])
-        && selectedWeight(entry.selection.weight) === selectedWeight(selection.weight) && styleValue(entry.selection.style) === styleValue(selection.style);
+      return !!entry && entry.slot === slot && entry.id === font.id && slot.signature === JSON.stringify([font.source?.kind, font.source?.key, font.faces])
+      && selectedWeight(entry.selection.weight) === selectedWeight(selection.weight) && styleValue(entry.selection.style) === styleValue(selection.style);
     },
     async verifyWebFont(font, selection, sample) {
       if (disposed || font.source?.kind !== 'web' || !FontFaceClass || !document.fonts?.add) throw new Error('字体暂不可验证，已保留原条目');

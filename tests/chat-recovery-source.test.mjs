@@ -51,8 +51,6 @@ function fixture({ listAlias = true, responseUrl, responseType = 'basic', redire
         const path = new URL(typeof input === 'string' ? input : input.url, origin).pathname;
         calls.push({ path, init });
         if (path === nativeList || path === alias) return reply(path, [{ file_name: backup, chat_items: 1, last_mes: '2026-10-19T03:01:00Z' }], { type: mime });
-        if (path === '/api/plugins/qianmu-tts/chat-backups/list') return reply(path, {}, { status: 404 });
-        if (path === '/api/plugins/qianmu-tts/chat-backups/status') return reply(path, {});
         if (path === '/api/backups/chat/download') return reply(path, raw, { type: 'application/jsonl' });
         if (path === '/api/characters/chats') return reply(path, [...files.keys()].map(file_name => ({ file_name })));
         if (path === '/api/chats/import') {
@@ -99,7 +97,6 @@ test('native list accepts only the exact fast-list response despite the wrapper 
     assert.equal(caller.init.signal, f.calls[0].init.signal);
     assert.equal(f.calls.some(call => call.path === '/api/chats/import'), false);
 });
-
 test('the modeled wrapper redirects relative, absolute and Request list inputs but no other route', async () => {
     const targets = [], wrapped = wrapFastList(async input => targets.push(typeof input === 'string' ? input : input.url));
     for (const input of [nativeList, origin + nativeList, new Request(origin + nativeList, { method: 'POST' })]) await wrapped(input, { method: 'POST' });
@@ -108,7 +105,6 @@ test('the modeled wrapper redirects relative, absolute and Request list inputs b
     await wrapped(nativeList, { method: 'GET' });
     assert.deepEqual(targets.slice(3), ['/api/backups/chat/download', nativeList]);
 });
-
 for (const [label, responseUrl, extra] of [
     ['redirected', origin + alias, { redirected: true }],
     ['opaque', origin + alias, { responseType: 'opaque' }],
@@ -141,27 +137,6 @@ test('the fast-list alias does not bypass account revalidation or MIME validatio
     assert.equal(html.bodyReads.includes(alias), false);
     assert.deepEqual(account.controller.snapshot().backups, []);
     assert.deepEqual(html.controller.snapshot().backups, []);
-});
-
-test('automatic backup listing cannot borrow the native list alias, without hiding valid native results', async t => {
-    const path = '/api/plugins/qianmu-tts/chat-backups/list';
-    const f = fixture({ listAlias: false, aliasFor: path }); t.after(() => f.controller.dispose());
-    const state = await f.controller.load();
-    assert.equal(state.backups.length, 1);
-    assert.equal(state.backups[0].name, backup);
-    assert.equal(state.automaticBackup.availability, 'unknown');
-    assert.match(state.automaticBackup.error, /来源|地址/);
-    assert.equal(f.bodyReads.includes(path), false);
-    assert.equal(f.calls.some(call => call.path === '/api/chats/import'), false);
-});
-
-test('automatic backup status cannot borrow the native list alias', async t => {
-    const path = '/api/plugins/qianmu-tts/chat-backups/status';
-    const f = fixture({ listAlias: false, aliasFor: path }); t.after(() => f.controller.dispose());
-    await assert.rejects(f.controller.inspectAutomaticBackup(), sourceError);
-    assert.equal(f.bodyReads.includes(path), false);
-    assert.equal(f.controller.snapshot().automaticBackup.status, null);
-    assert.equal(f.calls.some(call => call.path.endsWith('/configure')), false);
 });
 
 test('preview/download cannot borrow the native list response alias', async t => {

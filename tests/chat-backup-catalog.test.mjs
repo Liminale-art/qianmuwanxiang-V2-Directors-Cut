@@ -1,17 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { buildNativeBackupCatalog, formatBackupBytes, normalizeAutomaticBackupEntries } from '../qianmu-chat-backup-catalog.js';
+import { buildNativeBackupCatalog } from '../qianmu-chat-backup-catalog.js';
 
 const row = name => ({ name, size: '120 B', messageCount: 2, lastMessageAt: 'not-backup-time', excerpt: '合成摘要' });
 const file = (key, stamp = '20261019-032016') => `chat_${key}_${stamp}.jsonl`;
 
-test('automatic backup sizes use ST-compatible binary units', () => {
-    assert.equal(formatBackupBytes(176613), '172.47KB');
-    assert.equal(formatBackupBytes(341156), '333.16KB');
-    assert.equal(formatBackupBytes(0), '0B');
-});
 const character = avatar => ({ avatar, name: '显示名不参与关联' });
 const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 8);
 
@@ -94,28 +88,6 @@ test('native date fields validate real calendar dates, leap years, and time boun
     assert.equal(entries[1].backupTimeLabel, '2024-02-29 23:59:59');
     assert.ok(entries.slice(2).every(entry => entry.backupSort === null && entry.backupTimeLabel === '时间未知'));
     assert.ok(entries.every(entry => entry.timeZoneLabel === '服务器时间' && entry.backupTimeZone === 'server'));
-});
-
-test('automatic backup fields preserve receipt information but use explicit UTC instants for local display', () => {
-    const input = [{ id: 'synthetic-id', avatar: '角色.png', chatFile: '原聊天.jsonl', createdAt: '2026-10-19T03:20:16.123Z', messageCount: 13, sizeBytes: 1234, sha256: 'a'.repeat(64) }];
-    const before = structuredClone(input), result = normalizeAutomaticBackupEntries(input)[0];
-    assert.equal(result.name, 'qianmu:synthetic-id'); assert.equal(result.source, 'qianmu'); assert.equal(result.sourceLabel, '千幕备份');
-    assert.equal(result.backupSort, Date.parse(input[0].createdAt)); assert.equal(result.timeZoneLabel, '本机时间'); assert.equal(result.backupTimeZone, 'local');
-    assert.deepEqual(result.candidateAvatars, ['角色.png']); assert.equal(result.size, '1.21KB'); assert.equal(result.sha256, input[0].sha256); assert.deepEqual(input, before);
-});
-
-test('automatic non-UTC or invalid timestamps are not silently normalized', () => {
-    const entries = normalizeAutomaticBackupEntries(['2026-10-19T03:20:16+08:00', '2026-02-29T03:20:16Z', '2026-10-19T24:00:00Z', 'not a date', undefined].map((createdAt, i) => ({ id: String(i), avatar: '../escape.png', createdAt })));
-    assert.ok(entries.every(entry => entry.backupSort === null && entry.match === 'unmatched'));
-});
-
-test('non-UTC browser timezone never shifts native server wall time and does localize automatic time', () => {
-    const moduleUrl = new URL('../qianmu-chat-backup-catalog.js', import.meta.url).href;
-    const script = `import{buildNativeBackupCatalog,normalizeAutomaticBackupEntries}from ${JSON.stringify(moduleUrl)};const n=await buildNativeBackupCatalog([{name:'chat_role_20261019-032016.jsonl'}],[]);const a=normalizeAutomaticBackupEntries([{id:'x',avatar:'role.png',createdAt:'2026-10-19T03:20:16Z'}]);console.log(JSON.stringify([n[0],a[0]]));`;
-    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ: 'Asia/Hong_Kong' }, encoding: 'utf8' });
-    const [native, automatic] = JSON.parse(output);
-    assert.equal(native.backupTimeLabel, '2026-10-19 03:20:16'); assert.equal(native.timeZoneLabel, '服务器时间');
-    assert.equal(automatic.backupTimeLabel, '2026-10-19 11:20:16'); assert.equal(automatic.timeZoneLabel, '本机时间');
 });
 
 test('10000 Unicode characters use bounded digest batches, yield between work, and retain every role including the last', async () => {

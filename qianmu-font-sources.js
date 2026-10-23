@@ -481,17 +481,20 @@ export function validateFontRecord(value) {
     if (!object(value)) fail('字体资料格式不正确');
     assertPlainTree(value);
     const name = boundedText(value.name, 160, '字体名称');
-    if (!name || !object(value.source) || !['web', 'local'].includes(value.source.kind)) fail('字体资料缺少名称或来源');
-    const local = value.source.kind === 'local';
+    if (!name || !object(value.source) || !['web', 'local', 'builtin'].includes(value.source.kind)) fail('字体资料缺少名称或来源');
+    const local = value.source.kind === 'local', builtin = value.source.kind === 'builtin';
     const source = local
         ? { kind: 'local', fileName: boundedText(value.source.fileName, 240, '文件名'), format: formatName(value.source.format) }
-        : { kind: 'web', input: boundedText(value.source.input, 8192, '字体来源') };
+        : builtin
+            ? { kind: 'builtin', key: safeId(value.source.key), ...(value.source.format ? { format: formatName(value.source.format) || fail('内置字体文件格式不正确') } : {}) }
+            : { kind: 'web', input: boundedText(value.source.input, 8192, '字体来源') };
     if (local && (!source.fileName || !source.format)) fail('本地字体来源不完整');
     if (local && typeof value.source.variantKnown === 'boolean') source.variantKnown = value.source.variantKnown;
-    if (!local && value.source.url) source.url = normalizeFontUrl(value.source.url);
-    if (!Array.isArray(value.faces) || !value.faces.length || value.faces.length > FONT_SOURCE_LIMITS.faces || (local && value.faces.length !== 1)) fail('字体分片数量不正确');
+    if (builtin && typeof value.source.variantKnown === 'boolean') source.variantKnown = value.source.variantKnown;
+    if (!local && !builtin && value.source.url) source.url = normalizeFontUrl(value.source.url);
+    if (!Array.isArray(value.faces) || !value.faces.length || value.faces.length > FONT_SOURCE_LIMITS.faces || ((local || builtin) && value.faces.length !== 1)) fail('字体分片数量不正确');
     const faces = value.faces.map((item) => {
-        if (!object(item) || !Array.isArray(item.urls) || item.urls.length > 8 || (!local && !item.urls.length) || (local && item.urls.length)) fail('字体文件链接不正确');
+        if (!object(item) || !Array.isArray(item.urls) || item.urls.length > 8 || (!local && !builtin && !item.urls.length) || ((local || builtin) && item.urls.length)) fail('字体文件链接不正确');
         const face = { urls: item.urls.map((entry) => {
             if (!object(entry)) fail('字体文件链接不正确');
             const url = { url: normalizeFontUrl(entry.url) };
