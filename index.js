@@ -5854,11 +5854,14 @@ let floorViewportCleanup = null;
 let floorNavigatorView = 'jump';
 
 function closeFloorNavigator() {
+  const floor = document.getElementById(FLOOR_NAV_ID);
+  const outside = floor?.__qianmuOutsideHandler;
+  if (outside) document.removeEventListener('pointerdown', outside, true);
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   fontLibrary.detach();
   floorViewportCleanup?.();
   floorViewportCleanup = null;
-  document.getElementById(FLOOR_NAV_ID)?.remove();
+  floor?.remove();
 }
 
 function bindFloorNavigatorViewport(root) {
@@ -6048,6 +6051,20 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   applyQianmuIcons(root);
   bindFloorNavigatorViewport(root);
   appearanceSession.mountPortal(root);
+  const outside = event => {
+    if (!root.isConnected) return;
+    const target = event.target;
+    const panel = root.querySelector('.sd-floor-panel');
+    const fontWindow = root.querySelector('.qm-font-window');
+    if (panel?.contains?.(target) || fontWindow?.contains?.(target)) return;
+    closeFloorNavigator();
+  };
+  root.__qianmuOutsideHandler = outside;
+  // Defer one tick so the pointer that opened the toolkit cannot immediately
+  // be interpreted as an outside click by this new document-level listener.
+  setTimeout(() => {
+    if (root.__qianmuOutsideHandler === outside && root.isConnected) document.addEventListener('pointerdown', outside, true);
+  }, 0);
   root.tabIndex = -1;
   const close = () => closeFloorNavigator();
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });

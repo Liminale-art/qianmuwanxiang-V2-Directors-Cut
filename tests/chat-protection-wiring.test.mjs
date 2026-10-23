@@ -55,13 +55,15 @@ test('init, loaded events and cleanup use the actual protection lifecycle', () =
 });
 
 test('toolbox opens without an active chat and backup scans stay behind the explicit backup action', () => {
-    const open = storyboardFunctionSource('openFloorNavigator'), mount = storyboardFunctionSource('mountFloorChatRecovery');
+    const open = storyboardFunctionSource('openFloorNavigator'), close = storyboardFunctionSource('closeFloorNavigator'), mount = storyboardFunctionSource('mountFloorChatRecovery');
     assert.match(open, /聊天工具包/); assert.match(open, /data-floor-tab="recovery"/);
     assert.match(open, /if \(floorNavigatorView === 'recovery'\) void mountFloorChatRecovery\(root\)/);
     assert.doesNotMatch(open, /if \(!chat\.length\) return/);
     assert.doesNotMatch(mount, /chatRecoveryClient\.(?:load|recover|verify)\(/);
     assert.match(mount, /chatRecoveryNamespace !== namespace/);
     assert.match(mount, /confirmDialog\('聊天备份', htmlEscape\(message\)\)/);
+    assert.match(open, /__qianmuOutsideHandler/); assert.match(open, /document\.addEventListener\('pointerdown', outside, true\)/);
+    assert.match(close, /document\.removeEventListener\('pointerdown', outside, true\)/);
     assert.doesNotMatch(storyboardFunctionSource('closeFloorNavigator'), /chatRecoveryClient.*dispose/);
     assert.match(source, /chatRecoveryClient\?\.dispose\(\); chatRecoveryClient = null/);
 });

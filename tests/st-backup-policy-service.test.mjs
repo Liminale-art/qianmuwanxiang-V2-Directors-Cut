@@ -36,6 +36,7 @@ test('native backup policy service writes atomically and confirms the new value'
     assert.equal(before.ok, true); assert.equal(before.value, 50); assert.equal(before.writable, true);
     const changed = await service.write(120);
     assert.equal(changed.changed, true); assert.equal(changed.value, 120); assert.equal(changed.requiresRestart, true);
+    assert.equal(changed.message, '', 'the UI does not show a redundant successful-write annotation');
     assert.match(await fs.readFile(configPath, 'utf8'), /numberOfBackups: 120/u);
     const unchanged = await service.write(120);
     assert.equal(unchanged.changed, false); assert.equal(unchanged.requiresRestart, false);

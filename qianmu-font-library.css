@@ -11,6 +11,9 @@
 #story-director-floor-nav.qm-font-library-open[data-qm-theme="editorial"] .qm-font-window :is(button,select,.sd-btn,.sd-icon-btn,.qm-font-style-pick) { border-radius:0 !important; }
 .qm-font-window .qm-font-icon>.qm-glyph-icon { font-size:16px; }
 .qm-font-library { display:flex; flex-direction:column; gap:6px; min-width:0; color:var(--sd-text); }
+/* The shared reader shell sets .sd-reader-lib to 14px later in style.css.
+   Keep the font controls at the same compact 6px rhythm as the preview list. */
+.sd-reader-lib.qm-font-library { gap:6px; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-library { font-size:12px !important; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-library :is(input,select,textarea,button) { font-size:12px !important; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-library input::placeholder,
@@ -122,4 +125,4 @@
 .qm-font-window .qm-font-local-dialog>footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex:none; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-local-dialog>footer>button { min-width:0; margin:0; }
 .qm-font-window .qm-font-local-dialog :disabled { opacity:.5; cursor:progress; }
-@media(max-width:440px) { .qm-font-library { gap:6px; } .qm-font-library .qm-font-toolbar { gap:6px; } .qm-font-library .qm-font-card-foot { gap:6px; } .qm-font-library .qm-font-bulk-actions { gap:5px; } }
+@media(max-width:440px) { .sd-reader-lib.qm-font-library { gap:6px; } .qm-font-library .qm-font-toolbar { gap:6px; } .qm-font-library .qm-font-card-foot { gap:6px; } .qm-font-library .qm-font-bulk-actions { gap:5px; } }

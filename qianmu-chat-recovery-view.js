@@ -356,7 +356,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const loadedVisible = Math.min(rows.length, visibleLimit);
         loadedCount.textContent = snapshot.busy
             ? '正在读取备份…'
-            : hasRead ? `当前已加载 ${loadedVisible} 份\n${loadedRole} · 共 ${rows.length} 份聊天记录` : '';
+            : hasRead ? `当前已加载 ${loadedRole} ${loadedVisible} / ${rows.length} 份聊天记录` : '';
         loadedCount.hidden = !snapshot.busy && !hasRead;
         previewActions.hidden = !currentPreview;
         list.replaceChildren();
@@ -401,8 +401,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             item.setAttribute('aria-pressed', String(expanded));
             const count = Number.isFinite(row.messageCount) ? `${row.messageCount} 条消息` : '消息数待预览';
             const title = element('span', 'qm-recovery-name', displayName);
-            const sourceBadge = element('small', 'qm-recovery-source', row.sourceLabel || 'ST备份');
-            const titleLine = element('span', 'qm-recovery-title-line'); titleLine.append(title, sourceBadge);
+            const titleLine = element('span', 'qm-recovery-title-line'); titleLine.append(title);
             const metadata = [count, row.size].filter(Boolean).join(' · ');
             const lastMessage = formatLastMessage(row.lastMessageAt);
             item.append(titleLine, element('small', 'qm-recovery-meta', metadata + (lastMessage ? ` · 最后对话 ${lastMessage}` : '')));

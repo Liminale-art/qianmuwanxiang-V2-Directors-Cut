@@ -208,8 +208,8 @@ test('loaded count identifies the selected role and preview rows toggle independ
   assert.equal(ui.find(node => node.tag === 'h4'), undefined, 'the shared recovery card does not repeat a current-file explanation');
   assert.match(ui.find(node => node.tag === 'button' && node.textContent.startsWith('将当前所选聊天找回至'))?.textContent || '', /将当前所选聊天找回至合成角色/);
   const loaded = ui.find(node => node.className === 'qm-recovery-loaded');
-  assert.match(loaded.textContent, /当前已加载 2 份/);
-  assert.match(loaded.textContent, /合成角色 · 共 2 份聊天记录/);
+  assert.equal(loaded.textContent, '当前已加载 合成角色 2 / 2 份聊天记录');
+  assert.equal(ui.findAll(node => node.className === 'qm-recovery-source').length, 0, 'a single backup source does not need a per-row badge');
   await items()[0].handlers.click();
   assert.deepEqual(calls, [firstName, secondName], 'collapsing an open row does not download it again');
   assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 2);

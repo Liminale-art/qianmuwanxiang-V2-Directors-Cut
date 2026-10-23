@@ -258,8 +258,7 @@ export function createNativeBackupPolicyService({ fsApi = fs, configPath, comman
     try { verified = readNativeBackupCountConfig(await fsApi.readFile(resolvedPath, 'utf8')); }
     catch (cause) { throw error('verify', 'ST config.yaml 写入后无法回读确认', 503); }
     if (verified.value !== nextValue || verified.configuredValue !== nextValue) throw error('verify', 'ST 原生备份数量写入后未确认', 503);
-    return response({ ...verified, writable: true, changed: true, requiresRestart: true,
-      message: '已写入 ST 配置，重启 ST 后生效' });
+    return response({ ...verified, writable: true, changed: true, requiresRestart: true, message: '' });
   });
   return Object.freeze({ read, write, configPath: resolvedPath });
 }

@@ -61,7 +61,7 @@ test('native ST backup retention is read and saved through the optional Qianmu s
     assert.equal(f.controller.snapshot().nativeBackupPolicy.max, 500);
     await f.controller.configureNativeBackupPolicy(120);
     assert.equal(f.controller.snapshot().nativeBackupPolicy.value, 120);
-    assert.match(f.controller.snapshot().nativeBackupPolicy.notice, /重启 ST/);
+    assert.equal(f.controller.snapshot().nativeBackupPolicy.notice, '', 'a successful config write does not leave a redundant helper note');
     await assert.rejects(f.controller.configureNativeBackupPolicy(501), /须为/);
 });
 

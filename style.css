@@ -1,6 +1,6 @@
 @import url('./qianmu-text-collection-floor.css');
 @import url('./qianmu-creative-social.css?v=1.59.458');
-@import url('./qianmu-font-library.css?v=1.59.475');
+@import url('./qianmu-font-library.css?v=1.59.482');
 
 /* ============================================================
    千幕 (Qianmu)
@@ -765,11 +765,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-status { margin: 0; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: var(--qm-type-caption); overflow-wrap: anywhere; }
 #story-director-floor-nav .qm-recovery-status[hidden] { display: none !important; }
 #story-director-floor-nav .qm-recovery-status.is-loading { color: var(--sd-text); }
-#story-director-floor-nav .qm-recovery-loaded { display: block; min-height: 1em; white-space: pre-line; color: var(--sd-muted); font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-recovery-loaded { display: block; min-width: 0; min-height: 1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-loaded[hidden] { display: none; }
 #story-director-floor-nav .qm-recovery-loading-dot { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--sd-accent); animation: qm-recovery-pulse 1s ease-in-out infinite; }
 @keyframes qm-recovery-pulse { 0%, 100% { opacity: .32; transform: scale(.78); } 50% { opacity: 1; transform: scale(1); } }
-#story-director-floor-nav .qm-recovery-source { flex: 0 1 auto; min-width: 0; max-width: min(8em, 34%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: 11px; }
 #story-director-floor-nav .qm-recovery-target-fixed { margin: 0; font-size: var(--qm-type-label); overflow-wrap: anywhere; }
 #story-director-floor-nav .qm-recovery-file-details { font-size: var(--qm-type-caption); color: var(--sd-muted); }
 #story-director-floor-nav .qm-recovery-file-details p { margin: 6px 0 0; overflow-wrap: anywhere; }

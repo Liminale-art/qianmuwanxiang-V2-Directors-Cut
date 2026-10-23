@@ -328,7 +328,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 state.nativeBackupPolicy = { ...prior, busy: true, error: '', notice: '' }; emit();
                 try {
                     state.nativeBackupPolicy = await nativeBackupPolicyRequest(token, 'write', numberOfBackups);
-                    if (!state.nativeBackupPolicy.notice) state.nativeBackupPolicy.notice = state.nativeBackupPolicy.requiresRestart ? '已保存，重启 ST 后生效' : '当前值未变化';
                 } catch (error) {
                     if (identityFailure(error) || error?.code === 'context') throw error;
                     retainNativePolicyError(error, prior);
