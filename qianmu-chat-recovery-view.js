@@ -427,5 +427,11 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!recoveredCurrent;
     }
     render();
+    // The retention control is independent of role selection. Read it after
+    // the local shell is painted so the panel is immediately visible, while
+    // keeping older server plugins (without this route) non-blocking.
+    if (typeof controller.inspectNativeBackupPolicy === 'function' && controller.snapshot()?.nativeBackupPolicy?.availability === 'unknown') {
+        void run(() => controller.inspectNativeBackupPolicy());
+    }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren(); } });
 }
