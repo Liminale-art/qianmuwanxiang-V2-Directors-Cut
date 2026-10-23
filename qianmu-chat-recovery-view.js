@@ -173,8 +173,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     // Recovery actions remain shared because only one target can be active at
     // a time; the preview bodies themselves are rendered per row below.
     const previewActions = element('section', 'qm-recovery-preview qm-recovery-preview-actions');
-    const previewActionsTitle = element('h4');
-    const fixedTarget = element('p', 'qm-recovery-target-fixed');
     const targetLabel = element('label', '', '找回至角色');
     const targetTools = element('div', 'qm-recovery-target-tools');
     const targetInput = element('input', 'qm-recovery-target-search'); targetInput.type = 'search'; targetInput.placeholder = '搜索目标角色名'; targetInput.setAttribute('aria-label', '搜索目标角色名');
@@ -189,7 +187,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     moreTargets.className = 'qm-recovery-character-more';
     moreTargets.setAttribute('aria-label', '加载更多目标角色');
     targetTools.append(targetInput, target, moreTargets); targetLabel.append(targetTools);
-    const recover = button('找回至所选角色', () => run(async () => {
+    const recover = button('将当前所选聊天找回至所选角色', () => run(async () => {
         const before = controller.snapshot(), currentPreview = activePreviewName ? expandedPreviews.get(activePreviewName) : null;
         const name = currentPreview?.name, revision = currentPreview?.revision;
         const avatar = selectedAvatar, selectionToken = selectionRevision, matches = characters().filter(row => row.avatar === avatar);
@@ -207,7 +205,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         // error or invite a second import.
         try { await onRecovered(result); } catch {}
     }));
-    previewActions.append(previewActionsTitle, fixedTarget, targetLabel, recover);
+    previewActions.append(targetLabel, recover);
 
     root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions);
 
@@ -337,9 +335,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             : hasRead ? `当前已加载 ${loadedVisible} 份\n${loadedRole} · 共 ${rows.length} 份聊天记录` : '';
         loadedCount.hidden = !snapshot.busy && !hasRead;
         previewActions.hidden = !currentPreview;
-        previewActionsTitle.textContent = currentPreview
-            ? recoveredCurrent ? `已将此聊天备份找回至${recoveredCurrent.target?.name || '所选角色'}` : `当前找回：${rows.find(row => row.name === currentPreview.name)?.chatFile || currentPreview.name}`
-            : '';
         list.replaceChildren();
         const shownRows = rows.slice(0, visibleLimit);
         const formatLastMessage = value => {
@@ -397,8 +392,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         loadMoreBackups.hidden = rows.length <= visibleLimit;
         loadMoreBackups.disabled = !!snapshot.busy;
         const matches = allCharacters.filter(row => row.avatar === selectedAvatar);
-        fixedTarget.hidden = true;
-        fixedTarget.textContent = '';
         targetLabel.hidden = selection !== OTHER;
         if (selection === OTHER) {
             renderCharacterPicker(target, moreTargets, index, targetSearch, targetLimit, selectedAvatar);
@@ -406,7 +399,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         }
         target.disabled = !!snapshot.busy;
         targetInput.disabled = !!snapshot.busy; moreTargets.disabled = !!snapshot.busy;
-        recover.textContent = `找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
+        recover.textContent = `将当前所选聊天找回至${matches.length === 1 ? matches[0].label : '所选角色'}`;
         recover.disabled = !!snapshot.busy || matches.length !== 1 || !currentPreview?.canRecover || !!recoveredCurrent;
     }
     render();

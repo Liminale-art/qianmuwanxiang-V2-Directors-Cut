@@ -65,7 +65,7 @@ test('verified recovery asks the host to refresh the welcome recent-chat list', 
   f.view = view;
   const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
   const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
-  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至')); await recover.handlers.click();
+  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('将当前所选聊天找回至')); await recover.handlers.click();
   assert.equal(refreshed, 1);
 });
 
@@ -112,7 +112,7 @@ test('recovery action does not open a confirmation popup', async () => {
     confirm: () => { throw new Error('confirmation popup should not be called'); } });
   const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
   const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
-  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('找回至'));
+  const recover = ui.find(node => node.tag === 'button' && node.textContent.startsWith('将当前所选聊天找回至'));
   await recover.handlers.click();
   assert.equal(f.calls.filter(path => path.endsWith('/import')).length, 1);
   assert.match(ui.find(node => node.className === 'qm-recovery-status').textContent, /^已将此聊天备份找回至/);
@@ -204,6 +204,8 @@ test('loaded count identifies the selected role and preview rows toggle independ
   assert.equal(ui.findAll(node => node.className === 'qm-recovery-preview' || node.className === 'qm-recovery-preview qm-recovery-preview-actions').length, 3, 'two row previews plus shared recovery actions remain visible');
   const firstPreview = ui.findAll(node => node.className === 'qm-recovery-preview')[0];
   assert.equal(firstPreview.children.some(node => node.tag === 'h4'), false, 'a row preview does not repeat the file title');
+  assert.equal(ui.find(node => node.tag === 'h4'), undefined, 'the shared recovery card does not repeat a current-file explanation');
+  assert.match(ui.find(node => node.tag === 'button' && node.textContent.startsWith('将当前所选聊天找回至'))?.textContent || '', /将当前所选聊天找回至合成角色/);
   const loaded = ui.find(node => node.className === 'qm-recovery-loaded');
   assert.match(loaded.textContent, /当前已加载 2 份/);
   assert.match(loaded.textContent, /合成角色 · 共 2 份聊天记录/);
