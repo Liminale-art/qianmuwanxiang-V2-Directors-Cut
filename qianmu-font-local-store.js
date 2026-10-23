@@ -1,8 +1,7 @@
-// Local font bytes stay in this browser/account by default. The font directory
-// may be synchronized separately; this store never reads or writes chat/files
-// endpoints.
+// Local font bytes stay in this browser/account by default. When account
+// storage is available, the directory and originals are synchronized by the
+// background sync layer; this store never reads or writes chat/files endpoints.
 const STORE = 'fonts';
-const MAX_BYTES = 32 * 1024 * 1024;
 
 function fontKey(id) {
   const value = String(id || '').trim();
@@ -62,7 +61,7 @@ export function createFontLocalStore({ namespace, indexedDB = globalThis.indexed
       if (!BlobClass) throw new Error('此浏览器不支持保存本地字体');
       if (!(bytes instanceof BlobClass) && !(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) throw new Error('字体文件无效');
       const blob = bytes instanceof BlobClass ? bytes : new BlobClass([bytes], { type: mime });
-      if (!blob.size || blob.size > MAX_BYTES) throw new Error('字体文件为空或超过 32 MB');
+      if (!blob.size) throw new Error('字体文件为空');
       await transaction('readwrite', (store) => { store.put(blob, key); });
       return key;
     },

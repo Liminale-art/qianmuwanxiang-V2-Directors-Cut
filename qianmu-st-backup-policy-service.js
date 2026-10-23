@@ -36,7 +36,7 @@ function integer(value) {
 export function validateNativeBackupCount(value) {
   const parsed = integer(value);
   if (!Number.isSafeInteger(parsed) || parsed < ST_NATIVE_BACKUP_POLICY.min || parsed > ST_NATIVE_BACKUP_POLICY.max) {
-    throw error('value', `ST 原生每聊天备份数须为 ${ST_NATIVE_BACKUP_POLICY.min}–${ST_NATIVE_BACKUP_POLICY.max} 的整数`, 400);
+    throw error('value', `单聊天备份数上限须为 ${ST_NATIVE_BACKUP_POLICY.min}–${ST_NATIVE_BACKUP_POLICY.max} 的整数`, 400);
   }
   return parsed;
 }

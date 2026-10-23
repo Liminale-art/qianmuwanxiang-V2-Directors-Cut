@@ -44,20 +44,21 @@ function fixture() {
     return { storage, localStore, local, immutable, get catalog() { return catalog; } };
 }
 
-test('font account sync publishes the directory by default without uploading local originals', async () => {
+test('font account sync publishes the directory and originals by default', async () => {
     const f = fixture(), sync = createFontAccountSync({ storageFactory: () => f.storage }), state = localFont();
+    f.local.set(state.fonts[0].id, new Blob([new Uint8Array([0, 1, 2, 3])]));
     const result = await sync.hydrate(state, { localStore: f.localStore });
     assert.equal(result.synced, true);
-    assert.equal(Object.keys(f.catalog.originals).length, 0);
-    assert.equal(f.immutable.size, 0);
+    assert.equal(Object.keys(f.catalog.originals).length, 1);
+    assert.equal(f.immutable.size, 1);
     sync.close();
 });
 
-test('font account sync uploads originals only after explicit opt-in and keeps them immutable', async () => {
+test('font account sync keeps automatically uploaded originals immutable', async () => {
     const f = fixture(), sync = createFontAccountSync({ storageFactory: () => f.storage }), state = localFont();
     const id = state.fonts[0].id;
     f.local.set(id, new Blob([new Uint8Array([0, 1, 2, 3])]));
-    await sync.hydrate({ ...state, syncLocalOriginals: true }, { syncLocalOriginals: true, localStore: f.localStore });
+    await sync.hydrate({ ...state, syncLocalOriginals: false }, { localStore: f.localStore });
     assert.equal(f.immutable.size, 1);
     assert.ok(f.catalog.originals[id]);
     assert.match(f.catalog.originals[id].slot, /^fontasset-/);

@@ -277,8 +277,10 @@ test('compressed local files do not invent a variable family from their filename
     assert.equal(created.record.faces[0].weight, '400'); assert.equal(created.record.faces[0].style, 'normal');
 });
 
-test('local upload checks size before reading and rejects disguised files/truncated tables', async () => {
-    await assert.rejects(createLocalFontRecord({ size: FONT_SOURCE_LIMITS.fontBytes + 1, arrayBuffer: () => assert.fail('must not read oversized upload') }), /32 MB/u);
+test('local upload does not impose a product file-size cap and still rejects disguised files/truncated tables', async () => {
+    let read = false;
+    const created = await createLocalFontRecord({ size: Number.MAX_SAFE_INTEGER, name: 'large.ttf', arrayBuffer: () => { read = true; return makeFont('truetype').buffer; } });
+    assert.equal(read, true); assert.equal(created.record.source.format, 'truetype');
     assert.throws(() => validateLocalFontBytes(new TextEncoder().encode('<svg><script>alert(1)</script></svg>')), /仅支持/u);
     assert.throws(() => validateLocalFontBytes(makeFont('truetype').subarray(0, 12)), /表不完整/u);
     const escaped = makeFont(); new DataView(escaped.buffer).setUint32(20, 999); assert.throws(() => validateLocalFontBytes(escaped), /超出边界/u);

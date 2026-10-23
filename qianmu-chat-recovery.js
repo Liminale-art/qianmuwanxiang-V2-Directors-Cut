@@ -324,7 +324,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 need(prior.availability === 'available', 'native-policy', '当前部署未提供 ST 原生备份设置接口');
                 need(prior.writable === true, 'native-policy', '当前由 ST 环境变量控制，请修改部署环境变量并重启 ST');
                 need(Number.isSafeInteger(numberOfBackups) && numberOfBackups >= prior.min && numberOfBackups <= prior.max,
-                    'native-policy', `ST 原生每聊天备份数须为 ${prior.min}–${prior.max} 的整数`);
+                    'native-policy', `单聊天备份数上限须为 ${prior.min}–${prior.max} 的整数`);
                 state.nativeBackupPolicy = { ...prior, busy: true, error: '', notice: '' }; emit();
                 try {
                     state.nativeBackupPolicy = await nativeBackupPolicyRequest(token, 'write', numberOfBackups);

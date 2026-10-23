@@ -22,8 +22,10 @@ function editableWebSource(font) {
 }
 
 // The local ST settings remain the source of truth for this device. A separate
-// account catalog mirrors directory metadata; uploaded originals are opt-in and
-// never enter chat metadata or ordinary ST user/files.
+// account catalog mirrors directory metadata; when the current deployment
+// exposes account storage, local originals are synchronized automatically. A
+// deployment without that capability remains fully local without a user-facing
+// switch.
 export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent, document = globalThis.document,
   notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel, getPreviewFontSize = () => 18,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
@@ -61,7 +63,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       if (accountSync && !accountSyncHydrated) {
         try {
           const local = normalizeFontLibrary(candidate.fontLibrary);
-          const hydrated = await accountSync.hydrate(local, { syncLocalOriginals: local.syncLocalOriginals === true, localStore: store });
+          const hydrated = await accountSync.hydrate(local, { localStore: store });
           if (current(generation) && JSON.stringify(hydrated.state) !== JSON.stringify(local)) {
             candidate.fontLibrary = hydrated.state;
             save(candidate);
@@ -106,7 +108,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   }
   async function pushAccount(token) {
     if (!accountSync || !current(token)) return;
-    try { await accountSync.push(read(), { syncLocalOriginals: read().syncLocalOriginals === true, localStore: store }); }
+    try { await accountSync.push(read(), { localStore: store }); }
     catch (error) { if (current(token)) { try { notify(error?.message || '字体目录已保存，但跨端同步未完成', 'warning'); } catch (_) {} } }
   }
   function uiState() {

@@ -1,6 +1,9 @@
 /** Only validated font faces reach the runtime. Short original inputs remain inert edit metadata. */
 export const FONT_SOURCE_LIMITS = Object.freeze({
-    fontBytes: 32 * 1024 * 1024,
+    // Font binaries intentionally have no product-defined size ceiling. The
+    // browser, IndexedDB quota, and deployment transport may still reject an
+    // allocation that the current environment cannot hold.
+    fontBytes: Number.POSITIVE_INFINITY,
     totalLocalBytes: 96 * 1024 * 1024,
     cssBytes: 1024 * 1024,
     totalCssBytes: 2 * 1024 * 1024,
@@ -382,7 +385,6 @@ function fontBytes(value) {
 /** Header/table bounds are checked here; the browser still validates the actual font on load. */
 export function validateLocalFontBytes(value) {
     const bytes = fontBytes(value);
-    if (bytes.byteLength > FONT_SOURCE_LIMITS.fontBytes) fail('单个字体文件不能超过 32 MB');
     if (bytes.byteLength < 12) fail('字体文件不完整');
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const signature = String.fromCharCode(...bytes.subarray(0, 4));
@@ -459,7 +461,7 @@ function localFontDescriptors(bytes, format) {
 }
 
 export async function createLocalFontRecord(file, { name } = {}) {
-    if (!file || typeof file.arrayBuffer !== 'function' || !Number.isFinite(file.size) || file.size > FONT_SOURCE_LIMITS.fontBytes) fail('请选择不超过 32 MB 的字体文件');
+    if (!file || typeof file.arrayBuffer !== 'function' || !Number.isFinite(file.size)) fail('请选择有效的字体文件');
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { format } = validateLocalFontBytes(bytes);
     const { known, ...descriptors } = localFontDescriptors(bytes, format);

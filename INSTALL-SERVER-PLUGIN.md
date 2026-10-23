@@ -46,7 +46,7 @@ QIANMU_HEALTH_URL='http://127.0.0.1:8000/api/plugins/qianmu-tts/health' bash -c 
 
 不设置时仍会执行本地插件包版本校验，适合反向代理、容器或 ST 端口不固定的部署。
 
-聊天备份面板的“ST 原生每聊天备份数”只允许管理员账户写入 1–500；保存后必须重启 ST 后端才生效。服务端从 ST 启动参数提供的 `configPath` 读取配置，兼容普通根目录、Docker 的 `config/config.yaml` 和全局安装；若由 `SILLYTAVERN_BACKUPS_COMMON_NUMBEROFBACKUPS` 环境变量控制，则界面仅显示当前值，不会覆盖环境配置。
+聊天备份面板的“单聊天备份数上限”只允许管理员账户写入 1–500；保存后必须重启 ST 后端才生效。服务端从 ST 启动参数提供的 `configPath` 读取配置，兼容普通根目录、Docker 的 `config/config.yaml` 和全局安装；若由 `SILLYTAVERN_BACKUPS_COMMON_NUMBEROFBACKUPS` 环境变量控制，则界面仅显示当前值，不会覆盖环境配置。
 
 更新脚本位于仓库的 [update-server-plugin.sh](update-server-plugin.sh)，不再把大段 heredoc 代码直接粘到交互终端，避免终端停在 `>` 续行状态。
 

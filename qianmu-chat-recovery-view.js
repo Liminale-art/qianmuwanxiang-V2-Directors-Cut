@@ -166,8 +166,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     load.setAttribute('aria-label', '读取备份');
     tools.append(characterControl, input, load);
     const nativePolicy = element('section', 'qm-recovery-native-policy');
-    const nativePolicyField = element('label', 'qm-recovery-native-policy-field', 'ST 原生每聊天备份数');
-    const nativePolicyInput = element('input'); nativePolicyInput.type = 'number'; nativePolicyInput.step = '1'; nativePolicyInput.placeholder = '读取后可设置'; nativePolicyInput.setAttribute('aria-label', 'ST 原生每聊天备份数');
+    const nativePolicyField = element('label', 'qm-recovery-native-policy-field', '单聊天备份数上限');
+    const nativePolicyInput = element('input'); nativePolicyInput.type = 'number'; nativePolicyInput.step = '1'; nativePolicyInput.placeholder = '读取后可设置'; nativePolicyInput.setAttribute('aria-label', '单聊天备份数上限');
     const nativePolicyStatus = element('p', 'qm-recovery-native-policy-status'); nativePolicyStatus.setAttribute('role', 'status'); nativePolicyStatus.hidden = true;
     nativePolicyField.append(nativePolicyInput); nativePolicy.append(nativePolicyField, nativePolicyStatus);
     nativePolicyInput.addEventListener('change', () => run(async () => {

@@ -112,7 +112,8 @@ test('render, sorted reveal and paging use one fresh state snapshot each, not on
 });
 test('master enable is the first card, add collapses as a unit and search directly precedes multi-select', () => {
     const html = renderFontLibrary(state()); assert.ok(html.indexOf('data-font-enabled') < html.indexOf('qm-font-web-label'));
-    assert.match(html, /class="sd-card qm-font-enable"[\s\S]*data-font-enabled aria-label="启用字体库" checked[\s\S]*data-font-sync-originals aria-label="同步本地字体原件"/);
+    assert.match(html, /class="sd-card qm-font-enable"[\s\S]*data-font-enabled aria-label="启用字体库" checked/);
+    assert.doesNotMatch(html, /data-font-sync-originals|同步本地字体原件/);
     assert.doesNotMatch(html, /仅在开启后上传到当前 ST 账户/); assert.doesNotMatch(renderFontLibrary(state({ enabled: false })), /data-font-enabled[^>]*checked/);
     assert.match(html, /<details class="sd-card qm-font-add"><summary>/); assert.doesNotMatch(html, /Web 引入|字体链接或样式/); assert.match(html, />字体链接<\/span>/);
     assert.ok(html.indexOf('data-font-search') < html.indexOf('data-font-action="manage"')); assert.doesNotMatch(html, /data-font-action="filter"/);
@@ -530,10 +531,10 @@ test('CSS adds layout and sample controls without rewriting theme fonts or old f
     assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /qm-font-apply-pick\)>select[^}]*opacity:0/); assert.match(css, /\.qm-font-card-foot \{[^}]*flex-wrap:wrap/);
     assert.match(css, /\.qm-font-entry>small \{[^}]*white-space:nowrap;[^}]*text-overflow:ellipsis/); assert.match(css, /\.qm-font-header h2[^}]*font-size:16px !important/);
     assert.match(css, /data-qm-theme="glass"\] \.qm-font-window \.qm-font-header \.qm-font-icon \{ border-radius:50% !important/); assert.match(css, /data-qm-theme="editorial"\][^\n]*border-radius:0 !important/);
-    assert.match(css, /:is\(input\[data-font-enabled\],input\[data-font-sync-originals\]\)[^}]*border-radius:999px !important/); assert.match(css, /qm-font-imports \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
+    assert.match(css, /input\[data-font-enabled\][^}]*border-radius:999px !important/); assert.doesNotMatch(css, /data-font-sync-originals/); assert.match(css, /qm-font-imports \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
     assert.match(css, /\.qm-font-tag \{[^}]*max-width:100%;[^}]*overflow-wrap:anywhere/); assert.doesNotMatch(css, /\.qm-font-folder-menu/);
     assert.match(css, /\.qm-font-preview-editor \.qm-font-field-head \{ justify-content:space-between;/); assert.match(css, /\.qm-font-local-files \{[^}]*overflow:auto/); assert.match(css, /\.qm-font-local-dialog>footer \{[^}]*repeat\(2,minmax\(0,1fr\)\)/);
-    assert.match(css, /:is\(input\[data-font-enabled\],input\[data-font-sync-originals\]\)::before \{ content:none !important; display:none !important/); assert.match(css, /:is\(input\[data-font-enabled\],input\[data-font-sync-originals\]\)::after \{[^}]*width:16px !important;[^}]*clip-path:none !important;[^}]*transform:none !important/); assert.match(css, /:is\(input\[data-font-enabled\],input\[data-font-sync-originals\]\):checked::after \{ transform:translateX\(16px\) !important/);
+    assert.match(css, /input\[data-font-enabled\]::before \{ content:none !important; display:none !important/); assert.match(css, /input\[data-font-enabled\]::after \{[^}]*width:16px !important;[^}]*clip-path:none !important;[^}]*transform:none !important/); assert.match(css, /input\[data-font-enabled\]:checked::after \{ transform:translateX\(16px\) !important/);
     assert.match(css, /\.qm-font-add>summary::marker \{ content:""; \}/); assert.match(css, /\.qm-font-add>summary::-webkit-details-marker \{ display:none; \}/); assert.match(css, /\.qm-font-name>strong \{[^}]*font-weight:400 !important/); assert.match(css, /:is\(\.qm-font-card-tools,\.qm-font-rename-pop\) \.qm-font-icon \{ background:none !important; border:0 !important; box-shadow:none !important/);
     assert.match(css, /\.qm-font-local-dialog \{[^}]*background:var\(--qm-raised,var\(--sd-sticky-bg,#f7f3eb\)\) !important/);
     assert.doesNotMatch(css, /\.qm-font-local-dialog \{[^}]*background:[^;]*--sd-folder-head/);

@@ -1,12 +1,16 @@
 import { createConfiguredStAccountStorage, isStAccountStorageConfigured } from './qianmu-st-account-storage.js';
 import { normalizeFontLibrary, mergeFontLibraryRecords } from './qianmu-font-library-state.js';
 
-// The directory is deliberately a small metadata document.  Font bytes do not
-// belong in the mutable catalog: when the user explicitly opts in, each file is
-// retained as a content-addressed immutable account document instead.
+// The directory is deliberately a small metadata document. Font bytes do not
+// belong in the mutable catalog: when the deployment exposes account storage,
+// each file is retained as a content-addressed immutable account document by
+// default. Deployments without that capability remain local-only.
 export const FONT_ACCOUNT_SYNC_SLOT = 'font-library';
 export const FONT_ACCOUNT_SYNC_VERSION = 1;
 const ASSET_PREFIX = 'fontasset-';
+// This is the generic ST account-document transport budget. It is not a
+// product limit on local font files; deployments may still apply their own
+// request/storage quota when cross-device sync is available.
 const ASSET_MAX_BYTES = 48 * 1024 * 1024;
 const plain = value => value && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -23,8 +27,7 @@ function encode(bytes) {
 }
 
 function decode(value) {
-  if (typeof value !== 'string' || value.length > Math.ceil(32 * 1024 * 1024 / 3) * 4
-    || value.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new Error('字体原件编码无效或过大');
+  if (typeof value !== 'string' || value.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(value)) throw new Error('字体原件编码无效');
   if (typeof atob === 'function') return Uint8Array.from(atob(value), character => character.charCodeAt(0));
   return new Uint8Array(Buffer.from(value, 'base64'));
 }
@@ -93,7 +96,6 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
     if (!localStore?.get || !font || font.source?.kind !== 'local') return;
     const blob = await localStore.get(font.id);
     if (!blob?.size) return;
-    if (blob.size > 32 * 1024 * 1024) throw new Error(`字体「${font.name}」原件超过 32 MB`);
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const current = ensureStorage();
     if (!current) return;
@@ -119,38 +121,34 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
     }
   }
 
-  async function push(state, { syncLocalOriginals = false, localStore } = {}) {
+  async function push(state, { localStore } = {}) {
     const current = ensureStorage();
     if (!current) return { state: normalizeFontLibrary(state), synced: false };
     const previous = await readCatalog();
     const originals = { ...(previous.value?.originals || {}) };
     const library = normalizeFontLibrary(state);
-    if (syncLocalOriginals) {
-      for (const font of library.fonts) await preserveOriginal(font, localStore, originals);
-    }
+    for (const font of library.fonts) await preserveOriginal(font, localStore, originals);
     const value = { version: FONT_ACCOUNT_SYNC_VERSION, library: stateWithoutPreference(library), originals };
     await writeCatalog(value, previous.fingerprint);
     return { state: library, synced: true };
   }
 
-  async function hydrate(localState, { syncLocalOriginals = false, localStore } = {}) {
+  async function hydrate(localState, { localStore } = {}) {
     const local = normalizeFontLibrary(localState);
     const current = ensureStorage();
     if (!current) return { state: local, changed: false, synced: false };
     const remote = await readCatalog();
     if (!remote.value) {
-      await push(local, { syncLocalOriginals, localStore });
+      await push(local, { localStore });
       return { state: local, changed: false, synced: true };
     }
     const merged = mergeFontLibraryRecords(remote.value.library, local.fonts, uniqueId).state;
-    const state = normalizeFontLibrary({ ...merged, syncLocalOriginals: local.syncLocalOriginals === true });
+    const state = normalizeFontLibrary({ ...merged, syncLocalOriginals: true });
     const changed = JSON.stringify(stateWithoutPreference(state)) !== JSON.stringify(remote.value.library);
     if (changed) await writeCatalog({ version: FONT_ACCOUNT_SYNC_VERSION, library: stateWithoutPreference(state), originals: remote.value.originals }, remote.fingerprint);
     fingerprint = fingerprint || remote.fingerprint;
-    if (syncLocalOriginals) {
-      await restoreOriginals(state, remote.value.originals, localStore);
-      await push(state, { syncLocalOriginals: true, localStore });
-    }
+    await restoreOriginals(state, remote.value.originals, localStore);
+    await push(state, { localStore });
     return { state, changed, synced: true };
   }
 
