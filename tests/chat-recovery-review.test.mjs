@@ -18,6 +18,7 @@ function fixture(options = {}) {
     crypto: { randomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` },
     fetch: async (path, init) => {
       calls.push(path);
+      if (path === '/api/plugins/qianmu-tts/st-backup-policy') return jsonResponse({ ok: true, available: true, min: 1, max: 500, defaultValue: 50, value: 50, configuredValue: 50, source: 'config', writable: true, requiresRestart: true });
       if (path === '/api/backups/chat/get') return jsonResponse([{ file_name: backup }]);
       if (path === '/api/backups/chat/download') return new Response(raw);
       if (path === '/api/characters/chats') return jsonResponse([...files.keys()].map(file_name => ({ file_name })));

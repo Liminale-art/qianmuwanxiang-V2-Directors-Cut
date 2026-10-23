@@ -746,6 +746,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-role-picker .qm-recovery-character-more { width: 100%; margin-top: 4px; font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-tools .is-loading i { animation: qm-recovery-spin .8s linear infinite; }
 @keyframes qm-recovery-spin { to { transform: rotate(360deg); } }
+#story-director-floor-nav .qm-recovery-native-policy { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-recovery-native-policy-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; color: var(--sd-text); font-size: var(--qm-type-label); }
+#story-director-floor-nav .qm-recovery-native-policy-field input { width: 120px; min-width: 0; }
+#story-director-floor-nav .qm-recovery-native-policy-status { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); overflow-wrap: anywhere; }
+#story-director-floor-nav .qm-recovery-native-policy-status[hidden] { display: none !important; }
+#story-director-floor-nav .qm-recovery-native-policy-status.is-loading { color: var(--sd-text); }
 #story-director-floor-nav .qm-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 #story-director-floor-nav .qm-recovery-role-suggestions { display: grid; gap: 4px; max-height: 220px; overflow: auto; padding: 5px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 #story-director-floor-nav .qm-recovery-role-suggestions[hidden] { display: none !important; }

@@ -29,6 +29,7 @@ import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
 import { authorizeComfyCloudTarget } from './qianmu-comfy-cloud-access.js';
 import { checkComfyCloudConnection } from './qianmu-comfy-cloud-check.js';
 import { resolveStoryboardComfyCloud, requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
+import { createNativeBackupPolicyService, nativeBackupPolicyErrorPayload } from './qianmu-st-backup-policy-service.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -187,17 +188,49 @@ export async function init(router, options = {}) {
 
   router.get('/image/capabilities', async (_req, res) => prepareImageResponse(res).json(imageGatewayCapabilities(await pluginVersion())));
 
+  const hostWorkingDirectory = process.cwd();
   const prepareImageResponse = (res) => {
     res.set('Cache-Control', 'no-store');
     res.set('X-Content-Type-Options', 'nosniff');
     return res;
   };
 
+  // ST's native chat backup retention is a server-wide startup setting. Keep
+  // the file operation behind the same-origin server plugin so the browser
+  // never guesses a deployment path or writes config.yaml itself.
+  const nativeBackupPolicy = createNativeBackupPolicyService({
+    commandLineArgs: globalThis.COMMAND_LINE_ARGS,
+    cwd: hostWorkingDirectory,
+  });
+  router.post('/st-backup-policy', async (req, res) => {
+    prepareImageResponse(res);
+    const profile = req.user?.profile;
+    if (!profile || profile.enabled === false || typeof profile.handle !== 'string' || !profile.handle.trim()) {
+      return res.status(401).json({ ok: false, code: 'account', message: '尚未确认当前 ST 登录状态' });
+    }
+    try {
+      const action = req.body?.action || 'read';
+      const canWrite = profile.admin === true;
+      if (action === 'read') {
+        const result = await nativeBackupPolicy.read();
+        return res.json({ ...result, writable: result.writable && canWrite,
+          ...(canWrite ? {} : { message: '当前 ST 账户无权修改全局备份数量' }) });
+      }
+      if (action === 'write') {
+        if (!canWrite) return res.status(403).json({ ok: false, code: 'permission', message: '当前 ST 账户无权修改全局备份数量' });
+        return res.json(await nativeBackupPolicy.write(req.body?.numberOfBackups));
+      }
+      return res.status(400).json({ ok: false, code: 'request', message: 'ST 原生备份设置请求无效' });
+    } catch (cause) {
+      const result = nativeBackupPolicyErrorPayload(cause);
+      return res.status(result.status).json(result.body);
+    }
+  });
+
   let imageTasks;
   // ST accepts relative dataRoot configuration (including its ./data default)
   // and initializes plugins after selecting its working directory. Resolve only
   // that trusted host value, against the init cwd rather than a later request's.
-  const hostWorkingDirectory = process.cwd();
   const hostDataRoot = () => {
     const value = options.dataRoot === undefined ? globalThis.DATA_ROOT : options.dataRoot;
     if (typeof value !== 'string' || !value.trim() || value.includes('\0') || path.isAbsolute(value)) return value;

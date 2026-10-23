@@ -165,6 +165,15 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     load.innerHTML = '<i class="fa-solid fa-rotate"></i><span class="qm-sr-only">读取备份</span>';
     load.setAttribute('aria-label', '读取备份');
     tools.append(characterControl, input, load);
+    const nativePolicy = element('section', 'qm-recovery-native-policy');
+    const nativePolicyField = element('label', 'qm-recovery-native-policy-field', 'ST 原生每聊天备份数');
+    const nativePolicyInput = element('input'); nativePolicyInput.type = 'number'; nativePolicyInput.step = '1'; nativePolicyInput.placeholder = '读取后可设置'; nativePolicyInput.setAttribute('aria-label', 'ST 原生每聊天备份数');
+    const nativePolicyStatus = element('p', 'qm-recovery-native-policy-status'); nativePolicyStatus.setAttribute('role', 'status'); nativePolicyStatus.hidden = true;
+    nativePolicyField.append(nativePolicyInput); nativePolicy.append(nativePolicyField, nativePolicyStatus);
+    nativePolicyInput.addEventListener('change', () => run(async () => {
+        if (typeof controller.configureNativeBackupPolicy !== 'function') throw new Error('当前版本未提供 ST 原生备份设置接口');
+        await controller.configureNativeBackupPolicy(Number(nativePolicyInput.value));
+    }));
     const status = element('p', 'qm-recovery-status'); status.setAttribute('role', 'status');
     const loadedCount = element('small', 'qm-recovery-loaded');
     const list = element('div', 'qm-recovery-list');
@@ -207,7 +216,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     }));
     previewActions.append(targetLabel, recover);
 
-    root.replaceChildren(status, tools, suggestions, loadedCount, list, previewActions);
+    root.replaceChildren(status, tools, nativePolicy, suggestions, loadedCount, list, previewActions);
 
     const createPreviewSection = currentPreview => {
         const section = element('section', 'qm-recovery-preview');
@@ -304,6 +313,21 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         else if (result?.status === 'verified') status.textContent = `已将此聊天备份找回至${result.target?.name || '所选角色'}`;
         else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。' : '找回未完成，未创建副本。'));
         input.disabled = !!snapshot.busy;
+        const policy = snapshot.nativeBackupPolicy || {};
+        const policyBusy = policy.busy === true || snapshot.busy && snapshot.phase === 'native-policy';
+        const policyAvailable = policy.availability === 'available';
+        const policyWritable = policy.writable === true;
+        nativePolicyInput.min = String(Number.isSafeInteger(policy.min) ? policy.min : 1);
+        nativePolicyInput.max = String(Number.isSafeInteger(policy.max) ? policy.max : 500);
+        nativePolicyInput.value = Number.isSafeInteger(policy.value) ? String(policy.value) : '';
+        nativePolicyInput.disabled = !!snapshot.busy || !policyAvailable || !policyWritable;
+        nativePolicyStatus.hidden = !(policyBusy || policy.error || policy.notice || policyAvailable && !policyWritable);
+        nativePolicyStatus.classList.toggle('is-loading', policyBusy);
+        const readOnlyNotice = policy.source === 'environment'
+            ? '当前由 ST 环境变量控制，请修改部署环境变量并重启 ST'
+            : '当前 ST 原生备份设置为只读';
+        nativePolicyStatus.textContent = policyBusy ? '正在读取 ST 原生备份设置…'
+            : policy.error || policy.notice || (policyAvailable && !policyWritable ? readOnlyNotice : '');
         const indexForSuggestions = readCharacterIndex();
         const suggestionQuery = input.value.trim().toLocaleLowerCase();
         const suggestionRows = suggestionQuery

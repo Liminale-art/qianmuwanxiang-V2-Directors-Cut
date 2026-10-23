@@ -16,12 +16,17 @@ function fixture(options = {}) {
     let account = 'account-a', current = true, sequence = 0;
     const characters = [{ avatar: 'role.png', name: '目标角色' }, { avatar: 'other.png', name: '另一角色' }];
     const sources = new Map([[backup, jsonl(originalRows())]]), files = new Map(), calls = [], changes = [];
+    let nativePolicyValue = 50;
     files.set('role.png', new Map([['原聊天.jsonl', jsonl(originalRows())]])); files.set('other.png', new Map());
     const respond = data => new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
     const fetch = async (path, config) => {
         const form = config.body instanceof FormData, body = form ? config.body : JSON.parse(config.body);
         const call = { path, body, config, account }; calls.push(call);
         const overridden = await options.before?.(call, { sources, files, characters }); if (overridden) return overridden;
+        if (path === '/api/plugins/qianmu-tts/st-backup-policy') {
+            if (body.action === 'write') nativePolicyValue = body.numberOfBackups;
+            return respond({ ok: true, available: true, min: 1, max: 500, defaultValue: 50, value: nativePolicyValue, configuredValue: nativePolicyValue, source: 'config', writable: true, requiresRestart: body.action === 'write' });
+        }
         if (path === '/api/backups/chat/get') return respond([...sources].map(([name, raw]) => ({ file_name: name, file_size: String(raw.length) + ' B', chat_items: inspectChatRecoveryJsonl(raw).messageCount, last_mes: '2026-10-19T03:00:00Z', mes: '<script>must be text</script>', chat_metadata: { doNotExpose: true } })));
         if (path === '/api/backups/chat/download') return new Response(sources.get(body.name) || '', { status: sources.has(body.name) ? 200 : 404 });
         if (path === '/api/characters/chats') return respond([...files.get(body.avatar_url).keys()].map(file_name => ({ file_name })));
@@ -50,6 +55,15 @@ test('construction and snapshots never read backups or mutate chat state', () =>
     const f = fixture(); assert.equal(f.calls.length, 0); assert.equal(f.controller.snapshot().phase, 'idle');
     const copy = f.controller.snapshot(); copy.backups.push('alien'); assert.deepEqual(f.controller.snapshot().backups, []);
 });
+test('native ST backup retention is read and saved through the optional Qianmu server route', async () => {
+    const f = fixture(); await f.controller.load();
+    assert.equal(f.controller.snapshot().nativeBackupPolicy.value, 50);
+    assert.equal(f.controller.snapshot().nativeBackupPolicy.max, 500);
+    await f.controller.configureNativeBackupPolicy(120);
+    assert.equal(f.controller.snapshot().nativeBackupPolicy.value, 120);
+    assert.match(f.controller.snapshot().nativeBackupPolicy.notice, /重启 ST/);
+    await assert.rejects(f.controller.configureNativeBackupPolicy(501), /须为/);
+});
 
 test('list and preview are account-scoped reads with safe text summaries, not raw metadata', async () => {
     const f = fixture(); const loaded = await f.controller.load();
@@ -58,8 +72,8 @@ test('list and preview are account-scoped reads with safe text summaries, not ra
     const preview = await f.controller.preview(backup);
     assert.equal(preview.preview.messageCount, 2); assert.ok(preview.preview.text.includes('<img src=x onerror=alert(1)>'));
     assert.deepEqual(preview.preview.participants, ['用户', '角色']); assert.equal(f.imports().length, 0);
-    assert.deepEqual(f.calls.map(call => call.path), ['/api/backups/chat/get', '/api/backups/chat/download']);
-    await assert.rejects(f.controller.preview('chat_another.jsonl'), /当前账户/); assert.equal(f.calls.length, 2);
+    assert.deepEqual(f.calls.map(call => call.path), ['/api/backups/chat/get', '/api/plugins/qianmu-tts/st-backup-policy', '/api/backups/chat/download']);
+    await assert.rejects(f.controller.preview('chat_another.jsonl'), /当前账户/); assert.equal(f.calls.length, 3);
 });
 test('every successful same-name preview has a new revision and failed previews cannot advance it', async () => {
     const f = fixture(); const first = await f.prepare();

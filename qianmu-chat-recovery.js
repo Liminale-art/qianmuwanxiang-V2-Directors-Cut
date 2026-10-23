@@ -6,6 +6,8 @@ import { buildNativeBackupCatalog } from './qianmu-chat-backup-catalog.js';
 // preflight listing reduce collisions, but cannot provide a server transaction.
 export const CHAT_RECOVERY_PREVIEW_FLOORS = 5;
 export const CHAT_RECOVERY_LIMITS = Object.freeze({ bytes: 16 * 1024 * 1024, messages: 50000, previewChars: 14000 });
+export const NATIVE_BACKUP_POLICY_PATH = '/api/plugins/qianmu-tts/st-backup-policy';
+export const NATIVE_BACKUP_POLICY_LIMITS = Object.freeze({ min: 1, max: 500, defaultValue: 50 });
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => structuredClone(value);
 const fault = (code, message) => Object.assign(new Error(message), { code });
@@ -31,6 +33,9 @@ function importPrefix(target, existingNames) {
 const parse = (text, maxBytes) => parseBoundedJson(text, { maxBytes, maxDepth: 40, maxNodes: 500000, label: '聊天找回' });
 const cancelQuietly = stream => { try { Promise.resolve(stream?.cancel?.()).catch(() => {}); } catch {} };
 const identityFailure = error => ['account', 'http-401', 'http-403'].includes(error?.code);
+const nativeBackupPolicyState = () => ({ availability: 'unknown', busy: false, error: '', notice: '', value: null,
+    min: NATIVE_BACKUP_POLICY_LIMITS.min, max: NATIVE_BACKUP_POLICY_LIMITS.max, defaultValue: NATIVE_BACKUP_POLICY_LIMITS.defaultValue,
+    writable: false, source: '', requiresRestart: true });
 function httpFailure(status, path) {
     if (status === 401 || status === 403) return '登录或请求校验未通过，请刷新 ST 后重试（' + status + '）';
     if (status === 404) return path.endsWith('/download') ? '这份备份已不存在，请刷新备份列表（404）' : '当前 ST 未提供此备份接口（404）';
@@ -128,7 +133,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     need(Number.isFinite(timeoutMs) && timeoutMs >= 1 && timeoutMs <= 15000, 'configuration', '聊天找回读取时限无效');
     const requests = new Set();
     let disposed = false, operation = 0, previewRevision = 0, active = false, owner = '', source = null, pending = null;
-    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [] };
+    let state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], nativeBackupPolicy: nativeBackupPolicyState() };
     const snapshot = () => clone(state);
     const emit = () => { if (!disposed && isCurrent()) { try { onChange(snapshot()); } catch {} } };
     const live = token => { need(!disposed && token === operation && isCurrent(), 'context', '找回页面已变化，请重新打开'); };
@@ -145,7 +150,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         return { avatar, name: target.name };
     }
     function sameTarget(target) { const current = targetFor(target.avatar); need(current.name === target.name, 'target', '目标角色已改名，请重新选择'); }
-    async function response(path, body, token, { form = false, beforeSend = () => {}, download = false, maxBytes = CHAT_RECOVERY_LIMITS.bytes } = {}) {
+    async function response(path, body, token, { form = false, beforeSend = () => {}, download = false, maxBytes = CHAT_RECOVERY_LIMITS.bytes, allowErrorStatus = false } = {}) {
         const controller = new AbortController(); requests.add(controller);
         let timer, rejectCancellation;
         const cancelled = new Promise((_, reject) => { rejectCancellation = reject; });
@@ -172,7 +177,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     const nativeListAlias = path === '/api/backups/chat/get'
                         && result.url === new URL('/api/plugins/baibaoku/v1/chat-backups/fast-list', base).href;
                     need(!result.url || result.url === new URL(path, base).href || nativeListAlias, 'source', '备份响应地址与预期不符，未读取数据；请核对相关插件或代理配置');
-                    need(result.ok && result.status === 200, 'http-' + result.status, httpFailure(result.status, path));
+                    need(allowErrorStatus || result.ok && result.status === 200, 'http-' + result.status, httpFailure(result.status, path));
                     need((download ? /^(?:application\/(?:jsonl|x-ndjson|ndjson|octet-stream|json)|text\/plain)(?:\s*;|$)/i : /^application\/json(?:\s*;|$)/i).test(mime), 'response', 'ST 返回的不是预期备份数据，请刷新后重试；仍失败时核对服务或代理配置');
                     const raw = await boundedText(result, maxBytes, controller.signal, check);
                     await guard(token); check(); return raw;
@@ -180,9 +185,9 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             })(), cancelled]);
         } finally { clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); controller.abort(); requests.delete(controller); }
     }
-    async function json(path, body, token) {
+    async function json(path, body, token, { allowErrorStatus = false } = {}) {
         const maxBytes = path === '/api/chats/export' ? CHAT_RECOVERY_LIMITS.bytes * 2 + 4096 : CHAT_RECOVERY_LIMITS.bytes;
-        const raw = await response(path, body, token, { maxBytes });
+        const raw = await response(path, body, token, { maxBytes, allowErrorStatus });
         try { return parse(raw, maxBytes); } catch { throw fault('response', 'ST 返回资料不完整，请稍后核实'); }
     }
     async function download(name, token) {
@@ -210,6 +215,26 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         need(result?.ok === true, 'rename', '聊天备份已导入，但文件名调整未确认，请稍后核实');
         sameTarget(target);
         return renamed;
+    }
+    function normalizeNativeBackupPolicy(value) {
+        need(plain(value) && value.ok === true && value.available === true, 'native-policy', value?.message || '当前部署未提供 ST 原生备份设置接口');
+        const min = Number.isSafeInteger(value.min) ? value.min : NATIVE_BACKUP_POLICY_LIMITS.min;
+        const max = Number.isSafeInteger(value.max) ? value.max : NATIVE_BACKUP_POLICY_LIMITS.max;
+        const numberOfBackups = Number.isSafeInteger(value.value) && value.value >= min ? value.value : null;
+        need(numberOfBackups !== null, 'native-policy', 'ST 原生备份设置返回的数量无效');
+        return { availability: 'available', busy: false, error: '', notice: String(value.message || ''), value: numberOfBackups,
+            min, max, defaultValue: Number.isSafeInteger(value.defaultValue) ? value.defaultValue : NATIVE_BACKUP_POLICY_LIMITS.defaultValue,
+            writable: value.writable === true, source: typeof value.source === 'string' ? value.source : '', requiresRestart: value.requiresRestart !== false };
+    }
+    async function nativeBackupPolicyRequest(token, action = 'read', numberOfBackups) {
+        const value = await json(NATIVE_BACKUP_POLICY_PATH, { action, ...(action === 'write' ? { numberOfBackups } : {}) }, token, { allowErrorStatus: true });
+        if (value?.ok !== true) throw fault(`native-policy-${String(value?.code || 'service')}`, String(value?.message || 'ST 原生备份设置暂不可用'));
+        return normalizeNativeBackupPolicy(value);
+    }
+    function retainNativePolicyError(error, prior = state.nativeBackupPolicy) {
+        const unavailable = ['native-policy-unavailable', 'native-policy-account', 'http-404', 'http-405'].includes(error?.code);
+        state.nativeBackupPolicy = { ...nativeBackupPolicyState(), ...prior, availability: unavailable ? 'unavailable' : 'error', busy: false,
+            writable: false, error: error?.message || 'ST 原生备份设置暂不可用', notice: '' };
     }
     function publicResult(status, file = '') {
         return { status, target: clone(pending.target), fileName: file, operationId: pending.id, messageCount: pending.messageCount };
@@ -263,7 +288,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             if (bind) {
                 const account = await accountNow(); live(token);
                 need(typeof account === 'string' && account, 'account', '暂未确认当前 ST 账户');
-                if (owner && owner !== account) { source = null; pending = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; }
+                if (owner && owner !== account) { source = null; pending = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.nativeBackupPolicy = nativeBackupPolicyState(); }
                 owner = account;
             }
             await guard(token); await action(token); state.busy = false; return snapshot();
@@ -271,7 +296,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             if (!disposed && token === operation) {
                 state.phase = pending?.submitted && !pending.verified && !identityFailure(error) ? 'unknown' : 'error';
                 state.error = error?.code ? error.message : '操作未完成，请稍后核实';
-                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; }
+                if (identityFailure(error)) { source = null; state.backups = []; state.preview = null; state.result = null; state.recovered = []; state.nativeBackupPolicy = nativeBackupPolicyState(); }
                 else if (pending?.submitted && !pending.verified) state.result = publicResult('unknown', pending.fileName || '');
             }
             throw error;
@@ -282,6 +307,34 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
     }
     return Object.freeze({
         snapshot,
+        inspectNativeBackupPolicy() {
+            return run('native-policy', async token => {
+                const prior = state.nativeBackupPolicy;
+                state.nativeBackupPolicy = { ...prior, busy: true, error: '', notice: '' }; emit();
+                try { state.nativeBackupPolicy = await nativeBackupPolicyRequest(token); }
+                catch (error) {
+                    if (identityFailure(error) || error?.code === 'context') throw error;
+                    retainNativePolicyError(error, prior);
+                }
+            }, { bind: true });
+        },
+        configureNativeBackupPolicy(numberOfBackups) {
+            return run('native-policy', async token => {
+                const prior = state.nativeBackupPolicy;
+                need(prior.availability === 'available', 'native-policy', '当前部署未提供 ST 原生备份设置接口');
+                need(prior.writable === true, 'native-policy', '当前由 ST 环境变量控制，请修改部署环境变量并重启 ST');
+                need(Number.isSafeInteger(numberOfBackups) && numberOfBackups >= prior.min && numberOfBackups <= prior.max,
+                    'native-policy', `ST 原生每聊天备份数须为 ${prior.min}–${prior.max} 的整数`);
+                state.nativeBackupPolicy = { ...prior, busy: true, error: '', notice: '' }; emit();
+                try {
+                    state.nativeBackupPolicy = await nativeBackupPolicyRequest(token, 'write', numberOfBackups);
+                    if (!state.nativeBackupPolicy.notice) state.nativeBackupPolicy.notice = state.nativeBackupPolicy.requiresRestart ? '已保存，重启 ST 后生效' : '当前值未变化';
+                } catch (error) {
+                    if (identityFailure(error) || error?.code === 'context') throw error;
+                    retainNativePolicyError(error, prior);
+                }
+            }, { bind: true });
+        },
         load() {
             return run('loading', async token => {
                 // A fresh list read starts a new browsing round. Keep the
@@ -305,6 +358,13 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                     lastMessageAt: typeof row.last_mes === 'string' || typeof row.last_mes === 'number' ? row.last_mes : '', excerpt: String(row.mes || '').slice(0, 240),
                 })), getCharacters(), { yieldToMain: async () => { await new Promise(resolve => setTimeout(resolve, 0)); live(token); } });
                 await guard(token);
+                const priorPolicy = state.nativeBackupPolicy;
+                state.nativeBackupPolicy = { ...priorPolicy, busy: true, error: '', notice: '' }; emit();
+                try { state.nativeBackupPolicy = await nativeBackupPolicyRequest(token); }
+                catch (error) {
+                    if (identityFailure(error) || error?.code === 'context') throw error;
+                    retainNativePolicyError(error, priorPolicy);
+                }
                 if (nativeError) throw nativeError;
                 state.backups = natives;
                 state.phase = pending?.submitted && !pending.verified ? 'unknown' : 'ready';
@@ -389,6 +449,6 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
             });
         },
         verify() { return run('recovering', verifyPending); },
-        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [] }; },
+        dispose() { disposed = true; operation++; for (const controller of requests) controller.abort(); source = null; pending = null; owner = ''; state = { phase: 'idle', busy: false, error: '', backups: [], preview: null, result: null, recovered: [], nativeBackupPolicy: nativeBackupPolicyState() }; },
     });
 }

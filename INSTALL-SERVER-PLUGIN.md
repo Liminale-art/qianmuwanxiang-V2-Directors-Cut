@@ -1,7 +1,7 @@
 # 千幕服务端插件：安装与更新
 
 > 本文只保留普通用户真正需要的操作：复制命令、执行命令、看最后一行结果。
-> 聊天备份与找回现在只使用 ST 原生的 `backups`／`chats` 能力，千幕不再安装或启动独立的定时聊天备份服务。此服务端插件仍仅用于豆包 TTS、分镜图像和 MiniMax H3 等其他功能。
+> 聊天备份与找回现在只使用 ST 原生的 `backups`／`chats` 能力，千幕不再安装或启动独立的定时聊天备份服务。服务端插件另外为聊天备份面板提供可选的 ST 原生保留数量接口；它只修改 ST 自己的 `config.yaml`，不创建第二套备份。此服务端插件仍用于豆包 TTS、分镜图像和 MiniMax H3 等其他功能。
 > 功能不限定 VPS 或 PM2：使用 ST 自己的账户目录和 `dataRoot`。本地 Windows、Linux、macOS、Docker 等按各自原启动方式安装和重启；下方 PM2 命令只适用于对应环境。各部署的实际验收分开，不把本地隔离测试称为全部实测。
 > 本次前端推送使用 `refactor/storyboard-modularization`，所以文中的服务端命令也使用同名分支；正式稳定版发布后，统一改用 `main`。
 
@@ -45,6 +45,8 @@ QIANMU_HEALTH_URL='http://127.0.0.1:8000/api/plugins/qianmu-tts/health' bash -c 
 ```
 
 不设置时仍会执行本地插件包版本校验，适合反向代理、容器或 ST 端口不固定的部署。
+
+聊天备份面板的“ST 原生每聊天备份数”只允许管理员账户写入 1–500；保存后必须重启 ST 后端才生效。服务端从 ST 启动参数提供的 `configPath` 读取配置，兼容普通根目录、Docker 的 `config/config.yaml` 和全局安装；若由 `SILLYTAVERN_BACKUPS_COMMON_NUMBEROFBACKUPS` 环境变量控制，则界面仅显示当前值，不会覆盖环境配置。
 
 更新脚本位于仓库的 [update-server-plugin.sh](update-server-plugin.sh)，不再把大段 heredoc 代码直接粘到交互终端，避免终端停在 `>` 续行状态。
 

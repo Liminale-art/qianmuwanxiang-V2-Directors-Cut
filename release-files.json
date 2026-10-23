@@ -7,6 +7,7 @@
     "qianmu-chat-recovery.js",
     "qianmu-chat-recovery-view.js",
     "qianmu-chat-backup-catalog.js",
+    "qianmu-st-backup-policy-service.js",
     "qianmu-font-library.js",
     "qianmu-font-library-state.js",
     "qianmu-font-library-view.js",

@@ -50,6 +50,7 @@ function fixture({ listAlias = true, responseUrl, responseType = 'basic', redire
     const transport = async (input, init) => {
         const path = new URL(typeof input === 'string' ? input : input.url, origin).pathname;
         calls.push({ path, init });
+        if (path === '/api/plugins/qianmu-tts/st-backup-policy') return reply(path, { ok: true, available: true, min: 1, max: 500, defaultValue: 50, value: 50, configuredValue: 50, source: 'config', writable: true, requiresRestart: true });
         if (path === nativeList || path === alias) return reply(path, [{ file_name: backup, chat_items: 1, last_mes: '2026-10-19T03:01:00Z' }], { type: mime });
         if (path === '/api/backups/chat/download') return reply(path, raw, { type: 'application/jsonl' });
         if (path === '/api/characters/chats') return reply(path, [...files.keys()].map(file_name => ({ file_name })));
