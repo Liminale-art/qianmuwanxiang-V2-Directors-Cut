@@ -44,6 +44,17 @@ function fixture() {
     return { storage, localStore, local, immutable, get catalog() { return catalog; } };
 }
 
+function localStoreFixture() {
+    const local = new Map();
+    return {
+        local,
+        store: {
+            async get(id) { return local.get(id) || null; },
+            async put(id, bytes) { local.set(id, new Blob([bytes], { type: 'application/octet-stream' })); },
+        },
+    };
+}
+
 test('font account sync publishes the directory and originals by default', async () => {
     const f = fixture(), sync = createFontAccountSync({ storageFactory: () => f.storage }), state = localFont();
     f.local.set(state.fonts[0].id, new Blob([new Uint8Array([0, 1, 2, 3])]));
@@ -64,4 +75,23 @@ test('font account sync keeps automatically uploaded originals immutable', async
     assert.match(f.catalog.originals[id].slot, /^fontasset-/);
     assert.equal(f.catalog.library.syncLocalOriginals, undefined);
     sync.close();
+});
+
+test('font account sync awaits the account transport and restores originals on another device', async () => {
+    const f = fixture(), source = localFont(), sourceStore = localStoreFixture(), id = source.fonts[0].id;
+    sourceStore.local.set(id, new Blob([new Uint8Array([7, 8, 9])], { type: 'font/ttf' }));
+    const first = createFontAccountSync({ storageFactory: async () => f.storage });
+    const uploaded = await first.hydrate(source, { localStore: sourceStore.store });
+    assert.equal(uploaded.synced, true);
+    first.close();
+
+    const destinationStore = localStoreFixture();
+    const second = createFontAccountSync({ storageFactory: async () => f.storage });
+    const restored = await second.hydrate(localFont('local_' + 'b'.repeat(64)), { localStore: destinationStore.store });
+    assert.equal(restored.synced, true);
+    assert.equal(restored.state.fonts[0].id, id);
+    const original = await destinationStore.store.get(id);
+    assert.ok(original);
+    assert.deepEqual(Array.from(new Uint8Array(await original.arrayBuffer())), [7, 8, 9]);
+    second.close();
 });

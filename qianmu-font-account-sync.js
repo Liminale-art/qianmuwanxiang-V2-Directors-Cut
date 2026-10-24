@@ -63,19 +63,37 @@ function catalogValue(value) {
 
 export function createFontAccountSync({ storageFactory = createConfiguredStAccountStorage } = {}) {
   let storage = null;
+  let storagePromise = null;
   let disabled = false;
   let fingerprint = null;
 
-  function ensureStorage() {
+  async function ensureStorage() {
     if (disabled) return null;
     if (storage) return storage;
+    if (storagePromise) return storagePromise;
     if (!isStAccountStorageConfigured() && storageFactory === createConfiguredStAccountStorage) return null;
-    try { storage = storageFactory({ maxBytes: ASSET_MAX_BYTES }); return storage; }
-    catch { disabled = true; return null; }
+    storagePromise = Promise.resolve().then(() => storageFactory({ maxBytes: ASSET_MAX_BYTES }))
+      .then(value => {
+        // createConfiguredStAccountStorage builds the transport asynchronously.
+        // Treat both synchronous test adapters and the real Promise-returning
+        // factory uniformly, and fail closed before any method is dereferenced.
+        if (!value || typeof value.read !== 'function' || typeof value.write !== 'function'
+          || typeof value.preserveImmutable !== 'function' || typeof value.readImmutable !== 'function') {
+          throw new Error('字体账户储存接口无效');
+        }
+        storage = value;
+        return storage;
+      })
+      .catch(() => {
+        disabled = true;
+        return null;
+      })
+      .finally(() => { storagePromise = null; });
+    return storagePromise;
   }
 
   async function readCatalog() {
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return { value: null, fingerprint: null };
     const result = await current.read(FONT_ACCOUNT_SYNC_SLOT);
     if (!result?.exists) { fingerprint = null; return { value: null, fingerprint: null }; }
@@ -85,7 +103,7 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
   }
 
   async function writeCatalog(value, expectedFingerprint) {
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return null;
     const result = await current.write(FONT_ACCOUNT_SYNC_SLOT, value, { expectedFingerprint });
     fingerprint = result?.fingerprint ?? fingerprint;
@@ -97,7 +115,7 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
     const blob = await localStore.get(font.id);
     if (!blob?.size) return;
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return;
     const saved = await current.preserveImmutable(assetSlot(font.id), {
       version: 1, fontId: font.id, format: font.source.format, base64: encode(bytes),
@@ -107,7 +125,7 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
 
   async function restoreOriginals(library, originals, localStore) {
     if (!localStore?.put) return;
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return;
     for (const font of library.fonts) {
       if (font.source?.kind !== 'local' || !originals[font.id]) continue;
@@ -122,7 +140,7 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
   }
 
   async function push(state, { localStore } = {}) {
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return { state: normalizeFontLibrary(state), synced: false };
     const previous = await readCatalog();
     const originals = { ...(previous.value?.originals || {}) };
@@ -135,7 +153,7 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
 
   async function hydrate(localState, { localStore } = {}) {
     const local = normalizeFontLibrary(localState);
-    const current = ensureStorage();
+    const current = await ensureStorage();
     if (!current) return { state: local, changed: false, synced: false };
     const remote = await readCatalog();
     if (!remote.value) {
@@ -152,6 +170,6 @@ export function createFontAccountSync({ storageFactory = createConfiguredStAccou
     return { state, changed, synced: true };
   }
 
-  return Object.freeze({ hydrate, push, close() { storage?.close?.(); storage = null; } });
+  return Object.freeze({ hydrate, push, close() { storage?.close?.(); storage = null; storagePromise = null; } });
 }
 
