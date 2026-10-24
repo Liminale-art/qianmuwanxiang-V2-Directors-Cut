@@ -76,7 +76,7 @@ export async function exportFocusWeekImage({getStats, getTheme, createCanvas, we
   context.textAlign = 'left';
   context.fillStyle = palette.accent;
   context.font = '24px "Noto Serif SC", serif';
-  context.fillText('一蝶振翅，万象入幕', 120, 704);
+  context.fillText('一念起幕，万象成诗。', 120, 704);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) { notify('本周记录图片生成失败。', 'error'); return; }
   download(blob, `千幕-本周专注-${dateKey(start)}.png`);

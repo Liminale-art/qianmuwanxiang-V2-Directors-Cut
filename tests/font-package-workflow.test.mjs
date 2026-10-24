@@ -37,7 +37,7 @@ test('100 MiB ZIP controller workflow commits large fonts individually, skips du
     }
     assert.equal(new Set(expected.values()).size, 4, 'each large fixture has distinct original bytes');
     const file = await buildFontArchive(originals.map(item => item.record), { readLocal: async id => bySource.get(id),
-        folders: ['大字体'], previewText: '一蝶振翅，千幕万象。 AaBbCc123456', yieldTask: async () => {} });
+        folders: ['大字体'], previewText: '一念起幕，万象成诗。 AaBbCc123456', yieldTask: async () => {} });
     assert.ok(file.size < 100 * 1024 * 1024 / 20, 'fixture uses actual compression, not an uncompressed ZIP envelope');
 
     const owner = {}, binaries = new Map(), puts = [], saves = [], notices = [], progress = [], downloads = [];
@@ -104,7 +104,7 @@ test('100 MiB ZIP controller workflow commits large fonts individually, skips du
         const exported = await openFontArchive(downloads[0].blob, { yieldTask: async () => {} });
         try {
             assert.equal(exported.records.length, 4);
-            assert.equal(exported.previewText, '一蝶振翅，千幕万象。 AaBbCc123456');
+            assert.equal(exported.previewText, '一念起幕，万象成诗。 AaBbCc123456');
             assert.deepEqual(exported.folders, ['大字体']);
             let restoredBytes = 0;
             for (const font of exported.records) {

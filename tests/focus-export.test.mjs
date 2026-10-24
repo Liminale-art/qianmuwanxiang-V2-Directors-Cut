@@ -34,6 +34,8 @@ test('week image keeps dimensions, seven weekdays, summary values and each exist
     const text=e.draws.filter(row=>row[0]==='fillText').map(row=>row[1]);
     assert.deepEqual(text.filter(value=>/^周[一二三四五六日]$/.test(value)),['周一','周二','周三','周四','周五','周六','周日']);
     for(const value of ['71','3','26','专注分钟','完成段数','伴读分钟'])assert.ok(text.includes(value));
+    assert.ok(text.includes('一念起幕，万象成诗。'));
+    assert.equal(text.some(value=>value.includes('一蝶振翅')),false);
     assert.equal(e.downloads[0][1],'千幕-本周专注-2026-09-07.png');assert.equal(e.notices.at(-1)[1],'success');assert.equal(JSON.stringify(e.stats),before);
   }
 });

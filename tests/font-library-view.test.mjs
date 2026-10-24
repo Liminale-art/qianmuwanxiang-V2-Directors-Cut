@@ -200,7 +200,7 @@ test('master enable is the first card, add collapses as a unit and search direct
     assert.match(html, /<details class="sd-card qm-font-add"><summary>/); assert.doesNotMatch(html, /Web 引入|字体链接或样式/); assert.match(html, />字体链接<\/span>/);
     assert.ok(html.indexOf('data-font-search') < html.indexOf('data-font-action="manage"')); assert.doesNotMatch(html, /data-font-action="filter"/);
     assert.match(html, /class="sd-card qm-font-preview-editor"/); assert.match(html, /data-font-preview-size/);
-    assert.match(renderFontLibraryCards(state({ previewText: '' })), /一蝶振翅，千幕万象。 AaBbCc123456/);
+    assert.match(renderFontLibraryCards(state({ previewText: '' })), /一念起幕，万象成诗。 AaBbCc123456/);
 });
 test('fixed fonts expose edit/delete directly while variable fonts keep them inside more', async () => {
     const fixed = id => entry(id, { weights: ['400'], styles: ['normal'] }), f = fixture(state({ entries: [fixed('one'), fixed('two')] })), html = f.root.innerHTML;
@@ -665,7 +665,7 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 });
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
-    const stamp = '1.59.482-font-pack-2', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    const stamp = '1.59.482-font-slogan-1', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
     assert.equal(manifest.js, `index.js?v=${stamp}`); assert.equal(manifest.css, `style.css?v=${stamp}`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));

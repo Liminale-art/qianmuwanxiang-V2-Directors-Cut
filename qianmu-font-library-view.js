@@ -1,7 +1,7 @@
 import { qianmuIconMarkup } from './qianmu-icon-renderer.js?v=1.59.470';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 export const FONT_LIBRARY_PAGE_SIZE = 10;
-export const FONT_LIBRARY_PREVIEW_TEXT = '一蝶振翅，千幕万象。 AaBbCc123456';
+export const FONT_LIBRARY_PREVIEW_TEXT = '一念起幕，万象成诗。 AaBbCc123456';
 const array = value => Array.isArray(value) ? value : [];
 const strings = value => [...new Set(array(value).filter(item => typeof item === 'string' && item))];
 const parseTags = value => [...new Set((Array.isArray(value) ? value : String(value || '').split(/[,，]/)).map(tag => String(tag).trim()).filter(Boolean))];

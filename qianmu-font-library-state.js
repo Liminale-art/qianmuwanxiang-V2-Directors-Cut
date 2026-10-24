@@ -1,7 +1,7 @@
-import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-pack-2';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-slogan-1';
 
-export const FONT_LIBRARY_SAMPLE = '一蝶振翅，千幕万象。 AaBbCc123456';
-const LEGACY_FONT_LIBRARY_SAMPLES = new Set(['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。']);
+export const FONT_LIBRARY_SAMPLE = '一念起幕，万象成诗。 AaBbCc123456';
+const LEGACY_FONT_LIBRARY_SAMPLES = new Set(['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。', '一蝶振翅，千幕万象。 AaBbCc123456']);
 const fail = message => { throw new Error(message); };
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const text = (value, max, label) => {
