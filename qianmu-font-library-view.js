@@ -14,11 +14,13 @@ const nameOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base
 const sortLabels = { asc: '名称正序', desc: '名称倒序', 'added-asc': '添加时间正序', 'added-desc': '添加时间倒序' };
 const sortValue = state => `${state.sortBy === 'added' ? 'added-' : ''}${state.sortOrder === 'desc' ? 'desc' : 'asc'}`;
 const validPreviewSize = value => Number.isFinite(Number(value)) && Number(value) >= 1 && Number(value) <= 256;
+// Historic entries may keep a source that was not stored as editable text.
+const canSubmitWeb = view => !!String(view.webSource || '').trim() || !!(view.editWebId && view.editWebSourceMissing);
 function iconButton(action, name, title, attributes = '', classes = '') {
     return `<button type="button" class="sd-icon-btn qm-font-icon ${classes}" data-font-action="${action}" aria-label="${escape(title)}" title="${escape(title)}" ${attributes}>${icon(name)}</button>`;
 }
 function tagEditor(key, input) {
-    return `<div class="qm-font-tag-editor" data-font-tag-editor="${escape(key)}"><div class="qm-font-tag-input">${input}${iconButton('tags', 'fa-plus', '选择已有标签', `data-font-tag-target="${escape(key)}" aria-expanded="false"`)}</div><div class="qm-font-tag-options" data-font-tag-options="${escape(key)}" role="group" aria-label="已有标签" hidden></div></div>`;
+    return `<div class="qm-font-tag-editor" data-font-tag-editor="${escape(key)}"><div class="qm-font-tag-input">${input}${iconButton('tags', 'fa-plus', '选择已有标签', `data-font-tag-target="${escape(key)}" aria-expanded="false"`, 'qm-font-field-action')}</div><div class="qm-font-tag-options" data-font-tag-options="${escape(key)}" role="group" aria-label="已有标签" hidden></div></div>`;
 }
 function fontStyles(entry) {
     const available = strings(array(entry?.faces).length ? entry.faces.map(face => face.style || 'normal') : entry?.styles).map(styles);
@@ -107,7 +109,9 @@ export function renderFontLibrary(state = {}, view = {}) {
     const selected = array(view.selected).length, previewSize = fontLibraryPreviewSize(state, view);
     return `<header class="sd-header qm-font-header"${array(view.localUploads).length ? ' inert' : ''}><h2>字体库管理</h2>${iconButton('back', 'fa-arrow-left', '返回正文排版')}</header><main class="sd-body"${array(view.localUploads).length ? ' inert' : ''}><div class="qm-font-library sd-reader-lib sd-reader-lib-list">
       <div class="sd-card qm-font-enable"><label class="qm-font-switch-row"><strong>启用字体库</strong><input type="checkbox" role="switch" data-font-enabled aria-label="启用字体库"${state.enabled !== false ? ' checked' : ''}></label></div>
-      <details class="sd-card qm-font-add"${(view.addOpen ?? !array(state.entries).length) ? ' open' : ''}><summary><b>添加字体</b><div class="qm-font-add-actions">${view.editWebId ? iconButton('cancel-web', 'fa-xmark', '取消编辑字体') : ''}${iconButton('add-web', 'fa-check', view.editWebId ? '保存字体修改' : '加入字体库')}</div></summary><div class="qm-font-web"><label class="qm-font-web-label">名称<input data-font-web-name type="text" maxlength="160" placeholder="可选，留空使用字体名" autocomplete="off" value="${escape(view.webName || '')}"></label><div class="qm-font-web-label"><span>字体链接</span><textarea data-font-web-source aria-label="字体链接" rows="3" placeholder="${view.editWebId && view.editWebSourceMissing ? '留空保留当前来源；替换时粘贴新链接' : '字体文件链接、字体 CSS 链接、@import 或 @font-face'}" spellcheck="false">${escape(view.webSource || '')}</textarea></div><div class="qm-font-web-label"><span>标签</span>${tagEditor('web', `<input data-font-web-tags type="text" maxlength="2623" placeholder="如：宋体,黑体，多个标签用逗号分隔" value="${escape(view.webTags || '')}" aria-label="字体标签">`)}</div></div>
+      <details class="sd-card qm-font-add"${(view.addOpen ?? !array(state.entries).length) ? ' open' : ''}><summary><b>添加字体</b>${view.editWebId ? `<div class="qm-font-add-actions">${iconButton('cancel-web', 'fa-xmark', '取消编辑字体')}</div>` : ''}</summary><div class="qm-font-web">
+      <div class="qm-font-web-label"><label for="qm-font-web-name">名称</label><div class="qm-font-name-input"><input id="qm-font-web-name" data-font-web-name type="text" maxlength="160" placeholder="可选，留空使用字体名" autocomplete="off" value="${escape(view.webName || '')}">${iconButton('add-web', 'fa-check', view.editWebId ? '保存字体修改' : '加入字体库', canSubmitWeb(view) ? '' : 'disabled', 'qm-font-field-action')}</div></div>
+      <div class="qm-font-web-label"><span>字体链接</span><textarea data-font-web-source aria-label="字体链接" rows="3" placeholder="${view.editWebId && view.editWebSourceMissing ? '留空保留当前来源；替换时粘贴新链接' : '字体文件链接、字体 CSS 链接、@import 或 @font-face'}" spellcheck="false">${escape(view.webSource || '')}</textarea></div><div class="qm-font-web-label"><span>标签</span>${tagEditor('web', `<input data-font-web-tags type="text" maxlength="2623" placeholder="如：宋体,黑体，多个标签用逗号分隔" value="${escape(view.webTags || '')}" aria-label="字体标签">`)}</div></div>
       <div class="qm-font-imports"><label class="sd-btn qm-font-file-pick" title="上传本地字体">上传本地字体<input class="sd-reader-native-file" type="file" data-font-file="local" accept=".woff2,.woff,.ttf,.otf" aria-label="上传本地字体" multiple></label><label class="sd-btn qm-font-file-pick" title="导入字体包">导入字体包<input class="sd-reader-native-file" type="file" data-font-file="import" accept=".json,application/json" aria-label="导入字体包"></label></div>
       </details>
       <section class="sd-card qm-font-preview-editor"><div class="qm-font-field-head"><span>预览文案</span><label class="sd-icon-btn qm-font-icon qm-font-size-pick" title="预览字号">${icon('font-preview-size')}<select data-font-preview-size aria-label="预览字号">${previewSize.values.includes(previewSize.value) ? '' : `<option value="${previewSize.value}" selected disabled>当前 ${previewSize.value}px</option>`}${options(previewSize.values, previewSize.value, value => `${value}px`)}</select></label></div><input data-font-preview type="text" maxlength="500" value="${escape(state.previewText || FONT_LIBRARY_PREVIEW_TEXT)}" aria-label="预览文案"></section>
@@ -159,12 +163,13 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     function closeTagsOutside(target) { if (tagTarget && target.closest?.('[data-font-tag-editor]')?.dataset.fontTagEditor !== tagTarget) closeTags(); }
     function message(text, { error = false } = {}) { if (!disposed && text) notify(String(text), error ? 'warning' : 'info'); }
     function captureWeb() { if (q('[data-font-web-name]')) webName = q('[data-font-web-name]').value; if (q('[data-font-web-source]')) webSource = q('[data-font-web-source]').value; if (q('[data-font-web-tags]')) webTags = q('[data-font-web-tags]').value; if (q('.qm-font-add')) addOpen = q('.qm-font-add').open; }
-    function clearWebDraft({ id = '', name = '', source = '', tags: submittedTags = [] } = {}) { if (disposed) return false; captureWeb(); if (editWebId !== String(id) || webName !== String(name) || webSource !== String(source) || JSON.stringify(parseTags(webTags)) !== JSON.stringify(parseTags(submittedTags))) return false; editWebId = ''; editWebSourceMissing = false; webName = ''; webSource = ''; webTags = ''; for (const selector of ['[data-font-web-name]', '[data-font-web-source]', '[data-font-web-tags]']) { const field = q(selector); if (field) field.value = ''; } return true; }
+    function clearWebDraft({ id = '', name = '', source = '', tags: submittedTags = [] } = {}) { if (disposed) return false; captureWeb(); if (editWebId !== String(id) || webName !== String(name) || webSource !== String(source) || JSON.stringify(parseTags(webTags)) !== JSON.stringify(parseTags(submittedTags))) return false; editWebId = ''; editWebSourceMissing = false; webName = ''; webSource = ''; webTags = ''; for (const selector of ['[data-font-web-name]', '[data-font-web-source]', '[data-font-web-tags]']) { const field = q(selector); if (field) field.value = ''; } updateWebSubmit(); return true; }
     function captureSession() { captureWeb(); return { page, query, variants: Object.fromEntries(Object.entries(variants).map(([id, value]) => [id, { ...value }])), previewDraft, previewSizeOverride, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, renameId, renameDraft, renameTags: renameTags ?? '', scrollTop: Math.max(0, Number(q('.sd-body')?.scrollTop) || 0) }; }
     function sizeSamples(current = state()) { const { value } = fontLibraryPreviewSize(current, viewState()); for (const node of qa('[data-font-sample]')) node.style.setProperty('font-size', `${value}px`, 'important'); }
     function previewSize(target) { const range = fontLibraryPreviewSize(state(), viewState()), value = Number(target.value); if (!range.values.includes(value)) return; previewSizeOverride = value; sizeSamples(); }
     function setWebDraft(id, name, source, entryTags = [], missing = false) { editWebId = id; editWebSourceMissing = missing === true; webName = name; webSource = source; webTags = parseTags(entryTags).join(', '); addOpen = true; for (const [selector, value] of [['[data-font-web-name]', webName], ['[data-font-web-source]', webSource], ['[data-font-web-tags]', webTags]]) { const field = q(selector); if (field) field.value = value; } if (q('.qm-font-add')) q('.qm-font-add').open = true; render(); }
-    function setBusy(value) { busy = value; root.setAttribute('aria-busy', String(value)); for (const control of [q('[data-font-enabled]')]) if (control) control.disabled = value; for (const selector of ['[data-font-local-dialog] input,[data-font-local-dialog] button,[data-font-tag-editor] input,[data-font-tag-editor] button', '[data-font-rename-pop] input,[data-font-rename-pop] button']) for (const control of qa(selector)) control.disabled = value || control.dataset.fontTagUnavailable === 'true'; }
+    function updateWebSubmit() { const button = q('[data-font-action="add-web"]'); if (button) button.disabled = busy || !canSubmitWeb({ webSource: q('[data-font-web-source]')?.value ?? webSource, editWebId, editWebSourceMissing }); }
+    function setBusy(value) { busy = value; root.setAttribute('aria-busy', String(value)); updateWebSubmit(); for (const control of [q('[data-font-enabled]')]) if (control) control.disabled = value; for (const selector of ['[data-font-local-dialog] input,[data-font-local-dialog] button,[data-font-tag-editor] input,[data-font-tag-editor] button', '[data-font-rename-pop] input,[data-font-rename-pop] button']) for (const control of qa(selector)) control.disabled = value || control.dataset.fontTagUnavailable === 'true'; }
     function cancelLocal() { if (busy || !localUploads.length) return; localUploads = []; render(); q('[data-font-file="local"]')?.focus({ preventScroll: true }); }
     function samples(notify = true, current = state()) {
         const ids = [], previewChoices = {};
@@ -195,7 +200,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         for (const picker of qa('[data-font-apply]')) picker.selectedIndex = -1;
         if (!managing || !selected.size) { const editor = q('[data-font-bulk-editor]'); if (editor) editor.hidden = true; bulk = false; if (tagTarget === 'bulk') closeTags(); }
     }
-    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; closeTags(); const current = state(); page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); setBusy(busy); selection(current); samples(true, current); }
+    function renderCards() { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; closeTags(); const library = q('.qm-font-library'); if (library) library.style.paddingBottom = ''; const current = state(); page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); setBusy(busy); selection(current); samples(true, current); }
     function showLocalEditor({ focus = false } = {}) {
         const panel = qa('[data-font-rename-pop]').find(node => node.dataset.fontRenamePop === renameId), body = q('.sd-body');
         if (!panel || panel.hidden) return;
@@ -218,7 +223,18 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const current = state(), index = matchingEntries(current, { query: reveal ? '' : query }).findIndex(entry => entry.id === id); if (index < 0) return false;
         if (reveal) { query = ''; selected.clear(); } page = Math.floor(index / FONT_LIBRARY_PAGE_SIZE); render(current);
         const card = qa('.qm-font-card').find(node => node.dataset.fontId === id), body = q('.sd-body');
-        if (card) { card.setAttribute('data-font-revealed', 'true'); if (body && card.getBoundingClientRect && body.getBoundingClientRect) body.scrollTop += card.getBoundingClientRect().top - body.getBoundingClientRect().top - 6; }
+        if (card) {
+            card.setAttribute('data-font-revealed', 'true');
+            if (body && card.getBoundingClientRect && body.getBoundingClientRect) {
+                const rect = card.getBoundingClientRect(), bounds = body.getBoundingClientRect(), height = body.clientHeight || bounds.height;
+                const top = Math.max(0, body.scrollTop + rect.top - bounds.top - (body.clientTop || 0) - Math.max(0, (height - rect.height) / 2));
+                // Give a last-page card enough trailing room to center within this panel only.
+                const library = q('.qm-font-library');
+                const contentBottom = library?.getBoundingClientRect ? body.scrollTop + library.getBoundingClientRect().bottom - bounds.top - (body.clientTop || 0) : body.scrollHeight;
+                if (library) library.style.paddingBottom = `${Math.ceil(Math.max(0, top + height - contentBottom))}px`;
+                body.scrollTop = top;
+            }
+        }
         return true;
     }
     function revealFont(id) { return locateFont(id, { reveal: true }); }
@@ -298,7 +314,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (action === 'previous' || action === 'next') { page += action === 'next' ? 1 : -1; return renderCards(); }
         if (action === 'manage') { managing = !managing; if (!managing) selected.clear(); return selection(); }
         if (action === 'select-page') { const visible = selectFontLibraryPage(state(), viewState()).entries, all = visible.length && visible.every(entry => selected.has(entry.id)); for (const entry of visible) all ? selected.delete(entry.id) : selected.add(entry.id); return selection(); }
-        if (action === 'add-web') { captureWeb(); return dispatch(editWebId ? 'edit-web' : 'add-web', { ...(editWebId ? { id: editWebId } : {}), name: webName, source: webSource, tags: parseTags(webTags) }); }
+        if (action === 'add-web') { captureWeb(); if (!canSubmitWeb({ webSource, editWebId, editWebSourceMissing })) { updateWebSubmit(); return; } return dispatch(editWebId ? 'edit-web' : 'add-web', { ...(editWebId ? { id: editWebId } : {}), name: webName, source: webSource, tags: parseTags(webTags) }); }
         if (action === 'delete-one') { const id = button.dataset.fontId; if (array(state().entries).some(entry => entry.id === id)) return dispatch('delete-font', { id }); return; }
         if (!selected.size) return;
         if (action === 'export-selected') return dispatch('export', { ids: [...selected] }, { refresh: false });
@@ -310,6 +326,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const target = event.target; if (!root.contains(target) || disposed) return;
         isolateField(event);
         if (busy && (target.closest?.('[data-font-tag-editor]') || target.closest?.('[data-font-rename-pop]'))) return;
+        if (target.matches?.('[data-font-web-source]')) { webSource = target.value; updateWebSubmit(); }
         if (target.matches?.('[data-font-preview]')) { previewDraft = target.value; for (const sample of qa('[data-font-sample]')) sample.textContent = previewDraft || FONT_LIBRARY_PREVIEW_TEXT; }
         if (target.matches?.('[data-font-search]')) { query = target.value; page = 0; selected.clear(); renderCards(); }
         if (target.matches?.('[data-font-weight]')) dragWeight(target, false);
@@ -323,6 +340,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     async function change(event) {
         isolateField(event);
         const target = event.target; if (!root.contains(target) || disposed || busy) return;
+        if (target.matches?.('[data-font-web-source]')) { webSource = target.value; updateWebSubmit(); return; }
         if (target.matches?.('[data-font-enabled]')) return dispatch('set-enabled', { enabled: target.checked === true });
         if (target.matches?.('[data-font-preview-size]')) return previewSize(target);
         if (target.matches?.('[data-font-sort-order]')) { if (!Object.hasOwn(sortLabels, target.value)) return; collapseMore(); return dispatch('set-sort-order', { by: target.value.startsWith('added-') ? 'added' : 'name', order: target.value.endsWith('desc') ? 'desc' : 'asc' }); }

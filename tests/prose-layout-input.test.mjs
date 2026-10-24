@@ -57,6 +57,22 @@ test('slider still previews and saves immediately, with paired input updated and
   const e=fixture('contentWidth',80);e.range.draft('142');e.range.emit('input');assert.equal(e.layout.contentWidth,142);assert.equal(e.number.value,'142');
   assert.equal(e.applied(),1);assert.equal(e.persisted(),1);e.range.emit('change');assert.equal(e.applied(),1);assert.equal(e.persisted(),1);
 });
+
+test('letter spacing accepts hundredth-em values and clamps both directions at 2em on commit',()=>{
+  const e=fixture('letterSpacing',0);
+  for(const value of ['-2','-0.25','0','0.01','1.99','2']){e.type(value);assert.equal(e.layout.letterSpacing,Number(value));assert.equal(e.number.value,value);}
+  e.type('10');assert.equal(e.layout.letterSpacing,2);e.number.emit('blur');assert.equal(e.number.value,'2');
+  e.type('-10');assert.equal(e.layout.letterSpacing,2);e.number.emit('change');assert.equal(e.layout.letterSpacing,-2);assert.equal(e.number.value,'-2');
+  e.range.draft('0.37');e.range.emit('input');assert.equal(e.layout.letterSpacing,.37);assert.equal(e.number.value,'0.37');
+});
+
+test('previously saved wide spacing is normalized into the new 2em bounds without changing other preferences',()=>{
+  for(const [value,expected] of [[-10,-2],[10,2],[-.37,-.37],[.37,.37],[0,0]]){
+    const settings={proseLayout:{letterSpacing:value,fontSize:24}},context=vm.createContext({settings,isPlainObject:value=>!!value&&typeof value==='object',clone:value=>JSON.parse(JSON.stringify(value)),mergeDefaults:(value,defaults)=>{for(const [key,fallback] of Object.entries(defaults)) if(!(key in value)) value[key]=fallback;}});
+    vm.runInContext(constants+section('proseLayoutSettings'),context); const layout=context.proseLayoutSettings();
+    assert.equal(layout.letterSpacing,expected);assert.equal(layout.fontSize,24);
+  }
+});
 test('the actual floor navigator uses this single binding path, with no old per-keystroke numeric setter',()=>{
   const open=section('openFloorNavigator');assert.match(open,/bindFloorProseNumberControls\(root\)/);assert.doesNotMatch(open,/setProseNumber|control\.addEventListener\('input'/);
 });
