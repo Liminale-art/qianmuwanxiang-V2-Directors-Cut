@@ -199,7 +199,7 @@ assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
 for (const label of ['开启排版', '字号', '字距', '行高', '段距', '缩进', '宽度', '横移', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
-assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY =')), /key: 'letterSpacing', label: '字距', min: -0\.1, max: 0\.5, step: 0\.01, unit: 'em'/, '字距必须紧跟字号并允许细调');
+assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY =')), /key: 'letterSpacing', label: '字距', min: -10, max: 10, step: 0\.01, unit: 'em'/, '字距必须紧跟字号并允许在 ±10em 内细调');
 assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY')), /key: 'horizontalOffset', label: '横移', min: -20, max: 20, step: 0\.1, unit: 'px'/, '正文必须允许用户以小数精度校正主题造成的水平偏心');
 assert.match(source, /data-floor-tab="jump"[\s\S]*data-floor-tab="layout"/);
 assert.match(source, /data-prose-toggle="active"[\s\S]*开启排版/);

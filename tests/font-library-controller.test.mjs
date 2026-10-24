@@ -110,8 +110,8 @@ test('font changes finish locally while account synchronization remains pending 
   await waitUntil(() => pushes.length === 2);
   assert.equal(pushes[1].state.fonts.length, 0);
   pushes[1].resolve({ synced: true, changed: true });
-  await waitUntil(() => notices.length === 1);
-  assert.deepEqual(notices, [{ text: '字体列表已同步到 ST 账户', level: 'success' }]);
+  await settle();
+  assert.deepEqual(notices, []);
   f.stop();
 });
 

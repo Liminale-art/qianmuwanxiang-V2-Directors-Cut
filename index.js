@@ -969,7 +969,7 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
 });
 const PROSE_LAYOUT_CONTROLS = Object.freeze([
   { key: 'fontSize', label: '字号', min: 12, max: 32, step: 1, unit: 'px' },
-  { key: 'letterSpacing', label: '字距', min: -0.1, max: 0.5, step: 0.01, unit: 'em' },
+  { key: 'letterSpacing', label: '字距', min: -10, max: 10, step: 0.01, unit: 'em' },
   { key: 'lineHeight', label: '行高', min: 1.2, max: 2.6, step: 0.05, unit: '倍' },
   { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
   { key: 'indent', label: '缩进', min: 0, max: 4, step: 0.1, unit: 'em' },

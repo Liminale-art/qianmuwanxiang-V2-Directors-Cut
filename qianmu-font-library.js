@@ -34,7 +34,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   let owner = null, namespace = '', store = null, runtime = null, accountSync = null, view = null, portal = null, container = null;
   let accountSyncHydrated = false;
   let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
-  let accountPushTail = Promise.resolve(), accountPushTimer = null, accountPushRevision = 0, accountPushSuccessNotified = false, accountHydration = null;
+  let accountPushTail = Promise.resolve(), accountPushTimer = null, accountPushRevision = 0, accountHydration = null;
   const ACCOUNT_PUSH_DEBOUNCE_MS = 120;
   const statuses = new Map();
   const makeId = () => `f_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
@@ -69,7 +69,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   }
   function release() {
     if (accountPushTimer) { clearTimeout(accountPushTimer); accountPushTimer = null; }
-    accountPushRevision++; accountPushTail = Promise.resolve(); accountPushSuccessNotified = false; accountHydration = null;
+    accountPushRevision++; accountPushTail = Promise.resolve(); accountHydration = null;
     webAbort?.abort(); webAbort = null;
     generation++; runtime?.dispose(); store?.dispose(); accountSync?.close?.(); runtime = null; store = null; accountSync = null; accountSyncHydrated = false; namespace = ''; owner = null; viewSession = null; applicationNotice = null; statuses.clear();
   }
@@ -153,11 +153,10 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       accountPushTail = accountPushTail.catch(() => {}).then(async () => {
         if (!accountSync || !current(token) || revision !== accountPushRevision) return;
         try {
-          const result = await accountSync.push(read(), { localStore: store });
-          if (result?.synced && result.changed !== false && current(token) && revision === accountPushRevision && !accountPushSuccessNotified) {
-            accountPushSuccessNotified = true;
-            try { notify('字体列表已同步到 ST 账户', 'success'); } catch (_) {}
-          }
+          // Account-directory reconciliation is deliberately silent. Font
+          // binaries never leave this browser, so a toast here would suggest
+          // a cross-device file transfer that did not happen.
+          await accountSync.push(read(), { localStore: store });
         } catch (_) { /* Local IndexedDB remains authoritative; retry on a later edit/open. */ }
       });
       void accountPushTail.catch(() => {});
