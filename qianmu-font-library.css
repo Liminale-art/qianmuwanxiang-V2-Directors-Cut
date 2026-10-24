@@ -21,6 +21,8 @@
 #story-director-floor-nav.qm-font-library-open .qm-font-window :is(.qm-font-card,.qm-font-add,.qm-font-preview-editor,.qm-font-enable) { padding:12px !important; margin:0 !important; }
 .qm-font-library * { box-sizing:border-box; }
 .qm-font-library [hidden] { display:none !important; }
+.qm-font-library .qm-font-progress { position:sticky; top:0; z-index:40; display:flex; flex-direction:column; gap:5px; min-width:0; padding:8px 0; color:var(--sd-muted); background:var(--sd-sticky-bg,var(--sd-card)); font-size:var(--qm-type-caption,11px); }
+.qm-font-library .qm-font-progress progress { width:100%; height:6px; accent-color:var(--sd-accent); }
 .qm-font-library :is(button,input,select,textarea) { font:inherit; color:var(--sd-text); }
 .qm-font-library :where(input:not([type="checkbox"]):not([type="range"]):not([type="file"]),select,textarea) { width:100%; min-width:0; min-height:36px; padding:7px 10px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-input-bg); box-shadow:none; }
 .qm-font-library textarea { resize:vertical; max-height:220px; }
@@ -92,9 +94,10 @@
 .qm-font-library .qm-font-weight-pop input { min-width:0; width:100%; accent-color:var(--sd-accent); }
 .qm-font-library .qm-font-weight-pop output { min-width:3ch; font-variant-numeric:tabular-nums; font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-sample { margin:2px 0; font-size:18px; line-height:1.5; overflow-wrap:anywhere; white-space:pre-wrap; }
-.qm-font-library .qm-font-card-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
-.qm-font-library .qm-font-meta { display:flex; flex:1 1 8em; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
-.qm-font-library .qm-font-tag { display:inline-block; min-width:0; max-width:100%; padding:2px 6px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:color-mix(in srgb,var(--sd-accent) 7%,var(--sd-glass-weak)); line-height:1.4; white-space:normal; overflow-wrap:anywhere; }
+.qm-font-library .qm-font-card-foot { display:flex; flex-wrap:nowrap; align-items:center; min-width:0; }
+.qm-font-library .qm-font-meta { display:flex; flex:1 1 0; flex-wrap:nowrap; align-items:center; gap:4px; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain; scrollbar-width:thin; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
+.qm-font-library .qm-font-meta:focus-visible { outline:2px solid var(--sd-accent); outline-offset:-2px; }
+.qm-font-library .qm-font-tag { display:inline-block; flex:0 0 auto; min-width:0; padding:2px 6px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:color-mix(in srgb,var(--sd-accent) 7%,var(--sd-glass-weak)); line-height:1.4; white-space:nowrap; }
 .qm-font-library .qm-font-meta:empty { display:none; }
 .qm-font-library .qm-font-card-foot:has(.qm-font-meta:empty) { display:none; }
 .qm-font-library .qm-font-rename-pop { display:flex; flex-direction:column; gap:8px; width:100%; min-width:0; padding:8px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 6px 22px #0003; }

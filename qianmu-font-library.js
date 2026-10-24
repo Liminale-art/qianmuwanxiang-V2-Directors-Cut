@@ -1,9 +1,9 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.475';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack } from './qianmu-font-sources.js?v=1.59.475';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-ui-1';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.482-font-pack-2';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.482-font-pack-2';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-pack-2';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.476';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
-import { createFontAccountSync } from './qianmu-font-account-sync.js';
+import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.482-font-pack-2';
 import { readBuiltinFont } from './qianmu-font-builtins.js';
 
 function fontInputName(value) {
@@ -39,26 +39,29 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   const statuses = new Map();
   const makeId = () => `f_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
   const localId = async bytes => 'local_' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
-  const exportChunkBytes = 4 * 1024 * 1024;
-  async function readBlobForExport(blob, guard) {
-    if (!blob || !Number.isSafeInteger(blob.size) || blob.size < 1) throw new Error('字体原件无法读取，未导出不完整备份');
-    let bytes;
-    try { bytes = new Uint8Array(blob.size); } catch (_) { throw new Error('字体原件过大，无法稳定导出；请分批导出'); }
-    if (typeof blob.slice !== 'function') {
-      const value = await blob.arrayBuffer(); guard();
-      if (value.byteLength !== blob.size) throw new Error('字体原件读取不完整，未导出不完整备份');
-      bytes.set(new Uint8Array(value)); return bytes;
-    }
-    for (let offset = 0; offset < blob.size; offset += exportChunkBytes) {
-      guard();
-      const chunk = new Uint8Array(await blob.slice(offset, Math.min(blob.size, offset + exportChunkBytes)).arrayBuffer());
-      if (!chunk.length || offset + chunk.length > blob.size) throw new Error('字体原件读取不完整，未导出不完整备份');
-      bytes.set(chunk, offset);
-      // Let the panel paint and process cancellation between large files/chunks.
-      if (offset + chunk.length < blob.size) await new Promise(resolve => setTimeout(resolve, 0));
-    }
+  const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
+  const IMPORT_BATCH_COUNT = 5, IMPORT_BATCH_BYTES = 16 * 1024 * 1024;
+  async function openPackage(file, guard) {
+    if (!file || !Number.isSafeInteger(file.size) || file.size < 1) throw new Error('字体包不可读取');
+    const head = typeof file.slice === 'function' ? new Uint8Array(await file.slice(0, 4).arrayBuffer()) : [];
     guard();
-    return bytes;
+    if ((head[0] === 0x50 && head[1] === 0x4b) || /\.zip$/i.test(file.name || '')) {
+      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-pack-2'); guard();
+      return openFontArchive(file, { guard, yieldTask });
+    }
+    // Old JSON packs remain readable, but only ZIP is written now. Keep the
+    // legacy parser's bound because it necessarily reads one whole string.
+    if (file.size > FONT_SOURCE_LIMITS.packBytes || typeof file.text !== 'function') throw new Error('旧版 JSON 字体包过大或不可读取，请使用 ZIP 字体包');
+    const pack = importFontPack(await file.text()); guard();
+    return { ...pack, readLocal: async id => new Blob([pack.localFiles[id]]), close: async () => {} };
+  }
+  async function stageLocal(record, bytes, draft, guard) {
+    const id = await localId(bytes); guard();
+    const merged = mergeFontLibraryRecords(draft, [{ ...record, id }], makeId), target = merged.mapping.get(id);
+    // An existing directory entry on another device may still need its bytes.
+    const existing = await store.get?.(target); guard();
+    if (!existing) { await store.put(target, bytes, 'application/octet-stream'); guard(); }
+    return merged.state;
   }
   const read = () => normalizeFontLibrary(getOwner()?.fontLibrary);
   const current = token => !disposed && token === generation && isCurrent() && getOwner() === owner;
@@ -96,6 +99,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           // Do not let a late remote read overwrite a local edit made while
           // hydration was in flight. That edit is the next queued push's
           // source of truth; the user should never see it disappear.
+          // Being busy is not an edit: retain a remote directory discovered
+          // during an archive operation. Its guard can stop safely for retry.
           if (!current(token) || accountSync !== syncRef || owner !== candidate || candidate.fontLibrary !== initialSettings) return hydrated;
           if (hydrated?.state && JSON.stringify(hydrated.state) !== JSON.stringify(read())) {
             candidate.fontLibrary = normalizeFontLibrary(hydrated.state);
@@ -187,9 +192,10 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (busy) throw new Error('上一项字体操作尚未完成');
     busy = true; applicationNotice = null; const operationToken = ++operation;
     try {
-      const token = await ensure(), original = owner.fontLibrary;
+      const token = await ensure(); let original = owner.fontLibrary;
       const guard = () => { assertCurrent(token); if (owner.fontLibrary !== original) throw new Error('字体库已变化，未覆盖新的选择'); };
-      let next, revealFontId = '', editedFontId = '';
+      const progress = (phase, value) => { if (current(token) && (!originView || originView === viewIdentity)) view?.setProgress?.(value ? { phase, ...value } : null); };
+      let next, revealFontId = '', editedFontId = '', imported = false;
       if (type === 'add-web' || type === 'edit-web') {
         const tags = payload.tags === undefined ? undefined : fontLibraryTags(payload.tags);
         const name = fontInputName(payload.name);
@@ -232,58 +238,68 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) throw new Error('字体名称与标签无效');
           return { name: fontInputName(value.name), tags: fontLibraryTags(value.tags === undefined ? [] : value.tags) };
         });
-        const parsed = [];
+        next = read();
         for (const [index, file] of files.entries()) {
           const item = await localReader(file); guard();
-          item.record.id = await localId(item.bytes); guard();
           if (details[index]) item.record = { ...item.record, ...details[index], name: details[index].name || item.record.name };
           validateFontRecord(item.record);
-          parsed.push(item);
+          next = await stageLocal(item.record, item.bytes, next, guard);
+          await yieldTask(); guard();
         }
-        if (parsed.reduce((sum, item) => sum + item.bytes.byteLength, 0) > FONT_SOURCE_LIMITS.totalLocalBytes) throw new Error('本次上传字体总量过大');
-        const merged = mergeFontLibraryRecords(read(), parsed.map(item => item.record), makeId); next = merged.state;
         revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
-        for (const item of parsed) { await store.put(merged.mapping.get(item.record.id), item.bytes, 'application/octet-stream'); guard(); }
       } else if (type === 'import') {
-        if (!payload.file || payload.file.size > FONT_SOURCE_LIMITS.packBytes) throw new Error('字体包过大或不可读取');
-        const pack = importFontPack(await payload.file.text()); guard();
-        const canonicalFiles = Object.create(null);
-        for (const record of pack.records.filter(font => font.source.kind === 'local')) {
-          const bytes = pack.localFiles[record.id];
-          if (!bytes) throw new Error('字体包缺少本地原件');
-          record.id = await localId(bytes); guard(); canonicalFiles[record.id] = bytes;
-        }
-        const merged = mergeFontLibraryRecords(read(), pack.records, makeId); next = merged.state;
-        revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
-        next.folders = [...new Set([...next.folders, ...(pack.folders || [])])];
-        for (const [id, bytes] of Object.entries(canonicalFiles)) {
-          const target = merged.mapping.get(id); if (!target) continue;
-          await store.put(target, bytes, 'application/octet-stream'); guard();
-        }
-        // Imported fonts never replace active choices. Restore the sample only
-        // into a previously empty collection, not over a user's current draft.
-        if (!read().fonts.length && typeof pack.previewText === 'string') next.previewText = pack.previewText;
+        let pack, completed = 0, saved = 0, batchBytes = 0;
+        const beforeIds = new Set(read().fonts.map(font => font.id));
+        try {
+          progress('import', { done: 0, total: 0 });
+          pack = await openPackage(payload.file, guard); guard();
+          next = read(); next.folders = [...new Set([...next.folders, ...(pack.folders || [])])];
+          if (!next.fonts.length && typeof pack.previewText === 'string') next.previewText = pack.previewText;
+          // Validate the small metadata before writing any original files.
+          next = normalizeFontLibrary(next);
+          progress('import', { done: 0, total: pack.records.length });
+          for (const record of pack.records) {
+            guard();
+            if (record.source.kind === 'local') {
+              const blob = await pack.readLocal(record.id); guard();
+              const bytes = new Uint8Array(await blob.arrayBuffer()); guard();
+              if (validateLocalFontBytes(bytes).format !== record.source.format) throw new Error('本地字体文件与资料不匹配');
+              next = await stageLocal(record, bytes, next, guard); batchBytes += bytes.byteLength;
+            } else next = mergeFontLibraryRecords(next, [record], makeId).state;
+            completed++;
+            if (completed - saved >= IMPORT_BATCH_COUNT || batchBytes >= IMPORT_BATCH_BYTES || completed === pack.records.length) {
+              guard();
+              if (JSON.stringify(next) !== JSON.stringify(read())) { commit(next, token); original = owner.fontLibrary; }
+              saved = completed; batchBytes = 0;
+            }
+            progress('import', { done: completed, total: pack.records.length });
+            await yieldTask(); guard();
+          }
+          if (!pack.records.length && JSON.stringify(next) !== JSON.stringify(read())) { commit(next, token); original = owner.fontLibrary; }
+          imported = true;
+          revealFontId = next.fonts.find(font => !beforeIds.has(font.id))?.id || '';
+        } catch (error) {
+          if (saved && current(token)) {
+            scheduleAccountPush(token);
+            if (!originView || originView === viewIdentity) view?.render?.();
+          }
+          throw new Error(`字体包导入未完成${saved ? `（已保存 ${saved} / ${pack.records.length} 份）` : ''}：${error.message || '请检查文件或浏览器存储空间'}。可重新导入，相同字体会跳过。`);
+        } finally { try { await pack?.close(); } finally { progress('import', null); } }
       } else if (type === 'export') {
         const state = read(), ids = payload.ids ? new Set(payload.ids) : null;
         const fonts = state.fonts.filter(font => !ids || ids.has(font.id));
         if (!fonts.length) throw new Error('请先添加或选择字体');
-        const localFiles = Object.create(null);
-        let localTotal = 0;
-        for (const font of fonts.filter(font => font.source.kind === 'local')) {
-          const blob = await store.get(font.id); guard();
-          if (!blob) throw new Error(`本机缺少「${font.name}」原件，未导出不完整备份`);
-          if (!Number.isSafeInteger(blob.size) || blob.size < 1 || localTotal + blob.size > FONT_SOURCE_LIMITS.totalLocalBytes) throw new Error('所选本地字体超过 96 MB，请分批导出');
-          localTotal += blob.size;
-          localFiles[font.id] = await readBlobForExport(blob, guard);
-        }
-        const packed = exportFontPack(fonts, { localFiles, folders: state.folders, previewText: state.previewText }); guard();
-        download(new Blob([packed], { type: 'application/json' }), `qianmu-fonts-${Date.now()}.json`);
-        if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包已导出'); return;
+        try {
+          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-pack-2'); guard();
+          const packed = await buildFontArchive(fonts, { readLocal: id => store.get(id), folders: state.folders, previewText: state.previewText, guard, yieldTask, onProgress: value => progress('export', value) }); guard();
+          download(packed, `qianmu-fonts-${Date.now()}.zip`);
+          if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包已导出'); return;
+        } finally { progress('export', null); }
       } else {
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
         guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
       }
-      guard(); const previous = read(); commit(next, token);
+      guard(); const previous = read(); if (!imported) commit(next, token);
       if (type === 'apply-font' && current(token) && (!originView || originView === viewIdentity)) {
         const target = payload.target, label = { body: '正文', st: '界面', shared: '全部' }[target], scopes = target === 'shared' ? ['body', 'st'] : [target];
         if (next.enabled === false) { try { notify(`已保存${label}字体选择，字体库尚未启用`, 'info'); } catch (_) {} }
@@ -307,6 +323,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         try { await store.delete(deleted.map(font => font.id)); } catch { if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
       scheduleAccountPush(token);
+      if (imported && current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包导入成功');
       if (current(token)) {
         // The originating view owns its one final redraw/reveal. Preview loading
         // must not hold a successful save behind a redundant old-page sync.

@@ -204,11 +204,15 @@ test('master application gate defaults on for legacy libraries and strictly pres
   }
 });
 
-test('new sample replaces only the known legacy default and preserves custom or blank samples', () => {
-  assert.equal(normalizeFontLibrary().previewText, '一蝶振翅，万象入幕。');
+test('new sample replaces only known legacy defaults and preserves custom or blank samples', () => {
+  assert.equal(normalizeFontLibrary().previewText, '一蝶振翅，千幕万象。 AaBbCc123456');
   const state = fixture();
-  assert.equal(normalizeFontLibrary({ ...state, previewText: '风过长街，故事仍在继续。The quick brown fox 0123456789.' }).previewText, '一蝶振翅，万象入幕。');
-  for (const previewText of ['', '人间万象 Aa 0123']) assert.equal(normalizeFontLibrary({ ...state, previewText }).previewText, previewText);
+  for (const previewText of ['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。']) {
+    const original = { ...state, previewText };
+    assert.equal(normalizeFontLibrary(original).previewText, '一蝶振翅，千幕万象。 AaBbCc123456');
+    assert.equal(original.previewText, previewText, 'normalization does not mutate the saved input');
+  }
+  for (const previewText of ['', '人间万象 Aa 0123', '一蝶振翅，万象入幕。 Abc 012345', '一蝶振翅，千幕万象。 AaBbCc123456']) assert.equal(normalizeFontLibrary({ ...state, previewText }).previewText, previewText);
 });
 
 test('ordinary settings migration retains the full font catalogue and unrelated existing data', () => {

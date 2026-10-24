@@ -12,6 +12,15 @@
 - 固定版本、上游归档完整性及各文件摘要见 `vendor/noble-hashes-2.4.0/VENDOR.json`。
 - 这些文件不需要运行时下载或额外安装；上游声明的 Node 环境要求为 `>=20.19.0`。BLAKE3 不在其 2022 年独立审计范围内，不宣称该算法实现已通过独立审计。
 
+## zip.js
+
+`@zip.js/zip.js 2.24.0` 的独立 ESM 压缩实现（`index-native.min.js`），源文件未修改；仅在字体包导入或导出时加载，不接入普通启动路径。
+
+- 上游：https://github.com/gildas-lormeau/zip.js
+- 许可：BSD-3-Clause；完整许可随包保留于 `vendor/zip-js-2.24.0/LICENSE`。
+- 固定版本、官方 npm 归档与文件 SHA-256 见 `vendor/zip-js-2.24.0/VENDOR.json`。
+- 随发行包离线提供，无 CDN、运行时下载或额外安装；支持原生压缩及包内纯 JavaScript 回退。
+
 ## Iconsax
 
 Icons by [Iconsax](https://iconsax.io/). Copyright Iconsax. Free License (proprietary), not MIT.

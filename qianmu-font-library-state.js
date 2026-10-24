@@ -1,7 +1,7 @@
-import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.475';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-pack-2';
 
-export const FONT_LIBRARY_SAMPLE = '一蝶振翅，万象入幕。';
-const LEGACY_FONT_LIBRARY_SAMPLE = '风过长街，故事仍在继续。The quick brown fox 0123456789.';
+export const FONT_LIBRARY_SAMPLE = '一蝶振翅，千幕万象。 AaBbCc123456';
+const LEGACY_FONT_LIBRARY_SAMPLES = new Set(['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。']);
 const fail = message => { throw new Error(message); };
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const text = (value, max, label) => {
@@ -63,7 +63,7 @@ export function normalizeFontLibrary(value) {
     // in the current browser's IndexedDB.
     version: 1, enabled: value.enabled !== false, syncLocalOriginals: true, fonts, folders: names(value.folders || [], 200, '文件夹'),
     pinnedIds: pinnedIds.filter(id => seen.has(id)), sortBy, sortOrder,
-    previewText: text(value.previewText == null || value.previewText === LEGACY_FONT_LIBRARY_SAMPLE ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
+    previewText: text(value.previewText == null || LEGACY_FONT_LIBRARY_SAMPLES.has(value.previewText) ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
     mode: value.mode === 'shared' ? 'shared' : 'separate',
     body: fontAssignment(value.body), st: fontAssignment(value.st), shared: fontAssignment(value.shared),
   };

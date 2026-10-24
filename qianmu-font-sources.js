@@ -4,6 +4,8 @@ export const FONT_SOURCE_LIMITS = Object.freeze({
     // browser, IndexedDB quota, and deployment transport may still reject an
     // allocation that the current environment cannot hold.
     fontBytes: Number.POSITIVE_INFINITY,
+    // Legacy whole-string JSON/base64 packs only; ZIP and local uploads do not
+    // use this aggregate limit. Retain it to safely read old user archives.
     totalLocalBytes: 96 * 1024 * 1024,
     cssBytes: 1024 * 1024,
     totalCssBytes: 2 * 1024 * 1024,
@@ -15,7 +17,7 @@ export const FONT_SOURCE_LIMITS = Object.freeze({
     faces: 2048,
     totalFaces: 8192,
     records: 200,
-    packBytes: 132 * 1024 * 1024,
+    packBytes: 132 * 1024 * 1024, // Legacy JSON parser only.
     previewLength: 500,
 });
 
@@ -385,6 +387,13 @@ function fontBytes(value) {
 /** Header/table bounds are checked here; the browser still validates the actual font on load. */
 export function validateLocalFontBytes(value) {
     const bytes = fontBytes(value);
+    return validateLocalFontHeader(bytes, bytes.byteLength);
+}
+
+/** Also accepts a bounded header + complete table directory read from an immutable font Blob. */
+export function validateLocalFontHeader(value, byteLength) {
+    const bytes = fontBytes(value);
+    if (!Number.isSafeInteger(byteLength) || byteLength < bytes.byteLength) fail('字体文件大小不正确');
     if (bytes.byteLength < 12) fail('字体文件不完整');
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const signature = String.fromCharCode(...bytes.subarray(0, 4));
@@ -392,13 +401,13 @@ export function validateLocalFontBytes(value) {
     if (signature === 'wOFF' || signature === 'wOF2') {
         format = signature === 'wOFF' ? 'woff' : 'woff2';
         const minimum = format === 'woff' ? 44 : 48;
-        if (bytes.length < minimum || view.getUint32(8) !== bytes.length || !view.getUint16(12) || view.getUint16(14) !== 0) fail('字体文件头不完整');
+        if (bytes.length < minimum || view.getUint32(8) !== byteLength || !view.getUint16(12) || view.getUint16(14) !== 0) fail('字体文件头不完整');
         if (format === 'woff') {
             const count = view.getUint16(12);
             if (44 + count * 20 > bytes.length) fail('字体文件表不完整');
             for (let i = 0; i < count; i += 1) {
                 const offset = 44 + i * 20;
-                if (view.getUint32(offset + 4) + view.getUint32(offset + 8) > bytes.length) fail('字体文件表超出边界');
+                if (view.getUint32(offset + 4) + view.getUint32(offset + 8) > byteLength) fail('字体文件表超出边界');
             }
         }
     } else if (signature === 'OTTO' || signature === 'true' || view.getUint32(0) === 0x00010000) {
@@ -407,10 +416,10 @@ export function validateLocalFontBytes(value) {
         if (!count || 12 + count * 16 > bytes.length) fail('字体文件表不完整');
         for (let i = 0; i < count; i += 1) {
             const offset = 12 + i * 16;
-            if (view.getUint32(offset + 8) + view.getUint32(offset + 12) > bytes.length) fail('字体文件表超出边界');
+            if (view.getUint32(offset + 8) + view.getUint32(offset + 12) > byteLength) fail('字体文件表超出边界');
         }
     } else fail('仅支持 WOFF、WOFF2、TTF 和 OTF 字体文件');
-    return { format, byteLength: bytes.byteLength };
+    return { format, byteLength };
 }
 
 /** Read only bounded SFNT metadata. Compressed WOFF/WOFF2 stays unspecified, not guessed. */
@@ -535,7 +544,7 @@ function decodeBase64(value) {
     return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-function packMetadata(records, { previewText = '', folders = [] } = {}) {
+export function validateFontPackMetadata(records, { previewText = '', folders = [] } = {}) {
     if (!Array.isArray(records) || records.length > FONT_SOURCE_LIMITS.records) fail('字体数量超过上限');
     const clean = records.map(validateFontRecord);
     const ids = new Set();
@@ -551,7 +560,7 @@ function packMetadata(records, { previewText = '', folders = [] } = {}) {
 }
 
 export function exportFontPack(records, { localFiles = {}, previewText = '', folders = [] } = {}) {
-    const metadata = packMetadata(records, { previewText, folders });
+    const metadata = validateFontPackMetadata(records, { previewText, folders });
     const binaries = Object.create(null);
     let total = 0;
     for (const record of metadata.records.filter((item) => item.source.kind === 'local')) {
@@ -578,7 +587,7 @@ export function importFontPack(text) {
         });
     } catch { fail('字体包格式不正确或包含不安全的字段'); }
     if (!object(value) || value.type !== 'qianmu-font-library' || value.version !== 1 || !object(value.localFiles)) fail('不是支持的千幕字体包');
-    const metadata = packMetadata(value.fonts, value);
+    const metadata = validateFontPackMetadata(value.fonts, value);
     const localRecords = new Map(metadata.records.filter((record) => record.source.kind === 'local').map((record) => [record.id, record]));
     if (Object.keys(value.localFiles).length !== localRecords.size) fail('字体包中的本地文件与字体清单不一致');
     const localFiles = Object.create(null);

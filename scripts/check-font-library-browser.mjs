@@ -190,7 +190,7 @@ try {
     assert.match(await tagPanel('web').textContent(), /暂无已有标签/);
     await page.locator('[data-font-web-name]').click();
     assert.equal(await tagPanel('web').isVisible(), false);
-    assert.equal(await page.locator('[data-font-preview]').inputValue(), '一蝶振翅，万象入幕。');
+    assert.equal(await page.locator('[data-font-preview]').inputValue(), '一蝶振翅，千幕万象。 AaBbCc123456');
     record('Library reuses themed icon rendering and removes duplicate application panels and persistent explanatory notes');
     await page.locator('[data-font-web-source]').fill(shortWebSource);
     await page.locator('[data-font-web-tags]').fill('初始, 中文,初始');

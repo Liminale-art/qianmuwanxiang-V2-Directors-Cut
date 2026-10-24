@@ -4,6 +4,7 @@ import { createFontLibrary } from '../qianmu-font-library.js';
 import { normalizeFontLibrary } from '../qianmu-font-library-state.js';
 import { createLocalFontRecord, exportFontPack, importFontPack, resolveWebFontSource } from '../qianmu-font-sources.js';
 import { createFontRuntime, fontPreviewFamily } from '../qianmu-font-runtime.js';
+import { openFontArchive, buildFontArchive } from '../qianmu-font-package.js';
 const webFont = { name: 'Web', source: { kind: 'web', input: 'https://font.example/font.woff2', url: 'https://font.example/font.woff2' }, faces: [{ urls: [{ url: 'https://font.example/font.woff2', format: 'woff2' }], weight: '400', style: 'normal' }] };
 function setup(overrides = {}) {
   let owner = {}, active = true, namespace = 'one'; const saves = [], applies = [], binaries = new Map(), downloads = [];
@@ -21,6 +22,22 @@ function fontFile() {
 }
 const digestId = async bytes => 'local_' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
 const packFile = value => ({ size: new TextEncoder().encode(value).byteLength, text: async () => value });
+async function readExport(blob) {
+  const archive = await openFontArchive(blob), localFiles = Object.create(null);
+  try {
+    for (const record of archive.records) if (record.source.kind === 'local') localFiles[record.id] = new Uint8Array(await (await archive.readLocal(record.id)).arrayBuffer());
+    return { records: archive.records, previewText: archive.previewText, folders: archive.folders, localFiles };
+  } finally { await archive.close(); }
+}
+async function localArchive(count) {
+  const records = [], blobs = new Map();
+  for (let index = 0; index < count; index++) {
+    const seed = fontFile(); seed.bytes[31] = index + 1;
+    const { record } = await createLocalFontRecord(seed.file); record.id = `source_${index}`;
+    records.push(record); blobs.set(record.id, new Blob([seed.bytes]));
+  }
+  return buildFontArchive(records, { readLocal: async id => blobs.get(id), yieldTask: async () => {} });
+}
 const settle = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
 async function waitUntil(predicate) {
   for (let index = 0; index < 200; index++) {
@@ -274,7 +291,7 @@ test('complete export retains Web references and never downloads remote font bin
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
   await f.library.action('export', { ids: null });
   assert.equal(f.downloads.length, 1); assert.equal(f.binaries.size, 0);
-  const text = await f.downloads[0][0].text(); assert.ok(text.includes(webFont.source.url)); f.stop();
+  const pack = await readExport(f.downloads[0][0]); assert.equal(pack.records[0].source.url, webFont.source.url); assert.equal(Object.keys(pack.localFiles).length, 0); f.stop();
 });
 
 test('font package export reads large local originals in yieldable chunks before one complete download', async () => {
@@ -282,12 +299,13 @@ test('font package export reads large local originals in yieldable chunks before
   bytes.set(seed.bytes);
   await f.library.action('add-local', { files: [{ ...seed.file, size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(0) }] });
   const id = f.owner.fontLibrary.fonts[0].id; let reads = 0;
-  const tracked = { size: bytes.length, slice(start, end) { reads++; return { arrayBuffer: async () => bytes.slice(start, end).buffer }; } };
+  class TrackedBlob extends Blob { slice(start, end) { reads++; return super.slice(start, end); } }
+  const tracked = new TrackedBlob([bytes]);
   f.binaries.set('one' + id, tracked);
   await f.library.action('export', { ids: [id] });
   assert.ok(reads >= 2, 'large originals must be read in bounded chunks');
   assert.equal(f.downloads.length, 1, 'download starts only after the complete pack is built');
-  assert.ok((await f.downloads[0][0].text()).includes('localFiles'));
+  assert.deepEqual((await readExport(f.downloads[0][0])).localFiles[id], bytes);
   f.stop();
 });
 
@@ -358,8 +376,8 @@ test('one selected mixed-font pack restores every selected original and metadata
   await source.library.action('export', { ids: selected.map(font => font.id).reverse() });
   assert.equal(source.downloads.length, 1, 'all selected fonts share one download');
   const [blob, filename] = source.downloads[0];
-  assert.equal(blob.type, 'application/json'); assert.match(filename, /^qianmu-fonts-\d+\.json$/);
-  const packedText = await blob.text(), packed = importFontPack(packedText), rawPack = JSON.parse(packedText);
+  assert.equal(blob.type, 'application/zip'); assert.match(filename, /^qianmu-fonts-\d+\.zip$/);
+  const packed = await readExport(blob), rawPack = packed;
   const expected = senderBefore.fonts.filter(font => selected.some(item => item.id === font.id));
   assert.deepEqual(packed.records, expected); assert.equal(packed.records.length, 4);
   assert.deepEqual(Object.keys(packed.localFiles).sort(), selected.filter(font => font.source.kind === 'local').map(font => font.id).sort());
@@ -386,7 +404,7 @@ test('one selected mixed-font pack restores every selected original and metadata
     await receiver.library.action('set-font-pinned', { id: body.id, pinned: true });
     await receiver.library.action('set-sort-order', { by: 'added', order: mode === 'shared' ? 'desc' : 'asc' });
     const before = structuredClone(receiver.owner.fontLibrary), saves = receiver.saves.length;
-    await receiver.library.action('import', { file: packFile(packedText) });
+    await receiver.library.action('import', { file: blob });
     const after = receiver.owner.fontLibrary;
     for (const key of ['body', 'st', 'shared', 'mode', 'enabled', 'previewText', 'pinnedIds', 'sortBy', 'sortOrder']) assert.deepEqual(after[key], before[key], `${mode}/${enabled}: ${key}`);
     assert.deepEqual(after.fonts.slice(0, before.fonts.length), before.fonts);
@@ -413,7 +431,7 @@ test('a missing second selected original blocks the entire pack, while unselecte
   assert.equal(f.downloads.length, 0); assert.equal(f.saves.length, saves); assert.deepEqual(f.owner.fontLibrary, before);
   await f.library.action('export', { ids: [web.id, complete.id] });
   assert.equal(f.downloads.length, 1);
-  const packed = importFontPack(await f.downloads[0][0].text());
+  const packed = await readExport(f.downloads[0][0]);
   assert.deepEqual(packed.records.map(font => font.id), [complete.id, web.id]);
   assert.deepEqual(Object.keys(packed.localFiles), [complete.id]); assert.deepEqual(packed.localFiles[complete.id], first.bytes);
   assert.equal(f.binaries.size, 1); assert.deepEqual(f.owner.fontLibrary, before); assert.equal(f.saves.length, saves); f.stop();
@@ -498,7 +516,7 @@ test('import plus body Web editing stays short across repeated edits while prese
   }
   assert.equal(resolutions, 1); assert.equal(fetches, 1); assert.equal(verifications, 0);
   assert.deepEqual(f.owner.fontLibrary.shared, applied);
-  await f.library.action('export'); const pack = importFontPack(await f.downloads[0][0].text());
+  await f.library.action('export'); const pack = await readExport(f.downloads[0][0]);
   assert.equal(pack.records[0].source.input, source); assert.deepEqual(pack.records[0].faces, faces);
   f.stop();
 });
@@ -628,7 +646,7 @@ test('local upload follows the merged id when an imported Web id collides with i
   assert.deepEqual(new Uint8Array(await f.binaries.get('one' + local.id).arrayBuffer()), bytes);
   assert.equal(f.binaries.has('one' + digest), false);
   await f.library.action('export', { ids: [local.id] });
-  assert.deepEqual(importFontPack(await f.downloads[0][0].text()).localFiles[local.id], bytes);
+  assert.deepEqual((await readExport(f.downloads[0][0])).localFiles[local.id], bytes);
   f.stop();
 });
 
@@ -674,7 +692,7 @@ test('import remaps local files by content while preserving active choices and e
   assert.equal(f.binaries.has('oneforeign_device_id'), false);
   assert.equal(f.owner.fontLibrary.previewText, '当前预览文案');
   for (const target of ['body', 'st', 'shared']) assert.deepEqual(f.owner.fontLibrary[target], choices[target]);
-  await f.library.action('export'); const exported = importFontPack(await f.downloads[0][0].text());
+  await f.library.action('export'); const exported = await readExport(f.downloads[0][0]);
   assert.equal(exported.records.length, 2); assert.deepEqual(exported.localFiles[expected], bytes);
   f.stop();
 });
@@ -687,6 +705,84 @@ test('import also respects merge-id remapping after a deterministic local id col
   const imported = f.owner.fontLibrary.fonts.find(font => font.source.kind === 'local');
   assert.notEqual(imported.id, digest); assert.equal(f.binaries.has('one' + imported.id), true);
   assert.equal(f.binaries.has('one' + digest), false); f.stop();
+});
+
+test('ZIP imports commit groups of five, keep completed groups on failure, retry safely and notify once only on full success', async () => {
+  const file = await localArchive(7), blobs = new Map(), notices = [], progress = []; let attempts = 0, failing = true;
+  const f = await editableSetup({ notify: (text, level) => notices.push({ text, level }), localStoreFactory: () => ({
+    get: async id => blobs.get(id), put: async (id, bytes) => { attempts++; if (failing && attempts === 7) throw Error('模拟存储不足'); blobs.set(id, new Blob([bytes])); }, delete: async () => {}, dispose() {},
+  }) });
+  f.views[0].setStatus = text => f.views[0].options.notify(text, 'info'); f.views[0].setProgress = value => progress.push(value);
+  await assert.rejects(f.views[0].options.onAction({ type: 'import', file }), /导入未完成.*已保存 5 \/ 7.*存储不足/);
+  assert.equal(f.owner.fontLibrary.fonts.length, 5); assert.equal(f.saves.length, 1); assert.equal(notices.length, 0); assert.equal(progress.at(-1), null);
+  failing = false; await f.views[0].options.onAction({ type: 'import', file });
+  assert.equal(f.owner.fontLibrary.fonts.length, 7); assert.equal(attempts, 8, 'six originals already present are not rewritten, including the uncommitted sixth');
+  assert.equal(f.saves.length, 2); assert.deepEqual(notices.map(value => value.text), ['字体包导入成功']);
+  assert.ok(progress.some(value => value?.phase === 'import' && value.done === 7 && value.total === 7)); assert.equal(progress.at(-1), null);
+  const saves = f.saves.length; await f.views[0].options.onAction({ type: 'import', file }); assert.equal(attempts, 8); assert.equal(f.saves.length, saves); assert.equal(f.owner.fontLibrary.fonts.length, 7);
+  const missing = f.owner.fontLibrary.fonts[1].id; blobs.delete(missing); await f.views[0].options.onAction({ type: 'import', file });
+  assert.equal(attempts, 9); assert.ok(blobs.has(missing)); assert.equal(f.owner.fontLibrary.fonts.length, 7); assert.equal(f.saves.length, saves, 'restoring a missing original needs no duplicate directory entry'); f.stop();
+});
+
+test('late hydration retains remote fonts and safely stops a ZIP import so a retry merges both directories', async () => {
+  let finishHydration, finishPut, puts = 0; const blobs = new Map(), notices = [], remote = normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [{ ...webFont, id: 'remote' }] });
+  const f = await editableSetup({ notify: text => notices.push(text), accountSyncFactory: () => ({ hydrate: () => new Promise(resolve => { finishHydration = resolve; }), push: async () => {}, close() {} }), localStoreFactory: () => ({
+    get: async id => blobs.get(id), put: (id, bytes) => new Promise(resolve => { puts++; finishPut = () => { blobs.set(id, new Blob([bytes])); resolve(); }; }), dispose() {},
+  }) });
+  f.views[0].setStatus = text => f.views[0].options.notify(text, 'info');
+  const file = await localArchive(1), pending = f.views[0].options.onAction({ type: 'import', file }); await waitUntil(() => finishPut);
+  finishHydration({ state: remote, changed: true }); await settle(); assert.deepEqual(f.owner.fontLibrary, remote);
+  finishPut(); await assert.rejects(pending, /字体库已变化/);
+  assert.deepEqual(f.owner.fontLibrary, remote); assert.equal(f.saves.length, 1); assert.deepEqual(notices, []);
+  await f.views[0].options.onAction({ type: 'import', file });
+  assert.deepEqual(f.owner.fontLibrary.fonts.map(font => font.source.kind), ['web', 'local']);
+  assert.equal(f.owner.fontLibrary.fonts[0].id, 'remote'); assert.equal(puts, 1, 'retry reuses the original already stored before interruption');
+  assert.equal(f.saves.length, 2); assert.deepEqual(notices, ['字体包导入成功']); f.stop();
+});
+
+test('late hydration during export is retained instead of being dropped because the archive is busy', async () => {
+  const { bytes, file } = fontFile(), { record } = await createLocalFontRecord(file); record.id = 'stored-local';
+  const owner = { fontLibrary: normalizeFontLibrary({ ...normalizeFontLibrary(), fonts: [record] }) };
+  const remote = normalizeFontLibrary({ ...owner.fontLibrary, fonts: [record, { ...webFont, id: 'remote' }] }), notices = [];
+  let finishHydration, finishRead, hold = true;
+  const f = await editableSetup({ getOwner: () => owner, notify: text => notices.push(text),
+    accountSyncFactory: () => ({ hydrate: () => new Promise(resolve => { finishHydration = resolve; }), push: async () => {}, close() {} }),
+    localStoreFactory: () => ({ get: async () => hold ? new Promise(resolve => { finishRead = () => resolve(new Blob([bytes])); }) : new Blob([bytes]), dispose() {} }),
+  });
+  f.views[0].setStatus = text => f.views[0].options.notify(text, 'info');
+  const pending = f.views[0].options.onAction({ type: 'export' }); await waitUntil(() => finishRead);
+  finishHydration({ state: remote, changed: false }); await settle(); assert.deepEqual(owner.fontLibrary, remote);
+  finishRead(); await assert.rejects(pending, /字体库已变化/);
+  assert.deepEqual(owner.fontLibrary, remote); assert.equal(f.downloads.length, 0); assert.deepEqual(notices, []);
+  hold = false; await f.views[0].options.onAction({ type: 'export' });
+  assert.equal(f.downloads.length, 1); assert.deepEqual((await readExport(f.downloads[0][0])).records.map(font => font.id), ['stored-local', 'remote']);
+  assert.deepEqual(notices, ['字体包已导出']); assert.deepEqual(owner.fontLibrary, remote); f.stop();
+});
+
+test('ZIP import stops on account change without committing into either account or reporting success', async () => {
+  let finishPut; const notices = [], writes = [], f = await editableSetup({ notify: text => notices.push(text), localStoreFactory: ({ namespace }) => ({
+    get: async () => null, put: (id, bytes) => new Promise(resolve => { writes.push({ namespace, id, bytes }); finishPut = resolve; }), dispose() {},
+  }) });
+  f.views[0].setStatus = text => f.views[0].options.notify(text, 'info');
+  const oldOwner = f.owner, pending = f.views[0].options.onAction({ type: 'import', file: await localArchive(1) }); await waitUntil(() => finishPut); f.replace(); finishPut();
+  await assert.rejects(pending, /所属设置已变化/); assert.deepEqual(f.owner, {}); assert.deepEqual(oldOwner, {}); assert.equal(writes[0].namespace, 'one'); assert.equal(f.saves.length, 0); assert.deepEqual(notices, []); f.stop();
+});
+
+test('closing and reopening a ZIP import does not send progress or a completion toast to the replacement view', async () => {
+  let finishPut; const blobs = new Map(), notices = [], newProgress = [], f = await editableSetup({ notify: text => notices.push(text), localStoreFactory: () => ({
+    get: async id => blobs.get(id), put: (id, bytes) => new Promise(resolve => { finishPut = () => { blobs.set(id, new Blob([bytes])); resolve(); }; }), dispose() {},
+  }) });
+  const first = f.views[0].options, pending = first.onAction({ type: 'import', file: await localArchive(1) }); await waitUntil(() => finishPut);
+  first.onBack(); f.entry.click(); await waitUntil(() => f.views.length === 2); const replacement = f.views[1];
+  replacement.setStatus = text => replacement.options.notify(text, 'info'); replacement.setProgress = value => newProgress.push(value);
+  finishPut(); await pending; assert.equal(f.owner.fontLibrary.fonts.length, 1); assert.deepEqual(notices, []); assert.deepEqual(newProgress, []); f.stop();
+});
+
+test('a group whose settings save fails never announces ZIP import success', async () => {
+  const notices = [], f = await editableSetup({ save: () => { throw Error('模拟设置保存失败'); }, notify: text => notices.push(text) });
+  f.views[0].setStatus = text => f.views[0].options.notify(text, 'info');
+  await assert.rejects(f.views[0].options.onAction({ type: 'import', file: await localArchive(2) }), /导入未完成.*保存失败/);
+  assert.equal(f.owner.fontLibrary, undefined); assert.equal(f.binaries.size, 2, 'verified originals remain recoverable after a directory save failure'); assert.deepEqual(notices, []); f.stop();
 });
 
 test('missing original prevents an incomplete export and does not mutate the library', async () => {

@@ -1,0 +1,19 @@
+{
+  "name": "@zip.js/zip.js",
+  "version": "2.24.0",
+  "upstream": "https://github.com/gildas-lormeau/zip.js",
+  "tarball": "https://registry.npmjs.org/@zip.js/zip.js/-/zip.js-2.24.0.tgz",
+  "tarballSha256": "37fe939b7eaf1edc0291fd11c9de5b0814f91b259951489f95ed6f18f5c2db46",
+  "license": "BSD-3-Clause",
+  "scope": "Unmodified standalone ESM build with bundled JavaScript compression/decompression fallback. Font archives disable workers per reader/writer, use native compression when available, and require no CDN, WASM or runtime download.",
+  "files": {
+    "index-native.min.js": {
+      "bytes": 211090,
+      "sha256": "a061a4d854f048c12ac00f9f9f01fe1fcb32b02e035eae55042f29e7f3d67f6a"
+    },
+    "LICENSE": {
+      "bytes": 1501,
+      "sha256": "1b7ebc8d7889ed25491484ab2b102370742ca6c0b26650a0c62cc2269b579b84"
+    }
+  }
+}
