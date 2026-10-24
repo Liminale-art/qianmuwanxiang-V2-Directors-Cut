@@ -23,15 +23,22 @@ function tagEditor(key, input) {
     return `<div class="qm-font-tag-editor" data-font-tag-editor="${escape(key)}"><div class="qm-font-tag-input">${input}${iconButton('tags', 'fa-plus', '选择已有标签', `data-font-tag-target="${escape(key)}" aria-expanded="false"`, 'qm-font-field-action')}</div><div class="qm-font-tag-options" data-font-tag-options="${escape(key)}" role="group" aria-label="已有标签" hidden></div></div>`;
 }
 function normalizeProgress(value) {
-    if (!value || !['import', 'export', 'pack'].includes(value.phase)) return null;
-    const count = number => Number.isFinite(Number(number)) ? Math.max(0, Math.floor(Number(number))) : 0;
-    const total = count(value.total);
-    return { phase: value.phase === 'import' ? 'import' : 'export', done: Math.min(total, count(value.done)), total };
+    if (!value || !['import', 'export'].includes(value.phase)) return null;
+    const bytes = number => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= Number.MAX_SAFE_INTEGER ? Math.floor(number) : 0;
+    const totalBytes = bytes(value.totalBytes), processedBytes = Math.min(totalBytes, bytes(value.processedBytes));
+    const stage = ['preparing', 'processing', 'verifying', 'saving', 'finalizing', 'complete'].includes(value.stage) ? value.stage : 'processing';
+    const percentage = stage === 'complete' ? 100 : totalBytes ? Math.min(99.9, Math.round(processedBytes / totalBytes * 1000) / 10) : null;
+    return { phase: value.phase, processedBytes, totalBytes, stage, percentage };
 }
-const progressText = value => `正在${value.phase === 'import' ? '导入' : '打包'}字体 ${value.done} / ${value.total}`;
+function progressText(value) {
+    if (value.percentage === null) return value.phase === 'import' ? '正在读取字体包' : '正在准备字体包';
+    const action = value.phase === 'import' ? '导入' : '打包';
+    const label = value.stage === 'verifying' ? '正在校验字体' : value.stage === 'saving' ? '正在保存字体' : value.stage === 'finalizing' ? `正在完成${action}` : `正在${action}字体`;
+    return `${label} ${value.percentage.toFixed(1)}%`;
+}
 function renderProgress(value) {
     const progress = normalizeProgress(value), label = progress ? progressText(progress) : '';
-    return `<div class="qm-font-progress" data-font-progress role="status" aria-live="polite"${progress ? '' : ' hidden'}><span data-font-progress-text>${label}</span><progress data-font-progress-bar max="${progress?.total || 1}"${progress?.total ? ` value="${progress.done}"` : ''} aria-label="${label}"></progress></div>`;
+    return `<div class="qm-font-progress" data-font-progress role="status" aria-live="polite"${progress ? '' : ' hidden'}><span data-font-progress-text>${label}</span><progress data-font-progress-bar max="100"${progress && progress.percentage !== null ? ` value="${progress.percentage}"` : ''} aria-label="${label}"></progress></div>`;
 }
 function fontStyles(entry) {
     const available = strings(array(entry?.faces).length ? entry.faces.map(face => face.style || 'normal') : entry?.styles).map(styles);
@@ -193,13 +200,17 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const starting = !progress;
         progress = normalizeProgress(value);
         const host = q('[data-font-progress]'); if (!host) return;
-        host.hidden = !progress;
+        if (host.hidden !== !progress) host.hidden = !progress;
         if (!progress) return;
         const label = progressText(progress), text = q('[data-font-progress-text]'), bar = q('[data-font-progress-bar]');
-        if (text) text.textContent = label;
-        if (bar) { bar.max = progress.total || 1; if (progress.total) bar.value = progress.done; else bar.removeAttribute?.('value'); bar.setAttribute('aria-label', label); }
+        if (text && text.textContent !== label) text.textContent = label;
+        if (bar) {
+            if (bar.max !== 100) bar.max = 100;
+            if (progress.percentage === null) bar.removeAttribute?.('value'); else if (bar.value !== progress.percentage || bar.getAttribute?.('value') === null) bar.value = progress.percentage;
+            if (bar.getAttribute?.('aria-label') !== label) bar.setAttribute('aria-label', label);
+        }
         // Only the idle-to-active transition may reposition the panel. Later
-        // counts and renders leave any user-selected reading position alone.
+        // byte updates, stages and renders leave the user's position alone.
         if (starting) revealProgress(host);
     }
     function captureWeb() { if (q('[data-font-web-name]')) webName = q('[data-font-web-name]').value; if (q('[data-font-web-source]')) webSource = q('[data-font-web-source]').value; if (q('[data-font-web-tags]')) webTags = q('[data-font-web-tags]').value; if (q('.qm-font-add')) addOpen = q('.qm-font-add').open; }

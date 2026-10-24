@@ -41,6 +41,18 @@ test('100 MiB ZIP controller workflow commits large fonts individually, skips du
     assert.ok(file.size < 100 * 1024 * 1024 / 20, 'fixture uses actual compression, not an uncompressed ZIP envelope');
 
     const owner = {}, binaries = new Map(), puts = [], saves = [], notices = [], progress = [], downloads = [];
+    function assertByteProgress(phase) {
+        const values = progress.filter(value => value?.phase === phase && value.totalBytes > 0);
+        assert.ok(values.length > 10, 'large originals report actual sub-file byte increments');
+        const total = values[0].totalBytes;
+        assert.ok(total > 100 * 1024 * 1024, 'total includes all originals plus the actual directory');
+        assert.ok(values.every(value => value.totalBytes === total));
+        assert.ok(values.every((value, index) => value.processedBytes <= total && (!index || value.processedBytes >= values[index - 1].processedBytes)));
+        assert.ok(values.filter(value => value.processedBytes > 0 && value.processedBytes < FONT_BYTES).length > 5, 'one font advances repeatedly before it is complete');
+        assert.equal(values.filter(value => value.stage === 'complete').length, 1);
+        assert.equal(values.at(-1).stage, 'complete'); assert.equal(values.at(-1).processedBytes, total);
+        if (phase === 'import') assert.equal(values.at(-1).saved, 4, '100 percent follows all directory commits');
+    }
     let active = true, shownView;
     const entry = { addEventListener(_type, handler) { this.click = handler; }, removeEventListener() {}, focus() {} };
     const root = { isConnected: true, classList: { add() {}, remove() {} },
@@ -72,8 +84,9 @@ test('100 MiB ZIP controller workflow commits large fonts individually, skips du
         assert.deepEqual(saves.map(value => value.puts), [1, 2, 3, 4], 'each directory commit follows its own completed original write');
         assert.equal(puts.length, 4); assert.ok(puts.every(value => value.size === FONT_BYTES));
         assert.equal(binaries.size, 4); assert.equal(owner.fontLibrary.fonts.length, 4);
-        assert.deepEqual(progress.filter(value => value?.phase === 'import' && value.done > 0).map(value => [value.done, value.total, value.saved]),
-            [[1, 4, 1], [2, 4, 2], [3, 4, 3], [4, 4, 4]]);
+        assertByteProgress('import');
+        assert.ok(progress.some(value => value?.stage === 'verifying'));
+        assert.ok(progress.some(value => value?.stage === 'saving'));
         assert.equal(progress.at(-1), null, 'progress clears only after the import has completed');
         assert.deepEqual(notices, [{ text: '字体包导入成功', level: 'info', count: 4 }]);
         for (const font of owner.fontLibrary.fonts) {
@@ -90,14 +103,14 @@ test('100 MiB ZIP controller workflow commits large fonts individually, skips du
         assert.deepEqual(owner.fontLibrary, before);
         assert.equal(notices.length, 2, 'each complete operation produces exactly one completion notification');
         assert.deepEqual(notices[1], { text: '字体包导入成功', level: 'info', count: 4 });
-        assert.ok(progress.some(value => value?.phase === 'import' && value.done === 4 && value.total === 4));
+        assertByteProgress('import');
         assert.equal(progress.at(-1), null);
 
         progress.length = 0;
         await library.action('export');
         assert.equal(downloads.length, 1); assert.match(downloads[0].name, /^qianmu-fonts-\d+\.zip$/u);
         assert.equal(downloads[0].blob.type, 'application/zip');
-        assert.ok(progress.some(value => value?.phase === 'export' && value.done === 4 && value.total === 4));
+        assertByteProgress('export');
         assert.equal(progress.at(-1), null);
         assert.deepEqual(notices.at(-1), { text: '字体包已导出', level: 'info', count: 4 });
         assert.equal(saves.length, previousSaves); assert.equal(puts.length, previousPuts);

@@ -1,9 +1,9 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.482-font-progress-2';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.482-font-progress-2';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-progress-2';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.482-font-progress-3';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.482-font-progress-3';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-progress-3';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.476';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
-import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.482-font-progress-2';
+import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.482-font-progress-3';
 import { readBuiltinFont } from './qianmu-font-builtins.js';
 
 function fontInputName(value) {
@@ -46,21 +46,31 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     const head = typeof file.slice === 'function' ? new Uint8Array(await file.slice(0, 4).arrayBuffer()) : [];
     guard();
     if ((head[0] === 0x50 && head[1] === 0x4b) || /\.zip$/i.test(file.name || '')) {
-      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-2'); guard();
+      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-3'); guard();
       return openFontArchive(file, { guard, yieldTask });
     }
     // Old JSON packs remain readable, but only ZIP is written now. Keep the
     // legacy parser's bound because it necessarily reads one whole string.
     if (file.size > FONT_SOURCE_LIMITS.packBytes || typeof file.text !== 'function') throw new Error('旧版 JSON 字体包过大或不可读取，请使用 ZIP 字体包');
     const pack = importFontPack(await file.text()); guard();
-    return { ...pack, readLocal: async id => new Blob([pack.localFiles[id]]), close: async () => {} };
+    // The legacy parser has already decoded its originals. Count those actual
+    // bytes and the normalized directory once; never fake progress while its
+    // whole-string JSON read/parse is still pending.
+    const initialProcessedBytes = new TextEncoder().encode(JSON.stringify({ fonts: pack.records, previewText: pack.previewText, folders: pack.folders })).byteLength;
+    const localSizes = Object.fromEntries(Object.entries(pack.localFiles).map(([id, bytes]) => [id, bytes.byteLength]));
+    const totalBytes = initialProcessedBytes + Object.values(localSizes).reduce((sum, bytes) => sum + bytes, 0);
+    if (!Number.isSafeInteger(totalBytes)) throw new Error('字体包数据量超出可处理范围');
+    return { ...pack, totalBytes, initialProcessedBytes, localSizes,
+      readLocal: async (id, { onProgress } = {}) => {
+        const blob = new Blob([pack.localFiles[id]]); onProgress?.({ processedBytes: blob.size, totalBytes: blob.size }); return blob;
+      }, close: async () => {} };
   }
-  async function stageLocal(record, bytes, draft, guard) {
+  async function stageLocal(record, bytes, draft, guard, onSaving) {
     const id = await localId(bytes); guard();
     const merged = mergeFontLibraryRecords(draft, [{ ...record, id }], makeId), target = merged.mapping.get(id);
     // An existing directory entry on another device may still need its bytes.
     const existing = await store.get?.(target); guard();
-    if (!existing) { await store.put(target, bytes, 'application/octet-stream'); guard(); }
+    if (!existing) { onSaving?.(); await store.put(target, bytes, 'application/octet-stream'); guard(); }
     return merged.state;
   }
   const read = () => normalizeFontLibrary(getOwner()?.fontLibrary);
@@ -248,34 +258,40 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         }
         revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
       } else if (type === 'import') {
-        let pack, completed = 0, saved = 0, batchBytes = 0;
+        let pack, completed = 0, saved = 0, batchBytes = 0, recordCount = 0, processedBytes = 0, totalBytes = 0;
+        const reportImport = (stage, bytes = processedBytes) => progress('import', { processedBytes: bytes, totalBytes, stage });
         const beforeIds = new Set(read().fonts.map(font => font.id));
         try {
-          progress('import', { done: 0, total: 0 });
+          reportImport('preparing');
           pack = await openPackage(payload.file, guard); guard();
+          recordCount = pack.records.length; totalBytes = pack.totalBytes; processedBytes = pack.initialProcessedBytes;
           next = read(); next.folders = [...new Set([...next.folders, ...(pack.folders || [])])];
           if (!next.fonts.length && typeof pack.previewText === 'string') next.previewText = pack.previewText;
           // Validate the small metadata before writing any original files.
           next = normalizeFontLibrary(next);
-          progress('import', { done: 0, total: pack.records.length });
+          reportImport('processing');
           for (const record of pack.records) {
             guard();
             if (record.source.kind === 'local') {
-              const blob = await pack.readLocal(record.id); guard();
+              const blob = await pack.readLocal(record.id, { onProgress: value => reportImport('processing', processedBytes + value.processedBytes) }); guard();
+              processedBytes += blob.size;
+              reportImport('verifying');
               const bytes = new Uint8Array(await blob.arrayBuffer()); guard();
               if (validateLocalFontBytes(bytes).format !== record.source.format) throw new Error('本地字体文件与资料不匹配');
-              next = await stageLocal(record, bytes, next, guard); batchBytes += bytes.byteLength;
+              next = await stageLocal(record, bytes, next, guard, () => reportImport('saving')); batchBytes += bytes.byteLength;
             } else next = mergeFontLibraryRecords(next, [record], makeId).state;
             completed++;
             if (completed - saved >= IMPORT_BATCH_COUNT || batchBytes >= IMPORT_BATCH_BYTES || completed === pack.records.length) {
-              guard();
+              guard(); reportImport('saving');
               if (JSON.stringify(next) !== JSON.stringify(read())) { commit(next, token); original = owner.fontLibrary; }
               saved = completed; batchBytes = 0;
             }
-            progress('import', { done: completed, total: pack.records.length });
             await yieldTask(); guard();
           }
           if (!pack.records.length && JSON.stringify(next) !== JSON.stringify(read())) { commit(next, token); original = owner.fontLibrary; }
+          reportImport('finalizing');
+          await pack.close(); pack = null; guard();
+          reportImport('complete');
           imported = true;
           revealFontId = next.fonts.find(font => !beforeIds.has(font.id))?.id || '';
         } catch (error) {
@@ -283,17 +299,19 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
             scheduleAccountPush(token);
             if (!originView || originView === viewIdentity) view?.render?.();
           }
-          throw new Error(`字体包导入未完成${saved ? `（已保存 ${saved} / ${pack.records.length} 份）` : ''}：${error.message || '请检查文件或浏览器存储空间'}。可重新导入，相同字体会跳过。`);
+          throw new Error(`字体包导入未完成${saved ? `（已保存 ${saved} / ${recordCount} 份）` : ''}：${error.message || '请检查文件或浏览器存储空间'}。可重新导入，相同字体会跳过。`);
         } finally { try { await pack?.close(); } finally { progress('import', null); } }
       } else if (type === 'export') {
         const state = read(), ids = payload.ids ? new Set(payload.ids) : null;
         const fonts = state.fonts.filter(font => !ids || ids.has(font.id));
         if (!fonts.length) throw new Error('请先添加或选择字体');
         try {
-          progress('export', { done: 0, total: fonts.length });
-          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-2'); guard();
-          const packed = await buildFontArchive(fonts, { readLocal: id => store.get(id), folders: state.folders, previewText: state.previewText, guard, yieldTask, onProgress: value => progress('export', value) }); guard();
+          progress('export', { processedBytes: 0, totalBytes: 0, stage: 'preparing' });
+          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-3'); guard();
+          let latest;
+          const packed = await buildFontArchive(fonts, { readLocal: id => store.get(id), folders: state.folders, previewText: state.previewText, guard, yieldTask, onProgress: value => { latest = value; progress('export', value); } }); guard();
           download(packed, `qianmu-fonts-${Date.now()}.zip`);
+          guard(); progress('export', { ...latest, stage: 'complete' });
           if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包已导出'); return;
         } finally { progress('export', null); }
       } else {

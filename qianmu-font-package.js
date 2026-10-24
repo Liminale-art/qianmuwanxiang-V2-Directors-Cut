@@ -1,6 +1,6 @@
 /** Font ZIP v2: metadata is validated before writes; local originals are read one at a time. */
 import { Reader, Writer, ZipReader, ZipWriter } from './vendor/zip-js-2.24.0/index-native.min.js';
-import { FONT_SOURCE_LIMITS, validateFontPackMetadata, validateLocalFontHeader } from './qianmu-font-sources.js?v=1.59.482-font-progress-2';
+import { FONT_SOURCE_LIMITS, validateFontPackMetadata, validateLocalFontHeader } from './qianmu-font-sources.js?v=1.59.482-font-progress-3';
 
 export const FONT_ARCHIVE_MANIFEST = 'manifest.json';
 export const FONT_ARCHIVE_METADATA_BYTES = 8 * 1024 * 1024;
@@ -14,6 +14,10 @@ const plain = (value) => value !== null && typeof value === 'object' && !Array.i
     && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const size = (value) => Number.isSafeInteger(value) && value >= 0;
 const fontPath = (id) => `fonts/${id}.bin`;
+function addBytes(left, right) {
+    if (!size(left) || !size(right) || right > Number.MAX_SAFE_INTEGER - left) fail('字体包总大小超出当前浏览器可处理范围');
+    return left + right;
+}
 
 function scope(options = {}) {
     let closed = false;
@@ -44,8 +48,8 @@ class FontBlobReader extends Reader {
 
 /** Keep compressed Blob parts instead of a whole-archive string or base64/ArrayBuffer copy. */
 class FontBlobWriter extends Writer {
-    constructor(context, limit = Number.MAX_SAFE_INTEGER, type = 'application/octet-stream') {
-        super(); this.context = context; this.limit = limit; this.type = type; this.parts = []; this.length = 0;
+    constructor(context, limit = Number.MAX_SAFE_INTEGER, type = 'application/octet-stream', onProgress) {
+        super(); this.context = context; this.limit = limit; this.type = type; this.parts = []; this.length = 0; this.onProgress = onProgress;
     }
     async writeUint8Array(bytes) {
         this.context.check();
@@ -55,6 +59,7 @@ class FontBlobWriter extends Writer {
             // Blob takes an immutable copy, including when a codec reuses its output buffer.
             const chunk = new Blob([bytes.subarray(offset, offset + FONT_ARCHIVE_CHUNK_BYTES)]);
             this.parts.push(chunk); this.length += chunk.size;
+            this.onProgress?.({ processedBytes: this.length, totalBytes: this.limit });
         }
     }
     getData() { this.context.check(); return new Blob(this.parts, { type: this.type }); }
@@ -87,8 +92,8 @@ export async function buildFontArchive(records, options = {}) {
     const context = scope(options), metadata = validateFontPackMetadata(records, options);
     const output = new FontBlobWriter(context, Number.MAX_SAFE_INTEGER, 'application/zip');
     const zip = new ZipWriter(output, { useWebWorkers: false, bufferedWrite: false });
-    const localFiles = Object.create(null);
-    let done = 0;
+    const localFiles = Object.create(null), originals = [];
+    let totalBytes = 0;
     try {
         // Fail oversized metadata before reading/compressing originals.
         manifestBytes(metadata, localFiles);
@@ -104,12 +109,30 @@ export async function buildFontArchive(records, options = {}) {
                 await validateOriginal(originalReader, record.source.format);
                 const path = fontPath(record.id);
                 localFiles[record.id] = { path, size: blob.size };
-                await zip.add(path, originalReader);
+                totalBytes = addBytes(totalBytes, blob.size);
+                // Immutable Blob references are lightweight; do not reread IndexedDB or retain ArrayBuffers.
+                originals.push({ path, reader: originalReader });
             }
-            options.onProgress?.({ done: ++done, total: metadata.records.length });
         }
         const manifest = new Blob([manifestBytes(metadata, localFiles)], { type: 'application/json' });
-        await zip.add(FONT_ARCHIVE_MANIFEST, new FontBlobReader(manifest, context));
+        totalBytes = addBytes(totalBytes, manifest.size);
+        originals.push({ path: FONT_ARCHIVE_MANIFEST, reader: new FontBlobReader(manifest, context) });
+        let processedBytes = 0;
+        const report = (stage = 'processing') => options.onProgress?.({ processedBytes, totalBytes, stage });
+        context.check(); report();
+        for (const original of originals) {
+            const baseBytes = processedBytes;
+            let entryProcessed = 0;
+            await zip.add(original.path, original.reader, { onprogress(loadedBytes) {
+                // zip.js reports input bytes after its input ChunkStream, not ZIP headers or preflight reads.
+                if (!size(loadedBytes) || loadedBytes < entryProcessed || loadedBytes > original.reader.size) return;
+                if (loadedBytes === entryProcessed) return;
+                entryProcessed = loadedBytes; processedBytes = addBytes(baseBytes, entryProcessed); report();
+            } });
+            context.check();
+            if (entryProcessed !== original.reader.size) fail('字体压缩读取不完整');
+        }
+        report('finalizing');
         const blob = await zip.close(); context.check(); output.discard(); context.close();
         return blob;
     } catch (error) {
@@ -158,9 +181,10 @@ async function preflightDirectory(input, context) {
     return count;
 }
 
-async function entryBlob(entry, context, limit) {
-    const output = new FontBlobWriter(context, limit);
+async function entryBlob(entry, context, limit, onProgress) {
+    const output = new FontBlobWriter(context, limit, 'application/octet-stream', onProgress);
     try {
+        context.check(); onProgress?.({ processedBytes: 0, totalBytes: limit });
         const blob = await entry.getData(output, { checkCrc32: true, useWebWorkers: false });
         context.check();
         if (blob.size !== limit) fail('字体包文件大小与清单不一致');
@@ -204,22 +228,25 @@ export async function openFontArchive(file, options = {}) {
         const metadata = validateFontPackMetadata(manifest.fonts, manifest);
         const localRecords = metadata.records.filter((record) => record.source.kind === 'local');
         if (Object.keys(manifest.localFiles).length !== localRecords.length || entries.size !== localRecords.length + 1) fail('字体包原件与清单不一致');
-        const originals = new Map();
+        const originals = new Map(), localSizes = Object.create(null);
+        let totalBytes = manifestBlob.size;
         for (const record of localRecords) {
             const declared = manifest.localFiles[record.id], path = fontPath(record.id), entry = entries.get(path);
             if (!plain(declared) || declared.path !== path || !size(declared.size) || declared.size < 1 || !entry
                 || declared.size !== entry.uncompressedSize) fail('字体包原件缺失或大小与清单不一致');
             originals.set(record.id, entry);
+            localSizes[record.id] = declared.size;
+            totalBytes = addBytes(totalBytes, declared.size);
         }
         let reading = false;
-        return { ...metadata,
-            async readLocal(id) {
+        return { ...metadata, totalBytes, initialProcessedBytes: manifestBlob.size, localSizes: Object.freeze(localSizes),
+            async readLocal(id, { onProgress } = {}) {
                 context.check();
                 const entry = originals.get(id);
                 if (!entry) fail('字体包中没有此字体原件');
                 if (reading) fail('请等待当前字体原件读取完成');
                 reading = true;
-                try { return await entryBlob(entry, context, entry.uncompressedSize); }
+                try { return await entryBlob(entry, context, entry.uncompressedSize, onProgress); }
                 finally { reading = false; }
             },
             async close() { context.close(); originals.clear(); entries.clear(); await reader.close(); },

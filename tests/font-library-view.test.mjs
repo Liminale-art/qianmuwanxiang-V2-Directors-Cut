@@ -20,7 +20,7 @@ function fixture(initial = state(), action = () => {}, initialSession = {}) {
     const handlers = new Map(), samples = [], statuses = [], applyPickers = [], queries = new Map(), allQueries = new Map(), calls = [], notices = [], visible = [], attributes = new Map();
     let html = '', current = structuredClone(initial), reads = 0;
     function node(selector, fields = {}) {
-        const item = { value: '', checked: false, hidden: false, disabled: false, textContent: '', dataset: {}, style: { setProperty(key, value, priority) { this[key] = value; this[key + ':priority'] = priority; } }, classList: { toggle() {} }, setAttribute(key, value) { this[key] = value; }, focus() {}, matches: candidate => candidate === selector, closest: candidate => candidate === selector ? item : null, ...fields };
+        const item = { value: '', checked: false, hidden: false, disabled: false, textContent: '', dataset: {}, style: { setProperty(key, value, priority) { this[key] = value; this[key + ':priority'] = priority; } }, classList: { toggle() {} }, setAttribute(key, value) { this[key] = value; }, getAttribute(key) { return this[key] ?? null; }, removeAttribute(key) { delete this[key]; }, focus() {}, matches: candidate => candidate === selector, closest: candidate => candidate === selector ? item : null, ...fields };
         queries.set(selector, item); return item;
     }
     node('[data-font-selection-count]'); node('.qm-font-bulk-actions'); node('.sd-body', { scrollTop: 0 });
@@ -123,12 +123,12 @@ test('font packs accept ZIP and legacy JSON with hidden progress inside the prev
 
 test('active import and export progress share the preview card instead of introducing a separate card background', () => {
     for (const [phase, label] of [['import', '正在导入'], ['export', '正在打包']]) {
-        const html = renderFontLibrary(state(), { progress: { phase, done: 2, total: 8 } });
+        const html = renderFontLibrary(state(), { progress: { phase, processedBytes: 2, totalBytes: 8, stage: 'processing' } });
         const preview = html.match(/<section class="sd-card qm-font-preview-editor">[\s\S]*?<\/section>/)?.[0];
         assert.ok(preview);
         assert.match(preview, /<input data-font-preview[^>]*>[\s\S]*<div class="qm-font-progress" data-font-progress role="status" aria-live="polite">/);
-        assert.ok(preview.includes(`${label}字体 2 / 8`));
-        assert.match(preview, /<progress data-font-progress-bar max="8" value="2"/);
+        assert.ok(preview.includes(`${label}字体 25.0%`));
+        assert.match(preview, /<progress data-font-progress-bar max="100" value="25"/);
         assert.equal((preview.match(/\bsd-card\b/g) || []).length, 1, 'progress reuses the preview card, not a nested card');
     }
 });
@@ -136,23 +136,93 @@ test('active import and export progress share the preview card instead of introd
 test('pack progress updates in place without notifications and survives render until cleared', () => {
     const f = fixture(), host = f.node('[data-font-progress]', { hidden: true }), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]');
     const before = f.root.innerHTML, reads = f.reads, visible = f.visible.length;
-    f.view.setProgress({ phase: 'import', done: 3, total: 12 });
-    assert.equal(host.hidden, false); assert.equal(text.textContent, '正在导入字体 3 / 12');
-    assert.equal(bar.max, 12); assert.equal(bar.value, 3); assert.equal(bar['aria-label'], text.textContent);
+    f.view.setProgress({ phase: 'import', processedBytes: 3, totalBytes: 12, stage: 'processing' });
+    assert.equal(host.hidden, false); assert.equal(text.textContent, '正在导入字体 25.0%');
+    assert.equal(bar.max, 100); assert.equal(bar.value, 25); assert.equal(bar['aria-label'], text.textContent);
     assert.equal(f.root.innerHTML, before); assert.equal(f.notices.length, 0);
     assert.equal(f.reads, reads); assert.equal(f.visible.length, visible, 'progress updates do not reload font previews');
-    f.view.render(); assert.match(f.root.innerHTML, /正在导入字体 3 \/ 12/);
-    f.view.setProgress({ phase: 'export', done: 6, total: 12 }); assert.equal(text.textContent, '正在打包字体 6 / 12');
+    f.view.render(); assert.match(f.root.innerHTML, /正在导入字体 25\.0%/);
+    f.view.setProgress({ phase: 'export', processedBytes: 6, totalBytes: 12, stage: 'processing' }); assert.equal(text.textContent, '正在打包字体 50.0%');
     f.view.setProgress(null); assert.equal(host.hidden, true); f.view.render(); assert.match(f.root.innerHTML, /data-font-progress role="status" aria-live="polite" hidden/);
     assert.equal(f.notices.length, 0); f.view.destroy();
-    f.view.setProgress({ phase: 'import', done: 12, total: 12 }); assert.equal(host.hidden, true); assert.equal(text.textContent, '正在打包字体 6 / 12');
+    f.view.setProgress({ phase: 'import', processedBytes: 12, totalBytes: 12, stage: 'complete' }); assert.equal(host.hidden, true); assert.equal(text.textContent, '正在打包字体 50.0%');
 });
 
-test('pack progress normalizes counts and never injects supplied phase names', () => {
+test('large-font progress advances by byte chunks and never shows file counts', () => {
     const f = fixture(), host = f.node('[data-font-progress]'), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]');
-    f.view.setProgress({ phase: 'pack', done: 100, total: 3.8 }); assert.equal(text.textContent, '正在打包字体 3 / 3'); assert.equal(bar.value, 3);
-    f.view.setProgress({ phase: 'import', done: -1, total: 10 }); assert.equal(text.textContent, '正在导入字体 0 / 10');
-    f.view.setProgress({ phase: '<img>', done: 1, total: 10 }); assert.equal(host.hidden, true);
+    const totalBytes = 512 * 1024 * 1024;
+    for (const [processedBytes, percentage] of [[0, 0], [1024 * 1024, .2], [16 * 1024 * 1024, 3.1], [256 * 1024 * 1024, 50], [totalBytes - 1, 99.9], [totalBytes, 99.9]]) {
+        f.view.setProgress({ phase: 'export', processedBytes, totalBytes, stage: 'processing' });
+        assert.equal(host.hidden, false); assert.equal(text.textContent, `正在打包字体 ${percentage.toFixed(1)}%`);
+        assert.equal(bar.max, 100); assert.equal(bar.value, percentage); assert.equal(bar['aria-label'], text.textContent);
+        assert.doesNotMatch(text.textContent, /\d\s*\/\s*\d|份|个/);
+    }
+    assert.equal(f.notices.length, 0); f.view.destroy();
+});
+
+test('unknown or zero byte totals show indeterminate preparation and a confirmed zero-byte catalogue can complete', () => {
+    for (const [phase, label] of [['export', '正在准备字体包'], ['import', '正在读取字体包']]) {
+        for (const totalBytes of [undefined, 0]) {
+            const html = renderFontLibrary(state(), { progress: { phase, processedBytes: 0, totalBytes, stage: 'preparing' } });
+            const bar = html.match(/<progress data-font-progress-bar[^>]*>/)?.[0];
+            assert.match(bar, /max="100"/); assert.doesNotMatch(bar, /\bvalue=/);
+            assert.ok(html.includes(`${label}</span>`)); assert.doesNotMatch(bar, /%|0\s*\/\s*0/);
+        }
+        const complete = renderFontLibrary(state(), { progress: { phase, processedBytes: 0, totalBytes: 0, stage: 'complete' } });
+        assert.match(complete, /max="100" value="100"/); assert.match(complete, /100\.0%/);
+    }
+    const f = fixture(), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]'); f.node('[data-font-progress]');
+    f.view.setProgress({ phase: 'import', processedBytes: 20, totalBytes: 100, stage: 'processing' }); assert.equal(bar.value, 20);
+    f.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 0, stage: 'preparing' }); assert.equal(bar.getAttribute('value'), null); assert.equal(text.textContent, '正在读取字体包');
+    f.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 100, stage: 'processing' }); assert.equal(bar.value, 0); assert.equal(text.textContent, '正在导入字体 0.0%');
+    f.view.destroy();
+});
+
+test('verification, saving and finalization keep byte percentages below completion until explicitly complete', () => {
+    const f = fixture(), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]'); f.node('[data-font-progress]');
+    for (const [stage, label] of [['preparing', '正在打包字体'], ['processing', '正在打包字体'], ['verifying', '正在校验字体'], ['saving', '正在保存字体'], ['finalizing', '正在完成打包']]) {
+        f.view.setProgress({ phase: 'export', processedBytes: 1, totalBytes: 3, stage }); assert.equal(text.textContent, `${label} 33.3%`);
+        f.view.setProgress({ phase: 'export', processedBytes: 3, totalBytes: 3, stage }); assert.equal(text.textContent, `${label} 99.9%`);
+        assert.equal(bar.value, 99.9); assert.equal(bar['aria-label'], text.textContent);
+    }
+    f.view.setProgress({ phase: 'import', processedBytes: 3, totalBytes: 3, stage: 'finalizing' }); assert.equal(text.textContent, '正在完成导入 99.9%');
+    f.view.setProgress({ phase: 'import', processedBytes: 3, totalBytes: 3, stage: 'complete' }); assert.equal(text.textContent, '正在导入字体 100.0%'); assert.equal(bar.value, 100);
+    assert.equal(f.notices.length, 0); f.view.destroy();
+});
+
+test('pack progress normalizes invalid bytes and stages without injecting text or claiming completion', () => {
+    const f = fixture(), host = f.node('[data-font-progress]'), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]');
+    for (const processedBytes of [-1, NaN, Infinity, '20', null, {}, Number.MAX_SAFE_INTEGER + 1]) {
+        f.view.setProgress({ phase: 'import', processedBytes, totalBytes: 100, stage: 'processing' }); assert.equal(text.textContent, '正在导入字体 0.0%'); assert.equal(bar.value, 0);
+    }
+    for (const totalBytes of [-1, NaN, Infinity, '100', null, {}, Number.MAX_SAFE_INTEGER + 1]) {
+        f.view.setProgress({ phase: 'export', processedBytes: 20, totalBytes, stage: 'saving' }); assert.equal(text.textContent, '正在准备字体包'); assert.equal(bar.getAttribute('value'), null);
+    }
+    for (const stage of ['<img>', 'COMPLETE', 'complete ', undefined, null]) {
+        f.view.setProgress({ phase: 'import', processedBytes: 200, totalBytes: 100, stage }); assert.equal(text.textContent, '正在导入字体 99.9%'); assert.equal(bar.value, 99.9);
+    }
+    f.view.setProgress({ phase: 'import', processedBytes: 1.9, totalBytes: 3.8, stage: 'processing' }); assert.equal(text.textContent, '正在导入字体 33.3%');
+    for (const phase of ['<img>', 'pack', '', undefined]) { f.view.setProgress({ phase, processedBytes: 1, totalBytes: 10, stage: 'processing' }); assert.equal(host.hidden, true); }
+    f.view.destroy();
+});
+
+test('equal rounded percentage updates do not repeat DOM writes or create fake timer progress', async () => {
+    const f = fixture(), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]'); f.node('[data-font-progress]');
+    let label = '', percentage = 0, textWrites = 0, valueWrites = 0, labelWrites = 0, valuePresent = false;
+    Object.defineProperty(text, 'textContent', { get: () => label, set: value => { label = value; textWrites++; } });
+    Object.defineProperty(bar, 'value', { get: () => percentage, set: value => { percentage = value; valuePresent = true; valueWrites++; } });
+    bar.getAttribute = key => key === 'value' ? valuePresent ? String(percentage) : null : bar[key] ?? null;
+    bar.setAttribute = (key, value) => { bar[key] = value; labelWrites++; };
+    bar.removeAttribute = key => { if (key === 'value') { valuePresent = false; percentage = 0; } else delete bar[key]; };
+    f.view.setProgress({ phase: 'export', processedBytes: 0, totalBytes: 0, stage: 'preparing' });
+    f.view.setProgress({ phase: 'export', processedBytes: 0, totalBytes: 100000, stage: 'processing' });
+    assert.equal(valuePresent, true, 'known zero percent must replace the indeterminate progress state');
+    const before = [textWrites, valueWrites, labelWrites];
+    for (const processedBytes of [0, 1, 2, 3]) f.view.setProgress({ phase: 'export', processedBytes, totalBytes: 100000, stage: 'processing' });
+    assert.deepEqual([textWrites, valueWrites, labelWrites], before); assert.equal(f.notices.length, 0);
+    const source = await readFile(new URL('../qianmu-font-library-view.js', import.meta.url), 'utf8');
+    const progressCode = source.slice(source.indexOf('function setProgress('), source.indexOf('function captureWeb('));
+    assert.doesNotMatch(progressCode, /setTimeout|setInterval|requestAnimationFrame/);
     f.view.destroy();
 });
 
@@ -177,12 +247,12 @@ function progressGeometry({ scrollTop = 0, clientHeight = 300, clientTop = 3, sc
 
 test('starting import or export reveals the entire preview card within the font body with six-pixel insets', () => {
     for (const phase of ['import', 'export']) {
-        const below = progressGeometry(); below.view.setProgress({ phase, done: 0, total: 10 });
+        const below = progressGeometry(); below.view.setProgress({ phase, processedBytes: 0, totalBytes: 1000, stage: 'processing' });
         assert.equal(below.body.scrollTop, 406, 'bottom alignment uses clientHeight, not the outer bounding height');
         assert.equal(below.card.getBoundingClientRect().bottom, 100 + below.body.clientTop + below.body.clientHeight - 6);
         assert.ok(below.card.getBoundingClientRect().top >= 100 + below.body.clientTop + 6);
         below.view.destroy();
-        const above = progressGeometry({ scrollTop: 700, cardTop: 300 }); above.view.setProgress({ phase, done: 0, total: 10 });
+        const above = progressGeometry({ scrollTop: 700, cardTop: 300 }); above.view.setProgress({ phase, processedBytes: 0, totalBytes: 1000, stage: 'processing' });
         assert.equal(above.body.scrollTop, 294);
         assert.equal(above.card.getBoundingClientRect().top, 100 + above.body.clientTop + 6);
         assert.ok(above.card.getBoundingClientRect().bottom <= 100 + above.body.clientTop + above.body.clientHeight - 6);
@@ -192,44 +262,44 @@ test('starting import or export reveals the entire preview card within the font 
 
 test('starting progress does not scroll a preview card that is already fully visible', () => {
     const f = progressGeometry({ scrollTop: 40, cardTop: 90 });
-    f.view.setProgress({ phase: 'import', done: 0, total: 12 });
+    f.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 1200, stage: 'processing' });
     assert.equal(f.body.scrollTop, 40); assert.equal(f.host.hidden, false);
     f.view.destroy();
 });
 
 test('an oversized preview card reveals only its progress region and leaves an already visible progress region alone', () => {
     const f = progressGeometry({ cardTop: 600, cardHeight: 600, progressTop: 1100 });
-    f.view.setProgress({ phase: 'export', done: 0, total: 10 });
+    f.view.setProgress({ phase: 'export', processedBytes: 0, totalBytes: 1000, stage: 'processing' });
     assert.equal(f.body.scrollTop, 834);
     assert.equal(f.host.getBoundingClientRect().bottom, 397);
     assert.ok(f.host.getBoundingClientRect().top >= 109); f.view.destroy();
     const visible = progressGeometry({ cardTop: 100, cardHeight: 600, progressTop: 250 });
-    visible.view.setProgress({ phase: 'import', done: 0, total: 10 });
+    visible.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 1000, stage: 'processing' });
     assert.equal(visible.body.scrollTop, 0); visible.view.destroy();
 });
 
 test('progress reveals once per operation, never fights subsequent user scrolling or render, and resets after completion', () => {
     const f = progressGeometry();
-    f.view.setProgress({ phase: 'import', done: 0, total: 0 }); assert.equal(f.body.scrollTop, 406);
+    f.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 0, stage: 'preparing' }); assert.equal(f.body.scrollTop, 406);
     const measurements = f.measurements.length;
     f.body.scrollTop = 1000;
-    for (const done of [0, 3, 12]) {
-        f.view.setProgress({ phase: 'import', done, total: 12 });
+    for (const [processedBytes, stage] of [[0, 'processing'], [300, 'processing'], [1200, 'verifying'], [1200, 'saving'], [1200, 'complete']]) {
+        f.view.setProgress({ phase: 'import', processedBytes, totalBytes: 1200, stage });
         assert.equal(f.body.scrollTop, 1000); assert.equal(f.measurements.length, measurements);
     }
     f.view.render(); assert.equal(f.body.scrollTop, 1000); assert.equal(f.measurements.length, measurements);
     f.view.setProgress(null); assert.equal(f.host.hidden, true); assert.equal(f.body.scrollTop, 1000);
-    f.view.setProgress({ phase: 'export', done: 0, total: 12 });
+    f.view.setProgress({ phase: 'export', processedBytes: 0, totalBytes: 1200, stage: 'processing' });
     assert.equal(f.body.scrollTop, 594); assert.ok(f.measurements.length > measurements, 'a new operation may locate the card again');
     f.view.setProgress(null); f.view.destroy();
     const finalMeasurements = f.measurements.length, finalWrites = f.writes.length;
-    f.view.setProgress({ phase: 'import', done: 0, total: 5 });
+    f.view.setProgress({ phase: 'import', processedBytes: 0, totalBytes: 500, stage: 'processing' });
     assert.equal(f.host.hidden, true); assert.equal(f.measurements.length, finalMeasurements); assert.equal(f.writes.length, finalWrites);
 });
 
 test('progress reveal clamps to the font body scroll bounds and works when scrollHeight is unavailable', () => {
     for (const [options, expected] of [[{ scrollTop: 20, cardTop: 0 }, 0], [{ cardTop: 1500 }, 1300], [{ scrollHeight: null }, 406]]) {
-        const f = progressGeometry(options); f.view.setProgress({ phase: 'export', done: 0, total: 8 });
+        const f = progressGeometry(options); f.view.setProgress({ phase: 'export', processedBytes: 0, totalBytes: 800, stage: 'processing' });
         assert.equal(f.body.scrollTop, expected); f.view.destroy();
     }
 });
@@ -768,7 +838,7 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 });
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
-    const stamp = '1.59.482-font-progress-2', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    const stamp = '1.59.482-font-progress-3', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
     assert.equal(manifest.js, `index.js?v=${stamp}`); assert.equal(manifest.css, `style.css?v=${stamp}`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));

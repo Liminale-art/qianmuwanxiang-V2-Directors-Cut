@@ -39,7 +39,7 @@ function centralRecords(bytes) {
     return result;
 }
 
-test('ZIP v2 round-trips mixed metadata and raw originals without base64; progress is per record', async () => {
+test('ZIP v2 round-trips mixed metadata and raw originals; progress counts input bytes once', async () => {
     const input = [web(), local()], progress = [];
     const blob = await buildFontArchive(input, { readLocal: async id => { assert.equal(id, 'local-1'); return new Blob([sample]); },
         previewText: '一蝶振翅，千幕万象。 AaBbCc123456', folders: ['正文'], yieldTask: noWait, onProgress: value => progress.push(value) });
@@ -48,13 +48,24 @@ test('ZIP v2 round-trips mixed metadata and raw originals without base64; progre
     const entries = await reader.getEntries();
     assert.deepEqual(entries.map(entry => entry.filename), ['fonts/local-1.bin', 'manifest.json']);
     assert.ok(entries.every(entry => entry.compressionMethod === 8));
+    const manifestSize = entries.find(entry => entry.filename === 'manifest.json').uncompressedSize;
+    const totalBytes = manifestSize + sample.length;
     await reader.close();
     const unpacked = await openFontArchive(blob, { yieldTask: noWait });
     assert.deepEqual(unpacked.records, input);
     assert.equal(unpacked.previewText, '一蝶振翅，千幕万象。 AaBbCc123456');
     assert.deepEqual(unpacked.folders, ['正文']);
+    assert.equal(unpacked.totalBytes, totalBytes);
+    assert.equal(unpacked.initialProcessedBytes, manifestSize);
+    assert.deepEqual({ ...unpacked.localSizes }, { 'local-1': sample.length });
+    assert.equal(Object.isFrozen(unpacked.localSizes), true);
     assert.deepEqual(new Uint8Array(await (await unpacked.readLocal('local-1')).arrayBuffer()), sample);
-    assert.deepEqual(progress, [{ done: 1, total: 2 }, { done: 2, total: 2 }]);
+    assert.deepEqual(progress, [
+        { processedBytes: 0, totalBytes, stage: 'processing' },
+        { processedBytes: sample.length, totalBytes, stage: 'processing' },
+        { processedBytes: totalBytes, totalBytes, stage: 'processing' },
+        { processedBytes: totalBytes, totalBytes, stage: 'finalizing' },
+    ], 'font header validation and ZIP metadata must not be counted as extra input bytes');
     await unpacked.close();
     await assert.rejects(unpacked.readLocal('local-1'), /已关闭/u);
 });
@@ -62,8 +73,94 @@ test('ZIP v2 round-trips mixed metadata and raw originals without base64; progre
 test('metadata-only archives round-trip without reading local originals', async () => {
     const result = await openFontArchive(await buildFontArchive([web()], { readLocal: () => assert.fail('No local files'), yieldTask: noWait }), { yieldTask: noWait });
     assert.deepEqual(result.records, [web()]);
+    assert.equal(result.totalBytes, result.initialProcessedBytes);
+    assert.deepEqual({ ...result.localSizes }, {});
     await assert.rejects(result.readLocal('web-1'), /没有此字体/u);
     await result.close();
+});
+
+test('a single large font reports real byte chunks before its compression and decompression finish', async () => {
+    const original = new Blob([sample, new Uint8Array(FONT_ARCHIVE_CHUNK_BYTES * 5)]);
+    const exportProgress = [], importProgress = [];
+    let exportResolved = false, importResolved = false, reads = 0;
+    const compressed = await buildFontArchive([local()], { readLocal: async () => { reads++; return original; }, yieldTask: noWait,
+        onProgress: value => { assert.equal(exportResolved, false); exportProgress.push(value); } });
+    exportResolved = true;
+    assert.equal(reads, 1, 'size preflight retains the lightweight Blob instead of reading IndexedDB twice');
+    const partial = exportProgress.filter(value => value.stage === 'processing' && value.processedBytes > 0 && value.processedBytes < original.size);
+    assert.ok(partial.length >= 4, 'one large original updates the UI repeatedly, not only after the file completes');
+    assert.ok(partial.every((value, index) => !index || value.processedBytes > partial[index - 1].processedBytes));
+    assert.equal(exportProgress.at(-1).stage, 'finalizing');
+    assert.equal(exportProgress.some(value => value.stage === 'complete'), false, 'only the caller can announce operation completion');
+    const unpacked = await openFontArchive(compressed, { yieldTask: noWait });
+    try {
+        const restored = await unpacked.readLocal('local-1', { onProgress: value => { assert.equal(importResolved, false); importProgress.push(value); } });
+        importResolved = true;
+        assert.equal(restored.size, original.size);
+        assert.equal(importProgress[0].processedBytes, 0);
+        assert.ok(importProgress.filter(value => value.processedBytes > 0 && value.processedBytes < original.size).length >= 4);
+        assert.ok(importProgress.every((value, index) => value.totalBytes === original.size && (!index || value.processedBytes > importProgress[index - 1].processedBytes)));
+        assert.deepEqual(importProgress.at(-1), { processedBytes: original.size, totalBytes: original.size });
+    } finally { await unpacked.close(); }
+});
+
+test('mixed font sizes are weighted by exact original and manifest bytes rather than file counts', async () => {
+    const small = new Blob([sample]), large = new Blob([sample, new Uint8Array(FONT_ARCHIVE_CHUNK_BYTES * 8)]), progress = [];
+    const blobs = new Map([['local-1', small], ['large', large]]);
+    const blob = await buildFontArchive([local(), local('large')], { readLocal: async id => blobs.get(id), yieldTask: noWait, onProgress: value => progress.push(value) });
+    const unpacked = await openFontArchive(blob, { yieldTask: noWait });
+    try {
+        const totalBytes = small.size + large.size + unpacked.initialProcessedBytes;
+        assert.equal(unpacked.totalBytes, totalBytes);
+        assert.deepEqual({ ...unpacked.localSizes }, { 'local-1': small.size, large: large.size });
+        assert.ok(progress.every(value => value.totalBytes === totalBytes && value.processedBytes <= totalBytes));
+        assert.equal(progress[1].processedBytes, small.size);
+        assert.ok(progress[1].processedBytes / totalBytes < 0.01, 'finishing the tiny first font is not 50%');
+        assert.equal(progress.at(-1).processedBytes, totalBytes);
+        assert.ok(progress.every((value, index) => !index || value.processedBytes >= progress[index - 1].processedBytes));
+    } finally { await unpacked.close(); }
+});
+
+test('processing failure never reports finalizing, and close failure never reports successful completion', async () => {
+    const original = new Blob([sample, new Uint8Array(FONT_ARCHIVE_CHUNK_BYTES * 4)]);
+    for (const phase of ['processing', 'finalizing']) {
+        const progress = []; let abort = false;
+        await assert.rejects(buildFontArchive([local()], { readLocal: async () => original, yieldTask: noWait,
+            guard: () => { if (abort) throw Error(`failure during ${phase}`); },
+            onProgress: value => { progress.push(value); if (value.stage === phase && (phase === 'finalizing' || value.processedBytes > 0)) abort = true; },
+        }), new RegExp(`failure during ${phase}`));
+        assert.equal(progress.some(value => value.stage === 'complete'), false);
+        if (phase === 'processing') {
+            assert.ok(progress.at(-1).processedBytes < progress.at(-1).totalBytes);
+            assert.equal(progress.some(value => value.stage === 'finalizing'), false);
+        } else assert.equal(progress.at(-1).stage, 'finalizing', 'input processing is distinct from successfully closing the ZIP');
+    }
+});
+
+test('export rejects unsafe aggregate byte totals before attempting huge allocations or compression', async () => {
+    const head = new Uint8Array(48); head.set(sample);
+    const impossible = { size: Number.MAX_SAFE_INTEGER, arrayBuffer: () => assert.fail('No original allocation'),
+        slice(start, end) { assert.ok(end <= 48, 'only bounded preflight headers may be read'); return new Blob([head.subarray(start, end)]); } };
+    const progress = [];
+    await assert.rejects(buildFontArchive([local()], { readLocal: async () => impossible, yieldTask: noWait, onProgress: value => progress.push(value) }), /总大小/u);
+    assert.deepEqual(progress, [], 'no inaccurate total is exposed');
+});
+
+test('ZIP64 import rejects aggregate byte-count overflow before exposing any original reader', async () => {
+    const value = manifest([local()], Number.MAX_SAFE_INTEGER);
+    const bytes = new Uint8Array(await (await archive(value, {}, { zip64: true, bufferedWrite: true, dataDescriptor: false })).arrayBuffer());
+    const view = new DataView(bytes.buffer), font = centralRecords(bytes).find(entry => entry.name === 'fonts/local-1.bin');
+    function replaceUncompressedSize(start, length) {
+        for (let cursor = start; cursor < start + length;) {
+            const id = view.getUint16(cursor, true), extraLength = view.getUint16(cursor + 2, true);
+            if (id === 1) { view.setBigUint64(cursor + 4, BigInt(Number.MAX_SAFE_INTEGER), true); return; }
+            cursor += 4 + extraLength;
+        }
+        assert.fail('Expected ZIP64 size field');
+    }
+    replaceUncompressedSize(font.offset + 46 + view.getUint16(font.offset + 28, true), view.getUint16(font.offset + 30, true));
+    replaceUncompressedSize(font.local + 30 + view.getUint16(font.local + 26, true), view.getUint16(font.local + 28, true));
+    await assert.rejects(openFontArchive(new Blob([bytes]), { yieldTask: noWait }), /总大小/u);
 });
 
 test('export/import exceeds the former 96 MiB product ceiling with bounded chunk yields', { timeout: 30000 }, async () => {
@@ -86,10 +183,10 @@ test('forced ZIP64 archives are accepted without a 4 GiB-format assumption', asy
     await result.close();
 });
 
-test('guard cancellation interrupts an in-progress original and prevents reading the next font', async () => {
+test('guard cancellation during original preflight prevents reading the next font', async () => {
     let ticks = 0, reads = 0;
     await assert.rejects(buildFontArchive([local(), local('second')], { readLocal: async () => { reads++; return new Blob([sample, new Uint8Array(FONT_ARCHIVE_CHUNK_BYTES * 4)]); },
-        guard: () => { if (ticks > 4) throw new Error('owner changed'); }, yieldTask: async () => { ticks++; } }), /owner changed/u);
+        guard: () => { if (ticks > 1) throw new Error('owner changed'); }, yieldTask: async () => { ticks++; } }), /owner changed/u);
     assert.equal(reads, 1);
 });
 
@@ -148,7 +245,9 @@ test('font bodies are lazy and CRC corruption fails before returning a Blob', as
     bytes[start] ^= 1;
     const result = await openFontArchive(new Blob([bytes]), { yieldTask: noWait });
     assert.equal(result.records.length, 1, 'opening validates structure but does not inflate all fonts');
-    await assert.rejects(result.readLocal('local-1'), /CRC|signature|check/i);
+    const progress = [];
+    await assert.rejects(result.readLocal('local-1', { onProgress: value => progress.push(value) }), /CRC|signature|check/i);
+    assert.ok(progress.every(value => !('stage' in value) && value.processedBytes <= value.totalBytes), 'output bytes are not a declaration of successful CRC verification or import completion');
     await result.close();
 });
 

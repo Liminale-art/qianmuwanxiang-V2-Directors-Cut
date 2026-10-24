@@ -64,7 +64,7 @@ test('view operation notices share the ST toast but closed or changed accounts c
   f.replace(); second.notify('旧账户失败', 'warning'); assert.equal(notices.length, 2); f.stop();
 });
 
-test('export and import show zero-count progress before reading the first file and clear it when finished', async () => {
+test('export and import show preparing progress before reading the first file and clear it when finished', async () => {
   const progress = [], blobs = new Map(); let held = false, finishRead;
   const f = await editableSetup({ localStoreFactory: () => ({
     put: async (id, bytes) => blobs.set(id, new Blob([bytes])),
@@ -75,17 +75,42 @@ test('export and import show zero-count progress before reading the first file a
     const first = f.views[0]; first.setProgress = value => progress.push(value);
     await first.options.onAction({ type: 'add-local', files: [fontFile().file] }); held = true;
     const exporting = first.options.onAction({ type: 'export' }); await waitUntil(() => finishRead);
-    assert.deepEqual(progress, [{ phase: 'export', done: 0, total: 1 }], 'progress is available while the first original is still unread');
+    assert.deepEqual(progress, [{ phase: 'export', processedBytes: 0, totalBytes: 0, stage: 'preparing' }], 'progress is available while the first original is still unread');
     assert.equal(f.downloads.length, 0); finishRead(); await exporting;
-    assert.ok(progress.some(value => value?.done === 1)); assert.equal(progress.at(-1), null);
+    assert.ok(progress.some(value => value?.stage === 'complete' && value.processedBytes === value.totalBytes)); assert.equal(progress.at(-1), null);
     progress.length = 0; let finishText;
     const json = exportFontPack([{ ...webFont, id: 'imported-web' }]);
     const file = { ...packFile(json), text: () => new Promise(resolve => { finishText = () => resolve(json); }) };
     const importing = first.options.onAction({ type: 'import', file }); await waitUntil(() => finishText);
-    assert.deepEqual(progress, [{ phase: 'import', done: 0, total: 0 }], 'reading the catalog must not delay the first progress display');
+    assert.deepEqual(progress, [{ phase: 'import', processedBytes: 0, totalBytes: 0, stage: 'preparing' }], 'reading the catalog must not delay the first progress display');
     finishText(); await importing;
-    assert.ok(progress.some(value => value?.phase === 'import' && value.done === 0 && value.total === 1));
+    assert.ok(progress.some(value => value?.phase === 'import' && value.stage === 'complete' && value.totalBytes > 0 && value.processedBytes === value.totalBytes));
     assert.equal(progress.at(-1), null); assert.equal(f.owner.fontLibrary.fonts.length, 2);
+  } finally { f.stop(); }
+});
+
+test('byte progress cannot complete while a font original is still being saved', async () => {
+  const progress = []; let finishPut;
+  const f = await editableSetup({ localStoreFactory: () => ({ get: async () => null, put: () => new Promise(resolve => { finishPut = resolve; }), dispose() {} }) });
+  try {
+    f.views[0].setProgress = value => progress.push(value);
+    const pending = f.views[0].options.onAction({ type: 'import', file: await localArchive(1) }); await waitUntil(() => finishPut);
+    assert.equal(progress.at(-1).stage, 'saving');
+    assert.ok(progress.at(-1).totalBytes > 0); assert.equal(progress.at(-1).processedBytes, progress.at(-1).totalBytes);
+    assert.equal(progress.some(value => value?.stage === 'complete'), false); assert.equal(f.saves.length, 0);
+    finishPut(); await pending;
+    assert.equal(f.saves.length, 1); assert.equal(progress.at(-2).stage, 'complete'); assert.equal(progress.at(-1), null);
+  } finally { f.stop(); }
+});
+
+test('failed final download never reports complete byte progress', async () => {
+  const progress = [], f = await editableSetup({ download: () => { throw Error('模拟下载失败'); } });
+  try {
+    await f.library.action('add-local', { files: [fontFile().file] });
+    f.views[0].setProgress = value => progress.push(value);
+    await assert.rejects(f.views[0].options.onAction({ type: 'export' }), /模拟下载失败/);
+    assert.ok(progress.some(value => value?.stage === 'finalizing' && value.processedBytes === value.totalBytes));
+    assert.equal(progress.some(value => value?.stage === 'complete'), false); assert.equal(progress.at(-1), null);
   } finally { f.stop(); }
 });
 
@@ -740,10 +765,11 @@ test('ZIP imports commit groups of five, keep completed groups on failure, retry
   f.views[0].setStatus = text => f.views[0].options.notify(text, 'info'); f.views[0].setProgress = value => progress.push(value);
   await assert.rejects(f.views[0].options.onAction({ type: 'import', file }), /导入未完成.*已保存 5 \/ 7.*存储不足/);
   assert.equal(f.owner.fontLibrary.fonts.length, 5); assert.equal(f.saves.length, 1); assert.equal(notices.length, 0); assert.equal(progress.at(-1), null);
+  assert.equal(progress.some(value => value?.stage === 'complete'), false, 'processed bytes do not imply the failed save completed');
   failing = false; await f.views[0].options.onAction({ type: 'import', file });
   assert.equal(f.owner.fontLibrary.fonts.length, 7); assert.equal(attempts, 8, 'six originals already present are not rewritten, including the uncommitted sixth');
   assert.equal(f.saves.length, 2); assert.deepEqual(notices.map(value => value.text), ['字体包导入成功']);
-  assert.ok(progress.some(value => value?.phase === 'import' && value.done === 7 && value.total === 7)); assert.equal(progress.at(-1), null);
+  assert.ok(progress.some(value => value?.phase === 'import' && value.stage === 'complete' && value.processedBytes === value.totalBytes)); assert.equal(progress.at(-1), null);
   const saves = f.saves.length; await f.views[0].options.onAction({ type: 'import', file }); assert.equal(attempts, 8); assert.equal(f.saves.length, saves); assert.equal(f.owner.fontLibrary.fonts.length, 7);
   const missing = f.owner.fontLibrary.fonts[1].id; blobs.delete(missing); await f.views[0].options.onAction({ type: 'import', file });
   assert.equal(attempts, 9); assert.ok(blobs.has(missing)); assert.equal(f.owner.fontLibrary.fonts.length, 7); assert.equal(f.saves.length, saves, 'restoring a missing original needs no duplicate directory entry'); f.stop();
