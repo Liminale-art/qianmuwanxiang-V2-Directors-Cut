@@ -34,6 +34,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   let owner = null, namespace = '', store = null, runtime = null, accountSync = null, view = null, portal = null, container = null;
   let accountSyncHydrated = false;
   let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
+  let accountPushTail = Promise.resolve(), accountPushTimer = null, accountPushRevision = 0;
+  const ACCOUNT_PUSH_DEBOUNCE_MS = 120;
   const statuses = new Map();
   const makeId = () => `f_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
   const localId = async bytes => 'local_' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
@@ -45,6 +47,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     view?.setFontStatus(id, value.status === 'error' ? value.message || '字体暂不可用' : value.status === 'loading' ? '加载中…' : '');
   }
   function release() {
+    if (accountPushTimer) { clearTimeout(accountPushTimer); accountPushTimer = null; }
+    accountPushRevision++; accountPushTail = Promise.resolve();
     webAbort?.abort(); webAbort = null;
     generation++; runtime?.dispose(); store?.dispose(); accountSync?.close?.(); runtime = null; store = null; accountSync = null; accountSyncHydrated = false; namespace = ''; owner = null; viewSession = null; applicationNotice = null; statuses.clear();
   }
@@ -106,10 +110,27 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     try { save(target); } catch (error) { if (target.fontLibrary === staged) target.fontLibrary = previous; throw error; }
     updateEntry();
   }
-  async function pushAccount(token) {
+  function scheduleAccountPush(token) {
     if (!accountSync || !current(token)) return;
-    try { await accountSync.push(read(), { localStore: store }); }
-    catch (error) { if (current(token)) { try { notify(error?.message || '字体目录已保存，但跨端同步未完成', 'warning'); } catch (_) {} } }
+    const revision = ++accountPushRevision;
+    if (accountPushTimer) clearTimeout(accountPushTimer);
+    accountPushTimer = setTimeout(() => {
+      accountPushTimer = null;
+      accountPushTail = accountPushTail.catch(() => {}).then(async () => {
+        if (!accountSync || !current(token) || revision !== accountPushRevision) return;
+        try {
+          await accountSync.push(read(), { localStore: store });
+        } catch (_) {
+          // The local IndexedDB mutation has already succeeded. A background
+          // write can be unconfirmed without turning the completed local
+          // action into a failed upload; a later open or edit will reconcile.
+          if (current(token) && revision === accountPushRevision) {
+            try { notify('字体已保存到本机，跨端同步尚未确认；稍后会再次核对', 'warning'); } catch (_) {}
+          }
+        }
+      });
+      void accountPushTail.catch(() => {});
+    }, ACCOUNT_PUSH_DEBOUNCE_MS);
   }
   function uiState() {
     const state = read(), requestedSize = Number(getPreviewFontSize());
@@ -130,7 +151,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (typeof type === 'object') { payload = type.payload || type; type = type.type; }
     if (type === 'set-preview' && owner && current(generation)) {
       commit(updateFontLibrary(read(), type, payload), generation);
-      void pushAccount(generation);
+      scheduleAccountPush(generation);
       void visible(previewIds); return;
     }
     if (busy) throw new Error('上一项字体操作尚未完成');
@@ -229,7 +250,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
         guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
       }
-      guard(); const previous = read(); commit(next, token); await pushAccount(token);
+      guard(); const previous = read(); commit(next, token);
       if (type === 'apply-font' && current(token) && (!originView || originView === viewIdentity)) {
         const target = payload.target, label = { body: '正文', st: '界面', shared: '全部' }[target], scopes = target === 'shared' ? ['body', 'st'] : [target];
         if (next.enabled === false) { try { notify(`已保存${label}字体选择，字体库尚未启用`, 'info'); } catch (_) {} }
@@ -252,6 +273,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         const deleted = previous.fonts.filter(font => font.source.kind === 'local' && !next.fonts.some(item => item.id === font.id));
         try { await store.delete(deleted.map(font => font.id)); } catch { if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
+      scheduleAccountPush(token);
       if (current(token)) {
         // The originating view owns its one final redraw/reveal. Preview loading
         // must not hold a successful save behind a redundant old-page sync.

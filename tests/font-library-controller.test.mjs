@@ -81,6 +81,59 @@ test('local cleanup failures notify only the originating active view and account
   }
 });
 
+test('font changes finish locally while account synchronization remains pending in the background', async () => {
+  const pushes = [], notices = [];
+  const f = setup({
+    notify: (text, level) => notices.push({ text, level }),
+    accountSyncFactory: () => ({
+      hydrate: async state => ({ state, changed: false, synced: true }),
+      push: state => new Promise(resolve => { pushes.push({ state: structuredClone(state), resolve }); }),
+      close() {},
+    }),
+  });
+  await f.library.action('add-local', { files: [fontFile().file] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await waitUntil(() => pushes.length === 1);
+
+  // Applying a local font must not wait for the first account write or show
+  // the transport timeout; the runtime uses the already-local original.
+  await f.library.action('apply-font', { target: 'body', fontId: id });
+  assert.equal(f.owner.fontLibrary.body.fontId, id);
+  assert.equal(notices.some(item => item.text.includes('保存确认超时')), false);
+
+  // Deleting also commits the directory and removes the IndexedDB original
+  // before the queued account write is released.
+  await f.library.action('delete-font', { id });
+  assert.equal(f.owner.fontLibrary.fonts.length, 0);
+  assert.equal(f.binaries.has('one' + id), false);
+  pushes[0].resolve();
+  await waitUntil(() => pushes.length === 2);
+  assert.equal(pushes[1].state.fonts.length, 0);
+  pushes[1].resolve();
+  f.stop();
+});
+
+test('a background account timeout leaves the local change intact and reports a concise retryable warning', async () => {
+  const notices = [];
+  let rejectPush;
+  const f = setup({
+    notify: (text, level) => notices.push({ text, level }),
+    accountSyncFactory: () => ({
+      hydrate: async state => ({ state, changed: false, synced: true }),
+      push: () => new Promise((_resolve, reject) => { rejectPush = reject; }),
+      close() {},
+    }),
+  });
+  await f.library.action('add-local', { files: [fontFile().file] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  await waitUntil(() => rejectPush);
+  rejectPush(Error('ST 保存确认超时，原内容仍需保留'));
+  await waitUntil(() => notices.length === 1);
+  assert.equal(f.owner.fontLibrary.fonts.some(font => font.id === id), true);
+  assert.deepEqual(notices, [{ text: '字体已保存到本机，跨端同步尚未确认；稍后会再次核对', level: 'warning' }]);
+  f.stop();
+});
+
 test('Web entries use ordinary settings with references only; adding never applies a font', async () => {
   const f = setup(); await f.library.action('add-web', { source: webFont.source.input });
   assert.equal(f.owner.fontLibrary.fonts.length, 1); assert.equal(f.binaries.size, 0);
