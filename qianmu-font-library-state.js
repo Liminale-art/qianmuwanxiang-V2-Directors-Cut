@@ -1,4 +1,4 @@
-import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-progress-1';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-progress-2';
 
 export const FONT_LIBRARY_SAMPLE = '一念起幕，万象成诗。 AaBbCc123456';
 const LEGACY_FONT_LIBRARY_SAMPLES = new Set(['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。', '一蝶振翅，千幕万象。 AaBbCc123456']);

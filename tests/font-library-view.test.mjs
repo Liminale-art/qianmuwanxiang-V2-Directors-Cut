@@ -155,6 +155,89 @@ test('pack progress normalizes counts and never injects supplied phase names', (
     f.view.setProgress({ phase: '<img>', done: 1, total: 10 }); assert.equal(host.hidden, true);
     f.view.destroy();
 });
+
+function progressGeometry({ scrollTop = 0, clientHeight = 300, clientTop = 3, scrollHeight = 1600, cardTop = 600, cardHeight = 100, progressTop = cardTop + cardHeight - 28, progressHeight = 28 } = {}) {
+    const f = fixture(), measurements = [], writes = [], forbiddenScroll = () => assert.fail('progress must not use scrollIntoView or page scrolling');
+    let scroll = scrollTop;
+    const host = f.node('[data-font-progress]', { hidden: true, scrollIntoView: forbiddenScroll });
+    const rect = (kind, top, height) => {
+        assert.equal(host.hidden, false, 'progress must be shown before its expanded card is measured');
+        measurements.push(kind);
+        return { top, bottom: top + height, height };
+    };
+    const body = f.node('.sd-body', { clientHeight, clientTop, getBoundingClientRect: () => rect('body', 100, clientHeight + 60), scrollIntoView: forbiddenScroll, scrollTo: forbiddenScroll, scrollBy: forbiddenScroll });
+    if (scrollHeight !== null) body.scrollHeight = scrollHeight;
+    Object.defineProperty(body, 'scrollTop', { get: () => scroll, set: value => { writes.push(value); scroll = value; } });
+    const card = f.node('.qm-font-preview-editor', { getBoundingClientRect: () => rect('card', 100 + clientTop + cardTop - scroll, cardHeight), scrollIntoView: forbiddenScroll });
+    host.getBoundingClientRect = () => rect('progress', 100 + clientTop + progressTop - scroll, progressHeight);
+    f.root.scrollIntoView = forbiddenScroll;
+    f.root.ownerDocument = { defaultView: { scrollTo: forbiddenScroll, scrollBy: forbiddenScroll }, scrollingElement: { scrollTo: forbiddenScroll, scrollBy: forbiddenScroll, scrollIntoView: forbiddenScroll } };
+    return { ...f, host, body, card, measurements, writes };
+}
+
+test('starting import or export reveals the entire preview card within the font body with six-pixel insets', () => {
+    for (const phase of ['import', 'export']) {
+        const below = progressGeometry(); below.view.setProgress({ phase, done: 0, total: 10 });
+        assert.equal(below.body.scrollTop, 406, 'bottom alignment uses clientHeight, not the outer bounding height');
+        assert.equal(below.card.getBoundingClientRect().bottom, 100 + below.body.clientTop + below.body.clientHeight - 6);
+        assert.ok(below.card.getBoundingClientRect().top >= 100 + below.body.clientTop + 6);
+        below.view.destroy();
+        const above = progressGeometry({ scrollTop: 700, cardTop: 300 }); above.view.setProgress({ phase, done: 0, total: 10 });
+        assert.equal(above.body.scrollTop, 294);
+        assert.equal(above.card.getBoundingClientRect().top, 100 + above.body.clientTop + 6);
+        assert.ok(above.card.getBoundingClientRect().bottom <= 100 + above.body.clientTop + above.body.clientHeight - 6);
+        above.view.destroy();
+    }
+});
+
+test('starting progress does not scroll a preview card that is already fully visible', () => {
+    const f = progressGeometry({ scrollTop: 40, cardTop: 90 });
+    f.view.setProgress({ phase: 'import', done: 0, total: 12 });
+    assert.equal(f.body.scrollTop, 40); assert.equal(f.host.hidden, false);
+    f.view.destroy();
+});
+
+test('an oversized preview card reveals only its progress region and leaves an already visible progress region alone', () => {
+    const f = progressGeometry({ cardTop: 600, cardHeight: 600, progressTop: 1100 });
+    f.view.setProgress({ phase: 'export', done: 0, total: 10 });
+    assert.equal(f.body.scrollTop, 834);
+    assert.equal(f.host.getBoundingClientRect().bottom, 397);
+    assert.ok(f.host.getBoundingClientRect().top >= 109); f.view.destroy();
+    const visible = progressGeometry({ cardTop: 100, cardHeight: 600, progressTop: 250 });
+    visible.view.setProgress({ phase: 'import', done: 0, total: 10 });
+    assert.equal(visible.body.scrollTop, 0); visible.view.destroy();
+});
+
+test('progress reveals once per operation, never fights subsequent user scrolling or render, and resets after completion', () => {
+    const f = progressGeometry();
+    f.view.setProgress({ phase: 'import', done: 0, total: 0 }); assert.equal(f.body.scrollTop, 406);
+    const measurements = f.measurements.length;
+    f.body.scrollTop = 1000;
+    for (const done of [0, 3, 12]) {
+        f.view.setProgress({ phase: 'import', done, total: 12 });
+        assert.equal(f.body.scrollTop, 1000); assert.equal(f.measurements.length, measurements);
+    }
+    f.view.render(); assert.equal(f.body.scrollTop, 1000); assert.equal(f.measurements.length, measurements);
+    f.view.setProgress(null); assert.equal(f.host.hidden, true); assert.equal(f.body.scrollTop, 1000);
+    f.view.setProgress({ phase: 'export', done: 0, total: 12 });
+    assert.equal(f.body.scrollTop, 594); assert.ok(f.measurements.length > measurements, 'a new operation may locate the card again');
+    f.view.setProgress(null); f.view.destroy();
+    const finalMeasurements = f.measurements.length, finalWrites = f.writes.length;
+    f.view.setProgress({ phase: 'import', done: 0, total: 5 });
+    assert.equal(f.host.hidden, true); assert.equal(f.measurements.length, finalMeasurements); assert.equal(f.writes.length, finalWrites);
+});
+
+test('progress reveal clamps to the font body scroll bounds and works when scrollHeight is unavailable', () => {
+    for (const [options, expected] of [[{ scrollTop: 20, cardTop: 0 }, 0], [{ cardTop: 1500 }, 1300], [{ scrollHeight: null }, 406]]) {
+        const f = progressGeometry(options); f.view.setProgress({ phase: 'export', done: 0, total: 8 });
+        assert.equal(f.body.scrollTop, expected); f.view.destroy();
+    }
+});
+
+test('font progress never calls browser-wide scroll helpers or scrollIntoView', async () => {
+    const source = await readFile(new URL('../qianmu-font-library-view.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /\.scrollIntoView\s*\(|(?:window|globalThis)\.scroll(?:To|By)\s*\(|document\.(?:body|documentElement|scrollingElement)\.scroll/);
+});
 test('per-card dropdown has only actual scopes and the relevant ST restore choice, without placeholder or shared cancellation', () => {
     const plain = renderFontLibraryCards(state());
     for (const target of ['body', 'st', 'shared']) assert.match(plain, new RegExp(`option value="${target}"`)); assert.doesNotMatch(plain, /value="restore-/);
@@ -685,7 +768,7 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 });
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
-    const stamp = '1.59.482-font-progress-1', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    const stamp = '1.59.482-font-progress-2', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
     assert.equal(manifest.js, `index.js?v=${stamp}`); assert.equal(manifest.css, `style.css?v=${stamp}`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));

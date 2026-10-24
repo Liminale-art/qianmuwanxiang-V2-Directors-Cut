@@ -1,9 +1,9 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.482-font-progress-1';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.482-font-progress-1';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-progress-1';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.482-font-progress-2';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.482-font-progress-2';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.482-font-progress-2';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.476';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
-import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.482-font-progress-1';
+import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.482-font-progress-2';
 import { readBuiltinFont } from './qianmu-font-builtins.js';
 
 function fontInputName(value) {
@@ -46,7 +46,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     const head = typeof file.slice === 'function' ? new Uint8Array(await file.slice(0, 4).arrayBuffer()) : [];
     guard();
     if ((head[0] === 0x50 && head[1] === 0x4b) || /\.zip$/i.test(file.name || '')) {
-      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-1'); guard();
+      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-2'); guard();
       return openFontArchive(file, { guard, yieldTask });
     }
     // Old JSON packs remain readable, but only ZIP is written now. Keep the
@@ -290,7 +290,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         const fonts = state.fonts.filter(font => !ids || ids.has(font.id));
         if (!fonts.length) throw new Error('请先添加或选择字体');
         try {
-          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-1'); guard();
+          progress('export', { done: 0, total: fonts.length });
+          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.482-font-progress-2'); guard();
           const packed = await buildFontArchive(fonts, { readLocal: id => store.get(id), folders: state.folders, previewText: state.previewText, guard, yieldTask, onProgress: value => progress('export', value) }); guard();
           download(packed, `qianmu-fonts-${Date.now()}.zip`);
           if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包已导出'); return;

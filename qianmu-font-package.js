@@ -1,6 +1,6 @@
 /** Font ZIP v2: metadata is validated before writes; local originals are read one at a time. */
 import { Reader, Writer, ZipReader, ZipWriter } from './vendor/zip-js-2.24.0/index-native.min.js';
-import { FONT_SOURCE_LIMITS, validateFontPackMetadata, validateLocalFontHeader } from './qianmu-font-sources.js?v=1.59.482-font-progress-1';
+import { FONT_SOURCE_LIMITS, validateFontPackMetadata, validateLocalFontHeader } from './qianmu-font-sources.js?v=1.59.482-font-progress-2';
 
 export const FONT_ARCHIVE_MANIFEST = 'manifest.json';
 export const FONT_ARCHIVE_METADATA_BYTES = 8 * 1024 * 1024;

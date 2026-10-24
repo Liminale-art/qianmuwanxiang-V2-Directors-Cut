@@ -173,8 +173,24 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     }
     function closeTagsOutside(target) { if (tagTarget && target.closest?.('[data-font-tag-editor]')?.dataset.fontTagEditor !== tagTarget) closeTags(); }
     function message(text, { error = false } = {}) { if (!disposed && text) notify(String(text), error ? 'warning' : 'info'); }
+    function revealProgress(host) {
+        const body = q('.sd-body'), card = q('.qm-font-preview-editor');
+        if (!body?.getBoundingClientRect || !card?.getBoundingClientRect) return;
+        const bounds = body.getBoundingClientRect(), height = body.clientHeight || bounds.height;
+        if (!Number.isFinite(height) || height <= 0) return;
+        const inset = Math.min(6, height / 4), top = bounds.top + (body.clientTop || 0) + inset, bottom = top + height - 2 * inset;
+        let rect = card.getBoundingClientRect();
+        // On short viewports, keep the progress itself readable even when the
+        // complete preview card cannot fit. Never scroll the host ST page.
+        if (rect.bottom - rect.top > bottom - top && host.getBoundingClientRect) rect = host.getBoundingClientRect();
+        const delta = rect.top < top ? rect.top - top : rect.bottom > bottom ? rect.bottom - bottom : 0;
+        if (!Number.isFinite(delta) || !delta) return;
+        const maximum = Number.isFinite(body.scrollHeight) ? Math.max(0, body.scrollHeight - height) : Infinity;
+        body.scrollTop = Math.min(maximum, Math.max(0, body.scrollTop + delta));
+    }
     function setProgress(value) {
         if (disposed) return;
+        const starting = !progress;
         progress = normalizeProgress(value);
         const host = q('[data-font-progress]'); if (!host) return;
         host.hidden = !progress;
@@ -182,6 +198,9 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const label = progressText(progress), text = q('[data-font-progress-text]'), bar = q('[data-font-progress-bar]');
         if (text) text.textContent = label;
         if (bar) { bar.max = progress.total || 1; if (progress.total) bar.value = progress.done; else bar.removeAttribute?.('value'); bar.setAttribute('aria-label', label); }
+        // Only the idle-to-active transition may reposition the panel. Later
+        // counts and renders leave any user-selected reading position alone.
+        if (starting) revealProgress(host);
     }
     function captureWeb() { if (q('[data-font-web-name]')) webName = q('[data-font-web-name]').value; if (q('[data-font-web-source]')) webSource = q('[data-font-web-source]').value; if (q('[data-font-web-tags]')) webTags = q('[data-font-web-tags]').value; if (q('.qm-font-add')) addOpen = q('.qm-font-add').open; }
     function clearWebDraft({ id = '', name = '', source = '', tags: submittedTags = [] } = {}) { if (disposed) return false; captureWeb(); if (editWebId !== String(id) || webName !== String(name) || webSource !== String(source) || JSON.stringify(parseTags(webTags)) !== JSON.stringify(parseTags(submittedTags))) return false; editWebId = ''; editWebSourceMissing = false; webName = ''; webSource = ''; webTags = ''; for (const selector of ['[data-font-web-name]', '[data-font-web-source]', '[data-font-web-tags]']) { const field = q(selector); if (field) field.value = ''; } updateWebSubmit(); return true; }

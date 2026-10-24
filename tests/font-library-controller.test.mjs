@@ -64,6 +64,31 @@ test('view operation notices share the ST toast but closed or changed accounts c
   f.replace(); second.notify('旧账户失败', 'warning'); assert.equal(notices.length, 2); f.stop();
 });
 
+test('export and import show zero-count progress before reading the first file and clear it when finished', async () => {
+  const progress = [], blobs = new Map(); let held = false, finishRead;
+  const f = await editableSetup({ localStoreFactory: () => ({
+    put: async (id, bytes) => blobs.set(id, new Blob([bytes])),
+    get: async id => held ? new Promise(resolve => { finishRead = () => resolve(blobs.get(id)); }) : blobs.get(id),
+    delete: async () => {}, dispose() {},
+  }) });
+  try {
+    const first = f.views[0]; first.setProgress = value => progress.push(value);
+    await first.options.onAction({ type: 'add-local', files: [fontFile().file] }); held = true;
+    const exporting = first.options.onAction({ type: 'export' }); await waitUntil(() => finishRead);
+    assert.deepEqual(progress, [{ phase: 'export', done: 0, total: 1 }], 'progress is available while the first original is still unread');
+    assert.equal(f.downloads.length, 0); finishRead(); await exporting;
+    assert.ok(progress.some(value => value?.done === 1)); assert.equal(progress.at(-1), null);
+    progress.length = 0; let finishText;
+    const json = exportFontPack([{ ...webFont, id: 'imported-web' }]);
+    const file = { ...packFile(json), text: () => new Promise(resolve => { finishText = () => resolve(json); }) };
+    const importing = first.options.onAction({ type: 'import', file }); await waitUntil(() => finishText);
+    assert.deepEqual(progress, [{ phase: 'import', done: 0, total: 0 }], 'reading the catalog must not delay the first progress display');
+    finishText(); await importing;
+    assert.ok(progress.some(value => value?.phase === 'import' && value.done === 0 && value.total === 1));
+    assert.equal(progress.at(-1), null); assert.equal(f.owner.fontLibrary.fonts.length, 2);
+  } finally { f.stop(); }
+});
+
 test('an export read finishing after close/reopen cannot notify the replacement view', async () => {
   const notices = [], blobs = new Map(); let held = false, finishRead;
   const f = await editableSetup({ notify: (text, level) => notices.push({ text, level }), localStoreFactory: () => ({
