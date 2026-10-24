@@ -16,6 +16,7 @@ test('floor tools share the main panel typography scale without touching prose s
     assert.match(css, /#story-director-floor-nav \.sd-floor-tabs button \{[^}]*font-size: 13\.5px;/);
     assert.match(css, /#story-director-modal \.sd-tabs button \{ font-size: 13\.5px !important;/);
     assert.match(css, /font-size: var\(--sd-prose-font-size\) !important;/, 'actual prose size remains user-controlled');
+    assert.match(css, /letter-spacing: var\(--sd-prose-letter-spacing, normal\) !important;/, 'actual prose letter spacing remains user-controlled');
 });
 
 test('floor typography keeps existing touch targets and does not shrink mobile labels separately', () => {

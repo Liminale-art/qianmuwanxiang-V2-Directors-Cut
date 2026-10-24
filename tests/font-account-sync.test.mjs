@@ -55,29 +55,27 @@ function localStoreFixture() {
     };
 }
 
-test('font account sync publishes the directory and originals by default', async () => {
+test('font account sync publishes only the metadata directory', async () => {
     const f = fixture(), sync = createFontAccountSync({ storageFactory: () => f.storage }), state = localFont();
     f.local.set(state.fonts[0].id, new Blob([new Uint8Array([0, 1, 2, 3])]));
     const result = await sync.hydrate(state, { localStore: f.localStore });
     assert.equal(result.synced, true);
-    assert.equal(Object.keys(f.catalog.originals).length, 1);
-    assert.equal(f.immutable.size, 1);
+    assert.deepEqual(Object.keys(f.catalog), ['version', 'library']);
+    assert.equal(f.immutable.size, 0);
     sync.close();
 });
 
-test('font account sync keeps automatically uploaded originals immutable', async () => {
+test('font account sync ignores legacy immutable-original references', async () => {
     const f = fixture(), sync = createFontAccountSync({ storageFactory: () => f.storage }), state = localFont();
     const id = state.fonts[0].id;
     f.local.set(id, new Blob([new Uint8Array([0, 1, 2, 3])]));
     await sync.hydrate({ ...state, syncLocalOriginals: false }, { localStore: f.localStore });
-    assert.equal(f.immutable.size, 1);
-    assert.ok(f.catalog.originals[id]);
-    assert.match(f.catalog.originals[id].slot, /^fontasset-/);
+    assert.equal(f.immutable.size, 0);
     assert.equal(f.catalog.library.syncLocalOriginals, undefined);
     sync.close();
 });
 
-test('font account sync awaits the account transport and restores originals on another device', async () => {
+test('font account sync carries the directory to another device without pretending to restore originals', async () => {
     const f = fixture(), source = localFont(), sourceStore = localStoreFixture(), id = source.fonts[0].id;
     sourceStore.local.set(id, new Blob([new Uint8Array([7, 8, 9])], { type: 'font/ttf' }));
     const first = createFontAccountSync({ storageFactory: async () => f.storage });
@@ -91,7 +89,6 @@ test('font account sync awaits the account transport and restores originals on a
     assert.equal(restored.synced, true);
     assert.equal(restored.state.fonts[0].id, id);
     const original = await destinationStore.store.get(id);
-    assert.ok(original);
-    assert.deepEqual(Array.from(new Uint8Array(await original.arrayBuffer())), [7, 8, 9]);
+    assert.equal(original, null);
     second.close();
 });

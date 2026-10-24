@@ -17,6 +17,7 @@ export function createTextCollectionHost(options) {
         const set = (key, value) => { if (value) parent.style.setProperty(key, value); else parent.style.removeProperty(key); };
         set('--qm-prose-font', style.fontFamily);
         set('--qm-prose-size', layout && style.getPropertyValue('--sd-prose-font-size') || style.fontSize);
+        set('--qm-prose-letter-spacing', layout && style.getPropertyValue('--sd-prose-letter-spacing') || style.letterSpacing);
         set('--qm-prose-line-height', layout && style.getPropertyValue('--sd-prose-line-height') || style.lineHeight);
         const paragraph = prose?.querySelector('p');
         set('--qm-prose-paragraph-gap', layout && style.getPropertyValue('--sd-prose-paragraph-gap')

@@ -44,7 +44,7 @@
 .qm-collection-panel .qm-collection-tags { font-size: .85em; color: var(--sd-accent, #8aafcf); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qm-collection-panel .qm-collection-more { width: 100%; gap: 8px; }
 .qm-collection-panel .qm-collection-empty { margin: 20px 12px; }
-.qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); line-height: 1.55; text-align: justify; }
+.qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; text-align: justify; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div) { margin: 0 0 .75em; padding: 0; font: inherit; line-height: inherit; white-space: pre-wrap; text-align: justify; text-indent: 2em; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div):last-child { margin-bottom: 0; }
 .qm-collection-panel .qm-collection-editor { display: block; border: 0; border-radius: 8px; background: var(--sd-input-bg, #8881); outline: none; box-shadow: none; }

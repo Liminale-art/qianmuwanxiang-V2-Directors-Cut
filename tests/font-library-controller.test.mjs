@@ -106,14 +106,16 @@ test('font changes finish locally while account synchronization remains pending 
   await f.library.action('delete-font', { id });
   assert.equal(f.owner.fontLibrary.fonts.length, 0);
   assert.equal(f.binaries.has('one' + id), false);
-  pushes[0].resolve();
+  pushes[0].resolve({ synced: true, changed: true });
   await waitUntil(() => pushes.length === 2);
   assert.equal(pushes[1].state.fonts.length, 0);
-  pushes[1].resolve();
+  pushes[1].resolve({ synced: true, changed: true });
+  await waitUntil(() => notices.length === 1);
+  assert.deepEqual(notices, [{ text: '字体列表已同步到 ST 账户', level: 'success' }]);
   f.stop();
 });
 
-test('a background account timeout leaves the local change intact and reports a concise retryable warning', async () => {
+test('a background account timeout leaves the local change intact without a distracting warning', async () => {
   const notices = [];
   let rejectPush;
   const f = setup({
@@ -128,9 +130,9 @@ test('a background account timeout leaves the local change intact and reports a 
   const id = f.owner.fontLibrary.fonts[0].id;
   await waitUntil(() => rejectPush);
   rejectPush(Error('ST 保存确认超时，原内容仍需保留'));
-  await waitUntil(() => notices.length === 1);
+  await settle();
   assert.equal(f.owner.fontLibrary.fonts.some(font => font.id === id), true);
-  assert.deepEqual(notices, [{ text: '字体已保存到本机，跨端同步尚未确认；稍后会再次核对', level: 'warning' }]);
+  assert.deepEqual(notices, []);
   f.stop();
 });
 
@@ -273,6 +275,20 @@ test('complete export retains Web references and never downloads remote font bin
   await f.library.action('export', { ids: null });
   assert.equal(f.downloads.length, 1); assert.equal(f.binaries.size, 0);
   const text = await f.downloads[0][0].text(); assert.ok(text.includes(webFont.source.url)); f.stop();
+});
+
+test('font package export reads large local originals in yieldable chunks before one complete download', async () => {
+  const f = setup(), seed = fontFile(), bytes = new Uint8Array(4 * 1024 * 1024 + seed.bytes.length);
+  bytes.set(seed.bytes);
+  await f.library.action('add-local', { files: [{ ...seed.file, size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(0) }] });
+  const id = f.owner.fontLibrary.fonts[0].id; let reads = 0;
+  const tracked = { size: bytes.length, slice(start, end) { reads++; return { arrayBuffer: async () => bytes.slice(start, end).buffer }; } };
+  f.binaries.set('one' + id, tracked);
+  await f.library.action('export', { ids: [id] });
+  assert.ok(reads >= 2, 'large originals must be read in bounded chunks');
+  assert.equal(f.downloads.length, 1, 'download starts only after the complete pack is built');
+  assert.ok((await f.downloads[0][0].text()).includes('localFiles'));
+  f.stop();
 });
 
 test('pin and sort actions persist only management preferences without changing originals or application choices', async () => {

@@ -58,9 +58,9 @@ export function normalizeFontLibrary(value) {
   const sortBy = value.sortBy === undefined ? 'name' : value.sortBy, sortOrder = value.sortOrder === undefined ? 'asc' : value.sortOrder;
   if (!['name', 'added'].includes(sortBy) || !['asc', 'desc'].includes(sortOrder)) fail('字体排序设置无效');
   const result = {
-    // Original files are synchronized whenever the current deployment exposes
-    // the account-storage capability. Keep the legacy field for persisted
-    // compatibility, but no longer allow an old false value to disable it.
+    // Keep the legacy field for persisted compatibility. It no longer controls
+    // binary upload: account sync mirrors metadata only and font bytes remain
+    // in the current browser's IndexedDB.
     version: 1, enabled: value.enabled !== false, syncLocalOriginals: true, fonts, folders: names(value.folders || [], 200, '文件夹'),
     pinnedIds: pinnedIds.filter(id => seen.has(id)), sortBy, sortOrder,
     previewText: text(value.previewText == null || value.previewText === LEGACY_FONT_LIBRARY_SAMPLE ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),

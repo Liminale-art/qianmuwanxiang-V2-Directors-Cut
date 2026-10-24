@@ -1,6 +1,7 @@
-// Local font bytes stay in this browser/account by default. When account
-// storage is available, the directory and originals are synchronized by the
-// background sync layer; this store never reads or writes chat/files endpoints.
+// Local font bytes stay in this browser/account. The background account-sync
+// layer mirrors only the directory metadata; explicit font-package export is
+// the path for moving these bytes. This store never reads or writes chat/files
+// endpoints.
 const STORE = 'fonts';
 
 function fontKey(id) {

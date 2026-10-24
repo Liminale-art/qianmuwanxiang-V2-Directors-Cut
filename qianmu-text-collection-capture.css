@@ -35,7 +35,7 @@
 .qm-collection-capture .qm-collection-capture-choices { display: flex; gap: 10px; }
 .qm-collection-capture .qm-collection-capture-choices button { flex: 1; min-height: 44px; background: var(--sd-input-bg, #8881); }
 .qm-collection-capture .qm-collection-capture-paragraphs { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 6px 10px; margin: 0 0 .75em; text-align: justify; text-align-last: start; text-indent: 2em; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); line-height: 1.55; }
+.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 6px 10px; margin: 0 0 .75em; text-align: justify; text-align-last: start; text-indent: 2em; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; }
 .qm-collection-capture .qm-collection-capture-paragraph:last-child { margin-bottom: 0; }
 .qm-collection-capture .qm-collection-capture-paragraph[aria-pressed="true"] { background: color-mix(in srgb, var(--sd-accent, #8aafcf) 18%, transparent); box-shadow: none; }
 .qm-collection-capture footer span { color: var(--sd-muted, #999); }

@@ -112,7 +112,7 @@ export function openStoryboardCaptureChooser({document = globalThis.document, pa
     try {
         parent.append(dialog); document.body.append(parent); release = mountPortal(parent);
         const style = window?.getComputedStyle?.(proseElement || document.body);
-        if (style) for (const [property, value] of [['--qm-prose-font', style.fontFamily], ['--qm-prose-size', style.getPropertyValue('--sd-prose-font-size') || style.fontSize]]) {
+        if (style) for (const [property, value] of [['--qm-prose-font', style.fontFamily], ['--qm-prose-size', style.getPropertyValue('--sd-prose-font-size') || style.fontSize], ['--qm-prose-letter-spacing', style.getPropertyValue('--sd-prose-letter-spacing') || style.letterSpacing]]) {
             if (value) parent.style.setProperty(property, value);
         }
         active.set(document, cancel); signal?.addEventListener('abort', cancel, {once: true}); window?.addEventListener?.('pagehide', cancel, {once: true});

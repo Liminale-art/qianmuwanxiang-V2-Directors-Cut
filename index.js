@@ -961,6 +961,7 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
   paragraphGap: 0.45,
   indent: 2,
   contentWidth: 80,
+  letterSpacing: 0,
   horizontalOffset: 0,
   splitBreaks: false,
   justify: false,
@@ -968,6 +969,7 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
 });
 const PROSE_LAYOUT_CONTROLS = Object.freeze([
   { key: 'fontSize', label: '字号', min: 12, max: 32, step: 1, unit: 'px' },
+  { key: 'letterSpacing', label: '字距', min: -0.1, max: 0.5, step: 0.01, unit: 'em' },
   { key: 'lineHeight', label: '行高', min: 1.2, max: 2.6, step: 0.05, unit: '倍' },
   { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
   { key: 'indent', label: '缩进', min: 0, max: 4, step: 0.1, unit: 'em' },
@@ -5587,7 +5589,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
 }
 
 const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
-const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width', '--sd-prose-horizontal-offset', '--sd-prose-side-padding'];
+const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-letter-spacing', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width', '--sd-prose-horizontal-offset', '--sd-prose-side-padding'];
 let proseLayoutObserver = null;
 let proseLayoutWidthObserver = null;
 let proseLayoutFrame = 0;
@@ -5821,6 +5823,7 @@ function applyProseLayout(refreshBreaks = true) {
   document.body?.classList.toggle('sd-prose-split-breaks', layout.splitBreaks);
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--sd-prose-font-size', `${layout.fontSize}px`);
+  rootStyle.setProperty('--sd-prose-letter-spacing', `${layout.letterSpacing}em`);
   rootStyle.setProperty('--sd-prose-line-height', String(layout.lineHeight));
   rootStyle.setProperty('--sd-prose-paragraph-gap', `${layout.paragraphGap}em`);
   rootStyle.setProperty('--sd-prose-indent', `${layout.indent}em`);

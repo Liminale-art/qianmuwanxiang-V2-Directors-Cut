@@ -842,6 +842,7 @@ html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-pr
   inset-inline: auto !important;
   transform: none !important;
   font-size: var(--sd-prose-font-size) !important;
+  letter-spacing: var(--sd-prose-letter-spacing, normal) !important;
   line-height: var(--sd-prose-line-height) !important;
   text-indent: var(--sd-prose-indent) !important;
 }
@@ -8173,7 +8174,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
   max-width: none; max-height: min(760px, calc(100dvh - 32px)); padding: 16px;
   border: 1px solid var(--sd-border, #8886); border-radius: var(--qm-card-radius, 16px);
   background: var(--sd-sticky-bg, #f7f3eb); color: var(--sd-text, #3c352e);
-  font: 14px var(--qm-prose-font, var(--sd-font, sans-serif)); text-align: start;
+  font: 14px var(--qm-prose-font, var(--sd-font, sans-serif)); letter-spacing: var(--qm-prose-letter-spacing, normal); text-align: start;
   text-shadow: none; box-shadow: var(--qm-skin-shadow, 0 12px 40px #0003); overflow: hidden;
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
@@ -8205,7 +8206,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 .qm-storyboard-capture .qm-storyboard-capture-paragraph {
   display: block; width: 100%; padding: 10px 12px; margin: 0 0 10px; text-align: justify;
   text-align-last: start; text-indent: 2em; white-space: pre-wrap; overflow-wrap: anywhere;
-  font-family: var(--qm-prose-font, inherit); font-size: var(--qm-prose-size, 14px); line-height: 1.65;
+  font-family: var(--qm-prose-font, inherit); font-size: var(--qm-prose-size, 14px); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.65;
   color: var(--sd-text, #3c352e); background: transparent;
 }
 .qm-storyboard-capture .qm-storyboard-capture-paragraph[aria-pressed="true"] {
