@@ -105,22 +105,42 @@ test('font card tags remain complete in one keyboard-accessible horizontal row',
     assert.match(css, /\.qm-font-tag \{[^}]*flex:0 0 auto;[^}]*white-space:nowrap/);
 });
 
-test('font packs accept ZIP and legacy JSON with an initially hidden in-panel progress display', async () => {
+test('font packs accept ZIP and legacy JSON with hidden progress inside the preview card after its text field', async () => {
     const html = renderFontLibrary(state());
     assert.match(html, /data-font-file="import" accept="\.zip,application\/zip,\.json,application\/json"/);
-    assert.match(html, /class="qm-font-progress" data-font-progress role="status" aria-live="polite" hidden/);
-    assert.ok(html.indexOf('data-font-progress') < html.indexOf('data-font-enabled'));
+    const preview = html.match(/<section class="sd-card qm-font-preview-editor">[\s\S]*?<\/section>/)?.[0];
+    assert.ok(preview, 'the existing preview card remains the shared surface');
+    assert.match(preview, /<input data-font-preview[^>]*>[\s\S]*class="qm-font-progress" data-font-progress role="status" aria-live="polite" hidden/);
+    assert.equal((html.match(/data-font-progress(?:\s|>)/g) || []).length, 1, 'progress is not duplicated outside the preview card');
+    assert.ok(html.indexOf('data-font-enabled') < html.indexOf('data-font-progress'));
     const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
-    assert.match(css, /\.qm-font-progress \{ position:sticky; top:0;/);
+    const progress = css.match(/\.qm-font-progress \{([^}]+)\}/)?.[1] || '';
+    assert.match(progress, /background:transparent/);
+    assert.doesNotMatch(progress, /position:\s*(?:sticky|fixed|absolute)|z-index:|top:/, 'progress stays in normal card flow rather than covering scrolled content');
+    assert.match(css, /\.qm-font-progress progress \{[^}]*height:4px/);
+    assert.match(css, /\.qm-font-library \[hidden\] \{ display:none !important; \}/, 'hidden progress reserves no extra card space');
+});
+
+test('active import and export progress share the preview card instead of introducing a separate card background', () => {
+    for (const [phase, label] of [['import', '正在导入'], ['export', '正在打包']]) {
+        const html = renderFontLibrary(state(), { progress: { phase, done: 2, total: 8 } });
+        const preview = html.match(/<section class="sd-card qm-font-preview-editor">[\s\S]*?<\/section>/)?.[0];
+        assert.ok(preview);
+        assert.match(preview, /<input data-font-preview[^>]*>[\s\S]*<div class="qm-font-progress" data-font-progress role="status" aria-live="polite">/);
+        assert.ok(preview.includes(`${label}字体 2 / 8`));
+        assert.match(preview, /<progress data-font-progress-bar max="8" value="2"/);
+        assert.equal((preview.match(/\bsd-card\b/g) || []).length, 1, 'progress reuses the preview card, not a nested card');
+    }
 });
 
 test('pack progress updates in place without notifications and survives render until cleared', () => {
     const f = fixture(), host = f.node('[data-font-progress]', { hidden: true }), text = f.node('[data-font-progress-text]'), bar = f.node('[data-font-progress-bar]');
-    const before = f.root.innerHTML;
+    const before = f.root.innerHTML, reads = f.reads, visible = f.visible.length;
     f.view.setProgress({ phase: 'import', done: 3, total: 12 });
     assert.equal(host.hidden, false); assert.equal(text.textContent, '正在导入字体 3 / 12');
     assert.equal(bar.max, 12); assert.equal(bar.value, 3); assert.equal(bar['aria-label'], text.textContent);
     assert.equal(f.root.innerHTML, before); assert.equal(f.notices.length, 0);
+    assert.equal(f.reads, reads); assert.equal(f.visible.length, visible, 'progress updates do not reload font previews');
     f.view.render(); assert.match(f.root.innerHTML, /正在导入字体 3 \/ 12/);
     f.view.setProgress({ phase: 'export', done: 6, total: 12 }); assert.equal(text.textContent, '正在打包字体 6 / 12');
     f.view.setProgress(null); assert.equal(host.hidden, true); f.view.render(); assert.match(f.root.innerHTML, /data-font-progress role="status" aria-live="polite" hidden/);
@@ -665,7 +685,7 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 });
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
-    const stamp = '1.59.482-font-slogan-1', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    const stamp = '1.59.482-font-progress-1', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
     assert.equal(manifest.js, `index.js?v=${stamp}`); assert.equal(manifest.css, `style.css?v=${stamp}`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));

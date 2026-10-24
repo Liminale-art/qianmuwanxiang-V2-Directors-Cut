@@ -21,8 +21,8 @@
 #story-director-floor-nav.qm-font-library-open .qm-font-window :is(.qm-font-card,.qm-font-add,.qm-font-preview-editor,.qm-font-enable) { padding:12px !important; margin:0 !important; }
 .qm-font-library * { box-sizing:border-box; }
 .qm-font-library [hidden] { display:none !important; }
-.qm-font-library .qm-font-progress { position:sticky; top:0; z-index:40; display:flex; flex-direction:column; gap:5px; min-width:0; padding:8px 0; color:var(--sd-muted); background:var(--sd-sticky-bg,var(--sd-card)); font-size:var(--qm-type-caption,11px); }
-.qm-font-library .qm-font-progress progress { width:100%; height:6px; accent-color:var(--sd-accent); }
+.qm-font-library .qm-font-progress { display:flex; flex-direction:column; gap:6px; min-width:0; padding:0; color:var(--sd-muted); background:transparent; font-size:var(--qm-type-caption,11px); }
+.qm-font-library .qm-font-progress progress { display:block; width:100%; height:4px; margin:0; accent-color:var(--sd-accent); }
 .qm-font-library :is(button,input,select,textarea) { font:inherit; color:var(--sd-text); }
 .qm-font-library :where(input:not([type="checkbox"]):not([type="range"]):not([type="file"]),select,textarea) { width:100%; min-width:0; min-height:36px; padding:7px 10px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-input-bg); box-shadow:none; }
 .qm-font-library textarea { resize:vertical; max-height:220px; }

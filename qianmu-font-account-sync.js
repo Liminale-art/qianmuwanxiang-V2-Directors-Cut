@@ -1,5 +1,5 @@
 import { createConfiguredStAccountStorage, isStAccountStorageConfigured } from './qianmu-st-account-storage.js';
-import { normalizeFontLibrary, mergeFontLibraryRecords } from './qianmu-font-library-state.js?v=1.59.482-font-slogan-1';
+import { normalizeFontLibrary, mergeFontLibraryRecords } from './qianmu-font-library-state.js?v=1.59.482-font-progress-1';
 
 // The account document is deliberately a small metadata-only directory. Local
 // font bytes stay in the browser's IndexedDB. ST exposes account files, not a
