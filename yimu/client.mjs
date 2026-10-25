@@ -17,7 +17,7 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
     return {
         async health() {
             const value = await request('health');
-            if (value.version !== VERSION || value.schema !== 1) throw new Error(`请安装配套忆幕服务端 ${VERSION} 后重启 ST`);
+            if (value.version !== VERSION || value.schema !== 2) throw new Error(`请安装配套忆幕服务端 ${VERSION} 后重启 ST`);
             return value;
         },
         read: binding => request('read', { binding }),

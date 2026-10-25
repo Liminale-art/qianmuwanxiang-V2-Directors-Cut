@@ -1,4 +1,5 @@
 import {createYimuStore} from './server-store.mjs';
+import {VERSION, SCHEMA} from './contract.mjs';
 
 export const info = {id: 'yimu', name: '忆幕', description: '按 ST 账户与聊天保存忆幕文本、修订与来源关联'};
 
@@ -19,7 +20,7 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
             });
         }
     };
-    router.get('/health', route(async () => ({version: '0.1.0', schema: 1})));
+    router.get('/health', route(async () => ({version: VERSION, schema: SCHEMA})));
     router.post('/read', route(request => store.read(request, request.body?.binding)));
     router.post('/change', route(request => store.change(request, request.body?.binding, request.body?.operation)));
     router.post('/defaults', route(request => store.defaults(request, request.body?.operation)));

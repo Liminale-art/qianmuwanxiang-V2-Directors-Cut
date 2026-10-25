@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {createYimuStore, chatStorageName} from '../yimu/server-store.mjs';
 import {registerYimuRoutes} from '../yimu/server-plugin.mjs';
-import {fingerprintMessages, DEFAULTS} from '../yimu/contract.mjs';
+import {fingerprintMessages, DEFAULTS, VERSION, SCHEMA, createDocument} from '../yimu/contract.mjs';
 
 const binding = {avatar: '角色.png', file: '聊天 - 2026-10-25', integrity: 'fixture_integrity'};
 const messages = [
@@ -20,7 +21,7 @@ async function fixture(t) {
         const real = await fs.realpath(root);
         assert.equal(path.dirname(real), parent);
         assert.match(path.basename(real), /^yimu-server-test-/);
-        await fs.rm(real, {recursive: true});
+        await fs.rm(real, {recursive: true, force: true});
     });
     const account = path.join(root, 'data', 'alpha');
     const chats = path.join(account, 'chats');
@@ -342,6 +343,79 @@ test('summary commit fences the current defaults revision while completed operat
     assert.equal(repeated.document.entries[0].status, 'active');
 });
 
+async function stagedFixture(f, {recentTail = true} = {}) {
+    if (recentTail) await f.writeChat([...messages, ...Array.from({length: 5}, (_, i) => ({name: '角色', mes: `近期原文${i}`, send_date: `recent_${i}`}))]);
+    await f.enable();
+    for (let i = 0; i < 2; i++) await f.store.change(f.request, binding, {id: `fine_save_${i}`, type: 'append', expectedEpoch: 1,
+        entry: {id: `fine_${i}`, kind: 'summary', text: `连续细摘要${i}`, source: {start: i + 1, end: i + 1, hashes: [f.source.hashes[i]]}}});
+    return {id: 'stage_save', type: 'append', expectedEpoch: 1, expectedDefaultsRevision: 0,
+        entry: {id: 'stage_1', kind: 'stage', text: '连续细摘要的阶段整理', source: {parents: [{id: 'fine_0', revision: 1}, {id: 'fine_1', revision: 1}]}}};
+}
+
+test('stage commits derive source under the chat lock and parent edits invalidate stage atomically', async t => {
+    const f = await fixture(t), op = await stagedFixture(f);
+    op.entry.source.ranges = [{start: 1, end: 999, hashes: []}];
+    const saved = await f.store.change(f.request, binding, op);
+    assert.deepEqual(saved.document.entries.at(-1).source.ranges, [{start: 1, end: 2, hashes: f.source.hashes}]);
+    const edited = await f.store.change(f.request, binding, {id: 'edit_parent', type: 'edit', entryId: 'fine_0', expectedRevision: 1, text: '此人工内容不再压缩'});
+    assert.equal(edited.document.entries.find(entry => entry.id === 'fine_0').text, '此人工内容不再压缩');
+    assert.equal(edited.document.entries.find(entry => entry.id === 'stage_1').status, 'invalid');
+    await assert.rejects(f.store.change(f.request, binding, {...op, id: 'late_stage', entry: {...op.entry, id: 'stage_late'}}), /细摘要已修改|停用|失效/);
+    assert.equal((await f.store.read(f.request, binding)).document.entries.length, 3);
+});
+
+test('stage writes require defaults revision, current raw fingerprints, and exclusion of recent raw floors', async t => {
+    const f = await fixture(t), op = await stagedFixture(f, {recentTail: false});
+    const {expectedDefaultsRevision: ignored, ...missingRevision} = op;
+    await assert.rejects(f.store.change(f.request, binding, missingRevision), {code: 'yimu_defaults_revision'});
+    await assert.rejects(f.store.change(f.request, binding, op), {code: 'yimu_stage_recent'});
+    const expanded = [...messages, ...Array.from({length: 5}, (_, i) => ({name: '角色', mes: `近期原文${i}`}))];
+    await f.writeChat(expanded);
+    await f.store.change(f.request, binding, op);
+    await f.writeChat([{...messages[0], mes: '远端原文已变化'}, ...expanded.slice(1)]);
+    const read = await f.store.read(f.request, binding);
+    assert.ok(read.invalidSourceIds.includes('fine_0')); assert.ok(read.invalidSourceIds.includes('stage_1'));
+    assert.ok(!read.invalidSourceIds.includes('fine_1'));
+    await assert.rejects(f.store.change(f.request, binding, {...op, id: 'stale_raw', type: 'redo', entryId: 'stage_1', expectedRevision: 1}), {code: 'yimu_source_changed'});
+});
+
+test('schema 1 reads are non-mutating and first actual write preserves byte-exact legacy backup before schema 2', async t => {
+    const f = await fixture(t), folder = path.join(f.account, '.yimu');
+    await fs.mkdir(folder);
+    const legacy = {...createDocument(binding), schema: 1};
+    const envelope = value => Buffer.from(JSON.stringify({schema: 1, value, checksum: createHash('sha256').update(JSON.stringify(value)).digest('hex')}));
+    const file = path.join(folder, chatStorageName(binding)), original = envelope(legacy);
+    await fs.writeFile(file, original);
+    const read = await f.store.read(f.request, binding);
+    assert.equal(read.document.schema, 2); assert.deepEqual(await fs.readFile(file), original);
+    assert.deepEqual(await fs.readdir(folder), [chatStorageName(binding)]);
+    await f.append('migrated');
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).value.schema, 2);
+    assert.deepEqual(await fs.readFile(`${file}.schema1.bak`), original);
+    const backup = await fs.stat(`${file}.schema1.bak`);
+    assert.equal(backup.mode & 0o200, 0, 'legacy snapshot is created read-only');
+    await f.append('later');
+    assert.deepEqual(await fs.readFile(`${file}.schema1.bak`), original, 'later saves never rewrite rollback material');
+    const values = {...DEFAULTS}; delete values.stageAuto; delete values.stageBasis; delete values.stageThreshold; delete values.recall;
+    const oldDefaults = envelope({schema: 1, revision: 0, operations: [], receipts: {}, values});
+    await fs.writeFile(path.join(folder, 'defaults.json'), oldDefaults);
+    await f.store.defaults(f.request, {id: 'upgrade_defaults', expectedRevision: 0, values: {recent: 9}});
+    assert.deepEqual(await fs.readFile(path.join(folder, 'defaults.json.schema1.bak')), oldDefaults);
+    assert.equal((await f.store.read(f.request, binding)).defaults.values.recall, true);
+});
+
+test('an occupied or corrupt legacy backup blocks upgrade without replacing legacy memory', async t => {
+    const f = await fixture(t), folder = path.join(f.account, '.yimu');
+    await fs.mkdir(folder);
+    const legacy = {...createDocument(binding), schema: 1};
+    const body = JSON.stringify({schema: 1, value: legacy, checksum: createHash('sha256').update(JSON.stringify(legacy)).digest('hex')});
+    const file = path.join(folder, chatStorageName(binding));
+    await fs.writeFile(file, body); await fs.writeFile(`${file}.schema1.bak`, 'unrelated occupied file');
+    await assert.rejects(f.append('blocked'), {code: 'yimu_corrupt'});
+    assert.equal(await fs.readFile(file, 'utf8'), body);
+    assert.equal(await fs.readFile(`${file}.schema1.bak`, 'utf8'), 'unrelated occupied file');
+});
+
 test('standalone routes retain ST authentication, route errors, and never return filesystem internals', async () => {
     const routes = new Map();
     const router = {get(route, handler) { routes.set(`GET ${route}`, handler); }, post(route, handler) { routes.set(`POST ${route}`, handler); }};
@@ -354,7 +428,7 @@ test('standalone routes retain ST authentication, route errors, and never return
     };
     assert.equal((await call('GET /health', {})).status, 403);
     const request = {user: {profile: {handle: 'alpha'}, directories: {}}, body: {binding}};
-    assert.deepEqual((await call('GET /health', request)).body, {version: '0.1.0', schema: 1});
+    assert.deepEqual((await call('GET /health', request)).body, {version: VERSION, schema: SCHEMA});
     const failure = await call('POST /read', request);
     assert.equal(failure.status, 500);
     assert.ok(!JSON.stringify(failure).includes('private server path'));

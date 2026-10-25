@@ -146,7 +146,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current};
+            return {value, fingerprint: current, legacyBytes: envelope.value?.schema === 1 ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -159,7 +159,36 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
     }
 
-    async function writeFile(ctx, name, value, prior, validate) {
+    async function preserveLegacy(ctx, name, bytes) {
+        if (!bytes) return;
+        const backup = `${name}.schema1.bak`;
+        const existing = await readFile(ctx, backup, value => value, () => null);
+        if (existing.fingerprint) {
+            if (!existing.legacyBytes?.equals(bytes)) fail('migration_backup', '旧版忆幕备份已存在且内容不同，未覆盖任何资料', 409);
+            return;
+        }
+        const target = path.join(ctx.folder, backup);
+        let file, identity, confirmed = false;
+        try {
+            await checkStore(ctx);
+            file = await io.open(target, 'wx', 0o400);
+            identity = await file.stat({bigint: true});
+            await file.writeFile(bytes); await file.sync(); await file.close(); file = null;
+            const saved = await readFile(ctx, backup, value => value, () => null);
+            if (!saved.legacyBytes?.equals(bytes)) fail('migration_backup', '旧版忆幕备份尚未确认，未升级原文件', 503);
+            confirmed = true;
+        } finally {
+            if (file) await file.close();
+            if (identity && !confirmed) {
+                await checkStore(ctx);
+                const current = await stat(target);
+                if (!sameFile(identity, current) || !current.isFile() || current.isSymbolicLink() || current.nlink !== 1n) fail('path', '忆幕备份临时文件已变化，未自动清理', 503);
+                await io.chmod(target, 0o600); await io.unlink(target);
+            }
+        }
+    }
+
+    async function writeFile(ctx, name, value, prior, validate, legacyBytes = null) {
         const raw = JSON.stringify(value);
         const body = JSON.stringify({schema: 1, value, checksum: digest(raw)});
         if (Buffer.byteLength(body) > MAX_DOCUMENT_BYTES) fail('capacity', '忆幕资料超过安全保存容量，未截断任何内容', 507);
@@ -176,6 +205,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             await file.close();
             file = null;
             await checkStore(ctx);
+            await targetUnchanged(ctx, name, prior);
+            await preserveLegacy(ctx, name, legacyBytes);
             await targetUnchanged(ctx, name, prior);
             const staged = await stat(temporaryPath);
             if (!sameVersion(identity, staged) || !staged.isFile() || staged.isSymbolicLink() || staged.nlink !== 1n) {
@@ -261,7 +292,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             const opened = await file.stat({bigint: true});
             if (!sameVersion(before, opened) || opened.nlink !== 1n) fail('source_changed', '聊天原文读取期间已变化');
             let floor = -1, verified = 0, nextWindow = 0;
-            const windows = (inspectEntries || []).map(entry => ({id: entry.id, source: entry.source})).sort((a, b) => a.source.start - b.source.start);
+            const windows = (inspectEntries || []).flatMap(entry => contract.sourceRanges(entry).map(source => ({id: entry.id, source})))
+                .sort((a, b) => a.source.start - b.source.start);
             const active = new Set(), invalid = new Set();
             const fingerprint = inspectEntries ? createHash('sha256').update(`${binding.integrity}\n`) : null;
             for await (const line of sourceLines(file, ctx)) {
@@ -334,13 +366,25 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
     }
 
-    async function requireSource(ctx, binding, source = null) {
-        try { return await verifySource(ctx, binding, source); }
+    async function requireSource(ctx, binding, source = null, entries = null) {
+        try { return await verifySource(ctx, binding, source, entries); }
         catch (caught) {
             if (caught?.code === 'ENOENT') fail('source_missing', '找不到对应的 ST 聊天文件，未采用本次结果', 404);
             if (caught?.code === 'EACCES' || caught?.code === 'EPERM') fail('source_access', '无法读取对应的 ST 聊天文件，未采用本次结果', 403);
             throw caught;
         }
+    }
+
+    async function requireEntrySource(ctx, binding, entry, document, defaults = null, checkRecent = false) {
+        if (entry.kind !== 'stage') return requireSource(ctx, binding, entry.source);
+        if (!contract.stageDependenciesValid(entry, document)) fail('stage_changed', '阶段摘要的细摘要来源已变化，未采用');
+        const evidence = await requireSource(ctx, binding, null, [entry]);
+        if (evidence.invalidSourceIds.length) fail('source_changed', '对应聊天原文已改变，未采用阶段整理结果');
+        if (checkRecent) {
+            const cutoff = evidence.sourceFloorCount - contract.effectiveSettings(document, defaults).recent;
+            if (contract.sourceRanges(entry).some(range => range.end > cutoff)) fail('stage_recent', '阶段整理范围包含近期原文，未采用');
+        }
+        return evidence;
     }
 
     const documentRead = (ctx, binding) => readFile(ctx, chatStorageName(binding), contract.validateDocument, () => contract.createDocument(binding));
@@ -360,13 +404,17 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             sourceAvailable = true;
         }
         catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
+        for (const entry of document.entries) if (entry.kind === 'stage' && entry.status === 'active'
+            && !contract.stageDependenciesValid(entry, document) && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
         return {document, defaults, sourceAvailable: sourceAvailable && !document.movedTo, ...evidence};
     }
 
     async function change(request, rawBinding, operation) {
         const binding = normalizeStoreBinding(rawBinding), ctx = context(request);
         await prepare(ctx);
-        const summaryWithDefaults = ['append', 'redo'].includes(operation?.type) && operation?.entry?.kind === 'summary'
+        const generatedStage = ['append', 'redo'].includes(operation?.type) && operation?.entry?.kind === 'stage';
+        if (generatedStage && operation.expectedDefaultsRevision === undefined) fail('defaults_revision', '阶段整理缺少默认设置版本，未采用', 400);
+        const summaryWithDefaults = ['append', 'redo'].includes(operation?.type) && ['summary', 'stage'].includes(operation?.entry?.kind)
             && operation.expectedDefaultsRevision !== undefined;
         if (summaryWithDefaults && (!Number.isSafeInteger(operation.expectedDefaultsRevision) || operation.expectedDefaultsRevision < 0)) {
             fail('defaults_revision', '整理所依据的默认设置版本无效', 400);
@@ -376,8 +424,11 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             assertBinding(current.value, binding);
             const result = contract.applyOperation(current.value, withReceipt(operation));
             if (!equal(result.document, current.value)) {
+                let actualDefaults;
+                const checkedSources = new Set();
+                const sourceKey = entry => JSON.stringify([entry.kind, entry.source]);
                 if (summaryWithDefaults) {
-                    const actualDefaults = await defaultsRead(ctx);
+                    actualDefaults = await defaultsRead(ctx);
                     if (actualDefaults.value.revision !== operation.expectedDefaultsRevision) {
                         fail('defaults_changed', '整理期间全局默认设置已改变，本次结果未采用');
                     }
@@ -386,13 +437,15 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 // A new file cannot claim an unverified chat path. Existing manual notes remain editable when originals go missing.
                 if (!current.fingerprint) await requireSource(ctx, binding);
                 if ((operation?.type === 'append' || operation?.type === 'redo') && operation.entry?.source) {
-                    await requireSource(ctx, binding, operation.entry.source);
+                    const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents)} : operation.entry;
+                    await requireEntrySource(ctx, binding, generated, current.value, actualDefaults?.value, generatedStage);
+                    checkedSources.add(sourceKey(generated));
                 }
                 for (const entry of result.document.entries) {
                     const previous = current.value.entries.find(value => value.id === entry.id);
                     if (entry.status === 'active' && entry.source && (previous?.status !== 'active'
                         || previous.revision !== entry.revision || !equal(previous?.source, entry.source))) {
-                        try { await requireSource(ctx, binding, entry.source); }
+                        try { if (!checkedSources.has(sourceKey(entry))) await requireEntrySource(ctx, binding, entry, result.document); }
                         catch (caught) {
                             // Undo/restore/choosing a retained edit must remain possible after the source changes.
                             // Preserve that chosen text, but never revive it as validated memory. Candidate adoption stays strict.
@@ -404,7 +457,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                         }
                     }
                 }
-                await writeFile(ctx, chatStorageName(binding), result.document, current.fingerprint, contract.validateDocument);
+                await writeFile(ctx, chatStorageName(binding), result.document, current.fingerprint, contract.validateDocument, current.legacyBytes);
             }
             return result;
         });
@@ -418,7 +471,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         return exclusive(ctx, 'defaults.json', async () => {
             const current = await defaultsRead(ctx);
             const result = contract.applyDefaultsOperation(current.value, withReceipt(operation));
-            if (!equal(result.defaults, current.value)) await writeFile(ctx, 'defaults.json', result.defaults, current.fingerprint, contract.validateDefaults);
+            if (!equal(result.defaults, current.value)) await writeFile(ctx, 'defaults.json', result.defaults, current.fingerprint, contract.validateDefaults, current.legacyBytes);
             return result;
         });
     }
@@ -452,7 +505,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             if (!target.fingerprint) await writeFile(ctx, chatStorageName(newBinding), document, null, contract.validateDocument);
             const marked = {...previous.value, movedTo: newBinding};
             contract.validateDocument(marked);
-            await writeFile(ctx, chatStorageName(binding), marked, previous.fingerprint, contract.validateDocument);
+            await writeFile(ctx, chatStorageName(binding), marked, previous.fingerprint, contract.validateDocument, previous.legacyBytes);
             return {document};
         }));
     }

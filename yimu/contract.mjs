@@ -1,6 +1,10 @@
 // Shared, data-only contract. Chat originals and connection secrets never live here.
-export const VERSION = '0.1.0';
-export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '' });
+import {invalidateDependentStages, sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
+export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
+export const VERSION = '0.2.0';
+export const SCHEMA = 2;
+export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
+    stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
 function requireThat(ok, message) { if (!ok) throw failure(message); }
@@ -19,11 +23,13 @@ export const bindingKey = binding => JSON.stringify(normalizeBinding(binding));
 export function validateSettings(input, partial = true) {
     requireThat(input && typeof input === 'object' && !Array.isArray(input), '设置格式无效');
     const result = {};
-    const bounds = { recent: [1, 2000], trigger: [256, 1000000], batch: [256, 100000], budget: [0, 1000000] };
+    const bounds = { recent: [1, 2000], trigger: [256, 1000000], batch: [256, 100000], budget: [0, 1000000], stageThreshold: [1, 1000000] };
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
-        if (bounds[key]) {
+        if (key === 'stageAuto' || key === 'recall') requireThat(typeof value === 'boolean', '忆幕开关设置无效');
+        else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
+        else if (bounds[key]) {
             requireThat(Number.isSafeInteger(value) && value >= bounds[key][0] && value <= bounds[key][1], '设置数值超出范围');
         } else requireThat(typeof value === 'string' && value.length <= (key === 'preference' ? 12000 : 300), '设置文字过长或无效');
         result[key] = value;
@@ -32,9 +38,9 @@ export function validateSettings(input, partial = true) {
 }
 export function effectiveSettings(document, defaults) { return { ...DEFAULTS, ...defaults?.values, ...document?.settings }; }
 export function createDocument(binding) {
-    return { schema: 1, revision: 0, binding: normalizeBinding(binding), enabled: false, epoch: 0, configRevision: 0, settings: {}, initialRange: null, entries: [], operations: [], receipts: {} };
+    return { schema: SCHEMA, revision: 0, binding: normalizeBinding(binding), enabled: false, epoch: 0, configRevision: 0, settings: {}, initialRange: null, entries: [], operations: [], receipts: {} };
 }
-export function createDefaults() { return { schema: 1, revision: 0, values: { ...DEFAULTS }, operations: [], receipts: {} }; }
+export function createDefaults() { return { schema: SCHEMA, revision: 0, values: { ...DEFAULTS }, operations: [], receipts: {} }; }
 function validateSource(source) {
     requireThat(source && Number.isSafeInteger(source.start) && source.start >= 1 && Number.isSafeInteger(source.end) && source.end >= source.start, '来源楼层范围无效');
     requireThat(Array.isArray(source.hashes) && source.hashes.length === source.end - source.start + 1 && source.hashes.every(x => /^[a-f0-9]{64}$/.test(x)), '来源指纹不完整');
@@ -46,21 +52,24 @@ function textValue(text) {
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
 export function validateDocument(raw) {
-    requireThat(raw?.schema === 1 && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    requireThat([1, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    if (raw.schema === 1) raw = {...clone(raw), schema: SCHEMA};
     normalizeBinding(raw.binding); validateSettings(raw.settings);
     const ids = new Set();
     for (const entry of raw.entries) {
         identifier(entry.id); requireThat(!ids.has(entry.id), '记忆条目标识重复'); ids.add(entry.id);
         textValue(entry.text);
-        requireThat(['summary', 'manual'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
+        requireThat(['summary', 'manual', 'stage'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
         if (entry.kind === 'summary') validateSource(entry.source);
+        else if (entry.kind === 'stage') validateStageSource(entry.source);
         else requireThat(entry.source === null, '手动补充不能伪造来源');
     }
     if (raw.movedTo) normalizeBinding(raw.movedTo);
     return raw;
 }
 export function validateDefaults(raw) {
-    requireThat(raw?.schema === 1 && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    requireThat([1, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    if (raw.schema === 1) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
     validateSettings(raw.values, false); return raw;
 }
 function receipt(operation) { return operation.receipt || JSON.stringify(operation); }
@@ -70,6 +79,7 @@ function isDuplicate(document, operation) {
     return true;
 }
 function finish(document, operation, outcome = 'applied') {
+    invalidateDependentStages(document);
     document.revision++;
     document.operations.push(operation.id);
     document.receipts = { ...document.receipts, [operation.id]: receipt(operation) };
@@ -77,16 +87,24 @@ function finish(document, operation, outcome = 'applied') {
 }
 function past(entry) { const { history, conflicts, candidate, ...rest } = entry; return clone(rest); }
 function revise(entry, changes) { entry.history.push(past(entry)); Object.assign(entry, changes, { revision: entry.revision + 1 }); }
-function submittedEntry(input) {
-    requireThat(input && ['summary', 'manual'].includes(input.kind), '记忆类型无效');
-    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), source: input.kind === 'summary' ? validateSource(input.source) : null };
+function submittedEntry(input, document) {
+    requireThat(input && ['summary', 'manual', 'stage'].includes(input.kind), '记忆类型无效');
+    const source = input.kind === 'stage' ? stageSourceFromParents(document, input.source?.parents)
+        : input.kind === 'summary' ? validateSource(input.source) : null;
+    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), source };
+}
+function requireUnusedStageParents(document, submitted) {
+    if (submitted.kind !== 'stage') return;
+    const parents = new Set(submitted.source.parents.map(parent => parent.id));
+    requireThat(!document.entries.some(entry => entry.kind === 'stage' && entry.id !== submitted.id
+        && entry.source.parents.some(parent => parents.has(parent.id))), '此范围已有阶段摘要，请对已有阶段重新总结');
 }
 function candidate(entry, operation, values, reason) {
     entry.conflicts.push({ id: operation.id, reason, ...clone(values) });
     return 'conflict';
 }
 export function applyOperation(current, operation) {
-    validateDocument(current);
+    current = validateDocument(current);
     const id = identifier(operation?.id);
     if (isDuplicate(current, operation)) return { document: clone(current), outcome: 'duplicate' };
     requireThat(!current.movedTo, '此聊天已重命名，请重新打开当前聊天');
@@ -109,12 +127,13 @@ export function applyOperation(current, operation) {
         }
         doc.epoch++; doc.configRevision++;
     } else if (op.type === 'append') {
-        const value = submittedEntry(op.entry);
+        const value = submittedEntry(op.entry, doc);
         if (doc.entries.some(e => e.id === value.id)) throw failure('此记忆条目已经存在', 409);
-        if (value.kind === 'summary') {
+        requireUnusedStageParents(doc, value);
+        if (value.kind !== 'manual') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch, '整理期间启用状态或设置已变化，本次结果未采用');
             // No overlapping automatic replacement, including deleted/excluded slices.
-            requireThat(!doc.entries.some(e => e.source && e.source.start <= value.source.end && e.source.end >= value.source.start), '此来源已有记忆，请对已有条目重新总结');
+            if (value.kind === 'summary') requireThat(!doc.entries.some(e => e.kind === 'summary' && e.source && e.source.start <= value.source.end && e.source.end >= value.source.start), '此来源已有记忆，请对已有条目重新总结');
         }
         doc.entries.push({ ...value, revision: 1, status: 'active', edited: value.kind === 'manual', history: [], conflicts: [], candidate: null });
     } else if (op.type === 'invalidate') {
@@ -132,9 +151,10 @@ export function applyOperation(current, operation) {
         if (op.type === 'edit') values = { text: textValue(op.text), edited: true };
         else if (op.type === 'redo') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch && entry.status !== 'deleted', '整理期间状态已变化，本次结果未采用');
-            const submitted = submittedEntry(op.entry);
-            requireThat(submitted.kind === 'summary' && submitted.id === entry.id, '重总结来源无效');
-            values = { text: submitted.text, source: submitted.source, kind: 'summary', status: 'active' };
+            const submitted = submittedEntry(op.entry, doc);
+            requireThat(['summary', 'stage'].includes(submitted.kind) && submitted.kind === entry.kind && submitted.id === entry.id, '重总结来源无效');
+            requireUnusedStageParents(doc, submitted);
+            values = { text: submitted.text, source: submitted.source, kind: submitted.kind, status: 'active' };
         } else requireThat(op.type === 'entry', '未知的记忆操作');
         if (op.expectedRevision !== entry.revision) {
             if (values) return finish(doc, op, candidate(entry, op, values, '此条记忆已在另一设备修改'));
@@ -163,6 +183,7 @@ export function applyOperation(current, operation) {
                 case 'keepManual': revise(entry, { kind: 'manual', source: null, edited: true, status: 'active' }); break;
                 case 'acceptCandidate': {
                     requireThat(entry.candidate, '没有待确认的重总结');
+                    requireThat(entry.kind !== 'stage' || stageDependenciesValid({...entry, ...entry.candidate, id: entry.id}, doc), '阶段候选的细摘要来源已变化，未采用');
                     revise(entry, { ...entry.candidate, id: entry.id, edited: true, candidate: null }); break;
                 }
                 case 'discardCandidate': entry.candidate = null; entry.revision++; break;
@@ -181,12 +202,12 @@ export function applyOperation(current, operation) {
     return finish(doc, op);
 }
 export function applyDefaultsOperation(current, op) {
-    validateDefaults(current); const id = identifier(op?.id);
+    current = validateDefaults(current); const id = identifier(op?.id);
     if (isDuplicate(current, op)) return { defaults: clone(current), outcome: 'duplicate' };
     requireThat(op.expectedRevision === current.revision, '默认设置已在另一设备修改，请刷新后再试');
     const changes = validateSettings(op.values);
     const values = validateSettings({ ...current.values, ...Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, value === null ? DEFAULTS[key] : value])) }, false);
-    return { defaults: { schema: 1, revision: current.revision + 1, values, operations: [...current.operations, id], receipts: { ...current.receipts, [id]: receipt(op) } }, outcome: 'applied' };
+    return { defaults: { schema: SCHEMA, revision: current.revision + 1, values, operations: [...current.operations, id], receipts: { ...current.receipts, [id]: receipt(op) } }, outcome: 'applied' };
 }
 export async function fingerprintMessages(messages) {
     const subtle = globalThis.crypto?.subtle ?? (typeof process !== 'undefined' && process.versions?.node ? (await import('node:crypto')).webcrypto.subtle : null);
@@ -197,5 +218,9 @@ export async function fingerprintMessages(messages) {
     }));
 }
 export function sourceMatches(source, hashes) {
-    return Boolean(source && source.start >= 1 && source.end <= hashes.length && source.hashes.length === source.end - source.start + 1 && source.hashes.every((hash, i) => hashes[source.start - 1 + i] === hash));
+    try {
+        const ranges = sourceRanges(source);
+        return Boolean(ranges.length && Array.isArray(hashes) && ranges.every(range => range.end <= hashes.length
+            && range.hashes.every((hash, i) => hashes[range.start - 1 + i] === hash)));
+    } catch { return false; }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createView, mountEntries, orderedEntries, sourceLabel } from '../yimu/view.mjs';
+import { createView, mountEntries, orderedEntries, sourceLabel, groupMemoryEntries } from '../yimu/view.mjs';
 
 // Isolated DOM/event fixture. It proves operations and retained drafts, not layout or a live ST session.
 function dom() {
@@ -69,6 +69,7 @@ function dom() {
     return { document, all: () => all(document.body), get: label => all(document.body).find(node => node.attrs['aria-label'] === label), text: text => all(document.body).find(node => node.tagName === 'BUTTON' && node.textContent === text), async flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); } };
 }
 const entry = (patch = {}) => ({ id: 'slice-a', revision: 2, kind: 'summary', text: '两人第一次约会。甲没有得知乙的秘密。', source: { start: 1, end: 3, hashes: ['a', 'b', 'c'] }, status: 'active', edited: false, history: [], conflicts: [], ...patch });
+const stage = (parents, patch = {}) => entry({ id: 'stage-one', kind: 'stage', text: '这段经历改变了两人的关系。', source: { ranges: parents.map(parent => parent.source), parents: parents.map(parent => ({ id: parent.id, revision: parent.revision })) }, ...patch });
 const state = (patch = {}) => ({
     snapshot: { binding: { avatar: '角色.png', file: '聊天', integrity: 'uuid-fixture' }, name: '角色', messages: Array.from({ length: 9 }, () => ({ mes: 'fixture' })) },
     document: { enabled: false, configRevision: 0, settings: {}, initialRange: null, entries: [] },
@@ -120,6 +121,132 @@ test('source ordering excludes deleted entries and preserves explicit source-fre
     const items = [entry({ id: 'manual', source: null, kind: 'manual' }), entry({ id: 'later', source: { start: 8, end: 12 } }), entry(), entry({ id: 'deleted', status: 'deleted' })];
     assert.deepEqual(orderedEntries(items).map(item => item.id), ['slice-a', 'later', 'manual']);
     assert.equal(sourceLabel(items[0]), '手动补充'); assert.equal(sourceLabel(items[2]), '第 1–3 层');
+});
+
+test('stage labels retain genuine gaps instead of falsely claiming the whole min-max interval', () => {
+    const first = entry(), next = entry({ id: 'slice-b', source: { start: 7, end: 9, hashes: ['d', 'e', 'f'] } });
+    assert.equal(sourceLabel(stage([first, next])), '阶段摘要 · 第 1–3、7–9 层');
+    const adjacent = entry({ id: 'slice-c', source: { start: 4, end: 6, hashes: ['x', 'y', 'z'] } });
+    assert.equal(sourceLabel(stage([first, adjacent])), '阶段摘要 · 第 1–6 层');
+});
+
+test('only active stages with exact valid unedited parents group their fine memories, each fine once', () => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), manual = entry({ id: 'manual', source: null, kind: 'manual', edited: true });
+    const overview = stage([one, two]);
+    const grouped = groupMemoryEntries([manual, two, overview, one]);
+    assert.deepEqual(grouped.map(group => group.entry.id), ['stage-one', 'manual']);
+    assert.deepEqual(grouped[0].children.map(child => child.id), ['slice-a', 'slice-b']);
+    const invalid = groupMemoryEntries([overview, { ...one, revision: 3 }, two]);
+    assert.equal(invalid[0].entry.status, 'invalid'); assert.equal(invalid[0].children.length, 0);
+    assert.deepEqual(invalid.slice(1).map(group => group.entry.id), ['slice-a', 'slice-b']);
+    const protectedFine = groupMemoryEntries([overview, { ...one, edited: true }, two]);
+    assert.equal(protectedFine[0].entry.status, 'invalid'); assert.equal(protectedFine.length, 3);
+    assert.equal(overview.status, 'active', 'the UI does not rewrite canonical validity');
+});
+
+test('stages render fine cards in retained collapsible groups and leave ungrouped fine cards directly visible', t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), loose = entry({ id: 'slice-c', source: { start: 7, end: 9 } });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two, loose, stage([one, two])] } }); t.after(() => f.view.destroy());
+    const list = f.get('忆幕').querySelector('.ym-list'), group = f.get('忆幕').querySelector('.ym-stage-children');
+    assert.equal(list.children.length, 2); assert.equal(group.open, false);
+    assert.equal(group.querySelectorAll('article').length, 2);
+    assert.match(group.querySelector('summary').textContent, /细摘要（2）/);
+    group.open = true; f.render({ status: '其他条目正在整理' });
+    assert.equal(f.get('忆幕').querySelector('.ym-stage-children'), group); assert.equal(group.open, true);
+});
+
+test('manual stage selection accepts only full fine boundaries, skips manual revisions, and sends no raw chat data', async t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } });
+    const revised = entry({ id: 'slice-manual', source: { start: 7, end: 9 }, edited: true });
+    const later = entry({ id: 'slice-later', source: { start: 10, end: 12 } }), last = entry({ id: 'slice-last', source: { start: 13, end: 15 } });
+    const f = fixture({ sourceAvailable: true, document: { enabled: true, settings: {}, entries: [one, two, revised, later, last] } }); t.after(() => f.view.destroy());
+    f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 20 }, () => ({ mes: 'synthetic' })) } });
+    f.get('整理阶段摘要').click();
+    assert.equal(f.get('阶段摘要开始楼层').value, '1'); assert.equal(f.get('阶段摘要结束楼层').value, '15');
+    f.get('阶段摘要开始楼层').value = '2'; f.get('确认整理阶段摘要').click(); await f.flush(); assert.equal(f.calls.length, 0);
+    f.get('阶段摘要开始楼层').value = '1'; f.get('阶段摘要开始楼层').emit('input');
+    assert.match(f.get('忆幕').querySelector('.ym-stage-form').textContent, /将整理 4 份细摘要；手动修订保持独立/);
+    f.get('确认整理阶段摘要').click(); await f.flush();
+    assert.deepEqual(f.calls, [{ type: 'stage', payload: { start: 1, end: 15 } }]);
+});
+
+test('manual stage selection shares stage ownership rules including stopped, deleted and invalid stages', t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } });
+    const later = entry({ id: 'slice-later', source: { start: 7, end: 9 } }), last = entry({ id: 'slice-last', source: { start: 10, end: 12 } });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [] } }); t.after(() => f.view.destroy());
+    f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 17 }, () => ({ mes: 'synthetic' })) } });
+    for (const status of ['active', 'excluded', 'deleted', 'invalid']) {
+        const overview = stage([one, two], { status });
+        f.render({ document: { ...f.state.document, entries: [one, two, later, last, overview] } });
+        assert.equal(f.get('整理阶段摘要').disabled, false);
+        f.get('整理阶段摘要').click();
+        assert.equal(f.get('阶段摘要开始楼层').value, '7'); assert.equal(f.get('阶段摘要结束楼层').value, '12');
+        f.get('取消阶段整理').click();
+        f.render({ document: { ...f.state.document, entries: [one, two, overview] } });
+        assert.equal(f.get('整理阶段摘要').disabled, true, `${status} parents must not appear as a new group`);
+    }
+    assert.equal(f.calls.length, 0);
+});
+
+test('stage controls reject singleton, disjoint, recent and locally invalid fine selections before dispatch', async t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two] } }); t.after(() => f.view.destroy());
+    assert.equal(f.get('整理阶段摘要').disabled, true, 'recent cutoff leaves only one eligible fine slice');
+    f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 14 }, () => ({ mes: 'synthetic' })) } });
+    f.get('整理阶段摘要').click();
+    assert.equal(f.get('确认整理阶段摘要').disabled, false);
+    f.get('阶段摘要结束楼层').value = '3'; f.get('阶段摘要结束楼层').emit('input');
+    assert.equal(f.get('确认整理阶段摘要').disabled, true);
+    f.get('忆幕').querySelector('.ym-stage-form').requestSubmit(); await f.flush(); assert.equal(f.calls.length, 0);
+    f.render({ invalidSourceIds: ['slice-b'] }); assert.equal(f.get('整理阶段摘要').disabled, true);
+    assert.equal(two.status, 'active', 'derived source invalidity does not mutate stored entries');
+    f.render({ invalidSourceIds: [], document: { ...f.state.document, entries: [one, { ...two, source: { start: 7, end: 9 } }] } });
+    assert.equal(f.get('整理阶段摘要').disabled, true, 'two isolated slices are not a continuous stage group');
+});
+
+test('stage grouping and invalidation do not detach an active fine editor mid-composition', t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), overview = stage([one, two]);
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two] } }); t.after(() => f.view.destroy());
+    f.get('编辑第 1–3 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '正在输入'; editor.focus();
+    const originalParent = editor.parentNode.parentNode.parentNode;
+    f.render({ document: { ...f.state.document, entries: [one, two, overview] } });
+    assert.equal(editor.parentNode.parentNode.parentNode, originalParent); assert.equal(f.document.activeElement, editor);
+    f.get('取消编辑').click();
+    const group = f.get('忆幕').querySelector('.ym-stage-children'); group.open = true;
+    f.get('编辑第 1–3 层').click(); const nestedEditor = f.get('编辑记忆内容'); nestedEditor.focus();
+    const nestedParent = nestedEditor.parentNode.parentNode.parentNode;
+    f.render({ document: { ...f.state.document, entries: [{ ...one, revision: 3 }, two, overview] } });
+    assert.equal(nestedEditor.parentNode.parentNode.parentNode, nestedParent); assert.equal(f.document.activeElement, nestedEditor);
+    assert.equal(group.open, true); assert.match(group.querySelector('summary').textContent, /编辑中的细摘要/);
+    f.get('取消编辑').click(); assert.equal(group.hidden, true);
+    assert.equal(f.get('忆幕').querySelector('.ym-list').children.length, 3);
+});
+
+test('stage automatic mode is initially off and persists only through explicit settings save', async t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    const toggle = f.get('自动整理阶段摘要'); assert.equal(toggle.checked, false); assert.equal(f.calls.length, 0);
+    toggle.checked = true; toggle.emit('change'); assert.equal(f.calls.length, 0);
+    f.get('保存设置').click(); await f.flush();
+    assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: true }, expectedRevision: 0 });
+});
+
+test('fine-summary recall defaults on but can be disabled without presenting unsupported original-text supplementation', async t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    const recall = f.get('按需回查细摘要'); assert.equal(recall.checked, true);
+    recall.checked = false; recall.emit('change'); f.get('保存设置').click(); await f.flush();
+    assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: false }, expectedRevision: 0 });
+    assert.doesNotMatch(f.get('忆幕').textContent, /原文自动补充/);
+});
+
+test('stage basis offers three separate units and suggests mode defaults without replacing a custom threshold', async t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    const basis = f.get('阶段整理依据'), threshold = f.get('阶段整理阈值');
+    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'floors', 'slices']); assert.equal(threshold.value, '6000');
+    basis.value = 'floors'; basis.emit('change'); assert.equal(threshold.value, '100');
+    basis.value = 'slices'; basis.emit('change'); assert.equal(threshold.value, '12');
+    threshold.value = '37'; threshold.emit('input'); basis.value = 'tokens'; basis.emit('change'); assert.equal(threshold.value, '37');
+    f.get('保存设置').click(); await f.flush();
+    assert.deepEqual(f.calls[0].payload.values, { stageBasis: 'tokens', stageThreshold: 37 });
 });
 
 test('deleted memories remain absent from active cards but expose an explicit undo instead of a permanent range ban', async t => {
@@ -293,6 +420,19 @@ test('the recent request view uses saved entry snapshots, only labels a request 
     assert.match(used.textContent, /不代表模型已接收/); assert.match(used.textContent, /134 token（估算）/);
 });
 
+test('the recent request view reports verified raw replacement and conservative budget without altering its snapshot', t => {
+    const lastUsed = { entries: [entry({ text: '请求核对时的记忆' })], tokens: 134, removedFloors: [1, 2, 3], recentFloors: [10, 11, 12, 13, 14],
+        requestTokens: 1234, responseTokens: 2000, contextTokens: 8192 };
+    const before = structuredClone(lastUsed), f = fixture({ lastUsed }); t.after(() => f.view.destroy());
+    const used = f.get('忆幕').querySelector('.ym-last-used');
+    assert.match(used.textContent, /本次请求替换 3 层旧原文，保留近期 5 层；聊天文件未改动/);
+    assert.match(used.textContent, /请求保守估算 1234 \+ 回复预留 2000 \/ 上下文 8192 token/);
+    assert.match(used.textContent, /不代表模型已接收/);
+    f.render({ document: { enabled: true, settings: {}, entries: [entry({ text: '后续人工修改' })] } });
+    assert.match(used.textContent, /请求核对时的记忆/); assert.doesNotMatch(used.textContent, /后续人工修改/);
+    assert.deepEqual(lastUsed, before); assert.equal(f.calls.length, 0);
+});
+
 test('host entries sit directly after Qianmu and before Send, share one callback, replace only owned IDs, and dispose cleanly', () => {
     const d = dom(), options = d.document.createElement('div'), menu = d.document.createElement('div'), qianmu = d.document.createElement('a');
     options.id = 'options'; menu.className = 'options-content'; qianmu.dataset.qmStMenu = 'true';
@@ -331,9 +471,10 @@ test('a late-created Qianmu menu entry is followed without a whole-page observer
 test('standalone manifest and styles stay within Yimu and include narrow-screen and reduced-motion handling', async () => {
     const root = new URL('../yimu/', import.meta.url);
     const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
+    const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, 'index.mjs'); assert.equal(manifest.version, '0.1.0');
+    assert.equal(manifest.js.split('?')[0], 'index.mjs'); assert.equal(manifest.version, pkg.version);
     assert.match(css, /max-width: 420px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

@@ -46,7 +46,7 @@
 .ym-switch:checked { background: var(--ym-accent); }
 .ym-switch:checked::after { transform: translateX(18px); background: var(--ym-surface); }
 .ym-switch:disabled { opacity: .45; }
-.ym-range, .ym-settings-form, .ym-edit-form, .ym-manual-form { display: grid; gap: 10px; }
+.ym-range, .ym-settings-form, .ym-edit-form, .ym-manual-form, .ym-stage-form { display: grid; gap: 10px; }
 .ym-range, .ym-edit-form { margin-top: 12px; }
 .ym-two-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .ym-field { display: grid; gap: 5px; min-width: 0; }
@@ -55,6 +55,8 @@
 .ym-settings-scope [aria-pressed="true"] { font-weight: 650; color: var(--ym-accent); border-color: var(--ym-accent); }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
+.ym-setting-boolean { align-items: center; }
+.ym-setting-boolean > .ym-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ym-follow { flex: 0 0 auto; }
 .ym-list { display: grid; gap: 9px; min-width: 0; }
 .ym-memory-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -67,6 +69,11 @@
 .ym-more-actions { display: grid; gap: 5px; margin-top: 4px; }
 .ym-more[open] { flex-basis: 100%; }
 .ym-candidate { border-top: 1px solid var(--ym-border); padding-top: 12px; margin-top: 12px; }
+.ym-stage { border-color: var(--ym-accent); }
+.ym-stage-children { margin-top: 12px; border-top: 1px solid var(--ym-border); padding-top: 10px; }
+.ym-stage-children > summary { font-size: 12px; opacity: .8; }
+.ym-fine-list { margin-top: 8px; }
+.ym-fine-list > .ym-card { background: transparent; }
 .ym-used-entry { border-top: 1px solid var(--ym-border); margin-top: 9px; padding-top: 9px; }
 .ym-menu-entry, .ym-send-entry { display: inline-flex; align-items: center; justify-content: center; gap: 9px; border: 0; padding: 5px 8px; margin: 0; color: var(--SmartThemeBodyColor, inherit); background: transparent; font: inherit; cursor: pointer; }
 .ym-menu-entry { justify-content: flex-start; width: 100%; min-height: 38px; text-align: left; }

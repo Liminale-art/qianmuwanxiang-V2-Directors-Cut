@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto';
 import { VERSION } from '../yimu/contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const FRONTEND = ['manifest.json', 'index.mjs', 'host.mjs', 'client.mjs', 'contract.mjs', 'core.mjs', 'runtime.mjs', 'view.mjs', 'style.css', 'logo.svg', 'LICENSE'];
-export const BACKEND = ['package.json', 'server-plugin.mjs', 'server-store.mjs', 'contract.mjs', 'LICENSE'];
+export const FRONTEND = ['manifest.json', 'index.mjs', 'host.mjs', 'budget.mjs', 'client.mjs', 'contract.mjs', 'stage-contract.mjs', 'layers.mjs', 'core.mjs', 'runtime.mjs', 'view.mjs', 'style.css', 'logo.svg', 'LICENSE'];
+export const BACKEND = ['package.json', 'server-plugin.mjs', 'server-store.mjs', 'contract.mjs', 'stage-contract.mjs', 'LICENSE'];
 export async function buildYimu(destination) {
     const output = path.resolve(destination);
     const stamp = { version: VERSION, files: {} };

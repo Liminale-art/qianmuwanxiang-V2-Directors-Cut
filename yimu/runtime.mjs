@@ -1,5 +1,7 @@
 import { bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt } from './core.mjs';
+import { nextStage, parseStage, stagePrompt } from './layers.mjs';
+import { stageSourceFromParents } from './stage-contract.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -148,6 +150,73 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 failedJobs.add(failedKey);
                 if (isCurrent(binding)) { state.error = error.message; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
             }
+        } finally {
+            if (jobs.get(key) === controller) jobs.delete(key);
+            if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) defer(() => startStage().catch(() => {}));
+            emit();
+        }
+    }
+
+    async function startStage({ force = false, start: first = 1, end: last = Infinity, entryId = null } = {}) {
+        if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot) return;
+        const binding = clone(state.snapshot.binding), key = bindingKey(binding);
+        if (jobs.has(key) || localStops.has(key)) return;
+        const initial = clone(state.document), defaults = clone(state.defaults);
+        const settings = effectiveSettings(initial, defaults);
+        if (!force && !settings.stageAuto) return;
+        const failedKey = `${key}:${initial.epoch}:stage`;
+        if (!force && failedJobs.has(failedKey)) return;
+        failedJobs.delete(failedKey);
+        const controller = new AbortController(); jobs.set(key, controller);
+        let processed = false, cursor = first;
+        try {
+            for (;;) {
+                if (disposed || controller.signal.aborted || generating || localStops.has(key)) break;
+                const snapshot = await host.snapshot();
+                if (!equalBinding(snapshot.binding, binding)) break;
+                const fresh = await api.read(binding); adopt(binding, fresh);
+                const document = clone(fresh.document);
+                for (const entry of document.entries) if (fresh.invalidSourceIds?.includes(entry.id) && entry.status === 'active') entry.status = 'invalid';
+                if (!fresh.sourceAvailable || !document.enabled || document.epoch !== initial.epoch || fresh.defaults.revision !== defaults.revision) break;
+                const batchSettings = { ...settings };
+                if (!settings.profileId) batchSettings.batch = Math.min(settings.batch, Math.max(256, Math.floor((snapshot.maxContext || 8192) * 0.45)));
+                let group;
+                if (entryId) {
+                    const entry = document.entries.find(e => e.id === entryId && e.kind === 'stage' && !['deleted', 'excluded'].includes(e.status));
+                    if (!entry) throw new Error('阶段摘要已变化，请刷新后重试');
+                    // Redo adopts CURRENT fine revisions only after verifying all still compressible.
+                    const refs = entry.source.parents.map(ref => ({ id: ref.id, revision: document.entries.find(e => e.id === ref.id)?.revision }));
+                    stageSourceFromParents(document, refs);
+                    group = { existing: entry, parents: refs.map(ref => document.entries.find(e => e.id === ref.id)) };
+                } else group = nextStage(document, batchSettings, { force, start: cursor, end: last, recentCutoff: snapshot.messages.length - settings.recent });
+                if (!group) {
+                    if (force && !processed && isCurrent(binding)) state.status = '没有可合并的连续细摘要；人工修订和近期原文保持原样。';
+                    break;
+                }
+                const refs = group.parents.map(e => ({ id: e.id, revision: e.revision }));
+                const source = stageSourceFromParents(document, refs);
+                const startFloor = source.ranges[0].start, endFloor = source.ranges.at(-1).end;
+                if (endFloor > snapshot.messages.length - settings.recent) throw new Error('此阶段涉及近期原文，本轮不压缩');
+                if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
+                const response = await host.generate(stagePrompt(group.parents, settings), { profileId: settings.profileId, model: settings.model, signal: controller.signal });
+                if (disposed || controller.signal.aborted || localStops.has(key)) break;
+                const latest = await api.read(binding); adopt(binding, latest);
+                if (!latest.document.enabled || latest.document.epoch !== initial.epoch || latest.defaults.revision !== defaults.revision) throw new Error('整理期间设置已改变，阶段结果未采用');
+                stageSourceFromParents(latest.document, refs); // Exact revisions, not just matching floor labels.
+                const entry = { ...parseStage(response, group.parents), id: group.existing?.id || id() };
+                const operation = { id: id(), type: group.existing ? 'redo' : 'append', expectedEpoch: initial.epoch, expectedDefaultsRevision: defaults.revision, entry };
+                if (group.existing) { operation.entryId = group.existing.id; operation.expectedRevision = group.existing.revision; }
+                const result = await change(binding, operation); processed = true;
+                if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
+                if (entryId || !isCurrent(binding)) break;
+                cursor = endFloor + 1;
+            }
+            if (processed && isCurrent(binding) && !controller.signal.aborted) state.status = '阶段整理已完成；细摘要和人工修订仍保留。';
+        } catch (error) {
+            if (!controller.signal.aborted && !disposed) {
+                failedJobs.add(failedKey);
+                if (isCurrent(binding)) { state.error = error.message; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
+            }
         } finally { if (jobs.get(key) === controller) jobs.delete(key); emit(); }
     }
 
@@ -158,6 +227,10 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const snapshot = await host.snapshot();
         if (!equalBinding(snapshot.binding, state.snapshot.binding)) { await refresh(); throw new Error('当前聊天已变化，请重新操作'); }
         const binding = clone(snapshot.binding), doc = clone(state.document), key = bindingKey(binding);
+        if (type === 'stage' || type === 'redo' && doc.entries.find(e => e.id === payload.entryId)?.kind === 'stage') {
+            if (jobs.has(key)) return false;
+            state.error = ''; emit(); defer(() => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null })); return true;
+        }
         if (type === 'summarize' || type === 'retry' || type === 'redo') {
             if (jobs.has(key)) return false;
             state.error = ''; emit(); defer(() => start({ force: true, entryId: type === 'redo' ? payload.entryId : null })); return true;
@@ -211,10 +284,10 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         try {
             const snapshot = await host.snapshot();
             if (!equalBinding(snapshot.binding, doc.binding)) return;
-            const plan = await buildPlan(doc, defaults, { ...snapshot, maxContext: contextSize || snapshot.maxContext }, { countTokens });
+            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
-            const result = host.inject(coreChat, plan, snapshot, type);
-            if (result.applied) prepared = { ...plan, generation: ticket, binding: clone(doc.binding) };
+            const result = host.prepare(coreChat, plan, snapshot, type);
+            if (result.prepared) prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch };
         } catch { host.clear(); /* Failure retains ST's unchanged original context. */ }
     }
 
@@ -230,12 +303,26 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             generating = false; prepared = null; host.clear();
             defer(() => refresh({ quiet: true, auto: true })); return;
         }
-        if (name === 'GENERATE_AFTER_DATA' || name === 'CHAT_COMPLETION_SETTINGS_READY') {
+        if (name === 'GENERATE_AFTER_DATA') {
+            if (args[1] || Array.isArray(args[0]?.prompt)) return; // ST also emits this intermediate event for chat completion.
+            // Text/instruct payloads do not expose a reliable message boundary. Keep them untouched.
+            if (prepared) { prepared = null; host.clear(); state.status = '当前请求不支持安全原文替换，本轮保留 ST 原上下文。'; emit(); }
+            return;
+        }
+        if (name === 'CHAT_COMPLETION_SETTINGS_READY') {
             if (!prepared || !isCurrent(prepared.binding)) return;
-            // Match complete entries in the actual assembled prompt, not retrieval candidates.
-            const contains = value => typeof value === 'string' ? value.includes(prepared.prompt)
-                : Array.isArray(value) ? value.some(contains) : value && typeof value === 'object' ? Object.values(value).some(contains) : false;
-            if (contains(args[0])) { state.lastUsed = { entries: clone(prepared.entries), tokens: prepared.tokens, estimated: prepared.estimated, status: 'prepared', sourceReplacement: false }; emit(); }
+            const pending = prepared;
+            const isCurrentRequest = () => !disposed && pending === prepared && pending.generation === generation && isCurrent(pending.binding)
+                && !localStops.has(bindingKey(pending.binding)) && state.document?.enabled && state.document.revision === pending.revision
+                && state.document.epoch === pending.epoch && state.defaults?.revision === pending.defaultsRevision && state.sourceAvailable;
+            const result = await host.applyPrepared(args[0], pending.session, { isCurrent: isCurrentRequest });
+            if (!isCurrentRequest()) return;
+            if (result.applied) {
+                state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared',
+                    sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
+                    requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
+                prepared = null; emit();
+            }
             return;
         }
         if (name === 'CHAT_RENAMED' && state.snapshot) {
@@ -255,7 +342,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
     }
 
     return {
-        state, refresh, action, start, intercept, event,
+        state, refresh, action, start, startStage, intercept, event,
         destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); host.clear(); },
         async settled() { await refreshing; },
     };

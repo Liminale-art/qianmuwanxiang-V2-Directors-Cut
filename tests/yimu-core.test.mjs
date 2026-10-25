@@ -84,7 +84,9 @@ test('generation selects only whole valid slices outside recent raw, with explic
     assert.equal(plan.estimated, true);
     assert.deepEqual(messages, before);
     doc.settings.budget = 1;
-    assert.equal((await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 })).prompt, '');
+    const tinyBudget = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    assert.equal(tinyBudget.settings.budget, 1, 'selection retains complete entries; final-payload admission enforces the actual budget');
+    assert.equal(tinyBudget.entries[0].text, doc.entries[0].text);
 });
 
 test('manual memories are source-free; excluded or mismatched summaries cannot be injected', async () => {

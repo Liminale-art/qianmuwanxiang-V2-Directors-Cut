@@ -1,22 +1,59 @@
 // A standalone ST surface. All story/model/user text is rendered as text, never HTML.
+import { stageGroups } from './layers.mjs';
+
 const SETTINGS = [
     ['recent', '近期原文层数', 'number', 1],
     ['trigger', '自动整理阈值（token）', 'number', 256],
     ['batch', '单次整理上限（token）', 'number', 256],
+    ['stageAuto', '自动整理阶段摘要', 'checkbox'],
+    ['stageBasis', '阶段整理依据', 'select'],
+    ['stageThreshold', '阶段整理阈值', 'number', 1],
+    ['recall', '按需回查细摘要', 'checkbox'],
     ['budget', '记忆预算（token，0 为自动）', 'number', 0],
     ['profileId', '整理连接', 'select'],
     ['model', '独立连接的模型（留空沿用连接）', 'text'],
     ['preference', '记忆整理偏好', 'textarea'],
 ];
+const STAGE_BASES = [{ id: 'tokens', name: '细摘要 token 数' }, { id: 'floors', name: '覆盖的原文楼层数' }, { id: 'slices', name: '细摘要份数' }];
+const STAGE_THRESHOLDS = { tokens: 6000, floors: 100, slices: 12 };
+const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
 
 export function sourceLabel(entry) {
     if (!entry?.source) return '手动补充';
+    if (entry.kind === 'stage') {
+        const ranges = [];
+        for (const range of [...(entry.source.ranges || [])].sort((a, b) => a.start - b.start)) {
+            const previous = ranges.at(-1);
+            if (previous && range.start <= previous.end + 1) previous.end = Math.max(previous.end, range.end);
+            else ranges.push({ start: range.start, end: range.end });
+        }
+        return `阶段摘要 · 第 ${ranges.map(range => range.start === range.end ? range.start : `${range.start}–${range.end}`).join('、')} 层`;
+    }
     return `第 ${entry.source.start}–${entry.source.end} 层`;
 }
 
 export function orderedEntries(entries = []) {
     return entries.filter(entry => entry.status !== 'deleted').slice().sort((a, b) =>
-        (a.source?.start ?? Infinity) - (b.source?.start ?? Infinity));
+        sourceStart(a) - sourceStart(b) || Number(b.kind === 'stage') - Number(a.kind === 'stage'));
+}
+
+export function groupMemoryEntries(entries = [], invalidSourceIds = []) {
+    const records = orderedEntries(entries).map(entry => entry.status === 'active' && invalidSourceIds.includes(entry.id) ? { ...entry, status: 'invalid' } : entry);
+    const byId = new Map(records.map(entry => [entry.id, entry])), assigned = new Set(), children = new Map();
+    for (let i = 0; i < records.length; i++) {
+        const stage = records[i];
+        if (stage.kind !== 'stage' || stage.status !== 'active') continue;
+        const parents = stage.source?.parents || [];
+        const valid = parents.length > 0 && parents.every(parent => {
+            const fine = byId.get(parent.id);
+            return fine?.kind === 'summary' && fine.revision === parent.revision && fine.status === 'active' && !fine.edited && !assigned.has(fine.id);
+        });
+        if (!valid) { records[i] = { ...stage, status: 'invalid' }; continue; }
+        const nested = parents.map(parent => byId.get(parent.id)).sort((a, b) => sourceStart(a) - sourceStart(b));
+        children.set(stage.id, nested);
+        for (const fine of nested) assigned.add(fine.id);
+    }
+    return records.filter(entry => !assigned.has(entry.id)).map(entry => ({ entry, children: children.get(entry.id) || [] }));
 }
 
 export function createView({ onAction, document = globalThis.document } = {}) {
@@ -48,7 +85,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
 
     let state = {}, opened = false, destroyed = false, returnFocus = null;
     let scopeKey = '', scopeGeneration = 0, localError = '', settingsGlobal = false;
-    const edits = new Map(), cards = new Map(), settingDrafts = [new Map(), new Map()], settingRevisions = [null, null];
+    const edits = new Map(), cards = new Map(), groups = new Map(), settingDrafts = [new Map(), new Map()], settingRevisions = [null, null], thresholdTouched = [false, false];
     const dialog = el('dialog', 'ym-dialog');
     dialog.setAttribute('aria-label', '忆幕');
     const shell = el('section', 'ym-shell');
@@ -122,27 +159,37 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         const input = type === 'textarea' ? textarea(label) : el(type === 'select' ? 'select' : 'input');
         input.setAttribute('aria-label', label);
         if (type !== 'textarea' && type !== 'select') input.type = type;
+        if (type === 'checkbox') input.className = 'ym-switch';
         if (min !== undefined) { input.min = String(min); input.step = '1'; }
-        input.addEventListener('input', () => {
-            setDraft(key, type === 'number' ? Number(input.value) : input.value);
+        const readInput = () => {
+            const value = type === 'checkbox' ? input.checked : type === 'number' ? Number(input.value) : input.value;
+            const index = Number(settingsGlobal), oldBasis = settingValue('stageBasis') || 'tokens';
+            const oldThreshold = Number(settingValue('stageThreshold'));
+            const customized = thresholdTouched[index] || (!settingsGlobal && Object.hasOwn(state.document?.settings || {}, 'stageThreshold')) || oldThreshold !== STAGE_THRESHOLDS[oldBasis];
+            setDraft(key, value);
+            if (key === 'stageThreshold') thresholdTouched[index] = true;
+            if (key === 'stageBasis' && value !== oldBasis && !customized) setDraft('stageThreshold', STAGE_THRESHOLDS[value]);
             updateFollow(key);
-        });
+            if (key === 'stageBasis') updateSettings();
+        };
+        input.addEventListener('input', readInput);
         // Some mobile selects emit only change.
-        if (type === 'select') input.addEventListener('change', () => {
-            setDraft(key, input.value); updateFollow(key);
-        });
+        if (type === 'select' || type === 'checkbox') input.addEventListener('change', readInput);
         const reset = button('跟随默认', () => {
+            if (key === 'stageThreshold') thresholdTouched[0] = false;
             setDraft(key, null); updateSettings();
         }, 'ym-small ym-follow');
         reset.setAttribute('aria-label', `${label}跟随默认`);
-        const row = el('div', 'ym-setting-row');
-        row.append(field(label, input), reset); settingsForm.append(row);
-        controls.set(key, { input, reset, type, min });
+        const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : ''}`);
+        const labelNode = field(label, input);
+        row.append(labelNode, reset); settingsForm.append(row);
+        controls.set(key, { input, reset, type, min, label: labelNode.children[0] });
     }
     const saveSettings = button('保存设置', () => settingsForm.requestSubmit(), 'ym-primary');
     const cancelSettings = button('取消设置修改', () => {
         const index = Number(settingsGlobal);
         settingDrafts[index].clear(); settingRevisions[index] = null;
+        thresholdTouched[index] = false;
         localError = ''; updateSettings(); updateStatus();
     });
     const settingsActions = el('div', 'ym-actions');
@@ -161,7 +208,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         if (await dispatch('settings', { global: currentGlobal, values, expectedRevision: settingRevisions[Number(currentGlobal)] }, saveSettings)) {
             // Keep edits typed after the save started.
             for (const [key, value] of Object.entries(values)) if (draft.get(key) === value) draft.delete(key);
-            if (!draft.size) settingRevisions[Number(currentGlobal)] = null;
+            if (!draft.size) { settingRevisions[Number(currentGlobal)] = null; thresholdTouched[Number(currentGlobal)] = false; }
             updateSettings();
         }
     });
@@ -173,7 +220,31 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     const addManual = button('手动补充', () => {
         manualForm.hidden = false; manualInput.focus();
     });
-    controlsRow.append(summarize, retry, addManual);
+    const stageButton = button('整理阶段摘要', () => {
+        const eligible = stageEligible();
+        if (!eligible.length) return;
+        stageStart.value = String(eligible[0].source.start); stageEnd.value = String(eligible.at(-1).source.end);
+        stageForm.hidden = false; updateStageRange(); stageStart.focus();
+    });
+    controlsRow.append(summarize, retry, stageButton, addManual);
+    const stageForm = el('form', 'ym-card ym-stage-form'); stageForm.hidden = true;
+    const stageStart = el('input'), stageEnd = el('input');
+    for (const input of [stageStart, stageEnd]) { input.type = 'number'; input.min = '1'; input.step = '1'; input.required = true; }
+    stageStart.setAttribute('aria-label', '阶段摘要开始楼层'); stageEnd.setAttribute('aria-label', '阶段摘要结束楼层');
+    const stageFields = el('div', 'ym-two-columns');
+    stageFields.append(field('开始楼层', stageStart), field('结束楼层', stageEnd));
+    const stageHint = el('p', 'ym-muted');
+    const stageSubmit = button('确认整理阶段摘要', () => stageForm.requestSubmit(), 'ym-primary');
+    const stageActions = el('div', 'ym-actions');
+    stageActions.append(stageSubmit, button('取消阶段整理', () => { stageForm.hidden = true; }));
+    stageForm.append(el('h3', '', '整理阶段摘要'), stageFields, stageHint, stageActions);
+    for (const input of [stageStart, stageEnd]) input.addEventListener('input', updateStageRange);
+    stageForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!updateStageRange()) return;
+        const start = Number(stageStart.value), end = Number(stageEnd.value);
+        if (await dispatch('stage', { start, end }, stageSubmit)) stageForm.hidden = true;
+    });
     const manualForm = el('form', 'ym-card ym-manual-form');
     manualForm.hidden = true;
     const manualInput = textarea('手动补充内容');
@@ -200,7 +271,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     lastUsed.append(el('summary', '', '最近一次请求中的记忆'));
     const usedBody = el('div', 'ym-used-body'); lastUsed.append(usedBody);
     scroller.insertBefore(context, status);
-    main.append(enableCard, settings, controlsRow, manualForm, list, empty, deleted, lastUsed);
+    main.append(enableCard, settings, controlsRow, stageForm, manualForm, list, empty, deleted, lastUsed);
 
     async function dispatch(type, payload = {}, sourceButton) {
         if (destroyed || sourceButton?.disabled) return false;
@@ -235,6 +306,8 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         if (rangeForm.hidden) enabled.checked = Boolean(state.document?.enabled && !state.paused);
         const canSummarize = available && state.document.enabled && !state.paused && state.sourceAvailable !== false;
         summarize.disabled = !canSummarize || Boolean(state.busy);
+        stageButton.disabled = !canSummarize || Boolean(state.busy) || stageEligible().length === 0;
+        updateStageRange();
         retry.hidden = !(state.error && state.document?.enabled);
         retry.disabled = !canSummarize || Boolean(state.busy);
         refresh.disabled = Boolean(state.loading);
@@ -245,6 +318,11 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         const index = Number(settingsGlobal);
         if (!settingDrafts[index].size) settingRevisions[index] = settingsGlobal ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0;
         settingDrafts[index].set(key, value);
+    }
+    function settingValue(key) {
+        const defaults = state.defaults?.values || {}, local = state.document?.settings || {}, draft = settingDrafts[Number(settingsGlobal)];
+        const raw = draft.has(key) ? draft.get(key) : settingsGlobal ? defaults[key] : local[key];
+        return raw ?? defaults[key] ?? ({ stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true }[key]) ?? '';
     }
     function updateFollow(key) {
         const { reset } = controls.get(key);
@@ -257,20 +335,38 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     function updateSettings() {
         localSettingsButton.setAttribute('aria-pressed', String(!settingsGlobal));
         globalSettingsButton.setAttribute('aria-pressed', String(settingsGlobal));
-        const defaults = state.defaults?.values || {}, local = state.document?.settings || {};
         for (const [key, control] of controls) {
-            const draft = settingDrafts[Number(settingsGlobal)], raw = draft.has(key) ? draft.get(key) : settingsGlobal ? defaults[key] : local[key];
-            const value = raw ?? defaults[key] ?? '';
+            const value = settingValue(key);
             if (control.type === 'select') {
-                const options = [{ id: '', name: '沿用当前 ST 连接' }, ...(state.profiles || [])];
+                const options = key === 'stageBasis' ? [...STAGE_BASES] : [{ id: '', name: '沿用当前 ST 连接' }, ...(state.profiles || [])];
                 if (value && !options.some(profile => profile.id === value)) options.push({ id: value, name: '原连接当前不可用' });
                 control.input.replaceChildren(...options.map(profile => {
                     const option = el('option', '', profile.name || profile.id); option.value = profile.id; return option;
                 }));
             }
-            if (document.activeElement !== control.input) control.input.value = String(value);
+            if (control.type === 'checkbox') control.input.checked = Boolean(value);
+            else if (document.activeElement !== control.input) control.input.value = String(value);
+            if (key === 'stageThreshold') control.label.textContent = `阶段整理阈值（${{ tokens: 'token', floors: '层', slices: '份' }[settingValue('stageBasis')] || 'token'}）`;
             updateFollow(key);
         }
+    }
+    function stageEligible(start = 1, end = Infinity) {
+        if (!state.document || !state.snapshot) return [];
+        const recent = state.document.settings?.recent ?? state.defaults?.values?.recent ?? 5;
+        const entries = state.document.entries.map(entry => entry.status === 'active' && state.invalidSourceIds?.includes(entry.id)
+            ? { ...entry, status: 'invalid' } : entry);
+        return stageGroups({ ...state.document, entries }, { start, end: Math.min(end, state.snapshot.messages.length - recent) }).flat();
+    }
+    function updateStageRange() {
+        const start = Number(stageStart.value), end = Number(stageEnd.value);
+        const bounds = Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end;
+        const selected = bounds ? stageEligible(start, end) : [];
+        const valid = selected.length >= 2 && selected[0].source.start === start && selected.at(-1).source.end === end;
+        stageHint.textContent = valid
+            ? `将整理 ${selected.length} 份细摘要；手动修订保持独立。`
+            : '请选择至少两份连续细摘要的完整起止楼层，不拆分已有片段。';
+        stageSubmit.disabled = !valid || !state.document?.enabled || Boolean(state.paused || state.loading || state.busy) || state.sourceAvailable === false;
+        return valid;
     }
     function entryAction(entry, action, extra = {}, sourceButton) {
         return dispatch('entry', { entryId: entry.id, expectedRevision: entry.revision, action, ...extra }, sourceButton);
@@ -279,11 +375,12 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         const signature = JSON.stringify(entry);
         if (existing?.signature === signature) return existing;
         const card = existing?.node || el('article', 'ym-card ym-memory');
+        card.className = `ym-card ym-memory${entry.kind === 'stage' ? ' ym-stage' : ''}`;
         card.dataset.entryId = entry.id;
         const editing = edits.get(entry.id);
         // Replace saved text / conflict choices independently of an active editor.
         // Keeping the editor connected preserves focus, IME and unsaved revisions.
-        for (const child of [...card.children]) if (child !== editing?.form) child.remove();
+        for (const child of [...card.children]) if (child !== editing?.form && child !== groups.get(entry.id)?.node) child.remove();
         const content = el('div', 'ym-memory-content');
         card.insertBefore(content, card.children[0] || null);
         const top = el('div', 'ym-memory-top');
@@ -291,7 +388,10 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         if (entry.edited) top.append(el('span', 'ym-muted', '已手动修订'));
         if (entry.status === 'excluded') top.append(el('span', 'ym-muted', '暂不使用'));
         content.append(top);
-        if (entry.status === 'invalid') content.append(el('p', 'ym-inline-warning', entry.edited ? '原文已变化，人工修订已保留，暂不使用。' : '原文已变化，此条记忆暂不使用。'));
+        if (entry.status === 'invalid') {
+            const reason = entry.kind === 'stage' ? '所含细摘要已变化' : '原文已变化';
+            content.append(el('p', 'ym-inline-warning', entry.edited ? `${reason}，人工修订已保留，暂不使用。` : `${reason}，此条记忆暂不使用。`));
+        }
         const text = el('p', 'ym-memory-text', entry.text); content.append(text);
         const actions = el('div', 'ym-actions ym-entry-actions');
         const edit = button('编辑', () => startEdit(entry, card));
@@ -360,23 +460,47 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         card.querySelector('.ym-entry-actions')?.setAttribute('hidden', '');
     }
     function renderEntries() {
-        // Source checks can invalidate a slice before the server acknowledges the
-        // corresponding status write. Reflect that fact without mutating the document.
-        const entries = orderedEntries(state.document?.entries).map(entry =>
-            entry.status === 'active' && state.invalidSourceIds?.includes(entry.id) ? { ...entry, status: 'invalid' } : entry);
+        const tree = groupMemoryEntries(state.document?.entries, state.invalidSourceIds);
+        const entries = tree.flatMap(group => [group.entry, ...group.children]);
         const present = new Set();
+        const hasEditor = node => [...edits.values()].some(edit => {
+            for (let current = edit.form; current; current = current.parentNode) if (current === node) return true;
+            return false;
+        });
+        const place = (node, parent, index) => {
+            // A newly created/invalidated stage must not detach a focused fine editor.
+            // Its grouping catches up when editing finishes, not in the middle of IME input.
+            if (node.isConnected && node.parentNode !== parent && hasEditor(node)) return;
+            if (parent.children[index] !== node) parent.insertBefore(node, parent.children[index] || null);
+        };
         for (const entry of entries) {
             present.add(entry.id);
             const item = renderCard(entry, cards.get(entry.id));
             cards.set(entry.id, item);
-            // Re-append only when order differs; moving a focused editor would blur it.
-            const wantedIndex = entries.indexOf(entry);
-            if (list.children[wantedIndex] !== item.node) list.insertBefore(item.node, list.children[wantedIndex] || null);
+        }
+        for (let index = 0; index < tree.length; index++) {
+            const group = tree[index], item = cards.get(group.entry.id);
+            place(item.node, list, index);
+            if (group.entry.kind !== 'stage') continue;
+            let nested = groups.get(group.entry.id);
+            if (!nested && group.children.length) {
+                const node = el('details', 'ym-stage-children'), title = el('summary'), body = el('div', 'ym-list ym-fine-list');
+                node.append(title, body); nested = { node, title, body }; groups.set(group.entry.id, nested); item.node.append(node);
+            }
+            if (nested) for (let i = 0; i < group.children.length; i++) place(cards.get(group.children[i].id).node, nested.body, i);
         }
         for (const [id, item] of cards) if (!present.has(id)) {
             // A remote deletion must not erase a draft still being edited locally.
-            if (edits.has(id)) continue;
+            if (hasEditor(item.node)) continue;
             item.node.remove(); cards.delete(id);
+        }
+        for (const [id, group] of groups) {
+            const active = tree.some(item => item.entry.id === id && item.children.length > 0);
+            const count = group.body.children.length;
+            group.title.textContent = `${active ? '细摘要' : '编辑中的细摘要'}（${count}）`;
+            group.node.hidden = !count;
+            if (!active && count && hasEditor(group.node)) group.node.open = true;
+            if (!present.has(id) && !hasEditor(group.node)) { group.node.remove(); groups.delete(id); }
         }
         empty.hidden = entries.length > 0;
         const removed = (state.document?.entries || []).filter(entry => entry.status === 'deleted');
@@ -396,6 +520,10 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         usedBody.replaceChildren();
         if (!use) { usedBody.append(el('p', 'ym-muted', '暂无可核对的请求记录。')); return; }
         usedBody.append(el('p', 'ym-muted', '仅记录已核对的请求上下文，不代表模型已接收。'));
+        if (Array.isArray(use.removedFloors) && Array.isArray(use.recentFloors)) usedBody.append(el('p', 'ym-muted',
+            `本次请求替换 ${use.removedFloors.length} 层旧原文，保留近期 ${use.recentFloors.length} 层；聊天文件未改动。`));
+        if ([use.requestTokens, use.contextTokens, use.responseTokens].every(Number.isFinite)) usedBody.append(el('p', 'ym-muted',
+            `请求保守估算 ${use.requestTokens} + 回复预留 ${use.responseTokens} / 上下文 ${use.contextTokens} token`));
         const usedEntries = use.entries || (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id)).filter(Boolean);
         for (const entry of usedEntries) {
             const item = el('div', 'ym-used-entry'); item.append(el('strong', '', sourceLabel(entry)), el('p', 'ym-memory-text', entry.text)); usedBody.append(item);
@@ -409,13 +537,16 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         if (key !== scopeKey) {
             scopeKey = key; scopeGeneration++;
             for (const item of cards.values()) item.node.remove();
-            cards.clear(); edits.clear(); settingDrafts[0].clear(); settingDrafts[1].clear();
+            cards.clear(); edits.clear(); groups.clear(); settingDrafts[0].clear(); settingDrafts[1].clear();
             settingRevisions[0] = settingRevisions[1] = null;
-            rangeForm.hidden = true; manualForm.hidden = true; manualInput.value = ''; localError = '';
+            thresholdTouched[0] = thresholdTouched[1] = false;
+            rangeForm.hidden = true; stageForm.hidden = true; manualForm.hidden = true; manualInput.value = ''; localError = '';
             scroller.scrollTop = 0;
         }
         chatName.textContent = state.snapshot?.name || '请选择单人聊天';
-        updateStatus(); updateControls(); updateSettings(); renderEntries(); updateUsed();
+        updateStatus(); updateControls(); updateSettings(); renderEntries();
+        if (!stageForm.hidden) updateStageRange();
+        updateUsed();
     }
     function open() {
         if (destroyed || opened) return;
@@ -445,7 +576,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; dialog.remove(); cards.clear(); edits.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

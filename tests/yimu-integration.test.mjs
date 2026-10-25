@@ -12,7 +12,7 @@ import {createHost, MEMORY_PROMPT_KEY} from '../yimu/host.mjs';
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Integration.png', file: 'Synthetic-chat', integrity: 'integration_identity'};
 const messages = Array.from({length: 7}, (_, i) => ({name: i % 2 ? '角色' : '用户', is_user: !(i % 2),
-    mes: `合成原文第 ${i + 1} 层，只有已告知的事实才是角色所知。`, send_date: `2026-10-25T10:0${i}:00.000Z`}));
+    mes: `合成原文第 ${i + 1} 层。` + '只有已告知的事实才是角色所知。重要经历保留，未告知的秘密不推定知情。'.repeat(20), send_date: `2026-10-25T10:0${i}:00.000Z`}));
 const deferredValue = () => {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -55,7 +55,10 @@ async function fixture(t) {
     };
     const context = {
         groupId: null, characterId: 0, characters: [{name: 'Integration', avatar: binding.avatar}],
-        chatId: binding.file, chatMetadata: {integrity: binding.integrity}, chat: clone(messages), maxContext: 8192,
+        chatId: binding.file, chatMetadata: {integrity: binding.integrity}, chat: clone(messages), maxContext: 65536,
+        mainApi: 'openai', name1: '用户',
+        chatCompletionSettings: {chat_completion_source: 'custom', openai_max_context: 65536, openai_max_tokens: 1024, names_behavior: 0},
+        getChatCompletionModel: () => 'fixture-model', getTokenCountAsync: async text => Math.ceil(text.length / 3),
         setExtensionPrompt(key, prompt) { prompts.set(key, prompt); },
         async generateRaw({prompt}) { generated++; return model(prompt); },
     };
@@ -74,11 +77,18 @@ async function fixture(t) {
         await controller.refresh();
         await controller.action('enable', {enabled: true, range: {start: 1, end: context.chat.length, total: context.chat.length}});
     };
-    const inject = async () => {
+    const inject = async ({finish = true, transform = null} = {}) => {
         await controller.event('GENERATION_STARTED', ['normal', {}, false]);
         const coreChat = clone(context.chat).map((message, index) => ({...message, index}));
-        await controller.intercept(coreChat, 8192, () => {}, 'normal');
-        return {coreChat, prompt: prompts.get(MEMORY_PROMPT_KEY)};
+        await controller.intercept(coreChat, 65536, () => {}, 'normal');
+        const payload = {type: 'normal', model: 'fixture-model', chat_completion_source: 'custom', max_tokens: 1024,
+            messages: [{role: 'system', content: '合成角色设定'}, ...coreChat.map(message => ({role: message.is_user ? 'user' : 'assistant', content: message.mes}))]};
+        if (transform) transform(payload);
+        const originalPayload = clone(payload);
+        await controller.event('GENERATE_AFTER_DATA', [{prompt: payload.messages}, false]);
+        if (finish) await controller.event('CHAT_COMPLETION_SETTINGS_READY', [payload]);
+        const prompt = payload.messages.find(message => message.content.includes('<yimu_memory>'))?.content || '';
+        return {coreChat, prompt, payload, originalPayload};
     };
     return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject,
         prompts, model: value => { model = value; }, generated: () => generated};
@@ -94,10 +104,11 @@ test('single-chat loop: explicit enable, fixture summary, durable save, next pro
     const saved = (await f.api.read(binding)).document;
     assert.equal(saved.entries.length, 1);
     assert.deepEqual([saved.entries[0].source.start, saved.entries[0].source.end], [1, 2]);
-    const {coreChat, prompt} = await f.inject();
+    const {coreChat, prompt, payload} = await f.inject();
     assert.ok(prompt.includes(saved.entries[0].text));
-    assert.equal(coreChat.length, messages.length, 'unreserved ST context never removes original floors');
-    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [{messages: [{role: 'system', content: prompt}]}]);
+    assert.equal(coreChat.length, messages.length, 'interception retains the original core chat');
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
+    assert.deepEqual(payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
     assert.equal(f.controller.state.lastUsed.entries.length, 1);
     await f.controller.action('edit', {entryId: saved.entries[0].id, text: '人工确认的合成修订，不允许自动覆盖。'});
     assert.equal((await f.api.read(binding)).document.entries[0].edited, true);
@@ -288,19 +299,65 @@ test('leaving the loaded single chat for a group or home page clears its visible
 test('latest-request diagnostics require the complete final memory payload and retain an immutable used snapshot', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();
-    const first = await f.inject();
-    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [{messages: [{role: 'system', content: first.prompt}]}]);
+    await f.inject();
     assert.equal(f.controller.state.lastUsed.entries.length, 1);
-    const second = await f.inject();
+    const second = await f.inject({finish: false});
     assert.equal(f.controller.state.lastUsed, null, 'new foreground generation clears the preceding request record');
-    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [{messages: [{role: 'user', content: '最终请求不包含忆幕资料'}]}]);
+    const unsupported = {messages: [{role: 'user', content: '最终请求不包含忆幕资料'}]};
+    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [unsupported]);
     assert.equal(f.controller.state.lastUsed, null);
-    await f.controller.event('GENERATE_AFTER_DATA', [{prompt: second.prompt.slice(0, -20)}]);
+    await f.controller.event('GENERATE_AFTER_DATA', [{prompt: '文本模式请求没有可验证边界'}]);
     assert.equal(f.controller.state.lastUsed, null, 'truncated or candidate-only content is not complete prompt proof');
-    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [{messages: [{role: 'system', content: second.prompt}]}]);
+    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [second.payload]);
+    assert.equal(f.controller.state.lastUsed, null, 'text-mode fallback expires the prepared session');
+    await f.inject();
     const used = clone(f.controller.state.lastUsed);
     assert.equal(used.entries.length, 1);
     await f.controller.action('edit', {entryId: used.entries[0].id, text: '请求组装之后的新修订'});
     assert.equal(f.controller.state.document.entries[0].text, '请求组装之后的新修订');
     assert.deepEqual(f.controller.state.lastUsed, used, 'diagnostics keep the actual earlier request snapshot, not the latest edited row');
+});
+
+test('insufficient final-request capacity leaves every original message and latest-use diagnostics untouched', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    f.context.chatCompletionSettings.openai_max_context = 1100;
+    const result = await f.inject();
+    assert.deepEqual(result.payload, result.originalPayload);
+    assert.equal(result.prompt, '');
+    assert.equal(f.controller.state.lastUsed, null);
+    assert.deepEqual(f.context.chat, messages);
+});
+
+test('disabling after interception expires the prepared final payload without removing source text', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    const result = await f.inject({finish: false});
+    await f.controller.action('enable', {enabled: false});
+    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [result.payload]);
+    assert.deepEqual(result.payload, result.originalPayload);
+    assert.equal(f.controller.state.lastUsed, null);
+});
+
+test('fine summaries become a durable stage and the next actual request substitutes it only for covered old floors', async t => {
+    const f = await fixture(t);
+    f.model(async () => JSON.stringify({slices: [
+        {start: 1, end: 1, text: '第一层保留的重要相遇。'},
+        {start: 2, end: 2, text: '第二层形成了尚未履行的约定。'},
+    ]}));
+    await f.enable(); await f.flush();
+    f.model(async () => JSON.stringify({text: '相遇之后形成了尚未履行的约定。'}));
+    await f.controller.action('stage', {start: 1, end: 2}); await f.flush();
+    const saved = (await f.api.read(binding)).document;
+    assert.equal(saved.entries.filter(entry => entry.kind === 'summary').length, 2);
+    const stage = saved.entries.find(entry => entry.kind === 'stage');
+    assert.ok(stage);
+    await f.controller.action('settings', {global: true, values: {recall: false}});
+    const result = await f.inject();
+    assert.ok(result.prompt.includes(stage.text));
+    assert.ok(!result.prompt.includes(saved.entries[0].text));
+    assert.deepEqual(f.controller.state.lastUsed.entries.map(entry => entry.id), [stage.id]);
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
+    assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
+    assert.deepEqual(f.context.chat, messages, 'original ST chat is never replaced or mutated');
 });
