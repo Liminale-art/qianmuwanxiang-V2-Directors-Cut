@@ -66,7 +66,11 @@ export function captureCore(coreChat, source, { type = 'normal', namesBehavior =
         const external = Boolean(raw.extra?.file || raw.extra?.files || raw.extra?.media?.length || raw.extra?.image || raw.extra?.video || raw.extra?.audio);
         processed.push({ floor, request, external });
     }
-    return { processed };
+    const hiddenFloors = source.messages.flatMap((message, index) => message.is_system && typeof message.mes === 'string'
+        && !message.extra?.tool_invocations && !message.tool_calls && !message.tool_call_id
+        && !message.extra?.file && !message.extra?.files && !message.extra?.media?.length
+        && !message.extra?.image && !message.extra?.video && !message.extra?.audio ? [index + 1] : []);
+    return { processed, hiddenFloors };
 }
 
 function mapping(messages, processed) {
@@ -93,7 +97,7 @@ function mapping(messages, processed) {
     return { found, ambiguous };
 }
 
-function entryFloors(entry, sourceHashes, visible, cutoff) {
+function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     if (!entry || typeof entry.id !== 'string' || typeof entry.text !== 'string' || !entry.text.trim()) return null;
     if (!entry.source) return entry.kind === 'manual' ? [] : null;
     // Inherited floor numbers never grant permission to remove current raw text.
@@ -105,7 +109,7 @@ function entryFloors(entry, sourceHashes, visible, cutoff) {
         if (!sourceMatches(range, sourceHashes) || range.end > cutoff || range.start <= previous) return null;
         for (let floor = range.start; floor <= range.end; floor++) {
             const item = visible.get(floor);
-            if (!item || item.external) return null;
+            if (!item && !hidden.has(floor) || item?.external) return null;
             result.push(floor);
         }
         previous = range.end;
@@ -143,7 +147,7 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
 
 /** Pure transaction planner. The caller alone commits messages after its final source/lifecycle guard. */
 export async function buildBudgetedMessages(payload, {
-    entries, processed, sourceHashes, recent = 5, budget = 0, contextTokens, responseTokens,
+    entries, processed, sourceHashes, hiddenFloors = [], recent = 5, budget = 0, contextTokens, responseTokens,
 }, { countTokens, isCurrent = () => true, countTimeoutMs = 1200 } = {}) {
     const unsupported = payloadSupport(payload);
     if (unsupported) return failure(unsupported);
@@ -158,6 +162,9 @@ export async function buildBudgetedMessages(payload, {
     if (recentFloors.some(floor => map.ambiguous.has(floor) || !map.found.has(floor))) return failure('recent-originals-missing');
     const cutoff = recentItems[0].floor - 1;
     const visible = new Map(processed.map(item => [item.floor, item]));
+    if (!Array.isArray(hiddenFloors) || !hiddenFloors.every(floor => Number.isSafeInteger(floor) && floor >= 1
+        && floor <= sourceHashes.length && !visible.has(floor))) return failure('unverified-hidden-floors');
+    const hidden = new Set(hiddenFloors);
     const firstPresent = Math.min(...map.found.keys());
     // Native truncation removes an old prefix. A hole inside retained history is
     // not provably truncation and must not cause partial source replacement.
@@ -170,7 +177,7 @@ export async function buildBudgetedMessages(payload, {
         if (selectedIds.has(entry?.id)) continue;
         if (entry?.kind === 'excerpt' && !selected.some(parent => parent.id === entry.parent?.id && parent.revision === entry.parent?.revision
             || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent?.id && ref.revision === entry.parent?.revision))) continue;
-        const floors = entryFloors(entry, sourceHashes, visible, cutoff);
+        const floors = entryFloors(entry, sourceHashes, visible, cutoff, hidden);
         if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) continue;
         const nextRemoved = new Set(removed);
         const actualFloors = floors.filter(floor => map.found.has(floor));

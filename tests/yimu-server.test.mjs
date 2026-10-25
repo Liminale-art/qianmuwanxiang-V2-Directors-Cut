@@ -379,10 +379,10 @@ test('stage writes require defaults revision, current raw fingerprints, and excl
     await assert.rejects(f.store.change(f.request, binding, {...op, id: 'stale_raw', type: 'redo', entryId: 'stage_1', expectedRevision: 1}), {code: 'yimu_source_changed'});
 });
 
-test('schema 1 reads are non-mutating and first actual write preserves byte-exact legacy backup before upgrading', async t => {
+for (const schema of [1, 5]) test(`schema ${schema} reads are non-mutating and first actual write preserves byte-exact legacy backup before upgrading`, async t => {
     const f = await fixture(t), folder = path.join(f.account, '.yimu');
     await fs.mkdir(folder);
-    const legacy = {...createDocument(binding), schema: 1};
+    const legacy = {...createDocument(binding), schema}; delete legacy.autoSummary;
     const envelope = value => Buffer.from(JSON.stringify({schema: 1, value, checksum: createHash('sha256').update(JSON.stringify(value)).digest('hex')}));
     const file = path.join(folder, chatStorageName(binding)), original = envelope(legacy);
     await fs.writeFile(file, original);
@@ -391,16 +391,16 @@ test('schema 1 reads are non-mutating and first actual write preserves byte-exac
     assert.deepEqual(await fs.readdir(folder), [chatStorageName(binding)]);
     await f.append('migrated');
     assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).value.schema, SCHEMA);
-    assert.deepEqual(await fs.readFile(`${file}.schema1.bak`), original);
-    const backup = await fs.stat(`${file}.schema1.bak`);
+    assert.deepEqual(await fs.readFile(`${file}.schema${schema}.bak`), original);
+    const backup = await fs.stat(`${file}.schema${schema}.bak`);
     assert.equal(backup.mode & 0o200, 0, 'legacy snapshot is created read-only');
     await f.append('later');
-    assert.deepEqual(await fs.readFile(`${file}.schema1.bak`), original, 'later saves never rewrite rollback material');
+    assert.deepEqual(await fs.readFile(`${file}.schema${schema}.bak`), original, 'later saves never rewrite rollback material');
     const values = {...DEFAULTS}; delete values.stageAuto; delete values.stageBasis; delete values.stageThreshold; delete values.recall;
-    const oldDefaults = envelope({schema: 1, revision: 0, operations: [], receipts: {}, values});
+    const oldDefaults = envelope({schema, revision: 0, operations: [], receipts: {}, values});
     await fs.writeFile(path.join(folder, 'defaults.json'), oldDefaults);
     await f.store.defaults(f.request, {id: 'upgrade_defaults', expectedRevision: 0, values: {recent: 9}});
-    assert.deepEqual(await fs.readFile(path.join(folder, 'defaults.json.schema1.bak')), oldDefaults);
+    assert.deepEqual(await fs.readFile(path.join(folder, `defaults.json.schema${schema}.bak`)), oldDefaults);
     assert.equal((await f.store.read(f.request, binding)).defaults.values.recall, true);
 });
 

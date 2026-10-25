@@ -36,7 +36,7 @@ function origin(value) {return value===null?null:validateOrigin(requireObject(va
 function initialRange(value) {
     if(value===null)return null;requireObject(value);
     if(!integer(value.start)||value.start<1||!integer(value.end)||!integer(value.total)||value.end>value.total
-        ||value.end<value.start&&!(value.start===1&&value.end===0&&value.total===0))fail('忆幕备份初始整理范围无效');
+        ||value.end<value.start&&!(value.start===1&&value.end===0))fail('忆幕备份初始整理范围无效');
     return {start:value.start,end:value.end,total:value.total};
 }
 function fields(value) {
@@ -108,7 +108,8 @@ export function portableDocument(value) {
     requireObject(value.settings);
     const settings=validateSettings(Object.fromEntries(Object.entries(value.settings).filter(([key])=>safeSettings.has(key))));
     const result={schema:SCHEMA,revision:value.revision,epoch:value.epoch,configRevision:value.configRevision,
-        binding:normalizeBinding(value.binding),enabled:value.enabled,settings,initialRange:initialRange(value.initialRange),entries:value.entries.map(entry)};
+        binding:normalizeBinding(value.binding),enabled:value.enabled,autoSummary:value.schema<6?value.enabled:value.autoSummary,
+        settings,initialRange:initialRange(value.initialRange),entries:value.entries.map(entry)};
     if(value.lineage!=null)result.lineage=validateLineage(value.lineage);
     const archived=companionArchive(value);if(archived.length)result.archivedCompanion=archived;
     // Validate cross-entry identity without retaining compatibility/runtime extras.

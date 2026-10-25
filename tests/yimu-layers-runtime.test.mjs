@@ -33,6 +33,7 @@ async function fixture(t, {floors = 11, fine = 6} = {}) {
         defaults: op => store.defaults(request, op), rename: (old, next) => store.rename(request, old, next)};
     let document = (await api.change(binding, {id: 'seed_enable', type: 'enable', expectedRevision: 0, enabled: true,
         range: {start: 1, end: floors, total: floors}})).document;
+    document = (await api.change(binding, {id: 'seed_auto', type: 'autoSummary', expectedRevision: document.configRevision, value: true})).document;
     const hashes = await fingerprintMessages(messages);
     for (let floor = 1; floor <= fine; floor++) {
         document = (await api.change(binding, {id: `seed_${floor}`, type: 'append', expectedEpoch: document.epoch,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createView, mountEntries, orderedEntries, sourceLabel, groupMemoryEntries, shortcutStatus } from '../yimu/view.mjs';
 import { boot } from '../yimu/index.mjs';
+import { createApiSettings } from '../yimu/api-settings.mjs';
 
 // Isolated DOM/event fixture. It proves operations and retained drafts, not layout or a live ST session.
 function dom() {
@@ -20,7 +21,10 @@ function dom() {
         get isConnected() { return this === document.body || this.parentNode?.isConnected === true; }
         set textContent(text) { this._text = String(text); for (const node of this.children) node.parentNode = null; this.children = []; }
         get textContent() { return this._text + this.children.map(node => node.textContent).join(''); }
-        set innerHTML(_) { throw Error('Untrusted markup must not be parsed'); }
+        set innerHTML(value) {
+            if (this.className !== 'ym-icon' || !value.startsWith('<svg ') || /script|onerror|javascript:/i.test(value)) throw Error('Untrusted markup must not be parsed');
+            this._svg = value;
+        }
         append(...nodes) { for (const node of nodes) { node.remove(); this.children.push(node); node.parentNode = this; } }
         insertBefore(node, reference) {
             if (node === reference) return;
@@ -85,7 +89,7 @@ test('backup entry remains available on homepage and file selection never upload
     // ST hides native file inputs; the visible button must still open the chooser.
     d.document.defaultView.getComputedStyle = node => ({ display: node.hidden || node.tagName === 'INPUT' && node.type === 'file' ? 'none' : 'block' });
     view.render(state({ snapshot: null, document: null, defaults: null, service: { status: 'ok' } })); view.open();
-    d.get('打开记忆备份').click();
+    d.get('展开记忆备份').click();
     const backup = d.document.querySelector('.ym-backup');
     assert.equal(backup.closest('[hidden]'), null); assert.equal(d.get('导出当前记忆').disabled, true);
     const choose = d.get('选择忆幕备份包'), picker = d.get('忆幕备份文件');
@@ -205,7 +209,7 @@ test('story controls default to end continuation without creating or generating 
     f.get('预览带入内容').click(); await f.flush();
     assert.deepEqual(f.calls, [{ type: 'storyPlan', payload: { mode: 'continue' } }]);
     const plan = storyPlan(f.state.snapshot.binding); f.render({ story: { plan } });
-    assert.match(f.document.body.textContent, /原聊天和原记忆保持不变/);
+    assert.match(f.document.body.textContent, /原聊天保持不变/);
     f.get('确认建立新聊天').click(); await f.flush();
     assert.deepEqual(f.calls.at(-1), { type: 'storyCreate', payload: { manualChoices: [] } });
 });
@@ -267,7 +271,7 @@ test('inherited entries retain source chat labels and edit controls but do not o
 test('story plans disclose unrepresented earlier floors and failed actions report once inside the story card', async t => {
     const f = fixture({}, async type => { if (type === 'storyCreate') throw new Error('故事建立未完成'); }); t.after(() => f.view.destroy());
     f.render({ story: { plan: storyPlan(f.state.snapshot.binding, { unrepresentedFloorCount: 7 }) } });
-    assert.match(f.document.body.textContent, /7 层更早原文不在本次带入范围/);
+    assert.match(f.document.body.textContent, /7 层旧正文尚未整理/);
     f.get('确认建立新聊天').click(); await f.flush();
     assert.equal(f.document.body.textContent.split('故事建立未完成').length - 1, 1);
 });
@@ -275,7 +279,7 @@ test('story plans disclose unrepresented earlier floors and failed actions repor
 test('opening a panel only displays its frontend and does not enable, summarize or save', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     f.view.open(); assert.equal(f.get('忆幕').open, true);
-    assert.equal(f.calls.length, 0); assert.equal(f.get('此聊天启用忆幕').checked, false);
+    assert.equal(f.calls.length, 0); assert.equal(f.get('启用忆幕').checked, false);
     assert.equal(f.get('整理未覆盖内容').disabled, true);
     assert.equal(f.get('忆幕').querySelectorAll('article').length, 0);
 });
@@ -289,81 +293,102 @@ test('the input shortcut preference is available in settings without a chat and 
     assert.deepEqual(f.calls, [{ type: 'uiSettings', payload: { showShortcut: true } }]);
     f.render({ ui: { showShortcut: true } }); assert.equal(toggle.checked, true);
     f.render({ snapshot: state().snapshot, document: state().document });
-    assert.equal(toggle.checked, true); assert.equal(f.get('此聊天启用忆幕').checked, false);
+    assert.equal(toggle.checked, true); assert.equal(f.get('启用忆幕').checked, false);
     toggle.checked = false; toggle.emit('change'); await f.flush();
     assert.deepEqual(f.calls[1], { type: 'uiSettings', payload: { showShortcut: false } });
 });
 
-test('first enable asks inline for the complete adjustable range, rejects invalid bounds and sends explicit confirmation', async t => {
+test('first card has independent master and automatic switches, manual stays available when auto is off', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const toggle = f.get('此聊天启用忆幕'); toggle.checked = true; toggle.emit('change');
-    assert.equal(f.calls.length, 0); assert.equal(f.get('开始楼层').value, '1'); assert.equal(f.get('结束楼层').value, '9');
-    f.get('开始楼层').value = '8'; f.get('结束楼层').value = '3'; f.get('确认并开启').click(); await f.flush();
-    assert.equal(f.calls.length, 0); assert.match(f.all().find(node => node.attrs.role === 'status').textContent, /有效的起止/);
-    f.get('开始楼层').value = '2'; f.get('结束楼层').value = '8'; f.get('确认并开启').click(); await f.flush();
-    assert.deepEqual(f.calls, [{ type: 'enable', payload: { enabled: true, range: { start: 2, end: 8, total: 9 } } }]);
+    const master = f.get('启用忆幕'), automatic = f.get('自动总结');
+    assert.equal(master.closest('.ym-hero'), automatic.closest('.ym-hero'));
+    assert.equal(automatic.disabled, true); assert.equal(f.get('开始总结').disabled, true);
+    master.checked = true; master.emit('change'); await f.flush();
+    assert.deepEqual(f.calls, [{type: 'enable', payload: {enabled: true}}]);
+    f.render({document: {...f.state.document, enabled: true, autoSummary: false}});
+    assert.equal(automatic.disabled, false); assert.equal(f.get('开始总结').disabled, false);
+    automatic.checked = true; automatic.emit('change'); await f.flush();
+    assert.deepEqual(f.calls.at(-1), {type: 'autoSummary', payload: {value: true}});
+    assert.equal(f.get('自动总结').closest('.ym-hero'), master.closest('.ym-hero'));
 });
 
-test('first-enable notice identifies hidden floors and the actual eligible range before any write', t => {
-    const source = Array.from({ length: 11 }, (_, i) => ({ mes: `fixture-${i}`, is_system: i < 5 }));
-    const before = structuredClone(source);
-    const f = fixture({ snapshot: { ...state().snapshot, messages: source } }); t.after(() => f.view.destroy());
-    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
-    const hint = f.get('初次整理范围说明');
-    assert.match(hint.textContent, /第 1–5 层已被 ST 隐藏或标记为系统消息，不参与整理/);
-    assert.match(hint.textContent, /第 7–11 层暂保留近期原文/);
-    assert.match(hint.textContent, /当前可整理第 6 层/);
-    assert.equal(hint.attrs['aria-live'], 'polite');
-    assert.deepEqual(f.calls, []); assert.deepEqual(source, before);
-    f.get('结束楼层').value = '5'; f.get('结束楼层').emit('input');
-    assert.match(hint.textContent, /当前所选范围没有可整理的正文/);
-    assert.doesNotMatch(hint.textContent, /当前可整理|暂保留近期原文/);
-    assert.equal(f.get('确认并开启').disabled, false, 'no immediate work does not forbid opting this chat into future work');
-    f.get('开始楼层').value = '7'; f.get('结束楼层').value = '11'; f.get('开始楼层').emit('input');
-    assert.doesNotMatch(hint.textContent, /ST 隐藏/);
-    assert.match(hint.textContent, /第 7–11 层暂保留近期原文/);
-    assert.match(hint.textContent, /没有可整理的正文/);
-    f.get('结束楼层').value = '6'; f.get('结束楼层').emit('input');
-    assert.match(hint.textContent, /有效的起止楼层/);
+test('API profile editing follows the selected settings scope without copying chat overrides to defaults', async t => {
+    const d = dom(), calls = [], ctx = { extensionSettings: {}, saveSettingsDebounced: async () => {} };
+    const connectionApi = createApiSettings({ getContext: () => ctx });
+    const view = createView({ document: d.document, connectionApi, onAction: async (type, payload) => { calls.push({type,payload}); } });
+    t.after(() => view.destroy());
+    view.render(state({ profiles: [{id:'global-profile',name:'全局连接'},{id:'chat-profile',name:'聊天连接'}],
+        defaults:{revision:7,values:{...state().defaults.values,profileId:'global-profile',model:'global-model'}},
+        document:{...state().document,settings:{profileId:'chat-profile',model:'chat-model'}} }));
+    d.get('设置').click(); d.get('全局默认').click();
+    assert.equal(d.get('ST 连接预设').value,'global-profile'); assert.equal(d.get('ST 连接模型').value,'global-model');
+    d.get('ST 连接模型').value='new-global-model'; d.get('ST 连接模型').emit('change'); await d.flush();
+    assert.deepEqual(calls[0],{type:'settings',payload:{global:true,values:{profileId:'global-profile',model:'new-global-model'},expectedRevision:7}});
+    d.get('当前聊天').click(); assert.equal(d.get('ST 连接预设').value,'chat-profile');
 });
 
-test('initial scope notice tracks saved recent settings and source changes, never unsaved drafts', t => {
-    const f = fixture(); t.after(() => f.view.destroy());
-    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
-    const hint = f.get('初次整理范围说明');
-    assert.match(hint.textContent, /当前可整理第 1–4 层/);
-    f.get('近期原文层数').value = '8'; f.get('近期原文层数').emit('input');
-    assert.match(hint.textContent, /当前可整理第 1–4 层/, 'draft is not the runtime setting until saved');
-    f.render({ document: { ...f.state.document, settings: { recent: 8 } } });
-    assert.match(hint.textContent, /第 2–9 层暂保留近期原文/);
-    assert.match(hint.textContent, /当前可整理第 1 层/);
-    const source = structuredClone(f.state.snapshot.messages); source[0].is_system = true;
-    f.render({ snapshot: { ...f.state.snapshot, messages: source } });
-    assert.match(hint.textContent, /第 1 层已被 ST 隐藏/);
-    assert.match(hint.textContent, /没有可整理的正文/);
-    assert.deepEqual(f.calls, []);
+test('unacknowledged invalid slices never inflate coverage and the pending shortcut fills only uncovered floors', t => {
+    const f=fixture({document:{...state().document,enabled:true,initialRange:{start:1,end:9,total:9},entries:[entry()]},invalidSourceIds:['slice-a']});
+    t.after(()=>f.view.destroy());
+    const values=f.document.querySelector('.ym-stats').querySelectorAll('b');
+    assert.equal(values[0].textContent,'0'); assert.equal(values[1].textContent,'0');
+    f.get('待整理层').click();
+    assert.equal(f.get('手动总结开始楼层').value,'1'); assert.equal(f.get('手动总结结束楼层').value,'4');
 });
 
-test('range notice represents gaps accurately and keeps a highly fragmented list compact', t => {
-    const source = Array.from({ length: 30 }, (_, i) => ({ mes: `fixture-${i}`, is_system: i % 2 === 0 }));
-    const f = fixture({ snapshot: { ...state().snapshot, messages: source } }); t.after(() => f.view.destroy());
-    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
-    assert.match(f.get('初次整理范围说明').textContent, /第 1、3、5、7、9、11、13、15 等楼层（共 15 层）/);
-    assert.doesNotMatch(f.get('初次整理范围说明').textContent, /第 1–29 层/);
+test('compact history controls edit explicit bounds and persist cancellation rather than hiding a temporary form', async t => {
+    const f = fixture({document: {...state().document, enabled: true}}); t.after(() => f.view.destroy());
+    assert.match(f.document.querySelector('.ym-history-question').textContent, /是否整理历史楼层 1–9/);
+    f.get('调整历史楼层').click();
+    f.get('历史开始楼层').value = '8'; f.get('历史结束楼层').value = '3';
+    f.get('确认整理历史').click(); await f.flush(); assert.equal(f.calls.length, 0);
+    f.get('历史开始楼层').value = '2'; f.get('历史结束楼层').value = '8';
+    f.get('确认整理历史').click(); await f.flush();
+    assert.deepEqual(f.calls[0], {type: 'history', payload: {range: {start: 2, end: 8, total: 9}}});
+    f.get('不整理历史').click(); await f.flush();
+    assert.deepEqual(f.calls[1], {type: 'history', payload: {range: {start: 1, end: 0, total: 9}}});
+    f.render({document: {...f.state.document, initialRange: {start:1,end:0,total:9}}});
+    f.view.close(); f.view.open();
+    assert.equal(f.document.querySelector('.ym-history-range').hidden, true);
+    assert.equal(f.get('开始总结').disabled, false);
 });
 
-test('canceling first-enable scope does not write, while a new empty chat can be enabled without an invalid range', async t => {
-    const f = fixture(); t.after(() => f.view.destroy());
-    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change'); f.get('取消').click();
-    assert.equal(f.calls.length, 0); assert.equal(f.get('此聊天启用忆幕').checked, false);
-    f.render({ snapshot: { ...f.state.snapshot, messages: [] } });
-    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0], { type: 'enable', payload: { enabled: true, range: { start: 1, end: 0, total: 0 } } });
+test('hidden prose remains available for explicit summary and the panel never changes its ST flags', async t => {
+    const messages = Array.from({length:11},(_,i)=>({mes:'正文'+i,is_system:i<5}));
+    const original = structuredClone(messages);
+    const f = fixture({snapshot:{...state().snapshot,messages},document:{...state().document,enabled:true,autoSummary:false}});
+    t.after(()=>f.view.destroy());
+    f.get('手动总结开始楼层').value='1'; f.get('手动总结结束楼层').value='5';
+    f.get('开始总结').click(); await f.flush();
+    assert.deepEqual(f.calls[0], {type:'summarizeRange',payload:{range:{start:1,end:5},expectedRange:{start:1,end:5}}});
+    assert.deepEqual(messages,original); assert.doesNotMatch(f.document.body.textContent,/已被 ST 隐藏.*不参与整理/);
+});
+
+test('partial slice selection is visibly expanded and requires another explicit start before any call', async t => {
+    const f=fixture({document:{...state().document,enabled:true,entries:[entry({source:{start:1,end:3}})]}});
+    t.after(()=>f.view.destroy());
+    f.get('手动总结开始楼层').value='2'; f.get('手动总结结束楼层').value='2';
+    f.get('开始总结').click(); await f.flush();
+    assert.deepEqual(f.calls,[]); assert.equal(f.get('手动总结开始楼层').value,'1');
+    assert.equal(f.get('手动总结结束楼层').value,'3');
+    assert.match(f.document.querySelector('.ym-manual-range').textContent,/请确认后开始/);
+    f.get('开始总结').click(); await f.flush();
+    assert.deepEqual(f.calls[0],{type:'summarizeRange',payload:{range:{start:1,end:3},expectedRange:{start:1,end:3}}});
+});
+
+test('history and manual range controls are disabled by the master switch and no hidden enabling is submitted', async t => {
+    const f=fixture(); t.after(()=>f.view.destroy());
+    f.get('开始总结').click(); f.get('确认整理历史').click(); f.get('自动总结').click();
+    await f.flush(); assert.deepEqual(f.calls,[]);
+    f.render({snapshot:{...f.state.snapshot,messages:[]}});
+    assert.equal(f.document.querySelector('.ym-history-range').hidden,true);
+    const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true}});
 });
 
 test('background work never disables the per-chat off action, and reopening a known chat does not ask initial range again', async t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: { start: 1, end: 9, total: 9 } }, busy: true }); t.after(() => f.view.destroy());
-    const toggle = f.get('此聊天启用忆幕'); assert.equal(toggle.disabled, false);
+    const toggle = f.get('启用忆幕'); assert.equal(toggle.disabled, false);
     toggle.checked = false; toggle.emit('change'); await f.flush(); assert.deepEqual(f.calls[0], { type: 'enable', payload: { enabled: false } });
     toggle.checked = true; toggle.emit('change'); await f.flush(); assert.deepEqual(f.calls[1], { type: 'enable', payload: { enabled: true } });
 });
@@ -569,7 +594,7 @@ test('deleted memories remain absent from active cards but expose an explicit un
 
 test('locally stopped but not yet server-confirmed state remains visibly off and cannot start a new summary', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] }, paused: true }); t.after(() => f.view.destroy());
-    assert.equal(f.get('此聊天启用忆幕').checked, false);
+    assert.equal(f.get('启用忆幕').checked, false);
     assert.equal(f.get('整理未覆盖内容').disabled, true);
     assert.equal(Boolean(f.get('重新总结第 1–3 层').disabled), true);
 });
@@ -577,7 +602,7 @@ test('locally stopped but not yet server-confirmed state remains visibly off and
 test('all memory, draft and candidate text remains literal text instead of executable markup', t => {
     const dangerous = '<img src=x onerror=alert(1)><script>bad()</script>';
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry({ text: dangerous, candidate: { text: dangerous }, conflicts: [{ id: 'other', text: dangerous }] })] } }); t.after(() => f.view.destroy());
-    assert.equal(f.all().filter(node => node.tagName === 'IMG' || node.tagName === 'SCRIPT').length, 0);
+    assert.equal(f.all().filter(node => node.tagName === 'SCRIPT' || node.tagName === 'IMG' && !node.className.includes('ym-avatar')).length, 0);
     assert.ok(f.all().some(node => node.textContent === dangerous));
 });
 
@@ -743,7 +768,7 @@ test('the recent request view uses saved entry snapshots, only labels a request 
     const f = fixture({ lastUsed: { entries: [entry({ text: '请求当时的版本' })], tokens: 134 }, document: { enabled: true, settings: {}, entries: [entry({ text: '后来编辑的版本' })] } }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
     assert.equal(used.open, false); assert.match(used.textContent, /请求当时的版本/); assert.doesNotMatch(used.textContent, /后来编辑的版本/);
-    assert.match(used.textContent, /不代表模型已收到/); assert.match(used.textContent, /134 token（估算）/);
+    assert.match(used.querySelector('p').title, /不代表模型已接收/); assert.match(used.textContent, /134 token（估算）/);
 });
 
 test('the recent request view reports verified raw replacement and conservative budget without altering its snapshot', t => {
@@ -751,9 +776,9 @@ test('the recent request view reports verified raw replacement and conservative 
         requestTokens: 1234, responseTokens: 2000, contextTokens: 8192 };
     const before = structuredClone(lastUsed), f = fixture({ lastUsed }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
-    assert.match(used.textContent, /本次请求替换 3 层旧原文，保留近期 5 层；聊天文件未改动/);
+    assert.match(used.textContent, /替换原文 3 层 · 保留近期 5 层/);
     assert.match(used.textContent, /请求保守估算 1234 \+ 回复预留 2000 \/ 上下文 8192 token/);
-    assert.match(used.textContent, /不代表模型已收到/);
+    assert.match(used.querySelector('p').title, /不代表模型已接收/);
     f.render({ document: { enabled: true, settings: {}, entries: [entry({ text: '后续人工修改' })] } });
     assert.match(used.textContent, /请求核对时的记忆/); assert.doesNotMatch(used.textContent, /后续人工修改/);
     assert.deepEqual(lastUsed, before); assert.equal(f.calls.length, 0);
@@ -764,7 +789,7 @@ test('the recent request shows an excerpt quotation from its saved snapshot, not
     const f = fixture({ lastUsed: { entries: [usedQuote], tokens: 100 }, document: { enabled: true, settings: {}, entries: [excerpt({ quoteText: '之后重新读取的内容。' })] } }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
     assert.match(used.textContent, /回查补充 · 第 2 层/); assert.match(used.textContent, /请求当时原文仍是秘密/);
-    assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/); assert.match(used.textContent, /不代表模型已收到/);
+    assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/); assert.match(used.querySelector('p').title, /不代表模型已接收/);
     assert.equal(usedQuote.quoteText, '请求当时原文仍是秘密。');
 });
 
@@ -887,9 +912,11 @@ test('formal pages show one surface at a time and navigating never performs a ba
     assert.deepEqual(visible(), ['overview']);
     f.get('记忆').click(); assert.deepEqual(visible(), ['memory']);
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
-    f.get('概览').click(); f.get('打开记忆备份').click(); assert.deepEqual(visible(), ['backup']);
-    assert.equal(f.document.querySelector('.ym-nav').hidden, true);
-    f.get('返回').click(); assert.deepEqual(visible(), ['overview']);
+    f.get('概览').click(); f.get('展开记忆备份').click(); assert.deepEqual(visible(), ['overview']);
+    const card = f.get('展开记忆备份').parentElement; assert.equal(card.tagName, 'DETAILS');
+    card.open = true;
+    assert.equal(f.document.querySelector('.ym-nav').hidden, false);
+    f.view.close(); f.view.open(); assert.equal(card.open, true); assert.deepEqual(visible(), ['overview']);
     assert.equal(f.document.querySelector('.ym-nav').hidden, false); assert.deepEqual(f.calls, []);
 });
 
@@ -968,6 +995,19 @@ test('changing chats resets chat drafts and filters but never transfers the last
     f.render({ snapshot: { ...f.state.snapshot, binding: { ...f.state.snapshot.binding, file: '另一聊天' } } });
     assert.equal(f.all().find(n => n.dataset.page === 'overview').hidden, false);
     assert.equal(f.get('手动补充内容').value, ''); assert.equal(f.get('搜索记忆').value, ''); assert.deepEqual(f.calls, []);
+});
+
+test('an initially empty chat receives usable ranges without replacing an edited range on later refreshes', t => {
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: null }, snapshot: { binding: { avatar: 'empty.png', file: 'empty' }, messages: [] } });
+    t.after(() => f.view.destroy());
+    assert.equal(f.get('手动总结结束楼层').value, '0');
+    f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 8 }, () => ({ mes: '正文' })) } });
+    assert.equal(f.get('手动总结结束楼层').value, '8');
+    assert.equal(f.get('历史结束楼层').value, '8');
+    f.get('手动总结结束楼层').value = '4'; f.get('历史结束楼层').value = '6';
+    f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 10 }, () => ({ mes: '正文' })) } });
+    assert.equal(f.get('手动总结结束楼层').value, '4');
+    assert.equal(f.get('历史结束楼层').value, '6'); assert.deepEqual(f.calls, []);
 });
 
 test('standalone manifest and styles stay within Yimu and include narrow-screen and reduced-motion handling', async () => {

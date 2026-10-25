@@ -224,6 +224,25 @@ test('hidden source floors retain original numbering and cannot be silently summ
     f.options.entries = [{ ...f.entry('has-hidden', 1, 3), source: { start: 1, end: 3, hashes: f.options.sourceHashes.slice(0, 3) } }];
     f.payload.messages = captured.processed.map(item => item.request);
     assert.equal((await buildBudgetedMessages(f.payload, f.options)).applied, false);
+    f.options.hiddenFloors = captured.hiddenFloors;
+    const admitted = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(admitted.applied, true);
+    assert.deepEqual(admitted.removedFloors, [1, 3], 'hidden originals are never manufactured into visible prompt removals');
+    assert.deepEqual(admitted.messages.slice(-5), f.payload.messages.slice(-5));
+    assert.equal(f.source.messages[1].is_system, true);
+});
+
+test('hidden-floor proof does not bypass media/tool exclusions or recent raw protection', async () => {
+    const f = await fixture(); f.source.messages[1].is_system = true; f.source.messages[1].extra = { file: { name: 'private.txt' } };
+    const core = structuredClone(f.source.messages.filter(message => !message.is_system)).map((m, index) => ({ ...m, index }));
+    const captured = captureCore(core, f.source);
+    assert.deepEqual(captured.hiddenFloors, []);
+    f.options.processed = captured.processed; f.options.hiddenFloors = captured.hiddenFloors;
+    f.options.sourceHashes = await fingerprintMessages(f.source.messages);
+    f.options.entries = [{ ...f.entry('media', 1, 3), source: { start: 1, end: 3, hashes: f.options.sourceHashes.slice(0, 3) } }];
+    f.payload.messages = captured.processed.map(item => item.request);
+    assert.equal((await buildBudgetedMessages(f.payload, f.options)).applied, false);
+    assert.equal((await buildBudgetedMessages(f.payload, { ...f.options, hiddenFloors: [1] })).reason, 'unverified-hidden-floors');
 });
 
 test('cancellation during complete-request counting discards the candidate transaction', async () => {

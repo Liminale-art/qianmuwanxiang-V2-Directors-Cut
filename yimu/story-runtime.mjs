@@ -67,15 +67,18 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                     || plan.defaultsRevision !== state.defaults?.revision) throw new Error('原文、记忆或设置已变化，请重新核对继承范围');
                 await assertCurrent(snapshot, stamp);
                 const settings = effectiveSettings(state.document, state.defaults), summaries = [];
+                const connection = typeof host.summaryConnection === 'function' ? host.summaryConnection(settings) : null;
+                const budgetSettings = connection ? {...settings, profileId: connection.mode === 'profile' ? connection.profileId : ''} : settings;
+                const budgetSnapshot = connection ? {...snapshot, maxContext: connection.contextTokens, maxResponse: connection.maxTokens} : snapshot;
                 for (const boundary of plan.boundaries || []) {
                     const batch = { start: boundary.source.start, end: boundary.source.end };
                     const messages = Array.from({ length: batch.end }, () => ({}));
                     for (const message of boundary.messages) messages[message.floor - 1] = message;
                     const prompt = summaryPrompt(messages, batch, settings);
-                    if (!recallFits(prompt, settings, snapshot)) throw new Error('截止处原文超出当前整理容量，请调整忆幕连接或选择更早的完整记忆边界');
+                    if (!recallFits(prompt, budgetSettings, budgetSnapshot)) throw new Error('截止处原文超出当前整理容量，请调整忆幕连接或选择更早的完整记忆边界');
                     view.status = `正在整理截止处第 ${batch.start}—${batch.end} 层；不会读取后续剧情。`; emit();
                     await assertCurrent(snapshot, stamp);
-                    const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model });
+                    const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model, ...(connection ? {connection} : {}) });
                     await assertCurrent(snapshot, stamp);
                     const hashes = Array(batch.start - 1).fill(''); hashes.push(...boundary.source.hashes);
                     summaries.push({ id: boundary.id, entries: parseSummary(response, batch, hashes) });

@@ -5,8 +5,8 @@ import {validateOrigin, validateLineage, validateCreation} from './story-contrac
 import {validateCompanion, applyCompanionOperation} from './companion-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.6.0';
-export const SCHEMA = 5;
+export const VERSION = '0.7.0';
+export const SCHEMA = 6;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });
 const clone = value => structuredClone(value);
@@ -42,7 +42,7 @@ export function validateSettings(input, partial = true) {
 }
 export function effectiveSettings(document, defaults) { return { ...DEFAULTS, ...defaults?.values, ...document?.settings }; }
 export function createDocument(binding) {
-    return { schema: SCHEMA, revision: 0, binding: normalizeBinding(binding), enabled: false, epoch: 0, configRevision: 0, settings: {}, initialRange: null, entries: [], operations: [], receipts: {} };
+    return { schema: SCHEMA, revision: 0, binding: normalizeBinding(binding), enabled: false, autoSummary: false, epoch: 0, configRevision: 0, settings: {}, initialRange: null, entries: [], operations: [], receipts: {} };
 }
 export function createDefaults() { return { schema: SCHEMA, revision: 0, values: { ...DEFAULTS }, operations: [], receipts: {} }; }
 function validateSource(source) {
@@ -56,8 +56,9 @@ function textValue(text) {
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
 export function validateDocument(raw) {
-    requireThat([1, 2, 3, 4, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
-    if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA};
+    requireThat([1, 2, 3, 4, 5, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, autoSummary: raw.enabled};
+    requireThat(typeof raw.autoSummary === 'boolean', '自动总结状态无效');
     raw = clone(raw);
     normalizeBinding(raw.binding); validateSettings(raw.settings);
     if (raw.lineage) raw.lineage = validateLineage(raw.lineage);
@@ -79,7 +80,7 @@ export function validateDocument(raw) {
     return raw;
 }
 export function validateDefaults(raw) {
-    requireThat([1, 2, 3, 4, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    requireThat([1, 2, 3, 4, 5, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
     validateSettings(raw.values, false); return raw;
 }
@@ -117,6 +118,12 @@ function candidate(entry, operation, values, reason) {
     entry.conflicts.push({ id: operation.id, reason, ...clone(values) });
     return 'conflict';
 }
+function initialScope(range) {
+    requireThat(range && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && Number.isSafeInteger(range.total)
+        && range.start >= 1 && range.total >= 0 && range.total >= range.end
+        && (range.end >= range.start || range.start === 1 && range.end === 0), '请确认首次整理的起止楼层');
+    return { start: range.start, end: range.end, total: range.total };
+}
 export function applyOperation(current, operation, {excerpt = null} = {}) {
     current = validateDocument(current);
     const id = identifier(operation?.id);
@@ -127,16 +134,20 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
     const op = operation;
     if (op.type === 'companion') {
         applyCompanionOperation(doc, op);
-    } else if (op.type === 'enable' || op.type === 'settings') {
+    } else if (['enable', 'autoSummary', 'history', 'settings'].includes(op.type)) {
         requireThat(op.expectedRevision === doc.configRevision, '此聊天设置已在另一设备修改，请刷新后再试');
         if (op.type === 'enable') {
             requireThat(typeof op.enabled === 'boolean', '启用状态无效');
-            if (op.enabled && !doc.initialRange) {
-                const range = op.range;
-                requireThat(range && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) && Number.isSafeInteger(range.total) && range.start >= 1 && range.total >= range.end && (range.end >= range.start || range.start === 1 && range.end === 0 && range.total === 0), '请确认首次整理的起止楼层');
-                doc.initialRange = clone(range);
-            }
+            if (!doc.initialRange && op.range) doc.initialRange = initialScope(op.range);
             doc.enabled = op.enabled;
+        } else if (op.type === 'autoSummary') {
+            requireThat(typeof op.value === 'boolean', '自动总结状态无效');
+            requireThat(!op.value || doc.enabled, '请先启用忆幕');
+            doc.autoSummary = op.value;
+            if (!doc.initialRange && op.range) doc.initialRange = initialScope(op.range);
+        } else if (op.type === 'history') {
+            requireThat(!doc.initialRange, '历史楼层范围已确认；请使用手动总结补充');
+            doc.initialRange = initialScope(op.range);
         } else {
             for (const [key, value] of Object.entries(validateSettings(op.values))) {
                 if (value === null) delete doc.settings[key]; else doc.settings[key] = value;
@@ -184,6 +195,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch && entry.status !== 'deleted', '整理期间状态已变化，本次结果未采用');
             const submitted = submittedEntry(op.entry, doc);
             requireThat(['summary', 'stage'].includes(submitted.kind) && submitted.kind === entry.kind && submitted.id === entry.id, '重总结来源无效');
+            if (submitted.kind === 'summary') requireThat(submitted.source.start === entry.source.start && submitted.source.end === entry.source.end, '重新总结不能改变已有切片的楼层范围');
             requireUnusedStageParents(doc, submitted);
             values = { text: submitted.text, source: submitted.source, kind: submitted.kind, status: 'active' };
         } else requireThat(op.type === 'entry', '未知的记忆操作');

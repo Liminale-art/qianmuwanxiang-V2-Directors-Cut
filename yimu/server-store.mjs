@@ -153,7 +153,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current, legacyBytes: [1, 2, 3, 4].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
+            return {value, fingerprint: current, legacyBytes: [1, 2, 3, 4, 5].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -472,7 +472,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         const messages = []; let characters = 0;
         const evidence = await requireSource(ctx, binding, null, [{id: 'parent', source: parent.source}, {id: 'trigger', source: trigger}], (message, floor) => {
             if (floor < parent.source.start || floor > parent.source.end) return;
-            if (typeof message.mes !== 'string' || message.is_system || message.tool_calls || message.tool_call_id || message.extra?.tool_invocations) fail('recall_source', '此来源不支持安全原文摘录');
+            if (typeof message.mes !== 'string' || message.tool_calls || message.tool_call_id || message.extra?.tool_invocations) fail('recall_source', '此来源不支持安全原文摘录');
             characters += message.mes.length;
             if (characters > 16000) fail('recall_capacity', '此次回查原文超过 16000 字符，未截取内容', 413);
             messages.push({floor, name: String(message.name || ''), is_user: Boolean(message.is_user), mes: message.mes});

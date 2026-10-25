@@ -76,10 +76,11 @@ async function fixture(t) {
     const enable = async () => {
         await controller.refresh();
         await controller.action('enable', {enabled: true, range: {start: 1, end: context.chat.length, total: context.chat.length}});
+        await controller.action('autoSummary', {value: true});
     };
     const inject = async ({finish = true, transform = null} = {}) => {
         await controller.event('GENERATION_STARTED', ['normal', {}, false]);
-        const coreChat = clone(context.chat).map((message, index) => ({...message, index}));
+        const coreChat = clone(context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
         await controller.intercept(coreChat, 65536, () => {}, 'normal');
         const payload = {type: 'normal', model: 'fixture-model', chat_completion_source: 'custom', max_tokens: 1024,
             messages: [{role: 'system', content: '合成角色设定'}, ...coreChat.map(message => ({role: message.is_user ? 'user' : 'assistant', content: message.mes}))]};
@@ -360,4 +361,190 @@ test('fine summaries become a durable stage and the next actual request substitu
     assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
     assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
     assert.deepEqual(f.context.chat, messages, 'original ST chat is never replaced or mutated');
+});
+
+async function manualReady(f) {
+    await f.controller.refresh();
+    await f.controller.action('enable', {enabled: true});
+    await f.flush();
+}
+async function manualRange(f, start, end, expectedRange = {start, end}) {
+    await f.controller.action('summarizeRange', {range: {start, end}, expectedRange});
+    await f.flush();
+}
+
+test('manual-only range works without enabling automatic work and stored memory still joins the next request', async t => {
+    const f = await fixture(t); await manualReady(f);
+    assert.equal(f.generated(), 0);
+    assert.equal(f.controller.state.document.autoSummary, false);
+    await manualRange(f, 1, 2);
+    const saved = (await f.api.read(binding)).document;
+    assert.equal(f.generated(), 1); assert.equal(saved.autoSummary, false); assert.equal(saved.enabled, true);
+    assert.deepEqual(saved.entries.map(e => [e.source.start, e.source.end]), [[1, 2]]);
+    assert.equal(saved.initialRange, null, 'manual work does not silently choose initial history');
+    const result = await f.inject();
+    assert.ok(result.prompt.includes(saved.entries[0].text));
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
+    assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
+    await f.controller.start(); assert.equal(f.generated(), 1, 'background work stays off');
+});
+
+test('master-off rejects manual/auto/history model jobs instead of silently turning memory on', async t => {
+    const f = await fixture(t); await f.controller.refresh();
+    for (const [action, payload] of [
+        ['autoSummary', {value: true}], ['summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}}],
+        ['history', {range: {start: 1, end: 7, total: 7}}], ['summarize', {}],
+    ]) await assert.rejects(f.controller.action(action, payload), /先启用/);
+    await f.flush(); assert.equal(f.generated(), 0); assert.equal(f.controller.state.document.enabled, false);
+});
+
+test('history confirmation fills only selected old floors with auto off and cancellation stays dismissed after reload', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await f.controller.action('history', {range: {start: 1, end: 6, total: 7}}); await f.flush();
+    assert.equal(f.generated(), 1); assert.equal(f.controller.state.document.autoSummary, false);
+    assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), [[1, 2]], 'five recent originals remain untouched');
+    const other = await fixture(t); await manualReady(other);
+    await other.controller.action('history', {range: {start: 1, end: 0, total: 7}}); await other.flush();
+    await other.controller.refresh();
+    assert.deepEqual(other.controller.state.document.initialRange, {start: 1, end: 0, total: 7});
+    assert.equal(other.generated(), 0);
+    await manualRange(other, 1, 2); assert.equal(other.generated(), 1, 'cancelled initial history remains available through explicit manual work');
+});
+
+test('history containing only recent originals finishes with a factual state rather than a permanent pending label', async t => {
+    const f = await fixture(t); f.context.chat = clone(messages.slice(0, 3));
+    await f.writeChat(f.context.chat); await manualReady(f);
+    await f.controller.action('history', {range: {start: 1, end: 3, total: 3}}); await f.flush();
+    assert.equal(f.generated(), 0); assert.equal(f.controller.state.document.entries.length, 0);
+    assert.equal(f.controller.state.status, '所选楼层保留为近期原文，暂不整理');
+});
+
+test('hidden original floors are summarized without unhiding them and only actual visible prompt rows are removed', async t => {
+    const f = await fixture(t); f.context.chat[0].is_system = true;
+    await f.writeChat(f.context.chat); await manualReady(f);
+    const original = clone(f.context.chat);
+    await manualRange(f, 1, 2);
+    assert.equal(f.generated(), 1); assert.equal(f.controller.state.document.entries.length, 1);
+    assert.deepEqual(f.context.chat, original);
+    const result = await f.inject();
+    assert.ok(result.prompt.includes(f.controller.state.document.entries[0].text));
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [2]);
+    assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), messages.slice(-5).map(message => message.mes));
+});
+
+test('manual partial overlap requires visible expanded bounds, replaces whole automatic slices and preserves outside memory', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await manualRange(f, 1, 3); await manualRange(f, 4, 5); await manualRange(f, 6, 7);
+    const before = clone(f.controller.state.document.entries), count = f.generated();
+    await assert.rejects(f.controller.action('summarizeRange', {range: {start: 2, end: 4}, expectedRange: {start: 2, end: 4}}), /1—5/);
+    assert.equal(f.generated(), count);
+    f.model(async prompt => {
+        const m = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(m[1]), end: Number(m[2]), text: '明确重整后的完整切片。'}]});
+    });
+    await manualRange(f, 2, 4, {start: 1, end: 5});
+    const after = f.controller.state.document.entries;
+    assert.equal(f.generated(), count + 2);
+    assert.deepEqual(after.map(e => [e.id, e.source.start, e.source.end]), before.map(e => [e.id, e.source.start, e.source.end]));
+    assert.equal(after[0].text, '明确重整后的完整切片。'); assert.equal(after[1].text, '明确重整后的完整切片。');
+    assert.deepEqual(after[2], before[2]);
+});
+
+test('manual overwrite keeps hand revisions as the active version and stores the generated result for a choice', async t => {
+    const f = await fixture(t); await manualReady(f); await manualRange(f, 1, 2);
+    const entry = f.controller.state.document.entries[0];
+    await f.controller.action('edit', {entryId: entry.id, text: '用户修订：两人仍有隔阂，并未和解。'});
+    await manualRange(f, 1, 2);
+    const saved = f.controller.state.document.entries[0];
+    assert.equal(saved.text, '用户修订：两人仍有隔阂，并未和解。');
+    assert.equal(saved.edited, true); assert.ok(saved.candidate?.text); assert.equal(saved.status, 'active');
+});
+
+test('manual range respects deletion/exclusion choices rather than resurrecting them', async t => {
+    const f = await fixture(t); await manualReady(f); await manualRange(f, 1, 2);
+    const entry = f.controller.state.document.entries[0], before = f.generated();
+    await f.controller.action('entry', {entryId: entry.id, action: 'delete'});
+    await assert.rejects(f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}}), /已删除/);
+    await f.flush(); assert.equal(f.generated(), before); assert.equal(f.controller.state.document.entries[0].status, 'deleted');
+});
+
+test('failed manual re-summary leaves the existing slice intact and does not retry automatically', async t => {
+    const f = await fixture(t); await manualReady(f); await manualRange(f, 1, 2);
+    const before = clone(f.controller.state.document.entries);
+    f.model(async () => { throw new Error('synthetic model failure'); });
+    await manualRange(f, 1, 2);
+    assert.deepEqual(f.controller.state.document.entries, before);
+    assert.match(f.controller.state.error, /synthetic model failure/);
+    const count = f.generated(); await f.controller.start(); assert.equal(f.generated(), count);
+});
+
+test('manual range batches continuously until complete without using or removing recent originals early', async t => {
+    const f = await fixture(t);
+    f.context.chat = f.context.chat.map((message, i) => ({...message, mes: `第${i + 1}层` + '原文'.repeat(90)}));
+    await f.writeChat(f.context.chat); await manualReady(f);
+    await f.controller.action('settings', {values: {batch: 256}}); await f.flush();
+    await manualRange(f, 1, 7);
+    assert.equal(f.generated(), 7);
+    assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), Array.from({length: 7}, (_, i) => [i + 1, i + 1]));
+    const result = await f.inject();
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
+    assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), f.context.chat.slice(-5).map(message => message.mes));
+});
+
+test('independent summary connection supplies its own safe context instead of inheriting a small ST window', async t => {
+    const f = await fixture(t); await manualReady(f);
+    const connection = {mode: 'external', profileId: '', model: 'synthetic-external', contextTokens: 32768, maxTokens: 2048, revision: 1};
+    f.context.maxContext = 512;
+    f.host.summaryConnection = () => connection;
+    const calls = [];
+    f.host.generate = async (prompt, options) => { calls.push(options); return JSON.stringify({slices: [{start: 1, end: 2, text: '独立连接范围验证。'}]}); };
+    await manualRange(f, 1, 2);
+    assert.equal(calls.length, 1); assert.deepEqual(calls[0].connection, connection);
+    f.host.summaryConnection = () => ({...connection, contextTokens: 0});
+    await manualRange(f, 1, 2);
+    assert.equal(calls.length, 1); assert.match(f.controller.state.error, /上下文/);
+});
+
+for (const queued of ['summarizeRange', 'summarize', 'history', 'redo', 'stage', 'autoSummary', 'enable', 'settings', 'refreshAuto', 'generationEnd']) {
+    test(`queued ${queued} stays bound to the clicked chat and never starts in a newly opened chat`, async t => {
+        const f = await fixture(t); await manualReady(f);
+        await manualRange(f, 1, 1); await manualRange(f, 2, 2);
+        const original = clone(f.controller.state.document), otherBinding = {...binding, file: 'Other-chat', integrity: 'other_chat_identity'};
+        const otherMessages = [...clone(messages), ...clone(messages.slice(0, 6))];
+        await f.writeChat(otherMessages, otherBinding.integrity, otherBinding.file);
+        let other = (await f.api.change(otherBinding, {id: 'other_enable', type: 'enable', enabled: true, expectedRevision: 0,
+            range: {start: 1, end: otherMessages.length, total: otherMessages.length}})).document;
+        other = (await f.api.change(otherBinding, {id: 'other_auto', type: 'autoSummary', value: true, expectedRevision: other.configRevision})).document;
+        for (const entry of original.entries) other = (await f.api.change(otherBinding, {id: `other_${entry.id}`, type: 'append', expectedEpoch: other.epoch,
+            entry: {id: entry.id, kind: 'summary', text: entry.text, source: clone(entry.source)}})).document;
+        const payloads = {
+            summarizeRange: {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}}, summarize: {},
+            history: {range: {start: 1, end: 7, total: 7}}, redo: {entryId: original.entries[0].id}, stage: {start: 1, end: 2},
+            autoSummary: {value: true}, enable: {enabled: true}, settings: {values: {preference: '新的整理偏好'}},
+        };
+        const beforeCalls = f.generated();
+        if (queued === 'refreshAuto') await f.controller.refresh({auto: true});
+        else if (queued === 'generationEnd') await f.controller.event('GENERATION_ENDED');
+        else await f.controller.action(queued, payloads[queued]);
+        assert.ok(f.tasks.length, 'the action has actually queued work');
+        f.context.chatId = otherBinding.file; f.context.chatMetadata.integrity = otherBinding.integrity; f.context.chat = otherMessages;
+        await f.controller.refresh(); await f.flush();
+        assert.equal(f.generated(), beforeCalls, 'neither the old job nor a replacement job may start after the chat switch');
+        assert.deepEqual((await f.api.read(otherBinding)).document, other);
+    });
+}
+
+test('queued manual work also checks the live host identity when no chat-change event or refresh has arrived yet', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}});
+    f.context.chatId = 'not-yet-refreshed';
+    await f.flush();
+    assert.equal(f.generated(), 0); assert.equal((await f.api.read(binding)).document.entries.length, 0);
+});
+
+test('starting a new generation expires a queued manual task even when the chat identity stays the same', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}});
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]); await f.controller.settled(); await f.flush();
+    assert.equal(f.generated(), 0); assert.equal((await f.api.read(binding)).document.entries.length, 0);
 });

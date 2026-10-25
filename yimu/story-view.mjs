@@ -16,18 +16,16 @@ export function createStoryView({ document = globalThis.document, onAction, page
     const node = el(pageMode ? 'section' : 'details', `ym-story ${pageMode ? 'ym-subpage-section' : 'ym-card'}`);
     if (!pageMode) node.append(el('summary', '', '故事续接与分支'));
     const body = el('div', 'ym-story-body');
-    const source = el('p', 'ym-muted');
     const modes = el('select'); modes.setAttribute('aria-label', '故事延续方式');
     modes.append(option('continue', '从当前聊天末尾续接'), option('branch', '从指定楼层建立分支')); modes.value = 'continue';
     const cutoff = el('input'); cutoff.type = 'number'; cutoff.min = '1'; cutoff.step = '1';
     cutoff.setAttribute('aria-label', '故事分支截止楼层');
     const cutoffField = field('截止楼层', cutoff); cutoffField.hidden = true;
     const fields = el('div', 'ym-two-columns'); fields.append(field('延续方式', modes), cutoffField);
-    const explanation = el('p', 'ym-muted');
     const prepare = button('预览带入内容', () => invoke('storyPlan', { mode: modes.value, ...(modes.value === 'branch' ? { cutoff: Number(cutoff.value) } : {}) }));
     const planBody = el('div', 'ym-story-plan'); planBody.hidden = true;
     const summary = el('p'), boundaries = el('div', 'ym-story-boundaries'), manual = el('div', 'ym-story-choices');
-    const permission = el('p', 'ym-muted', '新聊天将开启忆幕，此后独立发展。原聊天和原记忆保持不变。');
+    const permission = el('p', 'ym-muted', '新聊天独立发展，原聊天保持不变。');
     const create = button('确认建立新聊天', () => {
         const choices = collectChoices();
         if (choices) void invoke('storyCreate', { manualChoices: choices });
@@ -39,7 +37,7 @@ export function createStoryView({ document = globalThis.document, onAction, page
     const resultActions = el('div', 'ym-actions'); resultActions.append(open, retry);
     resultBody.append(resultText, resultActions); resultBody.hidden = true;
     const notice = el('p', 'ym-muted'); notice.setAttribute('aria-live', 'polite'); notice.hidden = true;
-    body.append(source, fields, explanation, prepare, planBody, resultBody, notice); node.append(body);
+    body.append(fields, prepare, planBody, resultBody, notice); node.append(body);
     let state = {}, scope = '', planKey = '', localError = '', working = false, alive = true, revision = 0;
     const choices = new Map();
     const count = () => state.snapshot?.messages?.length || 0;
@@ -75,23 +73,23 @@ export function createStoryView({ document = globalThis.document, onAction, page
         planBody.hidden = !plan;
         if (!plan) return;
         const key = String(plan.planId);
-        summary.textContent = `截至第 ${plan.cutoff} 层，带入最近 ${plan.bridgeCount} 层原文和 ${plan.inheritedCount} 份有效记忆。`;
+        summary.textContent = `截至 ${plan.cutoff} 层 · 带入 ${plan.bridgeCount} 层原文、${plan.inheritedCount} 份记忆`;
         if (planKey === key) return;
         planKey = key; choices.clear(); boundaries.replaceChildren(); manual.replaceChildren();
         if (plan.unrepresentedFloorCount > 0) boundaries.append(el('p', 'ym-inline-warning',
-            `另有 ${plan.unrepresentedFloorCount} 层更早原文不在本次带入范围。若需保留这些经历，请先回原聊天整理。`));
-        if (plan.skippedExcerptCount > 0) boundaries.append(el('p', 'ym-muted', '原文引证留在原聊天；本次带入记忆切片、阶段摘要和选定的手动记忆。'));
+            `${plan.unrepresentedFloorCount} 层旧正文尚未整理，不会带入新聊天。`));
+        if (plan.skippedExcerptCount > 0) boundaries.append(el('p', 'ym-muted', '原文引证留在原聊天。'));
         if (plan.boundaries?.length) {
-            boundaries.append(el('p', 'ym-muted', '以下片段需按截止位置重新整理，只读取此前原文，不带入后续剧情。'));
+            boundaries.append(el('p', 'ym-muted', '以下切片将按截止楼层重新整理：'));
             for (const part of plan.boundaries) boundaries.append(el('p', '', `第 ${part.source.start}–${part.source.end} 层待补充整理`));
-            boundaries.append(el('p', 'ym-muted', '确认建立将调用忆幕的整理连接，可能产生模型费用。'));
+            boundaries.append(el('p', 'ym-muted', '建立时需调用模型，可能计费。'));
         }
         for (const item of plan.manualChoices || []) {
             const card = el('section', 'ym-story-choice');
             const crossing = item.reason === 'crossing-edited';
             card.append(el('h4', '', crossing ? `跨越截止位置的修订${item.sourceLabel ? ` · ${item.sourceLabel}` : ''}` : '手动补充'));
             if (!crossing && item.text) card.append(el('p', 'ym-memory-text', item.text));
-            card.append(el('p', 'ym-muted', crossing ? '可能包含后续剧情。若要带入，请只填写截止前的内容；原修订不变。' : '这条记忆没有楼层范围，请确认在所选位置是否适用。'));
+            card.append(el('p', 'ym-muted', crossing ? '只带入截止前的内容；原修订保留。' : '此条没有楼层范围，请选择是否带入。'));
             const select = el('select'); select.setAttribute('aria-label', `人工记忆取舍 ${item.id}`);
             select.append(option('', '请选择'), option('skip', '不带入此条'), option('include', crossing ? '填写截止前的内容' : '带入此条')); select.value = '';
             const input = el('textarea'); input.rows = 4; input.value = ''; input.hidden = true;
@@ -108,9 +106,6 @@ export function createStoryView({ document = globalThis.document, onAction, page
     function update() {
         const story = state.story || {}, busy = working || story.busy;
         const available = !!state.snapshot && !!state.document && !state.loading && state.sourceAvailable !== false;
-        source.textContent = `来源：${state.snapshot?.name || '当前角色'} · ${state.snapshot?.binding?.file || ''}`;
-        const recent = state.document?.settings?.recent ?? state.defaults?.values?.recent ?? 5;
-        explanation.textContent = `带入最近 ${recent} 层原文，严格截至所选位置。`;
         cutoffField.hidden = modes.value !== 'branch'; cutoff.max = String(count());
         renderPlan();
         const result = story.result, receipt = result?.receipt || story.receipt;

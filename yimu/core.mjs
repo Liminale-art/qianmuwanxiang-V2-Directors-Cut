@@ -5,11 +5,11 @@ import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-s
 import { companionEntries } from './companion-contract.mjs';
 
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
-const canSummarize = message => message && !message.is_system && typeof message.mes === 'string' && message.mes.trim()
+const canSummarize = message => message && typeof message.mes === 'string' && message.mes.trim()
     && !message.extra?.tool_invocations && !message.tool_calls && !message.tool_call_id;
 
-// Read-only first-enable preview. Hidden messages remain hidden; recent raw text
-// and previously handled sources are not promised as part of the initial work.
+// Hidden is ST's prompt/display flag, not permission to exclude story sources.
+// It remains untouched; recent raw text and handled sources are counted separately.
 export function initialRangePreview(document, messages, { start, end }, { recent = 5 } = {}) {
     const result = { valid: false, hidden: [], recent: [], handled: [], unsupported: [], eligible: [] };
     if (!Array.isArray(messages) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
@@ -19,7 +19,7 @@ export function initialRangePreview(document, messages, { start, end }, { recent
     for (let floor = start; floor <= end; floor++) {
         const message = messages[floor - 1];
         if (message?.is_system) result.hidden.push(floor);
-        else if (floor > last) result.recent.push(floor);
+        if (floor > last) result.recent.push(floor);
         else if (floor <= (document?.lineage?.bridgeCount || 0) || document?.entries?.some(entry => !entry.origin && entry.kind === 'summary'
             && entry.source.start <= floor && entry.source.end >= floor)) result.handled.push(floor);
         else if (!canSummarize(message)) result.unsupported.push(floor);
@@ -39,10 +39,10 @@ export async function inspectSources(document, messages) {
 
 // Each batch is bounded by content, while the model splits it at narrative boundaries.
 // Chosen initial gaps and explicit exclusions/deletions never get silently filled.
-export function nextBatch(document, messages, settings, { force = false } = {}) {
-    if (!document.enabled || !document.initialRange) return null;
-    const last = Math.max(0, messages.length - settings.recent);
-    const repair = document.entries.find(entry => !entry.origin && entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
+export function nextBatch(document, messages, settings, { force = false, historyOnly = false } = {}) {
+    if (!document.enabled || !document.initialRange || !force && !document.autoSummary) return null;
+    const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity);
+    const repair = !historyOnly && document.entries.find(entry => !entry.origin && entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
         && entry.source.end <= last && messages.slice(entry.source.start - 1, entry.source.end).every(canSummarize)
         && entry.source.end <= messages.length);
     if (repair) return { start: repair.source.start, end: repair.source.end, redo: repair };
@@ -61,6 +61,82 @@ export function nextBatch(document, messages, settings, { force = false } = {}) 
     }
     if (!start || !force && start > initialTotal && tokens < settings.trigger) return null;
     return { start, end };
+}
+
+/** Read-only manual scope preview. Never relabel part of an old summary as if its
+ * text only described the remainder. Expand to complete affected slices first;
+ * the caller must show and confirm these actual bounds before sending originals. */
+export function planManualRange(document, messages, settings, requestedRange) {
+    const requested = { start: requestedRange?.start, end: requestedRange?.end };
+    if (!Array.isArray(messages) || !Number.isSafeInteger(requested.start) || !Number.isSafeInteger(requested.end)
+        || requested.start < 1 || requested.end < requested.start || requested.end > messages.length) throw new Error('请选择有效的起止楼层');
+    const range = { ...requested };
+    const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin)
+        .sort((a, b) => a.source.start - b.source.start || a.source.end - b.source.end);
+    for (let changed = true; changed;) {
+        changed = false;
+        for (const entry of summaries) if (entry.source.start <= range.end && entry.source.end >= range.start) {
+            const start = Math.min(range.start, entry.source.start), end = Math.max(range.end, entry.source.end);
+            changed ||= start !== range.start || end !== range.end;
+            range.start = start; range.end = end;
+        }
+    }
+    if (range.end > messages.length) throw new Error('已有记忆的对应楼层已不存在，请先处理来源变化');
+    if (range.start <= (document?.lineage?.bridgeCount || 0)) throw new Error('此范围含续接原文，请从新剧情开始整理；继承记忆可直接修订');
+    if (summaries.some(entry => ['deleted', 'excluded'].includes(entry.status) && entry.source.start <= range.end && entry.source.end >= range.start)) {
+        throw new Error('此范围含已删除或暂不使用的记忆，请先恢复或调整范围');
+    }
+    const overlapping = summaries.filter(entry => entry.source.start <= range.end && entry.source.end >= range.start);
+    if (overlapping.some((entry, index) => index > 0 && entry.source.start <= overlapping[index - 1].source.end)) throw new Error('已有切片范围重叠，请先处理记忆冲突');
+    const batchLimit = settings?.batch;
+    if (!Number.isSafeInteger(batchLimit) || batchLimit < 1) throw new Error('单次整理容量无效');
+    for (let floor = range.start; floor <= range.end; floor++) if (!canSummarize(messages[floor - 1])) {
+        throw new Error(`第 ${floor} 层为空或含工具调用，请调整整理范围`);
+    }
+    const batches = [];
+    for (let floor = range.start; floor <= range.end;) {
+        const existing = summaries.filter(entry => entry.source.start <= floor && entry.source.end >= floor);
+        if (existing.length > 1) throw new Error('已有切片范围重叠，请先处理记忆冲突');
+        const redo = existing[0];
+        let end = floor, tokens = 0;
+        if (redo) {
+            end = redo.source.end;
+            tokens = messages.slice(floor - 1, end).reduce((total, item) => total + estimateTokens(item.mes), 0);
+        } else {
+            const next = summaries.find(entry => entry.source.start > floor)?.source.start ?? Infinity;
+            for (end = floor; end <= range.end && end < next; end++) {
+                const size = estimateTokens(messages[end - 1].mes);
+                if (end > floor && tokens + size > batchLimit) break;
+                tokens += size;
+            }
+            end--;
+        }
+        if (tokens > batchLimit) throw new Error(`第 ${floor}—${end} 层超过单次整理容量，请调整整理容量或连接`);
+        batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}) });
+        floor = end + 1;
+    }
+    return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };
+}
+
+/** Status counters use fine slices only, never count stage/excerpt copies twice. */
+export function summaryCoverage(document, messages, settings) {
+    const covered = new Set(), entries = document?.entries || [];
+    const active = entries.filter(entry => entry.kind === 'summary' && entry.status === 'active'
+        && (!entry.origin || entry.originVerified === true));
+    for (const entry of active) {
+        // Inherited source numbers belong to another chat, not the local floor counter.
+        if (entry.origin) continue;
+        for (let floor = entry.source.start; floor <= Math.min(entry.source.end, messages.length); floor++) covered.add(floor);
+    }
+    let pendingFloors = 0, pendingRange = null;
+    const range = document?.initialRange, last = Math.max(0, messages.length - settings.recent);
+    if (range) for (let floor = Math.max(range.start, (document?.lineage?.bridgeCount || 0) + 1); floor <= last; floor++) {
+        if (!(floor <= range.end || floor > range.total) || !canSummarize(messages[floor - 1])) continue;
+        const handled = entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor
+            && !(entry.status === 'invalid' && !entry.edited));
+        if (!handled) { pendingFloors++; pendingRange = pendingRange ? { ...pendingRange, end: floor } : { start: floor, end: floor }; }
+    }
+    return { sliceCount: active.length, organizedFloors: covered.size, pendingFloors, pendingRange };
 }
 
 export function summaryPrompt(messages, batch, settings, { recallCandidates = [] } = {}) {

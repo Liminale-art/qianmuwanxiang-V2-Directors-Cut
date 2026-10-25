@@ -1,6 +1,7 @@
 // The only ST-facing layer. No direct chat writes, global connection switches or fetch patches.
 import { fingerprintMessages } from './contract.mjs';
 import { buildBudgetedMessages, captureCore, payloadSupport } from './budget.mjs';
+import { createApiSettings } from './api-settings.mjs';
 
 export const MEMORY_PROMPT_KEY = 'yimu-memory';
 
@@ -90,6 +91,7 @@ export function createHost({
     let generation = 0;
     let generating = false, opening = null;
     const sessions = new WeakMap(), promoteFinalListeners = new Set();
+    const connectionApi = createApiSettings({ getContext, fetchImpl: fetcher });
 
     function context() {
         const ctx = getContext();
@@ -104,6 +106,8 @@ export function createHost({
             binding,
             messages: clone(ctx.chat),
             name: text(ctx.characters?.[ctx.characterId]?.name || ctx.name2),
+            avatarUrl: typeof ctx.getThumbnailUrl === 'function' ? ctx.getThumbnailUrl('avatar', binding.avatar)
+                : `/thumbnail?type=avatar&file=${encodeURIComponent(binding.avatar)}`,
             mainApi: text(ctx.mainApi),
             maxContext: Number(ctx.mainApi === 'openai' ? ctx.chatCompletionSettings?.openai_max_context : ctx.maxContext) || 0,
             maxResponse: Number(ctx.chatCompletionSettings?.openai_max_tokens) || 0,
@@ -215,10 +219,15 @@ export function createHost({
         }
     }
 
-    async function generate(prompt, { profileId = '', model = '', signal, systemPrompt = SUMMARY_SYSTEM, maxTokens = 2048 } = {}) {
+    async function generate(prompt, { profileId = '', model = '', connection, signal, systemPrompt = SUMMARY_SYSTEM, maxTokens } = {}) {
         aborted(signal);
         if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('没有可整理的聊天原文');
         const ctx = context();
+        const selected = connection || connectionApi.effectiveConnection({ profileId, model });
+        connectionApi.assertCurrent(selected);
+        if (selected.mode === 'external') return connectionApi.generate(prompt, { connection: selected, signal, systemPrompt, maxTokens });
+        if (selected.mode === 'profile' && !selected.profileId) throw new Error('请选择 ST 连接预设');
+        profileId = selected.profileId; model = selected.model; maxTokens ??= 2048;
         let result;
         if (profileId) {
             const service = ctx.ConnectionManagerRequestService;
@@ -237,6 +246,7 @@ export function createHost({
             result = await ctx.generateRaw({ prompt, systemPrompt: String(systemPrompt), trimNames: false });
         }
         aborted(signal);
+        connectionApi.assertCurrent(selected);
         const content = typeof result === 'string' ? result : result?.content;
         if (typeof content !== 'string' || !content.trim()) throw new Error('忆幕没有收到可用的整理结果');
         return content;
@@ -261,7 +271,7 @@ export function createHost({
         const captured = captureCore(coreChat, source, { type, namesBehavior: route.names, userName: route.userName });
         if (captured.reason) return fallback(captured.reason);
         const session = Object.freeze({ binding: Object.freeze(clone(binding)), type });
-        sessions.set(session, { generation, route, source: clone(source), plan: clone(plan), processed: captured.processed, used: false });
+        sessions.set(session, { generation, route, source: clone(source), plan: clone(plan), processed: captured.processed, hiddenFloors: captured.hiddenFloors, used: false });
         for (const promote of promoteFinalListeners) promote();
         return { prepared: true, reason: 'awaiting-final-request', session };
     }
@@ -293,6 +303,7 @@ export function createHost({
             const ctx = context();
             const result = await buildBudgetedMessages(payload, {
                 entries: record.plan.entries, processed: record.processed, sourceHashes,
+                hiddenFloors: record.hiddenFloors,
                 recent: record.plan.settings?.recent ?? 5, budget: record.plan.settings?.budget ?? 0,
                 contextTokens: record.route.context, responseTokens,
             }, { countTokens: typeof ctx.getTokenCountAsync === 'function' ? value => ctx.getTokenCountAsync(value) : null, isCurrent: current });
@@ -353,5 +364,6 @@ export function createHost({
         };
     }
 
-    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup };
+    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup,
+        connectionApi, summaryConnection: settings => connectionApi.effectiveConnection(settings) };
 }

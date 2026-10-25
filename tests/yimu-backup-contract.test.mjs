@@ -34,6 +34,17 @@ test('portable whitelist preserves memory meaning and management history without
     assert.equal(portable.schema,SCHEMA);assert.deepEqual(portableDocument(portable),portable);
 });
 
+test('portable packages retain automatic choice and dismissed history while restored chats stay off',()=>{
+    const doc=document();doc.autoSummary=true;doc.initialRange={start:1,end:0,total:9};
+    const portable=portableDocument(doc);
+    assert.equal(portable.autoSummary,true);assert.deepEqual(portable.initialRange,doc.initialRange);
+    const target=binding('restored');const restored=restoreBackupDocument(doc,{binding:target,mappings:{source_0:target}}).document;
+    assert.equal(restored.enabled,false);assert.equal(restored.autoSummary,false);assert.deepEqual(restored.initialRange,doc.initialRange);
+    const legacy={...doc,schema:5};delete legacy.autoSummary;
+    assert.equal(portableDocument(legacy).autoSummary,true);
+    assert.throws(()=>portableDocument({...doc,autoSummary:undefined}),/自动总结/);
+});
+
 test('all nested source references and lineage are collected once in deterministic package-local order',()=>{
     const doc=document();doc.lineage={sourceBinding:binding('lineage'),cutoff:15,offset:10,bridgeCount:5,bridgeHashes:Array(5).fill(hash)};
     const item=doc.entries[0];item.origin={binding:binding('ancestor'),offset:0};

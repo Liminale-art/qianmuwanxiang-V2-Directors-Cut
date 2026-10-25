@@ -9,8 +9,9 @@ export function boot() {
     if (instance || !globalThis.SillyTavern?.getContext?.() || !globalThis.document?.body) return instance;
     const getUi = () => ({ showShortcut: globalThis.SillyTavern.getContext().extensionSettings?.yimu?.showShortcut === true });
     let removeEntries = null;
+    const host = createHost();
     const render = state => { const ui = getUi(); view.render({ ...state, ui }); removeEntries?.update(ui, state); };
-    const view = createView({ onAction: async (type, payload) => {
+    const view = createView({ connectionApi: host.connectionApi, onAction: async (type, payload) => {
         if (type !== 'uiSettings') return controller.action(type, payload);
         const ctx = globalThis.SillyTavern.getContext();
         if (!ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 尚不能保存界面设置，请稍后重试。');
@@ -22,7 +23,6 @@ export function boot() {
         render(controller.state);
         return true;
     } });
-    const host = createHost();
     const controller = createController({ host, api: createApi(), onChange: render });
     const open = () => { view.open(); void controller.refresh(); };
     removeEntries = mountEntries(open);

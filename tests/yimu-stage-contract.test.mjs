@@ -18,7 +18,7 @@ const stageOperation = document => ({id: 'stage_append', type: 'append', expecte
 const withStage = () => {const doc = fineDocument(); return change(doc, stageOperation(doc));};
 
 test('current schema upgrades legacy data only in memory and preserves original legacy objects', () => {
-    assert.equal(createDocument(binding).schema, SCHEMA); assert.equal(VERSION, '0.6.0');
+    assert.equal(createDocument(binding).schema, SCHEMA); assert.equal(VERSION, '0.7.0');
     const legacy = {...fineDocument(), schema: 1}, before = structuredClone(legacy);
     const upgraded = validateDocument(legacy);
     assert.equal(upgraded.schema, SCHEMA); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);
@@ -67,6 +67,18 @@ test('parent edits and invalidations disable stages in the same operation withou
         assert.equal(stage.text, before.entries.at(-1).text); assert.equal(stage.history[0].status, 'active');
         assert.equal(doc.entries.find(entry => entry.id === 'fine_3').status, 'active');
     }
+});
+
+test('explicit automatic-slice redo invalidates only its own stages and excerpt descendants', () => {
+    let doc = withStage();
+    doc = change(doc, {id: 'stage_other', type: 'append', expectedEpoch: doc.epoch,
+        entry: {id: 'stage_other', kind: 'stage', text: '不相干的阶段保持可用', source: {parents: [{id: 'fine_3', revision: 1}]}}});
+    for (const floor of [1, 3]) doc.entries.push({id: `excerpt_${floor}`, kind: 'excerpt', text: '原文补充', status: 'active', edited: false,
+        revision: 1, history: [], conflicts: [], candidate: null, parent: {id: `fine_${floor}`, revision: 1}, source: source(floor), quote: {start: 0, end: 2}});
+    const saved = change(doc, {id: 'range_redo', type: 'redo', entryId: 'fine_1', expectedEpoch: doc.epoch, expectedRevision: 1,
+        entry: {id: 'fine_1', kind: 'summary', text: '手动范围触发的重新总结', source: source(1)}});
+    for (const id of ['stage_1', 'excerpt_1']) assert.equal(saved.entries.find(entry => entry.id === id).status, 'invalid');
+    for (const id of ['fine_3', 'stage_other', 'excerpt_3']) assert.deepEqual(saved.entries.find(entry => entry.id === id), doc.entries.find(entry => entry.id === id));
 });
 
 test('undoing a parent change never resurrects its stale stage', () => {

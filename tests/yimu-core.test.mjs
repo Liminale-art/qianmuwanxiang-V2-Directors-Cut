@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, createDocument, createDefaults, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
-import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview } from '../yimu/core.mjs';
+import { DEFAULTS, SCHEMA, createDocument, createDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
+import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
 
 const binding = { avatar: 'Fixture.png', file: 'fixture', integrity: 'fixture-id' };
 const messages = Array.from({ length: 12 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: `合成第${i + 1}层：两人首次约会，秘密并未告诉旁人。`, send_date: `2026-10-25 ${i}` }));
-const enable = (range = { start: 1, end: 12, total: 12 }) => applyOperation(createDocument(binding), { id: 'enable', type: 'enable', expectedRevision: 0, enabled: true, range }).document;
+const enable = (range = { start: 1, end: 12, total: 12 }) => ({ ...applyOperation(createDocument(binding), { id: 'enable', type: 'enable', expectedRevision: 0, enabled: true, range }).document, autoSummary: true });
 const entry = async (id, start, end, text = '初次约会很重要；未告知的秘密不成为他人所知。') => ({ id, kind: 'summary', text, source: { start, end, hashes: (await fingerprintMessages(messages)).slice(start - 1, end) } });
 const append = (doc, item, id = item.id) => applyOperation(doc, { id, type: 'append', expectedEpoch: doc.epoch, entry: item }).document;
 
@@ -19,8 +19,10 @@ test('sources fingerprint exact visible content, sender, time and hidden state w
     assert.ok(!JSON.stringify(source).includes('约会'));
 });
 
-test('first scope is explicit, empty new chat can enable, reenable preserves confirmed range', () => {
-    assert.throws(() => applyOperation(createDocument(binding), { id: 'x', type: 'enable', expectedRevision: 0, enabled: true }), /范围|楼层/);
+test('feature enable does not authorize automatic work; empty and confirmed history decisions survive reenable', () => {
+    const fresh = applyOperation(createDocument(binding), { id: 'x', type: 'enable', expectedRevision: 0, enabled: true }).document;
+    assert.equal(fresh.initialRange, null); assert.equal(fresh.autoSummary, false);
+    assert.equal(nextBatch(fresh, messages, DEFAULTS), null);
     const empty = enable({ start: 1, end: 0, total: 0 });
     assert.equal(empty.enabled, true);
     const off = applyOperation(empty, { id: 'off', type: 'enable', expectedRevision: 1, enabled: false }).document;
@@ -34,17 +36,85 @@ test('content batches preserve five recent floors and skip unchosen initial hist
     assert.equal(nextBatch(enable(), messages.slice(0, 5), DEFAULTS), null);
 });
 
-test('first-enable preview reports hidden exclusions and recent raw separately without unhide or source changes', () => {
+test('schema six migrates only prior enabled chats into automatic mode and new chats stay off', () => {
+    const fresh = createDocument(binding);
+    assert.equal(SCHEMA, 6); assert.equal(fresh.autoSummary, false);
+    for (const enabled of [true, false]) {
+        const legacy = { ...fresh, schema: 5, enabled }; delete legacy.autoSummary;
+        assert.equal(validateDocument(legacy).autoSummary, enabled);
+        assert.equal(legacy.schema, 5, 'read validation does not mutate old data');
+    }
+    assert.throws(() => validateDocument({ ...fresh, autoSummary: undefined }), /自动总结/);
+});
+
+test('history cancellation is a persistent skip, not an empty-chat-only sentinel or permission to process older gaps', () => {
+    let doc = enable(); doc.initialRange = null;
+    doc = applyOperation(doc, { id: 'skip', type: 'history', expectedRevision: doc.configRevision, range: { start: 1, end: 0, total: 12 } }).document;
+    assert.equal(nextBatch(doc, messages, DEFAULTS, { force: true }), null);
+    const future = [...messages, ...messages.slice(0, 6)];
+    assert.deepEqual(nextBatch(doc, future, DEFAULTS, { force: true }), { start: 13, end: 13 });
+    assert.throws(() => applyOperation(doc, { id: 'again', type: 'history', expectedRevision: doc.configRevision, range: { start: 1, end: 12, total: 12 } }), /已确认/);
+});
+
+test('auto switch never turns on the master switch and turning off auto preserves enabled memory use', () => {
+    const fresh = createDocument(binding);
+    assert.throws(() => applyOperation(fresh, { id: 'auto', type: 'autoSummary', expectedRevision: 0, value: true }), /先启用/);
+    const on = enable();
+    const off = applyOperation(on, { id: 'auto_off', type: 'autoSummary', expectedRevision: on.configRevision, value: false }).document;
+    assert.equal(off.enabled, true); assert.equal(off.autoSummary, false);
+    assert.equal(nextBatch(off, messages, DEFAULTS), null);
+    assert.deepEqual(nextBatch(off, messages, DEFAULTS, { force: true }), { start: 1, end: 7 });
+});
+
+test('manual range preview expands whole affected slices visibly and never relabels outside text', async () => {
+    const doc = append(append(enable(), await entry('one', 1, 3)), await entry('two', 5, 7));
+    const before = structuredClone(doc);
+    const plan = planManualRange(doc, messages, DEFAULTS, { start: 2, end: 6 });
+    assert.deepEqual(plan.requestedRange, { start: 2, end: 6 });
+    assert.deepEqual(plan.range, { start: 1, end: 7 }); assert.equal(plan.expanded, true);
+    assert.deepEqual(plan.batches.map(batch => [batch.start, batch.end, batch.redo?.id]), [[1, 3, 'one'], [4, 4, undefined], [5, 7, 'two']]);
+    assert.deepEqual(doc, before);
+    const hidden = structuredClone(messages); hidden[3].is_system = true;
+    assert.deepEqual(planManualRange(doc, hidden, DEFAULTS, { start: 4, end: 4 }).range, { start: 4, end: 4 });
+});
+
+test('manual ranges reject deleted choices, bridge originals, unsupported floors and oversized whole slices', async () => {
+    const doc = append(enable(), await entry('one', 1, 4));
+    for (const status of ['deleted', 'excluded']) {
+        const changed = structuredClone(doc); changed.entries[0].status = status;
+        assert.throws(() => planManualRange(changed, messages, DEFAULTS, { start: 2, end: 3 }), /删除|暂不使用/);
+    }
+    assert.throws(() => planManualRange({ ...doc, lineage: { bridgeCount: 2 } }, messages, DEFAULTS, { start: 1, end: 3 }), /续接/);
+    assert.throws(() => planManualRange(doc, messages, { ...DEFAULTS, batch: 1 }, { start: 2, end: 3 }), /容量/);
+    const tools = structuredClone(messages); tools[5].tool_calls = [];
+    assert.throws(() => planManualRange(doc, tools, DEFAULTS, { start: 5, end: 7 }), /工具调用/);
+});
+
+test('manual exact redo cannot silently shrink an existing source range', async () => {
+    const doc = append(enable(), await entry('one', 1, 4));
+    const shortened = await entry('one', 2, 3);
+    assert.throws(() => applyOperation(doc, { id: 'shrink', type: 'redo', entryId: 'one', expectedEpoch: doc.epoch, expectedRevision: 1,
+        entry: shortened }), /不能改变/);
+});
+
+test('status counts fine-slice floor unions once and pending work excludes recent and user-deleted floors', async () => {
+    let doc = append(append(enable(), await entry('one', 1, 2)), await entry('two', 4, 4));
+    doc.entries[1].status = 'deleted';
+    doc.entries.push({ kind: 'stage', status: 'active', source: { ranges: [doc.entries[0].source] } });
+    assert.deepEqual(summaryCoverage(doc, messages, DEFAULTS), { sliceCount: 1, organizedFloors: 2, pendingFloors: 4, pendingRange: { start: 3, end: 7 } });
+});
+
+test('first-enable preview includes hidden source floors while preserving recent raw and hidden flags', () => {
     const source = structuredClone(messages.slice(0, 11));
     source.slice(0, 5).forEach(message => { message.is_system = true; });
     const before = structuredClone(source), doc = enable({ start: 1, end: 11, total: 11 });
     const preview = initialRangePreview(doc, source, { start: 1, end: 11 }, DEFAULTS);
-    assert.deepEqual(preview, { valid: true, hidden: [1, 2, 3, 4, 5], recent: [7, 8, 9, 10, 11], handled: [], unsupported: [], eligible: [6] });
-    assert.deepEqual(nextBatch(doc, source, DEFAULTS), { start: 6, end: 6 });
+    assert.deepEqual(preview, { valid: true, hidden: [1, 2, 3, 4, 5], recent: [7, 8, 9, 10, 11], handled: [], unsupported: [], eligible: [1, 2, 3, 4, 5, 6] });
+    assert.deepEqual(nextBatch(doc, source, DEFAULTS), { start: 1, end: 6 });
     assert.deepEqual(source, before);
-    assert.deepEqual(initialRangePreview(doc, source, { start: 3, end: 5 }, DEFAULTS).eligible, []);
+    assert.deepEqual(initialRangePreview(doc, source, { start: 3, end: 5 }, DEFAULTS).eligible, [3, 4, 5]);
     assert.deepEqual(initialRangePreview(doc, source, { start: 7, end: 11 }, DEFAULTS).hidden, []);
-    assert.deepEqual(initialRangePreview(doc, source, { start: 1, end: 11 }, { recent: 6 }).eligible, []);
+    assert.deepEqual(initialRangePreview(doc, source, { start: 1, end: 11 }, { recent: 6 }).eligible, [1, 2, 3, 4, 5]);
 });
 
 test('initial-range preview never counts tool, empty, inherited or already handled floors as ordinary new work', () => {
@@ -54,7 +124,7 @@ test('initial-range preview never counts tool, empty, inherited or already handl
     const doc = { lineage: { bridgeCount: 5 }, entries: [{ kind: 'summary', source: { start: 6, end: 6 }, status: 'deleted' }] };
     const preview = initialRangePreview(doc, source, { start: 1, end: 12 }, { recent: 1 });
     assert.deepEqual(preview.handled, [1, 2, 3, 4, 5, 6]);
-    assert.deepEqual(preview.hidden, [12]); assert.deepEqual(preview.recent, []);
+    assert.deepEqual(preview.hidden, [12]); assert.deepEqual(preview.recent, [12]);
     assert.deepEqual(preview.eligible, [7, 8, 9, 10, 11]);
     assert.deepEqual(initialRangePreview({}, source, { start: 1, end: 4 }, DEFAULTS).unsupported, [1, 2, 3, 4]);
     assert.equal(initialRangePreview({}, source, { start: 8, end: 3 }, DEFAULTS).valid, false);

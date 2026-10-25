@@ -119,6 +119,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         if (boundaryIds.size !== prepared.publicPlan.boundaries.length) fail('story_boundary', '请先完成截止边界的原文整理');
         const value = prepared.publicPlan;
         document.settings = clone(prepared.document.settings);
+        document.autoSummary = prepared.document.autoSummary;
         document.enabled = true; document.epoch = 1; document.configRevision = 1; document.revision = 1;
         document.initialRange = {start: 1, end: value.bridgeCount, total: value.bridgeCount};
         document.lineage = {sourceBinding: clone(source), cutoff: value.cutoff, offset: value.offset, bridgeCount: value.bridgeCount, bridgeHashes: [...prepared.bridgeHashes]};
