@@ -5,8 +5,8 @@ import {validateOrigin, validateLineage, validateCreation} from './story-contrac
 import {validateCompanion, applyCompanionOperation} from './companion-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.4.0';
-export const SCHEMA = 4;
+export const VERSION = '0.5.0';
+export const SCHEMA = 5;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });
 const clone = value => structuredClone(value);
@@ -56,7 +56,7 @@ function textValue(text) {
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
 export function validateDocument(raw) {
-    requireThat([1, 2, 3, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    requireThat([1, 2, 3, 4, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA};
     raw = clone(raw);
     normalizeBinding(raw.binding); validateSettings(raw.settings);
@@ -79,7 +79,7 @@ export function validateDocument(raw) {
     return raw;
 }
 export function validateDefaults(raw) {
-    requireThat([1, 2, 3, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    requireThat([1, 2, 3, 4, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
     validateSettings(raw.values, false); return raw;
 }

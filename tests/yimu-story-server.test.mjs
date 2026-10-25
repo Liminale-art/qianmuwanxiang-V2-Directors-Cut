@@ -137,7 +137,7 @@ test('new local summaries may reuse inherited floor numbers, but foreign redo an
     assert.throws(() => applyOperation(result.document, {id: 'bridge', type: 'append', expectedEpoch: 1, entry: {id: 'bridge', kind: 'summary', text: '错误重整衔接', source: f.source(1, 1)}}), /衔接原文/);
     const transient = clone(result.document); transient.entries[0].originVerified = true;
     assert.equal(validateDocument(transient).entries[0].originVerified, undefined);
-    assert.equal(SCHEMA, 4);
+    assert.equal(result.document.schema, SCHEMA);
 });
 
 test('excluded, deleted and invalid manually edited stages do not revive their children in a new branch', async t => {
@@ -220,11 +220,11 @@ test('schema 3 remains read-only until the first write preserves exact legacy by
     const f = await fixture(t), filename = path.join(f.account, '.yimu', chatStorageName(binding));
     const raw = JSON.parse(await fs.readFile(filename, 'utf8')); raw.value.schema = 3; raw.checksum = hash(JSON.stringify(raw.value));
     const bytes = Buffer.from(JSON.stringify(raw, null, 2)); await fs.writeFile(filename, bytes);
-    assert.equal((await f.store.read(f.request, binding)).document.schema, 4);
+    assert.equal((await f.store.read(f.request, binding)).document.schema, SCHEMA);
     assert.deepEqual(await fs.readFile(filename), bytes);
     await f.change({type: 'append', entry: {id: 'upgrade', kind: 'manual', text: '保留旧格式原件'}});
     assert.deepEqual(await fs.readFile(filename + '.schema3.bak'), bytes);
-    assert.equal(JSON.parse(await fs.readFile(filename, 'utf8')).value.schema, 4);
+    assert.equal(JSON.parse(await fs.readFile(filename, 'utf8')).value.schema, SCHEMA);
 });
 
 test('ST edits during pending-memory persistence or raw readback prevent a complete receipt', async t => {

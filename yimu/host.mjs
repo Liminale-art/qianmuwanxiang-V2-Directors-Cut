@@ -89,6 +89,15 @@ export function createHost({
         };
     }
 
+    function characters() {
+        const seen = new Set();
+        return (context().characters || []).flatMap(character => {
+            const avatar = text(character?.avatar), name = text(character?.name);
+            if (!avatar || !name || seen.has(avatar) || /[\x00-\x1f/\\]/.test(avatar)) return [];
+            seen.add(avatar); return [{ avatar, name }];
+        });
+    }
+
     // Creation is owned by the account-scoped server transaction. This method
     // only checks its receipt and opens an existing file through ST itself.
     async function openStory(result, { sourceSnapshot, isCurrent = () => true } = {}) {
@@ -132,7 +141,7 @@ export function createHost({
         try {
             const targetRows = await readChat(target);
             const hashes = await fingerprintMessages(targetRows.slice(1, bridge.count + 1));
-            if (!sameMessages(hashes, bridge.hashes)) return failed('target-changed', '新聊天的衔接内容已变化，未自动打开。');
+            if (!sameMessages(hashes, bridge.hashes) || receipt.fullChat && targetRows.length !== bridge.count + 1) return failed('target-changed', '新聊天的衔接内容已变化，未自动打开。');
             if (!current()) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
             if (sameBinding(target, sourceSnapshot.binding)) return { opened: true, binding: clone(target), alreadyOpen: true };
             // Native clearChat cancels pending saves. Never navigate away from
@@ -148,13 +157,21 @@ export function createHost({
             await ctx.openCharacterChat(target.file);
             const loaded = await snapshot();
             const loadedHashes = await fingerprintMessages(loaded.messages.slice(0, bridge.count));
-            if (!sameBinding(loaded.binding, target) || !sameMessages(loadedHashes, bridge.hashes)) {
+            if (!sameBinding(loaded.binding, target) || !sameMessages(loadedHashes, bridge.hashes) || receipt.fullChat && loaded.messages.length !== bridge.count) {
                 return failed('open-unconfirmed', '新聊天已建立，但尚未确认打开；请从角色聊天记录中打开。');
             }
             return { opened: true, binding: clone(target) };
         } catch {
             return failed('open-unconfirmed', '新聊天已保留，读取或打开尚未确认；请稍后重试打开。');
         } finally { opening = null; }
+    }
+
+    function openBackup(result, options) {
+        const receipt = result?.receipt;
+        if (receipt?.status !== 'complete' || !Array.isArray(receipt.hashes) || !receipt.hashes.length) {
+            return Promise.resolve({ opened: false, reason: 'unconfirmed-receipt', message: '恢复副本尚未完整确认，未打开。' });
+        }
+        return openStory({ ...result, receipt: { ...receipt, fullChat: true, bridge: { count: receipt.hashes.length, hashes: receipt.hashes } } }, options);
     }
 
     function clear() {
@@ -315,5 +332,5 @@ export function createHost({
         };
     }
 
-    return { snapshot, generate, profiles, clear, prepare, applyPrepared, subscribe, openStory };
+    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup };
 }

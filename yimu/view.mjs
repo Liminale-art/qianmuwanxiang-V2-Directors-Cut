@@ -2,6 +2,7 @@
 import { stageGroups } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
+import { createBackupView } from './backup-view.mjs';
 
 const SETTINGS = [
     ['recent', '近期原文层数', 'number', 1],
@@ -123,7 +124,8 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     const main = el('div', 'ym-content');
-    scroller.append(serviceStatus, status, main);
+    const backup = createBackupView({ document, onAction: (type, payload) => onAction?.(type, payload) });
+    scroller.append(serviceStatus, status, backup.node, main);
     shell.append(header, scroller);
     dialog.append(shell);
     document.body.append(dialog);
@@ -583,6 +585,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         chatName.textContent = state.snapshot?.name || '请选择单人聊天';
         story.render(state);
         companion.render(state);
+        backup.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries();
         if (!stageForm.hidden) updateStageRange();
         updateUsed();
@@ -615,7 +618,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; story.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; story.destroy(); backup.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

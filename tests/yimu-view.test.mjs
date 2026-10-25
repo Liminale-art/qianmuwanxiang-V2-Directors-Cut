@@ -78,6 +78,79 @@ const state = (patch = {}) => ({
     defaults: { revision: 0, values: { recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '' } },
     loading: false, busy: false, error: '', profiles: [{ id: 'custom-profile', name: '独立连接' }], ...patch,
 });
+
+test('backup entry remains available on homepage and file selection never uploads before explicit confirmation', async () => {
+    const d = dom(), calls = [], view = createView({ document: d.document, onAction: async (...args) => calls.push(args) });
+    view.render(state({ snapshot: null, document: null, defaults: null, service: { status: 'ok' } })); view.open();
+    const backup = d.document.querySelector('.ym-backup');
+    assert.equal(backup.closest('[hidden]'), null); assert.equal(d.get('导出当前记忆').disabled, true);
+    const file = new Blob(['synthetic']); Object.defineProperty(file, 'name', { value: 'my.yimu.gz' });
+    const picker = d.get('选择忆幕备份包'); picker.files = [file]; picker.emit('change');
+    assert.deepEqual(calls, []); assert.equal(d.get('确认上传备份包').disabled, false);
+    d.get('确认上传备份包').click(); await d.flush();
+    assert.equal(calls[0][0], 'backupImport'); assert.equal(calls[0][1].file, file);
+    const wrong = { name: 'third-party.json' }; picker.files = [wrong]; picker.emit('change');
+    assert.equal(d.get('确认上传备份包').disabled, true); assert.match(backup.textContent, /仅支持忆幕自己的/);
+    view.destroy();
+});
+
+test('backup export keeps the original-file opt-in unchecked and sources individually unselected', async () => {
+    const d = dom(), calls = [], view = createView({ document: d.document, onAction: async (...args) => calls.push(args) });
+    const s = state({ backup: { exportPlan: { planId: 'p', binding: state().snapshot.binding, title: 'Own backup', primarySourceId: 'main',
+        sources: [{ id: 'main', label: 'Main', available: true }, { id: 'ancestor', label: 'Ancestor', available: true }, { id: 'missing', label: 'Missing', available: false }] } } });
+    view.render(s);
+    assert.equal(d.get('附带 ST 聊天原件').checked, false);
+    assert.equal(d.get('主聊天 · Main').checked, false); assert.equal(d.get('Ancestor').checked, false); assert.equal(d.get('Missing').disabled, true);
+    d.get('下载备份包').click(); await d.flush();
+    assert.deepEqual(calls[0], ['backupExport', { includeOriginals: false, sourceIds: [] }]);
+    d.get('附带 ST 聊天原件').checked = true; d.get('附带 ST 聊天原件').emit('change');
+    d.get('Ancestor').checked = true; d.get('Ancestor').emit('change');
+    d.get('下载备份包').click(); await d.flush();
+    assert.deepEqual(calls[1][1], { includeOriginals: true, sourceIds: ['ancestor'] });
+    view.destroy();
+});
+
+test('imported archive text and revisions stay read-only and same-name role choices use explicit avatar identities', async () => {
+    const d = dom(), calls = [], view = createView({ document: d.document, onAction: async (...args) => calls.push(args) });
+    const archive = { id: 'a', title: '<img src=x>', entriesCount: 1, primarySourceId: 'main', sources: [{ id: 'main', label: 'Main', included: true }] };
+    view.render(state({ snapshot: null, document: null, defaults: null, backup: { selected: archive, archives: [archive],
+        roles: [{ name: 'Same', avatar: 'first.png' }, { name: 'Same', avatar: 'second.png' }], document: { entries: [entry({ text: '<script>plain only</script>', history: [{ text: 'Previous human text' }], conflicts: [{ text: 'Other revision' }] })] } } }));
+    const backup = d.document.querySelector('.ym-backup');
+    assert.match(backup.textContent, /Previous human text/); assert.match(backup.textContent, /Other revision/);
+    assert.equal(backup.querySelector('img'), null); assert.equal(backup.querySelector('script'), null);
+    assert.equal(backup.querySelector('textarea'), null); assert.equal(d.get('确认恢复为新聊天副本').disabled, true);
+    d.get('Same · second.png').click();
+    assert.equal(d.get('确认恢复为新聊天副本').disabled, true, 'original attachment must also be explicitly selected');
+    d.get('主聊天 · Main').checked = true; d.get('主聊天 · Main').emit('change');
+    d.get('确认恢复为新聊天副本').click(); await d.flush();
+    assert.equal(calls[0][0], 'backupRestore'); assert.equal(calls[0][1].targetAvatar, 'second.png'); assert.deepEqual(calls[0][1].sourceIds, ['main']);
+    view.destroy();
+});
+
+test('memory-only archive requires an explicit current-source choice and clears it on chat change', () => {
+    const d = dom(), view = createView({ document: d.document, onAction: async () => {} });
+    const backup = { selected: { id: 'only-memory', title: 'Only memory', primarySourceId: 'main', sources: [{ id: 'main', label: 'Main', included: false }] },
+        roles: [{ name: 'Role', avatar: 'role.png' }], document: { entries: [] } };
+    const s = state({ backup }); view.render(s); d.get('Role · role.png').click();
+    const use = d.get('使用当前打开的聊天核对主原件'); assert.equal(use.checked, false);
+    assert.equal(d.get('确认恢复为新聊天副本').disabled, true);
+    use.checked = true; use.emit('change'); assert.equal(d.get('确认恢复为新聊天副本').disabled, false);
+    view.render({ ...s, snapshot: { ...s.snapshot, binding: { ...s.snapshot.binding, file: 'Other' } } });
+    assert.equal(use.checked, false); assert.equal(d.get('确认恢复为新聊天副本').disabled, true);
+    view.destroy();
+});
+
+test('backup pending receipts expose only the same-operation retry while completed copies expose open, not another restore', async () => {
+    const d = dom(), calls = [], view = createView({ document: d.document, onAction: async (...args) => calls.push(args) });
+    const backup = { selected: { id: 'a', title: 'a', primarySourceId: 'main', sources: [] }, document: { entries: [] }, uploadPending: true, restorePending: true };
+    view.render(state({ backup }));
+    assert.equal(d.get('选择忆幕备份包').disabled, true); assert.equal(d.get('确认上传备份包').hidden, true);
+    assert.equal(d.get('确认恢复为新聊天副本').hidden, true);
+    d.get('继续核对本次恢复').click(); await d.flush(); assert.deepEqual(calls[0], ['backupRestore', { retry: true }]);
+    view.render(state({ backup: { ...backup, uploadPending: false, restorePending: false, result: { binding: { file: 'Saved copy' }, receipt: { status: 'complete' } } } }));
+    assert.equal(d.get('打开恢复副本').hidden, false); assert.equal(d.get('确认恢复为新聊天副本').hidden, true);
+    view.destroy();
+});
 function fixture(patch, handler) {
     const d = dom(), calls = [];
     const view = createView({ document: d.document, onAction: async (type, payload) => { calls.push({ type, payload }); return handler?.(type, payload); } });

@@ -43,6 +43,19 @@ test('native opening verifies saved source and target, never saves either chat, 
     assert.equal(again.alreadyOpen, true); assert.equal(f.opens.length, 1);
 });
 
+test('backup role choices retain unique avatar identity, and complete restoration verifies the whole target without switching roles', async t => {
+    const f = await fixture(); t.after(f.unsubscribe);
+    f.ctx.characters.push({ avatar: 'other.png', name: 'Actor' }, { avatar: 'other.png', name: 'Duplicate entry' });
+    const choices = f.host.characters(); assert.deepEqual(choices, [{ avatar: 'actor.png', name: 'Actor' }, { avatar: 'other.png', name: 'Actor' }]);
+    choices[0].name = 'changed'; assert.equal(f.ctx.characters[0].name, 'Actor');
+    const result = { binding: f.target, receipt: { id: 'restore', status: 'complete', target: f.target, hashes: f.receipt.bridge.hashes } };
+    f.disk.get(f.target.file).push({ mes: 'unconfirmed extra floor' });
+    assert.equal((await f.host.openBackup(result, { sourceSnapshot: f.sourceSnapshot })).opened, false); assert.equal(f.opens.length, 0);
+    f.disk.get(f.target.file).pop();
+    assert.equal((await f.host.openBackup(result, { sourceSnapshot: f.sourceSnapshot })).opened, true);
+    assert.equal(f.ctx.characterId, 0);
+});
+
 test('missing and changed targets cannot enter ST empty-chat greeting creation', async t => {
     for (const change of [f => f.disk.set(f.target.file, []), f => { f.disk.get(f.target.file)[0].chat_metadata.integrity = 'other'; },
         f => { f.disk.get(f.target.file)[1].mes = 'changed'; }, f => f.disk.get(f.target.file).pop()]) {

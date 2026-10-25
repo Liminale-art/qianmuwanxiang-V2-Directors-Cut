@@ -6,6 +6,7 @@ import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, r
 import { recallBlockReason } from './recall-contract.mjs';
 import { createStoryActions } from './story-runtime.mjs';
 import { createCompanionActions } from './companion-runtime.mjs';
+import { createBackupActions } from './backup-runtime.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -23,6 +24,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
     const lifecycle = () => ({disposed, generation, generating, paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding))});
     const storyActions = createStoryActions({state, host, api, emit, id, lifecycle, refresh});
     const companionActions = createCompanionActions({state, api, change, emit, id, lifecycle});
+    const backupActions = createBackupActions({state, host, api, emit, id, lifecycle, refresh});
     const adopt = (binding, result) => {
         if (!disposed && isCurrent(binding)) {
             if (result.document && (!state.document || result.document.revision >= state.document.revision)) state.document = result.document;
@@ -298,6 +300,12 @@ export function createController({ host, api, onChange = () => {}, countTokens =
     async function action(type, payload = {}) {
         if (disposed) return false;
         if (type === 'refresh') return refresh({ auto: false });
+        // Import archives are usable on the homepage too. They do not require
+        // or manufacture a current-chat identity, and survive chat switches.
+        if (type.startsWith('backup')) {
+            if (state.service.status !== 'ok') await checkService();
+            return backupActions.action(type, payload);
+        }
         if (!state.snapshot || !state.document || !state.defaults) throw new Error('请先打开单人聊天并读取忆幕');
         const snapshot = await host.snapshot();
         if (!equalBinding(snapshot.binding, state.snapshot.binding)) { await refresh(); throw new Error('当前聊天已变化，请重新操作'); }
@@ -444,7 +452,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
 
     return {
         state, refresh, action, start, startStage, intercept, event,
-        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); companionActions.destroy(); host.clear(); },
+        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); companionActions.destroy(); backupActions.destroy(); host.clear(); },
         async settled() { await refreshing; },
     };
 }

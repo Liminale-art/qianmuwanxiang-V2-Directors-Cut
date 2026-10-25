@@ -6,6 +6,7 @@ import * as contract from './contract.mjs';
 import {validateExcerpt} from './recall-contract.mjs';
 import {bridgeSourceValid} from './story-contract.mjs';
 import {createStoryHandlers} from './story-store.mjs';
+import {createBackupHandlers} from './backup-store.mjs';
 
 const STORE_DIRECTORY = '.yimu';
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
@@ -69,15 +70,16 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         const user = request?.user;
         const rootValue = user?.directories?.root;
         const chatsValue = user?.directories?.chats;
+        const charactersValue = user?.directories?.characters;
         const handle = user?.profile?.handle;
         if (typeof handle !== 'string' || !handle) fail('account', '未取得当前 ST 账户', 403);
         const root = trustedPath(rootValue, hostCwd);
         const chats = trustedPath(chatsValue, hostCwd);
         if (!child(root, chats)) fail('account', 'ST 聊天目录不属于当前账户', 403);
         return {
-            root, chats, folder: path.join(root, STORE_DIRECTORY), roots: new Map(),
+            root, chats, characters: charactersValue ? trustedPath(charactersValue, hostCwd) : null, folder: path.join(root, STORE_DIRECTORY), roots: new Map(),
             guard() {
-                if (request.user !== user || user.profile?.handle !== handle || user.directories?.root !== rootValue || user.directories?.chats !== chatsValue) {
+                if (request.user !== user || user.profile?.handle !== handle || user.directories?.root !== rootValue || user.directories?.chats !== chatsValue || user.directories?.characters !== charactersValue) {
                     fail('account', 'ST 账户已改变，未继续保存', 403);
                 }
             },
@@ -151,7 +153,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current, legacyBytes: [1, 2, 3].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
+            return {value, fingerprint: current, legacyBytes: [1, 2, 3, 4].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -391,7 +393,10 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             const key = contract.bindingKey(binding);
             if (seen.has(key)) fail('source_identity', '继承来源的改名记录出现循环，未跟随');
             seen.add(key);
-            try {return await requireSource(ctx, binding, source, entries, collect);}
+            try {
+                const result = await requireSource(ctx, binding, source, entries, collect);
+                return result === true ? true : {...result, resolvedBinding: binding};
+            }
             catch (caught) {
                 if (caught?.code !== 'yimu_source_missing') throw caught;
                 const saved = await documentRead(ctx, binding);
@@ -408,6 +413,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
     }
 
     async function requireEntrySource(ctx, binding, entry, document, defaults = null, checkRecent = false) {
+        if (entry.origin?.unresolved) fail('source_missing', '备份中的来源尚未明确恢复或匹配，未启用该记忆', 404);
         const readSource = entry.origin ? requireForeignSource : requireSource;
         if (entry.origin) {
             const hashes = [];
@@ -517,6 +523,11 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
         const foreign = new Map();
         for (const entry of document.entries.filter(entry => entry.origin && entry.source)) {
+            if (entry.origin.unresolved) {
+                entry.originVerified = false;
+                if (!evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+                continue;
+            }
             const key = JSON.stringify(entry.origin.binding);
             if (!foreign.has(key)) foreign.set(key, {binding: normalizeStoreBinding(entry.origin.binding), entries: []});
             foreign.get(key).entries.push(entry);
@@ -665,5 +676,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
 
     const stories = createStoryHandlers({io, context, prepare, exclusive, documentRead, defaultsRead, read, requireSource, requireForeignSource,
         sourcePath, checkDirectory, checkRoot, writeFile, normalizeStoreBinding, chatStorageName, fail, digest});
-    return Object.freeze({read, change, defaults, rename, recallSource, ...stories});
+    const backups = createBackupHandlers({io, context, prepare, exclusive, documentRead, readFile, read, requireSource, requireForeignSource,
+        sourcePath, checkDirectory, checkRoot, checkStore, writeFile, normalizeStoreBinding, chatStorageName, fail, digest});
+    return Object.freeze({read, change, defaults, rename, recallSource, ...stories, ...backups});
 }

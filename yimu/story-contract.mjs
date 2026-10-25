@@ -14,14 +14,16 @@ export function storyBinding(value) {
 }
 export function validateOrigin(value) {
     if (!integer(value?.offset)) fail('继承记忆的叙事位置无效');
-    return {binding: storyBinding(value.binding), offset: value.offset};
+    if (value.unresolved !== undefined && typeof value.unresolved !== 'boolean') fail('继承记忆的来源核验状态无效');
+    return {binding: storyBinding(value.binding), offset: value.offset, ...(value.unresolved ? {unresolved: true} : {})};
 }
 export function validateLineage(value) {
     if (!integer(value?.cutoff) || value.cutoff < 1 || !integer(value.offset) || !integer(value.bridgeCount) || value.bridgeCount < 1
         || value.bridgeCount > value.cutoff || !Array.isArray(value.bridgeHashes) || value.bridgeHashes.length !== value.bridgeCount
         || !value.bridgeHashes.every(hash => /^[a-f0-9]{64}$/.test(hash))) fail('故事衔接记录无效');
+    if (value.unresolved !== undefined && typeof value.unresolved !== 'boolean') fail('故事衔接来源核验状态无效');
     return {sourceBinding: storyBinding(value.sourceBinding), cutoff: value.cutoff, offset: value.offset,
-        bridgeCount: value.bridgeCount, bridgeHashes: [...value.bridgeHashes]};
+        bridgeCount: value.bridgeCount, bridgeHashes: [...value.bridgeHashes], ...(value.unresolved ? {unresolved: true} : {})};
 }
 export function validateCreation(value) {
     if (typeof value?.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value.id)
@@ -35,6 +37,7 @@ export const entryOrigin = (entry, document) => entry.origin || {binding: docume
 export const sameOrigin = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
 const ranges = entry => entry.source ? entry.source.ranges || [entry.source] : [];
 export function bridgeSourceValid(entry, document, hashes) {
+    if (entry.origin?.unresolved) return false;
     if (!entry.origin || !document.lineage) return true;
     const {offset, bridgeHashes} = document.lineage;
     return bridgeHashes.every((hash, index) => hashes[index] === hash || !ranges(entry).some(range => {

@@ -1,0 +1,170 @@
+// Import archives are account-owned documents, never synthetic chat bindings.
+const clone = value => structuredClone(value);
+const same = (a, b) => !!a && !!b && a.avatar === b.avatar && a.file === b.file && a.integrity === b.integrity;
+
+export function saveBackupDownload({ blob, filename }, { document = globalThis.document, url = globalThis.URL } = {}) {
+    const href = url.createObjectURL(blob), link = document.createElement('a');
+    link.href = href; link.download = filename || '忆幕备份.yimu.gz'; link.hidden = true;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => url.revokeObjectURL(href), 60000);
+}
+
+export function createBackupActions({ state, host, api, emit, id, lifecycle = () => ({}), refresh = async () => {}, download = saveBackupDownload }) {
+    const view = state.backup ||= { archives: [], roles: [], selected: null, document: null, exportPlan: null, busy: false, error: '', status: '' };
+    const restores = new Map();
+    let alive = true, upload = null;
+    const active = () => alive && !lifecycle().disposed;
+    const publish = () => { if (active()) emit(); };
+    const roles = () => { view.roles = host.characters?.() || []; };
+    const putArchive = archive => {
+        if (!archive?.id) throw new Error('备份资料尚未确认保存');
+        view.archives = [archive, ...view.archives.filter(item => item.id !== archive.id)];
+        return archive;
+    };
+    const record = archiveId => {
+        if (!restores.has(archiveId)) restores.set(archiveId, { pending: null, result: null });
+        return restores.get(archiveId);
+    };
+    const showRecord = archiveId => {
+        const saved = record(archiveId); view.restorePending = !!saved.pending; view.result = saved.result;
+    };
+    const setResult = (archiveId, result) => {
+        const saved = record(archiveId);
+        if (result?.status === 'failed' || result?.receipt?.status === 'failed') {
+            saved.pending = null; saved.result = null;
+            if (view.selected?.id === archiveId) showRecord(archiveId);
+            throw new Error(result.message || '本次恢复已确认失败，原有资料保留，请重新核对后操作');
+        }
+        if (result?.status === 'pending' || result?.receipt?.status === 'pending') {
+            const request = result.request || (result.receipt?.id ? { id: result.receipt.id } : null);
+            if (request?.id) saved.pending = clone(request);
+            if (view.selected?.id === archiveId) showRecord(archiveId);
+            return false;
+        }
+        if (result?.receipt?.status !== 'complete' || !result.binding) return false;
+        saved.pending = null; saved.result = result;
+        if (view.selected?.id === archiveId) showRecord(archiveId);
+        return true;
+    };
+    const readArchive = async archiveId => {
+        const result = await api.backupRead(archiveId);
+        if (!active()) return result;
+        view.selected = putArchive(result.archive); view.document = result.document; showRecord(archiveId);
+        return result;
+    };
+    async function refreshList() {
+        roles(); const result = await api.backupList();
+        if (active()) { view.archives = result.archives || []; view.loaded = true; publish(); }
+        return result;
+    }
+    async function action(type, payload = {}) {
+        if (!active() || view.busy) return false;
+        view.busy = true; view.error = ''; view.status = ''; roles(); publish();
+        try {
+            if (type === 'backupList') return await refreshList();
+            if (type === 'backupRead') {
+                const result = await readArchive(payload.archiveId);
+                const found = await api.backupResult(payload.archiveId).catch(() => null);
+                if (active() && found) setResult(payload.archiveId, found);
+                return result;
+            }
+            if (type === 'backupPlan') {
+                const snapshot = await host.snapshot();
+                const result = await api.backupPlan(snapshot.binding);
+                const current = await host.snapshot();
+                if (!same(snapshot.binding, current.binding)) throw new Error('当前聊天已变化，请重新选择导出范围');
+                if (active()) view.exportPlan = { ...result, binding: clone(snapshot.binding) };
+                return result;
+            }
+            if (type === 'backupExport') {
+                const plan = view.exportPlan;
+                if (!plan) throw new Error('请先核对导出范围');
+                const current = await host.snapshot();
+                if (!same(current.binding, plan.binding)) throw new Error('当前聊天已变化，请重新选择导出范围');
+                const sourceIds = payload.includeOriginals ? payload.sourceIds || [] : [];
+                if (sourceIds.some(sourceId => !plan.sources.some(source => source.id === sourceId && source.available))) throw new Error('所选聊天原件不可用，请重新核对导出范围');
+                const result = await api.backupExport(plan.binding, { planId: plan.planId, sourceIds });
+                if (active()) { await download(result); view.status = sourceIds.length ? '备份包已生成，已发起下载。' : '记忆资料备份已生成，未附带聊天原件，已发起下载。'; }
+                return result;
+            }
+            if (type === 'backupImport') {
+                if (!upload) {
+                    const file = payload.file;
+                    if (!file || typeof file.name !== 'string' || !/\.yimu\.gz$/i.test(file.name) || typeof file.stream !== 'function') throw new Error('请选择忆幕自己的 .yimu.gz 备份包');
+                    upload = { id: id(), file }; view.uploadPending = true;
+                } else if (!payload.retry) throw new Error('上次上传结果尚未确认，请先核对本次上传');
+                view.status = '正在上传并核对备份包…'; publish();
+                let result;
+                try { result = await api.backupUpload(upload.file, upload.id); }
+                catch (error) {
+                    const found = await api.backupUploadResult(upload.id).catch(() => null);
+                    if (found?.status === 'complete' && found.archive) result = found;
+                    else if (found?.status === 'failed') {
+                        upload = null; view.uploadPending = false; view.uploadReset = (view.uploadReset || 0) + 1;
+                        throw new Error(found.message || '此备份包已确认无法导入，请重新选择忆幕备份包');
+                    }
+                    else {
+                        if (error.status >= 400 && error.status < 500 && found?.status === 'missing') { upload = null; view.uploadPending = false; view.uploadReset = (view.uploadReset || 0) + 1; }
+                        throw error;
+                    }
+                }
+                if (!result?.archive?.id) throw new Error('上传结果尚未确认，请核对本次上传');
+                upload = null; view.uploadPending = false; view.uploadReset = (view.uploadReset || 0) + 1;
+                if (active()) { putArchive(result.archive); await readArchive(result.archive.id); view.status = '备份包已导入为独立资料；未创建聊天，也未启用忆幕。'; }
+                return result;
+            }
+            if (type === 'backupRestore') {
+                const archive = view.selected;
+                if (!archive) throw new Error('请先打开一份已导入资料');
+                const saved = record(archive.id);
+                if (saved.result) { showRecord(archive.id); return saved.result; }
+                if (!saved.pending) {
+                    if (payload.retry) throw new Error('没有需要继续核对的恢复操作');
+                    if (!view.roles.some(role => role.avatar === payload.targetAvatar)) throw new Error('请明确选择一个当前账户内的角色');
+                    const sourceIds = payload.sourceIds || [];
+                    if (sourceIds.some(sourceId => !archive.sources.some(source => source.id === sourceId && source.included))) throw new Error('所选原件不在此备份包内');
+                    let useCurrentBinding;
+                    if (payload.useCurrent) {
+                        const snapshot = await host.snapshot();
+                        if (!same(snapshot.binding, payload.currentBinding)) throw new Error('当前聊天已变化，请重新确认匹配来源');
+                        useCurrentBinding = clone(snapshot.binding);
+                    }
+                    if (!sourceIds.includes(archive.primarySourceId) && !useCurrentBinding) throw new Error('请选择包内主聊天原件，或明确使用当前聊天核对来源');
+                    saved.pending = { id: id(), targetAvatar: payload.targetAvatar, sourceIds: [...sourceIds], ...(useCurrentBinding ? { useCurrentBinding } : {}) };
+                    showRecord(archive.id);
+                } else if (!payload.retry) throw new Error('上次恢复结果尚未确认，请先继续核对本次恢复');
+                view.status = '正在核对来源并建立新副本…'; publish();
+                let result;
+                try { result = await api.backupRestore(archive.id, saved.pending); }
+                catch (error) {
+                    const found = await api.backupResult(archive.id, { id: saved.pending.id }).catch(() => null);
+                    if (setResult(archive.id, found)) result = found;
+                    else {
+                        if (error.status >= 400 && error.status < 500 && found?.status === 'missing') { saved.pending = null; showRecord(archive.id); }
+                        throw error;
+                    }
+                }
+                if (!setResult(archive.id, result)) throw new Error('恢复结果尚未确认，请继续核对本次恢复；不会另建重复副本');
+                if (active()) view.status = `已恢复为新聊天：${result.binding.file}。忆幕保持关闭，原聊天和原记忆未覆盖。`;
+                return result;
+            }
+            if (type === 'backupOpen') {
+                const result = view.selected && record(view.selected.id).result;
+                if (!result) throw new Error('尚无已确认的恢复副本');
+                const sourceSnapshot = await host.snapshot().catch(() => null);
+                if (!sourceSnapshot || sourceSnapshot.binding.avatar !== result.binding.avatar) {
+                    view.status = `副本已保留，请在所选角色的聊天记录中打开：${result.binding.file}`;
+                    return { opened: false };
+                }
+                const stamp = lifecycle().generation;
+                const opened = await host.openBackup(result, { sourceSnapshot, isCurrent: () => active() && !lifecycle().generating && lifecycle().generation === stamp });
+                if (active()) view.status = opened.opened ? '已打开恢复副本，忆幕保持关闭。' : opened.message;
+                if (opened.opened) await refresh({ auto: false });
+                return opened;
+            }
+            throw new Error('未知的备份操作');
+        } catch (error) { if (active()) view.error = error.message; throw error; }
+        finally { view.busy = false; publish(); }
+    }
+    return { action, refreshList, destroy() { alive = false; upload = null; restores.clear(); } };
+}

@@ -4,7 +4,7 @@ import { bridgeSourceValid } from './story-contract.mjs';
 // Foreign floor numbers never address the current chat. Verification is a
 // response-only server proof; a persisted origin is not itself permission.
 export function inheritedSourceValid(entry, document, hashes) {
-    return !!entry.origin && entry.originVerified === true && !!document.lineage && bridgeSourceValid(entry, document, hashes);
+    return !!entry.origin && entry.origin.unresolved !== true && entry.originVerified === true && !!document.lineage && bridgeSourceValid(entry, document, hashes);
 }
 
 export function sourceTimelineEnd(entry) {
