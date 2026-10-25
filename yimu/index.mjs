@@ -2,6 +2,7 @@ import { createHost } from './host.mjs';
 import { createApi } from './client.mjs';
 import { createController } from './runtime.mjs';
 import { createView, mountEntries } from './view.mjs';
+import { COMPANION_READY } from './companion-runtime.mjs';
 
 let instance = null;
 export function boot() {
@@ -14,11 +15,13 @@ export function boot() {
     const unsubscribe = host.subscribe((name, args) => controller.event(name, args));
     const focus = () => { void controller.refresh({ quiet: true, auto: false }); };
     globalThis.addEventListener('focus', focus);
+    globalThis.addEventListener(COMPANION_READY, focus);
     const interceptor = (...args) => controller.intercept(...args);
     globalThis.yimuGenerationInterceptor = interceptor;
     const dispose = () => {
         controller.destroy(); unsubscribe(); removeEntries(); view.destroy();
         globalThis.removeEventListener('focus', focus);
+        globalThis.removeEventListener(COMPANION_READY, focus);
         globalThis.removeEventListener('pagehide', dispose);
         if (globalThis.yimuGenerationInterceptor === interceptor) delete globalThis.yimuGenerationInterceptor;
         instance = null;

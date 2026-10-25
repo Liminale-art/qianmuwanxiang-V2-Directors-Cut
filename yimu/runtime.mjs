@@ -4,6 +4,8 @@ import { nextStage, parseStage, stagePrompt } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
 import { recallBlockReason } from './recall-contract.mjs';
+import { createStoryActions } from './story-runtime.mjs';
+import { createCompanionActions } from './companion-runtime.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -18,6 +20,9 @@ export function createController({ host, api, onChange = () => {}, countTokens =
     let refreshTimer = null, generationRefresh = null;
     const emit = () => { if (!disposed) onChange({ ...state, paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) }); };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
+    const lifecycle = () => ({disposed, generation, generating, paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding))});
+    const storyActions = createStoryActions({state, host, api, emit, id, lifecycle, refresh});
+    const companionActions = createCompanionActions({state, api, change, emit, id, lifecycle});
     const adopt = (binding, result) => {
         if (!disposed && isCurrent(binding)) {
             if (result.document && (!state.document || result.document.revision >= state.document.revision)) state.document = result.document;
@@ -57,6 +62,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
     }
 
     async function refresh({ quiet = false, auto = false } = {}) {
+        companionActions.connect();
         const ticket = ++sequence;
         if (!quiet) { state.loading = true; state.error = ''; emit(); }
         const task = (async () => {
@@ -75,6 +81,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (switched) {
                     host.clear(); prepared = null;
                     state.document = null; state.defaults = null; state.lastUsed = null; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
                 if (serviceError) throw serviceError;
@@ -138,6 +145,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (entryId) {
                     const entry = jobDocument.entries.find(e => e.id === entryId);
                     if (!entry?.source || entry.status === 'deleted') throw new Error('此条记忆没有可重新总结的来源');
+                    if (entry.origin) throw new Error('这是独立继承的记忆，可在此手动修订；自动重总结不会跨故事改写');
                     batch = { start: entry.source.start, end: entry.source.end, redo: clone(entry) };
                     if (batch.end > snapshot.messages.length) throw new Error('对应原文楼层已不存在，请先处理来源变化');
                 } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force });
@@ -298,6 +306,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; emit();
         }
         if (['error', 'mismatch'].includes(state.service.status)) throw new Error('忆幕服务尚不可用，请先刷新检测；当前修改可继续保留。');
+        if (type.startsWith('story')) {
+            jobs.get(key)?.abort();
+            return storyActions(type, payload);
+        }
+        if (type.startsWith('companion')) return companionActions.action(type, payload);
         if (type === 'stage' || type === 'redo' && doc.entries.find(e => e.id === payload.entryId)?.kind === 'stage') {
             if (jobs.has(key)) return false;
             state.error = ''; emit(); defer(() => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null })); return true;
@@ -351,14 +364,17 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (disposed || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || localStops.has(bindingKey(state.snapshot.binding))) return;
         const ticket = generation;
         const doc = clone(state.document), defaults = clone(state.defaults);
-        doc.entries = doc.entries.filter(entry => !state.invalidSourceIds.includes(entry.id));
+        // Keep disabled/invalid authoritative stages in the document so their
+        // automatic children cannot bypass a human revision during selection.
+        for (const entry of doc.entries) if (state.invalidSourceIds.includes(entry.id) && entry.status === 'active') entry.status = 'invalid';
         try {
             const snapshot = await host.snapshot();
             if (!equalBinding(snapshot.binding, doc.binding)) return;
             const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
             const result = host.prepare(coreChat, plan, snapshot, type);
-            if (result.prepared) prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch };
+            if (result.prepared) prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch,
+                foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };
         } catch { host.clear(); /* Failure retains ST's unchanged original context. */ }
     }
 
@@ -386,6 +402,20 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             const isCurrentRequest = () => !disposed && pending === prepared && pending.generation === generation && isCurrent(pending.binding)
                 && !localStops.has(bindingKey(pending.binding)) && state.document?.enabled && state.document.revision === pending.revision
                 && state.document.epoch === pending.epoch && state.defaults?.revision === pending.defaultsRevision && state.sourceAvailable;
+            if (pending.foreignIds?.length) {
+                // The current browser cannot observe edits in ancestor files.
+                // Recheck them at the final request boundary; a slow/unavailable
+                // source keeps the ordinary ST request, never blocks chatting.
+                let timer;
+                const verified = await Promise.race([api.read(pending.binding).catch(() => null),
+                    new Promise(resolve => { timer = setTimeout(() => resolve(null), 500); })]);
+                clearTimeout(timer);
+                if (!isCurrentRequest() || !verified?.sourceAvailable || verified.document.revision !== pending.revision
+                    || verified.defaults.revision !== pending.defaultsRevision || pending.foreignIds.some(id => verified.invalidSourceIds?.includes(id)
+                        || verified.document.entries.find(entry => entry.id === id)?.originVerified !== true)) {
+                    if (pending === prepared) { prepared = null; host.clear(); } return;
+                }
+            }
             const result = await host.applyPrepared(args[0], pending.session, { isCurrent: isCurrentRequest });
             if (!isCurrentRequest()) return;
             if (result.applied) {
@@ -414,7 +444,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
 
     return {
         state, refresh, action, start, startStage, intercept, event,
-        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); host.clear(); },
+        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); companionActions.destroy(); host.clear(); },
         async settled() { await refreshing; },
     };
 }

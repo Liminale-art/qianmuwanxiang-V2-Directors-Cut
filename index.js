@@ -5,6 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.464';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
+import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
@@ -316,7 +317,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.482';
+const VERSION = '1.59.483';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -325,6 +326,16 @@ let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),getPreviewFontSize:()=>settings.proseLayout?.fontSize??PROSE_LAYOUT_DEFAULTS.fontSize,beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
+const yimuCompanionBridge = createYimuCompanionBridge({
+  getState: coreadYimuState, resolveAccount: resolveImageAccountNamespace,
+  listKeys: () => blobStore.createReaderPackageReader().listReaderChatKeys(),
+  readRecord: async key => {
+    // IDB stores an archive as one value. Only persisted slice fields leave this adapter;
+    // dialogue messages, assistants, books and connection settings are never consumed.
+    const rec = await blobStore.createReaderPackageReader().getReaderChat(key);
+    return rec ? {bookId:rec.bookId, slices:rec.slices, companionOwner:rec.companionOwner} : null;
+  },
+});
 let chatWriteGuard = null, chatWriteFetchBefore = null;
 let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
 
@@ -25428,6 +25439,26 @@ function coread() {
   return settings.coread;
 }
 
+// Metadata-only view for the optional 忆幕 link. It does not open or migrate a book.
+function coreadYimuState() {
+  const context = ctx(), character = context.characters?.[context.characterId];
+  const story = !context.groupId && character?.avatar && context.chatId && context.chatMetadata?.integrity
+    ? {avatar:character.avatar, file:context.chatId, integrity:context.chatMetadata.integrity} : null;
+  const personas = coreadPersonaChoices().map(persona => ({key:persona.key, name:persona.name}));
+  const hostPersona = coreadHostPersona();
+  if (!personas.some(persona => persona.key === hostPersona.key)) personas.push({key:hostPersona.key, name:hostPersona.name});
+  const boundaries = {};
+  if (readerView && readerContentCache?.bookId === readerView.bookId) {
+    // Lengths are enough to describe the already displayed position; no new book read.
+    const chapters = readerContentCache.chapters || [], at = Math.max(0, Math.min(chapters.length - 1, readerView.chapterIndex || 0));
+    const prefix = chapters.slice(0, at).reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
+    boundaries[readerView.bookId] = {readTo:prefix + Math.round(String(chapters[at]?.content || '').length * Math.max(0, Math.min(1, readerView.scrollRatio || 0)))};
+  }
+  return {available:initialized && isRuntimeOwner() && !!settings?.enabled && context.extensionSettings?.[MODULE_NAME] === settings, owner:settings, coread:settings?.coread,
+    characters:Object.values(context.characters || {}).map(ch => ({avatar:ch?.avatar || ch?.data?.avatar, name:ch?.name || ch?.data?.name})),
+    personas, boundaries, story, currentKey:readerView ? `${readerView.companionScope}::${readerView.bookId}` : ''};
+}
+
 function coreadAssistantConfig() {
   const c = coread();
   if (!isPlainObject(c.assistant)) c.assistant = clone(DEFAULT_SETTINGS.coread.assistant);
@@ -26319,6 +26350,11 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     const chatCtx = mainline;
     if (chatCtx) { chatCtxLen = chatCtx.length; seg.push(`【主线正文近况（「${charName}」在主线里刚说/做的·供你保持人设连贯）】\n${chatCtx}`); }
   }
+  // Explicit 忆幕 links add only their checked, budgeted story context, never a full chat.
+  const linked = await yimuCompanionBridge.consume({key:coreadDialogBucket(id), bookId:id,
+    scope:readerView?.companionScope || coreadCompanionSession()?.scope || '', persona:persona.key || '',
+    avatar:character.avatar || character.data?.avatar || ''});
+  if (linked.active && linked.text) seg.push(`【主动关联的故事记忆（来源与知情边界保持不变）】\n${linked.text}`);
   // 记忆召回（关键词档·零算力）：本轮查询命中的历史切片，让书友记得你们以前聊过的想法
   let recallCount = 0;
   const mem = coreadMemory();
@@ -28108,7 +28144,7 @@ async function coreadBuildMainlineInjection() {
   if (!m.mainlineFeedback) return '';
   if ((m.mainlineRecall || 0) <= 0 && (m.mainlineRecent || 0) <= 0) return '';
   await ensureCoreadReaderRuntime();
-  const pool = await coreadMainlinePool();
+  const pool = await yimuCompanionBridge.filterMainline(await coreadMainlinePool());
   if (!pool.length) return '';
   // 查询语境＝主线近期双方发言（user + char 都要·召回按「当下在聊什么」而非单侧）。取末尾若干条清洗拼接。
   const chatArr = Array.isArray(ctx().chat) ? ctx().chat : [];
@@ -35933,6 +35969,7 @@ function init() {
     ttsStartChat();   // 若 ST 已就绪则即刻挂注入；未就绪由 APP_READY 兜底
     registerRuntimeInterceptor();
     initialized = true;
+    yimuCompanionBridge.mount();
     observeChatWriteBaseline();
     fontLibrary.activate();
     void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
@@ -36074,6 +36111,7 @@ function cleanupRuntime(resetSettings = false) {
     });
     clean('storyboard events', () => storyboardUnbindChat());
     clean('director candidate pool', () => resetDirectorNarrativeBridge());
+    clean('yimu companion link', () => yimuCompanionBridge.unmount());
     clean('director leave guard', () => { directorLeaveGuard?.dispose(); directorLeaveGuard = null; });
     clean('video gallery', () => {
       storyboardCloseVideoViewer();

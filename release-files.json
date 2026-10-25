@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-yimu-companion.js",
     "qianmu-chat-write-guard.js",
     "qianmu-chat-recovery.js",
     "qianmu-chat-recovery-view.js",

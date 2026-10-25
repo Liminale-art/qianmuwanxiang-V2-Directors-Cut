@@ -78,6 +78,11 @@
 .ym-fine-list { margin-top: 8px; }
 .ym-fine-list > .ym-card { background: transparent; }
 .ym-used-entry { border-top: 1px solid var(--ym-border); margin-top: 9px; padding-top: 9px; }
+.ym-story-body, .ym-story-plan, .ym-story-choices { display: grid; gap: 10px; min-width: 0; }
+.ym-story-body { margin-top: 10px; }
+.ym-story-choice { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ym-border); min-width: 0; }
+.ym-story-body p { overflow-wrap: anywhere; }
+.ym-story-result { border-top: 1px solid var(--ym-border); padding-top: 10px; }
 .ym-menu-entry, .ym-send-entry { display: inline-flex; align-items: center; justify-content: center; gap: 9px; border: 0; padding: 5px 8px; margin: 0; color: var(--SmartThemeBodyColor, inherit); background: transparent; font: inherit; cursor: pointer; }
 .ym-menu-entry { justify-content: flex-start; width: 100%; min-height: 38px; text-align: left; }
 .ym-send-entry { flex: 0 0 34px; width: 34px; height: 36px; }

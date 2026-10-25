@@ -1,10 +1,12 @@
 // Shared, data-only contract. Chat originals and connection secrets never live here.
 import {invalidateDependentStages, sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 import {validateExcerpt, recallBlockReason, excerptDependenciesValid, invalidateDependentExcerpts, excerptRecords} from './recall-contract.mjs';
+import {validateOrigin, validateLineage, validateCreation} from './story-contract.mjs';
+import {validateCompanion, applyCompanionOperation} from './companion-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.3.0';
-export const SCHEMA = 3;
+export const VERSION = '0.4.0';
+export const SCHEMA = 4;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });
 const clone = value => structuredClone(value);
@@ -54,12 +56,18 @@ function textValue(text) {
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
 export function validateDocument(raw) {
-    requireThat([1, 2, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    requireThat([1, 2, 3, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA};
+    raw = clone(raw);
     normalizeBinding(raw.binding); validateSettings(raw.settings);
+    if (raw.lineage) raw.lineage = validateLineage(raw.lineage);
+    if (raw.creation) validateCreation(raw.creation);
+    if (raw.companion) raw.companion = validateCompanion(raw.companion);
     const ids = new Set();
     for (const entry of raw.entries) {
         identifier(entry.id); requireThat(!ids.has(entry.id), '记忆条目标识重复'); ids.add(entry.id);
+        delete entry.originVerified;
+        if (entry.origin) entry.origin = validateOrigin(entry.origin);
         textValue(entry.text);
         requireThat(['summary', 'manual', 'stage', 'excerpt'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
         if (entry.kind === 'summary') validateSource(entry.source);
@@ -71,7 +79,7 @@ export function validateDocument(raw) {
     return raw;
 }
 export function validateDefaults(raw) {
-    requireThat([1, 2, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    requireThat([1, 2, 3, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
     validateSettings(raw.values, false); return raw;
 }
@@ -93,6 +101,8 @@ function past(entry) { const { history, conflicts, candidate, ...rest } = entry;
 function revise(entry, changes) { entry.history.push(past(entry)); Object.assign(entry, changes, { revision: entry.revision + 1 }); }
 function submittedEntry(input, document) {
     requireThat(input && ['summary', 'manual', 'stage'].includes(input.kind), '记忆类型无效');
+    requireThat(!input.origin, '继承来源只能通过明确的故事创建写入');
+    if (input.kind === 'stage') requireThat(!input.source?.parents?.some(ref => document.entries.find(entry => entry.id === ref.id)?.origin), '继承记忆不在新聊天自动重新整理');
     const source = input.kind === 'stage' ? stageSourceFromParents(document, input.source?.parents)
         : input.kind === 'summary' ? validateSource(input.source) : null;
     return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), source };
@@ -112,9 +122,12 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
     const id = identifier(operation?.id);
     if (isDuplicate(current, operation)) return { document: clone(current), outcome: 'duplicate' };
     requireThat(!current.movedTo, '此聊天已重命名，请重新打开当前聊天');
+    requireThat(current.creation?.status !== 'pending', '故事创建尚未完成，请先核对创建结果');
     const doc = clone(current);
     const op = operation;
-    if (op.type === 'enable' || op.type === 'settings') {
+    if (op.type === 'companion') {
+        applyCompanionOperation(doc, op);
+    } else if (op.type === 'enable' || op.type === 'settings') {
         requireThat(op.expectedRevision === doc.configRevision, '此聊天设置已在另一设备修改，请刷新后再试');
         if (op.type === 'enable') {
             requireThat(typeof op.enabled === 'boolean', '启用状态无效');
@@ -149,7 +162,8 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         if (value.kind !== 'manual') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch, '整理期间启用状态或设置已变化，本次结果未采用');
             // No overlapping automatic replacement, including deleted/excluded slices.
-            if (value.kind === 'summary') requireThat(!doc.entries.some(e => e.kind === 'summary' && e.source && e.source.start <= value.source.end && e.source.end >= value.source.start), '此来源已有记忆，请对已有条目重新总结');
+            if (value.kind === 'summary') requireThat(!doc.entries.some(e => e.kind === 'summary' && !e.origin && e.source && e.source.start <= value.source.end && e.source.end >= value.source.start), '此来源已有记忆，请对已有条目重新总结');
+            requireThat(!doc.lineage || value.source.start > doc.lineage.bridgeCount || value.kind === 'stage', '衔接原文不是新剧情，不重复整理');
         }
         doc.entries.push({ ...value, revision: 1, status: 'active', edited: value.kind === 'manual', history: [], conflicts: [], candidate: null });
     } else if (op.type === 'invalidate') {
@@ -166,6 +180,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         let values;
         if (op.type === 'edit') values = { text: textValue(op.text), edited: true, ...(entry.kind === 'excerpt' ? {kind: 'manual', source: null, parent: null, quote: null, status: 'active'} : {}) };
         else if (op.type === 'redo') {
+            requireThat(!entry.origin, '继承摘要请在原聊天重新整理；当前分支可手动修订');
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch && entry.status !== 'deleted', '整理期间状态已变化，本次结果未采用');
             const submitted = submittedEntry(op.entry, doc);
             requireThat(['summary', 'stage'].includes(submitted.kind) && submitted.kind === entry.kind && submitted.id === entry.id, '重总结来源无效');
@@ -196,7 +211,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
                     // The server rechecks any activated source before committing this operation.
                     break;
                 }
-                case 'keepManual': revise(entry, { kind: 'manual', source: null, edited: true, status: 'active' }); break;
+                case 'keepManual': revise(entry, { kind: 'manual', source: null, origin: null, edited: true, status: 'active' }); break;
                 case 'acceptCandidate': {
                     requireThat(entry.candidate, '没有待确认的重总结');
                     requireThat(entry.kind !== 'stage' || stageDependenciesValid({...entry, ...entry.candidate, id: entry.id}, doc), '阶段候选的细摘要来源已变化，未采用');

@@ -18,7 +18,7 @@ const stageOperation = document => ({id: 'stage_append', type: 'append', expecte
 const withStage = () => {const doc = fineDocument(); return change(doc, stageOperation(doc));};
 
 test('current schema upgrades legacy data only in memory and preserves original legacy objects', () => {
-    assert.equal(SCHEMA, 3); assert.equal(VERSION, '0.3.0');
+    assert.equal(SCHEMA, 4); assert.equal(VERSION, '0.4.0');
     const legacy = {...fineDocument(), schema: 1}, before = structuredClone(legacy);
     const upgraded = validateDocument(legacy);
     assert.equal(upgraded.schema, SCHEMA); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);

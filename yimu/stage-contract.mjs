@@ -43,6 +43,7 @@ export function stageSourceFromParents(document, refs) {
         }
         return {entry, source: range(entry.source)};
     });
+    if (entries.some(({entry}) => JSON.stringify(entry.origin || null) !== JSON.stringify(entries[0].entry.origin || null))) fail('阶段摘要不能混合不同聊天来源');
     const first = entries[0].source;
     const combined = clone(first);
     for (let i = 1; i < entries.length; i++) {
@@ -57,7 +58,8 @@ export function stageDependenciesValid(entry, document) {
     if (entry?.kind !== 'stage') return true;
     try {
         const source = validateStageSource(entry.source);
-        return same(source, stageSourceFromParents(document, source.parents));
+        const first = document.entries.find(item => item.id === source.parents[0].id);
+        return same(entry.origin || null, first?.origin || null) && same(source, stageSourceFromParents(document, source.parents));
     } catch { return false; }
 }
 

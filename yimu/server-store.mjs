@@ -4,6 +4,8 @@ import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import * as contract from './contract.mjs';
 import {validateExcerpt} from './recall-contract.mjs';
+import {bridgeSourceValid} from './story-contract.mjs';
+import {createStoryHandlers} from './story-store.mjs';
 
 const STORE_DIRECTORY = '.yimu';
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
@@ -149,7 +151,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current, legacyBytes: [1, 2].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
+            return {value, fingerprint: current, legacyBytes: [1, 2, 3].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -380,20 +382,52 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
     }
 
+    // Only inherited sources may follow a completed, account-local rename record.
+    // Current-chat reads remain exact; missing files are never matched by name alone.
+    async function requireForeignSource(ctx, original, source = null, entries = null, collect = null) {
+        let binding = normalizeStoreBinding(original);
+        const seen = new Set();
+        for (let hops = 0; hops < 16; hops++) {
+            const key = contract.bindingKey(binding);
+            if (seen.has(key)) fail('source_identity', '继承来源的改名记录出现循环，未跟随');
+            seen.add(key);
+            try {return await requireSource(ctx, binding, source, entries, collect);}
+            catch (caught) {
+                if (caught?.code !== 'yimu_source_missing') throw caught;
+                const saved = await documentRead(ctx, binding);
+                if (!saved.fingerprint || !saved.value.movedTo) throw caught;
+                assertBinding(saved.value, binding);
+                const next = normalizeStoreBinding(saved.value.movedTo);
+                if (next.avatar !== binding.avatar || next.integrity !== binding.integrity || next.file === binding.file) {
+                    fail('source_identity', '继承来源的改名身份不一致，未跟随');
+                }
+                binding = next;
+            }
+        }
+        fail('source_identity', '继承来源的改名链过长，未继续跟随');
+    }
+
     async function requireEntrySource(ctx, binding, entry, document, defaults = null, checkRecent = false) {
+        const readSource = entry.origin ? requireForeignSource : requireSource;
+        if (entry.origin) {
+            const hashes = [];
+            await requireSource(ctx, binding, null, [], (message, floor, hash) => hashes.push(hash));
+            if (!bridgeSourceValid(entry, document, hashes)) fail('source_changed', '当前分支的衔接原文已改变');
+            binding = normalizeStoreBinding(entry.origin.binding);
+        }
         if (entry.kind === 'excerpt') {
             if (!contract.excerptDependenciesValid(entry, document)) fail('recall_changed', '原文补充的来源或人工保护状态已改变');
             let valid = false;
-            await requireSource(ctx, binding, entry.source, null, (message, floor) => {
+            await readSource(ctx, binding, entry.source, null, (message, floor) => {
                 if (floor === entry.source.start) valid = wholeParagraph(message.mes, entry.quote.start, entry.quote.end)
                     && message.mes.slice(entry.quote.start, entry.quote.end).trim().length > 0;
             });
             if (!valid) fail('source_changed', '原文补充对应的引文位置已改变');
             return true;
         }
-        if (entry.kind !== 'stage') return requireSource(ctx, binding, entry.source);
+        if (entry.kind !== 'stage') return readSource(ctx, binding, entry.source);
         if (!contract.stageDependenciesValid(entry, document)) fail('stage_changed', '阶段摘要的细摘要来源已变化，未采用');
-        const evidence = await requireSource(ctx, binding, null, [entry]);
+        const evidence = await readSource(ctx, binding, null, [entry]);
         if (evidence.invalidSourceIds.length) fail('source_changed', '对应聊天原文已改变，未采用阶段整理结果');
         if (checkRecent) {
             const cutoff = evidence.sourceFloorCount - contract.effectiveSettings(document, defaults).recent;
@@ -418,6 +452,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         const reason = contract.recallBlockReason(document, ref);
         if (reason) fail('recall_blocked', reason);
         const parent = document.entries.find(entry => entry.id === ref.id);
+        if (parent.origin) fail('recall_origin', '继承记忆暂不在分支自动回查原文');
         let trigger;
         try { trigger = contract.sourceRanges(request.triggerSource); }
         catch { fail('recall_trigger', '回查缺少有效的新叙事来源', 400); }
@@ -456,6 +491,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         await prepare(ctx);
         const [{value: document}, {value: defaults}] = await Promise.all([documentRead(ctx, binding), defaultsRead(ctx)]);
         assertBinding(document, binding);
+        if (document.companion && document.companion.account !== `st-user:${request.user.profile.handle}`) fail('account', '伴读关联不属于当前账户', 403);
         let sourceAvailable = false, evidence = {invalidSourceIds: [], sourceFingerprint: null, sourceFloorCount: null};
         const excerpts = document.entries.filter(entry => entry.kind === 'excerpt');
         const excerptFloors = new Map();
@@ -466,10 +502,11 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             const version = parent && [parent, ...parent.history].find(item => item.revision === entry.parent.revision && item.kind === 'summary' && item.source);
             if (version) parentWindows.set(entry.id, {id: `excerpt-parent:${entry.id}`, source: version.source});
         }
-        const materialized = new Map();
+        const materialized = new Map(), localHashes = [];
         try {
-            const windows = [...document.entries.filter(entry => entry.status === 'active' && entry.source || entry.kind === 'excerpt'), ...parentWindows.values()];
+            const windows = [...document.entries.filter(entry => !entry.origin && (entry.status === 'active' && entry.source || entry.kind === 'excerpt')), ...parentWindows.values()];
             evidence = await verifySource(ctx, binding, null, windows, (message, floor) => {
+                localHashes.push(messageHash(message));
                 for (const entry of excerptFloors.get(floor) || []) if (wholeParagraph(message.mes, entry.quote.start, entry.quote.end)) {
                     const quoteText = message.mes.slice(entry.quote.start, entry.quote.end);
                     if (quoteText.trim()) materialized.set(entry.id, {quoteText, quoteSpeaker: String(message.name || '')});
@@ -478,6 +515,21 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             sourceAvailable = true;
         }
         catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
+        const foreign = new Map();
+        for (const entry of document.entries.filter(entry => entry.origin && entry.source)) {
+            const key = JSON.stringify(entry.origin.binding);
+            if (!foreign.has(key)) foreign.set(key, {binding: normalizeStoreBinding(entry.origin.binding), entries: []});
+            foreign.get(key).entries.push(entry);
+        }
+        for (const group of foreign.values()) {
+            let invalid = group.entries.map(entry => entry.id);
+            try { invalid = (await requireForeignSource(ctx, group.binding, null, group.entries)).invalidSourceIds; }
+            catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
+            for (const entry of group.entries) {
+                entry.originVerified = sourceAvailable && !invalid.includes(entry.id) && bridgeSourceValid(entry, document, localHashes);
+                if (!entry.originVerified && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+            }
+        }
         for (const entry of document.entries) if (entry.kind === 'stage' && entry.status === 'active'
             && !contract.stageDependenciesValid(entry, document) && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
         for (const entry of excerpts) {
@@ -488,12 +540,14 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
         }
         evidence.invalidSourceIds = evidence.invalidSourceIds.filter(id => !id.startsWith('excerpt-parent:'));
-        return {document, defaults, sourceAvailable: sourceAvailable && !document.movedTo, ...evidence};
+        return {document, defaults, sourceAvailable: sourceAvailable && !document.movedTo && (!document.creation || document.creation.status === 'complete'), ...evidence};
     }
 
     async function change(request, rawBinding, operation) {
         const binding = normalizeStoreBinding(rawBinding), ctx = context(request);
         await prepare(ctx);
+        if (operation?.type === 'companion' && operation.action === 'set'
+            && operation.snapshot?.account !== `st-user:${request.user.profile.handle}`) fail('account', '伴读关联不属于当前账户', 403);
         const generatedStage = ['append', 'redo'].includes(operation?.type) && operation?.entry?.kind === 'stage';
         if (generatedStage && operation.expectedDefaultsRevision === undefined) fail('defaults_revision', '阶段整理缺少默认设置版本，未采用', 400);
         const isRecall = operation?.type === 'recall';
@@ -524,7 +578,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             if (!equal(result.document, current.value)) {
                 let actualDefaults;
                 const checkedSources = new Set();
-                const sourceKey = entry => JSON.stringify([entry.kind, entry.source]);
+                const sourceKey = entry => JSON.stringify([entry.kind, entry.origin || null, entry.source]);
                 if (excerpt) checkedSources.add(sourceKey(excerpt));
                 if (summaryWithDefaults) {
                     actualDefaults = await defaultsRead(ctx);
@@ -609,5 +663,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }));
     }
 
-    return Object.freeze({read, change, defaults, rename, recallSource});
+    const stories = createStoryHandlers({io, context, prepare, exclusive, documentRead, defaultsRead, read, requireSource, requireForeignSource,
+        sourcePath, checkDirectory, checkRoot, writeFile, normalizeStoreBinding, chatStorageName, fail, digest});
+    return Object.freeze({read, change, defaults, rename, recallSource, ...stories});
 }

@@ -42,5 +42,5 @@ test('candidate packages are self-contained, preserve logo geometry, refuse over
     assert.equal(typeof frontend.boot, 'function');
     assert.equal((await fs.readFile(path.join(out, 'frontend/yimu/logo.svg'), 'utf8')).trim(), QIANMU_HIVE_THEME_LOGO.trim());
     const qianmu = JSON.parse(await fs.readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-    assert.equal(JSON.stringify(qianmu).includes('yimu'), false);
+    assert.equal(qianmu.files.some(file => file.startsWith('yimu/')), false);
 });

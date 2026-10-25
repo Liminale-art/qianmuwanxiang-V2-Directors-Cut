@@ -2,14 +2,14 @@ import { estimateTokens } from './core.mjs';
 import { sourceRanges } from './stage-contract.mjs';
 
 const refs = entry => entry.source?.parents || [];
-const eligibleFine = entry => entry.kind === 'summary' && entry.status === 'active' && !entry.edited;
+const eligibleFine = entry => !entry.origin && entry.kind === 'summary' && entry.status === 'active' && !entry.edited;
 
 export function stageGroups(document, { start = 1, end = Infinity } = {}) {
     const stages = document.entries.filter(entry => entry.kind === 'stage');
     // Existing stages own their parent group even when disabled/deleted. Repair
     // uses that same stage below; never silently create a parallel replacement.
     const blocked = new Set(stages.flatMap(stage => refs(stage).map(ref => ref.id)));
-    const fine = document.entries.filter(entry => entry.kind === 'summary').slice().sort((a, b) => a.source.start - b.source.start);
+    const fine = document.entries.filter(entry => !entry.origin && entry.kind === 'summary').slice().sort((a, b) => a.source.start - b.source.start);
     const groups = []; let group = [];
     const flush = () => { if (group.length >= 2) groups.push(group); group = []; };
     for (const entry of fine) {
@@ -28,7 +28,7 @@ export function stageWeight(entries, basis) {
 
 export function nextStage(document, settings, { force = false, start = 1, end = Infinity, recentCutoff = Infinity } = {}) {
     if (!document.enabled || !force && !settings.stageAuto) return null;
-    for (const stage of document.entries.filter(entry => entry.kind === 'stage' && entry.status === 'invalid' && !entry.edited)) {
+    for (const stage of document.entries.filter(entry => !entry.origin && entry.kind === 'stage' && entry.status === 'invalid' && !entry.edited)) {
         const parents = refs(stage).map(ref => document.entries.find(entry => entry.id === ref.id));
         if (parents.length < 2 || parents.some(entry => !entry || !eligibleFine(entry))
             || parents[0].source.start < start || parents.at(-1).source.end > Math.min(end, recentCutoff)

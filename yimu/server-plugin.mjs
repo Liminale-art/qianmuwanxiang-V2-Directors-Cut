@@ -26,6 +26,9 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
     router.post('/change', route(request => store.change(request, request.body?.binding, request.body?.operation)));
     router.post('/defaults', route(request => store.defaults(request, request.body?.operation)));
     router.post('/rename', route(request => store.rename(request, request.body?.binding, request.body?.newBinding)));
+    router.post('/story/plan', route(request => store.planStory(request, request.body?.binding, request.body?.request)));
+    router.post('/story/create', route(request => store.createStory(request, request.body?.binding, request.body?.request)));
+    router.post('/story/result', route(request => store.storyResult(request, request.body?.binding, request.body?.request)));
 }
 
 export async function init(router) {

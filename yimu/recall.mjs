@@ -13,7 +13,7 @@ export function recallCandidates(document, settings, messages, batch, hashes = [
     if (settings.recall === false || recallBlockReason(document)) return [];
     const query = narrativeTerms(messages.slice(batch.start - 1, batch.end).map(m => m.mes || '').join('\n'));
     const score = entry => [...narrativeTerms(entry.text)].reduce((n, term) => n + Number(query.has(term)), 0);
-    const eligible = document.entries.filter(entry => entry.kind === 'summary' && !recallBlockReason(document, entry)
+    const eligible = document.entries.filter(entry => !entry.origin && entry.kind === 'summary' && !recallBlockReason(document, entry)
         && sourceMatches(entry.source, hashes)
         && entry.source.end < batch.start && entry.source.end <= messages.length - settings.recent
         && new Set(excerptRecords(document, entry.id).map(item => item.id)).size < 2);

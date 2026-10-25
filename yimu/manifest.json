@@ -6,7 +6,7 @@
   "js": "index.mjs",
   "css": "style.css",
   "author": "Liminale",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minimum_client_version": "1.18.0",
   "generate_interceptor": "yimuGenerationInterceptor"
 }

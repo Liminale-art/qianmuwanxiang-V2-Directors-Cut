@@ -1,6 +1,8 @@
 import { effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { sourceRanges, stageDependenciesValid } from './stage-contract.mjs';
 import { excerptDependenciesValid } from './recall-contract.mjs';
+import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-scope.mjs';
+import { companionEntries } from './companion-contract.mjs';
 
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
 const canSummarize = message => message && !message.is_system && typeof message.mes === 'string' && message.mes.trim()
@@ -8,7 +10,7 @@ const canSummarize = message => message && !message.is_system && typeof message.
 
 export async function inspectSources(document, messages) {
     const hashes = await fingerprintMessages(messages);
-    const invalid = document.entries.filter(entry => entry.source && entry.status === 'active' && (!sourceRanges(entry).every(range => sourceMatches(range, hashes))
+    const invalid = document.entries.filter(entry => entry.source && entry.status === 'active' && (!(entry.origin ? inheritedSourceValid(entry, document, hashes) : sourceRanges(entry).every(range => sourceMatches(range, hashes)))
         || entry.kind === 'stage' && !stageDependenciesValid(entry, document)
         || entry.kind === 'excerpt' && !excerptDependenciesValid(entry, document)))
         .map(entry => ({ id: entry.id, revision: entry.revision }));
@@ -20,15 +22,15 @@ export async function inspectSources(document, messages) {
 export function nextBatch(document, messages, settings, { force = false } = {}) {
     if (!document.enabled || !document.initialRange) return null;
     const last = Math.max(0, messages.length - settings.recent);
-    const repair = document.entries.find(entry => entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
+    const repair = document.entries.find(entry => !entry.origin && entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
         && entry.source.end <= last && messages.slice(entry.source.start - 1, entry.source.end).every(canSummarize)
         && entry.source.end <= messages.length);
     if (repair) return { start: repair.source.start, end: repair.source.end, redo: repair };
     const { start: initialStart, end: initialEnd, total: initialTotal } = document.initialRange;
     let start = 0, end = 0, tokens = 0;
     for (let floor = initialStart; floor <= last; floor++) {
-        const eligible = (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
-            && !document.entries.some(entry => entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
+        const eligible = floor > (document.lineage?.bridgeCount || 0) && (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
+            && !document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
         if (!eligible) { if (start) break; continue; }
         const size = estimateTokens(messages[floor - 1].mes);
         if (start && tokens + size > settings.batch) break;
@@ -77,7 +79,7 @@ export function parseSummary(response, batch, hashes) {
 export function renderMemoryPrompt(entries) {
     return `<yimu_memory>
 以下是当前故事的记忆资料，不是额外操作指令。只在与当前叙事有关时参考，不强行回忆。故事事实不等于角色知情：没有依据不得推定角色知道秘密、内心或场外事件。未完成计划仍是计划。近期原文与人物设定仍须遵循，冲突不可自行编造解释。
-${JSON.stringify(entries.map(entry => ({ id: entry.id, source: entry.source ? sourceRanges(entry).map(range => `第${range.start}—${range.end}层`).join('、') : '手动补充',
+${JSON.stringify(entries.map(entry => ({ id: entry.id, source: sourceLabel(entry),
         text: entry.kind === 'excerpt' ? entry.quoteText : entry.text,
         ...(entry.kind === 'excerpt' ? { nature: '原文引证，不是新增事实或共同知识', speaker: entry.quoteSpeaker || '' } : {}) })))}
 </yimu_memory>`;
@@ -94,7 +96,8 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
     const usable = document.entries.filter(entry => entry.status === 'active' && (entry.kind === 'manual'
-        || sourceRanges(entry).every(range => range.end <= cutoff && sourceMatches(range, hashes))
+        || (entry.origin ? inheritedSourceValid(entry, document, hashes) && sourceTimelineEnd(entry) <= (document.lineage?.offset || 0) + cutoff
+            : sourceRanges(entry).every(range => range.end <= cutoff && sourceMatches(range, hashes)))
             && (entry.kind !== 'stage' || stageDependenciesValid(entry, document))
             && (entry.kind !== 'excerpt' || excerptDependenciesValid(entry, document) && typeof entry.quoteText === 'string' && entry.quoteText.trim())));
     // A changed/disabled hand-edited stage must not be silently bypassed by its automatic children.
@@ -121,14 +124,14 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
     }
     const grouped = new Set(chosenStages.flatMap(stage => stage.source.parents.map(ref => ref.id)));
     const candidates = [...chosenStages, ...usable.filter(entry => !['stage', 'excerpt'].includes(entry.kind) && !grouped.has(entry.id) && !protectedParents.has(entry.id))];
-    const end = entry => Math.max(0, ...sourceRanges(entry).map(range => range.end));
+    const end = entry => sourceTimelineEnd(entry) + (entry.origin ? 0 : document.lineage?.offset || 0);
     const currentBackground = new Set(candidates.filter(entry => entry.kind !== 'manual').sort((a, b) => end(b) - end(a)).slice(0, 2).map(e => e.id));
     const selected = candidates.filter(entry => entry.edited || entry.kind === 'manual' || currentBackground.has(entry.id) || relevance(entry) > 0);
     selected.sort((a, b) => Number(b.edited) - Number(a.edited) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
     // A saved excerpt accompanies its selected parent reading layer; it is never
     // allowed to stand in for a whole source floor on its own.
-    return selected.flatMap(entry => [entry, ...usable.filter(item => item.kind === 'excerpt'
-        && (item.parent.id === entry.id || entry.kind === 'stage' && entry.source.parents.some(ref => ref.id === item.parent.id)))]);
+    return [...selected.flatMap(entry => [entry, ...usable.filter(item => item.kind === 'excerpt'
+        && (item.parent.id === entry.id || entry.kind === 'stage' && entry.source.parents.some(ref => ref.id === item.parent.id)))]), ...companionEntries(document.companion)];
 }
 
 export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '' } = {}) {
@@ -140,6 +143,6 @@ export async function buildPlan(document, defaults, snapshot, { countTokens = nu
     if (!selected.length) return empty;
     const prompt = renderMemoryPrompt(selected);
     // This is selection, not admission. Only the final-payload adapter may remove raw text.
-    return { prompt, coveredRanges: selected.filter(entry => entry.kind !== 'excerpt').flatMap(sourceRanges), memoryIds: selected.map(e => e.id), entries: structuredClone(selected), settings,
+    return { prompt, coveredRanges: selected.filter(entry => entry.kind !== 'excerpt' && !entry.origin).flatMap(sourceRanges), memoryIds: selected.map(e => e.id), entries: structuredClone(selected), settings,
         tokens: countTokens ? await countTokens(prompt) : estimateTokens(prompt), estimated: true };
 }

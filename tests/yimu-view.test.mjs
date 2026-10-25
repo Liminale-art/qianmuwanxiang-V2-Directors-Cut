@@ -85,6 +85,82 @@ function fixture(patch, handler) {
     return { ...d, calls, view, render(next) { current = { ...current, ...next }; view.render(current); }, get state() { return current; } };
 }
 
+const storyPlan = (binding, patch = {}) => ({ planId: 'plan-one', sourceBinding: binding, mode: 'continue', cutoff: 9,
+    total: 9, recent: 5, bridgeCount: 5, inheritedCount: 2, manualChoices: [], boundaries: [], ...patch });
+
+test('story controls default to end continuation without creating or generating on open', async t => {
+    const f = fixture(); t.after(() => f.view.destroy()); f.view.open();
+    assert.equal(f.get('故事延续方式').value, 'continue'); assert.equal(f.calls.length, 0);
+    f.get('核对继承范围').click(); await f.flush();
+    assert.deepEqual(f.calls, [{ type: 'storyPlan', payload: { mode: 'continue' } }]);
+    const plan = storyPlan(f.state.snapshot.binding); f.render({ story: { plan } });
+    assert.match(f.document.body.textContent, /原聊天和原记忆保持不变/);
+    f.get('确认建立新聊天').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'storyCreate', payload: { manualChoices: [] } });
+});
+
+test('branch cutoff changes require a fresh plan and cannot reuse another chat plan', async t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    f.get('故事延续方式').value = 'branch'; f.get('故事延续方式').emit('change');
+    f.get('故事分支截止楼层').value = '4'; f.get('故事分支截止楼层').emit('input');
+    f.get('核对继承范围').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'storyPlan', payload: { mode: 'branch', cutoff: 4 } });
+    const plan = storyPlan(f.state.snapshot.binding, { mode: 'branch', cutoff: 4, bridgeCount: 4 }); f.render({ story: { plan } });
+    assert.equal(f.get('确认建立新聊天').disabled, false);
+    f.get('故事分支截止楼层').value = '3'; f.get('故事分支截止楼层').emit('input');
+    assert.equal(f.get('确认建立新聊天').disabled, true);
+    f.get('故事分支截止楼层').value = '4'; f.get('故事分支截止楼层').emit('input');
+    f.render({ story: { plan: { ...plan, sourceBinding: { ...plan.sourceBinding, file: 'another chat' } } } });
+    assert.equal(f.get('确认建立新聊天').disabled, true);
+});
+
+test('crossing manual edits never show or prefill future content, and each choice is explicit', async t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    const plan = storyPlan(f.state.snapshot.binding, { manualChoices: [
+        { id: 'crossing', revision: 4, reason: 'crossing-edited', text: '<future>不应展示或默认带入</future>', sourceLabel: '第 4–12 层' },
+        { id: 'manual', revision: 1, reason: 'unlocated-manual', text: '由用户明确确认的背景' },
+    ], boundaries: [{ id: 'edge', source: { start: 6, end: 9 }, messages: [{ mes: '不在界面重复展示正文' }] }] });
+    f.render({ story: { plan } });
+    assert.doesNotMatch(f.document.body.textContent, /<future>|不在界面重复展示正文/);
+    assert.match(f.document.body.textContent, /第 6–9 层待补充整理/);
+    assert.equal(f.get('人工记忆取舍 crossing').value, ''); assert.equal(f.get('继承的人工内容 crossing').value, '');
+    assert.equal(f.get('确认建立新聊天').disabled, true);
+    f.get('人工记忆取舍 crossing').value = 'include'; f.get('人工记忆取舍 crossing').emit('change');
+    assert.equal(f.get('继承的人工内容 crossing').value, '');
+    f.get('继承的人工内容 crossing').value = '仅截止前的修订'; f.get('继承的人工内容 crossing').emit('input');
+    f.get('人工记忆取舍 manual').value = 'skip'; f.get('人工记忆取舍 manual').emit('change');
+    f.render({ story: { plan, status: '核对完成' } });
+    assert.equal(f.get('继承的人工内容 crossing').value, '仅截止前的修订', 'ordinary updates retain the explicit draft');
+    f.get('确认建立新聊天').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'storyCreate', payload: { manualChoices: [{ id: 'crossing', revision: 4, text: '仅截止前的修订' }] } });
+});
+
+test('an unknown creation result cannot start a new plan and completed receipt opens without another create', async t => {
+    const f = fixture(); t.after(() => f.view.destroy()); const plan = storyPlan(f.state.snapshot.binding);
+    f.render({ story: { plan, operationId: 'same-operation', error: '网络中断' } });
+    assert.equal(f.get('核对继承范围').disabled, true); assert.equal(f.get('故事延续方式').disabled, true);
+    assert.equal(f.get('确认建立新聊天').disabled, true); assert.equal(f.get('继续本次建立').hidden, false);
+    f.get('继续本次建立').click(); await f.flush(); assert.equal(f.calls.at(-1).type, 'storyCreate');
+    f.render({ story: { plan, result: { receipt: { id: 'same-operation', status: 'complete', target: { file: '已确认的新分支' } } } } });
+    assert.equal(f.get('确认建立新聊天').disabled, true); assert.equal(f.get('继续本次建立').hidden, true);
+    f.get('打开已建立的聊天').click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'storyOpen', payload: {} });
+});
+
+test('inherited entries retain source chat labels and edit controls but do not offer automatic rewriting', t => {
+    const inherited = entry({ origin: { binding: { file: '原故事' }, offset: 0 } });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [inherited] } }); t.after(() => f.view.destroy());
+    assert.equal(sourceLabel(inherited), '原故事 · 第 1–3 层');
+    assert.ok(f.get('编辑原故事 · 第 1–3 层')); assert.equal(f.get('重新总结原故事 · 第 1–3 层'), undefined);
+});
+
+test('story plans disclose unrepresented earlier floors and failed actions report once inside the story card', async t => {
+    const f = fixture({}, async type => { if (type === 'storyCreate') throw new Error('故事建立未完成'); }); t.after(() => f.view.destroy());
+    f.render({ story: { plan: storyPlan(f.state.snapshot.binding, { unrepresentedFloorCount: 7 }) } });
+    assert.match(f.document.body.textContent, /7 层更早原文不在本次有效继承范围内/);
+    f.get('确认建立新聊天').click(); await f.flush();
+    assert.equal(f.document.body.textContent.split('故事建立未完成').length - 1, 1);
+});
+
 test('opening a panel only displays its frontend and does not enable, summarize or save', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     f.view.open(); assert.equal(f.get('忆幕').open, true);

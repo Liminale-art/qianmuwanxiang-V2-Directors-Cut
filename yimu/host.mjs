@@ -1,4 +1,4 @@
-// The only ST-facing layer. No chat writes, global connection switches or fetch patches.
+// The only ST-facing layer. No direct chat writes, global connection switches or fetch patches.
 import { fingerprintMessages } from './contract.mjs';
 import { buildBudgetedMessages, captureCore, payloadSupport } from './budget.mjs';
 
@@ -64,8 +64,10 @@ function routeOf(ctx) {
 export function createHost({
     getContext = () => globalThis.SillyTavern?.getContext?.(),
     onError = () => {},
+    fetcher = (...args) => globalThis.fetch(...args),
 } = {}) {
     let generation = 0;
+    let generating = false, opening = null;
     const sessions = new WeakMap(), promoteFinalListeners = new Set();
 
     function context() {
@@ -85,6 +87,74 @@ export function createHost({
             maxContext: Number(ctx.mainApi === 'openai' ? ctx.chatCompletionSettings?.openai_max_context : ctx.maxContext) || 0,
             maxResponse: Number(ctx.chatCompletionSettings?.openai_max_tokens) || 0,
         };
+    }
+
+    // Creation is owned by the account-scoped server transaction. This method
+    // only checks its receipt and opens an existing file through ST itself.
+    async function openStory(result, { sourceSnapshot, isCurrent = () => true } = {}) {
+        const failed = (reason, message) => ({ opened: false, reason, message });
+        if (opening) return failed('opening', '正在打开已建立的聊天，请稍候。');
+        const target = result?.binding, receipt = result?.receipt, bridge = receipt?.bridge;
+        if (receipt?.status !== 'complete' || !sameBinding(receipt.target, target) || !bridge
+            || !Number.isSafeInteger(bridge.count) || bridge.count < 1
+            || !Array.isArray(bridge.hashes) || bridge.hashes.length !== bridge.count
+            || !bridge.hashes.every(hash => typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash))) {
+            return failed('unconfirmed-receipt', '新聊天尚未完整确认，未打开。');
+        }
+        const safe = value => typeof value === 'string' && value.length > 0 && value.length <= 255 && !/[\x00-\x1f/\\]/.test(value);
+        if (![target.avatar, target.file, target.integrity].every(safe) || !sourceSnapshot?.binding || !Array.isArray(sourceSnapshot.messages)) {
+            return failed('invalid-target', '新聊天身份无效，未打开。');
+        }
+        let ctx;
+        try { ctx = context(); } catch { return failed('host-unavailable', 'ST 尚未准备好，新聊天已保留。'); }
+        const sourceMetadata = clone(ctx.chatMetadata);
+        const busy = () => generating || context().streamingProcessor?.isFinished === false && context().streamingProcessor?.isStopped !== true;
+        const current = () => {
+            try { return isCurrent() === true && !busy() && sameBinding(bindingOf(context()), sourceSnapshot.binding)
+                && sameMessages(context().chat, sourceSnapshot.messages) && sameMessages(context().chatMetadata, sourceMetadata); }
+            catch { return false; }
+        };
+        if (!current() || target.avatar !== sourceSnapshot.binding.avatar) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
+        if (typeof ctx.openCharacterChat !== 'function') return failed('host-unavailable', '当前 ST 不支持直接打开；新聊天已保留在角色聊天记录中。');
+        opening = receipt.id || target.file;
+        const readChat = async binding => {
+            const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
+            try {
+                const response = await fetcher('/api/chats/get', { method: 'POST', cache: 'no-store', signal: controller.signal,
+                    headers: { ...context().getRequestHeaders?.(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ avatar_url: binding.avatar, file_name: binding.file }) });
+                if (!response.ok) throw new Error('读取聊天失败');
+                const rows = await response.json();
+                if (!Array.isArray(rows) || rows.length < 2 || rows[0]?.chat_metadata?.integrity !== binding.integrity) throw new Error('聊天身份尚未核实');
+                return rows;
+            } finally { clearTimeout(timer); }
+        };
+        try {
+            const targetRows = await readChat(target);
+            const hashes = await fingerprintMessages(targetRows.slice(1, bridge.count + 1));
+            if (!sameMessages(hashes, bridge.hashes)) return failed('target-changed', '新聊天的衔接内容已变化，未自动打开。');
+            if (!current()) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
+            if (sameBinding(target, sourceSnapshot.binding)) return { opened: true, binding: clone(target), alreadyOpen: true };
+            // Native clearChat cancels pending saves. Never navigate away from
+            // unsaved source text/metadata and never force a save on its behalf.
+            const sourceRows = await readChat(sourceSnapshot.binding);
+            const savedHashes = await fingerprintMessages(sourceRows.slice(1));
+            const expected = await fingerprintMessages(sourceSnapshot.messages);
+            if (!sameMessages(savedHashes, expected) || !sameMessages(sourceRows[0].chat_metadata, sourceMetadata)) {
+                return failed('source-not-saved', '当前聊天还有未确认保存的内容，新聊天已保留；待 ST 保存后再打开。');
+            }
+            if (!current()) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
+            clear();
+            await ctx.openCharacterChat(target.file);
+            const loaded = await snapshot();
+            const loadedHashes = await fingerprintMessages(loaded.messages.slice(0, bridge.count));
+            if (!sameBinding(loaded.binding, target) || !sameMessages(loadedHashes, bridge.hashes)) {
+                return failed('open-unconfirmed', '新聊天已建立，但尚未确认打开；请从角色聊天记录中打开。');
+            }
+            return { opened: true, binding: clone(target) };
+        } catch {
+            return failed('open-unconfirmed', '新聊天已保留，读取或打开尚未确认；请稍后重试打开。');
+        } finally { opening = null; }
     }
 
     function clear() {
@@ -213,6 +283,8 @@ export function createHost({
             const event = events[name];
             if (!event) continue;
             const listener = (...args) => {
+                if (name === 'GENERATION_STARTED' && args[2] !== true) generating = true;
+                if (name === 'GENERATION_STOPPED' || name === 'GENERATION_ENDED') generating = false;
                 // ST can assemble a token-preview dry run while a real request is
                 // preparing. It must not clear that real request's memory slot.
                 if (CLEAR_EVENTS.has(name) && !(name === 'GENERATION_STARTED' && args[2] === true)) clear();
@@ -243,5 +315,5 @@ export function createHost({
         };
     }
 
-    return { snapshot, generate, profiles, clear, prepare, applyPrepared, subscribe };
+    return { snapshot, generate, profiles, clear, prepare, applyPrepared, subscribe, openStory };
 }

@@ -1,5 +1,7 @@
 // A standalone ST surface. All story/model/user text is rendered as text, never HTML.
 import { stageGroups } from './layers.mjs';
+import { createStoryView } from './story-view.mjs';
+import { mountCompanionView } from './companion-view.mjs';
 
 const SETTINGS = [
     ['recent', '近期原文层数', 'number', 1],
@@ -21,6 +23,11 @@ const memoryText = entry => entry.kind === 'excerpt' ? typeof entry.quoteText ==
 const INSTALL_GUIDE = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/refactor/storyboard-modularization/yimu/README.md#安装与更新';
 
 export function sourceLabel(entry) {
+    const prefix = entry?.origin?.binding?.file ? `${entry.origin.binding.file} · ` : '';
+    return prefix + localSourceLabel(entry);
+}
+
+function localSourceLabel(entry) {
     if (!entry?.source) return '手动补充';
     if (entry.kind === 'excerpt') return `回查补充 · 第 ${entry.source.start} 层`;
     if (entry.kind === 'stage') {
@@ -291,7 +298,9 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     lastUsed.append(el('summary', '', '最近一次请求中的记忆'));
     const usedBody = el('div', 'ym-used-body'); lastUsed.append(usedBody);
     scroller.insertBefore(context, serviceStatus);
-    main.append(enableCard, settings, controlsRow, stageForm, manualForm, list, empty, deleted, lastUsed);
+    const story = createStoryView({ document, onAction: (type, payload) => onAction?.(type, payload) });
+    const companion = mountCompanionView({ document, el, button, onAction: (type, payload) => dispatch(type, payload) });
+    main.append(enableCard, settings, story.node, companion.element, controlsRow, stageForm, manualForm, list, empty, deleted, lastUsed);
 
     async function dispatch(type, payload = {}, sourceButton) {
         if (destroyed || sourceButton?.disabled) return false;
@@ -423,7 +432,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         edit.setAttribute('aria-label', `编辑${sourceLabel(entry)}`);
         edit.disabled = entry.kind === 'excerpt' && !memoryText(entry).trim();
         actions.append(edit);
-        if (entry.source && entry.kind !== 'excerpt') {
+        if (entry.source && entry.kind !== 'excerpt' && !entry.origin) {
             const redo = button('重新总结', () => dispatch('redo', { entryId: entry.id, expectedRevision: entry.revision }, redo));
             redo.setAttribute('aria-label', `重新总结${sourceLabel(entry)}`);
             redo.dataset.ymRedo = '';
@@ -572,6 +581,8 @@ export function createView({ onAction, document = globalThis.document } = {}) {
             scroller.scrollTop = 0;
         }
         chatName.textContent = state.snapshot?.name || '请选择单人聊天';
+        story.render(state);
+        companion.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries();
         if (!stageForm.hidden) updateStageRange();
         updateUsed();
@@ -604,7 +615,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; story.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 
