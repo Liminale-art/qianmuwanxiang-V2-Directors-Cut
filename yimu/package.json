@@ -1,0 +1,9 @@
+{
+  "name": "yimu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "server-plugin.mjs",
+  "description": "忆幕独立单聊记忆扩展与账户存储服务",
+  "license": "PolyForm-Noncommercial-1.0.0"
+}
