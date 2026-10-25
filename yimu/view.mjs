@@ -8,7 +8,7 @@ const SETTINGS = [
     ['stageAuto', '自动整理阶段摘要', 'checkbox'],
     ['stageBasis', '阶段整理依据', 'select'],
     ['stageThreshold', '阶段整理阈值', 'number', 1],
-    ['recall', '按需回查细摘要', 'checkbox'],
+    ['recall', '自动回查与补充（试用）', 'checkbox'],
     ['budget', '记忆预算（token，0 为自动）', 'number', 0],
     ['profileId', '整理连接', 'select'],
     ['model', '独立连接的模型（留空沿用连接）', 'text'],
@@ -17,9 +17,12 @@ const SETTINGS = [
 const STAGE_BASES = [{ id: 'tokens', name: '细摘要 token 数' }, { id: 'floors', name: '覆盖的原文楼层数' }, { id: 'slices', name: '细摘要份数' }];
 const STAGE_THRESHOLDS = { tokens: 6000, floors: 100, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
+const memoryText = entry => entry.kind === 'excerpt' ? typeof entry.quoteText === 'string' ? entry.quoteText : '' : entry.text;
+const INSTALL_GUIDE = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/refactor/storyboard-modularization/yimu/README.md#安装与更新';
 
 export function sourceLabel(entry) {
     if (!entry?.source) return '手动补充';
+    if (entry.kind === 'excerpt') return `回查补充 · 第 ${entry.source.start} 层`;
     if (entry.kind === 'stage') {
         const ranges = [];
         for (const range of [...(entry.source.ranges || [])].sort((a, b) => a.start - b.start)) {
@@ -82,6 +85,17 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         node.rows = 5;
         return node;
     };
+    const appendMemoryText = (container, entry, missingNotice = true) => {
+        const text = memoryText(entry);
+        if (entry.kind === 'excerpt' && !text.trim()) {
+            if (missingNotice) container.append(el('p', 'ym-inline-warning', '原文来源暂不可用，此补充暂不使用。'));
+            return;
+        }
+        if (entry.kind === 'excerpt' && typeof entry.quoteSpeaker === 'string' && entry.quoteSpeaker.trim()) {
+            container.append(el('p', 'ym-muted ym-quote-speaker', entry.quoteSpeaker));
+        }
+        container.append(el('p', 'ym-memory-text', text));
+    };
 
     let state = {}, opened = false, destroyed = false, returnFocus = null;
     let scopeKey = '', scopeGeneration = 0, localError = '', settingsGlobal = false;
@@ -96,11 +110,13 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     closeButton.textContent = '×';
     header.append(heading, closeButton);
     const scroller = el('div', 'ym-scroll');
+    const serviceStatus = el('p', 'ym-service ym-muted');
+    serviceStatus.setAttribute('aria-label', '忆幕服务状态'); serviceStatus.setAttribute('aria-live', 'polite');
     const status = el('p', 'ym-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     const main = el('div', 'ym-content');
-    scroller.append(status, main);
+    scroller.append(serviceStatus, status, main);
     shell.append(header, scroller);
     dialog.append(shell);
     document.body.append(dialog);
@@ -108,7 +124,11 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     const context = el('div', 'ym-context');
     const chatName = el('span', 'ym-chat-name');
     const refresh = button('刷新记忆', () => dispatch('refresh'), 'ym-small');
-    context.append(chatName, refresh);
+    const installGuide = el('a', 'ym-install-link ym-small', '安装说明');
+    installGuide.setAttribute('href', INSTALL_GUIDE); installGuide.setAttribute('target', '_blank');
+    installGuide.setAttribute('rel', 'noopener noreferrer'); installGuide.setAttribute('aria-label', '忆幕安装说明');
+    const contextActions = el('div', 'ym-actions ym-context-actions'); contextActions.append(installGuide, refresh);
+    context.append(chatName, contextActions);
     const enableCard = el('section', 'ym-card');
     const enabled = el('input', 'ym-switch');
     enabled.type = 'checkbox';
@@ -270,7 +290,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     const lastUsed = el('details', 'ym-card ym-last-used');
     lastUsed.append(el('summary', '', '最近一次请求中的记忆'));
     const usedBody = el('div', 'ym-used-body'); lastUsed.append(usedBody);
-    scroller.insertBefore(context, status);
+    scroller.insertBefore(context, serviceStatus);
     main.append(enableCard, settings, controlsRow, stageForm, manualForm, list, empty, deleted, lastUsed);
 
     async function dispatch(type, payload = {}, sourceButton) {
@@ -292,6 +312,11 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     }
 
     function updateStatus() {
+        const service = state.service || {};
+        const version = service.version ? ` · v${service.version}` : service.requiredVersion ? ` · 配套 v${service.requiredVersion}` : '';
+        serviceStatus.textContent = service.status === 'ok' ? `服务：正常${service.version ? ` · v${service.version}` : ''}`
+            : service.status === 'mismatch' ? `服务：版本不匹配${service.version ? ` · v${service.version}` : ''}${service.requiredVersion ? `（需 v${service.requiredVersion}）` : ''}`
+            : service.status === 'error' ? `服务：未连接${version}` : service.status === 'checking' ? '服务：检查中…' : '服务：尚未检测';
         const sourceWarning = state.snapshot && state.document && state.sourceAvailable === false && !state.loading
             ? '当前聊天原件尚未通过核对，记忆暂不参与生成。' : '';
         const text = localError || state.error || sourceWarning || state.status || (state.loading ? '正在读取记忆…' : '');
@@ -392,12 +417,13 @@ export function createView({ onAction, document = globalThis.document } = {}) {
             const reason = entry.kind === 'stage' ? '所含细摘要已变化' : '原文已变化';
             content.append(el('p', 'ym-inline-warning', entry.edited ? `${reason}，人工修订已保留，暂不使用。` : `${reason}，此条记忆暂不使用。`));
         }
-        const text = el('p', 'ym-memory-text', entry.text); content.append(text);
+        appendMemoryText(content, entry, entry.status !== 'invalid');
         const actions = el('div', 'ym-actions ym-entry-actions');
         const edit = button('编辑', () => startEdit(entry, card));
         edit.setAttribute('aria-label', `编辑${sourceLabel(entry)}`);
+        edit.disabled = entry.kind === 'excerpt' && !memoryText(entry).trim();
         actions.append(edit);
-        if (entry.source) {
+        if (entry.source && entry.kind !== 'excerpt') {
             const redo = button('重新总结', () => dispatch('redo', { entryId: entry.id, expectedRevision: entry.revision }, redo));
             redo.setAttribute('aria-label', `重新总结${sourceLabel(entry)}`);
             redo.dataset.ymRedo = '';
@@ -437,7 +463,9 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         return { node: card, signature };
     }
     function startEdit(entry, card) {
-        const form = el('form', 'ym-edit-form'), input = textarea('编辑记忆内容', entry.text);
+        const text = memoryText(entry);
+        if (entry.kind === 'excerpt' && !text.trim()) return;
+        const form = el('form', 'ym-edit-form'), input = textarea('编辑记忆内容', text);
         const save = button('保存修订', () => form.requestSubmit(), 'ym-primary');
         const finishEdit = () => {
             edits.delete(entry.id);
@@ -508,7 +536,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         deletedTitle.textContent = `已删除的记忆（${removed.length}）`;
         deletedBody.replaceChildren(...removed.map(entry => {
             const item = el('div', 'ym-used-entry');
-            item.append(el('strong', '', sourceLabel(entry)), el('p', 'ym-memory-text', entry.text));
+            item.append(el('strong', '', sourceLabel(entry))); appendMemoryText(item, entry);
             const undo = button('撤回删除', () => entryAction(entry, 'undo', {}, undo));
             undo.setAttribute('aria-label', `撤回删除${sourceLabel(entry)}`);
             undo.disabled = !entry.history?.length;
@@ -526,7 +554,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
             `请求保守估算 ${use.requestTokens} + 回复预留 ${use.responseTokens} / 上下文 ${use.contextTokens} token`));
         const usedEntries = use.entries || (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id)).filter(Boolean);
         for (const entry of usedEntries) {
-            const item = el('div', 'ym-used-entry'); item.append(el('strong', '', sourceLabel(entry)), el('p', 'ym-memory-text', entry.text)); usedBody.append(item);
+            const item = el('div', 'ym-used-entry'); item.append(el('strong', '', sourceLabel(entry))); appendMemoryText(item, entry); usedBody.append(item);
         }
         if (Number.isFinite(use.tokens)) usedBody.append(el('p', 'ym-muted', `约 ${use.tokens} token（估算）`));
     }
@@ -567,7 +595,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     dialog.addEventListener('keydown', event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
         if (event.key === 'Tab') {
-            const focusable = [...dialog.querySelectorAll('button,input,textarea,select,summary,[tabindex="0"]')].filter(node => !node.disabled && !node.closest('[hidden]'));
+            const focusable = [...dialog.querySelectorAll('button,input,textarea,select,summary,a[href],[tabindex="0"]')].filter(node => !node.disabled && !node.closest('[hidden]'));
             if (!focusable.length) return;
             const first = focusable[0], last = focusable.at(-1);
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

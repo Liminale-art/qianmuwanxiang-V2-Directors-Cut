@@ -3,6 +3,7 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
 import * as contract from './contract.mjs';
+import {validateExcerpt} from './recall-contract.mjs';
 
 const STORE_DIRECTORY = '.yimu';
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
@@ -13,6 +14,8 @@ const messageHash = message => digest(JSON.stringify([String(message.name || '')
     String(message.mes || ''), String(message.send_date ?? '')]));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clone = value => structuredClone(value);
+const wholeParagraph = (text, start, end) => typeof text === 'string' && start >= 0 && end > start && end <= text.length
+    && (start === 0 || text[start - 1] === '\n') && (end === text.length || text[end] === '\n');
 const withReceipt = operation => {
     if (!operation || typeof operation !== 'object' || Array.isArray(operation)) fail('operation', '忆幕操作格式无效', 400);
     const {receipt: ignored, ...values} = operation;
@@ -146,7 +149,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current, legacyBytes: envelope.value?.schema === 1 ? Buffer.from(bytes.subarray(0, length)) : null};
+            return {value, fingerprint: current, legacyBytes: [1, 2].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -161,7 +164,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
 
     async function preserveLegacy(ctx, name, bytes) {
         if (!bytes) return;
-        const backup = `${name}.schema1.bak`;
+        const legacySchema = JSON.parse(bytes.toString('utf8')).value.schema;
+        const backup = `${name}.schema${legacySchema}.bak`;
         const existing = await readFile(ctx, backup, value => value, () => null);
         if (existing.fingerprint) {
             if (!existing.legacyBytes?.equals(bytes)) fail('migration_backup', '旧版忆幕备份已存在且内容不同，未覆盖任何资料', 409);
@@ -280,7 +284,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         return {folder, target};
     }
 
-    async function verifySource(ctx, binding, source = null, inspectEntries = null) {
+    async function verifySource(ctx, binding, source = null, inspectEntries = null, collect = null) {
         await checkRoot(ctx);
         await checkDirectory(ctx, ctx.chats);
         const {folder, target} = sourcePath(ctx, binding);
@@ -309,6 +313,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                     continue;
                 }
                 const hash = messageHash(message);
+                if (collect) collect(message, floor, hash);
                 if (source && floor >= source.start && floor <= source.end) {
                     if (hash !== source.hashes[floor - source.start]) fail('source_changed', '对应聊天原文已改变，未采用整理结果');
                     verified++;
@@ -366,8 +371,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
     }
 
-    async function requireSource(ctx, binding, source = null, entries = null) {
-        try { return await verifySource(ctx, binding, source, entries); }
+    async function requireSource(ctx, binding, source = null, entries = null, collect = null) {
+        try { return await verifySource(ctx, binding, source, entries, collect); }
         catch (caught) {
             if (caught?.code === 'ENOENT') fail('source_missing', '找不到对应的 ST 聊天文件，未采用本次结果', 404);
             if (caught?.code === 'EACCES' || caught?.code === 'EPERM') fail('source_access', '无法读取对应的 ST 聊天文件，未采用本次结果', 403);
@@ -376,6 +381,16 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
     }
 
     async function requireEntrySource(ctx, binding, entry, document, defaults = null, checkRecent = false) {
+        if (entry.kind === 'excerpt') {
+            if (!contract.excerptDependenciesValid(entry, document)) fail('recall_changed', '原文补充的来源或人工保护状态已改变');
+            let valid = false;
+            await requireSource(ctx, binding, entry.source, null, (message, floor) => {
+                if (floor === entry.source.start) valid = wholeParagraph(message.mes, entry.quote.start, entry.quote.end)
+                    && message.mes.slice(entry.quote.start, entry.quote.end).trim().length > 0;
+            });
+            if (!valid) fail('source_changed', '原文补充对应的引文位置已改变');
+            return true;
+        }
         if (entry.kind !== 'stage') return requireSource(ctx, binding, entry.source);
         if (!contract.stageDependenciesValid(entry, document)) fail('stage_changed', '阶段摘要的细摘要来源已变化，未采用');
         const evidence = await requireSource(ctx, binding, null, [entry]);
@@ -393,19 +408,86 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         if (!equal(document.binding, binding)) fail('binding_changed', '该聊天路径已属于其他聊天，原有忆幕资料已保留');
     }
 
+    function recallGuard(document, defaults, request, {write = false} = {}) {
+        if (!document.enabled || document.movedTo || !contract.effectiveSettings(document, defaults).recall
+            || request?.expectedEpoch !== document.epoch) fail('recall_disabled', '原文回查已关闭或聊天设置已变化');
+        if (!Number.isSafeInteger(request?.expectedDefaultsRevision) || request.expectedDefaultsRevision !== defaults.revision) fail('defaults_changed', '回查期间全局设置已变化');
+        if (write && request.expectedRevision !== document.revision) fail('recall_changed', '回查期间记忆已变化，本次补充未采用');
+        const ref = write ? request.parent : {id: request.parentId, revision: request.parentRevision};
+        if (!ref || !Number.isSafeInteger(ref.revision) || ref.revision < 1) fail('recall_parent', '回查没有有效的细摘要版本', 400);
+        const reason = contract.recallBlockReason(document, ref);
+        if (reason) fail('recall_blocked', reason);
+        const parent = document.entries.find(entry => entry.id === ref.id);
+        let trigger;
+        try { trigger = contract.sourceRanges(request.triggerSource); }
+        catch { fail('recall_trigger', '回查缺少有效的新叙事来源', 400); }
+        if (trigger.length !== 1 || trigger[0].start <= parent.source.end) fail('recall_trigger', '回查触发范围必须位于目标细摘要之后', 400);
+        if (parent.source.end - parent.source.start + 1 > 24) fail('recall_capacity', '此次回查范围超过 24 层，未截取原文', 413);
+        return {parent, trigger: trigger[0]};
+    }
+
+    async function recallEvidence(ctx, binding, document, defaults, request, options = {}) {
+        const {parent, trigger} = recallGuard(document, defaults, request, options);
+        const messages = []; let characters = 0;
+        const evidence = await requireSource(ctx, binding, null, [{id: 'parent', source: parent.source}, {id: 'trigger', source: trigger}], (message, floor) => {
+            if (floor < parent.source.start || floor > parent.source.end) return;
+            if (typeof message.mes !== 'string' || message.is_system || message.tool_calls || message.tool_call_id || message.extra?.tool_invocations) fail('recall_source', '此来源不支持安全原文摘录');
+            characters += message.mes.length;
+            if (characters > 16000) fail('recall_capacity', '此次回查原文超过 16000 字符，未截取内容', 413);
+            messages.push({floor, name: String(message.name || ''), is_user: Boolean(message.is_user), mes: message.mes});
+        });
+        if (evidence.invalidSourceIds.length) fail('source_changed', '回查所依据的原文已变化，未采用本次结果');
+        if (parent.source.end > evidence.sourceFloorCount - contract.effectiveSettings(document, defaults).recent) fail('recall_recent', '近期原文不需要回查补充');
+        return {documentRevision: document.revision, parent: {id: parent.id, revision: parent.revision}, messages, source: clone(parent.source)};
+    }
+
+    async function recallSource(request, rawBinding, query) {
+        const binding = normalizeStoreBinding(rawBinding), ctx = context(request);
+        await prepare(ctx);
+        return exclusive(ctx, 'defaults.json', () => exclusive(ctx, chatStorageName(binding), async () => {
+            const [{value: document}, {value: defaults}] = await Promise.all([documentRead(ctx, binding), defaultsRead(ctx)]);
+            assertBinding(document, binding);
+            return recallEvidence(ctx, binding, document, defaults, query);
+        }));
+    }
+
     async function read(request, rawBinding) {
         const binding = normalizeStoreBinding(rawBinding), ctx = context(request);
         await prepare(ctx);
         const [{value: document}, {value: defaults}] = await Promise.all([documentRead(ctx, binding), defaultsRead(ctx)]);
         assertBinding(document, binding);
         let sourceAvailable = false, evidence = {invalidSourceIds: [], sourceFingerprint: null, sourceFloorCount: null};
+        const excerpts = document.entries.filter(entry => entry.kind === 'excerpt');
+        const excerptFloors = new Map();
+        for (const entry of excerpts) excerptFloors.set(entry.source.start, [...(excerptFloors.get(entry.source.start) || []), entry]);
+        const parentWindows = new Map();
+        for (const entry of excerpts) {
+            const parent = document.entries.find(item => item.id === entry.parent.id);
+            const version = parent && [parent, ...parent.history].find(item => item.revision === entry.parent.revision && item.kind === 'summary' && item.source);
+            if (version) parentWindows.set(entry.id, {id: `excerpt-parent:${entry.id}`, source: version.source});
+        }
+        const materialized = new Map();
         try {
-            evidence = await verifySource(ctx, binding, null, document.entries.filter(entry => entry.status === 'active' && entry.source));
+            const windows = [...document.entries.filter(entry => entry.status === 'active' && entry.source || entry.kind === 'excerpt'), ...parentWindows.values()];
+            evidence = await verifySource(ctx, binding, null, windows, (message, floor) => {
+                for (const entry of excerptFloors.get(floor) || []) if (wholeParagraph(message.mes, entry.quote.start, entry.quote.end)) {
+                    const quoteText = message.mes.slice(entry.quote.start, entry.quote.end);
+                    if (quoteText.trim()) materialized.set(entry.id, {quoteText, quoteSpeaker: String(message.name || '')});
+                }
+            });
             sourceAvailable = true;
         }
         catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
         for (const entry of document.entries) if (entry.kind === 'stage' && entry.status === 'active'
             && !contract.stageDependenciesValid(entry, document) && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+        for (const entry of excerpts) {
+            const sourceValid = sourceAvailable && parentWindows.has(entry.id) && materialized.has(entry.id)
+                && !evidence.invalidSourceIds.includes(entry.id) && !evidence.invalidSourceIds.includes(parentWindows.get(entry.id).id);
+            if (sourceValid) Object.assign(entry, materialized.get(entry.id));
+            if (entry.status === 'active' && (!sourceValid || !contract.excerptDependenciesValid(entry, document))
+                && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+        }
+        evidence.invalidSourceIds = evidence.invalidSourceIds.filter(id => !id.startsWith('excerpt-parent:'));
         return {document, defaults, sourceAvailable: sourceAvailable && !document.movedTo, ...evidence};
     }
 
@@ -414,7 +496,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         await prepare(ctx);
         const generatedStage = ['append', 'redo'].includes(operation?.type) && operation?.entry?.kind === 'stage';
         if (generatedStage && operation.expectedDefaultsRevision === undefined) fail('defaults_revision', '阶段整理缺少默认设置版本，未采用', 400);
-        const summaryWithDefaults = ['append', 'redo'].includes(operation?.type) && ['summary', 'stage'].includes(operation?.entry?.kind)
+        const isRecall = operation?.type === 'recall';
+        const summaryWithDefaults = isRecall || ['append', 'redo'].includes(operation?.type) && ['summary', 'stage'].includes(operation?.entry?.kind)
             && operation.expectedDefaultsRevision !== undefined;
         if (summaryWithDefaults && (!Number.isSafeInteger(operation.expectedDefaultsRevision) || operation.expectedDefaultsRevision < 0)) {
             fail('defaults_revision', '整理所依据的默认设置版本无效', 400);
@@ -422,11 +505,27 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         const commit = () => exclusive(ctx, chatStorageName(binding), async () => {
             const current = await documentRead(ctx, binding);
             assertBinding(current.value, binding);
-            const result = contract.applyOperation(current.value, withReceipt(operation));
+            const signedOperation = withReceipt(operation);
+            let excerpt = null;
+            if (isRecall && !current.value.operations.includes(operation.id)) {
+                const actualDefaults = await defaultsRead(ctx);
+                const source = await recallEvidence(ctx, binding, current.value, actualDefaults.value, operation, {write: true});
+                const quote = operation.quote;
+                if (!Number.isSafeInteger(quote?.floor) || typeof quote?.text !== 'string' || !quote.text.trim() || quote.text.length > 1200) fail('recall_quote', '原文引文为空或超过 1200 字符', 400);
+                const message = source.messages.find(item => item.floor === quote.floor);
+                const start = message?.mes.indexOf(quote.text) ?? -1;
+                if (start < 0 || message.mes.indexOf(quote.text, start + 1) !== -1) fail('recall_quote', '引文未在指定原文楼层中唯一匹配，未保存补充');
+                if (!wholeParagraph(message.mes, start, start + quote.text.length)) fail('recall_quote', '原文补充必须保留完整自然段，未采用片段');
+                excerpt = validateExcerpt({kind: 'excerpt', text: '原文补充', parent: source.parent,
+                    source: {start: quote.floor, end: quote.floor, hashes: [source.source.hashes[quote.floor - source.source.start]]},
+                    quote: {start, end: start + quote.text.length}});
+            }
+            const result = contract.applyOperation(current.value, signedOperation, {excerpt});
             if (!equal(result.document, current.value)) {
                 let actualDefaults;
                 const checkedSources = new Set();
                 const sourceKey = entry => JSON.stringify([entry.kind, entry.source]);
+                if (excerpt) checkedSources.add(sourceKey(excerpt));
                 if (summaryWithDefaults) {
                     actualDefaults = await defaultsRead(ctx);
                     if (actualDefaults.value.revision !== operation.expectedDefaultsRevision) {
@@ -510,5 +609,5 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }));
     }
 
-    return Object.freeze({read, change, defaults, rename});
+    return Object.freeze({read, change, defaults, rename, recallSource});
 }

@@ -1,7 +1,9 @@
-import { bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { VERSION, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt } from './core.mjs';
 import { nextStage, parseStage, stagePrompt } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
+import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
+import { recallBlockReason } from './recall-contract.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -9,8 +11,9 @@ const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
-    const state = { loading: false, error: '', status: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, sourceAvailable: false, invalidSourceIds: [] };
-    let sequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
+    const state = { loading: false, error: '', status: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, sourceAvailable: false, invalidSourceIds: [],
+        service: { status: 'unknown', version: '', requiredVersion: VERSION } };
+    let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Set();
     let refreshTimer = null, generationRefresh = null;
     const emit = () => { if (!disposed) onChange({ ...state, paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) }); };
@@ -37,14 +40,36 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         }
     }
 
+    async function checkService() {
+        const ticket = ++serviceSequence;
+        state.service = { status: 'checking', version: '', requiredVersion: VERSION }; emit();
+        try {
+            const value = await api.health();
+            if (!disposed && ticket === serviceSequence) {
+                state.service = { status: 'ok', version: typeof value?.version === 'string' ? value.version : '', requiredVersion: VERSION }; emit();
+            }
+        } catch (error) {
+            if (!disposed && ticket === serviceSequence) {
+                state.service = { status: error?.code === 'yimu_version' ? 'mismatch' : 'error', version: typeof error?.currentVersion === 'string' ? error.currentVersion : '', requiredVersion: VERSION }; emit();
+            }
+            throw error;
+        }
+    }
+
     async function refresh({ quiet = false, auto = false } = {}) {
         const ticket = ++sequence;
         if (!quiet) { state.loading = true; state.error = ''; emit(); }
         const task = (async () => {
-            let identified = false;
+            let identityFailed = false;
             try {
-                const snapshot = await host.snapshot();
-                identified = true;
+                // Manual opening/refresh can verify installation on ST's homepage
+                // without requiring a real chat. Quiet homepage work stays unchanged.
+                let serviceError = null;
+                if (!quiet) try { await checkService(); } catch (error) { serviceError = error; }
+                if (ticket !== sequence || disposed) return;
+                let snapshot;
+                try { snapshot = await host.snapshot(); }
+                catch (error) { identityFailed = true; throw serviceError || error; }
                 if (ticket !== sequence || disposed) return;
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
@@ -52,7 +77,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     state.document = null; state.defaults = null; state.lastUsed = null; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
-                await api.health();
+                if (serviceError) throw serviceError;
+                if (quiet) await checkService();
                 const data = await api.read(snapshot.binding);
                 if (ticket !== sequence || disposed) return;
                 const live = await host.snapshot();
@@ -74,7 +100,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (auto && !disposed) defer(() => start().catch(() => {}));
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
-                if (!identified) {
+                if (identityFailed) {
                     state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null;
                     state.busy = false; state.status = ''; state.invalidSourceIds = [];
                 }
@@ -89,7 +115,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot) return;
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
-        const doc = clone(state.document);
+        const doc = clone(state.document), runGeneration = generation;
         const failedKey = `${key}:${doc.epoch}`;
         if (!force && failedJobs.has(failedKey)) return;
         failedJobs.delete(failedKey);
@@ -99,7 +125,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const settings = effectiveSettings(doc, defaults);
         // Batch size accounts for summary instructions/output and never truncates a source floor.
         if (!settings.profileId) settings.batch = Math.min(settings.batch, Math.max(256, Math.floor((snapshot.maxContext || 8192) * 0.45)));
-        let processed = false;
+        let processed = false, recallAttempted = false;
         try {
             for (;;) {
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
@@ -118,8 +144,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (!batch) break;
                 const hashes = await fingerprintMessages(snapshot.messages);
                 const frozenSource = { start: batch.start, end: batch.end, hashes: hashes.slice(batch.start - 1, batch.end) };
+                const candidateDocument = clone(jobDocument);
+                for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
+                const candidates = !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
-                const response = await host.generate(summaryPrompt(snapshot.messages, batch, settings), { profileId: settings.profileId, model: settings.model, signal: controller.signal });
+                const response = await host.generate(summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: candidates }), { profileId: settings.profileId, model: settings.model, signal: controller.signal });
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await api.read(binding); adopt(binding, beforeSave);
                 if (beforeSave.defaults.revision !== defaults.revision || !beforeSave.document.enabled || beforeSave.document.epoch !== doc.epoch) throw new Error('整理期间设置已变化，本次结果未采用');
@@ -142,6 +171,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                         return;
                     }
                 }
+                const request = parseRecallRequest(response, candidates);
+                if (request && !recallAttempted) {
+                    recallAttempted = true; // At most one bounded extraction in this entire background run.
+                    await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration });
+                }
                 if (entryId || !isCurrent(binding) || generating) break;
             }
             if (processed && isCurrent(binding) && !controller.signal.aborted) { state.status = '本轮整理已完成；有效记忆从下一次生成开始使用。'; emit(); }
@@ -154,6 +188,39 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (jobs.get(key) === controller) jobs.delete(key);
             if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) defer(() => startStage().catch(() => {}));
             emit();
+        }
+    }
+
+    async function completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource, slices, recallGeneration }) {
+        const active = () => !disposed && !controller.signal.aborted && generation === recallGeneration && !generating && !localStops.has(key) && isCurrent(binding)
+            && state.document?.enabled && state.document.epoch === doc.epoch && state.defaults?.revision === defaults.revision
+            && effectiveSettings(state.document, state.defaults).recall !== false;
+        if (!active() || typeof api.recallSource !== 'function') return;
+        try {
+            const fresh = await api.read(binding); adopt(binding, fresh);
+            const parent = fresh.document.entries.find(entry => entry.id === request.parentId);
+            if (!active() || !fresh.sourceAvailable || recallBlockReason(fresh.document, parent)) return;
+            const source = await api.recallSource(binding, { parentId: request.parentId, parentRevision: request.parentRevision,
+                expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision, triggerSource });
+            if (!active()) return;
+            const prompt = recallPrompt(source, request, fresh.document, slices);
+            if (!recallFits(prompt, settings, snapshot)) return;
+            state.status = '正在核对一处相关原文；正常聊天不受阻塞。'; emit();
+            const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model, signal: controller.signal, maxTokens: 1024 });
+            if (!active()) return;
+            const quote = parseRecallQuote(response, source);
+            if (!quote) return;
+            const latestSnapshot = await host.snapshot();
+            if (!equalBinding(latestSnapshot.binding, binding)) return;
+            const hashes = await fingerprintMessages(latestSnapshot.messages);
+            if (!sourceMatches(triggerSource, hashes) || !sourceMatches(source.source, hashes) || !active()) return;
+            await change(binding, { id: id(), type: 'recall', entryId: id(), expectedRevision: source.documentRevision,
+                expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision, parent: source.parent, triggerSource, quote });
+            if (active()) adopt(binding, await api.read(binding)); // Excerpts materialize from ST originals only on read.
+        } catch {
+            // Optional recall never rolls back good summaries, retries a model in a
+            // loop, or turns a failed/unknown write into a success notification.
+            if (active()) { state.status = '本次原文补充未采用，已保存的记忆保持不变。'; emit(); }
         }
     }
 
@@ -227,6 +294,10 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const snapshot = await host.snapshot();
         if (!equalBinding(snapshot.binding, state.snapshot.binding)) { await refresh(); throw new Error('当前聊天已变化，请重新操作'); }
         const binding = clone(snapshot.binding), doc = clone(state.document), key = bindingKey(binding);
+        if (type === 'enable' && !payload.enabled) {
+            localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; emit();
+        }
+        if (['error', 'mismatch'].includes(state.service.status)) throw new Error('忆幕服务尚不可用，请先刷新检测；当前修改可继续保留。');
         if (type === 'stage' || type === 'redo' && doc.entries.find(e => e.id === payload.entryId)?.kind === 'stage') {
             if (jobs.has(key)) return false;
             state.error = ''; emit(); defer(() => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null })); return true;
@@ -237,9 +308,9 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         }
         let operation = { id: id() };
         if (type === 'enable') {
-            if (!payload.enabled) { localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; }
             operation = { ...operation, type, enabled: payload.enabled, expectedRevision: payload.expectedRevision ?? doc.configRevision, range: payload.range };
         } else if (type === 'settings') {
+            if (payload.values?.recall === false) jobs.get(key)?.abort();
             if (payload.global) {
                 for (const job of jobs.values()) job.abort();
                 state.busy = true; emit();

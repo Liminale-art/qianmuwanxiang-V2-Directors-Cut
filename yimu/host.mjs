@@ -83,6 +83,7 @@ export function createHost({
             name: text(ctx.characters?.[ctx.characterId]?.name || ctx.name2),
             mainApi: text(ctx.mainApi),
             maxContext: Number(ctx.mainApi === 'openai' ? ctx.chatCompletionSettings?.openai_max_context : ctx.maxContext) || 0,
+            maxResponse: Number(ctx.chatCompletionSettings?.openai_max_tokens) || 0,
         };
     }
 

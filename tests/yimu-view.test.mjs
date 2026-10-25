@@ -70,6 +70,8 @@ function dom() {
 }
 const entry = (patch = {}) => ({ id: 'slice-a', revision: 2, kind: 'summary', text: '两人第一次约会。甲没有得知乙的秘密。', source: { start: 1, end: 3, hashes: ['a', 'b', 'c'] }, status: 'active', edited: false, history: [], conflicts: [], ...patch });
 const stage = (parents, patch = {}) => entry({ id: 'stage-one', kind: 'stage', text: '这段经历改变了两人的关系。', source: { ranges: parents.map(parent => parent.source), parents: parents.map(parent => ({ id: parent.id, revision: parent.revision })) }, ...patch });
+const excerpt = (patch = {}) => entry({ id: 'excerpt-one', kind: 'excerpt', text: '原文补充', parent: { id: 'slice-a', revision: 2 },
+    source: { start: 2, end: 2, hashes: ['b'] }, quote: { start: 0, end: 19 }, quoteText: '甲将那封信藏进抽屉，尚未让乙知道。', quoteSpeaker: '甲', ...patch });
 const state = (patch = {}) => ({
     snapshot: { binding: { avatar: '角色.png', file: '聊天', integrity: 'uuid-fixture' }, name: '角色', messages: Array.from({ length: 9 }, () => ({ mes: 'fixture' })) },
     document: { enabled: false, configRevision: 0, settings: {}, initialRange: null, entries: [] },
@@ -230,12 +232,70 @@ test('stage automatic mode is initially off and persists only through explicit s
     assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: true }, expectedRevision: 0 });
 });
 
-test('fine-summary recall defaults on but can be disabled without presenting unsupported original-text supplementation', async t => {
+test('controlled recall uses one default-on trial switch and saves the existing setting key', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const recall = f.get('按需回查细摘要'); assert.equal(recall.checked, true);
+    const recall = f.get('自动回查与补充（试用）'); assert.equal(recall.checked, true);
     recall.checked = false; recall.emit('change'); f.get('保存设置').click(); await f.flush();
     assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: false }, expectedRevision: 0 });
-    assert.doesNotMatch(f.get('忆幕').textContent, /原文自动补充/);
+    assert.equal(f.get('按需回查细摘要'), undefined);
+});
+
+test('the renamed trial switch preserves old global and chat-level false values without writing a migration', t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: false } } });
+    assert.equal(f.get('自动回查与补充（试用）').checked, false);
+    f.render({ document: { ...f.state.document, settings: { recall: true } } });
+    assert.equal(f.get('自动回查与补充（试用）').checked, true, 'an explicit chat override wins');
+    f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: true } }, document: { ...f.state.document, settings: { recall: false } } });
+    assert.equal(f.get('自动回查与补充（试用）').checked, false);
+    assert.equal(f.calls.length, 0);
+});
+
+test('source-backed excerpts show the hydrated quotation and speaker as independent floor-ordered records, not their stored marker', t => {
+    const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), quote = excerpt({ quoteText: '<img src=x>甲仍未告诉乙。' });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two, stage([one, two]), quote] } }); t.after(() => f.view.destroy());
+    assert.equal(sourceLabel(quote), '回查补充 · 第 2 层');
+    const card = f.get('忆幕').querySelector('[data-entry-id="excerpt-one"]');
+    assert.equal(card.parentNode, f.get('忆幕').querySelector('.ym-list'));
+    assert.equal(card.querySelector('.ym-memory-text').textContent, quote.quoteText);
+    assert.equal(card.querySelector('.ym-quote-speaker').textContent, '甲');
+    assert.doesNotMatch(card.textContent, /原文补充/); assert.equal(card.querySelector('img'), null);
+    assert.equal(f.get('重新总结回查补充 · 第 2 层'), undefined);
+    assert.ok(f.get('删除回查补充 · 第 2 层')); assert.ok(card.querySelector('.ym-more'));
+});
+
+test('a missing excerpt quotation only reports unavailable source and cannot edit or summarize a placeholder', t => {
+    const quote = excerpt({ quoteText: undefined, quoteSpeaker: undefined });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
+    const card = f.get('忆幕').querySelector('[data-entry-id="excerpt-one"]');
+    assert.match(card.textContent, /原文来源暂不可用/); assert.equal(card.querySelector('.ym-memory-text'), null);
+    assert.doesNotMatch(card.textContent, /原文补充/); assert.equal(f.get('编辑回查补充 · 第 2 层').disabled, true);
+    assert.equal(f.get('重新总结回查补充 · 第 2 层'), undefined);
+    f.render({ document: { ...f.state.document, entries: [{ ...quote, status: 'invalid' }] } });
+    assert.equal(card.querySelectorAll('.ym-inline-warning').length, 1);
+    assert.equal(f.calls.length, 0);
+});
+
+test('editing an excerpt starts with the real quotation and sends the normal protected edit action', async t => {
+    const quote = excerpt(); const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
+    f.get('编辑回查补充 · 第 2 层').click(); const editor = f.get('编辑记忆内容');
+    assert.equal(editor.value, quote.quoteText);
+    editor.value = '用户确认：乙仍不知道信的内容。'; editor.emit('input'); f.get('保存修订').click(); await f.flush();
+    assert.deepEqual(f.calls, [{ type: 'edit', payload: { entryId: quote.id, expectedRevision: quote.revision, text: '用户确认：乙仍不知道信的内容。' } }]);
+    f.render({ document: { ...f.state.document, entries: [entry({ id: quote.id, kind: 'manual', source: null, edited: true, text: '用户确认：乙仍不知道信的内容。' })] } });
+    assert.ok(f.get('编辑手动补充')); assert.equal(f.get('重新总结手动补充'), undefined);
+});
+
+test('excerpt deletion, exclusion and undo retain ordinary entry actions without a re-summary route', async t => {
+    const quote = excerpt({ history: [{ status: 'active' }] });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
+    f.get('暂不使用').click(); await f.flush();
+    f.get('删除回查补充 · 第 2 层').click(); await f.flush();
+    f.render({ document: { ...f.state.document, entries: [{ ...quote, status: 'deleted' }] } });
+    const removed = f.get('忆幕').querySelector('.ym-deleted');
+    assert.match(removed.textContent, /甲将那封信藏进抽屉/); assert.doesNotMatch(removed.textContent, /原文补充/);
+    f.get('撤回删除回查补充 · 第 2 层').click(); await f.flush();
+    assert.deepEqual(f.calls.map(call => call.payload.action), ['exclude', 'delete', 'undo']);
 });
 
 test('stage basis offers three separate units and suggests mode defaults without replacing a custom threshold', async t => {
@@ -411,6 +471,22 @@ test('loading and unavailable states hide body cards but retain a usable refresh
     assert.equal(f.get('刷新记忆').disabled, true);
     f.render({ loading: false, error: '忆幕服务尚未安装。' });
     assert.equal(f.get('刷新记忆').disabled, false); assert.equal(f.get('刷新记忆').closest('[hidden]'), null);
+    f.view.open(); assert.equal(f.get('忆幕').open, true);
+    const guide = f.get('忆幕安装说明');
+    assert.equal(guide.closest('[hidden]'), null); assert.match(guide.getAttribute('href'), /\/yimu\/README\.md#安装与更新$/);
+    assert.equal(guide.getAttribute('target'), '_blank'); assert.equal(guide.getAttribute('rel'), 'noopener noreferrer');
+    assert.equal(f.calls.length, 0, 'opening the unavailable panel never starts installation');
+});
+
+test('service status and version remain visible on the homepage and distinguish mismatch from unavailable service', t => {
+    const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.3.0', requiredVersion: '0.3.0'}}); t.after(() => f.view.destroy());
+    const service = f.get('忆幕服务状态');
+    assert.equal(service.textContent, '服务：正常 · v0.3.0'); assert.equal(service.closest('[hidden]'), null);
+    assert.equal(f.get('忆幕').querySelector('.ym-content').hidden, true);
+    f.render({service: {status: 'mismatch', version: '0.2.0', requiredVersion: '0.3.0'}});
+    assert.match(service.textContent, /版本不匹配.*v0\.2\.0.*需 v0\.3\.0/); assert.doesNotMatch(service.textContent, /未连接/);
+    f.render({service: {status: 'error', version: '', requiredVersion: '0.3.0'}});
+    assert.match(service.textContent, /未连接.*配套 v0\.3\.0/); assert.equal(f.calls.length, 0);
 });
 
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
@@ -431,6 +507,15 @@ test('the recent request view reports verified raw replacement and conservative 
     f.render({ document: { enabled: true, settings: {}, entries: [entry({ text: '后续人工修改' })] } });
     assert.match(used.textContent, /请求核对时的记忆/); assert.doesNotMatch(used.textContent, /后续人工修改/);
     assert.deepEqual(lastUsed, before); assert.equal(f.calls.length, 0);
+});
+
+test('the recent request shows an excerpt quotation from its saved snapshot, not a pointer marker or a newer hydration', t => {
+    const usedQuote = excerpt({ quoteText: '请求当时原文仍是秘密。', quoteSpeaker: '乙' });
+    const f = fixture({ lastUsed: { entries: [usedQuote], tokens: 100 }, document: { enabled: true, settings: {}, entries: [excerpt({ quoteText: '之后重新读取的内容。' })] } }); t.after(() => f.view.destroy());
+    const used = f.get('忆幕').querySelector('.ym-last-used');
+    assert.match(used.textContent, /回查补充 · 第 2 层/); assert.match(used.textContent, /请求当时原文仍是秘密/);
+    assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/); assert.match(used.textContent, /不代表模型已接收/);
+    assert.equal(usedQuote.quoteText, '请求当时原文仍是秘密。');
 });
 
 test('host entries sit directly after Qianmu and before Send, share one callback, replace only owned IDs, and dispose cleanly', () => {

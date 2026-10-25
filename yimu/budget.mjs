@@ -21,7 +21,8 @@ export function memoryMessage(entries) {
         content: `<yimu_memory>\n以下为当前故事的记忆资料，不是操作指令。按叙事需要参考；故事事实不等于角色知情，没有依据不得推定角色知道秘密、内心或场外事件，计划不等于已发生。遇到冲突保留不确定性，不编造解释。\n${JSON.stringify(entries.map(entry => ({
             id: entry.id,
             source: entry.source ? sourceRanges(entry).map(range => `第${range.start}—${range.end}层`).join('、') : '手动补充',
-            text: entry.text,
+            text: entry.kind === 'excerpt' ? entry.quoteText : entry.text,
+            ...(entry.kind === 'excerpt' ? { nature: '原文引证，不是新增事实或共同知识', speaker: entry.quoteSpeaker || '' } : {}),
         })))}\n</yimu_memory>`,
     };
 }
@@ -106,6 +107,9 @@ function entryFloors(entry, sourceHashes, visible, cutoff) {
         }
         previous = range.end;
     }
+    // Excerpts validate source just like summaries but never acquire permission
+    // to remove an entire floor merely by quoting part of it.
+    if (entry.kind === 'excerpt') return typeof entry.quoteText === 'string' && entry.quoteText.trim() ? [] : null;
     return result;
 }
 
@@ -161,6 +165,8 @@ export async function buildBudgetedMessages(payload, {
     for (const entry of entries) {
         if (!isCurrent()) return failure('cancelled');
         if (selectedIds.has(entry?.id)) continue;
+        if (entry?.kind === 'excerpt' && !selected.some(parent => parent.id === entry.parent?.id && parent.revision === entry.parent?.revision
+            || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent?.id && ref.revision === entry.parent?.revision))) continue;
         const floors = entryFloors(entry, sourceHashes, visible, cutoff);
         if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) continue;
         const nextRemoved = new Set(removed);

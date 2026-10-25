@@ -17,14 +17,14 @@ const stageOperation = document => ({id: 'stage_append', type: 'append', expecte
     entry: {id: 'stage_1', kind: 'stage', text: '按连续经历形成的精简阶段。', source: {parents: refs(document)}}});
 const withStage = () => {const doc = fineDocument(); return change(doc, stageOperation(doc));};
 
-test('schema 2 upgrades legacy data only in memory and preserves original legacy objects', () => {
-    assert.equal(SCHEMA, 2); assert.equal(VERSION, '0.2.0');
+test('current schema upgrades legacy data only in memory and preserves original legacy objects', () => {
+    assert.equal(SCHEMA, 3); assert.equal(VERSION, '0.3.0');
     const legacy = {...fineDocument(), schema: 1}, before = structuredClone(legacy);
     const upgraded = validateDocument(legacy);
-    assert.equal(upgraded.schema, 2); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);
+    assert.equal(upgraded.schema, SCHEMA); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);
     const old = {schema: 1, revision: 3, operations: [], receipts: {}, values: {recent: 9, trigger: 5000, batch: 6000, budget: 0, preference: '旧偏好', profileId: '', model: ''}};
     const defaults = validateDefaults(old);
-    assert.equal(defaults.schema, 2); assert.equal(defaults.values.recent, 9); assert.equal(defaults.values.stageAuto, false);
+    assert.equal(defaults.schema, SCHEMA); assert.equal(defaults.values.recent, 9); assert.equal(defaults.values.stageAuto, false);
     assert.equal(old.schema, 1); assert.equal(old.values.stageAuto, undefined);
 });
 

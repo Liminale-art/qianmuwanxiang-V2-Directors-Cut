@@ -1,8 +1,10 @@
 // Shared, data-only contract. Chat originals and connection secrets never live here.
 import {invalidateDependentStages, sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
+import {validateExcerpt, recallBlockReason, excerptDependenciesValid, invalidateDependentExcerpts, excerptRecords} from './recall-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
-export const VERSION = '0.2.0';
-export const SCHEMA = 2;
+export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
+export const VERSION = '0.3.0';
+export const SCHEMA = 3;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });
 const clone = value => structuredClone(value);
@@ -52,24 +54,25 @@ function textValue(text) {
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
 export function validateDocument(raw) {
-    requireThat([1, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
-    if (raw.schema === 1) raw = {...clone(raw), schema: SCHEMA};
+    requireThat([1, 2, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA};
     normalizeBinding(raw.binding); validateSettings(raw.settings);
     const ids = new Set();
     for (const entry of raw.entries) {
         identifier(entry.id); requireThat(!ids.has(entry.id), '记忆条目标识重复'); ids.add(entry.id);
         textValue(entry.text);
-        requireThat(['summary', 'manual', 'stage'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
+        requireThat(['summary', 'manual', 'stage', 'excerpt'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
         if (entry.kind === 'summary') validateSource(entry.source);
         else if (entry.kind === 'stage') validateStageSource(entry.source);
+        else if (entry.kind === 'excerpt') validateExcerpt(entry);
         else requireThat(entry.source === null, '手动补充不能伪造来源');
     }
     if (raw.movedTo) normalizeBinding(raw.movedTo);
     return raw;
 }
 export function validateDefaults(raw) {
-    requireThat([1, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
-    if (raw.schema === 1) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
+    requireThat([1, 2, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Array.isArray(raw.operations), '忆幕默认设置损坏，已停止写入');
+    if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, values: {...DEFAULTS, ...raw.values}};
     validateSettings(raw.values, false); return raw;
 }
 function receipt(operation) { return operation.receipt || JSON.stringify(operation); }
@@ -80,6 +83,7 @@ function isDuplicate(document, operation) {
 }
 function finish(document, operation, outcome = 'applied') {
     invalidateDependentStages(document);
+    invalidateDependentExcerpts(document);
     document.revision++;
     document.operations.push(operation.id);
     document.receipts = { ...document.receipts, [operation.id]: receipt(operation) };
@@ -103,7 +107,7 @@ function candidate(entry, operation, values, reason) {
     entry.conflicts.push({ id: operation.id, reason, ...clone(values) });
     return 'conflict';
 }
-export function applyOperation(current, operation) {
+export function applyOperation(current, operation, {excerpt = null} = {}) {
     current = validateDocument(current);
     const id = identifier(operation?.id);
     if (isDuplicate(current, operation)) return { document: clone(current), outcome: 'duplicate' };
@@ -126,6 +130,18 @@ export function applyOperation(current, operation) {
             }
         }
         doc.epoch++; doc.configRevision++;
+    } else if (op.type === 'recall') {
+        requireThat(doc.enabled && op.expectedEpoch === doc.epoch && doc.settings.recall !== false, '原文回查已关闭或设置已变化');
+        requireThat(op.expectedRevision === doc.revision, '回查期间记忆已变化，本次补充未采用');
+        const reason = recallBlockReason(doc, op.parent); requireThat(!reason, reason);
+        const value = {...validateExcerpt(excerpt), id: identifier(op.entryId)};
+        requireThat(JSON.stringify(value.parent) === JSON.stringify(op.parent) && excerptDependenciesValid(value, doc), '原文补充的父来源已变化');
+        requireThat(!doc.entries.some(entry => entry.id === value.id), '此原文补充标识已存在');
+        const previous = excerptRecords(doc, value.parent.id);
+        if (previous.some(entry => JSON.stringify(entry.source) === JSON.stringify(value.source) && JSON.stringify(entry.quote) === JSON.stringify(value.quote))) return finish(doc, op, 'duplicate');
+        requireThat(!previous.some(entry => entry.source.start === value.source.start && entry.quote.start < value.quote.end && entry.quote.end > value.quote.start), '此原文位置已有补充或排除记录，不重复提取');
+        requireThat(new Set(previous.map(entry => entry.id)).size < 2, '此细摘要已有两条原文补充，不自动追加');
+        doc.entries.push({...value, revision: 1, status: 'active', edited: false, history: [], conflicts: [], candidate: null});
     } else if (op.type === 'append') {
         const value = submittedEntry(op.entry, doc);
         if (doc.entries.some(e => e.id === value.id)) throw failure('此记忆条目已经存在', 409);
@@ -148,7 +164,7 @@ export function applyOperation(current, operation) {
         const entry = doc.entries.find(e => e.id === op.entryId);
         requireThat(entry, '记忆条目不存在');
         let values;
-        if (op.type === 'edit') values = { text: textValue(op.text), edited: true };
+        if (op.type === 'edit') values = { text: textValue(op.text), edited: true, ...(entry.kind === 'excerpt' ? {kind: 'manual', source: null, parent: null, quote: null, status: 'active'} : {}) };
         else if (op.type === 'redo') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch && entry.status !== 'deleted', '整理期间状态已变化，本次结果未采用');
             const submitted = submittedEntry(op.entry, doc);

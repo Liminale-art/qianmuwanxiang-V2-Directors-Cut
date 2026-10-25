@@ -22,6 +22,7 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
     };
     router.get('/health', route(async () => ({version: VERSION, schema: SCHEMA})));
     router.post('/read', route(request => store.read(request, request.body?.binding)));
+    router.post('/recall-source', route(request => store.recallSource(request, request.body?.binding, request.body?.request)));
     router.post('/change', route(request => store.change(request, request.body?.binding, request.body?.operation)));
     router.post('/defaults', route(request => store.defaults(request, request.body?.operation)));
     router.post('/rename', route(request => store.rename(request, request.body?.binding, request.body?.newBinding)));

@@ -379,7 +379,7 @@ test('stage writes require defaults revision, current raw fingerprints, and excl
     await assert.rejects(f.store.change(f.request, binding, {...op, id: 'stale_raw', type: 'redo', entryId: 'stage_1', expectedRevision: 1}), {code: 'yimu_source_changed'});
 });
 
-test('schema 1 reads are non-mutating and first actual write preserves byte-exact legacy backup before schema 2', async t => {
+test('schema 1 reads are non-mutating and first actual write preserves byte-exact legacy backup before upgrading', async t => {
     const f = await fixture(t), folder = path.join(f.account, '.yimu');
     await fs.mkdir(folder);
     const legacy = {...createDocument(binding), schema: 1};
@@ -387,10 +387,10 @@ test('schema 1 reads are non-mutating and first actual write preserves byte-exac
     const file = path.join(folder, chatStorageName(binding)), original = envelope(legacy);
     await fs.writeFile(file, original);
     const read = await f.store.read(f.request, binding);
-    assert.equal(read.document.schema, 2); assert.deepEqual(await fs.readFile(file), original);
+    assert.equal(read.document.schema, SCHEMA); assert.deepEqual(await fs.readFile(file), original);
     assert.deepEqual(await fs.readdir(folder), [chatStorageName(binding)]);
     await f.append('migrated');
-    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).value.schema, 2);
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf8')).value.schema, SCHEMA);
     assert.deepEqual(await fs.readFile(`${file}.schema1.bak`), original);
     const backup = await fs.stat(`${file}.schema1.bak`);
     assert.equal(backup.mode & 0o200, 0, 'legacy snapshot is created read-only');
