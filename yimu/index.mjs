@@ -7,11 +7,26 @@ import { COMPANION_READY } from './companion-runtime.mjs';
 let instance = null;
 export function boot() {
     if (instance || !globalThis.SillyTavern?.getContext?.() || !globalThis.document?.body) return instance;
-    const view = createView({ onAction: (type, payload) => controller.action(type, payload) });
+    const getUi = () => ({ showShortcut: globalThis.SillyTavern.getContext().extensionSettings?.yimu?.showShortcut === true });
+    let removeEntries = null;
+    const render = state => { const ui = getUi(); view.render({ ...state, ui }); removeEntries?.update(ui, state); };
+    const view = createView({ onAction: async (type, payload) => {
+        if (type !== 'uiSettings') return controller.action(type, payload);
+        const ctx = globalThis.SillyTavern.getContext();
+        if (!ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 尚不能保存界面设置，请稍后重试。');
+        const previous = ctx.extensionSettings.yimu;
+        const saved = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
+        ctx.extensionSettings.yimu = { ...saved, showShortcut: payload.showShortcut === true };
+        try { await ctx.saveSettingsDebounced(); }
+        catch (error) { if (previous === undefined) delete ctx.extensionSettings.yimu; else ctx.extensionSettings.yimu = previous; throw error; }
+        render(controller.state);
+        return true;
+    } });
     const host = createHost();
-    const controller = createController({ host, api: createApi(), onChange: state => view.render(state) });
+    const controller = createController({ host, api: createApi(), onChange: render });
     const open = () => { view.open(); void controller.refresh(); };
-    const removeEntries = mountEntries(open);
+    removeEntries = mountEntries(open);
+    render(controller.state);
     const unsubscribe = host.subscribe((name, args) => controller.event(name, args));
     const focus = () => { void controller.refresh({ quiet: true, auto: false }); };
     globalThis.addEventListener('focus', focus);

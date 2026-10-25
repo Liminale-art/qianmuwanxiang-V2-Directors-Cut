@@ -33,6 +33,8 @@ test('whole-request admission replaces only verified old source while preserving
     assert.deepEqual(result.recentFloors, [8, 9, 10, 11, 12]); assert.equal(result.sourceReplacement, true);
     assert.deepEqual(result.messages.slice(0, 2), f.payload.messages.slice(0, 2));
     assert.equal(result.messages.filter(message => message.content.includes('<yimu_memory>')).length, 1);
+    const memory = result.messages.find(message => message.content.includes('<yimu_memory>')).content;
+    for (const rule of ['旧气氛不固定当前基调', '遵循用户设定', '近期原文文风', '不照搬摘要腔', '不改手动修订含义']) assert.ok(memory.includes(rule), rule);
     assert.deepEqual(result.messages.slice(-5), f.payload.messages.slice(-5));
     assert.deepEqual(f.payload, before.payload); assert.deepEqual(f.source, before.source); assert.deepEqual(f.core, before.core);
     assert.equal(counted.length, 1); assert.deepEqual(JSON.parse(counted[0]), result.messages);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS, createDocument, createDefaults, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
-import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources } from '../yimu/core.mjs';
+import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview } from '../yimu/core.mjs';
 
 const binding = { avatar: 'Fixture.png', file: 'fixture', integrity: 'fixture-id' };
 const messages = Array.from({ length: 12 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: `合成第${i + 1}层：两人首次约会，秘密并未告诉旁人。`, send_date: `2026-10-25 ${i}` }));
@@ -32,6 +32,34 @@ test('content batches preserve five recent floors and skip unchosen initial hist
     assert.deepEqual(nextBatch(enable(), messages, DEFAULTS), { start: 1, end: 7 });
     assert.deepEqual(nextBatch(enable({ start: 3, end: 4, total: 12 }), messages, DEFAULTS), { start: 3, end: 4 });
     assert.equal(nextBatch(enable(), messages.slice(0, 5), DEFAULTS), null);
+});
+
+test('first-enable preview reports hidden exclusions and recent raw separately without unhide or source changes', () => {
+    const source = structuredClone(messages.slice(0, 11));
+    source.slice(0, 5).forEach(message => { message.is_system = true; });
+    const before = structuredClone(source), doc = enable({ start: 1, end: 11, total: 11 });
+    const preview = initialRangePreview(doc, source, { start: 1, end: 11 }, DEFAULTS);
+    assert.deepEqual(preview, { valid: true, hidden: [1, 2, 3, 4, 5], recent: [7, 8, 9, 10, 11], handled: [], unsupported: [], eligible: [6] });
+    assert.deepEqual(nextBatch(doc, source, DEFAULTS), { start: 6, end: 6 });
+    assert.deepEqual(source, before);
+    assert.deepEqual(initialRangePreview(doc, source, { start: 3, end: 5 }, DEFAULTS).eligible, []);
+    assert.deepEqual(initialRangePreview(doc, source, { start: 7, end: 11 }, DEFAULTS).hidden, []);
+    assert.deepEqual(initialRangePreview(doc, source, { start: 1, end: 11 }, { recent: 6 }).eligible, []);
+});
+
+test('initial-range preview never counts tool, empty, inherited or already handled floors as ordinary new work', () => {
+    const source = structuredClone(messages);
+    source[0].mes = ''; source[1].extra = { tool_invocations: [] }; source[2].tool_calls = [];
+    source[3].tool_call_id = 'call-id'; source[11].is_system = true;
+    const doc = { lineage: { bridgeCount: 5 }, entries: [{ kind: 'summary', source: { start: 6, end: 6 }, status: 'deleted' }] };
+    const preview = initialRangePreview(doc, source, { start: 1, end: 12 }, { recent: 1 });
+    assert.deepEqual(preview.handled, [1, 2, 3, 4, 5, 6]);
+    assert.deepEqual(preview.hidden, [12]); assert.deepEqual(preview.recent, []);
+    assert.deepEqual(preview.eligible, [7, 8, 9, 10, 11]);
+    assert.deepEqual(initialRangePreview({}, source, { start: 1, end: 4 }, DEFAULTS).unsupported, [1, 2, 3, 4]);
+    assert.equal(initialRangePreview({}, source, { start: 8, end: 3 }, DEFAULTS).valid, false);
+    assert.equal(initialRangePreview({}, source, { start: 1, end: 13 }, DEFAULTS).valid, false);
+    assert.equal(initialRangePreview({}, source, { start: 1.5, end: 5 }, DEFAULTS).valid, false);
 });
 
 test('incremental batches require content threshold, explicit summarize may process the smaller gap', async () => {
@@ -87,6 +115,33 @@ test('generation selects only whole valid slices outside recent raw, with explic
     const tinyBudget = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
     assert.equal(tinyBudget.settings.budget, 1, 'selection retains complete entries; final-payload admission enforces the actual budget');
     assert.equal(tinyBudget.entries[0].text, doc.entries[0].text);
+});
+
+test('summary prompt balances source-grounded narrative texture with factual and knowledge boundaries', () => {
+    const source = [
+        {name: '甲', mes: '甲将茶杯往乙手边推了推，说：“趁热。”乙没有回答。'},
+        {name: '乙', mes: '第二天，乙照常买菜回家，没有提起那杯茶。'},
+        {name: '甲', mes: '范围外内容不能带入。'},
+    ], before = structuredClone(source);
+    const prompt = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS);
+    for (const rule of ['精炼、连贯的叙事回望', '情绪转折、关系张力', '不逐项凑齐', '不统一改成抒情腔',
+        '短引并明确说话者', '不拼接或润色成伪引文', '不判定爱意、和解或隐藏动机', '故事事实与各角色实际知情', '保留不确定性与留白']) assert.ok(prompt.includes(rule), rule);
+    assert.deepEqual(JSON.parse(prompt.split('原文：')[1]), source.slice(0, 2).map((m, i) => ({floor: i + 1, speaker: m.name, role: 'character', text: m.mes})));
+    assert.deepEqual(source, before);
+    const withRecall = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS, {recallCandidates: [{id: 'past', text: '往事'}]});
+    assert.ok(withRecall.includes('不为润色、模仿文风或单纯补气氛发起回查'));
+});
+
+test('memory-use guidance does not dictate the current mood or rewrite hand-edited narrative text', async () => {
+    let doc = append(enable(), await entry('a', 1, 2));
+    const text = '甲只说了“趁热”。乙没有回答；两人的心意尚未明说。';
+    doc = applyOperation(doc, {id: 'texture-edit', type: 'edit', entryId: 'a', expectedRevision: 1, text}).document;
+    const before = structuredClone(doc);
+    const plan = await buildPlan(doc, createDefaults(), {messages, maxContext: 8192});
+    assert.equal(plan.entries[0].text, text);
+    assert.ok(plan.prompt.includes(JSON.stringify(text)));
+    for (const rule of ['不是当前场景的固定基调', '近期原文的文风', '不模仿摘要的压缩措辞', '不改变手动修订的含义']) assert.ok(plan.prompt.includes(rule), rule);
+    assert.deepEqual(doc, before);
 });
 
 test('manual memories are source-free; excluded or mismatched summaries cannot be injected', async () => {

@@ -43,6 +43,27 @@ function sameMessages(a, b) {
     return JSON.stringify(a) === JSON.stringify(b);
 }
 
+const plainObject = value => value !== null && typeof value === 'object'
+    && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const orderedJson = value => JSON.stringify(value, (_key, item) => plainObject(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+
+function sameMetadata(a, b) {
+    const comparable = metadata => {
+        if (!plainObject(metadata) || !plainObject(metadata.timedWorldInfo)) return metadata;
+        const timed = { ...metadata.timedWorldInfo }, result = { ...metadata };
+        // ST initializes these empty maps even for a prompt preview. Only their
+        // empty shape is disposable; real timers and unknown fields must match.
+        for (const key of ['sticky', 'cooldown']) {
+            if (plainObject(timed[key]) && Object.keys(timed[key]).length === 0) delete timed[key];
+        }
+        if (Object.keys(timed).length) result.timedWorldInfo = timed;
+        else delete result.timedWorldInfo;
+        return result;
+    };
+    return orderedJson(comparable(a)) === orderedJson(comparable(b));
+}
+
 function hasToolMessage(message) {
     return message?.role === 'tool' || Array.isArray(message?.extra?.tool_invocations)
         || Array.isArray(message?.tool_calls) || message?.tool_call_id != null;
@@ -120,7 +141,7 @@ export function createHost({
         const busy = () => generating || context().streamingProcessor?.isFinished === false && context().streamingProcessor?.isStopped !== true;
         const current = () => {
             try { return isCurrent() === true && !busy() && sameBinding(bindingOf(context()), sourceSnapshot.binding)
-                && sameMessages(context().chat, sourceSnapshot.messages) && sameMessages(context().chatMetadata, sourceMetadata); }
+                && sameMessages(context().chat, sourceSnapshot.messages) && sameMetadata(context().chatMetadata, sourceMetadata); }
             catch { return false; }
         };
         if (!current() || target.avatar !== sourceSnapshot.binding.avatar) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
@@ -149,7 +170,7 @@ export function createHost({
             const sourceRows = await readChat(sourceSnapshot.binding);
             const savedHashes = await fingerprintMessages(sourceRows.slice(1));
             const expected = await fingerprintMessages(sourceSnapshot.messages);
-            if (!sameMessages(savedHashes, expected) || !sameMessages(sourceRows[0].chat_metadata, sourceMetadata)) {
+            if (!sameMessages(savedHashes, expected) || !sameMetadata(sourceRows[0].chat_metadata, sourceMetadata)) {
                 return failed('source-not-saved', '当前聊天还有未确认保存的内容，新聊天已保留；待 ST 保存后再打开。');
             }
             if (!current()) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');

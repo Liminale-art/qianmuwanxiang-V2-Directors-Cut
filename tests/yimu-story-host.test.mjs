@@ -73,6 +73,70 @@ test('unsaved source body or metadata blocks navigation without forcing a save',
     }
 });
 
+test('first backup open accepts only empty native timer initialization without saving or normalizing either chat', async t => {
+    const emptyStates = [undefined, {}, { sticky: {} }, { cooldown: {} }, { cooldown: {}, sticky: {} }];
+    for (const saved of emptyStates) for (const live of emptyStates) {
+        const f = await fixture(); t.after(f.unsubscribe);
+        if (saved !== undefined) f.disk.get(f.source.file)[0].chat_metadata.timedWorldInfo = clone(saved);
+        if (live !== undefined) f.ctx.chatMetadata.timedWorldInfo = clone(live);
+        const diskBefore = clone(f.disk.get(f.source.file)), metadata = f.ctx.chatMetadata, metadataBefore = clone(metadata);
+        const result = { binding: f.target, receipt: { ...f.receipt, hashes: f.receipt.bridge.hashes } };
+        assert.equal((await f.host.openBackup(result, { sourceSnapshot: f.sourceSnapshot })).opened, true);
+        assert.deepEqual(f.opens, ['New story']); assert.deepEqual(f.disk.get(f.source.file), diskBefore);
+        assert.deepEqual(metadata, metadataBefore, 'comparison must not mutate the original metadata object');
+    }
+});
+
+test('empty timer maps added during either read do not cause a false source change', async t => {
+    for (const initializeAt of ['Original', 'New story']) {
+        const f = await fixture(); t.after(f.unsubscribe);
+        f.setRead(async file => {
+            if (file === initializeAt) f.ctx.chatMetadata.timedWorldInfo = { sticky: {}, cooldown: {} };
+            return clone(f.disk.get(file));
+        });
+        assert.equal((await f.host.openStory(f.result, { sourceSnapshot: f.sourceSnapshot })).opened, true);
+    }
+});
+
+test('existing timers are retained while empty sibling maps and object key order are harmless', async t => {
+    const f = await fixture(); t.after(f.unsubscribe);
+    f.disk.get(f.source.file)[0].chat_metadata = { integrity: f.source.integrity,
+        timedWorldInfo: { sticky: { entry: { start: 1, end: 4 } } }, plugin: { first: 1, second: 2 } };
+    f.ctx.chatMetadata = { plugin: { second: 2, first: 1 }, timedWorldInfo: {
+        cooldown: {}, sticky: { entry: { end: 4, start: 1 } } }, integrity: f.source.integrity };
+    const before = clone(f.disk.get(f.source.file));
+    assert.equal((await f.host.openStory(f.result, { sourceSnapshot: f.sourceSnapshot })).opened, true);
+    assert.deepEqual(f.disk.get(f.source.file), before);
+});
+
+test('real or unknown timer differences, malformed maps, and other metadata changes still block opening', async t => {
+    const values = [{ sticky: { entry: { start: 1, end: 4 } } }, { cooldown: { entry: {} } },
+        { unknown: {} }, { sticky: null }, { sticky: [] }, { sticky: '' }, [], null, 'pending'];
+    for (const value of values) for (const side of ['disk', 'live']) {
+        const f = await fixture(); t.after(f.unsubscribe);
+        const metadata = side === 'disk' ? f.disk.get(f.source.file)[0].chat_metadata : f.ctx.chatMetadata;
+        metadata.timedWorldInfo = clone(value);
+        assert.equal((await f.host.openStory(f.result, { sourceSnapshot: f.sourceSnapshot })).reason, 'source-not-saved');
+        assert.equal(f.opens.length, 0);
+    }
+    const f = await fixture(); t.after(f.unsubscribe);
+    f.ctx.chatMetadata.timedWorldInfo = { sticky: {}, cooldown: {} };
+    f.ctx.chatMetadata.plugin = { items: [2, 1] }; f.disk.get(f.source.file)[0].chat_metadata.plugin = { items: [1, 2] };
+    assert.equal((await f.host.openStory(f.result, { sourceSnapshot: f.sourceSnapshot })).reason, 'source-not-saved');
+    assert.equal(f.opens.length, 0);
+});
+
+test('real timer or metadata changes during reads still cancel opening', async t => {
+    for (const change of [ctx => { ctx.chatMetadata.timedWorldInfo = { sticky: { entry: { end: 9 } } }; },
+        ctx => { ctx.chatMetadata.plugin = { pending: true }; }, ctx => { ctx.characters[0].avatar = 'other.png'; },
+        ctx => { ctx.chatMetadata.integrity = 'other-integrity'; }]) {
+        const f = await fixture(); t.after(f.unsubscribe);
+        f.setRead(async file => { change(f.ctx); return clone(f.disk.get(file)); });
+        assert.equal((await f.host.openStory(f.result, { sourceSnapshot: f.sourceSnapshot })).reason, 'source-changed');
+        assert.equal(f.opens.length, 0);
+    }
+});
+
 test('source edits, navigation, generation and cancellation during reads do not steal the current interface', async t => {
     for (const change of [f => { f.ctx.chatId = 'Elsewhere'; }, f => { f.ctx.chat[0].mes = 'edited'; },
         f => f.ctx.eventSource.emit('started', 'normal', {}, false), (_f, active) => { active.value = false; }]) {

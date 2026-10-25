@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createView, mountEntries, orderedEntries, sourceLabel, groupMemoryEntries } from '../yimu/view.mjs';
+import { createView, mountEntries, orderedEntries, sourceLabel, groupMemoryEntries, shortcutStatus } from '../yimu/view.mjs';
+import { boot } from '../yimu/index.mjs';
 
 // Isolated DOM/event fixture. It proves operations and retained drafts, not layout or a live ST session.
 function dom() {
@@ -278,6 +279,19 @@ test('opening a panel only displays its frontend and does not enable, summarize 
     assert.equal(f.get('忆幕').querySelectorAll('article').length, 0);
 });
 
+test('the input shortcut preference is available on the homepage and separate from per-chat memory enable', async t => {
+    const f = fixture({ snapshot: null, document: null, defaults: null }); t.after(() => f.view.destroy());
+    const toggle = f.get('显示输入栏快捷入口');
+    assert.equal(toggle.checked, false); assert.equal(toggle.closest('[hidden]'), null); assert.equal(toggle.disabled, false);
+    toggle.checked = true; toggle.emit('change'); await f.flush();
+    assert.deepEqual(f.calls, [{ type: 'uiSettings', payload: { showShortcut: true } }]);
+    f.render({ ui: { showShortcut: true } }); assert.equal(toggle.checked, true);
+    f.render({ snapshot: state().snapshot, document: state().document });
+    assert.equal(toggle.checked, true); assert.equal(f.get('此聊天启用忆幕').checked, false);
+    toggle.checked = false; toggle.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[1], { type: 'uiSettings', payload: { showShortcut: false } });
+});
+
 test('first enable asks inline for the complete adjustable range, rejects invalid bounds and sends explicit confirmation', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const toggle = f.get('此聊天启用忆幕'); toggle.checked = true; toggle.emit('change');
@@ -286,6 +300,54 @@ test('first enable asks inline for the complete adjustable range, rejects invali
     assert.equal(f.calls.length, 0); assert.match(f.all().find(node => node.attrs.role === 'status').textContent, /有效的起止/);
     f.get('开始楼层').value = '2'; f.get('结束楼层').value = '8'; f.get('确认并开启').click(); await f.flush();
     assert.deepEqual(f.calls, [{ type: 'enable', payload: { enabled: true, range: { start: 2, end: 8, total: 9 } } }]);
+});
+
+test('first-enable notice identifies hidden floors and the actual eligible range before any write', t => {
+    const source = Array.from({ length: 11 }, (_, i) => ({ mes: `fixture-${i}`, is_system: i < 5 }));
+    const before = structuredClone(source);
+    const f = fixture({ snapshot: { ...state().snapshot, messages: source } }); t.after(() => f.view.destroy());
+    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
+    const hint = f.get('初次整理范围说明');
+    assert.match(hint.textContent, /第 1–5 层已被 ST 隐藏或标记为系统消息，不参与整理/);
+    assert.match(hint.textContent, /第 7–11 层暂保留近期原文/);
+    assert.match(hint.textContent, /当前可整理第 6 层/);
+    assert.equal(hint.attrs['aria-live'], 'polite');
+    assert.deepEqual(f.calls, []); assert.deepEqual(source, before);
+    f.get('结束楼层').value = '5'; f.get('结束楼层').emit('input');
+    assert.match(hint.textContent, /当前所选范围没有可整理的正文/);
+    assert.doesNotMatch(hint.textContent, /当前可整理|暂保留近期原文/);
+    assert.equal(f.get('确认并开启').disabled, false, 'no immediate work does not forbid opting this chat into future work');
+    f.get('开始楼层').value = '7'; f.get('结束楼层').value = '11'; f.get('开始楼层').emit('input');
+    assert.doesNotMatch(hint.textContent, /ST 隐藏/);
+    assert.match(hint.textContent, /第 7–11 层暂保留近期原文/);
+    assert.match(hint.textContent, /没有可整理的正文/);
+    f.get('结束楼层').value = '6'; f.get('结束楼层').emit('input');
+    assert.match(hint.textContent, /有效的起止楼层/);
+});
+
+test('initial scope notice tracks saved recent settings and source changes, never unsaved drafts', t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
+    const hint = f.get('初次整理范围说明');
+    assert.match(hint.textContent, /当前可整理第 1–4 层/);
+    f.get('近期原文层数').value = '8'; f.get('近期原文层数').emit('input');
+    assert.match(hint.textContent, /当前可整理第 1–4 层/, 'draft is not the runtime setting until saved');
+    f.render({ document: { ...f.state.document, settings: { recent: 8 } } });
+    assert.match(hint.textContent, /第 2–9 层暂保留近期原文/);
+    assert.match(hint.textContent, /当前可整理第 1 层/);
+    const source = structuredClone(f.state.snapshot.messages); source[0].is_system = true;
+    f.render({ snapshot: { ...f.state.snapshot, messages: source } });
+    assert.match(hint.textContent, /第 1 层已被 ST 隐藏/);
+    assert.match(hint.textContent, /没有可整理的正文/);
+    assert.deepEqual(f.calls, []);
+});
+
+test('range notice represents gaps accurately and keeps a highly fragmented list compact', t => {
+    const source = Array.from({ length: 30 }, (_, i) => ({ mes: `fixture-${i}`, is_system: i % 2 === 0 }));
+    const f = fixture({ snapshot: { ...state().snapshot, messages: source } }); t.after(() => f.view.destroy());
+    f.get('此聊天启用忆幕').checked = true; f.get('此聊天启用忆幕').emit('change');
+    assert.match(f.get('初次整理范围说明').textContent, /第 1、3、5、7、9、11、13、15 等楼层（共 15 层）/);
+    assert.doesNotMatch(f.get('初次整理范围说明').textContent, /第 1–29 层/);
 });
 
 test('canceling first-enable scope does not write, while a new empty chat can be enabled without an invalid range', async t => {
@@ -716,9 +778,87 @@ test('host entries sit directly after Qianmu and before Send, share one callback
     assert.equal(d.all().filter(node => node.id === 'yimu-menu-entry').length, 1);
     const entry = d.document.getElementById('yimu-menu-entry'), shortcut = d.document.getElementById('yimu-send-entry');
     assert.equal(menu.children[1], entry); assert.equal(sender.children[0], shortcut); assert.equal(sender.children[1], send);
+    assert.equal(entry.tagName, 'A'); assert.match(entry.className, /list-group-item/);
+    assert.match(entry.children[0].className, /extensionsMenuExtensionButton/);
+    assert.equal(shortcut.hidden, true); assert.equal(shortcut.dataset.ymState, 'neutral');
+    dispose.update({ showShortcut: true }, state()); assert.equal(shortcut.hidden, false);
     entry.click(); shortcut.click(); assert.equal(opens, 2); assert.equal(closes, 1);
+    const key = entry.emit('keydown', { key: 'Enter' });
+    assert.equal(key.defaultPrevented, true); assert.equal(opens, 3); assert.equal(closes, 2);
     firstDispose(); assert.equal(entry.isConnected, true, 'old owner cannot delete replacement entries');
     dispose(); assert.equal(entry.isConnected, false); assert.equal(shortcut.isConnected, false); assert.equal(qianmu.isConnected, true); assert.equal(send.isConnected, true);
+});
+
+test('shortcut colors distinguish execution failure from unavailable states without changing the menu', () => {
+    const d = dom(), menu = d.document.createElement('div'), sender = d.document.createElement('div');
+    menu.id = 'options'; sender.id = 'rightSendForm'; d.document.body.append(menu, sender);
+    const dispose = mountEntries(() => {}, { document: d.document });
+    const shortcut = d.document.getElementById('yimu-send-entry'), entry = d.document.getElementById('yimu-menu-entry');
+    const ready = state({ service: { status: 'ok' }, sourceAvailable: true, document: { ...state().document, enabled: true }, snapshot: { ...state().snapshot, mainApi: 'openai' } });
+    for (const [patch, tone, message] of [
+        [{}, 'ready', '正常'], [{ busy: true }, 'ready', '正在处理'],
+        [{ error: '模型返回格式不正确' }, 'failed', '执行失败'],
+        [{ backup: { error: '备份压缩数据损坏' }, snapshot: null, document: null }, 'failed', '备份压缩数据损坏'],
+        [{ service: { status: 'error' }, error: '连接中断' }, 'neutral', '服务未连接'],
+        [{ service: { status: 'mismatch' } }, 'neutral', '版本不匹配'],
+        [{ loading: true }, 'neutral', '正在读取'],
+        [{ snapshot: null, document: null, error: '请先打开聊天' }, 'neutral', '单人聊天'],
+        [{ sourceAvailable: false, error: '来源尚未核对' }, 'neutral', '来源尚未通过核对'],
+        [{ document: { ...ready.document, enabled: false } }, 'neutral', '未启用'],
+        [{ paused: true }, 'neutral', '未启用'],
+        [{ invalidSourceIds: ['stale'] }, 'neutral', '来源已变化'],
+        [{ snapshot: { ...ready.snapshot, mainApi: 'textgenerationwebui' } }, 'neutral', '不适用'],
+    ]) {
+        const s = { ...ready, ...patch };
+        assert.equal(shortcutStatus(s).tone, tone);
+        dispose.update({ showShortcut: true }, s);
+        assert.equal(shortcut.dataset.ymState, tone); assert.ok(shortcut.title.includes(message));
+        assert.equal(shortcut.getAttribute('aria-label'), shortcut.title);
+        assert.equal(entry.dataset.ymState, undefined); assert.equal(entry.title, '忆幕');
+    }
+    dispose.update({ showShortcut: false }, ready); assert.equal(shortcut.hidden, true); assert.equal(entry.hidden, false);
+    dispose(); dispose.update({ showShortcut: true }, ready); assert.equal(shortcut.isConnected, false);
+});
+
+test('boot saves only the account UI preference, defaults off, and retains it across dispose and reboot', async () => {
+    const d = dom(), menu = d.document.createElement('div'), sender = d.document.createElement('div');
+    menu.id = 'options'; sender.id = 'rightSendForm'; d.document.body.append(menu, sender);
+    const previous = Object.fromEntries(['document', 'SillyTavern', 'addEventListener', 'removeEventListener', 'fetch'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    const listeners = new Map(); let saves = 0, requests = 0, live;
+    const ctx = { extensionSettings: { yimu: { otherPreference: 'keep' } }, saveSettingsDebounced() { saves++; } };
+    Object.assign(globalThis, { document: d.document, SillyTavern: { getContext: () => ctx },
+        addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
+        removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
+        fetch: async () => { requests++; throw Error('No request is allowed for this preference test'); } });
+    try {
+        live = boot(); await live.controller.settled();
+        assert.equal(boot(), live); assert.equal(saves, 0); assert.equal(requests, 0);
+        assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
+        let toggle = d.get('显示输入栏快捷入口'); toggle.checked = true; toggle.emit('change'); await d.flush();
+        assert.deepEqual(ctx.extensionSettings.yimu, { otherPreference: 'keep', showShortcut: true });
+        assert.equal(saves, 1); assert.equal(requests, 0); assert.equal(live.controller.state.document, null);
+        assert.equal(d.document.getElementById('yimu-send-entry').hidden, false);
+        live.dispose(); assert.ok([...listeners.values()].every(items => !items.size));
+        live = boot(); await live.controller.settled();
+        assert.equal(d.all().filter(node => node.id === 'yimu-menu-entry').length, 1);
+        assert.equal(d.all().filter(node => node.id === 'yimu-send-entry').length, 1);
+        assert.equal(d.document.getElementById('yimu-send-entry').hidden, false);
+        assert.equal(saves, 1);
+        toggle = d.get('显示输入栏快捷入口'); toggle.checked = false; toggle.emit('change'); await d.flush();
+        assert.equal(saves, 2); assert.equal(ctx.extensionSettings.yimu.showShortcut, false);
+        assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
+        assert.equal(d.document.getElementById('yimu-menu-entry').hidden, false);
+        assert.equal(requests, 0);
+        ctx.saveSettingsDebounced = () => { throw Error('合成设置保存失败'); };
+        toggle.checked = true; toggle.emit('change'); await d.flush();
+        assert.equal(ctx.extensionSettings.yimu.showShortcut, false);
+        assert.equal(toggle.checked, false); assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
+        assert.match(d.document.querySelector('.ym-status').textContent, /合成设置保存失败/);
+        assert.equal(requests, 0);
+    } finally {
+        live?.dispose();
+        for (const [key, descriptor] of Object.entries(previous)) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
 });
 
 test('a late-created Qianmu menu entry is followed without a whole-page observer or repeated reordering', () => {
@@ -748,4 +888,9 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     assert.match(css, /max-width: 420px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
+    assert.match(css, /\.ym-menu-entry \.ym-logo \{ width: 20px; height: 20px; flex: 0 0 20px; color: inherit;/);
+    assert.match(css, /\.ym-send-entry\[hidden\] \{ display: none !important;/);
+    assert.match(css, /data-ym-state="ready"\] \{ color: #7d98a6;/);
+    assert.match(css, /data-ym-state="failed"\] \{ color: #ad858b;/);
+    assert.match(css, /data-ym-state="neutral"\] \{ color: #949494;/);
 });

@@ -3,6 +3,7 @@ import { stageGroups } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
+import { initialRangePreview } from './core.mjs';
 
 const SETTINGS = [
     ['recent', '近期原文层数', 'number', 1],
@@ -22,6 +23,17 @@ const STAGE_THRESHOLDS = { tokens: 6000, floors: 100, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
 const memoryText = entry => entry.kind === 'excerpt' ? typeof entry.quoteText === 'string' ? entry.quoteText : '' : entry.text;
 const INSTALL_GUIDE = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/refactor/storyboard-modularization/yimu/README.md#安装与更新';
+
+function floorList(floors) {
+    const ranges = [];
+    for (const floor of floors) {
+        const previous = ranges.at(-1);
+        if (previous && floor === previous.end + 1) previous.end = floor;
+        else ranges.push({ start: floor, end: floor });
+    }
+    const label = ranges.slice(0, 8).map(range => range.start === range.end ? range.start : `${range.start}–${range.end}`).join('、');
+    return ranges.length > 8 ? `第 ${label} 等楼层（共 ${floors.length} 层）` : `第 ${label} 层`;
+}
 
 export function sourceLabel(entry) {
     const prefix = entry?.origin?.binding?.file ? `${entry.origin.binding.file} · ` : '';
@@ -65,6 +77,23 @@ export function groupMemoryEntries(entries = [], invalidSourceIds = []) {
         for (const fine of nested) assigned.add(fine.id);
     }
     return records.filter(entry => !assigned.has(entry.id)).map(entry => ({ entry, children: children.get(entry.id) || [] }));
+}
+
+export function shortcutStatus(state = {}) {
+    const neutral = message => ({ tone: 'neutral', message });
+    if (state.service?.status !== 'ok') return neutral(state.service?.status === 'mismatch' ? '服务版本不匹配'
+        : state.service?.status === 'error' ? '服务未连接' : '服务尚未就绪');
+    const actionError = state.backup?.error || state.story?.error || state.companion?.error;
+    if (actionError) return { tone: 'failed', message: `执行失败：${actionError}` };
+    if (!state.snapshot || !state.document) return neutral('当前没有适用的单人聊天');
+    if (state.loading) return neutral('正在读取记忆');
+    if (state.sourceAvailable === false) return neutral('当前聊天来源尚未通过核对');
+    if (state.error) return { tone: 'failed', message: `执行失败：${state.error}` };
+    if (!state.document.enabled || state.paused) return neutral('此聊天未启用忆幕');
+    if (state.document.movedTo) return neutral('此聊天记忆已迁移');
+    if (state.invalidSourceIds?.length) return neutral('部分记忆来源已变化');
+    if (state.snapshot.mainApi !== 'openai') return neutral('当前连接不适用原文替换');
+    return { tone: 'ready', message: state.busy ? '正在处理' : '正常' };
 }
 
 export function createView({ onAction, document = globalThis.document } = {}) {
@@ -124,8 +153,18 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     const main = el('div', 'ym-content');
+    const interfaceCard = el('section', 'ym-card ym-interface-settings');
+    const shortcutToggle = el('input', 'ym-switch'); shortcutToggle.type = 'checkbox';
+    shortcutToggle.setAttribute('aria-label', '显示输入栏快捷入口');
+    const shortcutLabel = el('label', 'ym-switch-row');
+    shortcutLabel.append(el('span', '', '显示输入栏快捷入口'), shortcutToggle); interfaceCard.append(shortcutLabel);
+    shortcutToggle.addEventListener('change', async () => {
+        if (!await dispatch('uiSettings', { showShortcut: shortcutToggle.checked }, shortcutToggle)) {
+            shortcutToggle.checked = state.ui?.showShortcut === true;
+        }
+    });
     const backup = createBackupView({ document, onAction: (type, payload) => onAction?.(type, payload) });
-    scroller.append(serviceStatus, status, backup.node, main);
+    scroller.append(serviceStatus, status, interfaceCard, backup.node, main);
     shell.append(header, scroller);
     dialog.append(shell);
     document.body.append(dialog);
@@ -152,10 +191,12 @@ export function createView({ onAction, document = globalThis.document } = {}) {
     const rangeFields = el('div', 'ym-two-columns');
     rangeFields.append(field('开始楼层', rangeStart), field('结束楼层', rangeEnd));
     const rangeHint = el('p', 'ym-muted', '确认初次整理范围；整理在后台进行，不影响正常聊天。');
+    const rangePreview = el('p', 'ym-muted');
+    rangePreview.setAttribute('aria-label', '初次整理范围说明'); rangePreview.setAttribute('aria-live', 'polite');
     const rangeActions = el('div', 'ym-actions');
     const rangeSubmit = button('确认并开启', () => rangeForm.requestSubmit(), 'ym-primary');
     rangeActions.append(rangeSubmit, button('取消', () => { rangeForm.hidden = true; enabled.checked = false; }));
-    rangeForm.append(rangeHint, rangeFields, rangeActions);
+    rangeForm.append(rangeHint, rangeFields, rangePreview, rangeActions);
     enableCard.append(enableLabel, rangeForm);
     enabled.addEventListener('change', () => {
         if (!enabled.checked) { rangeForm.hidden = true; void dispatch('enable', { enabled: false }); return; }
@@ -165,8 +206,10 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         rangeStart.value = '1'; rangeEnd.value = String(total);
         rangeStart.max = rangeEnd.max = String(total);
         rangeForm.hidden = false;
+        updateRangePreview();
         rangeStart.focus();
     });
+    for (const input of [rangeStart, rangeEnd]) input.addEventListener('input', updateRangePreview);
     rangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const total = state.snapshot?.messages?.length ?? 0;
@@ -174,6 +217,7 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > total) {
             localError = '请填写当前聊天内有效的起止楼层。'; updateStatus(); return;
         }
+        updateRangePreview();
         if (await dispatch('enable', { enabled: true, range: { start, end, total } }, rangeSubmit)) rangeForm.hidden = true;
     });
 
@@ -349,6 +393,23 @@ export function createView({ onAction, document = globalThis.document } = {}) {
         refresh.disabled = Boolean(state.loading);
         for (const redo of list.querySelectorAll('[data-ym-redo]')) redo.disabled = !canSummarize || Boolean(state.busy);
         dialog.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+    }
+    function updateRangePreview() {
+        if (rangeForm.hidden) return;
+        // Only saved settings govern enable. An unsaved settings draft must not
+        // promise a different scope from the one the runtime will actually use.
+        const recent = state.document?.settings?.recent ?? state.defaults?.values?.recent ?? 5;
+        const preview = initialRangePreview(state.document, state.snapshot?.messages,
+            { start: Number(rangeStart.value), end: Number(rangeEnd.value) }, { recent });
+        if (!preview.valid) { rangePreview.textContent = '请填写当前聊天内有效的起止楼层。'; return; }
+        const parts = [];
+        if (preview.hidden.length) parts.push(`${floorList(preview.hidden)}已被 ST 隐藏或标记为系统消息，不参与整理。`);
+        if (preview.recent.length) parts.push(`${floorList(preview.recent)}暂保留近期原文，本轮不整理。`);
+        if (preview.handled.length) parts.push(`${floorList(preview.handled)}已有处理记录，不重复整理。`);
+        if (preview.unsupported.length) parts.push(`${floorList(preview.unsupported)}没有可整理的普通正文，本轮跳过。`);
+        parts.push(preview.eligible.length ? `当前可整理${floorList(preview.eligible)}。`
+            : '当前所选范围没有可整理的正文；仍可开启，等待后续符合条件的新内容。');
+        rangePreview.textContent = parts.join(' ');
     }
     function setDraft(key, value) {
         const index = Number(settingsGlobal);
@@ -583,10 +644,12 @@ export function createView({ onAction, document = globalThis.document } = {}) {
             scroller.scrollTop = 0;
         }
         chatName.textContent = state.snapshot?.name || '请选择单人聊天';
+        shortcutToggle.checked = state.ui?.showShortcut === true;
         story.render(state);
         companion.render(state);
         backup.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries();
+        updateRangePreview();
         if (!stageForm.hidden) updateStageRange();
         updateUsed();
     }
@@ -624,13 +687,16 @@ export function createView({ onAction, document = globalThis.document } = {}) {
 
 export function mountEntries(onOpen, { document = globalThis.document } = {}) {
     const owned = [], observers = [];
+    let disposed = false;
     function make(id, label, className) {
         // This module owns these IDs only, not host or Qianmu nodes.
         document.getElementById(id)?.remove();
-        const node = document.createElement('button');
-        node.id = id; node.type = 'button'; node.className = className;
+        const node = document.createElement(label ? 'a' : 'button');
+        node.id = id; node.className = className;
+        if (label) { node.tabIndex = 0; node.setAttribute('role', 'button'); }
+        else node.type = 'button';
         node.setAttribute('aria-label', '忆幕'); node.title = '忆幕';
-        const glyph = document.createElement('span'); glyph.className = 'ym-logo'; glyph.setAttribute('aria-hidden', 'true');
+        const glyph = document.createElement('span'); glyph.className = `ym-logo${label ? ' extensionsMenuExtensionButton' : ''}`; glyph.setAttribute('aria-hidden', 'true');
         node.append(glyph);
         if (label) { const text = document.createElement('span'); text.textContent = label; node.append(text); }
         node.addEventListener('click', event => {
@@ -641,11 +707,14 @@ export function mountEntries(onOpen, { document = globalThis.document } = {}) {
             }
             onOpen?.();
         });
+        if (label) node.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.click(); }
+        });
         owned.push(node); return node;
     }
     const menu = document.querySelector('#options .options-content') || document.getElementById('options');
     if (menu) {
-        const entry = make('yimu-menu-entry', '忆幕', 'ym-menu-entry interactable');
+        const entry = make('yimu-menu-entry', '忆幕', 'ym-menu-entry list-group-item interactable');
         const qianmu = menu.querySelector('[data-qm-st-menu="true"]');
         if (qianmu) menu.insertBefore(entry, qianmu.nextSibling); else menu.append(entry);
         // Qianmu may finish its own lazy initialization after this extension.
@@ -662,6 +731,17 @@ export function mountEntries(onOpen, { document = globalThis.document } = {}) {
     }
     const send = document.getElementById('send_but');
     const sendParent = document.getElementById('rightSendForm');
-    if (sendParent) sendParent.insertBefore(make('yimu-send-entry', '', 'ym-send-entry interactable'), send?.parentElement === sendParent ? send : null);
-    return () => { for (const observer of observers) observer.disconnect(); for (const node of owned) node.remove(); };
+    const shortcut = sendParent ? make('yimu-send-entry', '', 'ym-send-entry interactable') : null;
+    if (shortcut) { shortcut.hidden = true; sendParent.insertBefore(shortcut, send?.parentElement === sendParent ? send : null); }
+    const dispose = () => { disposed = true; for (const observer of observers) observer.disconnect(); for (const node of owned) node.remove(); };
+    dispose.update = (preferences = {}, state = {}) => {
+        if (disposed || !shortcut) return;
+        const status = shortcutStatus(state);
+        shortcut.hidden = preferences.showShortcut !== true;
+        shortcut.dataset.ymState = status.tone;
+        shortcut.title = `忆幕：${status.message}`;
+        shortcut.setAttribute('aria-label', `忆幕：${status.message}`);
+    };
+    dispose.update();
+    return dispose;
 }

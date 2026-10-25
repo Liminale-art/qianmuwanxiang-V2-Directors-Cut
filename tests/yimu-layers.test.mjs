@@ -94,3 +94,12 @@ test('stage parsing does not overwrite parents and rejects empty or malformed mo
     assert.deepEqual(parsed.source.parents, parents.map(e => ({ id: e.id, revision: e.revision })));
     assert.deepEqual(parents, before);
 });
+
+test('stage prompt retains supported atmosphere without inventing lost detail or merging scene moods', async () => {
+    const {document} = await fixture(), parents = document.entries.slice(0, 2), before = structuredClone(parents);
+    const prompt = stagePrompt(parents, DEFAULTS);
+    for (const rule of ['情绪脉络、关系张力', '不压成关系标签或档案清单', '不同场景的气氛不强行合成一种基调',
+        '细摘要没有留下的气氛或细节不得凭空补回', '不把沉默或留白解释成确定的心意', '已有引语不润色成新的原话', '各角色所知分开']) assert.ok(prompt.includes(rule), rule);
+    assert.deepEqual(JSON.parse(prompt.split('细摘要：')[1]), parents.map(e => ({id: e.id, start: e.source.start, end: e.source.end, text: e.text})));
+    assert.deepEqual(parents, before);
+});
