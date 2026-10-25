@@ -5,7 +5,7 @@ import {validateOrigin, validateLineage, validateCreation} from './story-contrac
 import {validateCompanion, applyCompanionOperation} from './companion-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.5.0';
+export const VERSION = '0.5.1';
 export const SCHEMA = 5;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true });

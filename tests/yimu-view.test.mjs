@@ -81,16 +81,52 @@ const state = (patch = {}) => ({
 
 test('backup entry remains available on homepage and file selection never uploads before explicit confirmation', async () => {
     const d = dom(), calls = [], view = createView({ document: d.document, onAction: async (...args) => calls.push(args) });
+    // ST hides native file inputs; the visible button must still open the chooser.
+    d.document.defaultView.getComputedStyle = node => ({ display: node.hidden || node.tagName === 'INPUT' && node.type === 'file' ? 'none' : 'block' });
     view.render(state({ snapshot: null, document: null, defaults: null, service: { status: 'ok' } })); view.open();
     const backup = d.document.querySelector('.ym-backup');
     assert.equal(backup.closest('[hidden]'), null); assert.equal(d.get('导出当前记忆').disabled, true);
+    const choose = d.get('选择忆幕备份包'), picker = d.get('忆幕备份文件');
+    assert.equal(choose.tagName, 'BUTTON'); assert.equal(choose.type, 'button');
+    assert.equal(d.document.defaultView.getComputedStyle(choose).display, 'block');
+    assert.equal(d.document.defaultView.getComputedStyle(picker).display, 'none');
+    let opened = 0; picker.addEventListener('click', () => { opened++; });
+    choose.click(); await d.flush();
+    assert.equal(opened, 1); assert.deepEqual(calls, []);
     const file = new Blob(['synthetic']); Object.defineProperty(file, 'name', { value: 'my.yimu.gz' });
-    const picker = d.get('选择忆幕备份包'); picker.files = [file]; picker.emit('change');
+    picker.files = [file]; picker.emit('change');
     assert.deepEqual(calls, []); assert.equal(d.get('确认上传备份包').disabled, false);
+    assert.match(backup.textContent, /已选择：my\.yimu\.gz/);
     d.get('确认上传备份包').click(); await d.flush();
     assert.equal(calls[0][0], 'backupImport'); assert.equal(calls[0][1].file, file);
     const wrong = { name: 'third-party.json' }; picker.files = [wrong]; picker.emit('change');
     assert.equal(d.get('确认上传备份包').disabled, true); assert.match(backup.textContent, /仅支持忆幕自己的/);
+    view.destroy();
+});
+
+test('backup file chooser follows busy, pending upload and service availability without losing the selected file', async () => {
+    const d = dom(), calls = [];
+    let finish;
+    const view = createView({ document: d.document, onAction: (...args) => { calls.push(args); return new Promise(resolve => { finish = resolve; }); } });
+    const ready = state({ service: { status: 'ok' }, backup: {} }); view.render(ready);
+    const choose = d.get('选择忆幕备份包'), picker = d.get('忆幕备份文件'), upload = d.get('确认上传备份包');
+    const file = { name: 'selected.yimu.gz' }; picker.files = [file]; picker.emit('change');
+    let opened = 0; picker.addEventListener('click', () => { opened++; });
+    for (const patch of [{ backup: { busy: true } }, { backup: { uploadPending: true } }, { service: { status: 'error' } }]) {
+        view.render({ ...ready, ...patch });
+        assert.equal(choose.disabled, true); assert.equal(picker.disabled, true);
+        choose.click(); assert.equal(opened, 0); assert.deepEqual(calls, []);
+    }
+    view.render(ready); assert.equal(choose.disabled, false); assert.equal(upload.disabled, false);
+    upload.click();
+    assert.equal(choose.disabled, true); assert.equal(picker.disabled, true); assert.equal(upload.disabled, true);
+    choose.click(); assert.equal(opened, 0);
+    assert.deepEqual(calls, [['backupImport', { file }]]);
+    finish(); await d.flush();
+    assert.equal(choose.disabled, false); assert.equal(picker.disabled, false);
+    view.render({ ...ready, backup: { uploadReset: 1 } });
+    assert.equal(upload.disabled, true); assert.equal(picker.value, '');
+    assert.doesNotMatch(d.document.querySelector('.ym-backup').textContent, /已选择：/);
     view.destroy();
 });
 

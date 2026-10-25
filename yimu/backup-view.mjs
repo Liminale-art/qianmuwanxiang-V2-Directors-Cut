@@ -11,7 +11,8 @@ export function createBackupView({ document = globalThis.document, onAction } = 
     const exportStart = button('导出当前记忆', () => invoke('backupPlan'));
     const listStart = button('已导入资料', () => invoke('backupList'));
     const top = el('div', 'ym-actions'); top.append(exportStart, listStart);
-    const pick = el('input'); pick.type = 'file'; pick.accept = '.yimu.gz'; pick.setAttribute('aria-label', '选择忆幕备份包');
+    const pick = el('input'); pick.type = 'file'; pick.accept = '.yimu.gz'; pick.hidden = true; pick.setAttribute('aria-label', '忆幕备份文件');
+    const choose = button('选择忆幕备份包', () => { if (alive && !pick.disabled) pick.click(); });
     const fileNotice = el('p', 'ym-muted', '仅支持忆幕 .yimu.gz 备份包。选好后确认上传；不会自动创建聊天。');
     const upload = button('确认上传备份包', () => invoke('backupImport', { file }));
     const uploadRetry = button('核对本次上传', () => invoke('backupImport', { retry: true }));
@@ -48,7 +49,7 @@ export function createBackupView({ document = globalThis.document, onAction } = 
         roleSearch, roleSelection, roleList, restoreSources, useCurrent.row, currentLabel, restoreButton, restoreRetry, result, open);
     detail.append(detailTitle, el('p', 'ym-muted', '独立资料只供查看，不参与生成。以下来源和历史状态来自备份，不代表已在当前账户核验。'), sourceInfo, restore, memories, moreEntries);
     const notice = el('p', 'ym-muted'); notice.setAttribute('aria-live', 'polite'); notice.hidden = true;
-    body.append(top, pick, fileNotice, uploadActions, exportBody, library, detail, notice);
+    body.append(top, choose, pick, fileNotice, uploadActions, exportBody, library, detail, notice);
     const available = () => !['error', 'mismatch', 'checking'].includes(state.service?.status);
     async function invoke(type, payload = {}) {
         if (!alive || working || state.backup?.busy) return;
@@ -131,7 +132,7 @@ export function createBackupView({ document = globalThis.document, onAction } = 
         download.disabled = disabled || !plan || !exportMatches;
         include.input.disabled = disabled;
         for (const source of plan?.sources || []) { const choice = exportChoices.get(source.id); if (choice) choice.disabled = disabled || !source.available; }
-        listStart.disabled = disabled; pick.disabled = disabled || !!backup.uploadPending;
+        listStart.disabled = disabled; choose.disabled = pick.disabled = disabled || !!backup.uploadPending;
         upload.hidden = !!backup.uploadPending; upload.disabled = disabled || !file || !/\.yimu\.gz$/i.test(file.name);
         uploadRetry.hidden = !backup.uploadPending; uploadRetry.disabled = disabled;
         renderArchives();
