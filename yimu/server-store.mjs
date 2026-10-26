@@ -7,6 +7,7 @@ import {validateExcerpt} from './recall-contract.mjs';
 import {bridgeSourceValid} from './story-contract.mjs';
 import {createStoryHandlers} from './story-store.mjs';
 import {createBackupHandlers} from './backup-store.mjs';
+import {validateGeneratedLength} from './scene-contract.mjs';
 
 const STORE_DIRECTORY = '.yimu';
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
@@ -623,6 +624,10 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                         fail('defaults_changed', '整理期间全局默认设置已改变，本次结果未采用');
                     }
                 }
+                if (['append', 'redo'].includes(operation?.type) && ['summary', 'stage'].includes(operation?.entry?.kind)) {
+                    actualDefaults ||= await defaultsRead(ctx);
+                    validateGeneratedLength(operation.entry, contract.effectiveSettings(current.value, actualDefaults.value));
+                }
                 if (current.value.movedTo) fail('moved', '该聊天已改名，请重新打开当前聊天');
                 // A new file cannot claim an unverified chat path. Existing manual notes remain editable when originals go missing.
                 if (!current.fingerprint) await requireSource(ctx, binding);
@@ -631,7 +636,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                     if (!previous || !equal(previous.placement, entry.placement)) await requirePlacementSource(ctx, binding, entry.placement);
                 }
                 if ((operation?.type === 'append' || operation?.type === 'redo') && operation.entry?.source) {
-                    const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents)} : operation.entry;
+                    const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents,
+                        { automatic: operation.automaticStage === true, stageRecent: contract.effectiveSettings(current.value, actualDefaults?.value).stageRecent })} : operation.entry;
                     await requireEntrySource(ctx, binding, generated, current.value, actualDefaults?.value, generatedStage);
                     checkedSources.add(sourceKey(generated));
                 }
@@ -656,7 +662,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             return result;
         });
         // All summary writers take defaults before chat, so settings cannot change between the check and commit.
-        return summaryWithDefaults ? exclusive(ctx, 'defaults.json', commit) : commit();
+        const generated = ['append', 'redo'].includes(operation?.type) && ['summary', 'stage'].includes(operation?.entry?.kind);
+        return summaryWithDefaults || generated ? exclusive(ctx, 'defaults.json', commit) : commit();
     }
 
     async function defaults(request, operation) {
@@ -664,6 +671,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         await prepare(ctx);
         return exclusive(ctx, 'defaults.json', async () => {
             const current = await defaultsRead(ctx);
+            if (operation === undefined) return { defaults: current.value };
             const result = contract.applyDefaultsOperation(current.value, withReceipt(operation));
             if (!equal(result.defaults, current.value)) await writeFile(ctx, 'defaults.json', result.defaults, current.fingerprint, contract.validateDefaults, current.legacyBytes);
             return result;

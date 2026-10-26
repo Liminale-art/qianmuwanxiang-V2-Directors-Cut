@@ -12,7 +12,7 @@ function fixture({ onLegacyChange, accountOnly = false } = {}) {
         if (tag === 'span') Object.defineProperty(node, 'innerHTML', { set(value) { assert.match(value, /^<svg xmlns=/); }, configurable: true });
         return node;
     };
-    const calls = [], errors = [], legacyChanges = [], ctx = { extensionSettings: {}, async saveSettingsDebounced() {}, getRequestHeaders: () => ({}) };
+    const calls = [], errors = [], legacyChanges = [], ctx = { extensionSettings: { story_director_liminale: { apiProfiles: [{ id: 'saved-a', name: '千幕已有预设', model: 'qianmu-model', apiUrl: 'https://qianmu.example/v1', apiKey: 'synthetic-shared-key', temperature: 0.4 }] } }, async saveSettingsDebounced() {}, getRequestHeaders: () => ({}) };
     let legacy = { profileId: '', model: '' };
     const api = createApiSettings({ getContext: () => ctx, createId: () => 'preset-id', fetchImpl: async (path, options) => {
         calls.push({ path, body: JSON.parse(options.body) }); return Response.json({ data: [{ id: 'first-model' }, { id: 'second-model' }] });
@@ -30,24 +30,25 @@ function fixture({ onLegacyChange, accountOnly = false } = {}) {
 test('API card starts on native ST without network and exposes all three connection modes', async () => {
     const f = fixture(); assert.deepEqual(f.calls, []);
     const mode = f.get('整理连接方式'); assert.equal(mode.value, 'st');
-    assert.deepEqual(mode.children.map(item => item.value), ['st', 'profile', 'external']);
-    assert.equal(f.visible(f.get('API URL')), false); assert.equal(f.visible(f.get('ST 连接预设')), false);
-    assert.match(f.parent.textContent, /整理 API/); f.view.destroy(); assert.equal(f.parent.children.length, 0);
+    assert.deepEqual(mode.children.map(item => item.value), ['st', 'qianmu', 'external']);
+    assert.equal(f.visible(f.get('API URL')), false); assert.equal(f.visible(f.get('千幕 API 预设')), false);
+    assert.match(f.parent.textContent, /API设置/); f.view.destroy(); assert.equal(f.parent.children.length, 0);
 });
 
-test('saved ST profiles are selectable for new users and do not auto-select or modify global ST settings', async () => {
-    const f = fixture(); await f.change('整理连接方式', 'profile', () => f.api.read().mode === 'profile');
-    assert.equal(f.visible(f.get('ST 连接预设')), true); assert.deepEqual(f.legacyChanges, []);
-    await f.change('ST 连接预设', 'saved-a', () => f.legacyChanges.length === 1);
-    assert.deepEqual(f.legacyChanges[0], { profileId: 'saved-a', model: '' });
-    await f.change('ST 连接模型', 'custom-model', () => f.legacyChanges.length === 2);
-    assert.deepEqual(f.legacyChanges[1], { profileId: 'saved-a', model: 'custom-model' });
-    assert.equal(f.calls.length, 0); assert.equal(f.ctx.mainApi, undefined);
+test('Qianmu presets use the live shared owner without copying credentials or modifying global connections', async () => {
+    const f = fixture(), owner = structuredClone(f.ctx.extensionSettings.story_director_liminale);
+    await f.change('整理连接方式', 'qianmu', () => f.api.read().mode === 'qianmu');
+    assert.equal(f.visible(f.get('千幕 API 预设')), true);
+    await f.change('千幕 API 预设', 'saved-a', () => f.api.read().qianmuPresetId === 'saved-a');
+    assert.deepEqual(f.ctx.extensionSettings.story_director_liminale, owner);
+    assert.ok(!JSON.stringify(f.ctx.extensionSettings.yimu).includes('synthetic-shared-key'));
+    assert.equal(f.api.read().apiUrl, ''); assert.equal(f.calls.length, 0);
+    assert.equal(f.ctx.mainApi, undefined); assert.deepEqual(f.legacyChanges, []);
 });
 
 test('external fields, model pull and selection all persist actual controls', async () => {
     const f = fixture(); await f.change('整理连接方式', 'external', () => f.api.read().mode === 'external');
-    assert.equal(f.visible(f.get('API URL')), true); assert.equal(f.get('API Key').type, 'password');
+    assert.equal(f.visible(f.get('API URL')), true); assert.equal(f.get('API Key').type, 'password'); assert.equal(f.get('API Key').placeholder, '');
     await f.change('API URL', 'http://127.0.0.1:1234/v1', () => !!f.api.read().apiUrl);
     assert.equal(f.get('拉取模型').disabled, false, 'keyless local provider remains usable');
     f.get('拉取模型').click(); await f.wait(() => !f.get('拉取模型').disabled && f.api.read().models.length === 2);
@@ -86,7 +87,16 @@ test('connection test is an explicit read-only status request with inline feedba
 test('invalid numeric change reports a factual inline error and leaves the last valid setting', async () => {
     const f = fixture(); await f.change('整理连接方式', 'external');
     await f.change('最大输出 Token', '-1', () => f.errors.length === 1);
-    assert.equal(f.api.read().maxTokens, 2048); assert.match(f.byClass('ym-api-status').textContent, /Token 数值/);
+    assert.equal(f.api.read().maxTokens, 32000); assert.match(f.byClass('ym-api-status').textContent, /Token 数值/);
+});
+
+test('clearing API numeric fields restores factory defaults while an explicit zero temperature remains zero', async () => {
+    const f = fixture(); await f.change('整理连接方式', 'external');
+    await f.change('整理温度', '0', () => f.api.read().temperature === 0);
+    await f.change('整理温度', '', () => f.api.read().temperature === 1);
+    await f.change('最大输出 Token', '1024'); await f.change('最大输出 Token', '', () => f.api.read().maxTokens === 32000);
+    await f.change('上下文 Token', '8000'); await f.change('上下文 Token', '', () => f.api.read().contextTokens === 1000000);
+    assert.deepEqual(f.errors, []);
 });
 
 const scoped = (file = 'one', isGlobal = false, overrides = { profileId: 'saved-a', model: 'own' }) => ({
@@ -94,30 +104,24 @@ const scoped = (file = 'one', isGlobal = false, overrides = { profileId: 'saved-
     settings: { profileId: 'saved-a', model: file + '-model' }, profiles: [{ id: 'saved-a', name: '已有连接' }],
 });
 
-test('late legacy save cannot report a false error or release a newer operation after changing chats', async () => {
-    const finishes = [], f = fixture({ onLegacyChange: () => new Promise(resolve => finishes.push(resolve)) });
-    await f.api.update({ mode: 'profile' }); f.view.render(scoped());
-    f.get('ST 连接模型').value = 'old-edit'; f.get('ST 连接模型').emit('change');
-    assert.equal(f.get('ST 连接模型').disabled, true);
-    f.get('ST 连接模型').focus(); f.view.render(scoped('two'));
-    assert.equal(f.get('ST 连接模型').value, 'two-model', 'focused legacy drafts do not transfer to a different chat');
-    assert.equal(f.get('ST 连接模型').disabled, false);
-    f.get('ST 连接模型').value = 'new-edit'; f.get('ST 连接模型').emit('change');
-    finishes[0](false); await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(f.get('ST 连接模型').disabled, true, 'old finally cannot release the new operation');
-    assert.equal(f.byClass('ym-api-status').textContent, ''); assert.deepEqual(f.errors, []);
-    finishes[1](false); await f.wait(() => f.errors.length === 1);
-    assert.match(f.byClass('ym-api-status').textContent, /连接模型未保存/);
-    assert.equal(f.get('ST 连接模型').disabled, false, 'real current-scope failures remain actionable');
+test('historic ST profile stays preserved without a fourth mode or an implicit switch', async () => {
+    const f = fixture(); await f.api.update({ mode: 'profile', profileId: 'old', profileModel: 'old-model', profileConfigured: true });
+    f.view.render(scoped());
+    assert.equal(f.get('ST 连接模型'), undefined); assert.equal(f.get('ST 连接预设'), undefined);
+    assert.equal(f.api.read().mode, 'profile'); assert.match(f.parent.textContent, /旧版 ST 连接已保留/);
+    assert.equal(f.get('整理连接方式').children.length, 3);
+    await f.change('整理连接方式', 'st');
+    assert.equal(f.api.effectiveConnection().mode, 'st'); assert.equal(f.api.read().profileId, 'old');
 });
 
-test('switching between current chat and global defaults invalidates only the old legacy action', async () => {
-    let rejectOld; const f = fixture({ onLegacyChange: () => new Promise((_resolve, reject) => { rejectOld = reject; }) });
-    await f.api.update({ mode: 'profile' }); f.view.render(scoped());
-    f.get('ST 连接预设').emit('change');
-    f.view.render(scoped('one', true, {})); assert.equal(f.get('ST 连接预设').disabled, false);
-    rejectOld(new Error('旧范围写入失败')); await new Promise(resolve => setTimeout(resolve, 0));
-    assert.deepEqual(f.errors, []); assert.equal(f.byClass('ym-api-status').textContent, '');
+test('Qianmu metadata refreshes live across scopes without exposing credentials or saving copies', async () => {
+    const f = fixture(); await f.api.update({ mode: 'qianmu', qianmuPresetId: 'saved-a' });
+    const before = JSON.stringify(f.ctx.extensionSettings.yimu);
+    f.ctx.extensionSettings.story_director_liminale.apiProfiles[0].name = '已更新预设';
+    f.view.render(scoped('two', true));
+    assert.match(f.get('千幕 API 预设').textContent, /已更新预设/);
+    assert.ok(!f.parent.textContent.includes('synthetic-shared-key'));
+    assert.equal(JSON.stringify(f.ctx.extensionSettings.yimu), before); assert.deepEqual(f.legacyChanges, []);
 });
 
 test('independent account operations keep their result and busy state across chat and settings scope switches', async () => {
@@ -129,31 +133,22 @@ test('independent account operations keep their result and busy state across cha
     assert.equal(f.byClass('ym-api-status').textContent, '连接可用'); assert.deepEqual(f.errors, []);
 });
 
-test('per-chat connection and model reset icons submit null only for overridden values', async () => {
+test('the new account-owned API surface has no per-chat follow-default controls', async () => {
     const f = fixture(); await f.api.update({ mode: 'profile' }); f.view.render(scoped());
-    assert.equal(f.visible(f.get('连接预设跟随默认')), true); assert.equal(f.visible(f.get('连接模型跟随默认')), true);
-    f.get('连接预设跟随默认').click(); await f.wait(() => f.legacyChanges.length === 1 && !f.get('连接预设跟随默认').disabled);
-    assert.deepEqual(f.legacyChanges[0], { profileId: null });
-    f.get('连接模型跟随默认').click(); await f.wait(() => f.legacyChanges.length === 2);
-    assert.deepEqual(f.legacyChanges[1], { model: null });
-    f.view.render(scoped('one', false, {}));
-    assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
-    f.view.render(scoped('one', true));
-    assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
+    assert.equal(f.get('连接预设跟随默认'), undefined); assert.equal(f.get('连接模型跟随默认'), undefined);
+    assert.deepEqual(f.legacyChanges, []);
 });
 
-test('account-only ST profile choice is independent of numeric chat/global scope and never calls legacy writers', async () => {
+test('account-owned Qianmu selection does not follow numeric chat/global scope or invoke legacy writers', async () => {
     const f = fixture({ accountOnly: true }); f.view.render(scoped('one'));
-    assert.equal(f.api.read().mode, 'inherit'); assert.equal(f.ctx.extensionSettings.yimu, undefined, 'reading legacy choices does not migrate or save');
-    await f.change('整理连接方式', 'profile', () => f.api.read().profileConfigured);
-    await f.change('ST 连接模型', 'account-model', () => f.api.read().profileModel === 'account-model');
+    assert.equal(f.api.read().mode, 'inherit'); assert.equal(f.ctx.extensionSettings.yimu, undefined);
+    await f.change('整理连接方式', 'qianmu');
+    await f.change('千幕 API 预设', 'saved-a', () => f.api.read().qianmuPresetId === 'saved-a');
     const revision = f.api.read().revision;
     f.view.render(scoped('two', true));
-    assert.equal(f.get('ST 连接模型').value, 'account-model'); assert.equal(f.get('ST 连接预设').value, 'saved-a');
-    assert.equal(f.api.read().revision, revision); assert.deepEqual(f.legacyChanges, []);
-    assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
-    await f.change('ST 连接预设', '', () => f.api.read().profileId === '');
-    f.view.render(scoped('three', false));
-    assert.equal(f.get('ST 连接预设').value, ''); assert.equal(f.api.effectiveConnection({ profileId: 'old-chat-connection', model: 'old' }).profileId, '');
+    assert.equal(f.get('千幕 API 预设').value, 'saved-a'); assert.equal(f.api.read().revision, revision);
+    await f.change('千幕 API 预设', '', () => f.api.read().qianmuPresetId === '');
+    f.view.render(scoped('three'));
+    assert.equal(f.get('千幕 API 预设').value, ''); assert.throws(() => f.api.effectiveConnection(), /请选择千幕/);
     assert.deepEqual(f.legacyChanges, []); assert.equal(f.calls.length, 0); f.view.destroy();
 });

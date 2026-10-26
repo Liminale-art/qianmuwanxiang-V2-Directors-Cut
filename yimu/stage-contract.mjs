@@ -6,6 +6,13 @@ const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export const hasCustomParents = (entry, document) => entry?.kind === 'stage'
     && (entry.source?.parents || []).some(ref => document.entries.some(parent => parent.id === ref.id && parent.kind === 'manual'));
+export function recentStageEntryIds(document, count = 10) {
+    if (!Number.isSafeInteger(count) || count < 0) fail('保留近期切片数量无效');
+    if (!count) return new Set();
+    const active = orderedEntries(document).filter(entry => !entry.origin && entry.status === 'active'
+        && (entry.kind === 'summary' || entry.kind === 'manual' && entry.placement && entry.placementVerified !== false));
+    return new Set(active.slice(-count).map(entry => entry.id));
+}
 
 function range(value) {
     if (!value || !Number.isSafeInteger(value.start) || !Number.isSafeInteger(value.end) || value.start < 1 || value.end < value.start
@@ -37,8 +44,12 @@ export function validateStageSource(source) {
     return {ranges, parents};
 }
 
-export function stageSourceFromParents(document, refs) {
+export function stageSourceFromParents(document, refs, { automatic = false, stageRecent = 10 } = {}) {
     const parents = references(refs);
+    if (automatic) {
+        const retained = recentStageEntryIds(document, stageRecent);
+        if (parents.some(ref => retained.has(ref.id))) fail('此阶段包含需保留的近期切片，自动整理未采用');
+    }
     const entries = parents.map(ref => {
         const entry = document.entries.find(item => item.id === ref.id);
         if (!entry || !['summary', 'manual'].includes(entry.kind) || entry.status !== 'active'

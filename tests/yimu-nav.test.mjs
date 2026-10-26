@@ -35,4 +35,6 @@ test('source remains standalone and CSS selection geometry matches Qianmu', asyn
     assert.doesNotMatch(source, /^import|fetch\(|#story-director-modal/m);
     assert.match(css, /width: min\(48px, calc\(100% - 12px\)\); height: 2\.5px/);
     assert.match(css, /\.ym-nav-capsule rect \{ fill: none; stroke: currentColor; stroke-width: 1\.5px/);
+    assert.match(css, /\.ym-dialog \.ym-nav-button[^\n]*flex: 1 1 0; min-width: 0/, 'all navigation hitboxes share the full row equally');
+    assert.match(css, /\.ym-nav \{[^\n]*width: 100%/);
 });

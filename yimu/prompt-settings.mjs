@@ -21,6 +21,8 @@ const groups = {
 };
 function freeze(value) { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; }
 export const DEFAULT_PROMPTS = freeze({ groups, presets: [], selectedPreset: '' });
+// UI-only identity: '@' cannot collide with a validated user preset ID.
+export const BUILTIN_PROMPT_PRESET = '@builtin';
 
 function text(value, length, label, empty = true) {
     if (typeof value !== 'string' || value.length > length || !empty && !value.trim()) fail(`${label}无效或过长`);
@@ -76,11 +78,22 @@ export function mergeImportedPromptConfig(current, incoming, createId = () => gl
     const before = validatePromptConfig(current), added = validatePromptConfig(incoming), presets = clone(before.presets);
     const remap = new Map();
     for (const preset of added.presets) {
+        const importedName=`${preset.name.slice(0,150)}（导入）`;
+        const equivalent=presets.find(item=>(item.name===preset.name||item.name===importedName)&&JSON.stringify(item.groups)===JSON.stringify(preset.groups));
+        if(equivalent){remap.set(preset.id,equivalent.id);continue;}
         const existing = presets.find(item => item.id === preset.id);
         if (existing && JSON.stringify(existing) === JSON.stringify(preset)) { remap.set(preset.id, existing.id); continue; }
         const value = clone(preset);
-        if (existing) { value.id = createId(); value.name = `${value.name.slice(0, 150)}（导入）`; }
+        if (existing) { value.id = createId(); value.name = importedName; }
         remap.set(preset.id, value.id); presets.push(value);
     }
     return validatePromptConfig({ groups: added.groups, presets, selectedPreset: added.selectedPreset ? remap.get(added.selectedPreset) : '' });
+}
+
+export function selectPromptPreset(current, selected) {
+    const before=validatePromptConfig(current);
+    if(selected===BUILTIN_PROMPT_PRESET)return {...before,groups:clone(DEFAULT_PROMPTS.groups),selectedPreset:''};
+    const found=before.presets.find(preset=>preset.id===selected);
+    if(!found)fail('所选提示词预设已不存在');
+    return {...before,groups:clone(found.groups),selectedPreset:found.id};
 }

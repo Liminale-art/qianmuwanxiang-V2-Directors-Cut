@@ -17,8 +17,11 @@ function dom() {
         set innerHTML(_) { throw Error('User content must remain text'); }
         setAttribute(name, value) { this.attrs[name] = String(value); }
         getAttribute(name) { return this.attrs[name]; }
+        removeAttribute(name) { delete this.attrs[name]; }
+        showModal() { this.open = true; this.modalOpens = (this.modalOpens || 0) + 1; }
+        close() { this.open = false; }
         addEventListener(name, fn) { (this.events[name] ||= []).push(fn); }
-        emit(name) { for (const fn of this.events[name] || []) fn({ target: this }); }
+        emit(name, details = {}) { const event = { target: this, ...details, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.propagationStopped = true; } }; for (const fn of this.events[name] || []) fn(event); return event; }
         click() { if (!this.disabled) this.emit('click'); }
         querySelectorAll(selector) { return all(this).filter(n => selector.split(',').some(tag => n.tagName.toLowerCase() === tag.trim())); }
     }
@@ -43,15 +46,45 @@ test('secondary views default to collapsible cards but page mode has no duplicat
     assert.equal(companion.element.tagName, 'SECTION'); assert.equal(companion.element.children.some(n => n.tagName === 'SUMMARY'), false);
 });
 
-test('backup selection immediately imports a batch and keeps originals opt-in stable across navigation', async () => {
-    const d=dom(),calls=[],view=createBackupView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});
-    const s=state({backup:{exportPlan:{planId:'export',binding,primarySourceId:'main',sources:[{id:'main',available:true,label:'原聊天'}]}}});
-    view.render(s);const get=label=>d.get(view.node,label),picker=get('忆幕备份文件');const files=[{name:'a.yimu.gz'},{name:'b.yimu.gz'}];picker.files=files;picker.emit('change');await d.flush();
-    assert.deepEqual(calls[0],['backupImport',{files}]);assert.equal(picker.multiple,true);assert.equal(get('附带ST聊天原件').checked,false);
-    get('附带ST聊天原件').checked=true;get('附带ST聊天原件').emit('change');await d.flush();
-    view.node.hidden=true;view.render(s);view.node.hidden=false;
-    assert.equal(get('附带ST聊天原件').checked,true);assert.equal(get('原聊天').checked,true);
-    get('导出当前记忆').click();await d.flush();assert.deepEqual(calls.at(-1),['backupQuickExport',{includeOriginals:true,planId:'export',sourceIds:['main']}]);
+test('backup exposes two same-row actions and export cancellation never becomes a memory-only download',async()=>{
+    const d=dom(),calls=[],view=createBackupView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});view.render(state());
+    const get=label=>d.get(view.node,label),row=d.all(view.node).find(node=>node.className.includes('ym-backup-actions'));
+    assert.deepEqual(row.children.map(node=>node.textContent),['导出记忆','导入记忆']);
+    get('导出记忆').click();assert.deepEqual(calls,[]);assert.match(view.node.textContent,/是否将相关聊天文件一起打包/);
+    get('取消导出').click();await d.flush();assert.deepEqual(calls,[]);
+    get('导出记忆').click();get('否，仅导出记忆').click();await d.flush();assert.deepEqual(calls,[['backupQuickExport',{includeOriginals:false}]]);
+    const files=[{name:'a.yimu.gz'},{name:'b.yimu.gz'}],picker=get('忆幕备份文件');picker.files=files;picker.emit('change');await d.flush();
+    assert.equal(picker.multiple,true);assert.deepEqual(calls.at(-1),['backupImport',{files}]);assert.equal(get('附带ST聊天原件'),undefined);
+});
+
+test('export is a separate modal and Escape/cancel never propagates to the memory panel or starts export',async()=>{
+    const d=dom(),calls=[],view=createBackupView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});view.render(state());
+    const get=label=>d.get(view.node,label),modal=d.all(view.node).find(node=>node.tagName==='DIALOG');
+    get('导出记忆').click();assert.equal(modal.open,true);assert.equal(modal.hidden,false);
+    view.render(state());assert.equal(modal.modalOpens,1);
+    const escape=modal.emit('keydown',{key:'Escape'});assert.equal(escape.defaultPrevented,true);assert.equal(escape.propagationStopped,true);assert.equal(modal.open,false);
+    get('导出记忆').click();const cancel=modal.emit('cancel');assert.equal(cancel.defaultPrevented,true);assert.equal(cancel.propagationStopped,true);assert.equal(modal.open,false);
+    assert.equal(view.node.removed,undefined);await d.flush();assert.deepEqual(calls,[]);
+    const picker=get('忆幕备份文件'),fileCancel=picker.emit('cancel');assert.equal(fileCancel.propagationStopped,true);assert.deepEqual(calls,[]);
+});
+
+test('yes exports a sole main original directly but ancestors remain individual necessary selections',async()=>{
+    const d=dom(),calls=[];let view,plan={planId:'export',binding,primarySourceId:'main',sources:[{id:'main',available:true,label:'原聊天'}]};
+    const s=()=>state({backup:{exportPlan:plan}});view=createBackupView({document:d.document,pageMode:true,onAction:async(type,payload)=>{calls.push([type,payload]);if(type==='backupPlan'){view.render(s());return plan;}}});view.render(s());
+    const get=label=>d.get(view.node,label);get('导出记忆').click();get('是，一起打包').click();await d.flush();
+    assert.deepEqual(calls,[['backupPlan',{}],['backupQuickExport',{includeOriginals:true,planId:'export',sourceIds:['main']}]]);
+    plan={...plan,planId:'ancestors',sources:[...plan.sources,{id:'ancestor',available:true,label:'祖先聊天'},{id:'missing',available:false,label:'未恢复来源'}]};view.render(s());
+    get('导出记忆').click();get('是，一起打包').click();await d.flush();assert.equal(calls.length,3);
+    assert.equal(get('原聊天').checked,true);assert.equal(get('祖先聊天').checked,false);assert.equal(get('未恢复来源').disabled,true);
+    get('祖先聊天').checked=true;get('祖先聊天').emit('change');view.node.hidden=true;view.render(s());view.node.hidden=false;assert.equal(get('祖先聊天').checked,true);
+    get('打包并导出').click();await d.flush();assert.deepEqual(calls.at(-1),['backupQuickExport',{includeOriginals:true,planId:'ancestors',sourceIds:['main','ancestor']}]);
+});
+
+test('cancel or a changed chat while original planning is pending never starts a download',async()=>{
+    const d=dom(),calls=[];let release;const plan={planId:'p',primarySourceId:'main',sources:[{id:'main',available:true}]};
+    const view=createBackupView({document:d.document,onAction:async(type,payload)=>{calls.push([type,payload]);if(type==='backupPlan')return new Promise(resolve=>{release=()=>resolve(plan);});}});view.render(state());
+    const get=label=>d.get(view.node,label);get('导出记忆').click();get('是，一起打包').click();get('取消导出').click();release();await d.flush();assert.equal(calls.length,1);
+    get('导出记忆').click();get('是，一起打包').click();view.render(state({snapshot:{...state().snapshot,binding:{...binding,file:'other'}}}));release();await d.flush();assert.equal(calls.length,2);
 });
 
 test('backup errors are actionable and completed files retain their independent outcome', async () => {
@@ -62,9 +95,18 @@ test('backup errors are actionable and completed files retain their independent 
     assert.equal(d.get(view.node,'已导入备份'),undefined);
 });
 
+test('an export source check failure stays visible inside the modal with memory-only fallback',async()=>{
+    const d=dom(),calls=[],view=createBackupView({document:d.document,pageMode:true,onAction:async(type,payload)=>{calls.push([type,payload]);if(type==='backupPlan')throw new Error('聊天文件当前不可读取');}});view.render(state());
+    const get=label=>d.get(view.node,label);get('导出记忆').click();get('是，一起打包').click();await d.flush();
+    const modal=d.all(view.node).find(node=>node.tagName==='DIALOG');assert.equal(modal.open,true);
+    assert.ok(modal.children.some(node=>!node.hidden&&node.textContent==='聊天文件当前不可读取'));
+    get('否，仅导出记忆').click();await d.flush();assert.equal(modal.open,false);assert.deepEqual(calls.at(-1),['backupQuickExport',{includeOriginals:false}]);
+});
+
 test('story keeps one cutoff and one action without a preview stage', async () => {
     const d=dom(),calls=[],view=createStoryView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});
     const s=state();view.render(s);const get=label=>d.get(view.node,label);
+    const row=d.all(view.node).find(node=>node.className==='ym-story-controls');assert.ok(row.children.includes(get('建立新聊天')));assert.ok(row.children[0].children.includes(get('续接楼层')));
     assert.equal(get('续接楼层').value,'9');get('续接楼层').value='4';get('续接楼层').emit('input');
     view.node.hidden=true;view.render(s);view.node.hidden=false;assert.equal(get('续接楼层').value,'4');
     get('建立新聊天').click();await d.flush();assert.deepEqual(calls[0],['storyContinue',{cutoff:4}]);assert.equal(get('预览带入内容'),undefined);

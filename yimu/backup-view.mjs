@@ -5,36 +5,54 @@ export function createBackupView({document = globalThis.document, onAction, page
     const node = el(pageMode ? 'section':'details', `ym-backup ${pageMode ? 'ym-subpage-section':'ym-card'}`);
     if (!pageMode) node.append(el('summary','','记忆备份'));
     const body = el('div','ym-backup-body'); node.append(body);
-    let state = {}, alive = true, working = false, error = '', planKey = '', itemsKey = '';
+    let state = {}, alive = true, working = false, error = '', planKey = '', itemsKey = '', exportMode='',exportScope='',exportTicket=0;
     const choices = new Map(), targets = new Map();
-    const include = el('input'); include.type = 'checkbox'; include.setAttribute('aria-label','附带ST聊天原件');
-    const includeRow = el('label','ym-backup-check'); includeRow.append(include,el('span','','附带 ST 聊天原件'));
-    const exportButton = button('导出当前记忆', () => invoke('backupQuickExport',{includeOriginals:include.checked,
-        ...(include.checked ? {planId:state.backup?.exportPlan?.planId,sourceIds:[...choices].filter(([,input])=>input.checked).map(([id])=>id)}:{})}));
-    const exportRow = el('div','ym-actions'); exportRow.append(exportButton,includeRow);
+    const exportButton = button('导出记忆',()=>{exportTicket++;exportScope=JSON.stringify(state.snapshot?.binding||null);exportMode='question';error='';update();});
+    const exportRow = el('div','ym-actions ym-backup-actions');
     const sources = el('div','ym-backup-sources'); sources.hidden = true;
+    const question=el('dialog','ym-backup-question'),questionText=el('p','','是否将相关聊天文件一起打包？'),questionActions=el('div','ym-actions ym-backup-question-actions');question.hidden=true;question.setAttribute('aria-label','导出记忆');
+    const questionNotice=el('p','ym-inline-warning');questionNotice.setAttribute('aria-live','polite');questionNotice.hidden=true;
+    const dismissExport=()=>{exportTicket++;exportMode='';error='';update();};
+    question.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();dismissExport();});
+    question.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();dismissExport();}});
+    question.addEventListener('click',event=>{if(event.target===question){event.stopPropagation();dismissExport();}});
+    const yes=button('是，一起打包',async()=>{
+        const ticket=++exportTicket;exportMode='planning';update();const plan=await invoke('backupPlan');
+        if(!alive||ticket!==exportTicket||exportScope!==JSON.stringify(state.snapshot?.binding||null))return;
+        const value=plan?.planId?plan:state.backup?.exportPlan;
+        if(!value?.planId){exportMode='question';update();return;}
+        const available=(value.sources||[]).filter(source=>source.available);
+        if(!available.length){error='聊天文件当前不可读取，可选择“否”仅导出记忆。';exportMode='question';update();return;}
+        if(available.length===1&&available[0].id===value.primarySourceId){exportMode='';update();await invoke('backupQuickExport',{includeOriginals:true,planId:value.planId,sourceIds:[value.primarySourceId]});}
+        else{exportMode='sources';planKey='';update();}
+    });
+    const no=button('否，仅导出记忆',()=>{exportTicket++;exportMode='';update();void invoke('backupQuickExport',{includeOriginals:false});});
+    const cancelExport=button('取消导出',dismissExport);
+    yes.textContent='是';no.textContent='否';cancelExport.textContent='取消';
+    const pack=button('打包并导出',()=>{const plan=state.backup?.exportPlan;exportMode='';update();void invoke('backupQuickExport',{includeOriginals:true,planId:plan?.planId,sourceIds:[...choices].filter(([,input])=>input.checked).map(([id])=>id)});});
+    questionActions.append(yes,no,cancelExport,pack);question.append(questionText,sources,questionNotice,questionActions);
     const pick = el('input'); pick.type = 'file'; pick.accept = '.yimu.gz'; pick.multiple = true; pick.hidden = true; pick.setAttribute('aria-label','忆幕备份文件');
-    const choose = button('导入备份',()=>{if(alive&&!pick.disabled){pick.value='';pick.click();}});
+    const choose = button('导入记忆',()=>{if(alive&&!pick.disabled){pick.value='';pick.click();}});exportRow.append(exportButton,choose);
     const notice = el('p','ym-muted'); notice.setAttribute('aria-live','polite'); notice.hidden = true;
     const results = el('div','ym-backup-list'); results.setAttribute('aria-live','polite');
-    body.append(exportRow,sources,choose,pick,notice,results);
+    body.append(exportRow,question,pick,notice,results);
     async function invoke(type,payload={}) {
         if(!alive||working||state.backup?.busy)return;
         working=true;error='';update();
         try{return await onAction?.(type,payload);}catch(caught){if(alive)error=caught.message||'备份操作未完成';}
         finally{if(alive){working=false;update();}}
     }
-    include.addEventListener('change',()=>{error='';update();if(include.checked)void invoke('backupPlan');});
     pick.addEventListener('cancel',event=>event.stopPropagation?.());
     pick.addEventListener('change',()=>{const files=Array.from(pick.files||[]);pick.value='';if(files.length)void invoke('backupImport',{files});});
     function renderSources(disabled) {
-        const plan=state.backup?.exportPlan;sources.hidden=!include.checked;
-        if(!include.checked)return;
+        const plan=state.backup?.exportPlan;sources.hidden=exportMode!=='sources';
+        if(exportMode!=='sources')return;
         const key=JSON.stringify([plan?.planId,plan?.binding]);
         if(key!==planKey){
             planKey=key;choices.clear();sources.replaceChildren();
             for(const source of plan?.sources||[]){
                 const input=el('input');input.type='checkbox';input.checked=source.id===plan.primarySourceId&&source.available;
+                input.addEventListener('change',()=>update());
                 input.setAttribute('aria-label',source.label||source.binding?.file||source.id);input.dataset.ymBackupSource=source.id;
                 const row=el('label','ym-backup-check');row.append(input,el('span','',`${source.label||source.binding?.file||source.id}${source.available?'':'（原件不可读）'}`));sources.append(row);choices.set(source.id,input);
             }
@@ -72,11 +90,17 @@ export function createBackupView({document = globalThis.document, onAction, page
     }
     function update(){
         const backup=state.backup||{},busy=working||backup.busy,disabled=!!busy||['error','mismatch','checking'].includes(state.service?.status);
-        const matches=JSON.stringify(backup.exportPlan?.binding||null)===JSON.stringify(state.snapshot?.binding||null);
-        exportButton.disabled=disabled||!state.snapshot||!state.document||include.checked&&(!backup.exportPlan||!matches);
-        include.disabled=disabled||!state.snapshot||!state.document;choose.disabled=pick.disabled=disabled;
-        renderSources(disabled);renderItems(disabled);
-        notice.textContent=error||backup.error||backup.status||(busy?'正在处理备份…':'');notice.hidden=!notice.textContent;
+        const binding=JSON.stringify(state.snapshot?.binding||null),matches=JSON.stringify(backup.exportPlan?.binding||null)===binding;
+        if(exportMode&&exportScope!==binding){exportMode='';exportTicket++;}
+        exportButton.disabled=disabled||!state.snapshot||!state.document;choose.disabled=pick.disabled=disabled;
+        question.hidden=!exportMode;
+        if(exportMode&&!question.open){if(typeof question.showModal==='function')question.showModal();else question.setAttribute('open','');}
+        else if(!exportMode&&question.open){if(typeof question.close==='function')question.close();else question.removeAttribute('open');}
+        yes.hidden=exportMode==='sources';pack.hidden=exportMode!=='sources';yes.disabled=no.disabled=disabled;pack.disabled=disabled||!matches;
+        cancelExport.disabled=false;questionText.textContent=exportMode==='sources'?'选择一起打包的相关聊天文件：':'是否将相关聊天文件一起打包？';
+        renderSources(disabled);pack.disabled=disabled||!matches||![...choices.values()].some(input=>input.checked);renderItems(disabled);
+        questionNotice.textContent=error||backup.error||'';questionNotice.hidden=!questionNotice.textContent;
+        notice.textContent=error||backup.error||backup.status||(busy?'正在处理备份…':'');notice.hidden=!!exportMode||!notice.textContent;
         notice.className=error||backup.error?'ym-inline-warning':'ym-muted';node.setAttribute('aria-busy',String(!!busy));
     }
     return{node,render(next){state=next||{};update();},destroy(){alive=false;targets.clear();choices.clear();node.remove();}};

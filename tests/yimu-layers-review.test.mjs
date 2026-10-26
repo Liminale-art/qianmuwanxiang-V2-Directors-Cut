@@ -36,7 +36,7 @@ test('review: distinct concurrent operation IDs cannot append duplicate or partl
 for (const action of ['exclude', 'delete']) test(`review: ${action} stage blocks silent reconstruction and a new overlapping stage`, async () => {
     const f = await fixture(); let doc = f.append(f.doc, 'kept', ['fine-0', 'fine-1']);
     doc = applyOperation(doc, { id: action, type: 'entry', action, entryId: 'kept', expectedRevision: 1 }).document;
-    const next = nextStage(doc, { ...DEFAULTS, stageAuto: true, stageBasis: 'slices', stageThreshold: 2 });
+    const next = nextStage(doc, { ...DEFAULTS, stageAuto: true, stageBasis: 'slices', stageThreshold: 2, stageRecent: 0 });
     assert.deepEqual(next?.parents.map(entry => entry.id), ['fine-2', 'fine-3']);
     assert.throws(() => f.append(doc, 'recreated', ['fine-0', 'fine-1']), /阶段|重叠|整理/);
     const plan = await buildPlan(doc, createDefaults(), { messages: f.messages, maxContext: 8192 });

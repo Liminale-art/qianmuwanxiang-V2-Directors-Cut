@@ -26,34 +26,24 @@ export function mountApiView(container, { api, document = container?.ownerDocume
         node.value = value;
     };
     const legacy = () => supplied?.settings || getLegacy() || {};
-    const profileValues = () => { const config = api.read(); return accountOnly && config.profileConfigured
-        ? { profileId: config.profileId, model: config.profileModel } : legacy(); };
-    const profiles = () => supplied?.profiles || getProfiles() || [];
+    const profiles = () => api.qianmuProfiles?.() || supplied?.profiles || [];
     const card = el('section', 'ym-card ym-api-card');
-    const header = el('div', 'ym-api-heading'), title = el('h3', '', '整理 API');
+    const header = el('div', 'ym-api-heading'), title = el('h3', '', 'API设置');
     const stream = input('流式接收整理结果', 'checkbox'); stream.className = 'ym-switch';
     const streamRow = el('label', 'ym-switch-row ym-api-stream'); streamRow.append(el('span', '', '流式'), stream);
     header.append(title, streamRow);
     const mode = select('整理连接方式');
-    options(mode, [['st', '跟随当前 ST'], ['profile', '使用 ST 已存连接'], ['external', '独立连接']], 'st');
+    options(mode, [['st', '跟随SillyTavern当前API'], ['qianmu', '千幕API预设'], ['external', '独立连接']], 'st');
     const current = el('p', 'ym-muted ym-api-current');
     const profileArea = el('div', 'ym-api-profile-area');
-    const profile = select('ST 连接预设'), profileModel = input('ST 连接模型'); profileModel.placeholder = '留空沿用连接';
-    const restoreDefault = async key => {
-        if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接');
-        if (await onLegacyChange({ [key]: null }) === false) throw new Error('尚未恢复跟随默认，请重试');
-    };
-    const profileReset = button('连接预设跟随默认', 'refresh', () => restoreDefault('profileId'), true, 'legacy');
-    const modelReset = button('连接模型跟随默认', 'refresh', () => restoreDefault('model'), true, 'legacy');
-    const profileRow = el('div', 'ym-api-preset-row'), profileModelRow = el('div', 'ym-api-model-row');
-    profileRow.append(profile, profileReset); profileModelRow.append(profileModel, modelReset);
-    profileArea.append(field('连接预设', profileRow), field('模型', profileModelRow));
+    const profile = select('千幕 API 预设'), profileInfo = el('p', 'ym-muted');
+    profileArea.append(field('选择预设', profile), profileInfo);
     const external = el('div', 'ym-api-external');
     const presetRow = el('div', 'ym-api-preset-row'), preset = select('忆幕连接预设');
     const remove = button('删除连接预设', 'trash', async () => { await api.deletePreset(preset.value); status.textContent = ''; }, true);
     presetRow.append(preset, remove);
     const url = input('API URL', 'url'); url.placeholder = 'https://example.com/v1'; url.autocomplete = 'off';
-    const key = input('API Key', 'password'); key.placeholder = '本地免 Key 服务可留空'; key.autocomplete = 'new-password';
+    const key = input('API Key', 'password'); key.placeholder = ''; key.autocomplete = 'new-password';
     const model = select('整理模型');
     const manualRow = el('div', 'ym-api-model-row'), manualModel = input('手动填写整理模型');
     const modelSave = button('确认模型', 'check', async () => { await api.update({ model: manualModel.value }); editingModel = false; }, true);
@@ -70,13 +60,13 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     const saveConfirm = button('确认保存预设', 'check', async () => { await api.savePreset(name.value); nameRow.hidden = true; status.textContent = '预设已保存'; }, true);
     const saveCancel = button('取消保存预设', 'close', () => { nameRow.hidden = true; }, true);
     nameRow.append(name, saveConfirm, saveCancel); nameRow.hidden = true;
-    const save = button('保存预设', 'book', () => { nameRow.hidden = false; name.value = api.read().model || ''; name.focus(); });
+    const save = button('保存预设', 'save', () => { nameRow.hidden = false; name.value = api.read().model || ''; name.focus(); });
     actions.append(test, fetch, save);
     const status = el('p', 'ym-muted ym-api-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     external.append(presetRow, field('API URL', url), field('API Key', key), field('模型', model), manualRow, params, actions, nameRow);
     card.append(header, field('连接', mode), current, profileArea, external, status); container.append(card);
-    const editable = [mode, profile, profileModel, stream, preset, url, key, model, manualModel, temperature, maxTokens, contextTokens, name];
-    const buttons = [remove, modelSave, test, fetch, save, saveConfirm, saveCancel, profileReset, modelReset];
+    const editable = [mode, profile, stream, preset, url, key, model, manualModel, temperature, maxTokens, contextTokens, name];
+    const buttons = [remove, modelSave, test, fetch, save, saveConfirm, saveCancel];
     async function run(action, kind = 'account') {
         if (disposed || busy) return;
         const ticket = ++operation, startedScope = scope;
@@ -92,25 +82,18 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     }); }
     mode.addEventListener('change', () => {
         const value = mode.value;
-        const previous = profileValues();
-        if (!busy) void run(() => api.update({ mode: value, ...(accountOnly && value === 'profile'
-            ? { profileId: previous.profileId || '', profileModel: previous.model || '', profileConfigured: true } : {}) }));
+        if (!busy) void run(() => api.update({ mode: value }));
     });
-    change(profile, async value => {
-        if (accountOnly) return api.update({ mode: 'profile', profileId: value, profileModel: '', profileConfigured: true });
-        if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: value, model: '' }) === false) throw new Error('连接预设未保存');
-    }, accountOnly ? 'account' : 'legacy');
-    change(profileModel, async value => {
-        if (accountOnly) return api.update({ mode: 'profile', profileId: profileValues().profileId || '', profileModel: value, profileConfigured: true });
-        if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: legacy().profileId || '', model: value }) === false) throw new Error('连接模型未保存');
-    }, accountOnly ? 'account' : 'legacy');
+    change(profile, value => api.update({ mode: 'qianmu', qianmuPresetId: value }));
     change(preset, async value => { if (value) { await api.loadPreset(value); editingModel = false; } });
     change(model, async value => {
         if (value === '__manual__') { editingModel = true; manualModel.value = api.read().model; render(); manualModel.focus(); }
         else await api.update({ model: value });
     });
     for (const [node, setting] of [[url, 'apiUrl'], [key, 'apiKey']]) change(node, value => api.update({ [setting]: value }));
-    for (const [node, setting] of [[temperature, 'temperature'], [maxTokens, 'maxTokens'], [contextTokens, 'contextTokens']]) change(node, value => api.update({ [setting]: Number(value) }));
+    for (const [node, setting] of [[temperature, 'temperature'], [maxTokens, 'maxTokens'], [contextTokens, 'contextTokens']]) change(node, value => api.update({
+        [setting]: String(value).trim() === '' ? { temperature: 1, maxTokens: 32000, contextTokens: 1000000 }[setting] : Number(value),
+    }));
     change(stream, value => api.update({ stream: value }));
     function render(state) {
         if (disposed) return;
@@ -122,19 +105,19 @@ export function mountApiView(container, { api, document = container?.ownerDocume
             if (activeKind === 'legacy') { operation++; busy = false; activeKind = ''; }
             if (statusKind === 'legacy') { status.textContent = ''; statusKind = ''; }
         }
-        const config = api.read(), old = profileValues();
-        // Before the first API choice, retain the previous per-chat connection without migrating it.
-        const shownMode = config.mode === 'inherit' ? old.profileId ? 'profile' : 'st' : config.mode;
-        mode.value = shownMode; external.hidden = shownMode !== 'external'; profileArea.hidden = shownMode !== 'profile';
-        current.hidden = shownMode !== 'st'; streamRow.hidden = shownMode !== 'external';
-        current.textContent = '沿用酒馆当前的连接与模型';
+        const config = api.read(), old = legacy();
+        // Preserve a historic explicit ST profile without presenting it as one of the new choices.
+        const historicProfile = config.mode === 'profile' || config.mode === 'inherit' && old.profileId;
+        const shownMode = config.mode === 'inherit' ? historicProfile ? '' : 'st' : config.mode === 'profile' ? '' : config.mode;
+        mode.value = shownMode; external.hidden = shownMode !== 'external'; profileArea.hidden = shownMode !== 'qianmu';
+        current.hidden = shownMode !== 'st' && !historicProfile; streamRow.hidden = shownMode !== 'external';
+        current.textContent = historicProfile ? '旧版 ST 连接已保留；选择新的连接方式后才会切换。' : '沿用酒馆当前的连接与模型';
         const list = profiles();
-        const items = [['', '选择 ST 连接预设'], ...list.map(item => [item.id, item.name || item.id])];
-        if (old.profileId && !list.some(item => item.id === old.profileId)) items.push([old.profileId, '原连接（当前不可用）']);
-        options(profile, items, old.profileId || '');
-        if (scopeChanged || document.activeElement !== profileModel) profileModel.value = old.model || '';
-        profileReset.hidden = accountOnly || supplied?.showFollow === false || supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'profileId');
-        modelReset.hidden = accountOnly || supplied?.showFollow === false || supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'model');
+        const items = [['', '选择千幕 API 预设'], ...list.map(item => [item.id, item.name || item.model || item.id])];
+        const selectedProfile = list.find(item => item.id === config.qianmuPresetId);
+        if (config.qianmuPresetId && !selectedProfile) items.push([config.qianmuPresetId, '原千幕预设（当前不可用）']);
+        options(profile, items, config.qianmuPresetId);
+        profileInfo.textContent = selectedProfile ? `模型：${selectedProfile.model || '尚未设置'} · 预设在千幕 API 设置中管理` : list.length ? '请选择已有的千幕 API 预设' : '尚无千幕 API 预设，请先在千幕中保存';
         options(preset, [['', '载入预设'], ...config.presets.map(item => [item.id, item.name])], config.selectedPreset);
         const models = config.models.includes(config.model) || !config.model ? config.models : [config.model, ...config.models];
         options(model, [['', models.length ? '选择模型' : '先拉取模型列表'], ...models.map(value => [value, value]), ['__manual__', '手动填写模型']], editingModel ? '__manual__' : config.model);
@@ -144,8 +127,6 @@ export function mountApiView(container, { api, document = container?.ownerDocume
         }
         stream.checked = config.stream;
         for (const node of [...editable, ...buttons]) node.disabled = busy;
-        profile.disabled ||= !accountOnly && !onLegacyChange; profileModel.disabled ||= !accountOnly && !onLegacyChange;
-        profileReset.disabled ||= !onLegacyChange; modelReset.disabled ||= !onLegacyChange;
         remove.disabled ||= !config.selectedPreset;
         test.disabled ||= !config.apiUrl.trim(); fetch.disabled ||= !config.apiUrl.trim();
         status.hidden = !status.textContent;

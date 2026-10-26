@@ -5,6 +5,7 @@ import { mountTheme } from '../yimu/theme.mjs';
 import { createYimuIcon, YIMU_ICON_NAMES } from '../yimu/icons.mjs';
 import { ICONSAX_ICON_MARKUP, ICONSAX_GLYPH_NAMES } from '../qianmu-icon-renderer.js';
 import { READER_PORTAL_BG } from '../qianmu-classic-palettes.js';
+import { fontScopeCss } from '../qianmu-font-runtime.js';
 
 // Isolated surface/observer fixture; this does not claim browser layout validation.
 function fixture() {
@@ -184,6 +185,24 @@ test('destroy restores owned values, preserves later external changes and stays 
     assert.equal(f.root.getAttribute('data-ym-mode'), null);
 });
 
+test('font isolation joins the real Qianmu owned-surface boundary and restores only its own class', () => {
+    const f = fixture(); f.root.setAttribute('class', 'ym-dialog caller-owned');
+    const binding = mountTheme(f.root, { document: f.document });
+    assert.equal(f.root.getAttribute('class'), 'ym-dialog caller-owned qm-yimu-surface');
+    // This is the production ST font rule, including its cascade layer. A
+    // stronger unlayered .ym-dialog font rule cannot repair this conflict.
+    const hostRule = fontScopeCss('st', 'QianmuFont_host');
+    assert.match(hostRule, /@layer qianmu-font-application/);
+    assert.match(hostRule, /\[class\^="qm-"\], \[class\*=" qm-"\]/);
+    assert.match(hostRule, /font-family:"QianmuFont_host"[^}]*!important/);
+    f.root.setAttribute('class', `${f.root.getAttribute('class')} added-later`);
+    binding.destroy();
+    assert.equal(f.root.getAttribute('class'), 'ym-dialog caller-owned added-later');
+    const owned = fixture(); owned.root.setAttribute('class', 'ym-dialog qm-yimu-surface');
+    mountTheme(owned.root, { document: owned.document }).destroy();
+    assert.equal(owned.root.getAttribute('class'), 'ym-dialog qm-yimu-surface', 'a pre-existing caller marker is not removed');
+});
+
 test('surface CSS remains scoped, preserves hidden pages and supports three families and narrow layouts', async () => {
     const css = await readFile(new URL('../yimu/style.css', import.meta.url), 'utf8');
     assert.doesNotMatch(css, /(?:^|\n)\s*(?:body|html|:root|input|button|textarea|select)\b/);
@@ -203,16 +222,34 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /--ym-surface: #f3efe7/);
     assert.doesNotMatch(css, /--ym-surface: var\(--SmartThemeBlurTintColor/);
     assert.match(css, /\.ym-stats[^\n]*border: 0/);
+    assert.match(css, /\.ym-dialog \.ym-stat[^\n]*min-height: 88px/);
+    assert.doesNotMatch(css, /button\.ym-stat/);
     assert.match(css, /\.ym-hero-switches[^\n]*flex-wrap: wrap/);
+    assert.match(css, /\.ym-setting-row:has\(> small\)[^\n]*flex-direction: column[^\n]*align-items: stretch/);
+    assert.match(css, /\.ym-setting-numeric > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
+    assert.match(css, /\.ym-dialog \.ym-setting-numeric > \.ym-field > input[^\n]*width: var\(--ym-setting-value-width\)/);
+    assert.match(css, /\.ym-dialog \.ym-budget-group[^\n]*display: flex[^\n]*align-items: center/);
+    assert.match(css, /@media \(max-width: 380px\)[\s\S]*\.ym-dialog \.ym-api-params input\[type="number"\][^\n]*padding-inline: 4px[^\n]*appearance: textfield/);
+    assert.match(css, /\.ym-dialog \.ym-api-params input\[type="number"\]::-webkit-outer-spin-button[^\n]*-webkit-appearance: none/);
+    assert.match(css, /\.ym-dialog \.ym-prompt-item-head[^\n]*display: grid[^\n]*minmax\(0, 1fr\)/);
+    assert.match(css, /\.ym-tool-row \.ym-tool-summary strong[^\n]*white-space: nowrap/);
+    assert.match(css, /\.ym-backup-question \{[^\n]*width: min\(460px, calc\(100vw - 40px\)\)/);
     assert.match(css, /\.ym-avatar[^\n]*aspect-ratio: 1[^\n]*border-radius: var\(--ym-control-radius\)/);
     assert.match(css, /data-ym-theme="editorial"[^\n]*--ym-icon-bold-display: inline/);
     assert.match(css, /data-ym-theme="glass"[^\n]*--ym-icon-twotone-display: inline/);
-    assert.match(css, /\.ym-tool-card\[open\] > summary[^\n]*rotate\(180deg\)/);
+    assert.match(css, /\.ym-tool-summary\[aria-expanded="true"\][^\n]*rotate\(180deg\)/);
+    assert.match(css, /\.ym-dialog details\[open\] > summary[^\n]*rotate\(180deg\)/);
+    assert.match(css, /\.ym-tool-group\[data-side="left"\][^\n]*border-start-start-radius: 0/);
+    assert.match(css, /\.ym-tool-group\[data-side="right"\][^\n]*border-start-end-radius: 0/);
+    assert.doesNotMatch(css, /\.ym-folder-body::before/, 'the folder is connected to its real heading, not a decorative fake tab');
+    assert.match(css, /\.ym-dialog summary::marker \{ content: ''/);
+    assert.match(css, /\.ym-menu-entry[^\n]*column-gap: 10px/);
+    assert.match(css, /\.ym-overview\[data-empty="true"\][^\n]*text-align: center/);
     assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length);
 });
 
-test('local functional icon subset preserves the authoritative Qianmu artwork and has no runtime dependency', async () => {
-    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down' };
+test('functional icons preserve Qianmu artwork except the explicit Yimu floppy-disk save glyph', async () => {
+    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', save: 'floppy-disk', help: 'question', stop: 'stop', layers: 'stack' };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
     for (const [name, upstream] of Object.entries(names)) {
@@ -222,6 +259,14 @@ test('local functional icon subset preserves the authoritative Qianmu artwork an
         assert.equal(element.attributes['data-ym-icon'], name);
         assert.match(element.innerHTML, /viewBox="0 0 24 24"/);
         const original = ICONSAX_ICON_MARKUP[ICONSAX_GLYPH_NAMES[upstream]];
+        if (name === 'save') {
+            assert.match(element.innerHTML, /M5 3h11l5 5/);
+            assert.match(element.innerHTML, /stroke-width="2\.5"/);
+            assert.match(element.innerHTML, /fill="currentColor"/);
+            assert.ok(!element.innerHTML.includes(original.outline), 'Yimu save is a floppy disk, not Qianmu’s bookmark');
+            for (const variant of ['outline', 'bold', 'twotone']) assert.ok(element.innerHTML.includes(`class="ym-icon-${variant}"`));
+            continue;
+        }
         for (const variant of ['outline', 'bold', 'twotone']) {
             assert.ok(element.innerHTML.includes(`<g class="ym-icon-${variant}">${original[variant] || original.outline}</g>`), `${name}/${variant}`);
         }
@@ -234,4 +279,15 @@ test('local functional icon subset preserves the authoritative Qianmu artwork an
     assert.match(source, /Copyright Iconsax/);
     assert.match(source, /ISC License/);
     assert.match(source, /Copyright \(c\) 2013-present Cole Bemis/);
+});
+
+test('all literal view icon consumers resolve to registered local artwork', async () => {
+    for (const file of ['view.mjs', 'api-view.mjs', 'prompt-view.mjs', 'scene-view.mjs']) {
+        const source = await readFile(new URL(`../yimu/${file}`, import.meta.url), 'utf8');
+        const names = [
+            ...[...source.matchAll(/\bcreateYimuIcon\(\s*['"]([^'"]+)['"]/g)].map(match => match[1]),
+            ...[...source.matchAll(/\b(?:iconButton|button)\(\s*['"][^'"]*['"]\s*,\s*['"]([^'"]+)['"]/g)].map(match => match[1]),
+        ];
+        for (const name of names) assert.ok(YIMU_ICON_NAMES.includes(name), `${file}: ${name} must be registered before the panel mounts`);
+    }
 });

@@ -1,10 +1,10 @@
 // Account-scoped ST settings only. Never put connection secrets in a memory document or backup.
-import { byteBudget } from './budget.mjs';
+import { summaryRequestBudget } from './budget.mjs';
 
-const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false,
-    temperature: 0.7, maxTokens: 2048, contextTokens: 32768, stream: false, presets: [], selectedPreset: '', revision: 0 });
+const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
+    temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
-const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured'];
+const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured', 'qianmuPresetId'];
 const clone = value => structuredClone(value);
 const text = value => typeof value === 'string' ? value.trim() : '';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -26,7 +26,7 @@ function validate(patch) {
     const out = {};
     for (const [key, value] of Object.entries(patch)) {
         if (!CONNECTION_FIELDS.includes(key)) fail('未知的连接设置');
-        if (key === 'mode') { if (!['inherit', 'st', 'profile', 'external'].includes(value)) fail('连接方式无效'); }
+        if (key === 'mode') { if (!['inherit', 'st', 'profile', 'qianmu', 'external'].includes(value)) fail('连接方式无效'); }
         else if (key === 'stream' || key === 'profileConfigured') { if (typeof value !== 'boolean') fail('连接开关设置无效'); }
         else if (key === 'temperature') { if (!Number.isFinite(value) || value < 0 || value > 2) fail('温度须在 0—2 之间'); }
         else if (key === 'maxTokens' || key === 'contextTokens') {
@@ -100,6 +100,19 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     const listeners = new Set(); let saving = Promise.resolve();
     const context = () => getContext() || fail('ST 尚未准备好连接设置');
     const read = () => savedConfig(context());
+    // Same account-owned apiProfiles used by the companion dialog. Never copy its credentials into yimu settings.
+    const qianmuOwner = () => context().extensionSettings?.story_director_liminale;
+    const qianmuProfiles = () => (Array.isArray(qianmuOwner()?.apiProfiles) ? qianmuOwner().apiProfiles : [])
+        .filter(profile => object(profile) && text(profile.id)).map(profile => ({ id: text(profile.id), name: text(profile.name), model: text(profile.model) }));
+    const livePreset = id => {
+        const owner = qianmuOwner(), profile = (Array.isArray(owner?.apiProfiles) ? owner.apiProfiles : []).find(item => text(item?.id) === id);
+        if (!profile) fail('所选千幕 API 预设已不存在，请重新选择');
+        if (!text(profile.apiUrl) || !text(profile.model)) fail('所选千幕 API 预设缺少地址或模型，请在千幕中完善');
+        return { owner, profile };
+    };
+    let presetSerial = 0;
+    const presetTickets = new Map();
+    const presetSignature = profile => JSON.stringify([profile.id, profile.apiUrl, profile.apiKey, profile.model, profile.temperature]);
     const notify = () => { for (const listener of listeners) { try { listener(); } catch {} } };
     const commit = transform => {
         const pending = saving.catch(() => {}).then(async () => {
@@ -123,6 +136,14 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         const config = read(), ctx = context();
         if (config.mode === 'external') return { mode: 'external', profileId: '', model: config.model,
             contextTokens: config.contextTokens, maxTokens: config.maxTokens, revision: config.revision };
+        if (config.mode === 'qianmu') {
+            if (!config.qianmuPresetId) fail('请选择千幕 API 预设');
+            const live = livePreset(config.qianmuPresetId), ticket = ++presetSerial;
+            presetTickets.set(ticket, { owner: live.owner, signature: presetSignature(live.profile), id: config.qianmuPresetId });
+            if (presetTickets.size > 32) presetTickets.delete(presetTickets.keys().next().value);
+            return { mode: 'qianmu', qianmuPresetId: config.qianmuPresetId, model: text(live.profile.model),
+                contextTokens: config.contextTokens, maxTokens: config.maxTokens, revision: config.revision, presetTicket: ticket };
+        }
         if (config.mode === 'profile' || config.mode === 'inherit' && text(legacy.profileId)) return { mode: 'profile',
             profileId: config.mode === 'profile' && config.profileConfigured ? config.profileId : text(legacy.profileId),
             model: config.mode === 'profile' && config.profileConfigured ? config.profileModel : text(legacy.model),
@@ -133,6 +154,12 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     }
     const assertCurrent = connection => {
         if (connection && read().revision !== connection.revision) fail('整理连接已变化，本次结果未采用');
+        if (connection?.mode === 'qianmu') {
+            const expected = presetTickets.get(connection.presetTicket), config = read();
+            if (!expected || config.mode !== 'qianmu' || config.qianmuPresetId !== expected.id) fail('千幕 API 预设已变化，本次结果未采用');
+            const live = livePreset(expected.id);
+            if (expected.owner !== live.owner || expected.signature !== presetSignature(live.profile)) fail('千幕 API 预设已变化，本次结果未采用');
+        }
     };
     async function request(path, config, body, signal) {
         aborted(signal);
@@ -179,14 +206,21 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         return { ok: true, scope: 'model-list' };
     }
     async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens } = {}) {
-        await saving.catch(() => {}); const config = read(); assertCurrent(connection);
-        if (config.mode !== 'external') fail('当前未选择独立连接');
+        await saving.catch(() => {}); let config = read();
+        connection ||= config.mode === 'qianmu' ? effectiveConnection() : { revision: config.revision };
+        assertCurrent(connection);
+        if (!['external', 'qianmu'].includes(config.mode)) fail('当前未选择独立连接或千幕 API 预设');
+        if (config.mode === 'qianmu') {
+            const { profile } = livePreset(config.qianmuPresetId);
+            config = { ...config, apiUrl: text(profile.apiUrl), apiKey: text(profile.apiKey), model: text(profile.model),
+                temperature: Number.isFinite(profile.temperature) ? profile.temperature : DEFAULTS.temperature };
+        }
         if (!text(config.model)) fail('请选择或填写整理模型');
         if (!text(prompt)) fail('没有可整理的聊天原文');
         const outputTokens = maxTokens === undefined ? config.maxTokens : Math.min(config.maxTokens, maxTokens);
         if (!Number.isSafeInteger(outputTokens) || outputTokens < 1) fail('整理输出长度无效');
         const messages = [{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }];
-        if (byteBudget(messages) + outputTokens > config.contextTokens) fail('整理内容超出此连接的上下文容量，请缩小整理范围或提高上下文 Token 数');
+        if (summaryRequestBudget(prompt, systemPrompt) + outputTokens > config.contextTokens) fail('整理内容超出此连接的上下文容量，请缩小整理范围或提高上下文 Token 数');
         try {
             const response = await request('/api/backends/chat-completions/generate', config,
                 { model: config.model, messages, temperature: config.temperature, max_tokens: outputTokens, stream: config.stream }, signal);
@@ -208,6 +242,6 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         return { ...current, ...Object.fromEntries(FIELDS.map(key => [key, preset[key] ?? DEFAULTS[key]])), mode: 'external', selectedPreset: id, models: [] };
     });
     const deletePreset = id => commit(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
-    return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset,
+    return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

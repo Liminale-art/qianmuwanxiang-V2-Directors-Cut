@@ -24,6 +24,10 @@ const TOKENS = Object.freeze({
 });
 const SOURCE_IDS = ['story-director-modal', 'story-director-float'];
 const ATTRIBUTES = ['class', 'style', 'data-qm-theme', 'data-qm-mode'];
+// qianmu-font-runtime excludes owned qm-/sd- surfaces from its layered ST
+// !important font rules. Join that same boundary instead of fighting it with
+// a second font cascade (layered !important rules beat unlayered ones).
+const FONT_SURFACE_CLASS = 'qm-yimu-surface';
 // Same opaque reader surfaces as qianmu-classic-palettes.js. Kept local so the
 // independently installed Yimu bundle never imports the Qianmu extension.
 const CLASSIC_SURFACES = Object.freeze({
@@ -41,6 +45,9 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
     const written = new Map();
     const originalAttributes = new Map();
     const writtenAttributes = new Map();
+    const classTokens = () => String(root.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+    const ownsFontClass = !classTokens().includes(FONT_SURFACE_CLASS);
+    if (ownsFontClass) root.setAttribute('class', [...classTokens(), FONT_SURFACE_CLASS].join(' '));
     let source = null;
     let disposed = false;
     const read = (style, name) => String(style?.getPropertyValue?.(name) || '').trim();
@@ -120,6 +127,11 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
                 const before = originalAttributes.get(name);
                 if (before === null) root.removeAttribute(name);
                 else root.setAttribute(name, before);
+            }
+            if (ownsFontClass) {
+                const remaining = classTokens().filter(name => name !== FONT_SURFACE_CLASS);
+                if (remaining.length) root.setAttribute('class', remaining.join(' '));
+                else root.removeAttribute('class');
             }
             source = null;
         },

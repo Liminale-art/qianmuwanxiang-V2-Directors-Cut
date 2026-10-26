@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PROMPTS, resolvePromptConfig, composePrompt, validatePromptConfig, exportPromptPreset, importPromptPreset, mergeImportedPromptConfig } from '../yimu/prompt-settings.mjs';
+import { DEFAULT_PROMPTS, BUILTIN_PROMPT_PRESET, selectPromptPreset, resolvePromptConfig, composePrompt, validatePromptConfig, exportPromptPreset, importPromptPreset, mergeImportedPromptConfig } from '../yimu/prompt-settings.mjs';
 test('actual defaults are visible independent copies and legacy preferences remain editable entries', () => {
     const value = resolvePromptConfig({preference:'保留约定'});
     assert.equal(value.groups.summary.at(-1).text,'保留约定'); assert.equal(value.groups.stage.at(-1).text,'保留约定');
@@ -29,4 +29,12 @@ test('importing a prompt config preserves existing presets and conflicting prese
     const incoming=structuredClone(before); incoming.presets[0].groups.summary[0].text='另一份规则'; incoming.selectedPreset='saved';
     const merged=mergeImportedPromptConfig(before,incoming,()=> 'new-import');
     assert.equal(merged.presets.length,2); assert.deepEqual(merged.presets[0],before.presets[0]); assert.equal(merged.selectedPreset,'new-import');
+    assert.deepEqual(mergeImportedPromptConfig(merged,incoming,()=> 'must-not-allocate'),merged);
+});
+
+test('built-in selection is UI-only and preserves the named preset library',()=>{
+    const value=resolvePromptConfig();value.presets=[{id:'mine',name:'已存预设',groups:structuredClone(value.groups)}];value.presets[0].groups.summary[0].text='自定义内容';
+    const named=selectPromptPreset(value,'mine');assert.equal(named.groups.summary[0].text,'自定义内容');assert.equal(named.selectedPreset,'mine');
+    const builtin=selectPromptPreset(named,BUILTIN_PROMPT_PRESET);assert.deepEqual(builtin.groups,DEFAULT_PROMPTS.groups);assert.deepEqual(builtin.presets,value.presets);assert.equal(builtin.selectedPreset,'');
+    assert.throws(()=>selectPromptPreset(value,'missing'),/不存在/);assert.equal(value.groups.summary[0].text,DEFAULT_PROMPTS.groups.summary[0].text);
 });

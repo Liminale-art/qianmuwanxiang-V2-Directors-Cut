@@ -18,6 +18,11 @@ export function byteBudget(messages) {
     return new TextEncoder().encode(JSON.stringify(messages)).byteLength + messages.length * 24 + 96;
 }
 
+// Shared by batch admission and the final ST/custom-connection boundary.
+export function summaryRequestBudget(prompt, systemPrompt = '你是忆幕的整理助手。') {
+    return byteBudget([{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }]);
+}
+
 export function memoryMessage(entries, entryOrder = []) {
     return {
         role: 'system',

@@ -1,6 +1,6 @@
 // The only ST-facing layer. No direct chat writes, global connection switches or fetch patches.
 import { fingerprintMessages } from './contract.mjs';
-import { buildBudgetedMessages, captureCore, payloadSupport } from './budget.mjs';
+import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudget } from './budget.mjs';
 import { createApiSettings } from './api-settings.mjs';
 
 export const MEMORY_PROMPT_KEY = 'yimu-memory';
@@ -208,15 +208,7 @@ export function createHost({
     }
 
     function profiles() {
-        const service = context().ConnectionManagerRequestService;
-        if (typeof service?.getSupportedProfiles !== 'function') return [];
-        try {
-            return service.getSupportedProfiles().map(profile => ({
-                id: text(profile.id), name: text(profile.name), model: text(profile.model), api: text(profile.api),
-            })).filter(profile => profile.id);
-        } catch {
-            return [];
-        }
+        return connectionApi.qianmuProfiles();
     }
 
     async function generate(prompt, { profileId = '', model = '', connection, signal, systemPrompt = SUMMARY_SYSTEM, maxTokens } = {}) {
@@ -225,7 +217,9 @@ export function createHost({
         const ctx = context();
         const selected = connection || connectionApi.effectiveConnection({ profileId, model });
         connectionApi.assertCurrent(selected);
-        if (selected.mode === 'external') return connectionApi.generate(prompt, { connection: selected, signal, systemPrompt, maxTokens });
+        if (selected.mode === 'external' || selected.mode === 'qianmu') return connectionApi.generate(prompt, { connection: selected, signal, systemPrompt, maxTokens });
+        if (selected.mode === 'st' && selected.contextTokens > 0 && summaryRequestBudget(prompt, systemPrompt)
+            + selected.maxTokens > selected.contextTokens) throw new Error('整理内容超出此连接的上下文容量，请缩小整理范围或选择容量足够的连接');
         if (selected.mode === 'profile' && !selected.profileId) throw new Error('请选择 ST 连接预设');
         profileId = selected.profileId; model = selected.model; maxTokens ??= 2048;
         let result;

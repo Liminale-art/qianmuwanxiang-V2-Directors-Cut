@@ -52,7 +52,7 @@ function dom() {
         closest(selector) { for (let node = this; node; node = node.parentNode) if (node.matches(selector)) return node; return null; }
         addEventListener(name, handler) { if (!this.events.has(name)) this.events.set(name, new Set()); this.events.get(name).add(handler); }
         emit(name, extra = {}) {
-            const event = { target: this, defaultPrevented: false, stopped: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
+            const event = { type: name, target: this, defaultPrevented: false, stopped: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...extra };
             for (const handler of this.events.get(name) || []) handler(event);
             return event;
         }
@@ -96,7 +96,7 @@ test('backup accepts several files immediately and file-picker cancellation stay
     const d=dom(),calls=[],view=createView({document:d.document,onAction:async(...args)=>calls.push(args)});
     view.render(state({snapshot:null,document:null,defaults:null,service:{status:'ok'}}));view.open();
     d.get('展开记忆备份').click();
-    const choose=d.get('导入备份'),picker=d.get('忆幕备份文件');assert.equal(picker.multiple,true);
+    const choose=d.get('导入记忆'),picker=d.get('忆幕备份文件');assert.equal(picker.multiple,true);
     let opened=0;picker.addEventListener('click',()=>opened++);choose.click();assert.equal(opened,1);assert.deepEqual(calls,[]);
     const files=[{name:'one.yimu.gz'},{name:'two.yimu.gz'}];picker.files=files;picker.emit('change');await d.flush();
     assert.deepEqual(calls,[['backupImport',{files}]]);assert.equal(d.get('确认上传备份包'),undefined);assert.equal(d.get('已导入备份'),undefined);
@@ -106,17 +106,18 @@ test('backup accepts several files immediately and file-picker cancellation stay
 test('backup disables actions during processing and reports each file without hiding another result', async () => {
     const d=dom(),view=createView({document:d.document,onAction:async()=>{}});
     view.render(state({service:{status:'ok'},backup:{busy:true,items:[{id:'a',name:'one.yimu.gz',status:'uploading'},{id:'b',name:'two.yimu.gz',status:'complete',message:'内容相同，已跳过'}]}}));
-    assert.equal(d.get('导入备份').disabled,true);assert.match(d.document.body.textContent,/one.yimu.gz/);assert.match(d.document.body.textContent,/正在读取并核对备份/);assert.match(d.document.body.textContent,/内容相同，已跳过/);
-    view.render(state({service:{status:'error'}}));assert.equal(d.get('导入备份').disabled,true);view.destroy();
+    assert.equal(d.get('导入记忆').disabled,true);assert.match(d.document.body.textContent,/one.yimu.gz/);assert.match(d.document.body.textContent,/正在读取并核对备份/);assert.match(d.document.body.textContent,/内容相同，已跳过/);
+    view.render(state({service:{status:'error'}}));assert.equal(d.get('导入记忆').disabled,true);view.destroy();
 });
 
-test('backup exports in one action and original attachments remain an independent opt-in', async () => {
+test('backup asks once before exporting and originals remain a separate explicit choice', async () => {
     const d=dom(),calls=[],view=createView({document:d.document,onAction:async(...args)=>calls.push(args)});
     const s=state({backup:{exportPlan:{planId:'p',binding:state().snapshot.binding,primarySourceId:'main',sources:[{id:'main',label:'Main',available:true},{id:'ancestor',label:'Ancestor',available:true}]}}});
-    view.render(s);assert.equal(d.get('附带ST聊天原件').checked,false);d.get('导出当前记忆').click();await d.flush();assert.deepEqual(calls[0],['backupQuickExport',{includeOriginals:false}]);
-    d.get('附带ST聊天原件').checked=true;d.get('附带ST聊天原件').emit('change');await d.flush();
+    view.render(s);assert.equal(d.get('附带ST聊天原件'),undefined);d.get('导出记忆').click();await d.flush();assert.deepEqual(calls,[]);
+    d.get('取消导出').click();assert.deepEqual(calls,[]);d.get('导出记忆').click();d.get('否，仅导出记忆').click();await d.flush();assert.deepEqual(calls[0],['backupQuickExport',{includeOriginals:false}]);
+    d.get('导出记忆').click();d.get('是，一起打包').click();await d.flush();
     assert.equal(d.get('Main').checked,true);assert.equal(d.get('Ancestor').checked,false);d.get('Ancestor').checked=true;
-    d.get('导出当前记忆').click();await d.flush();assert.deepEqual(calls.at(-1),['backupQuickExport',{includeOriginals:true,planId:'p',sourceIds:['main','ancestor']}]);view.destroy();
+    d.get('打包并导出').click();await d.flush();assert.deepEqual(calls.at(-1),['backupQuickExport',{includeOriginals:true,planId:'p',sourceIds:['main','ancestor']}]);view.destroy();
 });
 
 test('ambiguous imports show only a target choice or cancellation and keep raw text out of the panel', async () => {
@@ -128,9 +129,9 @@ test('ambiguous imports show only a target choice or cancellation and keep raw t
     assert.deepEqual(calls[0],['backupResolve',{itemId:'a',targetBinding:target}]);assert.equal(d.document.querySelector('.ym-backup').querySelector('img'),null);view.destroy();
 });
 
-function fixture(patch, handler) {
+function fixture(patch, handler, options = {}) {
     const d = dom(), calls = [];
-    const view = createView({ document: d.document, onAction: async (type, payload) => { calls.push({ type, payload }); return handler?.(type, payload); } });
+    const view = createView({ ...options, document: d.document, onAction: async (type, payload) => { calls.push({ type, payload }); return handler?.(type, payload); } });
     let current = state(patch); view.render(current);
     return { ...d, calls, view, render(next) { current = { ...current, ...next }; view.render(current); }, get state() { return current; } };
 }
@@ -183,7 +184,8 @@ test('opening a panel only displays its frontend and does not enable, summarize 
     assert.equal(f.calls.length, 0); assert.equal(f.get('启用忆幕').checked, false);
     assert.equal(f.get('整理未覆盖内容'), undefined);
     assert.equal(f.get('开始总结').disabled, true);
-    assert.equal(f.get('忆幕').querySelectorAll('.ym-memory').length, 0);
+    assert.equal(f.get('忆幕').querySelector('.ym-list').children.length, 0);
+    assert.equal(f.get('忆幕').querySelector('.ym-deleted').hidden, true);
 });
 
 test('the input shortcut preference is available in settings without a chat and separate from per-chat memory enable', async t => {
@@ -216,7 +218,7 @@ test('first card has independent master and automatic switches, manual stays ava
     assert.equal(f.get('自动总结').closest('.ym-hero-switches'), master.closest('.ym-hero-switches'));
 });
 
-test('API profile editing is one account connection and numeric scope switches never rewrite it or server settings', async t => {
+test('API offers the three intended connections and no numeric scope controls can rewrite stored legacy choices', async t => {
     const d = dom(), calls = [], ctx = { extensionSettings: {}, saveSettingsDebounced: async () => {} };
     const connectionApi = createApiSettings({ getContext: () => ctx });
     const view = createView({ document: d.document, connectionApi, onAction: async (type, payload) => { calls.push({type,payload}); } });
@@ -225,24 +227,22 @@ test('API profile editing is one account connection and numeric scope switches n
         defaults:{revision:7,values:{...state().defaults.values,profileId:'global-profile',model:'global-model'}},
         document:{...state().document,settings:{profileId:'chat-profile',model:'chat-model'}} }));
     d.get('设置').click();
-    assert.equal(d.get('ST 连接预设').value,'chat-profile'); assert.equal(connectionApi.read().mode,'inherit');
-    d.get('整理连接方式').value='profile'; d.get('整理连接方式').emit('change'); await d.flush();
-    assert.equal(connectionApi.read().profileConfigured,true);
-    d.get('全局默认').click();
-    assert.equal(d.get('ST 连接预设').value,'chat-profile'); assert.equal(d.get('ST 连接模型').value,'chat-model');
-    d.get('ST 连接模型').value='new-account-model'; d.get('ST 连接模型').emit('change'); await d.flush();
-    assert.equal(connectionApi.read().profileModel,'new-account-model'); assert.deepEqual(calls,[]);
-    d.get('当前聊天').click(); assert.equal(d.get('ST 连接预设').value,'chat-profile'); assert.equal(d.get('ST 连接模型').value,'new-account-model');
-    assert.deepEqual(calls,[], 'the numeric scope selector cannot submit or migrate account API choices');
+    const mode=d.get('整理连接方式');assert.deepEqual(mode.children.map(item=>item.value),['st','qianmu','external']);
+    assert.equal(connectionApi.read().mode,'inherit');assert.match(d.document.body.textContent,/旧版 ST 连接已保留/);
+    for(const label of ['ST 连接预设','当前聊天','全局默认'])assert.equal(d.get(label),undefined);
+    assert.deepEqual(calls,[], 'rendering an old profile cannot submit or migrate it');
+    mode.value='st';mode.emit('change');await d.flush();assert.equal(connectionApi.read().mode,'st');assert.deepEqual(calls,[]);
 });
 
-test('unacknowledged invalid slices never inflate coverage and the pending shortcut fills only uncovered floors', t => {
+test('unacknowledged invalid slices never inflate coverage and statistics are display-only', t => {
     const f=fixture({document:{...state().document,enabled:true,initialRange:{start:1,end:9,total:9},entries:[entry()]},invalidSourceIds:['slice-a']});
     t.after(()=>f.view.destroy());
     const values=f.document.querySelector('.ym-stats').querySelectorAll('b');
     assert.equal(values[0].textContent,'0'); assert.equal(values[1].textContent,'0');
-    f.get('待整理层').click();
-    assert.equal(f.get('手动总结开始楼层').value,'1'); assert.equal(f.get('手动总结结束楼层').value,'4');
+    const stats=f.document.querySelector('.ym-stats');assert.equal(stats.children.length,3);
+    assert.ok(stats.children.every(node=>node.tagName==='DIV'));assert.equal(stats.querySelector('button'),null);
+    stats.children[2].click();assert.deepEqual(f.calls,[]);
+    assert.equal(f.get('手动总结开始楼层').value,'1'); assert.equal(f.get('手动总结结束楼层').value,'9');
 });
 
 test('compact history controls edit explicit bounds and persist cancellation rather than hiding a temporary form', async t => {
@@ -415,18 +415,17 @@ test('stage grouping and invalidation do not detach an active fine editor mid-co
     assert.equal(f.get('忆幕').querySelector('.ym-list').children.length, 3);
 });
 
-test('stage automatic mode is initially off and persists only through explicit settings save', async t => {
+test('stage automatic mode is initially off and deliberately toggling it autosaves the current chat', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const toggle = f.get('自动整理阶段摘要'); assert.equal(toggle.checked, false); assert.equal(f.calls.length, 0);
-    toggle.checked = true; toggle.emit('change'); assert.equal(f.calls.length, 0);
-    f.get('保存设置').click(); await f.flush();
+    const toggle = f.get('自动阶段总结'); assert.equal(toggle.checked, false); assert.equal(f.calls.length, 0);
+    toggle.checked = true; toggle.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: true }, expectedRevision: 0 });
 });
 
 test('controlled recall uses one default-on trial switch and saves the existing setting key', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const recall = f.get('自动回查与补充（试用）'); assert.equal(recall.checked, true);
-    recall.checked = false; recall.emit('change'); f.get('保存设置').click(); await f.flush();
+    const recall = f.get('原文回查与补充'); assert.equal(recall.checked, true);
+    assert.equal(recall.closest('details').open,false);recall.checked = false; recall.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: false }, expectedRevision: 0 });
     assert.equal(f.get('按需回查细摘要'), undefined);
 });
@@ -434,11 +433,11 @@ test('controlled recall uses one default-on trial switch and saves the existing 
 test('the renamed trial switch preserves old global and chat-level false values without writing a migration', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: false } } });
-    assert.equal(f.get('自动回查与补充（试用）').checked, false);
+    assert.equal(f.get('原文回查与补充').checked, false);
     f.render({ document: { ...f.state.document, settings: { recall: true } } });
-    assert.equal(f.get('自动回查与补充（试用）').checked, true, 'an explicit chat override wins');
+    assert.equal(f.get('原文回查与补充').checked, true, 'an explicit chat override wins');
     f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: true } }, document: { ...f.state.document, settings: { recall: false } } });
-    assert.equal(f.get('自动回查与补充（试用）').checked, false);
+    assert.equal(f.get('原文回查与补充').checked, false);
     assert.equal(f.calls.length, 0);
 });
 
@@ -489,15 +488,18 @@ test('excerpt deletion, exclusion and undo retain ordinary entry actions without
     assert.deepEqual(f.calls.map(call => call.payload.action), ['exclude', 'delete', 'undo']);
 });
 
-test('stage basis offers three separate units and suggests mode defaults without replacing a custom threshold', async t => {
+test('stage basis switches between all three units without replacing focused select nodes or resetting the chosen mode', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const basis = f.get('阶段整理依据'), threshold = f.get('阶段整理阈值');
-    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'floors', 'slices']); assert.equal(threshold.value, '6000');
-    basis.value = 'floors'; basis.emit('change'); assert.equal(threshold.value, '100');
-    basis.value = 'slices'; basis.emit('change'); assert.equal(threshold.value, '12');
-    threshold.value = '37'; threshold.emit('input'); basis.value = 'tokens'; basis.emit('change'); assert.equal(threshold.value, '37');
-    f.get('保存设置').click(); await f.flush();
-    assert.deepEqual(f.calls[0].payload.values, { stageBasis: 'tokens', stageThreshold: 37 });
+    const basis = f.get('阶段整理方式'), threshold = f.get('阶段总结触发');
+    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'floors', 'slices']); assert.equal(threshold.value, '65000');
+    const options=[...basis.children];basis.focus();
+    for(const [value,limit] of [['floors',100],['slices',12],['tokens',65000]]){
+        basis.value=value;basis.emit('change');assert.equal(threshold.value,String(limit));assert.equal(basis.value,value);
+        const call=f.calls.at(-1);assert.deepEqual(call.payload.values,{stageThreshold:limit,stageBasis:value});
+        f.render({document:{...f.state.document,configRevision:(f.state.document.configRevision||0)+1,settings:{...f.state.document.settings,...call.payload.values}}});
+        await f.flush();assert.equal(basis.value,value);assert.deepEqual(basis.children,options);assert.equal(f.document.activeElement,basis);
+    }
+    threshold.value='37000';threshold.emit('change');await f.flush();assert.equal(f.calls.at(-1).payload.values.stageThreshold,37000);
 });
 
 test('deleted memories remain absent from active cards but expose an explicit undo instead of a permanent range ban', async t => {
@@ -566,53 +568,53 @@ test('candidate and device-conflict decisions explicitly identify the record rev
     ]);
 });
 
-test('current-chat overrides and global defaults save independently, with one form-wide default reset', async t => {
+test('clearing an individual setting restores its default without rewriting other settings or global defaults', async t => {
     const f = fixture({ document: { enabled: false, settings: { recent: 7 }, entries: [] } }); t.after(() => f.view.destroy());
-    assert.equal(f.get('近期原文层数').value, '7');
-    assert.equal(f.get('近期原文层数跟随默认'), undefined);
-    f.get('恢复默认设置').click(); assert.equal(f.get('近期原文层数').value, '5');
-    f.get('保存设置').click(); await f.flush(); assert.deepEqual(f.calls[0], { type: 'settings', payload: { global: false, values: { recent: null, trigger: null, recall: null, stageAuto: null, stageBasis: null, stageThreshold: null, profileId: null, model: null, batch: null, budget: null }, expectedRevision: 0 } });
-    f.get('全局默认').click(); f.get('近期原文层数').value = '8'; f.get('近期原文层数').emit('input');
-    f.get('保存设置').click(); await f.flush(); assert.deepEqual(f.calls[1], { type: 'settings', payload: { global: true, values: { recent: 8 }, expectedRevision: 0 } });
+    const recent=f.get('正文保留层数');assert.equal(recent.value, '7');
+    for(const label of ['近期原文层数跟随默认','恢复默认设置','保存设置','全局默认','当前聊天','取消设置修改'])assert.equal(f.get(label),undefined);
+    recent.value='';recent.emit('change');await f.flush();assert.deepEqual(f.calls[0],{type:'settings',payload:{global:false,values:{recent:null},expectedRevision:0}});
+    f.render({document:{...f.state.document,configRevision:1,settings:{}}});assert.equal(recent.value,'5');
+    recent.value='8';recent.emit('change');await f.flush();assert.deepEqual(f.calls[1],{type:'settings',payload:{global:false,values:{recent:8},expectedRevision:1}});
     assert.equal(f.state.defaults.values.recent, 5, 'view itself never mutates canonical defaults');
 });
 
 test('settings and manual-add drafts survive status refresh; a failed save does not clear them', async t => {
     const f = fixture({}, () => false); t.after(() => f.view.destroy());
     assert.equal(f.get('记忆整理偏好'), undefined);
-    f.get('近期原文层数').value = '8'; f.get('近期原文层数').emit('input');
+    f.get('正文保留层数').value = '8'; f.get('正文保留层数').emit('input');
     f.get('插入自定义切片').click(); f.get('自定义切片内容').value = '只有用户确认的背景'; f.get('自定义切片内容').emit('input');
     f.render({ status: '正在整理…' });
-    assert.equal(f.get('近期原文层数').value, '8'); assert.equal(f.get('自定义切片内容').value, '只有用户确认的背景');
+    assert.equal(f.get('正文保留层数').value, '8'); assert.equal(f.get('自定义切片内容').value, '只有用户确认的背景');
+    f.get('正文保留层数').emit('blur');await f.flush();assert.equal(f.get('正文保留层数').value,'8');
     f.get('保存自定义切片').click(); await f.flush(); assert.equal(f.get('自定义切片内容').value, '只有用户确认的背景');
 });
 
 test('settings retain the edit-start revision across a remote refresh rather than overwriting a newer configuration', async t => {
     const f = fixture({ document: { enabled: true, configRevision: 4, settings: {}, entries: [] } }); t.after(() => f.view.destroy());
-    f.get('近期原文层数').value = '12'; f.get('近期原文层数').emit('input');
+    f.get('正文保留层数').value = '12'; f.get('正文保留层数').emit('input');
     f.render({ document: { ...f.state.document, configRevision: 5, settings: { recent: 6 } } });
-    f.get('保存设置').click(); await f.flush();
+    f.get('正文保留层数').emit('blur'); await f.flush();
     assert.deepEqual(f.calls[0].payload, { global: false, values: { recent: 12 }, expectedRevision: 4 });
 });
 
-test('a conflicting settings draft can be explicitly discarded and restarted against the latest saved revision', async t => {
+test('a failed settings draft is retained and only a new deliberate edit can retry against the latest revision', async t => {
     const f = fixture({ document: { enabled: true, configRevision: 4, settings: {}, entries: [] } }, () => false); t.after(() => f.view.destroy());
-    f.get('近期原文层数').value = '12'; f.get('近期原文层数').emit('input');
+    f.get('正文保留层数').value = '12'; f.get('正文保留层数').emit('input');
     f.render({ document: { ...f.state.document, configRevision: 5, settings: { recent: 6 } } });
-    f.get('保存设置').click(); await f.flush();
-    f.get('取消设置修改').click(); assert.equal(f.get('近期原文层数').value, '6');
-    f.get('近期原文层数').value = '9'; f.get('近期原文层数').emit('input'); f.get('保存设置').click(); await f.flush();
+    f.get('正文保留层数').emit('blur'); await f.flush();assert.equal(f.get('正文保留层数').value,'12');assert.equal(f.calls.length,1);
+    f.render({status:'后台状态刷新'});await f.flush();assert.equal(f.calls.length,1);
+    f.get('正文保留层数').emit('blur');await f.flush();assert.equal(f.calls.length,1,'another blur without editing must not repeat a failed write');
+    f.get('正文保留层数').value = '9'; f.get('正文保留层数').emit('change'); await f.flush();
     assert.equal(f.calls[1].payload.expectedRevision, 5); assert.deepEqual(f.calls[1].payload.values, { recent: 9 });
 });
 
-test('the batch capacity accepts zero as default, rejects invalid positive capacity, and saves a larger connection capacity', async t => {
+test('there is no redundant batch setting and the two per-entry limits are validated as characters', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const batch = f.get('单次整理上限（token）'); assert.equal(batch.value, '6000'); assert.equal(batch.min, '0');
-    batch.value = '255'; batch.emit('input'); f.get('保存设置').click(); await f.flush();
-    assert.equal(f.calls.length, 0); assert.match(f.all().find(node => node.attrs.role === 'status').textContent, /单次整理上限.*范围/);
-    batch.value = '32000'; batch.emit('input'); f.get('整理连接').value = 'custom-profile'; f.get('整理连接').emit('change');
-    f.get('保存设置').click(); await f.flush();
-    assert.deepEqual(f.calls[0].payload, { global: false, values: { batch: 32000, profileId: 'custom-profile' }, expectedRevision: 0 });
+    assert.equal(f.get('单次整理上限（token）'),undefined);f.get('设置').click();
+    const slice=f.get('每条切片字数上限'),stage=f.get('每条阶段总结字数上限');assert.equal(slice.value,'2000');assert.equal(stage.value,'3000');
+    slice.value='0';slice.emit('change');await f.flush();assert.equal(f.calls.length,0);assert.match(f.document.querySelector('.ym-status').textContent,/每条切片字数上限.*范围/);
+    slice.value='2500';slice.emit('change');await f.flush();assert.deepEqual(f.calls[0].payload,{global:false,values:{sliceChars:2500},expectedRevision:0});
+    assert.match(slice.parentNode.parentNode.textContent,/单位：字.*token 因模型而异/);
 });
 
 test('unverified source disables all summary launch controls while keeping manual records editable', t => {
@@ -647,7 +649,7 @@ test('a late failed save cannot overwrite the next chat status or restore an old
     f.render({ snapshot: { ...f.state.snapshot, binding: { ...f.state.snapshot.binding, file: '另一聊天' } }, status: '另一聊天已加载' });
     reject(Error('旧保存错误')); await f.flush();
     assert.equal(f.get('自定义切片内容').value, '');
-    assert.equal(f.all().find(node => node.attrs.role === 'status').textContent, '另一聊天已加载');
+    assert.equal(f.document.querySelector('.ym-status').textContent, '');assert.equal(f.document.querySelector('.ym-status').hidden,true);
 });
 
 test('dialog restores entry focus on Escape and outside click, retains forms on ordinary close, and does not close for inner clicks', t => {
@@ -677,16 +679,18 @@ test('loading and unavailable states retain navigation and expose service help i
 test('service status in settings distinguishes mismatch from unavailable service without a current chat', t => {
     const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.3.0', requiredVersion: '0.3.0'}}); t.after(() => f.view.destroy());
     f.get('设置').click(); const service = f.get('忆幕服务状态');
-    assert.equal(service.textContent, '服务：正常 · v0.3.0'); assert.equal(service.closest('[hidden]'), null);
+    assert.equal(service.querySelector('.ym-service-badge').textContent,'正常');assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'ready');
+    assert.equal(service.querySelector('.ym-service-versions').textContent,'当前 v0.3.0 · 最新 —');assert.equal(service.closest('[hidden]'), null);
     assert.equal(f.get('忆幕').querySelector('.ym-content').hidden, false);
     f.render({service: {status: 'mismatch', version: '0.2.0', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /版本不匹配.*v0\.2\.0.*需 v0\.3\.0/); assert.doesNotMatch(service.textContent, /未连接/);
+    assert.match(service.textContent, /待更新.*v0\.2\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'warning');assert.doesNotMatch(service.textContent, /未连接/);
     f.render({service: {status: 'error', version: '', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /未连接.*配套 v0\.3\.0/); assert.equal(f.calls.length, 0);
+    assert.match(service.textContent, /未连接.*当前 —.*最新 —/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
 });
 
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
     const f = fixture({ lastUsed: { entries: [entry({ text: '请求当时的版本' })], tokens: 134 }, document: { enabled: true, settings: {}, entries: [entry({ text: '后来编辑的版本' })] } }); t.after(() => f.view.destroy());
+    assert.doesNotMatch(f.get('展开记忆调阅').textContent,/token|134/);
     const used = f.get('忆幕').querySelector('.ym-last-used');
     assert.equal(used.open, false); assert.match(used.textContent, /请求当时的版本/); assert.doesNotMatch(used.textContent, /后来编辑的版本/);
     assert.match(used.querySelector('p').title, /不代表模型已接收/); assert.match(used.textContent, /134 token（估算）/);
@@ -773,19 +777,19 @@ test('boot saves only the account UI preference, defaults off, and retains it ac
     const d = dom(), menu = d.document.createElement('div'), sender = d.document.createElement('div');
     menu.id = 'options'; sender.id = 'rightSendForm'; d.document.body.append(menu, sender);
     const previous = Object.fromEntries(['document', 'SillyTavern', 'addEventListener', 'removeEventListener', 'fetch'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-    const listeners = new Map(); let saves = 0, requests = 0, live;
+    const listeners = new Map(), requests=[]; let saves = 0, live;
     const ctx = { extensionSettings: { yimu: { otherPreference: 'keep' } }, saveSettingsDebounced() { saves++; } };
     Object.assign(globalThis, { document: d.document, SillyTavern: { getContext: () => ctx },
         addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
         removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
-        fetch: async () => { requests++; throw Error('No request is allowed for this preference test'); } });
+        fetch: async (url,options) => { requests.push({url,method:options?.method});assert.equal(url,'/api/plugins/yimu/health');assert.equal(options?.method,'GET');throw Error('Synthetic unavailable service'); } });
     try {
         live = boot(); await live.controller.settled();
-        assert.equal(boot(), live); assert.equal(saves, 0); assert.equal(requests, 0);
+        assert.equal(boot(), live); assert.equal(saves, 0); assert.equal(requests.length, 0);
         assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
         let toggle = d.get('显示输入栏快捷入口'); toggle.checked = true; toggle.emit('change'); await d.flush();
         assert.deepEqual(ctx.extensionSettings.yimu, { otherPreference: 'keep', showShortcut: true });
-        assert.equal(saves, 1); assert.equal(requests, 0); assert.equal(live.controller.state.document, null);
+        assert.equal(saves, 1); assert.equal(requests.length, 0); assert.equal(live.controller.state.document, null);
         assert.equal(d.document.getElementById('yimu-send-entry').hidden, false);
         live.dispose(); assert.ok([...listeners.values()].every(items => !items.size));
         live = boot(); await live.controller.settled();
@@ -797,13 +801,13 @@ test('boot saves only the account UI preference, defaults off, and retains it ac
         assert.equal(saves, 2); assert.equal(ctx.extensionSettings.yimu.showShortcut, false);
         assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
         assert.equal(d.document.getElementById('yimu-menu-entry').hidden, false);
-        assert.equal(requests, 0);
+        assert.equal(requests.length, 0);
         ctx.saveSettingsDebounced = () => { throw Error('合成设置保存失败'); };
         toggle.checked = true; toggle.emit('change'); await d.flush();
         assert.equal(ctx.extensionSettings.yimu.showShortcut, false);
         assert.equal(toggle.checked, false); assert.equal(d.document.getElementById('yimu-send-entry').hidden, true);
         assert.match(d.document.querySelector('.ym-status').textContent, /合成设置保存失败/);
-        assert.equal(requests, 0);
+        assert.equal(requests.length, 0,'quiet homepage startup and shortcut preferences never make a server write or model request');
     } finally {
         live?.dispose();
         for (const [key, descriptor] of Object.entries(previous)) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
@@ -849,11 +853,11 @@ test('navigation and reopening retain each scroll position, search and exact edi
     f.get('编辑第 1–3 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '未保存的修订'; editor.emit('input');
     const search = f.get('搜索记忆'); search.value = '约会'; search.emit('input');
     f.get('设置').click(); scroller.scrollTop = 70;
-    f.get('近期原文层数').value = '8'; f.get('近期原文层数').emit('input');
+    f.get('正文保留层数').value = '8'; f.get('正文保留层数').emit('input');
     f.get('记忆').click(); assert.equal(scroller.scrollTop, 120); assert.equal(f.get('编辑记忆内容'), editor);
     assert.equal(editor.value, '未保存的修订'); assert.equal(search.value, '约会');
     f.view.close(); f.view.open(); assert.equal(scroller.scrollTop, 120); assert.equal(f.get('编辑记忆内容'), editor);
-    f.get('设置').click(); assert.equal(scroller.scrollTop, 70); assert.equal(f.get('近期原文层数').value, '8');
+    f.get('设置').click(); assert.equal(scroller.scrollTop, 70); assert.equal(f.get('正文保留层数').value, '8');
     assert.deepEqual(f.calls, []);
 });
 
@@ -932,37 +936,135 @@ test('an initially empty chat receives usable ranges without replacing an edited
     assert.equal(f.get('历史结束楼层').value, '6'); assert.deepEqual(f.calls, []);
 });
 
-test('a new custom slice save preserves newer scene-only input and clears the scene editor only after that newer draft is saved', async t => {
+test('a new custom slice save retains newer time and prose edits in the same editor until confirmed', async t => {
     let finish; const f = fixture({}, () => new Promise(resolve => { finish = resolve; })); t.after(() => f.view.destroy());
     f.get('插入自定义切片').click();
-    const text = f.get('自定义切片内容'); text.value = '正文不再改变'; text.emit('input');
-    f.all().find(node => node.tagName === 'BUTTON' && node.textContent === '添加时空／视角' && node.closest('.ym-manual-form')).click();
-    const date = f.get('场景1日期'); date.value = '旧日期';
-    f.get('保存自定义切片').click(); await f.flush(); assert.equal(f.calls[0].payload.scenes[0].date, '旧日期');
-    date.value = '保存期间新增的日期'; date.emit('input');
+    const text = f.get('自定义切片内容'); text.value = '五月十日，车站。\n正文不再改变'; text.emit('input');
+    assert.equal(f.get('场景1日期'),undefined);assert.equal(f.document.querySelector('.ym-scene-editor'),null);
+    f.get('保存自定义切片').click(); await f.flush(); assert.equal(f.calls[0].payload.text,text.value);assert.deepEqual(f.calls[0].payload.scenes,[]);
+    text.value = '五月十一日，车站。\n正文不再改变'; text.emit('input');
     finish(true); await f.flush();
-    assert.equal(f.get('自定义切片内容'), text); assert.equal(text.value, '正文不再改变');
-    assert.equal(f.get('场景1日期'), date); assert.equal(date.value, '保存期间新增的日期'); assert.equal(date.isConnected, true);
+    assert.equal(f.get('自定义切片内容'), text); assert.equal(text.value, '五月十一日，车站。\n正文不再改变');assert.equal(text.isConnected,true);
     assert.equal(text.closest('.ym-manual-form').hidden, false);
-    f.get('保存自定义切片').click(); await f.flush(); assert.equal(f.calls[1].payload.scenes[0].date, '保存期间新增的日期');
-    finish(true); await f.flush(); assert.equal(text.value, ''); assert.equal(date.isConnected, false);
-    assert.equal(f.get('场景1日期'), undefined, 'the next new slice must not inherit a previously saved scene');
+    f.get('保存自定义切片').click(); await f.flush(); assert.equal(f.calls[1].payload.text,text.value);
+    finish(true); await f.flush(); assert.equal(text.value, '');assert.equal(f.get('场景1日期'), undefined);
 });
 
-test('an existing slice save retains the exact scene editor and newer scene-only draft until a subsequent confirmed save', async t => {
-    let finish; const initial = entry();
+test('an existing slice edits time and prose in place and keeps newer typing across an in-flight save', async t => {
+    let finish; const initial = entry({scenes:[{date:'五月十日',period:'清晨',place:'车站',characters:['甲'],nature:'present',event:'告别',evidence:{floors:[1]}}]});
     const f = fixture({ document: { enabled: true, settings: {}, entries: [initial] } }, () => new Promise(resolve => { finish = resolve; })); t.after(() => f.view.destroy());
     f.get('编辑第 1–3 层').click(); const text = f.get('编辑记忆内容');
-    f.all().find(node => node.tagName === 'BUTTON' && node.textContent === '添加时空／视角' && node.closest('.ym-edit-form')).click();
-    const date = f.get('场景1日期'); date.value = '旧日期';
-    f.get('保存修订').click(); await f.flush(); assert.equal(f.calls[0].payload.scenes[0].date, '旧日期');
-    date.value = '尚未保存的新日期'; date.emit('input');
-    f.render({ document: { ...f.state.document, entries: [entry({ revision: 3, edited: true, scenes: f.calls[0].payload.scenes })] } });
+    const card=f.get('编辑第 1–3 层').closest('.ym-memory');assert.equal(card.querySelectorAll('textarea').length,1);
+    assert.equal(card.querySelector('.ym-memory-content').hidden,true);assert.ok(f.get('保存修订').closest('.ym-memory-head'));assert.equal(f.get('保存修订').textContent,'');
+    assert.match(text.value,/五月十日.*清晨.*车站/);assert.equal(f.get('场景1日期'),undefined);
+    text.value=text.value.replace('五月十日','五月十一日');text.emit('input');
+    f.get('保存修订').click(); await f.flush(); assert.deepEqual(f.calls[0].payload.scenes,[]);assert.match(f.calls[0].payload.text,/五月十一日/);
+    text.value=text.value.replace('五月十一日','五月十二日');text.emit('input');
+    f.render({ document: { ...f.state.document, entries: [entry({ revision: 3, edited: true, text:f.calls[0].payload.text,scenes: [] })] } });
     finish(true); await f.flush();
-    assert.equal(f.get('编辑记忆内容'), text); assert.equal(f.get('场景1日期'), date); assert.equal(date.value, '尚未保存的新日期');
-    assert.equal(date.isConnected, true); assert.equal(text.value, initial.text);
-    f.get('保存修订').click(); await f.flush(); assert.equal(f.calls[1].payload.expectedRevision, 3); assert.equal(f.calls[1].payload.scenes[0].date, '尚未保存的新日期');
-    finish(true); await f.flush(); assert.equal(f.get('编辑记忆内容'), undefined); assert.equal(date.isConnected, false);
+    assert.equal(f.get('编辑记忆内容'), text);assert.equal(text.isConnected,true);assert.match(text.value,/五月十二日/);
+    f.get('保存修订').click(); await f.flush(); assert.equal(f.calls[1].payload.expectedRevision, 3); assert.match(f.calls[1].payload.text,/五月十二日/);assert.deepEqual(f.calls[1].payload.scenes,[]);
+    finish(true); await f.flush(); assert.equal(f.get('编辑记忆内容'), undefined); assert.equal(text.isConnected, false);
+});
+
+test('empty-chat controls remain visible and disabled while default prompt editing is available without a chat', async t => {
+    const f=fixture({snapshot:null,document:null,defaults:{revision:7,values:state().defaults.values},service:{status:'ok'}});t.after(()=>f.view.destroy());
+    for(const label of ['启用忆幕','自动总结','手动总结开始楼层','手动总结结束楼层','开始总结']){
+        const node=f.get(label);assert.ok(node,label);assert.equal(node.closest('[hidden]'),null,label);assert.equal(node.disabled,true,label);
+    }
+    assert.equal(f.document.querySelector('.ym-hero').dataset.empty,'true');assert.equal(f.document.querySelector('.ym-overview-name').textContent,'请选择一个聊天打开');
+    const stats=f.document.querySelector('.ym-stats');assert.equal(stats.hidden,false);assert.deepEqual(stats.querySelectorAll('b').map(n=>n.textContent),['0','0','0']);
+    for(const label of ['展开记忆调阅','展开故事续接','展开关联伴读'])assert.equal(f.get(label).disabled,true,label);
+    assert.equal(f.get('展开记忆备份').disabled,false);assert.equal(f.get('导入记忆').disabled,false);assert.equal(f.get('导出记忆').disabled,true);
+    assert.equal(f.get('续接楼层').disabled,true);assert.equal(f.get('建立新聊天').disabled,true);
+    f.get('记忆').click();assert.equal(f.get('搜索记忆').disabled,true);assert.equal(f.get('筛选记忆').disabled,true);assert.equal(stageControl(f).disabled,true);
+    f.get('概览').click();f.get('展开总结提示词').click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
+    text.value='仅依据正文，保留人物所知的区别。';text.emit('input');f.get('保存叙事与依据').click();await f.flush();
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'settings');assert.equal(f.calls[0].payload.global,true);assert.equal(f.calls[0].payload.expectedRevision,7);
+    assert.equal(f.calls[0].payload.values.prompts.groups.summary[0].text,text.value);
+    for(const label of ['载入提示词预设','恢复内置默认','保存提示词','取消提示词修改'])assert.equal(f.get(label),undefined);
+});
+
+test('tool folders are exclusive within each row and retain independent state across the other row and reopening', t => {
+    const f=fixture();t.after(()=>f.view.destroy());f.view.open();
+    const used=f.get('展开记忆调阅'),story=f.get('展开故事续接'),companion=f.get('展开关联伴读'),backup=f.get('展开记忆备份');
+    used.click();assert.equal(used.getAttribute('aria-expanded'),'true');assert.equal(story.getAttribute('aria-expanded'),'false');
+    story.click();assert.equal(used.getAttribute('aria-expanded'),'false');assert.equal(story.getAttribute('aria-expanded'),'true');
+    assert.equal(story.closest('.ym-tool-group').dataset.side,'right');
+    companion.click();assert.equal(story.getAttribute('aria-expanded'),'true');assert.equal(companion.getAttribute('aria-expanded'),'true');
+    backup.click();assert.equal(companion.getAttribute('aria-expanded'),'false');assert.equal(backup.getAttribute('aria-expanded'),'true');
+    f.view.close();f.view.open();assert.equal(story.getAttribute('aria-expanded'),'true');assert.equal(backup.getAttribute('aria-expanded'),'true');
+    backup.click();assert.equal(backup.getAttribute('aria-expanded'),'false');assert.deepEqual(f.calls,[]);
+});
+
+test('memory notices stay out of settings and disappear when the pending choice is resolved', t => {
+    const f=fixture({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'});t.after(()=>f.view.destroy());
+    const notice=f.document.querySelector('.ym-status');assert.match(notice.textContent,/两版/);assert.equal(notice.hidden,false);
+    f.get('设置').click();assert.equal(notice.hidden,true);assert.equal(notice.textContent,'');
+    f.get('记忆').click();assert.match(notice.textContent,/两版/);
+    f.render({document:{...f.state.document,entries:[entry()]}});assert.equal(notice.hidden,true);
+    f.render({status:'已保存'});assert.equal(notice.hidden,true);
+    f.render({error:'总结未完成',errorPage:'memory'});assert.match(notice.textContent,/总结未完成/);
+    f.get('设置').click();assert.equal(notice.hidden,true);
+});
+
+test('a deliberate version check in settings is visible there without leaking a memory notice into settings', async t => {
+    const d=dom(),requests=[],actions=[];
+    d.document.defaultView.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>({version:'0.0.0'})};};
+    const view=createView({document:d.document,onAction:async(...args)=>actions.push(args)});t.after(()=>view.destroy());
+    view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
+    d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
+    d.document.querySelector('.ym-version-tag').click();await d.flush();
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'当前忆幕已是最新版本。');assert.equal(requests.length,1);assert.deepEqual(actions,[]);
+    assert.equal(requests[0].options.credentials,'omit');assert.equal(requests[0].options.method,undefined);
+    d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
+    view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
+    assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
+});
+
+test('the same redo button can stop its own pending action without submitting another model job', async t => {
+    let finish;const f=fixture({document:{...state().document,enabled:true,entries:[entry()]}},type=>type==='redo'?new Promise(resolve=>{finish=resolve;}):true);t.after(()=>f.view.destroy());
+    f.get('记忆').click();const redo=f.get('重新总结第 1–3 层');redo.click();await f.flush();assert.equal(f.calls.length,1);assert.equal(redo.disabled,true);
+    f.render({busy:true,activeEntryId:'slice-a'});assert.equal(redo.disabled,false);assert.match(redo.getAttribute('aria-label'),/停止总结/);
+    redo.click();await f.flush();assert.deepEqual(f.calls.map(item=>item.type),['redo','stop']);assert.equal(f.calls[1].payload.entryId,'slice-a');
+    f.render({busy:false,activeEntryId:null});finish(true);await f.flush();assert.equal(redo.disabled,false);assert.match(redo.getAttribute('aria-label'),/重新总结/);
+});
+
+test('only custom slices have a leading drag handle and deleted records use the same collapsible card structure', async t => {
+    const normal=entry(),custom=entry({id:'custom',kind:'manual',source:null,text:'自定义补充'}),removed=entry({id:'gone',source:{start:5,end:6},status:'deleted',history:[{status:'active'}]});
+    const f=fixture({document:{...state().document,enabled:true,entries:[normal,custom,removed]}});t.after(()=>f.view.destroy());
+    const ordinary=f.document.querySelector('[data-entry-id="slice-a"]'),manual=f.document.querySelector('[data-entry-id="custom"]');
+    assert.equal(ordinary.querySelector('.ym-custom-drag'),null);assert.equal(manual.querySelector('summary').children[0],manual.querySelector('.ym-custom-drag'));
+    assert.equal(manual.querySelector('.ym-custom-drag').draggable,true);
+    const deleted=f.document.querySelector('[data-entry-id="gone"]');assert.equal(deleted.tagName,'DETAILS');assert.equal(deleted.open,false);
+    const undo=f.get('撤回删除第 5–6 层');assert.equal(undo.closest('.ym-memory-head'),deleted.querySelector('summary'));assert.equal(undo.textContent,'');
+    deleted.open=true;f.render({status:'后台刷新'});assert.equal(f.document.querySelector('[data-entry-id="gone"]').open,true);
+    f.get('撤回删除第 5–6 层').click();await f.flush();assert.equal(f.calls[0].payload.action,'undo');
+});
+
+test('autosave coalesces typing and drains newer edits only after the earlier save is acknowledged', async t => {
+    let finish;const f=fixture({},()=>new Promise(resolve=>{finish=resolve;}),{saveDelayMs:0});t.after(()=>f.view.destroy());
+    f.get('设置').click();const input=f.get('正文保留层数');input.value='7';input.emit('input');input.value='8';input.emit('input');
+    await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.calls.length,1);assert.equal(f.calls[0].payload.values.recent,8);
+    input.value='9';input.emit('input');input.emit('blur');assert.equal(f.calls.length,1);
+    f.render({document:{...f.state.document,configRevision:1,settings:{recent:8}}});finish(true);await f.flush();
+    assert.equal(input.value,'9');assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].payload,{global:false,values:{recent:9},expectedRevision:1});
+    f.render({document:{...f.state.document,configRevision:2,settings:{recent:9}}});finish(true);await f.flush();assert.equal(input.value,'9');assert.equal(f.calls.length,2);
+});
+
+test('a prior-chat save failure never overwrites the next chat draft and does not strand its deliberate save', async t => {
+    let reject;const f=fixture({},()=>f.calls.length===1?new Promise((_,fail)=>{reject=fail;}):true);t.after(()=>f.view.destroy());
+    f.get('设置').click();const input=f.get('正文保留层数');input.value='8';input.emit('change');await f.flush();
+    f.render({snapshot:{...f.state.snapshot,binding:{...f.state.snapshot.binding,file:'新的聊天'}},document:{...f.state.document,configRevision:5,settings:{recent:6}}});
+    f.get('设置').click();input.value='10';input.emit('change');await f.flush();assert.equal(f.calls.length,1);
+    reject(Error('旧聊天保存失败'));await f.flush();assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].payload,{global:false,values:{recent:10},expectedRevision:5});
+    assert.doesNotMatch(f.document.querySelector('.ym-status').textContent,/旧聊天/);
+});
+
+test('export confirmation Escape closes only the secondary dialog without changing the main page or writing anything', t => {
+    const f=fixture();t.after(()=>f.view.destroy());f.view.open();f.get('展开记忆备份').click();f.get('导出记忆').click();
+    const question=f.document.querySelector('.ym-backup-question');assert.equal(question.tagName,'DIALOG');assert.equal(question.open,true);
+    const event=question.emit('keydown',{key:'Escape'});assert.equal(event.stopped,true);assert.equal(question.open,false);assert.equal(f.get('忆幕').open,true);assert.deepEqual(f.calls,[]);
 });
 
 test('standalone manifest and styles stay within Yimu and include narrow-screen and reduced-motion handling', async () => {

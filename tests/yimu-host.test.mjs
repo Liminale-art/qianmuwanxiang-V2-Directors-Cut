@@ -44,6 +44,16 @@ function fixture() {
         get ctx() { return current; }, set ctx(value) { current = value; } };
 }
 
+test('ST summary admission checks the complete prompt and output reservation before generating', async () => {
+    const f = fixture();
+    f.ctx.chatCompletionSettings.openai_max_context = 2000;
+    f.ctx.chatCompletionSettings.openai_max_tokens = 1000;
+    await assert.rejects(f.host.generate('文'.repeat(400)), /上下文容量/);
+    assert.equal(f.rawCalls.length, 0);
+    assert.equal(await f.host.generate('少量合成原文'), '当前连接摘要');
+    assert.equal(f.rawCalls.length, 1);
+});
+
 function core(source, type = 'normal') {
     const result = structuredClone(source.messages.filter(message => !message.is_system));
     if (type === 'swipe') result.pop();
@@ -217,7 +227,7 @@ test('independent profile request preserves global selection and exposes no secr
     assert.equal(maxTokens, 2048); assert.equal(options.signal, controller.signal); assert.equal(options.includePreset, false);
     assert.deepEqual(override, { model: 'other-model' });
     assert.equal(f.ctx.extensionSettings.connectionManager.selectedProfile, 'normal-chat');
-    assert.deepEqual(f.host.profiles(), [{ id: 'p1', name: '摘要连接', model: 'model-a', api: 'openai' }]);
+    assert.deepEqual(f.host.profiles(), [], 'ST connection-manager presets are no longer advertised as Qianmu API presets');
 });
 
 test('cancelled and unusable model answers never fabricate memory or stop normal chat', async () => {

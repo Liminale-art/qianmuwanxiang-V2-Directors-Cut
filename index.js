@@ -14,7 +14,7 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.483-yimu-080-1';
+import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.483-yimu-081-1';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';

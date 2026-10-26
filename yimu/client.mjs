@@ -49,7 +49,7 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
         createStory: (binding, operation) => request('story/create', { binding, request: operation }),
         storyResult: (binding, query) => request('story/result', { binding, request: query }),
         change: (binding, operation) => request('change', { binding, operation }),
-        defaults: operation => request('defaults', { operation }),
+        defaults: operation => operation === undefined ? request('defaults') : request('defaults', { operation }),
         rename: (binding, newBinding) => request('rename', { binding, newBinding }),
         backupPlan: binding => request('backup/plan', { binding }, transferTimeout),
         backupExport: (binding, query) => transfer('backup/export', { binding, request: query }, { download: true }),

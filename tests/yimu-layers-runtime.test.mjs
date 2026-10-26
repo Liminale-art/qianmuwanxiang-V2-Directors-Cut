@@ -73,7 +73,7 @@ for (const basis of ['tokens', 'floors', 'slices']) {
         const f = await fixture(t);
         const fine = (await f.read()).document.entries;
         const threshold = stageWeight(fine, basis);
-        await f.defaults({stageAuto: true, stageBasis: basis, stageThreshold: threshold + 1});
+        await f.defaults({stageAuto: true, stageBasis: basis, stageThreshold: threshold + 1, stageRecent: 0});
         await f.controller.startStage();
         assert.equal(f.generated.length, 0);
         await f.defaults({stageThreshold: threshold});
@@ -100,6 +100,60 @@ test('stage stays off by default; explicit manual ranges containing edited slice
     assert.equal(stages.length, 0); assert.equal(f.generated.length, 0);
     assert.equal(saved.entries.find(entry => entry.id === 'fine_3').text, protectedText);
     assert.ok(stages.every(stage => !stage.source.parents.some(parent => parent.id === 'fine_3')));
+});
+
+test('automatic stage retains the last ten slices at selection, after generation and at server commit', async t => {
+    const f = await fixture(t, {floors: 21, fine: 16});
+    await f.defaults({stageAuto: true, stageBasis: 'slices', stageThreshold: 2});
+    const before = await f.read(), refs = before.document.entries.slice(0, 6).map(entry => ({id: entry.id, revision: entry.revision}));
+    const answer = deferred(), started = deferred();
+    f.model(async () => { started.resolve(); return answer.promise; });
+    const running = f.controller.startStage(); await started.promise;
+    assert.ok(f.generated[0].includes('fine_6')); assert.ok(!f.generated[0].includes('fine_7'));
+    const last = before.document.entries.at(-1);
+    await f.api.change(f.snapshot.binding, {id: 'exclude_last', type: 'entry', action: 'exclude', entryId: last.id, expectedRevision: last.revision});
+    answer.resolve(JSON.stringify({text: '生成期间第六片已成为需保留的最近十片之一'})); await running;
+    assert.match(f.controller.state.error, /近期切片/);
+    assert.equal((await f.read()).document.entries.filter(entry => entry.kind === 'stage').length, 0);
+    await assert.rejects(f.api.change(f.snapshot.binding, {id: 'late_stage', type: 'append', automaticStage: true,
+        expectedEpoch: before.document.epoch, expectedDefaultsRevision: before.defaults.revision,
+        entry: {id: 'late_stage', kind: 'stage', text: '不能绕开提交核验', source: {parents: refs}}}), /近期切片/);
+    await f.controller.startStage(); assert.equal(f.generated.length, 1, 'failure is not silently retried');
+});
+
+test('manual stages are independent of the auto trigger and char limit rejects the entire generated result', async t => {
+    const f = await fixture(t);
+    await f.defaults({trigger: 256, stageThreshold: 65000, stageChars: 10});
+    // Long enough to exceed the auto trigger but comfortably inside the real connection.
+    const prior = await f.read();
+    for (const entry of prior.document.entries) await f.api.change(f.snapshot.binding, {id: `grow_${entry.id}`, type: 'redo',
+        expectedEpoch: prior.document.epoch, entryId: entry.id, expectedRevision: entry.revision,
+        entry: {...entry, text: '文'.repeat(100)}});
+    await f.controller.refresh();
+    f.model(async () => JSON.stringify({text: '阶段结果超出十字限制应整体保留旧片'}));
+    assert.equal(await f.controller.action('stage', {start: 1, end: 6}), true); await f.flush();
+    assert.equal(f.generated.length, 1); assert.match(f.controller.state.error, /10 字上限/);
+    const saved = await f.read(); assert.equal(saved.document.entries.length, 6);
+    await assert.rejects(f.api.change(f.snapshot.binding, {id: 'over_stage', type: 'append', automaticStage: false,
+        expectedEpoch: saved.document.epoch, expectedDefaultsRevision: saved.defaults.revision,
+        entry: {id: 'over_stage', kind: 'stage', text: '新'.repeat(11), source: {parents: saved.document.entries.map(entry => ({id: entry.id, revision: entry.revision}))}}}), /10 字上限/);
+});
+
+test('stopping a stage during its final source read prevents the returned result from being committed', async t => {
+    const f = await fixture(t), started = deferred(), release = deferred();
+    const read = f.api.read; let holdFinal = false;
+    f.api.read = async key => {
+        const value = await read(key);
+        if (holdFinal) { holdFinal = false; started.resolve(); await release.promise; }
+        return value;
+    };
+    f.model(async () => { holdFinal = true; return JSON.stringify({text: '停止后不可落盘的阶段结果'}); });
+    const running = f.controller.startStage({force: true, start: 1, end: 6}); await started.promise;
+    assert.equal(await f.controller.action('stop'), true); release.resolve(); await running;
+    assert.equal((await f.read()).document.entries.filter(entry => entry.kind === 'stage').length, 0);
+    assert.equal(f.controller.state.error, ''); assert.equal(f.controller.state.failedWork, null);
+    assert.equal(f.controller.state.document.enabled, true); assert.equal(f.controller.state.document.autoSummary, true);
+    await f.controller.startStage(); assert.equal(f.generated.length, 1);
 });
 
 test('all edited fine slices have no stage job and do not invoke a model', async t => {

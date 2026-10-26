@@ -8,10 +8,11 @@ import { normalizeEntryOrder, insertEntryOrder, validatePlacement } from './time
 import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './prompt-settings.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.8.0';
+export const VERSION = '0.8.1';
 export const SCHEMA = 7;
-export const DEFAULTS = Object.freeze({ recent: 5, trigger: 4000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
-    stageAuto: false, stageBasis: 'tokens', stageThreshold: 6000, recall: true, prompts: DEFAULT_PROMPTS });
+export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
+    stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
+    recall: true, prompts: DEFAULT_PROMPTS });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
 function requireThat(ok, message) { if (!ok) throw failure(message); }
@@ -30,7 +31,8 @@ export const bindingKey = binding => JSON.stringify(normalizeBinding(binding));
 export function validateSettings(input, partial = true) {
     requireThat(input && typeof input === 'object' && !Array.isArray(input), '设置格式无效');
     const result = {};
-    const bounds = { recent: [1, 2000], trigger: [256, 1000000], batch: [256, 100000], budget: [0, 1000000], stageThreshold: [1, 1000000] };
+    const bounds = { recent: [1, 2000], trigger: [256, 1000000], batch: [256, 100000], budget: [0, 1000000], stageThreshold: [1, 1000000],
+        stageRecent: [0, 2000], sliceChars: [1, 100000], stageChars: [1, 100000] };
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
@@ -38,7 +40,7 @@ export function validateSettings(input, partial = true) {
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
         else if (bounds[key]) {
-            requireThat(Number.isSafeInteger(value) && (value === 0 || value >= bounds[key][0]) && value <= bounds[key][1], '设置数值超出范围');
+            requireThat(Number.isSafeInteger(value) && (value === 0 && !['sliceChars', 'stageChars'].includes(key) || value >= bounds[key][0]) && value <= bounds[key][1], '设置数值超出范围');
         } else requireThat(typeof value === 'string' && value.length <= (key === 'preference' ? 12000 : 300), '设置文字过长或无效');
         result[key] = value;
     }
@@ -46,8 +48,11 @@ export function validateSettings(input, partial = true) {
 }
 export function effectiveSettings(document, defaults) {
     const settings = { ...DEFAULTS, ...defaults?.values, ...document?.settings };
-    for (const key of ['recent', 'trigger', 'batch']) if (settings[key] === 0) settings[key] = DEFAULTS[key];
-    if (settings.stageThreshold === 0) settings.stageThreshold = { tokens: 6000, floors: 100, slices: 12 }[settings.stageBasis];
+    for (const key of ['recent', 'trigger']) if (settings[key] === 0) settings[key] = DEFAULTS[key];
+    // Legacy batch is retained on disk only. Trigger is the single input target;
+    // runtime may narrow this derived cap to the actual connection window.
+    settings.batch = settings.trigger;
+    if (settings.stageThreshold === 0) settings.stageThreshold = { tokens: 65000, floors: 100, slices: 12 }[settings.stageBasis];
     if (!document?.settings?.prompts && (!defaults?.values?.prompts || JSON.stringify(defaults.values.prompts) === JSON.stringify(DEFAULT_PROMPTS))) {
         settings.prompts = resolvePromptConfig({ preference: settings.preference });
     }

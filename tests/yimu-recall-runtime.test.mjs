@@ -150,7 +150,7 @@ test('recall full loop scopes originals, persists only a pointer, materializes o
 });
 
 test('one background start may process several fine batches but performs at most one scoped extraction', async t => {
-    const f = await fixture(t, {floors: 15, longFloors: true}); await f.settings({batch: 1800});
+    const f = await fixture(t, {floors: 15, longFloors: true}); await f.settings({trigger: 1800});
     await f.controller.start({force: true});
     assert.ok(summaryCalls(f).length >= 2); assert.equal(sourceCalls(f).length, 1); assert.equal(extractionCalls(f).length, 1);
     assert.equal(recallWrites(f).length, 1); assert.equal(excerpts(await f.read()).length, 1);

@@ -282,7 +282,7 @@ test('protected custom originals are embedded once in stage admission and surviv
 
 test('zero factory values resolve only at the shared boundary while zero memory budget remains automatic', () => {
     const settings = effectiveSettings({ settings: { recent: 0, trigger: 0, batch: 0, stageBasis: 'slices', stageThreshold: 0, budget: 0 } }, createDefaults());
-    assert.equal(settings.recent, 5); assert.equal(settings.trigger, 4000); assert.equal(settings.batch, 6000);
+    assert.equal(settings.recent, 5); assert.equal(settings.trigger, 50000); assert.equal(settings.batch, 50000);
     assert.equal(settings.stageThreshold, 12); assert.equal(settings.budget, 0);
     assert.throws(() => normalizeEntryOrder({ entries: [{ id: 'a' }], entryOrder: ['a', 'a'] }), /排列无效/);
 });

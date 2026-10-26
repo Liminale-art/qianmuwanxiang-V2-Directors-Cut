@@ -22,6 +22,10 @@ function fixture(t, {selected = false, mode = 'normal'} = {}) {
             const status = healthMode === 'missing' ? 404 : 200;
             return {status, ok: status === 200, json: async () => ({version: healthMode === 'mismatch' ? '0.2.0' : VERSION, schema: SCHEMA})};
         }
+        if (route === 'defaults') {
+            assert.equal(options.method, 'GET', 'homepage defaults must be read-only');
+            return {status: 200, ok: true, json: async () => ({defaults: createDefaults()})};
+        }
         assert.equal(route, 'read', 'installation checking must never mutate account or chat data');
         return {status: 200, ok: true, json: async () => ({document: createDocument(binding), defaults: createDefaults(), sourceAvailable: true, invalidSourceIds: []})};
     }});
@@ -37,8 +41,8 @@ function fixture(t, {selected = false, mode = 'normal'} = {}) {
 
 test('manual homepage refresh confirms backend version without reading or writing any chat', async t => {
     const f = fixture(t); await f.controller.refresh();
-    assert.deepEqual(f.calls, [{route: 'health', method: 'GET'}]);
-    assert.deepEqual(f.events, ['health', 'snapshot']);
+    assert.deepEqual(f.calls, [{route: 'health', method: 'GET'}, {route: 'defaults', method: 'GET'}]);
+    assert.deepEqual(f.events, ['health', 'snapshot', 'defaults']);
     assert.deepEqual(f.controller.state.service, {status: 'ok', version: VERSION, requiredVersion: VERSION});
     assert.equal(f.controller.state.snapshot, null); assert.equal(f.controller.state.document, null);
     assert.equal(f.controller.state.loading, false); assert.equal(f.controller.state.sourceAvailable, false);
@@ -64,7 +68,7 @@ test('homepage network failure is not reported as an absent installation and doe
     assert.equal(f.controller.state.service.status, 'error'); assert.match(f.controller.state.error, /无法连接/);
     assert.doesNotMatch(f.controller.state.error, /尚未安装/); assert.equal(f.calls.length, 1); assert.equal(f.tasks.length, 0);
     f.mode('normal'); await f.controller.refresh(); assert.equal(f.controller.state.service.status, 'ok');
-    assert.equal(f.calls.length, 2, 'only an explicit subsequent refresh checks again');
+    assert.equal(f.calls.length, 3, 'explicit refresh checks health and reads defaults without writing a chat');
 });
 
 test('quiet homepage startup preserves the previous no-health/no-chat-read behavior', async t => {

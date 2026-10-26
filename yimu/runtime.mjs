@@ -1,5 +1,5 @@
 import { VERSION, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, initialRangePreview } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, initialRangePreview, estimateTokens } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -7,6 +7,8 @@ import { recallBlockReason } from './recall-contract.mjs';
 import { createStoryActions } from './story-runtime.mjs';
 import { createCompanionActions } from './companion-runtime.mjs';
 import { createBackupActions } from './backup-runtime.mjs';
+import { validateGeneratedLength } from './scene-contract.mjs';
+import { summaryRequestBudget } from './budget.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -14,14 +16,16 @@ const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
-    const state = { loading: false, error: '', status: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Set(), failures = new Map();
+    const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
     const snapshotState = () => ({ ...state,
         busy: state.busy || Boolean(state.snapshot && jobs.has(bindingKey(state.snapshot.binding))),
         failedWork: state.snapshot ? failures.get(bindingKey(state.snapshot.binding)) || null : null,
+        activeEntryId: state.snapshot ? jobs.get(bindingKey(state.snapshot.binding))?.entryId || null : null,
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     const emit = () => { if (!disposed) onChange(snapshotState()); };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
@@ -52,13 +56,18 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const connection = typeof host.summaryConnection === 'function' ? host.summaryConnection(settings) : null;
         const context = connection ? connection.contextTokens : settings.profileId ? 0 : snapshot.maxContext || 8192;
         const output = connection?.maxTokens || snapshot.maxResponse || 2048;
-        // A legacy ST profile has no reliable window metadata. Keep its existing
-        // explicit batch cap; an external/ST connection must provide real limits.
-        if (connection && connection.mode !== 'profile' && (!Number.isSafeInteger(context) || context <= output + 512)) {
+        if (connection?.mode === 'profile' && !context) throw new Error('旧版 ST 连接无法确认上下文容量，请在 API设置中重新选择连接方式');
+        if (!Number.isSafeInteger(context) || context <= output + 512) {
             throw new Error('此连接的上下文不足，请检查连接设置');
         }
-        if (context > 0) settings.batch = Math.min(settings.batch, Math.max(1, Math.min(Math.floor(context * 0.45), context - output - 512)));
-        return { settings, connection, options: { profileId: settings.profileId, model: settings.model, ...(connection ? { connection } : {}) } };
+        // The trigger is a preferred batch size, not a second connection limit.
+        // Reserve output and framing here; the host checks the complete prompt again.
+        settings.inputCapacity = context - output - 512;
+        settings.batch = Math.min(settings.trigger, settings.inputCapacity);
+        const fitsPrompt = prompt => summaryRequestBudget(prompt) + output <= context;
+        settings.fitsSummaryBatch = (messages, batch) => fitsPrompt(summaryPrompt(messages, batch, settings));
+        settings.fitsStage = parents => fitsPrompt(stagePrompt(parents, settings));
+        return { settings, connection, fitsPrompt, options: { profileId: settings.profileId, model: settings.model, ...(connection ? { connection } : {}) } };
     }
 
     function positionAfter(entry, document, snapshot) {
@@ -120,7 +129,20 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (ticket !== sequence || disposed) return;
                 let snapshot;
                 try { snapshot = await host.snapshot(); }
-                catch (error) { identityFailed = true; throw serviceError || error; }
+                catch (error) {
+                    identityFailed = true;
+                    if (!serviceError && (!quiet || state.service.status === 'ok') && typeof api.defaults === 'function') {
+                        const data = await api.defaults();
+                        if (ticket !== sequence || disposed) return;
+                        host.clear(); prepared = null;
+                        state.snapshot = null; state.document = null; state.lastUsed = null; state.sourceAvailable = false; state.invalidSourceIds = [];
+                        state.story = {}; state.companion = {};
+                        state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.status = '';
+                        state.error = error.message === '请先打开一个角色的聊天' ? '' : error.message;
+                        state.errorPage = 'overview'; state.loading = false; emit(); return;
+                    }
+                    throw serviceError || error;
+                }
                 if (ticket !== sequence || disposed) return;
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
@@ -156,27 +178,30 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null;
                     state.busy = false; state.status = ''; state.invalidSourceIds = [];
                 }
-                host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.loading = false; emit();
+                host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.errorPage = 'overview'; state.loading = false; emit();
             }
         })();
         refreshing = task;
         try { await task; } finally { if (refreshing === task) refreshing = null; }
     }
 
-    async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, historyOnly = false } = {}) {
+    async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, historyOnly = false, errorPage = entryId ? 'memory' : requestedRange || historyOnly ? 'overview' : 'memory' } = {}) {
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || !force && !state.document.autoSummary) return;
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
         const doc = clone(state.document), runGeneration = generation;
+        const cancelled = cancelledRounds.get(key);
+        if (!force && cancelled?.epoch === doc.epoch && cancelled.total === state.snapshot.messages.length) return;
+        cancelledRounds.delete(key);
         const failedKey = `${key}:${doc.epoch}`;
         if (!force && failedJobs.has(failedKey)) return;
         failedJobs.delete(failedKey);
-        const controller = new AbortController(); jobs.set(key, controller);
+        const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         emit();
         let jobDocument = doc, snapshot = clone(state.snapshot);
         const defaults = clone(state.defaults);
         const settings = effectiveSettings(doc, defaults);
-        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null;
+        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
         try {
             const run = summaryRun(settings, snapshot);
             const manualPlan = requestedRange ? planManualRange(doc, snapshot.messages, settings, requestedRange) : null;
@@ -207,8 +232,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     if (entry.origin) throw new Error('这是独立继承的记忆，可在此手动修订；自动重总结不会跨故事改写');
                     batch = { start: entry.source.start, end: entry.source.end, redo: clone(entry) };
                     if (batch.end > snapshot.messages.length) throw new Error('对应原文楼层已不存在，请先处理来源变化');
-                } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force, historyOnly });
+                } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force: force || targetEnd !== null, historyOnly, limitEnd: targetEnd ?? Infinity });
                 if (!batch) { noWork = true; break; }
+                if (targetEnd === null && batch.targetEnd !== undefined) targetEnd = batch.targetEnd;
+                controller.entryId = batch.redo?.id || entryId;
+                if (snapshot.messages.slice(batch.start - 1, batch.end).reduce((total, item) => total + estimateTokens(item.mes || ''), 0) > settings.inputCapacity) throw new Error('完整切片超过此连接的可用输入容量，请选择容量足够的连接');
                 const hashes = await fingerprintMessages(snapshot.messages);
                 const frozenSource = { start: batch.start, end: batch.end, hashes: hashes.slice(batch.start - 1, batch.end) };
                 failedBatch = clone(batch); failedSource = clone(frozenSource);
@@ -216,12 +244,18 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     hashes: plannedHashes.slice(manualPlan.range.start - 1, manualPlan.range.end) }, hashes)) throw new Error('整理期间所选原文已变化，请确认后重试');
                 const candidateDocument = clone(jobDocument);
                 for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
-                const candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
+                let candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
-                const previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
+                let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
-                const response = await host.generate(summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: candidates, previousContext }), { ...run.options, signal: controller.signal });
+                if (controller.signal.aborted) break;
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: candidates, previousContext });
+                // Optional historical hints may use only spare room. Source floors are never truncated.
+                if (!run.fitsPrompt(prompt) && candidates.length) { candidates = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext }); }
+                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
+                if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
+                const response = await host.generate(prompt, { ...run.options, signal: controller.signal });
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await api.read(binding); adopt(binding, beforeSave);
                 if (beforeSave.defaults.revision !== defaults.revision || !beforeSave.document.enabled || beforeSave.document.epoch !== doc.epoch) throw new Error('整理期间设置已变化，本次结果未采用');
@@ -230,9 +264,10 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     const latestHashes = await fingerprintMessages(after.messages);
                     if (!sourceMatches(frozenSource, latestHashes)) throw new Error('整理期间原文已变化，本次结果未采用');
                 }
-                let slices = parseSummary(response, batch, hashes);
+                let slices = parseSummary(response, batch, hashes, settings);
                 // Redo replaces exactly one existing slice, never creates overlapping entries.
                 if (batch.redo) slices = [{ kind: 'summary', text: slices.map(s => s.text).join('\n\n'), scenes: slices.flatMap(s => s.scenes || []), source: frozenSource }];
+                slices.forEach(slice => validateGeneratedLength(slice, settings));
                 for (const slice of slices) {
                     if (controller.signal.aborted || disposed || localStops.has(key)) break;
                     const operation = { id: id(), type: batch.redo ? 'redo' : 'append', expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision,
@@ -267,7 +302,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 failedJobs.add(failedKey);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
                     range: { start: failedBatch.start, end: failedBatch.end }, source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
-                if (isCurrent(binding)) { state.error = error.message; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
+                if (isCurrent(binding)) { state.error = error.message; state.errorPage = errorPage; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
@@ -315,12 +350,15 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
         const initial = clone(state.document), defaults = clone(state.defaults);
+        const cancelled = cancelledRounds.get(key);
+        if (!force && cancelled?.epoch === initial.epoch && cancelled.total === state.snapshot.messages.length) return;
+        cancelledRounds.delete(key);
         const settings = effectiveSettings(initial, defaults);
         if (!force && (!settings.stageAuto || !initial.autoSummary)) return;
         const failedKey = `${key}:${initial.epoch}:stage`;
         if (!force && failedJobs.has(failedKey)) return;
         failedJobs.delete(failedKey);
-        const controller = new AbortController(); jobs.set(key, controller);
+        const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         emit();
         let processed = false, cursor = first, failedStage = null;
         try {
@@ -352,7 +390,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     break;
                 }
                 const refs = group.parents.map(e => ({ id: e.id, revision: e.revision }));
-                const source = stageSourceFromParents(document, refs);
+                const source = stageSourceFromParents(document, refs, { automatic: !force, stageRecent: settings.stageRecent });
+                controller.entryId = group.existing?.id || entryId;
                 const points = group.parents.flatMap(entry => entry.source?.ranges || (entry.source ? [entry.source] : entry.placement ? [{start: entry.placement.fromFloor, end: entry.placement.fromFloor}] : []));
                 const startFloor = Math.min(...points.map(range => range.start)), endFloor = Math.max(...points.map(range => range.end));
                 if (!Number.isFinite(startFloor) || !Number.isFinite(endFloor)) throw new Error('此范围缺少可核对的叙事位置，请先定位自定义切片');
@@ -360,13 +399,16 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 failedStage = { kind: 'stage', entryId: group.existing?.id || entryId, range: { start: startFloor, end: endFloor },
                     parents: refs, epoch: initial.epoch, defaultsRevision: defaults.revision };
                 if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
+                if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
+                if (controller.signal.aborted) break;
                 const response = await host.generate(stagePrompt(group.parents, settings), { ...run.options, signal: controller.signal });
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 const latest = await api.read(binding); adopt(binding, latest);
+                if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 if (!latest.document.enabled || latest.document.epoch !== initial.epoch || latest.defaults.revision !== defaults.revision) throw new Error('整理期间设置已改变，阶段结果未采用');
-                stageSourceFromParents(latest.document, refs); // Exact revisions, not just matching floor labels.
-                const entry = { ...parseStage(response, group.parents), id: group.existing?.id || id() };
-                const operation = { id: id(), type: group.existing ? 'redo' : 'append', expectedEpoch: initial.epoch, expectedDefaultsRevision: defaults.revision, entry };
+                stageSourceFromParents(latest.document, refs, { automatic: !force, stageRecent: settings.stageRecent });
+                const entry = { ...parseStage(response, group.parents, settings), id: group.existing?.id || id() };
+                const operation = { id: id(), type: group.existing ? 'redo' : 'append', expectedEpoch: initial.epoch, expectedDefaultsRevision: defaults.revision, automaticStage: !force, entry };
                 if (!group.existing && group.replaceStages?.length) operation.replaceStages = clone(group.replaceStages);
                 if (group.existing) { operation.entryId = group.existing.id; operation.expectedRevision = group.existing.revision; }
                 const result = await change(binding, operation); processed = true;
@@ -380,12 +422,12 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.add(failedKey);
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
-                if (isCurrent(binding)) { state.error = error.message; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
+                if (isCurrent(binding)) { state.error = error.message; state.errorPage = 'memory'; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
             }
         } finally { if (jobs.get(key) === controller) jobs.delete(key); emit(); }
     }
 
-    async function action(type, payload = {}) {
+    async function executeAction(type, payload = {}) {
         if (disposed) return false;
         if (type === 'refresh') return refresh({ auto: false });
         // Import archives are usable on the homepage too. They do not require
@@ -393,6 +435,32 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (type.startsWith('backup')) {
             if (state.service.status !== 'ok') await checkService();
             return backupActions.action(type, payload);
+        }
+        if (type === 'settings' && payload.global) {
+            const stamp = generation, target = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
+            const current = () => !disposed && stamp === generation && (target ? isCurrent(target) : !state.snapshot);
+            if (state.service.status !== 'ok') await checkService();
+            const loadedDefaults = state.defaults || (await api.defaults()).defaults;
+            if (!current()) throw new Error('当前页面已变化，请重新操作');
+            if (!state.defaults || loadedDefaults.revision > state.defaults.revision) state.defaults = loadedDefaults;
+            for (const job of jobs.values()) job.abort();
+            const operation = { id: id(), expectedRevision: payload.expectedRevision ?? state.defaults.revision, values: payload.values };
+            const before = state.defaults;
+            state.busy = true; state.error = ''; state.status = ''; emit();
+            try {
+                let result;
+                try { result = await api.defaults(operation); }
+                catch (error) {
+                    const confirmed = await api.defaults().catch(() => null);
+                    if (!confirmed?.defaults?.operations?.includes(operation.id)) throw error;
+                    result = confirmed;
+                }
+                if (current()) {
+                    if (state.defaults === before || !state.defaults || result.defaults.revision >= state.defaults.revision) state.defaults = result.defaults;
+                    state.error = ''; state.errorPage = '';
+                }
+                return true;
+            } finally { if (current()) { state.busy = false; emit(); } }
         }
         if (!state.snapshot || !state.document || !state.defaults) throw new Error('请先打开单人聊天并读取忆幕');
         const actionBinding = clone(state.snapshot.binding), actionGeneration = generation;
@@ -402,6 +470,13 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             throw new Error('当前聊天已变化，请重新操作');
         }
         const binding = clone(actionBinding), doc = clone(state.document), key = bindingKey(binding);
+        if (type === 'stop') {
+            const job = jobs.get(key);
+            if (!job || payload.entryId && job.entryId !== payload.entryId) return false;
+            cancelledRounds.set(key, { epoch: doc.epoch, total: snapshot.messages.length });
+            job.abort(); if (jobs.get(key) === job) jobs.delete(key);
+            failures.delete(key); state.error = ''; state.errorPage = ''; state.status = '已中止本次整理'; emit(); return true;
+        }
         if (type === 'enable' && !payload.enabled) {
             localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; emit();
         }
@@ -428,7 +503,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (failure.kind === 'stage') deferFor(binding, () => startStage({ force: true, ...failure.range, start: failure.range.start, end: failure.range.end, entryId: failure.entryId }), actionGeneration);
             else if (failure.entryId) deferFor(binding, () => start({ force: true, entryId: failure.entryId }), actionGeneration);
             else {
-                const plan = planManualRange(doc, snapshot.messages, effectiveSettings(doc, state.defaults), failure.range);
+                const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, failure.range);
                 deferFor(binding, () => start({ force: true, range: failure.range, expectedRange: plan.range }), actionGeneration);
             }
             return true;
@@ -436,7 +511,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (type === 'stage' || type === 'redo' && doc.entries.find(e => e.id === payload.entryId)?.kind === 'stage') {
             if (jobs.has(key)) return false;
             if (type === 'stage' && Number.isFinite(payload.end)) {
-                const plan = planStageRange(doc, effectiveSettings(doc, state.defaults), { start: payload.start, end: payload.end,
+                const plan = planStageRange(doc, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, { start: payload.start, end: payload.end,
                     recentCutoff: snapshot.messages.length - effectiveSettings(doc, state.defaults).recent });
                 if (plan.expanded && (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end)) {
                     throw new Error(`完整阶段范围为 ${plan.range.start}—${plan.range.end} 层，请确认范围后开始`);
@@ -450,7 +525,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         }
         if (type === 'summarizeRange') {
             if (jobs.has(key)) return false;
-            const plan = planManualRange(doc, snapshot.messages, effectiveSettings(doc, state.defaults), payload.range);
+            const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, payload.range);
             if (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end) {
                 throw new Error(`已有切片覆盖第 ${plan.range.start}—${plan.range.end} 层，请确认范围后开始`);
             }
@@ -467,14 +542,6 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 ...(type === 'autoSummary' ? { value: payload.value, range: payload.initialRange } : { range: payload.range }) };
         } else if (type === 'settings') {
             jobs.get(key)?.abort();
-            if (payload.global) {
-                for (const job of jobs.values()) job.abort();
-                state.busy = true; emit();
-                const op = { id: id(), expectedRevision: payload.expectedRevision ?? state.defaults.revision, values: payload.values };
-                try { const result = await api.defaults(op); adopt(binding, result); if (isCurrent(binding)) state.error = ''; return true; }
-                catch (error) { if (isCurrent(binding)) state.error = error.message; throw error; }
-                finally { if (isCurrent(binding)) { state.busy = false; emit(); } }
-            }
             operation = { ...operation, type, expectedRevision: payload.expectedRevision ?? doc.configRevision, values: payload.values };
         } else if (type === 'manual') {
             const after = doc.entries.find(entry => entry.id === payload.afterId);
@@ -509,13 +576,27 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '两版修订均已保留，请在条目内选择。'; return false; }
             if (isCurrent(binding)) {
                 state.status = ['enable', 'autoSummary'].includes(type) ? ''
-                    : type === 'history' ? payload.range.end > 0 ? '准备整理历史楼层' : '' : '已保存';
+                    : type === 'history' ? payload.range.end > 0 ? '准备整理历史楼层' : '' : '';
                 if (type === 'history' && payload.range.end > 0) deferFor(binding, () => start({ force: true, historyOnly: true }).catch(() => {}), actionGeneration);
                 else if (type === 'enable' && payload.enabled || type === 'settings' || type === 'autoSummary' && payload.value) deferFor(binding, () => start().catch(() => {}), actionGeneration);
             }
             return true;
         } catch (error) { if (isCurrent(binding)) state.error = error.message; throw error; }
         finally { if (isCurrent(binding)) { state.busy = false; emit(); } }
+    }
+
+    async function action(type, payload = {}) {
+        const stamp = generation, binding = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
+        const page = payload.errorPage || (type === 'settings' ? payload.values?.prompts ? 'overview' : 'settings'
+            : /^(story|companion|backup)/.test(type) ? type.match(/^(story|companion|backup)/)[0]
+            : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize'].includes(type) ? 'overview' : 'memory');
+        try { return await executeAction(type, payload); }
+        catch (error) {
+            if (!disposed && stamp === generation && (binding ? isCurrent(binding) : !state.snapshot)) {
+                state.error = error.message; state.errorPage = page; emit();
+            }
+            throw error;
+        }
     }
 
     async function intercept(coreChat, contextSize, abort, type = '') {

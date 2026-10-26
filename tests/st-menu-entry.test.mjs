@@ -146,7 +146,7 @@ test('Enter and Space activate once, unrelated keys leave the host keyboard even
 
 test('the menu fix is cache-busted separately and stays local to its host entry', async () => {
  const [entry, source, css] = await Promise.all(['index.js', 'qianmu-st-menu-entry.js', 'style.css'].map(file => readFile(new URL('../' + file, import.meta.url), 'utf8')));
- assert.match(entry, /from '\.\/qianmu-st-menu-entry\.js\?v=1\.59\.483-yimu-080-1'/);
+ assert.match(entry, /from '\.\/qianmu-st-menu-entry\.js\?v=1\.59\.483-yimu-081-1'/);
  assert.match(entry, /from '\.\/qianmu-main-tabs\.js\?v=1\.59\.421'/);
  assert.doesNotMatch(source, /\b(?:fetch|XMLHttpRequest|Image)\s*\(|https?:\/\/|send_form[^\n]*append/);
  assert.match(css, /\.qm-st-menu-logo\s*\{[^}]*color:inherit;/);

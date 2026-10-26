@@ -63,4 +63,25 @@ export function sceneProjection(scenes) {
     return !projected.length || projected.every(value => value.note === '时空未注明') ? '未注明' : projected;
 }
 
+/** Unicode code points of generated visible prose, not JSON keys, whitespace or model-reported usage. */
+export function generatedTextLength(entry) {
+    const visible = [typeof entry?.text === 'string' ? entry.text : ''];
+    for (const scene of entry?.scenes || []) {
+        for (const key of ['world', 'timeline', 'date', 'period', 'place', 'event']) if (typeof scene[key] === 'string') visible.push(scene[key]);
+        visible.push(...(scene.characters || []).filter(value => typeof value === 'string'));
+        const nature = { present: '当前叙事', memory: '回忆', dream: '梦境', hypothetical: '假设', parallel: '同时异地' }[scene.nature];
+        if (nature) visible.push(nature);
+    }
+    return Array.from(visible.join('').replace(/\s/gu, '')).length;
+}
+
+export function validateGeneratedLength(entry, settings = {}) {
+    if (!['summary', 'stage'].includes(entry?.kind)) return entry;
+    const cap = entry.kind === 'stage' ? settings.stageChars ?? 3000 : settings.sliceChars ?? 2000;
+    if (!Number.isSafeInteger(cap) || cap < 1) fail('生成切片字数上限无效');
+    const length = generatedTextLength(entry);
+    if (length > cap) fail(`${entry.kind === 'stage' ? '阶段摘要' : '记忆切片'}共 ${length} 字，超过 ${cap} 字上限，本次结果未保存；原片保留，请调整范围或上限后重试`);
+    return entry;
+}
+
 export const SCENE_PROMPT = `每份切片分别附 scenes 数组：每项 {"world":"设定中的世界","timeline":"时间线标识","date":"原文日期或相对时间","period":"早/中/晚等原文时段","place":"地点","characters":["本场人物"],"event":"这些人物在此时此地发生何事的简短绑定，不重复全摘要","nature":"present|memory|dream|hypothetical|parallel|unknown","evidence":{"floors":[依据楼层]}}。未注明字段用空字符串，不补造年月日，不将系统日期或消息发送日期当故事日期。回忆、梦境、穿越前后、不同世界时钟、同时异地多视角分别列项；不可把甲地角色与乙地事件合成同场或共同知情。只有原文明示场景连续才沿用有据背景；相对时间保留原貌，没有确定锚点不折算日期。`;

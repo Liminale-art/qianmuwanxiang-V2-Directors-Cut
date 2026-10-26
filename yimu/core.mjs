@@ -4,7 +4,7 @@ import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-scope.mjs';
 import { companionEntries } from './companion-contract.mjs';
 import { orderForInjection, placementMatches, validatePlacement } from './timeline.mjs';
-import { validateScenes, sceneProjection, sceneDependenciesValid, SCENE_PROMPT } from './scene-contract.mjs';
+import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
@@ -43,28 +43,46 @@ export async function inspectSources(document, messages) {
 
 // Each batch is bounded by content, while the model splits it at narrative boundaries.
 // Chosen initial gaps and explicit exclusions/deletions never get silently filled.
-export function nextBatch(document, messages, settings, { force = false, historyOnly = false } = {}) {
+export function nextBatch(document, messages, settings, { force = false, historyOnly = false, limitEnd = Infinity } = {}) {
     if (!document.enabled || !document.initialRange || !force && !document.autoSummary) return null;
-    const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity);
+    const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity, limitEnd);
+    const capacity = settings.inputCapacity ?? settings.batch ?? settings.trigger;
     const repair = !historyOnly && document.entries.find(entry => !entry.origin && entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
         && entry.source.end <= last && messages.slice(entry.source.start - 1, entry.source.end).every(canSummarize)
         && entry.source.end <= messages.length);
-    if (repair) return { start: repair.source.start, end: repair.source.end, redo: repair };
+    if (repair) {
+        if (messages.slice(repair.source.start - 1, repair.source.end).reduce((total, item) => total + estimateTokens(item.mes), 0) > capacity
+            || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, repair.source)) throw new Error('待重新总结的完整切片超过此连接的可用输入容量，请选择容量足够的连接');
+        return { start: repair.source.start, end: repair.source.end, redo: repair };
+    }
     const { start: initialStart, end: initialEnd, total: initialTotal } = document.initialRange;
+    const eligible = floor => floor > (document.lineage?.bridgeCount || 0) && (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
+        && !document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
+    const first = Array.from({ length: Math.max(0, last - initialStart + 1) }, (_, index) => initialStart + index).find(eligible);
+    if (!first) return null;
+    let targetEnd = last;
+    if (!force && first > initialTotal) {
+        let pending = 0; targetEnd = 0;
+        for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
+            pending += estimateTokens(messages[floor - 1].mes);
+            if (pending >= settings.trigger) { targetEnd = floor; break; }
+        }
+        if (!targetEnd) return null;
+    }
     let start = 0, end = 0, tokens = 0;
-    for (let floor = initialStart; floor <= last; floor++) {
-        const eligible = floor > (document.lineage?.bridgeCount || 0) && (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
-            && !document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
-        if (!eligible) { if (start) break; continue; }
+    for (let floor = first; floor <= targetEnd; floor++) {
+        if (!eligible(floor)) { if (start) break; continue; }
         const size = estimateTokens(messages[floor - 1].mes);
-        if (start && tokens + size > settings.batch) break;
+        const fits = tokens + size <= capacity && (!settings.fitsSummaryBatch || settings.fitsSummaryBatch(messages, { start: start || floor, end: floor }));
+        if (start && !fits) break;
         // A single very large floor is never silently truncated into a misleading summary.
-        if (!start && size > settings.batch) throw new Error(`第 ${floor} 层超过单次整理容量，请为忆幕选择更大上下文的连接后调整整理容量`);
+        if (!start && !fits) throw new Error(`第 ${floor} 层与总结提示词超过此连接的可用输入容量，请为忆幕选择容量足够的连接`);
         if (!start) start = floor;
         end = floor; tokens += size;
+        if (tokens >= settings.trigger) break;
     }
-    if (!start || !force && start > initialTotal && tokens < settings.trigger) return null;
-    return { start, end };
+    if (!start) return null;
+    return { start, end, ...(!force && start > initialTotal && end < targetEnd ? { targetEnd } : {}) };
 }
 
 /** Read-only manual scope preview. Never relabel part of an old summary as if its
@@ -92,8 +110,8 @@ export function planManualRange(document, messages, settings, requestedRange) {
     }
     const overlapping = summaries.filter(entry => entry.source.start <= range.end && entry.source.end >= range.start);
     if (overlapping.some((entry, index) => index > 0 && entry.source.start <= overlapping[index - 1].source.end)) throw new Error('已有切片范围重叠，请先处理记忆冲突');
-    const batchLimit = settings?.batch;
-    if (!Number.isSafeInteger(batchLimit) || batchLimit < 1) throw new Error('单次整理容量无效');
+    const batchLimit = settings?.inputCapacity ?? settings?.batch ?? settings?.trigger;
+    if (!Number.isSafeInteger(batchLimit) || batchLimit < 1) throw new Error('此连接的可用输入容量无效，请检查 API 设置');
     for (let floor = range.start; floor <= range.end; floor++) if (!canSummarize(messages[floor - 1])) {
         throw new Error(`第 ${floor} 层为空或含工具调用，请调整整理范围`);
     }
@@ -110,12 +128,13 @@ export function planManualRange(document, messages, settings, requestedRange) {
             const next = summaries.find(entry => entry.source.start > floor)?.source.start ?? Infinity;
             for (end = floor; end <= range.end && end < next; end++) {
                 const size = estimateTokens(messages[end - 1].mes);
-                if (end > floor && tokens + size > batchLimit) break;
+                if (end > floor && (tokens + size > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end }))) break;
                 tokens += size;
+                if (tokens >= settings.trigger) { end++; break; }
             }
             end--;
         }
-        if (tokens > batchLimit) throw new Error(`第 ${floor}—${end} 层超过单次整理容量，请调整整理容量或连接`);
+        if (tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) throw new Error(`第 ${floor}—${end} 层与总结提示词超过此连接的可用输入容量，请选择容量足够的连接`);
         batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}) });
         floor = end + 1;
     }
@@ -158,14 +177,14 @@ export function summaryPrompt(messages, batch, settings, { recallCandidates = []
     }));
     return composePrompt(settings, 'summary', {
         protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"text":"精炼、自足的记忆","scenes":[]}]}。
-slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。${SCENE_PROMPT}
+slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。每片正文及可见场景文字合计不得超过 ${settings.sliceChars ?? 2000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量；不得靠删除事实边界或截断原文规避。${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
 ${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}`,
         data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}`,
     });
 }
 
-export function parseSummary(response, batch, hashes) {
+export function parseSummary(response, batch, hashes, settings = {}) {
     if (typeof response !== 'string') throw new Error('整理结果不是有效文本');
     const text = response.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1');
     let parsed;
@@ -176,8 +195,8 @@ export function parseSummary(response, batch, hashes) {
         if (slice.start !== next || !Number.isSafeInteger(slice.end) || slice.end < slice.start || slice.end > batch.end
             || typeof slice.text !== 'string' || !slice.text.trim() || slice.text.length > 100000) throw new Error('整理结果的楼层覆盖不完整，未采用');
         next = slice.end + 1;
-        return { kind: 'summary', text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
-            source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } };
+        return validateGeneratedLength({ kind: 'summary', text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
+            source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');
     return entries;

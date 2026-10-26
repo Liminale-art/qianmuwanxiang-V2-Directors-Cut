@@ -22,12 +22,12 @@ test('stage trigger counts pending valid fine summaries, not raw chat length or 
     assert.equal(stageWeight(document.entries, 'slices'), 4);
     assert.equal(stageWeight(document.entries, 'floors'), 8);
     assert.equal(nextStage(document, { ...DEFAULTS, stageAuto: false, stageBasis: 'slices', stageThreshold: 2 }), null);
-    const choice = nextStage(document, { ...DEFAULTS, stageAuto: true, stageBasis: 'slices', stageThreshold: 3 });
+    const choice = nextStage(document, { ...DEFAULTS, stageAuto: true, stageBasis: 'slices', stageThreshold: 3, stageRecent: 0 });
     assert.equal(choice.parents.length, 4);
     const grouped = stage(document, choice.parents.map(e => e.id));
     assert.equal(nextStage(grouped, { ...DEFAULTS, stageAuto: true, stageBasis: 'slices', stageThreshold: 1 }), null);
     assert.equal(nextStage(document, { ...DEFAULTS, stageAuto: true, stageBasis: 'floors', stageThreshold: 9 }), null);
-    assert.ok(nextStage(document, { ...DEFAULTS, stageAuto: true, stageBasis: 'tokens', stageThreshold: 1 }));
+    assert.ok(nextStage(document, { ...DEFAULTS, stageAuto: true, stageBasis: 'tokens', stageThreshold: 1, stageRecent: 0 }));
 });
 
 test('hand edits, excluded slices and source gaps split stage groups instead of being silently compressed', async () => {
@@ -55,7 +55,7 @@ test('a hand-edited stage is never automatically replaced by a new stage over th
     const f = await fixture(); let document = f.stage(f.document, ['fine0', 'fine1']);
     const stage = document.entries.find(e => e.kind === 'stage');
     document = applyOperation(document, { id: 'edit-stage', type: 'edit', entryId: stage.id, expectedRevision: 1, text: '人工确立的阶段含义。' }).document;
-    assert.deepEqual(stageGroups(document, { automatic: true }).flat().map(e => e.id), ['fine2', 'fine3']);
+    assert.deepEqual(stageGroups(document, { automatic: true, stageRecent: 0 }).flat().map(e => e.id), ['fine2', 'fine3']);
     document = applyOperation(document, { id: 'parent-edit', type: 'edit', entryId: 'fine0', expectedRevision: 1, text: '细摘要也作人工调整。' }).document;
     assert.equal(document.entries.find(e => e.id === stage.id).status, 'invalid');
     const plan = await buildPlan(document, createDefaults(), { messages, maxContext: 8192 });

@@ -8,6 +8,9 @@ import {registerYimuRoutes} from '../yimu/server-plugin.mjs';
 import {createApi} from '../yimu/client.mjs';
 import {createController} from '../yimu/runtime.mjs';
 import {createHost, MEMORY_PROMPT_KEY} from '../yimu/host.mjs';
+import {effectiveSettings, fingerprintMessages} from '../yimu/contract.mjs';
+import {summaryPrompt} from '../yimu/core.mjs';
+import {summaryRequestBudget} from '../yimu/budget.mjs';
 
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Integration.png', file: 'Synthetic-chat', integrity: 'integration_identity'};
@@ -38,12 +41,13 @@ async function fixture(t) {
         let status = 200, body;
         const response = {status(value) { status = value; return this; }, json(value) { body = clone(value); return this; }};
         await routes.get(`${options.method} ${route}`)({...request, body: options.body ? JSON.parse(options.body) : undefined}, response);
-        const delayed = route === '/change' ? faults.delayChangeReply : route === '/read' ? faults.delayReadReply : null;
+        const delayed = route === '/change' ? faults.delayChangeReply : route === '/read' ? faults.delayReadReply : route === '/defaults' && options.method === 'POST' ? faults.delayDefaultsReply : null;
         if (delayed) {
-            if (route === '/change') faults.delayChangeReply = null; else faults.delayReadReply = null;
+            if (route === '/change') faults.delayChangeReply = null; else if (route === '/read') faults.delayReadReply = null; else faults.delayDefaultsReply = null;
             delayed.started.resolve(); await delayed.release.promise;
         }
         if (route === '/change' && faults.loseChangeReply) { faults.loseChangeReply = false; throw new Error('合成回执丢失'); }
+        if (route === '/defaults' && options.method === 'POST' && faults.loseDefaultsReply) { faults.loseDefaultsReply = false; throw new Error('合成默认设置回执丢失'); }
         return {ok: status >= 200 && status < 300, status, json: async () => clone(body)};
     };
     const api = createApi({fetcher, headers: () => ({'X-CSRF-Token': 'synthetic-only'})});
@@ -289,7 +293,7 @@ test('leaving the loaded single chat for a group or home page clears its visible
         await f.controller.refresh();
         assert.equal(f.controller.state.snapshot, null);
         assert.equal(f.controller.state.document, null);
-        assert.equal(f.controller.state.defaults, null);
+        assert.ok(f.controller.state.defaults, 'homepage retains only account defaults, never a previous chat document');
         assert.equal(f.controller.state.lastUsed, null);
         assert.equal(f.controller.state.sourceAvailable, false);
         assert.equal(f.prompts.get(MEMORY_PROMPT_KEY), '');
@@ -480,15 +484,140 @@ test('failed manual re-summary leaves the existing slice intact and does not ret
 
 test('manual range batches continuously until complete without using or removing recent originals early', async t => {
     const f = await fixture(t);
-    f.context.chat = f.context.chat.map((message, i) => ({...message, mes: `第${i + 1}层` + '原文'.repeat(90)}));
+    f.context.chat = f.context.chat.map((message, i) => ({...message, mes: `第${i + 1}层` + '原文'.repeat(140)}));
     await f.writeChat(f.context.chat); await manualReady(f);
-    await f.controller.action('settings', {values: {batch: 256}}); await f.flush();
+    await f.controller.action('settings', {values: {trigger: 256}}); await f.flush();
     await manualRange(f, 1, 7);
     assert.equal(f.generated(), 7);
     assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), Array.from({length: 7}, (_, i) => [i + 1, i + 1]));
     const result = await f.inject();
     assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
     assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), f.context.chat.slice(-5).map(message => message.mes));
+});
+
+test('stopping a redo preserves the chat switch and original slice, discards late output and requires an explicit new attempt', async t => {
+    const f = await fixture(t); await f.enable(); await f.flush();
+    const entry = clone(f.controller.state.document.entries[0]);
+    const answer = deferredValue(), started = deferredValue();
+    f.model(async () => { started.resolve(); return answer.promise; });
+    await f.controller.action('redo', {entryId: entry.id});
+    const running = f.tasks.shift()(); await started.promise;
+    assert.equal(f.controller.state.activeEntryId, entry.id); assert.equal(f.controller.state.busy, true);
+    assert.equal(await f.controller.action('stop', {entryId: entry.id}), true);
+    assert.equal(f.controller.state.busy, false); assert.equal(f.controller.state.document.enabled, true);
+    assert.equal(f.controller.state.document.autoSummary, true); assert.equal(f.controller.state.failedWork, null);
+    answer.resolve(JSON.stringify({slices: [{start: 1, end: 2, text: '停止后返回的结果不能保存'}]}));
+    await running; await f.flush(); await f.controller.start(); await f.controller.startStage();
+    assert.deepEqual((await f.api.read(binding)).document.entries[0], entry);
+    assert.equal(f.generated(), 2, 'no background restart or retry after stop');
+    assert.equal(f.controller.state.error, '');
+    f.model(async () => JSON.stringify({slices: [{start: 1, end: 2, text: '用户再次明确开始的新版'}]}));
+    await f.controller.action('redo', {entryId: entry.id}); await f.flush();
+    assert.equal(f.generated(), 3); assert.equal(f.controller.state.document.entries[0].text, '用户再次明确开始的新版');
+});
+
+test('a threshold needing multiple admitted batches keeps its frozen range despite new arriving floors', async t => {
+    const f = await fixture(t); await f.controller.refresh();
+    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 0, total: 7}});
+    await f.controller.action('autoSummary', {value: true});
+    await f.controller.action('settings', {values: {recent: 1, trigger: 600}});
+    f.context.chat.push(...Array.from({length: 4}, (_, index) => ({name: '角色', mes: '文'.repeat(300), send_date: `later-${index}`})));
+    await f.writeChat(f.context.chat); await f.controller.refresh();
+    const settings = effectiveSettings(f.controller.state.document, f.controller.state.defaults);
+    const contextTokens = summaryRequestBudget(summaryPrompt(f.context.chat, {start: 8, end: 8}, settings)) + 356;
+    f.host.summaryConnection = () => ({mode: 'external', contextTokens, maxTokens: 256});
+    const seen = [], started = deferredValue(), release = deferredValue();
+    f.host.generate = async prompt => {
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/), start = Number(match[1]), end = Number(match[2]);
+        seen.push([start, end]); if (seen.length === 1) { started.resolve(); await release.promise; }
+        return JSON.stringify({slices: [{start, end, text: '本批有据经历'}]});
+    };
+    const running = f.controller.start(); await started.promise;
+    f.context.chat.push({name: '角色', mes: '新'.repeat(300), send_date: 'arrived-1'}, {name: '角色', mes: '新'.repeat(300), send_date: 'arrived-2'});
+    await f.writeChat(f.context.chat); release.resolve(); await running;
+    assert.deepEqual(seen, [[8, 8], [9, 9]]);
+    assert.deepEqual(f.controller.state.document.entries.map(entry => [entry.source.start, entry.source.end]), [[8, 8], [9, 9]]);
+});
+
+test('homepage prompts use read-only defaults, confirm a lost write receipt and reject a stale concurrent save', async t => {
+    const f = await fixture(t); f.context.characterId = undefined; await f.controller.refresh();
+    assert.equal(f.controller.state.document, null); assert.equal(f.controller.state.defaults.revision, 0);
+    assert.deepEqual(await fs.readdir(path.join(f.account, '.yimu')), [], 'opening the homepage creates no chat or settings file');
+    const prompts = clone(f.controller.state.defaults.values.prompts); prompts.groups.summary[0].text += '\n合成的用户偏好。';
+    f.faults.loseDefaultsReply = true;
+    assert.equal(await f.controller.action('settings', {global: true, expectedRevision: 0, values: {prompts}}), true);
+    assert.equal(f.controller.state.defaults.revision, 1); assert.equal(f.controller.state.error, '');
+    assert.deepEqual(f.controller.state.defaults.values.prompts, prompts);
+    await assert.rejects(f.controller.action('settings', {global: true, expectedRevision: 0, values: {trigger: 9999}}));
+    assert.equal((await f.api.defaults()).defaults.values.trigger, 50000);
+    assert.deepEqual((await fs.readdir(path.join(f.account, '.yimu'))).filter(file => file !== 'defaults.json'), []);
+});
+
+test('a late homepage save cannot clear a newly opened chat error or overwrite its visible defaults', async t => {
+    const f = await fixture(t); f.context.characterId = undefined; await f.controller.refresh();
+    const delayed = {started: deferredValue(), release: deferredValue()}; f.faults.delayDefaultsReply = delayed;
+    const saving = f.controller.action('settings', {global: true, expectedRevision: 0, values: {trigger: 9999}});
+    await delayed.started.promise; f.context.characterId = 0; await f.controller.refresh();
+    await assert.rejects(f.controller.action('stage', {start: 1, end: 2}), /启用忆幕/);
+    const error = f.controller.state.error, defaults = clone(f.controller.state.defaults);
+    delayed.release.resolve(); await saving;
+    assert.equal(f.controller.state.error, error); assert.deepEqual(f.controller.state.defaults, defaults);
+});
+
+test('a defaults GET started without a chat cannot downgrade the next chat defaults or continue its old save', async t => {
+    const f = await fixture(t); f.context.characterId = undefined;
+    const readDefaults = f.api.defaults, started = deferredValue(), release = deferredValue(); let posts = 0;
+    f.api.defaults = async operation => {
+        if (operation) posts++;
+        const result = await readDefaults(operation);
+        if (!operation) { started.resolve(); await release.promise; }
+        return result;
+    };
+    const saving = f.controller.action('settings', {global: true, values: {trigger: 9999}});
+    await started.promise;
+    for (let revision = 0; revision < 7; revision++) await readDefaults({id: `remote_defaults_${revision}`, expectedRevision: revision, values: {trigger: 10000 + revision}});
+    f.context.characterId = 0; await f.controller.refresh();
+    assert.equal(f.controller.state.defaults.revision, 7);
+    release.resolve(); await assert.rejects(saving, /页面已变化/);
+    assert.equal(f.controller.state.defaults.revision, 7); assert.equal(f.controller.state.defaults.values.trigger, 10006);
+    assert.equal(posts, 0);
+});
+
+for (const mode of ['automatic', 'manual']) test(`${mode} Chinese summary batches pass the real ST 16k host admission without any network call`, async t => {
+    const f = await fixture(t);
+    f.context.chat = Array.from({length: 18}, (_, index) => ({name: '合成角色', mes: `第${index + 1}层` + '文'.repeat(1000), send_date: `long-${index}`}));
+    f.context.chatCompletionSettings.openai_max_context = 16384; f.context.chatCompletionSettings.openai_max_tokens = 2048;
+    await f.writeChat(f.context.chat);
+    const prompts = [];
+    f.model(async prompt => {
+        prompts.push(prompt); const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: '对应范围的合成经历'}]});
+    });
+    if (mode === 'automatic') { await f.enable(); await f.flush(); }
+    else { await manualReady(f); await manualRange(f, 1, 18); }
+    assert.ok(prompts.length > 1, 'normal Chinese histories must be split before host admission, not rejected wholesale');
+    assert.ok(prompts.every(prompt => summaryRequestBudget(prompt) + 2048 <= 16384));
+    assert.equal(f.controller.state.error, '');
+    const covered = f.controller.state.document.entries.flatMap(entry => Array.from({length: entry.source.end - entry.source.start + 1}, (_, index) => entry.source.start + index));
+    assert.deepEqual(covered, Array.from({length: mode === 'automatic' ? 13 : 18}, (_, index) => index + 1));
+});
+
+test('automatic Chinese stages pass the real ST host budget while preserving the latest ten fine slices', async t => {
+    const f = await fixture(t);
+    f.context.chat = Array.from({length: 21}, (_, index) => ({name: '角色', mes: `合成原文${index + 1}`, send_date: `stage-${index}`}));
+    f.context.chatCompletionSettings.openai_max_context = 16384; f.context.chatCompletionSettings.openai_max_tokens = 2048;
+    await f.writeChat(f.context.chat); await f.enable();
+    await f.controller.action('settings', {values: {stageAuto: true, stageBasis: 'tokens', stageThreshold: 1000}});
+    const doc = f.controller.state.document, hashes = await fingerprintMessages(f.context.chat);
+    for (let floor = 1; floor <= 16; floor++) await f.api.change(binding, {id: `stage_seed_${floor}`, type: 'append', expectedEpoch: doc.epoch,
+        entry: {id: `stage_fine_${floor}`, kind: 'summary', text: '已'.repeat(1000), source: {start: floor, end: floor, hashes: [hashes[floor - 1]]}}});
+    await f.controller.refresh(); const prompts = [];
+    f.model(async prompt => { prompts.push(prompt); return JSON.stringify({text: '此范围的有据阶段经历'}); });
+    await f.controller.startStage();
+    assert.ok(prompts.length > 1); assert.ok(prompts.every(prompt => summaryRequestBudget(prompt) + 2048 <= 16384));
+    assert.equal(f.controller.state.error, '');
+    const refs = f.controller.state.document.entries.filter(entry => entry.kind === 'stage').flatMap(entry => entry.source.parents.map(ref => ref.id));
+    assert.deepEqual(refs, Array.from({length: 6}, (_, index) => `stage_fine_${index + 1}`));
 });
 
 test('independent summary connection supplies its own safe context instead of inheriting a small ST window', async t => {
@@ -501,7 +630,7 @@ test('independent summary connection supplies its own safe context instead of in
     await manualRange(f, 1, 2);
     assert.equal(calls.length, 1); assert.deepEqual(calls[0].connection, connection);
     f.host.summaryConnection = () => ({...connection, contextTokens: 0});
-    await manualRange(f, 1, 2);
+    await assert.rejects(() => manualRange(f, 1, 2), /上下文/);
     assert.equal(calls.length, 1); assert.match(f.controller.state.error, /上下文/);
 });
 

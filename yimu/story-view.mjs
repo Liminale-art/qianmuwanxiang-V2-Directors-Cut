@@ -11,7 +11,8 @@ export function createStoryView({document = globalThis.document, onAction, pageM
     const result=el('p','ym-muted'),open=button('打开已建立的聊天',()=>invoke('storyOpen'));
     const retry=button('继续本次建立',()=>invoke('storyCreate',{retry:true}));
     const notice=el('p','ym-muted');notice.setAttribute('aria-live','polite');notice.hidden=true;
-    const actions=el('div','ym-actions');actions.append(create,open,retry);body.append(field,fee,actions,result,notice);node.append(body);
+    const controls=el('div','ym-story-controls');controls.append(field,create);
+    const actions=el('div','ym-actions');actions.append(open,retry);body.append(controls,fee,actions,result,notice);node.append(body);
     let state={},scope='',alive=true,working=false,error='',revision=0;
     const count=()=>state.snapshot?.messages?.length||0;
     async function invoke(type,payload={}){
@@ -24,7 +25,7 @@ export function createStoryView({document = globalThis.document, onAction, pageM
     function update(){
         const story=state.story||{},busy=working||story.busy,available=!!state.snapshot&&!!state.document&&!state.loading&&state.sourceAvailable!==false;
         const receipt=story.result?.receipt||story.receipt,complete=receipt?.status==='complete',pending=!complete&&!!(story.pending||story.operation||story.operationId);
-        cutoff.max=String(count());cutoff.disabled=!!busy||pending||complete;
+        cutoff.max=String(count());cutoff.disabled=!available||!!busy||pending||complete;
         create.disabled=!available||!!busy||!!state.busy||pending||complete;
         create.hidden=!!pending;
         open.hidden=!complete;open.disabled=!!busy||!available;retry.hidden=!pending;retry.disabled=!!busy||!available;
