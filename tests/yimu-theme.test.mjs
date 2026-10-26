@@ -225,6 +225,9 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-dialog \.ym-stat[^\n]*min-height: 88px/);
     assert.doesNotMatch(css, /button\.ym-stat/);
     assert.match(css, /\.ym-hero-switches[^\n]*flex-wrap: wrap/);
+    assert.match(css, /\.ym-hero-switches \{[^\n]*gap: 10px 28px/);
+    assert.match(css, /\.ym-hero-switches > \.ym-switch-row \{[^\n]*flex: 1 1 104px[^\n]*font: 600 var\(--ym-type-card-title\)\/1\.5 var\(--ym-font\)/);
+    assert.match(css, /@media \(max-width: 480px\)[\s\S]*\.ym-hero-switches \{ gap: 10px 20px/);
     assert.match(css, /\.ym-setting-row:has\(> small\)[^\n]*flex-direction: column[^\n]*align-items: stretch/);
     assert.match(css, /\.ym-setting-numeric > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
     assert.match(css, /\.ym-dialog \.ym-setting-numeric > \.ym-field > input[^\n]*width: var\(--ym-setting-value-width\)/);

@@ -199,8 +199,8 @@
 .ym-overview[data-empty="true"] .ym-overview-name { font-size: var(--ym-type-card-title); color: var(--ym-muted); font-weight: 400; }
 .ym-avatar { display: block; width: 88px; height: 88px; aspect-ratio: 1; object-fit: cover; flex: 0 0 88px; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); background: var(--ym-raised); }
 .ym-avatar.ym-avatar-placeholder { display: flex; align-items: center; justify-content: center; color: var(--ym-accent); font-size: 26px; }
-.ym-hero-switches { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; min-width: 0; }
-.ym-hero-switches > .ym-switch-row { flex: 1 1 110px; }
+.ym-hero-switches { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 28px; min-width: 0; }
+.ym-hero-switches > .ym-switch-row { flex: 1 1 104px; font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
 .ym-hero .ym-manual-form { gap: 8px; }
 .ym-hero .ym-history-range { margin: 0; gap: 8px; }
 .ym-history-question { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
@@ -295,7 +295,7 @@
     .ym-overview { padding: 16px; }
     .ym-hero-top { gap: 12px; }
     .ym-avatar { width: 80px; height: 80px; flex-basis: 80px; }
-    .ym-hero-switches { gap: 10px 12px; }
+    .ym-hero-switches { gap: 10px 20px; }
     .ym-dialog .ym-tool-summary { padding: 12px 14px; }
     .ym-tool-body { padding: 0 14px 14px; }
     .ym-setting-row { gap: 6px; }
