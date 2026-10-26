@@ -87,9 +87,10 @@ export function createHost({
     getContext = () => globalThis.SillyTavern?.getContext?.(),
     onError = () => {},
     fetcher = (...args) => globalThis.fetch(...args),
+    document = globalThis.document,
 } = {}) {
     let generation = 0;
-    let generating = false, opening = null;
+    let generating = false, opening = null, recentStory = null;
     const sessions = new WeakMap(), promoteFinalListeners = new Set();
     const connectionApi = createApiSettings({ getContext, fetchImpl: fetcher });
 
@@ -121,6 +122,34 @@ export function createHost({
             if (!avatar || !name || seen.has(avatar) || /[\x00-\x1f/\\]/.test(avatar)) return [];
             seen.add(avatar); return [{ avatar, name }];
         });
+    }
+
+    async function confirmStoryBoundary({ranges} = {}) {
+        if (!Array.isArray(ranges) || !ranges.length || ranges.some(range => !Number.isSafeInteger(range?.start)
+            || !Number.isSafeInteger(range?.end) || range.start < 1 || range.end < range.start)) throw new Error('续接边界范围无效，未调用总结 API');
+        const popup = context().Popup?.show;
+        if (typeof popup?.confirm !== 'function') throw new Error('当前 ST 无法确认续接的总结调用，未调用 API，请更新 ST 后重试');
+        const floors = ranges.map(range => `${range.start}—${range.end}`).join('、');
+        return await popup.confirm('整理续接边界？', `续接需要重新总结第 ${floors} 层，将使用当前总结 API 调用 ${ranges.length} 次，可能产生费用。只处理截止前正文，原聊天保持不变。是否继续？`,
+            {okButton: '继续建立', cancelButton: '取消'}) === 1;
+    }
+
+    // ST awaits its first CHAT_CHANGED listener to render the welcome page.
+    // Reveal only this session's newest confirmed continuation there once.
+    // Do not alter native pin settings, message dates or recent-chat requests.
+    function revealRecentStory() {
+        if (!recentStory) return;
+        const ctx = getContext();
+        if (!ctx || ctx.extensionSettings !== recentStory.owner) { recentStory = null; return; }
+        if (ctx.chatId || ctx.getCurrentChatId?.()) return;
+        const list = document?.querySelector?.('#chat .welcomePanel .recentChatList');
+        if (!list) return;
+        const target = recentStory; recentStory = null;
+        const rows = [...list.querySelectorAll('.recentChat')].filter(row => !row.dataset.group
+            && row.dataset.avatar === target.avatar && row.dataset.file === target.file);
+        if (rows.length !== 1) return;
+        const row = rows[0]; row.classList.remove('hidden'); row.hidden = false;
+        list.insertBefore(row, list.firstChild);
     }
 
     // Creation is owned by the account-scoped server transaction. This method
@@ -167,6 +196,7 @@ export function createHost({
             const targetRows = await readChat(target);
             const hashes = await fingerprintMessages(targetRows.slice(1, bridge.count + 1));
             if (!sameMessages(hashes, bridge.hashes) || receipt.fullChat && targetRows.length !== bridge.count + 1) return failed('target-changed', '新聊天的衔接内容已变化，未自动打开。');
+            if (!receipt.fullChat && target.file.startsWith('忆幕续接-')) recentStory = {...target, owner: ctx.extensionSettings};
             if (!current()) return failed('source-changed', '当前聊天已变化或仍在生成，新聊天已保留，未自动切换。');
             if (sameBinding(target, sourceSnapshot.binding)) return { opened: true, binding: clone(target), alreadyOpen: true };
             // Native clearChat cancels pending saves. Never navigate away from
@@ -332,6 +362,7 @@ export function createHost({
                 // preparing. It must not clear that real request's memory slot.
                 if (CLEAR_EVENTS.has(name) && !(name === 'GENERATION_STARTED' && args[2] === true)) clear();
                 try {
+                    if (name === 'CHAT_CHANGED') revealRecentStory();
                     // ST awaits listeners. In particular, final payload admission
                     // must finish before ST starts its network request.
                     const pending = callback(name, args);
@@ -350,6 +381,7 @@ export function createHost({
         return () => {
             if (!active) return;
             active = false;
+            recentStory = null;
             for (const [event, listener, promote] of subscriptions) {
                 remove(event, listener);
                 if (promote) promoteFinalListeners.delete(promote);
@@ -358,6 +390,6 @@ export function createHost({
         };
     }
 
-    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup,
+    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi, summaryConnection: settings => connectionApi.effectiveConnection(settings) };
 }

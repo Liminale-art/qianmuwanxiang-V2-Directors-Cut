@@ -1,6 +1,6 @@
 import { estimateTokens } from './core.mjs';
 import { sourceRanges, stageSourceFromParents, hasCustomParents, recentStageEntryIds } from './stage-contract.mjs';
-import { orderedEntries } from './timeline.mjs';
+import { orderedEntries, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { validateScenes, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 
@@ -16,7 +16,7 @@ export function stageGroups(document, { start = 1, end = Infinity, recentCutoff 
     // uses that same stage below; never silently create a parallel replacement.
     const blocked = new Set(stages.flatMap(stage => refs(stage).map(ref => ref.id)));
     if (automatic) for (const id of recentStageEntryIds(document, stageRecent)) blocked.add(id);
-    const fine = orderedEntries(document).filter(entry => !entry.origin && ['summary', 'manual'].includes(entry.kind));
+    const fine = orderedEntries(document).filter(entry => !entry.origin && !entry.discarded && ['summary', 'manual'].includes(entry.kind));
     const groups = []; let group = [];
     const flush = () => { if (group.length >= 2) groups.push(group); group = []; };
     for (const entry of fine) {
@@ -35,9 +35,9 @@ export function stageWeight(entries, basis) {
     return entries.reduce((n, entry) => n + estimateTokens(entry.text), 0);
 }
 
-export function nextStage(document, settings, { force = false, start = 1, end = Infinity, recentCutoff = Infinity } = {}) {
+export function nextStage(document, settings, { force = false, start = 1, end = Infinity, recentCutoff = Infinity, includeCustom = false } = {}) {
     if (!document.enabled || !force && !settings.stageAuto) return null;
-    if (force && Number.isFinite(end)) return planStageRange(document, settings, { start, end, recentCutoff });
+    if (force && Number.isFinite(end)) return planStageRange(document, settings, { start, end, recentCutoff, includeCustom });
     const retained = !force ? recentStageEntryIds(document, settings.stageRecent ?? 10) : new Set();
     for (const stage of document.entries.filter(entry => !entry.origin && entry.kind === 'stage' && entry.status === 'invalid' && !entry.edited && !hasCustomParents(entry, document))) {
         const parents = refs(stage).map(ref => document.entries.find(entry => entry.id === ref.id));
@@ -67,10 +67,11 @@ export function nextStage(document, settings, { force = false, start = 1, end = 
 }
 
 /** Manual range preview, with whole existing owners expanded before any model request. */
-export function planStageRange(document, settings, { start, end, recentCutoff = Infinity } = {}) {
+export function planStageRange(document, settings, { start, end, recentCutoff = Infinity, includeCustom = false } = {}) {
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) throw new Error('请选择有效的阶段起止楼层');
+    if (typeof includeCustom !== 'boolean') throw new Error('阶段自定义切片选项无效');
     const requestedRange = { start, end }, range = { start, end };
-    const narrative = orderedEntries(document).filter(entry => !entry.origin && ['summary', 'manual'].includes(entry.kind));
+    const narrative = orderedEntries(document).filter(entry => !entry.origin && !entry.discarded && (entry.kind === 'summary' || includeCustom && entry.kind === 'manual'));
     const owners = document.entries.filter(entry => entry.kind === 'stage' && !entry.replacedBy);
     let selected = [];
     for (let changed = true; changed;) {
@@ -93,7 +94,7 @@ export function planStageRange(document, settings, { start, end, recentCutoff = 
     selected = narrative.filter(entry => startFloor(entry) >= range.start && endFloor(entry) <= range.end);
     if (selected.some(entry => entry.kind === 'summary' && entry.source.end > recentCutoff)) throw new Error('所选阶段涉及近期原文，请调整范围');
     if (selected.length < 2 || selected.some(entry => !eligibleFine(entry))) throw new Error('选择至少两份连续有效切片；人工修订的自动切片请单独处理');
-    stageSourceFromParents(document, selected.map(entry => ({ id: entry.id, revision: entry.revision })));
+    stageSourceFromParents(document, selected.map(entry => ({ id: entry.id, revision: entry.revision })), { includeCustom });
     if (stageWeight(selected, 'tokens') > (settings.inputCapacity ?? settings.batch) || settings.fitsStage && !settings.fitsStage(selected)) throw new Error('阶段范围超过此连接的可用输入容量，请缩小范围或选择容量足够的连接');
     const selectedIds = new Set(selected.map(entry => entry.id));
     const owned = owners.filter(stage => refs(stage).some(ref => selectedIds.has(ref.id)));
@@ -101,23 +102,23 @@ export function planStageRange(document, settings, { start, end, recentCutoff = 
     const existing = owned.length === 1 && refs(owned[0]).length === selected.length
         && refs(owned[0]).every((ref, i) => ref.id === selected[i].id) ? owned[0] : null;
     if (!existing && owned.some(stage => stage.edited || hasCustomParents(stage, document))) throw new Error('已有阶段含人工内容，请对该阶段单独重新总结');
-    return { requestedRange, range, expanded: start !== range.start || end !== range.end, parents: selected, existing,
+    return { requestedRange, range, includeCustom, expanded: start !== range.start || end !== range.end, parents: selected, existing,
         replaceStages: existing ? [] : owned.map(stage => ({ id: stage.id, revision: stage.revision })) };
 }
 
 export function stagePrompt(parents, settings) {
     return composePrompt(settings, 'stage', {
-        protocol: `将按叙事顺序排列的切片整理为阶段摘要，原切片不删除。只输出JSON：{"text":"自足、精炼的阶段摘要","scenes":[]}。正文及可见场景文字合计不得超过 ${settings.stageChars ?? 3000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量。${SCENE_PROMPT}\n自定义切片属于用户明确写定内容，必须保留其含义与知情边界，不能把它当原文证据、虚构共同经历或用压缩改写其事实。自定义场景继承只用 evidence.inheritedFrom:{id,revision} 引用本次父切片，不将其适用楼层当作原文证据；没有有据时间则留空。不同场景、多视角同时异地事件不得合成同场。`,
+        protocol: `将按叙事顺序排列的切片整理为阶段摘要，原切片不删除。只输出JSON：{"title":"不超过${MEMORY_TITLE_LIMIT}字的主要事件短名","text":"自足、精炼的阶段摘要","scenes":[]}。title只概括本次有据内容，不新增事实。正文及可见场景文字合计不得超过 ${settings.stageChars ?? 3000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量。${SCENE_PROMPT}\n自定义切片属于用户明确写定内容，必须保留其含义与知情边界，不能把它当原文证据、虚构共同经历或用压缩改写其事实。自定义场景继承只用 evidence.inheritedFrom:{id,revision} 引用本次父切片，不将其适用楼层当作原文证据；没有有据时间则留空。不同场景、多视角同时异地事件不得合成同场。`,
         data: `切片：${JSON.stringify(parents.map(e => ({ id: e.id, revision: e.revision, kind: e.kind,
             start: startFloor(e), end: endFloor(e), scenes: e.scenes, text: e.text })))}`,
     });
 }
 
-export function parseStage(response, parents, settings = {}) {
+export function parseStage(response, parents, settings = {}, { includeCustom = true } = {}) {
     let result;
     try { result = JSON.parse(String(response).trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1')); }
     catch { throw new Error('阶段整理结果不是有效 JSON，原记忆未改变'); }
     if (typeof result?.text !== 'string' || !result.text.trim() || result.text.length > 100000) throw new Error('阶段整理没有返回有效正文，原记忆未改变');
-    return validateGeneratedLength({ kind: 'stage', text: result.text.trim(), scenes: validateScenes(result.scenes, { allowUser: false }),
-        source: { parents: parents.map(e => ({ id: e.id, revision: e.revision })), ranges: parents.flatMap(sourceRanges) } }, settings);
+    return validateGeneratedLength({ kind: 'stage', title: validateMemoryTitle(result.title) || memoryTitle({ kind: 'summary', text: result.text }), text: result.text.trim(), scenes: validateScenes(result.scenes, { allowUser: false }),
+        source: { parents: parents.map(e => ({ id: e.id, revision: e.revision })), ranges: parents.flatMap(sourceRanges), ...(!includeCustom ? { includeCustom: false } : {}) } }, settings);
 }

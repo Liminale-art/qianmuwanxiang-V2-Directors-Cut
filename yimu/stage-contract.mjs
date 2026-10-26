@@ -41,10 +41,12 @@ export function validateStageSource(source) {
     if (!Array.isArray(source?.ranges)) fail('阶段摘要没有来源区间');
     const ranges = source.ranges.map(range);
     for (let i = 1; i < ranges.length; i++) if (ranges[i].start <= ranges[i - 1].end + 1) fail('阶段摘要来源区间重叠或尚未规范化');
-    return {ranges, parents};
+    if (source?.includeCustom !== undefined && typeof source.includeCustom !== 'boolean') fail('阶段自定义切片选项无效');
+    return {ranges, parents, ...(source?.includeCustom === false ? { includeCustom: false } : {})};
 }
 
-export function stageSourceFromParents(document, refs, { automatic = false, stageRecent = 10 } = {}) {
+export function stageSourceFromParents(document, refs, { automatic = false, stageRecent = 10, includeCustom = true } = {}) {
+    if (typeof includeCustom !== 'boolean') fail('阶段自定义切片选项无效');
     const parents = references(refs);
     if (automatic) {
         const retained = recentStageEntryIds(document, stageRecent);
@@ -57,13 +59,14 @@ export function stageSourceFromParents(document, refs, { automatic = false, stag
             fail('阶段整理期间细摘要已修改、停用或失效，本次结果未采用');
         }
         if (entry.kind === 'manual') {
+            if (!includeCustom) fail('本次阶段未选择包含自定义切片');
             if (!validatePlacement(entry.placement)) fail('自定义切片尚未确定适用位置，不能纳入阶段');
             return { entry, source: null };
         }
         return {entry, source: range(entry.source)};
     });
     if (entries.some(({entry}) => JSON.stringify(entry.origin || null) !== JSON.stringify(entries[0].entry.origin || null))) fail('阶段摘要不能混合不同聊天来源');
-    const narrative = orderedEntries(document).filter(entry => ['summary', 'manual'].includes(entry.kind));
+    const narrative = orderedEntries(document).filter(entry => !entry.discarded && (entry.kind === 'summary' || includeCustom && entry.kind === 'manual'));
     const from = narrative.findIndex(entry => entry.id === parents[0].id);
     if (from < 0 || parents.some((ref, i) => narrative[from + i]?.id !== ref.id)) fail('阶段切片的连续叙事排列已变化，不能跨越其他切片');
     const sources = entries.map(value => value.source).filter(Boolean).sort((a, b) => a.start - b.start);
@@ -76,7 +79,7 @@ export function stageSourceFromParents(document, refs, { automatic = false, stag
             combined.end = next.end; combined.hashes.push(...next.hashes);
         }
     }
-    return {ranges, parents};
+    return {ranges, parents, ...(!includeCustom ? { includeCustom: false } : {})};
 }
 
 export function stageDependenciesValid(entry, document) {
@@ -84,7 +87,7 @@ export function stageDependenciesValid(entry, document) {
     try {
         const source = validateStageSource(entry.source);
         const first = document.entries.find(item => item.id === source.parents[0].id);
-        return same(entry.origin || null, first?.origin || null) && same(source, stageSourceFromParents(document, source.parents));
+        return same(entry.origin || null, first?.origin || null) && same(source, stageSourceFromParents(document, source.parents, { includeCustom: source.includeCustom !== false }));
     } catch { return false; }
 }
 

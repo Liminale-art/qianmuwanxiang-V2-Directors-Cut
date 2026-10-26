@@ -320,7 +320,7 @@ test('preview shows bounded source nature and edited cutoff disables saving unti
     const f=await viewFixture(t);await f.list();f.render();f.input('checkbox').checked=true;f.input('checkbox').emit('change');
     await f.preview();f.render();assert.equal(f.button('确认关联以上摘要').disabled,false);
     assert.match(f.view.element.textContent,/书中背景（不等于亲历或知情）/);assert.match(f.view.element.textContent,/共同交流/);
-    assert.match(f.view.element.textContent,/只关联本次预览的摘要/);
+    assert.doesNotMatch(f.view.element.textContent,/只关联本次预览的摘要/);
     f.input('number').value='90';f.input('number').emit('input');
     assert.equal(f.input('checkbox').checked,false);assert.equal(f.button('确认关联以上摘要').disabled,true);
     f.input('checkbox').checked=true;f.input('checkbox').emit('change');assert.equal(f.button('确认关联以上摘要').disabled,true);

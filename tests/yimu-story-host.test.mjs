@@ -5,9 +5,25 @@ import { createHost } from '../yimu/host.mjs';
 import { fingerprintMessages } from '../yimu/contract.mjs';
 
 const clone = value => structuredClone(value);
-async function fixture() {
+
+test('boundary costs use the native ST confirm and only its affirmative result grants approval', async () => {
+    const calls = []; let answer = 1;
+    const ctx = {Popup: {show: {confirm: async (...args) => { calls.push(args); return answer; }}}};
+    const host = createHost({getContext: () => ctx});
+    const scope = {ranges: [{start: 2, end: 4}, {start: 6, end: 8}]};
+    assert.equal(await host.confirmStoryBoundary(scope), true);
+    assert.match(calls[0][1], /2—4、6—8/); assert.match(calls[0][1], /调用 2 次/); assert.match(calls[0][1], /可能产生费用/);
+    assert.deepEqual(calls[0][2], {okButton: '继续建立', cancelButton: '取消'});
+    for (answer of [0, null, -1, 2, true, '1']) assert.equal(await host.confirmStoryBoundary(scope), false);
+    delete ctx.Popup;
+    await assert.rejects(host.confirmStoryBoundary(scope), /无法确认/);
+    await assert.rejects(host.confirmStoryBoundary({ranges: [{start: '<img>', end: 4}]}), /范围无效/);
+    await assert.rejects(host.confirmStoryBoundary({ranges: []}), /范围无效/);
+});
+
+async function fixture({document, continuation=false}={}) {
     const source = { avatar: 'actor.png', file: 'Original', integrity: 'original-integrity' };
-    const target = { ...source, file: 'New story', integrity: 'new-integrity' };
+    const target = { ...source, file: continuation?'忆幕续接-Original-new':'New story', integrity: 'new-integrity' };
     const messages = Array.from({ length: 8 }, (_, index) => ({ name: index % 2 ? 'Actor' : 'User', is_user: !(index % 2), mes: `Floor ${index + 1}`, send_date: `date-${index}` }));
     const bridge = clone(messages.slice(-5));
     const disk = new Map([[source.file, [{ chat_metadata: { integrity: source.integrity } }, ...clone(messages)]],
@@ -21,7 +37,7 @@ async function fixture() {
         async openCharacterChat(file) { opens.push(file); const rows = clone(disk.get(file)); ctx.chatId = file; ctx.chatMetadata = rows.shift().chat_metadata; ctx.chat = rows; },
     };
     let read = async file => clone(disk.get(file));
-    const host = createHost({ getContext: () => ctx, fetcher: async (url, options) => {
+    const host = createHost({ getContext: () => ctx, document, fetcher: async (url, options) => {
         const body = JSON.parse(options.body); requests.push({ url, options, body });
         return { ok: true, json: () => read(body.file_name) };
     } });
@@ -41,6 +57,41 @@ test('native opening verifies saved source and target, never saves either chat, 
     const loaded = await f.host.snapshot();
     const again = await f.host.openStory(f.result, { sourceSnapshot: loaded });
     assert.equal(again.alreadyOpen, true); assert.equal(f.opens.length, 1);
+});
+
+function recentFixture() {
+    const row=(avatar,file,group='')=>({dataset:{avatar,file,group},hidden:true,classes:new Set(['hidden']),classList:{remove(value){this.owner.classes.delete(value);}}});
+    const rows=[row('actor.png','Other'),row('different.png','忆幕续接-Original-new'),row('actor.png','忆幕续接-Original-new')];
+    for(const item of rows)item.classList.owner=item;
+    const list={rows,querySelectorAll(selector){assert.equal(selector,'.recentChat');return this.rows;},get firstChild(){return this.rows[0];},
+        insertBefore(item,before){this.rows.splice(this.rows.indexOf(item),1);const index=this.rows.indexOf(before);this.rows.splice(index<0?0:index,0,item);}};
+    const document={querySelector(selector){assert.equal(selector,'#chat .welcomePanel .recentChatList');return list;}};
+    return{document,list,rows};
+}
+
+test('only the newest verified continuation is revealed once in the native welcome list without changing dates or pins',async t=>{
+    const dom=recentFixture(),f=await fixture({document:dom.document,continuation:true});t.after(f.unsubscribe);
+    const original=clone(f.disk.get(f.target.file)),target=dom.rows[2];target.pinned=false;dom.rows[0].pinned=true;
+    assert.equal((await f.host.openStory(f.result,{sourceSnapshot:f.sourceSnapshot})).opened,true);
+    f.ctx.eventSource.emit('changed');assert.notEqual(dom.list.rows[0],target,'not on the welcome page yet');
+    f.ctx.chatId=undefined;f.ctx.eventSource.emit('changed');
+    assert.equal(dom.list.rows[0],target);assert.equal(target.hidden,false);assert.equal(target.classes.has('hidden'),false);
+    assert.equal(target.pinned,false);assert.equal(dom.list.rows[1].pinned,true);assert.deepEqual(f.disk.get(f.target.file),original);
+    dom.list.rows.reverse();const first=dom.list.rows[0];f.ctx.eventSource.emit('changed');assert.equal(dom.list.rows[0],first,'one-shot handoff, not a persistent sort override');
+});
+
+test('recent reveal skips failed verification, backups, changed account ownership, duplicate identities and disposal',async t=>{
+    for(const mode of ['invalid-target','backup','account','duplicate','dispose']){
+        const dom=recentFixture(),f=await fixture({document:dom.document,continuation:true});t.after(f.unsubscribe);
+        f.ctx.extensionSettings={};const first=dom.list.rows[0];
+        if(mode==='invalid-target')f.disk.get(f.target.file)[1].mes='changed';
+        if(mode==='backup')await f.host.openBackup({...f.result,receipt:{...f.receipt,hashes:f.receipt.bridge.hashes}},{sourceSnapshot:f.sourceSnapshot});
+        else await f.host.openStory(f.result,{sourceSnapshot:f.sourceSnapshot});
+        if(mode==='account')f.ctx.extensionSettings={};
+        if(mode==='duplicate')dom.list.rows.push({...dom.list.rows[2]});
+        if(mode==='dispose')f.unsubscribe();
+        f.ctx.chatId=undefined;f.ctx.eventSource.emit('changed');assert.equal(dom.list.rows[0],first,mode);
+    }
 });
 
 test('backup role choices retain unique avatar identity, and complete restoration verifies the whole target without switching roles', async t => {

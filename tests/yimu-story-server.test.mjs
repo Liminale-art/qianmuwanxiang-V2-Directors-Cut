@@ -8,6 +8,7 @@ import {createYimuStore, chatStorageName} from '../yimu/server-store.mjs';
 import {fingerprintMessages, stageDependenciesValid, applyOperation, validateDocument, SCHEMA} from '../yimu/contract.mjs';
 import {buildPlan} from '../yimu/core.mjs';
 import {sceneDependenciesValid} from '../yimu/scene-contract.mjs';
+import {portableDocument, restoreBackupDocument} from '../yimu/backup-contract.mjs';
 const hash = text => createHash('sha256').update(text).digest('hex');
 const binding = {avatar: 'Story.png', file: 'Original', integrity: 'original_identity'};
 const clone = value => structuredClone(value);
@@ -141,6 +142,29 @@ test('mixed and manual-only stages survive continuation with remapped parent ide
     }
 });
 
+test('stages excluding interleaved custom slices stay valid across continuation, injection and portable restore', async t => {
+    const f = await fixture(t);
+    await f.change({type: 'append', afterId: 'early', entry: {id: 'custom', kind: 'manual', title: '私人约定',
+        text: '不被阶段压缩的自定义约定', placement: {binding, fromFloor: 3, hash: f.hashes[2]}}});
+    await f.change({type: 'append', expectedEpoch: 1, expectedDefaultsRevision: 0, entry: {id: 'stage', kind: 'stage',
+        title: '桥边相会', text: '两个普通切片的阶段', source: {parents: [{id: 'early', revision: 1}, {id: 'middle', revision: 1}], includeCustom: false}}});
+    const p = await f.plan({cutoff: 12}), created = await f.store.createStory(f.request, binding, f.operation(p));
+    const fresh = await f.store.read(f.request, created.binding);
+    const stage = fresh.document.entries.find(entry => entry.kind === 'stage'), custom = fresh.document.entries.find(entry => entry.kind === 'manual');
+    assert.equal(stage.title, '桥边相会'); assert.equal(custom.title, '私人约定');
+    assert.equal(stage.source.includeCustom, false); assert.equal(stageDependenciesValid(stage, fresh.document), true);
+    assert.ok(!stage.source.parents.some(ref => ref.id === custom.id));
+    assert.deepEqual(fresh.invalidSourceIds, []);
+    const plan = await buildPlan(fresh.document, fresh.defaults, {messages: f.messages.slice(7, 12)});
+    assert.ok(plan.memoryIds.includes(stage.id)); assert.ok(plan.memoryIds.includes(custom.id));
+    assert.ok(!stage.source.parents.some(ref => plan.memoryIds.includes(ref.id)), 'stage and automatic parents do not duplicate');
+    const portable = portableDocument(fresh.document), recovered = {...created.binding, file: 'RecoveredStage'};
+    const restored = restoreBackupDocument(portable, {binding: recovered, mappings: {source_0: recovered, source_1: binding}}).document;
+    const restoredStage = restored.entries.find(entry => entry.kind === 'stage');
+    assert.equal(restoredStage.source.includeCustom, false); assert.equal(stageDependenciesValid(restoredStage, restored), true);
+    assert.equal(restored.entries.find(entry => entry.kind === 'manual').text, custom.text);
+});
+
 test('scene inheritance references follow copied IDs and absent anchors become unknown rather than broken proof', async t => {
     const f=await fixture(t),file=path.join(f.account,'.yimu',chatStorageName(binding));
     const envelope=JSON.parse(await fs.readFile(file,'utf8'));
@@ -207,7 +231,7 @@ test('new local summaries may reuse inherited floor numbers, but foreign redo an
     assert.equal(result.document.schema, SCHEMA);
 });
 
-test('excluded, deleted and invalid manually edited stages do not revive their children in a new branch', async t => {
+test('excluded stages stay excluded with their children suppressed; deleted and invalid manual stages do not revive children', async t => {
     for (const action of ['exclude', 'delete', 'invalid']) {
         const f = await fixture(t);
         await f.change({type: 'append', expectedEpoch: 1, expectedDefaultsRevision: 0, entry: {id: 'stage', kind: 'stage', text: '保护的阶段', source: {parents: [{id: 'early', revision: 1}, {id: 'middle', revision: 1}]}}});
@@ -215,8 +239,56 @@ test('excluded, deleted and invalid manually edited stages do not revive their c
             await f.change({type: 'edit', entryId: 'stage', expectedRevision: 1, text: '人工修订的阶段'});
             await f.change({type: 'invalidate', entries: [{id: 'stage', revision: 2}]});
         } else await f.change({type: 'entry', entryId: 'stage', expectedRevision: 1, action});
-        const p = await f.plan(); assert.equal(p.inheritedCount, 0); assert.equal(p.boundaries.length, 1);
+        const p = await f.plan(); assert.equal(p.inheritedCount, action === 'exclude' ? 3 : 0); assert.equal(p.boundaries.length, 1);
+        const created = await f.store.createStory(f.request,binding,f.operation(p));
+        const read = await f.store.read(f.request,created.binding), rows = (await fs.readFile(path.join(f.folder,created.binding.file+'.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+        const chosen = await buildPlan(read.document,read.defaults,{binding:created.binding,messages:rows.slice(1),maxContext:32000,maxResponse:1000});
+        if(action==='exclude')assert.equal(read.document.entries.find(entry=>entry.kind==='stage').status,'excluded');
+        assert.ok(!chosen.entries.some(entry=>['摘要 1—3','摘要 4—6','保护的阶段'].includes(entry.text)));
     }
+});
+
+test('suppressed fine memories are preserved without activation, deleted or source-changed memories stay out', async t => {
+    const f=await fixture(t);
+    await f.change({type:'append',entry:{id:'note',kind:'manual',text:'独立自定义',placement:{binding,fromFloor:3,hash:f.hashes[2]}}});
+    await f.change({type:'entry',entryId:'early',expectedRevision:1,action:'exclude'});
+    await f.change({type:'entry',entryId:'middle',expectedRevision:1,action:'delete'});
+    const p=await f.plan({cutoff:12}),created=await f.store.createStory(f.request,binding,f.operation(p));
+    assert.match(created.binding.file,/^忆幕续接-/);
+    const read=await f.store.read(f.request,created.binding),rows=(await fs.readFile(path.join(f.folder,created.binding.file+'.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(read.document.entries.find(entry=>entry.text==='摘要 1—3').status,'excluded');
+    assert.equal(read.document.entries.find(entry=>entry.text==='摘要 1—3').originVerified,true);
+    assert.equal(read.document.entries.some(entry=>entry.text==='摘要 4—6'),false);
+    assert.ok(read.document.entries.some(entry=>entry.text==='独立自定义'));
+    const chosen=await buildPlan(read.document,read.defaults,{binding:created.binding,messages:rows.slice(1),maxContext:32000,maxResponse:1000});
+    assert.equal(chosen.entries.some(entry=>entry.text==='摘要 1—3'),false);
+    const changed=f.messages.map((message,index)=>index===0?{...message,mes:'原文变化'}:message);await f.writeChat(changed);
+    const next=await f.plan({cutoff:12}),second=await f.store.createStory(f.request,binding,f.operation(next,'changed-origin'));
+    assert.equal(second.document.entries.some(entry=>entry.text==='摘要 1—3'),false);
+});
+
+test('a pre-upgrade complete receipt resolves its original file after the continuation prefix changes', async t => {
+    const f=await fixture(t),p=await f.plan({cutoff:12}),op=f.operation(p,'old-operation');
+    const created=await f.store.createStory(f.request,binding,op);
+    const suffix=created.binding.file.split('-').at(-1),legacy={...created.binding,file:`${binding.file}-忆幕-${suffix}`};
+    const file=path.join(f.account,'.yimu',chatStorageName(created.binding)),envelope=JSON.parse(await fs.readFile(file,'utf8'));
+    envelope.value.binding=legacy;envelope.checksum=hash(JSON.stringify(envelope.value));
+    await fs.rename(path.join(f.folder,created.binding.file+'.jsonl'),path.join(f.folder,legacy.file+'.jsonl'));
+    await fs.writeFile(file,JSON.stringify(envelope));await fs.rename(file,path.join(f.account,'.yimu',chatStorageName(legacy)));
+    assert.deepEqual((await f.store.storyResult(f.request,binding,{id:op.id})).binding,legacy);
+    assert.deepEqual((await f.store.createStory(f.request,binding,op)).binding,legacy);
+    assert.equal((await fs.readdir(f.folder)).filter(name=>name.endsWith('.jsonl')).length,2);
+});
+
+test('new boundary summaries obey the selected character cap before any chat or memory is created',async t=>{
+    const f=await fixture(t),before=(await f.store.read(f.request,binding)).document;
+    await f.change({type:'settings',expectedRevision:before.configRevision,values:{sliceChars:3}});
+    const p=await f.plan(),op=f.operation(p,'overlong-boundary');
+    await assert.rejects(f.store.createStory(f.request,binding,op),/超过 3 字上限/);
+    assert.deepEqual((await fs.readdir(f.folder)).filter(name=>name.endsWith('.jsonl')),['Original.jsonl']);
+    op.boundarySummaries[0].entries[0].text='短文';op.boundarySummaries[0].entries[0].title='边界短名';
+    const result=await f.store.createStory(f.request,binding,op);
+    assert.equal(result.document.entries.find(entry=>entry.text==='短文').title,'边界短名');
 });
 
 test('failure after create-only raw save leaves a pending receipt and retries finish the exact same target', async t => {
@@ -263,7 +335,7 @@ test('pending creation cannot be completed from a changed source, and completed 
 test('an unrelated existing destination without an integrity slug is never adopted or overwritten', async t => {
     const f = await fixture(t), p = await f.plan(), op = f.operation(p);
     const targetHash = hash(JSON.stringify([binding, op.id]));
-    const target = path.join(f.folder, `${binding.file}-忆幕-${targetHash.slice(0, 20)}.jsonl`);
+    const target = path.join(f.folder, `忆幕续接-${binding.file}-${targetHash.slice(0, 20)}.jsonl`);
     const original = Buffer.from('{"chat_metadata":{}}\n{"mes":"keep this unrelated file"}\n'); await fs.writeFile(target, original);
     await assert.rejects(f.store.createStory(f.request, binding, op), {code: 'yimu_story_collision'});
     assert.deepEqual(await fs.readFile(target), original);

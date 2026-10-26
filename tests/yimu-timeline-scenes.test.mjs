@@ -253,7 +253,7 @@ test('all-custom stages are admitted without deleting any chat originals', async
 test('custom-only stages may use recent applicability anchors without compressing recent raw', async () => {
     const f = await fixture(); let document = f.addManual(f.document, 'm1', 13, 'f4');
     document = f.addManual(document, 'm2', 14, 'm1');
-    const plan = planStageRange(document, DEFAULTS, { start: 13, end: 14, recentCutoff: 9 });
+    const plan = planStageRange(document, DEFAULTS, { start: 13, end: 14, recentCutoff: 9, includeCustom: true });
     assert.deepEqual(plan.parents.map(entry => entry.id), ['m1', 'm2']);
     assert.deepEqual(stageSourceFromParents(document, refs(document, ['m1', 'm2'])).ranges, []);
 });

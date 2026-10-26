@@ -637,7 +637,8 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 }
                 if ((operation?.type === 'append' || operation?.type === 'redo') && operation.entry?.source) {
                     const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents,
-                        { automatic: operation.automaticStage === true, stageRecent: contract.effectiveSettings(current.value, actualDefaults?.value).stageRecent })} : operation.entry;
+                        { automatic: operation.automaticStage === true, stageRecent: contract.effectiveSettings(current.value, actualDefaults?.value).stageRecent,
+                            includeCustom: operation.entry.source.includeCustom !== false })} : operation.entry;
                     await requireEntrySource(ctx, binding, generated, current.value, actualDefaults?.value, generatedStage);
                     checkedSources.add(sourceKey(generated));
                 }

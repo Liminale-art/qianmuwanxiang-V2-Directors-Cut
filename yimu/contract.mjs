@@ -4,11 +4,11 @@ import {validateExcerpt, recallBlockReason, excerptDependenciesValid, invalidate
 import {validateOrigin, validateLineage, validateCreation} from './story-contract.mjs';
 import {validateCompanion, applyCompanionOperation} from './companion-contract.mjs';
 import { validateScenes } from './scene-contract.mjs';
-import { normalizeEntryOrder, insertEntryOrder, validatePlacement } from './timeline.mjs';
+import { normalizeEntryOrder, insertEntryOrder, validatePlacement, validateMemoryTitle } from './timeline.mjs';
 import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './prompt-settings.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.8.1';
+export const VERSION = '0.8.2';
 export const SCHEMA = 7;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
@@ -88,6 +88,11 @@ export function validateDocument(raw) {
         delete entry.placementVerified;
         if (entry.origin) entry.origin = validateOrigin(entry.origin);
         textValue(entry.text);
+        if (entry.title !== undefined) entry.title = validateMemoryTitle(entry.title);
+        if (entry.discardedSources !== undefined) entry.discardedSources = validateDiscardedSources(entry.discardedSources);
+        if (entry.discarded !== undefined) requireThat(entry.discarded === true && entry.status === 'deleted'
+            && entry.text === '已删除' && !entry.title && !entry.history?.length && !entry.conflicts?.length && !entry.candidate,
+        '已清除的删除记录无效');
         requireThat(['summary', 'manual', 'stage', 'excerpt'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
         if (entry.kind === 'summary') validateSource(entry.source);
         else if (entry.kind === 'stage') validateStageSource(entry.source);
@@ -96,6 +101,8 @@ export function validateDocument(raw) {
         entry.scenes = validateScenes(entry.scenes, entry.kind === 'summary' ? entry.source : {});
         if (entry.kind === 'manual') entry.placement = validatePlacement(entry.placement);
         for (const version of [...entry.history, ...entry.conflicts, ...(entry.candidate ? [entry.candidate] : [])]) {
+            if (version.title !== undefined) version.title = validateMemoryTitle(version.title);
+            if (version.discardedSources !== undefined) version.discardedSources = validateDiscardedSources(version.discardedSources);
             version.scenes = validateScenes(version.scenes, version.kind === 'summary' ? version.source : {});
             if (version.kind === 'manual') version.placement = validatePlacement(version.placement);
             delete version.originVerified; delete version.placementVerified;
@@ -118,6 +125,7 @@ function isDuplicate(document, operation) {
     return true;
 }
 function finish(document, operation, outcome = 'applied') {
+    if (operation.type === 'entry' && operation.action === 'delete') pruneDeletedEntries(document);
     document.entryOrder = normalizeEntryOrder(document);
     invalidateDependentStages(document);
     invalidateDependentExcerpts(document);
@@ -129,17 +137,31 @@ function finish(document, operation, outcome = 'applied') {
 function past(entry) { const { history, conflicts, candidate, ...rest } = entry; return clone(rest); }
 function revise(entry, changes) {
     entry.history.push(past(entry));
-    if (typeof changes.text === 'string' && changes.text !== entry.text) delete entry.textUndoRevision;
+    if (typeof changes.text === 'string' && changes.text !== entry.text || Object.hasOwn(changes, 'title') && changes.title !== (entry.title || '')) delete entry.textUndoRevision;
     Object.assign(entry, changes, { revision: entry.revision + 1 });
 }
 export function canUndoText(entry) {
-    return (entry?.history || []).some(previous => previous.text !== entry.text && previous.revision < (entry.textUndoRevision ?? Infinity));
+    return !entry?.discarded && (entry?.history || []).some(previous => (previous.text !== entry.text || (previous.title || '') !== (entry.title || '')) && previous.revision < (entry.textUndoRevision ?? Infinity));
+}
+/** Keep source-only deletion guards so older backups and auto-summary cannot revive discarded stories. */
+export function pruneDeletedEntries(document) {
+    const deleted = document.entries.filter(entry => entry.status === 'deleted' && !entry.replacedBy && !entry.discarded);
+    const order = new Map(document.entries.map((entry, index) => [entry.id, index]));
+    deleted.sort((a, b) => (b.deletedRevision ?? -1) - (a.deletedRevision ?? -1) || order.get(b.id) - order.get(a.id));
+    for (const entry of deleted.slice(10)) {
+        const retained = Object.fromEntries(['id', 'kind', 'source', 'origin', 'placement', 'parent', 'quote', 'deletedRevision']
+            .filter(key => Object.hasOwn(entry, key)).map(key => [key, clone(entry[key])]));
+        for (const key of Object.keys(entry)) delete entry[key];
+        Object.assign(entry, retained, { text: '已删除', revision: document.revision + 1, status: 'deleted', discarded: true,
+            edited: false, scenes: [], history: [], conflicts: [], candidate: null });
+    }
+    return document;
 }
 function submittedEntry(input, document) {
     requireThat(input && ['summary', 'manual', 'stage'].includes(input.kind), '记忆类型无效');
     requireThat(!input.origin, '继承来源只能通过明确的故事创建写入');
     if (input.kind === 'stage') requireThat(!input.source?.parents?.some(ref => document.entries.find(entry => entry.id === ref.id)?.origin), '继承记忆不在新聊天自动重新整理');
-    const source = input.kind === 'stage' ? stageSourceFromParents(document, input.source?.parents)
+    const source = input.kind === 'stage' ? stageSourceFromParents(document, input.source?.parents, { includeCustom: input.source?.includeCustom === undefined ? true : input.source.includeCustom })
         : input.kind === 'summary' ? validateSource(input.source) : null;
     const sceneInput = input.kind === 'manual' && Array.isArray(input.scenes)
         ? input.scenes.map(scene => ({ ...scene, evidence: { ...scene.evidence, user: true } })) : input.scenes;
@@ -156,13 +178,38 @@ function submittedEntry(input, document) {
     }
     const placement = input.kind === 'manual' ? validatePlacement(input.placement, { binding: document.binding }) : undefined;
     if (input.kind === 'manual') requireThat(placement, '请为自定义切片选择有效的插入楼层');
-    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), source, scenes, ...(input.kind === 'manual' ? { placement } : {}) };
+    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), ...(input.title !== undefined ? { title: validateMemoryTitle(input.title) } : {}), source, scenes, ...(input.kind === 'manual' ? { placement } : {}) };
 }
 function requireUnusedStageParents(document, submitted) {
     if (submitted.kind !== 'stage') return;
     const parents = new Set(submitted.source.parents.map(parent => parent.id));
     requireThat(!document.entries.some(entry => entry.kind === 'stage' && !entry.replacedBy && entry.id !== submitted.id
         && entry.source.parents.some(parent => parents.has(parent.id))), '此范围已有阶段摘要，请对已有阶段重新总结');
+}
+export function validateDiscardedSources(value) {
+    requireThat(Array.isArray(value) && value.length > 0, '已清除来源引用无效');
+    const ids = new Set();
+    return value.map(ref => {
+        requireThat(ref && !ids.has(ref.id) && Number.isSafeInteger(ref.revision) && ref.revision > 0, '已清除来源引用无效');
+        const id = identifier(ref.id); ids.add(id);
+        return { id, revision: ref.revision, source: validateSource(ref.source) };
+    });
+}
+function requireSummaryRange(document, submitted, discardedSources) {
+    const overlaps = document.entries.filter(entry => entry.kind === 'summary' && !entry.origin && entry.source
+        && entry.source.start <= submitted.source.end && entry.source.end >= submitted.source.start);
+    if (discardedSources === undefined) {
+        requireThat(!overlaps.length, '此来源已有记忆，请对已有条目重新总结');
+        return;
+    }
+    // An explicit manual range may regenerate purged sources, never restore their
+    // old contents or bypass a retained deletion, shield or current/manual edit.
+    const references = validateDiscardedSources(discardedSources);
+    requireThat(references.length === overlaps.length
+        && overlaps.every(entry => entry.discarded === true && entry.status === 'deleted'
+            && references.some(ref => ref.id === entry.id && ref.revision === entry.revision && JSON.stringify(ref.source) === JSON.stringify(entry.source))),
+    '所选已清除来源已变化，请重新确认手动整理范围');
+    submitted.discardedSources = references;
 }
 function replaceStageOwners(document, submitted, replacements = []) {
     requireThat(Array.isArray(replacements), '阶段替换范围无效');
@@ -247,8 +294,9 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         requireUnusedStageParents(doc, value);
         if (value.kind !== 'manual') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch, '整理期间启用状态或设置已变化，本次结果未采用');
-            // No overlapping automatic replacement, including deleted/excluded slices.
-            if (value.kind === 'summary') requireThat(!doc.entries.some(e => e.kind === 'summary' && !e.origin && e.source && e.source.start <= value.source.end && e.source.end >= value.source.start), '此来源已有记忆，请对已有条目重新总结');
+            // Ordinary/automatic append still rejects all overlap. Only explicitly
+            // named, revision-checked purged sources can be manually summarized anew.
+            if (value.kind === 'summary') requireSummaryRange(doc, value, op.discardedSources);
             requireThat(!doc.lineage || value.source.start > doc.lineage.bridgeCount || value.kind === 'stage', '衔接原文不是新剧情，不重复整理');
         }
         doc.entries.push({ ...value, revision: 1, status: 'active',
@@ -266,9 +314,11 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
     } else {
         const entry = doc.entries.find(e => e.id === op.entryId);
         requireThat(entry, '记忆条目不存在');
+        requireThat(!entry.discarded, '此删除记录已超出保留数量，不能恢复');
         let values;
         if (op.type === 'edit' && op.scenes !== undefined) requireThat(Array.isArray(op.scenes), '切片场景格式无效');
         if (op.type === 'edit') values = { text: textValue(op.text), edited: true,
+            ...(op.title !== undefined ? { title: validateMemoryTitle(op.title) } : {}),
             ...(op.scenes !== undefined ? { scenes: validateScenes(op.scenes.map(scene => ({ ...scene, evidence: { ...scene.evidence, user: true } })), entry.kind === 'summary' ? entry.source : {}) } : {}),
             ...(entry.kind === 'excerpt' ? { kind: 'manual', source: null, parent: null, quote: null,
                 placement: { binding: clone(doc.binding), fromFloor: entry.source.start, hash: entry.source.hashes[0] },
@@ -280,7 +330,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             requireThat(['summary', 'stage'].includes(submitted.kind) && submitted.kind === entry.kind && submitted.id === entry.id, '重总结来源无效');
             if (submitted.kind === 'summary') requireThat(submitted.source.start === entry.source.start && submitted.source.end === entry.source.end, '重新总结不能改变已有切片的楼层范围');
             requireUnusedStageParents(doc, submitted);
-            values = { text: submitted.text, source: submitted.source, kind: submitted.kind, scenes: submitted.scenes,
+            values = { text: submitted.text, ...(submitted.title !== undefined ? { title: submitted.title } : {}), source: submitted.source, kind: submitted.kind, scenes: submitted.scenes,
                 status: entry.status === 'excluded' ? 'excluded' : 'active' };
         } else requireThat(op.type === 'entry', '未知的记忆操作');
         if (op.expectedRevision !== entry.revision) {
@@ -297,11 +347,12 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
                 case 'restore':
                     requireThat(entry.status === 'excluded', '只有暂不使用的条目可恢复');
                     revise(entry, { status: 'active' }); break;
-                case 'delete': revise(entry, { status: 'deleted', candidate: null }); break;
+                case 'delete': revise(entry, { status: 'deleted', candidate: null, deletedRevision: doc.revision + 1 }); break;
                 case 'undoText': {
-                    const previous = entry.history.slice().reverse().find(version => version.text !== entry.text && version.revision < (entry.textUndoRevision ?? Infinity));
+                    const previous = entry.history.slice().reverse().find(version => (version.text !== entry.text || (version.title || '') !== (entry.title || '')) && version.revision < (entry.textUndoRevision ?? Infinity));
                     requireThat(previous, '没有可撤回的文字修改');
                     const values = Object.fromEntries(['text', 'kind', 'source', 'origin', 'placement', 'parent', 'quote', 'scenes', 'edited'].map(key => [key, clone(previous[key] ?? (key === 'scenes' ? validateScenes() : null))]));
+                    values.title = previous.title || '';
                     if (entry.kind === 'manual' && previous.kind === 'manual') values.placement = clone(entry.placement);
                     Object.assign(entry, values, { revision: entry.revision + 1, candidate: null, textUndoRevision: previous.revision });
                     break;

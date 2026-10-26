@@ -8,14 +8,14 @@ import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
 import { VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText } from './contract.mjs';
-import { orderedEntries as timelineEntries } from './timeline.mjs';
+import { orderedEntries as timelineEntries, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
 import { mountPromptView } from './prompt-view.mjs';
 import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scene-view.mjs';
 
 const SETTINGS = [
-    ['budget', '记忆注入值上限', 'number', 0],
+    ['budget', '记忆注入上限', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['sliceChars', '每条切片字数上限', 'number', 0],
@@ -92,7 +92,8 @@ export function shortcutStatus(state = {}) {
     return { tone: 'ready', message: state.busy ? '正在处理' : '正常' };
 }
 
-export function createView({ onAction, connectionApi, document = globalThis.document, saveDelayMs = 300 } = {}) {
+export function createView({ onAction, connectionApi, document = globalThis.document, saveDelayMs = 300,
+    onNotice = (message, tone = 'success') => (document.defaultView?.toastr || globalThis.toastr)?.[tone]?.(message) } = {}) {
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -140,8 +141,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     let settingsTimer = null, settingsSaving = false, settingsDraftRevision = null, settingsSaveFailed = false;
     let currentPage = 'overview', manualAfterId = null, openMenuId = null, draggingId = null, dragGeneration = 0;
     const pageScroll = new Map(), pageFocus = new Map(), pages = new Map(), navButtons = new Map();
-    const pageTitles = { overview: '概览', memory: '记忆', settings: '设置', manual: '自定义切片', stage: '阶段总结' };
-    const pageParents = { manual: 'memory', stage: 'memory' };
+    const pageTitles = { overview: '概览', memory: '记忆', settings: '设置', manual: '自定义切片' };
+    const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
     const dialog = el('dialog', 'ym-dialog');
@@ -185,7 +186,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             shortcutToggle.checked = state.ui?.showShortcut === true;
         }
     });
-    const backup = createBackupView({ document, pageMode: true, onAction: (type, payload) => onAction?.(type, payload) });
+    const backup = createBackupView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
     for (const name of Object.keys(pageTitles)) {
         const page = el('section', 'ym-page'); page.dataset.page = name; page.id = `ym-page-${name}`;
         page.hidden = name !== currentPage;
@@ -289,7 +290,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
     const settingGroups = new Map();
     for (const [name, title, keys] of [
-        ['budget', '记忆注入值上限', ['budget']],
+        ['budget', '记忆注入上限', ['budget']],
         ['basic', '切片总结', ['recent', 'trigger', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall']],
@@ -297,7 +298,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const group = el(name === 'extra' ? 'details' : 'section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}`);
         group.append(el(name === 'extra' ? 'summary' : 'h3', 'ym-setting-title', title));
         const body = el('div', 'ym-settings-form'); group.append(body);
-        if (name === 'extra') body.append(el('p', 'ym-muted', '按需回看相关正文，补充遗漏；不会覆盖手动修订。'));
         settingsForm.append(group); for (const key of keys) settingGroups.set(key, body);
     }
     for (const [key, label, type, min] of SETTINGS) {
@@ -306,7 +306,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (type !== 'textarea' && type !== 'select') input.type = type;
         if (type === 'checkbox') input.className = 'ym-switch';
         if (min !== undefined) { input.min = String(min); input.step = '1'; }
-        if (type === 'number') input.placeholder = key === 'budget' ? '自动' : String(DEFAULTS[key] ?? '');
+        if (type === 'number') input.placeholder = key === 'budget' ? '留空自动' : String(DEFAULTS[key] ?? '');
         const readInput = event => {
             if (settingsDraftRevision === null || settingsSaveFailed) settingsDraftRevision = state.document?.configRevision ?? 0;
             settingsSaveFailed = false;
@@ -327,7 +327,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const labelNode = field(label, input);
         if (key === 'budget') labelNode.children[0].hidden = true;
         row.append(labelNode);
-        if (key === 'sliceChars' || key === 'stageChars') row.append(el('small', 'ym-muted', '单位：字。token 因模型而异，例如 DeepSeek 约 1 汉字 ≈ 0.6 token。'));
         settingGroups.get(key).append(row);
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
@@ -371,26 +370,31 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
 
     const controlsRow = el('div', 'ym-actions');
     const retry = button('重新总结失败部分', () => dispatch('retry', {}, retry));
-    const addManual = button('插入自定义切片', () => openManual());
+    const addManual = iconButton('插入自定义切片', 'plus', () => openManual());
     const stageButton = iconButton('阶段总结', 'layers', () => {
+        stageFormGeneration++;
+        if (!stageForm.hidden) { stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); return; }
         const eligible = stageEligible();
-        if (stageForm.hidden) {
-            stageStart.value = String(eligible.find(entry => entry.source)?.source.start || 1);
-            stageEnd.value = String(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || 5)));
-        }
-        stageForm.hidden = false; navigate('stage'); updateStageRange(); stageStart.focus();
+        stageStart.value = String(eligible.find(entry => entry.source)?.source.start || 1);
+        stageEnd.value = String(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || 5)));
+        stageForm.hidden = false; stageButton.setAttribute('aria-expanded', 'true'); updateStageRange(); stageStart.focus();
     });
+    stageButton.setAttribute('aria-expanded', 'false'); stageButton.setAttribute('aria-controls', 'ym-stage-form');
     controlsRow.append(retry);
-    const stageForm = el('form', 'ym-card ym-stage-form'); stageForm.hidden = true;
+    const stageForm = el('form', 'ym-card ym-stage-form'); stageForm.hidden = true; stageForm.id = 'ym-stage-form';
     const stageStart = el('input'), stageEnd = el('input');
     for (const input of [stageStart, stageEnd]) { input.type = 'number'; input.min = '1'; input.step = '1'; input.required = true; }
     stageStart.setAttribute('aria-label', '阶段摘要开始楼层'); stageEnd.setAttribute('aria-label', '阶段摘要结束楼层');
     const stageFields = el('div', 'ym-two-columns');
     stageFields.append(field('开始楼层', stageStart), field('结束楼层', stageEnd));
-    const stageHint = el('p', 'ym-muted');
-    const stageSubmit = button('确认整理阶段摘要', () => stageForm.requestSubmit(), 'ym-primary');
-    const stageActions = el('div', 'ym-actions');
-    stageActions.append(stageSubmit, button('取消阶段整理', () => { stageForm.hidden = true; navigate('memory'); }));
+    const stageHint = el('p', 'ym-inline-warning'); stageHint.hidden = true;
+    const stageSubmit = button('开始阶段总结', () => stageForm.requestSubmit(), 'ym-primary');
+    let includeCustom = false, stageRequest = null, stageFormGeneration = 0;
+    const stageCustom = button('包含自定义切片', () => {
+        includeCustom = !includeCustom; stageCustom.setAttribute('aria-pressed', String(includeCustom)); updateStageRange();
+    }, 'ym-toggle-tag'); stageCustom.setAttribute('aria-pressed', 'false');
+    const stageActions = el('div', 'ym-actions ym-stage-actions');
+    stageActions.append(stageSubmit, stageCustom);
     stageForm.append(stageFields, stageHint, stageActions);
     for (const input of [stageStart, stageEnd]) input.addEventListener('input', updateStageRange);
     stageForm.addEventListener('submit', async event => {
@@ -399,45 +403,49 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const start = Number(stageStart.value), end = Number(stageEnd.value);
         let plan;
         try {
-            plan = planStageRange(state.document, rangePreviewSettings(), { start, end, recentCutoff: state.snapshot.messages.length - currentSettings().recent });
-            if (plan.expanded) { stageStart.value = String(plan.range.start); stageEnd.value = String(plan.range.end); stageHint.textContent = '已对齐完整切片范围，请确认后开始'; return; }
+            plan = planStageRange(state.document, rangePreviewSettings(), { start, end, includeCustom, recentCutoff: state.snapshot.messages.length - currentSettings().recent });
+            if (plan.expanded) { stageStart.value = String(plan.range.start); stageEnd.value = String(plan.range.end); stageHint.textContent = '已对齐完整切片范围，请确认后开始'; stageHint.hidden = false; return; }
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); return; }
-        if (await dispatch('stage', { start, end, expectedRange: plan.range }, stageSubmit)) {
-            if (stageStart.value === String(start) && stageEnd.value === String(end)) {
-                stageForm.hidden = true; if (currentPage === 'stage') navigate('memory');
+        const request = { scope: scopeGeneration, form: stageFormGeneration, includeCustom };
+        const result = dispatch('stage', { start, end, includeCustom, expectedRange: plan.range }, stageSubmit);
+        stageRequest = request; updateStageRange();
+        if (await result) {
+            if (request.scope === scopeGeneration && request.form === stageFormGeneration
+                && includeCustom === request.includeCustom && stageStart.value === String(start) && stageEnd.value === String(end)) {
+                stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false');
             }
         }
+        if (stageRequest === request) { stageRequest = null; updateStageRange(); }
     });
     const manualForm = el('form', 'ym-card ym-manual-form');
     manualForm.hidden = true;
     const manualInput = textarea('自定义切片内容');
-    const manualPosition = el('p', 'ym-muted');
+    const manualTitle = el('input', 'ym-custom-title-input'); manualTitle.setAttribute('aria-label', '自定义切片名称'); manualTitle.placeholder = '自定义切片'; manualTitle.maxLength = MEMORY_TITLE_LIMIT;
     const manualSave = iconButton('保存自定义切片', 'check', () => manualForm.requestSubmit(), 'ym-primary');
     manualSave.disabled = true;
     manualInput.addEventListener('input', () => { manualSave.disabled = pendingButtons.has(manualSave) || !manualInput.value.trim(); });
     const manualActions = el('div', 'ym-actions');
     manualActions.append(manualSave, iconButton('取消自定义切片', 'close', () => { manualForm.hidden = true; navigate('memory'); }));
-    manualForm.append(manualPosition, manualActions, manualInput);
+    manualForm.append(manualTitle, manualActions, manualInput);
     manualForm.addEventListener('submit', async event => {
         event.preventDefault();
-        const text = manualInput.value.trim(); if (!text) return;
-        if (await dispatch('manual', { text, afterId: manualAfterId, scenes: [] }, manualSave)) {
-            if (manualInput.value.trim() === text) {
-                manualInput.value = ''; manualForm.hidden = true;
+        const text = manualInput.value.trim(), title = manualTitle.value.trim(); if (!text) return;
+        if (await dispatch('manual', { text, title, afterId: manualAfterId, scenes: [] }, manualSave)) {
+            if (manualInput.value.trim() === text && manualTitle.value.trim() === title) {
+                manualInput.value = ''; manualTitle.value = ''; manualForm.hidden = true;
                 if (currentPage === 'manual') navigate('memory');
             }
             manualSave.disabled = !manualInput.value.trim();
         }
     });
     const list = el('div', 'ym-list');
-    const empty = el('p', 'ym-muted', '还没有记忆，可总结正文或插入自定义切片。');
     const deleted = el('details', 'ym-card ym-memory ym-deleted');
     const deletedTitle = el('summary', 'ym-memory-head', '已删除的记忆'), deletedBody = el('div', 'ym-deleted-body');
     deleted.append(deletedTitle, deletedBody);
     const lastUsed = el('section', 'ym-last-used');
     const usedBody = el('div', 'ym-used-body'); lastUsed.append(usedBody);
-    const story = createStoryView({ document, pageMode: true, onAction: (type, payload) => onAction?.(type, payload) });
-    const companion = mountCompanionView({ document, el, button, pageMode: true, onAction: (type, payload) => dispatch(type, payload) });
+    const story = createStoryView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
+    const companion = mountCompanionView({ document, el, button, pageMode: true, onNotice, onAction: (type, payload) => dispatch(type, payload) });
     const routes = el('div', 'ym-tools'), toolCards = new Map();
     let toolRow = null, toolPanels = null, toolGroup = null, toolIndex = 0;
     for (const [name, title, icon, body] of [
@@ -468,7 +476,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     for (const [value, label] of [['all', '全部记忆'], ['summary', '记忆切片'], ['stage', '阶段总结'], ['manual', '自定义切片'], ['attention', '待确认处理']]) {
         const option = el('option', '', label); option.value = value; filter.append(option);
     }
-    filter.value = 'all'; toolbar.append(search, filter, stageButton);
+    filter.value = 'all'; toolbar.append(search, filter, stageButton, addManual);
     search.addEventListener('input', applyFilter); filter.addEventListener('change', applyFilter);
     const noMatch = el('p', 'ym-muted', '没有符合条件的记忆。'); noMatch.hidden = true;
     const promptContainer = el('section', 'ym-prompt-section');
@@ -490,9 +498,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
     pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder);
-    pages.get('memory').append(controlsRow, toolbar, list, empty, addManual, noMatch, deleted);
+    pages.get('memory').append(controlsRow, toolbar, stageForm, list, noMatch, deleted);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
-    pages.get('manual').append(manualForm); pages.get('stage').append(stageForm);
+    pages.get('manual').append(manualForm);
 
     function setToolOpen(card, open) {
         card.open = open; card.panel.hidden = !open; card.button.setAttribute('aria-expanded', String(open)); card.setAttribute('data-open', String(open));
@@ -551,7 +559,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             card.hidden = false; card.button.disabled = name !== 'backup' && !doc;
             card.panel.hidden = !card.open;
         }
-        addManual.hidden = Boolean((doc?.entries || []).some(entry => entry.status !== 'deleted' && entry.kind !== 'excerpt'));
     }
     function currentSettings() { return effectiveSettings(state.document, state.defaults); }
     // The view confirms source boundaries only. The runtime resolves the actual
@@ -668,8 +675,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
                 control.input.value = String(value);
             }
             if (control.type === 'checkbox') control.input.checked = Boolean(value);
-            else if (document.activeElement !== control.input) control.input.value = String(value);
-            if (key === 'stageThreshold') control.label.textContent = `阶段总结触发（${{ tokens: 'token', floors: '层', slices: '份' }[settingValue('stageBasis')] || 'token'}）`;
+            else if (document.activeElement !== control.input) control.input.value = key === 'budget' && Number(value) === 0 ? '' : String(value);
         }
         apiView?.render({ settings: currentSettings(),
             profiles: state.profiles || [], snapshot: state.snapshot, isGlobal: true,
@@ -688,16 +694,18 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         return stageGroups({ ...state.document, entries }, { start, end: Math.min(end, state.snapshot.messages.length - recent) }).flat();
     }
     function updateStageRange() {
+        const locked = Boolean(stageRequest || state.busy);
+        for (const control of [stageStart, stageEnd, stageCustom]) control.disabled = locked;
         const start = Number(stageStart.value), end = Number(stageEnd.value);
         const bounds = Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end;
         let plan = null, reason = '';
-        try { if (bounds && state.document && state.snapshot) plan = planStageRange(state.document, rangePreviewSettings(), { start, end, recentCutoff: state.snapshot.messages.length - currentSettings().recent }); }
+        try { if (bounds && state.document && state.snapshot) plan = planStageRange(state.document, rangePreviewSettings(), { start, end, includeCustom, recentCutoff: state.snapshot.messages.length - currentSettings().recent }); }
         catch (error) { reason = error.message; }
         const valid = Boolean(plan?.parents?.length >= 2);
-        stageHint.textContent = valid ? `将整理 ${plan.parents.length} 份切片${plan.expanded ? `，完整范围为 ${plan.range.start}–${plan.range.end} 层` : ''}`
-            : reason || '选择至少两份切片的完整范围';
-        stageSubmit.disabled = !valid || !state.document?.enabled || Boolean(state.paused || state.loading || state.busy) || state.sourceAvailable === false;
-        return valid;
+        stageHint.textContent = ''; stageHint.hidden = true;
+        stageSubmit.title = valid ? '' : reason || '请选择至少两份切片的完整范围';
+        stageSubmit.disabled = !valid || locked || !state.document?.enabled || Boolean(state.paused || state.loading) || state.sourceAvailable === false;
+        return valid && !locked;
     }
     function entryAction(entry, action, extra = {}, sourceButton) {
         closeMore();
@@ -705,8 +713,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     }
     function openManual(afterId = null) {
         manualAfterId = afterId;
-        const after = state.document?.entries.find(entry => entry.id === afterId);
-        manualPosition.textContent = after ? `插入到${sourceLabel(after)}之后` : '插入到当前叙事末尾';
         manualForm.hidden = false; navigate('manual'); manualInput.focus(); closeMore();
     }
     function closeMore() {
@@ -732,6 +738,16 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         closeMore();
         await dispatch('reorder', { entryOrder: order, movedId: entryId, expectedRevision: doc.revision });
     }
+    function entryHeading(entry) {
+        const heading = el('h3', `ym-entry-title${entry.kind === 'manual' ? ' ym-custom-name' : ''}`);
+        const range = entry.source?.start !== undefined ? `楼层${entry.source.start}-${entry.source.end}`
+            : entry.kind === 'stage' ? localSourceLabel(entry).replace('阶段摘要 · 第 ', '楼层').replace(' 层', '') : '';
+        if (range) heading.append(el('small', 'ym-entry-range', range));
+        const title = entry.kind === 'excerpt' ? '回查补充' : memoryTitle(entry);
+        heading.append(el('span', 'ym-entry-name', title));
+        heading.title = `${sourceLabel(entry)}${title ? ` · ${title}` : ''}`;
+        return heading;
+    }
     function renderCard(entry, existing) {
         const signature = JSON.stringify(entry);
         if (existing?.signature === signature) return existing;
@@ -744,10 +760,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         for (const child of [...card.children]) if (child !== editing?.form && child !== groups.get(entry.id)?.node) child.remove();
         const content = el('div', 'ym-memory-content');
         const top = el('summary', 'ym-memory-head');
-        top.append(el('h3', '', sourceLabel(entry)));
-        if (entry.edited && entry.kind !== 'manual') top.append(el('span', 'ym-muted', '人工保护'));
+        top.append(entryHeading(entry));
+        if (entry.edited && entry.kind !== 'manual') content.append(el('p', 'ym-muted', '人工保护'));
         if (entry.kind === 'manual' && entry.placementVerified === false) content.append(el('p', 'ym-inline-warning', '叙事位置已变化，请重新定位'));
-        if (entry.status === 'excluded') top.append(el('span', 'ym-muted', '已屏蔽注入'));
+        if (entry.status === 'excluded') { content.append(el('p', 'ym-muted', '已屏蔽注入')); top.title = '已屏蔽注入'; }
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
         card.insertBefore(content, card.children[0] || null); card.insertBefore(top, content);
         if (entry.status === 'invalid') {
@@ -822,7 +838,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         actions.hidden = Boolean(editing);
         if (entry.candidate) {
             const candidate = el('section', 'ym-candidate');
-            candidate.append(el('h4', '', '新版摘要 · 待确认'), el('p', 'ym-memory-text', entry.candidate.text));
+            candidate.append(el('h4', '', '新版摘要 · 待确认'));
+            if (typeof entry.candidate.title === 'string' && entry.candidate.title !== (entry.title || '')) candidate.append(el('p', 'ym-candidate-name', `名称：${entry.candidate.title || '自定义切片'}`));
+            candidate.append(el('p', 'ym-memory-text', entry.candidate.text));
             const choice = el('div', 'ym-actions');
             const accept = button('采用候选', () => entryAction(entry, 'acceptCandidate', {}, accept));
             const reject = button('保留原修订', () => entryAction(entry, 'discardCandidate', {}, reject));
@@ -830,7 +848,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         }
         for (const conflict of entry.conflicts || []) {
             const candidate = el('section', 'ym-candidate');
-            candidate.append(el('h4', '', '另一份待确认修改'), el('p', 'ym-memory-text', conflict.text));
+            candidate.append(el('h4', '', '另一份待确认修改'));
+            if (typeof conflict.title === 'string' && conflict.title !== (entry.title || '')) candidate.append(el('p', 'ym-candidate-name', `名称：${conflict.title || '自定义切片'}`));
+            candidate.append(el('p', 'ym-memory-text', conflict.text));
             const choice = el('div', 'ym-actions');
             const accept = button('采用此版本', () => entryAction(entry, 'acceptConflict', { conflictId: conflict.id }, accept));
             const reject = button('保留已保存版本', () => entryAction(entry, 'discardConflict', { conflictId: conflict.id }, reject));
@@ -844,6 +864,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (entry.kind === 'excerpt' && !text.trim()) return;
         closeMore(); card.open = true;
         const form = el('form', 'ym-edit-form'), input = textarea('编辑记忆内容', text);
+        const titleInput = entry.kind === 'manual' ? el('input', 'ym-custom-title-input') : null;
+        if (titleInput) { titleInput.setAttribute('aria-label', '编辑自定义切片名称'); titleInput.value = entry.title || ''; titleInput.placeholder = '自定义切片'; titleInput.maxLength = MEMORY_TITLE_LIMIT; }
         const save = iconButton('保存修订', 'check', () => form.requestSubmit());
         const finishEdit = () => {
             if (edits.get(entry.id) !== draft) return;
@@ -855,6 +877,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const cancel = iconButton('取消编辑', 'close', finishEdit);
         const actions = el('div', 'ym-actions ym-edit-actions'); actions.append(save, cancel);
         actions.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+        if (titleInput) form.append(titleInput);
         form.append(input);
         const draft = { form, entry, actions }; edits.set(entry.id, draft);
         card.querySelector('.ym-memory-content').hidden = true;
@@ -862,11 +885,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         card.append(form); input.focus();
         input.addEventListener('input', () => { save.disabled = pendingButtons.has(save) || !input.value.trim(); });
         form.addEventListener('submit', async event => {
-            event.preventDefault(); const value = input.value.trim(); if (!value) return;
+            event.preventDefault(); const value = input.value.trim(), title = titleInput?.value.trim(); if (!value) return;
             const edited = editedMemoryValue(value, draft.entry);
+            if (titleInput) edited.title = title;
             if (await dispatch('edit', { entryId: entry.id, expectedRevision: draft.entry.revision, ...edited }, save)) {
                 if (edits.get(entry.id) !== draft) return;
-                if (input.value.trim() === value) finishEdit();
+                if (input.value.trim() === value && titleInput?.value.trim() === title) finishEdit();
                 else draft.entry = state.document?.entries.find(item => item.id === entry.id) || draft.entry;
             }
         });
@@ -915,9 +939,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             if (!active && count && hasEditor(group.node)) group.node.open = true;
             if (!present.has(id) && !hasEditor(group.node)) { group.node.remove(); groups.delete(id); }
         }
-        empty.hidden = entries.length > 0;
-        empty.textContent = state.document ? '还没有记忆，可总结正文或插入自定义切片。' : '请选择一个聊天打开';
-        const removed = (state.document?.entries || []).filter(entry => entry.status === 'deleted');
+        const removed = (state.document?.entries || []).filter(entry => entry.status === 'deleted' && !entry.discarded && !entry.replacedBy)
+            .sort((a, b) => (b.deletedRevision || 0) - (a.deletedRevision || 0)).slice(0, 10);
         deleted.hidden = !removed.length;
         deletedTitle.textContent = `已删除的记忆（${removed.length}）`;
         const openDeleted = new Set([...deletedBody.children].filter(item => item.open).map(item => item.dataset.entryId));
@@ -925,8 +948,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             const item = el('details', 'ym-card ym-memory ym-deleted-entry');
             item.dataset.entryId = entry.id; item.open = openDeleted.has(entry.id);
             const title = el('summary', 'ym-memory-head'), body = el('div', 'ym-memory-content');
-            title.append(el('h3', '', sourceLabel(entry))); appendMemoryText(body, entry);
-            const undo = iconButton('撤回删除', 'back', () => entryAction(entry, 'undo', {}, undo));
+            title.append(entryHeading(entry)); appendMemoryText(body, entry);
+            const undo = button('撤回', () => entryAction(entry, 'undo', {}, undo), 'ym-undo-tag');
             undo.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
             undo.setAttribute('aria-label', `撤回删除${sourceLabel(entry)}`);
             undo.disabled = !entry.history?.length;
@@ -959,7 +982,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             for (const item of cards.values()) item.node.remove();
             cards.clear(); edits.clear(); groups.clear(); settingDraft.clear(); settingsDraftRevision = null; settingsSaveFailed = false;
             clearTimeout(settingsTimer); settingsTimer = null;
-            rangeForm.hidden = true; stageForm.hidden = true; manualForm.hidden = true; manualInput.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
+            rangeForm.hidden = true; stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); includeCustom = false; stageCustom.setAttribute('aria-pressed', 'false');
+            stageRequest = null; stageFormGeneration++;
+            manualForm.hidden = true; manualInput.value = ''; manualTitle.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
             rangeFields.hidden = true; rangeStart.value = summarizeStart.value = '1';
             rangeEnd.value = summarizeEnd.value = String(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
@@ -1052,7 +1077,7 @@ export function mountEntries(onOpen, { document = globalThis.document } = {}) {
     }
     const menu = document.querySelector('#options .options-content') || document.getElementById('options');
     if (menu) {
-        const entry = make('yimu-menu-entry', '忆幕', 'ym-menu-entry list-group-item interactable');
+        const entry = make('yimu-menu-entry', '忆幕', 'ym-menu-entry interactable');
         const qianmu = menu.querySelector('[data-qm-st-menu="true"]');
         if (qianmu) menu.insertBefore(entry, qianmu.nextSibling); else menu.append(entry);
         // Qianmu may finish its own lazy initialization after this extension.

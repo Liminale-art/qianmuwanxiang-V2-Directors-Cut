@@ -10,7 +10,7 @@ async function fixture() {
     const snapshot = { binding, messages: Array.from({ length: 8 }, (_, i) => ({ name: i % 2 ? 'Actor' : 'User', is_user: !(i % 2), mes: `Floor ${i + 1}`, send_date: `date-${i}` })), maxContext: 32768, maxResponse: 1024 };
     const state = { snapshot: clone(snapshot), document: createDocument(binding), defaults: createDefaults(), story: {} };
     state.document.enabled = true; const life = { disposed: false, generation: 0, generating: false };
-    const calls = { plan: [], create: [], result: [], generate: [], open: [], refresh: [] }, events = [];
+    const calls = { plan: [], create: [], result: [], generate: [], open: [], refresh: [], confirm: [] }, events = [];
     let current = clone(snapshot), nextId = 0;
     const plan = { planId: 'plan-one', sourceBinding: binding, sourceRevision: state.document.revision, defaultsRevision: state.defaults.revision,
         sourceFingerprint: await storyFingerprint(snapshot.messages), mode: 'continue', cutoff: 8, total: 8, recent: 5, bridgeCount: 5,
@@ -18,6 +18,7 @@ async function fixture() {
     const target = { ...binding, file: 'New story', integrity: 'new-integrity' };
     const complete = { status: 'complete', binding: target, document: createDocument(target), receipt: { id: 'create-1', status: 'complete', target } };
     const host = { snapshot: async () => clone(current), openStory: async (result, options) => { calls.open.push({ result: clone(result), options }); return { opened: false, message: '保留新聊天，未切换' }; },
+        confirmStoryBoundary: async scope => { calls.confirm.push(clone(scope)); return true; },
         generate: async (prompt, options) => { calls.generate.push({ prompt, options }); return JSON.stringify({ slices: [{ start: 2, end: 4, text: '截止前的事实' }] }); } };
     const api = { planStory: async (b, payload) => { calls.plan.push({ binding: clone(b), payload }); return clone(plan); },
         createStory: async (b, operation) => { calls.create.push({ binding: clone(b), operation: clone(operation) }); return clone(complete); },
@@ -42,6 +43,21 @@ test('single story action plans internally before creating with no manual-choice
     const f=await fixture();await f.action('storyContinue',{cutoff:8});
     assert.equal(f.calls.create.length,1);assert.deepEqual(f.calls.create[0].operation.manualChoices,[]);
     assert.equal(f.state.story.receipt.status,'complete');
+    assert.equal(f.calls.confirm.length,0,'no model work means no confirmation');
+});
+
+test('continuation results retain only nonzero transfer omissions, including a later open retry', async () => {
+    for (const [skipped, missing, expected] of [[0, 0, undefined], [2, 0, '2 份人工记忆留在原聊天'],
+        [0, 3, '3 层较早正文留在原聊天'], [2, 3, '2 份人工记忆、3 层较早正文留在原聊天']]) {
+        const f = await fixture(); f.plan.skippedManualCount = skipped; f.plan.unrepresentedFloorCount = missing;
+        const result = await f.action('storyContinue', {cutoff: 8});
+        assert.equal(result.transferNote, expected); assert.equal(f.state.story.result.transferNote, expected);
+        assert.equal(result.openResult.opened, false);
+        f.host.openStory = async () => ({opened: true});
+        const opened = await f.action('storyOpen'); assert.equal(opened.transferNote, expected);
+        assert.equal(f.calls.create.length, 1, 'opening the completed file never recreates it');
+        assert.equal(f.calls.generate.length, 0);
+    }
 });
 
 test('boundary generation receives only cutoff-bounded raw text and manual choices pass through unchanged', async () => {
@@ -53,6 +69,7 @@ test('boundary generation receives only cutoff-bounded raw text and manual choic
     await f.action('storyPlan', { mode: 'branch', cutoff: 4 });
     const choices = [{ id: 'edited', revision: 3, text: '用户确认的截止前人工内容' }];
     await f.action('storyCreate', { manualChoices: choices });
+    assert.deepEqual(f.calls.confirm,[{ranges:[{start:2,end:4}]}]);
     assert.equal(f.calls.generate.length, 1);
     assert.match(f.calls.generate[0].prompt, /Floor 2/); assert.match(f.calls.generate[0].prompt, /Floor 4/);
     assert.doesNotMatch(f.calls.generate[0].prompt, /Floor 1|Floor 5|Floor 8|用户确认的截止前人工内容/);
@@ -60,6 +77,85 @@ test('boundary generation receives only cutoff-bounded raw text and manual choic
     assert.deepEqual(operation.manualChoices, choices);
     assert.deepEqual(operation.boundarySummaries[0].entries[0].source, f.plan.boundaries[0].source);
     assert.equal(f.state.story.receipt.status, 'complete'); assert.equal(f.calls.open.length, 1);
+});
+
+async function addBoundary(f) {
+    const hashes = await fingerprintMessages(f.snapshot.messages);
+    f.plan.boundaries = [{id: 'edge', source: {start: 2, end: 4, hashes: hashes.slice(1, 4)},
+        messages: f.snapshot.messages.slice(1, 4).map((message, index) => ({...message, floor: index + 2}))}];
+}
+
+test('cancelled boundary confirmation performs no model or file work and a later explicit attempt asks again', async () => {
+    const f = await fixture(); await addBoundary(f);
+    let approved = false;
+    f.host.confirmStoryBoundary = async scope => { f.calls.confirm.push(scope); return approved; };
+    assert.deepEqual(await f.action('storyContinue', {cutoff: 4}), {cancelled: true});
+    assert.equal(f.calls.generate.length + f.calls.create.length + f.calls.open.length, 0);
+    assert.equal(f.state.story.plan, null); assert.ok(!f.state.story.pending); assert.equal(f.state.story.error, '');
+    approved = true; await f.action('storyContinue', {cutoff: 4});
+    assert.equal(f.calls.confirm.length, 2); assert.equal(f.calls.generate.length, 1); assert.equal(f.calls.create.length, 1);
+});
+
+test('missing or ambiguous confirmation never grants permission for paid boundary work', async () => {
+    for (const answer of ['missing', undefined, 1, 'true']) {
+        const f = await fixture(); await addBoundary(f);
+        if (answer === 'missing') delete f.host.confirmStoryBoundary;
+        else f.host.confirmStoryBoundary = async () => answer;
+        if (answer === 'missing') await assert.rejects(f.action('storyContinue', {cutoff: 4}), /无法确认/);
+        else assert.deepEqual(await f.action('storyContinue', {cutoff: 4}), {cancelled: true});
+        assert.equal(f.calls.generate.length + f.calls.create.length, 0);
+    }
+});
+
+test('late boundary approval cannot authorize changed chat, source, memory, settings or summary connection', async () => {
+    for (const change of [f => f.current({...f.snapshot, binding: {...f.binding, file: 'Other'}}),
+        f => f.current({...f.snapshot, messages: [...f.snapshot.messages, {mes: 'new'}]}),
+        f => f.state.document.revision++, f => f.state.defaults.revision++, f => f.life.generating = true,
+        f => f.life.disposed = true, f => f.host.summaryConnection = () => ({mode: 'st', model: 'changed'})]) {
+        const f = await fixture(); await addBoundary(f);
+        f.host.summaryConnection = () => ({mode: 'st', model: 'original'});
+        f.host.confirmStoryBoundary = async () => { change(f); return true; };
+        await assert.rejects(f.action('storyContinue', {cutoff: 4}), /已变化/);
+        assert.equal(f.calls.generate.length + f.calls.create.length, 0);
+    }
+});
+
+test('unknown creation retries reuse already approved boundary summaries without another confirmation or model call', async () => {
+    const f = await fixture(); await addBoundary(f);
+    f.api.createStory = async (binding, operation) => { f.calls.create.push({binding, operation: clone(operation)}); throw new Error('offline'); };
+    f.api.storyResult = async () => null;
+    await assert.rejects(f.action('storyContinue', {cutoff: 4}), /offline/);
+    assert.equal(f.state.story.pending, true); assert.equal(f.calls.confirm.length, 1); assert.equal(f.calls.generate.length, 1);
+    f.api.createStory = async (binding, operation) => { f.calls.create.push({binding, operation: clone(operation)}); return clone(f.complete); };
+    await f.action('storyCreate', {retry: true});
+    assert.deepEqual(f.calls.create[1], f.calls.create[0]);
+    assert.equal(f.calls.confirm.length, 1); assert.equal(f.calls.generate.length, 1);
+});
+
+test('multiple automatic boundaries use one confirmation covering all and only the planned ranges', async () => {
+    const f = await fixture(), hashes = await fingerprintMessages(f.snapshot.messages);
+    f.plan.boundaries = [[1, 2], [3, 4]].map(([start, end]) => ({id: `edge_${start}`, source: {start, end, hashes: hashes.slice(start - 1, end)},
+        messages: f.snapshot.messages.slice(start - 1, end).map((message, index) => ({...message, floor: start + index}))}));
+    f.host.generate = async prompt => {
+        assert.equal(f.calls.confirm.length, 1, 'approval precedes every model call'); f.calls.generate.push(prompt);
+        const [, start, end] = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(start), end: Number(end), text: '范围内的事实'}]});
+    };
+    await f.action('storyContinue', {cutoff: 4});
+    assert.deepEqual(f.calls.confirm, [{ranges: [{start: 1, end: 2}, {start: 3, end: 4}]}]);
+    assert.equal(f.calls.generate.length, 2); assert.equal(f.calls.create.length, 1);
+});
+
+test('continuation boundary generation uses the chosen character cap, never a different hidden default',async()=>{
+    for(const [cap,length,accepted]of[[3,4,false],[3000,2500,true]]){
+        const f=await fixture(),hashes=await fingerprintMessages(f.snapshot.messages);
+        f.state.document.settings.sliceChars=cap;
+        f.plan.boundaries=[{id:'edge',source:{start:2,end:4,hashes:hashes.slice(1,4)},messages:f.snapshot.messages.slice(1,4).map((m,i)=>({...m,floor:i+2}))}];
+        f.host.generate=async()=>JSON.stringify({slices:[{start:2,end:4,title:'截至此处',text:'文'.repeat(length)}]});
+        await f.action('storyPlan',{cutoff:4});
+        if(accepted){await f.action('storyCreate');assert.equal(f.calls.create[0].operation.boundarySummaries[0].entries[0].title,'截至此处');}
+        else{await assert.rejects(f.action('storyCreate'),/超过 3 字上限/);assert.equal(f.calls.create.length,0);}
+    }
 });
 
 test('stale plan source, document and default revisions fail before any paid boundary request', async () => {

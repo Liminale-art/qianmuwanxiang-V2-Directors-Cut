@@ -1,5 +1,5 @@
 // Selection starts import immediately; only ambiguous targets need an inline choice.
-export function createBackupView({document = globalThis.document, onAction, pageMode = false} = {}) {
+export function createBackupView({document = globalThis.document, onAction, onNotice = () => {}, pageMode = false} = {}) {
     const el = (tag, cls = '', text) => {const n = document.createElement(tag); n.className = cls; if (text !== undefined) n.textContent = text; return n;};
     const button = (text, action) => {const n = el('button','ym-button',text); n.type = 'button'; n.setAttribute('aria-label',text); n.addEventListener('click',action); return n;};
     const node = el(pageMode ? 'section':'details', `ym-backup ${pageMode ? 'ym-subpage-section':'ym-card'}`);
@@ -7,6 +7,8 @@ export function createBackupView({document = globalThis.document, onAction, page
     const body = el('div','ym-backup-body'); node.append(body);
     let state = {}, alive = true, working = false, error = '', planKey = '', itemsKey = '', exportMode='',exportScope='',exportTicket=0;
     const choices = new Map(), targets = new Map();
+    const reported = new Map(); let lastStatus = '', lastError = '', reportedError = '', observed = false;
+    const reportError=message=>{if(message!==reportedError){reportedError=message;onNotice(message,'error');}};
     const exportButton = button('导出记忆',()=>{exportTicket++;exportScope=JSON.stringify(state.snapshot?.binding||null);exportMode='question';error='';update();});
     const exportRow = el('div','ym-actions ym-backup-actions');
     const sources = el('div','ym-backup-sources'); sources.hidden = true;
@@ -38,8 +40,8 @@ export function createBackupView({document = globalThis.document, onAction, page
     body.append(exportRow,question,pick,notice,results);
     async function invoke(type,payload={}) {
         if(!alive||working||state.backup?.busy)return;
-        working=true;error='';update();
-        try{return await onAction?.(type,payload);}catch(caught){if(alive)error=caught.message||'备份操作未完成';}
+        working=true;error='';reportedError='';update();
+        try{return await onAction?.(type,payload);}catch(caught){if(alive){error=caught.message||'备份操作未完成';if(!exportMode)reportError(error);}}
         finally{if(alive){working=false;update();}}
     }
     pick.addEventListener('cancel',event=>event.stopPropagation?.());
@@ -60,7 +62,8 @@ export function createBackupView({document = globalThis.document, onAction, page
         for(const source of plan?.sources||[])choices.get(source.id).disabled=disabled||!source.available;
     }
     function renderItems(disabled) {
-        const items=state.backup?.items||[],key=JSON.stringify([items.map(({file,...item})=>item),disabled]);
+        const items=(state.backup?.items||[]).filter(item=>!['complete','cancelled'].includes(item.status)),key=JSON.stringify([items.map(({file,...item})=>item),disabled]);
+        results.hidden=!items.length;
         if(itemsKey===key)return;itemsKey=key;results.replaceChildren();
         for(const item of items){
             const card=el('section','ym-backup-section');card.dataset.ymBackupItem=item.id;
@@ -100,8 +103,20 @@ export function createBackupView({document = globalThis.document, onAction, page
         cancelExport.disabled=false;questionText.textContent=exportMode==='sources'?'选择一起打包的相关聊天文件：':'是否将相关聊天文件一起打包？';
         renderSources(disabled);pack.disabled=disabled||!matches||![...choices.values()].some(input=>input.checked);renderItems(disabled);
         questionNotice.textContent=error||backup.error||'';questionNotice.hidden=!questionNotice.textContent;
-        notice.textContent=error||backup.error||backup.status||(busy?'正在处理备份…':'');notice.hidden=!!exportMode||!notice.textContent;
-        notice.className=error||backup.error?'ym-inline-warning':'ym-muted';node.setAttribute('aria-busy',String(!!busy));
+        notice.textContent=busy&&!exportMode?'正在处理备份…':'';notice.hidden=!notice.textContent;
+        node.setAttribute('aria-busy',String(!!busy));
     }
-    return{node,render(next){state=next||{};update();},destroy(){alive=false;targets.clear();choices.clear();node.remove();}};
+    function reportResults(){
+        const backup=state.backup||{};
+        for(const item of backup.items||[]){
+            const key=JSON.stringify([item.status,item.message,item.error]);
+            if(observed&&reported.get(item.id)!==key&&item.status==='complete')onNotice(item.message||`已导入记忆：${item.name}`,'success');
+            reported.set(item.id,key);
+        }
+        if(observed&&!backup.busy&&backup.status&&backup.status!==lastStatus)onNotice(backup.status,'success');
+        if(!backup.error)reportedError='';
+        if(observed&&!exportMode&&backup.error&&backup.error!==lastError&&!(backup.items||[]).some(item=>item.error))reportError(backup.error);
+        lastStatus=backup.busy?'':backup.status||'';lastError=backup.error||'';observed=true;
+    }
+    return{node,render(next){state=next||{};reportResults();update();},destroy(){alive=false;targets.clear();choices.clear();reported.clear();node.remove();}};
 }

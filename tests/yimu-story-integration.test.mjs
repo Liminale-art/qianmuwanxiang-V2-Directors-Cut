@@ -35,6 +35,10 @@ test('full isolated story loop uses real client routes, server creation, native-
     const api = createApi({fetcher, headers: () => ({})});
     await api.change(binding, {id: 'enable', type: 'enable', expectedRevision: 0, enabled: true, range: {start: 1, end: 12, total: 12}});
     await api.change(binding, {id: 'memory', type: 'append', expectedEpoch: 1, entry: {id: 'early', kind: 'summary', text: '前七层的有效约定。', source: {start: 1, end: 7, hashes: (await fingerprintMessages(messages)).slice(0, 7)}}});
+    const allHashes=await fingerprintMessages(messages);
+    await api.change(binding,{id:'note',type:'append',entry:{id:'note',kind:'manual',text:'自定义约定同样保留',placement:{binding,fromFloor:1,hash:allHashes[0]}}});
+    await api.change(binding,{id:'suppressed',type:'append',expectedEpoch:1,entry:{id:'suppressed',kind:'summary',text:'屏蔽的片段不能注入',source:{start:8,end:9,hashes:allHashes.slice(7,9)}}});
+    await api.change(binding,{id:'suppress',type:'entry',entryId:'suppressed',expectedRevision:1,action:'exclude'});
     let opens = 0;
     const context = {groupId: null, characterId: 0, characters: [{name: 'Actor', avatar: binding.avatar}], chatId: 'source', chatMetadata: metadata,
         chat: structuredClone(messages), mainApi: 'openai', name1: 'User',
@@ -50,10 +54,14 @@ test('full isolated story loop uses real client routes, server creation, native-
     assert.equal(plan.cutoff, 12); assert.equal(plan.boundaries.length, 0);
     const created = await controller.action('storyCreate', {manualChoices: []});
     assert.equal(created.receipt.status, 'complete'); assert.equal(opens, 1);
+    assert.match(created.binding.file,/^忆幕续接-/);
     assert.equal(context.chatId, created.binding.file); assert.equal(context.chat.length, 5);
     assert.deepEqual(context.chat.map(item => item.mes), messages.slice(7).map(item => item.mes));
     assert.equal(controller.state.document.enabled, true);
     assert.equal(controller.state.document.entries[0].originVerified, true);
+    assert.ok(controller.state.document.entries.some(entry=>entry.text==='前七层的有效约定。'&&entry.status==='active'));
+    assert.ok(controller.state.document.entries.some(entry=>entry.text==='自定义约定同样保留'&&entry.status==='active'));
+    assert.ok(controller.state.document.entries.some(entry=>entry.text==='屏蔽的片段不能注入'&&entry.status==='excluded'));
     assert.equal(await fs.readFile(sourcePath, 'utf8'), original);
     await controller.event('GENERATION_STARTED', ['normal', {}, false]);
     const core = structuredClone(context.chat).map((message, index) => ({...message, index}));
@@ -62,6 +70,8 @@ test('full isolated story loop uses real client routes, server creation, native-
         messages: [{role: 'system', content: '角色设定'}, ...core.map(item => ({role: 'assistant', content: item.mes}))]};
     await controller.event('CHAT_COMPLETION_SETTINGS_READY', [payload]);
     assert.ok(payload.messages.some(item => item.content.includes('前七层的有效约定。')));
+    assert.ok(payload.messages.some(item => item.content.includes('自定义约定同样保留')));
+    assert.equal(payload.messages.some(item => item.content.includes('屏蔽的片段不能注入')),false);
     assert.deepEqual(controller.state.lastUsed.removedFloors, []);
     assert.deepEqual(payload.messages.filter(item => item.role === 'assistant').map(item => item.content), messages.slice(7).map(item => item.mes));
 

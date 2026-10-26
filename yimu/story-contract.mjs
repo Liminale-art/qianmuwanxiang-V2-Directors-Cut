@@ -51,14 +51,17 @@ export function bridgeSourceValid(entry, document, hashes) {
 }
 export function selectStoryEntries(document, cutoff, validIds, {total = cutoff, placementValidIds = validIds} = {}) {
     const limit = storyOffset(document) + cutoff;
-    const active = document.entries.filter(entry => entry.status === 'active' && (!entry.source || validIds.has(entry.id)));
+    // Injection suppression is not deletion. Carry source-verified suppressed
+    // memories as suppressed records so continuation cannot silently lose them.
+    const active = document.entries.filter(entry => ['active', 'excluded'].includes(entry.status) && (!entry.source || validIds.has(entry.id)));
     const windows = entry => [...ranges(entry), ...(entry.kind === 'stage' ? (entry.source?.parents || []).flatMap(ref => {
         const parent=document.entries.find(value=>value.id===ref.id);return parent?.kind==='manual'?ranges(parent):[];
     }) : [])];
     const fullyBefore = entry => windows(entry).every(range => entryOrigin(entry, document).offset + range.end <= limit);
     const crossing = entry => windows(entry).some(range => entryOrigin(entry, document).offset + range.start <= limit) && !fullyBefore(entry);
     const protectedParents = new Set(document.entries.filter(entry => entry.kind === 'stage' && !entry.replacedBy
-        && (['excluded', 'deleted'].includes(entry.status) || entry.edited && (entry.status !== 'active' || !validIds.has(entry.id) || crossing(entry))))
+        && (entry.status === 'deleted' || entry.status === 'excluded' && (!validIds.has(entry.id) || !fullyBefore(entry))
+            || entry.edited && (!['active', 'excluded'].includes(entry.status) || !validIds.has(entry.id) || crossing(entry))))
         .flatMap(entry => entry.source.parents.map(ref => ref.id)));
     const manualChoices = [], boundaries = [], entries = [];
     let skippedManualCount = 0;
@@ -74,7 +77,7 @@ export function selectStoryEntries(document, cutoff, validIds, {total = cutoff, 
         } else if (entry.edited && crossing(entry)) {
             skippedManualCount++;
         } else if (entry.source && fullyBefore(entry)) entries.push(clone(entry));
-        else if (entry.kind === 'summary' && !entry.edited && crossing(entry)) {
+        else if (entry.kind === 'summary' && entry.status === 'active' && !entry.edited && crossing(entry)) {
             const from = entryOrigin(entry, document), end = limit - from.offset;
             boundaries.push({id: entry.id, origin: clone(from), source: {start: entry.source.start, end,
                 hashes: entry.source.hashes.slice(0, end - entry.source.start + 1)}});

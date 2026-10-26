@@ -1,7 +1,7 @@
 // A package can add memory, not take over this account's settings or replay operations.
 // Source identity/mapping and the atomic write are the store's responsibility.
 import {createHash} from 'node:crypto';
-import {bindingKey, failure, validateDocument} from './contract.mjs';
+import {bindingKey, failure, validateDocument, pruneDeletedEntries} from './contract.mjs';
 import {invalidateDependentStages} from './stage-contract.mjs';
 import {invalidateDependentExcerpts} from './recall-contract.mjs';
 import {normalizeEntryOrder} from './timeline.mjs';
@@ -82,10 +82,18 @@ export function mergeBackupDocument(current, incoming, {operationId, packageId} 
     }
     for (const source of imported.entries) {
         let target = byId.get(source.id);
+        // A retired deletion keeps identity/source guards only. An old archive
+        // must not refill its purged body, edit history, candidates or conflicts.
+        if (target?.discarded || target && source.discarded) { counts.skipped++; continue; }
         if (!target) {
             // Different IDs cannot bypass a protected/deleted slice or create
             // two active automatic accounts of the same source range.
-            const overlap = source.status === 'active' && document.entries.find(entry => overlaps(entry, source, document));
+            const overlapping = source.status === 'active' ? document.entries.filter(entry => overlaps(entry, source, document)) : [];
+            // Fresh summaries explicitly regenerated after a purged deletion may
+            // coexist with that exact guard. Old archives have no such provenance.
+            if (overlapping.some(entry => entry.discarded && !source.discardedSources?.some(ref => ref.id === entry.id
+                && ref.revision === entry.revision && same(ref.source, entry.source)))) { counts.skipped++; continue; }
+            const overlap = overlapping.find(entry => !entry.discarded);
             if (overlap) {
                 const before = stable(overlap);
                 addConflict(overlap, source, source, `同一原文范围已有切片，导入条目 ${source.id} 已保留为另一版`);
@@ -121,6 +129,7 @@ export function mergeBackupDocument(current, incoming, {operationId, packageId} 
     // All non-memory fields, including settings, enablement, companion and
     // initialRange, originated in receiver and are deliberately left untouched.
     if (same(document, receiver)) return {document: receiver, outcome: 'duplicate', counts};
+    pruneDeletedEntries(document);
     invalidateDependentStages(document);
     invalidateDependentExcerpts(document);
     document.revision++;

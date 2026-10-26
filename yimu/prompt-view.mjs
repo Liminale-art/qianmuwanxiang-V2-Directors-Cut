@@ -48,8 +48,9 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         if(previous)ask(`覆盖同名预设「${title}」？`,save);else save();
     }),button('取消预设命名','close',()=>{nameRow.hidden=true;}));
     const groups=el('div','ym-prompt-groups');groups.setAttribute('role','tablist');groups.setAttribute('aria-label','提示词用途');
-    const groupButtons=new Map(),recallBadge=el('small','ym-prompt-recall-badge');
-    for(const key of PROMPT_KINDS){const node=button(LABELS[key],{summary:'edit',stage:'book',recall:'eye'}[key],()=>{kind=key;renderRows();update();});node.className='ym-button';node.replaceChildren(el('span','',LABELS[key]));node.setAttribute('role','tab');if(key==='recall')node.append(recallBadge);groupButtons.set(key,node);groups.append(node);}
+    const groupButtons=new Map();
+    const recallVisible=()=>state.recallEnabled??state.settings?.recall!==false;
+    for(const key of PROMPT_KINDS){const node=button(LABELS[key],{summary:'edit',stage:'book',recall:'eye'}[key],()=>{if(key==='recall'&&!recallVisible())return;kind=key;renderRows();update();});node.className='ym-button';node.replaceChildren(el('span','',LABELS[key]));node.setAttribute('role','tab');groupButtons.set(key,node);groups.append(node);}
     const list=el('div','ym-prompt-list'),empty=el('p','ym-muted','此组没有条目，可新增或选择内置默认。');
     const status=el('p','ym-muted ym-prompt-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     const retry=button('重试本次提示词保存','refresh',()=>{const rec=record();if(rec.remote){rec.saved=clone(rec.remote.config);rec.revision=rec.remote.revision;}rec.error='';rec.failed=false;rebuildConfig(rec);void drain(rec);});
@@ -141,8 +142,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         badge.textContent=rec.saving||rec.queue.length?'正在保存':rec.drafts.size?'有条目草稿':'';badge.hidden=!badge.textContent;
         recovery.hidden=!rec.failed;retry.disabled=disabled||!!rec.saving;cancelOperation.disabled=disabled||!!rec.saving;
         status.textContent=rec.error||rec.message||'';status.hidden=!status.textContent;
-        recallBadge.textContent=(state.recallEnabled??state.settings?.recall!==false)?'已开启':'未开启';
-        for(const [key,node]of groupButtons){node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
+        for(const [key,node]of groupButtons){node.hidden=key==='recall'&&!recallVisible();node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
         card.setAttribute('aria-busy',String(!!rec.saving));
     }
     file.addEventListener('cancel',event=>event.stopPropagation?.());
@@ -159,6 +159,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         const rec=record();if(!rec.remote||(next.revision??0)>=rec.remote.revision)rec.remote={config:clone(incoming),revision:next.revision??0};rec.snapshot=clone(next.snapshot||null);
         if(!rec.saving&&!rec.queue.length&&(next.revision??0)>=rec.revision){rec.saved=clone(incoming);rec.config=clone(incoming);rec.revision=next.revision??rec.revision;}
         if(switched){nameRow.hidden=true;confirmation.hidden=true;confirmationAction=null;}
+        if(kind==='recall'&&!recallVisible())kind='summary';
         renderPresets();renderRows();update();if(!rec.failed)void drain(rec);
     }
     render();

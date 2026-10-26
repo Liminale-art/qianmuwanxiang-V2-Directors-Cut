@@ -87,6 +87,73 @@ for (const basis of ['tokens', 'floors', 'slices']) {
     });
 }
 
+test('explicit manual range carries discarded source authorization through runtime and server without automatically restoring its neighbors', async t => {
+    const f = await fixture(t, { floors: 18, fine: 13 });
+    for (let floor = 1; floor <= 12; floor++) await f.api.change(f.snapshot.binding, { id: `drop_${floor}`, type: 'entry', action: 'delete', entryId: `fine_${floor}`, expectedRevision: 1 });
+    const before = (await f.read()).document;
+    assert.equal(before.entries.find(entry => entry.id === 'fine_1').discarded, true);
+    assert.equal(before.entries.find(entry => entry.id === 'fine_2').discarded, true);
+    await f.controller.refresh(); await f.flush(); assert.equal(f.generated.length, 0);
+    f.model(async () => JSON.stringify({ slices: [{ start: 1, end: 1, title: '重读来信', text: '依据第一层重新整理' }] }));
+    await f.controller.action('summarizeRange', { range: { start: 1, end: 1 }, expectedRange: { start: 1, end: 1 } }); await f.flush();
+    assert.equal(f.generated.length, 1, f.controller.state.error);
+    const saved = (await f.read()).document;
+    assert.ok(saved.entries.some(entry => entry.status === 'active' && entry.source?.start === 1 && entry.title === '重读来信'), f.controller.state.error);
+    for (const id of ['fine_1', 'fine_2']) assert.deepEqual(saved.entries.find(entry => entry.id === id), before.entries.find(entry => entry.id === id));
+    await f.controller.refresh(); await f.flush(); assert.equal(f.generated.length, 1, 'the second discarded floor remains absent after automatic refresh');
+});
+
+for (const edited of [false, true]) test(`fine redo preserves the returned title ${edited ? 'as a candidate beside manual text' : 'on the active generated slice'}`, async t => {
+    const f = await fixture(t), prior = await f.read();
+    await f.api.change(f.snapshot.binding, { id: 'seed_title', type: 'redo', entryId: 'fine_1', expectedRevision: 1, expectedEpoch: prior.document.epoch,
+        entry: { ...prior.document.entries[0], title: '旧的篇名' } });
+    if (edited) await f.api.change(f.snapshot.binding, { id: 'human_title', type: 'edit', entryId: 'fine_1', expectedRevision: 2,
+        title: '人工篇名', text: '人工文字应当保留' });
+    await f.controller.refresh();
+    f.model(async () => JSON.stringify({ slices: [{ start: 1, end: 1, title: '桥边夜谈', text: '当前原文的新总结' }] }));
+    await f.controller.action('redo', { entryId: 'fine_1' }); await f.flush();
+    const saved = (await f.read()).document.entries.find(entry => entry.id === 'fine_1');
+    assert.equal(f.generated.length, 1, f.controller.state.error);
+    if (edited) {
+        assert.equal(saved.title, '人工篇名'); assert.equal(saved.text, '人工文字应当保留');
+        assert.equal(saved.candidate.title, '桥边夜谈'); assert.equal(saved.candidate.text, '当前原文的新总结');
+    } else { assert.equal(saved.title, '桥边夜谈'); assert.equal(saved.text, '当前原文的新总结'); }
+});
+
+for (const title of ['整段旧名', undefined]) test(`multi-slice redo ${title ? 'keeps the existing range title' : 'derives a fallback from the combined prose'} instead of reusing one child title`, async t => {
+    const f = await fixture(t, { floors: 8, fine: 0 }), prior = await f.read(), hashes = await fingerprintMessages(f.snapshot.messages);
+    await f.api.change(f.snapshot.binding, { id: 'seed_wide', type: 'append', expectedEpoch: prior.document.epoch,
+        entry: { id: 'wide', kind: 'summary', ...(title ? { title } : {}), text: '原有整段摘要', source: { start: 1, end: 3, hashes: hashes.slice(0, 3) } } });
+    await f.controller.refresh();
+    f.model(async () => JSON.stringify({ slices: [{ start: 1, end: 1, title: '山口问路', text: '初次见面。' },
+        { start: 2, end: 3, title: '雨中留宿', text: '许下约定。' }] }));
+    await f.controller.action('redo', { entryId: 'wide' }); await f.flush();
+    const saved = (await f.read()).document.entries.find(entry => entry.id === 'wide');
+    assert.equal(f.generated.length, 1, f.controller.state.error);
+    assert.equal(saved.title, title || '初次见面'); assert.equal(saved.text, '初次见面。\n\n许下约定。');
+});
+
+for (const includeCustom of [false, true]) test(`manual stage includeCustom=${includeCustom} survives controller, server source check and reopen`, async t => {
+    const f = await fixture(t, { fine: 2 });
+    const current = (await f.read()).document, hashes = await fingerprintMessages(f.snapshot.messages);
+    await f.api.change(f.snapshot.binding, { id: 'manual_between', type: 'append', afterId: 'fine_1', entry: {
+        id: 'custom_between', kind: 'manual', title: '未寄出的信', text: '自定义秘密：她还没有读信。', source: null,
+        placement: { binding: f.snapshot.binding, fromFloor: 1, hash: hashes[0] },
+    } });
+    await f.controller.refresh();
+    f.model(async prompt => { assert.equal(prompt.includes('自定义秘密'), includeCustom); return '{"title":"雨夜来信","text":"两份原文的完整阶段"}'; });
+    assert.equal(await f.controller.action('stage', { start: 1, end: 2, includeCustom }), true);
+    await f.flush();
+    const saved = (await f.read()).document, stage = saved.entries.find(entry => entry.kind === 'stage');
+    assert.ok(stage, f.controller.state.error); assert.equal(stage.title, '雨夜来信');
+    assert.equal(stage.source.parents.some(ref => ref.id === 'custom_between'), includeCustom);
+    assert.equal(stage.source.includeCustom !== false, includeCustom);
+    assert.equal(saved.entries.find(entry => entry.id === 'custom_between').text, '自定义秘密：她还没有读信。');
+    assert.equal(saved.entries.find(entry => entry.id === 'custom_between').status, 'active');
+    assert.equal(saved.epoch, current.epoch);
+    await f.controller.refresh(); assert.equal(f.controller.state.document.entries.find(entry => entry.id === stage.id).status, 'active');
+});
+
 test('stage stays off by default; explicit manual ranges containing edited slices are rejected whole without model calls', async t => {
     const f = await fixture(t);
     await f.controller.startStage();

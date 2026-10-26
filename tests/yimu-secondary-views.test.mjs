@@ -87,10 +87,10 @@ test('cancel or a changed chat while original planning is pending never starts a
     get('导出记忆').click();get('是，一起打包').click();view.render(state({snapshot:{...state().snapshot,binding:{...binding,file:'other'}}}));release();await d.flush();assert.equal(calls.length,2);
 });
 
-test('backup errors are actionable and completed files retain their independent outcome', async () => {
-    const d=dom(),calls=[],view=createBackupView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});
+test('backup errors retain retry controls while completed files notify only once and leave no card', async () => {
+    const d=dom(),calls=[],notices=[],view=createBackupView({document:d.document,pageMode:true,onNotice:(...args)=>notices.push(args),onAction:async(...args)=>calls.push(args)});view.render(state());
     view.render(state({backup:{items:[{id:'a',name:'first.yimu.gz',status:'merge-unknown',error:'连接中断'},{id:'b',name:'second.yimu.gz',status:'complete',message:'已导入：另一聊天'}]}}));
-    assert.match(view.node.textContent,/连接中断/);assert.match(view.node.textContent,/已导入：另一聊天/);
+    assert.match(view.node.textContent,/连接中断/);assert.doesNotMatch(view.node.textContent,/已导入：另一聊天/);assert.deepEqual(notices,[['已导入：另一聊天','success']]);
     d.get(view.node,'核对并继续本次导入').click();await d.flush();assert.deepEqual(calls[0],['backupRetry',{itemId:'a'}]);
     assert.equal(d.get(view.node,'已导入备份'),undefined);
 });
@@ -112,6 +112,18 @@ test('story keeps one cutoff and one action without a preview stage', async () =
     get('建立新聊天').click();await d.flush();assert.deepEqual(calls[0],['storyContinue',{cutoff:4}]);assert.equal(get('预览带入内容'),undefined);
 });
 
+test('story omissions appear once in an ST warning, never as a permanent row; complete transfers stay success', async () => {
+    for (const transferNote of [undefined, '2 份人工记忆、3 层较早正文留在原聊天']) {
+        const d = dom(), notices = [], result = {receipt: {status: 'complete'}, openResult: {opened: true}, ...(transferNote ? {transferNote} : {})};
+        const view = createStoryView({document: d.document, pageMode: true, onNotice: (...args) => notices.push(args), onAction: async () => result});
+        const s = state(); view.render(s); d.get(view.node, '建立新聊天').click(); await d.flush();
+        assert.deepEqual(notices, [[transferNote ? `已建立忆幕续接聊天；${transferNote}。` : '已建立忆幕续接聊天。', transferNote ? 'warning' : 'success']]);
+        view.render(s); view.render(s); assert.equal(notices.length, 1);
+        assert.doesNotMatch(view.node.textContent, /留在原聊天|已建立忆幕续接聊天/);
+        view.destroy();
+    }
+});
+
 test('companion page preserves selected cutoff but never carries consent to another chat', () => {
     const d = dom(), view = mountCompanionView({ ...d, pageMode: true, onAction: async () => {} });
     const s = state({ companion: { list: { items: [{ key: 'synthetic', title: '合成书', readTo: 20, avatar: 'Synthetic.png', persona: 'User' }] } } });
@@ -122,4 +134,43 @@ test('companion page preserves selected cutoff but never carries consent to anot
     assert.equal(get('共同已读位置').value, '15'); assert.equal(get('确认伴读记录与已读位置').checked, true); assert.equal(get('读取并预览摘要').disabled, true);
     view.render({ ...s, snapshot: { ...s.snapshot, binding: { ...binding, file: 'Other' } } });
     assert.equal(get('确认伴读记录与已读位置').checked, false); assert.equal(get('读取并预览摘要').disabled, true);
+});
+
+test('backup outcomes toast once, no completed cards or empty idle result grid remain',()=>{
+    const d=dom(),notices=[],view=createBackupView({document:d.document,onNotice:(...args)=>notices.push(args)});view.render(state());
+    const completed=state({backup:{items:[{id:'a',name:'one.yimu.gz',status:'complete',message:'记忆已导入'}]}});
+    view.render(completed);view.render(structuredClone(completed));assert.deepEqual(notices,[['记忆已导入','success']]);
+    const grid=d.all(view.node).find(n=>n.className==='ym-backup-list');assert.equal(grid.hidden,true);assert.equal(grid.children.length,0);
+    const exportDone=state({backup:{status:'备份已生成，已发起下载。'}});view.render(exportDone);view.render(exportDone);assert.equal(notices.length,2);
+});
+
+test('backup state published before promise rejection reports one error, while a deliberate retry can report again',async()=>{
+    const d=dom(),notices=[];let view;
+    view=createBackupView({document:d.document,onNotice:(...args)=>notices.push(args),onAction:async()=>{
+        view.render(state({backup:{busy:true,error:''}}));
+        view.render(state({backup:{busy:false,error:'网络中断'}}));
+        throw new Error('网络中断');
+    }});
+    view.render(state());const get=label=>d.get(view.node,label);
+    for(let attempt=1;attempt<=2;attempt++){
+        get('导出记忆').click();get('否，仅导出记忆').click();await d.flush();
+        assert.equal(notices.length,attempt);assert.deepEqual(notices.at(-1),['网络中断','error']);
+    }
+});
+
+test('backup promise rejection without a published error still notifies once',async()=>{
+    const d=dom(),notices=[],view=createBackupView({document:d.document,onNotice:(...args)=>notices.push(args),onAction:async()=>{throw new Error('读取失败');}});
+    view.render(state());d.get(view.node,'导出记忆').click();d.get(view.node,'否，仅导出记忆').click();await d.flush();
+    assert.deepEqual(notices,[['读取失败','error']]);
+    view.render(state({backup:{error:'读取失败'}}));assert.equal(notices.length,1);
+});
+
+test('companion preview preserves ownership through cloned refreshes and selection changes invalidate confirmation',()=>{
+    const d=dom(),view=mountCompanionView({...d,onAction:async()=>{},pageMode:true});
+    const list={items:[{key:'a',title:'书A',readTo:10},{key:'b',title:'书B',readTo:30}]};
+    const initial=state({companion:{list}});view.render(initial);let get=label=>d.get(view.element,label);
+    get('共同已读位置').value='8';get('共同已读位置').emit('input');get('确认伴读记录与已读位置').checked=true;get('确认伴读记录与已读位置').emit('change');
+    const preview=structuredClone(initial);preview.companion.query={key:'a',confirmedReadTo:8};preview.companion.preview={entries:[{kind:'book',text:'截至八层的书中背景'},{kind:'dialogue',text:'共同讨论的约定'}]};
+    view.render(preview);assert.equal(get('共同已读位置').value,'8');assert.equal(get('确认关联以上摘要').disabled,false);
+    get('伴读记录').value='b';get('伴读记录').emit('change');assert.equal(get('共同已读位置').value,'30');assert.equal(get('确认关联以上摘要').disabled,true);assert.equal(get('读取并预览摘要').disabled,true);
 });

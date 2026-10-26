@@ -1,11 +1,11 @@
 // Data-only portable format. A package is not authority to adopt an existing
 // local file, activate a companion link, or replay another device's operations.
-import {SCHEMA, createDocument, validateDocument, validateSettings, normalizeBinding, bindingKey} from './contract.mjs';
+import {SCHEMA, createDocument, validateDocument, validateSettings, normalizeBinding, bindingKey, validateDiscardedSources} from './contract.mjs';
 import {validateOrigin, validateLineage} from './story-contract.mjs';
 import {validateStageSource} from './stage-contract.mjs';
 import {validateExcerpt} from './recall-contract.mjs';
 import {validateCompanion} from './companion-contract.mjs';
-import {validatePlacement, normalizeEntryOrder} from './timeline.mjs';
+import {validatePlacement, normalizeEntryOrder, validateMemoryTitle} from './timeline.mjs';
 import {validateScenes} from './scene-contract.mjs';
 
 export const BACKUP_FORMAT = 'yimu-backup';
@@ -21,7 +21,7 @@ const id = value => {if(typeof value!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(
 const hash = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))fail('忆幕备份来源指纹无效');return value;};
 const prose = (value,max=100000) => {if(typeof value!=='string'||!value.trim()||value.length>max)fail('忆幕备份记忆正文无效或过长');return value;};
 const kinds=new Set(['summary','manual','stage','excerpt']),statuses=new Set(['active','invalid','excluded','deleted']);
-const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','recall','prompts']);
+const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','stageRecent','sliceChars','stageChars','recall','prompts']);
 
 function range(value) {
     requireObject(value);
@@ -43,7 +43,7 @@ function initialRange(value) {
 }
 function fields(value) {
     requireObject(value);const result={};
-    for(const key of ['id','revision','kind','text','source','status','edited','origin','parent','quote','placement','scenes','replacedBy','textUndoRevision']) {
+    for(const key of ['id','revision','kind','title','text','source','status','edited','origin','parent','quote','placement','scenes','replacedBy','textUndoRevision','discarded','deletedRevision','discardedSources']) {
         if(!own(value,key))continue;const item=value[key];
         if(key==='id')result.id=id(item);
         else if(key==='revision'){if(!integer(item)||item<1)fail('忆幕备份版本无效');result.revision=item;}
@@ -51,6 +51,10 @@ function fields(value) {
         else if(key==='status'){if(!statuses.has(item))fail('忆幕备份状态无效');result.status=item;}
         else if(key==='edited'){if(typeof item!=='boolean')fail('忆幕备份修订状态无效');result.edited=item;}
         else if(key==='text')result.text=prose(item);
+        else if(key==='title')result.title=validateMemoryTitle(item);
+        else if(key==='discardedSources')result.discardedSources=validateDiscardedSources(item);
+        else if(key==='discarded'){if(item!==true)fail('忆幕删除标记无效');result.discarded=true;}
+        else if(key==='deletedRevision'){if(!integer(item)||item<1)fail('忆幕删除顺序无效');result.deletedRevision=item;}
         else if(key==='source')result.source=source(item);
         else if(key==='origin')result.origin=origin(item);
         else if(key==='placement')result.placement=validatePlacement(item);
@@ -134,7 +138,7 @@ export function collectBackupSources(value) {
         const item={id:`source_${sources.length}`,binding:normalized,...(!resolved?{unresolved:true}:{})};sources.push(item);seen.set(key,item);
     };
     add(document.binding,true);if(document.lineage)add(document.lineage.sourceBinding,document.lineage.unresolved!==true);
-    for(const item of document.entries)for(const version of [item,...item.history,...item.conflicts,...(item.candidate?[item.candidate]:[])]) {
+    for(const item of document.entries.filter(item=>!item.discarded))for(const version of [item,...item.history,...item.conflicts,...(item.candidate?[item.candidate]:[])]) {
         if(version.origin)add(version.origin.binding,version.origin.unresolved!==true);
         if(version.placement)add(version.placement.binding,version.origin?.unresolved!==true);
     }

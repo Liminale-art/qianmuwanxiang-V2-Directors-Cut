@@ -2,7 +2,7 @@ import {constants} from 'node:fs';
 import * as contract from './contract.mjs';
 import {entryOrigin, selectStoryEntries, storyOffset} from './story-contract.mjs';
 import {normalizeEntryOrder} from './timeline.mjs';
-import {unknownScenes} from './scene-contract.mjs';
+import {unknownScenes, validateGeneratedLength} from './scene-contract.mjs';
 const clone = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const requestId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -10,10 +10,19 @@ const requestId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/
 export function createStoryHandlers({io, context, prepare, exclusive, documentRead, defaultsRead, read, requireSource, requireForeignSource,
     sourcePath, checkDirectory, checkRoot, writeFile, normalizeStoreBinding, chatStorageName, fail, digest}) {
     const exists = async target => {try { await io.lstat(target); return true; } catch (error) {if (error.code === 'ENOENT') return false; throw error;}};
-    const targetBinding = (binding, id) => {
+    const targetBinding = (binding, id, legacy = false) => {
         if (!requestId(id)) fail('story_id', '故事创建标识无效', 400);
         const hash = digest(JSON.stringify([binding, id]));
-        return {avatar: binding.avatar, file: `${Array.from(binding.file).slice(0, 60).join('')}-忆幕-${hash.slice(0, 20)}`, integrity: `yimu-${hash}`};
+        const name = Array.from(binding.file).slice(0, 60).join('');
+        return {avatar: binding.avatar, file: legacy ? `${name}-忆幕-${hash.slice(0, 20)}` : `忆幕续接-${name}-${hash.slice(0, 20)}`, integrity: `yimu-${hash}`};
+    };
+    const resolveTarget = async (ctx, binding, id) => {
+        const target = targetBinding(binding, id);
+        if ((await documentRead(ctx, target)).fingerprint) return target;
+        const legacy = targetBinding(binding, id, true);
+        // A pre-upgrade receipt remains the authority for the same operation.
+        // Never create a second copy merely because the display prefix changed.
+        return (await documentRead(ctx, legacy)).fingerprint ? legacy : target;
     };
     const receipt = document => ({id: document.creation.id, status: document.creation.status, target: clone(document.binding),
         source: {binding: clone(document.lineage.sourceBinding), cutoff: document.lineage.cutoff},
@@ -44,11 +53,11 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         });
         const total = hashes.length, cutoff = query.cutoff ?? total;
         if (!total || cutoff > total) fail('story_cutoff', '故事截止楼层不存在，未创建', 400);
-        const valid = new Set(document.entries.filter(entry => entry.status === 'active' && !loaded.invalidSourceIds.includes(entry.id)
+        const valid = new Set(document.entries.filter(entry => ['active', 'excluded'].includes(entry.status) && !loaded.invalidSourceIds.includes(entry.id)
             && (entry.origin ? entry.originVerified : !entry.source || contract.sourceRanges(entry).every(range=>contract.sourceMatches(range,hashes)))
             && (entry.kind!=='stage'||contract.stageDependenciesValid(entry,document))).map(entry => entry.id));
         const placementValidIds = new Set();
-        for (const entry of document.entries.filter(entry => entry.kind === 'manual' && entry.placement && entry.status === 'active' && !entry.origin?.unresolved)) {
+        for (const entry of document.entries.filter(entry => entry.kind === 'manual' && entry.placement && ['active', 'excluded'].includes(entry.status) && !entry.origin?.unresolved)) {
             try {
                 const from = entryOrigin(entry, document), placement = entry.placement;
                 if (!same(from.binding, placement.binding)) continue;
@@ -70,7 +79,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         const bridgeCount = bridge.length, bridgeHashes = hashes.slice(cutoff - bridgeCount, cutoff);
         const offset = storyOffset(document) + cutoff - bridgeCount;
         const represented = new Set();
-        for (const entry of selected.entries) if (entry.kind === 'summary') for (const range of contract.sourceRanges(entry)) {
+        for (const entry of selected.entries) if (entry.kind === 'summary' && entry.status === 'active') for (const range of contract.sourceRanges(entry)) {
             const start = entryOrigin(entry, document).offset + range.start - storyOffset(document);
             const end = entryOrigin(entry, document).offset + range.end - storyOffset(document);
             for (let floor = Math.max(1, start); floor <= Math.min(cutoff, end); floor++) represented.add(floor);
@@ -87,7 +96,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         const planId = digest(JSON.stringify([publicPlan, selected.entries.map(entry => {
             const {history, conflicts, candidate, originVerified, ...value} = entry; return value;
         }), bridgeHashes]));
-        return {publicPlan: {planId, ...publicPlan}, document, entries: selected.entries, bridge: bridgeMessages, bridgeHashes};
+        return {publicPlan: {planId, ...publicPlan}, document, settings, entries: selected.entries, bridge: bridgeMessages, bridgeHashes};
     }
 
     async function planStory(request, rawBinding, query) {
@@ -99,7 +108,8 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         const document = contract.createDocument(binding), ids = new Map(), boundaryOrder = new Map();
         const fresh = (entry, suffix) => {
             const {history, conflicts, candidate, originVerified, ...values} = clone(entry);
-            return {...values, id: `story_${digest(`${operation.id}:${suffix}`).slice(0, 36)}`, revision: 1, status: 'active', history: [], conflicts: [], candidate: null};
+            return {...values, id: `story_${digest(`${operation.id}:${suffix}`).slice(0, 36)}`, revision: 1,
+                status: values.status === 'excluded' ? 'excluded' : 'active', history: [], conflicts: [], candidate: null};
         };
         for (const entry of prepared.entries) ids.set(entry.id, `story_${digest(`${operation.id}:${entry.id}`).slice(0, 36)}`);
         document.entries = prepared.entries.map(entry => {
@@ -108,7 +118,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
             value.scenes = (value.scenes || unknownScenes()).map(scene => {
                 const reference=scene.evidence?.inheritedFrom;
                 if(!reference)return scene;
-                if(!ids.has(reference.id))return unknownScenes()[0];
+                if(!ids.has(reference.id)||prepared.entries.find(parent=>parent.id===reference.id)?.status!=='active')return unknownScenes()[0];
                 return {...scene,evidence:{...scene.evidence,inheritedFrom:{id:ids.get(reference.id),revision:1}}};
             });
             return value;
@@ -133,7 +143,9 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
                     || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 100000) fail('story_boundary', '截止边界未完整按原文整理，未创建');
                 next = range.end + 1;
                 const value = fresh({kind: 'summary', text: entry.text.trim(), source: clone(range), origin: clone(offered.origin), edited: false,
+                    ...(entry.title !== undefined ? {title:entry.title} : {}),
                     ...(entry.scenes ? {scenes:clone(entry.scenes)} : {})}, `boundary:${item.id}:${index}`);
+                validateGeneratedLength(value, prepared.settings);
                 document.entries.push(value); if (!boundaryOrder.has(item.id)) boundaryOrder.set(item.id, []); boundaryOrder.get(item.id).push(value.id);
             }
             if (next !== offered.source.end + 1) fail('story_boundary', '截止边界整理尚未完成，未创建');
@@ -197,7 +209,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
 
     async function createStory(request, rawBinding, operation) {
         const binding = normalizeStoreBinding(rawBinding), ctx = context(request); await prepare(ctx);
-        const target = targetBinding(binding, operation?.id), requestHash = digest(JSON.stringify(operation));
+        const target = await resolveTarget(ctx, binding, operation?.id), requestHash = digest(JSON.stringify(operation));
         const names = [chatStorageName(binding), chatStorageName(target)].sort();
         return exclusive(ctx, 'defaults.json', () => exclusive(ctx, names[0], () => exclusive(ctx, names[1], async () => {
             const previous = await documentRead(ctx, target);
@@ -245,7 +257,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
 
     async function storyResult(request, rawBinding, query) {
         const binding = normalizeStoreBinding(rawBinding), ctx = context(request); await prepare(ctx);
-        const target = targetBinding(binding, query?.id);
+        const target = await resolveTarget(ctx, binding, query?.id);
         const names = [chatStorageName(binding), chatStorageName(target)].sort();
         return exclusive(ctx, 'defaults.json', () => exclusive(ctx, names[0], () => exclusive(ctx, names[1], async () => {
             const saved = await documentRead(ctx, target);

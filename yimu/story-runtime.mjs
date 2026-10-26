@@ -50,11 +50,12 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
             }
             if (type === 'storyOpen') {
                 if (!view.result?.receipt) throw new Error('尚无可确认的新聊天');
+                const transferNote = view.result.transferNote;
                 const opened = await host.openStory(view.result, { sourceSnapshot: snapshot,
                     isCurrent: () => !lifecycle().disposed && !lifecycle().generating && lifecycle().generation === stamp });
                 view.status = opened.opened ? '已打开新故事。' : opened.message;
                 if (opened.opened) await refresh({ auto: false });
-                return opened;
+                return {...opened, ...(transferNote ? {transferNote} : {})};
             }
             if (type !== 'storyCreate' || !view.plan) throw new Error('请先核对续接或分支范围');
             const plan = view.plan;
@@ -68,6 +69,16 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                 await assertCurrent(snapshot, stamp);
                 const settings = effectiveSettings(state.document, state.defaults), summaries = [];
                 const connection = typeof host.summaryConnection === 'function' ? host.summaryConnection(settings) : null;
+                if (plan.boundaries?.length) {
+                    if (typeof host.confirmStoryBoundary !== 'function') throw new Error('当前环境无法确认续接的总结调用，未调用 API');
+                    const approved = await host.confirmStoryBoundary({ranges: plan.boundaries.map(boundary => ({start: boundary.source.start, end: boundary.source.end}))});
+                    if (approved !== true) { view.plan = null; view.status = ''; return {cancelled: true}; }
+                    await assertCurrent(snapshot, stamp);
+                    if (plan.sourceRevision !== state.document?.revision || plan.defaultsRevision !== state.defaults?.revision
+                        || connection && JSON.stringify(connection) !== JSON.stringify(host.summaryConnection(settings))) {
+                        throw new Error('确认期间记忆或总结连接已变化，请重新建立以核对范围');
+                    }
+                }
                 const budgetSettings = connection ? {...settings, profileId: connection.mode === 'profile' ? connection.profileId : ''} : settings;
                 const budgetSnapshot = connection ? {...snapshot, maxContext: connection.contextTokens, maxResponse: connection.maxTokens} : snapshot;
                 for (const boundary of plan.boundaries || []) {
@@ -81,7 +92,7 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                     const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model, ...(connection ? {connection} : {}) });
                     await assertCurrent(snapshot, stamp);
                     const hashes = Array(batch.start - 1).fill(''); hashes.push(...boundary.source.hashes);
-                    summaries.push({ id: boundary.id, entries: parseSummary(response, batch, hashes) });
+                    summaries.push({ id: boundary.id, entries: parseSummary(response, batch, hashes, settings) });
                 }
                 record.pending = { choices: structuredClone(payload.manualChoices || []), operation: { id: id(), planId: plan.planId,
                     mode: plan.mode, cutoff: plan.cutoff, manualChoices: payload.manualChoices || [], boundarySummaries: summaries } };
@@ -110,17 +121,21 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
             }
             if (releaseFailed(result)) throw new Error(result.message || '本次建立已确认失败，请重新核对继承范围；原聊天保持不变');
             if (result?.receipt?.status !== 'complete') throw new Error('新故事尚未完整建立；请用同一次操作重试，不会重复创建');
-            view.result = result; view.receipt = result.receipt; record.pending = null; view.pending = false;
             const skipped = plan.skippedManualCount || 0, missing = plan.unrepresentedFloorCount || 0;
-            const detail = `${skipped ? `；${skipped} 份未定位或跨截止的人工记忆留在原聊天` : ''}${missing ? `；${missing} 层尚未整理的旧正文未带入` : ''}`;
+            const omitted = [skipped ? `${skipped} 份人工记忆` : '', missing ? `${missing} 层较早正文` : ''].filter(Boolean);
+            const transferNote = omitted.length ? `${omitted.join('、')}留在原聊天` : '';
+            view.result = {...result, ...(transferNote ? {transferNote} : {})}; view.receipt = result.receipt; record.pending = null; view.pending = false;
+            const detail = transferNote ? `；${transferNote}` : '';
             view.status = `已建立新聊天：${result.receipt.target?.file || result.binding?.file}${detail}`;
+            let openResult = null;
             if (same(snapshot.binding, state.snapshot?.binding) && !lifecycle().generating && lifecycle().generation === stamp) {
                 const opened = await host.openStory(result, { sourceSnapshot: snapshot,
                     isCurrent: () => !lifecycle().disposed && !lifecycle().generating && lifecycle().generation === stamp });
+                openResult = opened;
                 if (opened.opened) { view.status = `已建立并打开新故事，原聊天保持不变。${detail}`; await refresh({ auto: false }); }
                 else view.status += `；${opened.message || '请从此角色聊天记录打开。'}`;
             }
-            return result;
+            return {...view.result, ...(openResult ? {openResult} : {})};
         } catch (error) { view.error = error.message; throw error; }
         finally { view.busy = false; emit(); }
     };

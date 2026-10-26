@@ -1,5 +1,20 @@
 // Narrative order is presentation/applicability, never a replacement for source evidence.
 const clone = value => structuredClone(value);
+export const MEMORY_TITLE_LIMIT = 8;
+export function validateMemoryTitle(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value !== 'string' || /[\x00-\x1f]/.test(value) || Array.from(value.trim()).length > MEMORY_TITLE_LIMIT) {
+        throw Object.assign(new Error(`切片名称最多 ${MEMORY_TITLE_LIMIT} 字`), { status: 400, statusCode: 400 });
+    }
+    return value.trim();
+}
+// Old records get a display-only extract, not an invented model title or a write migration.
+export function memoryTitle(entry) {
+    const explicit = typeof entry?.title === 'string' ? entry.title.trim() : '';
+    const fallback = entry?.kind === 'manual' ? '自定义切片' : entry?.kind === 'stage' ? '阶段总结'
+        : String(entry?.text || '').trim().split(/[\r\n。！？!?]/u)[0].replace(/^\s*[#>*\-]+\s*/u, '') || '记忆切片';
+    return Array.from(explicit || fallback).slice(0, MEMORY_TITLE_LIMIT).join('');
+}
 const fail = message => { throw Object.assign(new Error(message), { status: 409, statusCode: 409 }); };
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const binding = value => {

@@ -9,6 +9,7 @@ import { createCompanionActions } from './companion-runtime.mjs';
 import { createBackupActions } from './backup-runtime.mjs';
 import { validateGeneratedLength } from './scene-contract.mjs';
 import { summaryRequestBudget } from './budget.mjs';
+import { memoryTitle } from './timeline.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -224,8 +225,15 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     if (batch.redo) {
                         const current = jobDocument.entries.find(entry => entry.id === batch.redo.id);
                         if (!current || current.revision !== batch.redo.revision) throw new Error('待整理的切片已变化，请刷新后重试');
-                    } else if (jobDocument.entries.some(entry => entry.kind === 'summary' && !entry.origin
-                        && entry.source.start <= batch.end && entry.source.end >= batch.start)) throw new Error('此范围已新增记忆，请刷新后确认整理范围');
+                    } else {
+                        const overlaps = jobDocument.entries.filter(entry => entry.kind === 'summary' && !entry.origin
+                            && entry.source.start <= batch.end && entry.source.end >= batch.start);
+                        if (overlaps.some(entry => !entry.discarded || !batch.discardedSources?.some(ref => ref.id === entry.id && ref.revision === entry.revision
+                            && JSON.stringify(ref.source) === JSON.stringify(entry.source)))
+                            || (batch.discardedSources || []).some(ref => !overlaps.some(entry => entry.id === ref.id && entry.revision === ref.revision))) {
+                            throw new Error('此范围的记忆已变化，请刷新后确认整理范围');
+                        }
+                    }
                 } else if (entryId) {
                     const entry = jobDocument.entries.find(e => e.id === entryId);
                     if (!entry?.source || entry.status === 'deleted') throw new Error('此条记忆没有可重新总结的来源');
@@ -266,13 +274,22 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 }
                 let slices = parseSummary(response, batch, hashes, settings);
                 // Redo replaces exactly one existing slice, never creates overlapping entries.
-                if (batch.redo) slices = [{ kind: 'summary', text: slices.map(s => s.text).join('\n\n'), scenes: slices.flatMap(s => s.scenes || []), source: frozenSource }];
+                if (batch.redo) {
+                    const text = slices.map(s => s.text).join('\n\n');
+                    const title = slices.length === 1 ? slices[0].title : batch.redo.title || memoryTitle({ kind: 'summary', text });
+                    slices = [{ kind: 'summary', title, text, scenes: slices.flatMap(s => s.scenes || []), source: frozenSource }];
+                }
                 slices.forEach(slice => validateGeneratedLength(slice, settings));
                 for (const slice of slices) {
                     if (controller.signal.aborted || disposed || localStops.has(key)) break;
                     const operation = { id: id(), type: batch.redo ? 'redo' : 'append', expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision,
                         entry: { ...slice, id: batch.redo?.id || id() } };
                     if (batch.redo) { operation.entryId = batch.redo.id; operation.expectedRevision = batch.redo.revision; }
+                    else if (manualPlan && batch.discardedSources) {
+                        const discardedSources = batch.discardedSources.filter(ref => doc.entries.some(entry => entry.id === ref.id
+                            && entry.source.start <= slice.source.end && entry.source.end >= slice.source.start));
+                        if (discardedSources.length) operation.discardedSources = clone(discardedSources);
+                    }
                     const result = await change(binding, operation); jobDocument = result.document; processed = true;
                     if (!batch.redo) failedBatch.start = slice.source.end + 1;
                     if (result.outcome === 'conflict') {
@@ -345,7 +362,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         }
     }
 
-    async function startStage({ force = false, start: first = 1, end: last = Infinity, entryId = null } = {}) {
+    async function startStage({ force = false, start: first = 1, end: last = Infinity, entryId = null, includeCustom = false } = {}) {
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot) return;
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
@@ -380,24 +397,25 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     if (!entry) throw new Error('阶段摘要已变化，请刷新后重试');
                     // Redo adopts CURRENT fine revisions only after verifying all still compressible.
                     const refs = entry.source.parents.map(ref => ({ id: ref.id, revision: document.entries.find(e => e.id === ref.id)?.revision }));
-                    stageSourceFromParents(document, refs);
+                    stageSourceFromParents(document, refs, { includeCustom: entry.source.includeCustom !== false });
                     group = { existing: entry, parents: refs.map(ref => document.entries.find(e => e.id === ref.id)) };
                 } else group = force && Number.isFinite(last)
-                    ? planStageRange(document, batchSettings, { start: cursor, end: last, recentCutoff: snapshot.messages.length - settings.recent })
+                    ? planStageRange(document, batchSettings, { start: cursor, end: last, recentCutoff: snapshot.messages.length - settings.recent, includeCustom })
                     : nextStage(document, batchSettings, { force, start: cursor, end: last, recentCutoff: snapshot.messages.length - settings.recent });
                 if (!group) {
                     if (force && !processed && isCurrent(binding)) state.status = '没有可合并的连续细摘要；人工修订和近期原文保持原样。';
                     break;
                 }
                 const refs = group.parents.map(e => ({ id: e.id, revision: e.revision }));
-                const source = stageSourceFromParents(document, refs, { automatic: !force, stageRecent: settings.stageRecent });
+                const useCustom = group.includeCustom ?? (group.existing?.source?.includeCustom !== false);
+                const source = stageSourceFromParents(document, refs, { automatic: !force, stageRecent: settings.stageRecent, includeCustom: useCustom });
                 controller.entryId = group.existing?.id || entryId;
                 const points = group.parents.flatMap(entry => entry.source?.ranges || (entry.source ? [entry.source] : entry.placement ? [{start: entry.placement.fromFloor, end: entry.placement.fromFloor}] : []));
                 const startFloor = Math.min(...points.map(range => range.start)), endFloor = Math.max(...points.map(range => range.end));
                 if (!Number.isFinite(startFloor) || !Number.isFinite(endFloor)) throw new Error('此范围缺少可核对的叙事位置，请先定位自定义切片');
                 if (source.ranges.some(range => range.end > snapshot.messages.length - settings.recent)) throw new Error('此阶段涉及近期原文，本轮不压缩');
                 failedStage = { kind: 'stage', entryId: group.existing?.id || entryId, range: { start: startFloor, end: endFloor },
-                    parents: refs, epoch: initial.epoch, defaultsRevision: defaults.revision };
+                    parents: refs, includeCustom: useCustom, epoch: initial.epoch, defaultsRevision: defaults.revision };
                 if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
@@ -406,8 +424,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 const latest = await api.read(binding); adopt(binding, latest);
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 if (!latest.document.enabled || latest.document.epoch !== initial.epoch || latest.defaults.revision !== defaults.revision) throw new Error('整理期间设置已改变，阶段结果未采用');
-                stageSourceFromParents(latest.document, refs, { automatic: !force, stageRecent: settings.stageRecent });
-                const entry = { ...parseStage(response, group.parents, settings), id: group.existing?.id || id() };
+                stageSourceFromParents(latest.document, refs, { automatic: !force, stageRecent: settings.stageRecent, includeCustom: useCustom });
+                const entry = { ...parseStage(response, group.parents, settings, { includeCustom: useCustom }), id: group.existing?.id || id() };
                 const operation = { id: id(), type: group.existing ? 'redo' : 'append', expectedEpoch: initial.epoch, expectedDefaultsRevision: defaults.revision, automaticStage: !force, entry };
                 if (!group.existing && group.replaceStages?.length) operation.replaceStages = clone(group.replaceStages);
                 if (group.existing) { operation.entryId = group.existing.id; operation.expectedRevision = group.existing.revision; }
@@ -500,7 +518,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (failure.source && !sourceMatches(failure.source, await fingerprintMessages(snapshot.messages))) throw new Error('对应原文已变化，请重新选择整理范围');
             if (failure.parents?.some(ref => doc.entries.find(entry => entry.id === ref.id)?.revision !== ref.revision)) throw new Error('所选切片已变化，请重新选择阶段范围');
             state.error = ''; emit();
-            if (failure.kind === 'stage') deferFor(binding, () => startStage({ force: true, ...failure.range, start: failure.range.start, end: failure.range.end, entryId: failure.entryId }), actionGeneration);
+            if (failure.kind === 'stage') deferFor(binding, () => startStage({ force: true, ...failure.range, start: failure.range.start, end: failure.range.end, entryId: failure.entryId, includeCustom: failure.includeCustom ?? false }), actionGeneration);
             else if (failure.entryId) deferFor(binding, () => start({ force: true, entryId: failure.entryId }), actionGeneration);
             else {
                 const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, failure.range);
@@ -512,12 +530,12 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             if (jobs.has(key)) return false;
             if (type === 'stage' && Number.isFinite(payload.end)) {
                 const plan = planStageRange(doc, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, { start: payload.start, end: payload.end,
-                    recentCutoff: snapshot.messages.length - effectiveSettings(doc, state.defaults).recent });
+                    recentCutoff: snapshot.messages.length - effectiveSettings(doc, state.defaults).recent, includeCustom: payload.includeCustom ?? false });
                 if (plan.expanded && (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end)) {
                     throw new Error(`完整阶段范围为 ${plan.range.start}—${plan.range.end} 层，请确认范围后开始`);
                 }
             }
-            state.error = ''; emit(); deferFor(binding, () => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null }), actionGeneration); return true;
+            state.error = ''; emit(); deferFor(binding, () => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null, includeCustom: payload.includeCustom ?? false }), actionGeneration); return true;
         }
         if (type === 'summarize' || type === 'redo') {
             if (jobs.has(key)) return false;
@@ -548,7 +566,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             const fromFloor = payload.fromFloor ?? positionAfter(after, doc, snapshot);
             if (!Number.isSafeInteger(fromFloor) || fromFloor < 1 || fromFloor > snapshot.messages.length) throw new Error('请先选择有效的自定义切片位置');
             const hashes = await fingerprintMessages(snapshot.messages);
-            operation = { ...operation, type: 'append', entry: { id: id(), kind: 'manual', text: payload.text, source: null,
+            operation = { ...operation, type: 'append', entry: { id: id(), kind: 'manual', title: payload.title ?? '', text: payload.text, source: null,
                 placement: { binding, fromFloor, hash: hashes[fromFloor - 1] }, scenes: payload.scenes || [], afterId: insertionAfter(after, doc) } };
         } else if (type === 'reorder') {
             const entryOrder = payload.entryOrder;

@@ -3,7 +3,7 @@ import { sourceRanges, stageDependenciesValid, hasCustomParents } from './stage-
 import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-scope.mjs';
 import { companionEntries } from './companion-contract.mjs';
-import { orderForInjection, placementMatches, validatePlacement } from './timeline.mjs';
+import { orderForInjection, placementMatches, validatePlacement, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 
@@ -93,7 +93,10 @@ export function planManualRange(document, messages, settings, requestedRange) {
     if (!Array.isArray(messages) || !Number.isSafeInteger(requested.start) || !Number.isSafeInteger(requested.end)
         || requested.start < 1 || requested.end < requested.start || requested.end > messages.length) throw new Error('请选择有效的起止楼层');
     const range = { ...requested };
-    const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin)
+    const discarded = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && entry.discarded);
+    // A purged deletion has no old text left to redo or preserve. Only this explicit
+    // manual planner may create fresh summaries there; the deletion guard remains.
+    const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && !entry.discarded)
         .sort((a, b) => a.source.start - b.source.start || a.source.end - b.source.end);
     for (let changed = true; changed;) {
         changed = false;
@@ -135,7 +138,9 @@ export function planManualRange(document, messages, settings, requestedRange) {
             end--;
         }
         if (tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) throw new Error(`第 ${floor}—${end} 层与总结提示词超过此连接的可用输入容量，请选择容量足够的连接`);
-        batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}) });
+        const discardedSources = !redo ? discarded.filter(entry => entry.source.start <= end && entry.source.end >= floor)
+            .map(entry => ({ id: entry.id, revision: entry.revision, source: structuredClone(entry.source) })) : [];
+        batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}), ...(discardedSources.length ? { discardedSources } : {}) });
         floor = end + 1;
     }
     return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };
@@ -176,7 +181,7 @@ export function summaryPrompt(messages, batch, settings, { recallCandidates = []
         floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: String(message.mes || ''),
     }));
     return composePrompt(settings, 'summary', {
-        protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"text":"精炼、自足的记忆","scenes":[]}]}。
+        protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"title":"不超过${MEMORY_TITLE_LIMIT}字的正文事件短名","text":"精炼、自足的记忆","scenes":[]}]}。title依据本片原文的主要事件起名，不超过${MEMORY_TITLE_LIMIT}个Unicode字符，不用楼层、时间或套话充当事件名，不新增正文没有的事实。
 slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。每片正文及可见场景文字合计不得超过 ${settings.sliceChars ?? 2000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量；不得靠删除事实边界或截断原文规避。${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
 ${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}`,
@@ -195,7 +200,7 @@ export function parseSummary(response, batch, hashes, settings = {}) {
         if (slice.start !== next || !Number.isSafeInteger(slice.end) || slice.end < slice.start || slice.end > batch.end
             || typeof slice.text !== 'string' || !slice.text.trim() || slice.text.length > 100000) throw new Error('整理结果的楼层覆盖不完整，未采用');
         next = slice.end + 1;
-        return validateGeneratedLength({ kind: 'summary', text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
+        return validateGeneratedLength({ kind: 'summary', title: validateMemoryTitle(slice.title) || memoryTitle({ kind: 'summary', text: slice.text }), text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
             source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');

@@ -94,7 +94,12 @@ test('presets save with an explicit save icon and are editable without a selecte
     assert.equal(f.saves[1][0].presets[0].name,'全局预设');assert.equal(f.saves[1][0].presets[0].groups.summary[0].text,'全局规则');f.view.destroy();
 });
 
-test('recall state badge still reflects its single functional setting',()=>{
-    const f=fixture();f.render({recallEnabled:false});f.get('原文回查').click();assert.equal(f.byClass('ym-prompt-recall-badge').textContent,'未开启');
-    f.render({recallEnabled:true});assert.equal(f.byClass('ym-prompt-recall-badge').textContent,'已开启');f.view.destroy();
+test('recall tab is present only while enabled, with no redundant badge and no lost draft',()=>{
+    const f=fixture();f.render({recallEnabled:true});f.get('原文回查').click();
+    const text=f.get('何时补充提示词正文');text.value='未提交的原文回查草稿';text.emit('input');
+    assert.equal(f.get('原文回查').textContent,'原文回查');assert.equal(f.byClass('ym-prompt-recall-badge'),undefined);
+    f.render({recallEnabled:false});assert.equal(f.get('原文回查').hidden,true);assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true');
+    f.get('原文回查').click();assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true','hidden tab cannot be selected programmatically');
+    f.render({recallEnabled:true});assert.equal(f.get('原文回查').hidden,false);f.get('原文回查').click();assert.equal(f.get('何时补充提示词正文'),text);assert.equal(text.value,'未提交的原文回查草稿');
+    assert.equal(f.saves.length,0,'visibility changes never submit the preserved draft');f.view.destroy();
 });

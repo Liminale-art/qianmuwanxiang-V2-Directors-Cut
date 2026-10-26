@@ -1,16 +1,17 @@
-export function mountCompanionView({ document, el, button, onAction, pageMode = false }) {
+export function mountCompanionView({ document, el, button, onAction, onNotice = () => {}, pageMode = false }) {
     const element = el(pageMode ? 'section' : 'details', `ym-companion ${pageMode ? 'ym-subpage-section' : 'ym-card'}`);
     if (!pageMode) element.append(el('summary', '', '关联伴读'));
     const body = el('div', 'ym-settings-form'); element.append(body);
-    let last = '', state, listOwner = null, draft = {key:'',cutoff:'',own:false}, binding = '';
+    let last = '', state, listOwner = '', draft = {key:'',cutoff:'',own:false}, binding = '', lastStatus = '';
     const invoke = (type, payload) => Promise.resolve(onAction(type, payload)).catch(() => {});
     const field = (label, input) => { const node = el('label', 'ym-field'); node.append(el('span', '', label), input); return node; };
     return { element, render(next) {
         state = next;
         const value = next.companion || {}, linked = next.document?.companion;
         const nextBinding = JSON.stringify(next.snapshot?.binding || null);
-        if (binding !== nextBinding || listOwner !== value.list) {
-            binding = nextBinding; listOwner = value.list;
+        const listKey = JSON.stringify(value.list || null);
+        if (binding !== nextBinding || listOwner !== listKey) {
+            binding = nextBinding; listOwner = listKey; lastStatus = '';
             const first = value.list?.items?.[0]; draft = {key:first?.key || '',cutoff:first?.readTo == null ? '' : String(first.readTo),own:false};
         }
         const unavailable = !next.document || !next.snapshot || next.loading || ['error','mismatch'].includes(next.service?.status);
@@ -24,7 +25,8 @@ export function mountCompanionView({ document, el, button, onAction, pageMode = 
         body.append(button('选择伴读记忆', () => invoke('companionList')));
         if (value.busy) body.append(el('p', 'ym-muted', '正在读取伴读记忆…'));
         if (value.error) body.append(el('p', 'ym-error', value.error));
-        if (value.status) body.append(el('p', 'ym-status', value.status));
+        if (value.status && value.status !== lastStatus) onNotice(value.status, 'success');
+        lastStatus = value.status || '';
         let save = null;
         const matchesPreview = () => value.query && draft.key === value.query.key && Number(draft.cutoff) === value.query.confirmedReadTo && draft.own;
         if (value.list && !value.list.items?.length) body.append(el('p','ym-muted','本机没有可关联的伴读记录。请先在伴读中保存记忆。'));
@@ -41,7 +43,7 @@ export function mountCompanionView({ document, el, button, onAction, pageMode = 
             const own = document.createElement('input'); own.type = 'checkbox';
             own.setAttribute('aria-label', '确认伴读记录与已读位置');
             own.checked = draft.own;
-            const confirm = el('label', 'ym-backup-check'); confirm.append(own, el('span', '', '确认是我的本机记录，且已共同读到所选位置。'));
+            const confirm = el('label', 'ym-backup-check'); confirm.append(own, el('span', '', '确认此记录及共同已读位置'));
             body.append(field('伴读记录', select), field('共同已读位置', cutoff), confirm);
             const preview = button('读取并预览摘要', () => invoke('companionPreview', {key: select.value, confirmedReadTo: Number(cutoff.value), confirmedLocalOwnership: own.checked}));
             const enabled = () => {
@@ -64,10 +66,9 @@ export function mountCompanionView({ document, el, button, onAction, pageMode = 
             for (const item of value.preview.entries) {
                 const card = el('div', 'ym-card'); card.append(el('strong', '', item.kind === 'book' ? '书中背景（不等于亲历或知情）' : '共同交流'), el('p', 'ym-memory-text', item.text)); body.append(card);
             }
-            body.append(el('p', 'ym-muted', '只关联本次预览的摘要，不代替原文核对，也不改动手动记忆。更新时需再次确认。'));
             save=button('确认关联以上摘要', () => invoke('companionSave'));save.disabled=!matchesPreview();body.append(save);
         }
         if (value.busy || unavailable) for (const control of body.querySelectorAll('button,input,select')) control.disabled = true;
-        element.hidden = !state.document;
+        element.hidden = false;
     } };
 }

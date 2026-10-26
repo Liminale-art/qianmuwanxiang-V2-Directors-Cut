@@ -211,7 +211,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /data-ym-theme="editorial"/);
     assert.match(css, /data-ym-theme="glass"/);
     assert.doesNotMatch(css, /KingHwaOldSong|Sarasa Gothic SC|Qianmu Glass Local Heiti/, 'font resources are consumed from Qianmu, not redefined');
-    assert.match(css, /width: min\(940px, calc\(100vw - 28px\)\)/);
+    assert.match(css, /width: min\(660px, calc\(100vw - 28px\)\)/);
     assert.match(css, /height: min\(760px, calc\(100dvh - 28px\)\)/);
     assert.match(css, /height: calc\(100dvh - 108px\)/);
     assert.match(css, /\.ym-scroll[^\n]*min-width: 0/);
@@ -244,6 +244,14 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.doesNotMatch(css, /\.ym-folder-body::before/, 'the folder is connected to its real heading, not a decorative fake tab');
     assert.match(css, /\.ym-dialog summary::marker \{ content: ''/);
     assert.match(css, /\.ym-menu-entry[^\n]*column-gap: 10px/);
+    assert.match(css, /\.ym-menu-entry \.ym-logo[^\n]*align-self: center/, 'mask icon has no text baseline and must not push the menu label down');
+    assert.match(css, /\.ym-heading \.ym-logo[^\n]*width: 29px/);
+    assert.match(css, /\.ym-tool-group:is\(\[data-side="left"\], \[data-side="right"\]\) > \.ym-tool-row[^\n]*margin-bottom: 8px/);
+    assert.match(css, /\.ym-prompt-groups[^\n]*grid-auto-columns: minmax\(0, 1fr\)/);
+    assert.match(css, /\.ym-stage-actions[^\n]*repeat\(2, minmax\(0, 1fr\)\)/);
+    assert.match(css, /\.ym-entry-name[^\n]*text-overflow: ellipsis[^\n]*white-space: nowrap/);
+    assert.match(css, /\.ym-memory-toolbar[^\n]*flex-wrap: nowrap/);
+    assert.match(css, /\.ym-memory-toolbar input[^\n]*flex: 1 1 0/);
     assert.match(css, /\.ym-overview\[data-empty="true"\][^\n]*text-align: center/);
     assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length);
 });
