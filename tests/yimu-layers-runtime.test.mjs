@@ -87,19 +87,17 @@ for (const basis of ['tokens', 'floors', 'slices']) {
     });
 }
 
-test('stage stays off by default; manual ranges split at edited fine slices and preserve them exactly', async t => {
+test('stage stays off by default; explicit manual ranges containing edited slices are rejected whole without model calls', async t => {
     const f = await fixture(t);
     await f.controller.startStage();
     assert.equal(f.generated.length, 0);
     const protectedText = '这段人工修订必须原样保留，不参与阶段压缩。';
     await f.remoteEdit('fine_3', protectedText);
     await f.controller.refresh();
-    await f.controller.action('stage', {start: 1, end: 6}); await f.flush();
+    await assert.rejects(f.controller.action('stage', {start: 1, end: 6}), /人工修订/); await f.flush();
     const saved = (await f.read()).document;
     const stages = saved.entries.filter(entry => entry.kind === 'stage');
-    assert.equal(stages.length, 2);
-    assert.deepEqual(stages.flatMap(sourceRanges).map(range => [range.start, range.end]), [[1, 2], [4, 6]]);
-    assert.ok(f.generated.every(prompt => !prompt.includes(protectedText)));
+    assert.equal(stages.length, 0); assert.equal(f.generated.length, 0);
     assert.equal(saved.entries.find(entry => entry.id === 'fine_3').text, protectedText);
     assert.ok(stages.every(stage => !stage.source.parents.some(parent => parent.id === 'fine_3')));
 });
@@ -108,17 +106,16 @@ test('all edited fine slices have no stage job and do not invoke a model', async
     const f = await fixture(t, {fine: 3, floors: 8});
     for (const floor of [1, 2, 3]) await f.remoteEdit(`fine_${floor}`, `人工第${floor}片，不得被二次总结`);
     await f.controller.refresh();
-    await f.controller.action('stage', {start: 1, end: 3}); await f.flush();
+    await assert.rejects(f.controller.action('stage', {start: 1, end: 3}), /人工修订/); await f.flush();
     assert.equal(f.generated.length, 0);
-    assert.match(f.controller.state.status, /没有可合并|人工/);
+    assert.equal((await f.read()).document.entries.filter(entry => entry.kind === 'stage').length, 0);
 });
 
 test('manual stage never crosses the recent-raw boundary, even if a preexisting fine slice does', async t => {
     const f = await fixture(t, {fine: 7, floors: 11});
-    await f.controller.action('stage', {start: 5, end: 7}); await f.flush();
+    await assert.rejects(f.controller.action('stage', {start: 5, end: 7}), /近期原文/); await f.flush();
     const stage = (await f.read()).document.entries.find(entry => entry.kind === 'stage');
-    assert.deepEqual(sourceRanges(stage).map(range => [range.start, range.end]), [[5, 6]]);
-    assert.ok(!stage.source.parents.some(parent => parent.id === 'fine_7'));
+    assert.equal(stage, undefined); assert.equal(f.generated.length, 0);
 });
 
 test('a remote parent edit during stage generation rejects the late candidate and preserves the revision', async t => {

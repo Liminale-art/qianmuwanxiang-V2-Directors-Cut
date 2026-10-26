@@ -57,6 +57,7 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
         backupUploadResult: id => request('backup/upload-result', { id }, transferTimeout),
         backupList: () => request('backup/list', {}),
         backupRead: archiveId => request('backup/read', { archiveId }, transferTimeout),
+        backupApply: (archiveId, operation) => request('backup/apply', { archiveId, request: operation }, transferTimeout),
         backupRestore: (archiveId, operation) => request('backup/restore', { archiveId, request: operation }, transferTimeout),
         backupResult: (archiveId, query = {}) => request('backup/result', { archiveId, request: query }, transferTimeout),
     };

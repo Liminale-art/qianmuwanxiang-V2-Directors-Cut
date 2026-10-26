@@ -4,6 +4,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import * as contract from './contract.mjs';
 import {collectBackupSources, portableDocument, validateBackupHeader, restoreBackupDocument} from './backup-contract.mjs';
 import {encodeBackup, decodeBackup} from './backup-codec.mjs';
+import {mergeBackupDocument} from './backup-merge.mjs';
 
 const clone = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -276,6 +277,119 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
         return {archive: preview(record), document: header.document};
     }
 
+    // Discovery runs only for an explicit import, never while opening/reading a chat.
+    // The ordinary ST files remain read-only; no side index becomes another truth.
+    async function importChats(ctx) {
+        await checkRoot(ctx); await checkDirectory(ctx, ctx.chats);
+        const chats = []; let incomplete = false;
+        for (const folderName of await io.readdir(ctx.chats)) {
+            const folder = path.join(ctx.chats, folderName);
+            let directory; try {directory = await io.lstat(folder, {bigint: true});} catch {incomplete = true; continue;}
+            if (!directory.isDirectory() || directory.isSymbolicLink()) continue;
+            try {await checkDirectory(ctx, folder);} catch {incomplete = true; continue;}
+            for (const name of await io.readdir(folder)) {
+                if (!name.endsWith('.jsonl')) continue;
+                let binding;
+                try {
+                    const target = path.join(folder, name), decoder = new TextDecoder('utf-8', {fatal: true});
+                    let header = '';
+                    for await (const chunk of guardedFile(ctx, target, folder)) {
+                        header += decoder.decode(chunk, {stream: true});
+                        const end = header.indexOf('\n');
+                        if (end >= 0) {header = header.slice(0, end); break;}
+                        if (Buffer.byteLength(header) > MAX_LINE_BYTES) throw new Error('header capacity');
+                    }
+                    const value = JSON.parse(header), integrity = value?.chat_metadata?.integrity;
+                    binding = normalizeStoreBinding({avatar: `${folderName}.png`, file: name.slice(0, -6), integrity});
+                    const scanned = await scanSource(ctx, binding);
+                    chats.push({binding, proof: scanned.proof, label: `${folderName} · ${binding.file}`});
+                } catch {ctx.guard(); incomplete = true;}
+            }
+        }
+        await checkRoot(ctx); await checkDirectory(ctx, ctx.chats);
+        return {chats, incomplete};
+    }
+
+    const sourceEqual = (source, chat) => !!source?.available && source.fingerprint === chat.proof.fingerprint && source.floorCount === chat.proof.floorCount;
+    const identityEqual = (a, b) => contract.bindingKey(a) === contract.bindingKey(b);
+    function uniqueMatch(source, chats, incomplete) {
+        const matching = chats.filter(chat => sourceEqual(source, chat));
+        const original = matching.find(chat => identityEqual(chat.binding, source.binding));
+        return original || (!incomplete && matching.length === 1 ? matching[0] : null);
+    }
+
+    async function backupApply(request, archiveId, input = {}) {
+        const ctx = context(request), operationId = needId(input.id); await prepare(ctx);
+        const record = missingArchive((await archiveRead(ctx, archiveId)).value);
+        const operationName = `backup-apply-${digest(operationId)}.json`;
+        const selected = input.targetBinding ? normalizeStoreBinding(input.targetBinding) : null;
+        return exclusive(ctx, operationName, async () => {
+            const prior = await readFile(ctx, operationName, value => value, () => null);
+            if (prior.value) {
+                if (prior.value.archiveId !== archiveId || selected && !identityEqual(prior.value.binding, selected)) fail('backup_collision', '本次导入标识已用于其他目标，未重复合并');
+                if (prior.value.status === 'complete') return {...prior.value, repeated: true};
+                const saved = await documentRead(ctx, prior.value.binding);
+                if (prior.value.result && saved.value.operations.includes(operationId)) {
+                    await writeFile(ctx, operationName, prior.value.result, prior.fingerprint, value => value);
+                    return {...prior.value.result, repeated: true};
+                }
+            }
+            await verifyArchiveFile(ctx, record);
+            const {chats, incomplete} = await importChats(ctx), primary = record.header.sources[0];
+            const frozen = prior.value?.binding || selected;
+            const target = frozen ? chats.find(chat => identityEqual(chat.binding, frozen)) : uniqueMatch(primary, chats, incomplete);
+            if (frozen && !target) fail('backup_source', '所选聊天已不存在或无法核对，请重新选择');
+            if (!target) return {status: 'selection', archiveId, reason: chats.filter(chat => sourceEqual(primary, chat)).length > 1 ? 'multiple' : 'unmatched',
+                message: incomplete ? '部分聊天未能读取，请选择要导入的聊天，或取消。' : '请选择要导入的聊天，或取消。',
+                candidates: chats.map(chat => ({binding: chat.binding, label: chat.label, exact: sourceEqual(primary, chat)}))};
+            const exact = sourceEqual(primary, target), mappings = {source_0: target.binding};
+            if(prior.value?.result?.exact&&!exact)fail('backup_changed','本次导入原本匹配的聊天正文已变化，未改换来源');
+            for (const source of record.header.sources.slice(1)) {
+                const match = uniqueMatch(source, chats, incomplete);
+                if (match && !Object.values(mappings).some(value => identityEqual(value, match.binding))) mappings[source.id] = match.binding;
+            }
+            const restored = restoreBackupDocument(record.header.document, {binding: target.binding, mappings});
+            if (!exact) {
+                // Explicitly choosing a different text is permission to retain data,
+                // never proof that old summaries describe the selected raw source.
+                const unverified = (version, current = null) => {
+                    const effective = current ? {...current, ...version} : version;
+                    if (!effective.source && !effective.placement && effective.kind !== 'manual') return;
+                    const oldBinding = value => record.header.sources.find(source => mappings[source.id] && identityEqual(mappings[source.id], value))?.binding || value;
+                    version.origin = {binding: clone(oldBinding(effective.origin?.binding || target.binding)), offset: effective.origin?.offset || 0, unresolved: true};
+                    if (effective.placement) version.placement = {...clone(effective.placement), binding: clone(oldBinding(effective.placement.binding))};
+                    if (!['deleted', 'excluded'].includes(effective.status)) version.status = 'invalid';
+                };
+                for (const entry of restored.document.entries) {
+                    unverified(entry); for (const version of entry.history) unverified(version);
+                    for (const version of entry.conflicts) unverified(version, entry);
+                    if (entry.candidate) unverified(entry.candidate, entry);
+                }
+            }
+            return exclusive(ctx, chatStorageName(target.binding), async () => {
+                for (const source of record.header.sources) if (mappings[source.id]) {
+                    const checked = await scanSource(ctx, mappings[source.id]);
+                    if ((source.id !== 'source_0' || exact) && !sourceEqual(source, checked)) fail('backup_changed', '匹配的原文已变化，未继续合并');
+                }
+                const saved = await documentRead(ctx, target.binding);
+                if (!identityEqual(saved.value.binding, target.binding) || saved.value.movedTo) fail('backup_changed', '目标忆幕身份已变化，未合并');
+                const merged = mergeBackupDocument(saved.value, restored.document, {operationId, packageId: archiveId});
+                // Recheck all verified dependencies immediately before the one atomic write.
+                for (const source of record.header.sources) if (mappings[source.id]) {
+                    const checked = await scanSource(ctx, mappings[source.id]);
+                    if ((source.id !== 'source_0' || exact) && !sourceEqual(source, checked)) fail('backup_changed', '合并期间原文已变化，未保存');
+                }
+                const result = {status: 'complete', archiveId, binding: clone(target.binding), outcome: merged.outcome, counts: merged.counts,
+                    exact, unresolvedSources: restored.warnings.length, ...(exact ? {} : {message: '原文不一致，相关记忆已保留，核对前不会用于回复。'})};
+                await writeFile(ctx, operationName, {status:'pending',archiveId,binding:clone(target.binding),result}, prior.fingerprint, value => value);
+                const pending = await readFile(ctx, operationName, value => value, () => null);
+                if (merged.outcome !== 'duplicate') await writeFile(ctx, chatStorageName(target.binding), merged.document, saved.fingerprint, contract.validateDocument, saved.legacyBytes);
+                await writeFile(ctx, operationName, result, pending.fingerprint, value => value);
+                return result;
+            });
+        });
+    }
+
     async function verifyAvatar(ctx, avatar) {
         normalizeStoreBinding({avatar, file: 'check', integrity: 'check'});
         if (!ctx.characters) fail('backup_avatar', '未取得当前 ST 账户的角色目录', 403);
@@ -508,5 +622,5 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
         });
     }
 
-    return {backupPlan, backupExport, backupUpload, backupUploadResult, backupList, backupRead, backupRestore, backupResult};
+    return {backupPlan, backupExport, backupUpload, backupUploadResult, backupList, backupRead, backupApply, backupRestore, backupResult};
 }

@@ -35,41 +35,52 @@ export function validateCreation(value) {
 export const storyOffset = document => document?.lineage?.offset || 0;
 export const entryOrigin = (entry, document) => entry.origin || {binding: document.binding, offset: storyOffset(document)};
 export const sameOrigin = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
-const ranges = entry => entry.source ? entry.source.ranges || [entry.source] : [];
+const ranges = entry => entry.source ? entry.source.ranges || [entry.source] : entry.placement
+    ? [{start:entry.placement.fromFloor,end:entry.placement.fromFloor,hashes:[entry.placement.hash]}] : [];
 export function bridgeSourceValid(entry, document, hashes) {
     if (entry.origin?.unresolved) return false;
     if (!entry.origin || !document.lineage) return true;
     const {offset, bridgeHashes} = document.lineage;
-    return bridgeHashes.every((hash, index) => hashes[index] === hash || !ranges(entry).some(range => {
+    const windows = [...ranges(entry), ...(entry.kind === 'stage' ? (entry.source?.parents || []).flatMap(ref => {
+        const parent=document.entries.find(value=>value.id===ref.id);return parent?.kind==='manual'?ranges(parent):[];
+    }) : [])];
+    return bridgeHashes.every((hash, index) => hashes[index] === hash || !windows.some(range => {
         const position = offset + index + 1;
         return entry.origin.offset + range.start <= position && entry.origin.offset + range.end >= position;
     }));
 }
-export function selectStoryEntries(document, cutoff, validIds) {
+export function selectStoryEntries(document, cutoff, validIds, {total = cutoff, placementValidIds = validIds} = {}) {
     const limit = storyOffset(document) + cutoff;
     const active = document.entries.filter(entry => entry.status === 'active' && (!entry.source || validIds.has(entry.id)));
-    const fullyBefore = entry => ranges(entry).every(range => entryOrigin(entry, document).offset + range.end <= limit);
-    const crossing = entry => ranges(entry).some(range => entryOrigin(entry, document).offset + range.start <= limit) && !fullyBefore(entry);
-    const protectedParents = new Set(document.entries.filter(entry => entry.kind === 'stage'
+    const windows = entry => [...ranges(entry), ...(entry.kind === 'stage' ? (entry.source?.parents || []).flatMap(ref => {
+        const parent=document.entries.find(value=>value.id===ref.id);return parent?.kind==='manual'?ranges(parent):[];
+    }) : [])];
+    const fullyBefore = entry => windows(entry).every(range => entryOrigin(entry, document).offset + range.end <= limit);
+    const crossing = entry => windows(entry).some(range => entryOrigin(entry, document).offset + range.start <= limit) && !fullyBefore(entry);
+    const protectedParents = new Set(document.entries.filter(entry => entry.kind === 'stage' && !entry.replacedBy
         && (['excluded', 'deleted'].includes(entry.status) || entry.edited && (entry.status !== 'active' || !validIds.has(entry.id) || crossing(entry))))
         .flatMap(entry => entry.source.parents.map(ref => ref.id)));
     const manualChoices = [], boundaries = [], entries = [];
+    let skippedManualCount = 0;
     for (const entry of active) {
         if (entry.kind === 'excerpt') continue;
+        if (protectedParents.has(entry.id)) continue;
         if (entry.kind === 'manual' && !entry.source) {
-            manualChoices.push({id: entry.id, revision: entry.revision, kind: entry.kind, text: entry.text, reason: 'unlocated-manual', sourceLabel: '手动补充，无确定楼层'});
+            const placement = entry.placement, from = entryOrigin(entry, document);
+            const located = placement && placementValidIds.has(entry.id) && !entry.origin?.unresolved
+                && JSON.stringify(placement.binding) === JSON.stringify(from.binding) && from.offset + placement.fromFloor <= limit;
+            if (located || !placement && !entry.origin?.unresolved && cutoff === total) entries.push(clone(entry));
+            else skippedManualCount++;
         } else if (entry.edited && crossing(entry)) {
-            manualChoices.push({id: entry.id, revision: entry.revision, kind: entry.kind, reason: 'crossing-edited',
-                sourceLabel: ranges(entry).map(range => `第 ${range.start}—${range.end} 层`).join('、')});
-        } else if (protectedParents.has(entry.id)) continue;
-        else if (entry.source && fullyBefore(entry)) entries.push(clone(entry));
+            skippedManualCount++;
+        } else if (entry.source && fullyBefore(entry)) entries.push(clone(entry));
         else if (entry.kind === 'summary' && !entry.edited && crossing(entry)) {
             const from = entryOrigin(entry, document), end = limit - from.offset;
             boundaries.push({id: entry.id, origin: clone(from), source: {start: entry.source.start, end,
                 hashes: entry.source.hashes.slice(0, end - entry.source.start + 1)}});
         }
     }
-    const fine = new Set(entries.filter(entry => entry.kind === 'summary').map(entry => entry.id));
+    const fine = new Set(entries.filter(entry => ['summary','manual'].includes(entry.kind)).map(entry => entry.id));
     return {entries: entries.filter(entry => entry.kind !== 'stage' || entry.source.parents.every(ref => fine.has(ref.id))),
-        boundaries, manualChoices, skippedExcerptCount: active.filter(entry => entry.kind === 'excerpt').length};
+        boundaries, manualChoices, skippedManualCount, skippedExcerptCount: active.filter(entry => entry.kind === 'excerpt').length};
 }

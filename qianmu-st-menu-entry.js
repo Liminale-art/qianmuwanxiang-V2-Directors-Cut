@@ -15,7 +15,7 @@ export function renderQianmuStMenuEntry({document=globalThis.document,enabled,id
  // The shared hive vector starts hidden; the host menu has no hive theme gate.
  svg?.style.setProperty('display','block');
  for(const shape of svg?.querySelectorAll('[fill],path')||[])shape.setAttribute('fill','currentColor');
- const label=document.createElement('span');label.textContent='千幕';entry.append(glyph,label);
+ const label=document.createElement('span');label.textContent='千幕';label.className='qm-st-menu-label';entry.append(glyph,label);
  entry.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();
   const options=document.querySelector('#options');
   if(options&&document.defaultView.getComputedStyle(options).display!=='none')document.querySelector('#options_button')?.click();

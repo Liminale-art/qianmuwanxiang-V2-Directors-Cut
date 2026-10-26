@@ -10,6 +10,11 @@ const TOKENS = Object.freeze({
     '--ym-danger': ['--qm-danger', '--sd-danger'],
     '--ym-glow-1': ['--qm-glow-1'],
     '--ym-glow-2': ['--qm-glow-2'],
+    '--ym-card-material': ['--qm-skin-material'],
+    '--ym-card-shadow': ['--qm-skin-shadow'],
+    '--ym-card-filter': ['--qm-skin-filter'],
+    '--ym-window-material': ['--qm-skin-window'],
+    '--ym-title-gradient': ['--sd-title-grad'],
     '--ym-type-page-title': ['--qm-type-page-title'],
     '--ym-type-feature-title': ['--qm-type-feature-title'],
     '--ym-type-card-title': ['--qm-type-card-title'],
@@ -86,13 +91,15 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
         }
         attribute('data-ym-theme', theme);
         attribute('data-ym-mode', dark ? 'dark' : 'light');
-        // New Qianmu families have their own local-font stack in CSS, never ST's global font.
-        put('--ym-font', usable && theme === 'classic'
-            ? ['--qm-interface-font', '--sd-font', '--mainFontFamily'].map(name => read(style, name)).find(Boolean)
-                || String(style.fontFamily || '').trim()
-            : '');
+        // Consume the actual installed Qianmu font resource and computed family.
+        // Do not keep a second, approximately matching paper/glass font stack here.
+        const fontTokens = theme === 'editorial' ? ['--qm-editorial-font']
+            : theme === 'glass' ? ['--qm-glass-font'] : ['--qm-interface-font', '--sd-font', '--mainFontFamily'];
+        put('--ym-font', usable ? fontTokens.map(name => read(style, name)).find(Boolean)
+            || String(style.fontFamily || '').trim() : '');
     }
     if (document.body) bodyObserver?.observe(document.body, { childList: true });
+    document.fonts?.addEventListener?.('loadingdone', sync);
     sync();
     return {
         sync,
@@ -101,6 +108,7 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
             disposed = true;
             sourceObserver?.disconnect();
             bodyObserver?.disconnect();
+            document.fonts?.removeEventListener?.('loadingdone', sync);
             for (const [name, value] of written) {
                 if (read(root.style, name) !== value) continue;
                 const before = originals.get(name);

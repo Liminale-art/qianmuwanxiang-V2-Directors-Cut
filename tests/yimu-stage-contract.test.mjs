@@ -18,7 +18,7 @@ const stageOperation = document => ({id: 'stage_append', type: 'append', expecte
 const withStage = () => {const doc = fineDocument(); return change(doc, stageOperation(doc));};
 
 test('current schema upgrades legacy data only in memory and preserves original legacy objects', () => {
-    assert.equal(createDocument(binding).schema, SCHEMA); assert.equal(VERSION, '0.7.0');
+    assert.equal(createDocument(binding).schema, SCHEMA); assert.equal(VERSION, '0.8.0');
     const legacy = {...fineDocument(), schema: 1}, before = structuredClone(legacy);
     const upgraded = validateDocument(legacy);
     assert.equal(upgraded.schema, SCHEMA); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);
@@ -75,6 +75,7 @@ test('explicit automatic-slice redo invalidates only its own stages and excerpt 
         entry: {id: 'stage_other', kind: 'stage', text: '不相干的阶段保持可用', source: {parents: [{id: 'fine_3', revision: 1}]}}});
     for (const floor of [1, 3]) doc.entries.push({id: `excerpt_${floor}`, kind: 'excerpt', text: '原文补充', status: 'active', edited: false,
         revision: 1, history: [], conflicts: [], candidate: null, parent: {id: `fine_${floor}`, revision: 1}, source: source(floor), quote: {start: 0, end: 2}});
+    doc = validateDocument(doc);
     const saved = change(doc, {id: 'range_redo', type: 'redo', entryId: 'fine_1', expectedEpoch: doc.epoch, expectedRevision: 1,
         entry: {id: 'fine_1', kind: 'summary', text: '手动范围触发的重新总结', source: source(1)}});
     for (const id of ['stage_1', 'excerpt_1']) assert.equal(saved.entries.find(entry => entry.id === id).status, 'invalid');
@@ -84,7 +85,7 @@ test('explicit automatic-slice redo invalidates only its own stages and excerpt 
 test('undoing a parent change never resurrects its stale stage', () => {
     let doc = withStage();
     doc = change(doc, {id: 'edit', type: 'edit', entryId: 'fine_1', expectedRevision: 1, text: '临时修订'});
-    doc = change(doc, {id: 'undo', type: 'entry', entryId: 'fine_1', expectedRevision: 2, action: 'undo'});
+    doc = change(doc, {id: 'undo', type: 'entry', entryId: 'fine_1', expectedRevision: 2, action: 'undoText'});
     assert.equal(doc.entries.find(entry => entry.id === 'fine_1').text, '第1片已核对的经历');
     const stage = doc.entries.find(entry => entry.id === 'stage_1');
     assert.equal(stage.status, 'invalid'); assert.equal(stageDependenciesValid(stage, doc), false);

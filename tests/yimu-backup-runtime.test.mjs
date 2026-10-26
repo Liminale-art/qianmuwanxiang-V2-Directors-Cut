@@ -46,6 +46,34 @@ test('homepage import is explicit, keeps an independent read-only archive and ne
     assert.equal(f.state.backup.archives.length, 1, 'same archive is not duplicated');
 });
 
+test('multi-file import advances every file independently and never creates a chat for a unique match', async () => {
+    const f=fixture({homepage:true}),other=new Blob(['second']);Object.defineProperty(other,'name',{value:'second.yimu.gz'});
+    const progress=[];f.api.backupApply=async(archiveId,request)=>{f.calls.push(['apply',archiveId,clone(request)]);progress.push(f.state.backup.items.map(item=>item.status));return{status:'complete',binding:f.binding,outcome:'merged',counts:{added:1,conflicts:0}};};
+    await f.actions.action('backupImport',{files:[f.file,other]});
+    assert.equal(f.calls.filter(item=>item[0]==='upload').length,2);assert.equal(f.calls.filter(item=>item[0]==='apply').length,2);
+    assert.deepEqual(f.state.backup.items.map(item=>item.status),['complete','complete']);assert.ok(progress.some(status=>status.includes('queued')));
+    assert.equal(f.calls.some(item=>['restore','open'].includes(item[0])),false);
+});
+
+test('one failed file leaves another completed and the same apply operation is retained for an unknown retry', async () => {
+    const f=fixture({homepage:true}),ids=[];let reject=true;
+    f.api.backupApply=async(archiveId,request)=>{ids.push(request.id);if(reject)throw Error('offline');return{status:'complete',binding:f.binding,outcome:'duplicate'};};
+    await f.actions.action('backupImport',{files:[f.file]});const item=f.state.backup.items[0];assert.equal(item.status,'merge-unknown');assert.equal(item.error,'offline');
+    reject=false;await f.actions.action('backupRetry',{itemId:item.id});assert.equal(item.status,'complete');assert.equal(ids[0],ids[1]);assert.equal(f.calls.filter(item=>item[0]==='upload').length,1);
+});
+
+test('ambiguous imports require an explicit candidate and cancellation never writes memory or restores a chat', async () => {
+    const f=fixture({homepage:true});f.api.backupApply=async()=>({status:'selection',candidates:[{binding:f.binding,label:'Known',exact:true}]});
+    await f.actions.action('backupImport',{files:[f.file]});const item=f.state.backup.items[0];assert.equal(item.status,'selection');
+    await assert.rejects(f.actions.action('backupResolve',{itemId:item.id,targetBinding:{...f.binding,file:'not offered'}}),/列表/);
+    await f.actions.action('backupCancel',{itemId:item.id});assert.equal(item.status,'cancelled');assert.ok(item.archive);assert.equal(f.calls.some(value=>value[0]==='restore'),false);
+});
+
+test('quick export plans and downloads within one action without attaching source prose by default', async () => {
+    const f=fixture();await f.actions.action('backupQuickExport',{includeOriginals:false});
+    assert.deepEqual(f.calls.find(value=>value[0]==='export')[2].sourceIds,[]);assert.equal(f.calls.filter(value=>value[0]==='download').length,1);
+});
+
 test('only own package extension is accepted before upload and archives load solely on explicit request', async () => {
     const f = fixture({ homepage: true }), wrong = new Blob(['{}']); Object.defineProperty(wrong, 'name', { value: 'other.json' });
     await assert.rejects(f.actions.action('backupImport', { file: wrong }), /\.yimu\.gz/);

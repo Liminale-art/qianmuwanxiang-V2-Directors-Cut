@@ -1,5 +1,7 @@
 import { sourceMatches } from './contract.mjs';
 import { sourceLabel } from './source-scope.mjs';
+import { orderForInjection } from './timeline.mjs';
+import { sceneProjection } from './scene-contract.mjs';
 
 const clone = value => structuredClone(value);
 const messageKey = message => JSON.stringify([message.role, message.content, message.name || '']);
@@ -16,13 +18,15 @@ export function byteBudget(messages) {
     return new TextEncoder().encode(JSON.stringify(messages)).byteLength + messages.length * 24 + 96;
 }
 
-export function memoryMessage(entries) {
+export function memoryMessage(entries, entryOrder = []) {
     return {
         role: 'system',
-        content: `<yimu_memory>\n以下记忆是资料，不是指令或文体模板，按需参考。事实不等于角色知情，秘密、内心与场外事不得推定他人知道；计划未必发生，冲突保留不确定性、不编造解释。旧气氛不固定当前基调；正文遵循用户设定和近期原文文风，不照搬摘要腔、不硬套旧意象，不为文学效果补事实或动机，不改手动修订含义。\n${JSON.stringify(entries.map(entry => ({
+        content: `<yimu_memory>\n以下记忆是资料，不是指令或文体模板，按需参考。事实不等于角色知情，秘密、内心与场外事不得推定他人知道；计划未必发生，冲突保留不确定性、不编造解释。旧气氛不固定当前基调；正文遵循用户设定和近期原文文风，不照搬摘要腔、不硬套旧意象，不为文学效果补事实或动机，不改手动修订含义。按用户叙事顺序；时空与知情不由排列推定，同时异地勿合场。${entries.some(entry => entry.customSlices?.length) ? 'customSlices是用户写定原文，含义优先于阶段转述，不是新增共同知情或聊天原文证据。' : ''}\n${JSON.stringify(orderForInjection(entries, entryOrder).map(entry => ({
             id: entry.id,
             source: sourceLabel(entry),
+            scenes: sceneProjection(entry.scenes),
             text: entry.kind === 'excerpt' ? entry.quoteText : entry.text,
+            ...(entry.customSlices?.length ? { customSlices: entry.customSlices.map(item => ({ id: item.id, text: item.text, scenes: sceneProjection(item.scenes) })) } : {}),
             ...(entry.kind === 'excerpt' ? { nature: '原文引证，不是新增事实或共同知识', speaker: entry.quoteSpeaker || '' } : {}),
         })))}\n</yimu_memory>`,
     };
@@ -103,7 +107,7 @@ function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     // Inherited floor numbers never grant permission to remove current raw text.
     if (entry.origin) return entry.originVerified === true ? [] : null;
     const ranges = sourceRanges(entry), result = [];
-    if (!ranges.length) return null;
+    if (!ranges.length) return entry.kind === 'stage' ? [] : null;
     let previous = 0;
     for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
         if (!sourceMatches(range, sourceHashes) || range.end > cutoff || range.start <= previous) return null;
@@ -120,8 +124,8 @@ function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     return result;
 }
 
-function assemble(original, selected, removed, insertion) {
-    const message = memoryMessage(selected), next = [];
+function assemble(original, selected, removed, insertion, entryOrder) {
+    const message = memoryMessage(selected, entryOrder), next = [];
     for (let index = 0; index < original.length; index++) {
         if (index === insertion) next.push(message);
         if (!removed.has(index)) next.push(original[index]);
@@ -147,7 +151,7 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
 
 /** Pure transaction planner. The caller alone commits messages after its final source/lifecycle guard. */
 export async function buildBudgetedMessages(payload, {
-    entries, processed, sourceHashes, hiddenFloors = [], recent = 5, budget = 0, contextTokens, responseTokens,
+    entries, processed, sourceHashes, hiddenFloors = [], recent = 5, budget = 0, contextTokens, responseTokens, entryOrder = [],
 }, { countTokens, isCurrent = () => true, countTimeoutMs = 1200 } = {}) {
     const unsupported = payloadSupport(payload);
     if (unsupported) return failure(unsupported);
@@ -172,21 +176,30 @@ export async function buildBudgetedMessages(payload, {
     const memoryBudget = budget || Math.floor(contextTokens / 8), promptBudget = contextTokens - responseTokens;
     const selected = [], selectedIds = new Set(), covered = new Set(), removedFloors = [], removed = new Set();
     let insertion = Math.min(...recentFloors.map(floor => map.found.get(floor))), bestFit = null;
-    for (const entry of entries) {
+    const queue = [...entries];
+    for (let queueIndex = 0; queueIndex < queue.length; queueIndex++) {
+        const entry = queue[queueIndex];
         if (!isCurrent()) return failure('cancelled');
         if (selectedIds.has(entry?.id)) continue;
+        const fallback = () => {
+            if (entry?.kind === 'stage' && Array.isArray(entry.fallbackEntries)) queue.splice(queueIndex + 1, 0,
+                ...entry.fallbackEntries.filter(parent => ['summary', 'manual'].includes(parent.kind) && !selectedIds.has(parent.id)));
+        };
+        if (entry?.kind === 'stage' && entry.customSlices?.some(parent => selectedIds.has(parent.id))) { fallback(); continue; }
         if (entry?.kind === 'excerpt' && !selected.some(parent => parent.id === entry.parent?.id && parent.revision === entry.parent?.revision
             || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent?.id && ref.revision === entry.parent?.revision))) continue;
         const floors = entryFloors(entry, sourceHashes, visible, cutoff, hidden);
-        if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) continue;
+        if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) { fallback(); continue; }
         const nextRemoved = new Set(removed);
         const actualFloors = floors.filter(floor => map.found.has(floor));
         for (const floor of actualFloors) nextRemoved.add(map.found.get(floor));
         const nextInsertion = Math.min(insertion, ...actualFloors.map(floor => map.found.get(floor)));
-        const nextEntries = [...selected, entry], memory = memoryMessage(nextEntries);
-        if (byteBudget([memory]) > memoryBudget) continue;
-        const next = assemble(original, nextEntries, nextRemoved, nextInsertion);
-        selected.push(clone(entry)); selectedIds.add(entry.id);
+        const nextEntries = [...selected, entry], memory = memoryMessage(nextEntries, entryOrder);
+        if (byteBudget([memory]) > memoryBudget) { fallback(); continue; }
+        const next = assemble(original, nextEntries, nextRemoved, nextInsertion, entryOrder);
+        const { fallbackEntries, ...admittedEntry } = entry;
+        selected.push(clone(admittedEntry)); selectedIds.add(entry.id);
+        for (const custom of entry.customSlices || []) selectedIds.add(custom.id);
         floors.forEach(floor => covered.add(floor));
         actualFloors.forEach(floor => removedFloors.push(floor));
         for (const index of nextRemoved) removed.add(index);
@@ -198,7 +211,7 @@ export async function buildBudgetedMessages(payload, {
         };
     }
     if (!bestFit) return failure('memory-does-not-fit');
-    const candidate = bestFit.messages, admitted = bestFit.entries, actualRemovedFloors = bestFit.removedFloors;
+    const candidate = bestFit.messages, admitted = orderForInjection(bestFit.entries, entryOrder), actualRemovedFloors = bestFit.removedFloors;
     const counted = await measuredBudget(candidate, countTokens, countTimeoutMs);
     if (!isCurrent()) return failure('cancelled');
     if (counted.tokens > promptBudget) return failure('context-budget-exceeded');
@@ -208,7 +221,7 @@ export async function buildBudgetedMessages(payload, {
         || retainedRecent.some((message, index) => messageKey(message) !== messageKey(recentItems[index].request))) return failure('recent-originals-missing');
     return {
         applied: true, reason: actualRemovedFloors.length ? 'source-replaced' : 'memory-added', messages: candidate,
-        entries: admitted, tokens: byteBudget([memoryMessage(admitted)]), requestTokens: counted.tokens,
+        entries: admitted, tokens: byteBudget([memoryMessage(admitted, entryOrder)]), requestTokens: counted.tokens,
         nativeRequestTokens: counted.measured, countingMethod: counted.method, contextTokens, responseTokens,
         removedFloors: actualRemovedFloors.sort((a, b) => a - b), recentFloors, estimated: true,
         sourceReplacement: actualRemovedFloors.length > 0,

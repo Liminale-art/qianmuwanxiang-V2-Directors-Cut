@@ -13,6 +13,7 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
     const view = state.backup ||= { archives: [], roles: [], selected: null, document: null, exportPlan: null, busy: false, error: '', status: '' };
     const restores = new Map();
     let alive = true, upload = null;
+    view.items ||= [];
     const active = () => alive && !lifecycle().disposed;
     const publish = () => { if (active()) emit(); };
     const roles = () => { view.roles = host.characters?.() || []; };
@@ -57,10 +58,93 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
         if (active()) { view.archives = result.archives || []; view.loaded = true; publish(); }
         return result;
     }
+    async function processImport(item) {
+        try {
+            item.error = '';
+            if (!item.archive) {
+                if(!/\.yimu\.gz$/i.test(item.name)||typeof item.file?.stream!=='function'){
+                    item.status='failed';throw new Error('仅支持忆幕自己的 .yimu.gz 备份包');
+                }
+                item.status = 'uploading'; publish();
+                let uploaded;
+                try {uploaded = await api.backupUpload(item.file, item.uploadId);}
+                catch (error) {
+                    const found = await api.backupUploadResult(item.uploadId).catch(() => null);
+                    if (found?.status === 'complete' && found.archive) uploaded = found;
+                    else {item.status = found?.status === 'failed' || error.status >= 400 && error.status < 500 && found?.status === 'missing' ? 'failed' : 'upload-unknown'; throw new Error(found?.message || error.message);}
+                }
+                if (!uploaded?.archive?.id) {item.status = 'upload-unknown'; throw new Error('上传结果尚未确认，请核对本次导入。');}
+                item.archive = uploaded.archive;
+            }
+            item.status = item.restoreRequest ? 'restoring' : 'matching'; publish();
+            let result;
+            if (item.restoreRequest) {
+                try {result = await api.backupRestore(item.archive.id, item.restoreRequest);}
+                catch (error) {
+                    const found = await api.backupResult(item.archive.id, {id: item.restoreRequest.id}).catch(() => null);
+                    if (found?.receipt?.status === 'complete') result = found;
+                    else {item.status = 'merge-unknown'; throw error;}
+                }
+                if (result?.receipt?.status !== 'complete') {item.status = 'merge-unknown'; throw new Error('找回结果尚未确认，请核对本次导入，不会重复创建聊天。');}
+            } else {
+                try {result = await api.backupApply(item.archive.id, {id: item.applyId, ...(item.targetBinding ? {targetBinding: item.targetBinding} : {})});}
+                catch (error) {item.status = 'merge-unknown'; throw error;}
+                if (result?.status === 'selection') {item.status = 'selection'; item.candidates = result.candidates || []; item.message = result.message; publish(); return;}
+                if (result?.status !== 'complete') {item.status = 'merge-unknown'; throw new Error('合并结果尚未确认，请核对本次导入。');}
+            }
+            item.result = result; item.status = 'complete'; item.file = null;
+            item.message = result.receipt ? `已另建聊天：${result.binding.file}；忆幕保持关闭。` : result.outcome === 'duplicate'
+                ? `内容相同，已跳过：${result.binding.file}` : `已导入：${result.binding.file}${result.counts?.conflicts ? `；${result.counts.conflicts} 处差异已保留双方` : ''}${result.message ? `；${result.message}` : ''}`;
+            if (state.snapshot && same(state.snapshot.binding, result.binding)) await refresh({auto: false});
+        } catch (error) {
+            if (['uploading','matching','restoring'].includes(item.status)) item.status = 'failed';
+            item.error = error.message || '此备份尚未导入';
+        }
+        publish();
+    }
     async function action(type, payload = {}) {
         if (!active() || view.busy) return false;
         view.busy = true; view.error = ''; view.status = ''; roles(); publish();
         try {
+            if (type === 'backupQuickExport') {
+                const snapshot = await host.snapshot(), plan = await api.backupPlan(snapshot.binding);
+                const current = await host.snapshot();
+                if (!same(snapshot.binding, current.binding)) throw new Error('当前聊天已变化，请重新导出');
+                if (payload.includeOriginals && payload.planId && plan.planId !== payload.planId) throw new Error('来源清单已变化，请重新选择聊天原件');
+                const sourceIds = payload.includeOriginals ? payload.sourceIds || [plan.primarySourceId] : [];
+                if (sourceIds.some(sourceId => !plan.sources.some(source => source.id === sourceId && source.available))) throw new Error('所选聊天原件不可用，请重新选择');
+                const result = await api.backupExport(snapshot.binding, {planId: plan.planId, sourceIds});
+                if (active()) {await download(result); view.status = '备份已生成，已发起下载。';}
+                return result;
+            }
+            if (type === 'backupImport' && Array.isArray(payload.files)) {
+                const items = payload.files.map(file => ({id: id(), uploadId: id(), applyId: id(), file, name: file?.name || '未知文件', status: 'queued', error: ''}));
+                view.items.push(...items); publish();
+                for (const item of items) {
+                    if (!active()) break;
+                    if (!/\.yimu\.gz$/i.test(item.name) || typeof item.file?.stream !== 'function') {item.status = 'failed'; item.error = '仅支持忆幕自己的 .yimu.gz 备份包'; publish(); continue;}
+                    await processImport(item);
+                }
+                return {items};
+            }
+            if (['backupResolve','backupRetry','backupCancel'].includes(type)) {
+                const item = view.items.find(value => value.id === payload.itemId);
+                if (!item) throw new Error('找不到这次导入，请重新选择文件');
+                if (type === 'backupCancel') {item.status = 'cancelled'; item.file = null; item.error = ''; item.message = '已取消关联；备份原件已保留，未写入聊天。'; publish(); return;}
+                if (type === 'backupResolve') {
+                    if (item.status !== 'selection') throw new Error('这份备份不需要选择目标');
+                    if (payload.targetBinding) {
+                        const candidate = item.candidates.find(value => same(value.binding, payload.targetBinding));
+                        if (!candidate) throw new Error('请选择此列表中的聊天');
+                        item.targetBinding = clone(candidate.binding);
+                    } else if (payload.targetAvatar && item.archive.sources?.some(source => source.id === item.archive.primarySourceId && source.included)) {
+                        if (!view.roles.some(role => role.avatar === payload.targetAvatar)) throw new Error('请选择当前账户角色');
+                        item.restoreRequest = {id: id(), targetAvatar: payload.targetAvatar, sourceIds: item.archive.sources.filter(source => source.included).map(source => source.id)};
+                    } else throw new Error('请选择聊天，或选择角色找回包内原件');
+                }
+                if (['complete','cancelled'].includes(item.status)) return item.result;
+                await processImport(item); return item;
+            }
             if (type === 'backupList') return await refreshList();
             if (type === 'backupRead') {
                 const result = await readArchive(payload.archiveId);

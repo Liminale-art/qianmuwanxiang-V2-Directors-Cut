@@ -47,7 +47,8 @@ test('stage batches keep whole fine slices and do not reach across the recent-ra
     assert.equal(nextStage(document, { ...DEFAULTS, batch: 1 }, { force: true }), null);
     const group = nextStage(document, DEFAULTS, { force: true, recentCutoff: 4 });
     assert.deepEqual(group.parents.map(e => e.id), ['fine0', 'fine1']);
-    assert.equal(nextStage(document, DEFAULTS, { force: true, start: 2, end: 3 }), null);
+    const expanded = nextStage(document, DEFAULTS, { force: true, start: 2, end: 3 });
+    assert.equal(expanded.expanded, true); assert.deepEqual(expanded.range, { start: 1, end: 4 });
 });
 
 test('a hand-edited stage is never automatically replaced by a new stage over the same parents', async () => {
@@ -64,6 +65,7 @@ test('a hand-edited stage is never automatically replaced by a new stage over th
 test('related specific detail recalls saved fine summaries rather than injecting stage and children twice', async () => {
     const f = await fixture(); const document = f.stage(f.document, ['fine0', 'fine1']);
     document.entries = document.entries.filter(e => !['fine2', 'fine3'].includes(e.id));
+    document.entryOrder = document.entryOrder.filter(id => !['fine2', 'fine3'].includes(id));
     const snapshot = { messages: structuredClone(messages), maxContext: 8192 };
     snapshot.messages[15].mes = '还记得当年的红围巾吗？';
     let plan = await buildPlan(document, createDefaults(), snapshot);
@@ -98,8 +100,8 @@ test('stage parsing does not overwrite parents and rejects empty or malformed mo
 test('stage prompt retains supported atmosphere without inventing lost detail or merging scene moods', async () => {
     const {document} = await fixture(), parents = document.entries.slice(0, 2), before = structuredClone(parents);
     const prompt = stagePrompt(parents, DEFAULTS);
-    for (const rule of ['情绪脉络、关系张力', '不压成关系标签或档案清单', '不同场景的气氛不强行合成一种基调',
-        '细摘要没有留下的气氛或细节不得凭空补回', '不把沉默或留白解释成确定的心意', '已有引语不润色成新的原话', '各角色所知分开']) assert.ok(prompt.includes(rule), rule);
-    assert.deepEqual(JSON.parse(prompt.split('细摘要：')[1]), parents.map(e => ({id: e.id, start: e.source.start, end: e.source.end, text: e.text})));
+    for (const rule of ['情绪过程', '场景气氛', '不统一抒情', '不补输入缺失的细节', '同时异地不能混写成同场景', '事实与角色所知继续区分']) assert.ok(prompt.includes(rule), rule);
+    assert.deepEqual(JSON.parse(prompt.split('切片：')[1]), parents.map(e => ({id: e.id, revision: e.revision, kind: e.kind,
+        start: e.source.start, end: e.source.end, scenes: e.scenes, text: e.text})));
     assert.deepEqual(parents, before);
 });

@@ -548,3 +548,62 @@ test('starting a new generation expires a queued manual task even when the chat 
     await f.controller.event('GENERATION_STARTED', ['normal', {}, false]); await f.controller.settled(); await f.flush();
     assert.equal(f.generated(), 0); assert.equal((await f.api.read(binding)).document.entries.length, 0);
 });
+
+test('an action awaiting a host snapshot cannot apply its old-chat settings to the next chat', async t => {
+    const f = await fixture(t); await f.controller.refresh();
+    const originalSnapshot = f.host.snapshot;
+    let release, entered;
+    const ready = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+    f.host.snapshot = async () => { f.host.snapshot = originalSnapshot; entered(); await gate; return originalSnapshot(); };
+    const rejected = assert.rejects(f.controller.action('settings', { values: { recent: 3 }, expectedRevision: 0 }), /当前聊天已变化/);
+    await ready;
+    const other = { ...binding, file: 'Other-action-chat', integrity: 'other_action_identity' };
+    await f.writeChat(messages, other.integrity, other.file);
+    f.context.chatId = other.file; f.context.chatMetadata.integrity = other.integrity;
+    await f.controller.refresh(); release(); await rejected;
+    assert.deepEqual((await f.api.read(other)).document.settings, {});
+    assert.deepEqual((await f.api.read(binding)).document.settings, {}); assert.equal(f.generated(), 0);
+});
+
+test('failed stage work retries the same stage rather than starting a new fine-summary model call', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await manualRange(f, 1, 1); await manualRange(f, 2, 2);
+    f.model(async () => { throw Error('合成阶段网络中断'); });
+    await f.controller.action('stage', { start: 1, end: 2, expectedRange: { start: 1, end: 2 } }); await f.flush();
+    assert.equal(f.controller.state.failedWork.kind, 'stage');
+    const before = f.generated();
+    f.model(async prompt => { assert.match(prompt, /阶段摘要/); assert.doesNotMatch(prompt, /完整覆盖第/); return JSON.stringify({text:'阶段已整理。'}); });
+    await f.controller.action('retry'); await f.flush();
+    assert.equal(f.generated(), before + 1); assert.equal(f.controller.state.error, ''); assert.equal(f.controller.state.failedWork, null);
+    assert.equal(f.controller.state.document.entries.filter(entry => entry.kind === 'stage').length, 1);
+});
+
+test('a read failure after a completed stage never labels the already saved stage as failed work', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await manualRange(f, 1, 1); await manualRange(f, 2, 2);
+    f.model(async () => JSON.stringify({text:'已保存阶段。'}));
+    const read = f.api.read, change = f.api.change;
+    f.api.change = async (source, operation) => { const result = await change(source, operation); if (operation.entry?.kind === 'stage') f.api.read = async () => { throw Error('合成后续读取失败'); }; return result; };
+    await f.controller.startStage({ force: true });
+    assert.match(f.controller.state.error, /后续读取失败/); assert.equal(f.controller.state.failedWork, null);
+    f.api.read = read;
+    assert.equal((await f.api.read(binding)).document.entries.filter(entry => entry.kind === 'stage').length, 1);
+    await assert.rejects(f.controller.action('retry'), /没有待重试/);
+});
+
+test('custom slices save a real insertion point and moved narrative order reaches the final request', async t => {
+    const f = await fixture(t); await manualReady(f);
+    f.model(async prompt => { const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/); return JSON.stringify({slices:[{start:Number(match[1]),end:Number(match[2]),text:`独立片段${match[1]}的经历。`}]}); });
+    await manualRange(f, 1, 1); await manualRange(f, 2, 2);
+    const [one,two] = f.controller.state.document.entries;
+    await f.controller.action('manual', { text: '用户确认的独立自定义片。', afterId: one.id });
+    const custom = f.controller.state.document.entries.find(entry => entry.kind === 'manual');
+    assert.equal(custom.placement.fromFloor, 1); assert.equal(custom.source, null);
+    await f.controller.action('reorder', { entryOrder: [two.id, custom.id, one.id], movedId: custom.id, expectedRevision: f.controller.state.document.revision });
+    assert.equal(f.controller.state.document.entries.find(entry => entry.id === custom.id).placement.fromFloor, 2);
+    const result = await f.inject();
+    assert.ok(result.prompt.includes('用户确认的独立自定义片。'));
+    assert.ok(result.prompt.indexOf('独立片段2') < result.prompt.indexOf('用户确认的独立自定义片。'));
+    assert.ok(result.prompt.indexOf('用户确认的独立自定义片。') < result.prompt.indexOf('独立片段1'));
+    assert.deepEqual(f.controller.state.document.entries.find(entry => entry.id === one.id).source, one.source);
+});

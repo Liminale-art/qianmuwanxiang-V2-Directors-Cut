@@ -1,9 +1,10 @@
 // Account-scoped ST settings only. Never put connection secrets in a memory document or backup.
 import { byteBudget } from './budget.mjs';
 
-const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [],
+const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false,
     temperature: 0.7, maxTokens: 2048, contextTokens: 32768, stream: false, presets: [], selectedPreset: '', revision: 0 });
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
+const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured'];
 const clone = value => structuredClone(value);
 const text = value => typeof value === 'string' ? value.trim() : '';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -24,9 +25,9 @@ function validate(patch) {
     if (!object(patch)) fail('连接设置无效');
     const out = {};
     for (const [key, value] of Object.entries(patch)) {
-        if (!['mode', ...FIELDS].includes(key)) fail('未知的连接设置');
+        if (!CONNECTION_FIELDS.includes(key)) fail('未知的连接设置');
         if (key === 'mode') { if (!['inherit', 'st', 'profile', 'external'].includes(value)) fail('连接方式无效'); }
-        else if (key === 'stream') { if (typeof value !== 'boolean') fail('流式设置无效'); }
+        else if (key === 'stream' || key === 'profileConfigured') { if (typeof value !== 'boolean') fail('连接开关设置无效'); }
         else if (key === 'temperature') { if (!Number.isFinite(value) || value < 0 || value > 2) fail('温度须在 0—2 之间'); }
         else if (key === 'maxTokens' || key === 'contextTokens') {
             if (!Number.isSafeInteger(value) || value < (key === 'contextTokens' ? 256 : 1) || value > 10000000) fail('Token 数值超出范围');
@@ -39,7 +40,7 @@ function validate(patch) {
 function savedConfig(ctx) {
     const raw = ctx?.extensionSettings?.yimu?.api;
     if (!object(raw)) return clone(DEFAULTS);
-    const settings = { ...clone(DEFAULTS), ...validate(Object.fromEntries(Object.entries(raw).filter(([key]) => ['mode', ...FIELDS].includes(key)))) };
+    const settings = { ...clone(DEFAULTS), ...validate(Object.fromEntries(Object.entries(raw).filter(([key]) => CONNECTION_FIELDS.includes(key)))) };
     settings.models = Array.isArray(raw.models) ? [...new Set(raw.models.filter(value => typeof value === 'string' && value.length <= 2048))] : [];
     settings.presets = Array.isArray(raw.presets) ? raw.presets.filter(p => object(p) && text(p.id) && text(p.name)).map(p => ({
         id: text(p.id), name: text(p.name), ...validate(Object.fromEntries(FIELDS.filter(key => p[key] !== undefined).map(key => [key, p[key]]))),
@@ -109,7 +110,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             const current = savedConfig(ctx), next = transform(current);
             if (!next) return read();
             // Model discovery and saving a preset do not change the active connection.
-            next.revision = current.revision + Number(['mode', ...FIELDS].some(key => next[key] !== current[key]));
+            next.revision = current.revision + Number(CONNECTION_FIELDS.some(key => next[key] !== current[key]));
             const owned = { ...previous, api: next }; ctx.extensionSettings.yimu = owned;
             try { await ctx.saveSettingsDebounced(); }
             catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('连接设置未保存，请重试'); }
@@ -122,7 +123,10 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         const config = read(), ctx = context();
         if (config.mode === 'external') return { mode: 'external', profileId: '', model: config.model,
             contextTokens: config.contextTokens, maxTokens: config.maxTokens, revision: config.revision };
-        if (config.mode === 'profile' || config.mode === 'inherit' && text(legacy.profileId)) return { mode: 'profile', profileId: text(legacy.profileId), model: text(legacy.model), contextTokens: 0, maxTokens: 2048, revision: config.revision };
+        if (config.mode === 'profile' || config.mode === 'inherit' && text(legacy.profileId)) return { mode: 'profile',
+            profileId: config.mode === 'profile' && config.profileConfigured ? config.profileId : text(legacy.profileId),
+            model: config.mode === 'profile' && config.profileConfigured ? config.profileModel : text(legacy.model),
+            contextTokens: 0, maxTokens: 2048, revision: config.revision };
         return { mode: 'st', profileId: '', model: config.mode === 'inherit' ? text(legacy.model) : '',
             contextTokens: Number(ctx.mainApi === 'openai' ? ctx.chatCompletionSettings?.openai_max_context : ctx.maxContext) || 0,
             maxTokens: Number(ctx.chatCompletionSettings?.openai_max_tokens) || 2048, revision: config.revision };

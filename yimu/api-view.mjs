@@ -2,7 +2,7 @@ import { createYimuIcon } from './icons.mjs';
 
 /** Companion-style controls; secrets remain in the account API adapter, not view state/backup actions. */
 export function mountApiView(container, { api, document = container?.ownerDocument || globalThis.document,
-    onError = () => {}, onChange = () => {}, getLegacy = () => ({}), getProfiles = () => [], onLegacyChange } = {}) {
+    onError = () => {}, onChange = () => {}, getLegacy = () => ({}), getProfiles = () => [], onLegacyChange, accountOnly = false } = {}) {
     if (!container || !api?.read || !document?.createElement) throw new TypeError('忆幕 API 卡缺少连接接口');
     let disposed = false, busy = false, supplied = null, editingModel = false;
     let scope = '', operation = 0, activeKind = '', statusKind = '';
@@ -26,6 +26,8 @@ export function mountApiView(container, { api, document = container?.ownerDocume
         node.value = value;
     };
     const legacy = () => supplied?.settings || getLegacy() || {};
+    const profileValues = () => { const config = api.read(); return accountOnly && config.profileConfigured
+        ? { profileId: config.profileId, model: config.profileModel } : legacy(); };
     const profiles = () => supplied?.profiles || getProfiles() || [];
     const card = el('section', 'ym-card ym-api-card');
     const header = el('div', 'ym-api-heading'), title = el('h3', '', '整理 API');
@@ -90,10 +92,18 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     }); }
     mode.addEventListener('change', () => {
         const value = mode.value;
-        if (!busy) void run(() => api.update({ mode: value }));
+        const previous = profileValues();
+        if (!busy) void run(() => api.update({ mode: value, ...(accountOnly && value === 'profile'
+            ? { profileId: previous.profileId || '', profileModel: previous.model || '', profileConfigured: true } : {}) }));
     });
-    change(profile, async value => { if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: value, model: '' }) === false) throw new Error('连接预设未保存'); }, 'legacy');
-    change(profileModel, async value => { if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: legacy().profileId || '', model: value }) === false) throw new Error('连接模型未保存'); }, 'legacy');
+    change(profile, async value => {
+        if (accountOnly) return api.update({ mode: 'profile', profileId: value, profileModel: '', profileConfigured: true });
+        if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: value, model: '' }) === false) throw new Error('连接预设未保存');
+    }, accountOnly ? 'account' : 'legacy');
+    change(profileModel, async value => {
+        if (accountOnly) return api.update({ mode: 'profile', profileId: profileValues().profileId || '', profileModel: value, profileConfigured: true });
+        if (!onLegacyChange) throw new Error('当前尚不能保存聊天连接'); if (await onLegacyChange({ profileId: legacy().profileId || '', model: value }) === false) throw new Error('连接模型未保存');
+    }, accountOnly ? 'account' : 'legacy');
     change(preset, async value => { if (value) { await api.loadPreset(value); editingModel = false; } });
     change(model, async value => {
         if (value === '__manual__') { editingModel = true; manualModel.value = api.read().model; render(); manualModel.focus(); }
@@ -112,7 +122,7 @@ export function mountApiView(container, { api, document = container?.ownerDocume
             if (activeKind === 'legacy') { operation++; busy = false; activeKind = ''; }
             if (statusKind === 'legacy') { status.textContent = ''; statusKind = ''; }
         }
-        const config = api.read(), old = legacy();
+        const config = api.read(), old = profileValues();
         // Before the first API choice, retain the previous per-chat connection without migrating it.
         const shownMode = config.mode === 'inherit' ? old.profileId ? 'profile' : 'st' : config.mode;
         mode.value = shownMode; external.hidden = shownMode !== 'external'; profileArea.hidden = shownMode !== 'profile';
@@ -123,8 +133,8 @@ export function mountApiView(container, { api, document = container?.ownerDocume
         if (old.profileId && !list.some(item => item.id === old.profileId)) items.push([old.profileId, '原连接（当前不可用）']);
         options(profile, items, old.profileId || '');
         if (scopeChanged || document.activeElement !== profileModel) profileModel.value = old.model || '';
-        profileReset.hidden = supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'profileId');
-        modelReset.hidden = supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'model');
+        profileReset.hidden = accountOnly || supplied?.showFollow === false || supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'profileId');
+        modelReset.hidden = accountOnly || supplied?.showFollow === false || supplied?.isGlobal === true || !Object.hasOwn(supplied?.overrides || {}, 'model');
         options(preset, [['', '载入预设'], ...config.presets.map(item => [item.id, item.name])], config.selectedPreset);
         const models = config.models.includes(config.model) || !config.model ? config.models : [config.model, ...config.models];
         options(model, [['', models.length ? '选择模型' : '先拉取模型列表'], ...models.map(value => [value, value]), ['__manual__', '手动填写模型']], editingModel ? '__manual__' : config.model);
@@ -134,7 +144,7 @@ export function mountApiView(container, { api, document = container?.ownerDocume
         }
         stream.checked = config.stream;
         for (const node of [...editable, ...buttons]) node.disabled = busy;
-        profile.disabled ||= !onLegacyChange; profileModel.disabled ||= !onLegacyChange;
+        profile.disabled ||= !accountOnly && !onLegacyChange; profileModel.disabled ||= !accountOnly && !onLegacyChange;
         profileReset.disabled ||= !onLegacyChange; modelReset.disabled ||= !onLegacyChange;
         remove.disabled ||= !config.selectedPreset;
         test.disabled ||= !config.apiUrl.trim(); fetch.disabled ||= !config.apiUrl.trim();

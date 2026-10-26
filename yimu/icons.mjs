@@ -130,11 +130,14 @@ const MARKUP = Object.freeze({
   }
 });
 
-export const YIMU_ICON_NAMES = Object.freeze(Object.keys(MARKUP));
+// Exact Qianmu artwork for the compact memory/prompt controls.
+const EXTRA_MARKUP = Object.freeze({"more":{"outline":"<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>","bold":"<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>","twotone":"<g fill=\"currentColor\" stroke=\"none\"><circle cx=\"5\" cy=\"12\" r=\"1.75\"/><circle cx=\"12\" cy=\"12\" r=\"1.75\"/><circle cx=\"19\" cy=\"12\" r=\"1.75\"/></g>"},"drag":{"outline":"<g><path d=\"M3 7H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M3 12H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M3 17H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/></g>","bold":"<g><path d=\"M16.19 2H7.81C4.17 2 2 4.17 2 7.81V16.18C2 19.83 4.17 22 7.81 22H16.18C19.82 22 21.99 19.83 21.99 16.19V7.81C22 4.17 19.83 2 16.19 2ZM17 17.25H7C6.59 17.25 6.25 16.91 6.25 16.5C6.25 16.09 6.59 15.75 7 15.75H17C17.41 15.75 17.75 16.09 17.75 16.5C17.75 16.91 17.41 17.25 17 17.25ZM17 12.75H7C6.59 12.75 6.25 12.41 6.25 12C6.25 11.59 6.59 11.25 7 11.25H17C17.41 11.25 17.75 11.59 17.75 12C17.75 12.41 17.41 12.75 17 12.75ZM17 8.25H7C6.59 8.25 6.25 7.91 6.25 7.5C6.25 7.09 6.59 6.75 7 6.75H17C17.41 6.75 17.75 7.09 17.75 7.5C17.75 7.91 17.41 8.25 17 8.25Z\" fill=\"currentColor\"/></g>","twotone":"<g><path d=\"M3 7H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path opacity=\"0.34\" d=\"M3 12H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/><path d=\"M3 17H21\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\"/></g>"},"up":{"outline":"<path d=\"M19.9201 15.0496L13.4001 8.52965C12.6301 7.75965 11.3701 7.75965 10.6001 8.52965L4.08008 15.0496\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-miterlimit=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>","bold":"<path d=\"M18.6801 13.9802L15.4701 10.7702L13.5101 8.80023C12.6801 7.97023 11.3301 7.97023 10.5001 8.80023L5.32007 13.9802C4.64007 14.6602 5.13007 15.8202 6.08007 15.8202H11.6901H17.9201C18.8801 15.8202 19.3601 14.6602 18.6801 13.9802Z\" fill=\"currentColor\"/>","twotone":"<path d=\"M19.92 15.0496L13.4 8.52965C12.63 7.75965 11.37 7.75965 10.6 8.52965L4.08002 15.0496\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-miterlimit=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"},"down":{"outline":"<path d=\"M19.9201 8.9502L13.4001 15.4702C12.6301 16.2402 11.3701 16.2402 10.6001 15.4702L4.08008 8.9502\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-miterlimit=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>","bold":"<path d=\"M17.92 8.17969H11.69H6.07999C5.11999 8.17969 4.63999 9.33969 5.31999 10.0197L10.5 15.1997C11.33 16.0297 12.68 16.0297 13.51 15.1997L15.48 13.2297L18.69 10.0197C19.36 9.33969 18.88 8.17969 17.92 8.17969Z\" fill=\"currentColor\"/>","twotone":"<path d=\"M19.92 8.9502L13.4 15.4702C12.63 16.2402 11.37 16.2402 10.6 15.4702L4.07996 8.9502\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-miterlimit=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"}});
+const ALL_MARKUP = Object.freeze({ ...MARKUP, ...EXTRA_MARKUP });
+export const YIMU_ICON_NAMES = Object.freeze(Object.keys(ALL_MARKUP));
 
 /** Decorative only: the containing button owns its visible or accessible label. */
 export function createYimuIcon(name, { document = globalThis.document } = {}) {
-    if (!Object.hasOwn(MARKUP, name)) throw new TypeError(`Unknown Yimu icon: ${name}`);
+    if (!Object.hasOwn(ALL_MARKUP, name)) throw new TypeError(`Unknown Yimu icon: ${name}`);
     if (!document?.createElement) throw new TypeError('A document is required to create a Yimu icon');
     const element = document.createElement('span');
     element.className = 'ym-icon';
@@ -142,7 +145,7 @@ export function createYimuIcon(name, { document = globalThis.document } = {}) {
     element.setAttribute('data-ym-icon', name);
     // Only the constant, reviewed local artwork enters this HTML sink.
     const variants = ['outline', 'bold', 'twotone'].map(variant =>
-        `<g class="ym-icon-${variant}">${MARKUP[name][variant] || MARKUP[name].outline}</g>`).join('');
+        `<g class="ym-icon-${variant}">${ALL_MARKUP[name][variant] || ALL_MARKUP[name].outline}</g>`).join('');
     element.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" focusable="false" aria-hidden="true">${variants}</svg>`;
     return element;
 }

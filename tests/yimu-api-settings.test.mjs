@@ -185,3 +185,20 @@ test('model discovery and saving a preset do not invalidate an unchanged active 
     f.answer = () => Response.json({ choices: [{ message: { content: '结果' } }] });
     assert.equal(await f.api.generate('原文', { connection }), '结果');
 });
+
+test('account profile migration is explicit and an explicitly empty profile never revives a legacy connection', async () => {
+    const f = fixture(), old = { profileId: 'legacy-chat', model: 'legacy-model' };
+    assert.equal(f.api.effectiveConnection(old).profileId, 'legacy-chat'); assert.equal(f.saves.length, 0);
+    await f.api.update({ mode: 'profile' });
+    assert.equal(f.api.effectiveConnection(old).profileId, 'legacy-chat', 'historic profile mode without ownership preserves old configuration');
+    await f.api.update({ mode: 'profile', profileId: 'account-profile', profileModel: 'account-model', profileConfigured: true });
+    const connection = f.api.effectiveConnection(old);
+    assert.equal(connection.profileId, 'account-profile'); assert.equal(connection.model, 'account-model');
+    assert.equal(f.api.effectiveConnection({ profileId: 'other-chat', model: 'other-model' }).profileId, 'account-profile');
+    await f.api.update({ profileId: '', profileModel: '', profileConfigured: true });
+    assert.equal(f.api.effectiveConnection(old).profileId, '');
+    assert.throws(() => f.api.assertCurrent(connection), /连接已变化/);
+    const host = createHost({ getContext: () => f.ctx, fetcher: f.fetcher });
+    await assert.rejects(host.generate('synthetic prompt', { connection: host.summaryConnection(old) }), /请选择 ST 连接预设/);
+    assert.deepEqual(f.raw, []); assert.deepEqual(f.profile, []); assert.deepEqual(f.calls, []);
+});

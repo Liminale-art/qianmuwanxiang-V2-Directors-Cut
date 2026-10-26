@@ -4,9 +4,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 import { buildYimu, FRONTEND, BACKEND } from '../scripts/build-yimu.mjs';
 import { VERSION } from '../yimu/contract.mjs';
-import { QIANMU_HIVE_THEME_LOGO } from '../qianmu-hive-theme-logo.js';
 
 test('candidate packages are self-contained, preserve logo geometry, refuse overwrites and never enter Qianmu release', async t => {
     const parent = await fs.realpath(os.tmpdir());
@@ -40,7 +40,16 @@ test('candidate packages are self-contained, preserve logo geometry, refuse over
     assert.equal(server.info.id, 'yimu');
     const frontend = await import(pathToFileURL(path.join(out, 'frontend/yimu/index.mjs')));
     assert.equal(typeof frontend.boot, 'function');
-    assert.equal((await fs.readFile(path.join(out, 'frontend/yimu/logo.svg'), 'utf8')).trim(), QIANMU_HIVE_THEME_LOGO.trim());
+    const packagedLogo = await fs.readFile(path.join(out, 'frontend/yimu/logo.svg'), 'utf8');
+    const sourceLogo = await fs.readFile(new URL('../yimu/logo.svg', import.meta.url), 'utf8');
+    assert.equal(createHash('sha256').update(packagedLogo).digest('hex'), createHash('sha256').update(sourceLogo).digest('hex'), 'build preserves the current Yimu logo asset');
+    const embedded = packagedLogo.match(/xlink:href="data:image\/png;base64,([A-Za-z0-9+/=]+)"/);
+    assert.ok(embedded, 'the user PNG is embedded locally, not fetched or replaced with the Qianmu hive');
+    const original = Buffer.from(embedded[1], 'base64');
+    assert.equal(original.length, 226760);
+    assert.equal(createHash('sha256').update(original).digest('hex'), '0eaf11c7a68943fbe0721dce97944518fd6da334742270b74f34369da678483f', 'fixed source hash verifies original PNG including its alpha and texture, without a desktop/CI dependency');
+    assert.equal(original.readUInt32BE(16), 1254); assert.equal(original.readUInt32BE(20), 1254); assert.equal(original[25], 6, 'PNG is RGBA');
+    assert.match(packagedLogo, /viewBox="0 0 1254 1254"/); assert.doesNotMatch(packagedLogo, /<path|https?:\/\/(?!www\.w3\.org)/);
     const qianmu = JSON.parse(await fs.readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
     assert.equal(qianmu.files.some(file => file.startsWith('yimu/')), false);
 });

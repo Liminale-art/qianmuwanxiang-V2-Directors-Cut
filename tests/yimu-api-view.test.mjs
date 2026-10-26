@@ -4,7 +4,7 @@ import { textCollectionDom } from './helpers/text-collection-dom.mjs';
 import { createApiSettings } from '../yimu/api-settings.mjs';
 import { mountApiView } from '../yimu/api-view.mjs';
 
-function fixture({ onLegacyChange } = {}) {
+function fixture({ onLegacyChange, accountOnly = false } = {}) {
     const dom = textCollectionDom(), create = dom.doc.createElement;
     // Only the reviewed bundled icon renderer has a markup sink; all user data remains text/value.
     dom.doc.createElement = tag => {
@@ -17,7 +17,7 @@ function fixture({ onLegacyChange } = {}) {
     const api = createApiSettings({ getContext: () => ctx, createId: () => 'preset-id', fetchImpl: async (path, options) => {
         calls.push({ path, body: JSON.parse(options.body) }); return Response.json({ data: [{ id: 'first-model' }, { id: 'second-model' }] });
     } });
-    const view = mountApiView(dom.parent, { api, document: dom.doc, onError: error => errors.push(error),
+    const view = mountApiView(dom.parent, { api, document: dom.doc, onError: error => errors.push(error), accountOnly,
         getLegacy: () => legacy, getProfiles: () => [{ id: 'saved-a', name: '现有 ST 连接' }],
         onLegacyChange: async values => { legacyChanges.push(values); if (onLegacyChange) return onLegacyChange(values); legacy = values; } });
     const change = async (label, value, complete = () => true) => {
@@ -140,4 +140,20 @@ test('per-chat connection and model reset icons submit null only for overridden 
     assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
     f.view.render(scoped('one', true));
     assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
+});
+
+test('account-only ST profile choice is independent of numeric chat/global scope and never calls legacy writers', async () => {
+    const f = fixture({ accountOnly: true }); f.view.render(scoped('one'));
+    assert.equal(f.api.read().mode, 'inherit'); assert.equal(f.ctx.extensionSettings.yimu, undefined, 'reading legacy choices does not migrate or save');
+    await f.change('整理连接方式', 'profile', () => f.api.read().profileConfigured);
+    await f.change('ST 连接模型', 'account-model', () => f.api.read().profileModel === 'account-model');
+    const revision = f.api.read().revision;
+    f.view.render(scoped('two', true));
+    assert.equal(f.get('ST 连接模型').value, 'account-model'); assert.equal(f.get('ST 连接预设').value, 'saved-a');
+    assert.equal(f.api.read().revision, revision); assert.deepEqual(f.legacyChanges, []);
+    assert.equal(f.visible(f.get('连接预设跟随默认')), false); assert.equal(f.visible(f.get('连接模型跟随默认')), false);
+    await f.change('ST 连接预设', '', () => f.api.read().profileId === '');
+    f.view.render(scoped('three', false));
+    assert.equal(f.get('ST 连接预设').value, ''); assert.equal(f.api.effectiveConnection({ profileId: 'old-chat-connection', model: 'old' }).profileId, '');
+    assert.deepEqual(f.legacyChanges, []); assert.equal(f.calls.length, 0); f.view.destroy();
 });

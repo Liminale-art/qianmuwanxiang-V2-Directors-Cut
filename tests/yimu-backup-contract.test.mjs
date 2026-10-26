@@ -45,6 +45,21 @@ test('portable packages retain automatic choice and dismissed history while rest
     assert.throws(()=>portableDocument({...doc,autoSummary:undefined}),/自动总结/);
 });
 
+test('schema7 backup preserves scenes, manual placements, explicit order, undo cursor and non-secret prompt presets',()=>{
+    const doc=document(),ancestor=binding('ancestor'),target=binding('restored'),mapped=binding('mapped-ancestor');
+    doc.entries[0].scenes=[{world:'世界A',timeline:'主线',date:'次日',period:'夜',place:'河边',characters:['甲'],event:'甲独自读信',nature:'present',evidence:{floors:[1]}}];
+    doc.entries[0].textUndoRevision=1;
+    doc.entries.push({...summary('custom',{kind:'manual',source:null,text:'有适用点的人工背景',placement:{binding:ancestor,fromFloor:1,hash},origin:{binding:ancestor,offset:12}}),history:[{...previous(summary('custom',{revision:1,kind:'manual',source:null,text:'旧背景'})),placement:{binding:ancestor,fromFloor:1,hash}}]});
+    doc.entryOrder=['custom','fine'];
+    doc.settings.prompts={groups:{summary:[{id:'mine',name:'我的总结',text:'保留真实质感',enabled:true}],stage:[],recall:[]},presets:[],selectedPreset:''};
+    const portable=portableDocument(doc);assert.deepEqual(portable.entryOrder,['custom','fine']);assert.deepEqual(portable.settings.prompts,doc.settings.prompts);
+    assert.equal(portable.entries[0].scenes[0].event,'甲独自读信');assert.equal(portable.entries[0].textUndoRevision,1);
+    const result=restoreBackupDocument(portable,{binding:target,mappings:{source_0:target,source_1:mapped}}).document;
+    assert.deepEqual(result.entryOrder,['custom','fine']);assert.deepEqual(result.entries[1].placement.binding,mapped);assert.deepEqual(result.entries[1].history[0].placement.binding,mapped);
+    const missing=restoreBackupDocument(portable,{binding:target,mappings:{source_0:target}}).document;
+    assert.equal(missing.entries[1].status,'invalid');assert.equal(missing.entries[1].origin.unresolved,true);assert.deepEqual(missing.entries[1].placement.binding,ancestor);
+});
+
 test('all nested source references and lineage are collected once in deterministic package-local order',()=>{
     const doc=document();doc.lineage={sourceBinding:binding('lineage'),cutoff:15,offset:10,bridgeCount:5,bridgeHashes:Array(5).fill(hash)};
     const item=doc.entries[0];item.origin={binding:binding('ancestor'),offset:0};
@@ -158,7 +173,7 @@ test('restore starts disabled with fresh operation identity but preserves conten
 
 test('unmapped foreign sources keep true identity and are denied in current, historical and partial candidate versions',()=>{
     const doc=document(),foreign=binding('ancestor'),target=binding('restored');
-    const item=doc.entries[0];item.origin={binding:foreign,offset:20};item.history=[previous(summary('fine',{revision:1,origin:{binding:foreign,offset:20}}))];
+    const item=doc.entries[0];item.origin={binding:foreign,offset:20};item.history=[previous(summary('fine',{revision:1,text:'旧版修订含义',origin:{binding:foreign,offset:20}}))];
     item.candidate={id:'candidate',text:'仍保留候选含义'};item.conflicts=[{id:'conflict',text:'仍保留另一版本',reason:'设备冲突'}];
     const {document:restored,warnings}=restoreBackupDocument(doc,{binding:target,mappings:{source_0:target}});
     assert.equal(warnings.length,1);assert.equal(warnings[0].sourceId,'source_1');
@@ -166,7 +181,7 @@ test('unmapped foreign sources keep true identity and are denied in current, his
         assert.equal(version.status,'invalid');assert.deepEqual(version.origin,{binding:foreign,offset:20,unresolved:true});
     }
     restored.enabled=true;
-    const undone=applyOperation(restored,{id:'undo',type:'entry',entryId:'fine',expectedRevision:2,action:'undo'}).document;
+    const undone=applyOperation(restored,{id:'undo',type:'entry',entryId:'fine',expectedRevision:2,action:'undoText'}).document;
     assert.equal(undone.entries[0].origin.unresolved,true);assert.equal(undone.entries[0].status,'invalid');
     const accepted=applyOperation(restored,{id:'accept',type:'entry',entryId:'fine',expectedRevision:2,action:'acceptCandidate'}).document;
     assert.equal(accepted.entries[0].origin.unresolved,true);assert.equal(accepted.entries[0].status,'invalid');

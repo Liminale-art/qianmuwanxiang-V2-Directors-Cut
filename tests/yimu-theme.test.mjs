@@ -79,7 +79,7 @@ test('a hidden Qianmu root supplies colors, mode and type sizes without renderin
     assert.equal(f.root.style.getPropertyValue('--ym-surface'), '#fafafa');
     assert.equal(f.root.style.getPropertyValue('--ym-type-body'), '12px');
     assert.equal(f.root.style.getPropertyValue('--ym-type-caption'), '11px');
-    assert.equal(f.root.style.getPropertyValue('--ym-font'), '');
+    assert.equal(f.root.style.getPropertyValue('--ym-font'), 'ST serif');
     assert.equal(f.root.getAttribute('data-ym-theme'), 'glass');
     assert.equal(f.root.getAttribute('data-ym-mode'), 'dark');
     assert.equal(host.hidden, true);
@@ -120,7 +120,7 @@ test('classic surfaces use the six reviewed opaque portal colors, never the moda
     }
 });
 
-test('classic follows the interface font chain, while paper and minimal retain fixed typography', () => {
+test('all families consume the actual Qianmu font resources rather than duplicating their stacks', () => {
     const f = fixture();
     const host = f.element('story-director-modal', {
         '--sd-text': '#123', '--qm-interface-font': 'Interface Font', '--sd-font': 'Classic Font', '--mainFontFamily': 'ST Font', fontFamily: 'Computed Font',
@@ -132,8 +132,9 @@ test('classic follows the interface font chain, while paper and minimal retain f
         assert.equal(f.root.style.getPropertyValue('--ym-font'), expected);
     }
     for (const family of ['editorial', 'glass']) {
+        host.computed[`--qm-${family === 'glass' ? 'glass' : 'editorial'}-font`] = `Actual ${family} Font`;
         host.setAttribute('data-qm-theme', family);
-        assert.equal(f.root.style.getPropertyValue('--ym-font'), '', family);
+        assert.equal(f.root.style.getPropertyValue('--ym-font'), `Actual ${family} Font`, family);
     }
     binding.destroy();
 });
@@ -188,8 +189,12 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.doesNotMatch(css, /(?:^|\n)\s*(?:body|html|:root|input|button|textarea|select)\b/);
     assert.doesNotMatch(css, /@import|https?:\/\//);
     assert.match(css, /\.ym-dialog:not\(\[open\]\), \.ym-dialog \[hidden\]\s*\{\s*display: none !important/);
-    assert.match(css, /data-ym-theme="editorial"[^\n]*KingHwaOldSong/);
-    assert.match(css, /data-ym-theme="glass"[^\n]*Sarasa Gothic SC/);
+    assert.match(css, /data-ym-theme="editorial"/);
+    assert.match(css, /data-ym-theme="glass"/);
+    assert.doesNotMatch(css, /KingHwaOldSong|Sarasa Gothic SC|Qianmu Glass Local Heiti/, 'font resources are consumed from Qianmu, not redefined');
+    assert.match(css, /width: min\(940px, calc\(100vw - 28px\)\)/);
+    assert.match(css, /height: min\(760px, calc\(100dvh - 28px\)\)/);
+    assert.match(css, /height: calc\(100dvh - 108px\)/);
     assert.match(css, /\.ym-scroll[^\n]*min-width: 0/);
     assert.match(css, /\.ym-dialog input\.ym-switch[^\n]*appearance: none !important/);
     assert.match(css, /@media \(max-width: 340px\)/);
@@ -207,7 +212,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
 });
 
 test('local functional icon subset preserves the authoritative Qianmu artwork and has no runtime dependency', async () => {
-    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link' };
+    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down' };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
     for (const [name, upstream] of Object.entries(names)) {

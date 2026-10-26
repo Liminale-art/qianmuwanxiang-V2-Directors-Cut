@@ -17,12 +17,11 @@ export function mountCompanionView({ document, el, button, onAction, pageMode = 
         const signature = JSON.stringify([value, linked, next.snapshot?.binding,unavailable]);
         if (signature === last) return; last = signature;
         body.replaceChildren();
-        body.append(el('p', 'ym-muted', '只关联共同已读范围内的记忆，不上传整本书。'));
         if (linked) {
             body.append(el('p', '', `已关联《${linked.title}》 · ${linked.entries.length} 条 · 共同已读位置 ${linked.confirmedReadTo}`));
             body.append(button('解除此聊天关联', () => invoke('companionClear')));
         }
-        body.append(button(linked ? '选择或更新关联' : '选择伴读记录', () => invoke('companionList')));
+        body.append(button('选择伴读记忆', () => invoke('companionList')));
         if (value.busy) body.append(el('p', 'ym-muted', '正在读取伴读记忆…'));
         if (value.error) body.append(el('p', 'ym-error', value.error));
         if (value.status) body.append(el('p', 'ym-status', value.status));

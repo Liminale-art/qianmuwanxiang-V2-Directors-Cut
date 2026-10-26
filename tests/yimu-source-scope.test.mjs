@@ -87,9 +87,9 @@ test('server-invalid human stage is retained as a barrier rather than exposing i
     f.document.entries.push(stage);
     let selected;
     const host = {snapshot: async () => structuredClone(f.snapshot), profiles: () => [], clear() {}, prepare: (_core, plan) => {selected = plan.entries; return {prepared: false};}};
-    const api = {health: async () => ({}), read: async () => ({document: structuredClone(f.document), defaults: f.defaults, sourceAvailable: true, invalidSourceIds: []})};
+    const api = {health: async () => ({}), read: async () => ({document: structuredClone(f.document), defaults: f.defaults, sourceAvailable: true, invalidSourceIds: ['stage']})};
     const controller = createController({host, api, defer: () => {}});
-    await controller.refresh(); controller.state.invalidSourceIds = ['stage'];
+    await controller.refresh();
     await controller.intercept([], 10000, () => {});
     assert.deepEqual(selected, []);
     controller.destroy();

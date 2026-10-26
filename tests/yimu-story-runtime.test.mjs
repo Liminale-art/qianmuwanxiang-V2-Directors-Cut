@@ -38,6 +38,12 @@ test('story planning rejects a disk fingerprint mismatch and a late source mutat
     assert.equal(f.calls.create.length, 0);
 });
 
+test('single story action plans internally before creating with no manual-choice UI payload', async () => {
+    const f=await fixture();await f.action('storyContinue',{cutoff:8});
+    assert.equal(f.calls.create.length,1);assert.deepEqual(f.calls.create[0].operation.manualChoices,[]);
+    assert.equal(f.state.story.receipt.status,'complete');
+});
+
 test('boundary generation receives only cutoff-bounded raw text and manual choices pass through unchanged', async () => {
     const f = await fixture(), hashes = await fingerprintMessages(f.snapshot.messages);
     f.plan.mode = 'branch'; f.plan.cutoff = 4;

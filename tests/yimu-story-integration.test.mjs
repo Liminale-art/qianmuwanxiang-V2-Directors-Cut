@@ -64,4 +64,24 @@ test('full isolated story loop uses real client routes, server creation, native-
     assert.ok(payload.messages.some(item => item.content.includes('前七层的有效约定。')));
     assert.deepEqual(controller.state.lastUsed.removedFloors, []);
     assert.deepEqual(payload.messages.filter(item => item.role === 'assistant').map(item => item.content), messages.slice(7).map(item => item.mes));
+
+    // A selected inherited manual-only stage has no raw ranges of its own.
+    // Change an ancestor anchor AFTER preparation: the final real read must
+    // invalidate the stage itself, not only the now-hidden manual children.
+    const hashes=await fingerprintMessages(messages);
+    for(const [entryId,floor]of[['custom-a',2],['custom-b',3]])await api.change(binding,{id:`add-${entryId}`,type:'append',entry:{id:entryId,kind:'manual',text:`人工背景 ${entryId}`,placement:{binding,fromFloor:floor,hash:hashes[floor-1]}}});
+    await api.change(binding,{id:'custom-stage',type:'append',expectedEpoch:1,expectedDefaultsRevision:0,entry:{id:'manual-stage',kind:'stage',text:'人工阶段不能越过最后核验',source:{parents:[{id:'custom-a',revision:1},{id:'custom-b',revision:1}]}}});
+    const nextPlan=await api.planStory(binding,{cutoff:12}),nextStory=await api.createStory(binding,{id:'manual-branch',planId:nextPlan.planId,mode:nextPlan.mode,cutoff:nextPlan.cutoff,manualChoices:[],boundarySummaries:[]});
+    await context.openCharacterChat(nextStory.binding.file);await controller.refresh();
+    const inheritedStage=controller.state.document.entries.find(entry=>entry.kind==='stage');assert.ok(inheritedStage);assert.deepEqual(inheritedStage.source.ranges,[]);
+    let selected=[];const prepare=host.prepare;host.prepare=(coreChat,plan,...args)=>{selected=structuredClone(plan.entries);return prepare(coreChat,plan,...args);};
+    await controller.event('GENERATION_STARTED',['normal',{},false]);
+    const nextCore=structuredClone(context.chat).map((message,index)=>({...message,index}));await controller.intercept(nextCore,32000,()=>{});
+    assert.ok(selected.some(entry=>entry.id===inheritedStage.id));
+    const changed=messages.map((message,index)=>index===1?{...message,mes:'原始人工锚点在准备后变化'}:message);
+    await fs.writeFile(sourcePath,[{chat_metadata:metadata},...changed].map(JSON.stringify).join('\n'));
+    const latest=await api.read(nextStory.binding);assert.ok(latest.invalidSourceIds.includes(inheritedStage.id));
+    const guardedPayload={type:'normal',model:'fixture',chat_completion_source:'custom',max_tokens:1000,messages:[{role:'system',content:'角色设定'},...nextCore.map(item=>({role:'assistant',content:item.mes}))]};
+    const unchanged=structuredClone(guardedPayload);await controller.event('CHAT_COMPLETION_SETTINGS_READY',[guardedPayload]);
+    assert.deepEqual(guardedPayload,unchanged);assert.equal(controller.state.lastUsed,null);
 });

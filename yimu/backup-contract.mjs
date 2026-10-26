@@ -5,6 +5,8 @@ import {validateOrigin, validateLineage} from './story-contract.mjs';
 import {validateStageSource} from './stage-contract.mjs';
 import {validateExcerpt} from './recall-contract.mjs';
 import {validateCompanion} from './companion-contract.mjs';
+import {validatePlacement, normalizeEntryOrder} from './timeline.mjs';
+import {validateScenes} from './scene-contract.mjs';
 
 export const BACKUP_FORMAT = 'yimu-backup';
 export const BACKUP_VERSION = 1;
@@ -19,7 +21,7 @@ const id = value => {if(typeof value!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(
 const hash = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))fail('忆幕备份来源指纹无效');return value;};
 const prose = (value,max=100000) => {if(typeof value!=='string'||!value.trim()||value.length>max)fail('忆幕备份记忆正文无效或过长');return value;};
 const kinds=new Set(['summary','manual','stage','excerpt']),statuses=new Set(['active','invalid','excluded','deleted']);
-const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','recall']);
+const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','recall','prompts']);
 
 function range(value) {
     requireObject(value);
@@ -41,7 +43,7 @@ function initialRange(value) {
 }
 function fields(value) {
     requireObject(value);const result={};
-    for(const key of ['id','revision','kind','text','source','status','edited','origin','parent','quote']) {
+    for(const key of ['id','revision','kind','text','source','status','edited','origin','parent','quote','placement','scenes','replacedBy','textUndoRevision']) {
         if(!own(value,key))continue;const item=value[key];
         if(key==='id')result.id=id(item);
         else if(key==='revision'){if(!integer(item)||item<1)fail('忆幕备份版本无效');result.revision=item;}
@@ -51,6 +53,10 @@ function fields(value) {
         else if(key==='text')result.text=prose(item);
         else if(key==='source')result.source=source(item);
         else if(key==='origin')result.origin=origin(item);
+        else if(key==='placement')result.placement=validatePlacement(item);
+        else if(key==='scenes')result.scenes=validateScenes(item);
+        else if(key==='replacedBy')result.replacedBy=id(item);
+        else if(key==='textUndoRevision'){if(!integer(item)||item<1)fail('忆幕文字撤回位置无效');result.textUndoRevision=item;}
         else if(key==='parent'){
             if(item===null){result.parent=null;continue;}requireObject(item);
             if(!integer(item.revision)||item.revision<1)fail('忆幕备份引证父版本无效');
@@ -66,7 +72,7 @@ function fields(value) {
 function fullVersion(value) {
     const result=fields(value);
     if(!result.id||!result.revision||!kinds.has(result.kind)||!statuses.has(result.status)||typeof result.edited!=='boolean'||!result.text||!own(result,'source'))fail('忆幕备份历史或记忆条目不完整');
-    if(result.kind==='manual'){if(result.source!==null)fail('手动补充不能伪造原文来源');}
+    if(result.kind==='manual'){if(result.source!==null)fail('自定义切片不能伪造原文来源');}
     else if(result.kind==='summary'){if(!result.source||own(result.source,'ranges'))fail('细摘要来源格式无效');}
     else if(result.kind==='stage')result.source=validateStageSource(result.source);
     else Object.assign(result,validateExcerpt(result));
@@ -110,6 +116,7 @@ export function portableDocument(value) {
     const result={schema:SCHEMA,revision:value.revision,epoch:value.epoch,configRevision:value.configRevision,
         binding:normalizeBinding(value.binding),enabled:value.enabled,autoSummary:value.schema<6?value.enabled:value.autoSummary,
         settings,initialRange:initialRange(value.initialRange),entries:value.entries.map(entry)};
+    result.entryOrder=normalizeEntryOrder({...result,...(value.entryOrder!==undefined?{entryOrder:value.entryOrder}:{})});
     if(value.lineage!=null)result.lineage=validateLineage(value.lineage);
     const archived=companionArchive(value);if(archived.length)result.archivedCompanion=archived;
     // Validate cross-entry identity without retaining compatibility/runtime extras.
@@ -127,7 +134,10 @@ export function collectBackupSources(value) {
         const item={id:`source_${sources.length}`,binding:normalized,...(!resolved?{unresolved:true}:{})};sources.push(item);seen.set(key,item);
     };
     add(document.binding,true);if(document.lineage)add(document.lineage.sourceBinding,document.lineage.unresolved!==true);
-    for(const item of document.entries)for(const version of [item,...item.history,...item.conflicts,...(item.candidate?[item.candidate]:[])])if(version.origin)add(version.origin.binding,version.origin.unresolved!==true);
+    for(const item of document.entries)for(const version of [item,...item.history,...item.conflicts,...(item.candidate?[item.candidate]:[])]) {
+        if(version.origin)add(version.origin.binding,version.origin.unresolved!==true);
+        if(version.placement)add(version.placement.binding,version.origin?.unresolved!==true);
+    }
     return sources;
 }
 
@@ -172,7 +182,26 @@ export function restoreBackupDocument(value,{binding,mappings={}}={}) {
     for(const source of missing)warnings.push({code:'source_unresolved',sourceId:source.id,binding:source.binding});
     const restoreVersion=(version,current=null)=>{
         const result=structuredClone(version),effective=current?{...current,...version}:version;
-        if(!effective.source)return result;
+        if(effective.placement){
+            const resolved=mapped.get(bindingKey(effective.placement.binding));
+            result.placement={...structuredClone(effective.placement),binding:resolved||normalizeBinding(effective.placement.binding)};
+            if(!resolved){
+                result.origin={binding:normalizeBinding(effective.placement.binding),offset:effective.origin?.offset||0,unresolved:true};
+                if(!['deleted','excluded'].includes(effective.status))result.status='invalid';
+            }
+            else if(effective.origin){
+                const resolvedOrigin=mapped.get(bindingKey(effective.origin.binding));
+                result.origin={binding:resolvedOrigin||normalizeBinding(effective.origin.binding),offset:effective.origin.offset,...(!resolvedOrigin?{unresolved:true}:{})};
+            }
+        }
+        if(!effective.source){
+            if(effective.origin){
+                const resolved=mapped.get(bindingKey(effective.origin.binding));
+                result.origin={binding:resolved||normalizeBinding(effective.origin.binding),offset:effective.origin.offset,...(!resolved?{unresolved:true}:{})};
+                if(!resolved&&!['deleted','excluded'].includes(effective.status))result.status='invalid';
+            }
+            return result;
+        }
         const oldOrigin=effective.origin||{binding:portable.binding,offset:portable.lineage?.offset||0};
         const resolved=mapped.get(bindingKey(oldOrigin.binding));
         if(resolved){
@@ -200,6 +229,7 @@ export function restoreBackupDocument(value,{binding,mappings={}}={}) {
         result.candidate=item.candidate?restoreVersion(item.candidate,item):null;
         return result;
     });
+    document.entryOrder=[...portable.entryOrder];
     if(portable.archivedCompanion)document.archivedCompanion=structuredClone(portable.archivedCompanion);
     return {document:validateDocument(document),warnings};
 }

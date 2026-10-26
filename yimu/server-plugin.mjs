@@ -36,6 +36,7 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
     router.post('/backup/plan', route(request => store.backupPlan(request, request.body?.binding)));
     router.post('/backup/list', route(request => store.backupList(request)));
     router.post('/backup/read', route(request => store.backupRead(request, request.body?.archiveId)));
+    router.post('/backup/apply', route(request => store.backupApply(request, request.body?.archiveId, request.body?.request)));
     router.post('/backup/upload-result', route(request => store.backupUploadResult(request, request.body?.id)));
     router.post('/backup/restore', route(request => store.backupRestore(request, request.body?.archiveId, request.body?.request)));
     router.post('/backup/result', route(request => store.backupResult(request, request.body?.archiveId, request.body?.request)));

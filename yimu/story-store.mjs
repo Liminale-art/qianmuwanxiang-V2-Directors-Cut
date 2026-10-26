@@ -1,6 +1,8 @@
 import {constants} from 'node:fs';
 import * as contract from './contract.mjs';
 import {entryOrigin, selectStoryEntries, storyOffset} from './story-contract.mjs';
+import {normalizeEntryOrder} from './timeline.mjs';
+import {unknownScenes} from './scene-contract.mjs';
 const clone = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const requestId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -27,7 +29,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
     };
 
     async function plan(request, ctx, binding, query) {
-        if (!['continue', 'branch'].includes(query?.mode)) fail('story_mode', '请选择续接或指定楼层分支', 400);
+        if (query?.mode !== undefined && !['continue', 'branch'].includes(query.mode)) fail('story_mode', '故事延续方式无效', 400);
         if (query.cutoff !== undefined && (!Number.isSafeInteger(query.cutoff) || query.cutoff < 1)) fail('story_cutoff', '故事截止楼层无效', 400);
         const loaded = await read(request, binding), document = loaded.document;
         if (!loaded.sourceAvailable) fail('story_source', '当前聊天原件尚未通过核对，未创建故事');
@@ -43,8 +45,20 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         const total = hashes.length, cutoff = query.cutoff ?? total;
         if (!total || cutoff > total) fail('story_cutoff', '故事截止楼层不存在，未创建', 400);
         const valid = new Set(document.entries.filter(entry => entry.status === 'active' && !loaded.invalidSourceIds.includes(entry.id)
-            && (entry.origin ? entry.originVerified : !entry.source || contract.sourceMatches(entry.source, hashes))).map(entry => entry.id));
-        const selected = selectStoryEntries(document, cutoff, valid);
+            && (entry.origin ? entry.originVerified : !entry.source || contract.sourceRanges(entry).every(range=>contract.sourceMatches(range,hashes)))
+            && (entry.kind!=='stage'||contract.stageDependenciesValid(entry,document))).map(entry => entry.id));
+        const placementValidIds = new Set();
+        for (const entry of document.entries.filter(entry => entry.kind === 'manual' && entry.placement && entry.status === 'active' && !entry.origin?.unresolved)) {
+            try {
+                const from = entryOrigin(entry, document), placement = entry.placement;
+                if (!same(from.binding, placement.binding)) continue;
+                await requireForeignSource(ctx, normalizeStoreBinding(placement.binding), {start:placement.fromFloor,end:placement.fromFloor,hashes:[placement.hash]});
+                placementValidIds.add(entry.id);
+            } catch (caught) {
+                if (!['ENOENT','yimu_source_missing','yimu_source_changed','yimu_source_identity','yimu_source'].includes(caught.code)) throw caught;
+            }
+        }
+        const selected = selectStoryEntries(document, cutoff, valid, {total,placementValidIds});
         const boundaries = [];
         for (const boundary of selected.boundaries) {
             const messages = [];
@@ -66,9 +80,9 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         for (let floor = cutoff - bridgeCount + 1; floor <= cutoff; floor++) represented.add(floor);
         const publicPlan = {sourceBinding: clone(binding), sourceRevision: document.revision,
             sourceFingerprint: digest(JSON.stringify(hashes)), defaultsRevision: loaded.defaults.revision,
-            mode: query.mode, cutoff, total, recent: settings.recent, offset, bridgeCount, inheritedCount: selected.entries.length,
+            mode: cutoff === total ? 'continue' : 'branch', cutoff, total, recent: settings.recent, offset, bridgeCount, inheritedCount: selected.entries.length,
             skippedExcerptCount: selected.skippedExcerptCount, unrepresentedFloorCount: cutoff - represented.size,
-            manualChoices: selected.manualChoices, boundaries};
+            manualChoices: selected.manualChoices, skippedManualCount: selected.skippedManualCount, boundaries};
         const bridgeMessages = bridge.map(safeMessage);
         const planId = digest(JSON.stringify([publicPlan, selected.entries.map(entry => {
             const {history, conflicts, candidate, originVerified, ...value} = entry; return value;
@@ -82,7 +96,7 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
     }
 
     function newDocument(binding, source, prepared, operation, requestHash) {
-        const document = contract.createDocument(binding), ids = new Map();
+        const document = contract.createDocument(binding), ids = new Map(), boundaryOrder = new Map();
         const fresh = (entry, suffix) => {
             const {history, conflicts, candidate, originVerified, ...values} = clone(entry);
             return {...values, id: `story_${digest(`${operation.id}:${suffix}`).slice(0, 36)}`, revision: 1, status: 'active', history: [], conflicts: [], candidate: null};
@@ -91,6 +105,12 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         document.entries = prepared.entries.map(entry => {
             const value = fresh(entry, entry.id); value.origin = clone(entryOrigin(entry, prepared.document));
             if (value.kind === 'stage') value.source.parents = value.source.parents.map(ref => ({id: ids.get(ref.id), revision: 1}));
+            value.scenes = (value.scenes || unknownScenes()).map(scene => {
+                const reference=scene.evidence?.inheritedFrom;
+                if(!reference)return scene;
+                if(!ids.has(reference.id))return unknownScenes()[0];
+                return {...scene,evidence:{...scene.evidence,inheritedFrom:{id:ids.get(reference.id),revision:1}}};
+            });
             return value;
         });
         if (!Array.isArray(operation.manualChoices || []) || !Array.isArray(operation.boundarySummaries || [])) fail('story_choices', '故事继承选择无效', 400);
@@ -112,7 +132,9 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
                     || !same(range.hashes, offered.source.hashes.slice(range.start - offered.source.start, range.end - offered.source.start + 1))
                     || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 100000) fail('story_boundary', '截止边界未完整按原文整理，未创建');
                 next = range.end + 1;
-                document.entries.push(fresh({kind: 'summary', text: entry.text.trim(), source: clone(range), origin: clone(offered.origin), edited: false}, `boundary:${item.id}:${index}`));
+                const value = fresh({kind: 'summary', text: entry.text.trim(), source: clone(range), origin: clone(offered.origin), edited: false,
+                    ...(entry.scenes ? {scenes:clone(entry.scenes)} : {})}, `boundary:${item.id}:${index}`);
+                document.entries.push(value); if (!boundaryOrder.has(item.id)) boundaryOrder.set(item.id, []); boundaryOrder.get(item.id).push(value.id);
             }
             if (next !== offered.source.end + 1) fail('story_boundary', '截止边界整理尚未完成，未创建');
         }
@@ -123,6 +145,8 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         document.enabled = true; document.epoch = 1; document.configRevision = 1; document.revision = 1;
         document.initialRange = {start: 1, end: value.bridgeCount, total: value.bridgeCount};
         document.lineage = {sourceBinding: clone(source), cutoff: value.cutoff, offset: value.offset, bridgeCount: value.bridgeCount, bridgeHashes: [...prepared.bridgeHashes]};
+        document.entryOrder = normalizeEntryOrder(prepared.document).flatMap(id => ids.has(id) ? [ids.get(id)] : boundaryOrder.get(id) || []);
+        document.entryOrder = normalizeEntryOrder(document);
         document.creation = {id: operation.id, requestHash, planId: value.planId, status: 'pending',
             sourceFingerprint: value.sourceFingerprint, sourceRevision: value.sourceRevision, defaultsRevision: value.defaultsRevision};
         return contract.validateDocument(document);

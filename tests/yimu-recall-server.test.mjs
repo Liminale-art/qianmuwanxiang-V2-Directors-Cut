@@ -156,7 +156,8 @@ test('trigger source and full parent source must still match, not just the quote
 
 test('adding manual authority invalidates stored excerpts in the same transaction without hiding other memory', async t => {
     const f = await fixture(t), saved = await f.save(), excerptId = saved.document.entries.at(-1).id;
-    const changed = await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '用户确认的独立背景', source: null}});
+    const changed = await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '用户确认的独立背景', source: null,
+        placement: {binding, fromFloor: 1, hash: f.hashes[0]}}});
     assert.equal(changed.document.entries.find(entry => entry.id === excerptId).status, 'invalid');
     assert.equal(changed.document.entries.find(entry => entry.id === 'parent').status, 'active');
     await assert.rejects(f.recallSource(), {code: 'yimu_recall_blocked'});
@@ -176,7 +177,8 @@ test('parent redo invalidates its excerpt and never automatically revives the ol
 
 test('deleted source-free manual notes do not permanently disable unrelated recall or revive invalid excerpts', async t => {
     const f = await fixture(t), saved = await f.save(), excerptId = saved.document.entries.at(-1).id;
-    await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '后来主动删除的人工背景', source: null}});
+    await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '后来主动删除的人工背景', source: null,
+        placement: {binding, fromFloor: 1, hash: f.hashes[0]}}});
     await assert.rejects(f.recallSource(), {code: 'yimu_recall_blocked'});
     await f.change({type: 'entry', entryId: 'manual', expectedRevision: 1, action: 'delete'});
     assert.ok((await f.recallSource()).messages.length);
@@ -217,7 +219,7 @@ test('excerpt edit becomes an ordinary protected manual entry; undo safely resto
     assert.equal(manual.kind, 'manual'); assert.equal(manual.source, null); assert.equal(manual.history[0].kind, 'excerpt');
     assert.equal(manual.quoteText, undefined);
     await assert.rejects(f.recallSource(), {code: 'yimu_recall_blocked'});
-    const undone = await f.change({type: 'entry', entryId: entry.id, expectedRevision: 2, action: 'undo'});
+    const undone = await f.change({type: 'entry', entryId: entry.id, expectedRevision: 2, action: 'undoText'});
     assert.equal(undone.document.entries.find(item => item.id === entry.id).kind, 'excerpt');
     assert.equal((await f.read()).document.entries.find(item => item.id === entry.id).quoteText, '她把蓝色手链收进木盒。');
 });
@@ -255,7 +257,8 @@ test('schema 2 upgrade keeps recall false and preserves byte-exact read-only bac
     await fs.writeFile(file, bytes); await fs.writeFile(path.join(folder, 'defaults.json'), oldDefaults);
     const read = await f.read(); assert.equal(read.document.schema, SCHEMA); assert.equal(read.defaults.values.recall, false);
     assert.deepEqual(await fs.readFile(file), bytes); assert.equal((await fs.readdir(folder)).length, 2);
-    await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '迁移后的人工记录', source: null}});
+    await f.change({type: 'append', entry: {id: 'manual', kind: 'manual', text: '迁移后的人工记录', source: null,
+        placement: {binding, fromFloor: 1, hash: f.hashes[0]}}});
     assert.deepEqual(await fs.readFile(`${file}.schema2.bak`), bytes);
     assert.equal((await fs.stat(`${file}.schema2.bak`)).mode & 0o200, 0);
     await f.store.defaults(f.request, {id: 'defaults_upgrade', expectedRevision: 0, values: {recent: 8}});

@@ -2216,6 +2216,8 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* ST 页面只浮贴一个便笺蜂巢入口；容器不拦截正文。 */
 .qm-st-menu-logo { display:inline-flex;align-items:center;justify-content:center;width:1.3em;height:1.3em;flex:none;color:inherit; }
 .qm-st-menu-logo svg { width:100%;height:100%;fill:currentColor; }
+/* ST menu labels follow the applied interface family, never paper/glass panel fonts. */
+#story-director-input-entry, #story-director-input-entry > .qm-st-menu-label { font-family: var(--qm-interface-font, var(--mainFontFamily, inherit)) !important; }
 #qianmu-notes-float-layer, .qm-prose-hive-layer {
   position: fixed;
   inset: 0;

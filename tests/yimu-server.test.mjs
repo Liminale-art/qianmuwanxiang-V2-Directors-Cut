@@ -36,7 +36,7 @@ async function fixture(t) {
     const enable = () => store.change(request, binding, {id: 'enable', type: 'enable', expectedRevision: 0,
         enabled: true, range: {start: 1, end: 2, total: 2}});
     const append = (id, text = '用户确认的手动补充') => store.change(request, binding,
-        {id: `append_${id}`, type: 'append', entry: {id, kind: 'manual', text, source: null}});
+        {id: `append_${id}`, type: 'append', entry: {id, kind: 'manual', text, source: null,placement:{binding,fromFloor:2,hash:source.hashes[1]}}});
     const summary = (epoch = 1) => store.change(request, binding, {id: 'summary_1', type: 'append', expectedEpoch: epoch,
         entry: {id: 'slice_1', kind: 'summary', text: '两人确实进行了这次对话。角色只知已告知部分。', source}});
     return {root, account, chats, request, store, chatFile, writeChat, source, enable, append, summary};
@@ -121,6 +121,20 @@ test('first persistence verifies the ST header while existing manual notes remai
     assert.equal(edit.document.entries[0].text, '保留人工资料');
 });
 
+test('schema 6 preserves the automatic-off choice and unlocated legacy notes without a read-time write', async t => {
+    const f=await fixture(t);await f.store.read(f.request,binding);
+    const legacy={...createDocument(binding),schema:6,enabled:true,autoSummary:false,revision:4,epoch:2,configRevision:2};
+    delete legacy.entryOrder;
+    legacy.entries=[{id:'legacy-note',revision:1,kind:'manual',text:'旧版未定位的用户背景',source:null,status:'active',edited:true,history:[],conflicts:[],candidate:null}];
+    const checksum=createHash('sha256').update(JSON.stringify(legacy)).digest('hex');
+    const bytes=Buffer.from(JSON.stringify({schema:1,value:legacy,checksum},null,2)),file=path.join(f.account,'.yimu',chatStorageName(binding));
+    await fs.writeFile(file,bytes);
+    const read=await f.store.read(f.request,binding);assert.equal(read.document.schema,SCHEMA);assert.equal(read.document.enabled,true);assert.equal(read.document.autoSummary,false);
+    assert.equal(read.document.entries[0].placement,null);assert.deepEqual(read.document.entryOrder,['legacy-note']);assert.deepEqual(await fs.readFile(file),bytes);
+    await f.append('modern');assert.deepEqual(await fs.readFile(file+'.schema6.bak'),bytes);
+    const saved=await f.store.read(f.request,binding);assert.equal(saved.document.entries[0].placement,null);assert.deepEqual(saved.document.entries[1].placement,{binding,fromFloor:2,hash:f.source.hashes[1]});
+});
+
 test('same-entry concurrent edits preserve both versions and different entries save without false conflicts', async t => {
     const f = await fixture(t);
     await f.append('one');
@@ -146,7 +160,7 @@ test('operation retries are idempotent and account defaults survive another inst
     assert.equal(repeated.document.entries.length, 1);
     assert.equal(repeated.document.revision, 1);
     await assert.rejects(f.store.change(f.request, binding, {id: 'append_one', type: 'append', receipt: 'forged',
-        entry: {id: 'other', kind: 'manual', text: '不能冒充同一次请求', source: null}}), /同一操作标识/);
+        entry: {id: 'other', kind: 'manual', text: '不能冒充同一次请求', source: null,placement:{binding,fromFloor:2,hash:f.source.hashes[1]}}}), /同一操作标识/);
     const result = await f.store.defaults(f.request, {id: 'defaults_1', expectedRevision: 0, values: {...DEFAULTS, recent: 7}});
     assert.equal(result.defaults.values.recent, 7);
     assert.equal((await createYimuStore({hostCwd: f.root}).read(f.request, binding)).defaults.values.recent, 7);

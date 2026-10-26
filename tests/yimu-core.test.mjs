@@ -36,9 +36,10 @@ test('content batches preserve five recent floors and skip unchosen initial hist
     assert.equal(nextBatch(enable(), messages.slice(0, 5), DEFAULTS), null);
 });
 
-test('schema six migrates only prior enabled chats into automatic mode and new chats stay off', () => {
+test('schema seven preserves schema-six explicit auto choices and migrates earlier enabled chats without writes', () => {
     const fresh = createDocument(binding);
-    assert.equal(SCHEMA, 6); assert.equal(fresh.autoSummary, false);
+    assert.equal(SCHEMA, 7); assert.equal(fresh.autoSummary, false);
+    assert.equal(validateDocument({ ...fresh, schema: 6, enabled: true, autoSummary: false }).autoSummary, false);
     for (const enabled of [true, false]) {
         const legacy = { ...fresh, schema: 5, enabled }; delete legacy.autoSummary;
         assert.equal(validateDocument(legacy).autoSummary, enabled);
@@ -194,12 +195,12 @@ test('summary prompt balances source-grounded narrative texture with factual and
         {name: '甲', mes: '范围外内容不能带入。'},
     ], before = structuredClone(source);
     const prompt = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS);
-    for (const rule of ['精炼、连贯的叙事回望', '情绪转折、关系张力', '不逐项凑齐', '不统一改成抒情腔',
-        '短引并明确说话者', '不拼接或润色成伪引文', '不判定爱意、和解或隐藏动机', '故事事实与各角色实际知情', '保留不确定性与留白']) assert.ok(prompt.includes(rule), rule);
+    for (const rule of ['精炼连贯、自足的叙事回望', '情绪过程', '不凑字段', '不统一抒情',
+        '不拼接伪引语', '隐藏动机', '故事事实与各角色实际知情', 'scenes']) assert.ok(prompt.includes(rule), rule);
     assert.deepEqual(JSON.parse(prompt.split('原文：')[1]), source.slice(0, 2).map((m, i) => ({floor: i + 1, speaker: m.name, role: 'character', text: m.mes})));
     assert.deepEqual(source, before);
     const withRecall = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS, {recallCandidates: [{id: 'past', text: '往事'}]});
-    assert.ok(withRecall.includes('不为润色、模仿文风或单纯补气氛发起回查'));
+    assert.ok(withRecall.includes('确有明确旧细节缺口'));
 });
 
 test('memory-use guidance does not dictate the current mood or rewrite hand-edited narrative text', async () => {
@@ -216,11 +217,12 @@ test('memory-use guidance does not dictate the current mood or rewrite hand-edit
 
 test('manual memories are source-free; excluded or mismatched summaries cannot be injected', async () => {
     let doc = append(enable(), await entry('a', 1, 2));
-    doc = append(doc, { id: 'manual', kind: 'manual', text: '计划尚未完成。', source: null });
+    doc = append(doc, { id: 'manual', kind: 'manual', text: '计划尚未完成。', source: null,
+        placement: { binding, fromFloor: 2, hash: (await fingerprintMessages(messages))[1] } });
     const changed = structuredClone(messages); changed[0].mes = '改变';
     const plan = await buildPlan(doc, createDefaults(), { messages: changed, maxContext: 8192 });
     assert.deepEqual(plan.memoryIds, ['manual']);
-    assert.match(plan.prompt, /手动补充/);
+    assert.match(plan.prompt, /自定义切片/);
 });
 
 test('same-record concurrent writes preserve both contents and unrelated record edits remain writable', async () => {
@@ -241,14 +243,15 @@ test('ordinary edit supports undo, and human redo only produces an inline candid
     doc = applyOperation(doc, { id: 'redo', type: 'redo', entryId: 'a', expectedRevision: 2, expectedEpoch: doc.epoch, entry: { ...original, text: '模型候选' } }).document;
     assert.equal(doc.entries[0].text, '人工版本');
     assert.equal(doc.entries[0].candidate.text, '模型候选');
-    doc = applyOperation(doc, { id: 'undo', type: 'entry', entryId: 'a', expectedRevision: 3, action: 'undo' }).document;
+    doc = applyOperation(doc, { id: 'undo', type: 'entry', entryId: 'a', expectedRevision: 3, action: 'undoText' }).document;
     assert.equal(doc.entries[0].text, original.text);
 });
 
 test('stale enable and summary epochs cannot overwrite changes, replay IDs never hide different content', () => {
     const doc = enable();
     assert.throws(() => applyOperation(doc, { id: 'old', type: 'enable', expectedRevision: 0, enabled: false }));
-    const op = { id: 'manual1', type: 'append', entry: { id: 'm', kind: 'manual', text: '手动', source: null } };
+    const op = { id: 'manual1', type: 'append', entry: { id: 'm', kind: 'manual', text: '手动', source: null,
+        placement: { binding, fromFloor: 1, hash: 'a'.repeat(64) } } };
     const saved = applyOperation(doc, op).document;
     assert.equal(applyOperation(saved, op).outcome, 'duplicate');
     assert.throws(() => applyOperation(saved, { ...op, entry: { ...op.entry, text: '不同内容' } }), /不同内容/);

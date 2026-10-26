@@ -153,7 +153,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             try { value = validate(envelope.value); }
             catch { fail('corrupt', '忆幕资料格式无效，未覆盖原文件', 503); }
             await checkStore(ctx);
-            return {value, fingerprint: current, legacyBytes: [1, 2, 3, 4, 5].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
+            return {value, fingerprint: current, legacyBytes: [1, 2, 3, 4, 5, 6].includes(envelope.value?.schema) ? Buffer.from(bytes.subarray(0, length)) : null};
         } finally { await file.close(); }
     }
 
@@ -433,6 +433,10 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
         if (entry.kind !== 'stage') return readSource(ctx, binding, entry.source);
         if (!contract.stageDependenciesValid(entry, document)) fail('stage_changed', '阶段摘要的细摘要来源已变化，未采用');
+        for (const ref of entry.source.parents) {
+            const parent = document.entries.find(value => value.id === ref.id);
+            if (parent?.kind === 'manual') await requirePlacementSource(ctx, binding, parent.placement);
+        }
         const evidence = await readSource(ctx, binding, null, [entry]);
         if (evidence.invalidSourceIds.length) fail('source_changed', '对应聊天原文已改变，未采用阶段整理结果');
         if (checkRecent) {
@@ -440,6 +444,12 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             if (contract.sourceRanges(entry).some(range => range.end > cutoff)) fail('stage_recent', '阶段整理范围包含近期原文，未采用');
         }
         return evidence;
+    }
+
+    async function requirePlacementSource(ctx, binding, placement) {
+        if (!placement || !equal(placement.binding, binding) || !Number.isSafeInteger(placement.fromFloor)
+            || placement.fromFloor < 1 || !/^[a-f0-9]{64}$/.test(placement.hash)) fail('placement', '自定义切片的叙事位置无效，请重新定位', 409);
+        await requireSource(ctx, binding, {start: placement.fromFloor, end: placement.fromFloor, hashes: [placement.hash]});
     }
 
     const documentRead = (ctx, binding) => readFile(ctx, chatStorageName(binding), contract.validateDocument, () => contract.createDocument(binding));
@@ -521,8 +531,12 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
             sourceAvailable = true;
         }
         catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
+        for (const entry of document.entries) if (entry.kind === 'manual' && entry.placement) {
+            entry.placementVerified = sourceAvailable && equal(entry.placement.binding, binding)
+                && localHashes[entry.placement.fromFloor - 1] === entry.placement.hash;
+        }
         const foreign = new Map();
-        for (const entry of document.entries.filter(entry => entry.origin && entry.source)) {
+        for (const entry of document.entries.filter(entry => entry.origin && (entry.source || entry.kind === 'manual'))) {
             if (entry.origin.unresolved) {
                 entry.originVerified = false;
                 if (!evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
@@ -534,15 +548,27 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
         for (const group of foreign.values()) {
             let invalid = group.entries.map(entry => entry.id);
-            try { invalid = (await requireForeignSource(ctx, group.binding, null, group.entries)).invalidSourceIds; }
+            const windows = group.entries.filter(entry => entry.source || entry.placement).map(entry => entry.kind === 'manual'
+                ? { id: entry.id, source: { start: entry.placement.fromFloor, end: entry.placement.fromFloor, hashes: [entry.placement.hash] } } : entry);
+            try { invalid = (await requireForeignSource(ctx, group.binding, null, windows)).invalidSourceIds; }
             catch (caught) { if (caught?.code === 'yimu_account') throw caught; }
             for (const entry of group.entries) {
-                entry.originVerified = sourceAvailable && !invalid.includes(entry.id) && bridgeSourceValid(entry, document, localHashes);
+                const validPlacement = entry.kind !== 'manual' || !entry.placement || equal(entry.placement.binding, group.binding);
+                entry.originVerified = sourceAvailable && validPlacement && !invalid.includes(entry.id) && bridgeSourceValid(entry, document, localHashes);
+                if (entry.kind === 'manual' && entry.placement) entry.placementVerified = entry.originVerified;
                 if (!entry.originVerified && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
             }
         }
-        for (const entry of document.entries) if (entry.kind === 'stage' && entry.status === 'active'
-            && !contract.stageDependenciesValid(entry, document) && !evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+        for (const entry of document.entries) if (entry.kind === 'stage' && entry.status === 'active') {
+            const parentInvalid = entry.source.parents.some(ref => {
+                const parent = document.entries.find(value => value.id === ref.id);
+                return evidence.invalidSourceIds.includes(ref.id) || parent?.placementVerified === false;
+            });
+            if (parentInvalid || !contract.stageDependenciesValid(entry, document)) {
+                if (!evidence.invalidSourceIds.includes(entry.id)) evidence.invalidSourceIds.push(entry.id);
+                if (entry.origin) entry.originVerified = false;
+            }
+        }
         for (const entry of excerpts) {
             const sourceValid = sourceAvailable && parentWindows.has(entry.id) && materialized.has(entry.id)
                 && !evidence.invalidSourceIds.includes(entry.id) && !evidence.invalidSourceIds.includes(parentWindows.get(entry.id).id);
@@ -600,6 +626,10 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 if (current.value.movedTo) fail('moved', '该聊天已改名，请重新打开当前聊天');
                 // A new file cannot claim an unverified chat path. Existing manual notes remain editable when originals go missing.
                 if (!current.fingerprint) await requireSource(ctx, binding);
+                for (const entry of result.document.entries) if (entry.kind === 'manual' && entry.placement) {
+                    const previous = current.value.entries.find(value => value.id === entry.id);
+                    if (!previous || !equal(previous.placement, entry.placement)) await requirePlacementSource(ctx, binding, entry.placement);
+                }
                 if ((operation?.type === 'append' || operation?.type === 'redo') && operation.entry?.source) {
                     const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents)} : operation.entry;
                     await requireEntrySource(ctx, binding, generated, current.value, actualDefaults?.value, generatedStage);
@@ -614,7 +644,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                             // Undo/restore/choosing a retained edit must remain possible after the source changes.
                             // Preserve that chosen text, but never revive it as validated memory. Candidate adoption stays strict.
                             const canRetain = operation?.type === 'entry' && operation.entryId === entry.id
-                                && ['undo', 'restore', 'acceptConflict'].includes(operation.action)
+                                && ['undo', 'undoText', 'restore', 'acceptConflict'].includes(operation.action)
                                 && ['yimu_source_missing', 'yimu_source_changed', 'yimu_source_identity'].includes(caught?.code);
                             if (!canRetain) throw caught;
                             entry.status = 'invalid';

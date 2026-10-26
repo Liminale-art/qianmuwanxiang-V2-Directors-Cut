@@ -111,17 +111,26 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
             if (releaseFailed(result)) throw new Error(result.message || '本次建立已确认失败，请重新核对继承范围；原聊天保持不变');
             if (result?.receipt?.status !== 'complete') throw new Error('新故事尚未完整建立；请用同一次操作重试，不会重复创建');
             view.result = result; view.receipt = result.receipt; record.pending = null; view.pending = false;
-            view.status = `已建立新聊天：${result.receipt.target?.file || result.binding?.file}`;
+            const skipped = plan.skippedManualCount || 0, missing = plan.unrepresentedFloorCount || 0;
+            const detail = `${skipped ? `；${skipped} 份未定位或跨截止的人工记忆留在原聊天` : ''}${missing ? `；${missing} 层尚未整理的旧正文未带入` : ''}`;
+            view.status = `已建立新聊天：${result.receipt.target?.file || result.binding?.file}${detail}`;
             if (same(snapshot.binding, state.snapshot?.binding) && !lifecycle().generating && lifecycle().generation === stamp) {
                 const opened = await host.openStory(result, { sourceSnapshot: snapshot,
                     isCurrent: () => !lifecycle().disposed && !lifecycle().generating && lifecycle().generation === stamp });
-                if (opened.opened) { view.status = '已建立并打开新故事，原聊天保持不变。'; await refresh({ auto: false }); }
+                if (opened.opened) { view.status = `已建立并打开新故事，原聊天保持不变。${detail}`; await refresh({ auto: false }); }
                 else view.status += `；${opened.message || '请从此角色聊天记录打开。'}`;
             }
             return result;
         } catch (error) { view.error = error.message; throw error; }
         finally { view.busy = false; emit(); }
     };
-    action.forBinding = binding => recordFor(binding).view;
-    return action;
+    const direct = async (type, payload = {}) => {
+        if (type === 'storyContinue') {
+            await action('storyPlan', {cutoff:payload.cutoff});
+            return action('storyCreate', {manualChoices:[]});
+        }
+        return action(type, payload);
+    };
+    direct.forBinding = binding => recordFor(binding).view;
+    return direct;
 }
