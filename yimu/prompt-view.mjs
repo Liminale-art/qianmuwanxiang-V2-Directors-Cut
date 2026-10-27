@@ -41,7 +41,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         const url=Url.createObjectURL(new BlobClass([data],{type:'application/json'})),anchor=el('a');anchor.href=url;anchor.download='忆幕-总结提示词.json';document.body.append(anchor);anchor.click();anchor.remove();Url.revokeObjectURL(url);
     }catch(error){fail(record(),error);}});
     toolbar.append(preset,add,savePreset,button('导入','upload',()=>file.click()),download,removePreset);
-    nameRow.append(name,button('确认保存提示词预设','check',()=>{
+    nameRow.append(name,button('确认保存提示词预设','save',()=>{
         const title=name.value.trim();if(!title)return fail(record(),new Error('请填写预设名称'));
         const config=record().config,previous=config.presets.find(item=>item.name===title),id=previous?.id||createId(),groups=clone(config.groups);
         const save=()=>{nameRow.hidden=true;enqueue(value=>{value.presets=[...value.presets.filter(item=>item.id!==id),{id,name:title,groups:clone(groups)}];value.selectedPreset=id;return value;});};
@@ -108,7 +108,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         tools.append(enabled,up,down,remove);head.append(drag,title,tools,createYimuIcon('expand',{document}));
         const body=el('div','ym-prompt-item-body'),editHeading=el('div','ym-prompt-edit-heading'),titleInput=el('input');titleInput.type='text';titleInput.maxLength=160;
         const content=el('textarea');content.rows=7;content.maxLength=120000;
-        const save=button('保存此条提示词','check',()=>{if(!active())return;const draft=local();if(!draft)return;const patch={name:draft.name,text:draft.text};enqueue(value=>{const entry=value.groups[group].find(entry=>entry.id===id);if(!entry)throw new Error('此条目已被另一端删除，草稿仍保留');Object.assign(entry,patch);return value;},{draftKey:key,draftVersion:draft.version});});
+        const save=button('保存此条提示词','save',()=>{if(!active())return;const draft=local();if(!draft)return;const patch={name:draft.name,text:draft.text};enqueue(value=>{const entry=value.groups[group].find(entry=>entry.id===id);if(!entry)throw new Error('此条目已被另一端删除，草稿仍保留');Object.assign(entry,patch);return value;},{draftKey:key,draftVersion:draft.version});});
         const cancel=button('撤销此条修改','close',()=>{if(!active())return;rec.drafts.delete(key);const saving=rec.saving?.item,oldHead=rec.queue[0];rec.queue=rec.queue.filter(item=>item===saving||item.draftKey!==key);if(!rec.saving&&rec.failed&&rec.queue[0]!==oldHead){rec.failed=false;rec.error='';}if(!rec.queue.length&&rec.remote?.revision>rec.revision){rec.saved=clone(rec.remote.config);rec.revision=rec.remote.revision;}rebuildConfig(rec);renderRows();update();void drain(rec);});
         const edited=()=>{if(!active())return;const entry=current()||local()?.base;if(!entry)return;const previous=local();rec.drafts.set(key,{name:titleInput.value,text:content.value,version:(previous?.version||0)+1,base:clone(entry)});update();};
         titleInput.addEventListener('input',edited);content.addEventListener('input',edited);

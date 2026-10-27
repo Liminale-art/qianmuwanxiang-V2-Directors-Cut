@@ -222,6 +222,7 @@ test('overview uses the 导览 label and memory page exposes bounded live summar
     const f = fixture(); t.after(() => f.view.destroy());
     assert.ok(f.get('导览'));
     assert.equal(f.document.querySelector('.ym-manual-label strong').textContent, '手动总结');
+    assert.equal(f.document.querySelector('.ym-manual-label .ym-icon'), null, 'manual summary keeps the heading text-only');
     f.get('记忆').click();
     f.render({ ...f.state, busy: true, streamPreview: '正在生成：两人初见' });
     const preview = f.document.querySelector('.ym-stream-preview');
@@ -760,7 +761,7 @@ test('shortcut colors distinguish execution failure from unavailable states with
     const shortcut = d.document.getElementById('yimu-send-entry'), entry = d.document.getElementById('yimu-menu-entry');
     const ready = state({ service: { status: 'ok' }, sourceAvailable: true, document: { ...state().document, enabled: true }, snapshot: { ...state().snapshot, mainApi: 'openai' } });
     for (const [patch, tone, message] of [
-        [{}, 'ready', '正常'], [{ busy: true }, 'ready', '正在处理'],
+        [{}, 'ready', '正常'], [{ busy: true, status: '正在整理第 1—2 层' }, 'ready', '正在处理'],
         [{ error: '模型返回格式不正确' }, 'failed', '执行失败'],
         [{ backup: { error: '备份压缩数据损坏' }, snapshot: null, document: null }, 'failed', '备份压缩数据损坏'],
         [{ service: { status: 'error' }, error: '连接中断' }, 'neutral', '服务未连接'],
@@ -777,6 +778,7 @@ test('shortcut colors distinguish execution failure from unavailable states with
         assert.equal(shortcutStatus(s).tone, tone);
         dispose.update({ showShortcut: true }, s);
         assert.equal(shortcut.dataset.ymState, tone); assert.ok(shortcut.title.includes(message));
+        assert.equal(shortcut.dataset.ymBusy, String(Boolean(s.busy && /正在(?:整理|重试|核对)/.test(String(s.status || '')))));
         assert.equal(shortcut.getAttribute('aria-label'), shortcut.title);
         assert.equal(entry.dataset.ymState, undefined); assert.equal(entry.title, '忆幕');
     }
@@ -1156,4 +1158,6 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     assert.match(css, /data-ym-state="ready"\] \{ color: #7d98a6;/);
     assert.match(css, /data-ym-state="failed"\] \{ color: #ad858b;/);
     assert.match(css, /data-ym-state="neutral"\] \{ color: #949494;/);
+    assert.match(css, /@keyframes ym-shortcut-breathe/);
+    assert.match(css, /\.ym-send-entry\[data-ym-busy="true"\] \{ animation: ym-shortcut-breathe/);
 });

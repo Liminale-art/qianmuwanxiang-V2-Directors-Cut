@@ -214,7 +214,6 @@
 .ym-manual-range { min-width: 0; margin: 0; }
 .ym-manual-range > .ym-inline-row > span { flex: 0 0 auto; white-space: nowrap; }
 .ym-manual-label { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto !important; font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
-.ym-manual-label > .ym-icon { width: 16px; height: 16px; flex-basis: 16px; color: var(--ym-accent); }
 .ym-stream-preview { display: grid; gap: 8px; padding: 12px 14px; }
 .ym-stream-preview .ym-setting-title { margin: 0; }
 .ym-stream-output { margin: 0; max-height: 190px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font: inherit; color: var(--ym-ink); }
@@ -296,6 +295,8 @@
 .ym-send-entry[data-ym-state="failed"] { color: #ad858b; }
 .ym-send-entry[data-ym-state="neutral"] { color: #949494; }
 .ym-send-entry .ym-logo { width: 23px; height: 23px; flex-basis: 23px; }
+@keyframes ym-shortcut-breathe { 0%, 100% { color: #7d98a6; opacity: .72; } 50% { color: var(--ym-accent); opacity: 1; } }
+.ym-send-entry[data-ym-busy="true"] { animation: ym-shortcut-breathe 1.45s ease-in-out infinite; }
 @media (max-width: 760px) {
     .ym-dialog { width: calc(100vw - 32px); max-width: calc(100vw - 32px); height: calc(100dvh - 108px); max-height: calc(100dvh - 108px); border-radius: 16px; }
     .ym-header { padding: 8px 10px 8px 18px; gap: 8px; }
@@ -412,4 +413,4 @@
     .ym-dialog .ym-api-params input[type="number"]::-webkit-inner-spin-button,
     .ym-dialog .ym-api-params input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .ym-dialog input.ym-switch::after, .ym-tool-summary .ym-icon, .ym-dialog .ym-nav-button { transition: none; } .ym-version-tag.is-update-available { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ym-dialog input.ym-switch::after, .ym-tool-summary .ym-icon, .ym-dialog .ym-nav-button { transition: none; } .ym-version-tag.is-update-available, .ym-send-entry[data-ym-busy="true"] { animation: none; } }

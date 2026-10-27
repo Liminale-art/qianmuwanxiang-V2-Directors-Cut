@@ -16,7 +16,7 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
@@ -35,6 +35,28 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         state.streamPreview = accumulated.slice(-12000);
         emit();
     };
+    const notice = (message, tone = 'success') => {
+        if (disposed || typeof onNotice !== 'function' || typeof message !== 'string' || !message) return;
+        try { onNotice(message, tone); } catch { /* Notifications must never affect persistence. */ }
+    };
+    async function generateWithRetries(prompt, options, { binding, label, start, end, retryState } = {}) {
+        let lastError;
+        for (let retry = 0; retry <= 3; retry++) {
+            if (options.signal?.aborted || disposed) throw lastError || new Error('本次整理已中止');
+            try { return await host.generate(prompt, options); }
+            catch (error) {
+                lastError = error;
+                if (options.signal?.aborted || disposed || localStops.has(bindingKey(binding))) throw error;
+                if (retry === 0) notice(`本次${label}失败，发起重试：${error?.message || '未知错误'}`, 'warning');
+                if (isCurrent(binding)) {
+                    state.status = `正在重试${label}（${retry + 1}/3）· 楼层${start}–${end}`;
+                    emit();
+                }
+            }
+        }
+        if (retryState) retryState.exhausted = true;
+        throw lastError || new Error('未知错误');
+    }
     const deferFor = (binding, task, stamp = generation) => {
         const target = clone(binding);
         defer(async () => {
@@ -209,6 +231,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         const defaults = clone(state.defaults);
         const settings = effectiveSettings(doc, defaults);
         let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
+        const retryState = { exhausted: false };
         try {
             const run = summaryRun(settings, snapshot);
             const manualPlan = requestedRange ? planManualRange(doc, snapshot.messages, settings, requestedRange) : null;
@@ -260,6 +283,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
                 let candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
+                notice(`忆幕切片总结中：楼层${batch.start}–${batch.end}`, 'info');
                 let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
@@ -269,7 +293,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (!run.fitsPrompt(prompt) && candidates.length) { candidates = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext }); }
                 if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
-                const response = await host.generate(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) });
+                const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
+                    { binding, label: '切片总结', start: batch.start, end: batch.end, retryState });
                 if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await api.read(binding); adopt(binding, beforeSave);
@@ -310,6 +335,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
                 }
                 failedBatch = null; failedSource = null;
+                notice(`本次总结已存至记忆，总结范围：${batch.start}–${batch.end}`, 'success');
                 failures.delete(key);
                 if (manualPlan) manualIndex++;
                 if (entryId || !isCurrent(binding) || generating) break;
@@ -327,6 +353,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
                     range: { start: failedBatch.start, end: failedBatch.end }, source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = errorPage; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
+                if (retryState.exhausted) notice(`本次总结重试3次均失败：${error?.message || '未知错误'}`, 'error');
+                else if (!controller.signal.aborted) notice(`本次总结失败：${error?.message || '未知错误'}`, 'error');
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
@@ -387,6 +415,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         state.streamPreview = '';
         emit();
         let processed = false, cursor = first, failedStage = null;
+        const retryState = { exhausted: false };
         try {
             const run = summaryRun(settings, state.snapshot);
             for (;;) {
@@ -426,9 +455,12 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 failedStage = { kind: 'stage', entryId: group.existing?.id || entryId, range: { start: startFloor, end: endFloor },
                     parents: refs, includeCustom: useCustom, epoch: initial.epoch, defaultsRevision: defaults.revision };
                 if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
+                notice(`忆幕阶段总结中：楼层${startFloor}–${endFloor}`, 'info');
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
-                const response = await host.generate(stagePrompt(group.parents, settings), { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) });
+                const response = await generateWithRetries(stagePrompt(group.parents, settings),
+                    { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
+                    { binding, label: '阶段总结', start: startFloor, end: endFloor, retryState });
                 if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 const latest = await api.read(binding); adopt(binding, latest);
@@ -440,8 +472,9 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (!group.existing && group.replaceStages?.length) operation.replaceStages = clone(group.replaceStages);
                 if (group.existing) { operation.entryId = group.existing.id; operation.expectedRevision = group.existing.revision; }
                 const result = await change(binding, operation); processed = true;
-                failedStage = null; failures.delete(key);
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
+                failedStage = null; failures.delete(key);
+                notice(`本次总结已存至记忆，总结范围：${startFloor}–${endFloor}`, 'success');
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
@@ -451,6 +484,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 failedJobs.add(failedKey);
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = 'memory'; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
+                if (retryState.exhausted) notice(`本次总结重试3次均失败：${error?.message || '未知错误'}`, 'error');
+                else if (!controller.signal.aborted) notice(`本次总结失败：${error?.message || '未知错误'}`, 'error');
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);

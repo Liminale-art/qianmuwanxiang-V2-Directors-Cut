@@ -68,7 +68,9 @@ async function fixture(t) {
     };
     const host = createHost({getContext: () => context});
     let nextId = 0;
-    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `fixture_${++nextId}`});
+    const notices = [];
+    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `fixture_${++nextId}`,
+        onNotice: (message, tone) => notices.push({message, tone})});
     t.after(async () => {
         controller.destroy();
         const real = await fs.realpath(root);
@@ -96,7 +98,7 @@ async function fixture(t) {
         return {coreChat, prompt, payload, originalPayload};
     };
     return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject,
-        prompts, model: value => { model = value; }, generated: () => generated};
+        prompts, notices, model: value => { model = value; }, generated: () => generated};
 }
 
 test('single-chat loop: explicit enable, fixture summary, durable save, next prompt, manual edit, and off', async t => {
@@ -472,14 +474,32 @@ test('manual range respects deletion/exclusion choices rather than resurrecting 
     await f.flush(); assert.equal(f.generated(), before); assert.equal(f.controller.state.document.entries[0].status, 'deleted');
 });
 
-test('failed manual re-summary leaves the existing slice intact and does not retry automatically', async t => {
+test('failed manual re-summary retries three times, then leaves the existing slice intact', async t => {
     const f = await fixture(t); await manualReady(f); await manualRange(f, 1, 2);
     const before = clone(f.controller.state.document.entries);
     f.model(async () => { throw new Error('synthetic model failure'); });
     await manualRange(f, 1, 2);
     assert.deepEqual(f.controller.state.document.entries, before);
     assert.match(f.controller.state.error, /synthetic model failure/);
+    assert.equal(f.generated(), 5, 'the initial attempt plus three retries follows the bounded retry policy');
+    assert.match(f.notices.find(item => item.tone === 'warning')?.message || '', /本次切片总结失败，发起重试：synthetic model failure/);
+    assert.equal(f.notices.at(-1).tone, 'error');
+    assert.match(f.notices.at(-1).message, /本次总结重试3次均失败：synthetic model failure/);
     const count = f.generated(); await f.controller.start(); assert.equal(f.generated(), count);
+});
+
+test('a transient summary failure retries in the background and reports the saved range once', async t => {
+    const f = await fixture(t); let attempts = 0;
+    f.model(async () => {
+        attempts += 1;
+        if (attempts <= 3) throw new Error('临时服务故障');
+        return JSON.stringify({slices: [{start: 1, end: 2, text: '重试后保存的合成经历。'}]});
+    });
+    await f.enable(); await f.flush();
+    assert.equal(attempts, 4);
+    assert.equal((await f.api.read(binding)).document.entries.length, 1);
+    assert.equal(f.notices.filter(item => item.tone === 'success' && /已存至记忆/.test(item.message)).length, 1);
+    assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：1–2/);
 });
 
 test('manual range batches continuously until complete without using or removing recent originals early', async t => {

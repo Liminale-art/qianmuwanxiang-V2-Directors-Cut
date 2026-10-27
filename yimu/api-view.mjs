@@ -57,7 +57,7 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     const test = button('测试连接', 'link', async () => { await api.testConnection(); status.textContent = '连接可用'; });
     const fetch = button('拉取模型', 'refresh', async () => { const list = await api.fetchModels(); status.textContent = list.length ? `已获取 ${list.length} 个模型` : '连接返回的模型列表为空'; });
     const nameRow = el('div', 'ym-api-preset-name'), name = input('连接预设名称'); name.placeholder = '预设名称';
-    const saveConfirm = button('确认保存预设', 'check', async () => { await api.savePreset(name.value); nameRow.hidden = true; status.textContent = '预设已保存'; }, true);
+    const saveConfirm = button('确认保存预设', 'save', async () => { await api.savePreset(name.value); nameRow.hidden = true; status.textContent = '预设已保存'; }, true);
     const saveCancel = button('取消保存预设', 'close', () => { nameRow.hidden = true; }, true);
     nameRow.append(name, saveConfirm, saveCancel); nameRow.hidden = true;
     const save = button('保存预设', 'save', () => { nameRow.hidden = false; name.value = api.read().model || ''; name.focus(); });

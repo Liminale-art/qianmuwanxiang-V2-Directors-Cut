@@ -266,7 +266,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
     const summarizeRow = el('div', 'ym-inline-row');
     const manualLabel = el('span', 'ym-manual-label');
-    manualLabel.append(createYimuIcon('edit', { document }), el('strong', '', '手动总结'));
+    manualLabel.append(el('strong', '', '手动总结'));
     summarizeRow.append(manualLabel, summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit);
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
     summarizeRangeForm.append(summarizeRow, summarizeNotice);
@@ -423,7 +423,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     manualForm.hidden = true;
     const manualInput = textarea('自定义切片内容');
     const manualTitle = el('input', 'ym-custom-title-input'); manualTitle.setAttribute('aria-label', '自定义切片名称'); manualTitle.placeholder = '自定义切片'; manualTitle.maxLength = MEMORY_TITLE_LIMIT;
-    const manualSave = iconButton('保存自定义切片', 'check', () => manualForm.requestSubmit(), 'ym-primary');
+    const manualSave = iconButton('保存自定义切片', 'save', () => manualForm.requestSubmit(), 'ym-primary');
     manualSave.disabled = true;
     manualInput.addEventListener('input', () => { manualSave.disabled = pendingButtons.has(manualSave) || !manualInput.value.trim(); });
     const manualActions = el('div', 'ym-actions');
@@ -874,7 +874,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const form = el('form', 'ym-edit-form'), input = textarea('编辑记忆内容', text);
         const titleInput = entry.kind === 'manual' ? el('input', 'ym-custom-title-input') : null;
         if (titleInput) { titleInput.setAttribute('aria-label', '编辑自定义切片名称'); titleInput.value = entry.title || ''; titleInput.placeholder = '自定义切片'; titleInput.maxLength = MEMORY_TITLE_LIMIT; }
-        const save = iconButton('保存修订', 'check', () => form.requestSubmit());
+        const save = iconButton('保存修订', 'save', () => form.requestSubmit());
         const finishEdit = () => {
             if (edits.get(entry.id) !== draft) return;
             edits.delete(entry.id);
@@ -1110,6 +1110,7 @@ export function mountEntries(onOpen, { document = globalThis.document } = {}) {
         const status = shortcutStatus(state);
         shortcut.hidden = preferences.showShortcut !== true;
         shortcut.dataset.ymState = status.tone;
+        shortcut.dataset.ymBusy = String(Boolean(state.busy && /正在(?:整理|重试|核对)/.test(String(state.status || ''))));
         shortcut.title = `忆幕：${status.message}`;
         shortcut.setAttribute('aria-label', `忆幕：${status.message}`);
     };
