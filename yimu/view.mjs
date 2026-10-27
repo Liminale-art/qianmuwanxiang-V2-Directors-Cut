@@ -141,7 +141,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     let settingsTimer = null, settingsSaving = false, settingsDraftRevision = null, settingsSaveFailed = false;
     let currentPage = 'overview', manualAfterId = null, openMenuId = null, draggingId = null, dragGeneration = 0;
     const pageScroll = new Map(), pageFocus = new Map(), pages = new Map(), navButtons = new Map();
-    const pageTitles = { overview: '概览', memory: '记忆', settings: '设置', manual: '自定义切片' };
+    const pageTitles = { overview: '导览', memory: '记忆', settings: '设置', manual: '自定义切片' };
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
@@ -265,7 +265,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
     const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
     const summarizeRow = el('div', 'ym-inline-row');
-    summarizeRow.append(el('span', '', '手动总结'), summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit);
+    const manualLabel = el('span', 'ym-manual-label');
+    manualLabel.append(createYimuIcon('edit', { document }), el('strong', '', '手动总结'));
+    summarizeRow.append(manualLabel, summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit);
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
     summarizeRangeForm.append(summarizeRow, summarizeNotice);
     summarizeRangeForm.addEventListener('submit', async event => {
@@ -295,7 +297,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall']],
     ]) {
-        const group = el(name === 'extra' ? 'details' : 'section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}`);
+        const group = el(name === 'extra' ? 'details' : 'section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
         group.append(el(name === 'extra' ? 'summary' : 'h3', 'ym-setting-title', title));
         const body = el('div', 'ym-settings-form'); group.append(body);
         settingsForm.append(group); for (const key of keys) settingGroups.set(key, body);
@@ -323,7 +325,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         input.addEventListener('input', readInput);
         input.addEventListener('change', readInput);
         input.addEventListener('blur', () => { clearTimeout(settingsTimer); void saveChangedSettings(); });
-        const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : ''}`);
+        const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}`);
         const labelNode = field(label, input);
         if (key === 'budget') labelNode.children[0].hidden = true;
         row.append(labelNode);
@@ -479,6 +481,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     filter.value = 'all'; toolbar.append(search, filter, stageButton, addManual);
     search.addEventListener('input', applyFilter); filter.addEventListener('change', applyFilter);
     const noMatch = el('p', 'ym-muted', '没有符合条件的记忆。'); noMatch.hidden = true;
+    const streamPreview = el('section', 'ym-card ym-stream-preview');
+    streamPreview.append(el('h3', 'ym-setting-title', '正在接收整理结果'));
+    const streamOutput = el('pre', 'ym-stream-output'); streamOutput.setAttribute('role', 'status'); streamOutput.setAttribute('aria-live', 'polite');
+    streamPreview.append(streamOutput); streamPreview.hidden = true;
     const promptContainer = el('section', 'ym-prompt-section');
     const promptView = mountPromptView(promptContainer, { document, showTitle: false,
         onSave: (config, meta = {}) => {
@@ -497,8 +503,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'), createYimuIcon('expand', { document }));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
-    pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder);
-    pages.get('memory').append(controlsRow, toolbar, stageForm, list, noMatch, deleted);
+    pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
+    pages.get('memory').append(controlsRow, toolbar, stageForm, streamPreview, list, noMatch, deleted);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);
 
@@ -638,6 +644,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         retry.hidden = !(state.failedWork && state.document?.enabled);
         retry.textContent = state.failedWork?.kind === 'stage' ? '重试阶段总结' : '重新总结失败部分';
         retry.disabled = !canSummarize || Boolean(state.busy);
+        streamOutput.textContent = typeof state.streamPreview === 'string' ? state.streamPreview : '';
+        streamPreview.hidden = !(Boolean(state.busy) && streamOutput.textContent);
         addManual.disabled = !available;
         search.disabled = filter.disabled = !available;
         for (const control of controls.values()) control.input.disabled = !available;

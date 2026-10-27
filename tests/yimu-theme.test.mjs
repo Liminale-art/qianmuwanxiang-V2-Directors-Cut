@@ -231,6 +231,9 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-setting-row:has\(> small\)[^\n]*flex-direction: column[^\n]*align-items: stretch/);
     assert.match(css, /\.ym-setting-numeric > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
     assert.match(css, /\.ym-dialog \.ym-setting-numeric > \.ym-field > input[^\n]*width: var\(--ym-setting-value-width\)/);
+    assert.match(css, /\.ym-setting-select > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
+    assert.match(css, /\.ym-extra-settings:not\(\[open\]\)[^\n]*padding-block: 0/);
+    assert.match(css, /\.ym-stream-output[^\n]*max-height: 190px/);
     assert.match(css, /\.ym-dialog \.ym-budget-group[^\n]*display: flex[^\n]*align-items: center/);
     assert.match(css, /@media \(max-width: 380px\)[\s\S]*\.ym-dialog \.ym-api-params input\[type="number"\][^\n]*padding-inline: 4px[^\n]*appearance: textfield/);
     assert.match(css, /\.ym-dialog \.ym-api-params input\[type="number"\]::-webkit-outer-spin-button[^\n]*-webkit-appearance: none/);

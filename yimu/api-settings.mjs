@@ -56,7 +56,7 @@ function errorText(error, config) {
     return String(message).replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, 240);
 }
 
-async function completion(response, config, signal) {
+async function completion(response, config, signal, onChunk) {
     const readContent = content => typeof content === 'string' ? content : Array.isArray(content)
         ? content.filter(part => part?.type === 'text' && typeof part.text === 'string').map(part => part.text).join('') : '';
     const check = json => { if (json?.error) fail(errorText(json.error, config)); };
@@ -65,7 +65,9 @@ async function completion(response, config, signal) {
         const reason = json?.choices?.[0]?.finish_reason;
         if (reason === 'length' || reason === 'max_tokens') fail('整理结果达到输出上限，未保存；请提高最大输出或缩小整理范围');
         if (reason && !['stop', 'end_turn'].includes(reason)) fail('服务未完整结束整理，结果未保存');
-        return readContent(json?.choices?.[0]?.message?.content ?? json?.content);
+        const result = readContent(json?.choices?.[0]?.message?.content ?? json?.content);
+        if (result) onChunk?.(result, result);
+        return result;
     }
     const reader = response.body?.getReader?.();
     if (!reader) fail('当前浏览器无法读取流式结果');
@@ -76,7 +78,10 @@ async function completion(response, config, signal) {
         if (data.trim() === '[DONE]') { complete = true; return; }
         let json; try { json = JSON.parse(data); } catch { fail('流式结果格式不完整，未保存'); }
         check(json);
-        const choice = json?.choices?.[0]; output += readContent(choice?.delta?.content ?? choice?.message?.content);
+        const choice = json?.choices?.[0];
+        const delta = readContent(choice?.delta?.content ?? choice?.message?.content);
+        output += delta;
+        if (delta) onChunk?.(delta, output);
         if (choice?.finish_reason) finish = choice.finish_reason;
     };
     try {
@@ -205,7 +210,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
         return { ok: true, scope: 'model-list' };
     }
-    async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens } = {}) {
+    async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens, onChunk } = {}) {
         await saving.catch(() => {}); let config = read();
         connection ||= config.mode === 'qianmu' ? effectiveConnection() : { revision: config.revision };
         assertCurrent(connection);
@@ -224,7 +229,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         try {
             const response = await request('/api/backends/chat-completions/generate', config,
                 { model: config.model, messages, temperature: config.temperature, max_tokens: outputTokens, stream: config.stream }, signal);
-            const result = await completion(response, config, signal); aborted(signal); assertCurrent(connection || { revision: config.revision });
+            const result = await completion(response, config, signal, onChunk); aborted(signal); assertCurrent(connection || { revision: config.revision });
             if (!result.trim()) fail('忆幕没有收到可用的整理结果');
             return result;
         } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }

@@ -17,7 +17,7 @@ const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
-    const state = { loading: false, error: '', errorPage: '', status: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Set(), failures = new Map();
@@ -30,6 +30,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     const emit = () => { if (!disposed) onChange(snapshotState()); };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
+    const streamChunk = binding => (_chunk, accumulated) => {
+        if (disposed || !isCurrent(binding) || typeof accumulated !== 'string') return;
+        state.streamPreview = accumulated.slice(-12000);
+        emit();
+    };
     const deferFor = (binding, task, stamp = generation) => {
         const target = clone(binding);
         defer(async () => {
@@ -138,7 +143,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                         host.clear(); prepared = null;
                         state.snapshot = null; state.document = null; state.lastUsed = null; state.sourceAvailable = false; state.invalidSourceIds = [];
                         state.story = {}; state.companion = {};
-                        state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.status = '';
+                        state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.streamPreview = ''; state.status = '';
                         state.error = error.message === '请先打开一个角色的聊天' ? '' : error.message;
                         state.errorPage = 'overview'; state.loading = false; emit(); return;
                     }
@@ -148,7 +153,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
                     host.clear(); prepared = null;
-                    state.document = null; state.defaults = null; state.lastUsed = null; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.document = null; state.defaults = null; state.lastUsed = null; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
                     state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
@@ -177,7 +182,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (ticket !== sequence || disposed) return;
                 if (identityFailed) {
                     state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null;
-                    state.busy = false; state.status = ''; state.invalidSourceIds = [];
+                    state.busy = false; state.streamPreview = ''; state.status = ''; state.invalidSourceIds = [];
                 }
                 host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.errorPage = 'overview'; state.loading = false; emit();
             }
@@ -198,6 +203,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (!force && failedJobs.has(failedKey)) return;
         failedJobs.delete(failedKey);
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
+        state.streamPreview = '';
         emit();
         let jobDocument = doc, snapshot = clone(state.snapshot);
         const defaults = clone(state.defaults);
@@ -263,7 +269,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (!run.fitsPrompt(prompt) && candidates.length) { candidates = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext }); }
                 if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
-                const response = await host.generate(prompt, { ...run.options, signal: controller.signal });
+                const response = await host.generate(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) });
+                if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await api.read(binding); adopt(binding, beforeSave);
                 if (beforeSave.defaults.revision !== defaults.revision || !beforeSave.document.enabled || beforeSave.document.epoch !== doc.epoch) throw new Error('整理期间设置已变化，本次结果未采用');
@@ -323,6 +330,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
+            if (isCurrent(binding)) state.streamPreview = '';
             if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}), runGeneration);
             emit();
         }
@@ -376,6 +384,7 @@ export function createController({ host, api, onChange = () => {}, countTokens =
         if (!force && failedJobs.has(failedKey)) return;
         failedJobs.delete(failedKey);
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
+        state.streamPreview = '';
         emit();
         let processed = false, cursor = first, failedStage = null;
         try {
@@ -419,7 +428,8 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
-                const response = await host.generate(stagePrompt(group.parents, settings), { ...run.options, signal: controller.signal });
+                const response = await host.generate(stagePrompt(group.parents, settings), { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) });
+                if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 const latest = await api.read(binding); adopt(binding, latest);
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
@@ -442,7 +452,11 @@ export function createController({ host, api, onChange = () => {}, countTokens =
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = 'memory'; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
             }
-        } finally { if (jobs.get(key) === controller) jobs.delete(key); emit(); }
+        } finally {
+            if (jobs.get(key) === controller) jobs.delete(key);
+            if (isCurrent(binding)) state.streamPreview = '';
+            emit();
+        }
     }
 
     async function executeAction(type, payload = {}) {

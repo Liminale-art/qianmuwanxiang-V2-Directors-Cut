@@ -241,13 +241,13 @@ export function createHost({
         return connectionApi.qianmuProfiles();
     }
 
-    async function generate(prompt, { profileId = '', model = '', connection, signal, systemPrompt = SUMMARY_SYSTEM, maxTokens } = {}) {
+    async function generate(prompt, { profileId = '', model = '', connection, signal, systemPrompt = SUMMARY_SYSTEM, maxTokens, onChunk } = {}) {
         aborted(signal);
         if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('没有可整理的聊天原文');
         const ctx = context();
         const selected = connection || connectionApi.effectiveConnection({ profileId, model });
         connectionApi.assertCurrent(selected);
-        if (selected.mode === 'external' || selected.mode === 'qianmu') return connectionApi.generate(prompt, { connection: selected, signal, systemPrompt, maxTokens });
+        if (selected.mode === 'external' || selected.mode === 'qianmu') return connectionApi.generate(prompt, { connection: selected, signal, systemPrompt, maxTokens, onChunk });
         if (selected.mode === 'st' && selected.contextTokens > 0 && summaryRequestBudget(prompt, systemPrompt)
             + selected.maxTokens > selected.contextTokens) throw new Error('整理内容超出此连接的上下文容量，请缩小整理范围或选择容量足够的连接');
         if (selected.mode === 'profile' && !selected.profileId) throw new Error('请选择 ST 连接预设');
@@ -273,6 +273,7 @@ export function createHost({
         connectionApi.assertCurrent(selected);
         const content = typeof result === 'string' ? result : result?.content;
         if (typeof content !== 'string' || !content.trim()) throw new Error('忆幕没有收到可用的整理结果');
+        onChunk?.(content, content);
         return content;
     }
 

@@ -127,7 +127,9 @@ test('streaming accepts chunked UTF-8 and keeps reasoning out of summary content
     const f = fixture(); await f.api.update({ ...external, stream: true });
     const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"reasoning_content":"private","content":"两人"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"初见"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
     f.answer = () => new Response(new ReadableStream({ start(controller) { for (let n = 0; n < bytes.length; n += 7) controller.enqueue(bytes.slice(n, n + 7)); controller.close(); } }), { headers: { 'content-type': 'text/event-stream' } });
-    assert.equal(await f.api.generate('原文'), '两人初见'); assert.equal(f.calls[0].body.stream, true);
+    const chunks = [];
+    assert.equal(await f.api.generate('原文', { onChunk: (delta, accumulated) => chunks.push([delta, accumulated]) }), '两人初见'); assert.equal(f.calls[0].body.stream, true);
+    assert.deepEqual(chunks, [['两人', '两人'], ['初见', '两人初见']]);
 });
 
 test('truncated stream and output-length stops never become usable memory', async () => {

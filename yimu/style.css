@@ -122,6 +122,8 @@
 .ym-settings-group { padding: 14px 16px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); min-width: 0; }
 .ym-settings-group > summary, .ym-interface-settings > .ym-switch-row { font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
 .ym-settings-group[open] > summary { margin-bottom: 14px; }
+.ym-extra-settings:not([open]) { padding-block: 0; }
+.ym-extra-settings:not([open]) > summary { min-height: 48px; align-items: center; }
 .ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
@@ -130,6 +132,10 @@
 .ym-setting-numeric > .ym-field { display: flex; align-items: center; gap: 10px; }
 .ym-setting-numeric > .ym-field > span { flex: 1 1 auto; min-width: 0; }
 .ym-dialog .ym-setting-numeric > .ym-field > input { flex: 0 0 var(--ym-setting-value-width); width: var(--ym-setting-value-width); text-align: center; font-variant-numeric: tabular-nums; }
+.ym-setting-select { --ym-setting-value-width: clamp(150px, 42vw, 260px); }
+.ym-setting-select > .ym-field { display: flex; align-items: center; gap: 10px; }
+.ym-setting-select > .ym-field > span { flex: 1 1 auto; min-width: 0; }
+.ym-dialog .ym-setting-select > .ym-field > select { flex: 0 1 var(--ym-setting-value-width); width: var(--ym-setting-value-width); min-width: 0; }
 .ym-dialog .ym-budget-group { display: flex; align-items: center; gap: 10px; }
 .ym-budget-group > .ym-setting-title { flex: 1 1 auto; min-width: 0; }
 .ym-budget-group > .ym-settings-form { flex: 0 0 clamp(84px, 24vw, 140px); min-width: 0; }
@@ -207,6 +213,11 @@
 .ym-history-numbers { white-space: nowrap; }
 .ym-manual-range { min-width: 0; margin: 0; }
 .ym-manual-range > .ym-inline-row > span { flex: 0 0 auto; white-space: nowrap; }
+.ym-manual-label { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto !important; font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
+.ym-manual-label > .ym-icon { width: 16px; height: 16px; flex-basis: 16px; color: var(--ym-accent); }
+.ym-stream-preview { display: grid; gap: 8px; padding: 12px 14px; }
+.ym-stream-preview .ym-setting-title { margin: 0; }
+.ym-stream-output { margin: 0; max-height: 190px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font: inherit; color: var(--ym-ink); }
 .ym-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0; margin: 0; border: 0; }
 .ym-stat { display: grid; gap: 5px; place-content: center; justify-items: center; min-width: 0; }
 .ym-dialog .ym-stat { min-height: 88px; padding: 13px 7px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); box-shadow: none; text-align: center; }

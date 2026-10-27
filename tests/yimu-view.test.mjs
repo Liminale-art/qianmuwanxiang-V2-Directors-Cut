@@ -218,6 +218,17 @@ test('first card has independent master and automatic switches, manual stays ava
     assert.equal(f.get('自动总结').closest('.ym-hero-switches'), master.closest('.ym-hero-switches'));
 });
 
+test('overview uses the 导览 label and memory page exposes bounded live summary output', t => {
+    const f = fixture(); t.after(() => f.view.destroy());
+    assert.ok(f.get('导览'));
+    assert.equal(f.document.querySelector('.ym-manual-label strong').textContent, '手动总结');
+    f.get('记忆').click();
+    f.render({ ...f.state, busy: true, streamPreview: '正在生成：两人初见' });
+    const preview = f.document.querySelector('.ym-stream-preview');
+    assert.equal(preview.hidden, false); assert.match(preview.textContent, /正在生成：两人初见/);
+    f.render({ ...f.state, busy: false, streamPreview: '' }); assert.equal(preview.hidden, true);
+});
+
 test('API offers the three intended connections and no numeric scope controls can rewrite stored legacy choices', async t => {
     const d = dom(), calls = [], ctx = { extensionSettings: {}, saveSettingsDebounced: async () => {} };
     const connectionApi = createApiSettings({ getContext: () => ctx });
@@ -837,7 +848,7 @@ test('formal pages show one surface at a time and navigating never performs a ba
     assert.deepEqual(visible(), ['overview']);
     f.get('记忆').click(); assert.deepEqual(visible(), ['memory']);
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
-    f.get('概览').click(); f.get('展开记忆备份').click(); assert.deepEqual(visible(), ['overview']);
+    f.get('导览').click(); f.get('展开记忆备份').click(); assert.deepEqual(visible(), ['overview']);
     const card = f.get('展开记忆备份').parentElement; assert.equal(card.tagName, 'SECTION');
     const panel = f.get('忆幕').querySelector('#ym-tool-panel-backup');
     assert.equal(f.get('展开记忆备份').getAttribute('aria-expanded'), 'true'); assert.equal(panel.hidden, false);
@@ -978,7 +989,7 @@ test('empty-chat controls remain visible and disabled while default prompt editi
     assert.equal(f.get('展开记忆备份').disabled,false);assert.equal(f.get('导入记忆').disabled,false);assert.equal(f.get('导出记忆').disabled,true);
     assert.equal(f.get('续接楼层').disabled,true);assert.equal(f.get('建立新聊天').disabled,true);
     f.get('记忆').click();assert.equal(f.get('搜索记忆').disabled,true);assert.equal(f.get('筛选记忆').disabled,true);assert.equal(stageControl(f).disabled,true);
-    f.get('概览').click();f.get('展开总结提示词').click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
+    f.get('导览').click();f.get('展开总结提示词').click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
     text.value='仅依据正文，保留人物所知的区别。';text.emit('input');f.get('保存叙事与依据').click();await f.flush();
     assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'settings');assert.equal(f.calls[0].payload.global,true);assert.equal(f.calls[0].payload.expectedRevision,7);
     assert.equal(f.calls[0].payload.values.prompts.groups.summary[0].text,text.value);
@@ -1071,7 +1082,7 @@ test('stage expands inline, toggles off with the same icon, and explicitly submi
     const first=entry(),second=entry({id:'b',source:{start:4,end:6}});
     const f=fixture({sourceAvailable:true,document:{...state().document,enabled:true,entries:[first,second]},snapshot:{...state().snapshot,messages:Array.from({length:11},()=>({mes:'synthetic'}))}});t.after(()=>f.view.destroy());
     f.get('记忆').click();const icon=stageControl(f),panel=f.document.querySelector('.ym-stage-form');
-    icon.click();assert.equal(panel.hidden,false);assert.equal(panel.parentNode.dataset.page,'memory');assert.equal(f.get('概览').getAttribute('aria-selected'),'false');
+    icon.click();assert.equal(panel.hidden,false);assert.equal(panel.parentNode.dataset.page,'memory');assert.equal(f.get('导览').getAttribute('aria-selected'),'false');
     assert.equal(f.get('取消阶段整理'),undefined);assert.equal(f.get('包含自定义切片').getAttribute('aria-pressed'),'false');
     icon.click();assert.equal(panel.hidden,true);assert.equal(icon.getAttribute('aria-expanded'),'false');
     icon.click();f.get('包含自定义切片').click();assert.equal(f.get('包含自定义切片').getAttribute('aria-pressed'),'true');
