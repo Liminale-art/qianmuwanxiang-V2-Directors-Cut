@@ -107,7 +107,7 @@ export function fontScopeCss(scope, family, selection = {}) {
   // never rewrites another extension's stylesheet or its enabled state.
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
-  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
   // Classic Qianmu panels may follow the applied interface family without
   // widening ST_TARGET or changing the host's native --mainFontFamily. Paper

@@ -27,7 +27,7 @@ function editableWebSource(font) {
 // are carried only by an explicit font-package export. Deployments without
 // account storage remain fully local without a user-facing sync switch.
 export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent, document = globalThis.document,
-  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel, getPreviewFontSize = () => 18,
+  notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
   webResolver = resolveWebFontSource, localReader = createLocalFontRecord, accountSyncFactory = createFontAccountSync,
   builtinReader = readBuiltinFont } = {}) {
@@ -178,8 +178,10 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     }, ACCOUNT_PUSH_DEBOUNCE_MS);
   }
   function uiState() {
-    const state = read(), requestedSize = Number(getPreviewFontSize());
-    const defaultPreviewSize = Number.isFinite(requestedSize) && requestedSize >= 1 && requestedSize <= 200 ? requestedSize : 18;
+    const state = read();
+    // Preview sizing is a font-library concern. It must not inherit the
+    // prose-layout font size, which is a separate reading preference.
+    const defaultPreviewSize = 18;
     return { ...state, defaultPreviewSize, entries: state.fonts.map(font => ({ ...font, sourceType: font.source.kind, editableSource: editableWebSource(font), editableSourceMissing: font.source.kind === 'web' && !editableWebSource(font), variantKnown: font.source.variantKnown,
       weights: [...new Set(font.faces.map(face => face.weight || '400'))],
       styles: [...new Set(font.faces.map(face => face.style || 'normal'))], status: statuses.get(font.id)?.status === 'error' ? statuses.get(font.id).message : '' })) };

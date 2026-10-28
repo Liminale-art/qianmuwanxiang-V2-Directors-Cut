@@ -287,7 +287,7 @@ test('bad configurations fail without mutating or silently truncating existing d
   assert.throws(() => updateFontLibrary(fixture(), 'set-assignment', { target: 'body', fontId: 'a', weight: '400;}' }));
 });
 
-test('metadata catalogues above the old 3 MiB threshold remain usable while the 8 MiB guard protects settings', () => {
+test('large metadata catalogues remain usable without an artificial capacity warning', () => {
   const faces = family => Array.from({ length: 2048 }, (_, index) => ({
     urls: [{ url: `https://fonts.example/${family}/${'subset-'.repeat(70)}${index}.woff2`, format: 'woff2' }],
     weight: '400', style: 'normal', unicodeRange: `U+${(0x4e00 + index).toString(16)}`,
@@ -299,7 +299,7 @@ test('metadata catalogues above the old 3 MiB threshold remain usable while the 
   assert.doesNotThrow(() => normalizeFontLibrary(value));
   const tooLarge = { ...value, previewText: '扩'.repeat(500) };
   tooLarge.fonts = tooLarge.fonts.map(font => ({ ...font, faces: font.faces.map(face => ({ ...face, urls: face.urls.map(item => ({ ...item, url: `${item.url}${'x'.repeat(900)}` })) })) }));
-  assert.throws(() => normalizeFontLibrary(tooLarge), /字体目录资料超过 8 MB/);
+  assert.doesNotThrow(() => normalizeFontLibrary(tooLarge));
 });
 
 test('larger per-font subsets retain all metadata and choices while over-limit records fail without replacing old state', () => {

@@ -51,7 +51,7 @@ test('native message metadata and recent-chat text are exact body targets, exclu
   assert.ok(body.includes('.welcomePanel .recentChatList > .recentChat > .recentChatInfo'));
   assert.ok(st.includes(':not(:is(#chat > .mes > .mesAvatarWrapper,'));
   assert.ok(st.includes('.ch_name .name_text, .ch_name .timestamp, .recentChatInfo))'));
-  assert.doesNotMatch(body, /\.recentChat\s*\*|\.mes\s*\*|font-size:|line-height:/);
+  assert.doesNotMatch(body, /\.recentChat\s*\*|\.mes\s*\*/);
 });
 
 test('chat composer belongs only to the body assignment without introducing size or placeholder overrides', () => {
@@ -62,13 +62,15 @@ test('chat composer belongs only to the body assignment without introducing size
   assert.match(st, /:not\(:is\(textarea#send_textarea,/);
   assert.ok(st.includes(':not(:has(textarea#send_textarea, .mes_text,'), 'the interface must not change composer ancestors either');
   assert.ok(st.includes('button, input, textarea, select'), 'other host controls remain in the interface scope');
-  for (const css of [body, st]) assert.doesNotMatch(css, /font-size:|line-height:|::placeholder/);
+  assert.doesNotMatch(body, /textarea#send_textarea[^}]*font-size:/);
+  assert.doesNotMatch(st, /font-size:|line-height:|::placeholder/);
 });
 
 test('native ST floor editor follows the prose font while it replaces a message body', () => {
   const body = fontScopeCss('body', fontPreviewFamily('body-font'));
   const st = fontScopeCss('st', fontPreviewFamily('ui-font'));
   assert.match(body, /#chat \.mes \.mes_text textarea\.edit_textarea/);
+  assert.match(body, /#chat \.mes \.mes_text textarea\.edit_textarea \{ font-size:var\(--sd-prose-font-size, inherit\) !important; \}/);
   assert.doesNotMatch(st, /#chat \.mes \.mes_text textarea\.edit_textarea/);
 });
 
@@ -252,13 +254,13 @@ test('catalog registration and actual list verification do not apply to ST or pr
   f.runtime.dispose(); assert.equal(f.faces.size, 0);
 });
 
-test('independent body and interface use separate opaque fonts; no global font or size changes', async () => {
+test('independent body and interface use separate opaque fonts without global font mutation', async () => {
   const f = fixture();
   await f.runtime.sync(state([web('reading'), web('interface')], { body: choice('reading'), st: choice('interface', { weight: 500 }) }));
   assert.match(f.css(), new RegExp(fontPreviewFamily('reading')));
   assert.match(f.css(), new RegExp(fontPreviewFamily('interface')));
   assert.match(f.css(), /font-weight:500/);
-  assert.doesNotMatch(f.css(), /font-size:|line-height:|--mainFontFamily\s*:/);
+  assert.doesNotMatch(f.css(), /--mainFontFamily\s*:/);
   assert.deepEqual(f.anchors, ['before', 7], 'the two scope changes paint together');
   f.runtime.dispose(); assert.equal(f.css(), '');
 });

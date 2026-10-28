@@ -122,7 +122,7 @@ try {
         const { createFontLibraryView } = await import('./qianmu-font-library-view.js');
         const { createQianmuAppearanceSession } = await import('./qianmu-appearance-session.js');
         const { updateAppearancePreferences } = await import('./qianmu-appearance-settings.js');
-        window.saved = 0; window.downloads = []; window.notifications = []; window.localWrites = []; window.confirmCalls = []; window.acceptDelete = true; window.prosePreviewSize = 19; window.rejectNextFontSave = false;
+        window.saved = 0; window.downloads = []; window.notifications = []; window.localWrites = []; window.confirmCalls = []; window.acceptDelete = true; window.rejectNextFontSave = false;
         window.owner = {};
         document.body.classList.add('sd-prose-layout');
         document.body.innerHTML = '<aside id="host"><button id="host-button">ST 界面</button><input id="host-input" value="ST 输入"><i id="host-icon" class="fa-solid">★</i><strong id="host-strong">标题</strong></aside><div id="chat"><div class="mes"><div class="mes_text"><p id="host-prose">正文 ABC <em id="host-em">斜体</em><strong id="host-bold">粗体</strong></p><code id="host-code">const x = 1;</code></div></div></div><div id="story-director-modal"><section class="sd-window"><header class="sd-header"><h2 id="main-title">千幕</h2></header></section></div><div id="story-director-floor-nav"><div class="sd-floor-shell"><section class="sd-floor-panel"><header><div><h3>楼层工具</h3><p>共 12 层</p></div><button type="button" class="sd-floor-close">×</button></header><nav class="sd-floor-tabs"><button>楼层跳转</button><button>正文排版</button></nav><section class="sd-floor-view"><div class="qm-font-entry"><small data-font-library-summary>当前：原生字体</small><button data-font-library>字体库</button></div><p>原排版控件</p></section></section></div></div>';
@@ -138,7 +138,6 @@ try {
         // font library must not add a global close listener or intercept input.
         floor.querySelector('.sd-floor-backdrop').addEventListener('click', closeSyntheticFloor);
         window.createSyntheticLibrary = () => createFontLibrary({ getOwner: () => owner, resolveNamespace: async () => 'st-user:synthetic-font-browser', isCurrent: () => true,
-            getPreviewFontSize: () => prosePreviewSize,
             viewFactory: options => createFontLibraryView({ ...options, initialSession: { folder: '旧会话隐藏分类', tags: ['失效标签筛选'], ...options.initialSession } }),
             localStoreFactory: options => { const store = createFontLocalStore(options); window.localStore = store; return { ...store, put: async (...args) => { localWrites.push(args[0]); return store.put(...args); } }; },
             save: () => { if (rejectNextFontSave) { rejectNextFontSave = false; throw new Error('Synthetic font settings save rejected'); } saved++; }, download: async (blob, name) => { downloads.push({ name, text: await blob.text() }); }, confirm: async (...args) => { confirmCalls.push(args); return acceptDelete; },
@@ -227,10 +226,10 @@ try {
     await setAddOpen(false); assert.equal(await page.locator('[data-font-web-tags]').isVisible(), false);
     assert.equal(await page.evaluate(() => window.closedPanels || 0), 0);
     record('The add card starts expanded only for an empty library, folds existing-library controls together and never mistakes internal toggles for an outside close');
-    assert.equal(await page.locator('[data-font-preview-size]').inputValue(), '19');
+    assert.equal(await page.locator('[data-font-preview-size]').inputValue(), '18');
     assert.deepEqual(await page.locator('[data-font-preview-size] option:not(:disabled)').evaluateAll(nodes => nodes.map(node => Number(node.value))), [12, 14, 16, 18, 20]);
-    assert.equal(await page.locator('[data-font-preview-size] option:checked').evaluate(node => node.disabled), true, 'The prose-derived 19px initial value is preserved as a non-selectable current value');
-    assert.equal(await page.locator('[data-font-sample]').evaluate(node => getComputedStyle(node).fontSize), '19px');
+    assert.equal(await page.locator('[data-font-preview-size] option:checked').evaluate(node => node.disabled), false, 'The library preview starts from its own 18px default instead of the prose layout size');
+    assert.equal(await page.locator('[data-font-sample]').evaluate(node => getComputedStyle(node).fontSize), '18px');
     assert.equal(await page.locator(`[data-font-apply="${webId}"]`).evaluate(node => node.selectedIndex), -1);
     assert.deepEqual(await page.locator(`[data-font-apply="${webId}"] option`).allTextContents(), ['正文', '界面', '全部']);
     assert.equal(await page.locator('option[value="restore-shared"],.qm-font-apply option[value=""]').count(), 0, 'Application menus have no redundant placeholder or cancel-all item');
