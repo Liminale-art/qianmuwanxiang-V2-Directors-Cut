@@ -65,6 +65,13 @@ test('chat composer belongs only to the body assignment without introducing size
   for (const css of [body, st]) assert.doesNotMatch(css, /font-size:|line-height:|::placeholder/);
 });
 
+test('native ST floor editor follows the prose font while it replaces a message body', () => {
+  const body = fontScopeCss('body', fontPreviewFamily('body-font'));
+  const st = fontScopeCss('st', fontPreviewFamily('ui-font'));
+  assert.match(body, /#chat \.mes \.mes_text textarea\.edit_textarea/);
+  assert.doesNotMatch(st, /#chat \.mes \.mes_text textarea\.edit_textarea/);
+});
+
 test('composer body rules share failure retention, restore, shared selection and master disable semantics', async () => {
   const f = fixture({ load: async request => { if (request.includes(fontPreviewFamily('bad'))) throw Error('unavailable'); return [{}]; } });
   const fonts = [web('body-font'), web('ui-font'), web('bad')], body = choice('body-font', { weight: '700', style: 'italic' }), st = choice('ui-font');

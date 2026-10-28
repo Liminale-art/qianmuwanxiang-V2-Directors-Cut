@@ -2,6 +2,11 @@
 // reaches the page. Registering preview faces never applies a font to ST.
 const PROSE_ROOT = '#chat .mes .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)))';
 const PROSE_RUN = '#chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"]';
+// ST temporarily replaces a message's rendered body with this textarea while
+// a floor is being edited. It lives inside `.mes_text`, which is deliberately
+// excluded from the broad interface selector below, so it needs an explicit
+// prose-font target of its own.
+const PROSE_EDIT = '#chat .mes .mes_text textarea.edit_textarea';
 // Without the optional layout feature, mixed messages have no prose-run
 // wrappers. Only their ordinary direct paragraphs are safe to select; raw
 // text beside authored cards deliberately retains native typography.
@@ -102,7 +107,7 @@ export function fontScopeCss(scope, family, selection = {}) {
   // never rewrites another extension's stylesheet or its enabled state.
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
-  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  if (scope === 'body') return layer(`textarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
   // Classic Qianmu panels may follow the applied interface family without
   // widening ST_TARGET or changing the host's native --mainFontFamily. Paper

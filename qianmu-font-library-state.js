@@ -1,6 +1,13 @@
-import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-progress-3';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-progress-4';
 
 export const FONT_LIBRARY_SAMPLE = '一念起幕，万象成诗。 AaBbCc123456';
+// The directory keeps validated web-font metadata (URLs, unicode ranges and
+// assignments), never binary font bodies.  Three MiB was too small for a
+// legitimate catalogue containing several CJK subset families, so a new
+// font could fail merely because the existing directory had grown.  Keep the
+// guard aligned with the account catalogue transport; this is metadata only
+// and is unrelated to the deliberately unbounded local font-file size.
+export const FONT_LIBRARY_CONFIG_LIMIT_BYTES = 8 * 1024 * 1024;
 const LEGACY_FONT_LIBRARY_SAMPLES = new Set(['风过长街，故事仍在继续。The quick brown fox 0123456789.', '一蝶振翅，万象入幕。', '一蝶振翅，千幕万象。 AaBbCc123456']);
 const fail = message => { throw new Error(message); };
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -39,7 +46,8 @@ export function fontAssignment(value = {}) {
 export function normalizeFontLibrary(value) {
   if (value == null) return { version: 1, enabled: true, syncLocalOriginals: true, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment() };
   if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
-  if (JSON.stringify(value).length > 3 * 1024 * 1024) fail('字体库配置过大');
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  if (serializedBytes > FONT_LIBRARY_CONFIG_LIMIT_BYTES) fail('字体目录资料超过 8 MB，请移除不需要的网络分片后重试');
   if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail('字体启用设置无效');
   if (value.syncLocalOriginals !== undefined && typeof value.syncLocalOriginals !== 'boolean') fail('字体原件同步设置无效');
   const seen = new Set();
