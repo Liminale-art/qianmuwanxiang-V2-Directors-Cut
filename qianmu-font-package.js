@@ -3,7 +3,6 @@ import { Reader, Writer, ZipReader, ZipWriter } from './vendor/zip-js-2.24.0/ind
 import { FONT_SOURCE_LIMITS, validateFontPackMetadata, validateLocalFontHeader } from './qianmu-font-sources.js?v=1.59.482-font-progress-4';
 
 export const FONT_ARCHIVE_MANIFEST = 'manifest.json';
-export const FONT_ARCHIVE_METADATA_BYTES = 8 * 1024 * 1024;
 export const FONT_ARCHIVE_CHUNK_BYTES = 256 * 1024;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -71,10 +70,8 @@ function requireBlob(blob) {
 }
 
 function manifestBytes(metadata, localFiles) {
-    const bytes = encoder.encode(JSON.stringify({ type: 'qianmu-font-library', version: 2, fonts: metadata.records,
+    return encoder.encode(JSON.stringify({ type: 'qianmu-font-library', version: 2, fonts: metadata.records,
         previewText: metadata.previewText, folders: metadata.folders, localFiles }));
-    if (bytes.byteLength > FONT_ARCHIVE_METADATA_BYTES) fail('字体包目录资料过大');
-    return bytes;
 }
 
 async function validateOriginal(reader, expectedFormat) {
@@ -170,12 +167,12 @@ async function preflightDirectory(input, context) {
         if (position > end - 76) fail('字体包 ZIP64 目录不完整');
         const recordBytes = await input.readUint8Array(position, 56), record = new DataView(recordBytes.buffer);
         const recordSize = uint64(record, 4);
-        if (record.getUint32(0, true) !== 0x06064b50 || recordSize < 44 || recordSize > FONT_ARCHIVE_METADATA_BYTES
+        if (record.getUint32(0, true) !== 0x06064b50 || recordSize < 44
             || position + 12 + recordSize !== end - 20 || record.getUint32(16, true) || record.getUint32(20, true)) fail('字体包 ZIP64 目录不正确');
         count = uint64(record, 32); directoryBytes = uint64(record, 40); directoryOffset = uint64(record, 48); directoryEnd = position;
         if (uint64(record, 24) !== count) fail('字体包 ZIP64 目录不一致');
     }
-    if (count < 1 || count > FONT_SOURCE_LIMITS.records + 1 || directoryBytes > FONT_ARCHIVE_METADATA_BYTES
+    if (count < 1 || count > FONT_SOURCE_LIMITS.records + 1
         || directoryOffset > directoryEnd || directoryBytes !== directoryEnd - directoryOffset) fail('字体包 ZIP 目录数量或大小不正确');
     context.check();
     return count;
@@ -215,7 +212,7 @@ export async function openFontArchive(file, options = {}) {
             await entry.getData(undefined, { checkOverlappingEntryOnly: true, useWebWorkers: false });
         }
         const manifestEntry = entries.get(FONT_ARCHIVE_MANIFEST);
-        if (!manifestEntry || manifestEntry.uncompressedSize > FONT_ARCHIVE_METADATA_BYTES) fail('字体包缺少有效清单或清单过大');
+        if (!manifestEntry) fail('字体包缺少有效清单');
         const manifestBlob = await entryBlob(manifestEntry, context, manifestEntry.uncompressedSize);
         let manifest;
         try {

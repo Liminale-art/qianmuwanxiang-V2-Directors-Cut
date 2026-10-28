@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '../vendor/zip-js-2.24.0/index-native.min.js';
-import { buildFontArchive, openFontArchive, FONT_ARCHIVE_METADATA_BYTES, FONT_ARCHIVE_CHUNK_BYTES } from '../qianmu-font-package.js';
+import { buildFontArchive, openFontArchive, FONT_ARCHIVE_CHUNK_BYTES } from '../qianmu-font-package.js';
 
 const noWait = async () => {};
 const local = (id = 'local-1') => ({ id, name: `字体 ${id}`, source: { kind: 'local', fileName: `${id}.ttf`, format: 'truetype' },
@@ -282,9 +282,16 @@ for (const [label, mutate] of [
     ['unsafe JSON fields', async () => archive('{"type":"qianmu-font-library","version":2,"__proto__":{}}')],
     ['wrong schema', async () => { const value = manifest(); value.version = 1; return archive(value); }],
     ['duplicate metadata IDs', async () => archive(manifest([local(), local()]))],
-    ['oversized manifest', async () => archive(' '.repeat(FONT_ARCHIVE_METADATA_BYTES + 1))],
 ]) test(`archive rejects ${label} before exposing the import handle`, async () => {
     await assert.rejects(async () => openFontArchive(await mutate(), { yieldTask: noWait }));
+});
+
+test('new ZIP manifests do not impose an artificial 8 MiB metadata warning', async () => {
+    const largeManifest = JSON.stringify({ type: 'qianmu-font-library', version: 2, fonts: [], previewText: '',
+        folders: [], localFiles: {} }) + ' '.repeat(8 * 1024 * 1024 + 1);
+    const result = await openFontArchive(await archive(largeManifest, { 'fonts/local-1.bin': null }), { yieldTask: noWait });
+    assert.equal(result.totalBytes > 8 * 1024 * 1024, true);
+    await result.close();
 });
 
 test('directory-entry limits reject oversized directories before reading/decompressing metadata', async () => {
