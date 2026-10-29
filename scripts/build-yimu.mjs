@@ -7,7 +7,7 @@ import { VERSION } from '../yimu/contract.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const FRONTEND = ['manifest.json', 'index.mjs', 'host.mjs', 'budget.mjs', 'client.mjs', 'contract.mjs', 'stage-contract.mjs', 'recall-contract.mjs', 'recall.mjs', 'layers.mjs', 'core.mjs', 'runtime.mjs', 'view.mjs', 'theme.mjs', 'style.css', 'logo.svg', 'LICENSE',
     'source-scope.mjs', 'story-contract.mjs', 'story-runtime.mjs', 'story-view.mjs', 'companion-contract.mjs', 'companion-runtime.mjs', 'companion-view.mjs', 'backup-runtime.mjs', 'backup-view.mjs', 'icons.mjs', 'api-settings.mjs', 'api-view.mjs',
-    'timeline.mjs', 'scene-contract.mjs', 'scene-view.mjs', 'prompt-settings.mjs', 'prompt-view.mjs', 'retrieval-view.mjs', 'nav.mjs', 'release-version.mjs'];
+    'timeline.mjs', 'scene-contract.mjs', 'scene-view.mjs', 'prompt-settings.mjs', 'prompt-view.mjs', 'retrieval-view.mjs', 'external-memory-contract.mjs', 'nav.mjs', 'release-version.mjs'];
 export const BACKEND = ['package.json', 'server-plugin.mjs', 'server-store.mjs', 'contract.mjs', 'stage-contract.mjs', 'recall-contract.mjs', 'LICENSE', 'story-contract.mjs', 'story-store.mjs', 'companion-contract.mjs', 'backup-contract.mjs', 'backup-codec.mjs', 'backup-store.mjs', 'backup-merge.mjs', 'timeline.mjs', 'scene-contract.mjs', 'prompt-settings.mjs'];
 export async function buildYimu(destination) {
     const output = path.resolve(destination);

@@ -571,7 +571,7 @@ test('source changes and saved conflict choices appear inline while the active d
     f.render({ document: { ...f.state.document, entries: [entry({ edited: true, revision: 3, status: 'invalid', conflicts: [{ id: 'another', text: '另一端已保存的候选' }] })] } });
     assert.equal(f.get('编辑记忆内容'), input); assert.equal(input.isConnected, true); assert.equal(f.document.activeElement, input);
     assert.equal(input.value, '尚未完成的修订');
-    assert.match(f.get('忆幕').querySelector('.ym-memory').textContent, /原文已变化，人工修订仍照常注入/);
+    assert.match(f.get('忆幕').querySelector('.ym-memory').textContent, /正文发生变化/);
     assert.ok(f.get('采用此版本')); assert.ok(f.get('保留已保存版本'));
 });
 
@@ -652,7 +652,7 @@ test('an unacknowledged source invalidation is visible without changing the cano
     const original = entry({ edited: true });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [original] }, sourceAvailable: true, invalidSourceIds: [original.id] }); t.after(() => f.view.destroy());
     const card = f.get('忆幕').querySelector('.ym-memory');
-    assert.match(card.textContent, /原文已变化，人工修订仍照常注入/);
+    assert.match(card.textContent, /正文发生变化/);
     assert.match(card.className, /ym-source-stale/);
     assert.ok(card.querySelector('.ym-memory-text'));
     assert.equal(original.status, 'active'); assert.ok(f.get('保留为自定义切片'));

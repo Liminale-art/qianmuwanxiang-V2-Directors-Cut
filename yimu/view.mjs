@@ -779,8 +779,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
         card.insertBefore(content, card.children[0] || null); card.insertBefore(top, content);
         if (entry.status === 'invalid' && !(entry.kind === 'excerpt' && !memoryText(entry).trim())) {
-            const reason = entry.kind === 'stage' ? '所含切片已变化' : '原文已变化';
-            content.append(el('p', 'ym-inline-warning', entry.edited ? `${reason}，人工修订仍照常注入。` : `${reason}，仍照常注入。`));
+            const reason = entry.kind === 'stage' ? '所含切片发生变化' : '正文发生变化';
+            content.append(el('p', 'ym-inline-warning', reason));
         }
         appendMemoryText(content, entry);
         const actions = el('div', 'ym-actions ym-entry-actions'), fixed = el('div', 'ym-fixed-actions');
