@@ -442,6 +442,14 @@ test('controlled recall uses one default-on trial switch and saves the existing 
     assert.equal(f.get('按需回查细摘要'), undefined);
 });
 
+test('custom-slice sharing is an explicit Yimu setting and defaults off', async t => {
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [] } }); t.after(() => f.view.destroy());
+    const control = f.get('允许伴读使用自定义切片');
+    assert.equal(control.checked, false);
+    control.checked = true; control.emit('change'); await f.flush();
+    assert.deepEqual(f.calls.at(-1).payload.values, { companionShareCustom: true });
+});
+
 test('the renamed trial switch preserves old global and chat-level false values without writing a migration', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: false } } });

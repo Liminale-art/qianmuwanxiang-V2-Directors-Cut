@@ -226,6 +226,28 @@ export function narrativeTerms(text) {
     return new Set(words.filter(word => word.length > 1).slice(-200));
 }
 
+/**
+ * Keep companion sharing deliberately small and explicit. Normal source-backed
+ * Yimu slices are shareable once the chat association is enabled. Custom slices
+ * are private by default; a stage that contains one is also withheld as a
+ * whole, because a generated stage is not safely separable back into its
+ * manual and source-backed portions. This is a policy filter, not a validity
+ * check: source hashes and disabled/deleted entries have already been handled
+ * by selectMemories/buildPlan.
+ */
+export function filterCompanionEntries(entries = [], document = {}, { includeCustom = false } = {}) {
+    if (includeCustom) return entries;
+    const byId = new Map((document.entries || []).map(entry => [entry.id, entry]));
+    const hasCustomParent = entry => {
+        if (entry.kind === 'manual') return true;
+        if (entry.kind === 'stage') return (entry.source?.parents || []).some(ref => byId.get(ref.id)?.kind === 'manual')
+            || (entry.customSlices || []).length > 0;
+        if (entry.kind === 'excerpt') return byId.get(entry.parent?.id)?.kind === 'manual';
+        return false;
+    };
+    return entries.filter(entry => !hasCustomParent(entry));
+}
+
 export function selectMemories(document, snapshot, settings, hashes, type = '') {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;

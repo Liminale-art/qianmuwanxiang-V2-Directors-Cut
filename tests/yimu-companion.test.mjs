@@ -7,7 +7,7 @@ import {createCompanionActions} from '../yimu/companion-runtime.mjs';
 import {validateCompanion, companionEntries, sameCompanionContext} from '../yimu/companion-contract.mjs';
 import {mountCompanionView} from '../yimu/companion-view.mjs';
 import {createDocument, createDefaults, applyOperation, fingerprintMessages, stageSourceFromParents} from '../yimu/contract.mjs';
-import {buildPlan} from '../yimu/core.mjs';
+import {buildPlan, filterCompanionEntries} from '../yimu/core.mjs';
 import {memoryMessage, byteBudget} from '../yimu/budget.mjs';
 
 const clone = value => structuredClone(value);
@@ -178,7 +178,7 @@ test('associated book and dialog are background only and cannot cover or replace
 test('reverse reader is opt-in, exact account/persona/story, and exposes no unprocessed raw or companion echo',async t=>{
     const f=await fixture(t), item=f.item();
     assert.equal((await f.bridge.consume(item)).active,false);assert.equal(f.apiReads,0);
-    await f.link();f.state.document.entries=[entry('manual','只属于故事的明确人工记忆')];
+    await f.link();f.state.document.settings={companionShareCustom:true};f.state.document.entries=[entry('manual','只属于故事的明确人工记忆')];
     const result=await f.bridge.consume(item);
     assert.equal(result.active,true);assert.match(result.text,/明确人工记忆/);assert.doesNotMatch(result.text,/合成第|月球|甲的离别/);
     assert.deepEqual(result.consumedSliceIds,['fiction','discussion']);
@@ -257,7 +257,7 @@ test('a mismatched server binding or moved document cannot activate reverse use 
 });
 
 test('reverse text fits its complete wrapper budget and skips whole oversized entries',async t=>{
-    const f=await fixture(t);await f.link();
+    const f=await fixture(t);await f.link();f.state.document.settings={companionShareCustom:true};
     f.state.document.entries=[entry('huge','过大条目'.repeat(2000)),entry('small','完整的小记忆')];
     const result=await f.bridge.consume(f.item());assert.match(result.text,/完整的小记忆/);assert.doesNotMatch(result.text,/过大条目/);
     assert.ok(byteBudget([{role:'system',content:result.text}])<=6000);
@@ -326,11 +326,21 @@ test('preview shows bounded source nature and edited cutoff disables saving unti
     f.input('checkbox').checked=true;f.input('checkbox').emit('change');assert.equal(f.button('确认关联以上摘要').disabled,true);
 });
 
-test('empty results show factual omissions without a confirm button or empty cards',async t=>{
+test('empty results do not show source-count diagnostics or an empty confirm button',async t=>{
     const f=await viewFixture(t);await f.list();f.state.companion.omitted={future:2,unknown:1,mixed:1};f.render();
-    assert.match(f.view.element.textContent,/超出已读范围 2 条/);assert.equal(f.button('确认关联以上摘要'),undefined);
+    assert.doesNotMatch(f.view.element.textContent,/超出已读范围|来源不完整|混合来源/);assert.equal(f.button('确认关联以上摘要'),undefined);
     f.state.companion.list={account:'st-user:fixture',items:[]};f.render();assert.equal(f.nodes('input').length,0);
     assert.match(f.view.element.textContent,/本机没有可关联/);
+});
+
+test('companion sharing keeps custom slices private unless the Yimu setting explicitly allows them', () => {
+    const source = {id:'source', kind:'summary', text:'正文记忆'};
+    const custom = {id:'custom', kind:'manual', text:'用户私人补充'};
+    const stage = {id:'stage', kind:'stage', text:'混合阶段总结', source:{parents:[{id:'source',revision:1},{id:'custom',revision:1}]} };
+    const excerpt = {id:'excerpt', kind:'excerpt', parent:{id:'custom'}, text:'私人回查'};
+    const document = {entries:[source, custom]};
+    assert.deepEqual(filterCompanionEntries([source, custom, stage, excerpt], document).map(item=>item.id), ['source']);
+    assert.deepEqual(filterCompanionEntries([source, custom, stage, excerpt], document, {includeCustom:true}).map(item=>item.id), ['source','custom','stage','excerpt']);
 });
 
 test('changing selected archive or chat resets ownership consent; unavailable service disables actions',async t=>{

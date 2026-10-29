@@ -19,7 +19,7 @@ export function mountCompanionView({ document, el, button, onAction, onNotice = 
         if (signature === last) return; last = signature;
         body.replaceChildren();
         if (linked) {
-            body.append(el('p', '', `已关联《${linked.title}》 · ${linked.entries.length} 条 · 共同已读位置 ${linked.confirmedReadTo}`));
+            body.append(el('p', '', `已关联《${linked.title}》 · 共同已读位置 ${linked.confirmedReadTo}`));
             body.append(button('解除此聊天关联', () => invoke('companionClear')));
         }
         body.append(button('选择伴读记忆', () => invoke('companionList')));
@@ -57,10 +57,6 @@ export function mountCompanionView({ document, el, button, onAction, onNotice = 
                 draft={key:select.value,cutoff:item?.readTo==null?'':String(item.readTo),own:false};cutoff.value=draft.cutoff;own.checked=false;enabled();
             });
             enabled(); body.append(preview);
-        }
-        if (value.omitted && Object.values(value.omitted).some(count=>count>0)) {
-            const {future=0,unknown=0,mixed=0}=value.omitted;
-            body.append(el('p','ym-muted',`未纳入：超出已读范围 ${future} 条，来源不完整 ${unknown} 条，混合来源 ${mixed} 条。`));
         }
         if (value.preview?.entries?.length) {
             for (const item of value.preview.entries) {

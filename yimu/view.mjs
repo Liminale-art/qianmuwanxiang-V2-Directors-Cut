@@ -26,6 +26,7 @@ const SETTINGS = [
     ['stageRecent', '保留最近记忆切片', 'number', 0],
     ['stageChars', '每条阶段总结字数上限', 'number', 0],
     ['recall', '原文回查与补充', 'checkbox'],
+    ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'floors', name: '覆盖的正文楼层数' }, { id: 'slices', name: '记忆切片份数' }];
 const STAGE_THRESHOLDS = { tokens: 65000, floors: 100, slices: 12 };
@@ -297,7 +298,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         ['budget', '记忆注入上限', ['budget']],
         ['basic', '切片总结', ['recent', 'trigger', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
-        ['extra', '附加功能', ['recall']],
+        ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
         const group = el(name === 'extra' ? 'details' : 'section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
         group.append(el(name === 'extra' ? 'summary' : 'h3', 'ym-setting-title', title));

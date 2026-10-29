@@ -12,7 +12,7 @@ export const VERSION = '0.8.4';
 export const SCHEMA = 7;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
-    recall: true, prompts: DEFAULT_PROMPTS });
+    recall: true, companionShareCustom: false, prompts: DEFAULT_PROMPTS });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
 function requireThat(ok, message) { if (!ok) throw failure(message); }
@@ -36,7 +36,7 @@ export function validateSettings(input, partial = true) {
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
-        if (key === 'stageAuto' || key === 'recall') requireThat(typeof value === 'boolean', '忆幕开关设置无效');
+        if (key === 'stageAuto' || key === 'recall' || key === 'companionShareCustom') requireThat(typeof value === 'boolean', '忆幕开关设置无效');
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
         else if (bounds[key]) {

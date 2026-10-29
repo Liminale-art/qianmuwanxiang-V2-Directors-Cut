@@ -1,7 +1,7 @@
 import { bindingKey } from './contract.mjs';
 import { validateCompanion, sameCompanionContext } from './companion-contract.mjs';
 import { memoryMessage, byteBudget } from './budget.mjs';
-import { buildPlan } from './core.mjs';
+import { buildPlan, filterCompanionEntries } from './core.mjs';
 
 export const COMPANION_BRIDGE = Symbol.for('qianmu.yimu.companion.v1');
 export const COMPANION_READY = 'qianmu:yimu-companion-ready';
@@ -38,8 +38,12 @@ export function createCompanionActions({ state, api, change, emit, lifecycle, br
         // here would expose automatic children whose meaning the user overrode.
         for (const entry of sourceDocument.entries) if (invalid.has(entry.id) && entry.status === 'active') entry.status = 'invalid';
         const plan = await buildPlan(sourceDocument, fresh.defaults, snapshot);
+        const shareCustom = Object.hasOwn(fresh.document.settings || {}, 'companionShareCustom')
+            ? fresh.document.settings.companionShareCustom === true
+            : fresh.defaults?.values?.companionShareCustom === true;
+        const shareable = filterCompanionEntries(plan.entries, sourceDocument, { includeCustom: shareCustom });
         // Use whole valid memories, not books or the story's unprocessed raw.
-        for (const entry of plan.entries) {
+        for (const entry of shareable) {
             if (entry.kind === 'excerpt' && !entries.some(parent => parent.id === entry.parent.id
                 || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent.id))) continue;
             const next = [...entries, entry];
