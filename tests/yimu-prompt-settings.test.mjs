@@ -5,6 +5,9 @@ test('actual defaults are visible independent copies and legacy preferences rema
     const value = resolvePromptConfig({preference:'保留约定'});
     assert.equal(value.groups.summary.at(-1).text,'保留约定'); assert.equal(value.groups.stage.at(-1).text,'保留约定');
     assert.equal(value.groups.recall.some(item=>item.id==='legacy-preference'),false);
+    assert.match(value.groups.summary.find(item => item.id === 'facts').text, /日后能直接帮助续写/);
+    assert.match(value.groups.summary.find(item => item.id === 'facts').text, /例：/);
+    assert.match(value.groups.recall.find(item => item.id === 'recall-purpose').text, /最后放在哪里/);
     value.groups.summary[0].text='自定义'; assert.notEqual(DEFAULT_PROMPTS.groups.summary[0].text,'自定义');
 });
 test('only enabled entries in explicit order compose; an emptied group does not secretly restore defaults', () => {
