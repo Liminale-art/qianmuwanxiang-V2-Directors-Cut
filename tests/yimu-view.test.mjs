@@ -658,6 +658,15 @@ test('an unacknowledged source invalidation is visible without changing the cano
     assert.equal(original.status, 'active'); assert.ok(f.get('保留为自定义切片'));
 });
 
+test('a stage source change keeps the review border but does not show a misleading source warning', t => {
+    const parent = entry({ id: 'parent', revision: 2 });
+    const stageEntry = stage([parent], { status: 'invalid' });
+    const f = fixture({ document: { enabled: true, settings: {}, entries: [parent, stageEntry] } }); t.after(() => f.view.destroy());
+    const card = f.get('忆幕').querySelectorAll('.ym-memory').find(node => node.dataset.entryId === 'stage-one');
+    assert.ok(card); assert.match(card.className, /ym-source-stale/);
+    assert.doesNotMatch(card.textContent, /正文发生变化|所含切片发生变化/);
+});
+
 test('redo controls react to background busy changes without rebuilding or losing an entry editor', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] } }); t.after(() => f.view.destroy());
     const redo = f.get('重新总结第 1–3 层'); assert.equal(redo.disabled, false);

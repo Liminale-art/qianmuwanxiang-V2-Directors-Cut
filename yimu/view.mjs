@@ -778,9 +778,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (entry.status === 'excluded') { content.append(el('p', 'ym-muted', '已屏蔽注入')); top.title = '已屏蔽注入'; }
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
         card.insertBefore(content, card.children[0] || null); card.insertBefore(top, content);
-        if (entry.status === 'invalid' && !(entry.kind === 'excerpt' && !memoryText(entry).trim())) {
-            const reason = entry.kind === 'stage' ? '所含切片发生变化' : '正文发生变化';
-            content.append(el('p', 'ym-inline-warning', reason));
+        // A stage becomes invalid when its parent slices or their source move;
+        // that is dependency state, not a change to the stage text itself.
+        // Keep the status border for quiet review, but do not repeat a source
+        // warning inside the stage card.
+        if (entry.status === 'invalid' && entry.kind !== 'stage' && !(entry.kind === 'excerpt' && !memoryText(entry).trim())) {
+            content.append(el('p', 'ym-inline-warning', '正文发生变化'));
         }
         appendMemoryText(content, entry);
         const actions = el('div', 'ym-actions ym-entry-actions'), fixed = el('div', 'ym-fixed-actions');

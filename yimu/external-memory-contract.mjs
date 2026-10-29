@@ -19,6 +19,9 @@ const clean = (value, max, label, { empty = false } = {}) => {
     return value.replace(/\u0000/g, '').trim();
 };
 const id = value => clean(value, 80, '外部记忆条目标识').replace(/\s+/g, '-');
+const optional = (value, max = 160) => typeof value === 'string' ? value.replace(/\u0000/g, '').trim().slice(0, max) : '';
+const list = (value, max = 20) => Array.isArray(value) ? [...new Set(value.filter(item => typeof item === 'string')
+    .map(item => optional(item, 80)).filter(Boolean))].slice(0, max) : [];
 
 export function validateExternalAdapter(adapter) {
     if (!adapter || typeof adapter !== 'object') fail('外部记忆适配器无效');
@@ -55,8 +58,8 @@ export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) 
         if (seen.has(dedupeKey)) continue;
         if (totalText + text.length > EXTERNAL_MEMORY_LIMITS.totalText) break;
         seen.add(dedupeKey); totalText += text.length;
-        const title = typeof item.title === 'string' ? item.title.trim().slice(0, 120) : '';
-        const itemScope = typeof item.scope === 'string' && item.scope.trim() ? item.scope.trim().slice(0, 160) : scope;
+        const title = optional(item.title, 120);
+        const itemScope = optional(item.scope) || scope;
         normalized.push({
             id: `${descriptor.id}:${itemId}`,
             adapterId: descriptor.id,
@@ -66,6 +69,12 @@ export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) 
             text,
             tags: normalizeTags(item.tags),
             scope: itemScope,
+            storyId: optional(item.storyId),
+            timeline: optional(item.timeline),
+            place: optional(item.place),
+            characters: list(item.characters),
+            knownTo: list(item.knownTo),
+            injectionBlocked: item.injectionBlocked === true,
             source: { kind: 'external', adapter: descriptor.id, ref: itemId },
             readOnly: true,
             trusted: false,
@@ -74,6 +83,29 @@ export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) 
         });
     }
     return normalized;
+}
+
+/**
+ * Apply only explicit structural boundaries. Missing metadata stays eligible;
+ * an external adapter must not be able to invent a hard exclusion merely by
+ * omitting time, place or character fields.
+ */
+export function filterExternalCandidates(entries = [], context = {}) {
+    const scope = optional(context.scope) || 'chat';
+    const storyId = optional(context.storyId);
+    const timeline = optional(context.timeline);
+    const knownTo = new Set(list(context.knownTo));
+    const blocked = new Set(Array.isArray(context.blockedIds) ? context.blockedIds : []);
+    const adapters = context.adapterIds instanceof Set ? context.adapterIds : new Set(Array.isArray(context.adapterIds) ? context.adapterIds : []);
+    return entries.filter(entry => {
+        if (!entry || entry.readOnly !== true || entry.trusted !== false || entry.canReplaceSource !== false) return false;
+        if (entry.scope !== scope || entry.injectionBlocked || blocked.has(entry.id)) return false;
+        if (storyId && entry.storyId && entry.storyId !== storyId) return false;
+        if (timeline && entry.timeline && entry.timeline !== timeline) return false;
+        if (knownTo.size && entry.knownTo.length && !entry.knownTo.some(value => knownTo.has(value))) return false;
+        if (adapters.size && !adapters.has(entry.adapterId)) return false;
+        return true;
+    });
 }
 
 export function createExternalMemoryRegistry(initial = []) {

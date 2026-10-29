@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createExternalMemoryRegistry, normalizeExternalEntries, validateExternalAdapter} from '../yimu/external-memory-contract.mjs';
+import {createExternalMemoryRegistry, filterExternalCandidates, normalizeExternalEntries, validateExternalAdapter} from '../yimu/external-memory-contract.mjs';
 
 test('external memory requires an explicit read-only adapter and ignores unknown prompt tags', () => {
     assert.throws(() => validateExternalAdapter({id: 'gaga'}), /只读入口/);
@@ -38,4 +38,18 @@ test('external normalization bounds large data, deduplicates exact records and n
     assert.equal(entries.length, 41);
     assert.ok(entries.every(entry => entry.text.length === 12000));
     assert.ok(entries.every(entry => entry.source.kind === 'external' && entry.canReplaceSource === false));
+});
+
+test('candidate filtering uses explicit scope and knowledge boundaries while missing metadata remains eligible', () => {
+    const adapter = {id: 'gaga', label: '合成来源', read: () => []};
+    const entries = normalizeExternalEntries([
+        {id: 'same', text: '同一故事事实', scope: 'chat', storyId: 'story-a', timeline: 't1', knownTo: ['甲']},
+        {id: 'other-story', text: '另一故事', scope: 'chat', storyId: 'story-b'},
+        {id: 'unknown', text: '没有时空与知情标记', scope: 'chat'},
+        {id: 'private', text: '只对乙可知', scope: 'chat', knownTo: ['乙']},
+        {id: 'blocked', text: '用户暂不注入', scope: 'chat', injectionBlocked: true},
+    ], adapter);
+    const result = filterExternalCandidates(entries, {scope: 'chat', storyId: 'story-a', timeline: 't1', knownTo: ['甲'], adapterIds: ['gaga']});
+    assert.deepEqual(result.map(entry => entry.id), ['gaga:same', 'gaga:unknown']);
+    assert.deepEqual(filterExternalCandidates(entries, {scope: 'chat', blockedIds: ['gaga:unknown']}).map(entry => entry.id), ['gaga:same', 'gaga:other-story', 'gaga:private']);
 });
