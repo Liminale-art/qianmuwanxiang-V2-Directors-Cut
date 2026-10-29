@@ -13,6 +13,7 @@ import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
 import { mountPromptView } from './prompt-view.mjs';
 import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scene-view.mjs';
+import { mountRetrievalView } from './retrieval-view.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
@@ -141,7 +142,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     let settingsTimer = null, settingsSaving = false, settingsDraftRevision = null, settingsSaveFailed = false;
     let currentPage = 'overview', manualAfterId = null, openMenuId = null, draggingId = null, dragGeneration = 0;
     const pageScroll = new Map(), pageFocus = new Map(), pages = new Map(), navButtons = new Map();
-    const pageTitles = { overview: '导览', memory: '记忆', settings: '设置', manual: '自定义切片' };
+    const pageTitles = { overview: '导览', memory: '记忆', retrieval: '检索', settings: '设置', manual: '自定义切片' };
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
@@ -162,7 +163,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     headerActions.append(backButton, closeButton);
     header.append(heading, headerActions);
     const nav = el('nav', 'ym-nav-shell'); nav.setAttribute('aria-label', '忆幕页面');
-    const navigation = mountYimuNavigation(nav, { document, tabs: ['overview', 'memory', 'settings'].map(name => [name, pageTitles[name]]), onNavigate: navigate });
+    const navigation = mountYimuNavigation(nav, { document, tabs: ['overview', 'memory', 'retrieval', 'settings'].map(name => [name, pageTitles[name]]), onNavigate: navigate });
     for (const [name, item] of navigation.buttons) navButtons.set(name, item);
     const scroller = el('div', 'ym-scroll');
     const serviceStatus = el('section', 'ym-card ym-service-card');
@@ -187,6 +188,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         }
     });
     const backup = createBackupView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
+    const retrieval = mountRetrievalView({ document });
     for (const name of Object.keys(pageTitles)) {
         const page = el('section', 'ym-page'); page.dataset.page = name; page.id = `ym-page-${name}`;
         page.hidden = name !== currentPage;
@@ -505,6 +507,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     promptFolder.append(promptTitle, promptContainer);
     pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
     pages.get('memory').append(controlsRow, toolbar, stageForm, streamPreview, list, noMatch, deleted);
+    pages.get('retrieval').append(retrieval.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);
 
@@ -604,8 +607,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const sourceWarning = state.snapshot && state.document && state.sourceAvailable === false && !state.loading
             ? '当前聊天原件尚未通过核对，记忆暂不参与生成。' : '';
         // The homepage has a dedicated empty state, not an error for normal navigation.
-        const memoryPage = currentPage !== 'settings';
-        const error = !state.snapshot && state.error === '请先打开一个角色的聊天' ? '' : (memoryPage || state.errorPage === 'settings') ? state.error : '';
+        const memoryPage = ['overview', 'memory', 'manual'].includes(currentPage);
+        const error = !state.snapshot && state.error === '请先打开一个角色的聊天' ? '' : (memoryPage || currentPage === 'settings' && state.errorPage === 'settings') ? state.error : '';
         const needsChoice = (state.document?.entries || []).some(entry => entry.candidate || entry.conflicts?.length);
         const notice = typeof state.status === 'string' && !/^(已保存|本轮整理已完成|阶段总结已完成)$/.test(state.status)
             && (/(请.*确认|两版|无法|失败|不支持)/.test(state.status) || noticePage === currentPage && seenNotice === state.status)
@@ -1006,7 +1009,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         story.render(state);
         companion.render(state);
         backup.render(state);
-        updateStatus(); updateControls(); updateSettings(); renderEntries(); updateOverview(); updateNavigation();
+        updateStatus(); updateControls(); updateSettings(); renderEntries(); updateOverview(); retrieval.render(state); updateNavigation();
         updateRangePreview();
         if (!stageForm.hidden) updateStageRange();
         updateUsed();
@@ -1052,7 +1055,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

@@ -17,7 +17,7 @@ const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Set(), failures = new Map();
@@ -163,7 +163,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         const data = await api.defaults();
                         if (ticket !== sequence || disposed) return;
                         host.clear(); prepared = null;
-                        state.snapshot = null; state.document = null; state.lastUsed = null; state.sourceAvailable = false; state.invalidSourceIds = [];
+                        state.snapshot = null; state.document = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.sourceAvailable = false; state.invalidSourceIds = [];
                         state.story = {}; state.companion = {};
                         state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.streamPreview = ''; state.status = '';
                         state.error = error.message === '请先打开一个角色的聊天' ? '' : error.message;
@@ -175,7 +175,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
                     host.clear(); prepared = null;
-                    state.document = null; state.defaults = null; state.lastUsed = null; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.document = null; state.defaults = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
                     state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
@@ -203,7 +203,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
                 if (identityFailed) {
-                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null;
+                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
                     state.busy = false; state.streamPreview = ''; state.status = ''; state.invalidSourceIds = [];
                 }
                 host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.errorPage = 'overview'; state.loading = false; emit();
@@ -230,6 +230,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         let jobDocument = doc, snapshot = clone(state.snapshot);
         const defaults = clone(state.defaults);
         const settings = effectiveSettings(doc, defaults);
+        state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
+        emit();
         let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
         const retryState = { exhausted: false };
         try {
@@ -282,6 +284,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const candidateDocument = clone(jobDocument);
                 for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
                 let candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
+                if (isCurrent(binding)) {
+                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' },
+                        candidates: candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: '记忆切片', reason: '关键词命中 · 仅作候选，未写入记忆' })),
+                        lastRun: { count: candidates.length, at: Date.now() } };
+                    emit();
+                }
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
                 notice(`忆幕切片总结中：楼层${batch.start}–${batch.end}`, 'info');
                 let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
@@ -290,7 +298,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (controller.signal.aborted) break;
                 let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: candidates, previousContext });
                 // Optional historical hints may use only spare room. Source floors are never truncated.
-                if (!run.fitsPrompt(prompt) && candidates.length) { candidates = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext }); }
+                if (!run.fitsPrompt(prompt) && candidates.length) {
+                    candidates = [];
+                    if (isCurrent(binding)) {
+                        state.retrieval = { ...state.retrieval, candidates: [], lastRun: { ...(state.retrieval.lastRun || {}), count: 0, at: Date.now(), fallback: '预算不足，沿用关键词路径但本轮未带入候选' } };
+                        emit();
+                    }
+                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext });
+                }
                 if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
                 const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },

@@ -874,6 +874,19 @@ test('navigation and reopening retain each scroll position, search and exact edi
     assert.deepEqual(f.calls, []);
 });
 
+test('retrieval page sits between memory and settings and reports planned vector stages without backend calls', t => {
+    const f = fixture(); t.after(() => f.view.destroy()); f.view.open();
+    const visible = () => f.all().filter(n => n.className === 'ym-page' && !n.hidden).map(n => n.dataset.page);
+    f.get('检索').click();
+    assert.deepEqual(visible(), ['retrieval']);
+    assert.match(f.document.body.textContent, /向量与重排/);
+    assert.match(f.document.body.textContent, /关键词召回/);
+    assert.match(f.document.body.textContent, /待接入/);
+    assert.match(f.document.body.textContent, /尚未产生候选检索记录/);
+    assert.deepEqual(f.calls, []);
+    f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
+});
+
 test('search and attention filters do not hide active edits or mutate memory', t => {
     const one = entry(), other = entry({ id: 'other', text: '雨后重逢', status: 'invalid', source: { start: 4, end: 6 } });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, other] } }); t.after(() => f.view.destroy());
