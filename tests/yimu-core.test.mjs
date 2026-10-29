@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS, SCHEMA, createDocument, createDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
 import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
+import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
 
 const binding = { avatar: 'Fixture.png', file: 'fixture', integrity: 'fixture-id' };
 const messages = Array.from({ length: 12 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: `合成第${i + 1}层：两人首次约会，秘密并未告诉旁人。`, send_date: `2026-10-25 ${i}` }));
@@ -139,13 +140,14 @@ test('incremental batches require content threshold, explicit summarize may proc
     assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 3, end: 7 });
 });
 
-test('deleted and excluded slices do not silently reappear; auto-invalid sources can rebuild but human edits cannot', async () => {
+test('deleted and excluded slices do not silently reappear; invalid sources wait for an explicit user repair', async () => {
     let doc = append(enable(), await entry('a', 1, 4));
     doc = applyOperation(doc, { id: 'del', type: 'entry', entryId: 'a', expectedRevision: 1, action: 'delete' }).document;
     assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
     doc = append(enable(), await entry('b', 1, 4));
     doc = applyOperation(doc, { id: 'bad', type: 'invalidate', entries: [{ id: 'b', revision: 1 }] }).document;
-    assert.equal(nextBatch(doc, messages, DEFAULTS).redo.id, 'b');
+    assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
+    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 5, end: 7 });
     doc = applyOperation(doc, { id: 'edit', type: 'edit', entryId: 'b', expectedRevision: 2, text: '手动修订' }).document;
     assert.equal(doc.entries[0].status, 'invalid');
     assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
@@ -186,6 +188,24 @@ test('generation selects only whole valid slices outside recent raw, with explic
     const tinyBudget = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
     assert.equal(tinyBudget.settings.budget, 1, 'selection retains complete entries; final-payload admission enforces the actual budget');
     assert.equal(tinyBudget.entries[0].text, doc.entries[0].text);
+});
+
+test('source-changed slices remain injected while raw edited floors stay intact', async () => {
+    let doc = append(enable(), await entry('stale', 1, 2));
+    doc = applyOperation(doc, { id: 'invalidate-stale', type: 'invalidate', entries: [{ id: 'stale', revision: 1 }] }).document;
+    const changed = structuredClone(messages); changed[0].mes = '用户后来改写的正文';
+    const plan = await buildPlan(doc, createDefaults(), { messages: changed, maxContext: 8192 });
+    assert.deepEqual(plan.memoryIds, ['stale']);
+    const core = changed.map((message, index) => ({ ...message, index }));
+    const { processed } = captureCore(core, { messages: changed }, { namesBehavior: 0, userName: '用户' });
+    const result = await buildBudgetedMessages({ messages: processed.map(item => item.request) }, {
+        entries: plan.entries, processed, sourceHashes: await fingerprintMessages(changed), recent: DEFAULTS.recent,
+        budget: 20000, contextTokens: 60000, responseTokens: 1024,
+    });
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.removedFloors, []);
+    assert.equal(result.entries[0].id, 'stale');
+    assert.match(result.messages.find(message => message.content.startsWith('<yimu_memory>')).content, /stale/);
 });
 
 test('summary prompt balances source-grounded narrative texture with factual and knowledge boundaries', () => {

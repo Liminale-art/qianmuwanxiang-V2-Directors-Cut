@@ -66,7 +66,7 @@ test('new local summaries can share floor numbers with independent inherited sum
         entry: {...f.document.entries[0], text: '错误套用本地楼层'}}), /继承|来源|跨/);
 });
 
-test('ancestor edits after interception cancel final memory application without blocking raw chat', async () => {
+test('ancestor edits after interception retain the raw chat while stale memory remains available', async () => {
     const f = await fixture(), state = {invalid: false, applied: 0};
     const host = {snapshot: async () => structuredClone(f.snapshot), profiles: () => [], clear() {},
         prepare: () => ({prepared: true, session: {}}), applyPrepared: async () => {state.applied++; return {applied: false};}};
@@ -77,10 +77,10 @@ test('ancestor edits after interception cancel final memory application without 
     await controller.intercept([], 10000, () => {});
     state.invalid = true;
     await controller.event('CHAT_COMPLETION_SETTINGS_READY', [{messages: [{role: 'user', content: '原文'}]}]);
-    assert.equal(state.applied, 0); controller.destroy();
+    assert.equal(state.applied, 1); controller.destroy();
 });
 
-test('server-invalid human stage is retained as a barrier rather than exposing its automatic children', async () => {
+test('server-invalid human stage remains injectable without exposing its automatic children', async () => {
     const f = await fixture(), stage = {...structuredClone(f.document.entries[0]), id: 'stage', kind: 'stage', edited: true,
         text: '用户明确修订的含义', source: {ranges: [{start: 1, end: 10, hashes: f.document.entries.flatMap(entry => entry.source.hashes)}],
             parents: f.document.entries.map(entry => ({id: entry.id, revision: entry.revision}))}};
@@ -91,6 +91,6 @@ test('server-invalid human stage is retained as a barrier rather than exposing i
     const controller = createController({host, api, defer: () => {}});
     await controller.refresh();
     await controller.intercept([], 10000, () => {});
-    assert.deepEqual(selected, []);
+    assert.deepEqual(selected.map(entry => entry.id), ['stage']);
     controller.destroy();
 });

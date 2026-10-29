@@ -7,6 +7,7 @@
     --ym-border: var(--SmartThemeBorderColor, #bac4cd);
     --ym-accent: #76939e;
     --ym-on-accent: #fff;
+    --ym-warning: #a1804b;
     --ym-danger: #ad858b;
     --ym-font: var(--qm-interface-font, var(--sd-font, var(--mainFontFamily, system-ui, sans-serif)));
     --ym-card-radius: 14px;
@@ -355,6 +356,7 @@
 }
 @media (max-height: 620px) { .ym-dialog { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); } .ym-header { min-height: 52px; } .ym-dialog .ym-nav-button { padding-block: 7px; } }
 .ym-memory { position: relative; min-width: 0; }
+.ym-memory.ym-source-stale { border-color: color-mix(in srgb, var(--ym-warning) 72%, var(--ym-border)); box-shadow: inset 3px 0 0 var(--ym-warning); }
 .ym-memory-head { display: flex; align-items: center; gap: 8px; list-style: none; min-width: 0; }
 .ym-memory-head::-webkit-details-marker { display: none; }
 .ym-memory-head > :first-child { min-width: 0; }

@@ -47,14 +47,9 @@ export function nextBatch(document, messages, settings, { force = false, history
     if (!document.enabled || !document.initialRange || !force && !document.autoSummary) return null;
     const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity, limitEnd);
     const capacity = settings.inputCapacity ?? settings.batch ?? settings.trigger;
-    const repair = !historyOnly && document.entries.find(entry => !entry.origin && entry.status === 'invalid' && !entry.edited && entry.kind === 'summary'
-        && entry.source.end <= last && messages.slice(entry.source.start - 1, entry.source.end).every(canSummarize)
-        && entry.source.end <= messages.length);
-    if (repair) {
-        if (messages.slice(repair.source.start - 1, repair.source.end).reduce((total, item) => total + estimateTokens(item.mes), 0) > capacity
-            || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, repair.source)) throw new Error('待重新总结的完整切片超过此连接的可用输入容量，请选择容量足够的连接');
-        return { start: repair.source.start, end: repair.source.end, redo: repair };
-    }
+    // A changed source is a quiet review state, not an automatic repair job.
+    // Keep the old slice available for injection and let the user explicitly
+    // choose redo/edit/delete from the memory page.
     const { start: initialStart, end: initialEnd, total: initialTotal } = document.initialRange;
     const eligible = floor => floor > (document.lineage?.bridgeCount || 0) && (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
         && !document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
@@ -149,7 +144,7 @@ export function planManualRange(document, messages, settings, requestedRange) {
 /** Count independent fine/custom slices once; stage/excerpt reading layers are not extra originals. */
 export function summaryCoverage(document, messages, settings) {
     const covered = new Set(), entries = document?.entries || [];
-    const active = entries.filter(entry => entry.kind === 'summary' && entry.status === 'active'
+    const active = entries.filter(entry => entry.kind === 'summary' && ['active', 'invalid'].includes(entry.status)
         && (!entry.origin || entry.originVerified === true));
     for (const entry of active) {
         // Inherited source numbers belong to another chat, not the local floor counter.
@@ -160,8 +155,7 @@ export function summaryCoverage(document, messages, settings) {
     const range = document?.initialRange, last = Math.max(0, messages.length - settings.recent);
     if (range) for (let floor = Math.max(range.start, (document?.lineage?.bridgeCount || 0) + 1); floor <= last; floor++) {
         if (!(floor <= range.end || floor > range.total) || !canSummarize(messages[floor - 1])) continue;
-        const handled = entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor
-            && !(entry.status === 'invalid' && !entry.edited));
+        const handled = entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
         if (!handled) { pendingFloors++; pendingRange = pendingRange ? { ...pendingRange, end: floor } : { start: floor, end: floor }; }
     }
     const custom = entries.filter(entry => entry.kind === 'manual' && entry.status === 'active' && !entry.origin?.unresolved
@@ -251,14 +245,27 @@ export function filterCompanionEntries(entries = [], document = {}, { includeCus
 export function selectMemories(document, snapshot, settings, hashes, type = '') {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
-    const usable = document.entries.filter(entry => entry.status === 'active' && sceneDependenciesValid(entry, document) && (entry.kind === 'manual' && placementMatches(entry, document, hashes, visibleEnd)
-        || entry.kind !== 'manual' && (entry.origin ? inheritedSourceValid(entry, document, hashes) && sourceTimelineEnd(entry, document) <= (document.lineage?.offset || 0) + cutoff
-            : sourceRanges(entry).every(range => range.end <= cutoff && sourceMatches(range, hashes)))
-            && (entry.kind !== 'stage' || stageDependenciesValid(entry, document) && entry.source.parents.every(ref => {
-                const parent = document.entries.find(item => item.id === ref.id);
-                return parent?.kind !== 'manual' || placementMatches(parent, document, hashes, visibleEnd);
-            }))
-            && (entry.kind !== 'excerpt' || excerptDependenciesValid(entry, document) && typeof entry.quoteText === 'string' && entry.quoteText.trim())));
+    const usable = document.entries.filter(entry => {
+        if (!['active', 'invalid'].includes(entry.status)) return false;
+        // Invalid source-backed entries remain usable. Their old text is still
+        // valuable context, while final admission deliberately keeps the raw
+        // edited/deleted floors instead of replacing them.
+        const stale = entry.status === 'invalid';
+        // A missing quotation is not a source-change case: there is no text to
+        // inject, so keep the existing fail-closed behavior for excerpts.
+        if (entry.kind === 'excerpt' && !(typeof entry.quoteText === 'string' && entry.quoteText.trim())) return false;
+        if (entry.kind === 'manual') return placementMatches(entry, document, hashes, visibleEnd);
+        const sceneValid = sceneDependenciesValid(entry, document);
+        const sourceValid = entry.origin
+            ? inheritedSourceValid(entry, document, hashes) && sourceTimelineEnd(entry, document) <= (document.lineage?.offset || 0) + cutoff
+            : sourceRanges(entry).every(range => range.end <= cutoff && sourceMatches(range, hashes));
+        const stageValid = entry.kind !== 'stage' || stageDependenciesValid(entry, document) && entry.source.parents.every(ref => {
+            const parent = document.entries.find(item => item.id === ref.id);
+            return parent?.kind !== 'manual' || placementMatches(parent, document, hashes, visibleEnd);
+        });
+        const excerptValid = entry.kind !== 'excerpt' || excerptDependenciesValid(entry, document);
+        return stale || sceneValid && sourceValid && stageValid && excerptValid;
+    });
     // A changed/disabled hand-edited stage must not be silently bypassed by its automatic children.
     const authoritativeStages = document.entries.filter(entry => entry.kind === 'stage' && !entry.replacedBy && (entry.edited || ['excluded', 'deleted'].includes(entry.status)));
     const protectedParents = new Set(authoritativeStages

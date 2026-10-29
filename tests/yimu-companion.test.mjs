@@ -228,24 +228,24 @@ test('optional reverse server read has a bounded timeout and never blocks on an 
     assert.ok(Date.now()-start<1500);assert.equal(f.writes,1);
 });
 
-test('reverse invalid edited stage does not expose its automatic children',async t=>{
+test('reverse invalid edited stage remains available without exposing its automatic children',async t=>{
     const f=await fixture(t);await f.link();
     const a=entry('fine_a','不允许绕过人工修订的旧读法甲',{start:1,end:1,hashes:[f.hashes[0]]});
     const b=entry('fine_b','不允许绕过人工修订的旧读法乙',{start:2,end:2,hashes:[f.hashes[1]]});
     f.state.document.entries=[a,b];
     const stage=entry('stage','手动修订的含义',stageSourceFromParents(f.state.document,[{id:a.id,revision:1},{id:b.id,revision:1}]),{kind:'stage',edited:true});
     f.state.document.entries.push(stage);f.invalid(['stage']);
-    const result=await f.bridge.consume(f.item());assert.equal(result.active,true);assert.equal(result.text,'');
+    const result=await f.bridge.consume(f.item());assert.equal(result.active,true);assert.match(result.text,/手动修订的含义/);
     assert.equal(f.state.document.entries.at(-1).status,'active','read validation does not mutate client truth');
 });
 
-test('reverse plan excludes invalid, deleted, excluded and recent-floor summaries',async t=>{
+test('reverse plan keeps invalid context while excluding deleted, excluded and recent-floor summaries',async t=>{
     const f=await fixture(t);await f.link();
     const fine=(id,floor,patch={})=>entry(id,id,{start:floor,end:floor,hashes:[f.hashes[floor-1]]},patch);
     f.state.document.entries=[fine('valid_detail',1),fine('source_changed',2),fine('deleted_detail',2,{status:'deleted'}),
         fine('excluded_detail',3,{status:'excluded'}),fine('too_recent_detail',8)];
     f.invalid(['source_changed']);const result=await f.bridge.consume(f.item());
-    assert.match(result.text,/valid_detail/);assert.doesNotMatch(result.text,/source_changed|deleted_detail|excluded_detail|too_recent_detail/);
+    assert.match(result.text,/valid_detail|source_changed/);assert.doesNotMatch(result.text,/deleted_detail|excluded_detail|too_recent_detail/);
 });
 
 test('a mismatched server binding or moved document cannot activate reverse use or duplicate suppression',async t=>{

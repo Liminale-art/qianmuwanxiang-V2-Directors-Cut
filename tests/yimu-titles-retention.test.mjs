@@ -246,7 +246,7 @@ test('deletion rotation keeps dependent stages invalid and imported deleted bodi
     assert.equal(get(doc, 'stage').status, 'invalid'); assert.equal(stageDependenciesValid(get(doc, 'stage'), doc), false);
     assert.deepEqual(get(doc, 'custom'), protectedCustom);
     const next = await buildPlan(doc, createDefaults(), { messages });
-    assert.ok(!next.memoryIds.includes('stage')); assert.ok(next.memoryIds.includes('custom'));
+    assert.ok(next.memoryIds.includes('stage')); assert.ok(next.memoryIds.includes('custom'));
     const incoming = structuredClone(f.doc);
     for (const entry of incoming.entries) entry.status = 'deleted';
     const merged = mergeBackupDocument(createDocument(binding), incoming, { operationId: 'import_old_deletes', packageId: 'legacy_deletes' }).document;

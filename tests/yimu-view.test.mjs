@@ -246,11 +246,11 @@ test('API offers the three intended connections and no numeric scope controls ca
     mode.value='st';mode.emit('change');await d.flush();assert.equal(connectionApi.read().mode,'st');assert.deepEqual(calls,[]);
 });
 
-test('unacknowledged invalid slices never inflate coverage and statistics are display-only', t => {
+test('unacknowledged invalid slices remain in coverage and statistics stay display-only', t => {
     const f=fixture({document:{...state().document,enabled:true,initialRange:{start:1,end:9,total:9},entries:[entry()]},invalidSourceIds:['slice-a']});
     t.after(()=>f.view.destroy());
     const values=f.document.querySelector('.ym-stats').querySelectorAll('b');
-    assert.equal(values[0].textContent,'0'); assert.equal(values[1].textContent,'0');
+    assert.equal(values[0].textContent,'1'); assert.equal(values[1].textContent,'3');
     const stats=f.document.querySelector('.ym-stats');assert.equal(stats.children.length,3);
     assert.ok(stats.children.every(node=>node.tagName==='DIV'));assert.equal(stats.querySelector('button'),null);
     stats.children[2].click();assert.deepEqual(f.calls,[]);
@@ -571,7 +571,7 @@ test('source changes and saved conflict choices appear inline while the active d
     f.render({ document: { ...f.state.document, entries: [entry({ edited: true, revision: 3, status: 'invalid', conflicts: [{ id: 'another', text: '另一端已保存的候选' }] })] } });
     assert.equal(f.get('编辑记忆内容'), input); assert.equal(input.isConnected, true); assert.equal(f.document.activeElement, input);
     assert.equal(input.value, '尚未完成的修订');
-    assert.match(f.get('忆幕').querySelector('.ym-memory').textContent, /原文已变化，人工修订已保留/);
+    assert.match(f.get('忆幕').querySelector('.ym-memory').textContent, /原文已变化，人工修订仍照常注入/);
     assert.ok(f.get('采用此版本')); assert.ok(f.get('保留已保存版本'));
 });
 
@@ -651,7 +651,10 @@ test('a successful settings save does not conceal the fact that an unverified ch
 test('an unacknowledged source invalidation is visible without changing the canonical entry status', t => {
     const original = entry({ edited: true });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [original] }, sourceAvailable: true, invalidSourceIds: [original.id] }); t.after(() => f.view.destroy());
-    assert.match(f.get('忆幕').querySelector('.ym-memory').textContent, /原文已变化，人工修订已保留/);
+    const card = f.get('忆幕').querySelector('.ym-memory');
+    assert.match(card.textContent, /原文已变化，人工修订仍照常注入/);
+    assert.match(card.className, /ym-source-stale/);
+    assert.ok(card.querySelector('.ym-memory-text'));
     assert.equal(original.status, 'active'); assert.ok(f.get('保留为自定义切片'));
 });
 
@@ -779,7 +782,7 @@ test('shortcut colors distinguish execution failure from unavailable states with
         [{ sourceAvailable: false, error: '来源尚未核对' }, 'neutral', '来源尚未通过核对'],
         [{ document: { ...ready.document, enabled: false } }, 'neutral', '未启用'],
         [{ paused: true }, 'neutral', '未启用'],
-        [{ invalidSourceIds: ['stale'] }, 'neutral', '来源已变化'],
+        [{ invalidSourceIds: ['stale'] }, 'ready', '正常'],
         [{ snapshot: { ...ready.snapshot, mainApi: 'textgenerationwebui' } }, 'neutral', '不适用'],
     ]) {
         const s = { ...ready, ...patch };

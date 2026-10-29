@@ -183,7 +183,7 @@ test('custom slices participate in protected stages without acquiring raw-floor 
     assert.ok(!nextStage(document, { ...DEFAULTS, stageAuto: true }, { force: false })?.parents.some(entry => entry.id === 'm1'));
 });
 
-test('custom parent stages require explicit redo adoption but invalid automatic stages fall back to valid custom originals after drag', async () => {
+test('custom parent stages require explicit redo adoption while invalid stages remain available after drag', async () => {
     const f = await fixture(); let document = addStage(f.addManual(f.document), 'stage', ['f1', 'm1', 'f2']);
     const pending = change(document, { id: 'custom_stage_redo', type: 'redo', entryId: 'stage', expectedRevision: 1, expectedEpoch: document.epoch,
         entry: { id: 'stage', kind: 'stage', text: '候选不能暗改人工含义', source: { parents: refs(document, ['f1', 'm1', 'f2']) } } });
@@ -193,7 +193,7 @@ test('custom parent stages require explicit redo adoption but invalid automatic 
         entryOrder: ['stage', 'f1', 'f2', 'f3', 'm1', 'f4'], placements: { m1: f.placement(3) } });
     assert.equal(document.entries.find(entry => entry.id === 'stage').status, 'invalid');
     const plan = await buildPlan(document, createDefaults(), { messages });
-    assert.ok(plan.memoryIds.includes('m1')); assert.ok(!plan.memoryIds.includes('stage'));
+    assert.ok(plan.memoryIds.includes('stage')); assert.ok(!plan.memoryIds.includes('m1'));
     assert.deepEqual(orderForInjection([{ id: 'stage', kind: 'stage', source: { parents: [{ id: 'f1' }] } }, { id: 'other', kind: 'manual' }], ['f1', 'other', 'stage']).map(entry => entry.id), ['other', 'stage']);
 });
 

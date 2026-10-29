@@ -89,7 +89,6 @@ export function shortcutStatus(state = {}) {
     if (state.error) return { tone: 'failed', message: `执行失败：${state.error}` };
     if (!state.document.enabled || state.paused) return neutral('此聊天未启用忆幕');
     if (state.document.movedTo) return neutral('此聊天记忆已迁移');
-    if (state.invalidSourceIds?.length) return neutral('部分记忆来源已变化');
     if (state.snapshot.mainApi !== 'openai') return neutral('当前连接不适用原文替换');
     return { tone: 'ready', message: state.busy ? '正在处理' : '正常' };
 }
@@ -764,7 +763,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const signature = JSON.stringify(entry);
         if (existing?.signature === signature) return existing;
         const card = existing?.node || el('details', 'ym-card ym-memory');
-        card.className = `ym-card ym-memory${entry.kind === 'stage' ? ' ym-stage' : ''}${entry.status === 'excluded' ? ' ym-excluded' : ''}`;
+        card.className = `ym-card ym-memory${entry.kind === 'stage' ? ' ym-stage' : ''}${entry.status === 'excluded' ? ' ym-excluded' : ''}${entry.status === 'invalid' ? ' ym-source-stale' : ''}`;
+        card.dataset.ymStatus = entry.status || 'active';
         card.dataset.entryId = entry.id;
         const editing = edits.get(entry.id);
         // Replace saved text / conflict choices independently of an active editor.
@@ -778,11 +778,11 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (entry.status === 'excluded') { content.append(el('p', 'ym-muted', '已屏蔽注入')); top.title = '已屏蔽注入'; }
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
         card.insertBefore(content, card.children[0] || null); card.insertBefore(top, content);
-        if (entry.status === 'invalid') {
+        if (entry.status === 'invalid' && !(entry.kind === 'excerpt' && !memoryText(entry).trim())) {
             const reason = entry.kind === 'stage' ? '所含切片已变化' : '原文已变化';
-            content.append(el('p', 'ym-inline-warning', entry.edited ? `${reason}，人工修订已保留，暂不使用。` : `${reason}，此条记忆暂不使用。`));
+            content.append(el('p', 'ym-inline-warning', entry.edited ? `${reason}，人工修订仍照常注入。` : `${reason}，仍照常注入。`));
         }
-        appendMemoryText(content, entry, entry.status !== 'invalid');
+        appendMemoryText(content, entry);
         const actions = el('div', 'ym-actions ym-entry-actions'), fixed = el('div', 'ym-fixed-actions');
         actions.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
         fixed.addEventListener('click', event => event.stopPropagation());

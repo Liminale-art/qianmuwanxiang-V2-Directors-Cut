@@ -740,8 +740,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     new Promise(resolve => { timer = setTimeout(() => resolve(null), 500); })]);
                 clearTimeout(timer);
                 if (!isCurrentRequest() || !verified?.sourceAvailable || verified.document.revision !== pending.revision
-                    || verified.defaults.revision !== pending.defaultsRevision || pending.foreignIds.some(id => verified.invalidSourceIds?.includes(id)
-                        || verified.document.entries.find(entry => entry.id === id)?.originVerified !== true)) {
+                    || verified.defaults.revision !== pending.defaultsRevision || pending.foreignIds.some(id =>
+                        verified.document.entries.find(entry => entry.id === id)?.originVerified !== true)) {
                     if (pending === prepared) { prepared = null; host.clear(); } return;
                 }
             }

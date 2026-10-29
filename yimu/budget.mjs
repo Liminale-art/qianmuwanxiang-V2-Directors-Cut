@@ -109,6 +109,13 @@ function mapping(messages, processed) {
 function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     if (!entry || typeof entry.id !== 'string' || typeof entry.text !== 'string' || !entry.text.trim()) return null;
     if (!entry.source) return entry.kind === 'manual' ? [] : null;
+    // A stale source is still usable context, but it must never grant permission
+    // to remove a floor that may have been edited or deleted since the summary
+    // was created. Keep the current chat intact and append the memory only.
+    if (entry.status === 'invalid') {
+        if (entry.kind === 'excerpt' && !(typeof entry.quoteText === 'string' && entry.quoteText.trim())) return null;
+        return [];
+    }
     // Inherited floor numbers never grant permission to remove current raw text.
     if (entry.origin) return entry.originVerified === true ? [] : null;
     const ranges = sourceRanges(entry), result = [];
