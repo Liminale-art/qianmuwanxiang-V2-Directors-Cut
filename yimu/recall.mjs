@@ -8,20 +8,87 @@ const parse = response => {
     catch { return null; }
 };
 
+const normalizeTerm = value => typeof value === 'string' ? value.normalize('NFKC').toLowerCase().trim() : '';
+const explicitTerms = value => {
+    if (typeof value === 'string') return [normalizeTerm(value)].filter(Boolean);
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(item => explicitTerms(item)).filter(Boolean);
+};
+
+/**
+ * Read optional, explicit synonym groups without turning arbitrary prose into
+ * a hidden dictionary. The normal settings object has no such field yet; this
+ * accepts a future host-provided map/array and keeps the default path unchanged.
+ */
+export function recallSynonymGroups(value) {
+    const groups = [];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [key, aliases] of Object.entries(value)) {
+            const group = [...new Set([key, ...explicitTerms(aliases)].map(normalizeTerm).filter(Boolean))];
+            if (group.length > 1) groups.push(group);
+        }
+    } else if (Array.isArray(value)) {
+        for (const aliases of value) {
+            const group = [...new Set(explicitTerms(aliases))];
+            if (group.length > 1) groups.push(group);
+        }
+    }
+    return groups;
+}
+
+function sceneText(entry) {
+    return (entry?.scenes || []).flatMap(scene => [
+        scene?.world, scene?.timeline, scene?.date, scene?.period, scene?.place,
+        scene?.event, ...(Array.isArray(scene?.characters) ? scene.characters : []),
+    ]).filter(value => typeof value === 'string').join(' ');
+}
+
+function entryMetadataTerms(entry, groups) {
+    const terms = expandedTerms([entry?.title, sceneText(entry)].filter(Boolean).join(' '), groups);
+    for (const value of [entry?.aliases, entry?.synonyms, entry?.tags]) for (const term of explicitTerms(value)) terms.add(term);
+    return terms;
+}
+
+function expandedTerms(text, groups) {
+    const normalized = normalizeTerm(text);
+    const terms = narrativeTerms(text);
+    for (const group of groups) if (group.some(term => normalized.includes(term))) for (const term of group) terms.add(term);
+    return terms;
+}
+
+/** Exposed for contract tests and future retrieval providers. */
+export function recallCandidateScore(entry, queryText, settings = {}) {
+    const groups = recallSynonymGroups(settings.recallSynonyms);
+    const queryTerms = expandedTerms(queryText, groups);
+    const bodyTerms = expandedTerms(entry?.text || '', groups);
+    const metadataTerms = entryMetadataTerms(entry, groups);
+    const timelineTerms = expandedTerms((entry?.scenes || []).flatMap(scene => [scene?.world, scene?.timeline, scene?.date, scene?.period, scene?.place]).filter(Boolean).join(' '), groups);
+    const bodyHits = [...bodyTerms].filter(term => queryTerms.has(term));
+    const metadataHits = [...metadataTerms].filter(term => queryTerms.has(term));
+    const timelineHits = [...timelineTerms].filter(term => queryTerms.has(term));
+    const score = bodyHits.length + metadataHits.length * 2 + timelineHits.length * 2;
+    const reasons = [];
+    if (bodyHits.length) reasons.push('关键词');
+    if (metadataHits.some(term => !bodyTerms.has(term))) reasons.push('别名／同义词');
+    if (timelineHits.length) reasons.push('时空线索');
+    return { score, reasons, hits: { body: bodyHits, metadata: metadataHits, timeline: timelineHits } };
+}
+
 // This catalog is a bounded hint for the normal summary call, not a separate
 // paid retrieval request or a second corpus of originals.
 export function recallCandidates(document, settings, messages, batch, hashes = []) {
     if (settings.recall === false || recallBlockReason(document)) return [];
-    const query = narrativeTerms(messages.slice(batch.start - 1, batch.end).map(m => m.mes || '').join('\n'));
-    const score = entry => [...narrativeTerms(entry.text)].reduce((n, term) => n + Number(query.has(term)), 0);
+    const queryText = messages.slice(batch.start - 1, batch.end).map(m => m.mes || '').join('\n');
     const eligible = document.entries.filter(entry => !entry.origin && entry.kind === 'summary' && !recallBlockReason(document, entry)
         && sourceMatches(entry.source, hashes)
         && entry.source.end < batch.start && entry.source.end <= messages.length - settings.recent
         && new Set(excerptRecords(document, entry.id).map(item => item.id)).size < 2);
-    eligible.sort((a, b) => score(b) - score(a) || b.source.end - a.source.end);
+    const scored = eligible.map(entry => ({ entry, match: recallCandidateScore(entry, queryText, settings) }));
+    scored.sort((a, b) => b.match.score - a.match.score || b.entry.source.end - a.entry.source.end);
     const result = []; let tokens = 0;
-    for (const entry of eligible) {
-        const value = { id: entry.id, revision: entry.revision, start: entry.source.start, end: entry.source.end, text: entry.text };
+    for (const { entry, match } of scored) {
+        const value = { id: entry.id, revision: entry.revision, start: entry.source.start, end: entry.source.end, title: entry.title || '记忆切片', text: entry.text,
+            ...(match.reasons.length ? { reason: `${match.reasons.join('／')}命中 · 仅作候选，未写入记忆` } : { reason: '时间近邻候选 · 仅作候选，未写入记忆' }) };
         const size = estimateTokens(JSON.stringify(value));
         if (tokens + size > Math.min(1200, settings.batch / 5)) continue;
         tokens += size; result.push(value);
