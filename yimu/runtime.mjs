@@ -10,6 +10,7 @@ import { createBackupActions } from './backup-runtime.mjs';
 import { validateGeneratedLength } from './scene-contract.mjs';
 import { summaryRequestBudget } from './budget.mjs';
 import { memoryTitle } from './timeline.mjs';
+import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -284,10 +285,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const candidateDocument = clone(jobDocument);
                 for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
                 let candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
+                const retrieval = buildRetrievalCandidates({
+                    localCandidates: candidates,
+                    context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
+                });
+                candidates = retrieval.candidates.filter(candidate => candidate.kind === 'local');
                 if (isCurrent(binding)) {
                     state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' },
-                        candidates: candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: '记忆切片', reason: '关键词命中 · 仅作候选，未写入记忆' })),
-                        lastRun: { count: candidates.length, at: Date.now() } };
+                        candidates: retrieval.candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: candidate.title || '记忆切片', kind: candidate.kind, sourceLabel: candidate.sourceLabel, reason: candidate.reason })),
+                        lastRun: { count: retrieval.count, localCount: retrieval.localCount, externalCount: retrieval.externalCount, at: retrieval.at } };
                     emit();
                 }
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }

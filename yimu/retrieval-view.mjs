@@ -69,7 +69,7 @@ export function mountRetrievalView({ document = globalThis.document } = {}) {
             : hasChat ? '尚未产生候选检索记录' : '尚未打开聊天';
         candidatesList.replaceChildren(...candidates.map(candidate => {
             const item = el('article', 'ym-retrieval-candidate');
-            item.append(el('strong', '', candidate.title || '记忆切片'), el('span', 'ym-retrieval-candidate-source', sourceText(candidate)));
+            item.append(el('strong', '', candidate.title || '记忆切片'), el('span', 'ym-retrieval-candidate-source', `${candidate.sourceLabel || '忆幕'} · ${sourceText(candidate)}`));
             if (candidate.reason) item.append(el('p', 'ym-muted', candidate.reason));
             return item;
         }));

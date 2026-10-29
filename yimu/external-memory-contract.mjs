@@ -102,7 +102,7 @@ export function filterExternalCandidates(entries = [], context = {}) {
         if (entry.scope !== scope || entry.injectionBlocked || blocked.has(entry.id)) return false;
         if (storyId && entry.storyId && entry.storyId !== storyId) return false;
         if (timeline && entry.timeline && entry.timeline !== timeline) return false;
-        if (knownTo.size && entry.knownTo.length && !entry.knownTo.some(value => knownTo.has(value))) return false;
+        if (knownTo.size && Array.isArray(entry.knownTo) && entry.knownTo.length && !entry.knownTo.some(value => knownTo.has(value))) return false;
         if (adapters.size && !adapters.has(entry.adapterId)) return false;
         return true;
     });
