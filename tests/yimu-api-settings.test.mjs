@@ -238,3 +238,51 @@ test('account API and vector writes serialize without dropping each other', asyn
     assert.equal(f.ctx.extensionSettings.yimu.api.model, 'summary-fixture');
     assert.equal(f.ctx.extensionSettings.yimu.vector.model, 'embed-fixture');
 });
+
+test('rerank provider settings are account-scoped and map OpenAI/Cohere-style results', async () => {
+    const f = fixture();
+    await f.api.updateRerank({ apiUrl: 'https://rank.example/v1/rerank', apiKey: 'rank-secret', model: 'rank-fixture', topN: 2 });
+    assert.deepEqual(f.api.rerankRead(), { apiUrl: 'https://rank.example/v1', apiKey: 'rank-secret', model: 'rank-fixture', topN: 2, revision: 1 });
+    assert.equal(f.ctx.extensionSettings.yimu.rerank.model, 'rank-fixture');
+    f.answer = () => Response.json({ results: [{ index: 1, relevance_score: 0.9 }, { index: 0, relevance_score: 0.2 }, { index: 9, relevance_score: 1 }] });
+    const ranked = await f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '第一条' }, { id: 'b', text: '第二条' }] });
+    assert.deepEqual(ranked.map(item => item.id), ['b', 'a']);
+    assert.equal(f.calls.at(-1).path, 'https://rank.example/v1/rerank');
+    assert.deepEqual(f.calls.at(-1).options.headers, { 'Content-Type': 'application/json', Authorization: 'Bearer rank-secret' });
+    assert.deepEqual(JSON.parse(f.calls.at(-1).options.body), { model: 'rank-fixture', query: '当前', documents: ['第一条', '第二条'], top_n: 2 });
+    assert.equal('relevance_score' in ranked[0], false); assert.equal(typeof ranked[0].score, 'number');
+});
+
+test('rerank provider stays quiet until URL/model exist and redacts endpoint credentials', async () => {
+    const f = fixture();
+    assert.deepEqual(await f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), []);
+    assert.equal(f.calls.length, 0);
+    await f.api.updateRerank({ apiUrl: 'https://rank.example/v1', apiKey: 'rank-secret', model: 'rank-fixture' });
+    f.answer = () => { throw Error('network https://rank.example/v1 with rank-secret'); };
+    await assert.rejects(f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), error => !error.message.includes('rank-secret') && !error.message.includes('rank.example'));
+});
+
+test('rerank authorization retries once with a raw key after an auth rejection', async () => {
+    const f = fixture(); await f.api.updateRerank({ apiUrl: 'https://rank.example/v1', apiKey: 'rank-secret', model: 'rank-fixture' });
+    let attempts = 0;
+    f.answer = () => {
+        attempts++;
+        if (attempts === 1) return new Response('', { status: 401 });
+        return Response.json({ results: [{ index: 0, relevance_score: 0.8 }] });
+    };
+    const ranked = await f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] });
+    assert.deepEqual(ranked.map(item => item.id), ['a']);
+    assert.equal(attempts, 2); assert.equal(f.calls[0].options.headers.Authorization, 'Bearer rank-secret'); assert.equal(f.calls[1].options.headers.Authorization, 'rank-secret');
+});
+
+test('rerank settings validate bounded topN and preserve vector writes', async () => {
+    const f = fixture();
+    assert.throws(() => f.api.updateRerank({ topN: 0 }), /1—64/);
+    assert.throws(() => f.api.updateRerank({ topN: 65 }), /1—64/);
+    await Promise.all([
+        f.api.updateRerank({ apiUrl: 'https://rank.example/v1', model: 'rank-fixture', topN: 4 }),
+        f.api.updateVector({ apiUrl: 'https://vector.example/v1', model: 'embed-fixture' }),
+    ]);
+    assert.equal(f.api.rerankRead().model, 'rank-fixture'); assert.equal(f.api.vectorRead().model, 'embed-fixture');
+    assert.equal(f.ctx.extensionSettings.yimu.rerank.model, 'rank-fixture'); assert.equal(f.ctx.extensionSettings.yimu.vector.model, 'embed-fixture');
+});

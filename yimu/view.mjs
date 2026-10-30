@@ -189,7 +189,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     const backup = createBackupView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
     const retrieval = mountRetrievalView({ document, vectorApi: connectionApi,
-        onToggleVector: enabled => dispatch('settings', { global: false, values: { vectorEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }) });
+        onToggleVector: enabled => dispatch('settings', { global: false, values: { vectorEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }),
+        onToggleRerank: enabled => dispatch('settings', { global: false, values: { rerankEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }) });
     for (const name of Object.keys(pageTitles)) {
         const page = el('section', 'ym-page'); page.dataset.page = name; page.id = `ym-page-${name}`;
         page.hidden = name !== currentPage;

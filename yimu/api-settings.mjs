@@ -5,9 +5,11 @@ import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
 const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
 const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', revision: 0 });
+const RERANK_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', topN: 6, revision: 0 });
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
 const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured', 'qianmuPresetId'];
 const VECTOR_FIELDS = ['apiUrl', 'apiKey', 'model'];
+const RERANK_FIELDS = ['apiUrl', 'apiKey', 'model', 'topN'];
 const clone = value => structuredClone(value);
 const text = value => typeof value === 'string' ? value.trim() : '';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -40,6 +42,37 @@ function savedVector(ctx) {
     const raw = ctx?.extensionSettings?.yimu?.vector;
     if (!object(raw)) return clone(VECTOR_DEFAULTS);
     const result = { ...clone(VECTOR_DEFAULTS), ...validateVector(Object.fromEntries(Object.entries(raw).filter(([key]) => VECTOR_FIELDS.includes(key)))) };
+    result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
+    return result;
+}
+
+function rerankRoot(value) {
+    const input = text(value);
+    if (!input) fail('请填写重排 API URL');
+    let url;
+    try { url = new URL(input); } catch { fail('重排 API URL 格式无效'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('重排 API URL 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段');
+    url.pathname = url.pathname.replace(/\/(?:rerank|reranking)\/?$/i, '').replace(/\/+$/, '');
+    return url.toString().replace(/\/+$/, '');
+}
+
+function validateRerank(patch) {
+    if (!object(patch)) fail('重排连接设置无效');
+    const out = {};
+    for (const [key, value] of Object.entries(patch)) {
+        if (!RERANK_FIELDS.includes(key)) fail('未知的重排连接设置');
+        if (key === 'apiUrl') out[key] = value === '' ? '' : rerankRoot(value);
+        else if (key === 'topN') { if (!Number.isSafeInteger(value) || value < 1 || value > 64) fail('重排保留数须在 1—64 之间'); out[key] = value; }
+        else if (typeof value !== 'string' || value.length > (key === 'apiKey' ? 8192 : 2048) || /[\r\n\x00]/.test(value)) fail('重排连接内容无效');
+        else out[key] = value.trim();
+    }
+    return out;
+}
+
+function savedRerank(ctx) {
+    const raw = ctx?.extensionSettings?.yimu?.rerank;
+    if (!object(raw)) return clone(RERANK_DEFAULTS);
+    const result = { ...clone(RERANK_DEFAULTS), ...validateRerank(Object.fromEntries(Object.entries(raw).filter(([key]) => RERANK_FIELDS.includes(key)))) };
     result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
     return result;
 }
@@ -139,6 +172,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     const context = () => getContext() || fail('ST 尚未准备好连接设置');
     const read = () => savedConfig(context());
     const vectorRead = () => savedVector(context());
+    const rerankRead = () => savedRerank(context());
     // Same account-owned apiProfiles used by the companion dialog. Never copy its credentials into yimu settings.
     const qianmuOwner = () => context().extensionSettings?.story_director_liminale;
     const qianmuProfiles = () => (Array.isArray(qianmuOwner()?.apiProfiles) ? qianmuOwner().apiProfiles : [])
@@ -183,6 +217,22 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             try { await ctx.saveSettingsDebounced(); }
             catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('向量设置未保存，请重试'); }
             notify(); return vectorRead();
+        });
+        saving = pending; return pending;
+    };
+    const commitRerank = transform => {
+        const pending = saving.catch(() => {}).then(async () => {
+            const ctx = context();
+            if (!object(ctx.extensionSettings) || typeof ctx.saveSettingsDebounced !== 'function') fail('当前 ST 无法保存重排设置');
+            const before = ctx.extensionSettings.yimu;
+            const previous = object(before) ? before : {};
+            const current = savedRerank(ctx), next = transform(current);
+            if (!next) return rerankRead();
+            next.revision = current.revision + Number(RERANK_FIELDS.some(key => next[key] !== current[key]));
+            const owned = { ...previous, rerank: next }; ctx.extensionSettings.yimu = owned;
+            try { await ctx.saveSettingsDebounced(); }
+            catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('重排设置未保存，请重试'); }
+            notify(); return rerankRead();
         });
         saving = pending; return pending;
     };
@@ -298,6 +348,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     });
     const deletePreset = id => commit(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
     const updateVector = patch => { const values = validateVector(patch); return commitVector(current => ({ ...current, ...values })); };
+    const updateRerank = patch => { const values = validateRerank(patch); return commitRerank(current => ({ ...current, ...values })); };
     const vectorEndpoint = config => {
         const root = vectorRoot(config.apiUrl);
         return /\/v1$/i.test(root) ? `${root}/embeddings` : `${root}/v1/embeddings`;
@@ -330,7 +381,41 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             return ranked;
         } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
     }
+    const rerankEndpoint = config => {
+        const root = rerankRoot(config.apiUrl);
+        return /\/v1$/i.test(root) ? `${root}/rerank` : `${root}/v1/rerank`;
+    };
+    async function rerankCandidates({ query = '', candidates = [], limit = 6, signal } = {}) {
+        const config = rerankRead();
+        const safeQuery = text(query);
+        const safeCandidates = (Array.isArray(candidates) ? candidates : []).filter(candidate => candidate?.id && text(candidate.text)).slice(0, 64).map(candidate => ({
+            id: String(candidate.id), text: text(candidate.text).slice(0, 20000), title: text(candidate.title), start: candidate.start, end: candidate.end,
+        }));
+        if (!safeQuery || !safeCandidates.length) return [];
+        if (!config.apiUrl || !config.model) return [];
+        const topN = Math.max(1, Math.min(Number.isSafeInteger(limit) ? limit : config.topN, config.topN, 64));
+        const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
+        try {
+            const call = authorization => fetchImpl(rerankEndpoint(config), { method: 'POST', cache: 'no-store', signal,
+                headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
+                body: JSON.stringify({ model: config.model, query: safeQuery.slice(0, 20000), documents: safeCandidates.map(candidate => candidate.text), top_n: topN }) });
+            let response = await call(auth);
+            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            aborted(signal);
+            if (!response.ok) fail(errorText(new Error(`重排接口请求失败（HTTP ${response.status}）`), config));
+            let json; try { json = await response.json(); } catch { fail('重排接口返回格式无效'); }
+            const rows = Array.isArray(json?.results) ? json.results : Array.isArray(json?.data) ? json.data : [];
+            const ranked = rows.map(row => {
+                const index = Number.isSafeInteger(row?.index) ? row.index : -1;
+                const score = Number(row?.relevance_score ?? row?.score);
+                const candidate = safeCandidates[index];
+                return candidate && Number.isFinite(score) ? { id: candidate.id, score } : null;
+            }).filter(Boolean);
+            if (!ranked.length) fail('重排接口未返回有效候选');
+            return ranked;
+        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
+    }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
-        vectorRead, updateVector, vectorCandidates,
+        vectorRead, updateVector, vectorCandidates, rerankRead, updateRerank, rerankCandidates,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

@@ -11,7 +11,7 @@ import { validateGeneratedLength } from './scene-contract.mjs';
 import { summaryRequestBudget } from './budget.mjs';
 import { memoryTitle } from './timeline.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
-import { discoverVectorCandidates } from './vector-contract.mjs';
+import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -233,11 +233,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const defaults = clone(state.defaults);
         const settings = effectiveSettings(doc, defaults);
         const vectorConfig = typeof host.connectionApi?.vectorRead === 'function' ? host.connectionApi.vectorRead() : null;
+        const rerankConfig = typeof host.connectionApi?.rerankRead === 'function' ? host.connectionApi.rerankRead() : null;
         const vectorStatus = settings.vectorEnabled === true
             ? vectorConfig?.apiUrl && vectorConfig?.model ? 'planned' : 'unavailable'
             : 'disabled';
+        const rerankStatus = settings.rerankEnabled === true
+            ? rerankConfig?.apiUrl && rerankConfig?.model ? 'planned' : 'unavailable'
+            : 'disabled';
         state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vectorStatus,
-            ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
+            ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: rerankStatus,
+            ...(rerankStatus === 'unavailable' ? { reason: '尚未配置重排候选接口，已保留当前顺序' } : {}) }, candidates: [], lastRun: null };
         emit();
         let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
         const retryState = { exhausted: false };
@@ -319,8 +324,28 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         }
                     }
                 }
+                let rerank = { status: 'disabled', candidates: [], reason: '当前聊天未启用重排候选' };
+                if (settings.rerankEnabled === true) {
+                    const rerankConfig = typeof host.connectionApi?.rerankRead === 'function' ? host.connectionApi.rerankRead() : null;
+                    if (!rerankConfig?.apiUrl || !rerankConfig?.model || typeof host.rerankCandidates !== 'function') {
+                        rerank = { status: 'unavailable', candidates: [], reason: '尚未配置重排候选接口，已保留当前顺序' };
+                    } else {
+                        const queryText = snapshot.messages.slice(batch.start - 1, batch.end).map(message => message?.mes || message?.message || '').join('\n');
+                        rerank = await discoverRerankCandidates({
+                            provider: request => host.rerankCandidates(request), query: queryText, candidates,
+                            context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
+                            limit: Math.min(candidates.length || 1, rerankConfig.topN || 6),
+                        });
+                        if (rerank.status === 'ready' && rerank.candidates.length) {
+                            const byId = new Map(candidates.map(candidate => [candidate.id, candidate]));
+                            const ordered = rerank.candidates.map(candidate => byId.get(candidate.id)).filter(Boolean);
+                            const used = new Set(ordered.map(candidate => candidate.id));
+                            candidates = [...ordered, ...candidates.filter(candidate => !used.has(candidate.id))];
+                        }
+                    }
+                }
                 if (isCurrent(binding)) {
-                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vector.status, reason: vector.reason }, rerank: { status: 'planned' },
+                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vector.status, reason: vector.reason }, rerank: { status: rerank.status, reason: rerank.reason },
                         candidates: candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: candidate.title || '记忆切片', kind: candidate.kind || 'local', sourceLabel: candidate.sourceLabel || '忆幕', reason: candidate.reason })),
                         lastRun: { count: candidates.length, localCount: candidates.length, externalCount: 0, at: retrieval.at } };
                     emit();

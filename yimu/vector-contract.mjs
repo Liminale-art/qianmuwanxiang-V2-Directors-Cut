@@ -71,3 +71,36 @@ export async function discoverVectorCandidates({ provider, query, candidates = [
         return { status: 'error', candidates: [], reason: error instanceof Error ? error.message : '向量候选接口不可用' };
     }
 }
+
+/**
+ * Apply an explicitly supplied reranker to an already filtered candidate list.
+ * The provider can only return ids and scores; source text and permissions stay
+ * under the caller's control, and a malformed/failed response is a fallback.
+ */
+export async function discoverRerankCandidates({ provider, query, candidates = [], context = {}, limit = 6 } = {}) {
+    if (typeof provider !== 'function') return { status: 'unavailable', candidates: [], reason: '尚未配置重排候选接口' };
+    const safeQuery = cleanText(query);
+    const safeCandidates = (Array.isArray(candidates) ? candidates : []).slice(0, VECTOR_LIMITS.candidates).map(candidate => ({
+        id: typeof candidate?.id === 'string' ? candidate.id : '',
+        text: cleanText(candidate?.text),
+        title: cleanText(candidate?.title),
+        start: candidate?.start,
+        end: candidate?.end,
+    })).filter(candidate => candidate.id && candidate.text);
+    if (!safeQuery || !safeCandidates.length) return { status: 'ready', candidates: [] };
+    try {
+        const response = await provider(Object.freeze({ query: safeQuery, candidates: safeCandidates, context: Object.freeze({ ...context }) }));
+        const ranks = Array.isArray(response) ? response : response?.candidates;
+        if (!Array.isArray(ranks)) return { status: 'error', candidates: [], reason: '重排接口返回格式无效' };
+        const allowed = new Map(safeCandidates.map(candidate => [candidate.id, candidate]));
+        const normalized = ranks.map((rank, index) => {
+            const id = typeof rank?.id === 'string' ? rank.id : Number.isSafeInteger(rank?.index) ? safeCandidates[rank.index]?.id : '';
+            const base = allowed.get(id); const score = rank?.score ?? rank?.relevance_score;
+            return base && finite(score) ? { ...base, rerankScore: score, index } : null;
+        }).filter(Boolean).sort((left, right) => right.rerankScore - left.rerankScore || left.index - right.index);
+        const unique = [...new Map(normalized.map(candidate => [candidate.id, candidate])).values()]
+            .slice(0, Math.max(1, Math.min(Number.isSafeInteger(limit) ? limit : 6, VECTOR_LIMITS.candidates)))
+            .map(({ rerankScore, index, ...candidate }) => candidate);
+        return { status: 'ready', candidates: unique };
+    } catch (error) { return { status: 'error', candidates: [], reason: error instanceof Error ? error.message : '重排接口不可用' }; }
+}
