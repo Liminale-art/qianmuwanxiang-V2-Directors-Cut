@@ -6,6 +6,7 @@ const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model:
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
 const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', revision: 0 });
 const RERANK_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', topN: 6, revision: 0 });
+const DEFAULT_RETRIEVAL_TIMEOUT_MS = 10000;
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
 const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured', 'qianmuPresetId'];
 const VECTOR_FIELDS = ['apiUrl', 'apiKey', 'model'];
@@ -167,7 +168,8 @@ async function completion(response, config, signal, onChunk) {
 }
 
 export function createApiSettings({ getContext = () => globalThis.SillyTavern?.getContext?.(), fetchImpl = (...args) => globalThis.fetch(...args),
-    createId = () => globalThis.crypto.randomUUID(), statusTimeoutMs = 20000 } = {}) {
+    createId = () => globalThis.crypto.randomUUID(), statusTimeoutMs = 20000, retrievalTimeoutMs = DEFAULT_RETRIEVAL_TIMEOUT_MS } = {}) {
+    const candidateTimeout = Number.isFinite(retrievalTimeoutMs) ? Math.max(1, Math.trunc(retrievalTimeoutMs)) : DEFAULT_RETRIEVAL_TIMEOUT_MS;
     const listeners = new Set(); let saving = Promise.resolve();
     const context = () => getContext() || fail('ST 尚未准备好连接设置');
     const read = () => savedConfig(context());
@@ -362,8 +364,9 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         if (!safeQuery || !safeCandidates.length) return [];
         if (!config.apiUrl || !config.model) return [];
         const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
+        const scope = requestScope(signal, '向量候选请求超时，已回退关键词召回');
         try {
-            const call = authorization => fetchImpl(vectorEndpoint(config), { method: 'POST', cache: 'no-store', signal,
+            const call = authorization => fetchImpl(vectorEndpoint(config), { method: 'POST', cache: 'no-store', signal: scope.signal,
                 headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
                 body: JSON.stringify({ model: config.model, input: [safeQuery, ...safeCandidates.map(candidate => candidate.text)] }) });
             let response = await call(auth);
@@ -379,11 +382,24 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             const ranked = rankVectorCandidates(safeCandidates.map((candidate, index) => ({ ...candidate, vector: vectors[index + 1] })), queryVector, { limit });
             if (!ranked.length) fail('向量接口未返回可比较的候选向量');
             return ranked;
-        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
+        } catch (error) {
+            aborted(signal);
+            if (scope.timedOut()) throw new Error('向量候选请求超时，已回退关键词召回');
+            throw new Error(errorText(error, config));
+        } finally { scope.dispose(); }
     }
     const rerankEndpoint = config => {
         const root = rerankRoot(config.apiUrl);
         return /\/v1$/i.test(root) ? `${root}/rerank` : `${root}/v1/rerank`;
+    };
+    const requestScope = (signal, message) => {
+        const controller = new AbortController();
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; controller.abort(new Error(message)); }, candidateTimeout);
+        const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
+        if (signal?.aborted) relay();
+        else signal?.addEventListener('abort', relay, { once: true });
+        return { signal: controller.signal, timedOut: () => timedOut, dispose() { clearTimeout(timer); signal?.removeEventListener('abort', relay); } };
     };
     async function rerankCandidates({ query = '', candidates = [], limit = 6, signal } = {}) {
         const config = rerankRead();
@@ -395,8 +411,9 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         if (!config.apiUrl || !config.model) return [];
         const topN = Math.max(1, Math.min(Number.isSafeInteger(limit) ? limit : config.topN, config.topN, 64));
         const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
+        const scope = requestScope(signal, '重排候选请求超时，已保留当前顺序');
         try {
-            const call = authorization => fetchImpl(rerankEndpoint(config), { method: 'POST', cache: 'no-store', signal,
+            const call = authorization => fetchImpl(rerankEndpoint(config), { method: 'POST', cache: 'no-store', signal: scope.signal,
                 headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
                 body: JSON.stringify({ model: config.model, query: safeQuery.slice(0, 20000), documents: safeCandidates.map(candidate => candidate.text), top_n: topN }) });
             let response = await call(auth);
@@ -413,7 +430,11 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             }).filter(Boolean);
             if (!ranked.length) fail('重排接口未返回有效候选');
             return ranked;
-        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
+        } catch (error) {
+            aborted(signal);
+            if (scope.timedOut()) throw new Error('重排候选请求超时，已保留当前顺序');
+            throw new Error(errorText(error, config));
+        } finally { scope.dispose(); }
     }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
         vectorRead, updateVector, vectorCandidates, rerankRead, updateRerank, rerankCandidates,

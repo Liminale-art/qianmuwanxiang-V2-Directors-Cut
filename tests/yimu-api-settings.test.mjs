@@ -227,6 +227,19 @@ test('vector provider is quiet until URL and model exist and redacts endpoint fa
     await assert.rejects(f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), error => !error.message.includes('vector-secret') && !error.message.includes('vector.example'));
 });
 
+test('vector and rerank requests have a bounded wait and return a factual fallback reason', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1', model: 'embed-fixture' });
+    await f.api.updateRerank({ apiUrl: 'https://rank.example/v1', model: 'rank-fixture' });
+    const hanging = async (_path, options) => new Promise((_resolve, reject) => {
+        assert.ok(options.signal, 'candidate providers must receive a cancellable signal');
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+    });
+    const bounded = createApiSettings({ getContext: () => f.ctx, fetchImpl: hanging, retrievalTimeoutMs: 5 });
+    await assert.rejects(bounded.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), /向量候选请求超时，已回退关键词召回/);
+    await assert.rejects(bounded.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), /重排候选请求超时，已保留当前顺序/);
+});
+
 test('account API and vector writes serialize without dropping each other', async () => {
     const f = fixture();
     await Promise.all([

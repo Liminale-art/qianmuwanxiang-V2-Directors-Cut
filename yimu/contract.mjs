@@ -8,7 +8,7 @@ import { normalizeEntryOrder, insertEntryOrder, validatePlacement, validateMemor
 import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './prompt-settings.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.8.7';
+export const VERSION = '0.8.8';
 export const SCHEMA = 7;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,

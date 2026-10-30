@@ -314,7 +314,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                             context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
                         }).candidates.filter(candidate => candidate.kind === 'local');
                         const queryText = snapshot.messages.slice(batch.start - 1, batch.end).map(message => message?.mes || message?.message || '').join('\n');
-                        vector = await discoverVectorCandidates({ provider: request => host.vectorCandidates(request), query: queryText, candidates: pool, context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }), limit: 6 });
+                        vector = await discoverVectorCandidates({ provider: request => host.vectorCandidates(request), query: queryText, candidates: pool, context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }), limit: 6, signal: controller.signal });
                         if (vector.status === 'ready' && vector.candidates.length) {
                             const seen = new Set(candidates.map(candidate => candidate.id));
                             for (const candidate of vector.candidates) {
@@ -334,7 +334,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         rerank = await discoverRerankCandidates({
                             provider: request => host.rerankCandidates(request), query: queryText, candidates,
                             context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
-                            limit: Math.min(candidates.length || 1, rerankConfig.topN || 6),
+                            limit: Math.min(candidates.length || 1, rerankConfig.topN || 6), signal: controller.signal,
                         });
                         if (rerank.status === 'ready' && rerank.candidates.length) {
                             const byId = new Map(candidates.map(candidate => [candidate.id, candidate]));

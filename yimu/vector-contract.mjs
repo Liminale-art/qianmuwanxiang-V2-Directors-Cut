@@ -41,7 +41,7 @@ export function rankVectorCandidates(candidates = [], queryVector, { limit = 6 }
  * provider is a normal unavailable state, not an error and never blocks the
  * lexical path. Provider results are treated as read-only candidate data.
  */
-export async function discoverVectorCandidates({ provider, query, candidates = [], context = {}, limit = 6 } = {}) {
+export async function discoverVectorCandidates({ provider, query, candidates = [], context = {}, limit = 6, signal } = {}) {
     if (typeof provider !== 'function') return { status: 'unavailable', candidates: [], reason: '尚未配置向量候选接口' };
     const safeQuery = cleanText(query);
     const safeCandidates = (Array.isArray(candidates) ? candidates : []).slice(0, VECTOR_LIMITS.candidates).map(candidate => ({
@@ -52,7 +52,7 @@ export async function discoverVectorCandidates({ provider, query, candidates = [
         end: candidate?.end,
     })).filter(candidate => candidate.id && candidate.text);
     try {
-        const response = await provider(Object.freeze({ query: safeQuery, candidates: safeCandidates, context: Object.freeze({ ...context }) }));
+        const response = await provider(Object.freeze({ query: safeQuery, candidates: safeCandidates, context: Object.freeze({ ...context }), signal }));
         const vectorCandidates = Array.isArray(response) ? response : response?.candidates;
         if (!Array.isArray(vectorCandidates)) return { status: 'error', candidates: [], reason: '向量接口返回格式无效' };
         const allowed = new Map(safeCandidates.map(candidate => [candidate.id, candidate]));
@@ -77,7 +77,7 @@ export async function discoverVectorCandidates({ provider, query, candidates = [
  * The provider can only return ids and scores; source text and permissions stay
  * under the caller's control, and a malformed/failed response is a fallback.
  */
-export async function discoverRerankCandidates({ provider, query, candidates = [], context = {}, limit = 6 } = {}) {
+export async function discoverRerankCandidates({ provider, query, candidates = [], context = {}, limit = 6, signal } = {}) {
     if (typeof provider !== 'function') return { status: 'unavailable', candidates: [], reason: '尚未配置重排候选接口' };
     const safeQuery = cleanText(query);
     const safeCandidates = (Array.isArray(candidates) ? candidates : []).slice(0, VECTOR_LIMITS.candidates).map(candidate => ({
@@ -89,7 +89,7 @@ export async function discoverRerankCandidates({ provider, query, candidates = [
     })).filter(candidate => candidate.id && candidate.text);
     if (!safeQuery || !safeCandidates.length) return { status: 'ready', candidates: [] };
     try {
-        const response = await provider(Object.freeze({ query: safeQuery, candidates: safeCandidates, context: Object.freeze({ ...context }) }));
+        const response = await provider(Object.freeze({ query: safeQuery, candidates: safeCandidates, context: Object.freeze({ ...context }), signal }));
         const ranks = Array.isArray(response) ? response : response?.candidates;
         if (!Array.isArray(ranks)) return { status: 'error', candidates: [], reason: '重排接口返回格式无效' };
         const allowed = new Map(safeCandidates.map(candidate => [candidate.id, candidate]));
