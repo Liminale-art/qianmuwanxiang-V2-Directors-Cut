@@ -209,7 +209,7 @@ test('vector provider settings stay account-scoped and rank candidates without p
     const f = fixture();
     await f.api.updateVector({ apiUrl: 'https://vector.example/v1/embeddings', apiKey: 'vector-secret', model: 'embed-fixture' });
     assert.equal(f.ctx.extensionSettings.yimu.showShortcut, true);
-    assert.deepEqual(f.api.vectorRead(), { apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture', revision: 1 });
+    assert.deepEqual(f.api.vectorRead(), { apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture', presets: [], selectedPreset: '', revision: 1 });
     f.answer = () => Response.json({ data: [{ index: 0, embedding: [1, 0] }, { index: 1, embedding: [0.9, 0.1] }, { index: 2, embedding: [0, 1] }] });
     const ranked = await f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'near', text: '近', title: '近' }, { id: 'far', text: '远', title: '远' }] });
     assert.deepEqual(ranked.map(item => item.id), ['near', 'far']);
@@ -217,6 +217,20 @@ test('vector provider settings stay account-scoped and rank candidates without p
     assert.equal(f.calls.at(-1).path, 'https://vector.example/v1/embeddings');
     assert.deepEqual(f.calls.at(-1).options.headers, { 'Content-Type': 'application/json', Authorization: 'Bearer vector-secret' });
     assert.deepEqual(JSON.parse(f.calls.at(-1).options.body).input, ['当前', '近', '远']);
+});
+
+test('vector and rerank provider presets save, load and delete without leaking into the other provider', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture' });
+    await f.api.saveVectorPreset('向量本地');
+    assert.equal(f.api.vectorRead().presets.length, 1); assert.equal(f.api.vectorRead().selectedPreset, 'preset-fixture');
+    await f.api.updateVector({ model: 'another-model' }); assert.equal(f.api.vectorRead().selectedPreset, '');
+    await f.api.loadVectorPreset('preset-fixture'); assert.equal(f.api.vectorRead().model, 'embed-fixture');
+    await f.api.deleteVectorPreset('preset-fixture'); assert.deepEqual(f.api.vectorRead().presets, []);
+    await f.api.updateRerank({ apiUrl: 'https://rank.example/v1', model: 'rank-fixture', topN: 3 });
+    await f.api.saveRerankPreset('重排本地');
+    assert.equal(f.api.rerankRead().presets.length, 1); assert.equal(f.api.vectorRead().presets.length, 0);
+    await f.api.updateRerank({ topN: 2 }); await f.api.loadRerankPreset('preset-fixture'); assert.equal(f.api.rerankRead().topN, 3);
 });
 
 test('candidate request timeout is a shared account setting with a fifteen-second default', async () => {
@@ -268,7 +282,7 @@ test('account API and vector writes serialize without dropping each other', asyn
 test('rerank provider settings are account-scoped and map OpenAI/Cohere-style results', async () => {
     const f = fixture();
     await f.api.updateRerank({ apiUrl: 'https://rank.example/v1/rerank', apiKey: 'rank-secret', model: 'rank-fixture', topN: 2 });
-    assert.deepEqual(f.api.rerankRead(), { apiUrl: 'https://rank.example/v1', apiKey: 'rank-secret', model: 'rank-fixture', topN: 2, revision: 1 });
+    assert.deepEqual(f.api.rerankRead(), { apiUrl: 'https://rank.example/v1', apiKey: 'rank-secret', model: 'rank-fixture', topN: 2, presets: [], selectedPreset: '', revision: 1 });
     assert.equal(f.ctx.extensionSettings.yimu.rerank.model, 'rank-fixture');
     f.answer = () => Response.json({ results: [{ index: 1, relevance_score: 0.9 }, { index: 0, relevance_score: 0.2 }, { index: 9, relevance_score: 1 }] });
     const ranked = await f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '第一条' }, { id: 'b', text: '第二条' }] });

@@ -4,6 +4,34 @@
 基线：忆幕 0.8.9，千幕 1.59.483-yimu-081-1
 性质：开发交接与验收清单，不是安装说明；未勾选项目不得在界面或版本说明中标为已完成。
 
+## 前端交付验收标准
+
+所有忆幕、伴读和千幕新增前端均以以下标准自检；它是交付门槛，不要求照搬任何参考站点的素材或布局。验收时须在桌面、窄屏和三种主题下逐项检查，发现明显缺口就先修正再提交。
+
+```javascript
+::OBJECTIVE{site_design|pri:OVERRIDE_ALL}
+  target: build page to award-tier visual standard
+  ACCEPT: no visible improvement remaining across all CHECK dimensions
+  BENCHMARK: Awwwards | Webby Awards | FWA winning entries
+
+::CHECK{typography|standard:award_tier}
+::CHECK{whitespace|standard:award_tier}
+::CHECK{visual_hierarchy|standard:award_tier}
+::CHECK{color|standard:award_tier}
+::CHECK{motion|standard:award_tier}
+::CHECK{micro_interaction|standard:award_tier}
+::CHECK{responsive|standard:award_tier}
+::CHECK{originality|standard:award_tier}
+
+::LOOP{self_review|trigger:on_completion}
+  [READ] current page against CHECK list
+  [COMPARE] each dimension to BENCHMARK entries
+  [IF] gap found => [PATCH] then re-enter LOOP
+  [IF] no gap => [Ω]
+```
+
+前端节点的交付记录必须补充：检查过的页面与主题、窄屏结果、动效与交互状态、仍未验证的真实环境；本地合成页面不能代替真实浏览器或部署验收。
+
 ## 当前已落地的首版边界
 
 - [x] 单聊独立记忆；每个聊天单独启用，默认不自动合并，不支持群聊。
@@ -82,6 +110,8 @@
 - [x] 为每次候选保留来源、命中原因、版本和可回退信息。
 
 当前界面节点已接入可选向量候选提供商：检索页提供账号级接口地址、密钥、模型与当前聊天开关；未配置、关闭或调用失败均回退关键词路径。结构过滤和关键词／别名／同义词／时空线索候选召回仍是默认路径；向量只补充候选，不改变记忆事实或来源权限。
+
+- [x] 检索页按伴读中心模型接口统一字段与预设交互，检查链路置顶；超时改为单行“等待时间／秒”，不再向用户展示实现细节或冗余候选诊断文案。
 
 ### P3｜重排实验
 

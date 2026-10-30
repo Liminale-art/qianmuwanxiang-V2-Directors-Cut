@@ -4,8 +4,8 @@ import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
 
 const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
-const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', revision: 0 });
-const RERANK_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', topN: 6, revision: 0 });
+const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', presets: [], selectedPreset: '', revision: 0 });
+const RERANK_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', topN: 6, presets: [], selectedPreset: '', revision: 0 });
 const DEFAULT_RETRIEVAL_TIMEOUT_MS = 15000;
 const MIN_RETRIEVAL_TIMEOUT_SECONDS = 5;
 const MAX_RETRIEVAL_TIMEOUT_SECONDS = 60;
@@ -41,10 +41,29 @@ function validateVector(patch) {
     return out;
 }
 
+function presetName(value) {
+    const name = text(value);
+    if (!name || name.length > 120) fail('请输入 1—120 字的预设名称');
+    return name;
+}
+
+function providerPresets(raw, fields, validate) {
+    if (!Array.isArray(raw)) return [];
+    return raw.map(item => {
+        if (!object(item) || !text(item.id) || !text(item.name)) return null;
+        try {
+            const values = validate(Object.fromEntries(fields.map(key => [key, item[key]]).filter(([, value]) => value !== undefined)));
+            return { id: text(item.id), name: text(item.name), ...values };
+        } catch { return null; }
+    }).filter(Boolean);
+}
+
 function savedVector(ctx) {
     const raw = ctx?.extensionSettings?.yimu?.vector;
     if (!object(raw)) return clone(VECTOR_DEFAULTS);
     const result = { ...clone(VECTOR_DEFAULTS), ...validateVector(Object.fromEntries(Object.entries(raw).filter(([key]) => VECTOR_FIELDS.includes(key)))) };
+    result.presets = providerPresets(raw.presets, VECTOR_FIELDS, validateVector);
+    result.selectedPreset = result.presets.some(item => item.id === raw.selectedPreset) ? text(raw.selectedPreset) : '';
     result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
     return result;
 }
@@ -76,6 +95,8 @@ function savedRerank(ctx) {
     const raw = ctx?.extensionSettings?.yimu?.rerank;
     if (!object(raw)) return clone(RERANK_DEFAULTS);
     const result = { ...clone(RERANK_DEFAULTS), ...validateRerank(Object.fromEntries(Object.entries(raw).filter(([key]) => RERANK_FIELDS.includes(key)))) };
+    result.presets = providerPresets(raw.presets, RERANK_FIELDS, validateRerank);
+    result.selectedPreset = result.presets.some(item => item.id === raw.selectedPreset) ? text(raw.selectedPreset) : '';
     result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
     return result;
 }
@@ -386,8 +407,34 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         return { ...current, ...Object.fromEntries(FIELDS.map(key => [key, preset[key] ?? DEFAULTS[key]])), mode: 'external', selectedPreset: id, models: [] };
     });
     const deletePreset = id => commit(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
-    const updateVector = patch => { const values = validateVector(patch); return commitVector(current => ({ ...current, ...values })); };
-    const updateRerank = patch => { const values = validateRerank(patch); return commitRerank(current => ({ ...current, ...values })); };
+    const updateVector = patch => { const values = validateVector(patch); return commitVector(current => ({ ...current, ...values, selectedPreset: '' })); };
+    const updateRerank = patch => { const values = validateRerank(patch); return commitRerank(current => ({ ...current, ...values, selectedPreset: '' })); };
+    const saveVectorPreset = name => {
+        const label = presetName(name);
+        return commitVector(current => {
+            const existing = current.presets.find(item => item.name === label), id = existing?.id || createId();
+            const preset = { id, name: label, ...Object.fromEntries(VECTOR_FIELDS.map(key => [key, current[key]])) };
+            return { ...current, selectedPreset: id, presets: [...current.presets.filter(item => item.id !== id), preset] };
+        });
+    };
+    const loadVectorPreset = id => commitVector(current => {
+        const preset = current.presets.find(item => item.id === id); if (!preset) fail('该向量预设已不存在');
+        return { ...current, ...Object.fromEntries(VECTOR_FIELDS.map(key => [key, preset[key] ?? ''])), selectedPreset: id };
+    });
+    const deleteVectorPreset = id => commitVector(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
+    const saveRerankPreset = name => {
+        const label = presetName(name);
+        return commitRerank(current => {
+            const existing = current.presets.find(item => item.name === label), id = existing?.id || createId();
+            const preset = { id, name: label, ...Object.fromEntries(RERANK_FIELDS.map(key => [key, current[key]])) };
+            return { ...current, selectedPreset: id, presets: [...current.presets.filter(item => item.id !== id), preset] };
+        });
+    };
+    const loadRerankPreset = id => commitRerank(current => {
+        const preset = current.presets.find(item => item.id === id); if (!preset) fail('该重排预设已不存在');
+        return { ...current, ...Object.fromEntries(RERANK_FIELDS.map(key => [key, preset[key] ?? (key === 'topN' ? RERANK_DEFAULTS.topN : '')])), selectedPreset: id };
+    });
+    const deleteRerankPreset = id => commitRerank(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
     const vectorEndpoint = config => {
         const root = vectorRoot(config.apiUrl);
         return /\/v1$/i.test(root) ? `${root}/embeddings` : `${root}/v1/embeddings`;
@@ -474,6 +521,8 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         } finally { scope.dispose(); }
     }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
-        vectorRead, updateVector, vectorCandidates, rerankRead, updateRerank, rerankCandidates, retrievalTimeoutRead, updateRetrievalTimeout,
+        vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates,
+        rerankRead, updateRerank, saveRerankPreset, loadRerankPreset, deleteRerankPreset, rerankCandidates,
+        retrievalTimeoutRead, updateRetrievalTimeout,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

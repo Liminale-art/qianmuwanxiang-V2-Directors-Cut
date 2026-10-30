@@ -899,10 +899,11 @@ test('retrieval page sits between memory and settings and reports planned vector
     const visible = () => f.all().filter(n => n.className === 'ym-page' && !n.hidden).map(n => n.dataset.page);
     f.get('检索').click();
     assert.deepEqual(visible(), ['retrieval']);
-    assert.match(f.document.body.textContent, /向量与重排/);
+    assert.match(f.document.body.textContent, /检查链路/);
+    assert.match(f.document.body.textContent, /向量检索/);
     assert.match(f.document.body.textContent, /关键词召回/);
     assert.match(f.document.body.textContent, /待接入/);
-    assert.match(f.document.body.textContent, /尚未产生候选检索记录/);
+    assert.match(f.document.body.textContent, /暂无候选记录/);
     assert.deepEqual(f.calls, []);
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
 });
@@ -917,6 +918,19 @@ test('retrieval timeout is shown as one shared account control and saves in seco
     timeout.value = '25'; timeout.emit('change'); await d.flush();
     assert.equal(ctx.extensionSettings.yimu.retrievalTimeoutMs, 25000);
     view.render(state()); assert.equal(d.get('候选请求超时（秒）').value, '25');
+});
+
+test('retrieval provider cards use companion field names, presets and compact status-first layout', t => {
+    const d = dom(), ctx = { extensionSettings: { yimu: {} }, async saveSettingsDebounced() {} };
+    const connectionApi = createApiSettings({ getContext: () => ctx, createId: () => 'preset-fixture' });
+    const view = createView({ document: d.document, connectionApi, onAction: async () => {} });
+    t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
+    assert.ok(d.get('向量检索预设')); assert.ok(d.get('Rerank预设'));
+    for (const label of ['API URL', 'API Key', '模型']) assert.equal(d.get(label).placeholder, undefined);
+    const statusCard = d.all().find(node => node.className.includes('ym-retrieval-status-card'));
+    assert.equal(statusCard?.parentNode?.children[0], statusCard);
+    assert.doesNotMatch(d.document.body.textContent, /先看候选从哪里来|可选增强|自动回退，不影响正常整理/);
+    assert.doesNotMatch(d.document.body.textContent, /https:\/\/example\.com|text-embedding-3-small|bge-reranker-v2-m3/);
 });
 
 test('search and attention filters do not hide active edits or mutate memory', t => {
