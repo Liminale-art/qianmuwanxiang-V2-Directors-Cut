@@ -22,6 +22,9 @@ const id = value => clean(value, 80, '外部记忆条目标识').replace(/\s+/g,
 const optional = (value, max = 160) => typeof value === 'string' ? value.replace(/\u0000/g, '').trim().slice(0, max) : '';
 const list = (value, max = 20) => Array.isArray(value) ? [...new Set(value.filter(item => typeof item === 'string')
     .map(item => optional(item, 80)).filter(Boolean))].slice(0, max) : [];
+const bindingKey = binding => binding && typeof binding === 'object'
+    && ['avatar', 'file', 'integrity'].every(key => typeof binding[key] === 'string' && binding[key].trim())
+    ? JSON.stringify([binding.avatar.trim(), binding.file.trim(), binding.integrity.trim()]) : '';
 
 export function validateExternalAdapter(adapter) {
     if (!adapter || typeof adapter !== 'object') fail('外部记忆适配器无效');
@@ -39,7 +42,7 @@ function normalizeTags(value) {
         .slice(0, EXTERNAL_MEMORY_LIMITS.tags).map(tag => tag.slice(0, 80));
 }
 
-export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) {
+export function normalizeExternalEntries(raw, adapter, { scope = 'chat', chatKey = '' } = {}) {
     const descriptor = validateExternalAdapter(adapter);
     const source = Array.isArray(raw) ? raw : raw?.entries;
     if (!Array.isArray(source)) return [];
@@ -76,6 +79,7 @@ export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) 
             knownTo: list(item.knownTo),
             injectionBlocked: item.injectionBlocked === true,
             source: { kind: 'external', adapter: descriptor.id, ref: itemId },
+            ...(optional(chatKey, 512) ? { chatKey: optional(chatKey, 512) } : {}),
             readOnly: true,
             trusted: false,
             canReplaceSource: false,
@@ -86,9 +90,10 @@ export function normalizeExternalEntries(raw, adapter, { scope = 'chat' } = {}) 
 }
 
 /**
- * Apply only explicit structural boundaries. Missing metadata stays eligible;
- * an external adapter must not be able to invent a hard exclusion merely by
- * omitting time, place or character fields.
+ * Apply only explicit structural boundaries. Chat identity is a hard boundary
+ * when the current read has one; narrative metadata may remain optional, so an
+ * external adapter cannot invent a hard exclusion merely by omitting time,
+ * place or character fields.
  */
 export function filterExternalCandidates(entries = [], context = {}) {
     const scope = optional(context.scope) || 'chat';
@@ -97,9 +102,11 @@ export function filterExternalCandidates(entries = [], context = {}) {
     const knownTo = new Set(list(context.knownTo));
     const blocked = new Set(Array.isArray(context.blockedIds) ? context.blockedIds : []);
     const adapters = context.adapterIds instanceof Set ? context.adapterIds : new Set(Array.isArray(context.adapterIds) ? context.adapterIds : []);
+    const chatKey = optional(context.chatKey, 512);
     return entries.filter(entry => {
         if (!entry || entry.readOnly !== true || entry.trusted !== false || entry.canReplaceSource !== false) return false;
         if (entry.scope !== scope || entry.injectionBlocked || blocked.has(entry.id)) return false;
+        if (chatKey && entry.chatKey !== chatKey) return false;
         if (storyId && entry.storyId && entry.storyId !== storyId) return false;
         if (timeline && entry.timeline && entry.timeline !== timeline) return false;
         if (knownTo.size && Array.isArray(entry.knownTo) && entry.knownTo.length && !entry.knownTo.some(value => knownTo.has(value))) return false;
@@ -126,7 +133,7 @@ export function createExternalMemoryRegistry(initial = []) {
             for (const adapter of adapters.values()) {
                 try {
                     const raw = await adapter.read(Object.freeze({ ...context }));
-                    const normalized = normalizeExternalEntries(raw, adapter, options);
+                    const normalized = normalizeExternalEntries(raw, adapter, { ...options, chatKey: bindingKey(context.binding) || options.chatKey || '' });
                     entries.push(...normalized);
                     diagnostics.push({ adapterId: adapter.id, status: 'ok', count: normalized.length });
                 } catch (error) {

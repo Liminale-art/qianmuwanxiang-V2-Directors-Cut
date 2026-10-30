@@ -2,6 +2,9 @@ import { filterExternalCandidates } from './external-memory-contract.mjs';
 
 const text = value => typeof value === 'string' ? value.trim() : '';
 const integer = value => Number.isSafeInteger(value) ? value : null;
+const chatKey = binding => binding && typeof binding === 'object'
+    && ['avatar', 'file', 'integrity'].every(key => text(binding[key]))
+    ? JSON.stringify([text(binding.avatar), text(binding.file), text(binding.integrity)]) : '';
 
 /**
  * Structural guard for the candidate list used by the lexical path.
@@ -23,6 +26,7 @@ export function filterLocalRetrievalCandidates(candidates = [], context = {}) {
         if (blocked.has(candidate.id) || invalid.has(candidate.id)) return false;
         if (candidate.injectionBlocked === true || ['deleted', 'excluded'].includes(candidate.status)) return false;
         if (candidate.scope && candidate.scope !== scope) return false;
+        if (context.chatKey && candidate.chatKey && candidate.chatKey !== context.chatKey) return false;
         if (storyId && candidate.storyId && candidate.storyId !== storyId) return false;
         if (timeline && candidate.timeline && candidate.timeline !== timeline) return false;
         if (knownTo.size && Array.isArray(candidate.knownTo) && candidate.knownTo.length
@@ -76,6 +80,7 @@ export function retrievalContext(document, { beforeFloor = null, invalidIds = []
     const entries = Array.isArray(document?.entries) ? document.entries : [];
     return {
         scope: 'chat',
+        chatKey: chatKey(document?.binding),
         storyId: text(document?.storyId || document?.lineage?.storyId),
         timeline: text(document?.timeline || document?.lineage?.timeline),
         beforeFloor,

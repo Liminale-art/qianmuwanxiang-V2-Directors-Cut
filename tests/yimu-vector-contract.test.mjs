@@ -55,3 +55,23 @@ test('rerank malformed or failed providers become a reviewable error instead of 
     const failed = await discoverRerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }], provider: async () => { throw new Error('接口暂不可用'); } });
     assert.equal(failed.status, 'error'); assert.deepEqual(failed.candidates, []); assert.match(failed.reason, /暂不可用/);
 });
+
+test('rerank is downstream of structural filtering and drops cross-chat or forged ids', async () => {
+    const current = JSON.stringify(['秦铎.png', 'main', 'source-main']);
+    // The caller supplies only the already-filtered current-chat pool. A
+    // reranker may reorder that pool, but it cannot smuggle another chat back
+    // in by returning a matching-text or unknown id.
+    const pool = [{id: 'current', text: '同一封信在港口被重新提起。', title: '主线', start: 1, end: 2, chatKey: current}];
+    let request;
+    const result = await discoverRerankCandidates({query: '港口的信', candidates: pool, context: {chatKey: current, storyId: 'world', timeline: 'winter'}, provider: async value => {
+        request = value;
+        return {candidates: [
+            {id: 'other-chat', score: 99},
+            {id: 'current', score: 1},
+            {index: 42, relevance_score: 100},
+        ]};
+    }});
+    assert.deepEqual(request.candidates.map(item => item.id), ['current']);
+    assert.deepEqual(result.candidates.map(item => item.id), ['current']);
+    assert.equal(result.candidates[0].chatKey, undefined, 'provider sees only safe candidate fields');
+});

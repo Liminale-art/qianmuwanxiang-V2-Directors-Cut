@@ -53,3 +53,40 @@ test('candidate filtering uses explicit scope and knowledge boundaries while mis
     assert.deepEqual(result.map(entry => entry.id), ['gaga:same', 'gaga:unknown']);
     assert.deepEqual(filterExternalCandidates(entries, {scope: 'chat', blockedIds: ['gaga:unknown']}).map(entry => entry.id), ['gaga:same', 'gaga:other-story', 'gaga:private']);
 });
+
+test('registered external entries inherit the current chat identity and reject another chat even with identical prose', async () => {
+    const adapter = { id: 'gaga', label: '合成来源', read: async () => [
+        { id: 'same-prose', text: '同样的雨夜，角色回到旧屋。', scope: 'chat' },
+    ] };
+    const registry = createExternalMemoryRegistry([adapter]);
+    const current = { avatar: '秦铎.png', file: 'main', integrity: 'source-main' };
+    const other = { avatar: '秦铎.png', file: 'branch', integrity: 'source-branch' };
+    const currentResult = await registry.read({ binding: current }, { scope: 'chat' });
+    const otherResult = await registry.read({ binding: other }, { scope: 'chat' });
+    const currentKey = JSON.stringify([current.avatar, current.file, current.integrity]);
+    const otherKey = JSON.stringify([other.avatar, other.file, other.integrity]);
+    assert.equal(currentResult.entries[0].chatKey, currentKey);
+    assert.equal(otherResult.entries[0].chatKey, otherKey);
+    assert.deepEqual(filterExternalCandidates(currentResult.entries, { scope: 'chat', chatKey: currentKey }).map(entry => entry.id), ['gaga:same-prose']);
+    assert.deepEqual(filterExternalCandidates(currentResult.entries, { scope: 'chat', chatKey: otherKey }), []);
+});
+
+test('mixed external candidates with identical prose are filtered by chat identity before they can be ranked', () => {
+    const adapter = { id: 'gaga', label: '合成来源', read: () => [] };
+    const current = JSON.stringify(['秦铎.png', 'main', 'source-main']);
+    const other = JSON.stringify(['秦铎.png', 'branch', 'source-branch']);
+    const entries = normalizeExternalEntries([
+        {id: 'main', text: '同一封信在港口被重新提起。'},
+        {id: 'branch', text: '同一封信在港口被重新提起。'},
+    ], adapter, {chatKey: current});
+    entries[1].chatKey = other;
+    const filtered = filterExternalCandidates(entries, {scope: 'chat', chatKey: current});
+    assert.deepEqual(filtered.map(entry => entry.id), ['gaga:main']);
+    assert.equal(filtered[0].text, '同一封信在港口被重新提起。', 'text equality must not defeat the structural boundary');
+});
+
+test('chat-scoped external candidates without an identity are not eligible when a chat identity is known', () => {
+    const adapter = { id: 'gaga', label: '合成来源', read: () => [] };
+    const entries = normalizeExternalEntries([{ id: 'same-prose', text: '同样的雨夜，角色回到旧屋。' }], adapter);
+    assert.deepEqual(filterExternalCandidates(entries, { scope: 'chat', chatKey: 'current-chat' }), []);
+});
