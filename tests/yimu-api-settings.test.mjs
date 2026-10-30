@@ -219,6 +219,19 @@ test('vector provider settings stay account-scoped and rank candidates without p
     assert.deepEqual(JSON.parse(f.calls.at(-1).options.body).input, ['当前', '近', '远']);
 });
 
+test('candidate request timeout is a shared account setting with a fifteen-second default', async () => {
+    const f = fixture();
+    assert.deepEqual(f.api.retrievalTimeoutRead(), { ms: 15000, seconds: 15, revision: 0 });
+    await f.api.updateRetrievalTimeout(20);
+    assert.deepEqual(f.api.retrievalTimeoutRead(), { ms: 20000, seconds: 20, revision: 1 });
+    assert.equal(f.ctx.extensionSettings.yimu.retrievalTimeoutMs, 20000);
+    assert.equal(f.saves.length, 1);
+    assert.throws(() => f.api.updateRetrievalTimeout(4), /5—60 秒/);
+    assert.throws(() => f.api.updateRetrievalTimeout(61), /5—60 秒/);
+    await f.api.updateRetrievalTimeout('');
+    assert.deepEqual(f.api.retrievalTimeoutRead(), { ms: 15000, seconds: 15, revision: 2 });
+});
+
 test('vector provider is quiet until URL and model exist and redacts endpoint failures', async () => {
     const f = fixture();
     assert.deepEqual(await f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), []);

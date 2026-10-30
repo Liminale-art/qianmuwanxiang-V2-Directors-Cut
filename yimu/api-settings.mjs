@@ -6,7 +6,9 @@ const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model:
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
 const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', revision: 0 });
 const RERANK_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', topN: 6, revision: 0 });
-const DEFAULT_RETRIEVAL_TIMEOUT_MS = 10000;
+const DEFAULT_RETRIEVAL_TIMEOUT_MS = 15000;
+const MIN_RETRIEVAL_TIMEOUT_SECONDS = 5;
+const MAX_RETRIEVAL_TIMEOUT_SECONDS = 60;
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
 const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured', 'qianmuPresetId'];
 const VECTOR_FIELDS = ['apiUrl', 'apiKey', 'model'];
@@ -76,6 +78,23 @@ function savedRerank(ctx) {
     const result = { ...clone(RERANK_DEFAULTS), ...validateRerank(Object.fromEntries(Object.entries(raw).filter(([key]) => RERANK_FIELDS.includes(key)))) };
     result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
     return result;
+}
+
+function savedRetrievalTimeout(ctx) {
+    const raw = ctx?.extensionSettings?.yimu?.retrievalTimeoutMs;
+    const ms = Number.isSafeInteger(raw) && raw >= MIN_RETRIEVAL_TIMEOUT_SECONDS * 1000 && raw <= MAX_RETRIEVAL_TIMEOUT_SECONDS * 1000
+        ? raw : DEFAULT_RETRIEVAL_TIMEOUT_MS;
+    const revision = Number.isSafeInteger(ctx?.extensionSettings?.yimu?.retrievalTimeoutRevision)
+        && ctx.extensionSettings.yimu.retrievalTimeoutRevision >= 0 ? ctx.extensionSettings.yimu.retrievalTimeoutRevision : 0;
+    return { ms, seconds: ms / 1000, revision };
+}
+
+function validateRetrievalTimeout(value) {
+    const seconds = value === '' || value === undefined || value === null ? DEFAULT_RETRIEVAL_TIMEOUT_MS / 1000 : Number(value);
+    if (!Number.isSafeInteger(seconds) || seconds < MIN_RETRIEVAL_TIMEOUT_SECONDS || seconds > MAX_RETRIEVAL_TIMEOUT_SECONDS) {
+        fail(`候选请求超时时间须在 ${MIN_RETRIEVAL_TIMEOUT_SECONDS}—${MAX_RETRIEVAL_TIMEOUT_SECONDS} 秒之间`);
+    }
+    return seconds * 1000;
 }
 
 export function apiRoot(value) {
@@ -168,13 +187,14 @@ async function completion(response, config, signal, onChunk) {
 }
 
 export function createApiSettings({ getContext = () => globalThis.SillyTavern?.getContext?.(), fetchImpl = (...args) => globalThis.fetch(...args),
-    createId = () => globalThis.crypto.randomUUID(), statusTimeoutMs = 20000, retrievalTimeoutMs = DEFAULT_RETRIEVAL_TIMEOUT_MS } = {}) {
-    const candidateTimeout = Number.isFinite(retrievalTimeoutMs) ? Math.max(1, Math.trunc(retrievalTimeoutMs)) : DEFAULT_RETRIEVAL_TIMEOUT_MS;
+    createId = () => globalThis.crypto.randomUUID(), statusTimeoutMs = 20000, retrievalTimeoutMs = undefined } = {}) {
+    const fixedCandidateTimeout = Number.isFinite(retrievalTimeoutMs) ? Math.max(1, Math.trunc(retrievalTimeoutMs)) : null;
     const listeners = new Set(); let saving = Promise.resolve();
     const context = () => getContext() || fail('ST 尚未准备好连接设置');
     const read = () => savedConfig(context());
     const vectorRead = () => savedVector(context());
     const rerankRead = () => savedRerank(context());
+    const retrievalTimeoutRead = () => savedRetrievalTimeout(context());
     // Same account-owned apiProfiles used by the companion dialog. Never copy its credentials into yimu settings.
     const qianmuOwner = () => context().extensionSettings?.story_director_liminale;
     const qianmuProfiles = () => (Array.isArray(qianmuOwner()?.apiProfiles) ? qianmuOwner().apiProfiles : [])
@@ -235,6 +255,23 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             try { await ctx.saveSettingsDebounced(); }
             catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('重排设置未保存，请重试'); }
             notify(); return rerankRead();
+        });
+        saving = pending; return pending;
+    };
+    const updateRetrievalTimeout = value => {
+        const milliseconds = validateRetrievalTimeout(value);
+        const pending = saving.catch(() => {}).then(async () => {
+            const ctx = context();
+            if (!object(ctx.extensionSettings) || typeof ctx.saveSettingsDebounced !== 'function') fail('当前 ST 无法保存候选请求设置');
+            const before = ctx.extensionSettings.yimu;
+            const previous = object(before) ? before : {};
+            const current = savedRetrievalTimeout(ctx);
+            if (current.ms === milliseconds) return retrievalTimeoutRead();
+            const owned = { ...previous, retrievalTimeoutMs: milliseconds, retrievalTimeoutRevision: current.revision + 1 };
+            ctx.extensionSettings.yimu = owned;
+            try { await ctx.saveSettingsDebounced(); }
+            catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('候选请求设置未保存，请重试'); }
+            notify(); return retrievalTimeoutRead();
         });
         saving = pending; return pending;
     };
@@ -395,7 +432,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     const requestScope = (signal, message) => {
         const controller = new AbortController();
         let timedOut = false;
-        const timer = setTimeout(() => { timedOut = true; controller.abort(new Error(message)); }, candidateTimeout);
+        const timer = setTimeout(() => { timedOut = true; controller.abort(new Error(message)); }, fixedCandidateTimeout ?? retrievalTimeoutRead().ms);
         const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
         if (signal?.aborted) relay();
         else signal?.addEventListener('abort', relay, { once: true });
@@ -437,6 +474,6 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         } finally { scope.dispose(); }
     }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
-        vectorRead, updateVector, vectorCandidates, rerankRead, updateRerank, rerankCandidates,
+        vectorRead, updateVector, vectorCandidates, rerankRead, updateRerank, rerankCandidates, retrievalTimeoutRead, updateRetrievalTimeout,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

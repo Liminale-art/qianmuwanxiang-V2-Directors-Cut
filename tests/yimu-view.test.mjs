@@ -907,6 +907,18 @@ test('retrieval page sits between memory and settings and reports planned vector
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
 });
 
+test('retrieval timeout is shown as one shared account control and saves in seconds', async t => {
+    const d = dom(), ctx = { extensionSettings: { yimu: {} }, async saveSettingsDebounced() {} };
+    const connectionApi = createApiSettings({ getContext: () => ctx });
+    const view = createView({ document: d.document, connectionApi, onAction: async () => {} });
+    t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
+    const timeout = d.get('候选请求超时（秒）');
+    assert.equal(timeout.value, '15'); assert.equal(timeout.min, '5'); assert.equal(timeout.max, '60');
+    timeout.value = '25'; timeout.emit('change'); await d.flush();
+    assert.equal(ctx.extensionSettings.yimu.retrievalTimeoutMs, 25000);
+    view.render(state()); assert.equal(d.get('候选请求超时（秒）').value, '25');
+});
+
 test('search and attention filters do not hide active edits or mutate memory', t => {
     const one = entry(), other = entry({ id: 'other', text: '雨后重逢', status: 'invalid', source: { start: 4, end: 6 } });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, other] } }); t.after(() => f.view.destroy());

@@ -14,6 +14,23 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     const intro = el('section', 'ym-card ym-retrieval-intro');
     intro.append(el('h3', '', '向量与重排'), el('p', 'ym-muted', '先看候选从哪里来，再决定是否接入向量与重排。现有记忆注入不会因本页改变。'));
 
+    const timeoutCard = el('section', 'ym-card ym-retrieval-vector-card ym-retrieval-timeout-card');
+    const timeoutHeading = el('div', 'ym-retrieval-card-heading');
+    timeoutHeading.append(el('h3', '', '候选请求超时'));
+    const timeoutHint = el('p', 'ym-muted', '向量候选与重排共用；超时后自动回退，不影响正常整理。');
+    const timeoutInput = el('input', 'ym-input');
+    timeoutInput.type = 'number'; timeoutInput.min = '5'; timeoutInput.max = '60'; timeoutInput.step = '1'; timeoutInput.placeholder = '15';
+    timeoutInput.setAttribute('aria-label', '候选请求超时（秒）'); timeoutInput.autocomplete = 'off';
+    const timeoutRow = el('label', 'ym-field ym-retrieval-vector-field');
+    timeoutRow.append(el('span', '', '等待时间（秒）'), timeoutInput);
+    timeoutInput.addEventListener('change', async () => {
+        if (!vectorApi?.updateRetrievalTimeout) return;
+        const value = timeoutInput.value.trim();
+        try { await vectorApi.updateRetrievalTimeout(value === '' ? '' : Math.trunc(Number(value))); timeoutInput.removeAttribute('aria-invalid'); }
+        catch (error) { timeoutInput.setAttribute('aria-invalid', 'true'); timeoutInput.title = error.message; }
+    });
+    timeoutCard.append(timeoutHeading, timeoutHint, timeoutRow);
+
     const vectorCard = el('section', 'ym-card ym-retrieval-vector-card');
     const vectorHeading = el('div', 'ym-retrieval-card-heading');
     const vectorTitle = el('h3', '', '向量候选');
@@ -92,7 +109,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     const boundaryTitle = el('h3', '', '当前范围');
     const boundaryText = el('p', 'ym-muted');
     boundaryCard.append(boundaryTitle, boundaryText);
-    root.append(intro, vectorCard, rerankCard, statusCard, candidatesCard, boundaryCard);
+    root.append(intro, timeoutCard, vectorCard, rerankCard, statusCard, candidatesCard, boundaryCard);
 
     const statusText = (badge, tone, detailText) => {
         badge.textContent = tone === 'ready' ? '可用' : tone === 'planned' ? '待接入' : tone === 'off' ? '未启用' : '不可用';
@@ -108,6 +125,10 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const retrieval = state.retrieval || {};
         const config = vectorApi?.vectorRead?.() || {};
         const rerankConfig = vectorApi?.rerankRead?.() || {};
+        const timeoutConfig = vectorApi?.retrievalTimeoutRead?.() || { seconds: 15 };
+        if (document.activeElement !== timeoutInput) timeoutInput.value = String(timeoutConfig.seconds ?? 15);
+        timeoutInput.disabled = !vectorApi?.updateRetrievalTimeout;
+        timeoutInput.removeAttribute('aria-invalid');
         vectorToggle.checked = Boolean(state.document?.settings?.vectorEnabled ?? state.defaults?.values?.vectorEnabled) && Boolean(state.document);
         vectorToggle.disabled = !state.document;
         for (const [input, key] of [[vectorUrl.input, 'apiUrl'], [vectorKey.input, 'apiKey'], [vectorModel.input, 'model']]) {
