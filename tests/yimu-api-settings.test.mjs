@@ -12,7 +12,7 @@ function fixture() {
         async generateRaw(options) { raw.push(options); return '当前连接'; },
         ConnectionManagerRequestService: { async sendRequest(...args) { profile.push(args); return '预设连接'; } } };
     let answer = () => Response.json({ choices: [{ message: { content: '摘要正文' }, finish_reason: 'stop' }] });
-    const fetcher = async (path, options) => { calls.push({ path, options, body: JSON.parse(options.body) }); return answer(path, options); };
+    const fetcher = async (path, options) => { calls.push({ path, options, body: options.body === undefined ? undefined : JSON.parse(options.body) }); return answer(path, options); };
     const api = createApiSettings({ getContext: () => ctx, fetchImpl: fetcher, createId: () => 'preset-fixture' });
     return { ctx, api, calls, saves, raw, profile, fetcher, set answer(value) { answer = value; } };
 }
@@ -231,6 +231,28 @@ test('vector and rerank provider presets save, load and delete without leaking i
     await f.api.saveRerankPreset('重排本地');
     assert.equal(f.api.rerankRead().presets.length, 1); assert.equal(f.api.vectorRead().presets.length, 0);
     await f.api.updateRerank({ topN: 2 }); await f.api.loadRerankPreset('preset-fixture'); assert.equal(f.api.rerankRead().topN, 3);
+});
+
+test('vector and rerank provider controls test explicit endpoints and discover model lists without changing settings', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1/embeddings', apiKey: 'vector-secret', model: 'embed-fixture' });
+    await f.api.updateRerank({ apiUrl: 'https://rank.example/v1/rerank', apiKey: 'rank-secret', model: 'rank-fixture' });
+    f.answer = (_path, options) => options.method === 'GET'
+        ? Response.json({ data: [{ id: 'one' }, { name: 'two' }, 'one'] })
+        : Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+    assert.deepEqual(await f.api.fetchVectorModels(), ['one', 'two']);
+    assert.deepEqual(await f.api.fetchRerankModels(), ['one', 'two']);
+    assert.deepEqual(await f.api.testVectorConnection(), { ok: true, provider: 'vector' });
+    assert.deepEqual(await f.api.testRerankConnection(), { ok: true, provider: 'rerank' });
+    assert.equal(f.calls[0].path, 'https://vector.example/v1/models');
+    assert.equal(f.calls[1].path, 'https://rank.example/v1/models');
+    assert.equal(f.calls[2].path, 'https://vector.example/v1/embeddings');
+    assert.equal(f.calls[3].path, 'https://rank.example/v1/rerank');
+    assert.equal(f.calls[2].options.method, 'POST');
+    assert.deepEqual(JSON.parse(f.calls[2].options.body), { model: 'embed-fixture', input: ['忆幕连接测试'] });
+    assert.deepEqual(JSON.parse(f.calls[3].options.body), { model: 'rank-fixture', query: '忆幕连接测试', documents: ['忆幕连接测试'], top_n: 1 });
+    assert.equal(f.api.vectorRead().model, 'embed-fixture');
+    assert.equal(f.api.rerankRead().model, 'rank-fixture');
 });
 
 test('candidate request timeout is a shared account setting with a fifteen-second default', async () => {

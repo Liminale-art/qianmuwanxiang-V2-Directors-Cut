@@ -439,6 +439,75 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         const root = vectorRoot(config.apiUrl);
         return /\/v1$/i.test(root) ? `${root}/embeddings` : `${root}/v1/embeddings`;
     };
+    const providerAuth = config => config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
+    const providerRequest = async (kind, config, { method = 'POST', body, signal } = {}) => {
+        const endpoint = kind === 'vector' ? vectorEndpoint(config) : rerankEndpoint(config);
+        const controller = new AbortController();
+        let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('连接请求超时，请检查地址与服务状态')); }, statusTimeoutMs);
+        const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
+        if (signal?.aborted) relay(); else signal?.addEventListener('abort', relay, { once: true });
+        const auth = providerAuth(config);
+        const call = authorization => fetchImpl(endpoint, { method, cache: 'no-store', signal: controller.signal,
+            headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+        try {
+            let response = await call(auth);
+            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            aborted(signal);
+            if (!response.ok) fail(errorText(new Error(`连接请求失败（HTTP ${response.status}）`), config));
+            return response;
+        } catch (error) {
+            aborted(signal);
+            if (timedOut) fail(errorText(new Error('连接请求超时，请检查地址与服务状态'), config));
+            throw new Error(errorText(error, config));
+        } finally {
+            clearTimeout(timer); signal?.removeEventListener('abort', relay);
+        }
+    };
+    const providerModelList = json => {
+        const list = Array.isArray(json) ? json : json?.data ?? json?.models;
+        if (!Array.isArray(list)) fail('连接未返回可用的模型列表');
+        return [...new Set(list.map(item => typeof item === 'string' ? item : item?.id || item?.name)
+            .filter(item => typeof item === 'string' && item.trim() && item.length <= 2048))];
+    };
+    async function fetchProviderModels(kind, { signal } = {}) {
+        const config = kind === 'vector' ? vectorRead() : rerankRead();
+        if (!config.apiUrl) fail(kind === 'vector' ? '请填写向量 API URL' : '请填写重排 API URL');
+        const root = kind === 'vector' ? vectorRoot(config.apiUrl) : rerankRoot(config.apiUrl);
+        const controller = new AbortController(); let timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('连接请求超时，请检查地址与服务状态')); }, statusTimeoutMs);
+        const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
+        if (signal?.aborted) relay(); else signal?.addEventListener('abort', relay, { once: true });
+        const auth = providerAuth(config);
+        try {
+            const call = authorization => fetchImpl(`${root}/models`, { method: 'GET', cache: 'no-store', signal: controller.signal,
+                headers: { ...(authorization ? { Authorization: authorization } : {}) } });
+            let response = await call(auth);
+            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            aborted(signal);
+            if (!response.ok) fail(errorText(new Error(`模型列表请求失败（HTTP ${response.status}）`), config));
+            return providerModelList(await response.json());
+        } catch (error) {
+            aborted(signal);
+            if (timedOut) fail(errorText(new Error('连接请求超时，请检查地址与服务状态'), config));
+            throw new Error(errorText(error, config));
+        } finally { clearTimeout(timer); signal?.removeEventListener('abort', relay); }
+    }
+    async function testProviderConnection(kind, { signal } = {}) {
+        const config = kind === 'vector' ? vectorRead() : rerankRead();
+        if (!config.apiUrl) fail(kind === 'vector' ? '请填写向量 API URL' : '请填写重排 API URL');
+        if (!config.model) fail(kind === 'vector' ? '请填写向量模型' : '请填写重排模型');
+        const body = kind === 'vector'
+            ? { model: config.model, input: ['忆幕连接测试'] }
+            : { model: config.model, query: '忆幕连接测试', documents: ['忆幕连接测试'], top_n: 1 };
+        await providerRequest(kind, config, { body, signal });
+        return { ok: true, provider: kind };
+    }
+    const fetchVectorModels = options => fetchProviderModels('vector', options);
+    const fetchRerankModels = options => fetchProviderModels('rerank', options);
+    const testVectorConnection = options => testProviderConnection('vector', options);
+    const testRerankConnection = options => testProviderConnection('rerank', options);
     async function vectorCandidates({ query = '', candidates = [], limit = 6, signal } = {}) {
         const config = vectorRead();
         const safeQuery = text(query);
@@ -522,7 +591,9 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
         vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates,
+        fetchVectorModels, testVectorConnection,
         rerankRead, updateRerank, saveRerankPreset, loadRerankPreset, deleteRerankPreset, rerankCandidates,
+        fetchRerankModels, testRerankConnection,
         retrievalTimeoutRead, updateRetrievalTimeout,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }

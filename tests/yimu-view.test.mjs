@@ -915,6 +915,11 @@ test('retrieval timeout is shown as one shared account control and saves in seco
     t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
     const timeout = d.get('候选请求超时（秒）');
     assert.equal(timeout.value, '15'); assert.equal(timeout.min, '5'); assert.equal(timeout.max, '60');
+    assert.doesNotMatch(d.document.body.textContent, /等待时间/);
+    const timeoutCard = d.all().find(node => node.className.includes('ym-retrieval-timeout-card'));
+    const candidateCard = d.all().find(node => node.className.includes('ym-retrieval-candidates'));
+    assert.ok(timeoutCard && candidateCard && timeoutCard.parentNode.children.indexOf(timeoutCard) < timeoutCard.parentNode.children.indexOf(candidateCard));
+    assert.equal(timeout.closest('.ym-retrieval-card-heading'), timeoutCard.querySelector('.ym-retrieval-card-heading'));
     timeout.value = '25'; timeout.emit('change'); await d.flush();
     assert.equal(ctx.extensionSettings.yimu.retrievalTimeoutMs, 25000);
     view.render(state()); assert.equal(d.get('候选请求超时（秒）').value, '25');
@@ -926,11 +931,18 @@ test('retrieval provider cards use companion field names, presets and compact st
     const view = createView({ document: d.document, connectionApi, onAction: async () => {} });
     t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
     assert.ok(d.get('向量检索预设')); assert.ok(d.get('Rerank预设'));
-    for (const label of ['API URL', 'API Key', '模型']) assert.equal(d.get(label).placeholder, undefined);
+    assert.equal(d.get('API URL').placeholder, 'https://api.siliconflow.cn/v1/embeddings');
+    assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API URL')[1].placeholder, 'https://api.siliconflow.cn/v1/rerank');
+    assert.equal(d.get('API Key').placeholder, '输入 API Key');
+    assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API Key')[1].placeholder, '输入 API Key');
+    const providerNodes = label => d.all().filter(node => node.attrs['aria-label'] === label && node.closest('.ym-retrieval-provider'));
+    assert.equal(providerNodes('测试连接').length, 2);
+    assert.equal(providerNodes('拉取模型').length, 2);
+    assert.equal(providerNodes('显示 API Key').length, 2);
     const statusCard = d.all().find(node => node.className.includes('ym-retrieval-status-card'));
     assert.equal(statusCard?.parentNode?.children[0], statusCard);
     assert.doesNotMatch(d.document.body.textContent, /先看候选从哪里来|可选增强|自动回退，不影响正常整理/);
-    assert.doesNotMatch(d.document.body.textContent, /https:\/\/example\.com|text-embedding-3-small|bge-reranker-v2-m3/);
+    assert.doesNotMatch(d.document.body.textContent, /text-embedding-3-small|bge-reranker-v2-m3/);
 });
 
 test('search and attention filters do not hide active edits or mutate memory', t => {

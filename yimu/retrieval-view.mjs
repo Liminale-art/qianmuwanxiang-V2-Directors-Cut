@@ -51,17 +51,18 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     timeoutHeading.append(el('h3', '', '候选请求超时'));
     const timeoutInput = input('候选请求超时（秒）', 'number');
     timeoutInput.min = '5'; timeoutInput.max = '60'; timeoutInput.step = '1';
-    const timeoutRow = el('label', 'ym-field ym-retrieval-timeout-field');
-    timeoutRow.append(el('span', '', '等待时间'), timeoutInput, el('span', 'ym-retrieval-unit', '秒'));
+    const timeoutRow = el('label', 'ym-retrieval-timeout-field');
+    timeoutRow.append(timeoutInput, el('span', 'ym-retrieval-unit', '秒'));
     timeoutInput.addEventListener('change', async () => {
         if (!vectorApi?.updateRetrievalTimeout) return;
         const value = timeoutInput.value.trim();
         try { await vectorApi.updateRetrievalTimeout(value === '' ? '' : Math.trunc(Number(value))); timeoutInput.removeAttribute('aria-invalid'); }
         catch (error) { timeoutInput.setAttribute('aria-invalid', 'true'); timeoutInput.title = error.message; }
     });
-    timeoutCard.append(timeoutHeading, timeoutRow);
+    timeoutHeading.append(timeoutRow);
+    timeoutCard.append(timeoutHeading);
 
-    const providerCard = ({ kind, title, toggleLabel, read, update, savePreset, loadPreset, deletePreset }) => {
+    const providerCard = ({ kind, title, toggleLabel, read, update, savePreset, loadPreset, deletePreset, testConnection, fetchModels }) => {
         const card = el('section', 'ym-card ym-retrieval-vector-card ym-retrieval-provider');
         const heading = el('div', 'ym-retrieval-card-heading');
         const cardTitle = el('h3', '', title);
@@ -77,12 +78,22 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const presetRow = el('div', 'ym-api-preset-row'); presetRow.append(preset, removePreset);
 
         const url = input('API URL', 'url');
+        url.placeholder = kind === 'vector' ? 'https://api.siliconflow.cn/v1/embeddings' : 'https://api.siliconflow.cn/v1/rerank';
         const key = input('API Key', 'password'); key.autocomplete = 'new-password';
+        key.placeholder = '输入 API Key';
+        const keyVisibility = runButton('显示 API Key', 'eye', () => {
+            const visible = key.type === 'password';
+            key.type = visible ? 'text' : 'password';
+            keyVisibility.setAttribute('aria-label', visible ? '隐藏 API Key' : '显示 API Key');
+            keyVisibility.title = keyVisibility.getAttribute('aria-label');
+        }, true);
+        const keyControl = el('div', 'ym-password-control');
+        keyControl.append(key, keyVisibility);
         const model = input('模型');
         const topN = kind === 'rerank' ? input('保留候选数', 'number') : null;
         if (topN) { topN.min = '1'; topN.max = '64'; topN.step = '1'; }
         const fields = el('div', 'ym-retrieval-provider-fields');
-        fields.append(field('API URL', url), field('API Key', key), field('模型', model));
+        fields.append(field('API URL', url), field('API Key', keyControl), field('模型', model));
         if (topN) fields.append(field('保留候选数', topN));
 
         const actions = el('div', 'ym-api-actions');
@@ -93,7 +104,20 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
             saveName.value = config.model || '';
             saveNameRow.hidden = false; saveName.focus();
         });
-        actions.append(save);
+        const test = runButton('测试连接', 'link', async () => {
+            if (!testConnection) return;
+            try { await testConnection(); status.textContent = '连接可用'; status.hidden = false; }
+            catch (error) { status.textContent = error?.message || '连接不可用'; status.hidden = false; }
+        });
+        const fetch = runButton('拉取模型', 'refresh', async () => {
+            if (!fetchModels) return;
+            try {
+                const models = await fetchModels();
+                status.textContent = Array.isArray(models) && models.length ? `已获取 ${models.length} 个模型` : '未获取到模型';
+                status.hidden = false;
+            } catch (error) { status.textContent = error?.message || '模型列表获取失败'; status.hidden = false; }
+        });
+        actions.append(test, fetch, save);
         const status = el('p', 'ym-muted ym-retrieval-provider-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); status.hidden = true;
         saveName = input(`${title}预设名称`);
         const saveConfirm = runButton('确认保存预设', 'check', async () => {
@@ -128,6 +152,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
                     node.removeAttribute('aria-invalid');
                 }
                 preset.disabled = !loadPreset; removePreset.disabled = !deletePreset || !config.selectedPreset;
+                test.disabled = !testConnection; fetch.disabled = !fetchModels;
                 save.disabled = !savePreset;
                 saveName.disabled = !savePreset; saveConfirm.disabled = !savePreset; saveCancel.disabled = !savePreset;
             },
@@ -136,10 +161,12 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
 
     const vector = providerCard({ kind: 'vector', title: '向量检索', toggleLabel: '启用向量检索',
         read: () => vectorApi?.vectorRead?.() || {}, update: vectorApi?.updateVector, savePreset: vectorApi?.saveVectorPreset,
-        loadPreset: vectorApi?.loadVectorPreset, deletePreset: vectorApi?.deleteVectorPreset });
+        loadPreset: vectorApi?.loadVectorPreset, deletePreset: vectorApi?.deleteVectorPreset,
+        testConnection: vectorApi?.testVectorConnection, fetchModels: vectorApi?.fetchVectorModels });
     const rerank = providerCard({ kind: 'rerank', title: 'Rerank', toggleLabel: '启用重排',
         read: () => vectorApi?.rerankRead?.() || {}, update: vectorApi?.updateRerank, savePreset: vectorApi?.saveRerankPreset,
-        loadPreset: vectorApi?.loadRerankPreset, deletePreset: vectorApi?.deleteRerankPreset });
+        loadPreset: vectorApi?.loadRerankPreset, deletePreset: vectorApi?.deleteRerankPreset,
+        testConnection: vectorApi?.testRerankConnection, fetchModels: vectorApi?.fetchRerankModels });
     vector.toggle.addEventListener('change', async () => {
         const enabled = vector.toggle.checked;
         try { await onToggleVector?.(enabled); } catch { vector.toggle.checked = !enabled; }
@@ -154,7 +181,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     const candidatesList = el('div', 'ym-retrieval-candidate-list');
     const candidatesEmpty = el('p', 'ym-retrieval-empty', '暂无候选记录');
     candidatesCard.append(candidatesTitle, candidatesList, candidatesEmpty);
-    root.append(statusCard, timeoutCard, vector.card, rerank.card, candidatesCard);
+    root.append(statusCard, vector.card, rerank.card, timeoutCard, candidatesCard);
 
     const statusText = (badge, tone, detailText) => {
         badge.textContent = tone === 'ready' ? '可用' : tone === 'planned' ? '待接入' : tone === 'off' ? '未启用' : '不可用';
