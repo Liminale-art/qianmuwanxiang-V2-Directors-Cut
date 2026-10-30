@@ -392,5 +392,5 @@ export function createHost({
     }
 
     return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
-        connectionApi, summaryConnection: settings => connectionApi.effectiveConnection(settings) };
+        connectionApi, vectorCandidates: request => connectionApi.vectorCandidates(request), summaryConnection: settings => connectionApi.effectiveConnection(settings) };
 }

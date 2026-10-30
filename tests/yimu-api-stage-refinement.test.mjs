@@ -27,7 +27,7 @@ test('new API defaults and algorithm defaults do not overwrite explicit saved va
     assert.equal(fresh.temperature, 1); assert.equal(fresh.maxTokens, 32000); assert.equal(fresh.contextTokens, 1000000);
     f.ctx.extensionSettings.yimu = { api: { temperature: 0.7, maxTokens: 2048, contextTokens: 32768 } };
     assert.equal(f.api.read().temperature, 0.7); assert.equal(f.api.read().maxTokens, 2048); assert.equal(f.api.read().contextTokens, 32768);
-    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.4');
+    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.5');
     assert.equal(DEFAULTS.trigger, 50000); assert.equal(DEFAULTS.stageThreshold, 65000); assert.equal(DEFAULTS.stageRecent, 10);
     const old = { ...createDefaults(), values: { ...DEFAULTS, trigger: 4000, stageThreshold: 6000 } };
     assert.equal(validateDefaults(old).values.trigger, 4000); assert.equal(validateDefaults(old).values.stageThreshold, 6000);

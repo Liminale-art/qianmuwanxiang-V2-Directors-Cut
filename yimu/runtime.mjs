@@ -11,6 +11,7 @@ import { validateGeneratedLength } from './scene-contract.mjs';
 import { summaryRequestBudget } from './budget.mjs';
 import { memoryTitle } from './timeline.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
+import { discoverVectorCandidates } from './vector-contract.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -231,7 +232,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         let jobDocument = doc, snapshot = clone(state.snapshot);
         const defaults = clone(state.defaults);
         const settings = effectiveSettings(doc, defaults);
-        state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
+        const vectorConfig = typeof host.connectionApi?.vectorRead === 'function' ? host.connectionApi.vectorRead() : null;
+        const vectorStatus = settings.vectorEnabled === true
+            ? vectorConfig?.apiUrl && vectorConfig?.model ? 'planned' : 'unavailable'
+            : 'disabled';
+        state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vectorStatus,
+            ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
         emit();
         let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
         const retryState = { exhausted: false };
@@ -290,10 +296,33 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
                 });
                 candidates = retrieval.candidates.filter(candidate => candidate.kind === 'local');
+                let vector = { status: 'disabled', candidates: [], reason: '当前聊天未启用向量候选' };
+                if (settings.vectorEnabled === true) {
+                    const vectorConfig = typeof host.connectionApi?.vectorRead === 'function' ? host.connectionApi.vectorRead() : null;
+                    if (!vectorConfig?.apiUrl || !vectorConfig?.model || typeof host.vectorCandidates !== 'function') {
+                        vector = { status: 'unavailable', candidates: [], reason: '尚未配置向量候选接口，已回退关键词召回' };
+                    } else {
+                        const pool = buildRetrievalCandidates({
+                            localCandidates: candidateDocument.entries.filter(entry => entry.kind === 'summary' && entry.status === 'active' && !entry.origin && entry.source).map(entry => ({
+                                id: entry.id, revision: entry.revision, start: entry.source.start, end: entry.source.end, title: entry.title || '记忆切片', text: entry.text,
+                            })),
+                            context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
+                        }).candidates.filter(candidate => candidate.kind === 'local');
+                        const queryText = snapshot.messages.slice(batch.start - 1, batch.end).map(message => message?.mes || message?.message || '').join('\n');
+                        vector = await discoverVectorCandidates({ provider: request => host.vectorCandidates(request), query: queryText, candidates: pool, context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }), limit: 6 });
+                        if (vector.status === 'ready' && vector.candidates.length) {
+                            const seen = new Set(candidates.map(candidate => candidate.id));
+                            for (const candidate of vector.candidates) {
+                                if (seen.has(candidate.id) || candidates.length >= 6) continue;
+                                seen.add(candidate.id); candidates.push({ ...candidate, reason: '向量相似候选 · 仅作候选，未写入记忆' });
+                            }
+                        }
+                    }
+                }
                 if (isCurrent(binding)) {
-                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' },
-                        candidates: retrieval.candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: candidate.title || '记忆切片', kind: candidate.kind, sourceLabel: candidate.sourceLabel, reason: candidate.reason })),
-                        lastRun: { count: retrieval.count, localCount: retrieval.localCount, externalCount: retrieval.externalCount, at: retrieval.at } };
+                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vector.status, reason: vector.reason }, rerank: { status: 'planned' },
+                        candidates: candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: candidate.title || '记忆切片', kind: candidate.kind || 'local', sourceLabel: candidate.sourceLabel || '忆幕', reason: candidate.reason })),
+                        lastRun: { count: candidates.length, localCount: candidates.length, externalCount: 0, at: retrieval.at } };
                     emit();
                 }
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }

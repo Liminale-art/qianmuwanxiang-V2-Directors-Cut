@@ -204,3 +204,37 @@ test('account profile migration is explicit and an explicitly empty profile neve
     await assert.rejects(host.generate('synthetic prompt', { connection: host.summaryConnection(old) }), /请选择 ST 连接预设/);
     assert.deepEqual(f.raw, []); assert.deepEqual(f.profile, []); assert.deepEqual(f.calls, []);
 });
+
+test('vector provider settings stay account-scoped and rank candidates without persisting vectors', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1/embeddings', apiKey: 'vector-secret', model: 'embed-fixture' });
+    assert.equal(f.ctx.extensionSettings.yimu.showShortcut, true);
+    assert.deepEqual(f.api.vectorRead(), { apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture', revision: 1 });
+    f.answer = () => Response.json({ data: [{ index: 0, embedding: [1, 0] }, { index: 1, embedding: [0.9, 0.1] }, { index: 2, embedding: [0, 1] }] });
+    const ranked = await f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'near', text: '近', title: '近' }, { id: 'far', text: '远', title: '远' }] });
+    assert.deepEqual(ranked.map(item => item.id), ['near', 'far']);
+    assert.equal('vector' in ranked[0], false); assert.equal('apiKey' in ranked[0], false);
+    assert.equal(f.calls.at(-1).path, 'https://vector.example/v1/embeddings');
+    assert.deepEqual(f.calls.at(-1).options.headers, { 'Content-Type': 'application/json', Authorization: 'Bearer vector-secret' });
+    assert.deepEqual(JSON.parse(f.calls.at(-1).options.body).input, ['当前', '近', '远']);
+});
+
+test('vector provider is quiet until URL and model exist and redacts endpoint failures', async () => {
+    const f = fixture();
+    assert.deepEqual(await f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), []);
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture' });
+    f.answer = () => { throw Error('network https://vector.example/v1 with vector-secret'); };
+    await assert.rejects(f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] }), error => !error.message.includes('vector-secret') && !error.message.includes('vector.example'));
+});
+
+test('account API and vector writes serialize without dropping each other', async () => {
+    const f = fixture();
+    await Promise.all([
+        f.api.update({ mode: 'external', apiUrl: 'https://summary.example/v1', model: 'summary-fixture' }),
+        f.api.updateVector({ apiUrl: 'https://vector.example/v1', model: 'embed-fixture' }),
+    ]);
+    assert.equal(f.api.read().model, 'summary-fixture');
+    assert.equal(f.api.vectorRead().model, 'embed-fixture');
+    assert.equal(f.ctx.extensionSettings.yimu.api.model, 'summary-fixture');
+    assert.equal(f.ctx.extensionSettings.yimu.vector.model, 'embed-fixture');
+});

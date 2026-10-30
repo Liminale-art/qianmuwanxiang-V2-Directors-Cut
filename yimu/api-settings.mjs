@@ -1,15 +1,48 @@
 // Account-scoped ST settings only. Never put connection secrets in a memory document or backup.
 import { summaryRequestBudget } from './budget.mjs';
+import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
 
 const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
+const VECTOR_DEFAULTS = Object.freeze({ apiUrl: '', apiKey: '', model: '', revision: 0 });
 const FIELDS = ['apiUrl', 'apiKey', 'model', 'temperature', 'maxTokens', 'contextTokens', 'stream'];
 const CONNECTION_FIELDS = ['mode', ...FIELDS, 'profileId', 'profileModel', 'profileConfigured', 'qianmuPresetId'];
+const VECTOR_FIELDS = ['apiUrl', 'apiKey', 'model'];
 const clone = value => structuredClone(value);
 const text = value => typeof value === 'string' ? value.trim() : '';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const fail = message => { throw new Error(message); };
 const aborted = signal => { if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'); };
+
+function vectorRoot(value) {
+    const input = text(value);
+    if (!input) fail('请填写向量 API URL');
+    let url;
+    try { url = new URL(input); } catch { fail('向量 API URL 格式无效'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('向量 API URL 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段');
+    url.pathname = url.pathname.replace(/\/embeddings\/?$/i, '').replace(/\/+$/, '');
+    return url.toString().replace(/\/+$/, '');
+}
+
+function validateVector(patch) {
+    if (!object(patch)) fail('向量连接设置无效');
+    const out = {};
+    for (const [key, value] of Object.entries(patch)) {
+        if (!VECTOR_FIELDS.includes(key)) fail('未知的向量连接设置');
+        if (key === 'apiUrl') out[key] = value === '' ? '' : vectorRoot(value);
+        else if (typeof value !== 'string' || value.length > (key === 'apiKey' ? 8192 : 2048) || /[\r\n\x00]/.test(value)) fail('向量连接内容无效');
+        else out[key] = value.trim();
+    }
+    return out;
+}
+
+function savedVector(ctx) {
+    const raw = ctx?.extensionSettings?.yimu?.vector;
+    if (!object(raw)) return clone(VECTOR_DEFAULTS);
+    const result = { ...clone(VECTOR_DEFAULTS), ...validateVector(Object.fromEntries(Object.entries(raw).filter(([key]) => VECTOR_FIELDS.includes(key)))) };
+    result.revision = Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0;
+    return result;
+}
 
 export function apiRoot(value) {
     const input = text(value);
@@ -105,6 +138,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     const listeners = new Set(); let saving = Promise.resolve();
     const context = () => getContext() || fail('ST 尚未准备好连接设置');
     const read = () => savedConfig(context());
+    const vectorRead = () => savedVector(context());
     // Same account-owned apiProfiles used by the companion dialog. Never copy its credentials into yimu settings.
     const qianmuOwner = () => context().extensionSettings?.story_director_liminale;
     const qianmuProfiles = () => (Array.isArray(qianmuOwner()?.apiProfiles) ? qianmuOwner().apiProfiles : [])
@@ -133,6 +167,22 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             try { await ctx.saveSettingsDebounced(); }
             catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('连接设置未保存，请重试'); }
             notify(); return read();
+        });
+        saving = pending; return pending;
+    };
+    const commitVector = transform => {
+        const pending = saving.catch(() => {}).then(async () => {
+            const ctx = context();
+            if (!object(ctx.extensionSettings) || typeof ctx.saveSettingsDebounced !== 'function') fail('当前 ST 无法保存向量设置');
+            const before = ctx.extensionSettings.yimu;
+            const previous = object(before) ? before : {};
+            const current = savedVector(ctx), next = transform(current);
+            if (!next) return vectorRead();
+            next.revision = current.revision + Number(VECTOR_FIELDS.some(key => next[key] !== current[key]));
+            const owned = { ...previous, vector: next }; ctx.extensionSettings.yimu = owned;
+            try { await ctx.saveSettingsDebounced(); }
+            catch { if (ctx.extensionSettings.yimu === owned) ctx.extensionSettings.yimu = before; fail('向量设置未保存，请重试'); }
+            notify(); return vectorRead();
         });
         saving = pending; return pending;
     };
@@ -247,6 +297,40 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         return { ...current, ...Object.fromEntries(FIELDS.map(key => [key, preset[key] ?? DEFAULTS[key]])), mode: 'external', selectedPreset: id, models: [] };
     });
     const deletePreset = id => commit(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
+    const updateVector = patch => { const values = validateVector(patch); return commitVector(current => ({ ...current, ...values })); };
+    const vectorEndpoint = config => {
+        const root = vectorRoot(config.apiUrl);
+        return /\/v1$/i.test(root) ? `${root}/embeddings` : `${root}/v1/embeddings`;
+    };
+    async function vectorCandidates({ query = '', candidates = [], limit = 6, signal } = {}) {
+        const config = vectorRead();
+        const safeQuery = text(query);
+        const safeCandidates = (Array.isArray(candidates) ? candidates : []).filter(candidate => candidate?.id && text(candidate.text)).slice(0, 64).map(candidate => ({
+            id: String(candidate.id), text: text(candidate.text).slice(0, 20000), title: text(candidate.title), start: candidate.start, end: candidate.end,
+        }));
+        if (!safeQuery || !safeCandidates.length) return [];
+        if (!config.apiUrl || !config.model) return [];
+        const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
+        try {
+            const call = authorization => fetchImpl(vectorEndpoint(config), { method: 'POST', cache: 'no-store', signal,
+                headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
+                body: JSON.stringify({ model: config.model, input: [safeQuery, ...safeCandidates.map(candidate => candidate.text)] }) });
+            let response = await call(auth);
+            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            aborted(signal);
+            if (!response.ok) fail(errorText(new Error(`向量接口请求失败（HTTP ${response.status}）`), config));
+            let json; try { json = await response.json(); } catch { fail('向量接口返回格式无效'); }
+            const data = Array.isArray(json?.data) ? json.data : [];
+            const vectors = new Array(safeCandidates.length + 1);
+            data.forEach((item, index) => { const target = Number.isSafeInteger(item?.index) ? item.index : index; vectors[target] = item?.embedding; });
+            const queryVector = normalizeVector(vectors[0]);
+            if (!queryVector) fail('向量接口未返回有效查询向量');
+            const ranked = rankVectorCandidates(safeCandidates.map((candidate, index) => ({ ...candidate, vector: vectors[index + 1] })), queryVector, { limit });
+            if (!ranked.length) fail('向量接口未返回可比较的候选向量');
+            return ranked;
+        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
+    }
     return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
+        vectorRead, updateVector, vectorCandidates,
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }
