@@ -90,6 +90,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const keyControl = el('div', 'ym-password-control');
         keyControl.append(key, keyVisibility);
         const model = input('模型');
+        const modelList = el('datalist'); modelList.id = `ym-${kind}-models`; model.setAttribute('list', modelList.id);
         const topN = kind === 'rerank' ? input('保留候选数', 'number') : null;
         if (topN) { topN.min = '1'; topN.max = '64'; topN.step = '1'; }
         const fields = el('div', 'ym-retrieval-provider-fields');
@@ -113,6 +114,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
             if (!fetchModels) return;
             try {
                 const models = await fetchModels();
+                modelList.replaceChildren(...(Array.isArray(models) ? models : []).map(value => { const option = el('option'); option.value = value; return option; }));
                 status.textContent = Array.isArray(models) && models.length ? `已获取 ${models.length} 个模型` : '未获取到模型';
                 status.hidden = false;
             } catch (error) { status.textContent = error?.message || '模型列表获取失败'; status.hidden = false; }
@@ -140,7 +142,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
             void loadPreset(preset.value).catch(error => { status.textContent = error?.message || '预设未载入'; status.hidden = false; });
         });
 
-        card.append(heading, presetRow, fields, actions, saveNameRow, status);
+        card.append(heading, presetRow, fields, modelList, actions, saveNameRow, status);
         return {
             card, toggle,
             render(config = {}) {
