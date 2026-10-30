@@ -263,7 +263,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
 });
 
 test('functional icons preserve Qianmu artwork except the supplied Yimu rounded save glyph', async () => {
-    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', save: 'floppy-disk', help: 'question', stop: 'stop', layers: 'stack' };
+    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', layers: 'stack' };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
     for (const [name, upstream] of Object.entries(names)) {
@@ -272,6 +272,10 @@ test('functional icons preserve Qianmu artwork except the supplied Yimu rounded 
         assert.equal(element.attributes['aria-hidden'], 'true');
         assert.equal(element.attributes['data-ym-icon'], name);
         assert.match(element.innerHTML, /viewBox="0 0 24 24"/);
+        if (name === 'eye-off') {
+            assert.match(element.innerHTML, /M3 3L21 21/);
+            continue;
+        }
         const original = ICONSAX_ICON_MARKUP[ICONSAX_GLYPH_NAMES[upstream]];
         if (name === 'save') {
             assert.match(element.innerHTML, /<rect x="3" y="3" width="18" height="18" rx="4"\/>/);

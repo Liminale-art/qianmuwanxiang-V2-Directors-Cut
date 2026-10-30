@@ -925,24 +925,37 @@ test('retrieval timeout is shown as one shared account control and saves in seco
     view.render(state()); assert.equal(d.get('候选请求超时（秒）').value, '25');
 });
 
-test('retrieval provider cards use companion field names, presets and compact status-first layout', t => {
-    const d = dom(), ctx = { extensionSettings: { yimu: {} }, async saveSettingsDebounced() {} };
+test('retrieval provider cards use companion field names, presets and compact status-first layout', async t => {
+    const d = dom(), ctx = { extensionSettings: { yimu: {} }, async saveSettingsDebounced() {} }, notices = [];
     const connectionApi = createApiSettings({ getContext: () => ctx, createId: () => 'preset-fixture' });
-    const view = createView({ document: d.document, connectionApi, onAction: async () => {} });
+    const view = createView({ document: d.document, connectionApi, onNotice: (...args) => notices.push(args), onAction: async () => {} });
     t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
-    assert.ok(d.get('向量检索预设')); assert.ok(d.get('Rerank预设'));
-    assert.equal(d.get('API URL').placeholder, 'https://api.siliconflow.cn/v1/embeddings');
-    assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API URL')[1].placeholder, 'https://api.siliconflow.cn/v1/rerank');
+    assert.ok(d.get('向量检索预设')); assert.ok(d.get('重排预设'));
+    assert.equal(d.get('API URL').placeholder, 'https://api.siliconflow.cn/v1');
+    assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API URL')[1].placeholder, 'https://api.siliconflow.cn/v1');
     assert.equal(d.get('API Key').placeholder, '输入 API Key');
     assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API Key')[1].placeholder, '输入 API Key');
     const providerNodes = label => d.all().filter(node => node.attrs['aria-label'] === label && node.closest('.ym-retrieval-provider'));
     assert.equal(providerNodes('测试连接').length, 2);
     assert.equal(providerNodes('拉取模型').length, 2);
     assert.equal(providerNodes('显示 API Key').length, 2);
+    assert.equal(d.all().filter(node => node.tagName === 'SELECT' && node.attrs['aria-label'] === '模型').length, 2);
+    assert.equal(providerNodes('手动填写模型').length, 2);
+    const key = d.get('API Key'), eye = providerNodes('显示 API Key')[0];
+    assert.equal(key.type, 'password'); assert.equal(eye.querySelector('.ym-icon').attrs['data-ym-icon'], 'eye');
+    eye.click(); assert.equal(key.type, 'text'); assert.equal(eye.getAttribute('aria-label'), '隐藏 API Key'); assert.equal(eye.querySelector('.ym-icon').attrs['data-ym-icon'], 'eye-off');
+    eye.click(); assert.equal(key.type, 'password'); assert.equal(eye.getAttribute('aria-label'), '显示 API Key'); assert.equal(eye.querySelector('.ym-icon').attrs['data-ym-icon'], 'eye');
     const statusCard = d.all().find(node => node.className.includes('ym-retrieval-status-card'));
     assert.equal(statusCard?.parentNode?.children[0], statusCard);
+    assert.equal(d.all().filter(node => node.className.includes('ym-retrieval-provider-status')).length, 0);
     assert.doesNotMatch(d.document.body.textContent, /先看候选从哪里来|可选增强|自动回退，不影响正常整理/);
     assert.doesNotMatch(d.document.body.textContent, /text-embedding-3-small|bge-reranker-v2-m3/);
+
+    d.get('保存预设').click();
+    const presetName = d.get('向量检索预设名称');
+    presetName.value = '现场配置'; d.all().filter(node => node.attrs['aria-label'] === '确认保存预设')[0].click(); await d.flush();
+    assert.equal(d.get('向量检索预设').children.some(option => option.textContent === '现场配置'), true);
+    assert.deepEqual(notices.at(-1), ['预设已保存', 'success']);
 });
 
 test('search and attention filters do not hide active edits or mutate memory', t => {

@@ -2,7 +2,7 @@ import { createYimuIcon } from './icons.mjs';
 
 // The retrieval page is deliberately a review surface, not a second memory store.
 // It exposes optional retrieval enhancements without creating a second memory store.
-export function mountRetrievalView({ document = globalThis.document, vectorApi = null, onToggleVector = null, onToggleRerank = null } = {}) {
+export function mountRetrievalView({ document = globalThis.document, vectorApi = null, onToggleVector = null, onToggleRerank = null, onNotice = () => {} } = {}) {
     if (!document?.createElement) throw new TypeError('忆幕检索页缺少文档容器');
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -72,25 +72,34 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const preset = document.createElement('select'); preset.setAttribute('aria-label', `${title}预设`);
         const removePreset = runButton(`删除${title}预设`, 'trash', async () => {
             if (!preset.value || !deletePreset) return;
-            try { await deletePreset(preset.value); status.textContent = '预设已删除'; status.hidden = false; }
-            catch (error) { status.textContent = error?.message || '预设未删除'; status.hidden = false; }
+            try { await deletePreset(preset.value); onNotice('预设已删除', 'success'); }
+            catch (error) { onNotice(error?.message || '预设未删除', 'error'); }
         }, true);
         const presetRow = el('div', 'ym-api-preset-row'); presetRow.append(preset, removePreset);
 
         const url = input('API URL', 'url');
-        url.placeholder = kind === 'vector' ? 'https://api.siliconflow.cn/v1/embeddings' : 'https://api.siliconflow.cn/v1/rerank';
+        url.placeholder = 'https://api.siliconflow.cn/v1';
         const key = input('API Key', 'password'); key.autocomplete = 'new-password';
         key.placeholder = '输入 API Key';
         const keyVisibility = runButton('显示 API Key', 'eye', () => {
             const visible = key.type === 'password';
             key.type = visible ? 'text' : 'password';
+            keyVisibility.replaceChildren(createYimuIcon(visible ? 'eye-off' : 'eye', { document }));
             keyVisibility.setAttribute('aria-label', visible ? '隐藏 API Key' : '显示 API Key');
             keyVisibility.title = keyVisibility.getAttribute('aria-label');
         }, true);
         const keyControl = el('div', 'ym-password-control');
         keyControl.append(key, keyVisibility);
-        const model = input('模型');
-        const modelList = el('datalist'); modelList.id = `ym-${kind}-models`; model.setAttribute('list', modelList.id);
+        const model = document.createElement('select'); model.setAttribute('aria-label', '模型');
+        const manualRow = el('div', 'ym-api-model-row');
+        const manualModel = input('手动填写模型');
+        const modelSave = runButton('确认模型', 'check', async () => {
+            if (!update) return;
+            try { await update({ model: manualModel.value.trim() }); editingModel = false; renderCard(read?.() || {}); }
+            catch (error) { onNotice(error?.message || '模型设置未保存', 'error'); }
+        }, true);
+        manualRow.append(manualModel, modelSave); manualRow.hidden = true;
+        let modelChoices = [], editingModel = false, renderCard = () => {};
         const topN = kind === 'rerank' ? input('保留候选数', 'number') : null;
         if (topN) { topN.min = '1'; topN.max = '64'; topN.step = '1'; }
         const fields = el('div', 'ym-retrieval-provider-fields');
@@ -107,24 +116,23 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         });
         const test = runButton('测试连接', 'link', async () => {
             if (!testConnection) return;
-            try { await testConnection(); status.textContent = '连接可用'; status.hidden = false; }
-            catch (error) { status.textContent = error?.message || '连接不可用'; status.hidden = false; }
+            try { await testConnection(); onNotice('连接可用', 'success'); }
+            catch (error) { onNotice(error?.message || '连接不可用', 'error'); }
         });
         const fetch = runButton('拉取模型', 'refresh', async () => {
             if (!fetchModels) return;
             try {
                 const models = await fetchModels();
-                modelList.replaceChildren(...(Array.isArray(models) ? models : []).map(value => { const option = el('option'); option.value = value; return option; }));
-                status.textContent = Array.isArray(models) && models.length ? `已获取 ${models.length} 个模型` : '未获取到模型';
-                status.hidden = false;
-            } catch (error) { status.textContent = error?.message || '模型列表获取失败'; status.hidden = false; }
+                modelChoices = Array.isArray(models) ? models : [];
+                renderCard(read?.() || {});
+                onNotice(modelChoices.length ? `已获取 ${modelChoices.length} 个模型` : '未获取到模型', modelChoices.length ? 'success' : 'warning');
+            } catch (error) { onNotice(error?.message || '模型列表获取失败', 'error'); }
         });
         actions.append(test, fetch, save);
-        const status = el('p', 'ym-muted ym-retrieval-provider-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); status.hidden = true;
         saveName = input(`${title}预设名称`);
         const saveConfirm = runButton('确认保存预设', 'check', async () => {
-            try { await savePreset?.(saveName.value); saveNameRow.hidden = true; status.textContent = '预设已保存'; status.hidden = false; }
-            catch (error) { status.textContent = error?.message || '预设未保存'; status.hidden = false; }
+            try { await savePreset?.(saveName.value); saveNameRow.hidden = true; onNotice('预设已保存', 'success'); renderCard(read?.() || {}); }
+            catch (error) { onNotice(error?.message || '预设未保存', 'error'); }
         }, true);
         const saveCancel = runButton('取消保存预设', 'close', () => { saveNameRow.hidden = true; }, true);
         saveNameRow = el('div', 'ym-api-preset-name'); saveNameRow.append(saveName, saveConfirm, saveCancel); saveNameRow.hidden = true;
@@ -134,29 +142,43 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
             try { await update({ [keyName]: node.type === 'number' ? Math.trunc(Number(node.value)) : node.value.trim() }); node.removeAttribute('aria-invalid'); }
             catch (error) { node.setAttribute('aria-invalid', 'true'); node.title = error.message; }
         };
-        for (const [node, keyName] of [[url, 'apiUrl'], [key, 'apiKey'], [model, 'model'], ...(topN ? [[topN, 'topN']] : [])]) {
+        for (const [node, keyName] of [[url, 'apiUrl'], [key, 'apiKey'], ...(topN ? [[topN, 'topN']] : [])]) {
             node.addEventListener('change', () => { void updateField(node, keyName); });
         }
+        model.addEventListener('change', () => {
+            if (model.value === '__manual__') {
+                editingModel = true; manualModel.value = (read?.() || {}).model || ''; renderCard(read?.() || {}); manualModel.focus(); return;
+            }
+            void updateField(model, 'model');
+        });
         preset.addEventListener('change', () => {
             if (!preset.value || !loadPreset) return;
-            void loadPreset(preset.value).catch(error => { status.textContent = error?.message || '预设未载入'; status.hidden = false; });
+            void loadPreset(preset.value).then(() => renderCard(read?.() || {})).catch(error => onNotice(error?.message || '预设未载入', 'error'));
         });
 
-        card.append(heading, presetRow, fields, modelList, actions, saveNameRow, status);
+        card.append(heading, presetRow, fields, manualRow, actions, saveNameRow);
+        renderCard = (config = {}) => {
+            const modelItems = [['', modelChoices.length ? '选择模型' : '先拉取模型列表']];
+            if (config.model && !modelChoices.includes(config.model)) modelItems.push([config.model, config.model]);
+            modelItems.push(...modelChoices.map(value => [value, value]), ['__manual__', '手动填写模型']);
+            options(model, modelItems, editingModel ? '__manual__' : config.model || '');
+            manualRow.hidden = !editingModel;
+            const configModel = config.model || '';
+            if (document.activeElement !== manualModel) manualModel.value = configModel;
+            model.disabled = !update; manualModel.disabled = !update; modelSave.disabled = !update || !editingModel;
+            options(preset, Array.isArray(config.presets) ? [['', '载入预设'], ...config.presets.map(item => [item.id, item.name])] : [['', '载入预设']], config.selectedPreset || '');
+            for (const [node, value] of [[url, config.apiUrl], [key, config.apiKey], ...(topN ? [[topN, config.topN]] : [])]) {
+                if (document.activeElement !== node) node.value = value === undefined ? '' : String(value);
+                node.disabled = !update; node.removeAttribute('aria-invalid');
+            }
+            preset.disabled = !loadPreset; removePreset.disabled = !deletePreset || !config.selectedPreset;
+            test.disabled = !testConnection; fetch.disabled = !fetchModels; save.disabled = !savePreset;
+            saveName.disabled = !savePreset; saveConfirm.disabled = !savePreset; saveCancel.disabled = !savePreset;
+        };
         return {
             card, toggle,
             render(config = {}) {
-                const list = Array.isArray(config.presets) ? [['', '载入预设'], ...config.presets.map(item => [item.id, item.name])] : [['', '载入预设']];
-                options(preset, list, config.selectedPreset || '');
-                for (const [node, value] of [[url, config.apiUrl], [key, config.apiKey], [model, config.model], ...(topN ? [[topN, config.topN]] : [])]) {
-                    if (document.activeElement !== node) node.value = value === undefined ? '' : String(value);
-                    node.disabled = !update;
-                    node.removeAttribute('aria-invalid');
-                }
-                preset.disabled = !loadPreset; removePreset.disabled = !deletePreset || !config.selectedPreset;
-                test.disabled = !testConnection; fetch.disabled = !fetchModels;
-                save.disabled = !savePreset;
-                saveName.disabled = !savePreset; saveConfirm.disabled = !savePreset; saveCancel.disabled = !savePreset;
+                renderCard(config);
             },
         };
     };
@@ -165,7 +187,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         read: () => vectorApi?.vectorRead?.() || {}, update: vectorApi?.updateVector, savePreset: vectorApi?.saveVectorPreset,
         loadPreset: vectorApi?.loadVectorPreset, deletePreset: vectorApi?.deleteVectorPreset,
         testConnection: vectorApi?.testVectorConnection, fetchModels: vectorApi?.fetchVectorModels });
-    const rerank = providerCard({ kind: 'rerank', title: 'Rerank', toggleLabel: '启用重排',
+    const rerank = providerCard({ kind: 'rerank', title: '重排', toggleLabel: '启用重排',
         read: () => vectorApi?.rerankRead?.() || {}, update: vectorApi?.updateRerank, savePreset: vectorApi?.saveRerankPreset,
         loadPreset: vectorApi?.loadRerankPreset, deletePreset: vectorApi?.deleteRerankPreset,
         testConnection: vectorApi?.testRerankConnection, fetchModels: vectorApi?.fetchRerankModels });

@@ -188,9 +188,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         }
     });
     const backup = createBackupView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
-    const retrieval = mountRetrievalView({ document, vectorApi: connectionApi,
+    const retrieval = mountRetrievalView({ document, vectorApi: connectionApi, onNotice,
         onToggleVector: enabled => dispatch('settings', { global: false, values: { vectorEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }),
         onToggleRerank: enabled => dispatch('settings', { global: false, values: { rerankEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }) });
+    const unsubscribeRetrieval = connectionApi?.subscribe?.(() => retrieval.render(state)) || (() => {});
     for (const name of Object.keys(pageTitles)) {
         const page = el('section', 'ym-page'); page.dataset.page = name; page.id = `ym-page-${name}`;
         page.hidden = name !== currentPage;
@@ -1061,7 +1062,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 
