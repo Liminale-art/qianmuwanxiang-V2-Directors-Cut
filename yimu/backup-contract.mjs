@@ -21,7 +21,7 @@ const id = value => {if(typeof value!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(
 const hash = value => {if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))fail('忆幕备份来源指纹无效');return value;};
 const prose = (value,max=100000) => {if(typeof value!=='string'||!value.trim()||value.length>max)fail('忆幕备份记忆正文无效或过长');return value;};
 const kinds=new Set(['summary','manual','stage','excerpt']),statuses=new Set(['active','invalid','excluded','deleted']);
-const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','stageRecent','sliceChars','stageChars','recall','prompts']);
+const safeSettings=new Set(['recent','trigger','batch','budget','preference','stageAuto','stageBasis','stageThreshold','stageRecent','sliceChars','stageChars','recall','prompts','contextRules']);
 
 function range(value) {
     requireObject(value);

@@ -12,6 +12,7 @@ import { orderedEntries as timelineEntries, memoryTitle, MEMORY_TITLE_LIMIT } fr
 import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
 import { mountPromptView } from './prompt-view.mjs';
+import { mountContextRulesView } from './context-view.mjs';
 import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scene-view.mjs';
 import { mountRetrievalView } from './retrieval-view.mjs';
 
@@ -508,7 +509,15 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'), createYimuIcon('expand', { document }));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
-    pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
+    const contextRulesView = mountContextRulesView({ document,
+        onSave: rules => {
+            const global = !state.document;
+            return dispatch('settings', { global, values: { contextRules: rules },
+                expectedRevision: global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0 });
+        },
+        onError: error => { localError = error?.message || '正文提取设置未保存'; localErrorPage = 'overview'; updateStatus(); },
+    });
+    pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder, contextRulesView.element);
     pages.get('memory').append(controlsRow, toolbar, stageForm, streamPreview, list, noMatch, deleted);
     pages.get('retrieval').append(retrieval.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
@@ -699,6 +708,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             scope: global ? 'global' : JSON.stringify(state.snapshot?.binding || null),
             revision: global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0, global,
             disabled: !state.defaults || state.loading || state.busy, recallEnabled: currentSettings().recall !== false });
+        contextRulesView.render({ settings: global ? state.defaults?.values || DEFAULTS : currentSettings(),
+            disabled: !state.defaults || state.loading || state.busy });
     }
     function stageEligible(start = 1, end = Infinity) {
         if (!state.document || !state.snapshot) return [];
@@ -1062,7 +1073,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

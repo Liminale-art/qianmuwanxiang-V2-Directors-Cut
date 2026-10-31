@@ -241,7 +241,9 @@ test('stale browser originals cannot reactivate a disk-invalidated slice while a
     assert.equal(f.context.chat[0].mes, messages[0].mes, 'browser fixture intentionally retains its old original');
     const injected = await f.inject();
     assert.ok(injected.prompt.includes('第二层记忆仍有效'));
-    assert.ok(!injected.prompt.includes('旧第一层记忆应停止使用'));
+    // A changed source is a quiet review state, not an injection stop: the
+    // stored memory remains usable until the user chooses to repair it.
+    assert.ok(injected.prompt.includes('旧第一层记忆应停止使用'));
     const stored = (await f.api.read(binding)).document;
     assert.equal(stored.entries[0].status, 'invalid');
     assert.equal(stored.entries[1].status, 'active');

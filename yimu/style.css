@@ -287,6 +287,14 @@
 .ym-prompt-folder[data-open="true"] > .ym-tool-summary { border-bottom: 1px solid var(--ym-border); }
 .ym-prompt-folder > .ym-tool-body { padding: 13px 16px 16px; }
 .ym-dialog .ym-prompt-folder .ym-prompts { margin: 0; border: 0; background: transparent; box-shadow: none; }
+.ym-context-rules-card { min-width: 0; overflow: hidden; }
+.ym-context-rules-card > .ym-tool-summary { width: 100%; border: 0; border-radius: 0; background: transparent; }
+.ym-context-rules-card[data-open="true"] > .ym-tool-summary { border-bottom: 1px solid var(--ym-border); }
+.ym-context-rules-body { display: grid; gap: 10px; padding: 13px 16px 16px; }
+.ym-context-rules-body > .ym-muted { margin: 0; }
+.ym-context-rules-body textarea { min-height: 58px; resize: vertical; }
+.ym-context-rules-arrow { margin-inline-start: auto; color: var(--ym-muted); font-size: 20px; line-height: 1; transform: rotate(0deg); transition: transform .18s ease; }
+.ym-context-rules-card[data-open="true"] .ym-context-rules-arrow { transform: rotate(180deg); }
 .ym-tool-body { display: grid; gap: 10px; min-width: 0; padding: 0 16px 16px; }
 .ym-tool-body > .ym-card { border: 0; border-radius: 0; padding: 0; background: transparent; }
 .ym-tool-body .ym-subpage-section > .ym-story-body, .ym-tool-body .ym-subpage-section > .ym-backup-body { margin-top: 0; }

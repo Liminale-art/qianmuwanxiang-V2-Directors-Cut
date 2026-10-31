@@ -6,13 +6,15 @@ import {validateCompanion, applyCompanionOperation} from './companion-contract.m
 import { validateScenes } from './scene-contract.mjs';
 import { normalizeEntryOrder, insertEntryOrder, validatePlacement, validateMemoryTitle } from './timeline.mjs';
 import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './prompt-settings.mjs';
+import { DEFAULT_CONTEXT_RULES, validateContextRules } from './context-filter.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
 export const VERSION = '0.8.9';
 export const SCHEMA = 7;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
-    recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS });
+    recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
+    contextRules: DEFAULT_CONTEXT_RULES });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
 function requireThat(ok, message) { if (!ok) throw failure(message); }
@@ -39,6 +41,7 @@ export function validateSettings(input, partial = true) {
         if (key === 'stageAuto' || key === 'recall' || key === 'companionShareCustom' || key === 'vectorEnabled' || key === 'rerankEnabled') requireThat(typeof value === 'boolean', '忆幕开关设置无效');
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
+        else if (key === 'contextRules') { result[key] = validateContextRules(value); continue; }
         else if (bounds[key]) {
             requireThat(Number.isSafeInteger(value) && (value === 0 && !['sliceChars', 'stageChars'].includes(key) || value >= bounds[key][0]) && value <= bounds[key][1], '设置数值超出范围');
         } else requireThat(typeof value === 'string' && value.length <= (key === 'preference' ? 12000 : 300), '设置文字过长或无效');

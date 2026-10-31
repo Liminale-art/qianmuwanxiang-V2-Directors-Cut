@@ -6,6 +6,7 @@ import { companionEntries } from './companion-contract.mjs';
 import { orderForInjection, placementMatches, validatePlacement, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
+import { filterContextText } from './context-filter.mjs';
 
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
 const canSummarize = message => message && typeof message.mes === 'string' && message.mes.trim()
@@ -172,7 +173,7 @@ export function summaryCoverage(document, messages, settings) {
 
 export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [] } = {}) {
     const source = messages.slice(batch.start - 1, batch.end).map((message, i) => ({
-        floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: String(message.mes || ''),
+        floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
     }));
     return composePrompt(settings, 'summary', {
         protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"title":"不超过${MEMORY_TITLE_LIMIT}字的正文事件短名","text":"精炼、自足的记忆","scenes":[]}]}。title依据本片原文的主要事件起名，不超过${MEMORY_TITLE_LIMIT}个Unicode字符，不用楼层、时间或套话充当事件名，不新增正文没有的事实。
