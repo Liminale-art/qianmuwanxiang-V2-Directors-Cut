@@ -9,18 +9,13 @@ ST_ROOT=$(pwd -P)
 PLUGIN="$ST_ROOT/plugins/Omniscene"
 BRANCH='refactor/storyboard-modularization'
 REPO='https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git'
-PM2_NAME='sillytavern'
-EXPECTED_VERSION='1.59.482'
-# Optional live check for deployments that expose ST on a known local URL.
-# The package check below is always required; this extra check confirms that
-# the restarted process reports the same version rather than only that files
-# on disk were updated.
-HEALTH_URL="${QIANMU_HEALTH_URL:-}"
+PM2_NAME="${QIANMU_PM2_NAME:-sillytavern}"
 INSTALLER=''
+PM2_WAS_ONLINE=0
+PM2_STOPPED=0
 
 fail() {
-  printf '\n更新失败：%s\n' "$*" >&2
-  printf '请保留上面的终端输出；本次更新没有伪报成功。\n' >&2
+  printf '更新失败：%s\n' "$*" >&2
   exit 1
 }
 
@@ -29,8 +24,12 @@ finish() {
   if [ -n "$INSTALLER" ] && [ -f "$INSTALLER" ]; then
     rm -f -- "$INSTALLER" || true
   fi
-  if [ "$code" -ne 0 ]; then
-    printf '如果 PM2 已经停止，请先查看上面的失败原因，再手动启动 %s。\n' "$PM2_NAME" >&2
+  if [ "$code" -ne 0 ] && [ "$PM2_STOPPED" -eq 1 ] && [ "$PM2_WAS_ONLINE" -eq 1 ]; then
+    if pm2 start "$PM2_NAME" >/dev/null 2>&1; then
+      printf '本次更新未完成，已重新启动 %s。\n' "$PM2_NAME" >&2
+    else
+      printf '本次未自动启动 %s。\n' "$PM2_NAME" >&2
+    fi
   fi
   return "$code"
 }
@@ -47,6 +46,9 @@ command -v pm2 >/dev/null 2>&1 || fail '找不到 pm2，请先加载运行 ST �
 
 step '检查 PM2 进程'
 pm2 describe "$PM2_NAME" >/dev/null 2>&1 || fail "找不到 PM2 进程 $PM2_NAME。"
+if pm2 describe "$PM2_NAME" 2>/dev/null | grep -Eqi 'status[[:space:]]+online|online'; then
+  PM2_WAS_ONLINE=1
+fi
 
 [ -d "$PLUGIN/.git" ] && [ ! -L "$PLUGIN/.git" ] || fail '没有找到现有 Git 插件；首次安装请使用安装命令。'
 remote=$(git -C "$PLUGIN" remote get-url origin) || fail '无法读取插件远端地址。'
@@ -65,35 +67,40 @@ fi
 [ -z "$(git -C "$PLUGIN" status --short)" ] || fail '切换分支后出现本地改动，已停止。'
 
 step "停止 PM2：$PM2_NAME"
-pm2 stop "$PM2_NAME" || fail 'PM2 停止失败。'
+if [ "$PM2_WAS_ONLINE" -eq 1 ]; then
+  pm2 stop "$PM2_NAME" || fail 'PM2 停止失败。'
+  PM2_STOPPED=1
+fi
 
 step '下载并执行插件更新器'
 INSTALLER=$(mktemp "${TMPDIR:-/tmp}/qianmu-install.XXXXXX") || fail '无法创建临时文件。'
 curl -fL --retry 2 --connect-timeout 15 --max-time 120 \
   "https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/$BRANCH/install-server-plugin.sh" \
   -o "$INSTALLER" || fail '下载安装脚本失败。'
-QIANMU_SERVER_STOPPED=1 sh "$INSTALLER" || fail '插件更新失败。'
+QIANMU_SERVER_STOPPED=1 QIANMU_INSTALLER_QUIET=1 sh "$INSTALLER" || fail '插件更新失败。'
 
-COMMIT=$(git -C "$PLUGIN" rev-parse HEAD) || fail '无法读取更新后的提交节点。'
-SERVICE_VERSION=$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*$/\1/p' "$PLUGIN/package.json" | head -n 1)
-[ "$SERVICE_VERSION" = "$EXPECTED_VERSION" ] || fail "服务端插件版本为 ${SERVICE_VERSION:-未知}，期望 $EXPECTED_VERSION；未继续报告更新成功。"
-
-step "启动 PM2：$PM2_NAME"
-pm2 start "$PM2_NAME" || fail '插件已更新，但 PM2 启动失败。'
-sleep 2
-pm2 describe "$PM2_NAME" | grep -Eqi 'status[[:space:]]+online|online' || fail 'PM2 没有回到 online 状态。'
-
-if [ -n "$HEALTH_URL" ]; then
-  step '核对在线增强服务版本'
-  HEALTH_JSON=$(curl -fsSL --retry 1 --connect-timeout 5 --max-time 15 "$HEALTH_URL") || fail "在线健康检查失败：$HEALTH_URL"
-  printf '%s' "$HEALTH_JSON" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' || fail '在线健康检查未返回 ok=true。'
-  printf '%s' "$HEALTH_JSON" | grep -Eq '"plugin"[[:space:]]*:[[:space:]]*"qianmu-tts"' || fail '在线健康检查返回的插件不是 qianmu-tts。'
-  LIVE_VERSION=$(printf '%s' "$HEALTH_JSON" | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)
-  [ "$LIVE_VERSION" = "$EXPECTED_VERSION" ] || fail "在线增强服务版本为 ${LIVE_VERSION:-未知}，期望 $EXPECTED_VERSION。"
-  printf '在线增强服务版本校验通过：v%s\n' "$LIVE_VERSION"
-else
-  printf '已核对插件包版本：v%s；未设置 QIANMU_HEALTH_URL，未执行在线接口核对。\n' "$SERVICE_VERSION"
+# Yimu is a bundled Qianmu component. If it is already installed, update its
+# paired frontend/server from this same checked-out commit. A missing Yimu is
+# left untouched so a Qianmu-only installation does not gain a new component.
+YIMU_FRONTEND="$ST_ROOT/public/scripts/extensions/third-party/yimu"
+YIMU_SERVER="$ST_ROOT/plugins/yimu"
+if [ -e "$YIMU_FRONTEND" ] || [ -e "$YIMU_SERVER" ]; then
+  command -v node >/dev/null 2>&1 || fail '忆幕已安装，但找不到 Node.js。'
+  [ -f "$PLUGIN/scripts/install-yimu.mjs" ] || fail '忆幕更新入口不完整。'
+  YIMU_CONFIG_ARG=()
+  if [ ! -f "$ST_ROOT/config.yaml" ] && [ -f "$ST_ROOT/config/config.yaml" ]; then YIMU_CONFIG_ARG=(--config config/config.yaml); fi
+  YIMU_INSTALLER_QUIET=1 node "$PLUGIN/scripts/install-yimu.mjs" --st-root "$ST_ROOT" --stopped "${YIMU_CONFIG_ARG[@]}" || fail '忆幕更新失败。'
 fi
 
-printf '\n更新完成：PM2=%s，服务端版本=v%s，插件提交=%s\n' "$PM2_NAME" "$SERVICE_VERSION" "$COMMIT"
-printf '现在刷新 ST 页面；如需额外核对接口，可设置 QIANMU_HEALTH_URL 指向 /api/plugins/qianmu-tts/health 后重跑。\n'
+COMMIT=$(git -C "$PLUGIN" rev-parse HEAD) || fail '无法读取更新后的提交节点。'
+SERVICE_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PLUGIN/package.json" | head -n 1)
+[ "$SERVICE_VERSION" = "$(git -C "$PLUGIN" show HEAD:package.json 2>/dev/null | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)" ] || fail '服务端版本校验失败。'
+printf '%s' "$SERVICE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail '服务端版本号无效。'
+
+step "启动 PM2：$PM2_NAME"
+if [ "$PM2_WAS_ONLINE" -eq 1 ]; then
+  pm2 start "$PM2_NAME" || fail '插件已更新，但 PM2 启动失败。'
+  PM2_STOPPED=0
+fi
+
+printf '千幕服务端已更新至 v%s。\n' "$SERVICE_VERSION"

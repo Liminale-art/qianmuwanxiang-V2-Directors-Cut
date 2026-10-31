@@ -1,19 +1,19 @@
 # 忆幕
 
-独立、可选的 SillyTavern 单聊记忆扩展。当前版本 **0.8.9**，须搭配 **忆幕服务端 0.8.9**；基本功能不依赖千幕增强服务。每份普通聊天初始关闭，不自动整理已有聊天。可选的伴读关联需要千幕 **1.59.483** 或更新版本。
+SillyTavern 的单聊记忆模块。当前版本 **0.8.9**；前端入口仍按扩展加载，但更新归 **千幕万象 V2** 统一管理，不在 ST 的扩展更新器中单独更新。基本功能不依赖千幕增强服务；可选的伴读关联需要千幕 **1.59.483** 或更新版本。每份普通聊天初始关闭，不自动整理已有聊天。
 
-本次完善菜单对齐、就地阶段总结、切片命名和故事续接。存储格式保持 **schema 7**；前后端须一起更新，已有资料保留，不需要重新导入。旧版不完整理解新增阶段策略，回退前请先导出备份。
+本次完善菜单对齐、就地阶段总结、切片命名和故事续接。存储格式保持 **schema 7**；千幕更新命令会按同一提交同步需要的忆幕文件，已有资料保留，不需要重新导入。旧版不完整理解新增阶段策略，回退前请先导出备份。
 
 ## 安装与更新
 
-安装和以后更新使用同一条命令，自动成对安装前端、服务端，保留旧文件。需要 ST 已有的 Node.js 18+、Git，以及可访问 GitHub 的网络。
+首次安装使用忆幕安装命令；安装后更新统一使用千幕更新命令，自动同步忆幕前端与服务端，保留最近的回退资料。需要 ST 已有的 Node.js 18+、Git，以及可访问 GitHub 的网络。忆幕不是独立更新目标。
 
 ### Linux / VPS（PM2）
 
-将路径和服务名改成自己的；下面适用于 ST 位于 `/usr/local/games/SillyTavern`、PM2 名为 `sillytavern` 的环境。执行期间会短暂停止并重新启动这个 ST 服务，请先结束正在生成的聊天。
+先进入你自己的 ST 根目录，再执行下面命令；脚本不会写入固定服务器路径。安装期间会短暂停止并重新启动所选 ST 服务，请先结束正在生成的聊天。
 
 ```bash
-bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-yimu.sh | bash -s -- --st-root /usr/local/games/SillyTavern --pm2 sillytavern'
+bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-yimu.sh | bash -s -- --pm2 你的PM2服务名'
 ```
 
 ### Windows 本地
@@ -26,6 +26,8 @@ bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/Liminale-
 
 完成后按原方式启动 ST。无需修改 PowerShell 的全局执行策略。
 
+安装完成后，后续更新统一使用千幕的更新命令；当前 ST 已安装忆幕时，千幕会从同一提交同步忆幕文件。不要再把忆幕当成独立更新目标。
+
 ### 非 PM2 / 容器 / 自定义配置
 
 先停止对应 ST 实例，再在其**实际持久化的 ST 根目录**执行 Linux 命令，将 `--pm2 sillytavern` 换成 `--stopped`。自定义配置另加 `--config 配置路径`，路径须在这个 ST 根目录内。完成后按原方式启动；容器的 `plugins` 和前端扩展目录也必须持久化，不要只安装进临时容器层。
@@ -34,7 +36,7 @@ bash -c 'set -o pipefail; curl -fsSL https://raw.githubusercontent.com/Liminale-
 
 ### 怎么确认生效
 
-刷新 ST，从聊天菜单打开**忆幕**，在**设置**页查看后端服务支持。服务正常且配套版本为 **0.8.9** 才算运行成功；终端“文件已安装”不代表后台已加载。标题版本标签只提示更新，仍请用一键命令成对更新。安装保留目录为 ST 根目录下的 `.yimu-install-backups`。
+刷新 ST，从聊天菜单打开**忆幕**，在**设置**页查看后端服务支持。服务正常且配套版本为 **0.8.9** 才算运行成功；标题版本标签显示当前已加载版本，更新请使用千幕更新命令。安装保留目录为 ST 根目录下的 `.yimu-install-backups`，只保留最近几份回退资料。
 
 ## 界面入口
 

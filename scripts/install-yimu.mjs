@@ -10,6 +10,7 @@ import { VERSION } from '../yimu/contract.mjs';
 
 export const INSTALLER_ID = 'yimu-paired-installer-v1';
 export const RECEIPT = '.yimu-install.json';
+export const MAX_INSTALL_BACKUPS = 5;
 const sourceDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const exec = promisify(execFile);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -122,6 +123,20 @@ async function installed(folder, kind, root) {
     const descriptor = JSON.parse(await fs.readFile(path.join(folder, descriptorName), 'utf8'));
     if (descriptor.version !== receipt.version) fail('现有忆幕实际版本与安装记录不符，未覆盖。');
     return { receipt, receiptHash: sha(receiptBytes), files };
+}
+
+export async function pruneInstallBackups(root, keep = MAX_INSTALL_BACKUPS) {
+    if (!await exists(root)) return;
+    const rows = [];
+    for (const item of await fs.readdir(root, { withFileTypes: true })) {
+        if (!item.isDirectory() || item.isSymbolicLink() || !/^\d{4}-\d{2}-\d{2}T/.test(item.name)) continue;
+        const folder = path.join(root, item.name);
+        await plain(folder, true);
+        const stat = await fs.stat(folder);
+        rows.push({ folder, mtime: stat.mtimeMs });
+    }
+    rows.sort((a, b) => b.mtime - a.mtime);
+    for (const row of rows.slice(Math.max(0, keep))) await fs.rm(row.folder, { recursive: true, force: false });
 }
 
 export function enableServerPlugins(bytes) {
@@ -303,7 +318,7 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
                     await plain(file, false);
                     if (!(await fs.readFile(file)).equals(bytes)) fail('配置暂存已变化，保留现场，未重启。');
                     if (!await exists(backup)) { await fs.copyFile(file, backup, 1); await protect(file, backup); }
-                    if (!(await fs.readFile(backup)).equals(bytes)) fail('配置备份未完整保留，未清理暂存。');
+                    if (!(await fs.readFile(backup)).equals(bytes)) fail('配置暂存校验失败。');
                     await fs.unlink(file);
                 }
             } else {
@@ -427,9 +442,10 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
             sameDeviceStagingRemoved: workspaces.map(work => work.folder),
         }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
         committed = true;
+        await pruneInstallBackups(backupRoot);
         if (pm2Stopped) {
             const current = await pm2Target(pm2, root, run);
-            if (current.id !== processInfo.id || current.status !== 'stopped' || !samePath(current.configPath, configFile)) fail('文件已安装，但 PM2 状态变化，请按原方式启动并核对。');
+                if (current.id !== processInfo.id || current.status !== 'stopped' || !samePath(current.configPath, configFile)) fail('PM2 状态发生变化。');
             await run('pm2', ['start', String(processInfo.id)]); pm2Stopped = false;
         }
         return { installed: true, version: VERSION, commit, backup: transaction, targets, runtimeVerified: false,
@@ -458,17 +474,16 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
                 }
                 await cleanupWorkspaces();
             } catch (rollback) { rollbackFailed = true; error.message += ' 回退未完整完成：' + rollback.message; }
-            if (pm2Stopped && !rollbackFailed) {
+            if (pm2Stopped) {
                 try {
                     const current = await pm2Target(pm2, root, run);
                     if (current.id !== processInfo.id || current.status !== 'stopped' || !samePath(current.configPath, configFile)) fail('PM2 状态已变化。');
                     await run('pm2', ['start', String(processInfo.id)]); pm2Stopped = false;
-                } catch { error.message += ' 原代码已保留，但 PM2 未恢复，请按原方式启动。'; }
+                } catch { error.message += ' 本次未自动启动 ST。'; }
             }
         }
-        if (transaction) error.message += ' 保留目录：' + transaction;
-        if (rollbackFailed && workspaces.length) error.message += ' 停服暂存：' + workspaces.map(work => work.folder).join('、');
-        if (committed) error.message += ' 前后端文件已核验安装，运行状态尚未确认。';
+        if (rollbackFailed) error.message += ' 回退未完成。';
+        if (committed) error.message += ' 文件已更新，但运行状态未确认。';
         throw error;
     } finally {
         if (!rollbackFailed) {
@@ -507,12 +522,9 @@ async function main() {
         finally { input.close(); }
     }
     const result = await installYimu(options);
-    console.log('忆幕前后端文件已安装/更新：v' + result.version + '，提交 ' + result.commit);
-    console.log('旧文件与安装记录保留于：' + result.backup);
-    console.log(result.restart === 'pm2-started-unverified' ? '已对明确选定的 PM2 服务执行启动。' : '请按原部署方式启动 ST；容器请使用原来的持久挂载与启动方式。');
-    console.log('尚未核对运行中的忆幕版本，不能据此判断已生效。启动后刷新 ST，并在忆幕面板核对服务状态。');
+    if (process.env.YIMU_INSTALLER_QUIET !== '1') console.log('忆幕已更新至 v' + result.version + '。');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    main().catch(error => { console.error('忆幕安装未完整完成：' + error.message); process.exitCode = 1; });
+    main().catch(error => { console.error('忆幕更新失败：' + error.message); process.exitCode = 1; });
 }

@@ -1,4 +1,4 @@
-import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.482-font-progress-4';
+import { validateFontRecord } from './qianmu-font-sources.js?v=1.59.483';
 
 export const FONT_LIBRARY_SAMPLE = '一念起幕，万象成诗。 AaBbCc123456';
 // The directory keeps validated web-font metadata (URLs, unicode ranges and

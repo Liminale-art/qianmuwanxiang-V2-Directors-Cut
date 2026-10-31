@@ -3,6 +3,8 @@ set -eu
 umask 077
 command -v git >/dev/null 2>&1 || { printf '安装失败：未找到 Git。\n'; exit 1; }
 INSTALL_ROOT=$(pwd -P)
+BACKUP_RETENTION=${QIANMU_BACKUP_RETENTION:-5}
+case "$BACKUP_RETENTION" in ''|*[!0-9]*) printf '更新失败：备份保留数量无效。\n' >&2; exit 1 ;; esac
 [ "$INSTALL_ROOT" != / ] || { printf '请在 SillyTavern 安装目录运行。\n'; exit 1; }
 DEPLOYMENT=native
 if [ -f ./config.yaml ] && [ ! -L ./config.yaml ]; then
@@ -45,6 +47,21 @@ cleanup_install() {
 }
 trap cleanup_install EXIT
 trap 'INTERRUPTED=1; exit 1' HUP INT TERM
+
+prune_backups() {
+  local directory base line file count
+  directory=$(dirname "$CONFIG_FILE")
+  base=$(basename "$CONFIG_FILE")
+  count=0
+  ls -1dt "$directory/$base.qianmu-backup."* 2>/dev/null | while IFS= read -r file; do
+    case "$file" in *.ref) continue ;; esac
+    [ -f "$file" ] || continue
+    count=$((count + 1))
+    [ "$count" -le "$BACKUP_RETENTION" ] && continue
+    [ -f "$file" ] && rm -f -- "$file"
+    [ -f "$file.ref" ] && rm -f -- "$file.ref"
+  done
+}
 PLUGIN_PARENT="$INSTALL_ROOT/plugins"
 PLUGIN_DIR="$PLUGIN_PARENT/Omniscene"
 [ ! -L "$PLUGIN_PARENT" ] && [ ! -L "$PLUGIN_DIR" ] || { printf '插件目标是链接，未跟随。\n'; exit 1; }
@@ -73,11 +90,11 @@ cp -p "$CONFIG_FILE" "$BACKUP_FILE"
 chmod 600 "$BACKUP_FILE"
 printf '%s\n' "$PREVIOUS_COMMIT" > "${BACKUP_FILE}.ref"
 if [ -n "$PREVIOUS_COMMIT" ]; then
-  if ! git -c core.hooksPath="$BACKUP_FILE.hooks-disabled" -C "$PLUGIN_DIR" pull --ff-only; then printf '更新失败，ST 配置未修改。备份：%s\n' "$BACKUP_FILE"; exit 1; fi
+  if ! git -c core.hooksPath="$BACKUP_FILE.hooks-disabled" -C "$PLUGIN_DIR" pull --ff-only; then printf '更新失败：服务端插件未能同步。\n' >&2; exit 1; fi
 else
   STAGE=$(mktemp -d "$INSTALL_ROOT/.qianmu-install.XXXXXX")
   if ! git clone https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git "$STAGE/source"; then
-    printf '下载失败，未启用插件；暂存保留于 %s\n' "$STAGE"; exit 1
+    printf '更新失败：无法下载服务端插件。\n' >&2; exit 1
   fi
   for file in server-plugin.js package.json; do
     [ -f "$STAGE/source/$file" ] && [ ! -L "$STAGE/source/$file" ] || { printf '下载内容不完整，未启用。\n'; exit 1; }
@@ -93,7 +110,7 @@ done
 INSTALLED_COMMIT=$(git -C "$PLUGIN_DIR" rev-parse HEAD)
 printf '%s\n' "$INSTALLED_COMMIT" | grep -Eq '^[a-f0-9]{40,64}$' || { printf '无法确认安装版本，配置未修改。\n'; exit 1; }
 if [ -L "$CONFIG_FILE" ] || ! cmp -s "$BACKUP_FILE" "$CONFIG_FILE"; then
-  printf '配置在安装期间已变化，保留改动，未覆盖。备份：%s\n' "$BACKUP_FILE"; exit 1
+  printf '更新失败：配置在安装期间发生变化，未覆盖。\n' >&2; exit 1
 fi
 TEMP_FILE=$(mktemp "${CONFIG_FILE}.qianmu-new.XXXXXX")
 cp -p "$CONFIG_FILE" "$TEMP_FILE"
@@ -105,13 +122,8 @@ awk -v BINMODE=3 -v bom="$BOM" '
   { print ((NR==1 && marked) ? bom : "") $0 }
   END { if (!found) { print eol; print "enableServerPlugins: true" eol } }
 ' "$CONFIG_FILE" > "$TEMP_FILE"
-if [ -L "$CONFIG_FILE" ] || ! cmp -s "$BACKUP_FILE" "$CONFIG_FILE"; then printf '写入前配置已变化，未覆盖。\n'; exit 1; fi
+if [ -L "$CONFIG_FILE" ] || ! cmp -s "$BACKUP_FILE" "$CONFIG_FILE"; then printf '更新失败：写入前配置发生变化，未覆盖。\n' >&2; exit 1; fi
 mv -f "$TEMP_FILE" "$CONFIG_FILE"
 TEMP_FILE=''
-printf '千幕服务端已安装/更新，版本节点：%s\n配置备份：%s；原插件节点保存在同名 .ref 文件。\n' "$INSTALLED_COMMIT" "$BACKUP_FILE"
-if [ "$DEPLOYMENT" = docker ]; then
-  printf '本脚本没有重启容器。请按原方式启动；常见服务名可使用 docker compose start sillytavern。\n'
-else
-  printf '请按原方式启动 SillyTavern 后端，再刷新网页；本脚本不会停止或重启进程。\n'
-fi
-printf '健康检查：ST 地址后加 /api/plugins/qianmu-tts/health；它不代表上游生图已验收。\n'
+prune_backups
+[ "${QIANMU_INSTALLER_QUIET:-}" = 1 ] || printf '千幕服务端已更新至 v%s。\n' "$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PLUGIN_DIR/package.json" | head -n 1)"

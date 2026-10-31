@@ -76,7 +76,7 @@ for(const engine of win?['powershell','shell']:['shell']) {
     assert.equal(await fs.readFile(f.configFile,'utf8'),original.replace('false','true'));
     const [backup]=await backups(f);assert.equal(await fs.readFile(path.join(path.dirname(f.configFile),backup),'utf8'),original);
     assert.equal(await fs.readFile(path.join(f.data,'old-user-data'),'utf8'),'keep legacy data');
-    assert.equal(await f.git('-C',f.plugin,'rev-parse','HEAD'),f.head);assert.match(result.output,/不会停止或重启|没有重启容器/);
+    assert.equal(await f.git('-C',f.plugin,'rev-parse','HEAD'),f.head);assert.match(result.output,/千幕服务端已更新至 v1\.0\.0/);
   });
   test(`${engine}: updating retains unique original backup and records the exact prior commit`,async t=>{
     const f=await fixture(t),installed=await run(f,engine);assert.equal(installed.code,0,installed.output);const first=await backups(f);
@@ -144,7 +144,7 @@ for(const engine of win?['powershell','shell']:['shell']) {
 }
 test('shell Docker path preserves other config and prints manual startup without invoking Docker',async t=>{
   const f=await fixture(t,{docker:true}),result=await run(f,'shell');assert.equal(result.code,0,result.output);
-  assert.equal(await fs.readFile(f.configFile,'utf8'),original.replace('false','true'));assert.match(result.output,/没有重启容器/);assert.match(result.output,/docker compose start sillytavern/);
+  assert.equal(await fs.readFile(f.configFile,'utf8'),original.replace('false','true'));assert.match(result.output,/千幕服务端已更新至 v1\.0\.0/);assert.doesNotMatch(result.output,/docker compose start sillytavern/);
 });
 
 test('installer diagnostics preserve Chinese and emoji across separate stdout/stderr byte boundaries',()=>{

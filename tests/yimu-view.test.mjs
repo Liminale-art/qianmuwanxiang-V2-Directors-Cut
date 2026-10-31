@@ -712,12 +712,12 @@ test('service status in settings distinguishes mismatch from unavailable service
     const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.3.0', requiredVersion: '0.3.0'}}); t.after(() => f.view.destroy());
     f.get('设置').click(); const service = f.get('忆幕服务状态');
     assert.equal(service.querySelector('.ym-service-badge').textContent,'正常');assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'ready');
-    assert.equal(service.querySelector('.ym-service-versions').textContent,'当前 v0.3.0 · 最新 —');assert.equal(service.closest('[hidden]'), null);
+    assert.equal(service.querySelector('.ym-service-versions').textContent,'当前 v0.3.0 · 最新 v0.8.9');assert.equal(service.closest('[hidden]'), null);
     assert.equal(f.get('忆幕').querySelector('.ym-content').hidden, false);
     f.render({service: {status: 'mismatch', version: '0.2.0', requiredVersion: '0.3.0'}});
     assert.match(service.textContent, /待更新.*v0\.2\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'warning');assert.doesNotMatch(service.textContent, /未连接/);
     f.render({service: {status: 'error', version: '', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /未连接.*当前 —.*最新 —/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
+    assert.match(service.textContent, /未连接.*当前 —.*最新 v0\.8\.9/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
 });
 
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
@@ -1105,15 +1105,14 @@ test('memory notices stay out of settings and disappear when the pending choice 
     f.get('设置').click();assert.equal(notice.hidden,true);
 });
 
-test('a deliberate version check in settings is visible there without leaking a memory notice into settings', async t => {
+test('the paired update notice is visible in settings without leaking a memory notice into settings', async t => {
     const d=dom(),requests=[],actions=[];
     d.document.defaultView.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>({version:'0.0.0'})};};
     const view=createView({document:d.document,onAction:async(...args)=>actions.push(args)});t.after(()=>view.destroy());
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'当前忆幕已是最新版本。');assert.equal(requests.length,1);assert.deepEqual(actions,[]);
-    assert.equal(requests[0].options.credentials,'omit');assert.equal(requests[0].options.method,undefined);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕随千幕统一更新，请使用千幕更新命令。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);

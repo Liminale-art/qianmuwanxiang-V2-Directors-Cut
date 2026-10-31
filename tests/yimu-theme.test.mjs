@@ -253,6 +253,8 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-menu-entry \.ym-logo[^\n]*align-self: center/, 'mask icon has no text baseline and must not push the menu label down');
     assert.match(css, /\.ym-heading \.ym-logo[^\n]*width: 29px/);
     assert.match(css, /\.ym-tool-group:is\(\[data-side="left"\], \[data-side="right"\]\) > \.ym-tool-row[^\n]*margin-bottom: 8px/);
+    assert.match(css, /\.ym-dialog \.ym-password-control > input[^\n]*padding-inline-end: 52px/);
+    assert.match(css, /\.ym-dialog \.ym-password-control > \.ym-icon-button[^\n]*inset-inline-end: 6px/);
     assert.match(css, /\.ym-prompt-groups[^\n]*grid-auto-columns: minmax\(0, 1fr\)/);
     assert.match(css, /\.ym-stage-actions[^\n]*repeat\(2, minmax\(0, 1fr\)\)/);
     assert.match(css, /\.ym-entry-name[^\n]*text-overflow: ellipsis[^\n]*white-space: nowrap/);

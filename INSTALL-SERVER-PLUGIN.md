@@ -23,34 +23,29 @@ QIANMU_SERVER_STOPPED=1 curl -fsSL https://raw.githubusercontent.com/Liminale-ar
 首次安装完成时，终端会显示：
 
 ```text
-千幕服务端已安装/更新，版本节点：...
+千幕服务端已更新至 vX。
 ```
 
 随后按你原来的方式启动 ST 后端。只刷新网页不算完成。
 
-## 已有安装更新（VPS + PM2，一次粘贴）
+## 已有安装更新（当前 ST 根目录，一次粘贴）
 
-这段命令默认在 **SillyTavern 根目录**执行。开发测试环境的 PM2 进程名固定为 `sillytavern`。整行复制并按一次回车即可；它会下载独立更新脚本，在子进程中完成检查 → 停止 PM2 → 更新分支 → 更新插件 → 启动 PM2 → 检查在线状态。更新失败只结束子进程，不会关闭宝塔终端，也不会等待额外输入。
+这段命令请在你自己的 **SillyTavern 根目录**执行，脚本不会写死安装路径；PM2 名称可用 `QIANMU_PM2_NAME` 指定，未指定时使用 `sillytavern`。它会在更新前后处理原有服务状态；更新失败会尝试恢复原先在线的服务。
 
 ```bash
 bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
 ```
 
-最后看到 `更新完成：PM2=...，服务端版本=v1.59.482，插件提交=...`，才算版本校验通过。脚本会先核对插件包版本；如果设置了 `QIANMU_HEALTH_URL`，还会在 PM2 重启后核对在线健康接口返回的版本。没有看到这行就保留错误输出，不要连续重跑；如果 PM2 已停止，先按提示处理。
-
-如果 ST 在本机有稳定的访问地址，可在执行更新命令前设置在线核对地址，例如：
-
-```bash
-QIANMU_HEALTH_URL='http://127.0.0.1:8000/api/plugins/qianmu-tts/health' bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
-```
-
-不设置时仍会执行本地插件包版本校验，适合反向代理、容器或 ST 端口不固定的部署。
+成功只会提示 `千幕服务端已更新至 vX`。若当前 ST 已安装忆幕，同一条命令会从同一提交同步忆幕前端和服务端；没有安装忆幕则不会额外安装。
 
 聊天备份面板的“单聊天备份数上限”只允许管理员账户写入 1–500；保存后必须重启 ST 后端才生效。服务端从 ST 启动参数提供的 `configPath` 读取配置，兼容普通根目录、Docker 的 `config/config.yaml` 和全局安装；若由 `SILLYTAVERN_BACKUPS_COMMON_NUMBEROFBACKUPS` 环境变量控制，则界面仅显示当前值，不会覆盖环境配置。
 
 更新脚本位于仓库的 [update-server-plugin.sh](update-server-plugin.sh)，不再把大段 heredoc 代码直接粘到交互终端，避免终端停在 `>` 续行状态。
 
-本开发环境已经固定使用 `sillytavern`；如果其他部署确实使用不同的 PM2 名称，需要先修改脚本中的 `PM2_NAME` 再使用。
+<a id="忆幕随千幕统一更新"></a>
+## 忆幕随千幕统一更新
+
+忆幕在 ST 中只是加载入口，不是独立更新目标。安装后不要再单独执行忆幕更新命令，也不要等待忆幕条目自行检查远端版本；使用上面的千幕更新命令即可同步同一提交所需的忆幕文件。首次安装忆幕仍使用 `install-yimu.sh` 或 `install-yimu.ps1`，命令从当前目录确定 ST 根目录，不包含任何固定服务器路径。
 
 ## PM2 手动确认（只在一键命令提示时使用）
 
@@ -73,23 +68,13 @@ pm2 describe 你的ST进程名
 $env:QIANMU_SERVER_STOPPED='1'; irm https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-server-plugin.ps1 | iex
 ```
 
-看到 `千幕服务端已安装/更新，版本节点：...` 后，按原方式启动 ST。
+看到 `千幕服务端已更新至 vX` 后，按原方式启动 ST。
 
 ## 安装或更新失败时
 
 - **当前目录不是 SillyTavern 根目录**：先进入能看到 `config.yaml` 的目录，再重试。
 - **找不到 pm2 / 无法识别进程**：先执行 `pm2 status`，确认 ST 的进程名和工作目录。
 - **有本地改动**：先备份，不要用 `reset --hard` 覆盖。
-- **更新失败**：保留终端最后几行和配置备份，不要连续重跑；服务保持停止时，先修复原因再启动。
+- **更新失败**：终端只显示失败原因；若原先在线的 PM2 未能自动恢复，会明确提示 `本次未自动启动 sillytavern`。
 
-安装器会保留配置备份，不会删除聊天、密钥、图片或千幕防重记录。它不会替你停止或重启服务；一键更新脚本才会负责 PM2 的停启。
-
-## 健康检查
-
-后端启动后，可在浏览器打开：
-
-```text
-https://你的ST地址/api/plugins/qianmu-tts/health
-```
-
-返回包含 `"ok":true` 且版本与本次提交对应，说明服务端已加载。它只证明千幕服务已加载，不代表每个上游模型都已验收。
+安装器只保留最近 5 份回退资料，不会删除聊天、密钥、图片或千幕数据。服务端更新不会输出配置备份路径、健康检查或内部暂存目录。

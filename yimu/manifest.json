@@ -7,6 +7,9 @@
   "css": "style.css",
   "author": "Liminale",
   "version": "0.8.9",
+  "homePage": "https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git",
+  "auto_update": false,
+  "paired_update": "qianmuwanxiang-V2-Directors-Cut",
   "minimum_client_version": "1.18.0",
   "generate_interceptor": "yimuGenerationInterceptor"
 }

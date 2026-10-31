@@ -39,7 +39,7 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
         async health() {
             const value = await request('health');
             if (value.version !== VERSION || value.schema !== SCHEMA) throw Object.assign(
-                new Error(`忆幕服务端当前 ${value.version || '未知版本'}，需要配套 ${VERSION}；请一键更新后重启 ST`),
+                new Error(`忆幕服务端当前 ${value.version || '未知版本'}，需要配套 ${VERSION}；请使用千幕更新命令并重启 ST`),
                 { code: 'yimu_version', currentVersion: typeof value.version === 'string' ? value.version : '' });
             return value;
         },

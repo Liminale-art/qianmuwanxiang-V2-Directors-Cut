@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { installYimu, enableServerPlugins, parseArgs, RECEIPT } from '../scripts/install-yimu.mjs';
+import { installYimu, enableServerPlugins, parseArgs, pruneInstallBackups, MAX_INSTALL_BACKUPS, RECEIPT } from '../scripts/install-yimu.mjs';
 import { FRONTEND, BACKEND } from '../scripts/build-yimu.mjs';
 import { VERSION } from '../yimu/contract.mjs';
 
@@ -17,6 +17,20 @@ const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const command = (file, args, options = {}) => exec(file, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...options });
 const present = async target => { try { await fs.lstat(target); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
 const initialConfig = 'port: 8000\nenableServerPlugins: false # keep this\nprivateValue: never-print-this\n';
+
+test('install rollback records are capped without touching unrelated files', async t => {
+    const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'yimu-backup-retention-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    await fs.writeFile(path.join(root, 'unrelated.txt'), 'keep');
+    for (let index = 0; index < MAX_INSTALL_BACKUPS + 3; index++) {
+        const folder = path.join(root, `2026-10-31T00-00-0${index}-fixture`);
+        await fs.mkdir(folder); await fs.writeFile(path.join(folder, 'result.json'), '{}');
+        await new Promise(resolve => setTimeout(resolve, 2));
+    }
+    await pruneInstallBackups(root);
+    const kept = (await fs.readdir(root)).filter(name => /^2026-10-31T/.test(name));
+    assert.equal(kept.length, MAX_INSTALL_BACKUPS); assert.equal(await fs.readFile(path.join(root, 'unrelated.txt'), 'utf8'), 'keep');
+});
 
 async function fixture(t) {
     const parent = await fs.realpath(os.tmpdir()), temp = await fs.mkdtemp(path.join(parent, 'yimu-install-test-'));
@@ -179,7 +193,7 @@ test('a mid-install failure restores both previous targets and the configuration
         const oldReceipt = existing ? await fs.readFile(path.join(f.frontend, RECEIPT)) : null;
         await assert.rejects(installYimu({ ...f.options, onProgress(event) {
             if (event.phase === 'frontend-installed') throw Error('synthetic file failure');
-        } }, f.dependencies), /synthetic file failure.*保留目录/);
+        } }, f.dependencies), /synthetic file failure/);
         assert.deepEqual(await fs.readFile(path.join(f.root, 'config.yaml')), before);
         if (existing) assert.deepEqual(await fs.readFile(path.join(f.frontend, RECEIPT)), oldReceipt);
         else { assert.equal(await present(f.frontend), false); assert.equal(await present(f.server), false); }
@@ -257,7 +271,7 @@ test('wrong PM2 root, conflicting config, global mode, env override and custom w
 
 test('PM2 restart failure does not falsely report success or downgrade files after a possible new runtime start', async t => {
     const f = await fixture(t), process = pm2(f, { failStart: true });
-    await assert.rejects(installYimu({ ...f.options, stopped: false, pm2: 'chosen-st' }, { ...f.dependencies, run: process.run }), /文件已核验安装.*运行状态尚未确认/);
+    await assert.rejects(installYimu({ ...f.options, stopped: false, pm2: 'chosen-st' }, { ...f.dependencies, run: process.run }), /文件已更新.*运行状态未确认/);
     assert.equal(await present(path.join(f.frontend, RECEIPT)), true);
     assert.equal(await present(path.join(f.server, RECEIPT)), true);
     assert.deepEqual(process.calls.filter(args => args[0] !== 'jlist'), [['stop', '42'], ['start', '42']]);
@@ -411,7 +425,7 @@ test('cross-mount rollback after configuration commit and after completed cleanu
     }
 });
 
-test('unknown local staging content preserves the maintenance lock and leaves PM2 stopped instead of exposing it to the loader', async t => {
+test('unknown local staging content preserves the maintenance lock and restores PM2 before returning', async t => {
     const f = await fixture(t), mounts = mountedParents(f), process = pm2(f);
     let note;
     await assert.rejects(installYimu({ ...f.options, stopped: false, pm2: 'chosen-st', async onProgress(event) {
@@ -420,11 +434,11 @@ test('unknown local staging content preserves the maintenance lock and leaves PM
             const folder = (await fs.readdir(parent)).find(name => name.startsWith('.yimu-install-'));
             note = path.join(parent, folder, 'unknown-user-note'); await fs.writeFile(note, 'preserve');
         }
-    } }, { ...f.dependencies, stat: mounts.stat, rename: mounts.rename, run: process.run }), /回退未完整完成.*停服暂存/);
+    } }, { ...f.dependencies, stat: mounts.stat, rename: mounts.rename, run: process.run }), /回退未完成/);
     assert.equal(await fs.readFile(note, 'utf8'), 'preserve');
     assert.equal(await present(path.join(f.root, '.yimu-installer.lock')), true);
-    assert.equal(process.state.status, 'stopped');
-    assert.equal(process.calls.some(args => args[0] === 'start'), false);
+    assert.equal(process.state.status, 'online');
+    assert.equal(process.calls.some(args => args[0] === 'start'), true);
     await f.verifyUntouched();
 });
 

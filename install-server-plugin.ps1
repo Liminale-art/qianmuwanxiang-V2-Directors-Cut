@@ -1,5 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $installRoot = (Get-Location).ProviderPath
+$backupRetention = if ($env:QIANMU_BACKUP_RETENTION) { [int]$env:QIANMU_BACKUP_RETENTION } else { 5 }
+if ($backupRetention -lt 0) { throw '更新失败：备份保留数量无效。' }
 $configFile = Join-Path $installRoot 'config.yaml'
 $pluginParent = Join-Path $installRoot 'plugins'
 $pluginDir = Join-Path $pluginParent 'Omniscene'
@@ -63,13 +65,13 @@ Set-Acl -LiteralPath $backupFile -AclObject $originalAcl
 Set-Acl -LiteralPath ($backupFile + '.ref') -AclObject $originalAcl
 if ($previousCommit) {
     & git -c core.hooksPath="$backupFile.hooks-disabled" -C $pluginDir pull --ff-only
-    if ($LASTEXITCODE -ne 0) { throw "更新失败，ST 配置未修改。备份：$backupFile" }
+    if ($LASTEXITCODE -ne 0) { throw '更新失败：服务端插件未能同步。' }
 } else {
     $stage = Join-Path $installRoot ('.qianmu-install.' + $nodeId)
     New-Item -ItemType Directory -Path $stage | Out-Null
     $stagedPlugin = Join-Path $stage 'source'
     & git clone https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git $stagedPlugin
-    if ($LASTEXITCODE -ne 0) { throw "下载失败，未启用插件；暂存保留于 $stage" }
+    if ($LASTEXITCODE -ne 0) { throw '更新失败：无法下载服务端插件。' }
     foreach ($file in @('server-plugin.js','package.json')) { Assert-PlainPath (Join-Path $stagedPlugin $file) $false }
     if (-not (Test-Path -LiteralPath $pluginParent)) { New-Item -ItemType Directory -Path $pluginParent | Out-Null }
     Assert-PlainPath $pluginParent $true
@@ -90,14 +92,21 @@ try {
     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($configFile)) -cne [Convert]::ToBase64String($originalBytes)) { throw '配置在写入前发生变化，未覆盖。' }
     [IO.File]::Replace($tempFile, $configFile, [System.Management.Automation.Language.NullString]::Value)
 } catch {
-    throw "代码准备完成，但配置未完成写入，不能当作安装成功。备份：$backupFile。$($_.Exception.Message)"
+    throw "更新失败：配置未完成写入。$($_.Exception.Message)"
 } finally {
     if (Test-Path -LiteralPath $tempFile -PathType Leaf) { Remove-Item -LiteralPath $tempFile }
 }
-Write-Host "千幕服务端已安装/更新，版本节点：$installedCommit" -ForegroundColor Green
-Write-Host "配置备份：$backupFile；原插件节点保存在同名 .ref 文件（首次安装为空）。"
-Write-Host '请按原方式启动 SillyTavern 后端，再刷新网页；本脚本不会停止或重启进程。'
-Write-Host '健康检查：ST 地址后加 /api/plugins/qianmu-tts/health；它不代表上游生图已验收。'
+Get-ChildItem -LiteralPath (Split-Path -Parent $configFile) -File -Filter "$(Split-Path -Leaf $configFile).qianmu-backup.*" |
+    Where-Object { $_.Name -notlike '*.ref' } |
+    Sort-Object LastWriteTime -Descending | Select-Object -Skip $backupRetention | ForEach-Object {
+        Remove-Item -LiteralPath $_.FullName -Force
+        $ref = $_.FullName + '.ref'
+        if (Test-Path -LiteralPath $ref -PathType Leaf) { Remove-Item -LiteralPath $ref -Force }
+    }
+if ($env:QIANMU_INSTALLER_QUIET -ne '1') {
+    $version = (Get-Content -LiteralPath (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json).version
+    Write-Host "千幕服务端已更新至 v$version。" -ForegroundColor Green
+}
 } finally {
     Assert-PlainPath $installLock $true
     Assert-PlainPath $lockOwner $false

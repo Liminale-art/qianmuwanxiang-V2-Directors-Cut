@@ -9,12 +9,12 @@ import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
-import {createFontLibrary} from './qianmu-font-library.js?v=1.59.482-font-progress-4';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.483';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor} from './qianmu-tts-floor-ui.js?v=1.59.419';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.483-yimu-081-1';
+import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.483';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';
@@ -87,7 +87,7 @@ import { createFocusVoicePreparation } from './qianmu-focus-preparation.js';
 import { createFocusVoiceCache } from './qianmu-focus-voice-cache.js';
 import { renderFocusClockView, updateFocusClockView } from './qianmu-focus-view.js';
 import { bindFocusClockPage } from './qianmu-focus-events.js';
-import { exportFocusWeekImage } from './qianmu-focus-export.js?v=1.59.482-font-slogan-1';
+import { exportFocusWeekImage } from './qianmu-focus-export.js?v=1.59.483-font-slogan-1';
 import { createFocusCueRecords } from './qianmu-focus-cue-records.js';
 import { createFocusVoiceDrawer } from './qianmu-focus-drawer.js';
 import { createFocusLibraryRuntime } from './qianmu-focus-library-runtime.js?v=1.59.425';
@@ -372,7 +372,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.482'), import('./qianmu-chat-recovery-view.js?v=1.59.482')]);
+    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.483'), import('./qianmu-chat-recovery-view.js?v=1.59.483')]);
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
