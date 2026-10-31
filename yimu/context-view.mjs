@@ -13,30 +13,41 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         if (text !== undefined) node.textContent = text;
         return node;
     };
-    const input = (label, type) => {
-        const node = el('textarea'); node.setAttribute('aria-label', label);
-        node.placeholder = type === 'blocked' ? '例如 status, status-bar, style' : '例如 content';
-        node.rows = 2; node.autocomplete = 'off'; return node;
+    const button = (label, glyph, action, className = '') => {
+        const node = el('button', `ym-button ${className}`.trim());
+        node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
+        if (glyph) node.append(el('span', 'ym-context-rule-glyph', glyph));
+        node.addEventListener('click', action);
+        return node;
     };
-    const field = (label, node) => { const row = el('label', 'ym-field'); row.append(el('span', '', label), node); return row; };
-    const card = el('section', 'ym-card ym-context-rules-card');
+    const card = el('section', 'ym-card ym-tool-card ym-prompt-folder ym-context-rules-card');
     const heading = el('button', 'ym-tool-summary'); heading.type = 'button';
-    heading.append(el('strong', '', '正文提取'), el('span', 'ym-context-rules-arrow', '⌄'));
+    heading.append(el('span', 'ym-context-rule-glyph', '⌘'), el('strong', '', '正文提取'), el('span', 'ym-context-rule-glyph ym-context-rule-expand', '⌄'));
     heading.setAttribute('aria-label', '正文提取'); heading.setAttribute('aria-expanded', 'false');
-    const body = el('div', 'ym-context-rules-body'); body.hidden = true;
-    body.append(el('p', 'ym-muted', '整理前先处理正文中的状态栏、装饰标签与注释；不会修改原聊天。'));
-    const stripRow = el('label', 'ym-switch-row'); const strip = el('input', 'ym-switch'); strip.type = 'checkbox'; strip.setAttribute('aria-label', '清除 HTML 注释');
-    stripRow.append(el('span', '', '清除 HTML 注释'), strip); body.append(stripRow);
-    const blocked = input('屏蔽标签', 'blocked'); const included = input('提取标签', 'included');
-    body.append(field('屏蔽标签', blocked), field('提取标签', included));
-    body.append(el('p', 'ym-muted', '标签只填写名称，不含尖括号；屏蔽优先于提取。提取标签找不到时保留清理后的完整正文。'));
-    card.append(heading, body);
+    const body = el('div', 'ym-tool-body'); body.hidden = true;
+    const stripRow = el('label', 'ym-switch-row');
+    const strip = el('input', 'ym-switch'); strip.type = 'checkbox'; strip.setAttribute('aria-label', '清除 HTML 注释');
+    stripRow.append(el('span', '', '清除 HTML 注释'), strip);
+    const rules = el('div', 'ym-context-rule-list'); rules.setAttribute('aria-label', '正文标签规则');
+    const add = button('添加正文标签', '＋', event => { event.preventDefault(); addRow('', 'blocked', true); }, 'ym-icon-button ym-context-rule-add');
+    body.append(stripRow, rules, add); card.append(heading, body);
+
     let state = {}, last = '', saving = false, queued = false, disposed = false;
-    const read = () => normalizeContextRules({ stripComments: strip.checked, blockedTags: blocked.value, includedTags: included.value });
+    const rows = [];
+    const ruleValues = () => rows.map(item => ({ tag: item.input.value.trim(), mode: item.mode.value }));
+    const read = () => {
+        const blockedTags = [], includedTags = [];
+        for (const item of ruleValues()) {
+            if (!item.tag) continue;
+            (item.mode === 'included' ? includedTags : blockedTags).push(item.tag);
+        }
+        return normalizeContextRules({ stripComments: strip.checked, blockedTags, includedTags });
+    };
+    const controls = () => [strip, add, ...rows.flatMap(item => [item.input, item.mode, item.remove])];
     const save = async () => {
         if (disposed) return;
         if (saving) { queued = true; return; }
-        const value = read(); saving = true; [strip, blocked, included].forEach(node => { node.disabled = true; });
+        const value = read(); saving = true; controls().forEach(node => { node.disabled = true; });
         try {
             const result = await onSave(clone(value));
             if (result === false) throw new Error('正文提取设置未保存');
@@ -44,21 +55,50 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         } catch (error) { onError(error); }
         finally {
             saving = false;
-            if (!disposed) [strip, blocked, included].forEach(node => { node.disabled = Boolean(state.disabled); });
+            if (!disposed) controls().forEach(node => { node.disabled = Boolean(state.disabled); });
             if (queued && !disposed) { queued = false; void save(); }
         }
     };
-    [strip, blocked, included].forEach(node => node.addEventListener('change', () => { void save(); }));
-    heading.addEventListener('click', () => { body.hidden = !body.hidden; heading.setAttribute('aria-expanded', String(!body.hidden)); card.setAttribute('data-open', String(!body.hidden)); });
+    const removeRow = row => {
+        const index = rows.indexOf(row); if (index < 0) return;
+        rows.splice(index, 1); row.node.remove(); void save();
+    };
+    const addRow = (tag = '', mode = 'blocked', focus = false) => {
+        const node = el('div', 'ym-context-rule-row');
+        const input = el('input'); input.type = 'text'; input.value = tag; input.placeholder = '标签名'; input.maxLength = 64;
+        input.setAttribute('aria-label', mode === 'included' ? '提取标签' : '屏蔽标签'); input.autocomplete = 'off';
+        const select = el('select'); select.setAttribute('aria-label', '规则类型');
+        for (const [value, label] of [['blocked', '屏蔽'], ['included', '提取']]) { const option = el('option', '', label); option.value = value; select.append(option); }
+        select.value = mode;
+        let row;
+        const remove = button('删除正文标签', '×', event => { event.preventDefault(); event.stopPropagation(); removeRow(row); }, 'ym-icon-button ym-context-rule-remove');
+        node.append(input, select, remove); rules.append(node);
+        row = { node, input, mode: select, remove }; rows.push(row);
+        input.addEventListener('change', () => { void save(); });
+        select.addEventListener('change', () => { input.setAttribute('aria-label', select.value === 'included' ? '提取标签' : '屏蔽标签'); void save(); });
+        if (focus) input.focus();
+        return row;
+    };
+    const renderRules = value => {
+        rows.splice(0, rows.length); rules.replaceChildren();
+        // The initial UI intentionally contains only the extraction boundary.
+        // Users add a block rule explicitly instead of inheriting guesses.
+        for (const tag of value.blockedTags) addRow(tag, 'blocked');
+        for (const tag of value.includedTags) addRow(tag, 'included');
+    };
+    strip.addEventListener('change', () => { void save(); });
+    heading.addEventListener('click', () => {
+        body.hidden = !body.hidden; heading.setAttribute('aria-expanded', String(!body.hidden)); card.setAttribute('data-open', String(!body.hidden));
+    });
     return {
         element: card,
         render(next = {}) {
             state = next; const value = normalizeContextRules(next.settings?.contextRules || next.contextRules);
             const signature = JSON.stringify([value, Boolean(next.disabled)]); if (signature === last) return; last = signature;
             if (document.activeElement !== strip) strip.checked = value.stripComments;
-            if (document.activeElement !== blocked) blocked.value = value.blockedTags.join(', ');
-            if (document.activeElement !== included) included.value = value.includedTags.join(', ');
-            [strip, blocked, included].forEach(node => { node.disabled = Boolean(next.disabled); });
+            const editing = [strip, ...rows.flatMap(item => [item.input, item.mode])].includes(document.activeElement);
+            if (!editing) renderRules(value);
+            controls().forEach(node => { node.disabled = Boolean(next.disabled); });
             card.hidden = false;
         },
         destroy() { disposed = true; card.remove(); },

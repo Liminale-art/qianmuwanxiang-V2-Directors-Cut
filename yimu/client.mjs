@@ -1,4 +1,4 @@
-import { VERSION, SCHEMA } from './contract.mjs';
+import { SERVICE_VERSION, SCHEMA } from './contract.mjs';
 
 export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers = () => globalThis.SillyTavern?.getContext?.().getRequestHeaders?.() || {}, timeout = 10000, transferTimeout = 120000 } = {}) {
     async function request(path, body, deadline = timeout) {
@@ -38,8 +38,8 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
     return {
         async health() {
             const value = await request('health');
-            if (value.version !== VERSION || value.schema !== SCHEMA) throw Object.assign(
-                new Error(`忆幕服务端当前 ${value.version || '未知版本'}，需要配套 ${VERSION}；请使用千幕更新命令并重启 ST`),
+            if (value.version !== SERVICE_VERSION || value.schema !== SCHEMA) throw Object.assign(
+                new Error(`忆幕服务端当前 ${value.version || '未知版本'}，需要服务端 ${SERVICE_VERSION}；请使用千幕更新命令并重启 ST`),
                 { code: 'yimu_version', currentVersion: typeof value.version === 'string' ? value.version : '' });
             return value;
         },

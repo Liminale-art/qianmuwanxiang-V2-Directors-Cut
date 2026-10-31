@@ -712,12 +712,12 @@ test('service status in settings distinguishes mismatch from unavailable service
     const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.3.0', requiredVersion: '0.3.0'}}); t.after(() => f.view.destroy());
     f.get('设置').click(); const service = f.get('忆幕服务状态');
     assert.equal(service.querySelector('.ym-service-badge').textContent,'正常');assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'ready');
-    assert.equal(service.querySelector('.ym-service-versions').textContent,'当前 v0.3.0 · 最新 v0.8.9');assert.equal(service.closest('[hidden]'), null);
+    assert.equal(service.querySelector('.ym-service-versions').textContent,'服务端 v0.3.0 · 配套 v0.3.0');assert.equal(service.closest('[hidden]'), null);
     assert.equal(f.get('忆幕').querySelector('.ym-content').hidden, false);
     f.render({service: {status: 'mismatch', version: '0.2.0', requiredVersion: '0.3.0'}});
     assert.match(service.textContent, /待更新.*v0\.2\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'warning');assert.doesNotMatch(service.textContent, /未连接/);
     f.render({service: {status: 'error', version: '', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /未连接.*当前 —.*最新 v0\.8\.9/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
+    assert.match(service.textContent, /未连接.*服务端 —.*配套 v0\.3\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
 });
 
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
@@ -1232,7 +1232,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js.split('?')[0], 'index.mjs'); assert.equal(manifest.version, pkg.version);
+    assert.equal(manifest.js.split('?')[0], 'index.mjs'); assert.equal(manifest.version, '0.8.10'); assert.equal(pkg.version, '0.8.9');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

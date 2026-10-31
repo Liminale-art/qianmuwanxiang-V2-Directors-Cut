@@ -7,7 +7,7 @@ import { planManualRange, summaryCoverage } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
-import { VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText } from './contract.mjs';
+import { FRONTEND_VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText } from './contract.mjs';
 import { orderedEntries as timelineEntries, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
@@ -154,7 +154,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const heading = el('div', 'ym-heading');
     const pageTitle = el('h2', '', '忆幕');
     heading.append(el('span', 'ym-logo'), pageTitle);
-    const versionBadge = mountYimuVersionBadge(heading, { document, version: VERSION,
+    const versionBadge = mountYimuVersionBadge(heading, { document, version: FRONTEND_VERSION,
         onNotice: message => { localError = ''; state.status = message; noticePage = currentPage; seenNotice = message; updateStatus(); },
     });
     const backButton = iconButton('返回', 'back', () => navigate(pageParents[currentPage] || 'overview'), 'ym-back ym-small');
@@ -614,8 +614,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const service = state.service || {};
         serviceBadge.textContent = ({ok:'正常',mismatch:'待更新',error:'未连接',checking:'检查中'})[service.status] || '待检测';
         serviceBadge.dataset.tone = service.status === 'ok' ? 'ready' : service.status === 'error' ? 'error' : 'warning';
-        const latest = versionBadge.latest?.();
-        serviceVersions.textContent = `当前 ${service.version ? `v${service.version}` : '—'} · 最新 ${latest ? `v${latest}` : '—'}`;
+        serviceVersions.textContent = `服务端 ${service.version ? `v${service.version}` : '—'} · 配套 ${service.requiredVersion ? `v${service.requiredVersion}` : '—'}`;
         const sourceWarning = state.snapshot && state.document && state.sourceAvailable === false && !state.loading
             ? '当前聊天原件尚未通过核对，记忆暂不参与生成。' : '';
         // The homepage has a dedicated empty state, not an error for normal navigation.

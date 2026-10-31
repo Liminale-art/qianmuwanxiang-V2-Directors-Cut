@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { buildYimu } from './build-yimu.mjs';
-import { VERSION } from '../yimu/contract.mjs';
+import { FRONTEND_VERSION, SERVICE_VERSION } from '../yimu/contract.mjs';
 
 export const INSTALLER_ID = 'yimu-paired-installer-v1';
 export const RECEIPT = '.yimu-install.json';
@@ -192,7 +192,8 @@ async function sourceCommit(sourceRoot, run) {
 }
 
 async function verifyBuild(folder, stamp, sourceRoot, commit, run) {
-    if (stamp?.version !== VERSION || !stamp.files || typeof stamp.files !== 'object') fail('构建版本与忆幕版本不一致。');
+    if (stamp?.frontendVersion !== FRONTEND_VERSION || stamp?.serviceVersion !== SERVICE_VERSION
+        || stamp?.version !== FRONTEND_VERSION || !stamp.files || typeof stamp.files !== 'object') fail('构建版本与忆幕版本不一致。');
     const maps = {};
     for (const kind of ['frontend', 'server']) {
         const files = await fileMap(path.join(folder, kind, 'yimu'));
@@ -208,7 +209,7 @@ async function verifyBuild(folder, stamp, sourceRoot, commit, run) {
     if (Object.keys(stamp.files).length !== Object.keys(maps.frontend).length + Object.keys(maps.server).length) fail('构建清单有未核实文件。');
     const manifest = JSON.parse(await fs.readFile(path.join(folder, 'frontend/yimu/manifest.json'), 'utf8'));
     const pkg = JSON.parse(await fs.readFile(path.join(folder, 'server/yimu/package.json'), 'utf8'));
-    if (manifest.version !== VERSION || pkg.version !== VERSION || pkg.name !== 'yimu' || pkg.main !== 'server-plugin.mjs'
+    if (manifest.version !== FRONTEND_VERSION || pkg.version !== SERVICE_VERSION || pkg.name !== 'yimu' || pkg.main !== 'server-plugin.mjs'
         || manifest.js !== 'index.mjs' || manifest.generate_interceptor !== 'yimuGenerationInterceptor') fail('忆幕前后端入口或实际版本不匹配。');
     for (const [kind, name] of [['frontend', 'index.mjs'], ['server', 'server-plugin.mjs']]) {
         if (!maps[kind][name] || !maps[kind]['contract.mjs']) fail('忆幕安装包缺少必要入口。');
@@ -295,8 +296,8 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
         if (old[kind] && (await stat(target)).dev !== (await stat(path.dirname(target))).dev) fail('忆幕目标目录本身是独立挂载，未强制覆盖；请先核对挂载方式。');
     }
     if (Boolean(old.frontend) !== Boolean(old.server)) fail('忆幕前后端安装不完整，请先保留现状并核对，未覆盖。');
-    if (old.frontend && (old.frontend.receipt.commit !== old.server.receipt.commit || old.frontend.receipt.version !== old.server.receipt.version
-        || old.frontend.files['contract.mjs'] !== old.server.files['contract.mjs'])) fail('已有忆幕前后端版本不一致，未覆盖。');
+    if (old.frontend && (old.frontend.receipt.commit !== old.server.receipt.commit
+        || old.frontend.files['contract.mjs'] !== old.server.files['contract.mjs'])) fail('已有忆幕前后端来源不一致，未覆盖。');
     const commit = await sourceCommit(sourceRoot, run);
     const lock = path.join(root, '.yimu-installer.lock'), owner = randomUUID();
     try { await fs.mkdir(lock); } catch (error) { if (error.code === 'EEXIST') fail('已有安装锁，请核查是否有另一安装或未完成回退。'); throw error; }
@@ -360,7 +361,7 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
             await fs.chmod(codeFolder, 0o755);
             for (const name of Object.keys(maps[kind])) await fs.chmod(path.join(codeFolder, name), 0o644);
             await fs.writeFile(path.join(output, kind, 'yimu', RECEIPT), JSON.stringify({
-                installer: INSTALLER_ID, kind, root, commit, version: VERSION, files: maps[kind],
+                installer: INSTALLER_ID, kind, root, commit, version: kind === 'frontend' ? FRONTEND_VERSION : SERVICE_VERSION, files: maps[kind],
             }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
             newFiles[kind] = { ...maps[kind], [RECEIPT]: sha(await fs.readFile(path.join(codeFolder, RECEIPT))) };
             oldFiles[kind] = old[kind] ? { ...old[kind].files, [RECEIPT]: old[kind].receiptHash } : null;
@@ -433,12 +434,13 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
         }
         for (const [kind, target] of Object.entries(targets)) {
             const checked = await installed(target, kind, root);
-            if (checked.receipt.commit !== commit || checked.receipt.version !== VERSION || !sameMap(checked.files, maps[kind])) fail('安装后文件校验失败。');
+            const expectedVersion = kind === 'frontend' ? FRONTEND_VERSION : SERVICE_VERSION;
+            if (checked.receipt.commit !== commit || checked.receipt.version !== expectedVersion || !sameMap(checked.files, maps[kind])) fail('安装后文件校验失败。');
         }
         await cleanupWorkspaces();
         await onProgress({ phase: 'staging-cleaned' });
         await fs.writeFile(path.join(transaction, 'result.json'), JSON.stringify({
-            version: VERSION, commit, targets, config: configFile, configChanged, runtimeVerified: false,
+            version: FRONTEND_VERSION, frontendVersion: FRONTEND_VERSION, serviceVersion: SERVICE_VERSION, commit, targets, config: configFile, configChanged, runtimeVerified: false,
             sameDeviceStagingRemoved: workspaces.map(work => work.folder),
         }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
         committed = true;
@@ -448,7 +450,7 @@ export async function installYimu({ stRoot, config, stopped = false, pm2, source
                 if (current.id !== processInfo.id || current.status !== 'stopped' || !samePath(current.configPath, configFile)) fail('PM2 状态发生变化。');
             await run('pm2', ['start', String(processInfo.id)]); pm2Stopped = false;
         }
-        return { installed: true, version: VERSION, commit, backup: transaction, targets, runtimeVerified: false,
+        return { installed: true, version: FRONTEND_VERSION, frontendVersion: FRONTEND_VERSION, serviceVersion: SERVICE_VERSION, commit, backup: transaction, targets, runtimeVerified: false,
             restart: processInfo?.status === 'online' ? 'pm2-started-unverified' : 'manual-start-required' };
     } catch (error) {
         if (error.code === 'EXDEV' || error.code === 'EBUSY') error.message = '目标是独立挂载或不能原子置换，未强制覆盖。' + error.message;
@@ -522,7 +524,7 @@ async function main() {
         finally { input.close(); }
     }
     const result = await installYimu(options);
-    if (process.env.YIMU_INSTALLER_QUIET !== '1') console.log('忆幕已更新至 v' + result.version + '。');
+    if (process.env.YIMU_INSTALLER_QUIET !== '1') console.log(`忆幕前端已更新至 v${result.frontendVersion}；服务端 v${result.serviceVersion}。`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

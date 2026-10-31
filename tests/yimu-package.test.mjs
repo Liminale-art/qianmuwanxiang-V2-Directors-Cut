@@ -6,7 +6,7 @@ import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { buildYimu, FRONTEND, BACKEND } from '../scripts/build-yimu.mjs';
-import { VERSION } from '../yimu/contract.mjs';
+import { FRONTEND_VERSION, SERVICE_VERSION } from '../yimu/contract.mjs';
 
 test('candidate packages are self-contained, preserve logo geometry, refuse overwrites and never enter Qianmu release', async t => {
     const parent = await fs.realpath(os.tmpdir());
@@ -18,7 +18,9 @@ test('candidate packages are self-contained, preserve logo geometry, refuse over
     });
     const out = path.join(temp, 'candidate');
     const stamp = await buildYimu(out);
-    assert.equal(stamp.version, VERSION);
+    assert.equal(stamp.version, FRONTEND_VERSION);
+    assert.equal(stamp.frontendVersion, FRONTEND_VERSION);
+    assert.equal(stamp.serviceVersion, SERVICE_VERSION);
     await assert.rejects(buildYimu(out), { code: 'EEXIST' });
     for (const [kind, files] of [['frontend', FRONTEND], ['server', BACKEND]]) {
         for (const name of files) {
@@ -35,7 +37,7 @@ test('candidate packages are self-contained, preserve logo geometry, refuse over
     }
     const manifest = JSON.parse(await fs.readFile(path.join(out, 'frontend/yimu/manifest.json'), 'utf8'));
     const pkg = JSON.parse(await fs.readFile(path.join(out, 'server/yimu/package.json'), 'utf8'));
-    assert.equal(manifest.version, VERSION); assert.equal(pkg.version, VERSION);
+    assert.equal(manifest.version, FRONTEND_VERSION); assert.equal(pkg.version, SERVICE_VERSION);
     const server = await import(pathToFileURL(path.join(out, 'server/yimu/server-plugin.mjs')));
     assert.equal(server.info.id, 'yimu');
     const frontend = await import(pathToFileURL(path.join(out, 'frontend/yimu/index.mjs')));

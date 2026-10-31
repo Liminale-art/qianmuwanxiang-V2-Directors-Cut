@@ -5,7 +5,10 @@ const MAX_TAGS = 32;
 // Presentation-only containers commonly emitted around a chat response.
 // Inner-thought tags are not blocked by default: they may be part of a user's
 // chosen narrative and can be added explicitly in the card when appropriate.
-export const DEFAULT_BLOCKED_TAGS = Object.freeze(['status', 'status-bar', 'statusbar', 'progress', 'progress-bar', 'style', 'script', 'svg']);
+// Do not guess which tags are presentation-only.  A user's story may use any
+// of these names as meaningful prose, so the blocked list starts empty and is
+// opt-in.  `content` remains the only default extraction boundary.
+export const DEFAULT_BLOCKED_TAGS = Object.freeze([]);
 export const DEFAULT_INCLUDED_TAGS = Object.freeze(['content']);
 export const DEFAULT_CONTEXT_RULES = Object.freeze({ stripComments: true, blockedTags: DEFAULT_BLOCKED_TAGS, includedTags: DEFAULT_INCLUDED_TAGS });
 

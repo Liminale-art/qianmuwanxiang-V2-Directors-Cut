@@ -5,11 +5,12 @@ import { DEFAULTS, validateSettings } from '../yimu/contract.mjs';
 import { portableDocument } from '../yimu/backup-contract.mjs';
 import { summaryPrompt } from '../yimu/core.mjs';
 
-test('default context rules remove comments and presentation-only tags while unwrapping content', () => {
+test('default context rules keep blocking opt-in and extract only content', () => {
     const raw = '<content>正文一<!-- 状态注释 -->\n正文二</content><status>状态栏</status><style>.card{color:red}</style><p>保留</p>';
     assert.equal(filterContextText(raw), '正文一\n正文二');
-    assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, ['status', 'status-bar', 'statusbar', 'progress', 'progress-bar', 'style', 'script', 'svg']);
+    assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, []);
     assert.deepEqual(DEFAULT_CONTEXT_RULES.includedTags, ['content']);
+    assert.equal(filterContextText(raw, { blockedTags: ['status', 'style'], includedTags: [] }), '<content>正文一\n正文二</content><p>保留</p>');
 });
 
 test('context rules accept user tags, keep ordinary text, and reject unsafe names', () => {
@@ -37,6 +38,6 @@ test('summary prompt applies context cleanup without mutating the source message
     const before = structuredClone(message);
     const prompt = summaryPrompt([message], { start: 1, end: 1 }, DEFAULTS);
     const source = JSON.parse(prompt.split('原文：')[1]);
-    assert.equal(source[0].text, '正文');
+    assert.equal(source[0].text, '正文<status>在线</status>');
     assert.deepEqual(message, before);
 });

@@ -1,5 +1,5 @@
 import {createYimuStore} from './server-store.mjs';
-import {VERSION, SCHEMA} from './contract.mjs';
+import {SERVICE_VERSION, SCHEMA} from './contract.mjs';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 
@@ -24,7 +24,7 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
             return sendError(response, caught);
         }
     };
-    router.get('/health', route(async () => ({version: VERSION, schema: SCHEMA})));
+    router.get('/health', route(async () => ({version: SERVICE_VERSION, schema: SCHEMA})));
     router.post('/read', route(request => store.read(request, request.body?.binding)));
     router.post('/recall-source', route(request => store.recallSource(request, request.body?.binding, request.body?.request)));
     router.post('/change', route(request => store.change(request, request.body?.binding, request.body?.operation)));

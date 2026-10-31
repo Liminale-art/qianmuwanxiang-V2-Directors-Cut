@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installYimu, enableServerPlugins, parseArgs, pruneInstallBackups, MAX_INSTALL_BACKUPS, RECEIPT } from '../scripts/install-yimu.mjs';
 import { FRONTEND, BACKEND } from '../scripts/build-yimu.mjs';
-import { VERSION } from '../yimu/contract.mjs';
+import { FRONTEND_VERSION, SERVICE_VERSION } from '../yimu/contract.mjs';
 
 const project = fileURLToPath(new URL('../', import.meta.url));
 const exec = promisify(execFile);
@@ -67,7 +67,7 @@ async function fixture(t) {
     const commit = await git('rev-parse', 'HEAD');
     const build = async output => {
         await fs.mkdir(output);
-        const stamp = { version: VERSION, files: {} };
+        const stamp = { version: FRONTEND_VERSION, frontendVersion: FRONTEND_VERSION, serviceVersion: SERVICE_VERSION, files: {} };
         for (const [kind, files] of [['frontend', FRONTEND], ['server', BACKEND]]) {
             const folder = path.join(output, kind, 'yimu'); await fs.mkdir(folder, { recursive: true });
             for (const file of files) {
@@ -113,11 +113,11 @@ function pm2(f, overrides = {}) {
 test('fresh paired install checks exact commit/version/hashes and never touches account data, ST core or Qianmu', async t => {
     const f = await fixture(t);
     const result = await installYimu(f.options, f.dependencies);
-    assert.equal(result.version, VERSION); assert.equal(result.commit, f.commit); assert.equal(result.runtimeVerified, false);
+    assert.equal(result.version, FRONTEND_VERSION); assert.equal(result.frontendVersion, FRONTEND_VERSION); assert.equal(result.serviceVersion, SERVICE_VERSION); assert.equal(result.commit, f.commit); assert.equal(result.runtimeVerified, false);
     assert.equal(result.restart, 'manual-start-required');
     for (const [kind, folder] of [['frontend', f.frontend], ['server', f.server]]) {
         const receipt = JSON.parse(await fs.readFile(path.join(folder, RECEIPT), 'utf8'));
-        assert.equal(receipt.commit, f.commit); assert.equal(receipt.version, VERSION); assert.equal(receipt.kind, kind);
+        assert.equal(receipt.commit, f.commit); assert.equal(receipt.version, kind === 'frontend' ? FRONTEND_VERSION : SERVICE_VERSION); assert.equal(receipt.kind, kind);
         for (const [file, hash] of Object.entries(receipt.files)) assert.equal(sha(await fs.readFile(path.join(folder, file))), hash);
     }
     assert.equal(await fs.readFile(path.join(f.root, 'config.yaml'), 'utf8'), initialConfig.replace('false', 'true'));

@@ -9,7 +9,13 @@ import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './pr
 import { DEFAULT_CONTEXT_RULES, validateContextRules } from './context-filter.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
-export const VERSION = '0.8.9';
+// Frontend assets and the server plugin are released independently.  The
+// Shared contract file is copied to both sides. Keep VERSION as the legacy
+// service alias for existing data/tests; UI and packaging use the explicit
+// FRONTEND_VERSION/SERVICE_VERSION names below.
+export const FRONTEND_VERSION = '0.8.10';
+export const SERVICE_VERSION = '0.8.9';
+export const VERSION = SERVICE_VERSION;
 export const SCHEMA = 7;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,

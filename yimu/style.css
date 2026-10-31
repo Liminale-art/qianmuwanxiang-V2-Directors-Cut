@@ -287,14 +287,20 @@
 .ym-prompt-folder[data-open="true"] > .ym-tool-summary { border-bottom: 1px solid var(--ym-border); }
 .ym-prompt-folder > .ym-tool-body { padding: 13px 16px 16px; }
 .ym-dialog .ym-prompt-folder .ym-prompts { margin: 0; border: 0; background: transparent; box-shadow: none; }
-.ym-context-rules-card { min-width: 0; overflow: hidden; }
-.ym-context-rules-card > .ym-tool-summary { width: 100%; border: 0; border-radius: 0; background: transparent; }
-.ym-context-rules-card[data-open="true"] > .ym-tool-summary { border-bottom: 1px solid var(--ym-border); }
-.ym-context-rules-body { display: grid; gap: 10px; padding: 13px 16px 16px; }
-.ym-context-rules-body > .ym-muted { margin: 0; }
-.ym-context-rules-body textarea { min-height: 58px; resize: vertical; }
-.ym-context-rules-arrow { margin-inline-start: auto; color: var(--ym-muted); font-size: 20px; line-height: 1; transform: rotate(0deg); transition: transform .18s ease; }
-.ym-context-rules-card[data-open="true"] .ym-context-rules-arrow { transform: rotate(180deg); }
+.ym-context-rules-card { min-width: 0; }
+.ym-context-rules-card > .ym-tool-summary { width: 100%; }
+.ym-context-rules-body { display: grid; gap: 12px; }
+.ym-context-rule-list { display: grid; gap: 8px; min-width: 0; }
+.ym-context-rule-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(78px, 0.34fr) 38px; gap: 8px; align-items: center; min-width: 0; }
+.ym-context-rule-row > input, .ym-context-rule-row > select { width: 100%; min-width: 0; }
+.ym-context-rule-row > .ym-icon-button, .ym-context-rule-add { flex: 0 0 auto; }
+.ym-context-rule-add { justify-self: stretch; min-height: 38px; }
+.ym-context-rule-glyph { display: inline-grid; place-items: center; width: 1.2em; min-width: 1.2em; line-height: 1; color: var(--ym-muted); font-size: 1.05em; }
+.ym-context-rule-expand { margin-inline-start: auto; transition: transform .15s ease; }
+.ym-context-rules-card[data-open="true"] .ym-context-rule-expand { transform: rotate(180deg); }
+@media (max-width: 380px) {
+    .ym-context-rule-row { grid-template-columns: minmax(0, 1fr) 72px 34px; gap: 6px; }
+}
 .ym-tool-body { display: grid; gap: 10px; min-width: 0; padding: 0 16px 16px; }
 .ym-tool-body > .ym-card { border: 0; border-radius: 0; padding: 0; background: transparent; }
 .ym-tool-body .ym-subpage-section > .ym-story-body, .ym-tool-body .ym-subpage-section > .ym-backup-body { margin-top: 0; }

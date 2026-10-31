@@ -1,4 +1,4 @@
-import { VERSION, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { SERVICE_VERSION, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, initialRangePreview, estimateTokens } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
@@ -20,7 +20,7 @@ const clone = value => structuredClone(value);
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
-        service: { status: 'unknown', version: '', requiredVersion: VERSION } };
+        service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Set(), failures = new Map();
     const cancelledRounds = new Map();
@@ -131,15 +131,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     async function checkService() {
         const ticket = ++serviceSequence;
-        state.service = { status: 'checking', version: '', requiredVersion: VERSION }; emit();
+        state.service = { status: 'checking', version: '', requiredVersion: SERVICE_VERSION }; emit();
         try {
             const value = await api.health();
             if (!disposed && ticket === serviceSequence) {
-                state.service = { status: 'ok', version: typeof value?.version === 'string' ? value.version : '', requiredVersion: VERSION }; emit();
+                state.service = { status: 'ok', version: typeof value?.version === 'string' ? value.version : '', requiredVersion: SERVICE_VERSION }; emit();
             }
         } catch (error) {
             if (!disposed && ticket === serviceSequence) {
-                state.service = { status: error?.code === 'yimu_version' ? 'mismatch' : 'error', version: typeof error?.currentVersion === 'string' ? error.currentVersion : '', requiredVersion: VERSION }; emit();
+                state.service = { status: error?.code === 'yimu_version' ? 'mismatch' : 'error', version: typeof error?.currentVersion === 'string' ? error.currentVersion : '', requiredVersion: SERVICE_VERSION }; emit();
             }
             throw error;
         }

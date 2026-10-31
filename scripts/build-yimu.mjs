@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { VERSION } from '../yimu/contract.mjs';
+import { FRONTEND_VERSION, SERVICE_VERSION } from '../yimu/contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const FRONTEND = ['manifest.json', 'index.mjs', 'host.mjs', 'budget.mjs', 'client.mjs', 'contract.mjs', 'stage-contract.mjs', 'recall-contract.mjs', 'recall.mjs', 'layers.mjs', 'core.mjs', 'runtime.mjs', 'view.mjs', 'theme.mjs', 'style.css', 'logo.svg', 'LICENSE',
@@ -11,7 +11,7 @@ export const FRONTEND = ['manifest.json', 'index.mjs', 'host.mjs', 'budget.mjs',
 export const BACKEND = ['package.json', 'server-plugin.mjs', 'server-store.mjs', 'contract.mjs', 'context-filter.mjs', 'stage-contract.mjs', 'recall-contract.mjs', 'LICENSE', 'story-contract.mjs', 'story-store.mjs', 'companion-contract.mjs', 'backup-contract.mjs', 'backup-codec.mjs', 'backup-store.mjs', 'backup-merge.mjs', 'timeline.mjs', 'scene-contract.mjs', 'prompt-settings.mjs'];
 export async function buildYimu(destination) {
     const output = path.resolve(destination);
-    const stamp = { version: VERSION, files: {} };
+    const stamp = { version: FRONTEND_VERSION, frontendVersion: FRONTEND_VERSION, serviceVersion: SERVICE_VERSION, files: {} };
     // Refuse an existing destination: this command never replaces an installation or previous build.
     await fs.mkdir(output, { recursive: false });
     for (const [kind, files] of [['frontend', FRONTEND], ['server', BACKEND]]) {
@@ -31,5 +31,5 @@ export async function buildYimu(destination) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     if (!process.argv[2]) throw new Error('请指定一个不存在的候选包输出目录；此命令不安装到 ST');
     const result = await buildYimu(process.argv[2]);
-    console.log(`忆幕 ${result.version} 候选包已生成，共 ${Object.keys(result.files).length} 个包内文件；未安装或部署。`);
+    console.log(`忆幕前端 ${result.frontendVersion} · 服务端 ${result.serviceVersion} 候选包已生成，共 ${Object.keys(result.files).length} 个包内文件；未安装或部署。`);
 }
