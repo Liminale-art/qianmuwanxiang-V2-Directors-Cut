@@ -12,6 +12,7 @@ const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' 
 test('guide gives copy-paste commands with concise success markers', () => {
   assert.match(guide, /QIANMU_SERVER_STOPPED=1 curl -fsSL .*raw\.githubusercontent\.com\/Liminale-art\/qianmuwanxiang-V2-Directors-Cut\/.*install-server-plugin\.sh \| QIANMU_SERVER_STOPPED=1 sh/);
   assert.match(guide, /千幕服务端已更新至 vX/);
+  assert.match(guide, /忆幕已更新：前端 vX；服务端 vY/);
   assert.match(guide, /忆幕随千幕统一更新/);
   assert.doesNotMatch(guide, /1\.59\.482|QIANMU_HEALTH_URL|配置备份：|健康检查：/);
 });
@@ -32,7 +33,7 @@ test('downloaded update helper is visible, restart-safe, and shell-safe', () => 
   assert.match(helper, /^#!\/usr\/bin\/env bash/m);
   assert.match(helper, /PM2_NAME="\$\{QIANMU_PM2_NAME:-sillytavern\}"/);
   assert.match(helper, /\[检查 SillyTavern 根目录\]|检查 SillyTavern 根目录/);
-  for (const marker of ['同步服务端分支', '停止 PM2', '下载并执行插件更新器', '启动 PM2', '服务端版本校验', '千幕服务端已更新至']) {
+  for (const marker of ['同步服务端分支', '停止 PM2', '下载并执行插件更新器', '启动 PM2', '服务端版本校验', '千幕服务端已更新至', '忆幕已更新：前端']) {
     assert.match(helper, new RegExp(marker));
   }
   assert.match(helper, /QIANMU_PM2_NAME/);

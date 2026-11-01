@@ -13,6 +13,9 @@ PM2_NAME="${QIANMU_PM2_NAME:-sillytavern}"
 INSTALLER=''
 PM2_WAS_ONLINE=0
 PM2_STOPPED=0
+YIMU_UPDATED=0
+YIMU_FRONTEND_VERSION=''
+YIMU_SERVICE_VERSION=''
 
 fail() {
   printf '更新失败：%s\n' "$*" >&2
@@ -90,6 +93,11 @@ if [ -e "$YIMU_FRONTEND" ] || [ -e "$YIMU_SERVER" ]; then
   YIMU_CONFIG_ARG=()
   if [ ! -f "$ST_ROOT/config.yaml" ] && [ -f "$ST_ROOT/config/config.yaml" ]; then YIMU_CONFIG_ARG=(--config config/config.yaml); fi
   YIMU_INSTALLER_QUIET=1 node "$PLUGIN/scripts/install-yimu.mjs" --st-root "$ST_ROOT" --stopped "${YIMU_CONFIG_ARG[@]}" || fail '忆幕更新失败。'
+  YIMU_FRONTEND_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$YIMU_FRONTEND/manifest.json" | head -n 1)
+  YIMU_SERVICE_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$YIMU_SERVER/package.json" | head -n 1)
+  printf '%s' "$YIMU_FRONTEND_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail '忆幕前端版本校验失败。'
+  printf '%s' "$YIMU_SERVICE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail '忆幕服务端版本校验失败。'
+  YIMU_UPDATED=1
 fi
 
 COMMIT=$(git -C "$PLUGIN" rev-parse HEAD) || fail '无法读取更新后的提交节点。'
@@ -104,3 +112,6 @@ if [ "$PM2_WAS_ONLINE" -eq 1 ]; then
 fi
 
 printf '千幕服务端已更新至 v%s。\n' "$SERVICE_VERSION"
+if [ "$YIMU_UPDATED" -eq 1 ]; then
+  printf '忆幕已更新：前端 v%s；服务端 v%s。\n' "$YIMU_FRONTEND_VERSION" "$YIMU_SERVICE_VERSION"
+fi

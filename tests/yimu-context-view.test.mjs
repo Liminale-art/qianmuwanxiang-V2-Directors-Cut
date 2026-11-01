@@ -18,6 +18,7 @@ function fixture(onSave = async () => {}) {
 
 test('正文提取卡默认折叠，只显示提取 content，屏蔽规则留空待用户添加', () => {
     const f = fixture();
+    assert.equal(f.get('正文提取').classList.contains('ym-button'), true);
     assert.equal(f.get('正文提取').getAttribute('aria-expanded'), 'false');
     assert.equal(f.get('正文提取').querySelector('[data-ym-icon="expand"]'), null);
     assert.equal(f.get('清除 HTML 注释').checked, true);

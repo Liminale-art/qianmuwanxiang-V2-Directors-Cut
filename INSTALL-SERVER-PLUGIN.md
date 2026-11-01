@@ -36,7 +36,7 @@ QIANMU_SERVER_STOPPED=1 curl -fsSL https://raw.githubusercontent.com/Liminale-ar
 bash -c 'set -o pipefail; printf "\n[千幕更新] 下载更新脚本...\n"; curl -fL --retry 2 --connect-timeout 15 --max-time 120 https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh | bash'
 ```
 
-成功只会提示 `千幕服务端已更新至 vX`。若当前 ST 已安装忆幕，同一条命令会从同一提交同步忆幕前端和服务端；没有安装忆幕则不会额外安装。
+结尾会提示 `千幕服务端已更新至 vX`。若当前 ST 已安装忆幕，同一条命令还会从同一提交同步忆幕前端和服务端，并追加 `忆幕已更新：前端 vX；服务端 vY`；没有安装忆幕则不会额外安装。
 
 聊天备份面板的“单聊天备份数上限”只允许管理员账户写入 1–500；保存后必须重启 ST 后端才生效。服务端从 ST 启动参数提供的 `configPath` 读取配置，兼容普通根目录、Docker 的 `config/config.yaml` 和全局安装；若由 `SILLYTAVERN_BACKUPS_COMMON_NUMBEROFBACKUPS` 环境变量控制，则界面仅显示当前值，不会覆盖环境配置。
 
@@ -68,7 +68,7 @@ pm2 describe 你的ST进程名
 $env:QIANMU_SERVER_STOPPED='1'; irm https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/install-server-plugin.ps1 | iex
 ```
 
-看到 `千幕服务端已更新至 vX` 后，按原方式启动 ST。
+看到 `千幕服务端已更新至 vX` 后，按原方式启动 ST。Linux／VPS 的“一次粘贴”更新命令如果检测到忆幕，还会在结尾追加 `忆幕已更新：前端 vX；服务端 vY`。
 
 ## 安装或更新失败时
 

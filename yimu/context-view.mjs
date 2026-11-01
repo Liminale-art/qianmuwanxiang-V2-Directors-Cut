@@ -22,7 +22,7 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         return node;
     };
     const card = el('section', 'ym-card ym-tool-card ym-prompt-folder ym-context-rules-card');
-    const heading = el('button', 'ym-tool-summary'); heading.type = 'button';
+    const heading = el('button', 'ym-button ym-tool-summary'); heading.type = 'button';
     heading.append(createYimuIcon('settings', { document }), el('strong', '', '正文提取'));
     heading.setAttribute('aria-label', '正文提取'); heading.setAttribute('aria-expanded', 'false');
     const body = el('div', 'ym-tool-body'); body.hidden = true;
