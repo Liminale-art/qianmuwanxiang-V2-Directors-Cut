@@ -61,7 +61,13 @@ export function effectiveSettings(document, defaults) {
     // Legacy batch is retained on disk only. Trigger is the single input target;
     // runtime may narrow this derived cap to the actual connection window.
     settings.batch = settings.trigger;
-    if (settings.stageThreshold === 0) settings.stageThreshold = { tokens: 65000, floors: 100, slices: 12 }[settings.stageBasis];
+    // `floors` was the old UI choice. Keep old files readable, but run them
+    // with the supported token basis so the removed choice cannot reappear.
+    if (settings.stageBasis === 'floors') {
+        settings.stageBasis = 'tokens';
+        if (settings.stageThreshold === 100) settings.stageThreshold = DEFAULTS.stageThreshold;
+    }
+    if (settings.stageThreshold === 0) settings.stageThreshold = { tokens: 65000, slices: 12 }[settings.stageBasis];
     if (!document?.settings?.prompts && (!defaults?.values?.prompts || JSON.stringify(defaults.values.prompts) === JSON.stringify(DEFAULT_PROMPTS))) {
         settings.prompts = resolvePromptConfig({ preference: settings.preference });
     }

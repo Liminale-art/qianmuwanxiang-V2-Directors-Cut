@@ -12,25 +12,26 @@ function fixture({ onLegacyChange, accountOnly = false } = {}) {
         if (tag === 'span') Object.defineProperty(node, 'innerHTML', { set(value) { assert.match(value, /^<svg xmlns=/); }, configurable: true });
         return node;
     };
-    const calls = [], errors = [], legacyChanges = [], ctx = { extensionSettings: { story_director_liminale: { apiProfiles: [{ id: 'saved-a', name: '千幕已有预设', model: 'qianmu-model', apiUrl: 'https://qianmu.example/v1', apiKey: 'synthetic-shared-key', temperature: 0.4 }] } }, async saveSettingsDebounced() {}, getRequestHeaders: () => ({}) };
+    const calls = [], errors = [], notices = [], legacyChanges = [], ctx = { extensionSettings: { story_director_liminale: { apiProfiles: [{ id: 'saved-a', name: '千幕已有预设', model: 'qianmu-model', apiUrl: 'https://qianmu.example/v1', apiKey: 'synthetic-shared-key', temperature: 0.4 }] } }, async saveSettingsDebounced() {}, getRequestHeaders: () => ({}) };
     let legacy = { profileId: '', model: '' };
     const api = createApiSettings({ getContext: () => ctx, createId: () => 'preset-id', fetchImpl: async (path, options) => {
         calls.push({ path, body: JSON.parse(options.body) }); return Response.json({ data: [{ id: 'first-model' }, { id: 'second-model' }] });
     } });
-    const view = mountApiView(dom.parent, { api, document: dom.doc, onError: error => errors.push(error), accountOnly,
+    const view = mountApiView(dom.parent, { api, document: dom.doc, onError: error => errors.push(error), onNotice: (message, tone) => notices.push({ message, tone }), accountOnly,
         getLegacy: () => legacy, getProfiles: () => [{ id: 'saved-a', name: '现有 ST 连接' }],
         onLegacyChange: async values => { legacyChanges.push(values); if (onLegacyChange) return onLegacyChange(values); legacy = values; } });
     const change = async (label, value, complete = () => true) => {
         const node = dom.get(label); node.value = value; node.emit('change');
         await dom.wait(() => !node.disabled && complete());
     };
-    return { ...dom, api, view, calls, errors, legacyChanges, change, ctx };
+    return { ...dom, api, view, calls, errors, notices, legacyChanges, change, ctx };
 }
 
-test('API card starts on native ST without network and exposes all three connection modes', async () => {
+test('API card starts on native ST without network and exposes the three connection modes', async () => {
     const f = fixture(); assert.deepEqual(f.calls, []);
     const mode = f.get('整理连接方式'); assert.equal(mode.value, 'st');
     assert.deepEqual(mode.children.map(item => item.value), ['st', 'qianmu', 'external']);
+    assert.equal(mode.children[2].textContent, '自定义API');
     assert.equal(f.visible(f.get('API URL')), false); assert.equal(f.visible(f.get('千幕 API 预设')), false);
     assert.match(f.parent.textContent, /API设置/); f.view.destroy(); assert.equal(f.parent.children.length, 0);
 });
@@ -49,6 +50,7 @@ test('Qianmu presets use the live shared owner without copying credentials or mo
 test('external fields, model pull and selection all persist actual controls', async () => {
     const f = fixture(); await f.change('整理连接方式', 'external', () => f.api.read().mode === 'external');
     assert.equal(f.visible(f.get('API URL')), true); assert.equal(f.get('API Key').type, 'password'); assert.equal(f.get('API Key').placeholder, '');
+    const eye = f.get('显示 API Key'); eye.click(); assert.equal(f.get('API Key').type, 'text'); assert.equal(eye.getAttribute('aria-label'), '隐藏 API Key'); eye.click(); assert.equal(f.get('API Key').type, 'password');
     await f.change('API URL', 'http://127.0.0.1:1234/v1', () => !!f.api.read().apiUrl);
     assert.equal(f.get('拉取模型').disabled, false, 'keyless local provider remains usable');
     f.get('拉取模型').click(); await f.wait(() => !f.get('拉取模型').disabled && f.api.read().models.length === 2);
@@ -62,32 +64,31 @@ test('external fields, model pull and selection all persist actual controls', as
     assert.deepEqual(f.errors, []);
 });
 
-test('manual model and presets work without a model-list endpoint', async () => {
+test('model selection uses the fetched dropdown and presets without a manual entry control', async () => {
     const f = fixture(); await f.change('整理连接方式', 'external');
-    await f.change('整理模型', '__manual__', () => f.visible(f.get('手动填写整理模型')));
-    f.get('手动填写整理模型').value = 'manual-model'; f.get('确认模型').click();
-    await f.wait(() => !f.get('确认模型').disabled && f.api.read().model === 'manual-model');
-    assert.equal(f.visible(f.get('手动填写整理模型')), false);
+    assert.equal(f.get('手动填写整理模型'), undefined);
+    assert.equal(f.get('整理模型').children.some(option => option.value === '__manual__'), false);
+    await f.change('整理模型', 'first-model', () => f.api.read().model === 'first-model');
     f.get('保存预设').click(); await f.wait(() => f.visible(f.get('连接预设名称')) && !f.get('确认保存预设').disabled);
     f.get('连接预设名称').value = '<img onerror=alert(1)>总结'; f.get('确认保存预设').click();
     await f.wait(() => f.api.read().presets.length === 1 && !f.get('删除连接预设').disabled);
     assert.equal(f.api.read().selectedPreset, 'preset-id');
     assert.ok(f.get('忆幕连接预设').textContent.includes('<img onerror=alert(1)>总结'));
     f.get('删除连接预设').click(); await f.wait(() => f.api.read().presets.length === 0);
-    assert.equal(f.api.read().model, 'manual-model'); assert.equal(f.calls.length, 0);
+    assert.equal(f.api.read().model, 'first-model'); assert.equal(f.calls.length, 0);
 });
 
-test('connection test is an explicit read-only status request with inline feedback', async () => {
+test('connection test is an explicit read-only status request reported by ST toast', async () => {
     const f = fixture(); await f.api.update({ mode: 'external', apiUrl: 'http://localhost:1234' });
-    f.get('测试连接').click(); await f.wait(() => f.byClass('ym-api-status').textContent === '连接可用');
+    f.get('测试连接').click(); await f.wait(() => f.notices.some(item => item.message === '连接可用'));
     assert.equal(f.calls.length, 1); assert.equal(f.calls[0].body.messages, undefined);
-    assert.equal(f.get('测试连接').disabled, false); assert.deepEqual(f.errors, []);
+    assert.equal(f.get('测试连接').disabled, false); assert.equal(f.get('ym-api-status'), undefined); assert.deepEqual(f.errors, []);
 });
 
-test('invalid numeric change reports a factual inline error and leaves the last valid setting', async () => {
+test('invalid numeric change reports a factual ST toast and leaves the last valid setting', async () => {
     const f = fixture(); await f.change('整理连接方式', 'external');
     await f.change('最大输出 Token', '-1', () => f.errors.length === 1);
-    assert.equal(f.api.read().maxTokens, 32000); assert.match(f.byClass('ym-api-status').textContent, /Token 数值/);
+    assert.equal(f.api.read().maxTokens, 32000); assert.match(f.notices.at(-1).message, /Token 数值/); assert.equal(f.get('ym-api-status'), undefined);
 });
 
 test('clearing API numeric fields restores factory defaults while an explicit zero temperature remains zero', async () => {
@@ -108,7 +109,7 @@ test('historic ST profile stays preserved without a fourth mode or an implicit s
     const f = fixture(); await f.api.update({ mode: 'profile', profileId: 'old', profileModel: 'old-model', profileConfigured: true });
     f.view.render(scoped());
     assert.equal(f.get('ST 连接模型'), undefined); assert.equal(f.get('ST 连接预设'), undefined);
-    assert.equal(f.api.read().mode, 'profile'); assert.match(f.parent.textContent, /旧版 ST 连接已保留/);
+    assert.equal(f.api.read().mode, 'profile'); assert.doesNotMatch(f.parent.textContent, /旧版 ST 连接已保留/);
     assert.equal(f.get('整理连接方式').children.length, 3);
     await f.change('整理连接方式', 'st');
     assert.equal(f.api.effectiveConnection().mode, 'st'); assert.equal(f.api.read().profileId, 'old');
@@ -130,7 +131,7 @@ test('independent account operations keep their result and busy state across cha
     f.view.render(scoped()); f.get('测试连接').click();
     f.view.render(scoped('two', true)); assert.equal(f.get('测试连接').disabled, true);
     finish({ ok: true }); await f.wait(() => !f.get('测试连接').disabled);
-    assert.equal(f.byClass('ym-api-status').textContent, '连接可用'); assert.deepEqual(f.errors, []);
+    assert.equal(f.notices.at(-1).message, '连接可用'); assert.equal(f.get('ym-api-status'), undefined); assert.deepEqual(f.errors, []);
 });
 
 test('the new account-owned API surface has no per-chat follow-default controls', async () => {

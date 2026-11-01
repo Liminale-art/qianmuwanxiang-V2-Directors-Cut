@@ -29,8 +29,8 @@ const SETTINGS = [
     ['recall', '原文回查与补充', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
-const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'floors', name: '覆盖的正文楼层数' }, { id: 'slices', name: '记忆切片份数' }];
-const STAGE_THRESHOLDS = { tokens: 65000, floors: 100, slices: 12 };
+const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
+const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
 const memoryText = entry => entry.kind === 'excerpt' ? typeof entry.quoteText === 'string' ? entry.quoteText : '' : entry.text;
 const INSTALL_GUIDE = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/refactor/storyboard-modularization/yimu/README.md#安装与更新';
@@ -80,7 +80,7 @@ export function groupMemoryEntries(entries = [], invalidSourceIds = [], entryOrd
 
 export function shortcutStatus(state = {}) {
     const neutral = message => ({ tone: 'neutral', message });
-    if (state.service?.status !== 'ok') return neutral(state.service?.status === 'mismatch' ? '服务版本不匹配'
+    if (state.service?.status !== 'ok') return neutral(state.service?.status === 'mismatch' ? '服务有可用更新'
         : state.service?.status === 'error' ? '服务未连接' : '服务尚未就绪');
     const actionError = state.backup?.error || state.story?.error || state.companion?.error;
     if (actionError) return { tone: 'failed', message: `执行失败：${actionError}` };
@@ -171,9 +171,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     serviceStatus.setAttribute('aria-label', '忆幕服务状态'); serviceStatus.setAttribute('aria-live', 'polite');
     const serviceHeading = el('div', 'ym-service-heading'), serviceBadge = el('span', 'ym-service-badge');
     serviceHeading.append(el('h3', '', '后端服务支持'), serviceBadge);
-    const serviceVersions = el('span', 'ym-service-versions');
-    const serviceVersionRow = el('div', 'ym-service-version-row');
-    serviceVersionRow.append(serviceVersions); serviceStatus.append(serviceHeading, serviceVersionRow);
+    serviceStatus.append(serviceHeading);
     const status = el('p', 'ym-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
@@ -211,7 +209,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const installGuide = el('a', 'ym-install-link ym-small'); installGuide.append(createYimuIcon('help', { document })); installGuide.title = '安装说明';
     installGuide.setAttribute('href', INSTALL_GUIDE); installGuide.setAttribute('target', '_blank');
     installGuide.setAttribute('rel', 'noopener noreferrer'); installGuide.setAttribute('aria-label', '忆幕安装说明');
-    serviceVersionRow.append(installGuide);
+    serviceStatus.append(installGuide);
     context.append(chatName);
     const overview = el('section', 'ym-card ym-overview ym-hero');
     const overviewFile = el('p', 'ym-muted ym-overview-file');
@@ -371,7 +369,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     settingsForm.addEventListener('submit', event => { event.preventDefault(); void saveChangedSettings(); });
     settings.append(settingsForm);
     const apiSection = el('section', 'ym-connection-settings');
-    const apiView = connectionApi ? mountApiView(apiSection, { api: connectionApi, document, accountOnly: true,
+    const apiView = connectionApi ? mountApiView(apiSection, { api: connectionApi, document, accountOnly: true, onNotice,
         onLegacyChange: values => dispatch('settings', { global: false, values, expectedRevision: state.document?.configRevision ?? 0 }),
     }) : null;
     apiSection.hidden = !connectionApi;
@@ -506,7 +504,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         promptContainer.hidden = !promptContainer.hidden; promptTitle.setAttribute('aria-expanded', String(!promptContainer.hidden));
         promptFolder.setAttribute('data-open', String(!promptContainer.hidden));
     }, 'ym-tool-summary');
-    promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'), createYimuIcon('expand', { document }));
+    promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
     const contextRulesView = mountContextRulesView({ document,
@@ -612,9 +610,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
 
     function updateStatus() {
         const service = state.service || {};
-        serviceBadge.textContent = ({ok:'正常',mismatch:'待更新',error:'未连接',checking:'检查中'})[service.status] || '待检测';
+        serviceBadge.textContent = ({ok:'正常',mismatch:'有可用更新',error:'未连接',checking:'检查中'})[service.status] || '待检测';
         serviceBadge.dataset.tone = service.status === 'ok' ? 'ready' : service.status === 'error' ? 'error' : 'warning';
-        serviceVersions.textContent = `服务端 ${service.version ? `v${service.version}` : '—'} · 配套 ${service.requiredVersion ? `v${service.requiredVersion}` : '—'}`;
         const sourceWarning = state.snapshot && state.document && state.sourceAvailable === false && !state.loading
             ? '当前聊天原件尚未通过核对，记忆暂不参与生成。' : '';
         // The homepage has a dedicated empty state, not an error for normal navigation.

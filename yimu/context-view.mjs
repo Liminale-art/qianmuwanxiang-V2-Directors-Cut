@@ -1,4 +1,5 @@
 import { DEFAULT_CONTEXT_RULES, normalizeContextRules } from './context-filter.mjs';
+import { createYimuIcon } from './icons.mjs';
 
 // These controls shape only the copy sent to memory summarisation. They never
 // mutate ST messages, source hashes, or the saved chat file.
@@ -16,20 +17,20 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
     const button = (label, glyph, action, className = '') => {
         const node = el('button', `ym-button ${className}`.trim());
         node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
-        if (glyph) node.append(el('span', 'ym-context-rule-glyph', glyph));
+        if (glyph) node.append(createYimuIcon(glyph, { document }));
         node.addEventListener('click', action);
         return node;
     };
     const card = el('section', 'ym-card ym-tool-card ym-prompt-folder ym-context-rules-card');
     const heading = el('button', 'ym-tool-summary'); heading.type = 'button';
-    heading.append(el('span', 'ym-context-rule-glyph', '⌘'), el('strong', '', '正文提取'), el('span', 'ym-context-rule-glyph ym-context-rule-expand', '⌄'));
+    heading.append(createYimuIcon('settings', { document }), el('strong', '', '正文提取'));
     heading.setAttribute('aria-label', '正文提取'); heading.setAttribute('aria-expanded', 'false');
     const body = el('div', 'ym-tool-body'); body.hidden = true;
     const stripRow = el('label', 'ym-switch-row');
     const strip = el('input', 'ym-switch'); strip.type = 'checkbox'; strip.setAttribute('aria-label', '清除 HTML 注释');
     stripRow.append(el('span', '', '清除 HTML 注释'), strip);
     const rules = el('div', 'ym-context-rule-list'); rules.setAttribute('aria-label', '正文标签规则');
-    const add = button('添加正文标签', '＋', event => { event.preventDefault(); addRow('', 'blocked', true); }, 'ym-icon-button ym-context-rule-add');
+    const add = button('添加正文标签', 'plus', event => { event.preventDefault(); addRow('', 'blocked', true); }, 'ym-icon-button ym-context-rule-add');
     body.append(stripRow, rules, add); card.append(heading, body);
 
     let state = {}, last = '', saving = false, queued = false, disposed = false;
@@ -71,7 +72,7 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         for (const [value, label] of [['blocked', '屏蔽'], ['included', '提取']]) { const option = el('option', '', label); option.value = value; select.append(option); }
         select.value = mode;
         let row;
-        const remove = button('删除正文标签', '×', event => { event.preventDefault(); event.stopPropagation(); removeRow(row); }, 'ym-icon-button ym-context-rule-remove');
+        const remove = button('删除正文标签', 'close', event => { event.preventDefault(); event.stopPropagation(); removeRow(row); }, 'ym-icon-button ym-context-rule-remove');
         node.append(input, select, remove); rules.append(node);
         row = { node, input, mode: select, remove }; rows.push(row);
         input.addEventListener('change', () => { void save(); });

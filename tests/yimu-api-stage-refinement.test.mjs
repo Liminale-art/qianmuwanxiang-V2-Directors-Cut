@@ -102,7 +102,8 @@ test('recent-slice retention counts valid custom and hand-edited slices, ignores
 
 test('floor/slice bases are accepted independently and zero factory thresholds resolve with the selected unit', () => {
     assert.deepEqual(validateSettings({ stageBasis: 'floors', stageThreshold: 9 }), { stageBasis: 'floors', stageThreshold: 9 });
-    assert.equal(effectiveSettings({ settings: { stageBasis: 'floors', stageThreshold: 0 } }, createDefaults()).stageThreshold, 100);
+    const legacy = effectiveSettings({ settings: { stageBasis: 'floors', stageThreshold: 0 } }, createDefaults());
+    assert.equal(legacy.stageBasis, 'tokens'); assert.equal(legacy.stageThreshold, 65000);
     assert.equal(effectiveSettings({ settings: { stageBasis: 'slices', stageThreshold: 0 } }, createDefaults()).stageThreshold, 12);
     assert.equal(effectiveSettings({ settings: { stageBasis: 'tokens', stageThreshold: 0 } }, createDefaults()).stageThreshold, 65000);
     assert.equal(effectiveSettings({ settings: { batch: 1000, trigger: 50000 } }, createDefaults()).batch, 50000);

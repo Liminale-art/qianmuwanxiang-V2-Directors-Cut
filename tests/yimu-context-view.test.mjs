@@ -5,6 +5,12 @@ import { DEFAULT_CONTEXT_RULES, mountContextRulesView } from '../yimu/context-vi
 
 function fixture(onSave = async () => {}) {
     const dom = textCollectionDom(), saves = [], errors = [];
+    const create = dom.doc.createElement;
+    dom.doc.createElement = tag => {
+        const node = create(tag);
+        if (tag === 'span') Object.defineProperty(node, 'innerHTML', { set(value) { assert.match(value, /^<svg xmlns=/); }, configurable: true });
+        return node;
+    };
     const view = mountContextRulesView({ document: dom.doc, onSave: async value => { saves.push(structuredClone(value)); return onSave(value); }, onError: error => errors.push(error) });
     dom.parent.append(view.element); view.render({ settings: {} });
     return { ...dom, view, saves, errors };
@@ -13,6 +19,7 @@ function fixture(onSave = async () => {}) {
 test('正文提取卡默认折叠，只显示提取 content，屏蔽规则留空待用户添加', () => {
     const f = fixture();
     assert.equal(f.get('正文提取').getAttribute('aria-expanded'), 'false');
+    assert.equal(f.get('正文提取').querySelector('[data-ym-icon="expand"]'), null);
     assert.equal(f.get('清除 HTML 注释').checked, true);
     assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, []);
     assert.equal(f.all().filter(node => node.classList.contains('ym-context-rule-row')).length, 1);

@@ -240,7 +240,7 @@ test('API offers the three intended connections and no numeric scope controls ca
         document:{...state().document,settings:{profileId:'chat-profile',model:'chat-model'}} }));
     d.get('设置').click();
     const mode=d.get('整理连接方式');assert.deepEqual(mode.children.map(item=>item.value),['st','qianmu','external']);
-    assert.equal(connectionApi.read().mode,'inherit');assert.match(d.document.body.textContent,/旧版 ST 连接已保留/);
+    assert.equal(connectionApi.read().mode,'inherit');assert.doesNotMatch(d.document.body.textContent,/旧版 ST 连接已保留/);assert.match(d.document.body.textContent,/自定义API/);
     for(const label of ['ST 连接预设','当前聊天','全局默认'])assert.equal(d.get(label),undefined);
     assert.deepEqual(calls,[], 'rendering an old profile cannot submit or migrate it');
     mode.value='st';mode.emit('change');await d.flush();assert.equal(connectionApi.read().mode,'st');assert.deepEqual(calls,[]);
@@ -508,12 +508,12 @@ test('excerpt deletion, exclusion and undo retain ordinary entry actions without
     assert.deepEqual(f.calls.map(call => call.payload.action), ['exclude', 'delete', 'undo']);
 });
 
-test('stage basis switches between all three units without replacing focused select nodes or resetting the chosen mode', async t => {
+test('stage basis switches between token and slice units without replacing focused select nodes or resetting the chosen mode', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const basis = f.get('阶段整理方式'), threshold = f.get('阶段总结触发');
-    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'floors', 'slices']); assert.equal(threshold.value, '65000');
+    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'slices']); assert.equal(threshold.value, '65000');
     const options=[...basis.children];basis.focus();
-    for(const [value,limit] of [['floors',100],['slices',12],['tokens',65000]]){
+    for(const [value,limit] of [['slices',12],['tokens',65000]]){
         basis.value=value;basis.emit('change');assert.equal(threshold.value,String(limit));assert.equal(basis.value,value);
         const call=f.calls.at(-1);assert.deepEqual(call.payload.values,{stageThreshold:limit,stageBasis:value});
         f.render({document:{...f.state.document,configRevision:(f.state.document.configRevision||0)+1,settings:{...f.state.document.settings,...call.payload.values}}});
@@ -712,12 +712,12 @@ test('service status in settings distinguishes mismatch from unavailable service
     const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.3.0', requiredVersion: '0.3.0'}}); t.after(() => f.view.destroy());
     f.get('设置').click(); const service = f.get('忆幕服务状态');
     assert.equal(service.querySelector('.ym-service-badge').textContent,'正常');assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'ready');
-    assert.equal(service.querySelector('.ym-service-versions').textContent,'服务端 v0.3.0 · 配套 v0.3.0');assert.equal(service.closest('[hidden]'), null);
+    assert.equal(service.querySelector('.ym-service-versions'), null);assert.equal(service.closest('[hidden]'), null);
     assert.equal(f.get('忆幕').querySelector('.ym-content').hidden, false);
     f.render({service: {status: 'mismatch', version: '0.2.0', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /待更新.*v0\.2\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'warning');assert.doesNotMatch(service.textContent, /未连接/);
+    assert.match(service.textContent, /有可用更新/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'warning');assert.doesNotMatch(service.textContent, /未连接/);
     f.render({service: {status: 'error', version: '', requiredVersion: '0.3.0'}});
-    assert.match(service.textContent, /未连接.*服务端 —.*配套 v0\.3\.0/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
+    assert.match(service.textContent, /未连接/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
 });
 
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
@@ -785,7 +785,7 @@ test('shortcut colors distinguish execution failure from unavailable states with
         [{ error: '模型返回格式不正确' }, 'failed', '执行失败'],
         [{ backup: { error: '备份压缩数据损坏' }, snapshot: null, document: null }, 'failed', '备份压缩数据损坏'],
         [{ service: { status: 'error' }, error: '连接中断' }, 'neutral', '服务未连接'],
-        [{ service: { status: 'mismatch' } }, 'neutral', '版本不匹配'],
+        [{ service: { status: 'mismatch' } }, 'neutral', '服务有可用更新'],
         [{ loading: true }, 'neutral', '正在读取'],
         [{ snapshot: null, document: null, error: '请先打开聊天' }, 'neutral', '单人聊天'],
         [{ sourceAvailable: false, error: '来源尚未核对' }, 'neutral', '来源尚未通过核对'],
@@ -900,7 +900,7 @@ test('retrieval page sits between memory and settings and reports planned vector
     f.get('检索').click();
     assert.deepEqual(visible(), ['retrieval']);
     assert.match(f.document.body.textContent, /检查链路/);
-    assert.match(f.document.body.textContent, /向量检索/);
+    assert.match(f.document.body.textContent, /向量/);
     assert.match(f.document.body.textContent, /关键词召回/);
     assert.match(f.document.body.textContent, /待接入/);
     assert.match(f.document.body.textContent, /暂无候选记录/);
@@ -930,7 +930,7 @@ test('retrieval provider cards use companion field names, presets and compact st
     const connectionApi = createApiSettings({ getContext: () => ctx, createId: () => 'preset-fixture' });
     const view = createView({ document: d.document, connectionApi, onNotice: (...args) => notices.push(args), onAction: async () => {} });
     t.after(() => view.destroy()); view.render(state()); view.open(); d.get('检索').click();
-    assert.ok(d.get('向量检索预设')); assert.ok(d.get('重排预设'));
+    assert.ok(d.get('向量预设')); assert.ok(d.get('重排预设'));
     assert.equal(d.get('API URL').placeholder, 'https://api.siliconflow.cn/v1');
     assert.equal(d.all().filter(node => node.attrs['aria-label'] === 'API URL')[1].placeholder, 'https://api.siliconflow.cn/v1');
     assert.equal(d.get('API Key').placeholder, '输入 API Key');
@@ -940,7 +940,7 @@ test('retrieval provider cards use companion field names, presets and compact st
     assert.equal(providerNodes('拉取模型').length, 2);
     assert.equal(providerNodes('显示 API Key').length, 2);
     assert.equal(d.all().filter(node => node.tagName === 'SELECT' && node.attrs['aria-label'] === '模型').length, 2);
-    assert.equal(providerNodes('手动填写模型').length, 2);
+    assert.equal(providerNodes('手动填写模型').length, 0);
     const key = d.get('API Key'), eye = providerNodes('显示 API Key')[0];
     assert.equal(key.type, 'password'); assert.equal(eye.querySelector('.ym-icon').attrs['data-ym-icon'], 'eye');
     eye.click(); assert.equal(key.type, 'text'); assert.equal(eye.getAttribute('aria-label'), '隐藏 API Key'); assert.equal(eye.querySelector('.ym-icon').attrs['data-ym-icon'], 'eye-off');
@@ -952,9 +952,9 @@ test('retrieval provider cards use companion field names, presets and compact st
     assert.doesNotMatch(d.document.body.textContent, /text-embedding-3-small|bge-reranker-v2-m3/);
 
     d.get('保存预设').click();
-    const presetName = d.get('向量检索预设名称');
+    const presetName = d.get('向量预设名称');
     presetName.value = '现场配置'; d.all().filter(node => node.attrs['aria-label'] === '确认保存预设')[0].click(); await d.flush();
-    assert.equal(d.get('向量检索预设').children.some(option => option.textContent === '现场配置'), true);
+    assert.equal(d.get('向量预设').children.some(option => option.textContent === '现场配置'), true);
     assert.deepEqual(notices.at(-1), ['预设已保存', 'success']);
 });
 
@@ -1075,7 +1075,7 @@ test('empty-chat controls remain visible and disabled while default prompt editi
     assert.equal(f.get('展开记忆备份').disabled,false);assert.equal(f.get('导入记忆').disabled,false);assert.equal(f.get('导出记忆').disabled,true);
     assert.equal(f.get('续接楼层').disabled,true);assert.equal(f.get('建立新聊天').disabled,true);
     f.get('记忆').click();assert.equal(f.get('搜索记忆').disabled,true);assert.equal(f.get('筛选记忆').disabled,true);assert.equal(stageControl(f).disabled,true);
-    f.get('导览').click();f.get('展开总结提示词').click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
+    f.get('导览').click();const promptFolder=f.get('展开总结提示词');assert.equal(promptFolder.querySelector('[data-ym-icon="expand"]'), null);promptFolder.click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
     text.value='仅依据正文，保留人物所知的区别。';text.emit('input');f.get('保存叙事与依据').click();await f.flush();
     assert.equal(f.calls.length,1);assert.equal(f.calls[0].type,'settings');assert.equal(f.calls[0].payload.global,true);assert.equal(f.calls[0].payload.expectedRevision,7);
     assert.equal(f.calls[0].payload.values.prompts.groups.summary[0].text,text.value);

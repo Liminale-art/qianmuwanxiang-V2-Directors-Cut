@@ -374,7 +374,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         await saving.catch(() => {}); let config = read();
         connection ||= config.mode === 'qianmu' ? effectiveConnection() : { revision: config.revision };
         assertCurrent(connection);
-        if (!['external', 'qianmu'].includes(config.mode)) fail('当前未选择独立连接或千幕 API 预设');
+        if (!['external', 'qianmu'].includes(config.mode)) fail('当前未选择自定义 API 或千幕 API 预设');
         if (config.mode === 'qianmu') {
             const { profile } = livePreset(config.qianmuPresetId);
             config = { ...config, apiUrl: text(profile.apiUrl), apiKey: text(profile.apiKey), model: text(profile.model),

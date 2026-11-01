@@ -38,7 +38,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     const statusCard = el('section', 'ym-card ym-retrieval-status-card');
     statusCard.append(el('h3', '', '检查链路'));
     const rows = new Map();
-    for (const [id, title] of [['lexical', '关键词召回'], ['vector', '向量召回'], ['rerank', '重排']]) {
+    for (const [id, title] of [['lexical', '关键词召回'], ['vector', '向量'], ['rerank', '重排']]) {
         const row = el('div', 'ym-retrieval-status-row');
         const name = el('span', 'ym-retrieval-status-name', title);
         const badge = el('span', 'ym-retrieval-badge');
@@ -91,15 +91,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const keyControl = el('div', 'ym-password-control');
         keyControl.append(key, keyVisibility);
         const model = document.createElement('select'); model.setAttribute('aria-label', '模型');
-        const manualRow = el('div', 'ym-api-model-row');
-        const manualModel = input('手动填写模型');
-        const modelSave = runButton('确认模型', 'check', async () => {
-            if (!update) return;
-            try { await update({ model: manualModel.value.trim() }); editingModel = false; renderCard(read?.() || {}); }
-            catch (error) { onNotice(error?.message || '模型设置未保存', 'error'); }
-        }, true);
-        manualRow.append(manualModel, modelSave); manualRow.hidden = true;
-        let modelChoices = [], editingModel = false, renderCard = () => {};
+        let modelChoices = [], renderCard = () => {};
         const topN = kind === 'rerank' ? input('保留候选数', 'number') : null;
         if (topN) { topN.min = '1'; topN.max = '64'; topN.step = '1'; }
         const fields = el('div', 'ym-retrieval-provider-fields');
@@ -145,27 +137,19 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         for (const [node, keyName] of [[url, 'apiUrl'], [key, 'apiKey'], ...(topN ? [[topN, 'topN']] : [])]) {
             node.addEventListener('change', () => { void updateField(node, keyName); });
         }
-        model.addEventListener('change', () => {
-            if (model.value === '__manual__') {
-                editingModel = true; manualModel.value = (read?.() || {}).model || ''; renderCard(read?.() || {}); manualModel.focus(); return;
-            }
-            void updateField(model, 'model');
-        });
+        model.addEventListener('change', () => { void updateField(model, 'model'); });
         preset.addEventListener('change', () => {
             if (!preset.value || !loadPreset) return;
             void loadPreset(preset.value).then(() => renderCard(read?.() || {})).catch(error => onNotice(error?.message || '预设未载入', 'error'));
         });
 
-        card.append(heading, presetRow, fields, manualRow, actions, saveNameRow);
+        card.append(heading, presetRow, fields, actions, saveNameRow);
         renderCard = (config = {}) => {
             const modelItems = [['', modelChoices.length ? '选择模型' : '先拉取模型列表']];
             if (config.model && !modelChoices.includes(config.model)) modelItems.push([config.model, config.model]);
-            modelItems.push(...modelChoices.map(value => [value, value]), ['__manual__', '手动填写模型']);
-            options(model, modelItems, editingModel ? '__manual__' : config.model || '');
-            manualRow.hidden = !editingModel;
-            const configModel = config.model || '';
-            if (document.activeElement !== manualModel) manualModel.value = configModel;
-            model.disabled = !update; manualModel.disabled = !update; modelSave.disabled = !update || !editingModel;
+            modelItems.push(...modelChoices.map(value => [value, value]));
+            options(model, modelItems, config.model || '');
+            model.disabled = !update;
             options(preset, Array.isArray(config.presets) ? [['', '载入预设'], ...config.presets.map(item => [item.id, item.name])] : [['', '载入预设']], config.selectedPreset || '');
             for (const [node, value] of [[url, config.apiUrl], [key, config.apiKey], ...(topN ? [[topN, config.topN]] : [])]) {
                 if (document.activeElement !== node) node.value = value === undefined ? '' : String(value);
@@ -183,7 +167,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         };
     };
 
-    const vector = providerCard({ kind: 'vector', title: '向量检索', toggleLabel: '启用向量检索',
+    const vector = providerCard({ kind: 'vector', title: '向量', toggleLabel: '启用向量',
         read: () => vectorApi?.vectorRead?.() || {}, update: vectorApi?.updateVector, savePreset: vectorApi?.saveVectorPreset,
         loadPreset: vectorApi?.loadVectorPreset, deletePreset: vectorApi?.deleteVectorPreset,
         testConnection: vectorApi?.testVectorConnection, fetchModels: vectorApi?.fetchVectorModels });

@@ -100,10 +100,7 @@
 .ym-service-badge[data-tone="ready"] { color: #628a79; background: #7ba58e14; }
 .ym-service-badge[data-tone="warning"] { color: #a1804b; background: #b5976014; }
 .ym-service-badge[data-tone="error"] { color: var(--ym-danger); background: color-mix(in srgb, var(--ym-danger) 8%, transparent); }
-.ym-service-versions { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 12px; color: var(--ym-muted); font-size: var(--ym-type-caption); }
 .ym-service-card { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 14px; }
-.ym-service-version-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ym-service-version-row > .ym-service-versions { flex: 1; min-width: 0; }
 .ym-card { padding: 13px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); min-width: 0; background: var(--ym-card); }
 .ym-dialog p { margin: 6px 0; }
 .ym-dialog h3 { font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); margin: 0; }
@@ -157,8 +154,8 @@
 .ym-settings-group { padding: 14px 16px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); min-width: 0; }
 .ym-settings-group > summary, .ym-interface-settings > .ym-switch-row { font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
 .ym-settings-group[open] > summary { margin-bottom: 14px; }
-.ym-extra-settings:not([open]) { padding-block: 0; }
-.ym-extra-settings:not([open]) > summary { min-height: 48px; align-items: center; }
+.ym-extra-settings:not([open]) { min-height: 52px; padding-block: 0; }
+.ym-extra-settings:not([open]) > summary { min-height: 52px; margin: 0; padding-block: 0; align-items: center; }
 .ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
@@ -171,6 +168,7 @@
 .ym-setting-select > .ym-field { display: flex; align-items: center; gap: 10px; }
 .ym-setting-select > .ym-field > span { flex: 1 1 auto; min-width: 0; }
 .ym-dialog .ym-setting-select > .ym-field > select { flex: 0 1 var(--ym-setting-value-width); width: var(--ym-setting-value-width); min-width: 0; }
+.ym-dialog .ym-setting-select > .ym-field > select { text-align: center; text-align-last: center; }
 .ym-dialog .ym-budget-group { display: flex; align-items: center; gap: 10px; }
 .ym-budget-group > .ym-setting-title { flex: 1 1 auto; min-width: 0; }
 .ym-budget-group > .ym-settings-form { flex: 0 0 clamp(84px, 24vw, 140px); min-width: 0; }
@@ -292,12 +290,10 @@
 .ym-context-rules-body { display: grid; gap: 12px; }
 .ym-context-rule-list { display: grid; gap: 8px; min-width: 0; }
 .ym-context-rule-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(78px, 0.34fr) 38px; gap: 8px; align-items: center; min-width: 0; }
-.ym-context-rule-row > input, .ym-context-rule-row > select { width: 100%; min-width: 0; }
+.ym-context-rule-row > input, .ym-context-rule-row > select { width: 100%; min-width: 0; text-align: center; }
+.ym-context-rule-row > select { text-align-last: center; }
 .ym-context-rule-row > .ym-icon-button, .ym-context-rule-add { flex: 0 0 auto; }
 .ym-context-rule-add { justify-self: stretch; min-height: 38px; }
-.ym-context-rule-glyph { display: inline-grid; place-items: center; width: 1.2em; min-width: 1.2em; line-height: 1; color: var(--ym-muted); font-size: 1.05em; }
-.ym-context-rule-expand { margin-inline-start: auto; transition: transform .15s ease; }
-.ym-context-rules-card[data-open="true"] .ym-context-rule-expand { transform: rotate(180deg); }
 @media (max-width: 380px) {
     .ym-context-rule-row { grid-template-columns: minmax(0, 1fr) 72px 34px; gap: 6px; }
 }
@@ -308,9 +304,8 @@
 .ym-api-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; }
 .ym-api-heading > h3 { min-width: 0; }
 .ym-api-stream { flex: 0 0 auto; gap: 9px; font-size: var(--ym-type-body); }
-.ym-dialog .ym-api-current, .ym-dialog .ym-api-status { margin: 0; overflow-wrap: anywhere; }
-.ym-api-preset-row, .ym-api-model-row, .ym-api-preset-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ym-api-preset-row > select, .ym-api-model-row > input, .ym-api-preset-name > input { flex: 1 1 0; min-width: 0; }
+.ym-api-preset-row, .ym-api-preset-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ym-api-preset-row > select, .ym-api-preset-name > input { flex: 1 1 0; min-width: 0; }
 .ym-api-params, .ym-api-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .ym-api-params .ym-field > span { white-space: nowrap; }
 .ym-api-actions > .ym-button { min-width: 0; width: 100%; padding: 8px 5px; gap: 5px; line-height: 1.4; }
@@ -325,7 +320,7 @@
 .ym-dialog[data-ym-theme="glass"][data-ym-mode="light"] :is(.ym-card:not(.ym-tool-card), .ym-prompt-folder, .ym-route, .ym-settings-group, .ym-tool-summary, .ym-folder-body, .ym-stat) { border-color: #ffffffdc; }
 .ym-dialog[data-ym-theme="glass"] .ym-prompt-folder > .ym-tool-summary { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .ym-dialog[data-ym-theme="glass"] .ym-card .ym-card { background: color-mix(in srgb, var(--ym-raised) 32%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.ym-dialog[data-ym-theme="glass"] .ym-heading h2 { background: var(--ym-title-gradient, linear-gradient(92deg, var(--ym-accent), var(--ym-ink))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.ym-dialog:is([data-ym-theme="editorial"], [data-ym-theme="glass"]) .ym-heading h2 { background: var(--ym-title-gradient, linear-gradient(92deg, var(--ym-accent), var(--ym-ink))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .ym-dialog[data-ym-theme="editorial"] .ym-nav-mark { width: 5px; height: 5px; bottom: 6px; }
 .ym-dialog[data-ym-theme="editorial"] .ym-nav-button[aria-selected="true"] .ym-nav-label { transform: translateY(-2px); }
 .ym-dialog:is([data-ym-theme="editorial"], [data-ym-theme="glass"]) .ym-nav-dot { display: none; }
