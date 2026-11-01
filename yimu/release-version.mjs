@@ -20,7 +20,7 @@ export function mountYimuVersionBadge(container, { document = container?.ownerDo
         const title = `忆幕 v${version}；随千幕统一更新`;
         button.title = title; button.setAttribute('aria-label', title); };
     const check = async () => ({ available: false, status: 'paired', version });
-    const click = () => { if (!disposed) onNotice('忆幕随千幕统一更新，请使用千幕更新命令。', GUIDE); };
+    const click = () => { if (!disposed) onNotice(`忆幕前端 v${version} 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。`, GUIDE); };
     button.addEventListener('click', click); container.append(button); paint();
     return { check, latest: () => version, destroy() { if (disposed) return; disposed = true; button.removeEventListener?.('click', click); button.remove(); } };
 }

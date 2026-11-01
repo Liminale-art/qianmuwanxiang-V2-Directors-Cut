@@ -12,7 +12,7 @@ test('mount is a local paired-release badge and never queries a second update so
     assert.equal(f.parent.children[0].textContent, 'v0.8.0');
     assert.deepEqual(await badge.check(), { available: false, status: 'paired', version: '0.8.0' });
     assert.equal(badge.latest(), '0.8.0');
-    f.parent.children[0].click(); assert.match(notices[0][0], /随千幕统一更新/);
+    f.parent.children[0].click(); assert.match(notices[0][0], /忆幕前端 v0\.8\.0 的修订请使用忆幕安装器/);
     badge.destroy(); assert.equal(f.parent.children.length, 0);
 });
 test('paired badge remains factual when browser fetch is unavailable', async () => {

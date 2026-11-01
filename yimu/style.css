@@ -156,6 +156,7 @@
 .ym-settings-group[open] > summary { margin-bottom: 14px; }
 .ym-extra-settings:not([open]) { min-height: 52px; padding-block: 0; }
 .ym-extra-settings:not([open]) > summary { min-height: 52px; margin: 0; padding-block: 0; align-items: center; }
+.ym-extra-settings:not([open]) > .ym-settings-form { display: none; }
 .ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
@@ -269,7 +270,8 @@
 .ym-tool-group .ym-tool-card[data-open="true"] > .ym-tool-summary { height: calc(100% + 9px); border-bottom: 0; border-end-start-radius: 0; border-end-end-radius: 0; }
 .ym-tool-group[data-side="left"] > .ym-folder-panels > .ym-folder-body { border-start-start-radius: 0; }
 .ym-tool-group[data-side="right"] > .ym-folder-panels > .ym-folder-body { border-start-end-radius: 0; }
-.ym-dialog .ym-tool-summary { display: flex; align-items: center; gap: 9px; text-align: start; width: 100%; min-width: 0; min-height: 52px; padding: 12px 13px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); font: inherit; }
+.ym-dialog .ym-tool-summary { display: flex; align-items: center; justify-content: flex-start; gap: 9px; text-align: start; width: 100%; min-width: 0; min-height: 52px; padding: 12px 13px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); font: inherit; }
+.ym-dialog .ym-button.ym-tool-summary { justify-content: flex-start; }
 .ym-tool-summary strong { font-size: var(--ym-type-card-title); }
 .ym-tool-summary .ym-icon[data-ym-icon="expand"] { margin-inline-start: auto; transition: transform .15s ease; }
 .ym-tool-summary[aria-expanded="true"] .ym-icon[data-ym-icon="expand"] { transform: rotate(180deg); }
@@ -293,7 +295,7 @@
 .ym-context-rule-row > input, .ym-context-rule-row > select { width: 100%; min-width: 0; text-align: center; }
 .ym-context-rule-row > select { text-align-last: center; }
 .ym-context-rule-row > .ym-icon-button, .ym-context-rule-add { flex: 0 0 auto; }
-.ym-context-rule-add { justify-self: stretch; min-height: 38px; }
+.ym-dialog .ym-context-rule-add { justify-self: stretch; width: 100%; flex: 1 1 auto; min-width: 0; min-height: 38px; }
 @media (max-width: 380px) {
     .ym-context-rule-row { grid-template-columns: minmax(0, 1fr) 72px 34px; gap: 6px; }
 }
