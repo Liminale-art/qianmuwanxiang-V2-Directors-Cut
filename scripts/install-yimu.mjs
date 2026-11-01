@@ -210,7 +210,8 @@ async function verifyBuild(folder, stamp, sourceRoot, commit, run) {
     const manifest = JSON.parse(await fs.readFile(path.join(folder, 'frontend/yimu/manifest.json'), 'utf8'));
     const pkg = JSON.parse(await fs.readFile(path.join(folder, 'server/yimu/package.json'), 'utf8'));
     if (manifest.version !== FRONTEND_VERSION || pkg.version !== SERVICE_VERSION || pkg.name !== 'yimu' || pkg.main !== 'server-plugin.mjs'
-        || manifest.js !== 'index.mjs' || manifest.generate_interceptor !== 'yimuGenerationInterceptor') fail('忆幕前后端入口或实际版本不匹配。');
+        || manifest.js !== `index.mjs?v=${FRONTEND_VERSION}` || manifest.css !== `style.css?v=${FRONTEND_VERSION}`
+        || manifest.generate_interceptor !== 'yimuGenerationInterceptor') fail('忆幕前后端入口或实际版本不匹配。');
     for (const [kind, name] of [['frontend', 'index.mjs'], ['server', 'server-plugin.mjs']]) {
         if (!maps[kind][name] || !maps[kind]['contract.mjs']) fail('忆幕安装包缺少必要入口。');
     }
