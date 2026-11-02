@@ -687,10 +687,12 @@ test('a late failed save cannot overwrite the next chat status or restore an old
 test('dialog restores entry focus on Escape and outside click, retains forms on ordinary close, and does not close for inner clicks', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const trigger = f.document.createElement('button'); f.document.body.append(trigger); trigger.focus(); f.view.open();
+    const backdrop = f.document.querySelector('.ym-dialog-backdrop');
+    assert.equal(backdrop.hidden, false); assert.equal(backdrop.getAttribute('data-open'), '');
     f.get('插入自定义切片').click(); f.get('自定义切片内容').value = '保留草稿';
     const dialog = f.get('忆幕'); dialog.emit('click', { target: f.get('自定义切片内容') }); assert.equal(dialog.open, true);
     dialog.emit('keydown', { key: 'Escape' }); assert.equal(dialog.open, true, 'a subpage returns before closing');
-    dialog.emit('keydown', { key: 'Escape' }); assert.equal(dialog.open, false); assert.equal(f.document.activeElement, trigger);
+    dialog.emit('keydown', { key: 'Escape' }); assert.equal(dialog.open, false); assert.equal(backdrop.hidden, true); assert.equal(backdrop.getAttribute('data-open'), null); assert.equal(f.document.activeElement, trigger);
     f.view.open(); assert.equal(f.get('自定义切片内容').value, '保留草稿'); dialog.emit('click'); assert.equal(dialog.open, false);
 });
 

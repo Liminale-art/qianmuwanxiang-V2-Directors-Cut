@@ -147,6 +147,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
+    // Keep the main surface out of the browser's native dialog Top Layer.
+    // Qianmu's notes and ST's toast containers are body-level overlays; a
+    // native showModal() would always paint above them regardless of z-index.
+    const backdrop = el('div', 'ym-dialog-backdrop');
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.hidden = true;
     const dialog = el('dialog', 'ym-dialog');
     dialog.setAttribute('aria-label', '忆幕');
     const shell = el('section', 'ym-shell');
@@ -201,7 +207,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     scroller.append(status, main);
     shell.append(header, nav, scroller);
     dialog.append(shell);
-    document.body.append(dialog);
+    backdrop.addEventListener('click', () => close());
+    document.body.append(backdrop, dialog);
     const theme = mountTheme(dialog, { document });
 
     const context = el('div', 'ym-context');
@@ -1033,14 +1040,20 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         theme.sync(); navigation.refresh(); Promise.resolve(versionBadge.check?.()).then(() => { if (!destroyed) updateStatus(); }).catch(() => {});
         returnFocus = document.activeElement;
         opened = true;
-        if (typeof dialog.showModal === 'function') dialog.showModal();
-        else { dialog.setAttribute('open', ''); dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); }
+        backdrop.hidden = false;
+        backdrop.setAttribute('data-open', '');
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        if (typeof dialog.show === 'function') dialog.show();
+        else dialog.setAttribute('open', '');
         closeButton.focus();
     }
     function close() {
         if (!opened) return;
         opened = false;
         if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
+        backdrop.removeAttribute('data-open');
+        backdrop.hidden = true;
         if (returnFocus?.isConnected) returnFocus.focus();
     }
     dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); close(); });
@@ -1069,7 +1082,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     return {
         render, open, close,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 
