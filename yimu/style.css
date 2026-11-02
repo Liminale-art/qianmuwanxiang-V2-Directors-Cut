@@ -29,7 +29,7 @@
     color: var(--ym-ink); background: var(--ym-surface); border: 1px solid var(--ym-border);
     border-radius: 22px; padding: 0; width: min(660px, calc(100vw - 28px)); max-width: calc(100vw - 28px);
     height: min(760px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); margin: auto;
-    position: fixed; inset: 0; z-index: 2147482001; box-shadow: 0 18px 65px #10182030; font: var(--ym-type-body)/1.65 var(--ym-font); overflow: hidden; text-align: start; text-shadow: none;
+    position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important; right: auto !important; bottom: auto !important; margin: 0 !important; transform: translate(-50%, -50%) !important; z-index: 2147482001; box-shadow: 0 18px 65px #10182030; font: var(--ym-type-body)/1.65 var(--ym-font); overflow: hidden; text-align: start; text-shadow: none;
 }
 .ym-dialog::backdrop { background: #10182066; backdrop-filter: blur(3px); }
 .ym-dialog[data-ym-mode="dark"] { color-scheme: dark; }
@@ -37,6 +37,7 @@
 .ym-dialog * { box-sizing: border-box; }
 .ym-dialog :not(:is(svg, svg *, pre, pre *, code, code *, kbd, kbd *, samp, samp *)) { font-family: var(--ym-font) !important; }
 .ym-dialog:not([open]), .ym-dialog [hidden] { display: none !important; }
+.ym-dialog[open] { display: block !important; }
 .ym-shell { height: 100%; display: flex; flex-direction: column; min-width: 0; }
 .ym-header { display: flex; justify-content: space-between; align-items: center; min-height: 61px; padding: 8px 16px 8px 28px; gap: 12px; flex: 0 0 auto; }
 .ym-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }

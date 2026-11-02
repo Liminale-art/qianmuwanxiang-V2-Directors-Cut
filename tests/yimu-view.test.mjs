@@ -693,7 +693,8 @@ test('dialog restores entry focus on Escape and outside click, retains forms on 
     const dialog = f.get('忆幕'); dialog.emit('click', { target: f.get('自定义切片内容') }); assert.equal(dialog.open, true);
     dialog.emit('keydown', { key: 'Escape' }); assert.equal(dialog.open, true, 'a subpage returns before closing');
     dialog.emit('keydown', { key: 'Escape' }); assert.equal(dialog.open, false); assert.equal(backdrop.hidden, true); assert.equal(backdrop.getAttribute('data-open'), null); assert.equal(f.document.activeElement, trigger);
-    f.view.open(); assert.equal(f.get('自定义切片内容').value, '保留草稿'); dialog.emit('click'); assert.equal(dialog.open, false);
+    f.view.open(); assert.equal(f.get('自定义切片内容').value, '保留草稿'); backdrop.emit('click'); assert.equal(dialog.open, false);
+    f.view.open(); dialog.emit('click'); assert.equal(dialog.open, false);
 });
 
 test('loading and unavailable states retain navigation and expose service help in settings', t => {
@@ -1114,7 +1115,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.11 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.12 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1234,7 +1235,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.11'); assert.equal(pkg.version, '0.8.9');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.12'); assert.equal(pkg.version, '0.8.9');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

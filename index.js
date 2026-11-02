@@ -6795,6 +6795,7 @@ function bindNotesPanelResize(layer) {
       const noteSettings = notesFeatureSettings();
       noteSettings.panelSize = size;
       persistNotesDevice();
+      notesPanelWindowDispose?.sync?.({ persist: true });
     });
     notesPanelResizeObserver.observe(panel);
   }
