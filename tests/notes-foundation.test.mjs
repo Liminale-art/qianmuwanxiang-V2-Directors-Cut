@@ -63,6 +63,7 @@ assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size:
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
 assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*persistNotesDevice\(\)/, 'desktop note resizing persists locally without rebuilding the editor or sharing geometry');
 assert.match(source, /bindProseAssistantWindow[\s\S]*storageKey: 'qianmu\.notes\.window\.v1'/, 'notes reuse the assistant window geometry contract for drag, resize, and reopen');
+assert.match(source, /if \(header instanceof Element\) \{[\s\S]*notesPanelWindowDispose = bindProseAssistantWindow/, 'notes keep the drag handle active on narrow screens as well as desktop');
 assert.match(source, /sd-notes-resize[\s\S]*data-notes-resize/, 'notes render a persistent resize grip in both list and editor views');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-resize \{[\s\S]*cursor: nwse-resize/, 'desktop notes expose a keyboard-addressable resize grip');
 assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');
@@ -70,6 +71,7 @@ assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background:
 assert.match(source, /layer\.onpointerdown = isolateFromHostMenus;[\s\S]*layer\.onclick = isolateFromHostMenus;/, 'the independent notes page must not bubble clicks into ST menu dismiss handlers');
 assert.match(source, /entry\.addEventListener\('pointerdown',[\s\S]*event\.stopPropagation\(\)[\s\S]*entry\.addEventListener\('click',[\s\S]*event\.stopPropagation\(\)/, 'the detached note entry must remain usable above an open ST menu');
 assert.match(styles, /#qianmu-notes-panel-layer \{[\s\S]*position: fixed !important;[\s\S]*height: 100dvh !important;[\s\S]*transform: none !important;/, 'the note workspace must anchor to the mobile viewport instead of an ST container');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*position: fixed !important;[\s\S]*right: auto !important;[\s\S]*bottom: auto !important;/, 'the note panel must accept the controller\'s absolute drag coordinates');
 assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-stage \{[\s\S]*place-items: center !important;/, 'narrow notes remain centered');
 assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(88vw, 360px\) !important;[\s\S]*height: min\(60dvh, 480px\) !important;[\s\S]*resize: none/, 'mobile notes must use a smaller, narrower non-resizable workspace');
 assert.match(styles, /#qianmu-notes-float-layer[\s\S]*z-index: 2147483002/, 'the detached hive cell must sit above the Qianmu panel but below critical overlays');

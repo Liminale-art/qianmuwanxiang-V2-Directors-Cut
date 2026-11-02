@@ -206,8 +206,8 @@ test('font isolation joins the real Qianmu owned-surface boundary and restores o
 test('surface CSS remains scoped, preserves hidden pages and supports three families and narrow layouts', async () => {
     const css = await readFile(new URL('../yimu/style.css', import.meta.url), 'utf8');
     assert.doesNotMatch(css, /(?:^|\n)\s*(?:body|html|:root|input|button|textarea|select)\b/);
-    assert.match(css, /\.ym-dialog-backdrop[\s\S]*?z-index: 2147482000/);
-    assert.match(css, /\.ym-dialog \{[\s\S]*?position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important[\s\S]*?z-index: 2147482001/);
+    assert.match(css, /\.ym-dialog-backdrop[\s\S]*?z-index: 2147482000[\s\S]*?align-items: center[\s\S]*?justify-content: center/);
+    assert.match(css, /\.ym-dialog \{[\s\S]*?position: relative !important; inset: auto !important; left: auto !important; top: auto !important[\s\S]*?transform: none !important[\s\S]*?z-index: 1/);
     assert.doesNotMatch(css, /@import|https?:\/\//);
     assert.match(css, /\.ym-dialog:not\(\[open\]\), \.ym-dialog \[hidden\]\s*\{\s*display: none !important/);
     assert.match(css, /data-ym-theme="editorial"/);

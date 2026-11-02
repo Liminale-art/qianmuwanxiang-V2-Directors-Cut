@@ -9413,8 +9413,9 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
   place-items: center !important;
 }
 #qianmu-notes-panel-layer .sd-notes-panel {
-  position: relative !important;
-  inset: auto !important;
+  position: fixed !important;
+  right: auto !important;
+  bottom: auto !important;
   max-width: 100%;
   max-height: 100%;
   margin: auto !important;

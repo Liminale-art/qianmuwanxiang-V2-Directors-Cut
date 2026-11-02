@@ -152,7 +152,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     // native showModal() would always paint above them regardless of z-index.
     const backdrop = el('div', 'ym-dialog-backdrop');
     backdrop.setAttribute('aria-hidden', 'true');
-    backdrop.hidden = true;
     const dialog = el('dialog', 'ym-dialog');
     dialog.setAttribute('aria-label', '忆幕');
     const shell = el('section', 'ym-shell');
@@ -207,8 +206,11 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     scroller.append(status, main);
     shell.append(header, nav, scroller);
     dialog.append(shell);
-    backdrop.addEventListener('click', () => close());
-    document.body.append(backdrop, dialog);
+    // Center through the same body-level flex layer as Qianmu's main panel.
+    // Keeping the dialog inside it avoids browser-specific dialog placement.
+    backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
+    backdrop.append(dialog);
+    document.body.append(backdrop);
     const theme = mountTheme(dialog, { document });
 
     const context = el('div', 'ym-context');

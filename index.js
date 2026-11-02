@@ -6800,8 +6800,7 @@ function bindNotesPanelResize(layer) {
     notesPanelResizeObserver.observe(panel);
   }
   const header = panel.querySelector(':scope > header');
-  const resize = panel.querySelector('[data-notes-resize]');
-  if (!notesPanelUsesCompactLayout() && header instanceof Element && resize instanceof Element) {
+  if (header instanceof Element) {
     notesPanelWindowDispose = bindProseAssistantWindow(panel, {
       handle: header,
       storageKey: 'qianmu.notes.window.v1',
@@ -6814,6 +6813,7 @@ function bindNotesPanelResize(layer) {
       maxDefaultWidth: 720,
       maxDefaultHeight: 560,
     });
+    notesPanelWindowDispose.sync?.();
   }
 }
 

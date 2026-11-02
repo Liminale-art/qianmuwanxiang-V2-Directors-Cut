@@ -1,8 +1,8 @@
 .ym-dialog-backdrop {
-    display: none; position: fixed; inset: 0; z-index: 2147482000; pointer-events: auto;
+    display: none; position: fixed; inset: 0; z-index: 2147482000; pointer-events: auto; align-items: center; justify-content: center;
     background: #10182066; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
 }
-.ym-dialog-backdrop[data-open] { display: block; }
+.ym-dialog-backdrop[data-open] { display: flex; }
 .ym-dialog {
     --ym-ink: var(--SmartThemeBodyColor, #303b45);
     --ym-muted: color-mix(in srgb, var(--ym-ink) 72%, transparent);
@@ -29,7 +29,7 @@
     color: var(--ym-ink); background: var(--ym-surface); border: 1px solid var(--ym-border);
     border-radius: 22px; padding: 0; width: min(660px, calc(100vw - 28px)); max-width: calc(100vw - 28px);
     height: min(760px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); margin: auto;
-    position: fixed !important; inset: auto !important; left: 50% !important; top: 50% !important; right: auto !important; bottom: auto !important; margin: 0 !important; transform: translate(-50%, -50%) !important; z-index: 2147482001; box-shadow: 0 18px 65px #10182030; font: var(--ym-type-body)/1.65 var(--ym-font); overflow: hidden; text-align: start; text-shadow: none;
+    position: relative !important; inset: auto !important; left: auto !important; top: auto !important; right: auto !important; bottom: auto !important; margin: 0 !important; transform: none !important; z-index: 1; box-shadow: 0 18px 65px #10182030; font: var(--ym-type-body)/1.65 var(--ym-font); overflow: hidden; text-align: start; text-shadow: none;
 }
 .ym-dialog::backdrop { background: #10182066; backdrop-filter: blur(3px); }
 .ym-dialog[data-ym-mode="dark"] { color-scheme: dark; }

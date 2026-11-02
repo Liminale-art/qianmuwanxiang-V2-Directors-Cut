@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { bindProseAssistantWindow } from '../qianmu-prose-assistant-window.js';
 
 class Node extends EventTarget {
-    constructor() { super(); this.style = {}; this.ownerDocument = null; this.closest = () => null; this.setPointerCapture = () => {}; this.releasePointerCapture = () => {}; }
+    constructor() { super(); this.style = { setProperty: (name, value) => { this.style[name] = value; }, removeProperty: name => { delete this.style[name]; } }; this.ownerDocument = null; this.closest = () => null; this.setPointerCapture = () => {}; this.releasePointerCapture = () => {}; }
     fire(type, values = {}) { const event = new Event(type, { cancelable: true }); Object.assign(event, values); this.dispatchEvent(event); return event; }
 }
 
@@ -30,8 +30,8 @@ test('window drag adopts a native resize before moving and keeps the resized dim
 
     f.setRect({ width: 700, height: 500 });
     f.header.fire('pointerdown', { pointerId: 1, clientX: 120, clientY: 80, button: 0, isPrimary: true });
-    f.header.fire('pointermove', { pointerId: 1, clientX: 150, clientY: 110 });
-    f.header.fire('pointerup', { pointerId: 1, clientX: 150, clientY: 110 });
+    f.view.fire('pointermove', { pointerId: 1, clientX: 150, clientY: 110 });
+    f.view.fire('pointerup', { pointerId: 1, clientX: 150, clientY: 110 });
 
     assert.equal(f.panel.style.width, '700px');
     assert.equal(f.panel.style.height, '500px');
