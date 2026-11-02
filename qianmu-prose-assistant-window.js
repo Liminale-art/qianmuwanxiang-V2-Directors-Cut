@@ -1,5 +1,5 @@
 // Device-only geometry; no conversation content is stored here.
-export function bindProseAssistantWindow(panel,{handle,storageKey,initial={},margin=10,minWidth=280,minHeight=220,defaultWidth=.88,defaultHeight=.68,maxDefaultWidth=540,maxDefaultHeight=600,onPersist=()=>{}}={}){
+export function bindProseAssistantWindow(panel,{handle,storageKey,initial={},margin=10,minWidth=280,minHeight=220,defaultWidth=.88,defaultHeight=.68,maxDefaultWidth=540,maxDefaultHeight=600,resizeSelector='[data-pa-resize]',onPersist=()=>{}}={}){
  const view=panel.ownerDocument.defaultView,viewport=view.visualViewport,listeners=[];let gesture=null,closed=false,touched=false;
  const listen=(node,type,fn)=>{node?.addEventListener(type,fn);listeners.push(()=>node?.removeEventListener(type,fn));};
   function fit(value={}){const x=viewport?.offsetLeft||0,y=viewport?.offsetTop||0,w=viewport?.width||view.innerWidth,h=viewport?.height||view.innerHeight;
@@ -15,8 +15,8 @@ export function bindProseAssistantWindow(panel,{handle,storageKey,initial={},mar
  function finish(event,cancelled=false){if(!gesture||event?.pointerId!==undefined&&event.pointerId!==gesture.id)return;const last=gesture;gesture=null;try{last.node.releasePointerCapture(last.id);}catch{}if(cancelled)box=fit(last.initial);else preferred={...box};paint();if(!cancelled)persist();}
  function start(event,resize){if(gesture||event.isPrimary===false||event.button!==undefined&&event.button!==0||!resize&&event.target.closest('button,input,select,textarea'))return;gesture={id:event.pointerId,x:event.clientX,y:event.clientY,initial:{...box},node:event.currentTarget,resize};try{event.currentTarget.setPointerCapture(event.pointerId);}catch{}event.preventDefault();}
  function move(event){if(!gesture||event.pointerId!==gesture.id)return;const dx=event.clientX-gesture.x,dy=event.clientY-gesture.y;box=fit(gesture.resize?{...gesture.initial,width:gesture.initial.width+dx,height:gesture.initial.height+dy}:{...gesture.initial,x:gesture.initial.x+dx,y:gesture.initial.y+dy});paint();event.preventDefault();}
- const resize=panel.querySelector('[data-pa-resize]');
- for(const [node,type] of [[handle,false],[resize,true]]){listen(node,'pointerdown',event=>start(event,type));listen(node,'pointermove',move);listen(node,'pointerup',event=>finish(event));listen(node,'pointercancel',event=>finish(event,true));listen(node,'lostpointercapture',event=>finish(event));}
+ const resize=panel.querySelector(resizeSelector);
+ for(const [node,type] of [[handle,false],[resize,true]]){listen(node,'pointerdown',event=>start(event,type));listen(node,'pointermove',move);listen(node,'pointerup',event=>finish(event));listen(node,'pointercancel',event=>finish(event,true));listen(node,'lostpointercapture',event=>finish(event,true));}
  // Pointer capture normally retargets these events to the handle. Keep a
  // window-level fallback as well so ST hosts that swallow capture still drag.
  listen(view,'pointermove',move); listen(view,'pointerup',event=>finish(event)); listen(view,'pointercancel',event=>finish(event,true));

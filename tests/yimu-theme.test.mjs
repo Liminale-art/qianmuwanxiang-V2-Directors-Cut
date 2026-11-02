@@ -216,6 +216,10 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /width: min\(660px, calc\(100vw - 28px\)\)/);
     assert.match(css, /height: min\(760px, calc\(100dvh - 28px\)\)/);
     assert.match(css, /height: calc\(100dvh - 108px\)/);
+    assert.match(css, /#yimu-overlay \{[\s\S]*position: fixed !important[\s\S]*inset: 0 !important[\s\S]*height: 100dvh !important/);
+    assert.match(css, /#yimu-overlay\[data-open\] \{ display: grid !important; \}/);
+    assert.match(css, /#yimu-overlay \{[\s\S]*place-items: center !important/);
+    assert.match(css, /#yimu-dialog \{[\s\S]*grid-area: 1 \/ 1 !important[\s\S]*width: min\(660px, calc\(100vw - 28px\)\) !important[\s\S]*height: min\(760px, calc\(100dvh - 28px\)\) !important/);
     assert.match(css, /\.ym-scroll[^\n]*min-width: 0/);
     assert.match(css, /\.ym-dialog input\.ym-switch[^\n]*appearance: none !important/);
     assert.match(css, /@media \(max-width: 340px\)/);

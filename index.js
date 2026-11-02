@@ -6789,6 +6789,7 @@ function bindNotesPanelResize(layer) {
       defaultHeight: .6,
       maxDefaultWidth: 720,
       maxDefaultHeight: 560,
+      resizeSelector: '[data-notes-resize]',
       onPersist: geometry => {
         const noteSettings = notesFeatureSettings();
         noteSettings.panelSize = { width: Math.round(geometry.width), height: Math.round(geometry.height) };

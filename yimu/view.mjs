@@ -147,11 +147,13 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
-    // Keep the main surface in a body-level flex layer, matching Qianmu's
+    // Keep the main surface in a body-level grid layer, matching Qianmu's
     // modal geometry while leaving notes and ST toasts above it by z-index.
     const backdrop = el('div', 'ym-dialog-backdrop');
+    backdrop.id = 'yimu-overlay';
     backdrop.setAttribute('aria-hidden', 'true');
     const dialog = el('div', 'ym-dialog');
+    dialog.id = 'yimu-dialog';
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-label', '忆幕');
     const shell = el('section', 'ym-shell');
@@ -206,7 +208,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     scroller.append(status, main);
     shell.append(header, nav, scroller);
     dialog.append(shell);
-    // Center through the same body-level flex layer as Qianmu's main panel.
+    // Center through the same body-level grid layer as Qianmu's main panel.
     // Keeping the dialog inside it avoids browser-specific dialog placement.
     backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
     backdrop.append(dialog);

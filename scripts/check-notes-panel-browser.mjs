@@ -15,22 +15,23 @@ await context.route('**/*', async route => {
   if (url.origin === 'https://qianmu.test') {
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><body></body></html>' });
     if (/^\/qianmu-[a-z0-9-]+\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
+    if (/^\/qianmu-[a-z0-9-]+\.css$/.test(url.pathname)) return route.fulfill({ contentType: 'text/css', body: await readFile(new URL('..' + url.pathname, import.meta.url), 'utf8') });
   }
   external++; return route.abort();
 });
 const names = ['notesFeatureSettings', 'persistNotesDevice', 'notesSyncControls', 'notesFeatureEnabled', 'notesSortRuntime', 'notesFind', 'notesReplaceLocal',
   'hydrateNotesRuntime', 'persistNoteRuntime', 'scheduleNoteSave', 'openNotesPanel', 'closeNotesPanel', 'noteExcerpt', 'noteUpdatedLabel', 'renderNotesPanel',
-  'notesPanelUsesCompactLayout', 'clampNotesPanelSize', 'stopNotesPanelResizeTracking', 'syncNotesPanelSizeToViewport', 'bindNotesPanelResize', 'renderNotesPanelPortal', 'bindNotesPanelEvents'];
+  'clampNotesPanelSize', 'stopNotesPanelResizeTracking', 'syncNotesPanelSizeToViewport', 'bindNotesPanelResize', 'renderNotesPanelPortal', 'bindNotesPanelEvents'];
 try {
   await page.goto('https://qianmu.test/');
   await page.addStyleTag({ content: await readFile(new URL('../style.css', import.meta.url), 'utf8') });
   await page.evaluate(async ({source, notesRef}) => {
-    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device', 'qianmu-input-boundary', 'qianmu-icon-renderer']) Object.assign(window, await import(file === 'qianmu-notes' ? notesRef : `./${file}.js`));
+    for (const file of ['qianmu-notes', 'qianmu-notes-panel-sync', 'qianmu-notes-device', 'qianmu-input-boundary', 'qianmu-icon-renderer', 'qianmu-prose-assistant-window']) Object.assign(window, await import(file === 'qianmu-notes' ? notesRef : `./${file}.js`));
     const configure = configureQianmuNotes, { createNotesSyncRuntime } = await import('./qianmu-notes-sync-runtime.js');
     window.configureQianmuNotes = options => configure({ ...options, createRuntime: input => createNotesSyncRuntime({ ...input, client: null }) });
     const notes = { enabled: true, detached: false, position: { x: 15, y: 40 }, panelSize: { width: 430, height: 420 }, editorFontSize: 13, appearance: { tone: 'dark', edgeIndex: 0 } };
     Object.assign(window, { notesSyncPanel: null, notesDevice: null, notesViewEpoch: 0, notesReadEpoch: 0, notesSaveTimers: new Map(), notesPanelOpen: false, notesLoaded: false,
-      notesLoading: null, notesRuntime: [], notesActiveId: '', notesSearch: '', notesZCounter: 1, notesPanelResizeObserver: null,
+      notesLoading: null, notesRuntime: [], notesActiveId: '', notesSearch: '', notesZCounter: 1, notesPanelWindowDispose: null,
       settings: { enabled: true, quickWheelCustomEnabled: ['notes'], notes: structuredClone(notes) }, DEFAULT_SETTINGS: { notes }, NOTES_EDITOR_FONT_SIZES: [13, 14, 16, 18, 20, 24],
       MODULE_NAME: 'fixture', NOTES_PANEL_LAYER_ID: 'qianmu-notes-panel-layer', fixture: { notices: [], downloads: [], settingsSaves: 0, confirm: true, confirms: 0 },
       clone: structuredClone, isPlainObject: value => value && typeof value === 'object',
@@ -127,6 +128,20 @@ try {
     if(width===393&&process.env.QIANMU_NOTES_SCREENSHOT_PREFIX){const path=process.env.QIANMU_NOTES_SCREENSHOT_PREFIX+'-tools.png';await mkdir(dirname(path),{recursive:true});await page.locator('.sd-notes-panel').screenshot({path});}
     await page.locator('.sd-note-select').click(); checks.push(`${width}: no overflow and expanded tools reserve layout space, never covering the preview`);
   }
+  const panelBeforeResize = await page.locator('.sd-notes-panel').boundingBox();
+  const resizeBefore = await page.locator('[data-notes-resize]').boundingBox();
+  await page.mouse.move(resizeBefore.x + 2, resizeBefore.y + 2); await page.mouse.down();
+  await page.mouse.move(resizeBefore.x + 62, resizeBefore.y + 52); await page.mouse.up();
+  const panelAfterExpand = await page.locator('.sd-notes-panel').boundingBox();
+  assert.ok(panelAfterExpand.width > panelBeforeResize.width && panelAfterExpand.height > panelBeforeResize.height, 'pointer resize expands from the full hit area');
+  const resizeAfter = await page.locator('[data-notes-resize]').boundingBox();
+  await page.mouse.move(resizeAfter.x + 2, resizeAfter.y + 2); await page.mouse.down();
+  await page.mouse.move(resizeAfter.x - 38, resizeAfter.y - 28); await page.mouse.up();
+  const panelAfterShrink = await page.locator('.sd-notes-panel').boundingBox();
+  assert.ok(panelAfterShrink.width < panelAfterExpand.width && panelAfterShrink.height < panelAfterExpand.height, 'pointer resize shrinks without restoring the CSS default');
+  result = await page.evaluate(() => readNotesDeviceState());
+  assert.equal(result.panelSize.width, Math.round(panelAfterShrink.width)); assert.equal(result.panelSize.height, Math.round(panelAfterShrink.height));
+  checks.push('desktop pointer resize expands and shrinks through the full corner hit area, then persists the final device geometry');
   result = await page.evaluate(() => { notesFeatureSettings(); return { serialized: JSON.stringify(settings.notes), device: readNotesDeviceState() }; });
   assert.doesNotMatch(result.serialized, /panelSize|position|detached/); assert.equal(result.device.position.x, 15);
   checks.push('device geometry is present locally and excluded from enumerable ST account settings');

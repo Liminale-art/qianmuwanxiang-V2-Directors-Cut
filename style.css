@@ -9242,7 +9242,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #qianmu-notes-panel-layer .sd-note-editor { min-height: 0; flex: 1; display: flex; background: var(--sd-notes-surface); }
 #qianmu-notes-panel-layer .sd-note-body { width: 100%; height: 100%; min-height: 0; resize: none; padding: 14px; border: 0; border-radius: 0; outline: 0; background: var(--sd-notes-surface); color: var(--sd-text); font: inherit; font-size: var(--sd-note-editor-font-size, 13px); line-height: 1.68; }
 #qianmu-notes-panel-layer .sd-notes-panel > header { cursor: move; touch-action: none; user-select: none; }
-#qianmu-notes-panel-layer .sd-notes-resize { position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; clip-path: polygon(100% 0,100% 100%,0 100%); border-radius: 0 0 14px 0; cursor: nwse-resize; touch-action: none; }
+#qianmu-notes-panel-layer .sd-notes-resize { position: absolute; z-index: 4; right: 0; bottom: 0; display: block; width: 32px; height: 32px; border-radius: 0 0 14px 0; background: transparent; cursor: nwse-resize; touch-action: none; pointer-events: auto; user-select: none; }
 #qianmu-notes-panel-layer .sd-notes-resize::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 21px; height: 21px; border-right: 2.5px solid var(--sd-accent); border-bottom: 2.5px solid var(--sd-accent); border-bottom-right-radius: 12px; opacity: .8; pointer-events: none; }
 #qianmu-notes-panel-layer .sd-notes-resize:hover::after,
 #qianmu-notes-panel-layer .sd-notes-resize:focus-visible::after { opacity: 1; }

@@ -62,10 +62,12 @@ assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size \{[^}]*posit
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size: var\(--sd-note-editor-font-size, 13px\);/, 'the detached note editor uses the persisted readable type size');
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
 assert.match(source, /function bindNotesPanelResize[\s\S]*onPersist: geometry =>[\s\S]*noteSettings\.panelSize = \{ width: Math\.round\(geometry\.width\), height: Math\.round\(geometry\.height\) \}[\s\S]*persistNotesDevice\(\)/, 'one geometry controller persists note size without a second observer rewriting its position');
-assert.match(source, /bindProseAssistantWindow[\s\S]*storageKey: 'qianmu\.notes\.window\.v1'/, 'notes reuse the assistant window geometry contract for drag, resize, and reopen');
+assert.match(source, /bindProseAssistantWindow[\s\S]*storageKey: 'qianmu\.notes\.window\.v1'[\s\S]*resizeSelector: '\[data-notes-resize\]'/, 'notes reuse the assistant window geometry contract with their own resize handle');
 assert.match(source, /if \(header instanceof Element\) \{[\s\S]*notesPanelWindowDispose = bindProseAssistantWindow/, 'notes keep the drag handle active on narrow screens as well as desktop');
 assert.match(source, /sd-notes-resize[\s\S]*data-notes-resize/, 'notes render a persistent resize grip in both list and editor views');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-resize \{[\s\S]*cursor: nwse-resize/, 'desktop notes expose a keyboard-addressable resize grip');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-resize \{[\s\S]*pointer-events: auto;[\s\S]*touch-action: none;/, 'the resize grip keeps a full pointer hit area on touch screens');
+assert.doesNotMatch(styles, /#qianmu-notes-panel-layer \.sd-notes-resize \{[^}]*clip-path:/, 'the visual resize cue must not clip away its pointer hit area');
 assert.match(styles, /\.sd-note-pinned-mark,[\s\S]*\.sd-note-tools-toggle,[\s\S]*width: 28px; height: 28px/, 'pin state and more control must occupy the same visual slot');
 assert.match(styles, /\.sd-note-item-tools \{[\s\S]*border: 0;[\s\S]*background: transparent/, 'the expanded more menu remains visually unboxed');
 assert.match(source, /layer\.onpointerdown = isolateFromHostMenus;[\s\S]*layer\.onclick = isolateFromHostMenus;/, 'the independent notes page must not bubble clicks into ST menu dismiss handlers');

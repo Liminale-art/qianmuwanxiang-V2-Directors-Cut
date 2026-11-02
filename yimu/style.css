@@ -467,3 +467,57 @@
     .ym-dialog .ym-api-params input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .ym-dialog input.ym-switch::after, .ym-tool-summary .ym-icon, .ym-dialog .ym-nav-button { transition: none; } .ym-version-tag.is-update-available, .ym-send-entry[data-ym-busy="true"] { animation: none; } }
+
+/*
+ * The host page contains several modal systems and may ship broad `.dialog`
+ * or flex-item rules. Keep the Yimu geometry owned by its two body-level
+ * nodes so a host reflow cannot stretch or move the panel.
+ */
+#yimu-overlay {
+    display: none !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 2147482000 !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    place-items: center !important;
+}
+#yimu-overlay[data-open] { display: grid !important; }
+#yimu-overlay[hidden] { display: none !important; }
+#yimu-dialog {
+    box-sizing: border-box !important;
+    grid-area: 1 / 1 !important;
+    width: min(660px, calc(100vw - 28px)) !important;
+    max-width: calc(100vw - 28px) !important;
+    height: min(760px, calc(100dvh - 28px)) !important;
+    max-height: calc(100dvh - 28px) !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative !important;
+    inset: auto !important;
+    transform: none !important;
+    overflow: hidden !important;
+}
+#yimu-dialog[open] { display: block !important; }
+@media (max-width: 760px) {
+    #yimu-dialog {
+        width: calc(100vw - 32px) !important;
+        max-width: calc(100vw - 32px) !important;
+        height: calc(100dvh - 108px) !important;
+        max-height: calc(100dvh - 108px) !important;
+        border-radius: 16px !important;
+    }
+}
+@media (max-height: 620px) {
+    #yimu-dialog {
+        height: calc(100dvh - 12px) !important;
+        max-height: calc(100dvh - 12px) !important;
+    }
+}
