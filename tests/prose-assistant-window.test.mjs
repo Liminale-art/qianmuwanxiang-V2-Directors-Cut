@@ -71,3 +71,25 @@ test('the shared geometry controller accepts feature-specific resize handles', (
     assert.equal(f.panel.style.height, '470px');
     dispose();
 });
+
+test('bottom-right resize keeps the opposite corner fixed when the viewport clips the requested size', () => {
+    const f = fixture();
+    Object.assign(f.view, { innerWidth: 700, innerHeight: 640, visualViewport: Object.assign(f.view.visualViewport, { width: 700, height: 640 }) });
+    const dispose = bindProseAssistantWindow(f.panel, {
+        handle: f.header,
+        resizeSelector: '[data-notes-resize]',
+        storageKey: 'qianmu.notes.window.v1',
+        margin: 18,
+        initial: { width: 400, height: 400, x: 100, y: 100 },
+    });
+    f.notesResize.fire('pointerdown', { pointerId: 4, clientX: 500, clientY: 500, button: 0, isPrimary: true });
+    f.view.fire('pointermove', { pointerId: 4, clientX: 700, clientY: 700 });
+    assert.equal(f.panel.style.left, '82px');
+    assert.equal(f.panel.style.top, '100px');
+    assert.equal(f.panel.style.width, '600px');
+    assert.equal(f.panel.style.height, '522px');
+    f.view.fire('pointerup', { pointerId: 4, clientX: 700, clientY: 700 });
+    assert.equal(JSON.parse(f.store.get('qianmu.notes.window.v1')).x, 82);
+    assert.equal(JSON.parse(f.store.get('qianmu.notes.window.v1')).y, 100);
+    dispose();
+});
