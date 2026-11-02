@@ -56,12 +56,12 @@ assert.match(source, /function detachedNoteCanReturnHome[\s\S]*getElementById\(F
 assert.match(source, /pinned \? '便笺已设为常驻' : '已取消常驻，内容仍自动保存'/, 'pinning changes prominence, never the durable lifetime of prose');
 assert.match(styles, /\.sd-notes-panel[\s\S]*background: var\(--sd-notes-surface\)/, 'the notes page must use an opaque theme surface');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(60vw,[\s\S]*height: min\(60vh,/, 'desktop notes use the compact sixty-percent workspace');
-assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*resize: both/, 'desktop notes must expose native two-axis drag resizing');
+assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*resize: none/, 'notes use one custom two-axis resize controller instead of competing native geometry');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size-control \{[^}]*position: relative;[^}]*overflow: hidden;[^}]*cursor: pointer;/, 'the note font selector must reuse the compact icon-button shell');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-font-size \{[^}]*position: absolute;[^}]*inset: 0;[^}]*opacity: 0;/, 'the native font selector must remain accessible over the icon without changing its visual size');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-note-body \{[^}]*font-size: var\(--sd-note-editor-font-size, 13px\);/, 'the detached note editor uses the persisted readable type size');
 assert.match(source, /panelSize: \{ width: null, height: null \}/, 'desktop note size must have a backward-compatible persisted setting');
-assert.match(source, /function bindNotesPanelResize[\s\S]*new ResizeObserver[\s\S]*noteSettings\.panelSize = size;[\s\S]*persistNotesDevice\(\)/, 'desktop note resizing persists locally without rebuilding the editor or sharing geometry');
+assert.match(source, /function bindNotesPanelResize[\s\S]*onPersist: geometry =>[\s\S]*noteSettings\.panelSize = \{ width: Math\.round\(geometry\.width\), height: Math\.round\(geometry\.height\) \}[\s\S]*persistNotesDevice\(\)/, 'one geometry controller persists note size without a second observer rewriting its position');
 assert.match(source, /bindProseAssistantWindow[\s\S]*storageKey: 'qianmu\.notes\.window\.v1'/, 'notes reuse the assistant window geometry contract for drag, resize, and reopen');
 assert.match(source, /if \(header instanceof Element\) \{[\s\S]*notesPanelWindowDispose = bindProseAssistantWindow/, 'notes keep the drag handle active on narrow screens as well as desktop');
 assert.match(source, /sd-notes-resize[\s\S]*data-notes-resize/, 'notes render a persistent resize grip in both list and editor views');
@@ -73,7 +73,7 @@ assert.match(source, /entry\.addEventListener\('pointerdown',[\s\S]*event\.stopP
 assert.match(styles, /#qianmu-notes-panel-layer \{[\s\S]*position: fixed !important;[\s\S]*height: 100dvh !important;[\s\S]*transform: none !important;/, 'the note workspace must anchor to the mobile viewport instead of an ST container');
 assert.match(styles, /#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*position: fixed !important;[\s\S]*right: auto !important;[\s\S]*bottom: auto !important;/, 'the note panel must accept the controller\'s absolute drag coordinates');
 assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-stage \{[\s\S]*place-items: center !important;/, 'narrow notes remain centered');
-assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(88vw, 360px\) !important;[\s\S]*height: min\(60dvh, 480px\) !important;[\s\S]*resize: none/, 'mobile notes must use a smaller, narrower non-resizable workspace');
+assert.match(styles, /@media \(max-width: 620px\)[\s\S]*#qianmu-notes-panel-layer \.sd-notes-panel \{[\s\S]*width: min\(88vw, 360px\);[\s\S]*height: min\(60dvh, 480px\);/, 'mobile notes must keep a bounded default before the shared geometry controller takes over');
 assert.match(styles, /#qianmu-notes-float-layer[\s\S]*z-index: 2147483002/, 'the detached hive cell must sit above the Qianmu panel but below critical overlays');
 assert.match(styles, /\.sd-detached-notes-entry[\s\S]*clip-path: polygon\(50% 0,[\s\S]*sd-hive-hex-outline/, 'the detached entry must keep the hive hexagon silhouette and edge');
 assert.doesNotMatch(styles, /\.sd-floating-note\b/, 'individual notes must never become top-level floating windows');

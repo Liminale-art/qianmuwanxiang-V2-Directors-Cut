@@ -9205,7 +9205,7 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
   --sd-notes-surface: #f2ede5; --sd-notes-card: #e7e0d6;
   position: fixed; left: 50%; top: 50%; transform: none;
   width: min(60vw, 720px); height: min(60vh, 560px); min-width: 280px; min-height: 250px;
-  display: flex; flex-direction: column; overflow: hidden; resize: both; pointer-events: auto;
+  display: flex; flex-direction: column; overflow: hidden; resize: none; pointer-events: auto;
   border: 1px solid var(--sd-border); border-radius: 14px; background: var(--sd-notes-surface); color: var(--sd-text);
   box-shadow: 0 18px 54px rgba(0, 0, 0, .24);
 }
@@ -9253,8 +9253,6 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 @media (max-width: 620px) {
   #story-director-modal { --qm-control-height: 32px; }
   #qianmu-notes-panel-layer .sd-notes-stage { place-items: center !important; padding: 10px; }
-  #qianmu-notes-panel-layer .sd-notes-panel { left: 50% !important; top: auto !important; bottom: 10px !important; transform: translateX(-50%) !important; width: min(88vw, 360px) !important; height: min(60dvh, 480px) !important; min-width: 0; resize: none; }
-  #qianmu-notes-panel-layer .sd-notes-resize { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -9416,9 +9414,10 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
   position: fixed !important;
   right: auto !important;
   bottom: auto !important;
+  resize: none !important;
   max-width: 100%;
   max-height: 100%;
-  margin: auto !important;
+  margin: 0 !important;
   transform: none !important;
 }
 
@@ -9437,11 +9436,11 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
     padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
   #qianmu-notes-panel-layer .sd-notes-panel {
-    width: min(88vw, 360px) !important;
-    height: min(60dvh, 480px) !important;
-    max-height: 100%;
+    width: min(88vw, 360px);
+    height: min(60dvh, 480px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
     min-width: 0;
-    resize: none;
   }
 }
 

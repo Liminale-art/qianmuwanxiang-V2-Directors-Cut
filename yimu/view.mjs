@@ -147,12 +147,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
-    // Keep the main surface out of the browser's native dialog Top Layer.
-    // Qianmu's notes and ST's toast containers are body-level overlays; a
-    // native showModal() would always paint above them regardless of z-index.
+    // Keep the main surface in a body-level flex layer, matching Qianmu's
+    // modal geometry while leaving notes and ST toasts above it by z-index.
     const backdrop = el('div', 'ym-dialog-backdrop');
     backdrop.setAttribute('aria-hidden', 'true');
-    const dialog = el('dialog', 'ym-dialog');
+    const dialog = el('div', 'ym-dialog');
+    dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-label', '忆幕');
     const shell = el('section', 'ym-shell');
     const header = el('header', 'ym-header');
@@ -1044,21 +1044,18 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         opened = true;
         backdrop.hidden = false;
         backdrop.setAttribute('data-open', '');
-        dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');
-        if (typeof dialog.show === 'function') dialog.show();
-        else dialog.setAttribute('open', '');
+        dialog.setAttribute('open', '');
         closeButton.focus();
     }
     function close() {
         if (!opened) return;
         opened = false;
-        if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
+        dialog.removeAttribute('open');
         backdrop.removeAttribute('data-open');
         backdrop.hidden = true;
         if (returnFocus?.isConnected) returnFocus.focus();
     }
-    dialog.addEventListener('cancel', event => { if (event.target !== dialog) return; event.preventDefault(); close(); });
     dialog.addEventListener('click', event => {
         if (openMenuId && !event.target.closest?.('.ym-entry-actions')) closeMore();
         if (event.target === dialog) close();

@@ -1453,7 +1453,6 @@ let notesRuntime = [];
 let notesActiveId = '';
 let notesSearch = '';
 let notesZCounter = 10;
-let notesPanelResizeObserver = null;
 let notesPanelWindowDispose = null;
 const notesSaveTimers = new Map();
 let notesSyncPanel = null, notesDevice = null, notesViewEpoch = 0, notesReadEpoch = 0;
@@ -6739,10 +6738,6 @@ function syncNotesTheme() {
   appearanceSession.mountNotes(document);
 }
 
-function notesPanelUsesCompactLayout() {
-  return window.matchMedia?.('(max-width: 620px)')?.matches ?? window.innerWidth <= 620;
-}
-
 function clampNotesPanelSize(size = {}) {
   const viewport = window.visualViewport;
   const viewportWidth = Math.max(1, Number(viewport?.width || window.innerWidth || 1));
@@ -6757,8 +6752,6 @@ function clampNotesPanelSize(size = {}) {
 }
 
 function stopNotesPanelResizeTracking() {
-  notesPanelResizeObserver?.disconnect?.();
-  notesPanelResizeObserver = null;
   notesPanelWindowDispose?.();
   notesPanelWindowDispose = null;
 }
@@ -6766,11 +6759,6 @@ function stopNotesPanelResizeTracking() {
 function syncNotesPanelSizeToViewport(layer = document.getElementById(NOTES_PANEL_LAYER_ID)) {
   const panel = layer?.querySelector?.('.sd-notes-panel');
   if (!(panel instanceof Element)) return;
-  if (notesPanelUsesCompactLayout()) {
-    panel.style.removeProperty('width');
-    panel.style.removeProperty('height');
-    return;
-  }
   const saved = notesFeatureSettings().panelSize;
   if (!Number.isFinite(Number(saved.width)) || !Number.isFinite(Number(saved.height))) return;
   const size = clampNotesPanelSize(saved);
@@ -6783,28 +6771,17 @@ function bindNotesPanelResize(layer) {
   syncNotesPanelSizeToViewport(layer);
   const panel = layer?.querySelector?.('.sd-notes-panel');
   if (!(panel instanceof Element)) return;
-  if (!notesPanelUsesCompactLayout() && typeof ResizeObserver === 'function') {
-    const initialRect = panel.getBoundingClientRect();
-    let previous = clampNotesPanelSize({ width: initialRect.width, height: initialRect.height });
-    notesPanelResizeObserver = new ResizeObserver(() => {
-      if (notesPanelUsesCompactLayout() || !panel.isConnected) return;
-      const rect = panel.getBoundingClientRect();
-      const size = clampNotesPanelSize({ width: rect.width, height: rect.height });
-      if (Math.abs(previous.width - size.width) < 1 && Math.abs(previous.height - size.height) < 1) return;
-      previous = size;
-      const noteSettings = notesFeatureSettings();
-      noteSettings.panelSize = size;
-      persistNotesDevice();
-      notesPanelWindowDispose?.sync?.({ persist: true });
-    });
-    notesPanelResizeObserver.observe(panel);
-  }
   const header = panel.querySelector(':scope > header');
   if (header instanceof Element) {
+    const saved = notesFeatureSettings().panelSize;
+    const measured = panel.getBoundingClientRect();
+    const initial = { ...saved };
+    if (!Number.isFinite(Number(initial.width)) && measured.width > 0) initial.width = measured.width;
+    if (!Number.isFinite(Number(initial.height)) && measured.height > 0) initial.height = measured.height;
     notesPanelWindowDispose = bindProseAssistantWindow(panel, {
       handle: header,
       storageKey: 'qianmu.notes.window.v1',
-      initial: notesFeatureSettings().panelSize,
+      initial,
       margin: 18,
       minWidth: 280,
       minHeight: 250,
@@ -6812,8 +6789,12 @@ function bindNotesPanelResize(layer) {
       defaultHeight: .6,
       maxDefaultWidth: 720,
       maxDefaultHeight: 560,
+      onPersist: geometry => {
+        const noteSettings = notesFeatureSettings();
+        noteSettings.panelSize = { width: Math.round(geometry.width), height: Math.round(geometry.height) };
+        persistNotesDevice();
+      },
     });
-    notesPanelWindowDispose.sync?.();
   }
 }
 

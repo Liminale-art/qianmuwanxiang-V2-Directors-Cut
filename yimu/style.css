@@ -31,7 +31,6 @@
     height: min(760px, calc(100dvh - 28px)); max-height: calc(100dvh - 28px); margin: auto;
     position: relative !important; inset: auto !important; left: auto !important; top: auto !important; right: auto !important; bottom: auto !important; margin: 0 !important; transform: none !important; z-index: 1; box-shadow: 0 18px 65px #10182030; font: var(--ym-type-body)/1.65 var(--ym-font); overflow: hidden; text-align: start; text-shadow: none;
 }
-.ym-dialog::backdrop { background: #10182066; backdrop-filter: blur(3px); }
 .ym-dialog[data-ym-mode="dark"] { color-scheme: dark; }
 .ym-dialog[data-ym-mode="light"] { color-scheme: light; }
 .ym-dialog * { box-sizing: border-box; }
