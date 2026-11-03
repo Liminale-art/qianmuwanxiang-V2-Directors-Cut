@@ -344,12 +344,7 @@ function installChatWriteGuard() {
   chatWriteFetchBefore = globalThis.fetch;
   chatWriteGuard = createChatWriteGuard({ fetchImpl: chatWriteFetchBefore.bind(globalThis), getContext: ctx,
     resolveAccount: resolveImageAccountNamespace, baseUrl: globalThis.location?.origin,
-    isEnabled: () => initialized && isRuntimeOwner(),
-    onBlock: () => {
-      toast('已拦下加载期间的一次异常空聊天保存，原聊天未被这次请求覆盖。请暂时关闭自动记忆记录并刷新页面。', 'warning');
-      pushLog({ id: uid('guard'), time: new Date().toLocaleString(), kind: 'chat-protection', status: 'blocked',
-        error: '加载期间异常空写已阻止；原聊天未被本次请求覆盖，未重放请求。' });
-    } });
+    isEnabled: () => initialized && isRuntimeOwner() });
   globalThis.fetch = chatWriteGuard.fetch;
 }
 
@@ -12612,7 +12607,8 @@ function renderPlugTab() {
   const isExternal = settings.providerMode === 'external';
   // Keep the API/log surface intentionally short even when an older settings
   // payload still contains more rows than the current retention policy.
-  const logs = (Array.isArray(settings.logHistory) ? settings.logHistory : []).slice(0, LOG_LIMIT);
+  const logs = (Array.isArray(settings.logHistory) ? settings.logHistory : [])
+    .filter(log => log?.kind !== 'chat-protection').slice(0, LOG_LIMIT);
   const models = uniqueClean([settings.model, ...(settings.availableModels || [])]);
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const floatSize = getFloatSize();

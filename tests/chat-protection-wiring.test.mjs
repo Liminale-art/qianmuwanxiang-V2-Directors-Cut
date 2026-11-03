@@ -9,7 +9,7 @@ function fixture() {
     const original = () => 'native', guards = [], calls = { log: 0, notice: 0, observe: 0 };
     const context = vm.createContext({ fetch: original, location: { origin: 'https://synthetic.invalid' },
         initialized: true, isRuntimeOwner: () => true, ctx: () => ({}), resolveImageAccountNamespace: async () => 'st-user:synthetic',
-        toast: () => { calls.notice++; }, pushLog: entry => { calls.log++; assert.equal(entry.status, 'blocked'); assert.equal(entry.kind, 'chat-protection'); assert.ok(entry.error); assert.ok(entry.time); assert.equal(entry.request, undefined); },
+        toast: () => { calls.notice++; }, pushLog: () => { calls.log++; },
         uid: () => 'synthetic-guard',
         createChatWriteGuard: options => {
             const guard = { options, fetch: () => 'guarded', observeCurrent: async () => { calls.observe++; }, disposed: false,
@@ -26,7 +26,8 @@ test('lifecycle owns one fetch wrapper, restores it on disable, and can reinstal
     const f = fixture(); f.context.installChatWriteGuard(); f.context.installChatWriteGuard();
     assert.equal(f.guards.length, 1); assert.equal(f.context.fetch, f.guards[0].fetch);
     f.context.observeChatWriteBaseline(); await Promise.resolve(); assert.equal(f.calls.observe, 1);
-    f.guards[0].options.onBlock(); assert.equal(f.calls.notice, 1); assert.equal(f.calls.log, 1);
+    assert.equal(f.guards[0].options.onBlock, undefined, 'use the guard default silent observer');
+    assert.equal(f.calls.notice, 0); assert.equal(f.calls.log, 0);
     f.context.disposeChatWriteGuard(); assert.equal(f.guards[0].disposed, true); assert.equal(f.context.fetch, f.original);
     f.context.installChatWriteGuard(); assert.equal(f.guards.length, 2);
 });
@@ -37,18 +38,29 @@ test('disabling does not remove a later third-party fetch wrapper', () => {
     f.context.disposeChatWriteGuard(); assert.equal(f.context.fetch, next); assert.equal(f.guards[0].disposed, true);
 });
 
-test('protection log renders the actual reason without pretending to be a model request', () => {
-    const context = vm.createContext({ htmlEscape: text => text.replaceAll('<', '&lt;').replaceAll('>', '&gt;') });
-    vm.runInContext(storyboardFunctionSource('renderLogDetail'), context);
-    const html = context.renderLogDetail({ kind: 'chat-protection', error: '<blocked>' });
-    assert.match(html, /&lt;blocked&gt;/); assert.doesNotMatch(html, /发送|返回|暂无/);
-    assert.match(source, /blocked: '已拦截'/); assert.match(source, /'chat-protection': '聊天保护'/);
+test('historical protection entries stay silent and do not occupy the five visible log slots', () => {
+    const history = [
+        { id: 'guard', kind: 'chat-protection', get error() { assert.fail('hidden protection details must not be read'); } },
+        ...Array.from({ length: 6 }, (_, i) => ({ id: `model-${i}`, kind: 'director' })),
+    ];
+    const rendered = [], settings = { logHistory: history }, context = vm.createContext({
+        settings, LOG_LIMIT: 5, FLOAT_SIZE_MIN: 24, FLOAT_SIZE_MAX: 100, feedbackOpenScope: null,
+        uniqueClean: values => values.filter(Boolean), getFloatSize: () => 40,
+        htmlEscape: value => String(value ?? ''), renderLogEntry: entry => { rendered.push(entry); return `<p>${entry.id}</p>`; },
+        renderQuickWheelSettings: () => '', renderStorageManagementCard: () => '',
+    });
+    vm.runInContext(storyboardFunctionSource('renderPlugTab'), context);
+    const html = context.renderPlugTab();
+    assert.deepEqual(rendered, history.slice(1, 6)); assert.equal(settings.logHistory, history);
+    assert.equal(history.length, 7); assert.doesNotMatch(html, /chat-protection|model-5/);
+    settings.logHistory = [history[0]]; rendered.length = 0;
+    assert.match(context.renderPlugTab(), /暂无日志/); assert.deepEqual(rendered, []);
 });
 
 test('init, loaded events and cleanup use the actual protection lifecycle', () => {
     const init = storyboardFunctionSource('init'), cleanup = storyboardFunctionSource('cleanupRuntime'), events = storyboardFunctionSource('bindEvents');
     assert.match(init, /installChatWriteGuard\(\)/);
-    assert.match(init, /initialized = true;\s*observeChatWriteBaseline\(\)/);
+    assert.ok(init.indexOf('initialized = true;') >= 0 && init.indexOf('observeChatWriteBaseline()') > init.indexOf('initialized = true;'), 'baseline observation runs after the guard is enabled');
     assert.match(events, /const rerenderHandler = async \(\) => \{\s*observeChatWriteBaseline\(\)/);
     assert.match(events, /const appReadyHandler = async \(\) => \{\s*observeChatWriteBaseline\(\)/);
     assert.match(cleanup, /initialized = false;\s*disposeChatWriteGuard\(\)/);
