@@ -4,8 +4,10 @@ import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudge
 import { createApiSettings } from './api-settings.mjs';
 
 export const MEMORY_PROMPT_KEY = 'yimu-memory';
-
-const SUMMARY_SYSTEM = '你是忆幕的整理助手。';
+// Fixed identity boundary. The editable persona and request guidance are
+// composed from prompt-settings.mjs; the machine protocol is appended separately.
+const SUMMARY_SYSTEM = `【忆幕身份锚定｜机器规则】
+以下提示词中的“我”仅指执行本次忆幕整理的总结模型，不指当前用户、原文人物或其他聊天参与者。原文中的“我／你／他／她”仍按原文说话者与上下文解释。人格条目属于工作指令，不是故事事实，不得写入记忆正文；输出记忆正文时，不得将人格条目中的“我”当作叙述主体。`;
 const EVENTS = [
     'CHAT_CHANGED', 'CHAT_LOADED', 'CHAT_RENAMED', 'CHAT_DELETED',
     'MESSAGE_SENT', 'MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED',

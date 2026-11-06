@@ -79,7 +79,7 @@ test('private feeds follow the owner social circle while public visibility does 
 });
 
 test('selected guidance carries only the chosen social surface and keeps the approved preview and identity unchanged', () => {
-  assert.equal(hashText(CREATIVE_IDENTITY), '6bb891a0');
+  assert.equal(hashText(CREATIVE_IDENTITY), '903f07cf');
   assert.equal(hashText(CREATIVE_GUIDES.quests), '35ad1955');
   const moments = creativeSectionGuidance({ interludeType: 'phone', phoneViewType: 'moments' });
   assert.ok(moments.includes(CREATIVE_GUIDES.phone));

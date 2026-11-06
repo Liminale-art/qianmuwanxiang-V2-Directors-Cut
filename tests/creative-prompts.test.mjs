@@ -25,7 +25,7 @@ test('relationship guidance and output contract agree on two or three people wit
 });
 
 test('Chinese identity stays exact while progression laws and guides remain separately reviewable', () => {
-  assert.equal(digest(CREATIVE_IDENTITY), '03765b3a9e8a4c0172833df171204d23832521b286866796f43a5df21110960e');
+  assert.equal(digest(CREATIVE_IDENTITY), 'c6ec725f2dccfb70112216ab09c34fff7021e2b04a959428aaccec5bf1aa91d4');
   assert.equal(digest(CREATIVE_LAWS), '5a7b5d2a96641ec91b1bd34a6efc76970ac6d81239e93f4a889a46f22c1e9501');
   assert.equal(digest(CREATIVE_BLUEPRINT), 'e2451abdca74390ae2608a3edcf118993d247074a311348998a5eeb64f91a8e2');
   assert.equal(digest(JSON.stringify(CREATIVE_GUIDES)), '6984f7f5017097132f16018e5016b99ae9c230ed384605e76cb896dec08e2943');

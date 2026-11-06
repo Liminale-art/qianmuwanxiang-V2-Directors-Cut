@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { hashText } from '../qianmu-storyboard-utils.js';
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
+import { CREATIVE_IDENTITY, CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
 import { createCreativeSchema, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint, mergeCreativeRepair } from '../qianmu-creative-runtime.js';
 import { directorSectionStatus } from '../qianmu-director-live.js';
@@ -14,9 +14,11 @@ test('exact shipped v463 relationship defaults migrate without overwriting DIY p
   // Reconstruct only the replaced sentence and verify against hashes measured
   // from bc3eeb0f before editing; unlike a hash stub, this checks the actual text.
   const previous = {
-    systemPrompt: next.systemPrompt.replace(
-      'named participants each. Choose participants for the relationship and its narrative value; do not add people merely to vary group sizes.',
-      'named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape.'),
+    systemPrompt: next.systemPrompt
+      .replace(CREATIVE_IDENTITY, CREATIVE_IDENTITY.replaceAll('我', '你'))
+      .replace(
+        'named participants each. Choose participants for the relationship and its narrative value; do not add people merely to vary group sizes.',
+        'named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape.'),
     outputSchemaText: next.outputSchemaText.replace(
       'Every relation uses an array of 2–3 exact participant names, chosen for the relationship and its narrative value rather than a required mix of group sizes; at least two relations include neither USER nor CHAR.',
       'Every relation uses an array of 2–3 exact participant names; across the three minimum relations include both a two-person and a three-person relation, and at least two relations include neither USER nor CHAR.'),

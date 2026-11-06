@@ -5,6 +5,7 @@ test('actual defaults are visible independent copies and legacy preferences rema
     const value = resolvePromptConfig({preference:'保留约定'});
     assert.equal(value.groups.summary.at(-1).text,'保留约定'); assert.equal(value.groups.stage.at(-1).text,'保留约定');
     assert.equal(value.groups.recall.some(item=>item.id==='legacy-preference'),false);
+    assert.equal(value.groups.identity[0].id,'persona');
     assert.match(value.groups.summary.find(item => item.id === 'facts').text, /日后能直接帮助续写/);
     assert.match(value.groups.summary.find(item => item.id === 'facts').text, /例：/);
     assert.match(value.groups.recall.find(item => item.id === 'recall-purpose').text, /最后放在哪里/);
@@ -12,8 +13,25 @@ test('actual defaults are visible independent copies and legacy preferences rema
 });
 test('only enabled entries in explicit order compose; an emptied group does not secretly restore defaults', () => {
     const config=resolvePromptConfig(); config.groups.summary=[{id:'b',name:'B',text:'第二段',enabled:true},{id:'a',name:'A',text:'不使用',enabled:false},{id:'c',name:'C',text:'第三段',enabled:true}];
+    config.groups.identity=[];
     assert.equal(composePrompt({prompts:config},'summary',{protocol:'格式',data:'数据'}),'第二段\n第三段\n\n格式\n\n数据');
     config.groups.summary=[]; assert.equal(composePrompt({prompts:config},'summary',{data:'数据'}),'数据');
+});
+test('the editable default persona is shared by every request-specific prompt group', () => {
+    const config=resolvePromptConfig();
+    const persona=config.groups.identity[0].text;
+    assert.match(persona,/我是忆幕/);
+    assert.doesNotMatch(persona,/人工修订/);
+    assert.match(persona,/故事记忆的梳理者与封存者/);
+    assert.match(composePrompt({prompts:config},'summary',{data:'数据'}),new RegExp(persona.slice(0,18)));
+    config.groups.identity[0].text='用户自定义的人格';
+    assert.match(composePrompt({prompts:config},'stage',{data:'数据'}),/用户自定义的人格/);
+});
+test('legacy prompt configs gain the default persona without changing their existing groups', () => {
+    const current=resolvePromptConfig(), legacy={groups:{summary:current.groups.summary,stage:current.groups.stage,recall:current.groups.recall},presets:[],selectedPreset:''};
+    const migrated=validatePromptConfig(legacy);
+    assert.equal(migrated.groups.identity[0].id,'persona');
+    assert.equal(migrated.groups.summary.length,current.groups.summary.length);
 });
 test('presets roundtrip without importing unrelated ST or account fields', () => {
     const config=resolvePromptConfig(); config.presets=[{id:'one',name:'简洁',groups:structuredClone(config.groups)}]; config.selectedPreset='one';

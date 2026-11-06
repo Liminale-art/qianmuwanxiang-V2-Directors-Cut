@@ -38,3 +38,6 @@ pnpm-lock.yaml
 
 # 本地发行快照（由 scripts/build-release.mjs 可重复生成）
 dist/
+
+# Local research decisions; never publish or bundle.
+/忆幕后续设计备忘.md

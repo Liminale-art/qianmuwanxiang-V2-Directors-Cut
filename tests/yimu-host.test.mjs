@@ -52,6 +52,7 @@ test('ST summary admission checks the complete prompt and output reservation bef
     assert.equal(f.rawCalls.length, 0);
     assert.equal(await f.host.generate('少量合成原文'), '当前连接摘要');
     assert.equal(f.rawCalls.length, 1);
+    assert.match(f.rawCalls[0][0].systemPrompt, /以下提示词中的“我”仅指执行本次忆幕整理的总结模型/);
 });
 
 function core(source, type = 'normal') {
