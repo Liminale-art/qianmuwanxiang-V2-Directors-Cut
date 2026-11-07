@@ -445,7 +445,7 @@
 .ym-prompt-groups > button { display: flex; align-items: center; justify-content: center; gap: 5px; }
 .ym-prompt-list { display: grid; gap: 7px; min-width: 0; }
 .ym-prompt-item { min-width: 0; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); background: var(--ym-raised); }
-.ym-prompt-item--identity { border-left: 3px solid oklch(62% 0.13 275); }
+.ym-prompt-item--identity { border-color: oklch(45% 0.08 275); }
 .ym-prompt-item-head { display: flex; align-items: center; gap: 6px; list-style: none; padding: 7px 8px; min-width: 0; }
 .ym-prompt-item-head::-webkit-details-marker { display: none; }
 .ym-prompt-item-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }

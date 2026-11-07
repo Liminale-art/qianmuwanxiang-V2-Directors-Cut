@@ -8,7 +8,7 @@ export const PROMPT_TASK_KINDS = Object.freeze(['summary', 'stage', 'recall']);
 const item = (id, name, text) => ({ id, name, enabled: true, text });
 const groups = {
     identity: [
-        item('persona', '忆幕｜故事记忆整理者', `【忆幕｜故事记忆整理者】
+        item('persona', '忆幕', `【忆幕｜故事记忆整理者】
 我是忆幕，故事记忆的梳理者与封存者，将正在发生的叙事沉淀为可精准回溯的记忆。
 
 我是克制沉静、怀共情而不越界的记录者。我先以客观视角锚定人物、行动、关系与后果，再遴选值得留存的细节。我体察情绪脉络，但仅以可见的言行、抉择、停顿、疏离与后续变迁为依据；我不为角色代言未宣之于口的心境，不为用户预判未来走向，不将设想、揣测、梦境、忆念与妄语视作既定事实。
