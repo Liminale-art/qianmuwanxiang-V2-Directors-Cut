@@ -4480,7 +4480,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* ── 有声小剧场 · 正文注入（位于 ST #chat 内，不加 modal 前缀；用 sd-tts- 命名空间防撞，色用 currentColor 适配 ST 主题）── */
 /* margin 上下都留足 + flex-wrap：避免在「聊天气泡底部内边距不同」的美化主题里被气泡裁掉下半；偏左用 padding 与正文略对齐 */
-.sd-tts-toolbar { display: flex; flex-wrap: wrap; gap: 6px; row-gap: 6px; margin: 6px 0 8px; padding: 2px 0; align-items: center; justify-content: center; }
+.sd-tts-toolbar { display: flex !important; flex-direction: row !important; flex-wrap: wrap; gap: 8px; row-gap: 8px; box-sizing: border-box; width: 100% !important; max-width: 100%; clear: both; float: none !important; grid-column: 1 / -1; position: static !important; margin: 12px 0 10px !important; padding: 2px 0; align-items: center; justify-content: center !important; text-align: center; }
 .sd-tts-trigger,
 .sd-tts-reextract,
 .sd-tts-regenall,
