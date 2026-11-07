@@ -16,7 +16,7 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 export const FRONTEND_VERSION = '0.8.17';
 export const SERVICE_VERSION = '0.8.9';
 export const VERSION = SERVICE_VERSION;
-export const SCHEMA = 7;
+export const SCHEMA = 8;
 export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
@@ -87,8 +87,34 @@ function textValue(text) {
     return text.trim();
 }
 function identifier(value) { requireThat(typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value), '操作或条目标识无效'); return value; }
+function validateTemporalFields(entry) {
+    // P3.5-A: Optional temporal metadata for fact lifecycle tracking.
+    // These fields enable "what was true when" queries without changing current retrieval behavior.
+    if (entry.validFrom !== undefined) {
+        requireThat(Number.isSafeInteger(entry.validFrom) && entry.validFrom >= 1, 'validFrom 必须为正整数楼层');
+    }
+    if (entry.validTo !== undefined) {
+        requireThat(Number.isSafeInteger(entry.validTo) && entry.validTo >= 1, 'validTo 必须为正整数楼层');
+        if (entry.validFrom !== undefined) {
+            requireThat(entry.validTo >= entry.validFrom, 'validTo 不能早于 validFrom');
+        }
+    }
+    if (entry.observedAt !== undefined) {
+        requireThat(Number.isSafeInteger(entry.observedAt) && entry.observedAt >= 1, 'observedAt 必须为正整数楼层');
+    }
+    if (entry.supersedes !== undefined) {
+        requireThat(Array.isArray(entry.supersedes) && entry.supersedes.length <= 64, 'supersedes 必须为数组且不超过 64 项');
+        entry.supersedes = entry.supersedes.map(id => {
+            identifier(id);
+            return id;
+        });
+    }
+    if (entry.factStatus !== undefined) {
+        requireThat(['active', 'ended', 'uncertain'].includes(entry.factStatus), 'factStatus 必须为 active/ended/uncertain');
+    }
+}
 export function validateDocument(raw) {
-    requireThat([1, 2, 3, 4, 5, 6, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
+    requireThat([1, 2, 3, 4, 5, 6, 7, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, autoSummary: raw.schema < 6 ? raw.enabled : raw.autoSummary};
     requireThat(typeof raw.autoSummary === 'boolean', '自动总结状态无效');
     raw = clone(raw);
@@ -109,6 +135,7 @@ export function validateDocument(raw) {
             && entry.text === '已删除' && !entry.title && !entry.history?.length && !entry.conflicts?.length && !entry.candidate,
         '已清除的删除记录无效');
         requireThat(['summary', 'manual', 'stage', 'excerpt'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
+        validateTemporalFields(entry);
         if (entry.kind === 'summary') validateSource(entry.source);
         else if (entry.kind === 'stage') validateStageSource(entry.source);
         else if (entry.kind === 'excerpt') validateExcerpt(entry);
@@ -118,6 +145,7 @@ export function validateDocument(raw) {
         for (const version of [...entry.history, ...entry.conflicts, ...(entry.candidate ? [entry.candidate] : [])]) {
             if (version.title !== undefined) version.title = validateMemoryTitle(version.title);
             if (version.discardedSources !== undefined) version.discardedSources = validateDiscardedSources(version.discardedSources);
+            validateTemporalFields(version);
             version.scenes = validateScenes(version.scenes, version.kind === 'summary' ? version.source : {});
             if (version.kind === 'manual') version.placement = validatePlacement(version.placement);
             delete version.originVerified; delete version.placementVerified;
@@ -193,7 +221,13 @@ function submittedEntry(input, document) {
     }
     const placement = input.kind === 'manual' ? validatePlacement(input.placement, { binding: document.binding }) : undefined;
     if (input.kind === 'manual') requireThat(placement, '请为自定义切片选择有效的插入楼层');
-    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), ...(input.title !== undefined ? { title: validateMemoryTitle(input.title) } : {}), source, scenes, ...(input.kind === 'manual' ? { placement } : {}) };
+    const temporal = {};
+    if (input.validFrom !== undefined) temporal.validFrom = input.validFrom;
+    if (input.validTo !== undefined) temporal.validTo = input.validTo;
+    if (input.observedAt !== undefined) temporal.observedAt = input.observedAt;
+    if (input.supersedes !== undefined) temporal.supersedes = input.supersedes;
+    if (input.factStatus !== undefined) temporal.factStatus = input.factStatus;
+    return { id: identifier(input.id), kind: input.kind, text: textValue(input.text), ...(input.title !== undefined ? { title: validateMemoryTitle(input.title) } : {}), source, scenes, ...(input.kind === 'manual' ? { placement } : {}), ...temporal };
 }
 function requireUnusedStageParents(document, submitted) {
     if (submitted.kind !== 'stage') return;

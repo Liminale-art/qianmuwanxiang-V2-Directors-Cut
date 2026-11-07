@@ -39,7 +39,7 @@ test('content batches preserve five recent floors and skip unchosen initial hist
 
 test('schema seven preserves schema-six explicit auto choices and migrates earlier enabled chats without writes', () => {
     const fresh = createDocument(binding);
-    assert.equal(SCHEMA, 7); assert.equal(fresh.autoSummary, false);
+    assert.equal(SCHEMA, 8); assert.equal(fresh.autoSummary, false);
     assert.equal(validateDocument({ ...fresh, schema: 6, enabled: true, autoSummary: false }).autoSummary, false);
     for (const enabled of [true, false]) {
         const legacy = { ...fresh, schema: 5, enabled }; delete legacy.autoSummary;
@@ -285,3 +285,41 @@ test('global defaults patch rather than resetting unrelated settings, explicit n
     assert.equal(defaults.values.recent, 5);
     assert.equal(defaults.values.preference, '侧重承诺');
 });
+
+test('schema eight accepts optional temporal fields for fact lifecycle tracking', async () => {
+    assert.equal(SCHEMA, 8);
+    const doc = enable();
+    // Temporal fields are optional and validated when present
+    const withTemporal = await entry('t1', 2, 4, '事实在第二幕确立。');
+    withTemporal.validFrom = 2;
+    withTemporal.validTo = 10;
+    withTemporal.observedAt = 4;
+    withTemporal.supersedes = ['old1', 'old2'];
+    withTemporal.factStatus = 'active';
+    const saved = append(doc, withTemporal);
+    const retrieved = saved.entries.find(e => e.id === 't1');
+    assert.equal(retrieved.validFrom, 2);
+    assert.equal(retrieved.validTo, 10);
+    assert.equal(retrieved.observedAt, 4);
+    assert.deepEqual(retrieved.supersedes, ['old1', 'old2']);
+    assert.equal(retrieved.factStatus, 'active');
+    // Entries without temporal fields remain valid
+    const plain = await entry('t2', 5, 6, '普通记忆无时效字段。');
+    const plainSaved = append(saved, plain);
+    assert.equal(plainSaved.entries.find(e => e.id === 't2').validFrom, undefined);
+    // Invalid temporal fields are rejected
+    const badFrom = await entry('bad1', 7, 8);
+    badFrom.validFrom = 0;
+    assert.throws(() => append(plainSaved, badFrom), /validFrom/);
+    const badTo = await entry('bad2', 7, 8);
+    badTo.validFrom = 10;
+    badTo.validTo = 5;
+    assert.throws(() => append(plainSaved, badTo), /validTo.*validFrom/);
+    const badSupersedes = await entry('bad3', 7, 8);
+    badSupersedes.supersedes = ['valid-id', 'invalid id with spaces'];
+    assert.throws(() => append(plainSaved, badSupersedes), /标识无效/);
+    const badStatus = await entry('bad4', 7, 8);
+    badStatus.factStatus = 'unknown';
+    assert.throws(() => append(plainSaved, badStatus), /factStatus/);
+});
+
