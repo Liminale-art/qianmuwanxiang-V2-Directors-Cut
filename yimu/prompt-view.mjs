@@ -1,7 +1,7 @@
 import {DEFAULT_PROMPTS,BUILTIN_PROMPT_PRESET,PROMPT_KINDS,resolvePromptConfig,validatePromptConfig,importPromptPreset,exportPromptPreset,mergeImportedPromptConfig,selectPromptPreset} from './prompt-settings.mjs';
 import {createYimuIcon} from './icons.mjs';
 
-const LABELS={identity:'忆幕人格',summary:'切片总结',stage:'阶段总结',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 /** Committed configuration and per-entry text drafts are deliberately separate. */
 export function mountPromptView(container,{document=container?.ownerDocument||globalThis.document,onSave=async()=>{},onError=()=>{},onExport,showTitle=true}={}){
     if(!container||!document?.createElement)throw new TypeError('总结提示词缺少容器');
@@ -96,14 +96,14 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         preset.value=rec.config.selectedPreset|| (defaultActive?BUILTIN_PROMPT_PRESET:'');
     }
     preset.addEventListener('change',()=>{const selected=preset.value;if(!selected){renderPresets();return;}enqueue(value=>selectPromptPreset(value,selected));});
-    function move(id,target){const group=kind;enqueue(value=>{const entries=value.groups[group],from=entries.findIndex(entry=>entry.id===id);if(from<0||target<0||target>=entries.length)return value;const [entry]=entries.splice(from,1);entries.splice(target,0,entry);return value;});}
+    function move(id,target,group=kind){const g=group;enqueue(value=>{const entries=value.groups[g],from=entries.findIndex(entry=>entry.id===id);if(from<0||target<0||target>=entries.length)return value;const [entry]=entries.splice(from,1);entries.splice(target,0,entry);return value;});}
     function createRow(rec,group,id){
         const key=rowKey(rec.scope,group,id),node=el('details','ym-prompt-item');node.dataset.promptId=id;
         const head=el('summary','ym-prompt-item-head'),drag=el('span','ym-prompt-drag');drag.append(createYimuIcon('drag',{document}));drag.draggable=true;drag.title='拖动排序';drag.setAttribute('aria-hidden','true');
         const title=el('span','ym-prompt-item-title'),tools=el('span','ym-actions ym-prompt-item-tools'),enabled=el('input','ym-switch');enabled.type='checkbox';
         const current=()=>rec.config.groups[group].find(entry=>entry.id===id),local=()=>rec.drafts.get(key),active=()=>!disposed&&scope===rec.scope;
         enabled.addEventListener('click',event=>event.stopPropagation());enabled.addEventListener('change',()=>{if(!active())return;const checked=enabled.checked;enqueue(value=>{const entry=value.groups[group].find(entry=>entry.id===id);if(!entry)throw new Error('此条目已被删除，草稿仍保留');entry.enabled=checked;return value;});});
-        const up=button('上移条目','up',()=>{if(active())move(id,rec.config.groups[group].findIndex(entry=>entry.id===id)-1);}),down=button('下移条目','down',()=>{if(active())move(id,rec.config.groups[group].findIndex(entry=>entry.id===id)+1);});
+        const up=button('上移条目','up',()=>{if(active())move(id,rec.config.groups[group].findIndex(entry=>entry.id===id)-1,group);}),down=button('下移条目','down',()=>{if(active())move(id,rec.config.groups[group].findIndex(entry=>entry.id===id)+1,group);});
         const remove=button('删除条目','trash',()=>{if(!active())return;rec.drafts.delete(key);enqueue(value=>{value.groups[group]=value.groups[group].filter(entry=>entry.id!==id);return value;});});
         tools.append(enabled,up,down,remove);head.append(drag,title,tools,createYimuIcon('expand',{document}));
         const body=el('div','ym-prompt-item-body'),editHeading=el('div','ym-prompt-edit-heading'),titleInput=el('input');titleInput.type='text';titleInput.maxLength=160;
@@ -119,20 +119,22 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     }
     function renderRows(){
         const rec=record();if(!rec)return;
-        const entries=[...rec.config.groups[kind]],ids=new Set(entries.map(entry=>entry.id));
-        for(const [key,draft]of rec.drafts){const [owner,group,id]=JSON.parse(key);if(owner===scope&&group===kind&&!ids.has(id)){entries.push(draft.base);ids.add(id);}}
+        const groups=kind==='summary'?['identity','summary']:[kind];
+        const allEntries=[];
+        for(const g of groups){const entries=[...rec.config.groups[g]],ids=new Set(entries.map(entry=>entry.id));for(const [key,draft]of rec.drafts){const [owner,group,id]=JSON.parse(key);if(owner===scope&&group===g&&!ids.has(id)){entries.push(draft.base);ids.add(id);}}allEntries.push({group:g,entries});}
         const desired=[];
-        entries.forEach((entry,index)=>{
-            const key=rowKey(scope,kind,entry.id),row=rowNodes.get(key)||createRow(rec,kind,entry.id),draft=rec.drafts.get(key);
+        for(const {group:g,entries} of allEntries){entries.forEach((entry,index)=>{
+            const key=rowKey(scope,g,entry.id),row=rowNodes.get(key)||createRow(rec,g,entry.id),draft=rec.drafts.get(key);
+            row.node.className='ym-prompt-item'+(g==='identity'?' ym-prompt-item--identity':'');
             row.title.textContent=entry.name;row.enabled.checked=entry.enabled;row.enabled.setAttribute('aria-label',`启用${entry.name}`);
             for(const [node,label]of[[row.up,`上移${entry.name}`],[row.down,`下移${entry.name}`],[row.remove,`删除${entry.name}`],[row.save,`保存${entry.name}`],[row.cancel,`撤销${entry.name}修改`]]){node.title=label;node.setAttribute('aria-label',label);}
-            row.titleInput.setAttribute('aria-label',`${LABELS[kind]}条目名称`);row.content.setAttribute('aria-label',`${entry.name}提示词正文`);
+            row.titleInput.setAttribute('aria-label',`${LABELS[g]}条目名称`);row.content.setAttribute('aria-label',`${entry.name}提示词正文`);
             if(!draft){row.titleInput.value=entry.name;row.content.value=entry.text;}else{if(row.titleInput.value!==draft.name)row.titleInput.value=draft.name;if(row.content.value!==draft.text)row.content.value=draft.text;}
             row.up.dataset.edgeDisabled=String(index===0);row.down.dataset.edgeDisabled=String(index===entries.length-1);desired.push(row.node);
-        });
+        });}
         for(const child of [...list.children])if(!desired.includes(child))child.remove();
         desired.forEach((node,index)=>{if(list.children[index]!==node)list.insertBefore(node,list.children[index]||null);});
-        empty.hidden=entries.length>0;
+        empty.hidden=allEntries.reduce((n,{entries})=>n+entries.length,0)>0;
     }
     function update(){
         const rec=record();if(!rec)return;const disabled=state.disabled===true&&!rec.saving;
@@ -142,7 +144,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         badge.textContent=rec.saving||rec.queue.length?'正在保存':rec.drafts.size?'有条目草稿':'';badge.hidden=!badge.textContent;
         recovery.hidden=!rec.failed;retry.disabled=disabled||!!rec.saving;cancelOperation.disabled=disabled||!!rec.saving;
         status.textContent=rec.error||rec.message||'';status.hidden=!status.textContent;
-        for(const [key,node]of groupButtons){node.hidden=key==='recall'&&!recallVisible();node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
+        for(const [key,node]of groupButtons){node.hidden=(key==='recall'&&!recallVisible())||key==='identity';node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
         card.setAttribute('aria-busy',String(!!rec.saving));
     }
     file.addEventListener('cancel',event=>event.stopPropagation?.());
@@ -160,6 +162,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         if(!rec.saving&&!rec.queue.length&&(next.revision??0)>=rec.revision){rec.saved=clone(incoming);rec.config=clone(incoming);rec.revision=next.revision??rec.revision;}
         if(switched){nameRow.hidden=true;confirmation.hidden=true;confirmationAction=null;}
         if(kind==='recall'&&!recallVisible())kind='summary';
+        if(kind==='identity')kind='summary';
         renderPresets();renderRows();update();if(!rec.failed)void drain(rec);
     }
     render();

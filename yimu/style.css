@@ -163,6 +163,7 @@
 .ym-extra-settings:not([open]) > summary { min-height: 52px; margin: 0; padding-block: 0; align-items: center; }
 .ym-extra-settings:not([open]) > .ym-settings-form { display: none; }
 .ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
+.ym-extra-settings[open] > .ym-setting-title { margin-bottom: 7px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
 .ym-setting-row:has(> small) { flex-direction: column; align-items: stretch; }
@@ -444,6 +445,7 @@
 .ym-prompt-groups > button { display: flex; align-items: center; justify-content: center; gap: 5px; }
 .ym-prompt-list { display: grid; gap: 7px; min-width: 0; }
 .ym-prompt-item { min-width: 0; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); background: var(--ym-raised); }
+.ym-prompt-item--identity { border-left: 3px solid oklch(62% 0.13 275); }
 .ym-prompt-item-head { display: flex; align-items: center; gap: 6px; list-style: none; padding: 7px 8px; min-width: 0; }
 .ym-prompt-item-head::-webkit-details-marker { display: none; }
 .ym-prompt-item-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
