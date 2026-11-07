@@ -4513,18 +4513,30 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 /* 内联🔊胶囊：把「正文末字＋喇叭（＋连播钮）」焊成一个 nowrap 整体，图标永不孤零零单起一行。 */
 .sd-tts-glue { white-space: nowrap; }
 .sd-tts-play.sd-tts-inline {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin: 0 2px;
-  vertical-align: middle;
-  border: none;
+  min-width: 20px;
+  min-height: 20px;
+  max-width: 20px;
+  max-height: 20px;
+  margin: 0 2px !important;
+  padding: 0 !important;
+  vertical-align: middle !important;
+  border: none !important;
   border-radius: 6px;
   background: rgba(127, 127, 127, .18);
   color: inherit;
   font-size: 11px;
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
   cursor: pointer;
   transition: background .15s ease;
 }
@@ -4533,18 +4545,30 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 .sd-tts-play.sd-tts-inline.sd-playing { background: rgba(127, 170, 127, .5); }
 /* 正文内联「连续播放本条」钮：与单句喇叭同尺寸，方形底+强调色区分 */
 .sd-tts-inline-playall {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin: 0 3px 0 2px;
-  vertical-align: middle;
-  border: none;
+  min-width: 20px;
+  min-height: 20px;
+  max-width: 20px;
+  max-height: 20px;
+  margin: 0 3px 0 2px !important;
+  padding: 0 !important;
+  vertical-align: middle !important;
+  border: none !important;
   border-radius: 6px;
   background: rgba(95, 150, 110, .42);
   color: inherit;
   font-size: 10px;
+  position: relative !important;
+  top: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
   cursor: pointer;
   transition: background .15s ease;
 }
