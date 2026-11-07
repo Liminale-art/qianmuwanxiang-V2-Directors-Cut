@@ -8,6 +8,8 @@ test('vector normalization and cosine ranking are bounded and do not expose vect
     const ranked = rankVectorCandidates([{ id: 'near', text: '近', vector: [1, 0] }, { id: 'far', text: '远', vector: [0, 1] }], [1, 0]);
     assert.deepEqual(ranked.map(item => item.id), ['near', 'far']);
     assert.equal('vector' in ranked[0], false);
+    assert.equal(typeof ranked[0].score, 'number', 'rankVectorCandidates returns score for discoverVectorCandidates contract');
+    assert.ok(ranked[0].score >= 0 && ranked[0].score <= 1, 'cosine similarity score is normalized');
 });
 
 test('missing vector provider is a quiet fallback and provider results stay read-only', async () => {
@@ -74,4 +76,23 @@ test('rerank is downstream of structural filtering and drops cross-chat or forge
     assert.deepEqual(request.candidates.map(item => item.id), ['current']);
     assert.deepEqual(result.candidates.map(item => item.id), ['current']);
     assert.equal(result.candidates[0].chatKey, undefined, 'provider sees only safe candidate fields');
+});
+
+test('rankVectorCandidates output satisfies discoverVectorCandidates contract', async () => {
+    // Simulate the api-settings.mjs vectorCandidates → discoverVectorCandidates chain
+    const mockProvider = async ({ query, candidates }) => {
+        // Mock what api-settings.mjs does: call rankVectorCandidates with vectors
+        const queryVector = [1, 0];
+        const candidatesWithVectors = candidates.map((c, i) => ({ ...c, vector: i === 0 ? [0.9, 0.1] : [0.1, 0.9] }));
+        return rankVectorCandidates(candidatesWithVectors, queryVector, { limit: 6 });
+    };
+    const pool = [
+        { id: 'a', text: '第一条记忆', title: '近似' },
+        { id: 'b', text: '第二条记忆', title: '远离' },
+    ];
+    const result = await discoverVectorCandidates({ query: '查询', candidates: pool, provider: mockProvider });
+    assert.equal(result.status, 'ready', 'rankVectorCandidates output is accepted by discoverVectorCandidates');
+    assert.equal(result.candidates.length, 2);
+    assert.deepEqual(result.candidates.map(c => c.id), ['a', 'b']);
+    assert.equal('score' in result.candidates[0], false, 'discoverVectorCandidates strips score from final output');
 });

@@ -30,9 +30,9 @@ export function rankVectorCandidates(candidates = [], queryVector, { limit = 6 }
         if (score === null) return null;
         seen.add(candidate.id);
         return { candidate, score };
-    }).filter(Boolean).sort((left, right) => right.score - left.score).slice(0, max).map(({ candidate }) => {
+    }).filter(Boolean).sort((left, right) => right.score - left.score).slice(0, max).map(({ candidate, score }) => {
         const { vector, ...safe } = candidate;
-        return safe;
+        return { ...safe, score };
     });
 }
 
