@@ -4511,7 +4511,7 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
 
 /* 正文内联小喇叭：紧跟台词句尾，体积小、不占行。方形底与工具栏/列表图标风格统一 */
 /* 内联🔊胶囊：把「正文末字＋喇叭（＋连播钮）」焊成一个 nowrap 整体，图标永不孤零零单起一行。 */
-.sd-tts-glue { white-space: nowrap; }
+.sd-tts-glue { display: inline !important; white-space: nowrap; }
 .sd-tts-play.sd-tts-inline {
   display: inline-flex !important;
   align-items: center;
