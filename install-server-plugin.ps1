@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $installRoot = (Get-Location).ProviderPath
 $backupRetention = if ($env:QIANMU_BACKUP_RETENTION) { [int]$env:QIANMU_BACKUP_RETENTION } else { 5 }
 if ($backupRetention -lt 0) { throw '更新失败：备份保留数量无效。' }
@@ -103,9 +103,51 @@ Get-ChildItem -LiteralPath (Split-Path -Parent $configFile) -File -Filter "$(Spl
         $ref = $_.FullName + '.ref'
         if (Test-Path -LiteralPath $ref -PathType Leaf) { Remove-Item -LiteralPath $ref -Force }
     }
+$serviceVersion = (Get-Content -LiteralPath (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json).version
+$yimuUpdated = $false
+$yimuFrontendVersion = ''
+$yimuServiceVersion = ''
+$yimuFrontend = Join-Path $installRoot 'public/scripts/extensions/third-party/yimu'
+$yimuServer = Join-Path $installRoot 'plugins/yimu'
+if ((Test-Path -LiteralPath $yimuFrontend) -or (Test-Path -LiteralPath $yimuServer)) {
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Warning '忆幕已安装，但找不到 Node.js；千幕已更新，忆幕未同步。'
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $pluginDir 'scripts/install-yimu.mjs') -PathType Leaf)) {
+        Write-Warning '忆幕更新入口不完整；千幕已更新，忆幕未同步。'
+    } else {
+        $yimuConfigArg = @()
+        $dockerConfig = Join-Path $installRoot 'config/config.yaml'
+        if (-not (Test-Path -LiteralPath $configFile -PathType Leaf) -and (Test-Path -LiteralPath $dockerConfig -PathType Leaf)) {
+            $yimuConfigArg = @('--config', 'config/config.yaml')
+        }
+        $env:YIMU_INSTALLER_QUIET = '1'
+        try {
+            & node (Join-Path $pluginDir 'scripts/install-yimu.mjs') --st-root $installRoot --stopped @yimuConfigArg
+            if ($LASTEXITCODE -eq 0) {
+                $yimuFrontendManifest = Join-Path $yimuFrontend 'manifest.json'
+                $yimuServerPackage = Join-Path $yimuServer 'package.json'
+                if ((Test-Path -LiteralPath $yimuFrontendManifest -PathType Leaf) -and (Test-Path -LiteralPath $yimuServerPackage -PathType Leaf)) {
+                    $yimuFrontendVersion = (Get-Content -LiteralPath $yimuFrontendManifest -Raw | ConvertFrom-Json).version
+                    $yimuServiceVersion = (Get-Content -LiteralPath $yimuServerPackage -Raw | ConvertFrom-Json).version
+                    if ($yimuFrontendVersion -match '^\d+\.\d+\.\d+$' -and $yimuServiceVersion -match '^\d+\.\d+\.\d+$') {
+                        $yimuUpdated = $true
+                    }
+                }
+            } else {
+                Write-Warning '忆幕更新失败；千幕已更新，忆幕保留原版本。'
+            }
+        } catch {
+            Write-Warning "忆幕更新失败：$($_.Exception.Message)；千幕已更新，忆幕保留原版本。"
+        } finally {
+            Remove-Item Env:\YIMU_INSTALLER_QUIET -ErrorAction SilentlyContinue
+        }
+    }
+}
 if ($env:QIANMU_INSTALLER_QUIET -ne '1') {
-    $version = (Get-Content -LiteralPath (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json).version
-    Write-Host "千幕服务端已更新至 v$version。" -ForegroundColor Green
+    Write-Host "千幕服务端已更新至 v$serviceVersion。" -ForegroundColor Green
+    if ($yimuUpdated) {
+        Write-Host "忆幕已更新：前端 v$yimuFrontendVersion；服务端 v$yimuServiceVersion。" -ForegroundColor Green
+    }
 }
 } finally {
     Assert-PlainPath $installLock $true

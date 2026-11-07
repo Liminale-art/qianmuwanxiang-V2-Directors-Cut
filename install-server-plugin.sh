@@ -126,4 +126,30 @@ if [ -L "$CONFIG_FILE" ] || ! cmp -s "$BACKUP_FILE" "$CONFIG_FILE"; then printf 
 mv -f "$TEMP_FILE" "$CONFIG_FILE"
 TEMP_FILE=''
 prune_backups
-[ "${QIANMU_INSTALLER_QUIET:-}" = 1 ] || printf '千幕服务端已更新至 v%s。\n' "$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PLUGIN_DIR/package.json" | head -n 1)"
+SERVICE_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PLUGIN_DIR/package.json" | head -n 1)
+YIMU_UPDATED=0
+YIMU_FRONTEND_VERSION=''
+YIMU_SERVICE_VERSION=''
+YIMU_FRONTEND="$INSTALL_ROOT/public/scripts/extensions/third-party/yimu"
+YIMU_SERVER="$INSTALL_ROOT/plugins/yimu"
+if [ -e "$YIMU_FRONTEND" ] || [ -e "$YIMU_SERVER" ]; then
+  if ! command -v node >/dev/null 2>&1; then
+    printf '忆幕已安装，但找不到 Node.js；千幕已更新，忆幕未同步。\n' >&2
+  elif [ ! -f "$PLUGIN_DIR/scripts/install-yimu.mjs" ]; then
+    printf '忆幕更新入口不完整；千幕已更新，忆幕未同步。\n' >&2
+  else
+    YIMU_CONFIG_ARG=''
+    if [ "$DEPLOYMENT" = docker ]; then YIMU_CONFIG_ARG='--config config/config.yaml'; fi
+    if YIMU_INSTALLER_QUIET=1 node "$PLUGIN_DIR/scripts/install-yimu.mjs" --st-root "$INSTALL_ROOT" --stopped $YIMU_CONFIG_ARG; then
+      YIMU_FRONTEND_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$YIMU_FRONTEND/manifest.json" 2>/dev/null | head -n 1)
+      YIMU_SERVICE_VERSION=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$YIMU_SERVER/package.json" 2>/dev/null | head -n 1)
+      if printf '%s' "$YIMU_FRONTEND_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' && printf '%s' "$YIMU_SERVICE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        YIMU_UPDATED=1
+      fi
+    else
+      printf '忆幕更新失败；千幕已更新，忆幕保留原版本。\n' >&2
+    fi
+  fi
+fi
+[ "${QIANMU_INSTALLER_QUIET:-}" = 1 ] || printf '千幕服务端已更新至 v%s。\n' "$SERVICE_VERSION"
+[ "$YIMU_UPDATED" = 0 ] || [ "${QIANMU_INSTALLER_QUIET:-}" = 1 ] || printf '忆幕已更新：前端 v%s；服务端 v%s。\n' "$YIMU_FRONTEND_VERSION" "$YIMU_SERVICE_VERSION"
