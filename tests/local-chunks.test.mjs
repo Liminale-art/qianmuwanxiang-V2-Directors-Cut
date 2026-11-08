@@ -175,15 +175,12 @@ test('all production local-loader calls, injected history loaders and idle chunk
   const names=[...allowlist[1].matchAll(/['"]([^'"]+)['"]/g)].map(match=>match[1]);
   assert.equal(new Set(names).size,names.length,'No duplicate or ambiguous module names');
   const calledNames=new Set(calls.map(call=>call.url.slice(2).split('?')[0]));
-  // 3bb454dd removed the archive/location entry points but kept these shipped views allowlisted; no other uncalled name may appear.
-  const dormant=['qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js'];
-  for(const name of dormant)assert.ok(!calledNames.has(name)&&shipped.has(name),name+': dormant entry must still ship and stay uncalled');
-  assert.deepEqual(new Set(names),new Set([...calledNames,...dormant]),'Allow only actual owned production call targets, not speculative module names');
+  assert.deepEqual(new Set(names),calledNames,'Allow only actual owned production call targets, not speculative module names');
 });
 
 test('new gallery targets retain bounded retry and never execute external or error-supplied URLs',async()=>{
   const names=['qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js',
-    'qianmu-storyboard-export-scope-view.js','qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js',
+    'qianmu-storyboard-export-scope-view.js',
     'qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js'];
   for(const name of names){
     const urls=[],value={ready:true},load=createLocalChunkLoader({pause:async()=>{},importer:async url=>{

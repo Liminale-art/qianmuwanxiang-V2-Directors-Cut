@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {setImmediate as flush} from 'node:timers/promises';
-import {createQianmuReleaseVersionReader} from '../qianmu-release-version.js';
+import {createQianmuReleaseVersionReader, showQianmuUpdateGuide} from '../qianmu-release-version.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const official={remoteUrl:'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git',currentBranchName:'codex/phase-1'};
 const response=(version='1.59.392',extra={})=>new Response(JSON.stringify({name:'qianmu-omniscene',version,...extra}));
@@ -147,4 +147,16 @@ test('a failed remote package read does not keep the outer update check cached f
   f.clock.advance(1);
   await f.context.refreshQianmuUpdateStatus();assert.equal(f.calls.version,3,'the successful cache expires exactly at thirty minutes');
   assert.equal(f.pending.length,3);f.pending[2].resolve('1.59.392');await flush();
+});
+
+test('update guide popup escapes the guide and names the latest release, falling back to a toast',()=>{
+  const popups=[],toasts=[];
+  showQianmuUpdateGuide('1.59.500',(...args)=>toasts.push(args),(...args)=>popups.push(args));
+  assert.equal(popups.length,1);assert.equal(toasts.length,0);
+  assert.match(popups[0][0],/发现千幕新版本 v1.59.500/);
+  assert.match(popups[0][0],/<strong># PM2 部署/);
+  assert.ok(!popups[0][0].includes('<(curl'),'shell redirection is escaped');
+  assert.ok(popups[0][0].includes('&lt;(curl'));
+  showQianmuUpdateGuide('',(...args)=>toasts.push(args),null);
+  assert.deepEqual(toasts.map(args=>args[1]),['info']);
 });

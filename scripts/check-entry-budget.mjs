@@ -3,9 +3,8 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 
-// bytes 2277000 -> 2278100 (2026-11-08): 30006f66 inlined showQianmuUpdateGuidance (~1.3 KB) and
-// ea8e289c moved the floor TTS toolbar (+66 B). Extracting the guidance popup would restore the old budget.
-export const ENTRY_BUDGET = Object.freeze({lines:36450,bytes:2278100});
+// 2026-11-08: update guidance popup moved to qianmu-release-version.js, restoring the 2277000-byte budget.
+export const ENTRY_BUDGET = Object.freeze({lines:36450,bytes:2277000});
 export function checkEntryBudget(source, budget = ENTRY_BUDGET) {
   const normalized=source.replace(/\r\n/g,'\n');
   const lines=normalized.split('\n').length-(normalized.endsWith('\n')?1:0);

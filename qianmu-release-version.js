@@ -71,3 +71,37 @@ export function createQianmuReleaseVersionReader({fetchImpl=globalThis.fetch,now
 }
 
 export const readQianmuLatestRelease = createQianmuReleaseVersionReader();
+
+// Update guidance popup: shows install commands only; never runs an update.
+export function showQianmuUpdateGuide(latestVersion, toast = () => {}, popup = globalThis.callPopup) {
+  const latest = latestVersion ? ` v${latestVersion}` : '';
+  const pm2Guide = `# PM2 部署（VPS / 宝塔）
+cd /path/to/SillyTavern
+bash <(curl -fsSL https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/update-server-plugin.sh)`;
+  const nativeGuide = `# 原生部署（本地 / 非 PM2）
+1. 停止 SillyTavern 后端
+2. 在 ST 根目录运行：
+   bash install-server-plugin.sh    # Linux/macOS
+   .\\install-server-plugin.ps1      # Windows PowerShell`;
+  const stExtGuide = `# SillyTavern 扩展管理器
+前往 SillyTavern 扩展管理 → 千幕 → 更新`;
+  const content = `发现千幕新版本${latest}
+
+选择适合你的更新方式：
+
+${pm2Guide}
+
+${nativeGuide}
+
+${stExtGuide}
+
+详见：https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut`;
+  if (typeof popup === 'function') {
+    popup(content.split('\n').map(line => {
+      const escaped = String(line).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return line.startsWith('#') ? `<strong>${escaped}</strong>` : escaped;
+    }).join('<br>'), 'text', '', { okButton: '知道了' });
+  } else {
+    toast('发现千幕新版本，请前往 SillyTavern 扩展管理器更新，或参考 GitHub 说明。', 'info');
+  }
+}

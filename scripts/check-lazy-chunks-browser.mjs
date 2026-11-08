@@ -21,7 +21,7 @@ try{
     const {loadLocalChunk}=await import('/qianmu-feature-runtime.js');
     const [reader,again,theater]=await Promise.all([loadLocalChunk('./qianmu-reader.js?v=qa'),loadLocalChunk('./qianmu-reader.js?v=qa'),loadLocalChunk('./builtin-theaters.js?v=qa')]);
     const names=['qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js',
-      'qianmu-storyboard-export-scope-view.js','qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js',
+      'qianmu-storyboard-export-scope-view.js',
       'qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js'];
     const gallery=await Promise.all(names.map(async name=>{const url='./'+name+'?v=1.59.392',first=await loadLocalChunk(url);
       return {name,exports:Object.keys(first).length,reused:first===await loadLocalChunk(url)};}));

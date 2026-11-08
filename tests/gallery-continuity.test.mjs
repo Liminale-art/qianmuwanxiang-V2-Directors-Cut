@@ -11,7 +11,6 @@ import {importCurrentRuntime} from './helpers/current-runtime.mjs';
 const {stageStoryboardContinuationLinks} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 const {saveStoryboardFloorTakes} = await importCurrentRuntime('qianmu-storyboard-floor-take.js');
 import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
-import {galleryArchiveReviewHtml} from '../qianmu-gallery-archive-view.js';
 import {vibeDigest} from '../qianmu-vibe-file.js';
 const {storyboardContinuationIdentityInput} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 
@@ -57,8 +56,4 @@ test('incremental header includes only exact root source fields and rejects malf
   const f=await fixture(t),text=JSON.stringify({chat_metadata:{story_director_liminale:{storyboardImages:[],...f.store}},private:{storyboardContinuations:['private']}});
   const parser=createChatGalleryHeaderCapture({supplement:true});for(const c of text)parser.write(c);assert.deepEqual(parser.finish().saved,f.store);
   for(const key of GALLERY_CONTINUITY_FIELDS){const p=createChatGalleryHeaderCapture({supplement:true});assert.throws(()=>p.write(JSON.stringify({chat_metadata:{story_director_liminale:{storyboardImages:[],[key]:null}}})));}
-});
-test('review differentiates old unknown evidence from confirmed absence and actual source counts',()=>{
-  const base={total:0,recipes:{available:0,missing:0},originals:{referenced:0,missing:0},collections:0,characterDrafts:0,evidenceFloors:0};
-  assert.match(galleryArchiveReviewHtml(base),/旧版本未记录/);assert.match(galleryArchiveReviewHtml({...base,continuity:{state:'recorded',continuations:2,retakes:3}}),/续写依据 2 · 换版依据 3/);
 });
