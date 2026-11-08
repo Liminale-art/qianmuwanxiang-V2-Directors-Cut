@@ -11,7 +11,7 @@ const deferred = () => {
     const promise = new Promise(yes => { resolve = yes; });
     return {promise, resolve};
 };
-function fixture(t, {selected = false, mode = 'normal'} = {}) {
+function fixture(t, {selected = false, mode = 'normal', latestService = null} = {}) {
     const calls = [], events = [], states = [], tasks = [];
     let healthMode = mode, chosen = selected, firstHealth = null;
     const api = createApi({headers: () => ({}), fetcher: async (url, options) => {
@@ -34,7 +34,7 @@ function fixture(t, {selected = false, mode = 'normal'} = {}) {
         if (!chosen) throw new Error('请先打开一个角色的聊天');
         return {binding: clone(typeof chosen === 'object' ? chosen : binding), name: 'Service', messages: [], maxContext: 8192};
     }, profiles: () => [], clear() {}, async generate() { throw new Error('installation checks cannot call models'); }};
-    const controller = createController({api, host, onChange: state => states.push(clone(state)), defer: fn => tasks.push(fn)});
+    const controller = createController({api, host, onChange: state => states.push(clone(state)), defer: fn => tasks.push(fn), latestService});
     t.after(() => controller.destroy());
     return {controller, calls, events, states, tasks, mode(value) { healthMode = value; }, selected(value) { chosen = value; }, holdHealth(value) { firstHealth = value; }};
 }
@@ -125,4 +125,16 @@ test('a late older health response cannot replace a newer failed check or start 
     first.resolve({status: 200, ok: true, json: async () => ({version: VERSION, schema: SCHEMA})}); await old;
     assert.equal(f.controller.state.service.status, 'error'); assert.match(f.controller.state.error, /尚未安装/);
     assert.equal(f.calls.length, 2); assert.ok(f.calls.every(call => call.route === 'health'));
+});
+
+test('a newer published service is reported beside a healthy backend without blocking it', async t => {
+    const f = fixture(t, {latestService: async () => '99.0.0'}); await f.controller.refresh();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(f.controller.state.service, {status: 'ok', version: VERSION, requiredVersion: VERSION, latest: '99.0.0'});
+    const same = fixture(t, {latestService: async () => VERSION}); await same.controller.refresh();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(same.controller.state.service.latest, undefined);
+    const offline = fixture(t, {latestService: async () => { throw new Error('offline'); }}); await offline.controller.refresh();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(offline.controller.state.service.status, 'ok');
 });

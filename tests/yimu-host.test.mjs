@@ -274,3 +274,29 @@ test('dry-run starts retain the main session; real generation starts invalidate 
     assert.equal((await f.host.applyPrepared(request(target), second.session)).reason, 'expired-session');
     unsubscribe();
 });
+
+test('unblocked input settles a round even when a theme suppresses GENERATION_ENDED', async () => {
+    const f = fixture(), observers = [];
+    class FakeObserver { constructor(fn) { this.fn = fn; observers.push(this); } observe(target, options) { this.target = target; this.options = options; } disconnect() { this.off = true; } }
+    const body = { dataset: {} };
+    const host = createHost({ getContext: () => f.ctx, document: { body, defaultView: { MutationObserver: FakeObserver } } });
+    const seen = [];
+    const off = host.subscribe(name => { seen.push(name); });
+    assert.deepEqual(observers[0].options.attributeFilter, ['data-generating']);
+    assert.equal(host.busyGenerating(), false);
+    await f.ctx.eventSource.emitAsync('generation_started', 'normal', {}, false);
+    body.dataset.generating = 'true'; observers[0].fn();
+    assert.equal(host.busyGenerating(), true);
+    assert.ok(!seen.includes('GENERATION_SETTLED'), 'still blocked');
+    f.ctx.streamingProcessor = { isFinished: false, isStopped: false };
+    delete body.dataset.generating;
+    assert.equal(host.busyGenerating(), true, 'an unfinished stream is still busy');
+    f.ctx.streamingProcessor.isFinished = true;
+    observers[0].fn();
+    assert.equal(seen.filter(name => name === 'GENERATION_SETTLED').length, 1);
+    observers[0].fn();
+    assert.equal(seen.filter(name => name === 'GENERATION_SETTLED').length, 1, 'settles once per round');
+    assert.equal(host.busyGenerating(), false);
+    off();
+    assert.equal(observers[0].off, true);
+});

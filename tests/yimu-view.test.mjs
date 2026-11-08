@@ -257,6 +257,13 @@ test('unacknowledged invalid slices remain in coverage and statistics stay displ
     assert.equal(f.get('手动总结开始楼层').value,'1'); assert.equal(f.get('手动总结结束楼层').value,'9');
 });
 
+test('pending floor card keeps the kept-raw explanation on hover only', t => {
+    const f=fixture({document:{...state().document,enabled:true,entries:[entry()]}});t.after(()=>f.view.destroy());
+    const pending=f.document.querySelector('.ym-stats').children[2];
+    assert.equal(pending.querySelector('.ym-stat-note'),null);assert.doesNotMatch(pending.textContent,/保留原文/);
+    assert.match(pending.textContent,/^\d+待整理层$/);assert.match(pending.title,/最新 5 层作为近期原文保留/);
+});
+
 test('compact history controls edit explicit bounds and persist cancellation rather than hiding a temporary form', async t => {
     const f = fixture({document: {...state().document, enabled: true}}); t.after(() => f.view.destroy());
     assert.match(f.document.querySelector('.ym-history-question').textContent, /是否整理历史楼层 1–9/);
@@ -723,6 +730,17 @@ test('service status in settings distinguishes mismatch from unavailable service
     assert.match(service.textContent, /未连接/);assert.equal(service.querySelector('.ym-service-badge').dataset.tone,'error');assert.equal(f.calls.length, 0);
 });
 
+test('a newer published yimu service shows a soft update notice while the running service stays usable', t => {
+    const f = fixture({snapshot: null, document: null, service: {status: 'ok', version: '0.8.9', requiredVersion: '0.8.9'}}); t.after(() => f.view.destroy());
+    f.get('设置').click(); const service = f.get('忆幕服务状态'), badge = service.querySelector('.ym-service-badge');
+    assert.equal(badge.textContent, '正常'); assert.equal(badge.title, '');
+    f.render({service: {status: 'ok', version: '0.8.9', requiredVersion: '0.8.9', latest: '0.8.10'}});
+    assert.equal(badge.textContent, '有可用更新'); assert.equal(badge.dataset.tone, 'warning');
+    assert.match(badge.title, /v0.8.9 → v0.8.10/);
+    assert.equal(service.querySelector('.ym-install-link').dataset.highlight, 'true');
+    assert.equal(f.calls.length, 0, 'the notice never starts an update by itself');
+});
+
 test('the recent request view uses saved entry snapshots, only labels a request context, and marks token estimates', t => {
     const f = fixture({ lastUsed: { entries: [entry({ text: '请求当时的版本' })], tokens: 134 }, document: { enabled: true, settings: {}, entries: [entry({ text: '后来编辑的版本' })] } }); t.after(() => f.view.destroy());
     assert.doesNotMatch(f.get('展开记忆调阅').textContent,/token|134/);
@@ -807,6 +825,60 @@ test('shortcut colors distinguish execution failure from unavailable states with
     }
     dispose.update({ showShortcut: false }, ready); assert.equal(shortcut.hidden, true); assert.equal(entry.hidden, false);
     dispose(); dispose.update({ showShortcut: true }, ready); assert.equal(shortcut.isConnected, false);
+});
+
+test('trigger floor count sits right after the token trigger with its own hint and blank-when-off value', t => {
+    const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
+    const trigger = f.get('自动总结触发'), floors = f.get('自动总结触发楼层数');
+    const group = floors.closest('.ym-settings-group'), rows = group.querySelectorAll('.ym-setting-row');
+    assert.equal(group, trigger.closest('.ym-settings-group')); assert.match(group.textContent, /切片总结/);
+    assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
+    assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '不启用');
+    assert.equal(floors.closest('.ym-setting-row').title, '待整理层达到此数也会触发（与 token 阈值先到先触发）；留空仅按 token');
+    assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
+    assert.equal(floors.value, '');
+    f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');
+    f.render({ document: { ...f.state.document, configRevision: 2, settings: { triggerFloors: 0 } } }); assert.equal(floors.value, '');
+});
+
+test('reopening a loaded chat refreshes quietly while a cold or failed open uses the full refresh', async () => {
+    const d = dom(), menu = d.document.createElement('div'); menu.id = 'options'; d.document.body.append(menu);
+    const previous = Object.fromEntries(['document', 'SillyTavern', 'addEventListener', 'removeEventListener', 'fetch'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    const ctx = { extensionSettings: {}, saveSettingsDebounced() {} }; let live;
+    Object.assign(globalThis, { document: d.document, SillyTavern: { getContext: () => ctx }, addEventListener() {}, removeEventListener() {},
+        fetch: async () => { throw Error('Synthetic unavailable service'); } });
+    try {
+        live = boot(); await live.controller.settled();
+        const calls = []; let current = { snapshot: null, document: null, loading: false, error: '' };
+        live.controller.refresh = async options => { calls.push(options); };
+        Object.defineProperty(live.controller, 'state', { configurable: true, get: () => current });
+        const entry = d.document.getElementById('yimu-menu-entry');
+        entry.click(); assert.deepEqual(calls.pop(), {});
+        current = { ...state(), loading: false, error: '' };
+        entry.click(); assert.deepEqual(calls.pop(), { quiet: true, auto: false });
+        current = { ...state(), loading: true }; entry.click(); assert.deepEqual(calls.pop(), {});
+        current = { ...state(), error: '合成读取失败' }; entry.click(); assert.deepEqual(calls.pop(), {});
+    } finally {
+        live?.dispose();
+        for (const [key, descriptor] of Object.entries(previous)) if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+});
+
+test('quiet re-renders of a loaded chat never set loading or disable controls', t => {
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry()] } }); t.after(() => f.view.destroy());
+    const labels = ['启用忆幕', '手动总结开始楼层', '手动总结结束楼层', '自动总结触发', '自动总结触发楼层数'];
+    const controls = labels.map(label => f.get(label));
+    const flips = [];
+    for (const node of controls) {
+        let value = node.disabled;
+        Object.defineProperty(node, 'disabled', { configurable: true, get: () => value, set: next => { if (next) flips.push(node.getAttribute('aria-label')); value = next; } });
+    }
+    const status = f.document.querySelector('.ym-status').textContent;
+    for (const patch of [{}, { snapshot: { ...f.state.snapshot } }, { document: { ...f.state.document } }]) {
+        f.render({ ...patch, loading: false });
+        assert.ok(controls.every(node => !node.disabled));
+    }
+    assert.deepEqual(flips, []); assert.equal(f.document.querySelector('.ym-status').textContent, status);
 });
 
 test('boot saves only the account UI preference, defaults off, and retains it across dispose and reboot', async () => {
@@ -911,12 +983,38 @@ test('retrieval page sits between memory and settings and reports planned vector
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
 });
 
-test('keyword recall stays available in the check chain when source recall is off', t => {
-    const f = fixture({ retrieval: { mode: 'lexical', sourceRecall: false, vector: { status: 'disabled' }, rerank: { status: 'disabled' }, candidates: [] } });
-    t.after(() => f.view.destroy()); f.view.open(); f.get('检索').click();
-    const text = f.document.body.textContent;
-    assert.match(text, /关键词召回可用当前默认候选路径 · 原文回查已关闭/);
-    assert.doesNotMatch(text, /关键词召回未启用/);
+test('keyword recall reads 可召回 and never mentions source recall in its row', t => {
+    for (const sourceRecall of [false, true]) {
+        const f = fixture({ retrieval: { mode: 'lexical', sourceRecall, vector: { status: 'disabled' }, rerank: { status: 'disabled' }, candidates: [] } });
+        f.view.open(); f.get('检索').click();
+        const row = f.document.querySelector('.ym-retrieval-status-row');
+        assert.equal(row.textContent, '关键词召回可召回当前默认候选路径');
+        assert.equal(row.querySelector('.ym-retrieval-badge').dataset.tone, 'ready');
+        assert.doesNotMatch(f.document.querySelector('.ym-retrieval-status-card').textContent, /原文回查/);
+        f.view.destroy();
+    }
+});
+
+test('vector and rerank rows map runtime reasons to one short clause per status', t => {
+    const reasons = { vector: '尚未配置向量候选接口，已回退关键词召回', rerank: '尚未配置重排候选接口，已保留当前顺序' };
+    const cases = [
+        ['unavailable', '未配置向量接口，已回退关键词召回', '未配置重排接口，保留原顺序', '不可用'],
+        ['error', '向量请求失败，已回退关键词召回', '重排请求失败，保留原顺序', '不可用'],
+        ['disabled', '当前聊天未启用', '当前聊天未启用', '未启用'],
+        ['ready', '已接入候选发现', '已接入排序', '可用'],
+        ['planned', '等待本轮整理', '等待本轮整理', '待接入'],
+    ];
+    for (const [status, vectorText, rerankText, badge] of cases) {
+        const f = fixture({ retrieval: { mode: 'lexical', vector: { status, reason: reasons.vector }, rerank: { status, reason: reasons.rerank }, candidates: [] } });
+        f.view.open(); f.get('检索').click();
+        const [, vector, rerank] = f.document.querySelector('.ym-retrieval-status-card').querySelectorAll('.ym-retrieval-status-row');
+        assert.equal(vector.querySelector('.ym-retrieval-status-detail').textContent, vectorText);
+        assert.equal(rerank.querySelector('.ym-retrieval-status-detail').textContent, rerankText);
+        assert.equal(vector.querySelector('.ym-retrieval-badge').textContent, badge);
+        for (const text of [vectorText, rerankText]) assert.ok(text.replace(/[，,]/g, '').length <= 16, text);
+        assert.doesNotMatch(f.document.querySelector('.ym-retrieval-status-card').textContent, /尚未配置/);
+        f.view.destroy();
+    }
 });
 
 test('retrieval timeout is shown as one shared account control and saves in seconds', async t => {
@@ -1046,6 +1144,46 @@ test('manual summary default follows the unsummarized range until the user edits
     assert.deepEqual(f.calls, []);
 });
 
+test('manual summary range follows deleted floors and resets an edit that no longer fits', t => {
+    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
+    t.after(() => f.view.destroy());
+    const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
+    assert.equal(start.value, '4'); assert.equal(end.value, '9');
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
+    assert.equal(start.value, '4'); assert.equal(end.value, '7'); assert.equal(end.max, '7');
+    // A swipe/edit that keeps the count leaves the default as is.
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
+    assert.equal(start.value, '4'); assert.equal(end.value, '7');
+    // A typed range that still fits is kept after a deletion.
+    start.value = '2'; end.value = '5';
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(6) } });
+    assert.equal(start.value, '2'); assert.equal(end.value, '5');
+    // Once the deletion leaves it out of range it is replaced by the new default.
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(4) } });
+    assert.equal(start.value, '4'); assert.equal(end.value, '4');
+    // The replacement is auto again, so later floors are followed.
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(8) } });
+    assert.equal(start.value, '4'); assert.equal(end.value, '8');
+    // Deleting into summarized floors falls back to the whole remaining chat.
+    start.value = '6'; end.value = '8';
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(3) } });
+    assert.equal(start.value, '3'); assert.equal(end.value, '3');
+    f.render({ snapshot: { ...f.state.snapshot, messages: [] } });
+    assert.equal(start.value, '1'); assert.equal(end.value, '0');
+    assert.deepEqual(f.calls, []);
+});
+
+test('a focused manual range field is not rewritten until the user leaves it', t => {
+    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
+    const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
+    const end = f.get('手动总结结束楼层'); end.focus(); end.value = '9';
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
+    assert.equal(end.value, '9');
+    f.document.activeElement = null; f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
+    assert.equal(end.value, '5');
+});
+
 test('an initially empty chat receives usable ranges without replacing an edited range on later refreshes', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: null }, snapshot: { binding: { avatar: 'empty.png', file: 'empty' }, messages: [] } });
     t.after(() => f.view.destroy());
@@ -1138,7 +1276,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.18 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.19 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1258,7 +1396,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.18'); assert.equal(pkg.version, '0.8.9');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.19'); assert.equal(pkg.version, '0.8.10');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

@@ -10,6 +10,7 @@ import { createBackupActions } from './backup-runtime.mjs';
 import { validateGeneratedLength } from './scene-contract.mjs';
 import { summaryRequestBudget } from './budget.mjs';
 import { memoryTitle } from './timeline.mjs';
+import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 
@@ -18,13 +19,41 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0) }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null }) {
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
     const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
+    // Entry/enable rounds announce a catch-up start; settle polling covers ST
+    // paths that start a round but never block input (slash-command aborts).
+    let catchUp = true, settleTimer = null, settleIdle = 0, saveTimer = null, saveWaits = 0;
+    const SETTLE_POLL_MS = 3000, SAVE_POLL_MS = 1500, SAVE_POLL_LIMIT = 8;
+    const hostBusy = () => { try { return typeof host.busyGenerating === 'function' ? host.busyGenerating() : null; } catch { return null; } };
+    const settled = () => {
+        clearTimeout(settleTimer); settleTimer = null; settleIdle = 0;
+        generating = false; prepared = null; host.clear();
+        if (state.snapshot?.binding) deferFor(state.snapshot.binding, () => refresh({ quiet: true, auto: true }));
+    };
+    const pollSettle = stamp => {
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => {
+            if (disposed || !generating || stamp !== generation) return;
+            const busy = hostBusy();
+            if (busy === null) return; // No live signal: rely on ST events only.
+            settleIdle = busy === false ? settleIdle + 1 : 0;
+            if (settleIdle >= 2) settled(); else pollSettle(stamp);
+        }, SETTLE_POLL_MS);
+    };
+    // ST saves the chat file after the reply ends. Retry quietly until the
+    // file has caught up, instead of failing a round on a half-saved source.
+    const waitForSave = () => {
+        clearTimeout(saveTimer);
+        if (disposed || saveWaits >= SAVE_POLL_LIMIT) { saveWaits = 0; return; }
+        saveWaits++;
+        saveTimer = setTimeout(() => { saveTimer = null; if (!disposed) void refresh({ quiet: true, auto: true }); }, SAVE_POLL_MS);
+    };
     const snapshotState = () => ({ ...state,
         busy: state.busy || Boolean(state.snapshot && jobs.has(bindingKey(state.snapshot.binding))),
         failedWork: state.snapshot ? failures.get(bindingKey(state.snapshot.binding)) || null : null,
@@ -135,7 +164,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         try {
             const value = await api.health();
             if (!disposed && ticket === serviceSequence) {
-                state.service = { status: 'ok', version: typeof value?.version === 'string' ? value.version : '', requiredVersion: SERVICE_VERSION }; emit();
+                const version = typeof value?.version === 'string' ? value.version : '';
+                state.service = { status: 'ok', version, requiredVersion: SERVICE_VERSION }; emit();
+                // A published service newer than the running one is a soft notice, never a block.
+                if (typeof latestService === 'function') Promise.resolve().then(() => latestService()).then(latest => {
+                    if (disposed || ticket !== serviceSequence || state.service.status !== 'ok' || !isNewerYimuVersion(version, latest)) return;
+                    state.service = { ...state.service, latest }; emit();
+                }).catch(() => {});
             }
         } catch (error) {
             if (!disposed && ticket === serviceSequence) {
@@ -217,6 +252,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, historyOnly = false, errorPage = entryId ? 'memory' : requestedRange || historyOnly ? 'overview' : 'memory' } = {}) {
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || !force && !state.document.autoSummary) return;
+        // Automatic rounds never overlap a reply that is still streaming.
+        if (!force && hostBusy() === true) { waitForSave(); return; }
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
         const doc = clone(state.document), runGeneration = generation;
@@ -227,6 +264,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         // A failed automatic round waits for new floors, then retries once per floor count.
         if (!force && failedJobs.get(failedKey) === state.snapshot.messages.length) return;
         failedJobs.delete(failedKey);
+        const announce = catchUp && !force; catchUp = false;
+        if (!force) { clearTimeout(saveTimer); saveTimer = null; }
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         state.streamPreview = '';
         emit();
@@ -245,7 +284,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: rerankStatus,
             ...(rerankStatus === 'unavailable' ? { reason: '尚未配置重排候选接口，已保留当前顺序' } : {}) }, candidates: [], lastRun: null };
         emit();
-        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null;
+        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false;
         const retryState = { exhausted: false };
         try {
             const run = summaryRun(settings, snapshot);
@@ -262,6 +301,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const fresh = await api.read(binding);
                 jobDocument = fresh.document; adopt(binding, fresh);
                 if (!fresh.sourceAvailable || !jobDocument.enabled || jobDocument.epoch !== doc.epoch || fresh.defaults.revision !== defaults.revision) break;
+                if (!force && !processed && Number.isSafeInteger(fresh.sourceFloorCount) && fresh.sourceFloorCount < snapshot.messages.length) { awaitingSave = true; break; }
                 let batch;
                 if (manualPlan) {
                     batch = manualPlan.batches[manualIndex];
@@ -352,7 +392,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     emit();
                 }
                 if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
-                notice(`忆幕切片总结中：楼层${batch.start}–${batch.end}`, 'info');
+                if (announce && !announced) { announced = true; notice(`忆幕：已达自动总结触发值，开始整理楼层${batch.start}–${batch.end}`, 'info'); }
+                else notice(`忆幕切片总结中：楼层${batch.start}–${batch.end}`, 'info');
                 let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
@@ -419,7 +460,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (manualPlan) manualIndex++;
                 if (entryId || !isCurrent(binding) || generating) break;
             }
-            if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); state.status = '本轮整理已完成'; emit(); }
+            if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); saveWaits = 0; state.status = '本轮整理已完成'; emit(); }
+            else if (awaitingSave) { if (announce && !announced) catchUp = true; waitForSave(); }
             else if (force && noWork && isCurrent(binding) && !controller.signal.aborted) {
                 const preview = historyOnly && doc.initialRange ? initialRangePreview(jobDocument, snapshot.messages, doc.initialRange, settings) : null;
                 state.status = preview?.valid && preview.recent.length === doc.initialRange.end - doc.initialRange.start + 1
@@ -724,7 +766,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 state.status = ['enable', 'autoSummary'].includes(type) ? ''
                     : type === 'history' ? payload.range.end > 0 ? '准备整理历史楼层' : '' : '';
                 if (type === 'history' && payload.range.end > 0) deferFor(binding, () => start({ force: true, historyOnly: true }).catch(() => {}), actionGeneration);
-                else if (type === 'enable' && payload.enabled || type === 'settings' || type === 'autoSummary' && payload.value) deferFor(binding, () => start().catch(() => {}), actionGeneration);
+                else if (type === 'enable' && payload.enabled || type === 'settings' || type === 'autoSummary' && payload.value) {
+                    if (type !== 'settings') catchUp = true;
+                    deferFor(binding, () => start().catch(() => {}), actionGeneration);
+                }
             }
             return true;
         } catch (error) { if (isCurrent(binding)) state.error = error.message; throw error; }
@@ -775,12 +820,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (name === 'GENERATION_STARTED') {
             if (args[2]) return;
             generation++; generating = true; prepared = null; state.lastUsed = null; host.clear();
+            settleIdle = 0; pollSettle(generation);
             generationRefresh = refresh({ quiet: true, auto: false });
             return;
         }
-        if (name === 'GENERATION_STOPPED' || name === 'GENERATION_ENDED') {
-            generating = false; prepared = null; host.clear();
-            if (state.snapshot?.binding) deferFor(state.snapshot.binding, () => refresh({ quiet: true, auto: true }));
+        if (name === 'GENERATION_STOPPED' || name === 'GENERATION_ENDED' || name === 'GENERATION_SETTLED') {
+            if (name === 'GENERATION_SETTLED' && !generating) return;
+            settled();
             return;
         }
         if (name === 'GENERATE_AFTER_DATA') {
@@ -829,7 +875,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
         }
         if (name.startsWith('CHAT_') || name.startsWith('MESSAGE_')) {
-            if (name === 'CHAT_CHANGED' || name === 'CHAT_LOADED' || name === 'CHAT_DELETED') { generation++; host.clear(); prepared = null; }
+            if (name === 'CHAT_CHANGED' || name === 'CHAT_LOADED' || name === 'CHAT_DELETED') {
+                generation++; host.clear(); prepared = null;
+                // Re-entering a chat retries a failed automatic round and announces it.
+                catchUp = true; failedJobs.clear(); saveWaits = 0; clearTimeout(saveTimer); saveTimer = null;
+            }
             clearTimeout(refreshTimer);
             refreshTimer = setTimeout(() => refresh({ quiet: true, auto: !generating }), 80);
         }
@@ -837,7 +887,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     return {
         get state() { return snapshotState(); }, refresh, action, start, startStage, intercept, event,
-        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); for (const job of jobs.values()) job.abort(); companionActions.destroy(); backupActions.destroy(); host.clear(); },
+        destroy() { disposed = true; sequence++; generation++; clearTimeout(refreshTimer); clearTimeout(settleTimer); clearTimeout(saveTimer); for (const job of jobs.values()) job.abort(); companionActions.destroy(); backupActions.destroy(); host.clear(); },
         async settled() { await refreshing; },
     };
 }

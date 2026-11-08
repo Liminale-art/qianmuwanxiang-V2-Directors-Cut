@@ -13,11 +13,11 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.18';
-export const SERVICE_VERSION = '0.8.9';
+export const FRONTEND_VERSION = '0.8.19';
+export const SERVICE_VERSION = '0.8.10';
 export const VERSION = SERVICE_VERSION;
 export const SCHEMA = 8;
-export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
+export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors: 0, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     contextRules: DEFAULT_CONTEXT_RULES });
@@ -39,7 +39,7 @@ export const bindingKey = binding => JSON.stringify(normalizeBinding(binding));
 export function validateSettings(input, partial = true) {
     requireThat(input && typeof input === 'object' && !Array.isArray(input), '设置格式无效');
     const result = {};
-    const bounds = { recent: [1, 2000], trigger: [256, 1000000], batch: [256, 100000], budget: [0, 1000000], stageThreshold: [1, 1000000],
+    const bounds = { recent: [1, 2000], trigger: [256, 1000000], triggerFloors: [1, 2000], batch: [256, 100000], budget: [0, 1000000], stageThreshold: [1, 1000000],
         stageRecent: [0, 2000], sliceChars: [1, 100000], stageChars: [1, 100000] };
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');

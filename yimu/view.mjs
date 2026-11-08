@@ -20,6 +20,7 @@ const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
+    ['triggerFloors', '自动总结触发楼层数', 'number', 0],
     ['sliceChars', '每条切片字数上限', 'number', 0],
     ['stageAuto', '自动阶段总结', 'checkbox'],
     ['stageBasis', '阶段整理方式', 'select'],
@@ -29,6 +30,12 @@ const SETTINGS = [
     ['recall', '原文回查与补充', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
+// Hover hints; values that read as "off" at 0 render blank.
+const SETTING_HINTS = {
+    trigger: '待整理正文达到此 token 数时自动总结',
+    triggerFloors: '待整理层达到此数也会触发（与 token 阈值先到先触发）；留空仅按 token',
+};
+const BLANK_ZERO = new Set(['budget', 'triggerFloors']);
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
 const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
@@ -232,7 +239,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const stat = el('div', 'ym-card ym-stat'), value = el('b', '', '0');
         stat.append(value, el('span', '', label)); statValues.push(value); statCards.push(stat); stats.append(stat);
     }
-    const pendingNote = el('small', 'ym-stat-note'); pendingNote.hidden = true; statCards[2].append(pendingNote);
     chatName.className += ' ym-overview-name';
     heroText.append(context, overviewFile); heroTop.append(heroText, avatar);
     const enableCard = el('section', 'ym-card ym-hero-switches');
@@ -304,14 +310,20 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); }
     });
     for (const input of [summarizeStart, summarizeEnd]) input.addEventListener('input', () => { summarizeNotice.hidden = true; });
-    // Last automatically written bounds. The default tracks new floors only while the
-    // fields still show it, so typed, adjusted or confirmed ranges are never replaced.
+    // Last automatically written bounds. The default follows the chat while the fields
+    // still show it; a typed range is kept unless deleted floors make it out of range.
     let manualAuto = null;
     function syncManualDefault() {
-        const suggested = manualRangeDefault(state.document, state.snapshot?.messages || [], state.invalidSourceIds || []);
-        if (!suggested || suggested.complete || !manualAuto || [summarizeStart, summarizeEnd].includes(document.activeElement)) return;
-        if (summarizeStart.value !== manualAuto.start || summarizeEnd.value !== manualAuto.end) return;
-        summarizeStart.value = String(suggested.start); summarizeEnd.value = String(suggested.end);
+        if (!manualAuto || [summarizeStart, summarizeEnd].includes(document.activeElement)) return;
+        const messages = state.snapshot?.messages || [], total = messages.length;
+        const suggested = manualRangeDefault(state.document, messages, state.invalidSourceIds || []);
+        const start = Number(summarizeStart.value), end = Number(summarizeEnd.value);
+        const stale = start > Math.max(total, 1) || end > total;
+        const auto = summarizeStart.value === manualAuto.start && summarizeEnd.value === manualAuto.end;
+        // Deleted floors reset an out-of-range edit to the new default.
+        const next = stale ? suggested || { start: 1, end: 0 } : auto && suggested && !suggested.complete ? suggested : null;
+        if (!next) return;
+        summarizeStart.value = String(next.start); summarizeEnd.value = String(next.end); summarizeNotice.hidden = true;
         manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
     }
     overview.append(heroTop, rangeForm);
@@ -322,7 +334,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const settingGroups = new Map();
     for (const [name, title, keys] of [
         ['budget', '记忆注入上限', ['budget']],
-        ['basic', '切片总结', ['recent', 'trigger', 'sliceChars']],
+        ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
@@ -337,7 +349,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (type !== 'textarea' && type !== 'select') input.type = type;
         if (type === 'checkbox') input.className = 'ym-switch';
         if (min !== undefined) { input.min = String(min); input.step = '1'; }
-        if (type === 'number') input.placeholder = key === 'budget' ? '留空自动' : String(DEFAULTS[key] ?? '');
+        if (type === 'number') input.placeholder = key === 'budget' ? '留空自动' : key === 'triggerFloors' ? '不启用' : String(DEFAULTS[key] ?? '');
         const readInput = event => {
             if (settingsDraftRevision === null || settingsSaveFailed) settingsDraftRevision = state.document?.configRevision ?? 0;
             settingsSaveFailed = false;
@@ -357,6 +369,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}`);
         const labelNode = field(label, input);
         if (key === 'budget') labelNode.children[0].hidden = true;
+        if (SETTING_HINTS[key]) row.title = SETTING_HINTS[key];
         row.append(labelNode);
         settingGroups.get(key).append(row);
         controls.set(key, { input, type, min, label: labelNode.children[0] });
@@ -600,8 +613,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         statValues[2].textContent = coverage ? String(coverage.pendingFloors) : '0';
         // Pending excludes the newest floors kept as raw text and any history the user chose not to organize.
         const kept = coverage ? Math.min(total, Math.max(0, Number(currentSettings().recent) || 0)) : 0;
-        pendingNote.hidden = !kept;
-        pendingNote.textContent = kept ? `另有最新 ${kept} 层保留原文` : '';
         const pendingRange = coverage?.pendingRange ? `第 ${coverage.pendingRange.start}–${coverage.pendingRange.end} 层待整理` : '暂无待整理楼层';
         statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start ? '；已选择不整理的历史楼层也不计入' : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
@@ -641,8 +652,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
 
     function updateStatus() {
         const service = state.service || {};
-        serviceBadge.textContent = ({ok:'正常',mismatch:'有可用更新',error:'未连接',checking:'检查中'})[service.status] || '待检测';
-        serviceBadge.dataset.tone = service.status === 'ok' ? 'ready' : service.status === 'error' ? 'error' : 'warning';
+        // A newer published service is a soft notice; the running one stays usable.
+        const upgradable = service.status === 'ok' && typeof service.latest === 'string' && service.latest !== '';
+        serviceBadge.textContent = upgradable ? '有可用更新' : ({ok:'正常',mismatch:'有可用更新',error:'未连接',checking:'检查中'})[service.status] || '待检测';
+        serviceBadge.dataset.tone = upgradable ? 'warning' : service.status === 'ok' ? 'ready' : service.status === 'error' ? 'error' : 'warning';
+        serviceBadge.title = upgradable ? `服务端 v${service.version || '?'} → v${service.latest}，可按安装说明更新` : '';
+        installGuide.dataset.highlight = upgradable || service.status === 'mismatch' ? 'true' : 'false';
         const sourceWarning = state.snapshot && state.document && state.sourceAvailable === false && !state.loading
             ? '当前聊天原件尚未通过核对，记忆暂不参与生成。' : '';
         // The homepage has a dedicated empty state, not an error for normal navigation.
@@ -724,7 +739,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
                 control.input.value = String(value);
             }
             if (control.type === 'checkbox') control.input.checked = Boolean(value);
-            else if (document.activeElement !== control.input) control.input.value = key === 'budget' && Number(value) === 0 ? '' : String(value);
+            else if (document.activeElement !== control.input) control.input.value = BLANK_ZERO.has(key) && Number(value) === 0 ? '' : String(value);
         }
         apiView?.render({ settings: currentSettings(),
             profiles: state.profiles || [], snapshot: state.snapshot, isGlobal: true,
@@ -998,23 +1013,30 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             .sort((a, b) => (b.deletedRevision || 0) - (a.deletedRevision || 0)).slice(0, 10);
         deleted.hidden = !removed.length;
         deletedTitle.textContent = `已删除的记忆（${removed.length}）`;
-        const openDeleted = new Set([...deletedBody.children].filter(item => item.open).map(item => item.dataset.entryId));
-        deletedBody.replaceChildren(...removed.map(entry => {
-            const item = el('details', 'ym-card ym-memory ym-deleted-entry');
-            item.dataset.entryId = entry.id; item.open = openDeleted.has(entry.id);
-            const title = el('summary', 'ym-memory-head'), body = el('div', 'ym-memory-content');
-            title.append(entryHeading(entry)); appendMemoryText(body, entry);
-            const undo = button('撤回', () => entryAction(entry, 'undo', {}, undo), 'ym-undo-tag');
-            undo.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
-            undo.setAttribute('aria-label', `撤回删除${sourceLabel(entry)}`);
-            undo.disabled = !entry.history?.length;
-            title.append(undo); item.append(title, body); return item;
-        }));
+        // Quiet re-reads emit the same rows; rebuilding would drop focus from Undo.
+        const deletedSignature = JSON.stringify(removed);
+        if (deletedBody.dataset.ymSignature !== deletedSignature) {
+            deletedBody.dataset.ymSignature = deletedSignature;
+            const openDeleted = new Set([...deletedBody.children].filter(item => item.open).map(item => item.dataset.entryId));
+            deletedBody.replaceChildren(...removed.map(entry => {
+                const item = el('details', 'ym-card ym-memory ym-deleted-entry');
+                item.dataset.entryId = entry.id; item.open = openDeleted.has(entry.id);
+                const title = el('summary', 'ym-memory-head'), body = el('div', 'ym-memory-content');
+                title.append(entryHeading(entry)); appendMemoryText(body, entry);
+                const undo = button('撤回', () => entryAction(entry, 'undo', {}, undo), 'ym-undo-tag');
+                undo.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+                undo.setAttribute('aria-label', `撤回删除${sourceLabel(entry)}`);
+                undo.disabled = !entry.history?.length;
+                title.append(undo); item.append(title, body); return item;
+            }));
+        }
         applyFilter();
     }
     function updateUsed() {
         const use = state.lastUsed;
-        usedBody.replaceChildren();
+        const signature = JSON.stringify([use, use && !use.entries ? (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id) || null) : null]);
+        if (usedBody.dataset.ymSignature === signature) return;
+        usedBody.dataset.ymSignature = signature; usedBody.replaceChildren();
         if (!use) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
         const injectedTitle = el('p', 'ym-muted', '最后一次注入的内容');
         injectedTitle.title = '记录已加入生成请求的内容，不代表模型已接收。'; usedBody.append(injectedTitle);

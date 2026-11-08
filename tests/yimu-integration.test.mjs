@@ -806,3 +806,43 @@ test('custom slices save a real insertion point and moved narrative order reache
     assert.ok(result.prompt.indexOf('用户确认的独立自定义片。') < result.prompt.indexOf('独立片段1'));
     assert.deepEqual(f.controller.state.document.entries.find(entry => entry.id === one.id).source, one.source);
 });
+
+test('a reply settled without GENERATION_ENDED triggers auto summary only after ST saved the new floors', async t => {
+    const f = await fixture(t); let attempts = 0;
+    f.model(async prompt => {
+        attempts += 1;
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: '合成经历。'}]});
+    });
+    await f.enable(); await f.flush();
+    assert.ok(f.notices.some(item => /已达自动总结触发值/.test(item.message)), 'first automatic round after enable is announced');
+    await f.controller.action('settings', {values: {trigger: 256}}); await f.flush();
+    const before = attempts;
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    for (let i = 0; i < 8; i++) f.context.chat.push({name: i % 2 ? '用户' : '角色', is_user: i % 2 === 1, mes: '剧情推进'.repeat(60), send_date: `later-${i}`});
+    // Theme hid #mes_stop: ST never emits GENERATION_ENDED, only unblocks input.
+    await f.controller.event('GENERATION_SETTLED'); await f.flush();
+    assert.equal(attempts, before, 'no round starts while the chat file still lacks the new floors');
+    assert.equal(f.controller.state.error, '');
+    await f.writeChat(f.context.chat);
+    await f.controller.refresh({quiet: true, auto: true}); await f.flush();
+    assert.ok(attempts > before, 'saved floors start the automatic round');
+    const saved = (await f.api.read(binding)).document.entries.filter(entry => entry.kind === 'summary');
+    assert.ok(saved.some(entry => entry.source.start === 8));
+});
+
+test('re-entering a chat retries a failed automatic round once and announces it', async t => {
+    const f = await fixture(t); let failing = true, attempts = 0;
+    f.model(async prompt => {
+        attempts += 1;
+        if (failing) throw new Error('合成故障');
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: '恢复。'}]});
+    });
+    await f.enable(); await f.flush();
+    const afterFailure = attempts; f.notices.length = 0;
+    failing = false;
+    await f.controller.event('CHAT_CHANGED'); await new Promise(resolve => setTimeout(resolve, 120)); await f.flush();
+    assert.ok(attempts > afterFailure, 'chat entry clears the failed-round lock');
+    assert.ok(f.notices.some(item => /已达自动总结触发值/.test(item.message)));
+});

@@ -191,11 +191,17 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     candidatesCard.append(candidatesTitle, candidatesList, candidatesEmpty);
     root.append(statusCard, vector.card, rerank.card, timeoutCard, candidatesCard);
 
-    const statusText = (badge, tone, detailText) => {
-        badge.textContent = tone === 'ready' ? '可用' : tone === 'planned' ? '待接入' : tone === 'off' ? '未启用' : '不可用';
+    const statusText = (badge, tone, detailText, readyLabel = '可用') => {
+        badge.textContent = tone === 'ready' ? readyLabel : tone === 'planned' ? '待接入' : tone === 'off' ? '未启用' : '不可用';
         badge.dataset.tone = tone;
         return detailText;
     };
+    // One short line per status; long runtime reasons stay out of the row text.
+    const DETAILS = {
+        vector: { ready: '已接入候选发现', unavailable: '未配置向量接口，已回退关键词召回', error: '向量请求失败，已回退关键词召回', off: '当前聊天未启用', planned: '等待本轮整理' },
+        rerank: { ready: '已接入排序', unavailable: '未配置重排接口，保留原顺序', error: '重排请求失败，保留原顺序', off: '当前聊天未启用', planned: '等待本轮整理' },
+    };
+    const toneOf = status => status === 'ready' ? 'ready' : status === 'error' || status === 'unavailable' ? 'error' : status === 'disabled' ? 'off' : 'planned';
     const sourceText = candidate => {
         const start = Number.isSafeInteger(candidate?.start) ? candidate.start : null;
         const end = Number.isSafeInteger(candidate?.end) ? candidate.end : null;
@@ -215,22 +221,24 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         rerank.toggle.disabled = !state.document;
 
         const lexical = rows.get('lexical');
-        lexical.detail.textContent = statusText(lexical.badge, 'ready', retrieval.sourceRecall === false ? '当前默认候选路径 · 原文回查已关闭，候选仅用于检查展示' : '当前默认候选路径');
-        const vectorRow = rows.get('vector');
-        const vectorStatus = retrieval.vector?.status;
-        vectorRow.detail.textContent = statusText(vectorRow.badge, vectorStatus === 'ready' ? 'ready' : vectorStatus === 'error' || vectorStatus === 'unavailable' ? 'error' : vectorStatus === 'disabled' ? 'off' : 'planned', vectorStatus === 'ready' ? '已接入候选发现' : vectorStatus === 'error' || vectorStatus === 'unavailable' ? (retrieval.vector?.reason || '不可用，已回退关键词召回') : vectorStatus === 'disabled' ? '当前聊天未启用' : '等待本轮整理');
-        const rerankRow = rows.get('rerank');
-        const rerankStatus = retrieval.rerank?.status;
-        rerankRow.detail.textContent = statusText(rerankRow.badge,
-            rerankStatus === 'ready' ? 'ready' : rerankStatus === 'error' || rerankStatus === 'unavailable' ? 'error' : rerankStatus === 'disabled' ? 'off' : 'planned',
-            rerankStatus === 'ready' ? '已接入排序' : rerankStatus === 'error' || rerankStatus === 'unavailable' ? (retrieval.rerank?.reason || '不可用，保留原候选顺序') : rerankStatus === 'disabled' ? '当前聊天未启用' : '等待本轮整理');
+        lexical.detail.textContent = statusText(lexical.badge, 'ready', '当前默认候选路径', '可召回');
+        for (const id of ['vector', 'rerank']) {
+            const row = rows.get(id), status = retrieval[id]?.status, tone = toneOf(status);
+            row.detail.textContent = statusText(row.badge, tone, DETAILS[id][status] || DETAILS[id][tone]);
+            // The provider's own error stays reachable on hover.
+            row.detail.title = status === 'error' && typeof retrieval[id]?.reason === 'string' ? retrieval[id].reason : '';
+        }
 
         const candidates = Array.isArray(retrieval.candidates) ? retrieval.candidates : [];
-        candidatesList.replaceChildren(...candidates.map(candidate => {
-            const item = el('article', 'ym-retrieval-candidate');
-            item.append(el('strong', '', candidate.title || '记忆切片'), el('span', 'ym-retrieval-candidate-source', `${candidate.sourceLabel || '忆幕'} · ${sourceText(candidate)}`));
-            return item;
-        }));
+        const signature = JSON.stringify(candidates.map(candidate => [candidate.title, candidate.sourceLabel, candidate.start, candidate.end]));
+        if (candidatesList.dataset.ymSignature !== signature) {
+            candidatesList.dataset.ymSignature = signature;
+            candidatesList.replaceChildren(...candidates.map(candidate => {
+                const item = el('article', 'ym-retrieval-candidate');
+                item.append(el('strong', '', candidate.title || '记忆切片'), el('span', 'ym-retrieval-candidate-source', `${candidate.sourceLabel || '忆幕'} · ${sourceText(candidate)}`));
+                return item;
+            }));
+        }
         candidatesEmpty.hidden = candidates.length > 0;
     }
     return { element: root, render, destroy() { root.remove(); } };

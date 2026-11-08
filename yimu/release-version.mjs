@@ -24,3 +24,38 @@ export function mountYimuVersionBadge(container, { document = container?.ownerDo
     button.addEventListener('click', click); container.append(button); paint();
     return { check, latest: () => version, destroy() { if (disposed) return; disposed = true; button.removeEventListener?.('click', click); button.remove(); } };
 }
+
+// Yimu service releases are versioned on their own (yimu/package.json), so a
+// Yimu-only install still learns about server updates. Read-only, no account
+// data, bounded size and time, cached; failures simply show no update.
+const SERVICE_PACKAGE = 'https://raw.githubusercontent.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/refactor/storyboard-modularization/yimu/package.json';
+const SERVICE_MAX_BYTES = 16 * 1024, SERVICE_MAX_AGE = 30 * 60 * 1000, SERVICE_FAILURE_AGE = 60 * 1000;
+async function fetchServiceVersion(url, fetchImpl, timeoutMs) {
+    const controller = new AbortController(); let timer;
+    const reading = (async () => {
+        const response = await fetchImpl(url, { method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', cache: 'no-store', signal: controller.signal });
+        if (!response?.ok || response.redirected || Number(response.headers?.get?.('content-length')) > SERVICE_MAX_BYTES) { controller.abort(); return ''; }
+        const text = await response.text();
+        if (typeof text !== 'string' || text.length > SERVICE_MAX_BYTES) return '';
+        const pkg = JSON.parse(text), version = pkg?.version;
+        return pkg?.name === 'yimu' && typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version) ? version : '';
+    })();
+    try { return await Promise.race([reading, new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve(''); }, timeoutMs); })]); }
+    catch { return ''; }
+    finally { clearTimeout(timer); }
+}
+export function createYimuServiceReleaseReader({ fetchImpl = globalThis.fetch, now = Date.now, timeoutMs = 5000 } = {}) {
+    let cached = null, pending = null, serial = 0;
+    return async ({ force = false } = {}) => {
+        if (typeof fetchImpl !== 'function') return '';
+        if (pending) return pending;
+        const age = cached ? now() - cached.at : Infinity;
+        if (!force && cached && age >= 0 && age < (cached.version ? SERVICE_MAX_AGE : SERVICE_FAILURE_AGE)) return cached.version;
+        const url = `${SERVICE_PACKAGE}?yimu_release=${Math.max(0, Math.floor(Number(now()) || 0))}-${++serial}`;
+        pending = fetchServiceVersion(url, fetchImpl, Math.max(1, Math.min(5000, Number(timeoutMs) || 5000)))
+            .then(version => { cached = { version, at: now() }; pending = null; return version; });
+        return pending;
+    };
+}
+export const readYimuServiceRelease = createYimuServiceReleaseReader();
+export const YIMU_SERVICE_UPDATE_GUIDE = GUIDE;

@@ -8,6 +8,7 @@ import { validateScenes, sceneProjection, sceneDependenciesValid, validateGenera
 import { composePrompt } from './prompt-settings.mjs';
 import { filterContextText } from './context-filter.mjs';
 
+export const FLOOR_TRIGGER_MIN_TOKENS = 2000;
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
 const canSummarize = message => message && typeof message.mes === 'string' && message.mes.trim()
     && !message.extra?.tool_invocations && !message.tool_calls && !message.tool_call_id;
@@ -58,10 +59,14 @@ export function nextBatch(document, messages, settings, { force = false, history
     if (!first) return null;
     let targetEnd = last;
     if (!force && first > initialTotal) {
-        let pending = 0; targetEnd = 0;
+        // Tokens or floors, whichever is reached first. The floor count still
+        // needs a small token floor so a few short replies never become a slice.
+        const floors = settings.triggerFloors > 0 ? settings.triggerFloors : Infinity;
+        const minimum = Math.min(settings.trigger, FLOOR_TRIGGER_MIN_TOKENS);
+        let pending = 0, count = 0; targetEnd = 0;
         for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
-            pending += estimateTokens(messages[floor - 1].mes);
-            if (pending >= settings.trigger) { targetEnd = floor; break; }
+            pending += estimateTokens(messages[floor - 1].mes); count++;
+            if (pending >= settings.trigger || count >= floors && pending >= minimum) { targetEnd = floor; break; }
         }
         if (!targetEnd) return null;
     }

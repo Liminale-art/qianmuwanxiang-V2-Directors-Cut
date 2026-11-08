@@ -380,10 +380,27 @@ export function createHost({
                 subscriptions.at(-1).push(promote);
             }
         }
+        // ST emits GENERATION_ENDED only when #mes_stop is computed visible, so a
+        // theme hiding the stop button never sends it. ST always removes
+        // body[data-generating] when it unblocks; that removal settles the round.
         let active = true;
+        const body = document?.body, Observer = document?.defaultView?.MutationObserver || globalThis.MutationObserver;
+        let observer = null;
+        if (body && typeof Observer === 'function') {
+            observer = new Observer(() => {
+                if (!active || !generating || body.dataset?.generating === 'true') return;
+                generating = false; clear();
+                try {
+                    const pending = callback('GENERATION_SETTLED', []);
+                    pending?.catch?.(onError);
+                } catch (error) { onError(error); }
+            });
+            observer.observe(body, { attributes: true, attributeFilter: ['data-generating'] });
+        }
         return () => {
             if (!active) return;
             active = false;
+            observer?.disconnect();
             recentStory = null;
             for (const [event, listener, promote] of subscriptions) {
                 remove(event, listener);
@@ -393,7 +410,16 @@ export function createHost({
         };
     }
 
-    return { snapshot, generate, profiles, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
+    // Live ST state, independent of events a theme may suppress. null = unknown.
+    function busyGenerating() {
+        let processor = null;
+        try { processor = context().streamingProcessor; } catch { /* host not ready */ }
+        if (processor?.isFinished === false && processor?.isStopped !== true) return true;
+        const body = document?.body;
+        return body?.dataset ? body.dataset.generating === 'true' : null;
+    }
+
+    return { snapshot, generate, profiles, busyGenerating, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         vectorCandidates: request => connectionApi.vectorCandidates(request),
         rerankCandidates: request => connectionApi.rerankCandidates(request),

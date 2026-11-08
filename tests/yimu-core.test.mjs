@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, SCHEMA, createDocument, createDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
+import { DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
 import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
 
@@ -323,3 +323,17 @@ test('schema eight accepts optional temporal fields for fact lifecycle tracking'
     assert.throws(() => append(plainSaved, badStatus), /factStatus/);
 });
 
+
+test('automatic trigger fires on floors or tokens, whichever comes first, with a minimum token floor', () => {
+    const live = Array.from({ length: 30 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: '文'.repeat(400), send_date: `t${i}` }));
+    const doc = enable({ start: 1, end: 0, total: 0 });
+    const tokensOnly = { ...DEFAULTS, trigger: 50000 };
+    assert.equal(nextBatch(doc, live, tokensOnly), null, 'blank floor count keeps token-only behaviour');
+    assert.equal(nextBatch(doc, live, { ...tokensOnly, triggerFloors: 0 }), null);
+    assert.deepEqual(nextBatch(doc, live, { ...tokensOnly, triggerFloors: 10 }), { start: 1, end: 10 });
+    assert.deepEqual(nextBatch(doc, live, { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
+    const short = live.map(message => ({ ...message, mes: '短句。' }));
+    assert.equal(nextBatch(doc, short, { ...tokensOnly, triggerFloors: 3 }), null, 'a few short floors never form a slice');
+    assert.throws(() => validateSettingsFor({ triggerFloors: 2001 }), /超出范围/);
+    assert.deepEqual(validateSettingsFor({ triggerFloors: 0 }), { triggerFloors: 0 });
+});
