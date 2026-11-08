@@ -25,6 +25,7 @@ export function scanTtsFloor(mesEl, {isCharacter, barClass, bindBoundary, applyI
   bindBoundary(mesEl.querySelector('.sd-tts-toolbar'));
   const bar = mesEl.querySelector(`.${barClass}`);
   if (bar) bindBoundary(bar);
+  followTextOrder(textEl, [mesEl.querySelector('.sd-tts-toolbar'), bar]);
   if (options.forceProvider && bar?.dataset.loaded === '1') delete bar.dataset.provider;
   autoRestore(mesEl);
   if (options.expand) {
@@ -33,5 +34,37 @@ export function scanTtsFloor(mesEl, {isCharacter, barClass, bindBoundary, applyI
       restored.hidden = false;
       mesEl.querySelectorAll('.sd-tts-inline').forEach(node => { node.hidden = false; });
     }
+  }
+}
+
+// Themes may lay .mes_block out as flex/grid and pull .mes_text down with
+// `order` or an explicit grid row/area. Our nodes would then auto-place in
+// the gap between header and text. Mirror the text's order and start our
+// row right after the text's row so DOM sequence decides placement again.
+export function gridRowAfter(start, end) {
+  const s = String(start || 'auto').trim();
+  const e = String(end || 'auto').trim();
+  if (/^-?\d+$/.test(e)) return e;
+  const span = /^span\s+(\d+)$/.exec(e);
+  if (/^-?\d+$/.test(s)) return String(Number(s) + (span ? Number(span[1]) : 1));
+  if (/^[a-zA-Z_][\w-]*$/.test(s) && s !== 'auto') return `${s}-end`;
+  return '';
+}
+
+export function followTextOrder(textEl, nodes) {
+  const view = textEl?.ownerDocument?.defaultView;
+  if (!view?.getComputedStyle) return;
+  const cs = view.getComputedStyle(textEl);
+  const order = cs.order || '0';
+  const row = gridRowAfter(cs.gridRowStart, cs.gridRowEnd);
+  let next = row;
+  for (const node of nodes) {
+    if (!node?.style) continue;
+    if (order === '0') node.style.removeProperty('order');
+    else node.style.setProperty('order', order, 'important');
+    if (next) node.style.setProperty('grid-row-start', next, 'important');
+    else node.style.removeProperty('grid-row-start');
+    if (next && /^-?\d+$/.test(next)) next = String(Number(next) + 1);
+    else if (next) next = '';
   }
 }
