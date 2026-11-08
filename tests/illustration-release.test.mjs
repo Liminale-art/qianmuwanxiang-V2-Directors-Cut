@@ -15,7 +15,7 @@ test('illustration entry, stylesheet and host package advertise one local versio
   const result=await buildRelease({dryRun:true});
   assert.equal(result.dryRun,true);
   assert.equal(result.manifest.version,version);assert.equal(result.packageJson.version,version);
-  // Same-release hotfixes append a cache suffix (e.g. -tts-order-1) after the release stamp.
+  // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
   for(const [field,entry] of [['js','index.js'],['css','style.css']]){
     const address=result.manifest[field],prefix=`${entry}?v=${version}`;
     assert.ok(address.startsWith(prefix)&&/^(?:-[a-z0-9-]+)?$/.test(address.slice(prefix.length)),`${field}: ${address}`);

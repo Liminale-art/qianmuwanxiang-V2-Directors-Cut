@@ -12,7 +12,9 @@ const refreshed = new Set([
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library.js', 'qianmu-font-library-view.js', 'qianmu-font-library-state.js', 'qianmu-font-runtime.js'].map(file => [file, releaseVersion]),
+  ...['qianmu-font-library-view.js', 'qianmu-font-library-state.js'].map(file => [file, releaseVersion]),
+  // Body font now exposes --qm-body-font for the TTS line list; entry and controller carry the hotfix stamp.
+  ...['qianmu-font-library.js', 'qianmu-font-runtime.js'].map(file => [file, `${releaseVersion}-tts-font-1`]),
   ['qianmu-font-sources.js', releaseVersion],
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
@@ -68,7 +70,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
   assert.equal(pkg.version, releaseVersion);
   assert.equal(manifest.version, releaseVersion);
-  // Same-release hotfixes append a cache suffix (e.g. -tts-order-1) after the release stamp.
+  // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
   assert.ok(manifest.js.startsWith(`index.js?v=${releaseVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.js.slice(`index.js?v=${releaseVersion}`.length)));
   assert.ok(manifest.css.startsWith(`style.css?v=${releaseVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(`style.css?v=${releaseVersion}`.length)));
   assert.ok(files.includes('qianmu-creative-social.css'));

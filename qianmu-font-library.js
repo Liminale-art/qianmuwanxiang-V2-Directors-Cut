@@ -1,7 +1,7 @@
 import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.484';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.484';
 import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.484';
-import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.484';
+import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.484-tts-font-1';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.484';
 import { readBuiltinFont } from './qianmu-font-builtins.js';

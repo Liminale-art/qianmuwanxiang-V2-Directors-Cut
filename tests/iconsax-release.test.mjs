@@ -133,7 +133,7 @@ test('installed entry and styles use their actual release addresses while unchan
   const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
   assert.equal(manifest.version, CURRENT_RELEASE);
   assert.equal(packageJson.version, manifest.version);
-  // Same-release hotfixes append a cache suffix (e.g. -tts-order-1) after the release stamp.
+  // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
   assert.match(manifest.js, new RegExp(`^index\\.js\\?v=${CURRENT_RELEASE.replace(/\./g, '\\.')}(?:-[a-z0-9-]+)?$`));
   assert.match(manifest.css, new RegExp(`^style\\.css\\?v=${CURRENT_RELEASE.replace(/\./g, '\\.')}(?:-[a-z0-9-]+)?$`));
   assert.ok(sources.get('index.js').includes(`const VERSION = '${CURRENT_RELEASE}';`));
