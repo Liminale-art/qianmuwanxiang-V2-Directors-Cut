@@ -895,14 +895,14 @@ const FLOAT_SIZE_MAX = 80;
 
 // 悬浮球图标：扩展自带的本地透明 PNG（96px、与 index.js 同源），不依赖外部字体/网络，
 // 根治「幕」字因字体加载失败而失效的问题。换图标只改这一行。
-const FLOAT_LOGO_URL = new URL('./qianmulogo.png', import.meta.url).href;
+const FLOAT_LOGO_URL = new URL('./assets/logos/qianmulogo.png', import.meta.url).href;
 const FLOAT_LOGO_URLS = Object.freeze({
   light: FLOAT_LOGO_URL,
-  dark: new URL('./qianmulogo-dark.png', import.meta.url).href,
-  summer: new URL('./qianmulogo-summer.png', import.meta.url).href,
-  candy: new URL('./qianmulogo-candy.png', import.meta.url).href,
+  dark: new URL('./assets/logos/qianmulogo-dark.png', import.meta.url).href,
+  summer: new URL('./assets/logos/qianmulogo-summer.png', import.meta.url).href,
+  candy: new URL('./assets/logos/qianmulogo-candy.png', import.meta.url).href,
   kraft: FLOAT_LOGO_URL,
-  dream: new URL('./qianmulogo-dream.png', import.meta.url).href,
+  dream: new URL('./assets/logos/qianmulogo-dream.png', import.meta.url).href,
 });
 const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/main/INSTALL-SERVER-PLUGIN.md';
 

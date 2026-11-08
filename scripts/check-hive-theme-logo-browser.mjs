@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { storyboardFunctionSource as section } from '../tests/helpers/storyboard-form-fixture.mjs';
 const require = createRequire(import.meta.url), { chromium } = require(process.env.QIANMU_PLAYWRIGHT_MODULE || 'playwright');
 const modules = ['qianmu-hive-theme-logo.js', 'qianmu-appearance-actions.js', 'qianmu-appearance-settings.js', 'qianmu-appearance-session.js', 'qianmu-appearance-runtime.js', 'qianmu-appearance-portals.js', 'qianmu-classic-palettes.js', 'qianmu-theme-surfaces.js', 'qianmu-theme-palette.js'];
-const logos = ['qianmulogo.png', 'qianmulogo-dark.png', 'qianmulogo-summer.png', 'qianmulogo-candy.png', 'qianmulogo-dream.png'];
+const logos = ['assets/logos/qianmulogo.png', 'assets/logos/qianmulogo-dark.png', 'assets/logos/qianmulogo-summer.png', 'assets/logos/qianmulogo-candy.png', 'assets/logos/qianmulogo-dream.png'];
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 const skin = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
 const browser = await chromium.launch({ channel: process.env.QIANMU_BROWSER_CHANNEL || undefined, headless: true });
@@ -30,7 +30,7 @@ try {
         const { changeQianmuAppearance, selectQianmuClassicTheme } = await import('./qianmu-appearance-actions.js');
         const { THEME_KEYS, QUICK_HIVE_THEME_PALETTES } = await import('./qianmu-classic-palettes.js');
         const settings = { enabled: true, floatingButton: true, theme: 'dream' }, floatId = 'story-director-float';
-        const logos = { light: 'qianmulogo.png', dark: 'qianmulogo-dark.png', summer: 'qianmulogo-summer.png', candy: 'qianmulogo-candy.png', kraft: 'qianmulogo.png', dream: 'qianmulogo-dream.png' };
+        const logos = { light: 'assets/logos/qianmulogo.png', dark: 'assets/logos/qianmulogo-dark.png', summer: 'assets/logos/qianmulogo-summer.png', candy: 'assets/logos/qianmulogo-candy.png', kraft: 'assets/logos/qianmulogo.png', dream: 'assets/logos/qianmulogo-dream.png' };
         const session = createQianmuAppearanceSession({ readSettings: () => settings, document, loadStyles: () => ({ promise: Promise.resolve(true), cancel() {} }) });
         let saves = 0, clicks = 0;
         Object.assign(window, { settings, FLOAT_ID: floatId, EXTENSION_NAME: '千幕', THEME_KEYS, FLOAT_LOGO_URLS: logos,
@@ -62,7 +62,7 @@ try {
         };
     }, section('renderFloatButton'));
     const initial = await page.evaluate(() => inspect());
-    assert.equal(initial.svg, 'none'); assert.equal(initial.image, 'block'); assert.equal(initial.source, 'qianmulogo-dream.png');
+    assert.equal(initial.svg, 'none'); assert.equal(initial.image, 'block'); assert.equal(initial.source, 'assets/logos/qianmulogo-dream.png');
     checks.push('Classic dream uses its existing PNG; the dormant vector adds no visible logo');
     for (const width of [393, 1280]) {
         await page.setViewportSize({ width, height: 900 });
@@ -74,7 +74,7 @@ try {
                 assert.equal(state.image, 'none'); assert.equal(state.svg, 'block'); assert.equal(state.same, true);
                 assert.deepEqual(state.colors, state.expected); assert.equal(state.pointer, 'none');
                 assert.equal(state.left, '32px'); assert.equal(state.top, '32px'); assert.ok(state.size[0] > 30 && state.size[1] > 40);
-                assert.equal(state.source, 'qianmulogo-dream.png', 'new themes must not overwrite the saved classic image');
+                assert.equal(state.source, 'assets/logos/qianmulogo-dream.png', 'new themes must not overwrite the saved classic image');
                 if (previous) assert.notEqual(state.colors[1], previous);
                 previous = state.colors[1];
                 checks.push(`${width}/${family}/${mode}/${accent}: both SVG regions follow current tokens on the same live node`);
@@ -92,7 +92,7 @@ try {
         await page.evaluate(key => fixture.classic(key), key);
         const state = await page.evaluate(() => inspect());
         assert.equal(state.same, true); assert.equal(state.image, 'block'); assert.equal(state.svg, 'none');
-        assert.equal(state.source, key === 'light' || key === 'kraft' ? 'qianmulogo.png' : `qianmulogo-${key}.png`);
+        assert.equal(state.source, key === 'light' || key === 'kraft' ? 'assets/logos/qianmulogo.png' : `assets/logos/qianmulogo-${key}.png`);
         checks.push(`Classic ${key}: original PNG and node restored, no theme-vector bleed`);
     }
     // Quantify original silhouette preservation, including transparent film holes.
@@ -102,7 +102,7 @@ try {
         const svg = QIANMU_HIVE_THEME_LOGO.replace('display:none', 'display:block').replaceAll('var(--qm-ink)', '#000').replaceAll('var(--qm-accent)', '#000');
         const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
         try {
-            const [source, traced] = await Promise.all([load('/qianmulogo.png'), load(url)]);
+            const [source, traced] = await Promise.all([load('/assets/logos/qianmulogo.png'), load(url)]);
             const canvas = document.createElement('canvas'); canvas.width = canvas.height = 384;
             const ctx = canvas.getContext('2d');
             const read = image => { ctx.clearRect(0, 0, 384, 384); ctx.drawImage(image, 0, 0, 384, 384); return ctx.getImageData(0, 0, 384, 384).data; };

@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const sharp = require(process.env.QIANMU_SHARP_MODULE || 'sharp');
-const { data, info } = await sharp(fileURLToPath(new URL('../qianmulogo.png', import.meta.url))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+const { data, info } = await sharp(fileURLToPath(new URL('../assets/logos/qianmulogo.png', import.meta.url))).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 const { width, height } = info;
 const layers = [new Uint8Array(width * height), new Uint8Array(width * height)];
 for (let pixel = 0; pixel < width * height; pixel++) {
@@ -59,5 +59,5 @@ function trace(mask) {
     return paths.join('');
 }
 const paths = layers.map(trace);
-const source = `// Mechanically traced from qianmulogo.png by scripts/trace-hive-theme-logo.mjs.\n// Keep the original butterfly, stars, Mobius ribbon and film perforations.\n// CSS custom properties recolor the two original regions without rebuilding DOM.\nexport const QIANMU_HIVE_THEME_LOGO = '<svg class="qm-hive-theme-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" aria-hidden="true" focusable="false" style="display:none"><path fill="var(--qm-ink)" fill-rule="evenodd" d="${paths[0]}"/><path fill="var(--qm-accent)" fill-rule="evenodd" d="${paths[1]}"/></svg>';\n`;
+const source = `// Mechanically traced from assets/logos/qianmulogo.png by scripts/trace-hive-theme-logo.mjs.\n// Keep the original butterfly, stars, Mobius ribbon and film perforations.\n// CSS custom properties recolor the two original regions without rebuilding DOM.\nexport const QIANMU_HIVE_THEME_LOGO = '<svg class="qm-hive-theme-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" aria-hidden="true" focusable="false" style="display:none"><path fill="var(--qm-ink)" fill-rule="evenodd" d="${paths[0]}"/><path fill="var(--qm-accent)" fill-rule="evenodd" d="${paths[1]}"/></svg>';\n`;
 process.stdout.write(source);

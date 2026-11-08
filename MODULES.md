@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 678 个，其中 `qianmu-*` 模块 656 个。
+根目录文件 673 个，其中 `qianmu-*` 模块 656 个。
 
 ## 入口、宿主与安装
 
@@ -23,15 +23,20 @@
 | `style.css` | 是 |  |
 | `update-server-plugin.sh` | 否 |  |
 
-## Logo
+## 子目录（已归档的文件）
 
-| 文件 | 发行 | 首行说明 |
-| --- | --- | --- |
-| `qianmulogo-candy.png` | 是 |  |
-| `qianmulogo-dark.png` | 是 |  |
-| `qianmulogo-dream.png` | 是 |  |
-| `qianmulogo-summer.png` | 是 |  |
-| `qianmulogo.png` | 是 |  |
+| 目录 | 跟踪文件数 |
+| --- | --- |
+| `.claude/` | 1 |
+| `assets/focus-sounds/` | 8 |
+| `assets/logos/` | 5 |
+| `evaluation/` | 2 |
+| `scripts/` | 157 |
+| `tests/` | 960 |
+| `vendor/noble-hashes-2.4.0/` | 9 |
+| `vendor/zip-js-2.24.0/` | 3 |
+| `workflows/` | 6 |
+| `yimu/` | 52 |
 
 ## 文档
 
@@ -422,7 +427,7 @@
 | `qianmu-assistant-storage-service.js` | 是 |  |
 | `qianmu-hive-commands.js` | 是 | Shared built-in commands; no runtime state or network dependencies. |
 | `qianmu-hive-ownership.js` | 是 | Built-in floating controls must never be captured as external plugin entries. |
-| `qianmu-hive-theme-logo.js` | 是 | Mechanically traced from qianmulogo.png by scripts/trace-hive-theme-logo.mjs. |
+| `qianmu-hive-theme-logo.js` | 是 | Mechanically traced from assets/logos/qianmulogo.png by scripts/trace-hive-theme-logo.mjs. |
 | `qianmu-prose-assistant-context.js` | 是 |  |
 | `qianmu-prose-assistant-conversation-list.js` | 是 |  |
 | `qianmu-prose-assistant-conversations.js` | 是 |  |

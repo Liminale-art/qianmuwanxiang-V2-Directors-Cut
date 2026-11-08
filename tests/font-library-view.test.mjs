@@ -840,7 +840,7 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
     const stamp = '1.59.484', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
-    assert.equal(manifest.js, `index.js?v=${stamp}-stamps-1`); assert.equal(manifest.css, `style.css?v=${stamp}-stamps-1`);
+    assert.equal(manifest.js, `index.js?v=${stamp}-logos-1`); assert.equal(manifest.css, `style.css?v=${stamp}-logos-1`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}-tts-font-1'`));
     assert.ok((await read('qianmu-font-library.js')).includes(`'./qianmu-font-library-view.js?v=${stamp}'`));
     const controller = await read('qianmu-font-library.js');

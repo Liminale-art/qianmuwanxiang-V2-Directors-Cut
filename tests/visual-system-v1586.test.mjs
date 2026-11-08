@@ -20,7 +20,7 @@ assert.match(styles, /\.sd-storyboard-nav \{[\s\S]*margin: 0 !important[\s\S]*bo
 assert.match(styles, /#sd-reader-portal,[\s\S]*\.sd-reader-portal \{[\s\S]*font-size: 14px/);
 assert.doesNotMatch(styles, /min-font-size:/, 'the visual foundation must only use valid CSS properties');
 
-assert.match(source, /new URL\('\.\/qianmulogo\.png', import\.meta\.url\)/, 'the main logo must remain bundled with the extension');
+assert.match(source, /new URL\('\.\/assets\/logos\/qianmulogo\.png', import\.meta\.url\)/, 'the main logo must remain bundled with the extension');
 assert.doesNotMatch(source, /https?:[^'"`]*(?:fontawesome|cloudflare|jsdelivr|unpkg)/i, 'icons must never depend on an external CDN');
 await assert.rejects(access(new URL('assets/fontawesome-pro', root)), 'commercial icon sources must not be published without a redistribution grant');
 

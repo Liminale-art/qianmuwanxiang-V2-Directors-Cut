@@ -42,14 +42,19 @@ function describe(source) {
 const escape = text => text.replace(/\|/g, '\\|');
 
 export async function buildModuleMap() {
-  const entries = execFileSync('git', ['ls-files'], { cwd: fileURLToPath(root), encoding: 'utf8' })
-    .split(/\r?\n/).filter(name => name && !name.includes('/') && !name.startsWith('.')).sort();
+  const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: fileURLToPath(root), encoding: 'utf8' }).split('\0').filter(Boolean);
+  const entries = tracked.filter(name => !name.includes('/') && !name.startsWith('.')).sort();
+  const folders = new Map();
+  for (const name of tracked.filter(name => name.includes('/'))) {
+    const [top, second] = name.split('/');
+    const key = ['assets', 'vendor'].includes(top) && name.split('/').length > 2 ? `${top}/${second}` : top;
+    folders.set(key, (folders.get(key) || 0) + 1);
+  }
   const release = new Set(JSON.parse(await readFile(new URL('release-files.json', root), 'utf8')).files || []);
   const buckets = new Map([...GROUPS.map(([title]) => [title, []]), ['其他模块', []]]);
-  const rootFiles = [], logos = [], docs = [];
+  const rootFiles = [], docs = [];
   for (const name of entries) {
     if (name === OUTPUT) continue;
-    if (/^qianmulogo.*\.png$/.test(name)) { logos.push(name); continue; }
     if (/\.md$/.test(name)) { docs.push(name); continue; }
     const match = name.match(/^qianmu-([a-z0-9]+)(?:-[^.]*)?(?:\.[a-z0-9]+)*\.(?:js|css)$/);
     if (!match) { rootFiles.push(name); continue; }
@@ -73,9 +78,11 @@ export async function buildModuleMap() {
     '',
     await table(rootFiles),
     '',
-    '## Logo',
+    '## 子目录（已归档的文件）',
     '',
-    await table(logos),
+    '| 目录 | 跟踪文件数 |',
+    '| --- | --- |',
+    ...[...folders].sort(([a], [b]) => a.localeCompare(b)).map(([folder, count]) => `| \`${folder}/\` | ${count} |`),
     '',
     '## 文档',
     '',
