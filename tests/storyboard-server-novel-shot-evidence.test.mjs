@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { inspectStoryboardNovelShotLedger } from '../qianmu-storyboard-server-novel-shot-evidence.js';
 import { createImageService } from '../qianmu-image-service.js';
 import { createImageServiceStore } from '../qianmu-image-service-store.js';
 import { imageServiceAccount } from '../qianmu-image-service-access.js';
-import { sealStoryboardNovelShotInput } from '../qianmu-storyboard-server-shot-input-contract.js';
 
 const actor = (handle = 'alice') => ({ user: { profile: { handle, enabled: true } } });
 const attemptId = 'shotjob-abc-1-12345678';
@@ -110,15 +108,7 @@ test('the production service reads its existing store without creating a directo
   let providerCalls = 0;
   const service = createImageService({ dataRoot: root, store, generate: () => { providerCalls++; assert.fail('no paid submission'); } });
   t.after(() => service.close());
-  const request = actor(), expectedAccount = imageServiceAccount(request).namespace;
-  const { snapshot } = sealStoryboardNovelShotInput({ expectedAccount, batchId: randomUUID(), attemptId,
-    request: { provider: 'novel', modelFamily: 'novel', protocol: 'novelai', apiKey: 'test-key',
-      baseUrl: 'https://image.novelai.net', model: 'nai-diffusion-4-5-full',
-      capabilityModelId: 'nai-diffusion-4-5-full', allowPrivateNetwork: false,
-      prompt: 'quiet kitchen', negativePrompt: '', referenceImages: [], vibes: [],
-      parameters: { width: 1024, height: 1024, count: 1, providerOptions: {} } } });
-  const sealed = { expectedAccount: snapshot.expectedAccount, channelKey: snapshot.channelKey,
-    attemptId: snapshot.attemptId, requestDigest: snapshot.requestDigest };
+  const request = actor(), sealed = identity(request);
   assert.equal((await service.inspectStoryboardNovelShotLedger(request, sealed)).observation, 'no_owned_record');
   assert.deepEqual(await fs.readdir(root), []);
 

@@ -9,8 +9,6 @@ import {STORYBOARD_CHAT_EVIDENCE_SCHEMA} from '../qianmu-storyboard-chat-evidenc
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {chatEvidenceFixture} from './helpers/chat-evidence-fixture.mjs';
 import {createGalleryDiscoveryService} from '../qianmu-gallery-discovery-service.js';
-import {createGalleryDiscoveryClient} from '../qianmu-gallery-discovery-client.js';
-import {createGalleryArchiveBrowser} from '../qianmu-gallery-archive-browser.js';
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -205,7 +203,7 @@ test('forged receipt fields, wrong account and oversized row lists cannot write 
   }assert.equal(uploads(f.transport).length,0);
 });
 
-test('v3 immutable versions bind verified evidence; new browser discovers copies without source chat or eager evidence reads',async t=>{
+test('v3 immutable versions bind verified evidence; v3 discovery lists copies without source chat or eager evidence reads',async t=>{
   const f=await realFixture(t),companion=await f.store.preserveSupplement(f.companion),body=await f.store.preserveEvidence(f.evidence,companion.reference);
   const page=await f.store.stagePage(f.host.rows),source={...f.companion.gallery,proof:'read-only-snapshot'};
   await f.store.publishSourceVersion(source,[page.descriptor]);await f.store.publishSourceVersion(source,[page.descriptor],companion.reference);
@@ -217,15 +215,8 @@ test('v3 immutable versions bind verified evidence; new browser discovers copies
   const opened=[],service=createGalleryDiscoveryService({dataRoot:f.host.root,io:{...fs,open:async(file,...rest)=>{opened.push(path.basename(file));return fs.open(file,...rest);}}});t.after(()=>service.close());
   const request=version=>({version,expectedAccount:f.evidence.expectedAccount,limit:32,cursor:null});
   assert.equal((await service.list(f.host.req,request(1))).entries.length,1);assert.equal((await service.list(f.host.req,request(2))).entries.length,2);
-  const browser=createGalleryArchiveBrowser({account:async()=>scope.namespace,headers:()=>({}),
-    createDiscovery:options=>createGalleryDiscoveryClient({...options,fetchImpl:async(_,opts)=>Response.json(await service.list(f.host.req,JSON.parse(opts.body),{signal:opts.signal}))}),
-    createArchive:options=>createGalleryArchiveStorage({...options,createStorage:f.transport.createStorage})});t.after(()=>browser.close());
-  const list=await browser.list();assert.equal(list.entries.length,3);assert.ok(opened.every(name=>/-gallery-source[23]?-/.test(name)));
-  const selected=list.entries.find(entry=>entry.value.evidence);let at=f.transport.calls.length;await browser.open(selected.key);
-  assert.ok(!f.transport.calls.slice(at).some(c=>c.path.includes('-gallery-evidence-')||c.path.includes('-gallery-supplement-')));
-  assert.equal((await browser.page()).rows.length,1);at=f.transport.calls.length;const evidence=await browser.evidence();assert.equal(evidence.state,'available');assert.deepEqual(evidence.receipt,f.evidence);
-  assert.deepEqual(evidence.reference,saved.evidence);assert.ok(f.transport.calls.slice(at).some(c=>c.path.includes('-gallery-evidence-page-')));
-  await browser.open(list.entries.find(entry=>!entry.value.evidence).key);assert.equal((await browser.evidence()).state,'not-preserved');
+  const listed=await service.list(f.host.req,request(3));assert.equal(listed.entries.length,3);assert.ok(opened.every(name=>/-gallery-source[23]?-/.test(name)));
+  assert.deepEqual(listed.entries.filter(entry=>entry.value.evidence).map(entry=>entry.value.evidence),[saved.evidence]);
   const bad=[...f.transport.files].find(([name,text])=>name.includes('-gallery-source3-')&&JSON.parse(text).schema==='qianmu.st-account-document.v1');
   await fs.writeFile(path.join(folder,bad[0]),'damaged');assert.equal((await service.list(f.host.req,request(2))).entries.length,2);await assert.rejects(service.list(f.host.req,request(3)));
 });
@@ -248,12 +239,4 @@ test('source change during v3 publication retains written copies but never ackno
   f.transport.hook=({path,options})=>{if(path==='/api/files/upload'&&JSON.parse(options.body).name.includes('-gallery-source3-'))current=false;};
   await assert.rejects(store.publishSourceVersion({...f.companion.gallery,proof:'read-only-snapshot'},[page.descriptor],companion.reference,body.reference),e=>e.writeState==='unconfirmed');
   assert.equal(manifests(f.transport).length,1);assert.equal(pages(f.transport).length,1);
-});
-
-test('new discovery capability cannot accept older success responses as an empty complete library',async t=>{
-  for(const version of [1,2]){
-    let calls=0;const client=createGalleryDiscoveryClient({account:async()=>scope.namespace,headers:()=>({}),fetchImpl:async(_,options)=>{
-      calls++;assert.equal(JSON.parse(options.body).version,3);return Response.json({ok:true,version,expectedAccount:synthetic().expectedAccount,entries:[],nextCursor:null,proof:'read-only-directory'});
-    }});t.after(()=>client.close());await assert.rejects(client.list());assert.equal(calls,1);
-  }
 });

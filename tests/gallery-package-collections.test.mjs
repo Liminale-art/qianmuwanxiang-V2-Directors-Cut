@@ -6,7 +6,6 @@ import {inspectStoryboardPackageFile} from '../qianmu-storyboard-package-input.j
 import {prepareStoryboardPackageDraft} from '../qianmu-storyboard-package-draft.js';
 import {createStoryboardDefaults} from '../qianmu-storyboard.js';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
-import {mergeGallerySupplement} from '../qianmu-gallery-merge-supplement.js';
 
 const rows=(n=141,start=0)=>Array.from({length:n},(_,i)=>({id:'collection-'+(i+start),name:'Collection '+(i+start),future:{keep:i+start}}));
 const packet=collections=>({type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:{},chat:{images:[],collections},media:[]});
@@ -28,12 +27,10 @@ for(const version of [6,7])test(`v${version} actual package import preserves 141
   assert.equal(f.e.store.storyboardImages[0].collectionId,members.at(-1));assert.equal(JSON.stringify(payload),before);assert.equal(f.e.pending.phase,'applied');
   f.e.choice='2';await f.recover();assert.deepEqual(f.e.store.storyboardCollections,[{id:'old',name:'Old',future:{local:true}}]);assert.equal(Object.hasOwn(f.e.store,'storyboardImages'),false);
 });
-test('the same complete collection originals survive package inspection and gallery supplement merge',async()=>{
+test('the same complete collection originals survive package inspection',async()=>{
   const collections=rows(1000),payload=packet(collections),built=await buildStoryboardVibePackage(payload,{namespace:'st-user:source',load:()=>assert.fail('no assets')});
   const inspected=await inspectStoryboardPackageFile(built.file);
-  const owner={namespace:'st-user:source',chatKey:'chat'};
-  const result=await mergeGallerySupplement({}, {storyboardCollections:inspected.payload.chat.collections},owner);
-  assert.deepEqual(result.saved.storyboardCollections,collections);
+  assert.deepEqual(inspected.payload.chat.collections,collections);
 });
 test('over-count and malformed collections refuse before import confirmation, journal, settings or asset writes',async()=>{
   for(const collections of [rows(10001),[...rows(1),...rows(1)],[{id:'id',name:''}],[{id:'id',name:'x'.repeat(81)}],[{id:'bad\nvalue',name:'Bad'}]]){

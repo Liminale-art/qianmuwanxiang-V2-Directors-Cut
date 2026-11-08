@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {galleryPreparedAssetsFixture} from './helpers/gallery-prepared-assets-fixture.mjs';
-import {galleryChatSaveFixture,pagedConsent,gate} from './helpers/gallery-chat-save-fixture.mjs';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {readCurrentGalleryLocalRecipe} from '../qianmu-gallery-local-recipe-current.js';
 import {galleryReviewedRecipeSlot} from '../qianmu-gallery-reviewed-recipe.js';
+const gate=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 
 async function legacy(t){
   const f=await galleryPreparedAssetsFixture(t,{count:1,serverRecipe:false}),record=f.rows[0],snapshot=structuredClone(record.snapshot);
@@ -42,19 +42,18 @@ test('a conflicting previously reviewed copy is never overwritten by a new assoc
   f.row.snapshot.prompt='different candidate';const second=await f.session.reviewLegacyRecipe(f.record.id),before=[...f.transport.files];
   await assert.rejects(f.session.confirmLegacyRecipe({confirmed:true,expectedDigest:second.digest}));assert.deepEqual([...f.transport.files],before);
 });
-test('user-reviewed base recipe survives full paged restore and host readback without changing raw references',async t=>{
-  const f=await galleryChatSaveFixture(t,{count:1,localRecipe:'reviewed'}),original=structuredClone(f.rows[0]),snapshot=[...f.localRecipes.values()][0].snapshot;
-  f.localRecipes.clear();const result=await f.openWriter().save(pagedConsent);assert.equal(result.status,'saved');assert.equal(f.saves,1);assert.deepEqual(f.store.storyboardImages,[original]);
+test('user-reviewed base recipe is read back on a second device from the restored exact row without changing raw references',async t=>{
+  const f=await galleryPreparedAssetsFixture(t,{count:1,localRecipe:'reviewed'}),original=structuredClone(f.rows[0]),snapshot=[...f.localRecipes.values()][0].snapshot;
+  f.localRecipes.clear();f.store.storyboardImages=[structuredClone(original)];await f.save();
   assert.deepEqual(await readCurrentGalleryLocalRecipe({...f.options,record:f.store.storyboardImages[0],readLocal:()=>assert.fail('no cache on second device')}),snapshot);
   assert.ok(f.calls.every(call=>!call.url.includes('/recipe/restore')));
 });
-test('missing or corrupted reviewed receipt blocks actual save and second-device read',async t=>{
+test('missing or corrupted reviewed receipt blocks second-device read',async t=>{
   for(const missing of [true,false]){
-    const f=await galleryChatSaveFixture(t,{count:1,localRecipe:'reviewed'}),slot=await galleryReviewedRecipeSlot(f.selection.scope,f.rows[0]);
+    const f=await galleryPreparedAssetsFixture(t,{count:1,localRecipe:'reviewed'}),slot=await galleryReviewedRecipeSlot(f.selection.scope,f.rows[0]);
     const key=[...f.transport.files.keys()].find(key=>key.endsWith(slot+'.json'));assert.ok(key);
     if(missing)f.transport.files.delete(key);else f.transport.files.set(key,'corrupt');
-    await assert.rejects(f.openWriter().save(pagedConsent));assert.equal(f.saves,0);
-    f.store.storyboardImages=f.rows;await assert.rejects(readCurrentGalleryLocalRecipe({...f.options,record:f.rows[0],readLocal:()=>assert.fail('no cache guessing')}));
+    f.localRecipes.clear();f.store.storyboardImages=f.rows;await assert.rejects(readCurrentGalleryLocalRecipe({...f.options,record:f.rows[0],readLocal:()=>assert.fail('no cache guessing')}));
   }
 });
 test('closing during legacy local lookup ignores late cache values and leaves no association',async t=>{

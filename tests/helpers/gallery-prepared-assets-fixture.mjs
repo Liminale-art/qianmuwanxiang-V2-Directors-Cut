@@ -6,12 +6,10 @@ import {streamCheckpointTransport} from './stream-checkpoint-fixture.mjs';
 import {createCurrentGalleryArchiveSession} from '../../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../../qianmu-gallery-archive-storage.js';
 import {chatGalleryDigest} from '../../qianmu-chat-gallery-digest.js';
-import {prepareCurrentGalleryRestore} from '../../qianmu-gallery-restore-runtime.js';
-import {createGalleryRestorePlanStorage} from '../../qianmu-gallery-restore-plan.js';
-import {openPreparedGallerySource} from '../../qianmu-gallery-prepared-source.js';
-import {createPreparedGalleryAssets} from '../../qianmu-gallery-restore-assets.js';
 import {vibeDigest} from '../../qianmu-vibe-file.js';
 
+// Real archive preservation of a current chat gallery, after which the live rows
+// are cleared. The retired restore preparation/asset layer is no longer built.
 export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,recordBytes=0,decorateRecord,prepareStore,clearArchivedFields=[],localRecipe=false}={}){
   const host=await galleryOriginalHttpFixture(t),transport=streamCheckpointTransport(host.account),calls=[],state={active:true,hook:null};
   const own=resource=>{t.after(()=>resource.close());return resource;};
@@ -47,12 +45,6 @@ export async function galleryPreparedAssetsFixture(t,{count=3,serverRecipe=true,
   const selection={schema:'qianmu.gallery.source-version.v3',scope:session.scope,sourceReceipt:saved.sourceReceipt,manifest:saved.reference,supplement:saved.supplement,evidence:saved.evidence};
   const archive=own(await createGalleryArchiveStorage({scope:session.scope,guard:()=>state.active,verifyRecord:()=>false,createStorage:transport.createStorage}));
   store.storyboardImages=[];for(const key of clearArchivedFields)delete store[key];await save();
-  const prepared=await prepareCurrentGalleryRestore({...options,selection,archive});assert.equal(prepared.compatible,true);
-  const planStorage=own(await createGalleryRestorePlanStorage({scope:session.scope,guard:()=>state.active,createStorage:transport.createStorage}));
-  const source=own(await openPreparedGallerySource({reference:prepared.reference,planStorage,archive,guard:()=>state.active}));
   const originalFile=await fs.readFile(host.file),live=JSON.stringify(host.context.chatMetadata);
-  const verifyCurrent=async()=>state.active&&JSON.stringify(host.context.chatMetadata)===live&&(await fs.readFile(host.file)).equals(originalFile);
-  return {...host,rows,store,transport,calls,state,selection,archive,planStorage,prepared,source,options,recipePath,localRecipes,save,originalFile,live,png:originalPng,own,
-    open:extra=>own(createPreparedGalleryAssets({source,account:options.account,headers:options.headers,guard:options.guard,verifyCurrent,fetchImpl,...extra})),
-  };
+  return {...host,rows,store,transport,calls,state,selection,archive,options,recipePath,localRecipes,save,originalFile,live,png:originalPng,own};
 }

@@ -6,7 +6,6 @@ import {attachGalleryContinuity} from './helpers/gallery-continuity-fixture.mjs'
 import {chatStateFixture} from './helpers/chat-state-fixture.mjs';
 import {projectGalleryContinuity,GALLERY_CONTINUITY_FIELDS,galleryContinuitySavePending} from '../qianmu-gallery-continuity.js';
 import {projectChatGallerySupplement,chatGallerySupplementResponse} from '../qianmu-chat-gallery-supplement.js';
-import {mergeGallerySupplement} from '../qianmu-gallery-merge-supplement.js';
 import {importCurrentRuntime} from './helpers/current-runtime.mjs';
 const {stageStoryboardContinuationLinks} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 const {saveStoryboardFloorTakes} = await importCurrentRuntime('qianmu-storyboard-floor-take.js');
@@ -30,12 +29,6 @@ for(const kind of ['account','chat','digest-id','fork','future-version','receipt
   if(kind==='receipt-duplicate')copy.storyboardFloorTakeReceipts.push(structuredClone(copy.storyboardFloorTakeReceipts[0]));
   if(kind==='credentials')row.future.apiKey='not-exportable';if(kind==='oversize')row.future.text='x'.repeat(2*1048576);
   const before=JSON.stringify(copy);await assert.rejects(projectChatGallerySupplement(copy,f.owner));assert.equal(JSON.stringify(copy),before);
-});
-test('same source facts merge without rewriting raw data; different same-scope receipts or same-ID paths conflict',async t=>{
-  const f=await fixture(t),result=await mergeGallerySupplement({},f.store,f.owner);assert.deepEqual(result.saved,f.store);assert.equal(result.added.storyboardContinuations,1);
-  const same=await mergeGallerySupplement(f.store,f.store,f.owner);assert.equal(same.added.storyboardFloorTakeReceipts,0);
-  for(const field of GALLERY_CONTINUITY_FIELDS){const next=structuredClone(f.store);next[field][0].future.changed=true;
-    const conflict=await mergeGallerySupplement(f.store,next,f.owner);assert.equal(conflict.saved,null);assert.ok(conflict.conflicts.some(row=>row.field===field));}
 });
 test('in-flight continuation and retake writes cannot be mistaken for committed archive source',async t=>{
   const f=await fixture(t),finish=stageStoryboardContinuationLinks(f.store,[...f.store.storyboardContinuations]);assert.equal(galleryContinuitySavePending(f.store),true);finish(false);

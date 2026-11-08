@@ -4,9 +4,8 @@ import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js'
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from '../qianmu-gallery-archive-original.js';
 import {encodeGalleryArchiveRecord} from '../qianmu-gallery-archive-record.js';
 import {galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
-import {decodeGalleryOriginalBlob} from '../qianmu-gallery-original-preview.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
-import {galleryOriginalHttpFixture,originalPng as png} from './helpers/gallery-original-http-fixture.mjs';
+import {galleryOriginalHttpFixture} from './helpers/gallery-original-http-fixture.mjs';
 
 async function fixture(t){
     const f=await galleryOriginalHttpFixture(t),scope={namespace:'st-user:alice',ownerKey:'char:Alice.png',chatKey:'chat'},transport=streamCheckpointTransport(scope.namespace);
@@ -65,16 +64,4 @@ test('missing sidecar remains not-preserved and a combined preview read opens it
     const f=await fixture(t),saved=await f.storage.preserveRecord(f.record),before=f.transport.calls.length;
     const read=await f.storage.readMediaRecord(saved.reference);assert.equal(read.media.state,'not-preserved');assert.equal(read.originalVerified,false);
     assert.equal(f.transport.calls.length-before,3);assert.ok(f.transport.calls.slice(before).every(call=>call.options.method!=='POST'));
-});
-
-test('verified blob decode closes bitmaps, bounds pixels and rejects page changes',async()=>{
-    const blob=new Blob([png],{type:'image/png'});let closed=0;
-    const result=await decodeGalleryOriginalBlob(blob,{decode:async()=>({width:1,height:1,close(){closed++;}})});assert.equal(result.width,1);assert.equal(closed,1);
-    for(const dimensions of [{width:0,height:1},{width:8000,height:8000},{width:1.5,height:1}])await assert.rejects(decodeGalleryOriginalBlob(blob,{decode:async()=>({...dimensions,close(){closed++;}})}));
-    assert.equal(closed,4);await assert.rejects(decodeGalleryOriginalBlob(blob,{guard:async()=>false,decode:async()=>{throw Error('must not decode');}}),/页面/);
-});
-
-test('cancelled slow decodes release their late bitmap without publishing it',{timeout:3000},async()=>{
-    let resolve,closed=0;const gate=new Promise(done=>{resolve=done;}),task=decodeGalleryOriginalBlob(new Blob([png],{type:'image/png'}),{timeoutMs:100,decode:()=>gate});
-    await assert.rejects(task,/取消或超时/);resolve({width:1,height:1,close(){closed++;}});await new Promise(done=>setTimeout(done,0));assert.equal(closed,1);
 });

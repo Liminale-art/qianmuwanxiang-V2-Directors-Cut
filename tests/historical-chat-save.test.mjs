@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import { historicalChatSaveFixture as fixture, consent, gate } from './helpers/historical-chat-save-fixture.mjs';
-import { createChatCharacterSaveSession } from '../qianmu-character-chat-save.js';
-import { normalizeChatCharacterCollection } from '../qianmu-character-chat-batch.js';
 
 test('native host saves exactly three selected fields and confirms raw server contents/body without replacing other modules', async t => {
   const f = await fixture(t), before = await fs.readFile(f.file, 'utf8'), store = f.store, imagegen = store.imagegen, another = f.context.chatMetadata.unrelated;
@@ -96,26 +94,6 @@ test('host timeout retains shared exclusion until actual native promise settles;
   // Wait for the actual file write, not a 25ms estimate that races the disk
   // under the full parallel suite. Timeout/lock assertions above stay intact.
   wait.release(); await nativeSave; assert.equal((await a.verify()).status, 'saved'); assert.equal(f.saves, 1);
-});
-
-test('character draft saver and three-field saver share host write exclusion', async t => {
-  const f = await fixture(t), wait = gate(); f.host = async () => { await wait.promise; await f.persist(); };
-  const historical = f.open({ hostTimeoutMs: 15 }); assert.equal((await historical.save(f.proposal, consent)).reason, 'host_pending');
-  const character = await createChatCharacterSaveSession(f.options()); t.after(() => character.close());
-  const after = normalizeChatCharacterCollection(f.store.characterDrafts, { namespace: f.namespace, chatKey: f.target.chatId }); after.revision++;
-  await assert.rejects(character.save(after, { expectedRevision: after.revision - 1 }), /尚未结束/);
-  wait.release(); await new Promise(done => setTimeout(done, 25)); assert.equal((await historical.verify()).status, 'saved');
-});
-
-test('three-field saver also refuses a still-pending character-only native write', async t => {
-  const f = await fixture(t), wait = gate(), owner = { namespace: f.namespace, chatKey: f.target.chatId };
-  f.store.characterDrafts = normalizeChatCharacterCollection(f.store.characterDrafts, owner); await f.persist();
-  f.host = async () => { await wait.promise; await f.persist(); };
-  const character = await createChatCharacterSaveSession({ ...f.options(), timeoutMs: 100 }); t.after(() => character.close());
-  const after = structuredClone(f.store.characterDrafts); after.revision++;
-  assert.equal((await character.save(after, { expectedRevision: after.revision - 1 })).reason, 'host_pending');
-  await assert.rejects(f.open().save(f.proposal, consent), /尚未结束/); assert.equal(f.saves, 1);
-  wait.release(); await new Promise(done => setTimeout(done, 25)); assert.equal((await character.verify()).status, 'saved');
 });
 
 test('closed session does not release host lock before late native completion or roll back staged data', async t => {

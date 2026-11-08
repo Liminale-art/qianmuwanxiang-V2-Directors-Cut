@@ -13,23 +13,24 @@ await context.route('**/*',async route=>{
 try{
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async()=>{
-    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js'),{promoteChatCharacterDraft}=await import('/qianmu-character-chat-promotion.js'),
+    // The chat-draft promotion module was retired; the fixed-ID archive store and backup paths below remain live.
+    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js'),
       {createChatCharacterDraft}=await import('/qianmu-character-chat-draft.js'),{characterLibraryBackupDigest,validateCharacterLibraryBackup}=await import('/qianmu-character-library-backup.js');
     const checks=[],check=(name,condition)=>{if(!condition)throw Error(name);checks.push(name);};
     const owner={namespace:'st-user:alice',chatKey:'Chat A'},draft=createChatCharacterDraft({owner,id:'12345678-1234-4234-8234-123456789abc',
       source:{kind:'body',chatKey:owner.chatKey,messageKey:'m1',revisionId:'r1',characterId:'C1'},character:{id:'C1',name:'Stranger',identity:['silver hair']}});
-    const original=JSON.stringify(draft),store=createCharacterArchiveStore(),peer=createCharacterArchiveStore(),options={owner,expectedRevision:1,confirmed:true,store,readDraft:()=>draft,isCurrent:()=>true,guard:async()=>{}};
-    const results=await Promise.all([promoteChatCharacterDraft(draft,options),promoteChatCharacterDraft(draft,{...options,store:peer})]);
-    check('concurrent promotion creates once and retries without duplicating usage',results.filter(row=>row.created).length===1&&results[0].archiveId===results[1].archiveId&&(await store.usage(owner.namespace)).count===1);
-    check('promotion preserves draft and creates no binding',JSON.stringify(draft)===original&&(await store.bindings(owner.namespace)).length===0&&results.every(row=>row.automaticBinding===false));
-    const id=results[0].archiveId,summary=await store.storageSummary(owner.namespace),backup=await store.backup(owner.namespace);
+    const original=JSON.stringify(draft),store=createCharacterArchiveStore(),peer=createCharacterArchiveStore(),current={isCurrent:()=>true};
+    const created=await store.createOnce(owner.namespace,{id:'stranger',document:draft.document},current),retried=await store.createOnce(owner.namespace,{id:'stranger',document:draft.document},current);
+    check('fixed-ID creation retries without duplicating usage',created.created===true&&retried.created===false&&(await store.usage(owner.namespace)).count===1);
+    check('fixed-ID creation preserves draft and creates no binding',JSON.stringify(draft)===original&&(await store.bindings(owner.namespace)).length===0);
+    const id=created.head.id,summary=await store.storageSummary(owner.namespace),backup=await store.backup(owner.namespace);
     check('existing storage summary and backup include the fixed archive',summary.documents.count===1&&validateCharacterLibraryBackup(backup).count===1&&backup.archives[0].head.id===id);
     const restored=createCharacterArchiveStore({dbName:'qianmu-promotion-restore-fixture'}),empty=await restored.backup(owner.namespace);
     await restored.restoreBackup(owner.namespace,backup,{confirmed:true,expectedDigest:await characterLibraryBackupDigest(empty),isCurrent:()=>true});
     check('existing backup restore preserves the new archive format without migration',(await restored.load(owner.namespace,id)).document.name==='Stranger');restored.close();
     const record=await store.load(owner.namespace,id);await store.save(owner.namespace,{id,expectedRevision:record.head.revision,document:{...record.document,name:'Global edit'}});
-    let failed=false;try{await promoteChatCharacterDraft(draft,options);}catch(error){failed=error.promotionState==='unconfirmed';}
-    check('promotion retry never overwrites an edited global archive',failed&&(await store.load(owner.namespace,id)).document.name==='Global edit'&&(await store.usage(owner.namespace)).count===1);
+    let failed=false;try{await store.createOnce(owner.namespace,{id,document:draft.document},current);}catch{failed=true;}
+    check('fixed-ID retry never overwrites an edited global archive',failed&&(await store.load(owner.namespace,id)).document.name==='Global edit'&&(await store.usage(owner.namespace)).count===1);
     const scope='st-user:atomic-fixture',value=draft.document,guard={isCurrent:()=>true},before=JSON.stringify(await store.storageSummary(scope)),nativeAdd=IDBObjectStore.prototype.add;
     try{IDBObjectStore.prototype.add=function(...args){if(this.name==='documents')throw new DOMException('synthetic quota','QuotaExceededError');return nativeAdd.apply(this,args);};
       failed=false;try{await store.createOnce(scope,{id:'quota',document:value},guard);}catch{failed=true;}

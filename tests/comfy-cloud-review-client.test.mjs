@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
-import { mountComfyInbox } from '../qianmu-comfy-inbox-view.js';
 import { imageServiceAccount } from '../qianmu-image-service-access.js';
 
 const channelKey = 'a'.repeat(64), confirmation = 'b'.repeat(64);
@@ -18,13 +17,6 @@ const packet = (patch = {}) => ({ ok: true, version: 1, channelKey, attemptId: '
 const acknowledged = () => packet({ status: 'acknowledged', canReview: false, reviewed: true, confirmation: '' });
 const json = data => new Response(JSON.stringify(data));
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-function inboxHost() {
-  const events = {}, ready = deferred(); let html = '';
-  const host = { isConnected: true, contains: () => true, get innerHTML() { return html; },
-    set innerHTML(value) { html = value; if (value.includes('aria-busy="false"')) ready.resolve(); },
-    addEventListener: (name, cb) => { events[name] = cb; }, removeEventListener: name => { delete events[name]; } };
-  return { events, host, ready: ready.promise };
-}
 function fixture(t, options = {}) {
   let currentAccount = namespace, row = structuredClone(unknown), current = true;
   const calls = [], prompts = [];
@@ -145,28 +137,5 @@ test('overlapping review clicks cannot issue duplicate read or confirm requests'
   const selected = await f.select(), first = f.client.reviewCloudOriginal(selected); await enter.promise;
   await assert.rejects(f.client.reviewCloudOriginal(selected), { code: 'comfy_delivery_busy' }); hold.resolve(); await first;
   assert.equal(f.calls.filter(call => call.url.endsWith('/review')).length, 1);
-  assert.equal(f.calls.filter(call => call.url.endsWith('/confirmReview')).length, 1);
-});
-
-test('inbox shows the real unknown row, refreshes reviewed state, and never falls through to receiving or generation', async t => {
-  const f = fixture(t), { events, host, ready } = inboxHost();
-  const actions = [];
-  const dispose = mountComfyInbox(host, { service: f.client, isCurrent: f.valid, receive: (row, mode, action) => {
-    actions.push(action); assert.equal(action, 'review'); assert.equal(mode, 'server'); return f.client.reviewCloudOriginal(row, { valid: f.valid });
-  } }); t.after(dispose); await ready;
-  assert.match(host.innerHTML, /RunningHub · 待核查/); assert.match(host.innerHTML, /核查原请求/);
-  assert.match(host.innerHTML, /请勿重复生成，以免重复付费/); assert.doesNotMatch(host.innerHTML, /data-receive|暂无待领取/);
-  const button = { dataset: { review: '0' }, disabled: false }; await events.click({ target: { closest: () => button } });
-  assert.deepEqual(actions, ['review']); assert.match(host.innerHTML, /已核查 · 费用未知/);
-  assert.doesNotMatch(host.innerHTML, /data-review|暂无待领取/); assert.match(host.innerHTML, /再次生成可能重复计费/);
-  assert.equal(f.calls.filter(call => call.url.endsWith('/confirmReview')).length, 1);
-});
-
-test('inbox refresh after a lost confirmation reveals the durable reviewed row without resending', async t => {
-  let f; f = fixture(t, { confirmResponse: () => { f.setRow({ status: 'acknowledged', reviewed: true, canReview: false }); throw Error('lost'); } });
-  const { events, host, ready } = inboxHost();
-  t.after(mountComfyInbox(host, { service: f.client, receive: row => f.client.reviewCloudOriginal(row) })); await ready;
-  const button = { dataset: { review: '0' }, disabled: false }; await events.click({ target: { closest: () => button } });
-  assert.match(host.innerHTML, /已核查 · 费用未知/); assert.match(host.innerHTML, /核查结果尚未确认，请刷新原记录核对/);
   assert.equal(f.calls.filter(call => call.url.endsWith('/confirmReview')).length, 1);
 });

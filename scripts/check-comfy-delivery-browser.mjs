@@ -200,9 +200,9 @@ try{
   await other.evaluate(()=>store.close());
   const ui=await openPage();
   await ui.evaluate(async()=>{
-    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
+    // The Comfy inbox view was retired; the recovery client it wrapped remains live and is exercised directly.
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
-    document.body.innerHTML='<main id="inbox"></main>';window.cloudReadable=true;window.cleanupCalls=0;window.received=[];window.capabilityMode='ready';
+    window.cloudReadable=true;window.cleanupCalls=0;window.received=[];window.capabilityMode='ready';
     const item={attemptId:'cloud-original',createdAt:1,status:'succeeded',task,taskLocator:accepted.taskLocator,archiveState:'archived',
       cacheReceipt:available.receipt,canRetryCleanup:true,resultAvailable:false,imageCount:2,cacheBytes:8};
     const totals={count:1,imageBytes:8,metadataBytes:2,temporaryBytes:0,reservedBytes:0,tasks:1};
@@ -225,33 +225,7 @@ try{
         totals:cloudReadable?totals:{...totals,imageBytes:null},warning:cloudReadable?'':'暂存占用暂不可读取'}:
         {ok:true,catalogVersion:1,originals:[{attemptId:'native-original',createdAt:1,status:'succeeded',taskLocator:{version:1,channelKey:'c'.repeat(64)},resultAvailable:true,canDiscard:true,cacheBytes:8,imageCount:1}],tasks:[],totals}));
     }});
-    window.disposeInbox=mountComfyInbox(document.querySelector('#inbox'),{service:uiClient,receive:async row=>{received.push(row);return {archived:true};}});
   });
-  await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('unified inbox shows both platforms and keeps cloud originals out of bulk discard',await ui.locator('#inbox').evaluate(node=>{
-    const articles=[...node.querySelectorAll('article')];return articles.length===2&&articles[1].textContent.includes('Comfy Cloud')
-      &&articles[1].querySelector('input').disabled&&!articles[0].querySelector('input').disabled;
-  }));
-  await ui.getByRole('button',{name:'继续清理',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('cleanup button uses archive-only continuation, not image delivery',await ui.evaluate(()=>cleanupCalls===1&&received.length===0&&document.querySelector('[role="status"]').textContent.includes('尚未清理完')));
-  await ui.evaluate(()=>{cloudReadable=false;});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('unreadable space is explicit and archived ledger cleanup remains reachable',await ui.locator('#inbox').evaluate(node=>node.querySelector('.sd-comfy-inbox-meter').textContent.includes('暂不可读取')
-    &&node.querySelector('[role="alert"]').textContent.includes('暂不可读取')&&[...node.querySelectorAll('button')].some(button=>button.textContent==='继续清理'&&!button.disabled)));
-  await ui.getByRole('button',{name:'加载较早云任务',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('older task paging preserves known originals, deduplicates repeats and stops at the last page',await ui.locator('#inbox').evaluate(node=>{
-    const ids=[...node.querySelectorAll('.sd-comfy-inbox-id')].map(item=>item.textContent);
-    return ids.length===3&&new Set(ids).size===3&&ids.includes('older-cloud')&&!node.querySelector('[data-action="earlier-cloud"]');
-  }));
-  ok('platform capability summary distinguishes available receipt from unavailable new generation',await ui.locator('.sd-comfy-inbox-capabilities').evaluate(node=>node.textContent.includes('Comfy Cloud · 可领取原图')
-    &&node.textContent.includes('RunningHub · 暂未开放收图')&&node.textContent.includes('云端新任务暂未开放')));
-  await ui.evaluate(()=>{capabilityMode='off';cloudReadable=true;});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('unsupported cloud action is disabled while its original metadata remains visible',await ui.locator('#inbox').evaluate(node=>{
-    const article=[...node.querySelectorAll('article')].find(item=>item.textContent.includes('Comfy Cloud'));
-    return !!article&&article.querySelector('button').disabled;
-  }));
-  await ui.evaluate(()=>{capabilityMode='old';});await ui.getByRole('button',{name:'刷新',exact:true}).click();await ui.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('old backend shows an update action message without disabling native receipt',await ui.locator('#inbox').evaluate(node=>node.querySelector('[role="alert"]').textContent.includes('同步更新后端并重启 ST')
-    &&node.querySelectorAll('article').length===1&&!node.querySelector('article button').disabled));
   ok('real IndexedDB preparation and duplicate acceptance preserve one original identity',await ui.evaluate(async()=>{
     const job={id:'new-cloud',source:'comfy',chatKey:'chat',logId:'log',connection:{baseUrl:connection.origin,credentialId:'synthetic'},
       imageAdmission:{version:1,namespace:ns,attemptId:'new-cloud'}};
@@ -261,7 +235,7 @@ try{
     const bound=await uiClient.bindCloudAcceptance(first.record,packet),again=await uiClient.bindCloudAcceptance(first.record,packet);
     return bound.cloudTask.taskId===task.taskId&&JSON.stringify(bound)===JSON.stringify(again)&&(await store.get(ns,'new-cloud')).taskLocator.channelKey===accepted.taskLocator.channelKey;
   }));
-  await ui.evaluate(()=>{disposeInbox();uiClient.close();});
+  await ui.evaluate(()=>uiClient.close());
   const submitPage=await openPage();
   ok('real IndexedDB single-submit consumes its ticket before competing clicks and survives a fresh page',await submitPage.evaluate(async()=>{
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
@@ -376,27 +350,6 @@ try{
   }));
   const usagePage=await openPage();await usagePage.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
   await usagePage.evaluate(async()=>{
-    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
-    const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
-    document.body.innerHTML='<div id="story-director-modal" style="position:static;width:100%;display:block"><div id="usage-host"></div></div>';
-    const task=bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),'1904152026220003330');
-    const row={attemptId:'rh-usage',task,engine:'cloud',archiveState:'archived',createdAt:1,canRetryCleanup:false,
-      usage:{consumeCoins:'1.2500',consumeMoney:'0',thirdPartyConsumeMoney:null,taskCostTime:'35'}};
-    mountComfyInbox(document.querySelector('#usage-host'),{service:{list:async()=>({namespace:ns,rows:[],bytes:0}),
-      catalogAll:async()=>({namespace:ns,originals:[row,{...row,attemptId:'rh-unknown',usage:null},{...row,attemptId:'rh-failed',archiveState:null,reportedStatus:'failed'}],totals:{imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0}})}});
-  });
-  await usagePage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  for(const width of [320,393,1100]){
-    await usagePage.setViewportSize({width,height:900});
-    ok(`reported RH decimals and missing values fit the original inbox grid at ${width}`,await usagePage.locator('.sd-comfy-inbox-rows').evaluate(node=>{
-      const [first,second,failed]=node.querySelectorAll('article'),usage=first.querySelector('.sd-comfy-inbox-usage');
-      return first.children.length===3&&usage.parentElement.matches('details.sd-comfy-inbox-row-detail')&&!usage.parentElement.open&&usage.textContent.includes('RH币 1.2500')
-        &&usage.textContent.includes('第三方金额 未提供')&&second.textContent.includes('平台用量未提供')
-        &&first.scrollWidth<=first.clientWidth+1&&!/[￥$]/.test(usage.textContent)
-        &&failed.textContent.includes('失败')&&failed.querySelector('.sd-comfy-inbox-usage').textContent.includes('RH币 1.2500');
-    }));
-  }
-  await usagePage.evaluate(async()=>{
     const {renderRunningHubTaskUsage,runningHubUsageFields}=await import('/qianmu-runninghub-usage.js');
     const fields=runningHubUsageFields({provider:'runninghub',upstreamId:'9'.repeat(64),delivery:{usage:{consumeCoins:'1234567890123456.123456789012',consumeMoney:'0'}}});
     document.body.innerHTML=`<div style="width:100%;box-sizing:border-box;padding:16px"><section class="sd-storyboard-log-body">${renderRunningHubTaskUsage(fields)}</section><aside class="sd-storyboard-lightbox-detail">${renderRunningHubTaskUsage(fields)}</aside></div>`;
@@ -406,54 +359,6 @@ try{
     ok(`task usage stays legible and bounded in log and image detail at ${width}`,await usagePage.locator('.sd-storyboard-task-usage').evaluateAll(nodes=>nodes.length===2&&nodes.every(node=>
       node.scrollWidth<=node.clientWidth+1&&node.getBoundingClientRect().width>0&&node.textContent.includes('整次任务用量（非单张）')&&node.textContent.includes('平台金额 0')&&node.textContent.includes('第三方金额 未提供'))));
   }
-  const cancelPage=await openPage();await cancelPage.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
-  await cancelPage.evaluate(async()=>{
-    const {mountComfyInbox}=await import('/qianmu-comfy-inbox-view.js');
-    const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
-    const {imageChannelKey}=await import('/qianmu-image-channel.js');
-    document.body.innerHTML='<div id="story-director-modal" style="display:block;position:static;width:100%"><div id="cancel-inbox"></div></div>';
-    window.cancelCalls=[];window.cancelConfirmations=0;window.cancelEnabled=true;window.cancelTerminal=false;
-    const totals={count:0,imageBytes:0,metadataBytes:0,temporaryBytes:0,reservedBytes:0,tasks:2};
-    const expectedAccount=`st-user:${await imageChannelKey(ns.slice(8))}`;
-    const original={attemptId:'original',createdAt:1,status:'acknowledged',task,taskLocator:accepted.taskLocator,
-      resultAvailable:false,imageCount:0,cacheBytes:0,archiveState:null};
-    window.cancelClient=createComfyRecoveryClient({store,account:async()=>ns,confirm:async message=>{
-      if(!message.includes('消耗')||!message.includes('图片保留'))throw Error('Cancellation must explain retained originals');cancelConfirmations++;return true;
-    },fetchImpl:async(url,init)=>{
-      const body=init.body?JSON.parse(init.body):{};
-      if(url.endsWith('/capabilities'))return new Response(JSON.stringify({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount,
-        submission:false,cancellation:cancelEnabled,referenceUpload:false,resultRetrieval:true,archiveConfirmation:true,automaticReplay:false,
-        queryProviders:['comfy-cloud','runninghub'],resultProviders:['comfy-cloud','runninghub']}));
-      if(url.endsWith('/cancel')){
-        if(body.apiKey!=='synthetic-cancel-key'||body.confirmed!==true||body.task.taskId!==task.taskId||body.channelKey!==accepted.taskLocator.channelKey)throw Error('Original cancellation mismatch');
-        cancelCalls.push({path:url,attemptId:body.attemptId});return new Response(JSON.stringify({ok:true,version:1,task,requestAccepted:true,status:'canceling',terminal:false}));
-      }
-      if(body.apiKey||!url.endsWith('/catalog'))throw Error('No other keyed request permitted');
-      return new Response(JSON.stringify({ok:true,version:1,catalogVersion:1,storageReadable:true,totals,tasks:[],originals:url.includes('/cloud/')
-        ?[{...original,...(cancelTerminal?{status:'failed',reportedStatus:'canceled'}:{})},{...original,attemptId:'collected',status:'succeeded',archiveState:'archived',imageCount:1}]:[]}));
-    }});
-    mountComfyInbox(document.querySelector('#cancel-inbox'),{service:cancelClient,receive:async(row,_mode,action)=>{
-      if(action!=='cancel')throw Error('Cancel must not collect or regenerate');
-      return cancelClient.cancelCloudOriginal(row,{apiKey:'synthetic-cancel-key'});
-    }});
-  });
-  await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('cancel appears only for a known unfinished cloud original and performs no action on opening',await cancelPage.evaluate(()=>
-    document.querySelectorAll('[data-cancel]').length===1&&cancelCalls.length===0&&cancelConfirmations===0));
-  for(const width of [320,393,1100]){
-    await cancelPage.setViewportSize({width,height:900});
-    ok(`cancel and receive actions preserve the three-column inbox at ${width}`,await cancelPage.locator('.sd-comfy-inbox-rows article').evaluateAll(nodes=>
-      nodes.every(node=>node.children.length===3&&node.scrollWidth<=node.clientWidth+1&&[...node.querySelectorAll('button')].every(button=>button.getBoundingClientRect().height>=40))));
-  }
-  await cancelPage.getByRole('button',{name:'取消任务',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('one explicit click confirms and cancels only the original without declaring it stopped',await cancelPage.evaluate(()=>cancelCalls.length===1&&cancelConfirmations===1
-    &&document.querySelector('[role="status"]').textContent.includes('是否停止请核查原任务')&&document.querySelectorAll('article').length===2));
-  await cancelPage.evaluate(()=>{cancelEnabled=false;});await cancelPage.getByRole('button',{name:'刷新',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('an old backend hides cancellation while retaining original task and receipt controls',await cancelPage.evaluate(()=>!document.querySelector('[data-cancel]')
-    &&document.querySelectorAll('[data-receive]').length===2&&cancelCalls.length===1));
-  await cancelPage.evaluate(()=>{cancelEnabled=true;cancelTerminal=true;});await cancelPage.getByRole('button',{name:'刷新',exact:true}).click();await cancelPage.waitForSelector('.sd-comfy-inbox[aria-busy="false"]');
-  ok('confirmed cancellation stays visible after refresh without offering cancellation again or removing the record',await cancelPage.evaluate(()=>
-    !document.querySelector('[data-cancel]')&&document.querySelector('article').textContent.includes('已取消')&&document.querySelectorAll('article').length===2&&cancelCalls.length===1));
   assert.equal(external,0);assert.deepEqual(errors,[]);
   console.log(JSON.stringify({checks,external,errors},null,2));
 }finally{await context.close();await browser.close();}

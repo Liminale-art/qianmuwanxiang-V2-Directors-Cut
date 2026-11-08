@@ -2,26 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {galleryChatSaveFixture,pagedConsent,gate} from './helpers/gallery-chat-save-fixture.mjs';
 import {galleryPreparedAssetsFixture} from './helpers/gallery-prepared-assets-fixture.mjs';
 import {readCurrentGalleryLocalRecipe} from '../qianmu-gallery-local-recipe-current.js';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {galleryLocalRecipeSlot} from '../qianmu-gallery-local-recipe.js';
+const gate=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 
-test('real local recipe preservation -> paged restore -> host save -> different-device read, without recipe uploads or raw record mutation',async t=>{
-  const f=await galleryChatSaveFixture(t,{count:1,localRecipe:true}),original=structuredClone(f.rows[0]),snapshot=structuredClone([...f.localRecipes.values()][0].snapshot),body=JSON.stringify(f.context.chat);
-  f.localRecipes.clear();const result=await f.openWriter().save(pagedConsent);assert.equal(result.status,'saved');assert.equal(result.recipesVerified,0);assert.equal(f.saves,1);
-  assert.deepEqual(f.store.storyboardImages,[original]);assert.equal(JSON.stringify(f.context.chat),body);
+test('real local recipe preservation -> restored exact row -> different-device read, without recipe uploads or raw record mutation',async t=>{
+  const f=await galleryPreparedAssetsFixture(t,{count:1,localRecipe:true}),original=structuredClone(f.rows[0]),snapshot=structuredClone([...f.localRecipes.values()][0].snapshot);
+  f.localRecipes.clear();f.store.storyboardImages=[structuredClone(original)];await f.save();
   assert.ok(f.calls.every(call=>!call.url.includes('/recipe/restore')));
   const options={...f.options,record:f.store.storyboardImages[0],readLocal:async()=>null};
   const before=await readFile(f.file),calls=f.transport.calls.length;assert.deepEqual(await readCurrentGalleryLocalRecipe(options),snapshot);
   assert.ok(f.transport.calls.slice(calls).every(call=>call.options.method==='GET'));assert.deepEqual(await readFile(f.file),before);
   f.store.storyboardImages[0].tags=['new tag'];assert.deepEqual(await readCurrentGalleryLocalRecipe({...options,record:f.store.storyboardImages[0]}),snapshot);
 });
-test('a missing preserved local recipe prevents final host save and never invokes an implicit restore',async t=>{
-  const f=await galleryChatSaveFixture(t,{count:1,localRecipe:true});const slot=await galleryLocalRecipeSlot(f.selection.scope,f.rows[0]);
+test('a missing preserved local recipe refuses the second-device read and never invokes an implicit restore',async t=>{
+  const f=await galleryPreparedAssetsFixture(t,{count:1,localRecipe:true});const slot=await galleryLocalRecipeSlot(f.selection.scope,f.rows[0]);
   const key=[...f.transport.files.keys()].find(key=>key.endsWith(slot+'.json'));assert.ok(key);f.transport.files.delete(key);const calls=f.calls.length;
-  await assert.rejects(f.openWriter().save(pagedConsent));assert.equal(f.saves,0);assert.deepEqual(f.store.storyboardImages,[]);
+  f.localRecipes.clear();f.store.storyboardImages=f.rows;const before=[...f.transport.files];
+  await assert.rejects(readCurrentGalleryLocalRecipe({...f.options,record:f.rows[0],readLocal:async()=>null}));assert.deepEqual([...f.transport.files],before);
   assert.ok(f.calls.slice(calls).every(call=>!call.url.endsWith('/restore')));
 });
 test('fresh preservation reuses the verified native copy without asking the old device again',async t=>{
@@ -82,10 +82,9 @@ test('detached export read refuses changed copies and replaced live identities e
     await assert.rejects(work);
   }
 });
-test('corrupt preserved payload cannot be returned to a second device or admitted by the writer',async t=>{
-  const f=await galleryChatSaveFixture(t,{count:1,localRecipe:true}),slot=await galleryLocalRecipeSlot(f.selection.scope,f.rows[0]);
+test('corrupt preserved payload cannot be returned to a second device',async t=>{
+  const f=await galleryPreparedAssetsFixture(t,{count:1,localRecipe:true}),slot=await galleryLocalRecipeSlot(f.selection.scope,f.rows[0]);
   const key=[...f.transport.files.keys()].find(key=>key.endsWith(slot+'.json'));assert.ok(key);f.transport.files.set(key,'corrupt');
-  await assert.rejects(f.openWriter().save(pagedConsent));assert.equal(f.saves,0);
   f.store.storyboardImages=f.rows;const before=[...f.transport.files];
   await assert.rejects(readCurrentGalleryLocalRecipe({...f.options,record:f.rows[0],readLocal:async()=>null}));assert.deepEqual([...f.transport.files],before);
 });

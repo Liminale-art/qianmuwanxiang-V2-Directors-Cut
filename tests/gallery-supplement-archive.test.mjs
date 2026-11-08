@@ -6,8 +6,6 @@ import {galleryDiscoveryFixture} from './helpers/gallery-discovery-fixture.mjs';
 import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
-import {createGalleryArchiveBrowser} from '../qianmu-gallery-archive-browser.js';
-import {createGalleryDiscoveryClient} from '../qianmu-gallery-discovery-client.js';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from '../qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
@@ -39,23 +37,14 @@ async function fixture(t){
       fetchImpl,createStorage:f.transport.createStorage,preserveOriginals:false,preserveEvidence:false,...options});t.after(()=>session.close());return session;},
     async reader(){const reader=await createGalleryArchiveStorage({scope,guard:()=>true,verifyRecord:()=>false,createStorage:f.transport.createStorage});t.after(()=>reader.close());return reader;},
     request(){return {version:1,expectedAccount:imageServiceAccount(f.host.req).namespace,target:{kind:'character',avatar:'Alice.png',chatId:'chat'},gallerySha256:chatGalleryDigest(f.host.rows).sha256};},
-    browser(){const browser=createGalleryArchiveBrowser({account:async()=>f.host.account,headers:()=>({}),
-      createDiscovery:options=>createGalleryDiscoveryClient({...options,fetchImpl}),createArchive:options=>createGalleryArchiveStorage({...options,createStorage:f.transport.createStorage})});t.after(()=>browser.close());return browser;},
   };
 }
 
-test('large-gallery idle preservation discovers and independently reads exact supplements after original chat deletion',async t=>{
+test('large-gallery idle preservation stores exact supplements without rewriting the chat file',async t=>{
   const f=await fixture(t);f.host.rows=[4,1,9,2,7,0].map(i=>({id:'r'+i,createdAt:i,url:'/user/images/f.png',future:'x'.repeat(450000)}));await f.host.save();
   const raw=await fs.readFile(f.host.file),session=await f.open();assert.equal(f.state.calls.length,0);const saved=await session.preserveAll();
   assert.ok(saved.sourceReceipt.bytes>2*1048576);assert.equal(saved.supplements.state,'complete');assert.equal(versions(f).length,1);assert.equal(versions(f)[0].schema,'qianmu.gallery.source-version.v2');
-  assert.deepEqual(await fs.readFile(f.host.file),raw);session.close();await f.flush();await fs.unlink(f.host.file);
-  const browser=f.browser(),list=await browser.list(),reads=f.transport.calls.length;assert.equal(list.entries.length,1);assert.equal(f.transport.calls.length,reads);
-  await browser.open(list.entries[0].key);assert.ok(!f.transport.calls.slice(reads).some(call=>call.path.includes('-gallery-supplement-')),'opening a directory does not preload supplement bodies');
-  const recovered=await browser.supplement();assert.equal(recovered.state,'available');assert.equal(recovered.canPrune,false);assert.equal(recovered.originalVerified,false);
-  assert.deepEqual(recovered.receipt.order,['r4','r1','r9','r2','r7','r0']);assert.deepEqual(recovered.receipt.saved,{storyboardCollections:f.store.storyboardCollections,characterDrafts:f.store.characterDrafts});
-  const page=await browser.page();assert.deepEqual(page.rows.map(row=>row.recordId),['r9','r7','r4','r2','r1','r0']);
-  const reader=await f.reader();for(const row of page.rows)assert.equal((await reader.readRecord(row.record)).record.future.length,450000);
-  assert.equal(f.state.calls.filter(c=>c.url.endsWith('/supplement')).length,2);assert.ok(f.opened.every(name=>name.includes('-gallery-source2-')),'discovery reads only small version descriptors');
+  assert.deepEqual(await fs.readFile(f.host.file),raw);session.close();await f.flush();
 });
 
 test('same images with edited, empty and missing companions retain separate immutable versions without rewriting record bodies',async t=>{
@@ -169,11 +158,6 @@ test('legacy discovery ignores new directories while v2 paginates mixed versions
   const body=[...f.transport.files].find(([name,text])=>name.includes('-gallery-source2-')&&JSON.parse(text).schema==='qianmu.st-account-document.v1');
   await fs.writeFile(path.join(f.folder,body[0]),'broken');
   assert.equal((await f.discovery.list(f.host.req,f.input())).entries.length,1);await assert.rejects(f.discovery.list(f.host.req,f.input({version:2,limit:32})));
-});
-
-test('old discovery backend rejects capability v2 explicitly with no retry or false empty result',async t=>{
-  let calls=0;const client=createGalleryDiscoveryClient({account:async()=> 'st-user:alice',headers:()=>({}),fetchImpl:async()=>{calls++;return Response.json({ok:false,code:'gallery_discovery_contract'},{status:400});}});t.after(()=>client.close());
-  await assert.rejects(client.list(),error=>error.serviceCode==='gallery_discovery_unsupported');assert.equal(calls,1);
 });
 
 test('empty gallery with real companion fields is still preserved by the idle coordinator',async t=>{
