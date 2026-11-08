@@ -273,7 +273,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length);
 });
 
-test('functional icons preserve Qianmu artwork except the supplied Yimu rounded save glyph', async () => {
+test('functional icons preserve Qianmu artwork, including the save-2 save glyph', async () => {
     const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', layers: 'stack' };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
@@ -289,12 +289,10 @@ test('functional icons preserve Qianmu artwork except the supplied Yimu rounded 
         }
         const original = ICONSAX_ICON_MARKUP[ICONSAX_GLYPH_NAMES[upstream]];
         if (name === 'save') {
-            assert.match(element.innerHTML, /<rect x="3" y="3" width="18" height="18" rx="4"\/>/);
-            assert.match(element.innerHTML, /M8 8h8M7 11h10/);
+            // Yimu save mirrors Qianmu's save-2 control artwork in every theme family.
+            const qianmuSave = ICONSAX_ICON_MARKUP['save-2'];
+            for (const variant of ['outline', 'bold', 'twotone']) assert.ok(element.innerHTML.includes(`<g class="ym-icon-${variant}">${qianmuSave[variant]}</g>`), `save/${variant}`);
             assert.match(element.innerHTML, /stroke-width="2\.5"/);
-            assert.match(element.innerHTML, /fill="none"/);
-            assert.ok(!element.innerHTML.includes(original.outline), 'Yimu save uses the supplied rounded direct artwork');
-            for (const variant of ['outline', 'bold', 'twotone']) assert.ok(element.innerHTML.includes(`class="ym-icon-${variant}"`));
             continue;
         }
         for (const variant of ['outline', 'bold', 'twotone']) {

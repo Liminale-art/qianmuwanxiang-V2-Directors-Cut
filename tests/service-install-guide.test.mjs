@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 
 const guide = await readFile(new URL('../INSTALL-SERVER-PLUGIN.md', import.meta.url), 'utf8');
 const helper = await readFile(new URL('../update-server-plugin.sh', import.meta.url), 'utf8');
-const updateSection = guide.split('## 已有安装更新（当前 ST 根目录，一次粘贴）\n')[1]?.split('\n## 忆幕随千幕统一更新')[0];
+// Heading renamed in f1b7c99e (the PM2 one-line update is Linux/VPS only).
+const updateSection = guide.split('## 已有安装更新（仅 Linux／VPS 的 PM2 部署）\n')[1]?.split('\n## 忆幕随千幕统一更新')[0];
 const oneClick = updateSection?.match(/```bash\n([^\n]+)\n```/)?.[1];
 const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
 

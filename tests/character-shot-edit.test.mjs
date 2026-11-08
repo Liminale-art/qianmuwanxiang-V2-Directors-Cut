@@ -5,6 +5,7 @@ import * as storyboard from '../qianmu-storyboard.js';
 import {newCharacterArchive} from '../qianmu-character-archive.js';
 import {captureCharacterShotFields,readLatestCharacterForShot,prepareCharacterShotEdit} from '../qianmu-character-shot-edit.js';
 import {renderCharacterShotEditor} from '../qianmu-character-shot-view.js';
+import {imageInfoParameterMarkup} from '../qianmu-image-info-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {job as comfyJob,namespace} from './helpers/comfy-character-fixture.mjs';
 import {snapshot} from './helpers/character-shot-fixture.mjs';
@@ -147,7 +148,7 @@ for(const choice of ['cancel','generate','changed','refused','retry'])for(const 
   const field={value:original.payload.prompt},host={dataset:{charactersChanged:'true'},querySelector:()=>field};
   const context=vm.createContext({...storyboard,clone:copy,storyboardState:()=>state,getChatKey:()=> 'chat',ctx:()=>({chatMetadata:metadata}),storyboardAdmissionEpoch:1,
     storyboardGalleryRecords:()=>[record],storyboardReadSnapshotForRecord:async()=>copy(original),storyboardCloseImageInfo:()=>{},storyboardImageInfoView:null,storyboardImageInfoOpening:0,
-    htmlEscape:x=>String(x),storyboardRecordParameterLabel:()=>'',renderRunningHubTaskUsage:()=>'',STORYBOARD_SOURCES:{novel:{label:'NAI'}},
+    htmlEscape:x=>String(x),imageInfoParameterMarkup,renderRunningHubTaskUsage:()=>'',STORYBOARD_SOURCES:{novel:{label:'NAI'}},
     storyboardMediaTagEditorMarkup:()=>'',summarizeGalleryRecords:()=>({knownTags:[]}),galleryMembershipIds:()=>[],storyboardGalleryCollections:()=>[],
     galleryRecordSourceCharacter:()=>'',storyboardUpdateGalleryNarrative:()=>({sourceFor:()=>null}),
     storyboardSafeUrl:()=>'',applyQianmuIcons:()=>{},coreadCopyText:()=>{},appearanceSession:{},storyboardBindMediaTagEditors:()=>{},

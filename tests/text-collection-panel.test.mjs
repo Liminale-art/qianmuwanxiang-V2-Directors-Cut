@@ -528,7 +528,7 @@ test('header returns are left of title, copy is reading-only and short reading s
     assert.equal(panel.getAttribute('data-view'), 'list'); assert.equal(f.dom.visible(list(f)), true);
     const css = await readFile(new URL('../qianmu-text-collection-panel.css', import.meta.url), 'utf8');
     assert.match(css, /\[data-view="read"\][^{]*\{[^}]*height: fit-content/);
-    assert.match(css, /font-size: var\(--qm-prose-size, 1em\); line-height: 1\.55; text-align: justify/);
+    assert.match(css, /font-size: var\(--qm-prose-size, 1em\); letter-spacing: var\(--qm-prose-letter-spacing, normal\); line-height: 1\.55; text-align: justify/);
     assert.match(css, /margin: 0 0 \.75em;[^}]*text-indent: 2em/);
     assert.doesNotMatch(css, /textarea\)[^}]*font-size: 16px/);
 });

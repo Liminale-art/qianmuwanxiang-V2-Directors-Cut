@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOperation, createDocument, createDefaults, DEFAULTS, effectiveSettings, fingerprintMessages, validateDocument, canUndoText, stageSourceFromParents } from '../yimu/contract.mjs';
+import { applyOperation, createDocument, createDefaults, DEFAULTS, effectiveSettings, fingerprintMessages, validateDocument, canUndoText, stageSourceFromParents, SCHEMA } from '../yimu/contract.mjs';
 import { normalizeEntryOrder, orderedEntries, orderForInjection } from '../yimu/timeline.mjs';
 import { validateScenes, unknownScenes, sceneProjection } from '../yimu/scene-contract.mjs';
 import { parseSummary, buildPlan, summaryPrompt, summaryCoverage } from '../yimu/core.mjs';
@@ -33,7 +33,7 @@ test('schema-six read migration preserves explicit switches, records and input b
     old.entries = [{ id: 'legacy', kind: 'manual', source: null, text: '旧自定义原件', status: 'active', edited: true,
         revision: 1, history: [], conflicts: [], candidate: null }];
     const before = structuredClone(old), migrated = validateDocument(old);
-    assert.deepEqual(old, before); assert.equal(migrated.schema, 7); assert.equal(migrated.autoSummary, false);
+    assert.deepEqual(old, before); assert.equal(migrated.schema, SCHEMA); assert.equal(migrated.autoSummary, false);
     assert.deepEqual(migrated.entryOrder, ['legacy']); assert.equal(migrated.entries[0].placement, null);
     assert.deepEqual(migrated.entries[0].scenes, unknownScenes()); assert.equal(migrated.entries[0].text, before.entries[0].text);
 });

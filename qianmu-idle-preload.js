@@ -4,7 +4,7 @@ export const QIANMU_IDLE_CHUNKS=Object.freeze([
  './qianmu-prose-assistant-panel.js?v=1.59.452','./qianmu-prose-assistant-native.js?v=1.59.414',
  './qianmu-character-archive-view.js?v=1.59.414',
  './qianmu-vibe-library-view.js?v=1.59.414','./qianmu-ensemble-ui.js?v=1.59.419',
- './qianmu-comfy-library-view.js?v=1.59.414','./qianmu-comfy-pool-view.js?v=1.59.414',
+ './qianmu-comfy-library-view.js?v=1.59.435','./qianmu-comfy-pool-view.js?v=1.59.414',
  './qianmu-comfy-route.js?v=1.59.414',
 ]);
 const LOADERS=QIANMU_IDLE_CHUNKS.map(url=>()=>loadLocalChunk(url));

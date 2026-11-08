@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles,buildRelease} from '../scripts/build-release.mjs';
 
-const root=new URL('../',import.meta.url),version='1.59.445',viewVersion='1.59.441';
+const root=new URL('../',import.meta.url),version='1.59.484',viewVersion='1.59.441';
 const edge=(parent,...children)=>children.map(child=>[parent,`qianmu-${child}.js`]);
 const affectedEdges=[
   ...edge('index.js','image-info-view','gallery-collections-view','gallery-taxonomy','gallery-summary'),
@@ -15,7 +15,11 @@ test('illustration entry, stylesheet and host package advertise one local versio
   const result=await buildRelease({dryRun:true});
   assert.equal(result.dryRun,true);
   assert.equal(result.manifest.version,version);assert.equal(result.packageJson.version,version);
-  assert.equal(result.manifest.js,`index.js?v=${version}`);assert.equal(result.manifest.css,`style.css?v=${version}`);
+  // Same-release hotfixes append a cache suffix (e.g. -tts-order-1) after the release stamp.
+  for(const [field,entry] of [['js','index.js'],['css','style.css']]){
+    const address=result.manifest[field],prefix=`${entry}?v=${version}`;
+    assert.ok(address.startsWith(prefix)&&/^(?:-[a-z0-9-]+)?$/.test(address.slice(prefix.length)),`${field}: ${address}`);
+  }
   assert.ok((await source('index.js')).includes(`const VERSION = '${version}';`));
   assert.match(await source('server-plugin.js'),/async function pluginVersion\(\)[\s\S]*?import\('\.\/package\.json'[\s\S]*?module.default\?\.version/,
     'the service reports the shared package version rather than a second hard-coded value');
@@ -37,7 +41,8 @@ test('gallery toolbar CSS release preserves existing view and metadata module UR
   const unchanged=[
     ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
     ['qianmu-text-collection-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
-    ['qianmu-prose-floor-tools.js','qianmu-idle-preload.js?v=1.59.425'],
+    // idle-preload changed again (6218463e v452, then the comfy-library-view preload URL fix); floor-tools follows that later address.
+    ['qianmu-prose-floor-tools.js','qianmu-idle-preload.js?v=1.59.484'],
     ['qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js?v=1.59.429'],
     ['qianmu-comfy-library.js','qianmu-comfy-workflow.js'],
     ['qianmu-comfy-references.js','qianmu-comfy-results.js'],

@@ -44,12 +44,12 @@ assert.match(QIANMU_ICON_SYSTEM_VERSION, /^iconsax-[a-z0-9.-]+$/);
 assert.equal(ICONSAX_STROKE_WIDTH, 2.5);
 assert.equal(QIANMU_INLINE_GLYPH_COUNT, Object.keys(ICONSAX_ICON_MARKUP).length);
 assert.ok(QIANMU_INLINE_GLYPH_COUNT >= 120, 'Iconsax 本地子集应覆盖语义入口与高频工具');
-assert.equal(QIANMU_INLINE_GLYPH_COUNT, 136, 'audited subset contains 123 Iconsax, ten familiar actions and three original glyphs');
+assert.equal(QIANMU_INLINE_GLYPH_COUNT, 137, 'audited subset contains 124 Iconsax, ten familiar actions and three original glyphs');
 for(const body of Object.values(ICONSAX_ICON_MARKUP['qianmu-ellipsis'])) {
   assert.equal((body.match(/<circle\b/g)||[]).length,3);
   assert.deepEqual([...body.matchAll(/cy="([\d.]+)"/g)].map(match=>match[1]),['12','12','12'],'more is a horizontal ellipsis in every theme');
 }
-assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 404, 'three default styles, two extra Broken bodies and three dedicated linear-only controls');
+assert.equal(Object.values(ICONSAX_ICON_MARKUP).reduce((count, glyph) => count + Object.keys(glyph).length, 0), 407, 'three default styles, two extra Broken bodies and three dedicated linear-only controls');
 assert.equal(QIANMU_CURRENT_FA_ICON_COUNT, Object.keys(QIANMU_FA_ICON_MAP).length);
 for(const name of currentFaNames)assert.ok(QIANMU_FA_ICON_MAP[name], `实际使用的 FA 类名 ${name} 必须有确定语义；保留旧映射不要求旧控件仍存在`);
 
@@ -88,8 +88,8 @@ for (const name of currentFaNames) {
 }
 
 const semanticSymbols = Object.values(QIANMU_SEMANTIC_ICONS);
-assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 26);
-assert.equal(new Set(semanticSymbols).size, 26, '顶层语义图标不得复用同一签名');
+assert.equal(Object.keys(QIANMU_SEMANTIC_ICONS).length, 27);
+assert.equal(new Set(semanticSymbols).size, 27, '顶层语义图标不得复用同一签名');
 for (const [semantic, symbol] of Object.entries(QIANMU_SEMANTIC_ICONS)) {
   assert.equal(resolveQianmuIcon(semantic), symbol);
   assert.match(symbol, /^qm-signature-/);
@@ -233,7 +233,8 @@ for (const [variant, defaultDisplay] of [['outline', 'inline'], ['bold', 'none']
 assert.match(styleSource, /svg\.qm-glyph-svg > g\[data-qm-icon-fixed\] \{ display: inline; \}/);
 assert.match(styleSource, /\.sd-tts-toolbar > :is\(\.sd-tts-trigger, \.sd-tts-reextract, \.sd-tts-regenall, \.sd-tts-playall\) > \.qm-glyph-icon > svg\.qm-glyph-svg,\s*\.sd-tts-inline > \.qm-glyph-icon > svg\.qm-glyph-svg \{ transform: scale\(1\.05\); \}/, 'voice enlargement scales only the child artwork, not controls or outer spinning hosts');
 for (const [theme, active] of [['editorial', 'bold'], ['glass', 'twotone']]) {
-  const rule = themeSource.match(new RegExp(`:is\\(#story-director-modal, \\[data-qm-theme\\]\\)\\[data-qm-theme="${theme}"\\] \\{([^}]*)\\}`))?.[1] || '';
+  // A theme may split palette and icon variables across several root blocks.
+  const rule = [...themeSource.matchAll(new RegExp(`:is\\(#story-director-modal, \\[data-qm-theme\\]\\)\\[data-qm-theme="${theme}"\\] \\{([^}]*)\\}`, 'g'))].map(match => match[1]).join('\n');
   for (const variant of variantNames) assert.ok(rule.includes(`--qm-icon-${variant}-display: ${variant === active ? 'inline' : 'none'};`), `${theme}: exactly one icon family`);
 }
 

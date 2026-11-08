@@ -68,7 +68,8 @@ async function fixture(t, {floors = 11, fine = 6} = {}) {
     return {api, controller, snapshot, generated, read, defaults, remoteEdit, flush, writeChat, model: fn => { model = fn; }};
 }
 
-for (const basis of ['tokens', 'floors', 'slices']) {
+// The legacy floors basis now runs as tokens (see effectiveSettings), so only supported bases are exercised.
+for (const basis of ['tokens', 'slices']) {
     test(`automatic stage uses only the ${basis} threshold and does not regenerate covered fine slices`, async t => {
         const f = await fixture(t);
         const fine = (await f.read()).document.entries;
@@ -308,7 +309,8 @@ test('stage selection uses either the stage or its fine details, never both, and
     await f.remoteEdit('fine_1', '父细摘要变化使人工阶段失效');
     saved = await f.read();
     plan = await buildPlan(saved.document, saved.defaults, f.snapshot);
-    assert.equal(plan.entries.length, 0, 'invalid manually revised stage is not bypassed through its fine parents');
+    // Stale memories stay injectable as old context (8f6cfa19); the manual stage keeps its meaning instead of its fine parents.
+    assert.deepEqual(plan.entries.map(entry => entry.id), [stage.id], 'invalid manually revised stage is not bypassed through its fine parents');
 });
 
 test('on-demand recall reads existing fine detail while disabling recall keeps the stage reading layer', async t => {

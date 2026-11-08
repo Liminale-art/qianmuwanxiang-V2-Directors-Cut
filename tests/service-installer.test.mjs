@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -10,7 +11,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repository='https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git';
 const project=fileURLToPath(new URL('../',import.meta.url));
 const win=process.platform==='win32';
-const powershell=win?path.join(path.dirname(process.execPath),'../../native/powershell/pwsh.exe'):'pwsh';
+// Resolve a real PowerShell instead of assuming one tool-bundled layout: explicit
+// override, a bundled pwsh next to Node if present, pwsh on PATH, then the inbox
+// Windows PowerShell that `irm | iex` users actually run.
+const powershell=(()=>{
+  if(!win)return 'pwsh';
+  if(process.env.QIANMU_TEST_PWSH)return process.env.QIANMU_TEST_PWSH;
+  const bundled=path.join(path.dirname(process.execPath),'../../native/powershell/pwsh.exe');
+  if(existsSync(bundled))return bundled;
+  for(const dir of (process.env.PATH||'').split(path.delimiter)){if(dir&&existsSync(path.join(dir,'pwsh.exe')))return path.join(dir,'pwsh.exe');}
+  return path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+})();
 const bash=win?'C:/Program Files/Git/bin/bash.exe':'sh';
 const original='port: 8000\nenableServerPlugins: false # keep this\nother: preserved\n';
 const hostCoreFiles=['public/img/logo.png','public/index.html','public/locales/zh-cn.json','public/scripts/openai.js','public/scripts/power-user.js','public/scripts/world-info.js'];

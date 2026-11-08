@@ -35,11 +35,14 @@ test('stored ZIP has consistent standard headers, offsets and independent native
     assert.equal(files.get('images/001.png').toString(), '123456789'); assert.equal(crc32(files.get('images/001.png')), 0xcbf43926);
     if (process.platform === 'win32') {
         // Windows bsdtar needs a seekable ZIP input; a stdin pipe can report a null error.
+        // Pin Windows' bsdtar: under Git Bash, PATH resolves tar.exe to GNU tar, which parses
+        // `C:\...` as a remote `host:path` ("Cannot connect to C: resolve failed").
+        const tar = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
         const directory = mkdtempSync(join(tmpdir(), 'qianmu-zip-test-')), file = join(directory, 'originals.zip');
         try {
             writeFileSync(file, Buffer.from(await blob.arrayBuffer()));
-            assert.deepEqual(execFileSync('tar.exe', ['-tf', file], { encoding: 'utf8' }).trim().split(/\r?\n/), entries.map(row => row.name));
-            assert.deepEqual(execFileSync('tar.exe', ['-xOf', file, 'images/001.png']), files.get('images/001.png'));
+            assert.deepEqual(execFileSync(tar, ['-tf', file], { encoding: 'utf8' }).trim().split(/\r?\n/), entries.map(row => row.name));
+            assert.deepEqual(execFileSync(tar, ['-xOf', file, 'images/001.png']), files.get('images/001.png'));
         } finally { rmSync(directory, { recursive: true, force: true }); }
     }
 });

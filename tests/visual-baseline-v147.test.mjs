@@ -8,7 +8,7 @@ const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 for (const token of ['--sd-type-body', '--sd-type-title', '--sd-type-control', '--sd-card-pad', '--sd-icon-button-size']) {
   assert.ok(!css.includes(token), `unexpected global visual token: ${token}`);
 }
-assert.match(css, /#story-director-modal,[\s\S]*#story-director-modal \.sd-window\s*\{[^}]*font-size:\s*14\.5px !important/);
+assert.match(css, /#story-director-modal,[\s\S]*#story-director-modal \.sd-window(?:,\s*[^,{}]+)*\s*\{[^}]*font-size:\s*14\.5px !important/);
 assert.match(css, /\.sd-icon-btn\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/);
 assert.match(css, /\.sd-icon-btn i\s*\{[^}]*font-size:\s*14px/);
 assert.match(css, /sd-wheel-command i\s*\{[^}]*font-size:\s*clamp\(15px,[^}]*\.44[^}]*22px\)/);

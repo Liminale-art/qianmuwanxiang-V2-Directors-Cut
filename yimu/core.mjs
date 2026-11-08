@@ -294,7 +294,12 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
     const relevance = entry => [...query].reduce((score, term) => score + (terms.get(entry.id)?.has(term) ? Math.log(1 + usable.length / (frequency.get(term) || 1)) : 0), 0);
     const chosenStages = [];
     const overlaps = (a, b) => a.source.parents.some(ref => b.source.parents.some(other => other.id === ref.id));
-    const stageCandidates = usable.filter(entry => entry.kind === 'stage'
+    // A stale automatic stage only stands in while no current reading exists. If
+    // every parent is still injectable (e.g. the user revised one), the parents
+    // are the newer truth and must not be hidden behind the old stage text.
+    const supersededByParents = entry => entry.status === 'invalid' && !entry.edited && !hasCustomParents(entry, document)
+        && entry.source.parents.every(ref => usable.some(item => item.id === ref.id && item.status === 'active'));
+    const stageCandidates = usable.filter(entry => entry.kind === 'stage' && !supersededByParents(entry)
         && !authoritativeStages.some(other => other.id !== entry.id && overlaps(entry, other)));
     // Old/externally altered data must not inject competing readings for the same
     // source. Protected human stages take precedence; ambiguous automatic stages

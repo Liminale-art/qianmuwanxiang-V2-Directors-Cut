@@ -48,7 +48,7 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 assert.match(source, /function renderStoryboardProductionSources[\s\S]*data-storyboard-production-packet/, '镜头台应提供导演素材入口');
 assert.match(source, /const deliveryPolicy = storyboardProductionDeliveryPolicy\(shot[\s\S]*target: deliveryPolicy\.target[\s\S]*inlineByDefault: deliveryPolicy\.inlineByDefault/, '任务快照必须执行导演轨投递策略');
-assert.match(source, /sd-storyboard-gallery-track[\s\S]*世界背面/, '阅片室必须能按主镜头与世界背面筛选');
+assert.match(source, /sd-gallery-source-options[\s\S]*\['main_camera','正文主线'\],\['second_camera','世界背面'\][\s\S]*data-gallery-track=/, '阅片室必须能按主镜头与世界背面筛选');
 assert.match(source, /storyboardAttachProductionRecord[\s\S]*不会把幕后信息写入正文或角色记忆/, '正文引用必须是用户明确动作且说明知识边界');
 assert.match(css, /\.sd-storyboard-production-label\.second-camera/, '世界背面需要稳定可辨的来源标识');
 

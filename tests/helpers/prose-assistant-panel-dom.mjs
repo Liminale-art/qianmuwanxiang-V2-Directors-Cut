@@ -14,6 +14,22 @@ export function proseAssistantPanelDom() {
     prototype.matches = function (selector) {
         return selector.split(',').some(part => matches.call(this, part.trim()));
     };
+    // The window controller paints geometry through style.setProperty(..., 'important').
+    const styled = element => {
+        const style = element.style;
+        // Non-enumerable but writable, so individual tests may still override them.
+        const method = value => ({value, writable: true, configurable: true});
+        if (typeof style.setProperty !== 'function') Object.defineProperties(style, {
+            setProperty: method((name, value) => { style[name] = String(value); }),
+            removeProperty: method(name => { const old = style[name] ?? ''; delete style[name]; return old; }),
+            getPropertyValue: method(name => style[name] ?? ''),
+        });
+        return element;
+    };
+    const create = dom.doc.createElement, createNS = dom.doc.createElementNS;
+    dom.doc.createElement = tag => styled(create(tag));
+    dom.doc.createElementNS = (namespace, tag) => styled(createNS(namespace, tag));
+    styled(dom.parent);
     const events = new EventTarget(), preferences = new Map(), observers = new Set();
     Object.assign(dom.doc.defaultView, {
         innerWidth: 800, innerHeight: 900, setTimeout, clearTimeout,

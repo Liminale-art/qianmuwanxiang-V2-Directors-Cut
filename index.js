@@ -1,14 +1,14 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
-import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.464';
+import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.484';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.460';
-import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.464';
-import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.464';
+import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.484';
+import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
-import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.452';
+import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.484';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './qianmu-tts-floor-ui.js?v=1.59.484';
@@ -22408,7 +22408,7 @@ async function storyboardChooseCaptureMode(floor, message, { reextract = false }
   const paragraphs = storyboardMessageParagraphs(message?.mes || '');
   const chatKey=String(getChatKey()||''),text=message?.mes,swipe=message?.swipe_id;
   const isCurrent=()=>initialized&&isRuntimeOwner()&&chatKey===String(getChatKey()||'')&&ctx().chat?.[floor]===message&&message?.mes===text&&message?.swipe_id===swipe;
-  storyboardCaptureView = await loadLocalChunk('./qianmu-storyboard-capture-view.js?v=1.59.424');
+  storyboardCaptureView = await loadLocalChunk('./qianmu-storyboard-capture-view.js?v=1.59.484');
   const choice = await storyboardCaptureView.openStoryboardCaptureChooser({document, paragraphs,
     mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),isCurrent,
     proseElement:document.querySelector(`#chat .mes[mesid="${floor}"] .mes_text`)});

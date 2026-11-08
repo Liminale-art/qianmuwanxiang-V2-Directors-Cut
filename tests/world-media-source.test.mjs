@@ -128,7 +128,7 @@ test('exact unique legacy history resolves to the same revision after explicit r
 });
 test('entry rendering preserves original indexes through filtered relation and chain rows',()=>{
   const e=bridgeHarness(),seen=[];
-  Object.assign(e.context,{snip:value=>String(value),htmlEscape:value=>String(value),renderDirectorWorldEntryLink:(field,index)=>{seen.push([field,index]);return '';}});
+  Object.assign(e.context,{snip:value=>String(value),htmlEscape:value=>String(value),renderDirectorSectionNotice:()=>'',renderDirectorWorldEntryLink:(field,index)=>{seen.push([field,index]);return '';}});
   vm.runInContext(['renderRelationUndercurrentsCard','renderChainReactionsCard'].map(functionOnly).join('\n'),e.context);
   e.context.renderRelationUndercurrentsCard({relation_undercurrents:[{}, {parties:'Alice/Bob',tension:'tense'}]});
   e.context.renderChainReactionsCard({chain_reactions:[{}, {spark:'rain',chain:'flood'}]});

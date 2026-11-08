@@ -16,7 +16,8 @@ test('changed host, guard and import paths have fresh literal addresses through 
   for (const [file,source] of sources) for (const specifier of refs(source)) {
     const target = specifier.slice(2).split('?')[0];
     if (!changed.has(target)) continue;
-    assert.equal(specifier,`./${target}?v=${target === 'qianmu-st-context-sources.js' ? '1.59.448' : version}`,`${file} cannot retain a stale child URL`);
+    // st-context-sources changed again in 3ada2075 and its only importer (index.js) moved to v450.
+    assert.equal(specifier,`./${target}?v=${target === 'qianmu-st-context-sources.js' ? '1.59.450' : version}`,`${file} cannot retain a stale child URL`);
     inbound.get(target).push(file);
   }
   assert.deepEqual(inbound.get('qianmu-st-context-sources.js'),['index.js']);

@@ -76,7 +76,7 @@ test('theater catalog keeps its retry only while both bounded local imports can 
   const imports=[];const load=createLocalChunkLoader({pause:async()=>{},importer:async url=>{imports.push(url);throw new TypeError('Failed to fetch dynamically imported module');}});
   const runtime=createFeatureRuntime({theaterCatalog:()=>Promise.all([load('./builtin-theaters.js?v=test'),load('./qianmu-theaters.js?v=test')])});
   const c=vm.createContext({featureRuntime:runtime,theaterCatalogReady:false,theaterCatalogLoading:null,theaterCatalogError:'',theaterCatalogExhausted:false,
-    activeTab:'theater',MODAL_ID:'m',htmlEscape:String,document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){}});
+    activeTab:'theater',MODAL_ID:'m',htmlEscape:String,document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){},requestPresetRefreshIfStale(){}});
   vm.runInContext(section('ensureTheaterCatalog').split('const SETTINGS_PANEL_ID')[0]+'\n'+section('renderTheaterTab'),c);
   for(let attempt=1;attempt<=4;attempt++){
     assert.equal(await c.ensureTheaterCatalog(),false);assert.equal(imports.length,attempt*4);
@@ -127,7 +127,8 @@ test('Comfy library cold graph does not eagerly load the explicit backup package
     for(const found of source.matchAll(/(?:import|export)\s+(?:[^;\n]+?\s+from\s+)?['"](\.\/[^'"]+)['"]/g))await visit(new URL(found[1],key));
   }
   await visit(new URL('../qianmu-comfy-library-view.js',import.meta.url));
-  assert.ok(seen.size<=55,`工作流库首开依赖回涨：${seen.size}`);
+  // 56: 787cc422 added the import-free persona-world normalizer leaf to qianmu-storyboard.js.
+  assert.ok(seen.size<=56,`工作流库首开依赖回涨：${seen.size}`);
   for(const name of ['qianmu-storyboard-package-input.js','qianmu-storyboard-package-assets.js'])assert.ok(![...seen].some(file=>file.endsWith('/'+name)),name);
 });
 
@@ -174,7 +175,10 @@ test('all production local-loader calls, injected history loaders and idle chunk
   const names=[...allowlist[1].matchAll(/['"]([^'"]+)['"]/g)].map(match=>match[1]);
   assert.equal(new Set(names).size,names.length,'No duplicate or ambiguous module names');
   const calledNames=new Set(calls.map(call=>call.url.slice(2).split('?')[0]));
-  assert.deepEqual(new Set(names),calledNames,'Allow only actual owned production call targets, not speculative module names');
+  // 3bb454dd removed the archive/location entry points but kept these shipped views allowlisted; no other uncalled name may appear.
+  const dormant=['qianmu-gallery-archive-view.js','qianmu-gallery-location-view.js'];
+  for(const name of dormant)assert.ok(!calledNames.has(name)&&shipped.has(name),name+': dormant entry must still ship and stay uncalled');
+  assert.deepEqual(new Set(names),new Set([...calledNames,...dormant]),'Allow only actual owned production call targets, not speculative module names');
 });
 
 test('new gallery targets retain bounded retry and never execute external or error-supplied URLs',async()=>{

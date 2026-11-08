@@ -9,7 +9,7 @@ function fixture(){
   Object.assign(c,{MODAL_ID:'modal',coreadOpenRequestId:0,focusClockCloseVoiceDrawer:()=>{},unmountTheaterFullscreen:()=>{},
     coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},coreadClearPendingChatImages:()=>{},coreadComicVisionAbort:null,
-    coreadComicVisionBusy:false,coreadAssistantConfig:()=>({historyMode:'session'}),coreadStoreAssistantHistory:()=>{}});
+    coreadComicVisionBusy:false,coreadAssistantConfig:()=>({historyMode:'session'}),coreadStoreAssistantHistory:()=>{},storyboardWorldbookController:null});
   c.document.getElementById=()=>({classList:{remove:()=>{}}});c.document.body={classList:{remove:()=>{}}};
   vm.runInContext(['closeModal','coreadCloseReader'].map(section).join('\n'),c);return e;
 }

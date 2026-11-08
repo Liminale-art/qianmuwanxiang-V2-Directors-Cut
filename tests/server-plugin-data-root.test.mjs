@@ -115,6 +115,9 @@ test('actual host resolver rejects Windows drive-relative roots but preserves Li
     const options = { dataRoot: './data' };
     const resolveRoot = vm.runInNewContext(resolverSource, {
       options, process: { platform, cwd: () => cwd },
+      // The native backup-policy route (0151b1b1) sits inside this slice; stub it.
+      createNativeBackupPolicyService: () => ({}), nativeBackupPolicyErrorPayload: () => ({}),
+      router: { get() {}, post() {} },
       path: { ...semantics, resolve: (...args) => { resolves++; return semantics.resolve(...args); } },
     });
     cwd = platform === 'win32' ? 'D:\\changed' : '/changed';

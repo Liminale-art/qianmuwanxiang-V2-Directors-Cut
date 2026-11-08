@@ -28,6 +28,9 @@ const rules = {
   'qianmu-reader-book-cleanup.js': [],
 };
 if (!vm.SourceTextModule) throw new Error('Run this development check with --experimental-vm-modules.');
+// Intentional cache-busting entry addresses; still exactly one identity per module.
+// 71b57128 changed the exported image slogan, so the entry refreshed the export URL.
+const entryAddresses = {'qianmu-focus-export.js': './qianmu-focus-export.js?v=1.59.484-font-slogan-1'};
 
 function inspect(sources, entry) {
   const context = vm.createContext({}), modules = new Map();
@@ -39,7 +42,7 @@ function inspect(sources, entry) {
   const entryModule = new vm.SourceTextModule(entry,{identifier:'index.js'});
   for (const file of Object.keys(rules)) {
     const paths = entryModule.dependencySpecifiers.filter(ref=>ref.split(/[?#]/)[0] === `./${file}`);
-    assert.deepEqual(paths,[`./${file}`],`${file}: entry must use one canonical module identity`);
+    assert.deepEqual(paths,[entryAddresses[file] || `./${file}`],`${file}: entry must use one canonical module identity`);
   }
   return modules;
 }

@@ -7,7 +7,8 @@ const source = await readFile(new URL('index.js', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-assert.equal(manifest.css, `style.css?v=${manifest.version}`);
+const cssStamp = `style.css?v=${manifest.version}`;
+assert.ok(manifest.css.startsWith(cssStamp) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(cssStamp.length)), `CSS must keep a release-pinned cache stamp: ${manifest.css}`);
 assert.match(styles, /v1\.58\.6 · 千幕视觉基线/);
 assert.match(styles, /--qm-type-page-title: 20px[\s\S]*--qm-type-card-title: 14px[\s\S]*--qm-type-body: 13px/);
 assert.match(styles, /--qm-type-caption: 11px[\s\S]*--qm-control-height: 38px[\s\S]*--qm-control-radius: 10px/);

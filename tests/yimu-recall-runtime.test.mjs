@@ -80,7 +80,8 @@ async function fixture(t, {floors = 12, longFloors = false, ambiguous = false, r
         chatCompletionSettings: {chat_completion_source: 'custom', openai_max_context: 65536, openai_max_tokens: 1024, names_behavior: 0},
         getChatCompletionModel: () => 'synthetic-model', getTokenCountAsync: async value => Math.ceil(value.length / 3), setExtensionPrompt() {},
         async generateRaw(options) {
-            const kind = options.prompt.startsWith('仅检查') ? 'extract' : 'summary'; generated.push({kind, ...clone(options)});
+            // Every prompt now opens with the shared persona; classify by the extraction task line.
+            const kind = options.prompt.includes('仅检查本次明确问题') ? 'extract' : 'summary'; generated.push({kind, ...clone(options)});
             return kind === 'extract' ? quoteModel(options.prompt) : summaryModel(options.prompt);
         }};
     const host = createHost({getContext: () => context});

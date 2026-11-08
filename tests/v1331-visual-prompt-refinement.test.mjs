@@ -45,12 +45,12 @@ assert.match(source, /const DEFAULT_SYSTEM_PROMPT = CREATIVE_SYSTEM_PROMPT;/);
 assert.match(source, /segments\.push\(creativeSectionGuidance\(run\.creativeOptions\)\)/);
 assert.match(source, /segments\.push\(createCreativeSchema\(run\.creativeOptions\)\)/);
 assert.equal(CREATIVE_COUNTS.quests.min, 5);
-assert.match(systemPrompt, /禁止替 \{\{user\}\} 决定思想、情绪、立场与行动/);
-assert.match(CREATIVE_GUIDES.quests, /具体可接近的情境/);
-assert.match(CREATIVE_GUIDES.quests, /不写成向 \{\{user\}\} 布置目标、奖励和完成步骤的任务清单/);
-assert.match(schemaPrompt, /不代替 USER 接受或行动/);
+assert.match(systemPrompt, /Do not decide \{\{user\}\}'s thoughts, emotions, positions, or actions/);
+assert.match(CREATIVE_GUIDES.quests, /可以接近和回应的近景情境/);
+assert.match(CREATIVE_GUIDES.quests, /不写任务目标、奖励和步骤[\s\S]*\{\{user\}\} 如何回应保持开放/);
+assert.match(schemaPrompt, /no action decided for USER/);
 assert.doesNotMatch(schemaPrompt, /以第三人称描述.*心理和下一步安排/);
-assert.match(systemPrompt, /按照故事内实际经过的时间和已满足的条件推进/);
-assert.match(systemPrompt, /各方既能与 \{\{user\}\} 产生有来由的交集，也有独立于主角的事务/);
+assert.match(systemPrompt, /Established events follow the time actually elapsed and the conditions already met/);
+assert.match(systemPrompt, /Give CHAR, other characters, and groups their own motives in life[\s\S]*Intersections with either principal must have a concrete cause/);
 
 console.log('v1.33.1 visual and task-prompt refinement contract OK');

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+const autoRefresh = await readFile(new URL('../qianmu-director-auto-refresh.js', import.meta.url), 'utf8');
 
 test('message receipt releases the ST event immediately and starts automatic capture independently', () => {
   const events = source.slice(source.indexOf('function bindEvents()'), source.indexOf('function init()'));
@@ -10,8 +11,11 @@ test('message receipt releases the ST event immediately and starts automatic cap
   assert.match(refresh, /const refreshHandler = \(messageIndex, generationType\) =>/);
   assert.doesNotMatch(refresh, /const refreshHandler = async|await /);
   const capture=refresh.indexOf('storyboardHandleAutomaticCapture(messageIndex,generationType)');
-  assert.ok(capture>=0&&capture < refresh.indexOf('queueMicrotask'));
-  assert.match(refresh, /queueMicrotask\(\(\) => void runBackgroundDirectorRefresh\(\)\)/);
+  assert.ok(capture>=0&&capture < refresh.indexOf('directorAutoRefresh?.received'));
+  // Director refresh is handed to the chat-bound timer trigger, never run inline.
+  assert.match(refresh, /directorAutoRefresh\?\.received\(messageIndex, generationType\);/);
+  assert.match(autoRefresh, /schedule\(pending\);/);
+  assert.match(autoRefresh, /timer = setTimer\(\(\) => \{ timer = null; void drain\(ticket\); \}, delay\)/);
   assert.match(events, /MESSAGE_RECEIVED[^\n]+refreshHandler/);
 });
 
@@ -23,9 +27,11 @@ test('background director completion does not rebuild the open panel or stop liv
   assert.match(generate, /const background = Boolean\(options\?\.background\)/);
   assert.match(generate, /if \(!background && settings === ownerSettings && ctx\(\)\.chat === chat\) \{[\s\S]*renderModal\(\);[\s\S]*renderFloatButton\(\);[\s\S]*\}/);
   assert.doesNotMatch(generate, /storyboardCloseFilmViewer|storyboardCloseVideoViewer|ttsStopPlayback|ttsStopChat/);
-  const background = source.slice(source.indexOf('const runBackgroundDirectorRefresh ='), source.indexOf('const refreshHandler ='));
-  assert.match(background, /generateDirectorPlan\(false, true, \{ background: true \}\)/);
-  assert.doesNotMatch(background, /renderModal|scrollTop|\.pause\(|\.abort\(|storyboardClearWaitingQueue/);
+  const background = source.slice(source.indexOf('directorAutoRefresh = createDirectorAutoRefresh('), source.indexOf('const refreshHandler ='));
+  assert.match(background, /run: \(\) => generateDirectorPlan\(false, true, \{ background: true \}\)/);
+  for (const text of [background, autoRefresh]) {
+    assert.doesNotMatch(text, /renderModal|scrollTop|\.pause\(|\.abort\(|storyboardClearWaitingQueue/);
+  }
 });
 
 test('director bridge invalidation changes only ephemeral director state', () => {

@@ -359,7 +359,11 @@ if (process.platform === 'win32') test('Windows npm PM2 cmd shim uses only the s
         + "if(action==='jlist')console.log(JSON.stringify([{name:'chosen-st',pm_id:42,pm2_env:{pm_cwd:"
         + JSON.stringify(f.root) + ",pm_exec_path:" + JSON.stringify(path.join(f.root, 'server.js'))
         + ",status:state.status,args:[]}}]));fs.writeFileSync(file,JSON.stringify(state));");
-    await command(process.execPath, [path.join(f.sourceRoot, 'scripts/install-yimu.mjs'), '--st-root', f.root, '--pm2', 'chosen-st'], { cwd: f.root });
+    // Resolve the synthetic shim through PATH like npm's global pm2.cmd, rather than
+    // cmd's current-directory lookup, which NoDefaultCurrentDirectoryInExePath disables.
+    const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') || 'Path';
+    const env = { ...process.env, [pathKey]: f.root + path.delimiter + (process.env[pathKey] || '') };
+    await command(process.execPath, [path.join(f.sourceRoot, 'scripts/install-yimu.mjs'), '--st-root', f.root, '--pm2', 'chosen-st'], { cwd: f.root, env });
     const state = JSON.parse(await fs.readFile(stateFile, 'utf8'));
     assert.deepEqual(state.actions.filter(args => args[0] !== 'jlist'), [['stop', '42'], ['start', '42']]);
     assert.equal(state.status, 'online'); await f.verifyUntouched();

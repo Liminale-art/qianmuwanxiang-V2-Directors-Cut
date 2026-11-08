@@ -50,21 +50,25 @@ assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
 assert.equal(manifest.version, packageJson.version);
 assert.match(installGuide, /install-server-plugin\.sh \| QIANMU_SERVER_STOPPED=1 sh/);
 assert.match(installGuide, /install-server-plugin\.ps1 \| iex/);
-assert.match(installGuide, /VPS \+ PM2，一次粘贴/);
+// Guide wording was rewritten in 1fc118a3 / f1b7c99e (PM2 update is Linux/VPS only).
+assert.match(installGuide, /已有安装更新（仅 Linux／VPS 的 PM2 部署）/);
+assert.match(installGuide, /一次粘贴/);
 assert.match(installGuide, /Windows 本地安装/);
-assert.match(installGuide, /只刷新网页不算完成/);
-assert.match(installGuide, /后端启动后，可在浏览器打开/);
+assert.match(installGuide, /只刷新网页不会加载后端插件/);
+// The browser health-check section was intentionally removed in 1fc118a3; the guide
+// now asks for branch/commit and runtime-version verification instead.
+assert.match(installGuide, /## 分支与加载核对/);
 assert.match(shellInstaller, /enableServerPlugins: true/);
 assert.match(shellInstaller, /mkdir -p "\$PLUGIN_PARENT"/);
 assert.match(shellInstaller, /config\/config\.yaml/);
 assert.doesNotMatch(shellInstaller, /^\s*(?:if\s+)?docker compose (?:restart|stop|down)\b/m);
-assert.match(shellInstaller, /docker compose start sillytavern/);
+// 1fc118a3 intentionally dropped the post-install `docker compose start` hint; the
+// installer must still never restart/stop containers itself (checked above).
 assert.match(shellInstaller, /QIANMU_SERVER_STOPPED/);
 assert.match(powershellInstaller, /QIANMU_SERVER_STOPPED/);
 assert.match(shellInstaller, /\/home\/node\/app\/plugins/);
 assert.match(powershellInstaller, /enableServerPlugins: true/);
 assert.match(powershellInstaller, /New-Item -ItemType Directory/);
-assert.match(installGuide, /api\/plugins\/qianmu-tts\/health/);
 
 const health = mockResponse();
 await routes.get('GET /health')({}, health);

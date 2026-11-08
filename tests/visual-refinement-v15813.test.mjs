@@ -9,7 +9,8 @@ const styles = await readFile(new URL('style.css', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-assert.equal(manifest.css, `style.css?v=${manifest.version}`);
+const cssStamp = `style.css?v=${manifest.version}`;
+assert.ok(manifest.css.startsWith(cssStamp) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(cssStamp.length)), `CSS must keep a release-pinned cache stamp: ${manifest.css}`);
 assert.match(styles, /v1\.58\.13 · 精调视觉标尺与独立便笺工作层/);
 assert.match(styles, /--qm-type-card-title: 13px;[\s\S]*--qm-type-body: 12px;[\s\S]*--qm-type-label: 11px;[\s\S]*--qm-control-height: 30px;/, 'visual hierarchy must use the refined compact scale');
 assert.match(styles, /\.sd-tabs button \{ font-size: 13\.5px !important; \}/, 'main tabs must gain one visual step');
@@ -31,7 +32,7 @@ assert.match(styles, /\.sd-version-tag\.is-update-available[\s\S]*animation: sd-
 assert.match(styles, /\.sd-header-actions :is\(\.sd-coread-shortcut,[\s\S]*width: 20px !important;/, 'all top-row glyphs must match the storyboard icon optical size');
 assert.match(styles, /#qianmu-storage-cleanup-layer \{[\s\S]*height: 100dvh !important;[\s\S]*transform: none !important;/, 'the cleanup chooser must remain centered in the mobile viewport');
 
-assert.match(source, /<h3>小组件<\/h3>[\s\S]*>悬浮球<\/span>[\s\S]*>便笺<\/span>[\s\S]*>快捷盘<\/span>[\s\S]*>蜂巢收纳<\/span>/, 'widget controls must use one active-label row');
+assert.match(source, /<h3>小组件<\/h3>\s*<div class="sd-widget-toggle-row"[^>]*>[\s\S]*>悬浮球<\/span>[\s\S]*>蜂巢格<\/span>/, 'widget controls must use one active-label row');
 assert.match(focusView, /sd-focus-reset"[^>]*><i class="fa-solid fa-arrow-rotate-left"><\/i>/, 'focus reset must carry the local reset icon, including when strong lock disables the button');
 assert.match(styles, /\.sd-focus-sound-preview \{[^}]*border-radius: 9px !important/, 'focus sound preview must use a square control');
 assert.match(source, /dialogTipSeen: false[\s\S]*sd-reader-send-tip[\s\S]*长按邀请 AI 回应/, 'Coread must provide a one-time send gesture tip');

@@ -54,6 +54,6 @@ assert.match(style, /\.sd-storyboard-nav \{[\s\S]*bottom: auto;[\s\S]*background
 assert.match(style, /--sd-storyboard-gap: 4px/);
 assert.match(style, /\.sd-storyboard-automation-head[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
 assert.match(style, /\.sd-storyboard-refresh-worldbooks[\s\S]*border-radius: 999px/);
-assert.doesNotMatch(source.slice(source.indexOf('function renderStoryboardNav'), source.indexOf('function storyboardWorkflowIssue')), /fa-chevron-down/);
+assert.doesNotMatch(source.slice(source.indexOf('function renderStoryboardNav'), source.indexOf('function storyboardConnectionState')), /fa-chevron-down/);
 
 console.log('Storyboard v1.56.4 refinement contract OK');

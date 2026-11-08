@@ -28,7 +28,7 @@ test('busy-to-idle rerender restores the hive icon on every next-scene button wi
   const control=()=>({disabled:false,innerHTML:'',classes:new Set(),classList:{toggle(name,on){on?this.owner.classes.add(name):this.owner.classes.delete(name);}}});
   const generation=[control(),control()],theater=[control()],refreshed=[];
   for(const item of [...generation,...theater])item.classList.owner=item;
-  const c=vm.createContext({busy:false,theaterBusy:false,settings:{enabled:true},document:{querySelectorAll:selector=>selector==='.sd-generate-main'?generation:theater},applyQianmuIcons:item=>refreshed.push(item)});
+  const c=vm.createContext({busy:false,theaterBusy:false,directorRun:null,settings:{enabled:true},document:{querySelectorAll:selector=>selector==='.sd-generate-main'?generation:theater},applyQianmuIcons:item=>refreshed.push(item)});
   vm.runInContext(storyboardFunctionSource('renderBusyState'),c);
   for(const busy of [false,true,false]){
     c.busy=busy;c.renderBusyState();

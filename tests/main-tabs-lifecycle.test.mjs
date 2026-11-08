@@ -100,7 +100,7 @@ test('production renderer restores before binding and sizes the retained bar onl
  assert.ok(render.indexOf('restoreMainTabs();')>render.indexOf('modal.innerHTML ='));
  assert.ok(render.indexOf('restoreMainTabs();')<render.indexOf('applyQianmuIcons(modal)'));
  assert.ok(render.indexOf('restoreMainTabs();')<render.indexOf('bindQianmuMainTabNavigation(modal'));
- assert.match(render,/bindQianmuMainTabNavigation\(modal, \(el\) => \{[\s\S]*?activeTab = el\.dataset\.tab;\s*renderModal\(\);/);
+ assert.match(render,/bindQianmuMainTabNavigation\(modal, \(el\) => \{[^}]*?activeTab = el\.dataset\.tab;(?:\s*if \(activeTab === '\w+'\) request\w+RefreshIfStale\(0\);)*\s*renderModal\(\);/);
  assert.doesNotMatch(render,/querySelectorAll\('\.sd-tab'\)\.forEach/);
  assert.doesNotMatch(render,/sizeQianmuTabs\(tabsBar\)/,'keepQianmuTabVisible already performs the single sizing pass');
  assert.match(render,/keepQianmuTabVisible\(tabsBar\)/);

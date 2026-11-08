@@ -52,7 +52,10 @@ test('schema7 backup preserves scenes, manual placements, explicit order, undo c
     doc.entries.push({...summary('custom',{kind:'manual',source:null,text:'有适用点的人工背景',placement:{binding:ancestor,fromFloor:1,hash},origin:{binding:ancestor,offset:12}}),history:[{...previous(summary('custom',{revision:1,kind:'manual',source:null,text:'旧背景'})),placement:{binding:ancestor,fromFloor:1,hash}}]});
     doc.entryOrder=['custom','fine'];
     doc.settings.prompts={groups:{summary:[{id:'mine',name:'我的总结',text:'保留真实质感',enabled:true}],stage:[],recall:[]},presets:[],selectedPreset:''};
-    const portable=portableDocument(doc);assert.deepEqual(portable.entryOrder,['custom','fine']);assert.deepEqual(portable.settings.prompts,doc.settings.prompts);
+    const portable=portableDocument(doc);assert.deepEqual(portable.entryOrder,['custom','fine']);
+    // Older prompt configs without the common identity group gain only the current default identity.
+    const {identity,...legacyGroups}=portable.settings.prompts.groups;assert.ok(Array.isArray(identity)&&identity.length>0);
+    assert.deepEqual({...portable.settings.prompts,groups:legacyGroups},doc.settings.prompts);
     assert.equal(portable.entries[0].scenes[0].event,'甲独自读信');assert.equal(portable.entries[0].textUndoRevision,1);
     const result=restoreBackupDocument(portable,{binding:target,mappings:{source_0:target,source_1:mapped}}).document;
     assert.deepEqual(result.entryOrder,['custom','fine']);assert.deepEqual(result.entries[1].placement.binding,mapped);assert.deepEqual(result.entries[1].history[0].placement.binding,mapped);

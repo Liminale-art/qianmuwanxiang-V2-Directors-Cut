@@ -94,7 +94,7 @@ test('status presentation does not mutate log payload, persistent state or open 
 test('log signals are fixed-size circles with semantic green, red, yellow and neutral colors', () => {
   assert.match(css, /#story-director-modal \.sd-log-status \{[^}]*width: 8px;[^}]*height: 8px;[^}]*flex: 0 0 8px;[^}]*border-radius: 50%;[^}]*background: currentColor;[^}]*color: var\(--sd-muted\)/);
   assert.match(css, /\.sd-log-status\.success \{ color: #4f9e6b; \}/);
-  assert.match(css, /\.sd-log-status\.error \{ color: #c95e5e; \}/);
+  assert.match(css, /\.sd-log-status:is\(\.error, \.blocked\) \{ color: #c95e5e; \}/);
   assert.match(css, /\.sd-log-status\.cancelled,\s*#story-director-modal \.sd-log-status\.loading \{ color: #a58035; \}/);
   assert.match(css, /\.sd-log-meta \{[^}]*font-size: \.85em;/);
 });

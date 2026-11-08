@@ -9,6 +9,7 @@ import {buildStoryboardPlanContractRequest,buildStoryboardSafetyContractRequest,
 import {generateDirectImage} from '../qianmu-image-direct.js';
 import {generateImage} from '../qianmu-image-gateway.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';
 
 const doc=(name,category='char',aliases=[])=>normalizeCharacterArchive({...newCharacterArchive(category),name,aliases,
   imagegen:{appearance:`${name} base appearance`,negative:`${name} unwanted trait`,sensitiveAppearance:'SENSITIVE-DO-NOT-PROJECT',
@@ -232,6 +233,7 @@ function compilerRuntime({changeAccount=false,ambiguous=false,references=false}=
     MODULE_NAME:'test',console:{error:(...args)=>errors.push(args)},
   });
   vm.runInContext(['storyboardPrepareComfyRoutes','storyboardUsesComfyCharacters','storyboardCompilerCharacterCasting','storyboardCompilerContext','storyboardCompilerResult','storyboardShotSpecForSelection','storyboardCompilePrompt'].map(section).join('\n'),context);
+  installCompilerDiagnosticsFixture(context);
   return {e,state,plan,calls,notices,errors,context};
 }
 test('actual extraction context -> strict parser -> saved plan -> image payload carries the frozen visible identity',async()=>{

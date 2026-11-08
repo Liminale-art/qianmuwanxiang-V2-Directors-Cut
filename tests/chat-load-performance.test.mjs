@@ -8,8 +8,11 @@ const observer = source.slice(source.indexOf('function ttsStartChat'), source.in
 assert.match(observer, /MutationObserver\(\(records\) => ttsQueueMutationRecords\(records\)\)/, '聊天观察器必须把新增节点交给增量队列');
 assert.doesNotMatch(observer, /MutationObserver\(\(\) => ttsScanDebounced/, '聊天新增楼层不得触发全聊天回扫');
 assert.match(source, /ttsMessageEditedHandler = \(messageRef\)[\s\S]*ttsScheduleEditedMessage\(messageRef/, '正文编辑必须只重查对应楼层');
-const refresh = source.slice(source.indexOf('const runBackgroundDirectorRefresh = async'), source.indexOf('const refreshHandler ='));
-assert.match(refresh, /if \(metadataChanged\) await saveMetadata\(\)/, '新消息未改变推演状态时不得重写整份聊天 metadata');
+// Received messages only hand off to the auto-refresh scheduler; neither path rewrites chat metadata.
+const refresh = source.slice(source.indexOf('const refreshHandler ='), source.indexOf('const rerenderHandler ='));
+const autoRefresh = await readFile(new URL('../qianmu-director-auto-refresh.js', import.meta.url), 'utf8');
+assert.match(refresh, /directorAutoRefresh\?\.received\(messageIndex, generationType\)/, '新消息必须只交给自动推演调度');
+assert.doesNotMatch(refresh + autoRefresh, /saveMetadata|saveChat\w*\(/, '新消息未改变推演状态时不得重写整份聊天 metadata');
 
 const queue = source.slice(source.indexOf('function ttsScheduleInitialScan'), source.indexOf('// 委托点击'));
 assert.match(queue, /requestIdleCallback[\s\S]*cursor < 8/, '长聊天历史恢复必须先处理最新楼层并在空闲片继续');

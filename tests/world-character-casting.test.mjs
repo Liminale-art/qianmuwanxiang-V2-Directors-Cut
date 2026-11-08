@@ -683,7 +683,7 @@ test('classified world confirmation prepares exact expressions and the real shar
   assert.equal(shot.subject,'厨房');assert.equal(shot.characters[0].identity[0],'Alice silver hair');
   assert.equal(jobs.length,1);const job=jobs[0];assert.equal(job.source,'comfy');assert.equal(job.target,'gallery');assert.equal(job.payload.promptRendering.format,'tags');
   assert.equal(job.ensembleStyleOrigin.schemeId,'alternative');assert.deepEqual(copy(job.profile.comfyRouteBinding),copy(e.recipe.binding));
-  assert.match(job.payload.prompt,/^kitchen, soft light/);assert.match(job.payload.prompt,/"Alice":/);
+  assert.match(job.payload.prompt,/^kitchen, soft light/);assert.equal(job.payload.promptRendering.version,2);assert.doesNotMatch(job.payload.prompt,/"Alice":/);
   assert.doesNotMatch(job.payload.prompt,/厨房|silver hair/);assert.match(job.payload.prompt,/blue hair, no coat, stirs soup/);
   assert.equal(job.shotSpec.subject,'厨房');assert.equal(job.shotSpec.productionContext.truthMode,'speculative');
 });

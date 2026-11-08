@@ -1,6 +1,6 @@
 // Creative defaults and one-request state. No storage, network or model calls.
 import { hashText } from './qianmu-storyboard-utils.js';
-import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.464';
+import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.484';
 
 // Exact bundled defaults from prior releases, not phrase-based DIY detection.
 // Exact defaults through v1.59.463 are included so this release can migrate prior
