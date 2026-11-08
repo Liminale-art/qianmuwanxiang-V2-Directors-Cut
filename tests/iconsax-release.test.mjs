@@ -6,36 +6,22 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
-const ENTRY_RELEASE = '1.59.448';
-// The installed entry/style follow the current release; ENTRY_RELEASE remains the iconsax-era index.js child stamp.
+// The installed entry/style follow the current release.
 const CURRENT_RELEASE = '1.59.484';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
-// Only the floor-tools path consumes the updated busy-button behavior. The
-// other floor-entry consumers use unchanged prose/character predicates.
-// Later releases changed some of these modules again and refreshed exactly the
-// listed literal edges; every other edge keeps its iconsax-era address.
-const laterReleases = new Map([
-  ['index.js>qianmu-creative-social.js', '1.59.460'],
-  ['index.js>qianmu-prose-floor-tools.js', '1.59.484'], // 1794abd0 / f1b7c99e
-  ['index.js>qianmu-tts-floor-ui.js', '1.59.484'],
-  ['index.js>qianmu-icon-renderer.js', '1.59.478'], // 723c1f11 firstline glyph
-  ['index.js>qianmu-storyboard-capture-view.js', '1.59.484'],
-  ['qianmu-font-library-view.js>qianmu-icon-renderer.js', '1.59.470'],
-  ['qianmu-idle-preload.js>qianmu-prose-assistant-panel.js', '1.59.452'],
-  ['qianmu-prose-assistant-floor.js>qianmu-prose-assistant-panel.js', '1.59.452'],
-  ['qianmu-prose-floor-tools.js>qianmu-prose-assistant-floor.js', '1.59.452'],
-  ['qianmu-prose-floor-tools.js>qianmu-idle-preload.js', '1.59.484'], // comfy-library-view preload URL aligned with index.js
-  ['qianmu-prose-floor-tools.js>qianmu-text-collection-host.js', '1.59.484'],
+// 2026-11-08 stamp unification: every importer of a module now shares that module's newest
+// address, so each changed node has exactly one expected stamp regardless of its parent.
+const unifiedRelease = new Map([
+  ['qianmu-icon-renderer.js', '1.59.478'], ['qianmu-creative-social.js', '1.59.460'],
+  ['qianmu-storyboard-capture-view.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
+  ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-text-collection-host.js', '1.59.484'],
+  ['qianmu-tts-floor-ui.js', '1.59.484'], ['qianmu-prose-assistant-floor.js', '1.59.452'],
+  ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.446'],
+  ['qianmu-prose-floor-entries.js', '1.59.440'], ['qianmu-main-tabs.js', '1.59.421'],
 ]);
-const moduleRelease = (file,parent) => laterReleases.get(`${parent}>${file}`) || iconsaxRelease(file,parent);
-const iconsaxRelease = (file,parent) => file === 'index.js' ? ENTRY_RELEASE
-  : file === 'qianmu-creative-social.js' ? ENTRY_RELEASE
-  : ['qianmu-prose-floor-tools.js','qianmu-prose-hive.js'].includes(file) ? '1.59.446'
-  : file === 'qianmu-icon-renderer.js' && parent === 'index.js'
-  || file === 'qianmu-prose-floor-entries.js' && parent === 'qianmu-prose-floor-tools.js' ? '1.59.440'
-  : localLoaderClosure.has(file) ? '1.59.425' : file === 'qianmu-storyboard-capture-view.js' ? '1.59.424' : file === 'qianmu-main-tabs.js' ? '1.59.421' : ICONSAX_RELEASE;
+const moduleRelease = file => unifiedRelease.get(file) || (localLoaderClosure.has(file) ? '1.59.425' : ICONSAX_RELEASE);
 // Refresh the real reverse import closure of changed client modules, including
 // both consumers of the shared notes facade. Comment-only store edits do not
 // change its runtime identity; unrelated backend/provider URLs also stay put.
@@ -82,7 +68,7 @@ test('affected modules use their intended release URL without duplicating shared
     graph.set(file, localReferences(file, source));
     for (const {target, url} of graph.get(file)) {
       if (!changedNodes.has(target)) continue;
-      assert.equal(url.search, `?v=${moduleRelease(target,file)}`, `${file} -> ${target}: refresh the literal child URL, not only its parent`);
+      assert.equal(url.search, `?v=${moduleRelease(target)}`, `${file} -> ${target}: refresh the literal child URL, not only its parent`);
       assert.equal(url.hash, '', `${file} -> ${target}: no fragment-based cache aliases`);
       inbound.add(target);
     }

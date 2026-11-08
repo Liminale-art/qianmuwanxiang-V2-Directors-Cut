@@ -1,8 +1,8 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
 export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.414';
-import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js';
-import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.414';
-import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js';
+import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js?v=1.59.202';
+import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.440';
+import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js?v=1.59.202';
 import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js?v=1.59.439';
 import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
 import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';

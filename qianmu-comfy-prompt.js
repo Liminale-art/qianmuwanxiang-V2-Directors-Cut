@@ -1,5 +1,5 @@
 // Final prompt projection for a classified workflow (fixed route or editable workbench). Never rewrites a graph.
-import { normalizeStoryboardShotSpec, getStoryboardCapabilities } from './qianmu-storyboard.js';
+import { normalizeStoryboardShotSpec, getStoryboardCapabilities } from './qianmu-storyboard.js?v=1.59.440';
 import { normalizeStoryboardPromptFormats, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { storyboardComfyPromptFormat, assertComfyWorkbenchProfile } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';

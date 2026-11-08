@@ -1,7 +1,7 @@
 // Host-owned identity of a tested still-workflow configuration. No credentials,
 // prose or reference bytes are persisted here; this hash alone grants nothing.
 import { createHash } from 'node:crypto';
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
 
 const textInputs = { CLIPTextEncode: ['text'], CLIPTextEncodeSDXL: ['text_g', 'text_l'],
   CLIPTextEncodeSDXLRefiner: ['text'], CLIPTextEncodeSD3: ['clip_l', 'clip_g', 't5xxl'] };

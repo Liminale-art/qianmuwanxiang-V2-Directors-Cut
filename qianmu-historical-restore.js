@@ -5,7 +5,7 @@ import { createHistoricalRecipeRestore } from './qianmu-historical-recipe-restor
 import { createHistoricalChatSaveSession } from './qianmu-historical-chat-save.js';
 import { inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.js';
 import { createChatGalleryStateClient, createChatGalleryEvidenceClient } from './qianmu-chat-character-receipt-client.js';
-import { createHistoricalRecipeArchiveClient } from './qianmu-recipe-archive-client.js';
+import { createHistoricalRecipeArchiveClient } from './qianmu-recipe-archive-client.js?v=1.59.414';
 import { createRecipeRestoreClient } from './qianmu-recipe-restore-client.js';
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';

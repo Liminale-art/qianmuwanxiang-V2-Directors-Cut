@@ -1,5 +1,5 @@
-import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js';
-import { collectStoryboardVibeDependencies } from './qianmu-storyboard-package-assets.js';
+import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
+import { collectStoryboardVibeDependencies } from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 

@@ -26,7 +26,7 @@ export async function collectVibeStorage({resolveNamespace,valid=()=>true,call}=
   const check=async()=>{if(!valid()||namespace!==await resolveNamespace()||!valid())throw stale();};
   let result,error;
   try{
-    const invoke=call||(await import('./qianmu-vibe-assets.js')).callVibeAsset;await check();
+    const invoke=call||(await import('./qianmu-vibe-assets.js?v=1.59.202')).callVibeAsset;await check();
     result=validateVibeStorageSummary(await invoke('storage-summary',{namespace}),namespace);
   }catch(cause){error=cause;}
   await check();if(error)return {version:2,status:'unavailable',namespace,bytes:null,error:String(error?.message||'Vibe 资料暂不可读取')};return result;

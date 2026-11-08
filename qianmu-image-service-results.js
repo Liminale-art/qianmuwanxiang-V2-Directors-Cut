@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeComfyCloudStage } from './qianmu-comfy-cloud-stage-contract.js';
-import { comfyStillMime } from './qianmu-comfy-results.js';
+import { comfyStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 
 const MAX_IMAGE_BYTES = 48 * 1024 * 1024;
 const SCHEMA = 'qianmu.image-service-result.v1';

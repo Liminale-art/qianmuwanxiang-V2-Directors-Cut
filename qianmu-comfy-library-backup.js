@@ -85,6 +85,6 @@ export async function readComfyLibraryBackup(file){
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){fail('备份文件不是完整 UTF-8');}
   // Parsing an explicitly selected backup can load the package parser. Normal
   // library/list/version reads must not pull its import/export graph at startup.
-  const {parseStrictStoryboardJson}=await import('./qianmu-storyboard-package-input.js');
+  const {parseStrictStoryboardJson}=await import('./qianmu-storyboard-package-input.js?v=1.59.202');
   const value=parseStrictStoryboardJson(text,{maxBytes:COMFY_LIBRARY_BACKUP_BYTES});validateComfyLibraryBackup(value);return value;
 }

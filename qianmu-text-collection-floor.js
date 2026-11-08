@@ -1,4 +1,4 @@
-import {isCharacterFloor} from './qianmu-prose-floor-entries.js?v=1.59.419';
+import {isCharacterFloor} from './qianmu-prose-floor-entries.js?v=1.59.440';
 
 export const TEXT_COLLECTION_FLOOR_STYLESHEET = new URL('./qianmu-text-collection-floor.css', import.meta.url);
 

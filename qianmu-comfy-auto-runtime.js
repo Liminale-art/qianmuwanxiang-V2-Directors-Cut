@@ -4,8 +4,8 @@ import { normalizeComfyAutoPool, selectComfyWorkflow, comfyCandidateExecutionKey
 import { normalizeComfyClassification, COMFY_CLASSIFICATION_VALUES } from './qianmu-comfy-classification.js';
 import { normalizeComfyAutoBinding, comfyAutoError } from './qianmu-comfy-auto-binding.js';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, comfyRouteBindingKey } from './qianmu-comfy-route-contract.js';
-import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js';
-import { normalizeStoryboardShotSpec, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
+import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js?v=1.59.414';
+import { normalizeStoryboardShotSpec, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js?v=1.59.440';
 import { normalizeStoryboardPromptFormats, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { projectNewComfyExecution, COMFY_FRESH_EXECUTION_POLICY } from './qianmu-comfy-new-execution.js';
 

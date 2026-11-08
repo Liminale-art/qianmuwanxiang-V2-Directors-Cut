@@ -2,7 +2,7 @@
 import { bindComfyCloudTask, requireComfyCloudTaskId, planComfyCloudOperation } from './qianmu-comfy-cloud-protocol.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { readRunningHubUsage } from './qianmu-runninghub-usage.js';
-import { comfyStillMime } from './qianmu-comfy-results.js';
+import { comfyStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const fail = (code, message, taskId = '', providerCode) => {
   throw Object.assign(new Error(message), { code: `comfy_cloud_response_${code}`, retryable: false,

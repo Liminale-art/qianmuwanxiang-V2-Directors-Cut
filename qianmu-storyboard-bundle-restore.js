@@ -1,4 +1,4 @@
-import { openStoryboardBundle } from './qianmu-storyboard-bundle.js';
+import { openStoryboardBundle } from './qianmu-storyboard-bundle.js?v=1.59.202';
 import { inspectStoryboardResourceBundle, collectStoryboardBundleRestoreOriginals } from './qianmu-storyboard-bundle-resources.js';
 import { planComfyLibraryRestore, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 import { planComfyPoolRestore } from './qianmu-comfy-pool-backup.js';
@@ -11,7 +11,7 @@ import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-
 import { storyboardResourceOriginsPage } from './qianmu-storyboard-resource-origins.js';
 import { createStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';
 import { deriveStoryboardSubjectBindings, compareMappedStoryboardSubjects, createStoryboardSubjectMapReview, validStoryboardSubjectTargetPage, assertSubjectMappingTargetsUnambiguous } from './qianmu-storyboard-subject-map.js';
-import {compareStoryboardSubjectEvidence} from './qianmu-storyboard-subject-evidence.js';
+import {compareStoryboardSubjectEvidence} from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import {planBundleUserAliases,bundleUserAliasPage,bundleUserAliasSummary,replayBundleUserAliasReceipt} from './qianmu-bundle-user-alias.js';
 import {validateBundleAliasInput} from './qianmu-bundle-user-alias-contract.js';
 import {createBundleSubjectMapReview,bundleAliasTargetsReady,BUNDLE_SUBJECT_MAP_SCOPE} from './qianmu-bundle-subject-map.js';

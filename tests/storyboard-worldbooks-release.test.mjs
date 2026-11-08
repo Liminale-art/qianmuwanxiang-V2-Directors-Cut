@@ -33,7 +33,8 @@ test('every actual state-normalizer import uses the current core while injected 
     const specifier = /from\s*['"](\.\/qianmu-storyboard\.js(?:\?[^'"]*)?)['"]/.exec(source)?.[1];
     if (!specifier) continue;
     consumers.push(file);
-    const consumerVersion=file==='index.js'?'1.59.440':version;
+    // 2026-11-08 stamp unification: every state-normalizer consumer shares the newest v440 core.
+    const consumerVersion='1.59.440';
     assert.equal(specifier,`./qianmu-storyboard.js?v=${consumerVersion}`,`${file}: old normalization must not discard confirmed selections`);
   }
   assert.deepEqual(consumers.sort(),['index.js','qianmu-storyboard-package-draft.js']);

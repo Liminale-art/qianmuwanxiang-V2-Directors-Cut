@@ -1,4 +1,4 @@
-import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
+import {htmlEscape as escape} from './qianmu-storyboard-utils.js?v=1.59.456';
 import {createCurrentGalleryArchiveSession} from './qianmu-gallery-archive-source.js?v=1.59.414';
 
 export function galleryRecipeReviewSummary(snapshot){

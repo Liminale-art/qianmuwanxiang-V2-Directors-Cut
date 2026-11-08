@@ -1,4 +1,4 @@
-import {resolveStoryboardJobModelIdentity,getStoryboardCapabilities} from './qianmu-storyboard.js';
+import {resolveStoryboardJobModelIdentity,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.440';
 import {retainStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 import {resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 

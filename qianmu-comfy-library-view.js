@@ -1,7 +1,7 @@
 // Loaded only when opening the workflow library. Drafts never live in global ST settings.
 import {createComfyWorkflowStore,normalizeComfyLibraryDocument,inspectComfyLibraryDocument,importComfyLibraryDocument,exportComfyLibraryDocument,COMFY_LIBRARY_PARAMETERS} from './qianmu-comfy-library.js';
 import {COMFY_CLASSIFICATION_VALUES,normalizeComfyClassification} from './qianmu-comfy-selection.js';
-import {renderRunningHubInstanceOptions} from './qianmu-comfy-workbench.js';
+import {renderRunningHubInstanceOptions} from './qianmu-comfy-workbench.js?v=1.59.435';
 import {resolveStoryboardComfyCloud} from './qianmu-comfy-cloud-protocol.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const icon=(action,label,glyph,extra='')=>`<button type="button" class="sd-icon-btn" data-comfy-action="${action}" aria-label="${escape(label)}" title="${escape(label)}" ${extra}><i class="fa-solid fa-${glyph}"></i></button>`;

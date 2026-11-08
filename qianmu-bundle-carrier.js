@@ -1,5 +1,5 @@
-import {inspectStoryboardBundleManifestText} from './qianmu-storyboard-bundle.js';
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
+import {inspectStoryboardBundleManifestText} from './qianmu-storyboard-bundle.js?v=1.59.202';
+import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js?v=1.59.202';
 import {BUNDLE_CARRIER_SCHEMA,BUNDLE_CARRIER_SCOPE,BUNDLE_CARRIER_LIMITS,validateBundleCarrierProofShape,validateBundleCarrierSummary} from './qianmu-bundle-carrier-contract.js';
 import {bundleMappingEntryId,isBundleMappingEntry} from './qianmu-bundle-mapping-contract.js';
 import {inspectBundleMappingIndex,inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';

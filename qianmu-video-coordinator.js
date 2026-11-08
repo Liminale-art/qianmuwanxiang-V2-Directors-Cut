@@ -1,13 +1,13 @@
 // 千幕 H3 客户端协调门面。集中串联任务仓、预算、网关与成片归档，但不自行启动轮询或付费任务。
 import * as defaultStorage from './qianmu-blobstore.js';
-import { createMiniMaxH3ResultArchiver } from './qianmu-video-result.js';
+import { createMiniMaxH3ResultArchiver } from './qianmu-video-result.js?v=1.59.202';
 import {
   fetchMiniMaxH3Capabilities,
   pollMiniMaxH3VideoTask,
   reconcileMiniMaxH3Cancellation,
   submitMiniMaxH3VideoTask,
-} from './qianmu-video-runtime.js';
-import { createVideoRuntimeStoreAdapter } from './qianmu-video-store.js';
+} from './qianmu-video-runtime.js?v=1.59.202';
+import { createVideoRuntimeStoreAdapter } from './qianmu-video-store.js?v=1.59.202';
 import {
   beginVideoTaskRetry,
   claimVideoTaskLease,
@@ -16,7 +16,7 @@ import {
   requestVideoTaskCancellation,
   resumeVideoTask,
   validateVideoTask,
-} from './qianmu-video-task.js';
+} from './qianmu-video-task.js?v=1.59.202';
 
 export const QIANMU_VIDEO_COORDINATOR_SCHEMA = 'qianmu.video-coordinator.v1';
 

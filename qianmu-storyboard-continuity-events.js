@@ -1,4 +1,4 @@
-import {STORYBOARD_NARRATIVE_LAYERS,STORYBOARD_CONTINUITY_FACT_CATEGORIES,STORYBOARD_CONTINUITY_FACT_PERSISTENCE,normalizeStoryboardContinuityFact,normalizeStoryboardMessageReference} from './qianmu-storyboard.js';
+import {STORYBOARD_NARRATIVE_LAYERS,STORYBOARD_CONTINUITY_FACT_CATEGORIES,STORYBOARD_CONTINUITY_FACT_PERSISTENCE,normalizeStoryboardContinuityFact,normalizeStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.440';
 
 export const STORYBOARD_CONTINUITY_EVENTS_SCHEMA='qianmu.storyboard.continuity-events.v1';
 export const STORYBOARD_CONTINUITY_EVENT_LIMITS=Object.freeze({events:80,paragraphs:1000,characters:200000,branches:40,subjects:80});

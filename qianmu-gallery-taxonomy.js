@@ -1,6 +1,6 @@
 import {renderGalleryChoicePicker,bindGalleryChoicePicker} from './qianmu-gallery-choice-picker.js?v=1.59.440';
 import {galleryCollectionChoices,applyGalleryCollectionTarget} from './qianmu-gallery-membership.js';
-import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
+import {htmlEscape as escape} from './qianmu-storyboard-utils.js?v=1.59.456';
 
 // One live toolbar owns its transient surfaces. Capture outside clicks before a
 // child can rerender; never treat selecting a card as clicking empty space.

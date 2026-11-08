@@ -1,5 +1,5 @@
 // 千幕动态阅片室轻索引、任务摘要与播放会话。列表不读取 Blob；只有打开单条成片时才创建临时 Object URL。
-import { normalizeVideoTask } from './qianmu-video-task.js';
+import { normalizeVideoTask } from './qianmu-video-task.js?v=1.59.202';
 
 export const QIANMU_VIDEO_GALLERY_SCHEMA = 'qianmu.video-gallery.v1';
 export const QIANMU_VIDEO_GALLERY_MAX_BYTES = 768 * 1024 * 1024;

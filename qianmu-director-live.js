@@ -1,4 +1,4 @@
-import { extractJson } from './qianmu-storyboard-utils.js';
+import { extractJson } from './qianmu-storyboard-utils.js?v=1.59.456';
 
 const FIELDS = {
   story_status: ['命运之脉', ['title', 'summary', 'current_arc']],

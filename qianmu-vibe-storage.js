@@ -1,4 +1,4 @@
-import {VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-store.js';
+import {VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-store.js?v=1.59.202';
 import {validateVibeReceiptFileUsage} from './qianmu-vibe-receipt-accounting.js';
 const fail=message=>Object.assign(new Error(message),{code:'vibe_storage_review',submissionState:'not_submitted'});
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value)))),b=>b.toString(16).padStart(2,'0')).join('');

@@ -1,6 +1,6 @@
 // Qianmu video prompt contract. Pure data only: no DOM, storage, network or task submission.
-import { createQianmuChatCompletionResponseFormat } from './qianmu-llm-output.js';
-import { normalizeMultimodalAssetManifest, normalizeVideoShotSpec } from './qianmu-video-contract.js';
+import { createQianmuChatCompletionResponseFormat } from './qianmu-llm-output.js?v=1.59.202';
+import { normalizeMultimodalAssetManifest, normalizeVideoShotSpec } from './qianmu-video-contract.js?v=1.59.202';
 
 export const QIANMU_VIDEO_PROMPT_PLAN_SCHEMA_ID = 'qianmu.video-prompt-plan.v1';
 export const QIANMU_VIDEO_PROMPT_MAX_BYTES = 96 * 1024;

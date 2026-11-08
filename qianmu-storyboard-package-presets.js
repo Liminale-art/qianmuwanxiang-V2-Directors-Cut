@@ -1,4 +1,4 @@
-import {STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_MODEL_PROFILE_LIMIT} from './qianmu-storyboard.js';
+import {STORYBOARD_PROVIDER_REGISTRY,STORYBOARD_MODEL_PROFILE_LIMIT} from './qianmu-storyboard.js?v=1.59.440';
 import {storyboardPortableEqual} from './qianmu-storyboard-package-fields.js';
 
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);

@@ -1,6 +1,6 @@
 import {createCharacterMigration} from './qianmu-character-migration.js';
 import {validateCharacterLibraryBackup,characterLibraryBackupDigest} from './qianmu-character-library-backup.js';
-import {validateCharacterStorageSummary} from './qianmu-character-storage.js';
+import {validateCharacterStorageSummary} from './qianmu-character-storage.js?v=1.59.202';
 import {CHARACTER_NATIVE_SLOT,characterNativeFail as fail,characterNativeEqual as equal,validateCharacterNativeIndex,createCharacterNativeOriginals} from './qianmu-character-native-contract.js';
 import {CHARACTER_IMPORT_SCHEMA,preserveCharacterImport,readCharacterImport,planCharacterImport,attachCharacterImport} from './qianmu-character-import.js';
 

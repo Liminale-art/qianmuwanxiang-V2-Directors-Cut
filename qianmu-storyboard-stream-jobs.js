@@ -5,7 +5,7 @@ import {storyboardStreamBudgetReference} from './qianmu-storyboard-stream-refere
 import {storyboardStreamCoverageScope} from './qianmu-storyboard-stream-coverage.js?v=1.59.414';
 import {resolveEnsembleCompiledRoutes} from './qianmu-ensemble-handoff.js?v=1.59.414';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
-import {storyboardPartialCompletion} from './qianmu-storyboard.js?v=1.59.414';
+import {storyboardPartialCompletion} from './qianmu-storyboard.js?v=1.59.440';
 const consumed = new WeakSet();
 const copy = value => JSON.parse(JSON.stringify(value));
 const stop = message => Object.assign(new Error(message), {code:'storyboard_stream_jobs'});

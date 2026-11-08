@@ -1,5 +1,5 @@
 import {MAPPING_IMPORT_LIMIT,validateMappingImportInput,validateMappingImportPreview,validateMappingImportResult} from './qianmu-mapping-import-contract.js';
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
+import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js?v=1.59.202';
 import {mappingHead,mappingBytes} from './qianmu-storyboard-mapping-contract.js';
 import {validateBundleMappingHeads,sameBundleMappingHead} from './qianmu-bundle-mapping-contract.js';
 import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';

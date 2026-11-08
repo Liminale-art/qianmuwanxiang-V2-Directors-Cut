@@ -1,8 +1,8 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
-import {STORYBOARD_PACKAGE_LIMITS,inspectStoryboardVibePackage} from './qianmu-storyboard-package-assets.js';
+import {STORYBOARD_PACKAGE_LIMITS,inspectStoryboardVibePackage} from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import {vibeDigest} from './qianmu-vibe-file.js';
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
-import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
+import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
 import {assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
 
 // Export and import share one limit until segmented packages are supported.

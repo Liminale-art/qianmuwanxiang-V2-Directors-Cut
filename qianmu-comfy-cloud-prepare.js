@@ -1,14 +1,14 @@
 // Pure preparation. Reference preview is admission-only; actual upload receipts
 // must be supplied by the host before a task intent can be produced.
 import { createHash } from 'node:crypto';
-import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js';
-import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js';
+import { prepareComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
+import { auditComfyWorkflow, requireComfyExecution } from './qianmu-comfy-audit.js?v=1.59.440';
 import { normalizeComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
 import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent } from './qianmu-comfy-cloud-receipt.js';
-import { prepareComfyCloudWorkflow } from './qianmu-comfy-cloud-workflow.js';
+import { prepareComfyCloudWorkflow } from './qianmu-comfy-cloud-workflow.js?v=1.59.440';
 import { planComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 import { COMFY_REFERENCE_LIMIT, COMFY_REFERENCE_TOTAL } from './qianmu-comfy-reference-contract.js';
 import { comfyWorkflowValidationScope } from './qianmu-comfy-validation-scope.js';

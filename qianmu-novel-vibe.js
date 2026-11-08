@@ -1,6 +1,6 @@
 import {novelModelCapabilities,novelReferenceIssue} from './qianmu-image-models.js';
 import {VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 export const NOVEL_VIBE_VERSION=1;
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code,submissionState:'not_submitted'});};
 const amount=(value,fallback,max=1)=>value==null||value===''||!Number.isFinite(Number(value))?fallback:Math.max(0,Math.min(max,Number(value)));

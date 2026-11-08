@@ -3,9 +3,9 @@ import { validateComfyLibraryBackup, planComfyLibraryRestore, comfyLibraryBackup
 import { validateComfyPoolBackup, planComfyPoolRestore } from './qianmu-comfy-pool-backup.js';
 import { normalizeComfyLibraryDocument } from './qianmu-comfy-library.js';
 import { normalizeComfyClassification } from './qianmu-comfy-classification.js';
-import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
+import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
 import { assertComfyRouteNamespace } from './qianmu-comfy-route-contract.js';
-import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js';
+import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
 import { vibeDigest } from './qianmu-vibe-file.js';
 
 export const COMFY_RESOURCE_BACKUP_SCHEMA = 'qianmu.comfy.resources.v1';

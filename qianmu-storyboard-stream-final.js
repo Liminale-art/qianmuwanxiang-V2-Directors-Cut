@@ -1,5 +1,5 @@
 import {hasStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamGeneration,storyboardStreamBudgetReference,verifyStoryboardStreamReference} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
-import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.414';
+import {resolveStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.440';
 import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.414';
 import {createStoryboardStreamLineage} from './qianmu-storyboard-stream-lineage.js?v=1.59.414';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';

@@ -1,6 +1,6 @@
 import { vibeDigest } from './qianmu-vibe-file.js';
-import { hashText } from './qianmu-storyboard-utils.js';
-import { createStoryboardMessageReference } from './qianmu-storyboard.js';
+import { hashText } from './qianmu-storyboard-utils.js?v=1.59.456';
+import { createStoryboardMessageReference } from './qianmu-storyboard.js?v=1.59.440';
 
 export const STORYBOARD_CHAT_EVIDENCE_SCHEMA = 'qianmu.storyboard.chat-evidence.v1';
 const MAX_MESSAGES = 100000, MAX_TEXT_BYTES = 128 * 1048576;

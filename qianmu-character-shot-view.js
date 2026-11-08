@@ -1,5 +1,5 @@
 import {CHARACTER_SHOT_FIELDS,captureCharacterShotFields,readLatestCharacterForShot,prepareCharacterShotEdit} from './qianmu-character-shot-edit.js?v=1.59.440';
-import {STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS} from './qianmu-storyboard.js';
+import {STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS} from './qianmu-storyboard.js?v=1.59.440';
 const clone=value=>JSON.parse(JSON.stringify(value));
 export {prepareCharacterShotEdit};
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');

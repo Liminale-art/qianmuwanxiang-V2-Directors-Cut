@@ -1,11 +1,11 @@
 // Account-scoped workflow documents. No generation or connection credentials.
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 import {createNativeComfyWorkflowStore} from './qianmu-comfy-native-store.js';
-import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js';
-import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
+import { sanitizeStoryboardWorkflow } from './qianmu-storyboard.js?v=1.59.440';
+import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
 import { normalizeComfyClassification } from './qianmu-comfy-selection.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
-import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js';
+import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js?v=1.59.435';
 export const COMFY_LIBRARY_SCHEMA = 'qianmu.comfy.workflow.v1';
 export const COMFY_LIBRARY_PARAMETERS = Object.freeze(['width','height','count','steps','cfg','seed','sampler','scheduler']);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);

@@ -1,6 +1,6 @@
-import { createGalleryCatalogManagement } from './qianmu-gallery-catalog-management.js';
-import { galleryDirectoryOwnerLabel } from './qianmu-gallery-directory-view.js';
-import { htmlEscape as escape } from './qianmu-storyboard-utils.js';
+import { createGalleryCatalogManagement } from './qianmu-gallery-catalog-management.js?v=1.59.202';
+import { galleryDirectoryOwnerLabel } from './qianmu-gallery-directory-view.js?v=1.59.414';
+import { htmlEscape as escape } from './qianmu-storyboard-utils.js?v=1.59.456';
 
 const button = (action, label, disabled = false) => `<button type="button" class="sd-btn" data-catalog-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
 // One resource row in the existing data manager. No original media deletion,

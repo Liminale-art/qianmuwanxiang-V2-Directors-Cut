@@ -1,10 +1,10 @@
-import {createVibeAssetStore} from './qianmu-vibe-asset-store.js';
+import {createVibeAssetStore} from './qianmu-vibe-asset-store.js?v=1.59.202';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
 import {exportVibeReceiptFile,inspectVibeReceiptFile,VIBE_RECEIPT_FILE_LIMIT} from './qianmu-vibe-receipt-file.js';
-import {createVibeStorageOperations} from './qianmu-vibe-storage.js';
+import {createVibeStorageOperations} from './qianmu-vibe-storage.js?v=1.59.202';
 export function createVibeAssetOperations(store,{encodings,locks=globalThis.navigator?.locks}={}){
 const storage=createVibeStorageOperations({store,encodings});
 async function exportReceipts(namespace,rows){

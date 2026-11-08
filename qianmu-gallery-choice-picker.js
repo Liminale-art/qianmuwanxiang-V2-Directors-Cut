@@ -1,4 +1,4 @@
-import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
+import {htmlEscape as escape} from './qianmu-storyboard-utils.js?v=1.59.456';
 
 export const GALLERY_CHOICE_PAGE_SIZE=24;
 let sessions=new WeakMap(),epoch=0;

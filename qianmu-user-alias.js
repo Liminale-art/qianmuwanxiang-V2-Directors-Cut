@@ -1,4 +1,4 @@
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
+import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 import {validateAliasInput,validateAliasTargets} from './qianmu-user-alias-contract.js';
 import {selectUserAliasBindings} from './qianmu-user-alias-bindings.js';

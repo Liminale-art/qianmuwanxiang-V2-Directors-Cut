@@ -1,8 +1,8 @@
 // Optional service transport. Loading this module does not open storage or probe.
-import { imageChannelKey } from './qianmu-image-channel.js';
+import { imageChannelKey } from './qianmu-image-channel.js?v=1.59.202';
 import { trackClientActivity } from './qianmu-client-activity.js';
-import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
-import { sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js';
+import { resolveImageAccountNamespace } from './qianmu-image-admission.js?v=1.59.440';
+import { sanitizeStoryboardSnapshot, sanitizeStoryboardDiagnosticData } from './qianmu-storyboard.js?v=1.59.440';
 import { normalizeNativeReviewView, normalizeNativeReceipt } from './qianmu-native-review-contract.js';
 
 const BASE = '/api/plugins/qianmu-tts/image/tasks';

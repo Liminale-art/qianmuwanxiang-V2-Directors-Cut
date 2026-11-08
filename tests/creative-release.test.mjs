@@ -26,7 +26,8 @@ const retained = new Map([
   // idle-preload now warms the v435 comfy-library-view that index.js loads.
   ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
   // index.js consumes the renamed floor label (b9c4b65b); prose-hive only reads the unchanged assistant command.
-  ['qianmu-hive-commands.js', '1.59.477'], ['qianmu-prose-hive.js>qianmu-hive-commands.js', '1.59.446'], ['qianmu-prose-hive.js', '1.59.446'],
+  // 2026-11-08 stamp unification: every importer of a module now shares its newest address.
+  ['qianmu-hive-commands.js', '1.59.477'], ['qianmu-prose-hive.js', '1.59.446'],
   ['qianmu-appearance-session.js', '1.59.476'],
   ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.450'],
@@ -65,7 +66,7 @@ test('creative release refreshes every literal consumer and remains reachable fr
 test('creative publication ships runtime only and retains unrelated shared module identities', async () => {
   assert.ok(files.every(file => !/(?:^|\/)(?:tests|scripts|Omniscene)\//i.test(file)));
   assert.ok(!files.some(file => /(?:审稿|开发大纲|进度清单|实测流程)/.test(file)));
-  assert.ok(sources.get('qianmu-creative-runtime.js').includes("from './qianmu-storyboard-utils.js'"));
+  assert.ok(sources.get('qianmu-creative-runtime.js').includes("from './qianmu-storyboard-utils.js?v=1.59.456'"));
   const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
   const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
   assert.equal(pkg.version, releaseVersion);
@@ -77,7 +78,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(files.includes('qianmu-font-library.css'));
   assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${releaseVersion}')`));
   assert.ok(sources.get('qianmu-font-library.js').includes(`from './qianmu-font-sources.js?v=${releaseVersion}'`));
-  assert.ok(sources.get('qianmu-font-library-view.js').includes("from './qianmu-icon-renderer.js?v=1.59.470'"));
+  assert.ok(sources.get('qianmu-font-library-view.js').includes("from './qianmu-icon-renderer.js?v=1.59.478'"));
   assert.ok(sources.get('qianmu-font-library-state.js').includes(`from './qianmu-font-sources.js?v=${releaseVersion}'`), 'source and validator consumers share the compatible fragment limit');
   assert.match(sources.get('index.js'), /fontLibrary\.activate\(\);\s*void fontLibrary\.sync\(\)/);
   // b9c4b65b disposes the chat write guard/recovery first; the font library is still released by runtime cleanup.
@@ -91,17 +92,17 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(sources.get('index.js').includes(`const VERSION = '${releaseVersion}';`));
 });
 
-test('world display refresh imports only pure helpers without splitting shared utility state', () => {
+test('world display helpers share one storyboard-utils identity across every importer', () => {
   const utility = 'qianmu-storyboard-utils.js';
-  const versioned = [];
-  for (const [file, source] of sources) {
+  const queries = new Set(), names = new Set();
+  for (const [, source] of sources) {
     for (const match of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]\.\/qianmu-storyboard-utils\.js([^'"]*)['"]/g)) {
-      const names = match[1].split(',').map(name => name.trim()).filter(Boolean);
-      if (match[2]) versioned.push({ file, names, query: match[2] });
-      else assert.ok(!names.includes('geoRelationLabel'), `${file} cannot expect new exports from an old cached utility`);
+      queries.add(match[2]);
+      for (const name of match[1].split(',').map(name => name.trim()).filter(Boolean)) names.add(name);
     }
   }
-  assert.deepEqual(versioned, [{ file: 'index.js', names: ['heatTier', 'geoRelationLabel'], query: '?v=1.59.456' }]);
+  // 2026-11-08: bare and versioned imports used to create two module instances; all now share the v456 address.
+  assert.deepEqual([...queries], ['?v=1.59.456']);
+  for (const name of ['heatTier', 'geoRelationLabel', 'uid']) assert.ok(names.has(name), name);
   assert.ok(files.includes(utility));
-  assert.match(sources.get('index.js'), /import\s*\{[^}]*\buid\b[^}]*\}\s*from '\.\/qianmu-storyboard-utils\.js'/);
 });

@@ -1,4 +1,4 @@
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 import {captureStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {VIBE_ENCODING_MODELS} from './qianmu-vibe-file.js';
 

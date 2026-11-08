@@ -1,6 +1,6 @@
 import { projectStoryboardChatMessages, storyboardChatProjectionMatches } from './qianmu-storyboard-chat-evidence.js';
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor } from './qianmu-storyboard.js';
-import { hashText } from './qianmu-storyboard-utils.js';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor } from './qianmu-storyboard.js?v=1.59.440';
+import { hashText } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { vibeDigest } from './qianmu-vibe-file.js';
 
 const fail = message => { throw new Error(message); };

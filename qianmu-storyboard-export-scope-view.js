@@ -1,5 +1,5 @@
 import { captureStoryboardExportImages } from './qianmu-storyboard-export-scope.js';
-import { htmlEscape as escape } from './qianmu-storyboard-utils.js';
+import { htmlEscape as escape } from './qianmu-storyboard-utils.js?v=1.59.456';
 
 // Metadata-only chooser in the existing export path. No media previews, network,
 // source discovery, mutation or new archive format. Cancel means no export.

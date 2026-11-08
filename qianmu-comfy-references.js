@@ -1,6 +1,6 @@
 // Explicitly selected, immutable ST files. Loaded only for Comfy reference work.
-import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js';
-import { comfyReferenceStillMime } from './qianmu-comfy-results.js';
+import { inspectComfyWorkflow } from './qianmu-comfy-workflow.js?v=1.59.440';
+import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 import { normalizeStaticReferenceReceipt, normalizeComfyReferenceSelection, comfyReferencePath, comfyReferenceError, COMFY_REFERENCE_BYTES, COMFY_REFERENCE_TOTAL } from './qianmu-comfy-reference-contract.js';
 const fail = message => { throw comfyReferenceError(message); };
 const digest = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2,'0')).join('');

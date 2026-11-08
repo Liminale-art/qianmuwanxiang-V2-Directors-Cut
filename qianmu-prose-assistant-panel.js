@@ -5,7 +5,7 @@ import {compileProseAssistantMessages} from './qianmu-prose-assistant-messages.j
 import {saveProseAssistantConnection,createProseAssistantAutosave} from './qianmu-prose-assistant-preferences.js?v=1.59.452';
 import {openProseAssistantHistory} from './qianmu-prose-assistant-history-runtime.js';
 import {bindProseAssistantWindow} from './qianmu-prose-assistant-window.js';
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.419';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.478';
 import {renderProseAssistantMarkdown} from './qianmu-prose-assistant-markdown.js';
 import {createProseAssistantThreadKey} from './qianmu-prose-assistant-history-contract.js';
 import {createProseAssistantConversationList} from './qianmu-prose-assistant-conversation-list.js?v=1.59.419';

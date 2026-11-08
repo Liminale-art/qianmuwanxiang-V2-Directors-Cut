@@ -9,7 +9,7 @@ import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 const fail=message=>recipeArchiveError('client',message);
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),n=>n.toString(16).padStart(2,'0')).join('');
 const equal=(a,b)=>chatGalleryReceiptText([a]).text===chatGalleryReceiptText([b]).text;
-const resolveAccount=async()=>(await import('./qianmu-image-admission.js')).resolveImageAccountNamespace();
+const resolveAccount=async()=>(await import('./qianmu-image-admission.js?v=1.59.440')).resolveImageAccountNamespace();
 const validAccount=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);
 
 // A short-lived borrower of one actual host gallery. Never uploads a recipe or reads

@@ -1,4 +1,4 @@
-import { isNoisePresetName, normalizePresetEntries, parseAnyString, parseNameSource, uniqueClean } from './qianmu-storyboard-utils.js';
+import { isNoisePresetName, normalizePresetEntries, parseAnyString, parseNameSource, uniqueClean } from './qianmu-storyboard-utils.js?v=1.59.456';
 
 // Read-only ST extension APIs. Never expose module-private state on window or patch host files.
 // CC prompt material deliberately uses the openai manager, not a text-completion sampling preset.

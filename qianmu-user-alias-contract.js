@@ -1,4 +1,4 @@
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
+import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 export const aliasHash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const number=value=>Number.isSafeInteger(value)&&value>=0&&value<=2048;

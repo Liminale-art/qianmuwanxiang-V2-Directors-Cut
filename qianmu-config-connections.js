@@ -1,5 +1,5 @@
 // Configuration-package policy only. Never scan/rewrite user prose, prompt text or media.
-import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js';
+import {migrateQianmuSettingsV2} from './qianmu-data-migrations.js?v=1.59.202';
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {assertPortableConnection} from './qianmu-portable-connection.js';
 export const CONFIG_INPUT_LIMITS = Object.freeze({bytes:32*1048576,depth:40,nodes:500000});

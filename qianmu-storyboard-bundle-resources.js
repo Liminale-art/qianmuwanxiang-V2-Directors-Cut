@@ -1,11 +1,11 @@
-import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js';
+import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js?v=1.59.202';
 import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
-import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js';
+import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';
 import { projectStoryboardOriginPayload, buildStoryboardResourceOrigins, inspectStoryboardResourceOrigins, storyboardResourceOriginsSummary } from './qianmu-storyboard-resource-origins.js';
-import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js';
-import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js';
+import { inspectStoryboardPackageFile, validateStoryboardPackagePayload, validateStoryboardPackageMedia } from './qianmu-storyboard-package-input.js?v=1.59.202';
+import { collectStoryboardVibeDependencies, inspectStoryboardVibePackage } from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 import { normalizeComfyLibraryDocument } from './qianmu-comfy-library.js';
 import { validateComfyPoolBackup } from './qianmu-comfy-pool-backup.js';
@@ -14,8 +14,8 @@ import { validateCharacterLibraryBackup } from './qianmu-character-library-backu
 import { verifyCharacterBackupWorkflowDependencies } from './qianmu-character-backup-file.js';
 import { normalizeComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
-import { readStaticReferenceBlobs, comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
-import { comfyReferenceStillMime } from './qianmu-comfy-results.js';
+import { readStaticReferenceBlobs, comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
+import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu-storyboard-legacy-vibes.js';

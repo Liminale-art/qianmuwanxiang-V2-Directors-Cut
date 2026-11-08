@@ -3,7 +3,7 @@ import {
   normalizeMultimodalAssetManifest,
   normalizeVideoShotSpec,
   validateVideoShotSpec,
-} from './qianmu-video-contract.js';
+} from './qianmu-video-contract.js?v=1.59.202';
 
 export const MINIMAX_H3_PROVIDER_ID = 'minimax-h3';
 export const MINIMAX_H3_OFFICIAL_BASE_URLS = Object.freeze({

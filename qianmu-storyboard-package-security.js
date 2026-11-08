@@ -37,7 +37,7 @@ export async function assertPortableStoryboardData(value, { workflowsOnly = fals
   scan(value, 0, false, !workflowsOnly);
   if (workflows.size) {
     // Lazy to avoid the package-input -> assets -> security initialization cycle and duplicate parsers.
-    const { parseStrictStoryboardJson } = await import('./qianmu-storyboard-package-input.js');
+    const { parseStrictStoryboardJson } = await import('./qianmu-storyboard-package-input.js?v=1.59.202');
     for (const [text, depth] of workflows) {
       let graph;
       try { graph = parseStrictStoryboardJson(text, { maxBytes: 2 * 1048576 }); }

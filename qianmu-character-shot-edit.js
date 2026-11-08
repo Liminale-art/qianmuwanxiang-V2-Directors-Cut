@@ -1,8 +1,8 @@
 // Explicit per-image edits. Never read today's library during redraw or automatic generation.
 import {normalizeStoryboardShotSpec,normalizeStoryboardCharacterVisualState,compileStoryboardPrompt,getStoryboardCapabilities,
-  resolveStoryboardProfileBinding,STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS,synchronizeStoryboardCaptionBase} from './qianmu-storyboard.js';
-import {assertCharacterCastingSnapshots,normalizeCharacterCastingSnapshot} from './qianmu-character-casting.js';
-import {normalizeCharacterReferenceSnapshot,planCharacterReference} from './qianmu-character-reference.js';
+  resolveStoryboardProfileBinding,STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS,synchronizeStoryboardCaptionBase} from './qianmu-storyboard.js?v=1.59.440';
+import {assertCharacterCastingSnapshots,normalizeCharacterCastingSnapshot} from './qianmu-character-casting.js?v=1.59.202';
+import {normalizeCharacterReferenceSnapshot,planCharacterReference} from './qianmu-character-reference.js?v=1.59.202';
 import {normalizeComfyCharacterSnapshot} from './qianmu-comfy-character-contract.js';
 import {normalizeCharacterArchive} from './qianmu-character-archive.js';
 const clone=value=>JSON.parse(JSON.stringify(value));

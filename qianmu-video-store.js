@@ -1,11 +1,11 @@
 // 千幕动态镜头持久仓适配器。把运行层检查点规整后写入 IndexedDB，不允许瞬时凭据或媒体进入存储。
 import * as defaultStorage from './qianmu-blobstore.js';
-import { normalizeVideoBudgetReservation } from './qianmu-video-budget.js';
+import { normalizeVideoBudgetReservation } from './qianmu-video-budget.js?v=1.59.202';
 import {
   QIANMU_VIDEO_TASK_TERMINAL_STATES,
   normalizeVideoTask,
   validateVideoTask,
-} from './qianmu-video-task.js';
+} from './qianmu-video-task.js?v=1.59.202';
 
 export const QIANMU_VIDEO_STORE_SCHEMA = 'qianmu.video-store.v1';
 

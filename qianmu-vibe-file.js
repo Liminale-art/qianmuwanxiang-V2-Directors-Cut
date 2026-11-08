@@ -1,4 +1,4 @@
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 import {VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 export {retainVibeAssetRef,VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 

@@ -1,4 +1,4 @@
-import { getStoryboardProvider, normalizeStoryboardConnectionProfile, resolveStoryboardConnectionBinding } from './qianmu-storyboard.js';
+import { getStoryboardProvider, normalizeStoryboardConnectionProfile, resolveStoryboardConnectionBinding } from './qianmu-storyboard.js?v=1.59.440';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-portable-connection.js';
 export { assertPortableConnection, assertPortableConnectionUrl };
 

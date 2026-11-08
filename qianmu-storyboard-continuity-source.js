@@ -1,7 +1,7 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {createStoryboardMessageReference} from './qianmu-storyboard.js';
-import {bindStoryboardContinuityEvents,replayStoryboardContinuityAt} from './qianmu-storyboard-continuity-events.js';
-import {replayStoryboardContinuityChain,STORYBOARD_CONTINUITY_CHAIN_LIMIT} from './qianmu-storyboard-continuity-link.js';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.440';
+import {bindStoryboardContinuityEvents,replayStoryboardContinuityAt} from './qianmu-storyboard-continuity-events.js?v=1.59.428';
+import {replayStoryboardContinuityChain,STORYBOARD_CONTINUITY_CHAIN_LIMIT} from './qianmu-storyboard-continuity-link.js?v=1.59.215';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_continuity_source'});};
 const namespaceValid=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);

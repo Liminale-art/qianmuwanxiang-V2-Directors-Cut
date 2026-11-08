@@ -1,6 +1,6 @@
 import {normalizeCharacterArchive,characterBindingTarget,characterArchiveError} from './qianmu-character-archive.js';
-import {summarizeCharacterStorage} from './qianmu-character-storage.js';
-import {sameCharacterSubject} from './qianmu-user-identity.js';
+import {summarizeCharacterStorage} from './qianmu-character-storage.js?v=1.59.202';
+import {sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 import {createCharacterArchiveSession} from './qianmu-character-archive-session.js';
 const fail = (code,message) => { throw characterArchiveError(code,message); };

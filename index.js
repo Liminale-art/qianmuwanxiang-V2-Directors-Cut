@@ -169,7 +169,7 @@ import {
   extractTheaterBody,
   parseModelList,
   normalizeScripts,
-} from './qianmu-storyboard-utils.js';
+} from './qianmu-storyboard-utils.js?v=1.59.456';
 import {
   DEFAULT_TTS_PROVIDER_ID,
   assertTtsProviderContract,

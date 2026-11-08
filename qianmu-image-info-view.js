@@ -1,4 +1,4 @@
-import {htmlEscape as escape} from './qianmu-storyboard-utils.js';
+import {htmlEscape as escape} from './qianmu-storyboard-utils.js?v=1.59.456';
 import {galleryCollectionChoices} from './qianmu-gallery-membership.js';
 
 const icon=(name,label,attrs='')=>`<button type="button" class="sd-icon-btn" ${attrs} aria-label="${escape(label)}" title="${escape(label)}"><i class="fa-solid fa-${name}"></i></button>`;

@@ -1,7 +1,7 @@
 // Lazy preparation may preserve same-account legacy originals. Saved graphs are
 // never rewritten; node/output/admission checks still run downstream.
 import { createComfyWorkflowStore, normalizeComfyLibraryDocument } from './qianmu-comfy-library.js';
-import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js';
+import { comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
 import { assertComfyRouteNamespace, normalizeComfyRouteSelection, normalizeComfyRouteBinding, comfyRouteError, comfyRouteBindingKey, retainComfyRoutePromptLayer } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';

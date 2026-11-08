@@ -1,5 +1,5 @@
 // 千幕完整影片顺序预览状态机。仅在显式打开预览后按段取材；不联网、不转码、不持久化临时 URL。
-import { normalizeVideoTimeline, validateVideoTimeline } from './qianmu-video-timeline.js';
+import { normalizeVideoTimeline, validateVideoTimeline } from './qianmu-video-timeline.js?v=1.59.202';
 
 export const QIANMU_VIDEO_TIMELINE_PLAYER_SCHEMA = 'qianmu.video-timeline-player.v1';
 

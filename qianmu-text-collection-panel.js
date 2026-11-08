@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.419';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.478';
 import {createTextCollectionEditor} from './qianmu-text-collection-editor.js';
 import {sameTextCollectionItem} from './qianmu-text-collection.js';
 import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js?v=1.59.419';

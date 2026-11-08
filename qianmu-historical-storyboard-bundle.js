@@ -1,5 +1,5 @@
-import {buildStoryboardBundle,openStoryboardBundle,HISTORICAL_BUNDLE_SCOPE,STORYBOARD_BUNDLE_LIMITS} from './qianmu-storyboard-bundle.js';
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
+import {buildStoryboardBundle,openStoryboardBundle,HISTORICAL_BUNDLE_SCOPE,STORYBOARD_BUNDLE_LIMITS} from './qianmu-storyboard-bundle.js?v=1.59.202';
+import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js?v=1.59.202';
 import {projectChatGalleryState,CHAT_GALLERY_STATE_LIMITS} from './qianmu-chat-gallery-state.js';
 import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 import {chatGalleryRecordSelection} from './qianmu-chat-gallery-record.js';
@@ -7,7 +7,7 @@ import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
 import {recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveEnvelope} from './qianmu-recipe-archive-contract.js';
 import {inspectStoryboardChatEvidence} from './qianmu-storyboard-chat-evidence.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 import {vibeDigest} from './qianmu-vibe-file.js';
 
 const fail=message=>{throw Object.assign(new Error(message),{code:'historical_storyboard_bundle',submissionState:'not_submitted'});};

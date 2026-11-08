@@ -1,7 +1,7 @@
 // 千幕·导演决策单。把用户确认后的候选转成下游唯一可消费凭据；不读写存储、媒体或网络。
-import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarrativeDirectorCandidate } from './qianmu-director-candidate.js';
-import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js';
-import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js';
+import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarrativeDirectorCandidate } from './qianmu-director-candidate.js?v=1.59.202';
+import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js?v=1.59.202';
+import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js?v=1.59.202';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.414';
 import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';

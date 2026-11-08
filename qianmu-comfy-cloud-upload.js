@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { planComfyCloudUpload, readComfyCloudUpload } from './qianmu-comfy-cloud-upload-contract.js';
 import { createComfyCloudUploadTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudJsonResponse } from './qianmu-comfy-cloud-response.js';
-import { comfyReferenceStillMime } from './qianmu-comfy-results.js';
+import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export async function uploadComfyCloudReference(req, input, {apiKey,authorizeSource,authorizeTarget,timeoutMs=30000,signal,resolveHost,requestImpl}={}) {

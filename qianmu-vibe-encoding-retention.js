@@ -1,4 +1,4 @@
-import {createLocalVibeAssetStore} from './qianmu-vibe-asset-store.js';
+import {createLocalVibeAssetStore} from './qianmu-vibe-asset-store.js?v=1.59.202';
 import {createLocalVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {parseNovelVibeFile,appendNovelVibeEncoding,vibeFileError} from './qianmu-vibe-file.js';
 

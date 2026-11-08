@@ -1,5 +1,5 @@
 import {createChatGalleryStateClient,createChatGalleryEvidenceClient} from './qianmu-chat-character-receipt-client.js';
-import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js';
+import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.414';
 import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 import {chatGalleryRecordSelection} from './qianmu-chat-gallery-record.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';

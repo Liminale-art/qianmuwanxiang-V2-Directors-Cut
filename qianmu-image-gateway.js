@@ -1,8 +1,8 @@
 import { Buffer } from 'node:buffer';
-import { prepareComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js';
-import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime } from './qianmu-comfy-results.js';
+import { prepareComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js?v=1.59.440';
+import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
 import { normalizeComfyReceipt } from './qianmu-comfy-receipt.js';
-import { auditComfyWorkflow, requireComfyExecution, normalizeComfyExecution, COMFY_EXECUTION_VERSION } from './qianmu-comfy-audit.js';
+import { auditComfyWorkflow, requireComfyExecution, normalizeComfyExecution, COMFY_EXECUTION_VERSION } from './qianmu-comfy-audit.js?v=1.59.440';
 import { imageTransportProvider, prepareImageTransportRequest, resolveImageTransportBinding } from './qianmu-image-transport.js';
 import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS } from './qianmu-image-models.js';
 import {normalizeNovelVibeEntries,novelVibeParameters,NOVEL_VIBE_VERSION} from './qianmu-novel-vibe.js';

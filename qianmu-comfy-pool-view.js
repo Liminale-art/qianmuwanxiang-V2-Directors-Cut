@@ -1,8 +1,8 @@
 // Candidate maintenance is not a generation surface. Only explicit saved workflow versions may be enrolled.
 import { createComfyPoolStore, exportComfyPoolDocument, importComfyPoolDocument } from './qianmu-comfy-pool-store.js';
 import { COMFY_SELECTION_SCHEMA, COMFY_SELECTION_LIMIT, normalizeComfyAutoPool, normalizeComfyClassification } from './qianmu-comfy-selection.js';
-import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js';
-import { renderComfyClassificationBadges } from './qianmu-comfy-library-view.js';
+import { readPinnedComfyRouteWorkflow, applyComfyRouteRecipe } from './qianmu-comfy-route.js?v=1.59.414';
+import { renderComfyClassificationBadges } from './qianmu-comfy-library-view.js?v=1.59.435';
 const escape = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone = value => structuredClone(value);
 const icon = (action, label, glyph) => `<button type="button" class="sd-icon-btn" data-pool-action="${action}" aria-label="${escape(label)}" title="${escape(label)}"><i class="fa-solid fa-${glyph}"></i></button>`;

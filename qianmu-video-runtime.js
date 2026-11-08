@@ -4,13 +4,13 @@ import {
   normalizeVideoCostQuote,
   reserveVideoBudget,
   settleVideoBudgetReservation,
-} from './qianmu-video-budget.js';
+} from './qianmu-video-budget.js?v=1.59.202';
 import {
   claimVideoTaskLease,
   normalizeVideoTask,
   transitionVideoTask,
   validateVideoTask,
-} from './qianmu-video-task.js';
+} from './qianmu-video-task.js?v=1.59.202';
 
 export const QIANMU_VIDEO_RUNTIME_SCHEMA = 'qianmu.video-runtime.v1';
 export const QIANMU_MINIMAX_H3_GATEWAY_BASE = '/api/plugins/qianmu-tts/video/minimax';

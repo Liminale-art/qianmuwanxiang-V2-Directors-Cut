@@ -1,4 +1,4 @@
-import { htmlEscape as escape } from './qianmu-storyboard-utils.js';
+import { htmlEscape as escape } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { createGalleryDirectorySession } from './qianmu-gallery-directory.js';
 import { bindGalleryPreviewZoom } from './qianmu-gallery-preview-zoom.js';
 import { bindGalleryGenerationDetails } from './qianmu-gallery-details-view.js';

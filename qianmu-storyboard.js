@@ -22,14 +22,14 @@ import { inspectComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workfl
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 export { canRunStoryboardComfyJob } from './qianmu-comfy-queue.js';
 import { RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
-import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js';
+import { normalizeRunningHubConsoleUrl } from './qianmu-comfy-console.js?v=1.59.435';
 import { readRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
 import { normalizeWorldSource } from './qianmu-world-source.js';
 import { narrativeContextField, narrativeContextIssues, narrativeContextKey, matchingNarrativeContexts, isMainlineNarrativeFact, canRevealNarrativeContext, narrativeContextLayer } from './qianmu-narrative-context.js';
-import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
+import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js?v=1.59.202';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
@@ -41,9 +41,9 @@ export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStor
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
-export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js';
+export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js?v=1.59.202';
 export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
-export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './qianmu-character-reference.js';
+export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './qianmu-character-reference.js?v=1.59.202';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
 export const STORYBOARD_SCHEMA_VERSION = 24;

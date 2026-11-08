@@ -10,7 +10,7 @@ import {
   parseMiniMaxH3CancelResponse,
   parseMiniMaxH3CreateResponse,
   parseMiniMaxH3TaskResponse,
-} from './qianmu-video-minimax.js';
+} from './qianmu-video-minimax.js?v=1.59.202';
 
 const MAX_API_KEY_LENGTH = 4096;
 const MAX_INLINE_IMAGE_BYTES = 30 * 1024 * 1024;

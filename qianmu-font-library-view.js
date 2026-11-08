@@ -1,4 +1,4 @@
-import { qianmuIconMarkup } from './qianmu-icon-renderer.js?v=1.59.470';
+import { qianmuIconMarkup } from './qianmu-icon-renderer.js?v=1.59.478';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 export const FONT_LIBRARY_PAGE_SIZE = 10;
 export const FONT_LIBRARY_PREVIEW_TEXT = '一念起幕，万象成诗。 AaBbCc123456';

@@ -1,5 +1,5 @@
-import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.414';
-import { hashText } from './qianmu-storyboard-utils.js';
+import { createStoryboardMessageReference, createStoryboardParagraphAnchor, sortStoryboardInlineRecords } from './qianmu-storyboard.js?v=1.59.440';
+import { hashText } from './qianmu-storyboard-utils.js?v=1.59.456';
 import {captureGalleryNarrativeInputs,sameGalleryNarrativeInputs} from './qianmu-gallery-narrative-inputs.js';
 
 const text = value => String(value ?? '');

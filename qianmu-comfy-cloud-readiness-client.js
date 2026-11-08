@@ -1,6 +1,6 @@
 // Reuse the existing account-bound cloud request path, without journal writes
 // or downloading the full platform catalog into the browser.
-import { createComfyRecoveryClient } from './qianmu-comfy-recovery-client.js';
+import { createComfyRecoveryClient } from './qianmu-comfy-recovery-client.js?v=1.59.440';
 export async function checkCloudComfyReadiness(request,{headers,fetchImpl=globalThis.fetch,guard=async()=>{},signal,automatic=false,createClient=createComfyRecoveryClient}={}) {
   const before=JSON.stringify(request);
   const current=async()=>{signal?.throwIfAborted();await guard();signal?.throwIfAborted();if(before!==JSON.stringify(request))throw Error('节点检查配置已变化');};

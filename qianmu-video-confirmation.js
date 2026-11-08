@@ -1,8 +1,8 @@
 // 千幕 H3 付费前确认合同。只核对本地草稿并生成短时费用确认快照，不创建任务、不上传素材、不联网。
-import { normalizeVideoCostQuote } from './qianmu-video-budget.js';
-import { validateVideoShotSpec } from './qianmu-video-contract.js';
-import { estimateMiniMaxH3Cost } from './qianmu-video-pricing.js';
-import { validateH3CompiledPrompt } from './qianmu-video-prompt.js';
+import { normalizeVideoCostQuote } from './qianmu-video-budget.js?v=1.59.202';
+import { validateVideoShotSpec } from './qianmu-video-contract.js?v=1.59.202';
+import { estimateMiniMaxH3Cost } from './qianmu-video-pricing.js?v=1.59.202';
+import { validateH3CompiledPrompt } from './qianmu-video-prompt.js?v=1.59.202';
 
 export const QIANMU_VIDEO_CONFIRMATION_SCHEMA = 'qianmu.video-confirmation.v1';
 export const QIANMU_VIDEO_CONFIRMATION_TTL_MS = 5 * 60 * 1000;

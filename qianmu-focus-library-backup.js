@@ -1,5 +1,5 @@
 // Reuse the bounded strict JSON reader used by resource packages. No URLs or credentials in this format.
-import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js';
+import {parseStrictStoryboardJson} from './qianmu-storyboard-package-input.js?v=1.59.202';
 import {normalizeFocusLibraryClip,focusLibraryError,FOCUS_LIBRARY_LIMITS} from './qianmu-focus-library.js';
 export const FOCUS_BACKUP_LIMIT=32*1024*1024;
 const fail=message=>{throw focusLibraryError('backup',message);};

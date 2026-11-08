@@ -1,4 +1,4 @@
-import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js';
+import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import { collectRestoreStorage, clearRestoreStorage } from './qianmu-storyboard-restore-storage.js';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 
@@ -25,7 +25,7 @@ self.addEventListener('message',async event=>{
       const result=bundleCarrierInventory(await carriers.list(input.namespace,{guard}),input.namespace);await guard();self.postMessage({id,result});return;
     }
     if(input.action==='comfy'){
-      await guard();const {inspectComfyStorage}=await import('./qianmu-comfy-storage.js');
+      await guard();const {inspectComfyStorage}=await import('./qianmu-comfy-storage.js?v=1.59.202');
       const comfy=characterWorkerStorageOptions(input.nativeComfy,{namespace:input.namespace,origin:self.location.origin,guard});
       const result=await inspectComfyStorage({namespace:input.namespace,guard,native:comfy});await guard();self.postMessage({id,result});return;
     }

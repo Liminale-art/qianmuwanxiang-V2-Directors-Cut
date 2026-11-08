@@ -32,7 +32,7 @@ export async function collectComfyStorage({resolveNamespace,valid=()=>true,creat
   const namespace=await account(resolveNamespace,valid),guard=()=>account(resolveNamespace,valid,namespace);let result,error;
   try{
     if(createStores)result=await inspectComfyStorage({namespace,guard,createStores});
-    else{const run=call||(await import('./qianmu-storyboard-restore-storage-runtime.js')).runRestoreStorage;result=await run('comfy',{namespace,guard});}
+    else{const run=call||(await import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.414')).runRestoreStorage;result=await run('comfy',{namespace,guard});}
     result=validateComfyStorageSummary(result,namespace);
   }catch(cause){error=cause;}
   await guard();if(!error)return result;

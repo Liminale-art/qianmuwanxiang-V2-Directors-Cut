@@ -3,7 +3,7 @@
 import {
   normalizeMultimodalAssetManifest,
   normalizeVideoShotSpec,
-} from './qianmu-video-contract.js';
+} from './qianmu-video-contract.js?v=1.59.202';
 
 export const QIANMU_VIDEO_MEDIA_RESOLUTION_SCHEMA = 'qianmu.video-media-resolution.v1';
 export const QIANMU_VIDEO_MEDIA_LIMITS = Object.freeze({

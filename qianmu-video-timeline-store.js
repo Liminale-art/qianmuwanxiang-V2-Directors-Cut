@@ -1,6 +1,6 @@
 // 千幕完整影片时间线仓适配器。仅持久化时间线合同，不读取媒体、不访问网络。
 import * as defaultStorage from './qianmu-blobstore.js';
-import { normalizeVideoTimeline, validateVideoTimeline } from './qianmu-video-timeline.js';
+import { normalizeVideoTimeline, validateVideoTimeline } from './qianmu-video-timeline.js?v=1.59.202';
 
 export const QIANMU_VIDEO_TIMELINE_STORE_SCHEMA = 'qianmu.video-timeline-store.v1';
 

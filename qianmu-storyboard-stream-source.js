@@ -1,5 +1,5 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {createStoryboardMessageReference} from './qianmu-storyboard.js';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.440';
 import {storyboardStreamGeneration,storyboardStreamGenerationInput,storyboardStreamDigest,storyboardStreamFingerprint,normalizeStoryboardStreamReference,storyboardStreamParagraphBoundary} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
 
 export const STORYBOARD_STREAM_SOURCE_LIMIT=200000;

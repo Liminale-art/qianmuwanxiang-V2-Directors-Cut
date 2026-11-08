@@ -4,7 +4,7 @@ import {galleryOriginalReference,galleryOriginalRequest,galleryOriginalReadReque
 import {galleryCatalogAccount} from './qianmu-gallery-catalog-contract.js';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
-import {comfyReferenceStillMime} from './qianmu-comfy-results.js';
+import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 
 const base='/api/plugins/qianmu-tts/chat-gallery/original/';
 const fail=message=>{throw galleryOriginalError('client',message);};

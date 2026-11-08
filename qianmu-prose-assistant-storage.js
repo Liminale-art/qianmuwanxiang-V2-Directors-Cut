@@ -1,6 +1,6 @@
 import {createProseAssistantHistoryStore} from './qianmu-prose-assistant-history.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
-import {collectAssistantNativeStorage} from './qianmu-assistant-storage-client.js';
+import {collectAssistantNativeStorage} from './qianmu-assistant-storage-client.js?v=1.59.414';
 
 const stale=()=>Object.assign(Error('助手储存账户或页面已变化，请重新盘点'),{code:'prose_assistant_storage_stale'});
 const fields=['bytes','count','records','chats','markers','complete','failed','cancelled'];

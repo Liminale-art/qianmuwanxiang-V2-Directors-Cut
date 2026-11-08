@@ -4,7 +4,7 @@ import {
   QIANMU_H3_ROUTE_MODES,
   adaptStoryboardShotToVideoShotSpec,
   createVideoShotFromStoryboardFrames,
-} from './qianmu-video-contract.js';
+} from './qianmu-video-contract.js?v=1.59.202';
 
 export const QIANMU_VIDEO_DRAFT_SCHEMA = 'qianmu.video-draft.v1';
 export const QIANMU_VIDEO_DRAFT_SOURCE_KINDS = Object.freeze([

@@ -1,5 +1,5 @@
 import { projectStoryboardChatMessages } from './qianmu-storyboard-chat-evidence.js';
-import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js';
+import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import { validateBundleMappingTransportSummary } from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarriersTransportSummary} from './qianmu-bundle-carriers-contract.js';
 import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';

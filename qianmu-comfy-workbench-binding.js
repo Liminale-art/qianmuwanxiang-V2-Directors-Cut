@@ -21,7 +21,7 @@ export async function assertComfyWorkbenchProfile(profile,{namespace,guard=async
   const captured=normalizeComfyWorkbenchBinding(profile.comfyWorkbenchBinding);
   if (profile.comfyRouteBinding != null) throw comfyRouteError('当前工作台与固定分工来源冲突，请重新选择');
   if (assertComfyRouteNamespace(namespace)!==captured.binding.namespace) throw comfyRouteError('当前工作流分类属于另一账户，请从库重新应用');
-  await guard(); const {comfyWorkflowReferenceHash}=await import('./qianmu-comfy-references.js'); await guard();
+  await guard(); const {comfyWorkflowReferenceHash}=await import('./qianmu-comfy-references.js?v=1.59.202'); await guard();
   const hash=await comfyWorkflowReferenceHash(profile.comfyWorkflow); await guard();
   if (before!==JSON.stringify([profile.comfyWorkflow,profile.comfyWorkbenchBinding,profile.comfyRouteBinding])) throw comfyRouteError('当前工作流已变化，未提交生成');
   if (hash!==captured.binding.workflowHash) throw comfyRouteError('工作流图已修改，请保存到库并重新应用分类');

@@ -1,5 +1,5 @@
 import {characterBackupBindingKey as bindingKey} from './qianmu-character-library-backup.js';
-import {sameCharacterSubject} from './qianmu-user-identity.js';
+import {sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
 import {CHARACTER_IMPORT_SLOT,CHARACTER_RECONCILED_SCHEMA,characterNativeEqual as equal,characterNativeExact as exact,
   characterNativeFail as fail,emptyCharacterNativeIndex,validateCharacterNativeIndex,characterNativeUsage} from './qianmu-character-native-contract.js';
 

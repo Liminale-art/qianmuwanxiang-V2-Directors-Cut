@@ -1,8 +1,8 @@
 // Host-only, read-only Cloud main-site catalog inspection. It is not execution
 // authority, proof of actual generation or permission to follow remote options.
-import { prepareComfyReadiness, inspectComfyDefinitions, isDeferredComfyReferenceIssue } from './qianmu-comfy-readiness.js';
+import { prepareComfyReadiness, inspectComfyDefinitions, isDeferredComfyReferenceIssue } from './qianmu-comfy-readiness.js?v=1.59.440';
 import { planComfyCloudReadiness, planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from './qianmu-comfy-cloud-protocol.js';
-import { checkComfyConfiguration } from './qianmu-comfy-preflight.js';
+import { checkComfyConfiguration } from './qianmu-comfy-preflight.js?v=1.59.440';
 import { comfyWorkflowValidationScope } from './qianmu-comfy-validation-scope.js';
 import { createComfyCloudReadinessTransport } from './qianmu-comfy-server-transport.js';
 import { readComfyCloudDefinitionsResponse } from './qianmu-comfy-cloud-response.js';

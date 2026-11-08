@@ -1,6 +1,6 @@
 import {CHARACTER_CATEGORIES,newCharacterArchive,normalizeCharacterArchive,selectCharacterBinding,exportCharacterArchive,importCharacterArchive} from './qianmu-character-archive.js';
 import {createCharacterArchiveStore} from './qianmu-character-archive-store.js';
-import {canonicalUserSubjectKey,sameCharacterSubject} from './qianmu-user-identity.js';
+import {canonicalUserSubjectKey,sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
 import {renderCharacterImportReview} from './qianmu-character-import-view.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -17,7 +17,7 @@ const hasAliasRows=bindings=>bindings.some(row=>row.category==='user'&&canonical
 
 export async function saveCharacterReference(file,{save,guard,createBitmap=globalThis.createImageBitmap,createCanvas=()=>document.createElement('canvas')}={}) {
   if(typeof createBitmap!=='function')throw Error('当前浏览器不能生成档案封面，请更换浏览器后上传');
-  const {saveStaticReferenceFile}=await import('./qianmu-comfy-references.js');await guard();
+  const {saveStaticReferenceFile}=await import('./qianmu-comfy-references.js?v=1.59.202');await guard();
   const reference=await saveStaticReferenceFile(file,{save,guard});
   const bitmap=await createBitmap(file);let previewFile;
   try{
@@ -240,7 +240,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
         if(typeof onUserAliases!=='function')throw Error('请更新前端后核对USER地址');view.bindingEditor=null;await onUserAliases(namespace,guard);await loadList(expected);return;
       }
       if(action==='restore-library'&&!view.draft){
-        const module=await import('./qianmu-storyboard-package-journal.js');await guard();clearRestore();remember();
+        const module=await import('./qianmu-storyboard-package-journal.js?v=1.59.414');await guard();clearRestore();remember();
         scrolls.restore=0;view.restoring={journal:module.createStoryboardPackageJournal(),record:null,session:null,preview:null,choices:{},bindingsReviewed:false,page:0};
         view.restoring.record=await view.restoring.journal.loadResource(namespace);await guard();return;
       }

@@ -1,5 +1,5 @@
 import {readModelResponse} from './qianmu-model-response.js?v=1.59.452';
-import {normalizeQianmuChatApiRoot} from './qianmu-llm-output.js';
+import {normalizeQianmuChatApiRoot} from './qianmu-llm-output.js?v=1.59.202';
 import {assertPortableConnectionUrl} from './qianmu-portable-connection.js';
 
 const failure=(code,message)=>Object.assign(new Error(message),{code});

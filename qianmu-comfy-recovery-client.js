@@ -1,17 +1,17 @@
 // Comfy delivery and single cloud acceptance. Selected file metadata only;
 // the host owns reference bytes and upload authority. No browser upload/scheduler.
 import { trackClientActivity } from './qianmu-client-activity.js';
-import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js';
+import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js?v=1.59.202';
 import { requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from './qianmu-comfy-cloud-protocol.js';
-import { resolveImageAccountNamespace } from './qianmu-image-admission.js';
-import { imageChannelKey } from './qianmu-image-channel.js';
+import { resolveImageAccountNamespace } from './qianmu-image-admission.js?v=1.59.440';
+import { imageChannelKey } from './qianmu-image-channel.js?v=1.59.202';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js?v=1.59.440';
 import { executeComfyCloudJob } from './qianmu-comfy-cloud-execution.js?v=1.59.429';
 import { runningHubUsageFields } from './qianmu-runninghub-usage.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
-import { checkComfyReferenceSelection } from './qianmu-comfy-references.js';
+import { checkComfyReferenceSelection } from './qianmu-comfy-references.js?v=1.59.202';
 import { resolveStoryboardComfyCloud, planComfyCloudReadiness } from './qianmu-comfy-cloud-protocol.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 import { attachComfySceneArchiveProof } from './qianmu-comfy-scene-result.js';

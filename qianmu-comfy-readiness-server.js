@@ -1,5 +1,5 @@
 // Readiness uses the same account, private-network and DNS policy as generation.
-import { checkComfyReadiness, prepareComfyReadiness } from './qianmu-comfy-readiness.js';
+import { checkComfyReadiness, prepareComfyReadiness } from './qianmu-comfy-readiness.js?v=1.59.440';
 import { createComfyServerTransport, pinnedComfyFetch } from './qianmu-comfy-server-transport.js';
 
 export function pinnedComfyInspectionFetch(base, addresses, options = {}) {

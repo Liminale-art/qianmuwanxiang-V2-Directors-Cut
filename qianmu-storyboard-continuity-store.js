@@ -1,6 +1,6 @@
-import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js';
+import {bindStoryboardContinuityEvents} from './qianmu-storyboard-continuity-events.js?v=1.59.428';
 import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
-import {normalizeStoryboardMessageReference,STORYBOARD_NARRATIVE_LAYERS,STORYBOARD_CONTINUITY_FACT_CATEGORIES,STORYBOARD_CONTINUITY_FACT_PERSISTENCE} from './qianmu-storyboard.js';
+import {normalizeStoryboardMessageReference,STORYBOARD_NARRATIVE_LAYERS,STORYBOARD_CONTINUITY_FACT_CATEGORIES,STORYBOARD_CONTINUITY_FACT_PERSISTENCE} from './qianmu-storyboard.js?v=1.59.440';
 
 export const STORYBOARD_CONTINUITY_STORE_SCHEMA = 'qianmu.storyboard.continuity-store.v1';
 export const STORYBOARD_CONTINUITY_STORE_LIMITS = Object.freeze({records:21,bytes:524288});

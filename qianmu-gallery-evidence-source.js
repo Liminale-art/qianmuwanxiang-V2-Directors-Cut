@@ -1,7 +1,7 @@
 import {sha256} from './vendor/noble-hashes-2.4.0/sha2.js';
 import {projectStoryboardChatMessages,STORYBOARD_CHAT_EVIDENCE_SCHEMA} from './qianmu-storyboard-chat-evidence.js';
-import {createStoryboardMessageReference} from './qianmu-storyboard.js';
-import {hashText} from './qianmu-storyboard-utils.js';
+import {createStoryboardMessageReference} from './qianmu-storyboard.js?v=1.59.440';
+import {hashText} from './qianmu-storyboard-utils.js?v=1.59.456';
 const utf8=new TextEncoder(),hex=bytes=>Array.from(bytes,n=>n.toString(16).padStart(2,'0')).join('');
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_evidence_source',writeState:'not_started'});};
 const fields=['mes','name','is_user','is_system','swipe_id','original_avatar','send_date'];

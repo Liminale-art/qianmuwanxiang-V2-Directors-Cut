@@ -1,8 +1,8 @@
 // New image-generation identities. Never revive the retired characters/entities settings.
 import { normalizeStaticReferenceReceipt } from './qianmu-comfy-reference-contract.js';
-import { normalizeCharacterReferenceSettings } from './qianmu-character-reference.js';
+import { normalizeCharacterReferenceSettings } from './qianmu-character-reference.js?v=1.59.202';
 import { normalizeComfyCharacterSettings } from './qianmu-comfy-character-contract.js';
-import {sameCharacterSubject} from './qianmu-user-identity.js';
+import {sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
 export const CHARACTER_ARCHIVE_SCHEMA = 'qianmu.character.archive.v1';
 export const CHARACTER_CATEGORIES = Object.freeze(['char', 'user', 'other']);
 export const characterArchiveError = (code, message) => Object.assign(new Error(message), { code: `character_archive_${code}` });

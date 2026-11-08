@@ -1,5 +1,5 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {validateStoryboardMutation as validate} from './qianmu-storyboard-package-mutation.js';
+import {validateStoryboardMutation as validate} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
 import {createMutationJournalBody,validateMutationBodyReference,assertMutationBodyValue} from './qianmu-mutation-journal-body.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 

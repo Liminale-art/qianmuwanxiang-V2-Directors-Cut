@@ -1,5 +1,5 @@
-import {STORYBOARD_PLAN_SCHEMA,normalizeStoryboardSceneFingerprint} from './qianmu-storyboard.js';
-import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js';
+import {STORYBOARD_PLAN_SCHEMA,normalizeStoryboardSceneFingerprint} from './qianmu-storyboard.js?v=1.59.440';
+import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {normalizeNarrativeContext} from './qianmu-narrative-context.js';
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const fields=Object.freeze(['shotPlans','taskStates','logs','pipelineLogs']);

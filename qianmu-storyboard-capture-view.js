@@ -1,4 +1,4 @@
-import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.419';
+import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.478';
 
 // Like the collection view: one owned body portal, an inherited Qianmu palette,
 // and a native child dialog. No ST Popup, host mutations, storage or generation.

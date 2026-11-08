@@ -1,4 +1,4 @@
-import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js';
+import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { assertComfyRouteNamespace } from './qianmu-comfy-route-contract.js';
 import { sourceIdentityResponse, sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';

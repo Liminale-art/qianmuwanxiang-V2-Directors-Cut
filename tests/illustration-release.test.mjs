@@ -39,13 +39,14 @@ test('gallery toolbar CSS release preserves existing view and metadata module UR
   }
   for(const content of sources.values())assert.doesNotMatch(content,/['"]\.\/[^'"\r\n]+\.js\?v=1\.59\.442['"]/,'a CSS-only fix must not refresh unchanged module URLs');
   const unchanged=[
-    ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
-    ['qianmu-text-collection-floor.js','qianmu-prose-floor-entries.js?v=1.59.419'],
+    // 2026-11-08 stamp unification: all floor-entry importers share the newest v440 address.
+    ['qianmu-prose-assistant-floor.js','qianmu-prose-floor-entries.js?v=1.59.440'],
+    ['qianmu-text-collection-floor.js','qianmu-prose-floor-entries.js?v=1.59.440'],
     // idle-preload changed again (6218463e v452, then the comfy-library-view preload URL fix); floor-tools follows that later address.
     ['qianmu-prose-floor-tools.js','qianmu-idle-preload.js?v=1.59.484'],
     ['qianmu-comfy-recovery-client.js','qianmu-comfy-cloud-execution.js?v=1.59.429'],
-    ['qianmu-comfy-library.js','qianmu-comfy-workflow.js'],
-    ['qianmu-comfy-references.js','qianmu-comfy-results.js'],
+    ['qianmu-comfy-library.js','qianmu-comfy-workflow.js?v=1.59.440'],
+    ['qianmu-comfy-references.js','qianmu-comfy-results.js?v=1.59.440'],
     ['index.js','qianmu-feature-runtime.js?v=1.59.425'],
     ['index.js','qianmu-storyboard-contract.js?v=1.59.439'],
   ];

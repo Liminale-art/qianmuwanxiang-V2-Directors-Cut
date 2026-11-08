@@ -1,5 +1,5 @@
 // Compact metadata only. Full receipts are verified and serialized in a short-lived Worker.
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js';
+import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
 export const MAPPING_PAGE_SIZE=24;
 export const mappingBytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const exact=(value,fields)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===fields.length&&fields.every(key=>Object.hasOwn(value,key));

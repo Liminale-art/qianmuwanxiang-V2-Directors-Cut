@@ -111,7 +111,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
 export function createCurrentChatCharacterReceiptClient(options){return createCurrentChatReceiptClient(options,false);}
 export function createCurrentChatGalleryReceiptClient(options){return createCurrentChatReceiptClient(options,true);}
 async function createCurrentChatReceiptClient({getContext,epoch,
-  account=async()=> (await import('./qianmu-image-admission.js')).resolveImageAccountNamespace(),guard=async()=>{},
+  account=async()=> (await import('./qianmu-image-admission.js?v=1.59.440')).resolveImageAccountNamespace(),guard=async()=>{},
   headers,fetchImpl,timeoutMs}={},galleryOnly=false){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof account!=='function'||typeof guard!=='function')throw fail('聊天核验缺少宿主身份和切换保护');
   let source;

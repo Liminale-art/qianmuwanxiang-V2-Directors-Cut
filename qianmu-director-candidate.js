@@ -3,7 +3,7 @@ import {
   canExposeNarrativeLedgerEntryToMainline,
   normalizeNarrativeLedgerEntry,
   validateNarrativeLedgerEntry,
-} from './qianmu-narrative-ledger.js';
+} from './qianmu-narrative-ledger.js?v=1.59.202';
 import { narrativeContextField, narrativeContextKey } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_CANDIDATE_SCHEMA = 'qianmu.director-candidate.v1';

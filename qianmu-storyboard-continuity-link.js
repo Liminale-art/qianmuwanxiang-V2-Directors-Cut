@@ -1,4 +1,4 @@
-import {replayStoryboardContinuityAt,replayStoryboardContinuityEnd} from './qianmu-storyboard-continuity-events.js';
+import {replayStoryboardContinuityAt,replayStoryboardContinuityEnd} from './qianmu-storyboard-continuity-events.js?v=1.59.428';
 
 const fail=message=>{throw Object.assign(Error(message),{code:'storyboard_continuity_link'});};
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&Object.keys(value).every(key=>keys.includes(key));

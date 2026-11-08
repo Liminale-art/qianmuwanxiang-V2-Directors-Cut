@@ -1,5 +1,5 @@
 import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
-import { pinComfyRouteWorkflow } from './qianmu-comfy-route.js';
+import { pinComfyRouteWorkflow } from './qianmu-comfy-route.js?v=1.59.414';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const choices=(heads,selectedId)=>'<option value="">选择工作流</option>'+heads.map(row=>`<option value="${escape(row.id)}" ${row.id===selectedId?'selected':''}>${escape(row.name)}</option>`).join('');
 export function renderComfyRoutePicker({heads=[],selectedId='',useReferences=false,hasReferences=false,message='',loading=false}){
