@@ -215,7 +215,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         rerank.toggle.disabled = !state.document;
 
         const lexical = rows.get('lexical');
-        lexical.detail.textContent = statusText(lexical.badge, retrieval.mode === 'disabled' ? 'off' : 'ready', retrieval.mode === 'disabled' ? '原文回查已关闭' : '当前默认候选路径');
+        lexical.detail.textContent = statusText(lexical.badge, 'ready', retrieval.sourceRecall === false ? '当前默认候选路径 · 原文回查已关闭，候选仅用于检查展示' : '当前默认候选路径');
         const vectorRow = rows.get('vector');
         const vectorStatus = retrieval.vector?.status;
         vectorRow.detail.textContent = statusText(vectorRow.badge, vectorStatus === 'ready' ? 'ready' : vectorStatus === 'error' || vectorStatus === 'unavailable' ? 'error' : vectorStatus === 'disabled' ? 'off' : 'planned', vectorStatus === 'ready' ? '已接入候选发现' : vectorStatus === 'error' || vectorStatus === 'unavailable' ? (retrieval.vector?.reason || '不可用，已回退关键词召回') : vectorStatus === 'disabled' ? '当前聊天未启用' : '等待本轮整理');

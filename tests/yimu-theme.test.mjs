@@ -238,7 +238,8 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-setting-numeric > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
     assert.match(css, /\.ym-dialog \.ym-setting-numeric > \.ym-field > input[^\n]*width: var\(--ym-setting-value-width\)/);
     assert.match(css, /\.ym-setting-select > \.ym-field[^\n]*display: flex[^\n]*align-items: center/);
-    assert.match(css, /\.ym-extra-settings:not\(\[open\]\)[^\n]*padding-block: 0/);
+    assert.doesNotMatch(css, /\.ym-extra-settings:not\(\[open\]\)/);
+    assert.match(css, /\.ym-dialog select, \.ym-dialog select option \{ font-size: var\(--ym-type-body\) !important/);
     assert.match(css, /\.ym-stream-output[^\n]*max-height: 190px/);
     assert.match(css, /\.ym-dialog \.ym-budget-group[^\n]*display: flex[^\n]*align-items: center/);
     assert.match(css, /@media \(max-width: 380px\)[\s\S]*\.ym-dialog \.ym-api-params input\[type="number"\][^\n]*padding-inline: 4px[^\n]*appearance: textfield/);
@@ -247,7 +248,6 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-tool-row \.ym-tool-summary strong[^\n]*white-space: nowrap/);
     assert.match(css, /\.ym-dialog \.ym-button\.ym-tool-summary \{[^\n]*justify-content: flex-start/);
     assert.match(css, /\.ym-dialog \.ym-context-rule-add \{[^\n]*width: 100%[^\n]*flex: 1 1 auto/);
-    assert.match(css, /\.ym-extra-settings:not\(\[open\]\) > \.ym-settings-form \{ display: none; \}/);
     assert.match(css, /\.ym-backup-question \{[^\n]*width: min\(460px, calc\(100vw - 40px\)\)/);
     assert.match(css, /\.ym-avatar[^\n]*aspect-ratio: 1[^\n]*border-radius: var\(--ym-control-radius\)/);
     assert.match(css, /data-ym-theme="editorial"[^\n]*--ym-icon-bold-display: inline/);

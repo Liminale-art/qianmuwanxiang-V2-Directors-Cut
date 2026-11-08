@@ -9,7 +9,7 @@ import {createApi} from '../yimu/client.mjs';
 import {createController} from '../yimu/runtime.mjs';
 import {createHost, MEMORY_PROMPT_KEY} from '../yimu/host.mjs';
 import {effectiveSettings, fingerprintMessages} from '../yimu/contract.mjs';
-import {summaryPrompt} from '../yimu/core.mjs';
+import {summaryCoverage, summaryPrompt} from '../yimu/core.mjs';
 import {summaryRequestBudget} from '../yimu/budget.mjs';
 
 const clone = value => structuredClone(value);
@@ -502,6 +502,54 @@ test('a transient summary failure retries in the background and reports the save
     assert.equal((await f.api.read(binding)).document.entries.length, 1);
     assert.equal(f.notices.filter(item => item.tone === 'success' && /已存至记忆/.test(item.message)).length, 1);
     assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：1–2/);
+});
+
+test('ST prompt-only regexes do not change Yimu summary sources or floor replacement', async t => {
+    const f = await fixture(t), seen = [];
+    f.context.chat = f.context.chat.map((message, i) => ({...message, mes: `完整正文${i + 1}。${message.mes}<摘要>楼层${i + 1}摘要</摘要>`}));
+    await f.writeChat(f.context.chat);
+    f.model(async prompt => {
+        seen.push(prompt); const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: '正则隔离下保存的合成经历。'}]});
+    });
+    await f.enable(); await f.flush();
+    assert.ok(seen.length >= 1); assert.ok(seen[0].includes('完整正文1。'), 'summary reads the raw floor, not the regexed prompt text');
+    const coverage = summaryCoverage(f.controller.state.document, f.context.chat, effectiveSettings(f.controller.state.document, f.controller.state.defaults));
+    // The user's preset: /[\s\S]*?<摘要>([\s\S]*?)<\/摘要>[\s\S]*/ -> $1, promptOnly, minDepth 4.
+    const regex = /[\s\S]*?<摘要>([\s\S]*?)<\/摘要>[\s\S]*/gm, total = f.context.chat.length;
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    const coreChat = clone(f.context.chat).map((message, index) => ({...message, index,
+        mes: total - 1 - index >= 4 ? message.mes.replace(regex, '$1') : message.mes}));
+    await f.controller.intercept(coreChat, 65536, () => {}, 'normal');
+    const payload = {type: 'normal', model: 'fixture-model', chat_completion_source: 'custom', max_tokens: 1024,
+        messages: [{role: 'system', content: '合成角色设定'}, ...coreChat.map(message => ({role: message.is_user ? 'user' : 'assistant', content: message.mes}))]};
+    await f.controller.event('GENERATE_AFTER_DATA', [{prompt: payload.messages}, false]);
+    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [payload]);
+    const covered = f.controller.state.document.entries.flatMap(entry => Array.from({length: entry.source.end - entry.source.start + 1}, (_, i) => entry.source.start + i));
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, covered);
+    assert.ok(payload.messages.some(message => message.content.includes('<yimu_memory>')));
+    assert.ok(!payload.messages.some(message => message.content === '楼层1摘要'), 'summarized regexed floors are replaced, not duplicated');
+    assert.equal(coverage.organizedFloors, covered.length);
+});
+
+test('a failed automatic round waits for a new floor, then resumes automatic summary', async t => {
+    const f = await fixture(t); let failing = true, attempts = 0;
+    f.model(async prompt => {
+        attempts += 1;
+        if (failing) throw new Error('合成持续故障');
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: '恢复后的合成经历。'}]});
+    });
+    await f.enable(); await f.flush();
+    const afterFailure = attempts; assert.ok(afterFailure > 0); assert.match(f.controller.state.error, /合成持续故障/);
+    await f.controller.event('GENERATION_ENDED'); await f.flush();
+    assert.equal(attempts, afterFailure, 'same floor count does not loop on a failed automatic round');
+    failing = false;
+    f.context.chat.push({name: '角色', is_user: false, mes: '新的楼层推进了剧情。', send_date: 'after-failure'});
+    await f.writeChat(f.context.chat);
+    await f.controller.event('GENERATION_ENDED'); await f.flush();
+    assert.ok(attempts > afterFailure, 'a new floor re-arms automatic summary after a failure');
+    assert.ok((await f.api.read(binding)).document.entries.length >= 1);
 });
 
 test('manual range batches continuously until complete without using or removing recent originals early', async t => {

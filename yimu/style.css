@@ -117,6 +117,8 @@
     width: 100%; max-width: 100%; min-width: 0; min-height: 30px; margin: 0; padding: 4px 10px; border-radius: var(--ym-control-radius); border: 1px solid var(--ym-border);
     background: var(--ym-raised); color: var(--ym-ink); font: inherit; text-shadow: none; box-shadow: none;
 }
+/* Themes and ST's global select rule can enlarge native dropdowns; keep them on the input scale. */
+.ym-dialog select, .ym-dialog select option { font-size: var(--ym-type-body) !important; line-height: 1.5 !important; }
 .ym-dialog textarea { resize: vertical; min-height: 100px; white-space: pre-wrap; line-height: 1.75; }
 .ym-button { border: 1px solid var(--ym-border); background: transparent; color: inherit; border-radius: var(--ym-control-radius); padding: 5px 11px; font: inherit; min-height: 30px; cursor: pointer; margin: 0; text-shadow: none; box-shadow: none; max-width: 100%; }
 .ym-button:hover:not(:disabled) { background: color-mix(in srgb, var(--ym-accent) 8%, transparent); }
@@ -159,11 +161,8 @@
 .ym-settings-group { padding: 14px 16px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); min-width: 0; }
 .ym-settings-group > summary, .ym-interface-settings > .ym-switch-row { font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
 .ym-settings-group[open] > summary { margin-bottom: 14px; }
-.ym-extra-settings:not([open]) { min-height: 52px; padding-block: 0; }
-.ym-extra-settings:not([open]) > summary { min-height: 52px; margin: 0; padding-block: 0; align-items: center; }
-.ym-extra-settings:not([open]) > .ym-settings-form { display: none; }
 .ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
-.ym-extra-settings[open] > .ym-setting-title { margin-bottom: 7px; }
+.ym-extra-settings > .ym-setting-title { margin-bottom: 7px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
 .ym-setting-row:has(> small) { flex-direction: column; align-items: stretch; }
@@ -262,6 +261,7 @@
 .ym-dialog .ym-stat { min-height: 88px; padding: 13px 7px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); box-shadow: none; text-align: center; }
 .ym-stat b { font-size: 23px; line-height: 1.2; font-weight: 500; color: var(--ym-accent); }
 .ym-stat span { color: var(--ym-muted); font-size: var(--ym-type-caption); }
+.ym-stat .ym-stat-note { color: var(--ym-muted); font-size: 10px; line-height: 1.3; opacity: .85; }
 .ym-stat .ym-stat-value { display: inline-flex; align-items: baseline; gap: 4px; }
 .ym-stat small { font-size: var(--ym-type-caption); color: var(--ym-muted); }
 .ym-route-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

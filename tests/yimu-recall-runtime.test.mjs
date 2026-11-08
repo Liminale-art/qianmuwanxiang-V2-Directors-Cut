@@ -162,6 +162,7 @@ for (const mode of ['chat false', 'global false']) test(`old ${mode} still saves
     await f.controller.start({force: true});
     assert.equal(sourceCalls(f).length, 0); assert.equal(extractionCalls(f).length, 0); assert.equal(recallWrites(f).length, 0);
     assertGoodSummary(await f.read()); assert.ok(summaryCalls(f).every(call => !call.prompt.includes('可回查的旧细摘要目录')));
+    assert.equal(f.controller.state.retrieval.mode, 'lexical'); assert.equal(f.controller.state.retrieval.sourceRecall, false);
 });
 
 for (const [name, requests] of [['no request', []], ['two requests', [REQUEST, REQUEST]], ['unlisted ID', [{...REQUEST, parentId: 'not_in_catalog'}]]]) {

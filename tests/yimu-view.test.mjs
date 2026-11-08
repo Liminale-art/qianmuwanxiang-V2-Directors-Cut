@@ -437,7 +437,7 @@ test('stage automatic mode is initially off and deliberately toggling it autosav
 test('controlled recall uses one default-on trial switch and saves the existing setting key', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const recall = f.get('原文回查与补充'); assert.equal(recall.checked, true);
-    assert.equal(recall.closest('details').open,false);recall.checked = false; recall.emit('change'); await f.flush();
+    assert.equal(recall.closest('details'),null);assert.equal(recall.closest('.ym-extra-settings').tagName.toLowerCase(),'section');recall.checked = false; recall.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: false }, expectedRevision: 0 });
     assert.equal(f.get('按需回查细摘要'), undefined);
 });
@@ -911,6 +911,14 @@ test('retrieval page sits between memory and settings and reports planned vector
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
 });
 
+test('keyword recall stays available in the check chain when source recall is off', t => {
+    const f = fixture({ retrieval: { mode: 'lexical', sourceRecall: false, vector: { status: 'disabled' }, rerank: { status: 'disabled' }, candidates: [] } });
+    t.after(() => f.view.destroy()); f.view.open(); f.get('检索').click();
+    const text = f.document.body.textContent;
+    assert.match(text, /关键词召回可用当前默认候选路径 · 原文回查已关闭/);
+    assert.doesNotMatch(text, /关键词召回未启用/);
+});
+
 test('retrieval timeout is shown as one shared account control and saves in seconds', async t => {
     const d = dom(), ctx = { extensionSettings: { yimu: {} }, async saveSettingsDebounced() {} };
     const connectionApi = createApiSettings({ getContext: () => ctx });
@@ -1023,6 +1031,21 @@ test('changing chats resets chat drafts and filters but never transfers the last
     assert.equal(f.get('自定义切片内容').value, ''); assert.equal(f.get('搜索记忆').value, ''); assert.deepEqual(f.calls, []);
 });
 
+test('manual summary default follows the unsummarized range until the user edits it', t => {
+    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
+    t.after(() => f.view.destroy());
+    assert.equal(f.get('手动总结开始楼层').value, '4'); assert.equal(f.get('手动总结结束楼层').value, '9');
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(11) } });
+    assert.equal(f.get('手动总结开始楼层').value, '4'); assert.equal(f.get('手动总结结束楼层').value, '11');
+    f.render({ document: { ...f.state.document, entries: [entry({ source: { start: 1, end: 3 } }), entry({ id: 'slice-b', source: { start: 4, end: 6 } })] } });
+    assert.equal(f.get('手动总结开始楼层').value, '7'); assert.equal(f.get('手动总结结束楼层').value, '11');
+    f.get('手动总结开始楼层').value = '2';
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(12) } });
+    assert.equal(f.get('手动总结开始楼层').value, '2'); assert.equal(f.get('手动总结结束楼层').value, '11');
+    assert.deepEqual(f.calls, []);
+});
+
 test('an initially empty chat receives usable ranges without replacing an edited range on later refreshes', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: null }, snapshot: { binding: { avatar: 'empty.png', file: 'empty' }, messages: [] } });
     t.after(() => f.view.destroy());
@@ -1115,7 +1138,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.17 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.18 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1235,7 +1258,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.17'); assert.equal(pkg.version, '0.8.9');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.18'); assert.equal(pkg.version, '0.8.9');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

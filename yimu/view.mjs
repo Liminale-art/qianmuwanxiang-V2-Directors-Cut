@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { planManualRange, summaryCoverage } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -227,11 +227,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const heroTop = el('div', 'ym-hero-top'), heroText = el('div', 'ym-hero-text');
     const avatar = el('img', 'ym-avatar'); avatar.alt = ''; avatar.hidden = true;
     avatar.addEventListener('error', () => { avatar.hidden = true; });
-    const stats = el('div', 'ym-stats'), statValues = [];
+    const stats = el('div', 'ym-stats'), statValues = [], statCards = [];
     for (const label of ['记忆切片', '已整理层', '待整理层']) {
         const stat = el('div', 'ym-card ym-stat'), value = el('b', '', '0');
-        stat.append(value, el('span', '', label)); statValues.push(value); stats.append(stat);
+        stat.append(value, el('span', '', label)); statValues.push(value); statCards.push(stat); stats.append(stat);
     }
+    const pendingNote = el('small', 'ym-stat-note'); pendingNote.hidden = true; statCards[2].append(pendingNote);
     chatName.className += ' ym-overview-name';
     heroText.append(context, overviewFile); heroTop.append(heroText, avatar);
     const enableCard = el('section', 'ym-card ym-hero-switches');
@@ -296,10 +297,23 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
                 summarizeNotice.hidden = false; return;
             }
             summarizeNotice.hidden = true;
-            await dispatch('summarizeRange', { range, expectedRange: plan.range }, summarizeSubmit);
+            // Once submitted, the default resumes following the next unsummarized range.
+            if (await dispatch('summarizeRange', { range, expectedRange: plan.range }, summarizeSubmit)) {
+                manualAuto = { start: summarizeStart.value, end: summarizeEnd.value }; syncManualDefault();
+            }
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); }
     });
     for (const input of [summarizeStart, summarizeEnd]) input.addEventListener('input', () => { summarizeNotice.hidden = true; });
+    // Last automatically written bounds. The default tracks new floors only while the
+    // fields still show it, so typed, adjusted or confirmed ranges are never replaced.
+    let manualAuto = null;
+    function syncManualDefault() {
+        const suggested = manualRangeDefault(state.document, state.snapshot?.messages || [], state.invalidSourceIds || []);
+        if (!suggested || suggested.complete || !manualAuto || [summarizeStart, summarizeEnd].includes(document.activeElement)) return;
+        if (summarizeStart.value !== manualAuto.start || summarizeEnd.value !== manualAuto.end) return;
+        summarizeStart.value = String(suggested.start); summarizeEnd.value = String(suggested.end);
+        manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
+    }
     overview.append(heroTop, rangeForm);
     const manualSummaryCard = el('section', 'ym-card ym-manual-summary'); manualSummaryCard.append(summarizeRangeForm);
 
@@ -312,8 +326,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
-        const group = el(name === 'extra' ? 'details' : 'section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
-        group.append(el(name === 'extra' ? 'summary' : 'h3', 'ym-setting-title', title));
+        const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
+        group.append(el('h3', 'ym-setting-title', title));
         const body = el('div', 'ym-settings-form'); group.append(body);
         settingsForm.append(group); for (const key of keys) settingGroups.set(key, body);
     }
@@ -584,6 +598,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         statValues[0].textContent = coverage ? String(coverage.sliceCount) : '0';
         statValues[1].textContent = coverage ? String(coverage.organizedFloors) : '0';
         statValues[2].textContent = coverage ? String(coverage.pendingFloors) : '0';
+        // Pending excludes the newest floors kept as raw text and any history the user chose not to organize.
+        const kept = coverage ? Math.min(total, Math.max(0, Number(currentSettings().recent) || 0)) : 0;
+        pendingNote.hidden = !kept;
+        pendingNote.textContent = kept ? `另有最新 ${kept} 层保留原文` : '';
+        const pendingRange = coverage?.pendingRange ? `第 ${coverage.pendingRange.start}–${coverage.pendingRange.end} 层待整理` : '暂无待整理楼层';
+        statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start ? '；已选择不整理的历史楼层也不计入' : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
         for (const [name, card] of toolCards) {
             card.hidden = false; card.button.disabled = name !== 'backup' && !doc;
@@ -651,7 +671,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         // Only replace the initial zero, never a range the user has started editing.
         if (total > 0) {
             if (rangeEnd.value === '0') rangeEnd.value = String(total);
-            if (summarizeEnd.value === '0') summarizeEnd.value = String(total);
         }
         rangeForm.hidden = !available || !enabled.checked || Boolean(state.document?.initialRange) || !total;
         summarizeStart.max = summarizeEnd.max = rangeStart.max = rangeEnd.max = String(total);
@@ -1023,12 +1042,14 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             manualForm.hidden = true; manualInput.value = ''; manualTitle.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
             rangeFields.hidden = true; rangeStart.value = summarizeStart.value = '1';
             rangeEnd.value = summarizeEnd.value = String(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
+            manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
             search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear();
             // Backup browsing is account-scoped; other pages belong to the opened chat.
             currentPage = 'overview';
             scroller.scrollTop = 0;
         }
+        syncManualDefault();
         chatName.textContent = state.snapshot?.name || '请选择一个聊天打开';
         shortcutToggle.checked = state.ui?.showShortcut === true;
         story.render(state);

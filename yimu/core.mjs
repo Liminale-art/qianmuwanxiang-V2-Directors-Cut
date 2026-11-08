@@ -142,6 +142,21 @@ export function planManualRange(document, messages, settings, requestedRange) {
     return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };
 }
 
+/** Default manual range: continue after the latest usable local slice up to the
+ * current last floor. Invalid (source-changed) slices do not advance it, so they
+ * are offered again; this is only a suggestion and never overrides user input. */
+export function manualRangeDefault(document, messages, invalidIds = []) {
+    const total = Array.isArray(messages) ? messages.length : 0;
+    if (!total) return null;
+    let start = (document?.lineage?.bridgeCount || 0) + 1;
+    for (const entry of document?.entries || []) {
+        if (entry.kind !== 'summary' || entry.origin || entry.discarded || entry.status === 'invalid' || invalidIds.includes(entry.id)) continue;
+        if (Number.isSafeInteger(entry.source?.end)) start = Math.max(start, entry.source.end + 1);
+    }
+    while (start <= total && !canSummarize(messages[start - 1])) start++;
+    return start > total ? { start: total, end: total, complete: true } : { start, end: total, complete: false };
+}
+
 /** Count independent fine/custom slices once; stage/excerpt reading layers are not extra originals. */
 export function summaryCoverage(document, messages, settings) {
     const covered = new Set(), entries = document?.entries || [];

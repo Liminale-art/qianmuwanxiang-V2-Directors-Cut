@@ -77,7 +77,9 @@ export function recallCandidateScore(entry, queryText, settings = {}) {
 // This catalog is a bounded hint for the normal summary call, not a separate
 // paid retrieval request or a second corpus of originals.
 export function recallCandidates(document, settings, messages, batch, hashes = []) {
-    if (settings.recall === false || recallBlockReason(document)) return [];
+    // Discovery is independent from the source-recall switch; the caller decides
+    // whether the result may become a requestable catalog.
+    if (recallBlockReason(document)) return [];
     const queryText = messages.slice(batch.start - 1, batch.end).map(m => m.mes || '').join('\n');
     const eligible = document.entries.filter(entry => !entry.origin && entry.kind === 'summary' && !recallBlockReason(document, entry)
         && sourceMatches(entry.source, hashes)

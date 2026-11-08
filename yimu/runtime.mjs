@@ -22,7 +22,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
-    const jobs = new Map(), localStops = new Set(), failedJobs = new Set(), failures = new Map();
+    const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
     const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
     const snapshotState = () => ({ ...state,
@@ -224,7 +224,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (!force && cancelled?.epoch === doc.epoch && cancelled.total === state.snapshot.messages.length) return;
         cancelledRounds.delete(key);
         const failedKey = `${key}:${doc.epoch}`;
-        if (!force && failedJobs.has(failedKey)) return;
+        // A failed automatic round waits for new floors, then retries once per floor count.
+        if (!force && failedJobs.get(failedKey) === state.snapshot.messages.length) return;
         failedJobs.delete(failedKey);
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         state.streamPreview = '';
@@ -240,7 +241,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const rerankStatus = settings.rerankEnabled === true
             ? rerankConfig?.apiUrl && rerankConfig?.model ? 'planned' : 'unavailable'
             : 'disabled';
-        state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vectorStatus,
+        state.retrieval = { mode: 'lexical', sourceRecall: settings.recall !== false, vector: { status: vectorStatus,
             ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: rerankStatus,
             ...(rerankStatus === 'unavailable' ? { reason: '尚未配置重排候选接口，已保留当前顺序' } : {}) }, candidates: [], lastRun: null };
         emit();
@@ -345,7 +346,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     }
                 }
                 if (isCurrent(binding)) {
-                    state.retrieval = { mode: settings.recall === false ? 'disabled' : 'lexical', vector: { status: vector.status, reason: vector.reason }, rerank: { status: rerank.status, reason: rerank.reason },
+                    state.retrieval = { mode: 'lexical', sourceRecall: settings.recall !== false, vector: { status: vector.status, reason: vector.reason }, rerank: { status: rerank.status, reason: rerank.reason },
                         candidates: candidates.map(candidate => ({ id: candidate.id, start: candidate.start, end: candidate.end, title: candidate.title || '记忆切片', kind: candidate.kind || 'local', sourceLabel: candidate.sourceLabel || '忆幕', reason: candidate.reason })),
                         lastRun: { count: candidates.length, localCount: candidates.length, externalCount: 0, at: retrieval.at } };
                     emit();
@@ -356,10 +357,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
                 if (controller.signal.aborted) break;
-                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: candidates, previousContext });
+                // Keyword/vector candidates are always discovered for the check chain; only
+                // source recall turns them into a requestable catalog in the summary prompt.
+                let catalog = settings.recall === false ? [] : candidates;
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext });
                 // Optional historical hints may use only spare room. Source floors are never truncated.
-                if (!run.fitsPrompt(prompt) && candidates.length) {
-                    candidates = [];
+                if (!run.fitsPrompt(prompt) && catalog.length) {
+                    candidates = []; catalog = [];
                     if (isCurrent(binding)) {
                         state.retrieval = { ...state.retrieval, candidates: [], lastRun: { ...(state.retrieval.lastRun || {}), count: 0, at: Date.now(), fallback: '预算不足，沿用关键词路径但本轮未带入候选' } };
                         emit();
@@ -404,7 +408,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         return;
                     }
                 }
-                const request = parseRecallRequest(response, candidates);
+                const request = parseRecallRequest(response, catalog);
                 if (request && !recallAttempted) {
                     recallAttempted = true; // At most one bounded extraction in this entire background run.
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
@@ -424,7 +428,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
         } catch (error) {
             if (!controller.signal.aborted && !disposed) {
-                failedJobs.add(failedKey);
+                failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
                     range: { start: failedBatch.start, end: failedBatch.end }, source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = errorPage; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
@@ -477,14 +481,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot) return;
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
         if (jobs.has(key) || localStops.has(key)) return;
-        const initial = clone(state.document), defaults = clone(state.defaults);
+        const initial = clone(state.document), defaults = clone(state.defaults), initialTotal = state.snapshot.messages.length;
         const cancelled = cancelledRounds.get(key);
         if (!force && cancelled?.epoch === initial.epoch && cancelled.total === state.snapshot.messages.length) return;
         cancelledRounds.delete(key);
         const settings = effectiveSettings(initial, defaults);
         if (!force && (!settings.stageAuto || !initial.autoSummary)) return;
         const failedKey = `${key}:${initial.epoch}:stage`;
-        if (!force && failedJobs.has(failedKey)) return;
+        if (!force && failedJobs.get(failedKey) === state.snapshot.messages.length) return;
         failedJobs.delete(failedKey);
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         state.streamPreview = '';
@@ -556,7 +560,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); state.status = '阶段总结已完成'; }
         } catch (error) {
             if (!controller.signal.aborted && !disposed) {
-                failedJobs.add(failedKey);
+                failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : initialTotal);
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = 'memory'; state.status = '阶段整理未完成，已有内容未被覆盖。'; }
                 if (retryState.exhausted) notice(`本次总结重试3次均失败：${error?.message || '未知错误'}`, 'error');
