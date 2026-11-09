@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {isCharacterFloor, injectStoryboardMessageButtons} from '../qianmu-prose-floor-entries.js';
-import {scanTtsFloor} from '../qianmu-tts-floor-ui.js';
+import {scanTtsFloor} from '../features/tts/qianmu-tts-floor-ui.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 

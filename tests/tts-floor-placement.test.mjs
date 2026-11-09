@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {gridRowAfter, followTextOrder} from '../qianmu-tts-floor-ui.js';
+import {gridRowAfter, followTextOrder} from '../features/tts/qianmu-tts-floor-ui.js';
 
 test('grid row after text row', () => {
   assert.equal(gridRowAfter('auto', 'auto'), '');

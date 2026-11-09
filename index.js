@@ -11,7 +11,7 @@ import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.484-tts-font-1';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
-import {scanTtsFloor,followTextOrder} from './qianmu-tts-floor-ui.js?v=1.59.484';
+import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
@@ -184,7 +184,7 @@ import {
   synthesizeTts,
   ttsProviderHasCredentials,
   ttsProviderSupports,
-} from './qianmu-tts-providers.js';
+} from './features/tts/qianmu-tts-providers.js';
 import * as blobStore from './qianmu-blobstore.js';
 import {
   clearTemporaryQianmuNotes,
@@ -10350,7 +10350,7 @@ async function transferAudioCache(control, file) {
   try {
     check = createStorageBackupCheck(control, transfer, action); check();
     if (control) control.disabled = true;
-    const module = await import('./qianmu-audio-cache-backup.js'); check();
+    const module = await import('./features/tts/qianmu-audio-cache-backup.js'); check();
     if (file) {
       const result = await module.importAudioCacheBackup(file, {
         writer: blobStore.createReaderPackageWriter({ check }), decode: base64ToBlob, check, confirm: confirmDialog, progress,

@@ -17,7 +17,7 @@ const unifiedRelease = new Map([
   ['qianmu-icon-renderer.js', '1.59.478'], ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-storyboard-capture-view.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
   ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-text-collection-host.js', '1.59.484'],
-  ['qianmu-tts-floor-ui.js', '1.59.484'], ['qianmu-prose-assistant-floor.js', '1.59.452'],
+  ['features/tts/qianmu-tts-floor-ui.js', '1.59.484'], ['qianmu-prose-assistant-floor.js', '1.59.452'],
   ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.446'],
   ['qianmu-prose-floor-entries.js', '1.59.440'], ['qianmu-main-tabs.js', '1.59.421'],
 ]);
@@ -30,7 +30,7 @@ const functionalNodes = new Set([
   'qianmu-creative-social.js',
   'qianmu-feature-runtime.js',
   'qianmu-notes.js', 'qianmu-notes-panel-sync.js', 'qianmu-notes-sync-runtime.js',
-  'qianmu-prose-floor-entries.js', 'qianmu-text-collection-floor.js', 'qianmu-tts-floor-ui.js',
+  'qianmu-prose-floor-entries.js', 'qianmu-text-collection-floor.js', 'features/tts/qianmu-tts-floor-ui.js',
 ]);
 const changedNodes = new Set([
   'index.js', 'qianmu-icon-renderer.js', 'qianmu-assistant-history-view.js',
@@ -46,7 +46,7 @@ const changedNodes = new Set([
   'qianmu-text-collection-image-dialog.js', 'qianmu-text-collection-organization-view.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-panel.js',
   'qianmu-text-collection-view.js', 'qianmu-prose-floor-entries.js',
-  'qianmu-text-collection-floor.js', 'qianmu-tts-floor-ui.js',
+  'qianmu-text-collection-floor.js', 'features/tts/qianmu-tts-floor-ui.js',
 ]);
 const files = await collectReleaseFiles();
 const sources = new Map(await Promise.all(files.filter(file => file.endsWith('.js'))

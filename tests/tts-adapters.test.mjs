@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
-import { synthesizeDoubao } from '../qianmu-tts-doubao.js';
-import { synthesizeElevenLabs } from '../qianmu-tts-elevenlabs.js';
+import { synthesizeDoubao } from '../features/tts/qianmu-tts-doubao.js';
+import { synthesizeElevenLabs } from '../features/tts/qianmu-tts-elevenlabs.js';
 
 const originalFetch = globalThis.fetch;
 

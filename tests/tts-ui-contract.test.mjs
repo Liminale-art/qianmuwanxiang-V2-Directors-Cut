@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-const doubaoSource = await readFile(new URL('../qianmu-tts-doubao.js', import.meta.url), 'utf8');
-const floorSource = await readFile(new URL('../qianmu-tts-floor-ui.js', import.meta.url), 'utf8');
+const doubaoSource = await readFile(new URL('../features/tts/qianmu-tts-doubao.js', import.meta.url), 'utf8');
+const floorSource = await readFile(new URL('../features/tts/qianmu-tts-floor-ui.js', import.meta.url), 'utf8');
 
 const requiredInteractions = [
   'function ttsHandleLinePlayClick',

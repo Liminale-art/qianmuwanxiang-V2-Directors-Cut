@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {AUDIO_CACHE_LIMITS,audioCacheMeta,validateAudioCacheBackup,readAudioCacheBackup,prepareAudioCacheBackup,exportAudioCacheBackup,importAudioCacheBackup} from '../qianmu-audio-cache-backup.js';
+import {AUDIO_CACHE_LIMITS,audioCacheMeta,validateAudioCacheBackup,readAudioCacheBackup,prepareAudioCacheBackup,exportAudioCacheBackup,importAudioCacheBackup} from '../features/tts/qianmu-audio-cache-backup.js';
 const entry=(key='one')=>({key,type:'audio/mpeg',createdAt:123,data:'YQ==',meta:{text:'对白',speaker:'甲',apiKey:'never copy',chatKey:'chat'}});
 const pack=(entries=[entry()])=>({type:'qianmu-tts-audio-cache',version:1,count:entries.length,entries});
 const file=data=>new Blob([JSON.stringify(data)]),encode=async blob=>Buffer.from(await blob.arrayBuffer()).toString('base64');

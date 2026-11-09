@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { cacheKeyFor as legacyMinimaxCacheKey } from '../qianmu-tts.js';
+import { cacheKeyFor as legacyMinimaxCacheKey } from '../features/tts/qianmu-tts.js';
 import {
   DEFAULT_TTS_PROVIDER_ID,
   assertTtsProviderContract,
@@ -14,7 +14,7 @@ import {
   outputExtensionForTts,
   ttsProviderHasCredentials,
   ttsProviderSupports,
-} from '../qianmu-tts-providers.js';
+} from '../features/tts/qianmu-tts-providers.js';
 
 const providers = listTtsProviders();
 assert.deepEqual(providers.map((provider) => provider.id), ['minimax', 'doubao', 'elevenlabs']);

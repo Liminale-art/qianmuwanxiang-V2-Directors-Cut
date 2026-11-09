@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 606 个，其中 `qianmu-*` 模块 589 个。
+根目录文件 600 个，其中 `qianmu-*` 模块 583 个。
 
 ## 入口、宿主与安装
 
@@ -31,6 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
+| `features/` | 6 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 959 |
@@ -595,17 +596,6 @@
 | `qianmu-recipe-restore-client.js` | 是 |  |
 | `qianmu-recipe-restore-contract.js` | 是 |  |
 | `qianmu-recipe-storage.js` | 是 |  |
-
-## 语音（TTS）（6）
-
-| 文件 | 发行 | 首行说明 |
-| --- | --- | --- |
-| `qianmu-audio-cache-backup.js` | 是 | Existing v1 cache format, with bounded admission and commit-aware storage adapters. |
-| `qianmu-tts-doubao.js` | 是 | 千幕 · 豆包语音 V3 适配器 |
-| `qianmu-tts-elevenlabs.js` | 是 | 千幕 · ElevenLabs TTS 适配器 |
-| `qianmu-tts-floor-ui.js` | 是 | DOM-only adapter: no extraction, audio, storage or host-message writes. |
-| `qianmu-tts-providers.js` | 是 | 千幕 · TTS Provider 注册与统一路由 |
-| `qianmu-tts.js` | 是 | 千幕 · MiniMax TTS 调用层 |
 
 ## 外观、主题、字体与图标（21）
 

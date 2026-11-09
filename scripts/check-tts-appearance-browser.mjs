@@ -50,7 +50,7 @@ try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async ({ source, folderBordersOnly }) => {
         const [utils, providers, { createQianmuAppearanceSession }, { updateAppearancePreferences }, { applyQianmuIcons }] = await Promise.all([
-            import('/qianmu-storyboard-utils.js'), import('/qianmu-tts-providers.js'), import('/qianmu-appearance-session.js'),
+            import('/qianmu-storyboard-utils.js'), import('/features/tts/qianmu-tts-providers.js'), import('/qianmu-appearance-session.js'),
             import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         for (const name of ['htmlEscape', 'groupByFolder']) window[name] = utils[name];

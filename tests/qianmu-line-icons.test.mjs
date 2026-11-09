@@ -24,7 +24,7 @@ import {
 const rootUrl = new URL('../', import.meta.url);
 const rendererSource = await readFile(new URL('qianmu-icon-renderer.js', rootUrl), 'utf8');
 const indexSource = await readFile(new URL('index.js', rootUrl), 'utf8');
-const ttsFloorSource = await readFile(new URL('qianmu-tts-floor-ui.js', rootUrl), 'utf8');
+const ttsFloorSource = await readFile(new URL('features/tts/qianmu-tts-floor-ui.js', rootUrl), 'utf8');
 const styleSource = await readFile(new URL('style.css', rootUrl), 'utf8');
 const themeSource = await readFile(new URL('qianmu-theme-skins.css', rootUrl), 'utf8');
 const vibeViewSource = await readFile(new URL('qianmu-vibe-library-view.js', rootUrl), 'utf8');
@@ -240,8 +240,8 @@ for (const [theme, active] of [['editorial', 'bold'], ['glass', 'twotone']]) {
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/, '发行版本必须是有效的三段版本号');
 assert.equal(packageJson.version, manifest.version);
-assert.equal(manifest.js, `index.js?v=${manifest.version}-logos-1`);
-assert.equal(manifest.css, `style.css?v=${manifest.version}-logos-1`);
+assert.equal(manifest.js, `index.js?v=${manifest.version}-tts-1`);
+assert.equal(manifest.css, `style.css?v=${manifest.version}-tts-1`);
 assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=\d+\.\d+\.\d+';/);
 
 class FakeClassList {

@@ -1,6 +1,6 @@
 // Existing v1 cache format, with bounded admission and commit-aware storage adapters.
 // This legacy cache belongs to this browser/site, not a proven character or account archive.
-import { parseBoundedJson, assertJsonInputBounds, base64DecodedLength } from './qianmu-json-input.js';
+import { parseBoundedJson, assertJsonInputBounds, base64DecodedLength } from '../../qianmu-json-input.js';
 export const AUDIO_CACHE_LIMITS = Object.freeze({ bytes: 256 * 1024 * 1024, entries: 2000, encodedBytes: 64 * 1024 * 1024, audioBytes: 48 * 1024 * 1024 });
 const META = ['speaker','text','format','provider','folder','fileNameBase','chatKey','messageIndex','lineIndex','sourceTime','source','bookId'];
 export function audioCacheMeta(value) {
