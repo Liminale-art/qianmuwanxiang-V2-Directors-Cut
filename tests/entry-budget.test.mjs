@@ -10,3 +10,9 @@ test('the entry ratchet checks real UTF8 size and lines, not OS line endings',()
   assert.throws(()=>checkEntryBudget('a\nb\nc',{lines:2,bytes:100}),/line budget/);
   assert.throws(()=>checkEntryBudget('千幕',{lines:2,bytes:5}),/byte budget/);
 });
+test('moving a module into a folder does not consume entry budget, but new code still does',()=>{
+  const flat="import {a} from './qianmu-a.js?v=1';\nimport('./assets/logos/x.png');\n";
+  const moved="import {a} from './features/tts/qianmu-a.js?v=1';\nimport('./x.png');\n";
+  assert.deepEqual(checkEntryBudget(moved,{lines:2,bytes:100}).bytes,checkEntryBudget(flat,{lines:2,bytes:100}).bytes);
+  assert.throws(()=>checkEntryBudget(moved+'const extra = 1;',{lines:3,bytes:checkEntryBudget(flat,{lines:2,bytes:100}).bytes}),/byte budget/);
+});
