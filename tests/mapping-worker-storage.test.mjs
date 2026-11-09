@@ -8,7 +8,7 @@ import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs
 import {createStoryboardPackageJournal} from '../qianmu-storyboard-package-journal.js';
 import {createNativeMappingJournal} from '../qianmu-mapping-journal-native.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 const origin='https://st.fixture.invalid';
 async function fixture(t){
   const f=await characterNativeFixture(t),rows=await mappingReceiptsFixture({namespace}),local=mappingLegacyFixture();

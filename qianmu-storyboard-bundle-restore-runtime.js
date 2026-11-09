@@ -5,7 +5,7 @@ import { validStoryboardSubjectTargetPage, normalizeStoryboardSubjectMappings } 
 import {validateBundleAliasInput,validateBundleAliasSummary,validateBundleAliasPage} from './qianmu-bundle-user-alias-contract.js';
 import {validateBundleMappingSummary,validateBundleMappingRestoreSummary,validateBundleMappingPageInput,validateBundleMappingPage} from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarrierRestoreSummary,validateBundleCarrierPageInput,validateBundleCarrierPage} from './qianmu-bundle-carrier-restore-contract.js';
-import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {captureCharacterWorkerStorage} from './features/character/qianmu-character-worker-storage.js';
 import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 let active = null;
 const fail = message => Object.assign(new Error(message), { code: 'storyboard_bundle_restore_runtime', submissionState: 'not_submitted' });

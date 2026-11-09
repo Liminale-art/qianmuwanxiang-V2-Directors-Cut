@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace,document} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {createCharacterReconciliation} from '../qianmu-character-reconciliation.js';
+import {createCharacterReconciliation} from '../features/character/qianmu-character-reconciliation.js';
 import {createCharacterArchiveController,renderCharacterArchive} from '../qianmu-character-archive-view.js';
-import {readCharacterBackupFile} from '../qianmu-character-backup-file.js';
+import {readCharacterBackupFile} from '../features/character/qianmu-character-backup-file.js';
 
 // Event/HTML protocol double, not a rendered browser or a visual acceptance.
 function hostFixture(){

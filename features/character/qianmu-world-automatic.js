@@ -1,6 +1,6 @@
 import {createWorldAutomaticStorage} from './qianmu-world-automatic-storage.js?v=1.59.414';
 import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.414';
-import {normalizeStoryboardPromptFormats,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings} from './qianmu-prompt-formats.js';
+import {normalizeStoryboardPromptFormats,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings} from '../../qianmu-prompt-formats.js';
 import {characterReferenceChoice} from './qianmu-character-reference.js?v=1.59.202';
 import {carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
 import {createWorldAutomaticRepairBudget} from './qianmu-world-automatic-host.js?v=1.59.414';

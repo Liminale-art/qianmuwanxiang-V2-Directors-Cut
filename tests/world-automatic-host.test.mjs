@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createWorldAutomaticHost as create,createWorldAutomaticRepairBudget,selectWorldAutomaticPackets as select,normalizeWorldAutomaticLimit as limit} from '../qianmu-world-automatic-host.js';
-import {prepareAutomaticWorldShot} from '../qianmu-world-automatic.js';
+import {createWorldAutomaticHost as create,createWorldAutomaticRepairBudget,selectWorldAutomaticPackets as select,normalizeWorldAutomaticLimit as limit} from '../features/character/qianmu-world-automatic-host.js';
+import {prepareAutomaticWorldShot} from '../features/character/qianmu-world-automatic.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const flush=async()=>{for(let i=0;i<4;i++)await new Promise(setImmediate);};

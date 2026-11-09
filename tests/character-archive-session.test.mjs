@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture, namespace, document} from './helpers/character-native-fixture.mjs';
-import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
-import {createCharacterArchiveSession} from '../qianmu-character-archive-session.js';
-import {readCharacterCasting} from '../qianmu-character-casting.js';
+import {createCharacterArchiveStore} from '../features/character/qianmu-character-archive-store.js';
+import {createCharacterArchiveSession} from '../features/character/qianmu-character-archive-session.js';
+import {readCharacterCasting} from '../features/character/qianmu-character-casting.js';
 import {readStoryboardBoundSubjects} from '../qianmu-storyboard-subject-evidence.js';
-import {characterLibraryBackupDigest} from '../qianmu-character-library-backup.js';
-import {emptyCharacterNativeIndex} from '../qianmu-character-native-contract.js';
+import {characterLibraryBackupDigest} from '../features/character/qianmu-character-library-backup.js';
+import {emptyCharacterNativeIndex} from '../features/character/qianmu-character-native-contract.js';
 
 const emptySummary = () => ({version: 1, status: 'ready', namespace, bytes: 0, filesIncluded: false,
   documents: {count: 0, bytes: 0}, bindings: {count: 0, bytes: 0}, indexes: {count: 0, bytes: 0}});

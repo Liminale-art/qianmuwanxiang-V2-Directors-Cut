@@ -33,7 +33,7 @@ try {
         Object.assign(window, await import('./qianmu-appearance-session.js'), await import('./qianmu-appearance-settings.js'),
             await import('./qianmu-appearance-actions.js'), await import('./qianmu-storyboard-bundle-view.js'),
             await import('./qianmu-storyboard-mapping-view.js'), await import('./qianmu-storyboard-link-review-view.js'),
-            await import('./qianmu-storyboard-restore-storage-view.js'), await import('./qianmu-user-alias-view.js'));
+            await import('./qianmu-storyboard-restore-storage-view.js'), await import('./features/character/qianmu-user-alias-view.js'));
         window.framesSettled = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         window.waitClosed = async () => {
             let timer;

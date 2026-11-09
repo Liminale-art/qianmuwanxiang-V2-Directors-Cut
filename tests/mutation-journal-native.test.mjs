@@ -13,7 +13,7 @@ import {historicalChatSaveFixture} from './helpers/historical-chat-save-fixture.
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 import {collectRestoreStorage,clearRestoreStorage} from '../qianmu-storyboard-restore-storage.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 
 const row=(ns=namespace)=>({namespace:ns,chatHash:'c'.repeat(64),fileHash:'a'.repeat(64),version:1,revision:1,createdAt:7,phase:'prepared',
   patch:[{area:'settings',key:'prompt',before:{exists:true,value:'  old 🦋\ntext  '},after:{exists:true,value:'new'}}]});

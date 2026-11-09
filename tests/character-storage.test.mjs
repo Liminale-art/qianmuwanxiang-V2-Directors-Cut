@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments} from '../qianmu-storage-backup-view.js';
-import { summarizeCharacterStorage, validateCharacterStorageSummary, collectCharacterStorage } from '../qianmu-character-storage.js';
+import { summarizeCharacterStorage, validateCharacterStorageSummary, collectCharacterStorage } from '../features/character/qianmu-character-storage.js';
 import { runRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:character-storage',clone=structuredClone,size=value=>Buffer.byteLength(JSON.stringify(value));

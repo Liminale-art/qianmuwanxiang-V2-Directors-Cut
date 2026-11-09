@@ -1,12 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace,document} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {createCharacterReconciliation} from '../qianmu-character-reconciliation.js';
-import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
-import {characterLibraryBackupDigest as digest} from '../qianmu-character-library-backup.js';
-import {emptyCharacterSources,inspectCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
-import {buildCharacterBackupFile,readCharacterBackupFile,selectCharacterBackupWorkflows} from '../qianmu-character-backup-file.js';
-import {createCharacterRestoreSession} from '../qianmu-character-backup-restore.js';
+import {createCharacterReconciliation} from '../features/character/qianmu-character-reconciliation.js';
+import {createCharacterArchiveStore} from '../features/character/qianmu-character-archive-store.js';
+import {characterLibraryBackupDigest as digest} from '../features/character/qianmu-character-library-backup.js';
+import {emptyCharacterSources,inspectCharacterSources,characterSourceLibrary} from '../features/character/qianmu-character-source-backup.js';
+import {buildCharacterBackupFile,readCharacterBackupFile,selectCharacterBackupWorkflows} from '../features/character/qianmu-character-backup-file.js';
+import {createCharacterRestoreSession} from '../features/character/qianmu-character-backup-restore.js';
 import {createNativeResourceJournal} from '../qianmu-resource-journal-native.js';
 import {fixture as bundleFixture,data} from './fixtures/storyboard-bundle.mjs';
 import {inspectStoryboardResourceBundle} from '../qianmu-storyboard-bundle-resources.js';

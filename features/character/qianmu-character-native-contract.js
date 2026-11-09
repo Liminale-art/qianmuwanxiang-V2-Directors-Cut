@@ -1,6 +1,6 @@
 import {characterArchiveError, characterBindingTarget} from './qianmu-character-archive.js';
 import {validateCharacterLibraryBackup, CHARACTER_LIBRARY_BACKUP_SCHEMA, characterBackupBindingKey} from './qianmu-character-library-backup.js';
-import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
+import {stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
 
 export const CHARACTER_NATIVE_SLOT = 'character-library';
 export const CHARACTER_ORIGINAL_SLOT = 'character-record';

@@ -1,6 +1,6 @@
 import {mappingFixture,namespace} from './storyboard-mappings.mjs';
 import {aliasFixture} from './storyboard-user-aliases.mjs';
-import {planUserAliases} from '../../qianmu-user-alias.js';
+import {planUserAliases} from '../../features/character/qianmu-user-alias.js';
 import {planBundleUserAliases} from '../../qianmu-bundle-user-alias.js';
 import {createBundleSubjectMapReview} from '../../qianmu-bundle-subject-map.js';
 import {captureStoryboardSubjectEvidence,storyboardSubjectTargets} from '../../qianmu-storyboard-subject-evidence.js';

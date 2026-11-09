@@ -94,4 +94,4 @@ export function planCharacterLibraryRestore(local, incoming, { decisions = {} } 
 }
 // Backup hashing must not pull the entire Comfy import/restore graph into
 // ordinary character-library reads. Preserve the exact existing digest format.
-export const characterLibraryBackupDigest = async value => (await import('./qianmu-comfy-library-backup.js')).comfyLibraryBackupDigest(value);
+export const characterLibraryBackupDigest = async value => (await import('../../qianmu-comfy-library-backup.js')).comfyLibraryBackupDigest(value);

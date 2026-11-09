@@ -1,6 +1,6 @@
 import {characterArchiveError,newCharacterArchive,normalizeCharacterArchive} from './qianmu-character-archive.js';
 import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
-import {normalizeNarrativeContext,isMainlineNarrativeFact} from './qianmu-narrative-context.js';
+import {normalizeNarrativeContext,isMainlineNarrativeFact} from '../../qianmu-narrative-context.js';
 
 // Pure draft rules only. Persistence, host identity selection and global-library writes belong to the caller.
 export const CHAT_CHARACTER_DRAFT_SCHEMA='qianmu.character.chat-draft.v1';

@@ -1,4 +1,4 @@
-import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {captureCharacterWorkerStorage} from './features/character/qianmu-character-worker-storage.js';
 import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
 let active=null;

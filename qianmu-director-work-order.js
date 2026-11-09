@@ -1,6 +1,6 @@
 // 千幕·导演工作单。下游工种只接收已批准决策的有限投影，不再解释原始推演文本。
-import { normalizeWorldSource } from './qianmu-world-source.js';
-import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.414';
+import { normalizeWorldSource } from './features/character/qianmu-world-source.js';
+import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './features/character/qianmu-world-automatic-approval.js?v=1.59.414';
 import { narrativeContextField, narrativeContextIssues, isMainlineNarrativeFact, narrativeContextLayer } from './qianmu-narrative-context.js';
 import {
   QIANMU_DIRECTOR_DECISION_CONSUMERS,

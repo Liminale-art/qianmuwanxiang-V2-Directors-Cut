@@ -1,5 +1,5 @@
-import {validateAliasInput,aliasHash} from './qianmu-user-alias-contract.js';
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
+import {validateAliasInput,aliasHash} from './features/character/qianmu-user-alias-contract.js';
+import {canonicalUserSubjectKey} from './features/character/qianmu-user-identity.js?v=1.59.202';
 const exact=(row,keys)=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.keys(row).length===keys.length&&keys.every(key=>Object.hasOwn(row,key));
 const count=(value,max=2048)=>Number.isSafeInteger(value)&&value>=0&&value<=max;
 const fail=()=>{throw Object.assign(new Error('原包USER地址核对范围或结果不符'),{code:'storyboard_bundle_user_alias'});};

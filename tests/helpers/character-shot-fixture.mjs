@@ -1,5 +1,5 @@
 import * as storyboard from '../../qianmu-storyboard.js';
-import {CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
+import {CHARACTER_CASTING_SCHEMA} from '../../features/character/qianmu-character-casting.js';
 const copy=structuredClone;
 const archive=id=>({schema:CHARACTER_CASTING_SCHEMA,archiveId:id,archiveVersion:1,subjectId:`archive:${id}`,category:'char',name:id,sourceCharacterId:id,match:'id',negativeScope:'model_interface',negative:`no ${id} red hair`});
 export function snapshot(source='novel'){

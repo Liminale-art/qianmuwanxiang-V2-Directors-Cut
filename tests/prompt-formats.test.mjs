@@ -7,7 +7,7 @@ import {
   validateStoryboardPromptRenderings, bindStoryboardPromptRenderings, resolveStoryboardPromptRendering,
 } from '../qianmu-prompt-formats.js';
 import { normalizeStoryboardShotSpec } from '../qianmu-storyboard.js';
-import { CHARACTER_CASTING_SCHEMA } from '../qianmu-character-casting.js';
+import { CHARACTER_CASTING_SCHEMA } from '../features/character/qianmu-character-casting.js';
 import {
   STORYBOARD_PLAN_RESPONSE_SCHEMA, buildStoryboardPlanContractRequest, parseStoryboardContractResponse,
   adaptStoryboardPlanContract, repairStoryboardContractOnce,

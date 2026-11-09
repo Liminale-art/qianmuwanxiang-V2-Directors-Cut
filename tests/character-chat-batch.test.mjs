@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as batch from '../qianmu-character-chat-batch.js';
-import {editChatCharacterDraft,setChatCharacterDraftStatus} from '../qianmu-character-chat-draft.js';
+import * as batch from '../features/character/qianmu-character-chat-batch.js';
+import {editChatCharacterDraft,setChatCharacterDraftStatus} from '../features/character/qianmu-character-chat-draft.js';
 import {migrateQianmuChatStoreV2} from '../qianmu-data-migrations.js';
 
 const owner={namespace:'st-user:fixture',chatKey:'chat-a'},source={kind:'body',chatKey:'chat-a',messageKey:'message-1',revisionId:'revision-1'};

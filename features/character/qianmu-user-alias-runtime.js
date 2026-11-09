@@ -1,6 +1,6 @@
 import {planUserAliases,projectAliasBindings} from './qianmu-user-alias.js';
 import {validateAliasInput,validateAliasTargets,validateAliasPage,validateAliasResult} from './qianmu-user-alias-contract.js';
-import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
+import {comfyLibraryBackupDigest as digest} from '../../qianmu-comfy-library-backup.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'character_archive_alias'});};
 export async function runUserAliasOperation(action,{journal,store,namespace,chatHash,input,guard=async()=>{},resolveTargets,locks=globalThis.navigator?.locks,isCurrent=()=>true}={}){
   validateAliasInput(action,input);

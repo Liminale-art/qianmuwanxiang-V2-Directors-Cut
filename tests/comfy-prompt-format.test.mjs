@@ -9,7 +9,7 @@ import * as contract from '../qianmu-storyboard-contract.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as prompts from '../qianmu-comfy-prompt.js';
 import * as workbench from '../qianmu-comfy-workbench-binding.js';
-import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../qianmu-character-casting.js';
+import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../features/character/qianmu-character-casting.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {routeEnvironment,recipesFixture,namespace} from './helpers/comfy-route-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';

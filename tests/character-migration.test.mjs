@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace,document} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {createCharacterMigration} from '../qianmu-character-migration.js';
-import {createCharacterArchiveSession} from '../qianmu-character-archive-session.js';
-import {characterNativeBytes,emptyCharacterNativeIndex} from '../qianmu-character-native-contract.js';
-import {validateCharacterLibraryBackup} from '../qianmu-character-library-backup.js';
+import {createCharacterMigration} from '../features/character/qianmu-character-migration.js';
+import {createCharacterArchiveSession} from '../features/character/qianmu-character-archive-session.js';
+import {characterNativeBytes,emptyCharacterNativeIndex} from '../features/character/qianmu-character-native-contract.js';
+import {validateCharacterLibraryBackup} from '../features/character/qianmu-character-library-backup.js';
 
 async function fixture(t,options={}){
   const f=await characterNativeFixture(t),packet=legacyPacket(options),old=characterLegacyFixture(t,packet),local=old.createLocal();

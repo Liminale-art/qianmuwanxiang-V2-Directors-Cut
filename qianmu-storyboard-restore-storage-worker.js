@@ -1,6 +1,6 @@
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import { collectRestoreStorage, clearRestoreStorage } from './qianmu-storyboard-restore-storage.js';
-import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';
 
 let started=false,request=0,id='',pending=null;
 const guard=()=>new Promise(resolve=>{pending={request:++request,resolve};self.postMessage({id,guard:request});});
@@ -30,7 +30,7 @@ self.addEventListener('message',async event=>{
       const result=await inspectComfyStorage({namespace:input.namespace,guard,native:comfy});await guard();self.postMessage({id,result});return;
     }
     if(input.action==='characters'){
-      await guard();const {createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');
+      await guard();const {createCharacterArchiveStore}=await import('./features/character/qianmu-character-archive-store.js');
       characters=createCharacterArchiveStore({native:characterWorkerStorageOptions(input.nativeCharacters,{namespace:input.namespace,origin:self.location.origin,guard})});await guard();const result=await characters.storageSummary(input.namespace);await guard();self.postMessage({id,result});return;
     }
     journal=createStoryboardPackageJournal({native});
@@ -39,7 +39,7 @@ self.addEventListener('message',async event=>{
       const {runMappingImport}=await import('./qianmu-mapping-import.js');const result=await runMappingImport(input.action,{...options,input:input.input});await guard();self.postMessage({id,result});return;
     }
     if(input.action.startsWith('user-alias-')){
-      const {runUserAliasOperation}=await import('./qianmu-user-alias-runtime.js'),{createCharacterArchiveStore}=await import('./qianmu-character-archive-store.js');characters=createCharacterArchiveStore({native:characterWorkerStorageOptions(input.nativeCharacters,{namespace:input.namespace,origin:self.location.origin,guard})});
+      const {runUserAliasOperation}=await import('./features/character/qianmu-user-alias-runtime.js'),{createCharacterArchiveStore}=await import('./features/character/qianmu-character-archive-store.js');characters=createCharacterArchiveStore({native:characterWorkerStorageOptions(input.nativeCharacters,{namespace:input.namespace,origin:self.location.origin,guard})});
       const result=await runUserAliasOperation(input.action,{...options,store:characters,chatHash:input.chatHash,input:input.input,resolveTargets:resolveAliasTargets});await guard();self.postMessage({id,result});return;
     }
     if(input.action==='mappings'||input.action.startsWith('mapping-')){

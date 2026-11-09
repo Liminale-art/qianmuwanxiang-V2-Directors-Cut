@@ -4,8 +4,8 @@ import {aliasFixture,namespace,targetKey} from './fixtures/storyboard-user-alias
 import {planBundleUserAliases,inspectBundleUserAliasReceipt,bundleUserAliasPage} from '../qianmu-bundle-user-alias.js';
 import {captureStoryboardSubjectEvidence,storyboardSubjectTargets} from '../qianmu-storyboard-subject-evidence.js';
 import {deriveStoryboardSubjectBindings,compareMappedStoryboardSubjects,createStoryboardSubjectMapReview,inspectStoryboardSubjectMapReview,normalizeStoryboardSubjectMappings,assertSubjectMappingTargetsUnambiguous} from '../qianmu-storyboard-subject-map.js';
-import {planCharacterLibraryRestore,validateCharacterLibraryBackup} from '../qianmu-character-library-backup.js';
-import {selectCharacterBinding} from '../qianmu-character-archive.js';
+import {planCharacterLibraryRestore,validateCharacterLibraryBackup} from '../features/character/qianmu-character-library-backup.js';
+import {selectCharacterBinding} from '../features/character/qianmu-character-archive.js';
 import {comfyLibraryBackupDigest as digest} from '../qianmu-comfy-library-backup.js';
 import {createBundleSubjectMapReview,inspectBundleSubjectMapReview,bundleSubjectMapDetailRows} from '../qianmu-bundle-subject-map.js';
 import {mappingHead,validateMappingDetail} from '../qianmu-storyboard-mapping-contract.js';

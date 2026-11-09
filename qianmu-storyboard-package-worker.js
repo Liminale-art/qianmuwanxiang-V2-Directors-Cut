@@ -1,7 +1,7 @@
 import {createVibeAssetStore} from './qianmu-vibe-asset-store.js?v=1.59.202';
 import {buildStoryboardVibePackage} from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import {validateStoryboardPackageMedia} from './qianmu-storyboard-package-input.js?v=1.59.202';
-import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';
 // Separate worker/connection: long package reads must not queue in front of live encoding receipt writes.
 let started=false,rpc=0,progress=0;const guards=new Map();
 const guard=()=>new Promise(resolve=>{const id=++rpc;guards.set(id,resolve);self.postMessage({guard:id});});

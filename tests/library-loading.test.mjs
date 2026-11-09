@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {renderComfyLibrary,createComfyLibraryController} from '../qianmu-comfy-library-view.js';
 import {renderComfyPools} from '../qianmu-comfy-pool-view.js';
 import {renderCharacterArchive,createCharacterArchiveController} from '../qianmu-character-archive-view.js';
-import {newCharacterArchive} from '../qianmu-character-archive.js';
+import {newCharacterArchive} from '../features/character/qianmu-character-archive.js';
 
 const renderers={workflow:renderComfyLibrary,pool:renderComfyPools,character:renderCharacterArchive};
 const blank=()=>({rows:[],bindings:[],subjects:[],search:'',shown:{},collapsed:{},busy:false,error:''});

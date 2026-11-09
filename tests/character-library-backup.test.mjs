@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import * as codec from '../qianmu-character-library-backup.js';
-import * as files from '../qianmu-character-backup-file.js';
-import { createCharacterArchiveStore } from '../qianmu-character-archive-store.js';
-import { newCharacterArchive, normalizeCharacterArchive, selectCharacterBinding } from '../qianmu-character-archive.js';
+import * as codec from '../features/character/qianmu-character-library-backup.js';
+import * as files from '../features/character/qianmu-character-backup-file.js';
+import { createCharacterArchiveStore } from '../features/character/qianmu-character-archive-store.js';
+import { newCharacterArchive, normalizeCharacterArchive, selectCharacterBinding } from '../features/character/qianmu-character-archive.js';
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { COMFY_LIBRARY_BACKUP_SCHEMA } from '../qianmu-comfy-library-backup.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';
@@ -107,13 +107,13 @@ test('complete encoded-size preflight prevents downloading a library that cannot
 });
 test('resource export checks cancellation and never writes a role, uploads an image or starts a generation', async () => {
   let reads = 0; await assert.rejects(() => files.buildCharacterBackupFile(packet(), { readImages: async items => { reads++; return imageReader(items); }, guard: async () => { throw Error('cancel'); } }), /cancel/); assert.equal(reads, 0);
-  const module = await readFile(new URL('../qianmu-character-backup-file.js', import.meta.url), 'utf8'); assert.doesNotMatch(module, /\.save\(|\.generate\(|\.restoreBackup\(/);
+  const module = await readFile(new URL('../features/character/qianmu-character-backup-file.js', import.meta.url), 'utf8'); assert.doesNotMatch(module, /\.save\(|\.generate\(|\.restoreBackup\(/);
 });
 test('list-only backup control and staged restore boundary are explicit, with both codecs in the release allowlist', async () => {
   const view = { rows: [], bindings: [], subjects: [], chatKey: '', search: '', collapsed: {}, shown: {} };
   assert.match(renderCharacterArchive(view), /data-archive-action="backup-library"/);
   assert.doesNotMatch(renderCharacterArchive({ ...view, draft: { document: row().document, id: 'alice' } }), /data-archive-action="backup-library"/);
-  const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8')); for (const file of ['qianmu-character-library-backup.js', 'qianmu-character-backup-file.js']) assert.ok(release.files.includes(file));
+  const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8')); for (const file of ['features/character/qianmu-character-library-backup.js', 'features/character/qianmu-character-backup-file.js']) assert.ok(release.files.includes(file));
 });
 test('native numeric-code storage failures reject without losing the abort handler to a second TypeError', async () => {
   let aborted = 0; const request = value => { const result = {}; queueMicrotask(() => { result.result = value; result.onsuccess?.(); }); return result; };

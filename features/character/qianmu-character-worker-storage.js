@@ -1,4 +1,4 @@
-import {captureStAccountStorageWorkerContext, isStAccountStorageConfigured, createStAccountStorage} from './qianmu-st-account-storage.js';
+import {captureStAccountStorageWorkerContext, isStAccountStorageConfigured, createStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {characterNativeAccount, characterNativeExact, characterNativeFail as fail} from './qianmu-character-native-contract.js';
 
 export async function captureCharacterWorkerStorage(namespace, guard) {

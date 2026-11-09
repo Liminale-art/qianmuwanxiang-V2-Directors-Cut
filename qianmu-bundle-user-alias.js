@@ -1,6 +1,6 @@
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
-import {projectAliasBindings,selectUserAliasBindings} from './qianmu-user-alias-bindings.js';
-import {validateCharacterLibraryBackup} from './qianmu-character-library-backup.js';
+import {canonicalUserSubjectKey} from './features/character/qianmu-user-identity.js?v=1.59.202';
+import {projectAliasBindings,selectUserAliasBindings} from './features/character/qianmu-user-alias-bindings.js';
+import {validateCharacterLibraryBackup} from './features/character/qianmu-character-library-backup.js';
 import {inspectStoryboardSubjectEvidence,SUBJECT_EVIDENCE_SCHEMA} from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 import {vibeDigest} from './qianmu-vibe-file.js';

@@ -9,7 +9,7 @@ import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createStoryboardPackageJournal} from '../qianmu-storyboard-package-journal.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 
 // Real native-file protocol/client; deterministic in-memory ST HTTP transport.
 // Independent clients are not a claim of real two-device/browser acceptance.

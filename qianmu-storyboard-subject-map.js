@@ -1,5 +1,5 @@
 import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
-import { characterBackupBindingKey, validateCharacterLibraryBackup } from './qianmu-character-library-backup.js';
+import { characterBackupBindingKey, validateCharacterLibraryBackup } from './features/character/qianmu-character-library-backup.js';
 import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 
 export const SUBJECT_MAP_SCHEMA = 'qianmu.storyboard.subject-map.v1';
@@ -101,7 +101,7 @@ export async function createStoryboardSubjectMapReview({namespace,chatHash,sourc
 }
 export async function inspectStoryboardSubjectMapReview(value) {
   if(value?.schema==='qianmu.storyboard.subject-map.v3')return (await import('./qianmu-bundle-subject-map.js')).inspectBundleSubjectMapReview(value);
-  if(value?.schema==='qianmu.storyboard.subject-map.v2')return (await import('./qianmu-user-alias.js')).inspectUserAliasReview(value);
+  if(value?.schema==='qianmu.storyboard.subject-map.v2')return (await import('./features/character/qianmu-user-alias.js')).inspectUserAliasReview(value);
   if (!exact(value,['schema','scope','namespace','chatHash','sourceDigest','environmentDigest','rows','lineage','digest']) || value.schema !== SUBJECT_MAP_SCHEMA || value.scope !== 'declared-binding-mappings'
     || typeof value.namespace !== 'string' || !/^st-user:.+/.test(value.namespace) || value.namespace.length > 512 || /[\u0000-\u001f\u007f]/.test(value.namespace)
     || !hash(value.chatHash) || !hash(value.sourceDigest) || !hash(value.digest) || value.environmentDigest !== null && !hash(value.environmentDigest)

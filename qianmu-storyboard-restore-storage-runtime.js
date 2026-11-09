@@ -1,13 +1,13 @@
 import { validateRestoreStorageSummary } from './qianmu-storyboard-restore-storage.js';
-import { validateCharacterStorageSummary } from './qianmu-character-storage.js?v=1.59.202';
+import { validateCharacterStorageSummary } from './features/character/qianmu-character-storage.js?v=1.59.202';
 import { validateComfyStorageSummary } from './qianmu-comfy-storage-accounting.js';
 import {validateMappingQuery,validateMappingSelection,validateMappingStorage,validateMappingList,validateMappingDetail,validateMappingExport} from './qianmu-storyboard-mapping-contract.js';
-import {aliasHash,validateAliasInput,validateAliasTargets,validateAliasPage,validateAliasResult} from './qianmu-user-alias-contract.js';
-import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
+import {aliasHash,validateAliasInput,validateAliasTargets,validateAliasPage,validateAliasResult} from './features/character/qianmu-user-alias-contract.js';
+import {canonicalUserSubjectKey} from './features/character/qianmu-user-identity.js?v=1.59.202';
 import {validateBundleCarrierInventory} from './qianmu-bundle-carrier-storage-contract.js';
 import {isMappingImport,validateMappingImportInput,validateMappingImportPreview,validateMappingImportResult} from './qianmu-mapping-import-contract.js';
 import * as nativeStorage from './qianmu-st-account-storage.js';
-import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {captureCharacterWorkerStorage} from './features/character/qianmu-character-worker-storage.js';
 import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_restore_storage_runtime',submissionState:'not_submitted'});
 

@@ -1,5 +1,5 @@
 import {canonicalUserSubjectKey} from './qianmu-user-identity.js?v=1.59.202';
-import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
+import {comfyLibraryBackupDigest as digest} from '../../qianmu-comfy-library-backup.js';
 import {validateAliasInput} from './qianmu-user-alias-contract.js';
 
 const fields=['category','subjectKey','scope','chatKey','archiveId','revision','updatedAt'];

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createWorldPromptAttempt} from '../qianmu-world-prompt-diagnostics.js';
+import {createWorldPromptAttempt} from '../features/character/qianmu-world-prompt-diagnostics.js';
 import * as core from '../qianmu-storyboard.js';
 import {logFixture} from './helpers/storyboard-log-fixture.mjs';
 const input={messages:[{role:'user',content:'one world image'}],formats:['tags'],schema:{type:'object'},schemaId:'world',maxTokens:1000};

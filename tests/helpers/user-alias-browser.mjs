@@ -1,9 +1,9 @@
 // Actual USER alias view/coordinator/receipt validation; all persistence is memory-only.
 export async function installUserAliasFixture({ library, namespace, chatHash }) {
-    const { openUserAliasReview } = await import('/qianmu-user-alias-view.js');
-    const { runUserAliasOperation } = await import('/qianmu-user-alias-runtime.js');
-    const { planUserAliases, inspectUserAliasReview } = await import('/qianmu-user-alias.js');
-    const { inspectUserAliasTargets } = await import('/qianmu-user-identity.js');
+    const { openUserAliasReview } = await import('/features/character/qianmu-user-alias-view.js');
+    const { runUserAliasOperation } = await import('/features/character/qianmu-user-alias-runtime.js');
+    const { planUserAliases, inspectUserAliasReview } = await import('/features/character/qianmu-user-alias.js');
+    const { inspectUserAliasTargets } = await import('/features/character/qianmu-user-identity.js');
     const { mappingBytes } = await import('/qianmu-storyboard-mapping-contract.js');
     const { createQianmuAppearanceSession } = await import('/qianmu-appearance-session.js');
     const { updateAppearancePreferences } = await import('/qianmu-appearance-settings.js');

@@ -10,8 +10,8 @@ import { validateComfyLibraryBackup, comfyLibraryBackupDigest as digest } from '
 import { normalizeComfyLibraryDocument } from './qianmu-comfy-library.js';
 import { validateComfyPoolBackup } from './qianmu-comfy-pool-backup.js';
 import { verifyComfyPoolDependencies } from './qianmu-comfy-resource-backup.js';
-import { validateCharacterLibraryBackup } from './qianmu-character-library-backup.js';
-import { verifyCharacterBackupWorkflowDependencies } from './qianmu-character-backup-file.js';
+import { validateCharacterLibraryBackup } from './features/character/qianmu-character-library-backup.js';
+import { verifyCharacterBackupWorkflowDependencies } from './features/character/qianmu-character-backup-file.js';
 import { normalizeComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { readStaticReferenceBlobs, comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
@@ -23,7 +23,7 @@ import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-ma
 import {captureBundleCarriers,inspectBundleCarriers} from './qianmu-bundle-carriers.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
-import {captureCharacterSources,inspectCharacterSources} from './qianmu-character-source-backup.js';
+import {captureCharacterSources,inspectCharacterSources} from './features/character/qianmu-character-source-backup.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_bundle_resources', submissionState: 'not_submitted' }); };
 const object = value => value !== null && typeof value === 'object';

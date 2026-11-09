@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as draft from '../qianmu-character-chat-draft.js';
+import * as draft from '../features/character/qianmu-character-chat-draft.js';
 import {createStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {QIANMU_NARRATIVE_CONTEXT_SCHEMA} from '../qianmu-narrative-context.js';
 

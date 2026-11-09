@@ -1,6 +1,6 @@
 import {normalizeStoryboardShotSpec} from '../../qianmu-storyboard.js';
 import {comfyWorkflowReferenceHash} from '../../qianmu-comfy-references.js';
-import {CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
+import {CHARACTER_CASTING_SCHEMA} from '../../features/character/qianmu-character-casting.js';
 const node=(class_type,inputs)=>({class_type,inputs});
 export const graph={
   base:node('CheckpointLoaderSimple',{ckpt_name:'model.safetensors'}),

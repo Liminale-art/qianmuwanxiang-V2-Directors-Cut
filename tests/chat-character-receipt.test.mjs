@@ -9,7 +9,7 @@ import {createChatCharacterReceiptService} from '../server/qianmu-chat-character
 import {createChatCharacterReceiptClient,createCurrentChatCharacterReceiptClient} from '../features/chat/qianmu-chat-character-receipt-client.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterReceiptRequest,
   chatCharacterCollectionReceiptText,chatCharacterReceiptResponse,chatCharacterReceiptErrorPayload} from '../features/chat/qianmu-chat-character-receipt.js';
-import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
+import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../features/character/qianmu-character-chat-batch.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {init,exit} from '../server-plugin.js';
 import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient,createChatGalleryRecordClient,createChatGalleryDetailsClient} from '../features/chat/qianmu-chat-character-receipt-client.js';

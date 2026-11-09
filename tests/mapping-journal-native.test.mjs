@@ -10,9 +10,9 @@ import {mappingHead} from '../qianmu-storyboard-mapping-contract.js';
 import {captureBundleMappings} from '../qianmu-bundle-mappings.js';
 import {runMappingRegistry} from '../qianmu-storyboard-mapping-registry.js';
 import {aliasFixture} from './fixtures/storyboard-user-aliases.mjs';
-import {createCharacterNativeStore} from '../qianmu-character-native-store.js';
-import {characterLibraryBackupDigest} from '../qianmu-character-library-backup.js';
-import {runUserAliasOperation} from '../qianmu-user-alias-runtime.js';
+import {createCharacterNativeStore} from '../features/character/qianmu-character-native-store.js';
+import {characterLibraryBackupDigest} from '../features/character/qianmu-character-library-backup.js';
+import {runUserAliasOperation} from '../features/character/qianmu-user-alias-runtime.js';
 
 async function fixture(t){
   const f=await characterNativeFixture(t),rows=await mappingReceiptsFixture({namespace});

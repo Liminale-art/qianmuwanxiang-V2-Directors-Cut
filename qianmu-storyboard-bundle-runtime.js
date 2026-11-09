@@ -2,7 +2,7 @@ import { projectStoryboardChatMessages } from './qianmu-storyboard-chat-evidence
 import { projectStoryboardSubjects, inspectStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import { validateBundleMappingTransportSummary } from './qianmu-bundle-mapping-contract.js';
 import {validateBundleCarriersTransportSummary} from './qianmu-bundle-carriers-contract.js';
-import {captureCharacterWorkerStorage} from './qianmu-character-worker-storage.js';
+import {captureCharacterWorkerStorage} from './features/character/qianmu-character-worker-storage.js';
 import {createVerifiedProgressWatch} from './qianmu-verified-progress-watch.js';
 let active = null;
 const failure = message => Object.assign(new Error(message), { code: 'storyboard_bundle_runtime', submissionState: 'not_submitted' });

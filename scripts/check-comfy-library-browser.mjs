@@ -232,8 +232,8 @@ try{
   }));
   referenceImage=Buffer.from(await page.evaluate(async legacy=>{
     poolController.dispose();store.close();
-    const {newCharacterArchive}=await import('/qianmu-character-archive.js');
-    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js');
+    const {newCharacterArchive}=await import('/features/character/qianmu-character-archive.js');
+    const {createCharacterArchiveStore}=await import('/features/character/qianmu-character-archive-store.js');
     const {createCharacterArchiveController}=await import('/qianmu-character-archive-view.js');
     const {applyQianmuIcons}=await import('/qianmu-icon-renderer.js');
     const canvas=document.createElement('canvas');canvas.width=80;canvas.height=100;const ctx=canvas.getContext('2d');ctx.fillStyle='#91baab';ctx.fillRect(0,0,80,100);

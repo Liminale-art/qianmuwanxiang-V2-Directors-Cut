@@ -1,5 +1,5 @@
-import {newCharacterArchive,normalizeCharacterArchive} from '../../qianmu-character-archive.js';
-import {CHARACTER_LIBRARY_BACKUP_SCHEMA} from '../../qianmu-character-library-backup.js';
+import {newCharacterArchive,normalizeCharacterArchive} from '../../features/character/qianmu-character-archive.js';
+import {CHARACTER_LIBRARY_BACKUP_SCHEMA} from '../../features/character/qianmu-character-library-backup.js';
 export const namespace='st-user:user-alias',chatKey='chat-one',chatHash='e'.repeat(64),targetKey='user:/User Avatars/A%20B.png';
 export function aliasFixture({extra=0}={}){
   const archives=['alice','bob'].map(id=>{const document=normalizeCharacterArchive({...newCharacterArchive('user'),name:id,imagegen:{appearance:'private appearance',negative:'private negative'}});

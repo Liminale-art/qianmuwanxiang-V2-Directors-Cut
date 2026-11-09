@@ -5,7 +5,7 @@ import { createStoryboardBundleRestoreSession } from '../qianmu-storyboard-bundl
 import { createStoryboardBundleConfiguration } from '../qianmu-storyboard-bundle-configuration.js';
 import { planComfyLibraryRestore, comfyLibraryBackupDigest as digest } from '../qianmu-comfy-library-backup.js';
 import { planComfyPoolRestore } from '../qianmu-comfy-pool-backup.js';
-import { planCharacterLibraryRestore } from '../qianmu-character-library-backup.js';
+import { planCharacterLibraryRestore } from '../features/character/qianmu-character-library-backup.js';
 import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-journal.js';
 import { createStoryboardDefaults } from '../qianmu-storyboard.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
@@ -25,7 +25,7 @@ import {createNativeResourceJournal} from '../qianmu-resource-journal-native.js'
 import {createNativeMutationJournal} from '../qianmu-mutation-journal-native.js';
 import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
 import {createNativeBundleCarrierStore} from '../qianmu-bundle-carrier-native-store.js';
-import {emptyCharacterSources,characterSourceLibrary} from '../qianmu-character-source-backup.js';
+import {emptyCharacterSources,characterSourceLibrary} from '../features/character/qianmu-character-source-backup.js';
 
 const clone = structuredClone;
 async function fixture({ legacy = false, sourceIdentity = null, chatEvidence = false, subjectEvidence = false, sourceAliases = false, history = false, carriers=false,characterSources=null,nativeCharacters=null,nativeJournal=null, sourceText = 'original text', missingAnchor = false } = {}) {

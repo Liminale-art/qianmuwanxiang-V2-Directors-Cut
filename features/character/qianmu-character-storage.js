@@ -38,6 +38,6 @@ export async function collectCharacterStorage({resolveNamespace,valid=()=>true,c
   let namespace;
   const guard=async()=>{if(!valid())fail('储存页面已变化');const current=await resolveNamespace();if(!valid()||!account(current)||namespace&&namespace!==current)fail('储存账户已变化');namespace=current;};
   await guard();let result,error;
-  try{const run=call||(await import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.414')).runRestoreStorage;await guard();result=validateCharacterStorageSummary(await run('characters',{namespace,guard}),namespace);}catch(cause){error=cause;}
+  try{const run=call||(await import('../../qianmu-storyboard-restore-storage-runtime.js?v=1.59.414')).runRestoreStorage;await guard();result=validateCharacterStorageSummary(await run('characters',{namespace,guard}),namespace);}catch(cause){error=cause;}
   await guard();return error?{version:1,status:'unavailable',namespace,bytes:null,error:String(error?.message||'角色库暂不可读取')}:result;
 }

@@ -1,4 +1,4 @@
-import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
+import {createConfiguredStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {createCharacterNativeStore,characterNativeOverview} from './qianmu-character-native-store.js';
 import {CHARACTER_NATIVE_SLOT, characterNativeAccount, emptyCharacterNativeIndex, validateCharacterNativeIndex, characterNativeFail as fail} from './qianmu-character-native-contract.js';
 import {validateCharacterStorageSummary} from './qianmu-character-storage.js?v=1.59.202';

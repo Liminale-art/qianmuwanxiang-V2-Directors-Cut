@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildWorldSourceIndex} from '../qianmu-world-source.js';
-import {WORLD_AUTOMATIC_APPROVAL_SCHEMA as schema,normalizeWorldAutomaticApproval as normalize,worldAutomaticApprovalMatches as matches} from '../qianmu-world-automatic-approval.js';
+import {buildWorldSourceIndex} from '../features/character/qianmu-world-source.js';
+import {WORLD_AUTOMATIC_APPROVAL_SCHEMA as schema,normalizeWorldAutomaticApproval as normalize,worldAutomaticApprovalMatches as matches} from '../features/character/qianmu-world-automatic-approval.js';
 import {normalizeQianmuProductionPacket} from '../qianmu-production-packet.js';
 import {adaptProductionPacketToNarrativeLedgerEntry} from '../qianmu-narrative-ledger.js';
 import {scoreNarrativeDirectorCandidate} from '../qianmu-director-candidate.js';

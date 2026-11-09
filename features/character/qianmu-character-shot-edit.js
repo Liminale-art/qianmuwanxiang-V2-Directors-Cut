@@ -1,9 +1,9 @@
 // Explicit per-image edits. Never read today's library during redraw or automatic generation.
 import {normalizeStoryboardShotSpec,normalizeStoryboardCharacterVisualState,compileStoryboardPrompt,getStoryboardCapabilities,
-  resolveStoryboardProfileBinding,STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS,synchronizeStoryboardCaptionBase} from './qianmu-storyboard.js?v=1.59.440';
+  resolveStoryboardProfileBinding,STORYBOARD_SPATIAL_REGIONS,STORYBOARD_CROPS,synchronizeStoryboardCaptionBase} from '../../qianmu-storyboard.js?v=1.59.440';
 import {assertCharacterCastingSnapshots,normalizeCharacterCastingSnapshot} from './qianmu-character-casting.js?v=1.59.202';
 import {normalizeCharacterReferenceSnapshot,planCharacterReference} from './qianmu-character-reference.js?v=1.59.202';
-import {normalizeComfyCharacterSnapshot} from './qianmu-comfy-character-contract.js';
+import {normalizeComfyCharacterSnapshot} from '../../qianmu-comfy-character-contract.js';
 import {normalizeCharacterArchive} from './qianmu-character-archive.js';
 const clone=value=>JSON.parse(JSON.stringify(value));
 const fail=message=>{throw Object.assign(new Error(message),{code:'character_shot_edit'});};
@@ -125,7 +125,7 @@ export async function prepareCharacterShotEdit(snapshot,characters,{namespace,re
     if(reference?.status==='selected'&&reference.namespace!==namespace)fail('参考图属于另一 ST 账户');next.payload.characterReference=reference;
   }
   if(next.source==='comfy'&&next.profile.comfyCharacterEnabled===true){
-    const runtime=await import('./qianmu-comfy-character-plan.js?v=1.59.440');await guard();
+    const runtime=await import('../../qianmu-comfy-character-plan.js?v=1.59.440');await guard();
     next.payload.parameters.workflow=JSON.parse(next.profile.comfyWorkflow);delete next.payload.comfyCharacterPlan;
     // Validate the new frozen cast locally. Actual remote readiness/admission still happens on generation.
     await runtime.prepareComfyCharacterJob({...next,automatic:false},{namespace,guard});await guard();

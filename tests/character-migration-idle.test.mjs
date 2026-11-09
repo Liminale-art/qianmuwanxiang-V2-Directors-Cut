@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {requestCharacterMigration,getCharacterMigrationStatus} from '../qianmu-character-migration-idle.js';
-import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
+import {requestCharacterMigration,getCharacterMigrationStatus} from '../features/character/qianmu-character-migration-idle.js';
+import {createCharacterArchiveStore} from '../features/character/qianmu-character-archive-store.js';
 import {readFile} from 'node:fs/promises';
 
 function browser(t,{expose=false}={}){
@@ -22,8 +22,8 @@ async function setup(t){const f=await characterNativeFixture(t),old=characterLeg
   const request=()=>requestCharacterMigration({...b,namespace,createLocal:old.createLocal,createStorage:f.createStorage});return {f,old,b,request};}
 
 test('role idle scheduling uses the shared scheduler without importing retired modules',async()=>{
-  const source=await readFile(new URL('../qianmu-character-migration-idle.js',import.meta.url),'utf8');
-  assert.match(source,/from '\.\/qianmu-idle-migration-scheduler\.js'/);assert.doesNotMatch(source,/from '\.\/qianmu-text-collection/);
+  const source=await readFile(new URL('../features/character/qianmu-character-migration-idle.js',import.meta.url),'utf8');
+  assert.match(source,/from '\.\.\/\.\.\/qianmu-idle-migration-scheduler\.js'/);assert.doesNotMatch(source,/from '[./]*qianmu-text-collection/);
   const {scheduleCollectionMigrationSteps}=await import('../qianmu-idle-migration-scheduler.js');
   assert.equal(typeof scheduleCollectionMigrationSteps,'function');
   const scheduler=await readFile(new URL('../qianmu-idle-migration-scheduler.js',import.meta.url),'utf8');

@@ -1,9 +1,9 @@
 import { validateCharacterLibraryBackup } from './qianmu-character-library-backup.js';
-import { validateComfyLibraryBackup } from './qianmu-comfy-library-backup.js';
-import { readStaticReferenceImages, comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
-import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
-import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { validateComfyLibraryBackup } from '../../qianmu-comfy-library-backup.js';
+import { readStaticReferenceImages, comfyWorkflowReferenceHash } from '../../qianmu-comfy-references.js?v=1.59.202';
+import { comfyReferenceStillMime } from '../../qianmu-comfy-results.js?v=1.59.440';
+import { parseStrictStoryboardJson } from '../../qianmu-storyboard-package-input.js?v=1.59.202';
+import { vibeDigest } from '../../qianmu-vibe-file.js';
 import {validateCharacterSources,inspectCharacterSources} from './qianmu-character-source-backup.js';
 
 export const CHARACTER_BACKUP_FILE_SCHEMA = 'qianmu.character.resources.v1';

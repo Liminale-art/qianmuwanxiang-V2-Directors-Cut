@@ -4,8 +4,8 @@ import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../.
 import { COMFY_LIBRARY_BACKUP_SCHEMA } from '../../qianmu-comfy-library-backup.js';
 import { COMFY_POOL_BACKUP_SCHEMA } from '../../qianmu-comfy-pool-backup.js';
 import { normalizeComfyAutoPool, COMFY_SELECTION_SCHEMA } from '../../qianmu-comfy-selection.js';
-import { normalizeCharacterArchive, newCharacterArchive } from '../../qianmu-character-archive.js';
-import { CHARACTER_LIBRARY_BACKUP_SCHEMA } from '../../qianmu-character-library-backup.js';
+import { normalizeCharacterArchive, newCharacterArchive } from '../../features/character/qianmu-character-archive.js';
+import { CHARACTER_LIBRARY_BACKUP_SCHEMA } from '../../features/character/qianmu-character-library-backup.js';
 import { comfyWorkflowReferenceHash } from '../../qianmu-comfy-references.js';
 import { vibeDigest } from '../../qianmu-vibe-file.js';
 

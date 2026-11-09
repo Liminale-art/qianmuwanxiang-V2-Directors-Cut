@@ -43,7 +43,7 @@ export function projectStoryboardSubjects(rows) {
   }).sort(order);
 }
 export async function readStoryboardBoundSubjects(namespace) {
-  const { createCharacterArchiveStore } = await import('./qianmu-character-archive-store.js');
+  const { createCharacterArchiveStore } = await import('./features/character/qianmu-character-archive-store.js');
   const store = createCharacterArchiveStore();
   try { return storyboardSubjectTargets(await store.bindings(namespace)); } finally { store.close(); }
 }

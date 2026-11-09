@@ -8,7 +8,7 @@ import {receiptInput} from './helpers/vibe-receipt-fixture.mjs';
 import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
 import {vibeFileError} from '../qianmu-vibe-file.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js';
 import {validateStoryboardPackageMedia} from '../qianmu-storyboard-package-input.js';
 import {callVibeAsset,closeVibeAssetRuntime} from '../qianmu-vibe-assets.js';

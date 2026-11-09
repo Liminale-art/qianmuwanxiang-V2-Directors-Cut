@@ -4,7 +4,7 @@ import {carrierLegacyFixture} from './helpers/carrier-legacy-fixture.mjs';
 import {carrierFixture,namespace} from './fixtures/bundle-carriers.mjs';
 import {createBundleCarrierStore} from '../qianmu-bundle-carrier-store.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 const origin='https://st.fixture.invalid';
 async function fixture(t){
   const f=await characterNativeFixture(t,{account:namespace}),source=await carrierFixture(),old=carrierLegacyFixture(source);

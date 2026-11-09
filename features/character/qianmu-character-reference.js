@@ -1,5 +1,5 @@
 // Engine-specific reference policy. No archive lookup, image decode or network at import time.
-import {normalizeStaticReferenceReceipt} from './qianmu-comfy-reference-contract.js';
+import {normalizeStaticReferenceReceipt} from '../../qianmu-comfy-reference-contract.js';
 export const characterReferenceError = message => Object.assign(new Error(message),{code:'character_reference',submissionState:'not_submitted',retryable:false});
 const fail = message => { throw characterReferenceError(message); };
 export function normalizeCharacterReferenceSettings(value) {
@@ -62,7 +62,7 @@ export async function readCharacterReferenceImages(plan,{namespace,guard=async()
   const saved = normalizeCharacterReferenceSnapshot(plan);
   if (namespace !== saved.namespace) fail('参考图属于另一 ST 账户，请在当前账户重新选择');
   await guard();
-  const reader = read || (await import('./qianmu-comfy-references.js?v=1.59.202')).readStaticReferenceImages;
+  const reader = read || (await import('../../qianmu-comfy-references.js?v=1.59.202')).readStaticReferenceImages;
   await guard();
   const images = await reader([saved.reference],{guard,fetchImpl});
   await guard();

@@ -16,7 +16,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
   await page.evaluate(async source=>{
     const [utils,storyboard,info,characters,appearance,preferences,icons,membership,chatSource,shotReader,drafts]=await Promise.all([
       import('/qianmu-storyboard-utils.js'),import('/qianmu-storyboard.js'),import('/qianmu-image-info-view.js'),
-      import('/qianmu-character-shot-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),
+      import('/features/character/qianmu-character-shot-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),
       import('/qianmu-icon-renderer.js'),import('/qianmu-gallery-membership.js'),import('/qianmu-current-chat-source.js'),
       import('/qianmu-gallery-shot-reader.js'),import('/features/video/qianmu-video-draft.js')]);
     Object.assign(window,utils,storyboard,info,icons,membership,chatSource,shotReader);

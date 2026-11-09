@@ -14,8 +14,8 @@ try{
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async()=>{
     // The chat-draft promotion module was retired; the fixed-ID archive store and backup paths below remain live.
-    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js'),
-      {createChatCharacterDraft}=await import('/qianmu-character-chat-draft.js'),{characterLibraryBackupDigest,validateCharacterLibraryBackup}=await import('/qianmu-character-library-backup.js');
+    const {createCharacterArchiveStore}=await import('/features/character/qianmu-character-archive-store.js'),
+      {createChatCharacterDraft}=await import('/features/character/qianmu-character-chat-draft.js'),{characterLibraryBackupDigest,validateCharacterLibraryBackup}=await import('/features/character/qianmu-character-library-backup.js');
     const checks=[],check=(name,condition)=>{if(!condition)throw Error(name);checks.push(name);};
     const owner={namespace:'st-user:alice',chatKey:'Chat A'},draft=createChatCharacterDraft({owner,id:'12345678-1234-4234-8234-123456789abc',
       source:{kind:'body',chatKey:owner.chatKey,messageKey:'m1',revisionId:'r1',characterId:'C1'},character:{id:'C1',name:'Stranger',identity:['silver hair']}});

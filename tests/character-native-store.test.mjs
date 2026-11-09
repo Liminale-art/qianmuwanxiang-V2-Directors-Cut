@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {characterNativeFixture, namespace, document} from './helpers/character-native-fixture.mjs';
-import {createCharacterNativeStore} from '../qianmu-character-native-store.js';
-import {createCharacterNativeOriginals, validateCharacterNativeIndex, characterNativeBackup, CHARACTER_NATIVE_SLOT} from '../qianmu-character-native-contract.js';
-import {characterLibraryBackupDigest, characterBackupBindingKey} from '../qianmu-character-library-backup.js';
-import {validateCharacterStorageSummary} from '../qianmu-character-storage.js';
-import {selectCharacterBinding} from '../qianmu-character-archive.js';
-import {planUserAliases} from '../qianmu-user-alias.js';
-import {inspectUserAliasTargets} from '../qianmu-user-identity.js';
+import {createCharacterNativeStore} from '../features/character/qianmu-character-native-store.js';
+import {createCharacterNativeOriginals, validateCharacterNativeIndex, characterNativeBackup, CHARACTER_NATIVE_SLOT} from '../features/character/qianmu-character-native-contract.js';
+import {characterLibraryBackupDigest, characterBackupBindingKey} from '../features/character/qianmu-character-library-backup.js';
+import {validateCharacterStorageSummary} from '../features/character/qianmu-character-storage.js';
+import {selectCharacterBinding} from '../features/character/qianmu-character-archive.js';
+import {planUserAliases} from '../features/character/qianmu-user-alias.js';
+import {inspectUserAliasTargets} from '../features/character/qianmu-user-identity.js';
 import {aliasFixture, namespace as aliasNamespace, chatHash} from './fixtures/storyboard-user-aliases.mjs';
 
 const save = (store, name = 'Alice', category = 'char') => store.save(namespace, {document: document(name, category)});
@@ -293,8 +293,8 @@ test('explicit no-op restore keeps the native directory revision and performs no
 });
 
 test('native selection is centralized at the shared archive factory rather than only the panel', async () => {
-  const store = await readFile(new URL('../qianmu-character-archive-store.js', import.meta.url), 'utf8');
+  const store = await readFile(new URL('../features/character/qianmu-character-archive-store.js', import.meta.url), 'utf8');
   assert.match(store, /createCharacterArchiveSession/); assert.match(store, /createLocalCharacterArchiveStore/);
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  for (const file of ['qianmu-character-native-store.js', 'qianmu-character-native-contract.js']) assert.ok(release.files.includes(file));
+  for (const file of ['features/character/qianmu-character-native-store.js', 'features/character/qianmu-character-native-contract.js']) assert.ok(release.files.includes(file));
 });

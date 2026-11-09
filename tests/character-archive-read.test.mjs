@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCharacterArchiveStore} from '../qianmu-character-archive-store.js';
-import {newCharacterArchive,normalizeCharacterArchive} from '../qianmu-character-archive.js';
+import {createCharacterArchiveStore} from '../features/character/qianmu-character-archive-store.js';
+import {newCharacterArchive,normalizeCharacterArchive} from '../features/character/qianmu-character-archive.js';
 
 const namespace='st-user:fixture',id='alice',key=JSON.stringify([namespace,id]);
 const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).byteLength;

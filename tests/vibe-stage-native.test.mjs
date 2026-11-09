@@ -10,7 +10,7 @@ import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js
 import {createVibeAssetStore} from '../qianmu-vibe-asset-store.js';
 import {collectRestoreStorage,clearRestoreStorage} from '../qianmu-storyboard-restore-storage.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {vibeLegacyFixture,vibeInput} from './helpers/vibe-legacy-fixture.mjs';

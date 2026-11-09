@@ -9,7 +9,7 @@ import {characterNativeFixture,namespace} from './helpers/character-native-fixtu
 import {mappingLegacyFixture} from './helpers/mapping-legacy-fixture.mjs';
 import {collectRestoreStorage,clearRestoreStorage} from '../qianmu-storyboard-restore-storage.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 
 const descriptor=(kind='characters',source='a')=>({namespace,kind,sourceDigest:source.repeat(64),planDigest:'b'.repeat(64),...(kind==='bundle'?{chatHash:'c'.repeat(64),environmentDigest:'d'.repeat(64),subjectMappingDigest:'e'.repeat(64)}:{})});
 function local(row=null){return {row:structuredClone(row),async loadResource(ns,kind='characters'){assert.equal(ns,namespace);return this.row?.kind===kind?structuredClone(this.row):null;},

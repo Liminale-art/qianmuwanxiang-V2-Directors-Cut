@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {createLocalCharacterArchiveStore} from '../../qianmu-character-archive-store.js';
-import {characterNativeBackup,characterNativeBytes} from '../../qianmu-character-native-contract.js';
+import {createLocalCharacterArchiveStore} from '../../features/character/qianmu-character-archive-store.js';
+import {characterNativeBackup,characterNativeBytes} from '../../features/character/qianmu-character-native-contract.js';
 import {namespace,document} from './character-native-fixture.mjs';
 
 export function legacyPacket({optional=true,count=1}={}) {

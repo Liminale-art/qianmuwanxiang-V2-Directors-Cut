@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as world from '../qianmu-world-shot.js';
-import {prepareAutomaticWorldShot} from '../qianmu-world-automatic.js';
-import {worldGalleryKeywords} from '../qianmu-world-gallery-keywords.js';
+import {prepareAutomaticWorldShot} from '../features/character/qianmu-world-automatic.js';
+import {worldGalleryKeywords} from '../features/character/qianmu-world-gallery-keywords.js';
 import {createStoryboardDefaults,normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 const vocabulary=['庭院','宁静','相伴'];
 const shot=()=>normalizeStoryboardShotSpec({id:'world-1',subject:'garden',promptAtoms:{global:['garden, soft light']},productionContext:{packetId:'world-a'}});

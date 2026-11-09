@@ -1,7 +1,7 @@
 // 千幕·共享片场制片包。纯数据适配器：不读写 DOM、设置、聊天元数据或媒体二进制。
-import { normalizeWorldSource } from './qianmu-world-source.js';
+import { normalizeWorldSource } from './features/character/qianmu-world-source.js';
 import { narrativeContextField, narrativeContextKey } from './qianmu-narrative-context.js';
-export { buildWorldSourceIndex, worldSourceKey, indexWorldMedia } from './qianmu-world-source.js';
+export { buildWorldSourceIndex, worldSourceKey, indexWorldMedia } from './features/character/qianmu-world-source.js';
 export const QIANMU_PRODUCTION_PACKET_SCHEMA = 'qianmu.production.packet.v1';
 export const QIANMU_PRODUCTION_TRACKS = Object.freeze(['main_camera', 'second_camera']);
 export const QIANMU_CANON_LEVELS = Object.freeze(['canon', 'director', 'draft']);

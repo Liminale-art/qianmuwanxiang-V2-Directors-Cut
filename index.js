@@ -427,9 +427,9 @@ const featureRuntime = createFeatureRuntime({
   storyboardRestoreStorage: { label: '分镜恢复记录空间', load: () => import('./qianmu-storyboard-restore-storage-runtime.js?v=1.59.414') },
   storyboardRestoreStorageView: { label: '分镜恢复记录管理', load: () => import('./qianmu-storyboard-restore-storage-view.js?v=1.59.414') },
   storyboardMappingView: { label: '迁移映射凭据', load: () => import('./qianmu-storyboard-mapping-view.js?v=1.59.202') },
-  characterUserIdentity: { label: 'USER头像地址', load: () => import('./qianmu-user-identity.js?v=1.59.202') },
-  characterUserAliasView: { label: 'USER地址核对', load: () => import('./qianmu-user-alias-view.js?v=1.59.202') },
-  characterStorage: { label: '角色库空间', load: () => import('./qianmu-character-storage.js?v=1.59.202') },
+  characterUserIdentity: { label: 'USER头像地址', load: () => import('./features/character/qianmu-user-identity.js?v=1.59.202') },
+  characterUserAliasView: { label: 'USER地址核对', load: () => import('./features/character/qianmu-user-alias-view.js?v=1.59.202') },
+  characterStorage: { label: '角色库空间', load: () => import('./features/character/qianmu-character-storage.js?v=1.59.202') },
   storyboardPackageStage: { label: '分镜素材暂存', load: () => import('./qianmu-storyboard-package-stage.js?v=1.59.202') },
   storyboardPackageRuntime: { label: '分镜原件打包', load: () => import('./qianmu-storyboard-package-runtime.js?v=1.59.202') },
   storyboardPackageStore: { label: '分镜原件读取', load: () => import('./qianmu-vibe-asset-store.js?v=1.59.202') },
@@ -486,7 +486,7 @@ const featureRuntime = createFeatureRuntime({
   },
   characterCasting: {
     label: '角色取景绑定',
-    load: () => import('./qianmu-character-casting.js?v=1.59.202'),
+    load: () => import('./features/character/qianmu-character-casting.js?v=1.59.202'),
   },
   worldShot: {
     label: '造物之眼确认',
@@ -494,11 +494,11 @@ const featureRuntime = createFeatureRuntime({
   },
   worldAutomatic: {
     label: '造物之眼自动准备',
-    load: () => import('./qianmu-world-automatic.js?v=1.59.414'),
+    load: () => import('./features/character/qianmu-world-automatic.js?v=1.59.414'),
   },
   worldAutomaticHost: {
     label: '造物之眼自动排程',
-    load: () => import('./qianmu-world-automatic-host.js?v=1.59.414'),
+    load: () => import('./features/character/qianmu-world-automatic-host.js?v=1.59.414'),
   },
   artistPromptReview: {
     label: '原画师层核对',
@@ -510,11 +510,11 @@ const featureRuntime = createFeatureRuntime({
   },
   characterShotEditor: {
     label: '本镜人物编辑',
-    load: () => import('./qianmu-character-shot-view.js?v=1.59.440'),
+    load: () => import('./features/character/qianmu-character-shot-view.js?v=1.59.440'),
   },
   characterReference: {
     label: '角色参考图',
-    load: () => import('./qianmu-character-reference.js?v=1.59.202'),
+    load: () => import('./features/character/qianmu-character-reference.js?v=1.59.202'),
   },
   readerCore: {
     label: '伴读解析器', intent: '.sd-coread-shortcut',

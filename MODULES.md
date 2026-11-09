@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 551 个，其中 `qianmu-*` 模块 534 个。
+根目录文件 513 个，其中 `qianmu-*` 模块 496 个。
 
 ## 入口、宿主与安装
 
@@ -31,7 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
-| `features/` | 55 |
+| `features/` | 93 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 959 |
@@ -373,50 +373,12 @@
 | `qianmu-prose-hive.js` | 是 |  |
 | `qianmu-prose-rich-compat.js` | 是 | A decorated message may contain ordinary prose before and after a rich card. |
 
-## 角色、世界与设定（40）
+## 角色、世界与设定（2）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-character-archive-session.js` | 是 |  |
-| `qianmu-character-archive-store.js` | 是 |  |
 | `qianmu-character-archive-view.js` | 是 |  |
-| `qianmu-character-archive.js` | 是 | New image-generation identities. Never revive the retired characters/entities settings. |
-| `qianmu-character-backup-file.js` | 是 |  |
-| `qianmu-character-backup-restore.js` | 是 |  |
-| `qianmu-character-casting.js` | 是 |  |
-| `qianmu-character-chat-batch.js` | 是 |  |
-| `qianmu-character-chat-draft.js` | 是 |  |
-| `qianmu-character-import-view.js` | 是 | Compact exceptional review only; no ordinary migration/sync settings. |
-| `qianmu-character-import.js` | 是 |  |
-| `qianmu-character-library-backup.js` | 是 |  |
-| `qianmu-character-migration-idle.js` | 是 |  |
-| `qianmu-character-migration.js` | 是 |  |
-| `qianmu-character-native-contract.js` | 是 |  |
-| `qianmu-character-native-store.js` | 是 |  |
-| `qianmu-character-reconciliation.js` | 是 |  |
-| `qianmu-character-reference.js` | 是 | Engine-specific reference policy. No archive lookup, image decode or network at import time. |
-| `qianmu-character-shot-edit.js` | 是 | Explicit per-image edits. Never read today's library during redraw or automatic generation. |
-| `qianmu-character-shot-view.js` | 是 |  |
-| `qianmu-character-source-backup.js` | 是 |  |
-| `qianmu-character-source-native.js` | 是 |  |
-| `qianmu-character-storage.js` | 是 |  |
-| `qianmu-character-worker-storage.js` | 是 |  |
-| `qianmu-user-alias-bindings.js` | 是 |  |
-| `qianmu-user-alias-contract.js` | 是 |  |
-| `qianmu-user-alias-runtime.js` | 是 |  |
-| `qianmu-user-alias-view.js` | 是 |  |
-| `qianmu-user-alias.js` | 是 |  |
-| `qianmu-user-identity.js` | 是 | Decode exactly once. Case, Unicode normalization and literal percent signs are part of the avatar filename. |
-| `qianmu-world-automatic-approval.js` | 是 | A bounded provenance receipt, not a live setting or a persistence claim. |
-| `qianmu-world-automatic-host.js` | 是 |  |
-| `qianmu-world-automatic-storage.js` | 是 |  |
-| `qianmu-world-automatic.js` | 是 |  |
-| `qianmu-world-ensemble.js` | 是 |  |
-| `qianmu-world-gallery-keywords.js` | 是 | Ephemeral gallery metadata, separate from visual facts and execution receipts. |
-| `qianmu-world-image-admission.js` | 是 |  |
-| `qianmu-world-prompt-diagnostics.js` | 是 | Request-local world expression diagnostics. No storage, retries or submission |
 | `qianmu-world-shot.js` | 是 | World-camera preparation only. No autonomous inference, archive mutation or media submission. |
-| `qianmu-world-source.js` | 是 | Lightweight provenance only. No settings, media reads, network or generation. |
 
 ## 聊天、历史与保存（1）
 

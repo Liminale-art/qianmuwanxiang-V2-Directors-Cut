@@ -1,6 +1,6 @@
 import {normalizeCharacterArchive} from './qianmu-character-archive.js';
 import {sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
-import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
+import {createConfiguredStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {characterBindingTarget} from './qianmu-character-archive.js';
 import {characterBackupBindingKey, validateCharacterLibraryBackup, planCharacterLibraryRestore, characterLibraryBackupDigest} from './qianmu-character-library-backup.js';
 import {readCharacterImport,planCharacterImport} from './qianmu-character-import.js';

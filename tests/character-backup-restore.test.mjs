@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCharacterRestoreSession } from '../qianmu-character-backup-restore.js';
-import { newCharacterArchive, normalizeCharacterArchive } from '../qianmu-character-archive.js';
-import { CHARACTER_LIBRARY_BACKUP_SCHEMA, characterLibraryBackupDigest as digest, planCharacterLibraryRestore } from '../qianmu-character-library-backup.js';
-import { CHARACTER_BACKUP_FILE_SCHEMA } from '../qianmu-character-backup-file.js';
+import { createCharacterRestoreSession } from '../features/character/qianmu-character-backup-restore.js';
+import { newCharacterArchive, normalizeCharacterArchive } from '../features/character/qianmu-character-archive.js';
+import { CHARACTER_LIBRARY_BACKUP_SCHEMA, characterLibraryBackupDigest as digest, planCharacterLibraryRestore } from '../features/character/qianmu-character-library-backup.js';
+import { CHARACTER_BACKUP_FILE_SCHEMA } from '../features/character/qianmu-character-backup-file.js';
 import { COMFY_LIBRARY_BACKUP_SCHEMA, planComfyLibraryRestore } from '../qianmu-comfy-library-backup.js';
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';

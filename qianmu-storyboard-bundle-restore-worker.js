@@ -1,14 +1,14 @@
 import { createStoryboardBundleRestoreSession } from './qianmu-storyboard-bundle-restore.js';
 import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
 import { createComfyPoolStore } from './qianmu-comfy-pool-store.js';
-import { createCharacterArchiveStore } from './qianmu-character-archive-store.js';
+import { createCharacterArchiveStore } from './features/character/qianmu-character-archive-store.js';
 import { createVibeAssetStore } from './qianmu-vibe-asset-store.js?v=1.59.202';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.js?v=1.59.202';
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
 import { createSourceIdentityClient } from './features/chat/qianmu-source-identity-client.js';
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
-import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';
 
 let id = '', operation = 0, rpc = 0, progress = 0, busy = false, closed = false, session = null;
 const pending = new Map(), stores = [];

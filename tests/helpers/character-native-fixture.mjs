@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {createStAccountStorage, configureStAccountStorage} from '../../qianmu-st-account-storage.js';
-import {createCharacterNativeStore} from '../../qianmu-character-native-store.js';
-import {newCharacterArchive} from '../../qianmu-character-archive.js';
-import {CHARACTER_NATIVE_SLOT} from '../../qianmu-character-native-contract.js';
+import {createCharacterNativeStore} from '../../features/character/qianmu-character-native-store.js';
+import {newCharacterArchive} from '../../features/character/qianmu-character-archive.js';
+import {CHARACTER_NATIVE_SLOT} from '../../features/character/qianmu-character-native-contract.js';
 
 export const namespace = 'st-user:character-native-fixture';
 export const document = (name = 'Alice', category = 'char') => ({...newCharacterArchive(category), name, aliases: ['Alias'], ageStatus: 'adult',

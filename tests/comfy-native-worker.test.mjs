@@ -8,7 +8,7 @@ import {createComfySceneLockStore} from '../qianmu-comfy-lock-store.js';
 import {COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';
 import {comfySceneIdbFixture,comfySceneJournalFixture} from './helpers/comfy-scene-idb-fixture.mjs';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
-import {characterWorkerStorageOptions} from '../qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {comfyLibraryIdbFixture} from './helpers/comfy-library-idb-fixture.mjs';
 import {poolNativeFixture} from './helpers/comfy-pool-native-fixture.mjs';

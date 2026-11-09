@@ -5,7 +5,7 @@ import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
 import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {applyCharacterCasting} from '../qianmu-character-casting.js';
+import {applyCharacterCasting} from '../features/character/qianmu-character-casting.js';
 import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy,storyboardPartialCompletion} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
 import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';

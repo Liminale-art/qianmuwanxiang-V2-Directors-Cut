@@ -11,7 +11,7 @@ export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDire
 export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
-import {normalizeWorldAutomaticApproval} from './qianmu-world-automatic-approval.js?v=1.59.414';
+import {normalizeWorldAutomaticApproval} from './features/character/qianmu-world-automatic-approval.js?v=1.59.414';
 import {normalizeStoryboardStreamMoment} from './qianmu-storyboard-stream-moment.js?v=1.59.224';
 import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attempt.js?v=1.59.414';
 import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.414';
@@ -27,9 +27,9 @@ import { readRunningHubTaskUsage } from './qianmu-runninghub-usage.js';
 import { retainComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { normalizeComfyCharacterActivation } from './qianmu-comfy-character-contract.js';
 import { retainComfyRouteBinding, retainComfyRoutePromptLayer, retainComfySceneOrigin } from './qianmu-comfy-route-contract.js';
-import { normalizeWorldSource } from './qianmu-world-source.js';
+import { normalizeWorldSource } from './features/character/qianmu-world-source.js';
 import { narrativeContextField, narrativeContextIssues, narrativeContextKey, matchingNarrativeContexts, isMainlineNarrativeFact, canRevealNarrativeContext, narrativeContextLayer } from './qianmu-narrative-context.js';
-import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './qianmu-character-casting.js?v=1.59.202';
+import { normalizeCharacterCastingSnapshot, assertCharacterCastingSnapshots } from './features/character/qianmu-character-casting.js?v=1.59.202';
 import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolveStoryboardPromptRendering } from './qianmu-prompt-formats.js';
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
@@ -41,9 +41,9 @@ export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStor
 export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
-export { assertCharacterCastingSnapshots } from './qianmu-character-casting.js?v=1.59.202';
+export { assertCharacterCastingSnapshots } from './features/character/qianmu-character-casting.js?v=1.59.202';
 export { normalizeStoryboardPromptFormats } from './qianmu-prompt-formats.js';
-export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './qianmu-character-reference.js?v=1.59.202';
+export { planCharacterReference, assertCharacterReferencePlan, characterReferenceNotice, characterReferenceChoice, renderCharacterReferencePicker, applyCharacterReferenceChoice } from './features/character/qianmu-character-reference.js?v=1.59.202';
 
 // 千幕·分镜数据契约。这里只描述数据与请求计划，不持有密钥，也不发起网络请求。
 export const STORYBOARD_SCHEMA_VERSION = 24;

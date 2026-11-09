@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {beginWorldAutomaticAttempt as begin,verifySavedWorldAutomaticApproval as verify,prepareAutomaticWorldShot as prepare} from '../qianmu-world-automatic.js';
+import {beginWorldAutomaticAttempt as begin,verifySavedWorldAutomaticApproval as verify,prepareAutomaticWorldShot as prepare} from '../features/character/qianmu-world-automatic.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {normalizeStoryboardShotSpec,createStoryboardDefaults,normalizeStoryboardState,storyboardAutomaticJobEnabled as enabled} from '../qianmu-storyboard.js';
 const namespace='st-user:world-runtime',source={schema:'qianmu.world-source.v1',chatKey:'chat',revisionId:'wrev-'+'a'.repeat(64),field:'world_updates',itemId:'witem-'+'b'.repeat(64)};

@@ -2,8 +2,8 @@
 import { QIANMU_DIRECTOR_CANDIDATE_SCHEMA, normalizeDirectorCandidate, scoreNarrativeDirectorCandidate } from './qianmu-director-candidate.js?v=1.59.202';
 import { validateNarrativeLedgerEntry, adaptProductionPacketToNarrativeLedgerEntry } from './qianmu-narrative-ledger.js?v=1.59.202';
 import { QIANMU_PRODUCTION_PACKET_SCHEMA } from './qianmu-production-packet.js?v=1.59.202';
-import { normalizeWorldSource } from './qianmu-world-source.js';
-import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './qianmu-world-automatic-approval.js?v=1.59.414';
+import { normalizeWorldSource } from './features/character/qianmu-world-source.js';
+import {normalizeWorldAutomaticApproval,worldAutomaticApprovalMatches} from './features/character/qianmu-world-automatic-approval.js?v=1.59.414';
 import { narrativeContextField, narrativeContextIssues, matchingNarrativeContexts, isMainlineNarrativeFact } from './qianmu-narrative-context.js';
 
 export const QIANMU_DIRECTOR_DECISION_SCHEMA = 'qianmu.director-decision.v1';

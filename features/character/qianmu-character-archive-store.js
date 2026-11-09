@@ -1,7 +1,7 @@
 import {normalizeCharacterArchive,characterBindingTarget,characterArchiveError} from './qianmu-character-archive.js';
 import {summarizeCharacterStorage} from './qianmu-character-storage.js?v=1.59.202';
 import {sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
-import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {isStAccountStorageConfigured} from '../../qianmu-st-account-storage.js';
 import {createCharacterArchiveSession} from './qianmu-character-archive-session.js';
 const fail = (code,message) => { throw characterArchiveError(code,message); };
 const identifier = id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(id);

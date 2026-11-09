@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {characterNativeFixture,namespace,document} from './helpers/character-native-fixture.mjs';
 import {characterLegacyFixture,legacyPacket} from './helpers/character-legacy-fixture.mjs';
-import {createCharacterReconciliation} from '../qianmu-character-reconciliation.js';
-import {characterLibraryBackupDigest,characterBackupBindingKey} from '../qianmu-character-library-backup.js';
-import {CHARACTER_RECONCILED_SCHEMA,validateCharacterNativeIndex,characterNativeBytes,characterNativeBackup} from '../qianmu-character-native-contract.js';
-import {readCharacterImport,planCharacterImport} from '../qianmu-character-import.js';
-import {canonicalUserSubjectKey} from '../qianmu-user-identity.js';
+import {createCharacterReconciliation} from '../features/character/qianmu-character-reconciliation.js';
+import {characterLibraryBackupDigest,characterBackupBindingKey} from '../features/character/qianmu-character-library-backup.js';
+import {CHARACTER_RECONCILED_SCHEMA,validateCharacterNativeIndex,characterNativeBytes,characterNativeBackup} from '../features/character/qianmu-character-native-contract.js';
+import {readCharacterImport,planCharacterImport} from '../features/character/qianmu-character-import.js';
+import {canonicalUserSubjectKey} from '../features/character/qianmu-user-identity.js';
 
 const finish=async job=>{for(let i=0;i<530;i++){const result=await job.step();if(result.done)return result;}assert.fail('unbounded migration');};
 async function setup(t,{conflict=false}={}){

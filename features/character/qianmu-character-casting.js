@@ -1,6 +1,6 @@
 import {characterIdentityProjection, selectCharacterBinding, characterArchiveError} from './qianmu-character-archive.js';
 import {normalizeCharacterReferenceSnapshot} from './qianmu-character-reference.js?v=1.59.202';
-import {normalizeComfyCharacterSnapshot} from './qianmu-comfy-character-contract.js';
+import {normalizeComfyCharacterSnapshot} from '../../qianmu-comfy-character-contract.js';
 
 export const CHARACTER_CASTING_SCHEMA = 'qianmu.character.casting.v1';
 const fail = (code, message) => { throw characterArchiveError(code, message); };

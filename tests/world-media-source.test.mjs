@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
-import * as sources from '../qianmu-world-source.js';
+import * as sources from '../features/character/qianmu-world-source.js';
 import * as packets from '../qianmu-production-packet.js';
 import * as decisions from '../qianmu-director-decision.js';
 import * as orders from '../qianmu-director-work-order.js';

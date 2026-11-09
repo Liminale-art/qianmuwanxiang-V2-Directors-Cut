@@ -4,8 +4,8 @@ import {normalizeComfyCharacterImplementation,normalizeComfyCharacterSettings,no
 import {inspectComfyCharacterTargets,prepareComfyCharacterPlan} from '../qianmu-comfy-character-plan.js';
 import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
-import {newCharacterArchive,normalizeCharacterArchive,exportCharacterArchive,importCharacterArchive,characterIdentityProjection} from '../qianmu-character-archive.js';
-import {prepareCharacterCasting,applyCharacterCasting,normalizeCharacterCastingSnapshot,characterCastingInput} from '../qianmu-character-casting.js';
+import {newCharacterArchive,normalizeCharacterArchive,exportCharacterArchive,importCharacterArchive,characterIdentityProjection} from '../features/character/qianmu-character-archive.js';
+import {prepareCharacterCasting,applyCharacterCasting,normalizeCharacterCastingSnapshot,characterCastingInput} from '../features/character/qianmu-character-casting.js';
 import {normalizeStoryboardShotSpec,sanitizeStoryboardSnapshot} from '../qianmu-storyboard.js';
 
 const copy = value=>JSON.parse(JSON.stringify(value));

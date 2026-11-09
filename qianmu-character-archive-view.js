@@ -1,7 +1,7 @@
-import {CHARACTER_CATEGORIES,newCharacterArchive,normalizeCharacterArchive,selectCharacterBinding,exportCharacterArchive,importCharacterArchive} from './qianmu-character-archive.js';
-import {createCharacterArchiveStore} from './qianmu-character-archive-store.js';
-import {canonicalUserSubjectKey,sameCharacterSubject} from './qianmu-user-identity.js?v=1.59.202';
-import {renderCharacterImportReview} from './qianmu-character-import-view.js';
+import {CHARACTER_CATEGORIES,newCharacterArchive,normalizeCharacterArchive,selectCharacterBinding,exportCharacterArchive,importCharacterArchive} from './features/character/qianmu-character-archive.js';
+import {createCharacterArchiveStore} from './features/character/qianmu-character-archive-store.js';
+import {canonicalUserSubjectKey,sameCharacterSubject} from './features/character/qianmu-user-identity.js?v=1.59.202';
+import {renderCharacterImportReview} from './features/character/qianmu-character-import-view.js';
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clone=value=>JSON.parse(JSON.stringify(value));
 const icon=(action,label,glyph,attrs='')=>`<button type="button" class="sd-icon-btn" data-archive-action="${action}" title="${escape(label)}" aria-label="${escape(label)}" ${attrs}><i data-qm-icon="qm-regular-${({upload:'upload-simple',download:'download-simple'})[glyph]||glyph}"></i></button>`;
@@ -269,8 +269,8 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
       }
       if(action==='backup-library'&&!view.draft){
         const account=namespace,chatKey=view.chatKey,isSame=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey);
-        const codec=await import('./qianmu-character-backup-file.js');await guard();
-        const sourceCodec=await import('./qianmu-character-source-backup.js'),{characterLibraryBackupDigest:digest}=await import('./qianmu-character-library-backup.js');await guard();
+        const codec=await import('./features/character/qianmu-character-backup-file.js');await guard();
+        const sourceCodec=await import('./features/character/qianmu-character-source-backup.js'),{characterLibraryBackupDigest:digest}=await import('./features/character/qianmu-character-library-backup.js');await guard();
         const library=await store.backup(account,{isCurrent:isSame}),sources=await sourceCodec.captureCharacterSources(store,account,{isCurrent:isSame,guard}),census=codec.collectCharacterBackupDependencies(library,sources);await guard();
         const baseline=await digest({library,sources});await guard();
         if(!await confirm(`备份当前有效的 ${library.usage.count} 份角色档案、${library.usage.bindings} 处绑定、${sources.sources.length} 份完整旧端来源及 ${census.images.length} 份参考图/封面原件？包含普通形象、性征与 Comfy 实现，仅保存到本机文件，请妥善保管。不含模型/LoRA 磁盘文件、API 连接与授权。旧来源含已解决与未解决差异，恢复只保全原件，不自动采用旧绑定。请使用“恢复角色库与原图”入口核对同账户恢复；实测前保留旧环境和原文件。`))return;
@@ -347,7 +347,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     }));
     host.querySelector('[data-archive-backup-file]')?.addEventListener('change',event=>{const file=event.target.files?.[0],r=view.restoring;if(!file||!r)return;void run(async(guard,expected)=>{
       r.session?.close();r.workflows?.close();r.session=null;r.workflows=null;r.preview=null;r.choices={};r.bindingsReviewed=false;r.page=0;r.fileName=file.name;scrolls.restore=0;
-      const [files,module,imageModule]=await Promise.all([import('./qianmu-character-backup-file.js'),import('./qianmu-character-backup-restore.js'),import('./qianmu-image-restore-client.js')]);await guard();
+      const [files,module,imageModule]=await Promise.all([import('./features/character/qianmu-character-backup-file.js'),import('./features/character/qianmu-character-backup-restore.js'),import('./qianmu-image-restore-client.js')]);await guard();
       const account=namespace,chatKey=view.chatKey,scope=getScope?.();
       const same=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey&&view.restoring===r&&(!getScope||getScope()===scope));
       const active=async()=>{

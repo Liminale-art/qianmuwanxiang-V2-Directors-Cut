@@ -9,7 +9,7 @@ import {
   STORYBOARD_SHOT_SCALES,
   normalizeStoryboardShotSpec,
 } from './qianmu-storyboard.js?v=1.59.440';
-import { characterCastingInput } from './qianmu-character-casting.js?v=1.59.202';
+import { characterCastingInput } from './features/character/qianmu-character-casting.js?v=1.59.202';
 import {completeStoryboardText,assertStoryboardInputBudget} from './qianmu-storyboard-complete-context.js';
 import { normalizeStoryboardPromptFormats, storyboardPromptRenderingsSchema, validateStoryboardPromptRenderings, storyboardPromptFormatBudget, STORYBOARD_PROMPT_FORMAT_DESCRIPTIONS } from './qianmu-prompt-formats.js';
 import {buildStoryboardFocusedRequest,completeStoryboardFocusedExtraction as completeFocusedExtraction} from './qianmu-storyboard-focused-extraction.js?v=1.59.439';

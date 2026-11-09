@@ -1,12 +1,12 @@
 import { captureStoryboardResourceBundle, inspectStoryboardResourceBundle } from './qianmu-storyboard-bundle-resources.js';
 import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
 import { createComfyPoolStore } from './qianmu-comfy-pool-store.js';
-import { createCharacterArchiveStore } from './qianmu-character-archive-store.js';
+import { createCharacterArchiveStore } from './features/character/qianmu-character-archive-store.js';
 import { captureStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { captureStoryboardSubjectEvidence } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
-import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';
 
 let started = false, counter = 0, progress = 0;
 const pending = new Map();

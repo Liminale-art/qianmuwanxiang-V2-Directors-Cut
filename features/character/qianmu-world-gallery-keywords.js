@@ -1,6 +1,6 @@
 // Ephemeral gallery metadata, separate from visual facts and execution receipts.
 // Persist only when the approved world shot enters the ordinary generation job.
-import {galleryKeywordSchema} from './qianmu-gallery-keywords.js';
+import {galleryKeywordSchema} from '../../qianmu-gallery-keywords.js';
 const metadata=new WeakMap();
 export function rememberWorldGalleryKeywords(target,raw,input){
   const field=galleryKeywordSchema(input);

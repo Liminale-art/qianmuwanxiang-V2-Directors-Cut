@@ -9,7 +9,7 @@ import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js'
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
 import {createGallerySupplementStorage,captureGallerySupplement} from '../qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
-import {emptyChatCharacterCollection} from '../qianmu-character-chat-batch.js';
+import {emptyChatCharacterCollection} from '../features/character/qianmu-character-chat-batch.js';
 import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 

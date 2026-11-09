@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
-import {createWorldAutomaticStorage as create} from '../qianmu-world-automatic-storage.js';
-import {normalizeWorldAutomaticApproval} from '../qianmu-world-automatic-approval.js';
+import {createWorldAutomaticStorage as create} from '../features/character/qianmu-world-automatic-storage.js';
+import {normalizeWorldAutomaticApproval} from '../features/character/qianmu-world-automatic-approval.js';
 const scope={namespace:'st-user:world-test',source:{schema:'qianmu.world-source.v1',chatKey:'chat-a',revisionId:'wrev-'+'a'.repeat(64),field:'npc_updates',itemId:'witem-'+'b'.repeat(64)}};
 const record=()=>({version:1,requestId:'wa-'+'c'.repeat(32),status:'preparing',updatedAt:100});
 const gate=()=>{let resolve;return {promise:new Promise(done=>resolve=done),resolve};};

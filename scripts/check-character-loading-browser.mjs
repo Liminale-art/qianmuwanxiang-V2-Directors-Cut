@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
-import {emptyCharacterNativeIndex, CHARACTER_NATIVE_SLOT} from '../qianmu-character-native-contract.js';
+import {emptyCharacterNativeIndex, CHARACTER_NATIVE_SLOT} from '../features/character/qianmu-character-native-contract.js';
 
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -58,7 +58,7 @@ try{
   await page.addStyleTag({content:await readFile(new URL('../style.css',import.meta.url),'utf8')});
   await page.evaluate(async namespace=>{
     const {createCharacterArchiveController}=await import('/qianmu-character-archive-view.js');
-    const {createCharacterArchiveStore}=await import('/qianmu-character-archive-store.js');
+    const {createCharacterArchiveStore}=await import('/features/character/qianmu-character-archive-store.js');
     const {configureStAccountStorage}=await import('/qianmu-st-account-storage.js');
     window.fixture={namespace,active:true,now:100000,scope:'fixture-chat',controller:null,metrics:null};
     fixture.open=()=>{

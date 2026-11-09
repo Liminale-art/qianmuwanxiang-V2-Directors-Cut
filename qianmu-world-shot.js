@@ -1,11 +1,11 @@
 // World-camera preparation only. No autonomous inference, archive mutation or media submission.
-export {createWorldPromptAttempt} from './qianmu-world-prompt-diagnostics.js?v=1.59.414';
-import {applyCharacterCasting,characterCastingInput} from './qianmu-character-casting.js?v=1.59.202';
+export {createWorldPromptAttempt} from './features/character/qianmu-world-prompt-diagnostics.js?v=1.59.414';
+import {applyCharacterCasting,characterCastingInput} from './features/character/qianmu-character-casting.js?v=1.59.202';
 import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.440';
-import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './qianmu-character-reference.js?v=1.59.202';
+import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './features/character/qianmu-character-reference.js?v=1.59.202';
 import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js?v=1.59.439';
 import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
-import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './qianmu-world-gallery-keywords.js';
+import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './features/character/qianmu-world-gallery-keywords.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -16,7 +16,7 @@ const stagedStyles = new WeakMap();
 
 export async function prepareWorldStyleSelection(state,inputGuard,dependencies,options){
   if(state.routing?.styleLibrary!==true)return null;
-  const runtime=await import('./qianmu-world-ensemble.js?v=1.59.414');inputGuard.assertCurrent();
+  const runtime=await import('./features/character/qianmu-world-ensemble.js?v=1.59.414');inputGuard.assertCurrent();
   return runtime.prepareWorldStyleSelection(state,inputGuard,dependencies,options);
 }
 export async function bindWorldGenerationStyles(handoff,owner,selection,guard){

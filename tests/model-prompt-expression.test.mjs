@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
 import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
-import {prepareCharacterShotEdit} from '../qianmu-character-shot-edit.js';
+import {prepareCharacterShotEdit} from '../features/character/qianmu-character-shot-edit.js';
 import {adaptStoryboardSafetyContract,STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID} from '../qianmu-storyboard-contract.js';
 import {generateDirectImage} from '../qianmu-image-direct.js';
 import {generateImage} from '../server/qianmu-image-gateway.js';

@@ -1,7 +1,7 @@
 import vm from 'node:vm';
 import * as contract from '../../qianmu-storyboard-contract.js';
 import * as prompts from '../../qianmu-comfy-prompt.js';
-import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../../qianmu-character-casting.js';
+import {applyCharacterCasting,CHARACTER_CASTING_SCHEMA} from '../../features/character/qianmu-character-casting.js';
 import {routeEnvironment} from './comfy-route-fixture.mjs';
 import {installCompilerDiagnosticsFixture} from './compiler-diagnostics-fixture.mjs';
 import {readEnsembleCompilerProof} from './ensemble-handoff-runtime.mjs';

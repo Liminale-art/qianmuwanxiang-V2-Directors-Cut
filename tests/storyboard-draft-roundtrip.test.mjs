@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeStoryboardState, normalizeStoryboardShotSpec, compileStoryboardPrompt, sanitizeStoryboardSnapshot } from '../qianmu-storyboard.js';
-import { CHARACTER_CASTING_SCHEMA } from '../qianmu-character-casting.js';
-import { planCharacterReference } from '../qianmu-character-reference.js';
+import { CHARACTER_CASTING_SCHEMA } from '../features/character/qianmu-character-casting.js';
+import { planCharacterReference } from '../features/character/qianmu-character-reference.js';
 import { getStoryboardCapabilities } from '../qianmu-storyboard.js';
 
 const receipt={url:'/user/images/Qianmu-References/a.png',name:'Alice',mime:'image/png',bytes:70,sha256:'a'.repeat(64)};
