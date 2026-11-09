@@ -52,3 +52,12 @@ test('relayout dry run reports moved references and refuses renames', async () =
   assert.ok(plan.edits.get('release-files.json').next.includes(`"relayout-probe/${name}"`));
   await assert.rejects(planRelayout([{ from: name, to: 'relayout-probe/other.js' }]), /renaming/);
 });
+
+test('relayout also rewrites root-served browser imports and release-list assertions', async () => {
+  const { planRelayout } = await import('../scripts/relayout.mjs');
+  const plan = await planRelayout([{ from: 'qianmu-storyboard-utils.js', to: 'relayout-probe/qianmu-storyboard-utils.js' }]);
+  const browser = [...plan.edits].find(([file]) => file.startsWith('scripts/check-') && file.endsWith('-browser.mjs'));
+  assert.ok(browser, 'some browser check imports the module from the served root');
+  assert.match(browser[1].next, /import\('\/relayout-probe\/qianmu-storyboard-utils\.js'\)/);
+  assert.doesNotMatch(browser[1].next, /import\('\/qianmu-storyboard-utils\.js'\)/);
+});

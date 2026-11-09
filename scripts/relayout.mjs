@@ -57,13 +57,20 @@ export async function planRelayout(moves) {
     if (file === 'release-files.json') {
       next = next.replace(/"([^"]+)"/g, (whole, value) => map.has(value) ? (notes.push(`${value} -> ${map.get(value)}`), `"${map.get(value)}"`) : whole);
     }
+    // Repo-root-relative forms that name a root file directly: browser checks served from the repo root
+    // (`import('/x.js')`) and release-list assertions (`files.includes('x.js')`).
+    next = next.replace(/(\bimport\(\s*)(['"])\/([\w.-]+)\2/g, (whole, head, quote, name) =>
+      map.has(name) ? (notes.push(`/${name} -> /${map.get(name)}`), `${head}${quote}/${map.get(name)}${quote}`) : whole);
+    next = next.replace(/(\bfiles\.includes\(\s*)(['"])([\w.-]+)\2/g, (whole, head, quote, name) =>
+      map.has(name) ? (notes.push(`${name} -> ${map.get(name)} (release assertion)`), `${head}${quote}${map.get(name)}${quote}`) : whole);
     // Anything still naming a moved file outside a correctly resolving literal needs a human look.
     const targets = new Set(map.values());
     const home = posix.dirname(newPath(file));
     for (const line of next.split('\n')) {
       const rest = line
         .replace(literal, (whole, quote, specifier) => targets.has(posix.normalize(posix.join(home, specifier))) ? '' : whole)
-        .replace(/"([^"]+)"/g, (whole, value) => file === 'release-files.json' && targets.has(value) ? '' : whole);
+        .replace(/"([^"]+)"/g, (whole, value) => file === 'release-files.json' && targets.has(value) ? '' : whole)
+        .replace(/(['"])\/?([\w.-]+\/[\w./-]+)\1/g, (whole, quote, value) => targets.has(value) ? '' : whole);
       if ([...rest.matchAll(mention)].length) unresolved.push(`${file}: ${line.trim().slice(0, 160)}`);
     }
     if (next !== source) edits.set(file, { next, notes });
