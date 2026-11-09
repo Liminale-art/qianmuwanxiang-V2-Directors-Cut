@@ -6,8 +6,8 @@ import {
   createStoryboardGalleryMediaResolver,
   resolveStoryboardGalleryMediaInputs,
   videoSelectedAssetIds,
-} from '../qianmu-video-media.js';
-import { createVideoShotFromStoryboardFrames } from '../qianmu-video-contract.js';
+} from '../features/video/qianmu-video-media.js';
+import { createVideoShotFromStoryboardFrames } from '../features/video/qianmu-video-contract.js';
 
 const pngBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const jpegBytes = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
@@ -159,8 +159,8 @@ test('the media resolver is shipped as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-media\.js/m);
-assert.match(source, /videoMedia:\s*\{[\s\S]*import\('\.\/qianmu-video-media\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-media.js'));
+assert.match(source, /videoMedia:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-media\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-media.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoMedia'\)/);
 });

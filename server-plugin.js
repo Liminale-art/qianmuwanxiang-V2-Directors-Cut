@@ -45,7 +45,7 @@ import {
   queryMiniMaxH3Video,
   videoGatewayErrorPayload,
 } from './server/qianmu-video-gateway.js';
-import { MINIMAX_H3_PROVIDER_CAPABILITY } from './qianmu-video-minimax.js?v=1.59.202';
+import { MINIMAX_H3_PROVIDER_CAPABILITY } from './features/video/qianmu-video-minimax.js?v=1.59.202';
 
 const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';
 const MAX_TEXT_LENGTH = 10000;

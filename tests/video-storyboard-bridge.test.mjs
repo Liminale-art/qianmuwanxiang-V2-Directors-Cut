@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { adaptStoryboardShotToVideoShotSpec } from '../qianmu-video-contract.js';
-import { compileVideoDraftSelection, createVideoDraftFromStoryboardFrame, reviseVideoDraft } from '../qianmu-video-draft.js';
+import { adaptStoryboardShotToVideoShotSpec } from '../features/video/qianmu-video-contract.js';
+import { compileVideoDraftSelection, createVideoDraftFromStoryboardFrame, reviseVideoDraft } from '../features/video/qianmu-video-draft.js';
 
 const storyboardShot = {
   id: 'plan-shot-1',

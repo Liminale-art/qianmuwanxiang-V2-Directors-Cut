@@ -1,5 +1,5 @@
 // 千幕动态镜头草稿仓适配器。只接受白名单草稿合同，不读取媒体、不访问网络。
-import * as defaultStorage from './qianmu-blobstore.js';
+import * as defaultStorage from '../../qianmu-blobstore.js';
 import { normalizeVideoDraft, validateVideoDraft } from './qianmu-video-draft.js?v=1.59.202';
 
 export const QIANMU_VIDEO_DRAFT_STORE_SCHEMA = 'qianmu.video-draft-store.v1';

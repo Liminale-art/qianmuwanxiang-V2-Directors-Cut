@@ -1,5 +1,5 @@
 // 千幕动态镜头成片归档。浏览器只访问同源增强服务，并把完成视频写入独立 IndexedDB Blob 仓。
-import * as defaultStorage from './qianmu-blobstore.js';
+import * as defaultStorage from '../../qianmu-blobstore.js';
 
 export const QIANMU_VIDEO_RESULT_SCHEMA = 'qianmu.video-result.v1';
 export const QIANMU_VIDEO_RESULT_ENDPOINT = '/api/plugins/qianmu-tts/video/minimax/result';

@@ -1,5 +1,5 @@
 // 千幕影片后期分层仓适配器。保存前绑定真实时间线重新校验，不读取任何媒体。
-import * as defaultStorage from './qianmu-blobstore.js';
+import * as defaultStorage from '../../qianmu-blobstore.js';
 import { normalizeVideoPostproduction, validateVideoPostproduction } from './qianmu-video-postproduction.js?v=1.59.202';
 
 export const QIANMU_VIDEO_POSTPRODUCTION_STORE_SCHEMA = 'qianmu.video-postproduction-store.v1';

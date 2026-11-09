@@ -7,7 +7,7 @@ import {
   VideoResultError,
   createMiniMaxH3ResultArchiver,
   downloadMiniMaxH3VideoResult,
-} from '../qianmu-video-result.js';
+} from '../features/video/qianmu-video-result.js';
 
 function storage(overrides = {}) {
   return {

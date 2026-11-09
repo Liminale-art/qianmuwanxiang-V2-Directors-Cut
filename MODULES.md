@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 600 个，其中 `qianmu-*` 模块 583 个。
+根目录文件 579 个，其中 `qianmu-*` 模块 562 个。
 
 ## 入口、宿主与安装
 
@@ -31,7 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
-| `features/` | 6 |
+| `features/` | 27 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 959 |
@@ -334,32 +334,6 @@
 | `qianmu-vibe-storage-accounting.js` | 是 |  |
 | `qianmu-vibe-storage-summary.js` | 是 | On-demand, metadata-only bridge into the global storage card. No media or fee mutation. |
 | `qianmu-vibe-storage.js` | 是 |  |
-
-## 视频（21）
-
-| 文件 | 发行 | 首行说明 |
-| --- | --- | --- |
-| `qianmu-video-budget.js` | 是 | 千幕视频费用闸门。纯数据层：价格由渠道报价提供，本模块不写死厂商费率。 |
-| `qianmu-video-confirmation.js` | 是 | 千幕 H3 付费前确认合同。只核对本地草稿并生成短时费用确认快照，不创建任务、不上传素材、不联网。 |
-| `qianmu-video-contract.js` | 是 | 千幕动态镜头合同。纯数据层：不访问 DOM、设置、聊天、网络或媒体二进制。 |
-| `qianmu-video-coordinator.js` | 是 | 千幕 H3 客户端协调门面。集中串联任务仓、预算、网关与成片归档，但不自行启动轮询或付费任务。 |
-| `qianmu-video-draft-store.js` | 是 | 千幕动态镜头草稿仓适配器。只接受白名单草稿合同，不读取媒体、不访问网络。 |
-| `qianmu-video-draft.js` | 是 | 千幕动态镜头本地草稿合同。只保存编辑选择与稳定素材引用，不包含提示词、凭据、媒体或报价。 |
-| `qianmu-video-gallery.js` | 是 | 千幕动态阅片室轻索引、任务摘要与播放会话。列表不读取 Blob；只有打开单条成片时才创建临时 Object URL。 |
-| `qianmu-video-media.js` | 是 | 千幕动态镜头的瞬时素材解析层。只在用户明确提交时读取本聊天阅片记录， |
-| `qianmu-video-minimax.js` | 是 | MiniMax H3 官方 V2 渠道适配。只构建与解析请求，不在浏览器直连官方域名。 |
-| `qianmu-video-postproduction-store.js` | 是 | 千幕影片后期分层仓适配器。保存前绑定真实时间线重新校验，不读取任何媒体。 |
-| `qianmu-video-postproduction.js` | 是 | 千幕完整影片后期分层合同。只保存稳定引用与时间轴决策，不读媒体、不混音、不转码。 |
-| `qianmu-video-pricing.js` | 是 | MiniMax H3 创建前费用预估。公开价可能变化，本模块只供界面提示，不能直接授权预算或提交。 |
-| `qianmu-video-prompt.js` | 是 | Qianmu video prompt contract. Pure data only: no DOM, storage, network or task submission. |
-| `qianmu-video-readiness.js` | 是 | 千幕动态渠道准备状态。纯数据层，不发起请求、不读取密钥正文，也不提交付费任务。 |
-| `qianmu-video-result.js` | 是 | 千幕动态镜头成片归档。浏览器只访问同源增强服务，并把完成视频写入独立 IndexedDB Blob 仓。 |
-| `qianmu-video-runtime.js` | 是 | 千幕 MiniMax H3 客户端运行层。只连接同源网关，并把付费提交、轮询、归档与取消写回稳定合同。 |
-| `qianmu-video-store.js` | 是 | 千幕动态镜头持久仓适配器。把运行层检查点规整后写入 IndexedDB，不允许瞬时凭据或媒体进入存储。 |
-| `qianmu-video-task.js` | 是 | 千幕异步视频任务合同。纯数据层：不访问 DOM、设置、聊天、网络或媒体二进制。 |
-| `qianmu-video-timeline-player.js` | 是 | 千幕完整影片顺序预览状态机。仅在显式打开预览后按段取材；不联网、不转码、不持久化临时 URL。 |
-| `qianmu-video-timeline-store.js` | 是 | 千幕完整影片时间线仓适配器。仅持久化时间线合同，不读取媒体、不访问网络。 |
-| `qianmu-video-timeline.js` | 是 | 千幕影片时间线纯数据合同。只编排稳定本地引用，不读取媒体、不联网、不执行转码。 |
 
 ## 正文辅助（prose）与蜂巢（33）
 

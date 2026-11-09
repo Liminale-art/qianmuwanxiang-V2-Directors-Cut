@@ -33,8 +33,8 @@ try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
         const [utils, timelines, postproduction, gallery, session, preferences, icons] = await Promise.all([
-            import('/qianmu-storyboard-utils.js'), import('/qianmu-video-timeline.js'), import('/qianmu-video-postproduction.js'),
-            import('/qianmu-video-gallery.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+            import('/qianmu-storyboard-utils.js'), import('/features/video/qianmu-video-timeline.js'), import('/features/video/qianmu-video-postproduction.js'),
+            import('/features/video/qianmu-video-gallery.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         Object.assign(window, utils, icons, { settings: { theme: 'dark' }, fixtureChat: 'film-chat', notices: [],
             storyboardVideoTimelineStore: null, storyboardVideoPostproductionStore: null, storyboardVideoGallerySession: null,
@@ -97,7 +97,7 @@ try {
             if (name === 'videoTimeline') return timelines;
             if (name === 'videoPostproduction') return postproduction;
             if (name === 'videoGallery') return gallery;
-            if (name === 'videoTimelinePlayer') return import('/qianmu-video-timeline-player.js');
+            if (name === 'videoTimelinePlayer') return import('/features/video/qianmu-video-timeline-player.js');
             if (name === 'videoTimelineStore') return { createVideoTimelineStoreAdapter: () => timelineStore };
             if (name === 'videoPostproductionStore') return { createVideoPostproductionStoreAdapter: () => postStore };
             return forbidden();

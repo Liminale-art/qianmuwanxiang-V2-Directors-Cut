@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { evaluateVideoReadiness } from '../qianmu-video-readiness.js';
+import { evaluateVideoReadiness } from '../features/video/qianmu-video-readiness.js';
 
 const compiled = (resolution = '768p') => ({
   ok: true,

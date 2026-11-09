@@ -33,7 +33,7 @@ try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async source => {
         const [utils, storyboard, draft, session, preferences, icons] = await Promise.all([
-            import('/qianmu-storyboard-utils.js'), import('/qianmu-storyboard.js'), import('/qianmu-video-draft.js'),
+            import('/qianmu-storyboard-utils.js'), import('/qianmu-storyboard.js'), import('/features/video/qianmu-video-draft.js'),
             import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         Object.assign(window, utils, storyboard, icons, { settings: { theme: 'dark' }, fixtureChat: 'fixture-chat', fixtureRegion: 'global',
@@ -253,7 +253,7 @@ try {
     ok('picker Escape returns to draft', await page.locator('.sd-storyboard-video-draft-picker').isHidden() && await page.locator('.sd-storyboard-video-draft-body').isVisible());
     await page.evaluate(async () => {
         storyboardCloseVideoDraftEditor();
-        savedDraft = (await import('/qianmu-video-draft.js')).createVideoDraftFromStoryboardFrame(records.at(-1));
+        savedDraft = (await import('/features/video/qianmu-video-draft.js')).createVideoDraftFromStoryboardFrame(records.at(-1));
         await storyboardOpenVideoDraftEditor('foreign-draft');
     });
     ok('foreign owner does not open', await page.locator('.sd-storyboard-video-draft-layer').count() === 0 && await page.evaluate(() => notices.at(-1).text.includes('不属于当前聊天')));

@@ -598,87 +598,87 @@ const featureRuntime = createFeatureRuntime({
   },
   videoContract: {
     label: '动态镜头合同',
-    load: () => import('./qianmu-video-contract.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-contract.js?v=1.59.202'),
   },
   videoDraft: {
     label: '动态镜头草稿',
-    load: () => import('./qianmu-video-draft.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-draft.js?v=1.59.202'),
   },
   videoDraftStore: {
     label: '动态镜头草稿仓',
-    load: () => import('./qianmu-video-draft-store.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-draft-store.js?v=1.59.202'),
   },
   videoReadiness: {
     label: '动态渠道准备检查',
-    load: () => import('./qianmu-video-readiness.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-readiness.js?v=1.59.202'),
   },
   videoPricing: {
     label: '动态镜头费用预估',
-    load: () => import('./qianmu-video-pricing.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-pricing.js?v=1.59.202'),
   },
   videoConfirmation: {
     label: '动态镜头生成确认',
-    load: () => import('./qianmu-video-confirmation.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-confirmation.js?v=1.59.202'),
   },
   videoPrompt: {
     label: '动态镜头提示词合同',
-    load: () => import('./qianmu-video-prompt.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-prompt.js?v=1.59.202'),
   },
   videoTask: {
     label: '动态镜头任务',
-    load: () => import('./qianmu-video-task.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-task.js?v=1.59.202'),
   },
   videoBudget: {
     label: '动态镜头预算',
-    load: () => import('./qianmu-video-budget.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-budget.js?v=1.59.202'),
   },
   minimaxH3: {
     label: 'MiniMax H3 渠道',
-    load: () => import('./qianmu-video-minimax.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-minimax.js?v=1.59.202'),
   },
   minimaxH3Runtime: {
     label: 'MiniMax H3 运行层',
-    load: () => import('./qianmu-video-runtime.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-runtime.js?v=1.59.202'),
   },
   videoStore: {
     label: '动态镜头任务仓',
-    load: () => import('./qianmu-video-store.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-store.js?v=1.59.202'),
   },
   videoResult: {
     label: '动态镜头成片归档',
-    load: () => import('./qianmu-video-result.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-result.js?v=1.59.202'),
   },
   videoGallery: {
     label: '动态阅片室',
-    load: () => import('./qianmu-video-gallery.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-gallery.js?v=1.59.202'),
   },
   videoCoordinator: {
     label: '动态镜头协调器',
-    load: () => import('./qianmu-video-coordinator.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-coordinator.js?v=1.59.202'),
   },
   videoMedia: {
     label: '动态镜头素材解析',
-    load: () => import('./qianmu-video-media.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-media.js?v=1.59.202'),
   },
   videoTimeline: {
     label: '完整影片时间线',
-    load: () => import('./qianmu-video-timeline.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-timeline.js?v=1.59.202'),
   },
   videoTimelineStore: {
     label: '完整影片时间线仓',
-    load: () => import('./qianmu-video-timeline-store.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-timeline-store.js?v=1.59.202'),
   },
   videoTimelinePlayer: {
     label: '完整影片顺序预览',
-    load: () => import('./qianmu-video-timeline-player.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-timeline-player.js?v=1.59.202'),
   },
   videoPostproduction: {
     label: '完整影片后期分层',
-    load: () => import('./qianmu-video-postproduction.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-postproduction.js?v=1.59.202'),
   },
   videoPostproductionStore: {
     label: '完整影片后期分层仓',
-    load: () => import('./qianmu-video-postproduction-store.js?v=1.59.202'),
+    load: () => import('./features/video/qianmu-video-postproduction-store.js?v=1.59.202'),
   },
   storyboardContract: {
     label: '分镜返回协议',

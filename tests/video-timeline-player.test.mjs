@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildVideoTimeline } from '../qianmu-video-timeline.js';
-import { createVideoTimelinePlaybackSession } from '../qianmu-video-timeline-player.js';
+import { buildVideoTimeline } from '../features/video/qianmu-video-timeline.js';
+import { createVideoTimelinePlaybackSession } from '../features/video/qianmu-video-timeline-player.js';
 
 function timeline(selections = [
   { kind: 'motion', assetId: 'asset-a' },

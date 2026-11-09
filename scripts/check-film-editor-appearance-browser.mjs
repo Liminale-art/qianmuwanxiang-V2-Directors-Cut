@@ -36,7 +36,7 @@ try {
     await page.goto('https://qianmu.test/');
     await page.evaluate(async ({ source, bindings }) => {
         const [utils, timelines, postproduction, sessions, preferences, icons, saver] = await Promise.all([
-            import('/qianmu-storyboard-utils.js'), import('/qianmu-video-timeline.js'), import('/qianmu-video-postproduction.js'),
+            import('/qianmu-storyboard-utils.js'), import('/features/video/qianmu-video-timeline.js'), import('/features/video/qianmu-video-postproduction.js'),
             import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
             import('/qianmu-film-editor-save.js'),
         ]);

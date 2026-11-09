@@ -5,7 +5,7 @@ import {EventEmitter} from 'node:events';
 import {createGalleryShotReader} from '../qianmu-gallery-shot-reader.js';
 import {captureCurrentChatSource} from '../qianmu-current-chat-source.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
-import * as drafts from '../qianmu-video-draft.js';
+import * as drafts from '../features/video/qianmu-video-draft.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};

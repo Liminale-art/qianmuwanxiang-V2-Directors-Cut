@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import * as timelineModule from '../qianmu-video-timeline.js';
-import * as postproductionModule from '../qianmu-video-postproduction.js';
+import * as timelineModule from '../features/video/qianmu-video-timeline.js';
+import * as postproductionModule from '../features/video/qianmu-video-postproduction.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot } from '../qianmu-film-editor-save.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 

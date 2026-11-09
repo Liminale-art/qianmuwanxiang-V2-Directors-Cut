@@ -6,7 +6,7 @@ import {
   QIANMU_VIDEO_CONFIRMATION_SCHEMA,
   QIANMU_VIDEO_CONFIRMATION_TTL_MS,
   createVideoGenerationConfirmation,
-} from '../qianmu-video-confirmation.js';
+} from '../features/video/qianmu-video-confirmation.js';
 
 const NOW = Date.UTC(2026, 8, 3, 10, 0, 0);
 const prompt = `integrated_multimodal_description:
@@ -121,7 +121,7 @@ test('the confirmation contract stays lazy and only submits after the explicit f
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-confirmation\.js/m);
 assert.match(source, /videoConfirmation:\s*\{[\s\S]*qianmu-video-confirmation\.js\?v=1\.59\.202/);
-  assert.ok(release.files.includes('qianmu-video-confirmation.js'));
+  assert.ok(release.files.includes('features/video/qianmu-video-confirmation.js'));
   const editor = source.slice(source.indexOf('async function storyboardOpenVideoDraftEditor'), source.indexOf('function renderStoryboardVideoDraftShelf'));
   assert.match(editor, /storyboardEnsureVideoCoordinator\(\)/);
   assert.match(editor, /!guard\.confirmed \|\| guard\.fingerprint !== videoConfirmationFingerprint/);

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createVideoShotFromStoryboardFrames, normalizeVideoShotSpec, normalizeMultimodalAssetManifest, resolveH3VideoMode } from '../qianmu-video-contract.js';
-import { createVideoDraftFromStoryboardFrame, reviseVideoDraft, compileVideoDraftSelection } from '../qianmu-video-draft.js';
-import { createVideoPromptPlanFromShotSpec, compileH3VideoPrompt } from '../qianmu-video-prompt.js';
-import { createVideoGenerationConfirmation } from '../qianmu-video-confirmation.js';
-import { estimateMiniMaxH3Cost } from '../qianmu-video-pricing.js';
-import { buildMiniMaxH3CreateRequest } from '../qianmu-video-minimax.js';
+import { createVideoShotFromStoryboardFrames, normalizeVideoShotSpec, normalizeMultimodalAssetManifest, resolveH3VideoMode } from '../features/video/qianmu-video-contract.js';
+import { createVideoDraftFromStoryboardFrame, reviseVideoDraft, compileVideoDraftSelection } from '../features/video/qianmu-video-draft.js';
+import { createVideoPromptPlanFromShotSpec, compileH3VideoPrompt } from '../features/video/qianmu-video-prompt.js';
+import { createVideoGenerationConfirmation } from '../features/video/qianmu-video-confirmation.js';
+import { estimateMiniMaxH3Cost } from '../features/video/qianmu-video-pricing.js';
+import { buildMiniMaxH3CreateRequest } from '../features/video/qianmu-video-minimax.js';
 
 const modes = ['t2va', 'i2va', 'l2va', 'fl2va', 'ref2va'];
 const roles = { t2va: [], i2va: ['first_frame'], l2va: ['last_frame'], fl2va: ['first_frame', 'last_frame'], ref2va: ['reference_image'] };

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createMiniMaxH3Coordinator } from '../qianmu-video-coordinator.js';
-import { transitionVideoTask } from '../qianmu-video-task.js';
+import { createMiniMaxH3Coordinator } from '../features/video/qianmu-video-coordinator.js';
+import { transitionVideoTask } from '../features/video/qianmu-video-task.js';
 
 function memoryStorage() {
   const tasks = new Map();
@@ -238,8 +238,8 @@ test('retry stays a separate confirmed state change and never submits by itself'
 test('the coordinator remains an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/qianmu-video-coordinator\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-coordinator.js'));
+assert.match(source, /videoCoordinator:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-coordinator\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-coordinator.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoCoordinator'\)/);
 });

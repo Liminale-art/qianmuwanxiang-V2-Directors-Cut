@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { buildVideoTimeline } from '../qianmu-video-timeline.js';
-import { createVideoTimelineStoreAdapter } from '../qianmu-video-timeline-store.js';
+import { buildVideoTimeline } from '../features/video/qianmu-video-timeline.js';
+import { createVideoTimelineStoreAdapter } from '../features/video/qianmu-video-timeline-store.js';
 
 const timeline = (extra = {}) => {
   const built = buildVideoTimeline({
@@ -98,10 +98,10 @@ test('the additive timeline store is idle, chat-cleanable and included in the re
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoTimeline'), storage.indexOf('// ── 动态镜头：本地成片仓'));
   assert.match(persistence, /schema: 'qianmu\.video-timeline\.v1'/);
   assert.doesNotMatch(persistence, /apiKey|authorization|remoteUrl|base64|Blob/);
-assert.match(source, /videoTimelineStore:\s*\{[\s\S]*import\('\.\/qianmu-video-timeline-store\.js\?v=1\.59\.202'\)/);
+assert.match(source, /videoTimelineStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-timeline-store\.js\?v=1\.59\.202'\)/);
   assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_timelines/);
-  assert.ok(release.files.includes('qianmu-video-timeline-store.js'));
+  assert.ok(release.files.includes('features/video/qianmu-video-timeline-store.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoTimelineStore'\)/);
 });

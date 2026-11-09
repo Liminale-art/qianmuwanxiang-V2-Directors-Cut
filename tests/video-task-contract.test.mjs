@@ -14,7 +14,7 @@ import {
   transitionVideoTask,
   validateVideoTask,
   videoTasksForChat,
-} from '../qianmu-video-task.js';
+} from '../features/video/qianmu-video-task.js';
 
 const create = (extra = {}) => createVideoTask({
   draftId: 'draft-a',
@@ -142,8 +142,8 @@ test('the unfinished task engine ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-task\.js/m);
-assert.match(source, /videoTask:\s*\{[\s\S]*import\('\.\/qianmu-video-task\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-task.js'));
+assert.match(source, /videoTask:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-task\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-task.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoTask'\)/);
 });

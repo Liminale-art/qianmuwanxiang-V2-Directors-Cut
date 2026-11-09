@@ -7,7 +7,7 @@ import {
   buildVideoVersionChains,
   createVideoGallerySession,
   normalizeVideoGalleryItem,
-} from '../qianmu-video-gallery.js';
+} from '../features/video/qianmu-video-gallery.js';
 import { normalizeVideoMediaMeta } from '../qianmu-blobstore.js';
 
 function descriptor(extra = {}) {
@@ -166,9 +166,9 @@ test('chat ownership is checked before exposing a playable URL and deletion revo
 test('the dynamic gallery ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/qianmu-video-gallery\.js\?v=1\.59\.202'\)/);
-assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-gallery.js'));
+assert.match(source, /videoGallery:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-gallery\.js\?v=1\.59\.202'\)/);
+assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-store\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-gallery.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoGallery'\)|featureRuntime\.load\('videoStore'\)/);
 });

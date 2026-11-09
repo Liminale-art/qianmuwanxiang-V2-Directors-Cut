@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createVideoTask, requestVideoTaskCancellation } from '../qianmu-video-task.js';
+import { createVideoTask, requestVideoTaskCancellation } from '../features/video/qianmu-video-task.js';
 import {
   fetchMiniMaxH3Capabilities,
   pollMiniMaxH3VideoTask,
   reconcileMiniMaxH3Cancellation,
   submitMiniMaxH3VideoTask,
   videoRuntimeErrorPayload,
-} from '../qianmu-video-runtime.js';
+} from '../features/video/qianmu-video-runtime.js';
 
 const makeTask = () => createVideoTask({
   shotId: 'shot-a',
@@ -375,8 +375,8 @@ test('the client runtime ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-runtime\.js/m);
-assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/qianmu-video-runtime\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-runtime.js'));
+assert.match(source, /minimaxH3Runtime:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-runtime\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-runtime.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('minimaxH3Runtime'\)/);
 });

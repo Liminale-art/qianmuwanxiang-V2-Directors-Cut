@@ -33,7 +33,7 @@ try {
     await page.evaluate(async source => {
         const [utils, { storyboardProductionContext }, usage, gallery, session, preferences, icons] = await Promise.all([
             import('/qianmu-storyboard-utils.js'), import('/qianmu-storyboard.js'), import('/qianmu-runninghub-usage.js'),
-            import('/qianmu-video-gallery.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
+            import('/features/video/qianmu-video-gallery.js'), import('/qianmu-appearance-session.js'), import('/qianmu-appearance-settings.js'), import('/qianmu-icon-renderer.js'),
         ]);
         Object.assign(window, utils, usage, icons, { storyboardProductionContext, settings: { theme: 'dark' }, fixtureChat: 'fixture-chat', fixtureAccount: 'fixture-account',
             storyboardAdmissionEpoch: 0, storyboardLightboxEpoch: 0, storyboardLightboxEl: null, storyboardVideoViewerEl: null, storyboardVideoPlayback: null,

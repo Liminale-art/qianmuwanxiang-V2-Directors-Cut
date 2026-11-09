@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createVideoDraftFromStoryboardFrame } from '../qianmu-video-draft.js';
-import { createVideoDraftStoreAdapter } from '../qianmu-video-draft-store.js';
+import { createVideoDraftFromStoryboardFrame } from '../features/video/qianmu-video-draft.js';
+import { createVideoDraftStoreAdapter } from '../features/video/qianmu-video-draft-store.js';
 
 const draft = (extra = {}) => ({
   ...createVideoDraftFromStoryboardFrame({ id: 'frame-a', chatKey: 'chat-a', floor: 2 }, {
@@ -76,8 +76,8 @@ test('the additive draft store is idle and included in the release', async () =>
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoDraft'), storage.indexOf('// ── 完整影片：时间线草稿'));
   assert.match(persistence, /schema: 'qianmu\.video-draft\.v1'/);
   assert.doesNotMatch(persistence, /apiKey|authorization|remoteUrl|base64|blob/i);
-assert.match(source, /videoDraftStore:\s*\{[\s\S]*import\('\.\/qianmu-video-draft-store\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-draft-store.js'));
+assert.match(source, /videoDraftStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-draft-store\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-draft-store.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoDraftStore'\)/);
 });

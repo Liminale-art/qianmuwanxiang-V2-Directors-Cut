@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createVideoShotFromStoryboardFrames, normalizeMultimodalAssetManifest, normalizeVideoShotSpec } from '../qianmu-video-contract.js';
+import { createVideoShotFromStoryboardFrames, normalizeMultimodalAssetManifest, normalizeVideoShotSpec } from '../features/video/qianmu-video-contract.js';
 import {
   MINIMAX_H3_PROVIDER_CAPABILITY,
   buildMiniMaxH3CancelRequest,
@@ -13,7 +13,7 @@ import {
   parseMiniMaxH3CreateResponse,
   parseMiniMaxH3TaskResponse,
   planMiniMaxH3Cancellation,
-} from '../qianmu-video-minimax.js';
+} from '../features/video/qianmu-video-minimax.js';
 
 const mediaAsset = (assetId, kind, role, durationSeconds = 0) => ({
   assetId,
@@ -145,8 +145,8 @@ test('the provider adapter ships as an idle feature chunk', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-minimax\.js/m);
-assert.match(source, /minimaxH3:\s*\{[\s\S]*import\('\.\/qianmu-video-minimax\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-minimax.js'));
+assert.match(source, /minimaxH3:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-minimax\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-minimax.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('minimaxH3'\)/);
 });

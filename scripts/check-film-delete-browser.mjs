@@ -20,9 +20,9 @@ try {
   await page.goto('https://qianmu.test/');
   await page.evaluate(async source => {
     window.storage = await import('/qianmu-blobstore.js');
-    window.timelineModule = await import('/qianmu-video-timeline.js');
-    window.postModule = await import('/qianmu-video-postproduction.js');
-    const adapter = await import('/qianmu-video-timeline-store.js');
+    window.timelineModule = await import('/features/video/qianmu-video-timeline.js');
+    window.postModule = await import('/features/video/qianmu-video-postproduction.js');
+    const adapter = await import('/features/video/qianmu-video-timeline-store.js');
     window.store = adapter.createVideoTimelineStoreAdapter(storage);
     Object.assign(window, await import('/qianmu-film-editor-save.js'));
     Object.assign(window, { settings: {}, storyboardAdmissionEpoch: 1, MODAL_ID: 'modal', currentChat: 'a', renders: 0, notices: [], storyboardFilmEditor: null });

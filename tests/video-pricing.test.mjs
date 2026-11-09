@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { estimateMiniMaxH3Cost } from '../qianmu-video-pricing.js';
+import { estimateMiniMaxH3Cost } from '../features/video/qianmu-video-pricing.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
@@ -52,7 +52,7 @@ test('pricing stays lazy, visible-only and cannot authorize the draft editor', (
   assert.match(source, /videoPricing:[\s\S]*qianmu-video-pricing\.js/);
   assert.match(source, /sd-storyboard-video-estimate/);
   assert.match(source, /最终以 MiniMax 实际结算为准/);
-  assert.ok(release.files.includes('qianmu-video-pricing.js'));
+  assert.ok(release.files.includes('features/video/qianmu-video-pricing.js'));
   const init = source.slice(source.indexOf('function init()'), source.indexOf('export async function onActivate'));
   assert.doesNotMatch(init, /videoPricing|qianmu-video-pricing/);
 });

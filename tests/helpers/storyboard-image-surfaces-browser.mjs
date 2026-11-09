@@ -18,7 +18,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
       import('/qianmu-storyboard-utils.js'),import('/qianmu-storyboard.js'),import('/qianmu-image-info-view.js'),
       import('/qianmu-character-shot-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),
       import('/qianmu-icon-renderer.js'),import('/qianmu-gallery-membership.js'),import('/qianmu-current-chat-source.js'),
-      import('/qianmu-gallery-shot-reader.js'),import('/qianmu-video-draft.js')]);
+      import('/qianmu-gallery-shot-reader.js'),import('/features/video/qianmu-video-draft.js')]);
     Object.assign(window,utils,storyboard,info,icons,membership,chatSource,shotReader);
     Object.assign(window,await import('/qianmu-image-zoom.js'));
     const state=storyboard.createStoryboardDefaults();state.enabled=true;state.source='comfy';

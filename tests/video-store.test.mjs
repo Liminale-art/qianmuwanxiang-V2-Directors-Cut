@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createVideoTask } from '../qianmu-video-task.js';
-import { createVideoRuntimeStoreAdapter, normalizeVideoStoreCheckpoint } from '../qianmu-video-store.js';
+import { createVideoTask } from '../features/video/qianmu-video-task.js';
+import { createVideoRuntimeStoreAdapter, normalizeVideoStoreCheckpoint } from '../features/video/qianmu-video-store.js';
 import { STORAGE_CATEGORY_LABELS } from '../qianmu-storage-backup-view.js';
 
 const task = (extra = {}) => createVideoTask({
@@ -144,10 +144,10 @@ test('storage UI identifies video records as destructive and the adapter stays i
   assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media[^\n]*video_drafts[^\n]*video_timelines/);
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-store\.js/m);
-assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/qianmu-video-store\.js\?v=1\.59\.202'\)/);
-assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/qianmu-video-result\.js\?v=1\.59\.202'\)/);
-  assert.ok(release.files.includes('qianmu-video-store.js'));
-  assert.ok(release.files.includes('qianmu-video-result.js'));
+assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-store\.js\?v=1\.59\.202'\)/);
+assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-result\.js\?v=1\.59\.202'\)/);
+  assert.ok(release.files.includes('features/video/qianmu-video-store.js'));
+  assert.ok(release.files.includes('features/video/qianmu-video-result.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoStore'\)/);
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoResult'\)/);

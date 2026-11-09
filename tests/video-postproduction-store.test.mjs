@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createEmptyVideoPostproduction } from '../qianmu-video-postproduction.js';
-import { createVideoPostproductionStoreAdapter } from '../qianmu-video-postproduction-store.js';
+import { createEmptyVideoPostproduction } from '../features/video/qianmu-video-postproduction.js';
+import { createVideoPostproductionStoreAdapter } from '../features/video/qianmu-video-postproduction-store.js';
 
 const timeline = (extra = {}) => ({
   timelineId: 'timeline-a', owner: { chatKey: 'chat-a' },
@@ -74,10 +74,10 @@ test('the additive store is separately auditable, chat-cleanable and lazy', asyn
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoPostproduction'), storage.indexOf('export const VIDEO_MEDIA_MAX_BYTES'));
   assert.match(persistence, /schema: 'qianmu\.video-postproduction\.v1'/);
   assert.doesNotMatch(persistence, /apiKey|authorization|remoteUrl|base64|Blob/);
-assert.match(source, /videoPostproductionStore:\s*\{[\s\S]*import\('\.\/qianmu-video-postproduction-store\.js\?v=1\.59\.202'\)/);
+assert.match(source, /videoPostproductionStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-postproduction-store\.js\?v=1\.59\.202'\)/);
   assert.match(source, /video_postproduction: \['不可恢复 · 影片字幕与声轨决策', true\]/);
   assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_postproduction/);
-  assert.ok(release.files.includes('qianmu-video-postproduction-store.js'));
+  assert.ok(release.files.includes('features/video/qianmu-video-postproduction-store.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoPostproductionStore'\)/);
 });

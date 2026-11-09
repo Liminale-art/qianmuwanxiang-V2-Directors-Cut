@@ -1,5 +1,5 @@
 // 千幕 H3 客户端协调门面。集中串联任务仓、预算、网关与成片归档，但不自行启动轮询或付费任务。
-import * as defaultStorage from './qianmu-blobstore.js';
+import * as defaultStorage from '../../qianmu-blobstore.js';
 import { createMiniMaxH3ResultArchiver } from './qianmu-video-result.js?v=1.59.202';
 import {
   fetchMiniMaxH3Capabilities,
