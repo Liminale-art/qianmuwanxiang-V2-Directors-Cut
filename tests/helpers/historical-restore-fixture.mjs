@@ -4,8 +4,8 @@ import * as fs from 'node:fs/promises';
 import { historicalRecipeRestoreFixture } from './historical-recipe-restore-fixture.mjs';
 import { createImageRestoreService } from '../../server/qianmu-image-restore-service.js';
 import { imageRestoreErrorPayload } from '../../qianmu-image-restore-contract.js';
-import { createHistoricalRestore } from '../../qianmu-historical-restore.js';
-import { inspectHistoricalChatMutation, historicalChatMutationNext } from '../../qianmu-historical-chat-journal.js';
+import { createHistoricalRestore } from '../../features/chat/qianmu-historical-restore.js';
+import { inspectHistoricalChatMutation, historicalChatMutationNext } from '../../features/chat/qianmu-historical-chat-journal.js';
 
 // Real services and isolated JSONL/files; only ST's native writer and IDB are
 // substituted here. Browser coverage supplies real IDB and the same services.

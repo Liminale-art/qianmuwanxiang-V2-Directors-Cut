@@ -30,7 +30,7 @@ await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) { external.push(url.href); return route.abort(); }
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><body><main id="recovery"></main></body>' });
-    if (['/qianmu-chat-recovery.js', '/qianmu-chat-recovery-view.js', '/qianmu-chat-backup-catalog.js', '/qianmu-json-input.js'].includes(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
+    if (['/features/chat/qianmu-chat-recovery.js', '/features/chat/qianmu-chat-recovery-view.js', '/features/chat/qianmu-chat-backup-catalog.js', '/qianmu-json-input.js'].includes(url.pathname)) return route.fulfill({ contentType: 'text/javascript', body: await readFile(new URL('..' + url.pathname, import.meta.url)) });
     if (!url.pathname.startsWith('/api/')) { external.push(url.href); return route.abort(); }
     const path = url.pathname;
     assert.equal(request.method(), 'POST');
@@ -70,8 +70,8 @@ await context.route('**/*', async route => {
 try {
     await page.goto(origin);
     await page.evaluate(async ({ fastList, listPath }) => {
-        const { createChatRecovery } = await import('/qianmu-chat-recovery.js');
-        const { mountChatRecoveryView } = await import('/qianmu-chat-recovery-view.js');
+        const { createChatRecovery } = await import('/features/chat/qianmu-chat-recovery.js');
+        const { mountChatRecoveryView } = await import('/features/chat/qianmu-chat-recovery-view.js');
         if (fastList) {
             // Reproduce the public BaiBai Tools request contract with native browser
             // Responses, not a mocked url property. Only in-memory fixture traffic.

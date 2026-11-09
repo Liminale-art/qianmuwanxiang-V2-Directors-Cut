@@ -26,9 +26,9 @@ try {
         const { createGalleryCatalogStore } = await import('/qianmu-gallery-catalog-store.js');
         const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
-        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } = await import('/qianmu-chat-character-receipt-client.js');
+        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } = await import('/features/chat/qianmu-chat-character-receipt-client.js');
         const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
-        const { chatGalleryReceiptText } = await import('/qianmu-chat-gallery-receipt.js');
+        const { chatGalleryReceiptText } = await import('/features/chat/qianmu-chat-gallery-receipt.js');
         const ns = 'st-user:fixture', source = { ownerKey: 'char:D.png', chatKey: '历史聊天' };
         const frames = Array.from({length:110}, (_,i)=>({id:`id${i}`,createdAt:100+i,tags:['海岸'],url:`/user/images/image${i}.png`}));
         const current = [{id:'current',createdAt:1,tags:['当前'],url:'/user/images/current.png'}];

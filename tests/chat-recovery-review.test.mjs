@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createChatRecovery, inspectChatRecoveryJsonl } from '../qianmu-chat-recovery.js';
-import { mountChatRecoveryView } from '../qianmu-chat-recovery-view.js';
+import { createChatRecovery, inspectChatRecoveryJsonl } from '../features/chat/qianmu-chat-recovery.js';
+import { mountChatRecoveryView } from '../features/chat/qianmu-chat-recovery-view.js';
 
 const backup = 'chat_synthetic_20261019-110000.jsonl';
 const encode = rows => rows.map(row => JSON.stringify(row)).join('\n');

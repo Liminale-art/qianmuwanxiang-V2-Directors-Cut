@@ -4,18 +4,18 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptRequest,
-  chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from '../qianmu-chat-character-receipt.js';
-import {chatGalleryReceiptText,chatGalleryReceiptResponse} from '../qianmu-chat-gallery-receipt.js';
-import {chatGalleryRecordRequest,projectChatGalleryRecord,chatGalleryRecordResponse} from '../qianmu-chat-gallery-record.js';
-import {projectChatGalleryDetails,chatGalleryDetailsResponse} from '../qianmu-chat-gallery-details.js';
-import {chatGalleryEvidenceRequest} from '../qianmu-chat-gallery-evidence.js';
+  chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from '../features/chat/qianmu-chat-character-receipt.js';
+import {chatGalleryReceiptText,chatGalleryReceiptResponse} from '../features/chat/qianmu-chat-gallery-receipt.js';
+import {chatGalleryRecordRequest,projectChatGalleryRecord,chatGalleryRecordResponse} from '../features/chat/qianmu-chat-gallery-record.js';
+import {projectChatGalleryDetails,chatGalleryDetailsResponse} from '../features/chat/qianmu-chat-gallery-details.js';
+import {chatGalleryEvidenceRequest} from '../features/chat/qianmu-chat-gallery-evidence.js';
 import {readSavedChatGalleryEvidence} from './qianmu-chat-gallery-evidence-reader.js';
-import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse} from '../qianmu-chat-gallery-state.js';
+import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse} from '../features/chat/qianmu-chat-gallery-state.js';
 import {parseBoundedJson} from '../qianmu-json-input.js';
 import {readSavedChatGalleryHeader} from './qianmu-chat-gallery-header-reader.js';
 import {galleryOriginalBatchRequest} from '../qianmu-gallery-original-contract.js';
 import {recipeArchiveBatchRequest,RECIPE_BATCH_LIMITS} from '../qianmu-recipe-batch-contract.js';
-import {chatGallerySupplementRequest,projectChatGallerySupplement,chatGallerySupplementDigest,chatGallerySupplementResponse} from '../qianmu-chat-gallery-supplement.js';
+import {chatGallerySupplementRequest,projectChatGallerySupplement,chatGallerySupplementDigest,chatGallerySupplementResponse} from '../features/chat/qianmu-chat-gallery-supplement.js';
 
 const fail=(code,message,status)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));

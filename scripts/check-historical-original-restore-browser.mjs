@@ -57,8 +57,8 @@ try {
   const before = await readFile(f.file), recipes = await archives();
   await page.evaluate(async () => {
     window.file = await (await fetch('/fixture.qmb')).blob();
-    window.bundle = await (await import('/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file);
-    window.api = await import('/qianmu-historical-original-restore.js'); window.active = true; window.account = bundle.source.namespace;
+    window.bundle = await (await import('/features/chat/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file);
+    window.api = await import('/features/chat/qianmu-historical-original-restore.js'); window.active = true; window.account = bundle.source.namespace;
     window.current = { namespace: account, target: bundle.source.target, saved: structuredClone(bundle.source.saved), evidence: bundle.source.chatEvidence };
     window.create = () => api.createHistoricalOriginalRestore({ file, namespace: bundle.source.namespace, target: bundle.source.target,
       readCurrent: async () => current, guard: async () => { if (account !== bundle.source.namespace) throw Error('account changed'); }, isCurrent: () => active,
@@ -91,7 +91,7 @@ try {
   const missing = await historicalOriginalRestoreFixture(null, { prepare: f => { f.rows[0].url = '/user/images/cancel-one.png'; f.rows[1].url = '/user/images/cancel-two.png'; }, readImage: async () => new Blob([bytes], { type: 'image/png' }) });
   try {
     const transfer = [...new Uint8Array(await missing.packed.file.arrayBuffer())];
-    await page.evaluate(async transfer => { session.close(); file = new Blob([Uint8Array.from(transfer)]); bundle = await (await import('/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file); current = { namespace: account, target: bundle.source.target, saved: structuredClone(bundle.source.saved), evidence: bundle.source.chatEvidence }; session = create(); view = await session.preview(); }, transfer);
+    await page.evaluate(async transfer => { session.close(); file = new Blob([Uint8Array.from(transfer)]); bundle = await (await import('/features/chat/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file); current = { namespace: account, target: bundle.source.target, saved: structuredClone(bundle.source.saved), evidence: bundle.source.chatEvidence }; session = create(); view = await session.preview(); }, transfer);
     held = true; started = false;
     await page.evaluate(() => { window.outcome = null; window.running = session.restore(confirm(view)).then(value => outcome = value, error => outcome = { state: error.originalsState }); });
     for (let i = 0; i < 200 && !started; i++) await page.waitForTimeout(10); assert.ok(started);

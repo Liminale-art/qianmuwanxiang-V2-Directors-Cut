@@ -39,7 +39,7 @@ import { createDirectorNavigation } from './qianmu-director-navigation.js';
 import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
-import { createChatWriteGuard } from './qianmu-chat-write-guard.js?v=1.59.477';
+import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -213,7 +213,7 @@ import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.425';
 import {preparedShotSource,recordPreparedJobFailure,createUnsubmittedNovelVariantRecorder,currentVariantBatchOwner,finishStoppedVariantBatch} from './qianmu-storyboard-variant-recovery.js?v=1.59.414';
 import { applyQianmuIcons, refreshQianmuIcon } from './qianmu-icon-renderer.js?v=1.59.478';
-import { importHistoricalStoryboardBundle } from './qianmu-historical-import-runtime.js?v=1.59.414';
+import { importHistoricalStoryboardBundle } from './features/chat/qianmu-historical-import-runtime.js?v=1.59.414';
 import {
   createQianmuChatCompletionResponseFormat,
   normalizeQianmuStructuredOutputMode,
@@ -367,7 +367,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./qianmu-chat-recovery.js?v=1.59.484'), import('./qianmu-chat-recovery-view.js?v=1.59.484')]);
+    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.484')]);
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
@@ -439,8 +439,8 @@ const featureRuntime = createFeatureRuntime({
   storyboardBundleRestore: { label: '分镜联包恢复', load: () => import('./qianmu-storyboard-bundle-restore-runtime.js?v=1.59.202') },
   storyboardBundleConfiguration: { label: '分镜联包配置', load: () => import('./qianmu-storyboard-bundle-configuration.js?v=1.59.427') },
   storyboardBundleView: { label: '分镜联包核对', load: () => import('./qianmu-storyboard-bundle-view.js?v=1.59.202') },
-  historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./qianmu-historical-restore.js?v=1.59.204') },
-  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./qianmu-historical-restore-view.js?v=1.59.212') },
+  historicalRestore: { label: '历史聊天分镜恢复', load: () => import('./features/chat/qianmu-historical-restore.js?v=1.59.204') },
+  historicalRestoreView: { label: '历史聊天分镜核对', load: () => import('./features/chat/qianmu-historical-restore-view.js?v=1.59.212') },
   storyboardLinkReview: { label: '正文位置核对', load: () => import('./qianmu-storyboard-link-review.js?v=1.59.202') },
   storyboardLinkReviewView: { label: '正文位置选择', load: () => import('./qianmu-storyboard-link-review-view.js?v=1.59.202') },
   storyboardSubjectEvidence: { label: '角色来源核对', load: () => import('./qianmu-storyboard-subject-evidence.js?v=1.59.202') },

@@ -1,5 +1,5 @@
 import { buildStoryboardBundle, openStoryboardBundle, STORYBOARD_BUNDLE_LIMITS } from './qianmu-storyboard-bundle.js?v=1.59.202';
-import { sourceIdentityForNamespace } from './qianmu-source-identity-contract.js';
+import { sourceIdentityForNamespace } from './features/chat/qianmu-source-identity-contract.js';
 import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
 import { inspectStoryboardSubjectEvidence, storyboardSubjectTargets } from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';

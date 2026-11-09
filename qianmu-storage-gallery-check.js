@@ -1,5 +1,5 @@
-import {createCurrentChatGalleryReceiptClient} from './qianmu-chat-character-receipt-client.js';
-import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {createCurrentChatGalleryReceiptClient} from './features/chat/qianmu-chat-character-receipt-client.js';
+import {chatGalleryReceiptText} from './features/chat/qianmu-chat-gallery-receipt.js';
 
 const active=new WeakSet();
 // Explicit read-only check of the current host file. No save, directory write,

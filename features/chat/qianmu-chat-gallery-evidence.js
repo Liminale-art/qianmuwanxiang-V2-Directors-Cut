@@ -1,5 +1,5 @@
 import {chatCharacterReceiptRequest,chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
-import {inspectStoryboardChatEvidence} from './qianmu-storyboard-chat-evidence.js';
+import {inspectStoryboardChatEvidence} from '../../qianmu-storyboard-chat-evidence.js';
 
 export const CHAT_GALLERY_EVIDENCE_LIMITS=Object.freeze({fileBytes:128*1048576,headerBytes:64*1048576,lineBytes:2*1048576,responseBytes:24*1048576,messages:100000,durationMs:30000});
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));

@@ -1,7 +1,7 @@
 // Lossless JSON recipe transport. This is not proof that a model/workflow can still run.
-import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {chatGalleryRecordRequest} from './qianmu-chat-gallery-record.js';
-import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
+import {chatGalleryReceiptText} from './features/chat/qianmu-chat-gallery-receipt.js';
+import {chatGalleryRecordRequest} from './features/chat/qianmu-chat-gallery-record.js';
+import {chatCharacterReceiptTarget} from './features/chat/qianmu-chat-character-receipt.js';
 
 export const RECIPE_ARCHIVE_LIMITS=Object.freeze({recipeBytes:1024*1024,fileBytes:1100*1024,files:4096,totalBytes:256*1024*1024,pending:4});
 export const recipeArchiveError=(code,message,status=409)=>Object.assign(new Error(message),{code:`recipe_archive_${code}`,status});

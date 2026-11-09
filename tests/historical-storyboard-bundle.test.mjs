@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {historicalSourceFixture} from './helpers/historical-source-fixture.mjs';
 import {blob,png,fixture as currentFixture} from './fixtures/storyboard-bundle.mjs';
-import {captureHistoricalStoryboardBundle as capture,inspectHistoricalStoryboardBundle as inspect,inspectHistoricalStoryboardSource as inspectSource} from '../qianmu-historical-storyboard-bundle.js';
+import {captureHistoricalStoryboardBundle as capture,inspectHistoricalStoryboardBundle as inspect,inspectHistoricalStoryboardSource as inspectSource} from '../features/chat/qianmu-historical-storyboard-bundle.js';
 import {buildStoryboardBundle,openStoryboardBundle,HISTORICAL_BUNDLE_SCOPE as scope} from '../qianmu-storyboard-bundle.js';
 import {inspectStoryboardResourceBundle} from '../qianmu-storyboard-bundle-resources.js';
 import {createStoryboardBundleRestoreSession} from '../qianmu-storyboard-bundle-restore.js';

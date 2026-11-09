@@ -1,10 +1,10 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {chatGalleryReceiptText,chatGalleryReceiptSummary} from './qianmu-chat-gallery-receipt.js';
-import {chatGalleryDigest,galleryDigestRecord,galleryDigestRows,galleryDigestRow,scanChatGallery} from './qianmu-chat-gallery-digest.js';
+import {chatGalleryReceiptText,chatGalleryReceiptSummary} from './features/chat/qianmu-chat-gallery-receipt.js';
+import {chatGalleryDigest,galleryDigestRecord,galleryDigestRows,galleryDigestRow,scanChatGallery} from './features/chat/qianmu-chat-gallery-digest.js';
 import {galleryRecordFingerprintText} from './qianmu-gallery-record-fingerprint.js';
 import {recipeArchiveBatchRequest,recipeArchiveBatchResponse,recipeArchiveBatchCapabilities,RECIPE_BATCH_LIMITS} from './qianmu-recipe-batch-contract.js';
 import {recipeArchiveRequest,recipeArchiveResponse,recipeArchiveReference,recipeArchiveError,RECIPE_ARCHIVE_LIMITS} from './qianmu-recipe-archive-contract.js';
-import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptTarget} from './features/chat/qianmu-chat-character-receipt.js';
 
 const fail=message=>recipeArchiveError('client',message);
 const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),n=>n.toString(16).padStart(2,'0')).join('');

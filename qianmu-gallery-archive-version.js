@@ -1,9 +1,9 @@
 // Shared, path-free source-version contract for native storage and discovery.
 import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-gallery-archive-record.js';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
-import {CHAT_GALLERY_STREAM_LIMITS as CHAT_GALLERY_RECEIPT_LIMITS} from './qianmu-chat-gallery-receipt.js';
+import {CHAT_GALLERY_STREAM_LIMITS as CHAT_GALLERY_RECEIPT_LIMITS} from './features/chat/qianmu-chat-gallery-receipt.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
-import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
+import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from './features/chat/qianmu-chat-gallery-supplement.js';
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_version'});};
 export function galleryArchiveSourceReceipt(raw){
   const value=captureGalleryArchiveJson(raw,4096),keys=Object.keys(value||{});

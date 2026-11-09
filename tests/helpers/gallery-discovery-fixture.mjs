@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {createGalleryDiscoveryService} from '../../server/qianmu-gallery-discovery-service.js';
 import {createGalleryArchiveStorage} from '../../qianmu-gallery-archive-storage.js';
 import {imageServiceAccount} from '../../server/qianmu-image-service-access.js';
-import {chatGalleryReceiptText} from '../../qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText} from '../../features/chat/qianmu-chat-gallery-receipt.js';
 import {streamCheckpointTransport} from './stream-checkpoint-fixture.mjs';
 import {recipeClientFixture} from './recipe-client-fixture.mjs';
 const sha=text=>createHash('sha256').update(text).digest('hex');

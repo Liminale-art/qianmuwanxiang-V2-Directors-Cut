@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { CHAT_RECOVERY_LIMITS, createChatRecovery, inspectChatRecoveryJsonl } from '../qianmu-chat-recovery.js';
+import { CHAT_RECOVERY_LIMITS, createChatRecovery, inspectChatRecoveryJsonl } from '../features/chat/qianmu-chat-recovery.js';
 
 const backup = 'chat_role_20261019-110000.jsonl';
 const originalRows = () => [
@@ -350,7 +350,7 @@ test('preview shows the newest five complete floors while the entire source rema
 });
 
 test('module uses only read routes plus import/rename, with no delete/save/open/storage or raw HTML path', async () => {
-    const source = await readFile(new URL('../qianmu-chat-recovery.js', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../features/chat/qianmu-chat-recovery.js', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /\/api\/chats\/(?:save|delete)|\/api\/backups\/chat\/delete|innerHTML|localStorage|indexedDB|saveMetadata|openCharacterChat/);
     assert.match(source, /NOT exclusive-create/);
 });

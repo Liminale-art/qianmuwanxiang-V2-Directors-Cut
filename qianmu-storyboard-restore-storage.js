@@ -1,5 +1,5 @@
 import { vibeDigest } from './qianmu-vibe-file.js';
-import { inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.js';
+import { inspectHistoricalChatMutation } from './features/chat/qianmu-historical-chat-journal.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_restore_storage', submissionState: 'not_submitted' }); };
 const account = value => typeof value === 'string' && /^st-user:.+/.test(value) && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value);

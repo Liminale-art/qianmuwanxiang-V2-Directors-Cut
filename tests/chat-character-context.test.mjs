@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCurrentChatCharacterReceiptClient,createChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
+import {createCurrentChatCharacterReceiptClient,createChatCharacterReceiptClient} from '../features/chat/qianmu-chat-character-receipt-client.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const gate=()=>{let release;const promise=new Promise(resolve=>{release=resolve;});return {promise,release};};

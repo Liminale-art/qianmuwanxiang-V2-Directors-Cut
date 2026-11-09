@@ -4,7 +4,7 @@ import http from 'node:http';
 import {createHash} from 'node:crypto';
 import {init,exit} from '../../server-plugin.js';
 import {imageServiceAccount} from '../../server/qianmu-image-service-access.js';
-import {chatGalleryDigest} from '../../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../../features/chat/qianmu-chat-gallery-digest.js';
 import {recipeClientFixture} from './recipe-client-fixture.mjs';
 
 export const originalPng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');

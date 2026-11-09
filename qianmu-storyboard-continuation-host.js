@@ -1,7 +1,7 @@
 // Observe only an explicit host continue. No polling, raw-token interpretation,
 // generation requests, timestamp edits or whole-chat direct writes.
 import {captureStoryboardContinuation,saveStoryboardContinuation} from './qianmu-storyboard-continuation.js?v=1.59.414';
-import {acquireChatSaveLock,releaseChatSaveLock} from './qianmu-chat-save-lock.js';
+import {acquireChatSaveLock,releaseChatSaveLock} from './features/chat/qianmu-chat-save-lock.js';
 import {storyboardStreamGeneration} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
 
 export function createStoryboardContinuationHost(d){

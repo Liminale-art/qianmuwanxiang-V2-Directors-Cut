@@ -2,8 +2,8 @@ import { inspectHistoricalStoryboardSource } from './qianmu-historical-storyboar
 import { projectChatGalleryState, CHAT_GALLERY_STATE_LIMITS } from './qianmu-chat-gallery-state.js';
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { chatCharacterReceiptTarget, chatCharacterCollectionReceiptText } from './qianmu-chat-character-receipt.js';
-import { inspectStoryboardChatEvidence } from './qianmu-storyboard-chat-evidence.js';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { inspectStoryboardChatEvidence } from '../../qianmu-storyboard-chat-evidence.js';
+import { vibeDigest } from '../../qianmu-vibe-file.js';
 
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];
 const object = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));

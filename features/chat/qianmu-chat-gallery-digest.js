@@ -1,7 +1,7 @@
-import {sha256} from './vendor/noble-hashes-2.4.0/sha2.js';
+import {sha256} from '../../vendor/noble-hashes-2.4.0/sha2.js';
 import {chatGalleryReceiptRecordText,CHAT_GALLERY_STREAM_LIMITS as LIMIT} from './qianmu-chat-gallery-receipt.js';
-import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
-import {galleryRecordFingerprintText} from './qianmu-gallery-record-fingerprint.js';
+import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from '../../qianmu-gallery-page-index.js';
+import {galleryRecordFingerprintText} from '../../qianmu-gallery-record-fingerprint.js';
 const utf8=new TextEncoder(),hex=bytes=>Array.from(bytes,n=>n.toString(16).padStart(2,'0')).join('');
 const fail=message=>{throw Object.assign(Error(message),{code:'chat_gallery_digest'});};
 export function galleryDigestRecord(raw){

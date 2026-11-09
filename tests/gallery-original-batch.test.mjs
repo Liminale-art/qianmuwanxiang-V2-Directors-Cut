@@ -7,7 +7,7 @@ import {createGalleryOriginalService} from '../server/qianmu-gallery-original-se
 import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
 import {galleryOriginalBatchRequest,galleryOriginalBatchPreserved} from '../qianmu-gallery-original-contract.js';
 import {createChatGalleryHeaderCapture} from '../server/qianmu-chat-gallery-header.js';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {galleryOriginalHttpFixture as httpFixture,originalPng as png} from './helpers/gallery-original-http-fixture.mjs';
 
 const failure=error=>/^(?:gallery_original_|chat_character_receipt_)/.test(error?.code);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { openHistoricalRestoreReview, renderHistoricalRestoreReview } from '../qianmu-historical-restore-view.js';
-import { importHistoricalStoryboardBundle } from '../qianmu-historical-import-runtime.js';
+import { openHistoricalRestoreReview, renderHistoricalRestoreReview } from '../features/chat/qianmu-historical-restore-view.js';
+import { importHistoricalStoryboardBundle } from '../features/chat/qianmu-historical-import-runtime.js';
 
 const preview = {
   scope: 'historical-originals-and-current-chat',

@@ -8,11 +8,11 @@ import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js';
 import {RECIPE_ARCHIVE_LIMITS} from '../qianmu-recipe-archive-contract.js';
-import {projectChatGalleryDetails} from '../qianmu-chat-gallery-details.js';
+import {projectChatGalleryDetails} from '../features/chat/qianmu-chat-gallery-details.js';
 import {createStoryboardBundleConfiguration} from '../qianmu-storyboard-bundle-configuration.js';
 import {createStoryboardDefaults,storyboardProductionContext,storyboardDirectorDecisionSnapshot,storyboardProductionDeliveryPolicy,storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {createSelectedRecipeArchiveClient} from '../qianmu-recipe-archive-client.js';
-import {chatGalleryDigest,galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest,galleryDigestRecord} from '../features/chat/qianmu-chat-gallery-digest.js';
 
 test('legacy current recipe preservation also handles a saved gallery above 2 MiB without fallback',async t=>{
   const e=await recipeClientFixture(t);e.rows=[e.rows[0],...Array.from({length:5},(_,i)=>({id:'pad-'+i,createdAt:i+2,unknown:'x'.repeat(450000)}))];await e.save();

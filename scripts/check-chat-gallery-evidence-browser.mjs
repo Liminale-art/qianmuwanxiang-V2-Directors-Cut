@@ -30,7 +30,7 @@ async function device(){
   const context=await browser.newContext();contexts.push(context);await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin){unexpected.push(route.request().url());return route.abort();}return route.continue();});
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(origin);
   await page.evaluate(async ({target,gallerySha256})=>{
-    window.api=await import('/qianmu-chat-character-receipt-client.js');window.account='st-user:alice';window.currentChat=[{mes:'WRONG current browser narrative'}];
+    window.api=await import('/features/chat/qianmu-chat-character-receipt-client.js');window.account='st-user:alice';window.currentChat=[{mes:'WRONG current browser narrative'}];
     window.target=target;window.gallerySha256=gallerySha256;
     window.options={namespace:account,target,guard:async()=>{if(account!=='st-user:alice')throw Error('account switched');}};
     window.client=api.createChatGalleryEvidenceClient(options);

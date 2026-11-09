@@ -49,8 +49,8 @@ async function device() {
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); await page.goto(origin);
   await page.evaluate(async () => {
     window.file = await (await fetch('/fixture.qmb')).blob(); window.current = await (await fetch('/fixture')).json();
-    window.bundle = await (await import('/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file);
-    window.mod = await import('/qianmu-historical-recipe-restore.js'); window.active = true; window.account = current.namespace;
+    window.bundle = await (await import('/features/chat/qianmu-historical-storyboard-bundle.js')).inspectHistoricalStoryboardBundle(file);
+    window.mod = await import('/features/chat/qianmu-historical-recipe-restore.js'); window.active = true; window.account = current.namespace;
     window.make = (options = {}) => mod.createHistoricalRecipeRestore({ file, namespace: bundle.source.namespace, target: bundle.source.target,
       readCurrent: async () => current, guard: async () => account === bundle.source.namespace, isCurrent: () => active,
       headers: () => ({ 'X-CSRF-Token': 'fixture', Authorization: 'PRIVATE' }), ...options });

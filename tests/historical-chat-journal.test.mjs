@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { historicalChatSaveFixture as fixture, gate } from './helpers/historical-chat-save-fixture.mjs';
-import { createHistoricalChatMutation, inspectHistoricalChatMutation, inspectHistoricalChatSaveProposal, historicalChatMutationNext } from '../qianmu-historical-chat-journal.js';
+import { createHistoricalChatMutation, inspectHistoricalChatMutation, inspectHistoricalChatSaveProposal, historicalChatMutationNext } from '../features/chat/qianmu-historical-chat-journal.js';
 
 test('journal retains three complete raw fields, exact owner/target and digest-only body evidence', async t => {
   const f = await fixture(t), row = await createHistoricalChatMutation(f.proposal, { now: () => 7 });

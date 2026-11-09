@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 import {encodeGalleryArchiveOriginal,inspectGalleryArchiveOriginal} from '../qianmu-gallery-archive-original.js';
 import {encodeGalleryArchiveRecord} from '../qianmu-gallery-archive-record.js';
-import {galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
+import {galleryDigestRecord} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {galleryOriginalHttpFixture} from './helpers/gallery-original-http-fixture.mjs';
 

@@ -1,5 +1,5 @@
 import {captureProseAssistantChatSource} from './qianmu-prose-assistant-source.js';
-import {chatFileTarget} from './qianmu-chat-file-target.js';
+import {chatFileTarget} from './features/chat/qianmu-chat-file-target.js';
 import {parseBoundedJson} from './qianmu-json-input.js';
 
 const fail=()=>{throw Error('助手历史改名接续未确认，原记录保留。');};

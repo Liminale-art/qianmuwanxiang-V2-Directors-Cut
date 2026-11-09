@@ -54,7 +54,7 @@ async function initialise(page) {
     window.context = { chatId: target.chatId, characterId: 0, characters: [{ avatar: target.avatar, chat: target.chatId }],
       chat: data.messages, chatMetadata: data.metadata, getRequestHeaders: () => ({ 'X-CSRF-Token': 'fixture', Authorization: 'PRIVATE' }),
       async saveMetadata() { const result = await fetch('/fixture-native-save', { method: 'POST', body: JSON.stringify({ metadata: context.chatMetadata, messages: context.chat }) }); if (!result.ok) throw Error('test save failed'); } };
-    const { createHistoricalRestore } = await import('/qianmu-historical-restore.js');
+    const { createHistoricalRestore } = await import('/features/chat/qianmu-historical-restore.js');
     const { createStoryboardPackageJournal } = await import('/qianmu-storyboard-package-journal.js');
     window.journal = createStoryboardPackageJournal({ dbName: 'unified-history-test' });
     window.make = () => createHistoricalRestore({ file, namespace: 'st-user:alice', getContext: () => context, epoch: () => epoch,
@@ -73,12 +73,12 @@ try {
   check('preview identifies missing images and fresh exact-chat scope without writes', view.ready && view.mode === 'fresh' && view.images.every(row => row.state === 'missing') && writes() === 0);
   check('all preview stages share exactly one successful immutable-package inspection', await a.evaluate(() => packageOpens === 1));
   check('mutating a detached inspection never poisons the next restore stage', await a.evaluate(async () => {
-    const { inspectHistoricalStoryboardBundle: inspect } = await import('/qianmu-historical-storyboard-bundle.js');
+    const { inspectHistoricalStoryboardBundle: inspect } = await import('/features/chat/qianmu-historical-storyboard-bundle.js');
     const first = await inspect(file); first.source.recipes.length = 0; first.media.images.length = 0;
     const second = await inspect(file); return second.source.recipes.length === 2 && second.media.images.length === 2 && packageOpens === 1;
   }));
   check('cached inspection still refuses invalid page guard without any file write', await a.evaluate(async () => {
-    const { inspectHistoricalStoryboardBundle: inspect } = await import('/qianmu-historical-storyboard-bundle.js');
+    const { inspectHistoricalStoryboardBundle: inspect } = await import('/features/chat/qianmu-historical-storyboard-bundle.js');
     try { await inspect(file, { guard: async () => false }); return false; } catch { return true; }
   }) && writes() === 0);
   check('preview explicitly excludes narrative, video, global resources and dependencies', view.dependenciesRestored === false && view.excluded.length === 5);
@@ -109,7 +109,7 @@ try {
   check('second device cannot read first device local journal', await b.evaluate(async () => await journal.loadHistoricalChatMutation(account) === null));
   check('second device reads complete recipes from actual saved references', await b.evaluate(async () => {
     const { createHistoricalRecipeArchiveClient } = await import('/qianmu-recipe-archive-client.js');
-    const { inspectHistoricalStoryboardBundle } = await import('/qianmu-historical-storyboard-bundle.js');
+    const { inspectHistoricalStoryboardBundle } = await import('/features/chat/qianmu-historical-storyboard-bundle.js');
     const bundle = await inspectHistoricalStoryboardBundle(file), records = context.chatMetadata.story_director_liminale.storyboardImages;
     const reader = createHistoricalRecipeArchiveClient({ namespace: account, target, records, guard: async () => {}, headers: context.getRequestHeaders });
     try { for (const recipe of bundle.source.recipes) { const result = await reader.read(records.find(row => row.id === recipe.recordId)); if (JSON.stringify(result.snapshot) !== JSON.stringify(recipe.snapshot)) return false; } return true; } finally { reader.close(); }

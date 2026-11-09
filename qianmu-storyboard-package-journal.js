@@ -4,10 +4,10 @@ import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map
 import {mappingHead,validateMappingHead,mappingHeadKey} from './qianmu-storyboard-mapping-contract.js';
 import {inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {sameBundleMappingHead,validateBundleMappingHeads} from './qianmu-bundle-mapping-contract.js';
-import {inspectHistoricalChatMutation,historicalChatMutationNext} from './qianmu-historical-chat-journal.js';
+import {inspectHistoricalChatMutation,historicalChatMutationNext} from './features/chat/qianmu-historical-chat-journal.js';
 import {comfyLibraryBackupDigest as mappingDigest} from './qianmu-comfy-library-backup.js';
 import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
-import {createNativeHistoricalJournal} from './qianmu-historical-journal-native.js';
+import {createNativeHistoricalJournal} from './features/chat/qianmu-historical-journal-native.js';
 import {createNativeMappingJournal} from './qianmu-mapping-journal-native.js';
 import {createNativeResourceJournal} from './qianmu-resource-journal-native.js';
 import {createNativeMutationJournal} from './qianmu-mutation-journal-native.js';

@@ -1,4 +1,4 @@
-import {normalizeChatCharacterCollection,CHAT_CHARACTER_COLLECTION_LIMITS} from './qianmu-character-chat-batch.js';
+import {normalizeChatCharacterCollection,CHAT_CHARACTER_COLLECTION_LIMITS} from '../../qianmu-character-chat-batch.js';
 import {chatFileTarget} from './qianmu-chat-file-target.js';
 
 export const CHAT_CHARACTER_RECEIPT_LIMITS=Object.freeze({headerBytes:2*1024*1024,responseBytes:2048,pending:4});

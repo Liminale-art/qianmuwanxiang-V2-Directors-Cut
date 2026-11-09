@@ -1,5 +1,5 @@
 import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-gallery-archive-record.js';
-import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptTarget} from './features/chat/qianmu-chat-character-receipt.js';
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 
 export const GALLERY_WRITE_PROPOSAL_KIND='gallery-paged';

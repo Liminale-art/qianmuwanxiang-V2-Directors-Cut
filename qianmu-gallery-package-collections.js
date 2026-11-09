@@ -1,4 +1,4 @@
-import {CHAT_GALLERY_RECEIPT_LIMITS,chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {CHAT_GALLERY_RECEIPT_LIMITS,chatGalleryReceiptText} from './features/chat/qianmu-chat-gallery-receipt.js';
 
 // Match the chat-gallery collection count and metadata budgets, not the media
 // budget. A whole storyboard package still supports at most 400 image records.

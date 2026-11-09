@@ -1,4 +1,4 @@
-import { chatFileTarget } from './qianmu-chat-file-target.js';
+import { chatFileTarget } from './features/chat/qianmu-chat-file-target.js';
 import { parseBoundedJson } from './qianmu-json-input.js';
 
 const SNAPSHOT_BYTES = 32 * 1024 * 1024;

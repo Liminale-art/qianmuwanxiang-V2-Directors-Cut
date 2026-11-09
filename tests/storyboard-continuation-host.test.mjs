@@ -5,7 +5,7 @@ import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuatio
 import {createStoryboardMessageReference,resolveStoryboardMessageReference} from '../qianmu-storyboard.js';
 import {importCurrentRuntime} from './helpers/current-runtime.mjs';
 const {readStoryboardContinuationLinks,storyboardContinuationSavePending} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
-import {acquireChatSaveLock,releaseChatSaveLock} from '../qianmu-chat-save-lock.js';
+import {acquireChatSaveLock,releaseChatSaveLock} from '../features/chat/qianmu-chat-save-lock.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const deferred=()=>{let resolve;const promise=new Promise(yes=>{resolve=yes;});return{promise,resolve};};
 async function tick(){for(let i=0;i<30;i++)await Promise.resolve();}

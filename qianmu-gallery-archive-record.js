@@ -2,7 +2,7 @@
 // Preserving a URL/reference does not mean its image or recipe bytes were saved.
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
 import {galleryCatalogAccount,galleryCatalogSource} from './qianmu-gallery-catalog-contract.js';
-import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText} from './features/chat/qianmu-chat-gallery-receipt.js';
 import {recipeArchiveSnapshot,recipeArchiveReference} from './qianmu-recipe-archive-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 

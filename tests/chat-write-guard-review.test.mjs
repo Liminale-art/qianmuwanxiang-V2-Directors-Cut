@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { createChatWriteGuard } from '../qianmu-chat-write-guard.js';
+import { createChatWriteGuard } from '../features/chat/qianmu-chat-write-guard.js';
 
 const baseUrl = 'https://synthetic.invalid';
 const deferred = () => { let resolve; const promise = new Promise(yes => { resolve = yes; }); return { promise, resolve }; };

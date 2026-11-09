@@ -3,7 +3,7 @@ import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-galler
 import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {galleryArchiveSupplementReference,galleryArchiveEvidenceReference} from './qianmu-gallery-archive-version.js';
 export {galleryArchiveEvidenceReference} from './qianmu-gallery-archive-version.js';
-import {chatGalleryEvidenceRequest,chatGalleryEvidenceSourceResponse,CHAT_GALLERY_EVIDENCE_LIMITS as SOURCE} from './qianmu-chat-gallery-evidence.js';
+import {chatGalleryEvidenceRequest,chatGalleryEvidenceSourceResponse,CHAT_GALLERY_EVIDENCE_LIMITS as SOURCE} from './features/chat/qianmu-chat-gallery-evidence.js';
 import {STORYBOARD_CHAT_EVIDENCE_SCHEMA} from './qianmu-storyboard-chat-evidence.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 

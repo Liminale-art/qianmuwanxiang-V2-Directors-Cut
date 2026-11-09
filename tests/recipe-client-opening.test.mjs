@@ -6,7 +6,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 
 const deferred=()=>{let resolve;const promise=new Promise(yes=>resolve=yes);return {promise,resolve};};
 const tick=()=>new Promise(done=>setTimeout(done,0));

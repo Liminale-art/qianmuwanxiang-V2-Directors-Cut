@@ -16,7 +16,7 @@ try{
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async bindSource=>{
     const {checkStorageGallerySource:run}=await import('/qianmu-storage-gallery-check.js'),{renderStorageBackupSection}=await import('/qianmu-storage-backup-view.js');
-    const {createCurrentChatGalleryReceiptClient:factory}=await import('/qianmu-chat-character-receipt-client.js'),{chatGalleryReceiptText:canonical}=await import('/qianmu-chat-gallery-receipt.js');
+    const {createCurrentChatGalleryReceiptClient:factory}=await import('/features/chat/qianmu-chat-character-receipt-client.js'),{chatGalleryReceiptText:canonical}=await import('/features/chat/qianmu-chat-gallery-receipt.js');
     const checks=[],check=(label,value)=>{if(!value)throw Error(label);checks.push(label);};
     const digest=async text=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
     const frames=[{id:'one',url:'/private.png',prompt:'PRIVATE_PROMPT',createdAt:1}],namespace='st-user:alice';

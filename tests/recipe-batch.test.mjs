@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {recipeArchiveBatchRequest,recipeArchiveBatchResponse,recipeArchiveBatchCapabilities,RECIPE_BATCH_LIMITS as LIMIT} from '../qianmu-recipe-batch-contract.js';
 import {recipeArchiveErrorPayload} from '../qianmu-recipe-archive-contract.js';
 import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';

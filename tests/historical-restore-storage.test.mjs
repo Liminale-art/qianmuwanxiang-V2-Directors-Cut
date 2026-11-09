@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import { historicalChatSaveFixture } from './helpers/historical-chat-save-fixture.mjs';
-import { createHistoricalChatMutation, historicalChatMutationNext } from '../qianmu-historical-chat-journal.js';
+import { createHistoricalChatMutation, historicalChatMutationNext } from '../features/chat/qianmu-historical-chat-journal.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { renderRestoreStorageReview } from '../qianmu-storyboard-restore-storage-view.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';

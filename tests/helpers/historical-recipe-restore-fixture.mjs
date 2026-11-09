@@ -2,8 +2,8 @@ import path from 'node:path';
 import { historicalSourceFixture } from './historical-source-fixture.mjs';
 import { recipe } from './recipe-client-fixture.mjs';
 import { png } from './historical-original-restore-fixture.mjs';
-import { captureHistoricalStoryboardBundle } from '../../qianmu-historical-storyboard-bundle.js';
-import { createHistoricalRecipeRestore } from '../../qianmu-historical-recipe-restore.js';
+import { captureHistoricalStoryboardBundle } from '../../features/chat/qianmu-historical-storyboard-bundle.js';
+import { createHistoricalRecipeRestore } from '../../features/chat/qianmu-historical-recipe-restore.js';
 import { recipeArchiveErrorPayload } from '../../qianmu-recipe-archive-contract.js';
 
 export async function historicalRecipeRestoreFixture(t, { prepare, extraArchives = 0, recordIds } = {}) {

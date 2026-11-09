@@ -1,9 +1,9 @@
 import {chatStateFixture} from './chat-state-fixture.mjs';
 import {recipe} from './recipe-client-fixture.mjs';
 import {createRecipeArchiveService} from '../../server/qianmu-recipe-archive-service.js';
-import {chatCharacterReceiptErrorPayload} from '../../qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptErrorPayload} from '../../features/chat/qianmu-chat-character-receipt.js';
 import {recipeArchiveErrorPayload} from '../../qianmu-recipe-archive-contract.js';
-import {captureHistoricalStoryboardSource} from '../../qianmu-historical-storyboard-source.js';
+import {captureHistoricalStoryboardSource} from '../../features/chat/qianmu-historical-storyboard-source.js';
 export async function historicalSourceFixture(t){
   const f=await chatStateFixture(),end=f.close,recipes=createRecipeArchiveService({dataRoot:f.root});
   f.recipes=recipes;f.account='st-user:alice';f.calls=[];f.active=true;

@@ -31,7 +31,7 @@ async function setup(page){
   await page.evaluate(async()=>{
     window.proposal=await(await fetch('/fixture')).json();window.namespace=proposal.namespace;window.active=true;window.wire=[];window.workers=[];
     window.journal=(await import('/qianmu-storyboard-package-journal.js')).createStoryboardPackageJournal();
-    window.makeRecord=(await import('/qianmu-historical-chat-journal.js')).createHistoricalChatMutation;
+    window.makeRecord=(await import('/features/chat/qianmu-historical-chat-journal.js')).createHistoricalChatMutation;
     const {runRestoreStorage}=await import('/qianmu-storyboard-restore-storage-runtime.js');
     class ObservedWorker extends Worker{constructor(...args){super(...args);workers.push(this);this.addEventListener('message',event=>wire.push(structuredClone(event.data)));}terminate(){this.wasTerminated=true;super.terminate();}}
     window.run=(action,input={})=>runRestoreStorage(action,{namespace,guard:async()=>{if(!active)throw Error('page ended');},WorkerClass:ObservedWorker,...input});

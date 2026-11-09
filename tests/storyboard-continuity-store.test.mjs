@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {captureStoryboardCompilerSources,openStoryboardCompilerContinuity} from '../qianmu-storyboard-compiler-sources.js';
 import {STORYBOARD_CONTINUITY_STORE_SCHEMA} from '../qianmu-storyboard-continuity-store.js';
-import {acquireChatSaveLock,releaseChatSaveLock} from '../qianmu-chat-save-lock.js';
+import {acquireChatSaveLock,releaseChatSaveLock} from '../features/chat/qianmu-chat-save-lock.js';
 
 const roster={branches:[{id:'now',layer:'present'}],subjectIds:['A']};
 const proposal=(floor=0)=>({floor,roster:structuredClone(roster),events:[{id:'coat',branchId:'now',paragraphId:'P1',subjectId:'A',category:'outfit',key:'coat',value:'off',persistence:'persistent',evidence:'A脱下外套。'}]});

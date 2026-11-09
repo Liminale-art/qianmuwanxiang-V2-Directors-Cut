@@ -1,9 +1,9 @@
 import {chatCharacterReceiptError,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
 import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {parseBoundedJson} from './qianmu-json-input.js';
-import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
+import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
+import {vibeDigest} from '../../qianmu-vibe-file.js';
 
 export const CHAT_GALLERY_STATE_LIMITS=Object.freeze({bytes:2*1048576,responseBytes:2*1048576+16384});
 const fields=['storyboardImages','storyboardCollections','characterDrafts'];

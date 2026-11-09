@@ -10,7 +10,7 @@ import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordin
 import {createGallerySupplementStorage,captureGallerySupplement} from '../qianmu-gallery-archive-supplement.js';
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
 import {emptyChatCharacterCollection} from '../qianmu-character-chat-batch.js';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const documents=f=>[...f.transport.files.values()].map(JSON.parse).filter(row=>row.schema==='qianmu.st-account-document.v1').map(row=>row.value);

@@ -1,6 +1,6 @@
 import {CHAT_CHARACTER_RECEIPT_LIMITS as LIMIT,chatCharacterReceiptError,chatCharacterReceiptTarget,
   chatCharacterReceiptResponse,chatCharacterCollectionReceiptText} from './qianmu-chat-character-receipt.js';
-import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
+import {captureCurrentChatSource} from '../../qianmu-current-chat-source.js';
 import {chatGalleryReceiptResponse} from './qianmu-chat-gallery-receipt.js';
 import {scanChatGallery} from './qianmu-chat-gallery-digest.js';
 import {chatGalleryRecordSelection,chatGalleryRecordResponse,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from './qianmu-chat-gallery-record.js';
@@ -8,7 +8,7 @@ import {chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from './
 import {chatGalleryEvidenceRequest,chatGalleryEvidenceResponse,chatGalleryEvidenceSourceResponse,CHAT_GALLERY_EVIDENCE_LIMITS} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryStateRequest,chatGalleryStateResponse,CHAT_GALLERY_STATE_LIMITS} from './qianmu-chat-gallery-state.js';
 import {chatGallerySupplementRequest,chatGallerySupplementResponse,CHAT_GALLERY_SUPPLEMENT_LIMITS} from './qianmu-chat-gallery-supplement.js';
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
 
 const fail=message=>chatCharacterReceiptError('client',message);
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -111,7 +111,7 @@ function createChatReceiptClient({namespace,target,headers=()=>({}),fetchImpl=gl
 export function createCurrentChatCharacterReceiptClient(options){return createCurrentChatReceiptClient(options,false);}
 export function createCurrentChatGalleryReceiptClient(options){return createCurrentChatReceiptClient(options,true);}
 async function createCurrentChatReceiptClient({getContext,epoch,
-  account=async()=> (await import('./qianmu-image-admission.js?v=1.59.440')).resolveImageAccountNamespace(),guard=async()=>{},
+  account=async()=> (await import('../../qianmu-image-admission.js?v=1.59.440')).resolveImageAccountNamespace(),guard=async()=>{},
   headers,fetchImpl,timeoutMs}={},galleryOnly=false){
   if(typeof getContext!=='function'||typeof epoch!=='function'||typeof account!=='function'||typeof guard!=='function')throw fail('聊天核验缺少宿主身份和切换保护');
   let source;

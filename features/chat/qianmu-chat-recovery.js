@@ -1,4 +1,4 @@
-import { parseBoundedJson } from './qianmu-json-input.js';
+import { parseBoundedJson } from '../../qianmu-json-input.js';
 import { buildNativeBackupCatalog } from './qianmu-chat-backup-catalog.js';
 
 // Native ST 1.19 backup-to-character-copy recovery. No open-chat state is changed.

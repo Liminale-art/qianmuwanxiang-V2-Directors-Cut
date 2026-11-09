@@ -1,8 +1,8 @@
 import {galleryCatalogAccount,galleryCatalogSource} from './qianmu-gallery-catalog-contract.js';
 import {galleryDirectoryTarget} from './qianmu-gallery-directory.js';
-import {createChatGalleryReceiptClient,createChatGalleryRecordClient} from './qianmu-chat-character-receipt-client.js';
-import {captureHistoricalStoryboardSource} from './qianmu-historical-storyboard-source.js';
-import {captureHistoricalStoryboardBundle} from './qianmu-historical-storyboard-bundle.js';
+import {createChatGalleryReceiptClient,createChatGalleryRecordClient} from './features/chat/qianmu-chat-character-receipt-client.js';
+import {captureHistoricalStoryboardSource} from './features/chat/qianmu-historical-storyboard-source.js';
+import {captureHistoricalStoryboardBundle} from './features/chat/qianmu-historical-storyboard-bundle.js';
 import {loadGalleryPreviewImage} from './qianmu-gallery-preview-media.js';
 import {comfyReferencePath} from './qianmu-comfy-reference-contract.js';
 

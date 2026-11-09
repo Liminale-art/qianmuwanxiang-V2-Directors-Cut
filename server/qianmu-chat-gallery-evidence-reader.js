@@ -1,10 +1,10 @@
 import {constants} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {chatCharacterReceiptError} from '../qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptError} from '../features/chat/qianmu-chat-character-receipt.js';
 import {createChatGalleryHeaderCapture,CHAT_GALLERY_HEADER_LIMITS} from './qianmu-chat-gallery-header.js';
 import {parseBoundedJson} from '../qianmu-json-input.js';
 import {createStoryboardChatEvidenceCapture} from '../qianmu-storyboard-chat-evidence.js';
-import {CHAT_GALLERY_EVIDENCE_LIMITS as LIMIT,chatGalleryEvidenceResponse,chatGalleryEvidenceSourceResponse} from '../qianmu-chat-gallery-evidence.js';
+import {CHAT_GALLERY_EVIDENCE_LIMITS as LIMIT,chatGalleryEvidenceResponse,chatGalleryEvidenceSourceResponse} from '../features/chat/qianmu-chat-gallery-evidence.js';
 const fail=(code,message,status=409)=>{throw chatCharacterReceiptError(code,message,status);};
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 

@@ -1,9 +1,9 @@
 import { createGalleryCatalogStore } from './qianmu-gallery-catalog-store.js';
 import { projectGalleryCatalogEntry, galleryCatalogSource, galleryCatalogAccount } from './qianmu-gallery-catalog-contract.js';
-import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } from './qianmu-chat-character-receipt-client.js';
+import { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } from './features/chat/qianmu-chat-character-receipt-client.js';
 import { loadGalleryPreviewImage } from './qianmu-gallery-preview-media.js';
-import { scanChatGallery, galleryDigestRow } from './qianmu-chat-gallery-digest.js';
-import { chatFileTarget } from './qianmu-chat-file-target.js';
+import { scanChatGallery, galleryDigestRow } from './features/chat/qianmu-chat-gallery-digest.js';
+import { chatFileTarget } from './features/chat/qianmu-chat-file-target.js';
 
 // Only the existing still-record family is projected. Unknown/invalid metadata
 // stays in its original chat; no fallback timestamp, truncated tags or URL inference.

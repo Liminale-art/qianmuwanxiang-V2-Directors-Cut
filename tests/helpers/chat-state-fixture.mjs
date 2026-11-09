@@ -1,7 +1,7 @@
 import {chatEvidenceFixture} from './chat-evidence-fixture.mjs';
 import {emptyChatCharacterCollection} from '../../qianmu-character-chat-batch.js';
 import {createChatCharacterDraft} from '../../qianmu-character-chat-draft.js';
-import {chatCharacterReceiptErrorPayload} from '../../qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptErrorPayload} from '../../features/chat/qianmu-chat-character-receipt.js';
 export async function chatStateFixture(t,options){
   const f=await chatEvidenceFixture(t,options),owner={namespace:'st-user:alice',chatKey:f.target.chatId};
   const characterDrafts=emptyChatCharacterCollection(owner);

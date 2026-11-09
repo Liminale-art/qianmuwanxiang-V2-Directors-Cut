@@ -6,16 +6,16 @@ import path from 'node:path';
 import http from 'node:http';
 import {createHash} from 'node:crypto';
 import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
-import {createChatCharacterReceiptClient,createCurrentChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
+import {createChatCharacterReceiptClient,createCurrentChatCharacterReceiptClient} from '../features/chat/qianmu-chat-character-receipt-client.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterReceiptRequest,
-  chatCharacterCollectionReceiptText,chatCharacterReceiptResponse,chatCharacterReceiptErrorPayload} from '../qianmu-chat-character-receipt.js';
+  chatCharacterCollectionReceiptText,chatCharacterReceiptResponse,chatCharacterReceiptErrorPayload} from '../features/chat/qianmu-chat-character-receipt.js';
 import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {init,exit} from '../server-plugin.js';
-import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient,createChatGalleryRecordClient,createChatGalleryDetailsClient} from '../qianmu-chat-character-receipt-client.js';
-import {projectChatGalleryDetails,chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from '../qianmu-chat-gallery-details.js';
-import {chatGalleryReceiptText,chatGalleryReceiptResponse,CHAT_GALLERY_RECEIPT_LIMITS} from '../qianmu-chat-gallery-receipt.js';
-import {chatGalleryRecordRequest,chatGalleryRecordResponse,projectChatGalleryRecord,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from '../qianmu-chat-gallery-record.js';
+import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient,createChatGalleryRecordClient,createChatGalleryDetailsClient} from '../features/chat/qianmu-chat-character-receipt-client.js';
+import {projectChatGalleryDetails,chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from '../features/chat/qianmu-chat-gallery-details.js';
+import {chatGalleryReceiptText,chatGalleryReceiptResponse,CHAT_GALLERY_RECEIPT_LIMITS} from '../features/chat/qianmu-chat-gallery-receipt.js';
+import {chatGalleryRecordRequest,chatGalleryRecordResponse,projectChatGalleryRecord,CHAT_GALLERY_RECORD_RESPONSE_BYTES} from '../features/chat/qianmu-chat-gallery-record.js';
 
 const owner={namespace:'st-user:alice',chatKey:'旅途 01'},target={kind:'character',chatId:owner.chatKey,avatar:'Alice.png'};
 const account=handle=>imageServiceAccount({user:{profile:{handle,enabled:true}}}).namespace;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
-import {chatGalleryReceiptText} from '../qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText} from '../features/chat/qianmu-chat-gallery-receipt.js';
 import {vibeDigest} from '../qianmu-vibe-file.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 

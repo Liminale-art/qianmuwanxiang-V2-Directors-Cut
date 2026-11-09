@@ -24,11 +24,11 @@ try {
         const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
         const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
-        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } = await import('/qianmu-chat-character-receipt-client.js');
-        const { projectChatGalleryDetails } = await import('/qianmu-chat-gallery-details.js');
-        const { projectChatGalleryRecord } = await import('/qianmu-chat-gallery-record.js');
+        const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } = await import('/features/chat/qianmu-chat-character-receipt-client.js');
+        const { projectChatGalleryDetails } = await import('/features/chat/qianmu-chat-gallery-details.js');
+        const { projectChatGalleryRecord } = await import('/features/chat/qianmu-chat-gallery-record.js');
         const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
-        const { chatGalleryReceiptText } = await import('/qianmu-chat-gallery-receipt.js');
+        const { chatGalleryReceiptText } = await import('/features/chat/qianmu-chat-gallery-receipt.js');
         const checks = [], check = (label, ok) => { if (!ok) throw Error(label); checks.push(label); };
         const ns = 'st-user:fixture', source = { ownerKey: 'char:A.png', chatKey: '同名聊天' };
         const entry = id => ({ id, kind: 'still', createdAt: 100, tags: ['海岸'] });

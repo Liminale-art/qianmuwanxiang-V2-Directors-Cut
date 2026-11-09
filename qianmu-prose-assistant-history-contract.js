@@ -1,4 +1,4 @@
-import {chatFileTarget} from './qianmu-chat-file-target.js';
+import {chatFileTarget} from './features/chat/qianmu-chat-file-target.js';
 
 export const PROSE_ASSISTANT_HISTORY_LIMITS=Object.freeze({turns:100,characters:1000000,question:20000,reply:200000,bytes:4*1024*1024});
 const error=(code,message)=>Object.assign(new Error(message),{code:'prose_assistant_history_'+code});

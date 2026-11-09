@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createNativeHistoricalJournal} from '../qianmu-historical-journal-native.js';
+import {createNativeHistoricalJournal} from '../features/chat/qianmu-historical-journal-native.js';
 import {createStAccountStorage,configureStAccountStorage,captureStAccountStorageWorkerContext} from '../qianmu-st-account-storage.js';
-import {createHistoricalChatMutation,historicalChatMutationNext} from '../qianmu-historical-chat-journal.js';
+import {createHistoricalChatMutation,historicalChatMutationNext} from '../features/chat/qianmu-historical-chat-journal.js';
 import {historicalChatSaveFixture,consent,gate} from './helpers/historical-chat-save-fixture.mjs';
 import {collectRestoreStorage,clearRestoreStorage} from '../qianmu-storyboard-restore-storage.js';
 import {runRestoreStorage} from '../qianmu-storyboard-restore-storage-runtime.js';
@@ -119,7 +119,7 @@ test('actual native save stage journals before host writes, and second client re
   const f=await fixture(t),journal=f.open(),before=structuredClone(f.store);
   f.host=async()=>{const row=await f.open().loadHistoricalChatMutation(f.namespace);assert.equal(row.phase,'submitted');await f.persist();};
   const session=f.open; // journal factory and host fixture open are deliberately separate.
-  const {createHistoricalChatSaveSession}=await import('../qianmu-historical-chat-save.js');
+  const {createHistoricalChatSaveSession}=await import('../features/chat/qianmu-historical-chat-save.js');
   const a=createHistoricalChatSaveSession({...f.options(),journal}),result=await a.save(f.proposal,consent);a.close();
   assert.equal(result.status,'saved');assert.equal(result.durableJournal,true);assert.equal(f.saves,1);assert.notDeepEqual(f.store,before);
   const b=createHistoricalChatSaveSession({...f.options(),journal:session()});t.after(()=>b.close());
@@ -128,7 +128,7 @@ test('actual native save stage journals before host writes, and second client re
 
 test('native journal failure prevents the existing host writer from changing live metadata',async t=>{
   const f=await fixture(t),before=structuredClone(f.store);f.setHook(({path})=>path==='/api/files/upload'?Response.json({}, {status:503}):null);
-  const {createHistoricalChatSaveSession}=await import('../qianmu-historical-chat-save.js'),a=createHistoricalChatSaveSession({...f.options(),journal:f.open()});t.after(()=>a.close());
+  const {createHistoricalChatSaveSession}=await import('../features/chat/qianmu-historical-chat-save.js'),a=createHistoricalChatSaveSession({...f.options(),journal:f.open()});t.after(()=>a.close());
   await assert.rejects(a.save(f.proposal,consent));assert.deepEqual(f.store,before);assert.equal(f.saves,0);
 });
 
@@ -192,7 +192,7 @@ test('caller mutations cannot redirect a queued journal prepare',async t=>{
 });
 
 test('actual historical import entrance lets exact pending recovery reach the coordinator but blocks other imports',async()=>{
-  const source=(await readFile(new URL('../qianmu-historical-import-runtime.js',import.meta.url),'utf8')).replace('export async function','async function');
+  const source=(await readFile(new URL('../features/chat/qianmu-historical-import-runtime.js',import.meta.url),'utf8')).replace('export async function','async function');
   let previews=0,coordinators=0,other=false,notices=[];const state={shotPlans:[]},store={},parent={classList:{contains:()=>true}};
   const journal={assertNoHistoricalChatMutation(){assert.fail('own pending recovery must not be blocked');},loadMutation:async()=>other?{}:null,close(){}};
   const modules={storyboardPackageAssets:{createStoryboardPackageGuard:async()=>({namespace:'st-user:alice',guard:async()=>{}})},imageAdmission:{resolveImageAccountNamespace:async()=> 'st-user:alice'},

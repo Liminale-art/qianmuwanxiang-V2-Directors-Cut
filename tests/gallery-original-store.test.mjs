@@ -6,7 +6,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {createGalleryOriginalStore,galleryOriginalReference,GALLERY_ORIGINAL_STORE_LIMITS as LIMIT} from '../server/qianmu-gallery-original-store.js';
 import {createGalleryOriginalService} from '../server/qianmu-gallery-original-service.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');

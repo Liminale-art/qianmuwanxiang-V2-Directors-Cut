@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { historicalRestoreFixture as fixture } from './helpers/historical-restore-fixture.mjs';
 import { png } from './helpers/historical-original-restore-fixture.mjs';
-import { createHistoricalChatMutation } from '../qianmu-historical-chat-journal.js';
+import { createHistoricalChatMutation } from '../features/chat/qianmu-historical-chat-journal.js';
 
 test('unified stages inspect the immutable package once while retaining image reads and live checks',async t=>{
   const f=await fixture(t),file=f.packed.file,slice=file.slice.bind(file);let opens=0;

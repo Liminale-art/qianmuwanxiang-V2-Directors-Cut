@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {historyExportFixture,png} from './helpers/history-export-fixture.mjs';
-import {inspectHistoricalStoryboardBundle} from '../qianmu-historical-storyboard-bundle.js';
+import {inspectHistoricalStoryboardBundle} from '../features/chat/qianmu-historical-storyboard-bundle.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {createGalleryCatalogManagement} from '../qianmu-gallery-catalog-management.js';
 const wait=()=>new Promise(done=>setTimeout(done,20));

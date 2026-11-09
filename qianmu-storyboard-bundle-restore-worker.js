@@ -6,7 +6,7 @@ import { createVibeAssetStore } from './qianmu-vibe-asset-store.js?v=1.59.202';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.js?v=1.59.202';
 import { createImageRestoreClient } from './qianmu-image-restore-client.js';
-import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
+import { createSourceIdentityClient } from './features/chat/qianmu-source-identity-client.js';
 import {createBundleCarrierStore} from './qianmu-bundle-carrier-store.js';
 import {characterWorkerStorageOptions} from './qianmu-character-worker-storage.js';
 

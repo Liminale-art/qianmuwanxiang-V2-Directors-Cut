@@ -8,7 +8,7 @@ import {createChatCharacterReceiptService} from '../server/qianmu-chat-character
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
-import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 async function fixture(t){

@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {createRecipeArchiveService} from '../server/qianmu-recipe-archive-service.js';
 import {createRecipeArchiveStore} from '../server/qianmu-recipe-archive-store.js';
 import {recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveEnvelope,recipeArchiveRequest,recipeArchiveResponse,recipeArchiveErrorPayload,RECIPE_ARCHIVE_LIMITS} from '../qianmu-recipe-archive-contract.js';
-import {chatGalleryReceiptText} from '../qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText} from '../features/chat/qianmu-chat-gallery-receipt.js';
 import {init,exit} from '../server-plugin.js';
 const sha=value=>createHash('sha256').update(value).digest('hex'),account=handle=>'st-user:'+sha(handle);
 const target={kind:'character',avatar:'Alice.png',chatId:'chat'};

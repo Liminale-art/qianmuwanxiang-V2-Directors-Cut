@@ -1,5 +1,5 @@
-import { createSourceIdentityClient } from './qianmu-source-identity-client.js';
-import { sourceIdentityForNamespace, sourceIdentityLabelsMatch } from './qianmu-source-identity-contract.js';
+import { createSourceIdentityClient } from './features/chat/qianmu-source-identity-client.js';
+import { sourceIdentityForNamespace, sourceIdentityLabelsMatch } from './features/chat/qianmu-source-identity-contract.js';
 
 // Called only from the explicitly confirmed resource export, never startup or ordinary configuration export.
 export async function prepareStoryboardBundleSource({ namespace, headers, guard, confirm, fetchImpl } = {}) {

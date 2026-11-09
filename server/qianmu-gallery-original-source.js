@@ -6,7 +6,7 @@ import {constants} from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createChatCharacterReceiptService} from './qianmu-chat-character-receipt-service.js';
-import {chatGalleryRecordRequest,chatGalleryRecordResponse} from '../qianmu-chat-gallery-record.js';
+import {chatGalleryRecordRequest,chatGalleryRecordResponse} from '../features/chat/qianmu-chat-gallery-record.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {imageRestoreReceipt,IMAGE_RESTORE_MAX_BYTES} from '../qianmu-image-restore-contract.js';
 import {comfyReferenceStillMime} from '../qianmu-comfy-results.js?v=1.59.440';

@@ -1,5 +1,5 @@
 // Shared browser/server contract. No filesystem imports or caller-selected paths.
-import {chatGalleryRecordRequest} from './qianmu-chat-gallery-record.js';
+import {chatGalleryRecordRequest} from './features/chat/qianmu-chat-gallery-record.js';
 import {imageRestoreReceipt,imageRestoreAccount,IMAGE_RESTORE_MAX_BYTES} from './qianmu-image-restore-contract.js';
 
 export const GALLERY_ORIGINAL_MAX_BYTES=IMAGE_RESTORE_MAX_BYTES;

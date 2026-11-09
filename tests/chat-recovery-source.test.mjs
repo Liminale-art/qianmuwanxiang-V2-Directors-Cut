@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createChatRecovery } from '../qianmu-chat-recovery.js';
+import { createChatRecovery } from '../features/chat/qianmu-chat-recovery.js';
 
 // Contract model of ST-BaiBai-Tools@58eace59 src/chat/chatList.js:253–307.
 // The public wrapper rewrites only the native POST list to its fast-list API

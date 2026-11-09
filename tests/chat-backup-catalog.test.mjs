@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
-import { buildNativeBackupCatalog } from '../qianmu-chat-backup-catalog.js';
+import { buildNativeBackupCatalog } from '../features/chat/qianmu-chat-backup-catalog.js';
 
 const row = name => ({ name, size: '120 B', messageCount: 2, lastMessageAt: 'not-backup-time', excerpt: '合成摘要' });
 const file = (key, stamp = '20261019-032016') => `chat_${key}_${stamp}.jsonl`;

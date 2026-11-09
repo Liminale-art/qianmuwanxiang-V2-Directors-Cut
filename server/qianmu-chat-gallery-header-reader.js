@@ -1,6 +1,6 @@
 import {constants} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {chatCharacterReceiptError} from '../qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptError} from '../features/chat/qianmu-chat-character-receipt.js';
 import {createChatGalleryHeaderCapture,CHAT_GALLERY_HEADER_LIMITS as LIMIT} from './qianmu-chat-gallery-header.js';
 
 const fail=(code,message,status=409)=>{throw chatCharacterReceiptError(code,message,status);};

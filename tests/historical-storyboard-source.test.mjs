@@ -5,7 +5,7 @@ import path from 'node:path';
 import {historicalSourceFixture} from './helpers/historical-source-fixture.mjs';
 import {recipe} from './helpers/recipe-client-fixture.mjs';
 import {createHistoricalRecipeArchiveClient} from '../qianmu-recipe-archive-client.js';
-import {captureHistoricalStoryboardSource,HISTORICAL_STORYBOARD_SOURCE_LIMITS as LIMIT} from '../qianmu-historical-storyboard-source.js';
+import {captureHistoricalStoryboardSource,HISTORICAL_STORYBOARD_SOURCE_LIMITS as LIMIT} from '../features/chat/qianmu-historical-storyboard-source.js';
 import {captureStoryboardChatEvidence} from '../qianmu-storyboard-chat-evidence.js';
 const gate=()=>{let release;return {promise:new Promise(done=>release=done),release:value=>release(value)};};
 const pause=()=>new Promise(done=>setTimeout(done,10));

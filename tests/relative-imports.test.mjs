@@ -76,11 +76,19 @@ test('relayout rewrites escaped source-text regex paths in tests', async () => {
 
 test('relayout rewrites root-served file names in browser check scripts', async () => {
   const { planRelayout } = await import('../scripts/relayout.mjs');
-  const plan = await planRelayout([{ from: 'qianmu-chat-file-target.js', to: 'relayout-probe/qianmu-chat-file-target.js' }]);
+  // Probe: any root module a browser check lists by bare name (picked live, so later folder moves keep this test valid).
+  let name;
+  for (const file of tracked.filter(file => /^scripts\/check-[\w-]+-browser\.mjs$/.test(file))) {
+    if (name) break;
+    const source = await readFile(path.join(root, file), 'utf8');
+    name = [...source.matchAll(/'(qianmu-[\w-]+\.js)'/g)].map(match => match[1]).find(candidate => trackedSet.has(candidate));
+  }
+  assert.ok(name, 'some browser check serves a root module by its bare file name');
+  const plan = await planRelayout([{ from: name, to: `relayout-probe/${name}` }]);
   const served = [...plan.edits].filter(([file, { notes }]) => file.startsWith('scripts/') && notes.some(note => note.endsWith('(served root)')));
-  assert.ok(served.length, 'some browser check serves the module by its root file name');
+  assert.ok(served.length);
   for (const [, { next }] of served) {
-    assert.ok(next.includes("'relayout-probe/qianmu-chat-file-target.js'"));
-    assert.ok(!next.includes("'qianmu-chat-file-target.js'"));
+    assert.ok(next.includes(`relayout-probe/${name}`));
+    assert.doesNotMatch(next, new RegExp(`['"\`](?:\\.?/)?${name.replace(/\./g, '\\.')}['"\`?]`));
   }
 });

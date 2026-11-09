@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 579 个，其中 `qianmu-*` 模块 562 个。
+根目录文件 551 个，其中 `qianmu-*` 模块 534 个。
 
 ## 入口、宿主与安装
 
@@ -31,7 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
-| `features/` | 27 |
+| `features/` | 55 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 959 |
@@ -418,39 +418,11 @@
 | `qianmu-world-shot.js` | 是 | World-camera preparation only. No autonomous inference, archive mutation or media submission. |
 | `qianmu-world-source.js` | 是 | Lightweight provenance only. No settings, media reads, network or generation. |
 
-## 聊天、历史与保存（29）
+## 聊天、历史与保存（1）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-chat-backup-catalog.js` | 是 | Presentation-only catalog. A matching native filename is a search candidate, |
-| `qianmu-chat-character-receipt-client.js` | 是 |  |
-| `qianmu-chat-character-receipt.js` | 是 |  |
-| `qianmu-chat-file-target.js` | 是 | Shared exact ST file locator. No filesystem, host state, credentials or narrative imports. |
-| `qianmu-chat-gallery-details.js` | 是 |  |
-| `qianmu-chat-gallery-digest.js` | 是 |  |
-| `qianmu-chat-gallery-evidence.js` | 是 |  |
-| `qianmu-chat-gallery-receipt.js` | 是 |  |
-| `qianmu-chat-gallery-record.js` | 是 |  |
-| `qianmu-chat-gallery-state.js` | 是 |  |
-| `qianmu-chat-gallery-supplement.js` | 是 |  |
-| `qianmu-chat-recovery-view.js` | 是 | Backup content is untrusted text. Never render a saved message as chat HTML. |
-| `qianmu-chat-recovery.js` | 是 |  |
-| `qianmu-chat-save-lock.js` | 是 | Shared only by guarded host-save coordinators. Not a server/CAS lock and not |
-| `qianmu-chat-write-guard.js` | 是 | A page-local guard for the reproduced ST loading-window empty write only. |
-| `qianmu-historical-chat-journal.js` | 是 |  |
-| `qianmu-historical-chat-save.js` | 是 |  |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
-| `qianmu-historical-import-runtime.js` | 是 |  |
-| `qianmu-historical-journal-native.js` | 是 |  |
-| `qianmu-historical-original-restore.js` | 是 |  |
-| `qianmu-historical-recipe-restore.js` | 是 |  |
-| `qianmu-historical-restore-view.js` | 是 |  |
-| `qianmu-historical-restore.js` | 是 |  |
-| `qianmu-historical-storyboard-bundle.js` | 是 |  |
-| `qianmu-historical-storyboard-merge.js` | 是 |  |
-| `qianmu-historical-storyboard-source.js` | 是 |  |
-| `qianmu-source-identity-client.js` | 是 |  |
-| `qianmu-source-identity-contract.js` | 是 | Migration labels, not credentials or proof of authenticity. A complete server clone retains these labels. |
 
 ## 专注／阅读／文本（62）
 

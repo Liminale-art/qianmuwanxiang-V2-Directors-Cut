@@ -13,8 +13,8 @@ const license = await readFile(new URL('LICENSE', root), 'utf8');
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/, '发行版本必须是有效的三段版本号');
 assert.equal(packageJson.version, manifest.version, 'manifest 与 package 版本必须一致');
 assert.equal(packageJson.license, 'PolyForm-Noncommercial-1.0.0');
-assert.equal(manifest.js, `index.js?v=${manifest.version}-video-1`, '入口脚本必须按版本破除浏览器模块缓存');
-assert.equal(manifest.css, `style.css?v=${manifest.version}-video-1`, '样式必须按版本破除浏览器缓存');
+assert.equal(manifest.js, `index.js?v=${manifest.version}-chat-1`, '入口脚本必须按版本破除浏览器模块缓存');
+assert.equal(manifest.css, `style.css?v=${manifest.version}-chat-1`, '样式必须按版本破除浏览器缓存');
 assert.equal(manifest.display_name, '千幕万象V2-导演剪辑版');
 assert.equal(manifest.homePage, 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut.git');
 assert.match(readme, /https:\/\/github\.com\/Liminale-art\/qianmuwanxiang-V2-Directors-Cut\.git/);
@@ -26,7 +26,7 @@ assert.doesNotMatch(license, /AGPL-3\.0-or-later/);
 assert.ok(source.includes(`const VERSION = '${manifest.version}';`), 'runtime version must match the manifest');
 // Module cache versions identify changed code, not the latest unrelated release.
 // Keep an explicit fixed URL so an intentional module update can invalidate it.
-assert.match(source, /\bfrom\s+['"]\.\/qianmu-historical-import-runtime\.js\?v=\d+\.\d+\.\d+['"]/, '历史导入入口须使用明确固定版本的生产导入地址');
+assert.match(source, /\bfrom\s+['"]\.\/features\/chat\/qianmu-historical-import-runtime\.js\?v=\d+\.\d+\.\d+['"]/, '历史导入入口须使用明确固定版本的生产导入地址');
 assert.match(source, /historical-restore-view\.js\?v=\d+\.\d+\.\d+/);
 
 assert.match(source, /Symbol\.for\('qianmu\.omniscene\.runtime'\)/, '不同 URL 和安装目录必须共用一把运行锁');

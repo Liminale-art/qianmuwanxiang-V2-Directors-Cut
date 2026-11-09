@@ -2,9 +2,9 @@ import {chatCharacterReceiptError} from './qianmu-chat-character-receipt.js';
 import {chatGalleryEvidenceRequest} from './qianmu-chat-gallery-evidence.js';
 import {chatGalleryReceiptSummary,CHAT_GALLERY_STREAM_LIMITS} from './qianmu-chat-gallery-receipt.js';
 import {projectChatGalleryState} from './qianmu-chat-gallery-state.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
-import {GALLERY_SUPPLEMENT_FIELDS,GALLERY_CONTINUITY_FIELDS,projectGalleryContinuity} from './qianmu-gallery-continuity.js?v=1.59.414';
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {GALLERY_SUPPLEMENT_FIELDS,GALLERY_CONTINUITY_FIELDS,projectGalleryContinuity} from '../../qianmu-gallery-continuity.js?v=1.59.414';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
 
 // The gallery bodies are already preserved as separate immutable records. This
 // endpoint carries only original ordering and the chat-owned companion fields.

@@ -1,4 +1,4 @@
-import { sourceIdentityResponse, sourceIdentityForNamespace, sourceIdentityLabelsMatch } from './qianmu-source-identity-contract.js';
+import { sourceIdentityResponse, sourceIdentityForNamespace, sourceIdentityLabelsMatch } from './features/chat/qianmu-source-identity-contract.js';
 import { comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 
 // An explicit installation-label mapping, NOT account/subject rebinding or identity authentication.

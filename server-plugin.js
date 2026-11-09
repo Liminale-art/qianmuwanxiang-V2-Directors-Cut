@@ -8,7 +8,7 @@ import { imageServiceAccount } from './server/qianmu-image-service-access.js';
 import { installStoryboardServerBatchV2Routes } from './server/qianmu-storyboard-server-batch-v2-routes.js';
 import { createImageRestoreService } from './server/qianmu-image-restore-service.js';
 import { createSourceIdentityService } from './server/qianmu-source-identity-service.js';
-import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
+import { sourceIdentityError, sourceIdentityErrorPayload } from './features/chat/qianmu-source-identity-contract.js';
 import { createNotesSyncService } from './server/qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
 import {installGalleryDiscoveryRoutes} from './server/qianmu-gallery-discovery-routes.js';
@@ -17,7 +17,7 @@ import {installGalleryOriginalRoutes} from './server/qianmu-gallery-original-rou
 import { createChatCharacterReceiptService } from './server/qianmu-chat-character-receipt-service.js';
 import { createRecipeArchiveService } from './server/qianmu-recipe-archive-service.js';
 import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
-import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './qianmu-chat-character-receipt.js';
+import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './features/chat/qianmu-chat-character-receipt.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './server/qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './server/qianmu-comfy-readiness-server.js';

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { historicalSourceFixture } from './helpers/historical-source-fixture.mjs';
-import { planHistoricalStoryboardMerge as plan } from '../qianmu-historical-storyboard-merge.js';
+import { planHistoricalStoryboardMerge as plan } from '../features/chat/qianmu-historical-storyboard-merge.js';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
 import { createChatCharacterDraft } from '../qianmu-character-chat-draft.js';
 import { vibeDigest } from '../qianmu-vibe-file.js';
-import { captureHistoricalStoryboardSource } from '../qianmu-historical-storyboard-source.js';
+import { captureHistoricalStoryboardSource } from '../features/chat/qianmu-historical-storyboard-source.js';
 
 async function fixture(t, prepare) {
   const f = await historicalSourceFixture(t);

@@ -1,4 +1,4 @@
-import { chatFileTarget } from './qianmu-chat-file-target.js';
+import { chatFileTarget } from './features/chat/qianmu-chat-file-target.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'current_chat_source' }); };
 const object = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));

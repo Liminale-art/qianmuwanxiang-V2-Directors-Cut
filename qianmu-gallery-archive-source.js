@@ -1,10 +1,10 @@
 // Connect immutable record/page storage to the exact SAVED current-chat source.
 // Idle application preservation. No host save, original-record mutation, live-head replacement,
 // pruning, browser image download or generation; observed equality is not a server lock.
-import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './qianmu-chat-character-receipt-client.js';
+import {createCurrentChatGalleryReceiptClient,createChatGallerySupplementClient,createChatGalleryEvidenceSourceClient} from './features/chat/qianmu-chat-character-receipt-client.js';
 import {createGalleryArchiveStorage} from './qianmu-gallery-archive-storage.js?v=1.59.392';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
-import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './qianmu-chat-gallery-digest.js';
+import {scanChatGallery,galleryDigestRecord,galleryDigestRow} from './features/chat/qianmu-chat-gallery-digest.js';
 import {createSelectedRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.414';
 import {galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {galleryLocalRecipeReference,readLegacyGalleryRecipe} from './qianmu-gallery-local-recipe.js';

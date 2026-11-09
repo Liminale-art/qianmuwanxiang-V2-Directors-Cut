@@ -30,7 +30,7 @@ async function device(){
   const context=await browser.newContext();contexts.push(context);await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin){unexpected.push(route.request().url());return route.abort();}return route.continue();});
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));await page.goto(origin);
   await page.evaluate(async ({target,gallerySha256})=>{
-    window.api=await import('/qianmu-historical-storyboard-source.js');window.account='st-user:alice';window.currentHost={chat:'WRONG_CHAT',config:'WRONG_MODEL',person:'WRONG_PERSON'};
+    window.api=await import('/features/chat/qianmu-historical-storyboard-source.js');window.account='st-user:alice';window.currentHost={chat:'WRONG_CHAT',config:'WRONG_MODEL',person:'WRONG_PERSON'};
     window.options={namespace:account,target,gallerySha256,account:async()=>account,guard:async()=>{}};
   },f.request());return page;
 }
@@ -71,7 +71,7 @@ try{
   f.rows.pop();await f.write();
   const c=await device(),stable=await readFile(f.file),stableRecipes=await archiveBytes();
   const packed=await c.evaluate(async()=>{
-    window.bundles=await import('/qianmu-historical-storyboard-bundle.js');window.envelope=await import('/qianmu-storyboard-bundle.js');
+    window.bundles=await import('/features/chat/qianmu-historical-storyboard-bundle.js');window.envelope=await import('/qianmu-storyboard-bundle.js');
     window.still=new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII='),c=>c.charCodeAt(0))],{type:'image/png'});
     window.sourceSession=await api.captureHistoricalStoryboardSource(options);window.sourceBefore=sourceSession.source;
     window.packed=await bundles.captureHistoricalStoryboardBundle({session:sourceSession,guard:options.guard,readImage:async()=>still,createdAt:123});
@@ -89,7 +89,7 @@ try{
   check('truncating a Blob is detected on reread',await c.evaluate(async()=>{try{await bundles.inspectHistoricalStoryboardBundle(packed.file.slice(0,-1));return false;}catch{return true;}}));
   check('corrupting a section is detected before a successful package summary',await c.evaluate(async()=>{const bytes=new Uint8Array(await packed.file.arrayBuffer());bytes[bytes.length-1]^=1;try{await bundles.inspectHistoricalStoryboardBundle(new Blob([bytes]));return false;}catch{return true;}}));
   const mergeRequests=requests.length,mergeResult=await c.evaluate(async()=>{
-    window.mergeApi=await import('/qianmu-historical-storyboard-merge.js');
+    window.mergeApi=await import('/features/chat/qianmu-historical-storyboard-merge.js');
     window.inspected=await bundles.inspectHistoricalStoryboardBundle(packed.file);
     window.mergeOptions={source:inspected.source,namespace:options.namespace,target:options.target,currentSaved:{},currentEvidence:inspected.source.chatEvidence,guard:options.guard};
     window.mergeBeforeDatabases=JSON.stringify(await indexedDB.databases());
@@ -105,7 +105,7 @@ try{
   check('browser proposal is detached from source and live metadata',await c.evaluate(async()=>{const currentSaved=structuredClone(inspected.source.saved),before=JSON.stringify(currentSaved),result=await mergeApi.planHistoricalStoryboardMerge({...mergeOptions,currentSaved});result.proposedSaved.characterDrafts.items[0].future.note='changed output';return JSON.stringify(currentSaved)===before&&JSON.stringify(inspected.source.saved)===before;}));
   check('metadata proposal performs no API, storage or source-file writes',requests.length===mergeRequests&&(await readFile(f.file)).equals(stable)&&JSON.stringify(await archiveBytes())===JSON.stringify(stableRecipes)&&await c.evaluate(async()=>JSON.stringify(await indexedDB.databases())===mergeBeforeDatabases));
   const d=await device();
-  await d.evaluate(async()=>{window.bundles=await import('/qianmu-historical-storyboard-bundle.js');window.s=await api.captureHistoricalStoryboardSource({...options,recordIds:['server']});});
+  await d.evaluate(async()=>{window.bundles=await import('/features/chat/qianmu-historical-storyboard-bundle.js');window.s=await api.captureHistoricalStoryboardSource({...options,recordIds:['server']});});
   f.saved.characterDrafts.items[0].future.note='changed before packing';await f.write();
   check('another device changing saved drafts prevents packaging a stale source',await d.evaluate(async()=>{try{await bundles.captureHistoricalStoryboardBundle({session:s,guard:options.guard,readImage:async()=>{throw Error('image must not read');}});return false;}catch(error){return error.message.includes('人物');}}));
   check('browser package timeout cancels even a stalled original reader',await c.evaluate(async()=>{const s=await api.captureHistoricalStoryboardSource(options);let release;try{await bundles.captureHistoricalStoryboardBundle({session:s,guard:options.guard,timeoutMs:100,readImage:()=>new Promise(done=>release=done)});return false;}catch(error){release?.(still);return error.message.includes('超时');}}));

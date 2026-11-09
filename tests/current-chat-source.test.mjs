@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { captureCurrentChatSource as capture } from '../qianmu-current-chat-source.js';
-import { chatFileTarget } from '../qianmu-chat-file-target.js';
-import { createCurrentChatCharacterReceiptClient as receiptClient } from '../qianmu-chat-character-receipt-client.js';
+import { chatFileTarget } from '../features/chat/qianmu-chat-file-target.js';
+import { createCurrentChatCharacterReceiptClient as receiptClient } from '../features/chat/qianmu-chat-character-receipt-client.js';
 
 function fixture() {
     const eventSource = new EventEmitter(); let epoch = 0;
@@ -134,7 +134,7 @@ test('same-name deletion in an in-flight receipt cannot produce a successful cur
     assert.equal(calls, 1); assert.equal(f.listeners(), 0); client.close();
 });
 test('shared source and filename modules have no narrative, account, database or network imports', async () => {
-    const source = await readFile(new URL('../qianmu-current-chat-source.js', import.meta.url), 'utf8'), target = await readFile(new URL('../qianmu-chat-file-target.js', import.meta.url), 'utf8');
-    assert.deepEqual([...source.matchAll(/from '([^']+)'/g)].map(match => match[1]), ['./qianmu-chat-file-target.js']);
+    const source = await readFile(new URL('../qianmu-current-chat-source.js', import.meta.url), 'utf8'), target = await readFile(new URL('../features/chat/qianmu-chat-file-target.js', import.meta.url), 'utf8');
+    assert.deepEqual([...source.matchAll(/from '([^']+)'/g)].map(match => match[1]), ['./features/chat/qianmu-chat-file-target.js']);
     for (const code of [source,target]) assert.doesNotMatch(code, /fetch\(|indexedDB|localStorage|\.put\(|\.delete\(|saveMetadata\(|randomUUID\(/);
 });

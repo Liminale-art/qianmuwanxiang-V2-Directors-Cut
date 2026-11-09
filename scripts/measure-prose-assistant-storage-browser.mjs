@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({viewport:{width:393,height:898}}),errors=[];let external=0;
-const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-prose-assistant-history-contract.js','qianmu-account-local-store.js','qianmu-chat-file-target.js']);
+const allowed=new Set(['qianmu-prose-assistant-history.js','qianmu-prose-assistant-history-contract.js','qianmu-account-local-store.js','features/chat/qianmu-chat-file-target.js']);
 const timer=setTimeout(()=>{console.error('Assistant storage probe exceeded 60 seconds');void browser.close();},60000);
 try{
  await context.route('**/*',async route=>{

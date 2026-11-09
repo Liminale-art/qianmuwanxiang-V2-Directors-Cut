@@ -5,7 +5,7 @@ import {galleryOriginalHttpFixture,originalPng} from './gallery-original-http-fi
 import {streamCheckpointTransport} from './stream-checkpoint-fixture.mjs';
 import {createCurrentGalleryArchiveSession} from '../../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../../qianmu-gallery-archive-storage.js';
-import {chatGalleryDigest} from '../../qianmu-chat-gallery-digest.js';
+import {chatGalleryDigest} from '../../features/chat/qianmu-chat-gallery-digest.js';
 import {vibeDigest} from '../../qianmu-vibe-file.js';
 
 // Real archive preservation of a current chat gallery, after which the live rows

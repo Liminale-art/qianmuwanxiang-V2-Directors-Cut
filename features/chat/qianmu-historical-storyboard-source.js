@@ -1,10 +1,10 @@
 import {createChatGalleryStateClient,createChatGalleryEvidenceClient} from './qianmu-chat-character-receipt-client.js';
-import {createHistoricalRecipeArchiveClient} from './qianmu-recipe-archive-client.js?v=1.59.414';
+import {createHistoricalRecipeArchiveClient} from '../../qianmu-recipe-archive-client.js?v=1.59.414';
 import {chatCharacterReceiptTarget} from './qianmu-chat-character-receipt.js';
 import {chatGalleryRecordSelection} from './qianmu-chat-gallery-record.js';
 import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
-import {recipeArchiveSnapshot,recipeArchiveReference} from './qianmu-recipe-archive-contract.js';
-import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
+import {recipeArchiveSnapshot,recipeArchiveReference} from '../../qianmu-recipe-archive-contract.js';
+import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
 
 export const HISTORICAL_STORYBOARD_SOURCE_LIMITS=Object.freeze({records:400,bytes:64*1048576,durationMs:180000});
 const fail=message=>{throw Object.assign(new Error(message),{code:'historical_storyboard_source',submissionState:'not_submitted'});};

@@ -2,7 +2,7 @@
 // without constructing a detached object that the caller will immediately discard.
 // This is not an original-record reader, ownership proof or cached source check.
 import {GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
-import {CHAT_GALLERY_RECEIPT_LIMITS} from './qianmu-chat-gallery-receipt.js';
+import {CHAT_GALLERY_RECEIPT_LIMITS} from './features/chat/qianmu-chat-gallery-receipt.js';
 const utf8=new TextEncoder(),limit=Math.min(GALLERY_PAGE_INDEX_LIMITS.recordBytes,CHAT_GALLERY_RECEIPT_LIMITS.bytes);
 const fail=message=>{throw Object.assign(Error(message),{code:'chat_gallery_digest'});};
 function wellFormed(value){

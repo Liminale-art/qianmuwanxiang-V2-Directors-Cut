@@ -1,5 +1,5 @@
 import {historicalSourceFixture} from './historical-source-fixture.mjs';
-import {chatCharacterReceiptErrorPayload} from '../../qianmu-chat-character-receipt.js';
+import {chatCharacterReceiptErrorPayload} from '../../features/chat/qianmu-chat-character-receipt.js';
 import {loadGalleryPreviewImage} from '../../qianmu-gallery-preview-media.js';
 import {exportGalleryHistory} from '../../qianmu-gallery-history-export.js';
 export const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=','base64');

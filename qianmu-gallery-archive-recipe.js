@@ -1,7 +1,7 @@
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
 import {encodeGalleryArchiveRecord,galleryArchiveScope} from './qianmu-gallery-archive-record.js';
 import {recipeArchiveResponse,recipeArchiveSnapshot,recipeArchiveReference} from './qianmu-recipe-archive-contract.js';
-import {chatGalleryReceiptText} from './qianmu-chat-gallery-receipt.js';
+import {chatGalleryReceiptText} from './features/chat/qianmu-chat-gallery-receipt.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 
 const schema='qianmu.gallery.recipe-copy.v1';

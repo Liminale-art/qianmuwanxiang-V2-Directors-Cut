@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
-import { SOURCE_IDENTITY_SCHEMA, sourceIdentityError, sourceIdentityRecord, sourceIdentityRequest, sourceIdentityResponse } from '../qianmu-source-identity-contract.js';
+import { SOURCE_IDENTITY_SCHEMA, sourceIdentityError, sourceIdentityRecord, sourceIdentityRequest, sourceIdentityResponse } from '../features/chat/qianmu-source-identity-contract.js';
 
 const marker = '.qianmu-source-identity.json';
 const fail = (code, message, status) => { throw sourceIdentityError(code, message, status); };

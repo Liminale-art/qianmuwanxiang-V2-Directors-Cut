@@ -4,8 +4,8 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createChatCharacterReceiptService} from '../../server/qianmu-chat-character-receipt-service.js';
-import {chatCharacterReceiptErrorPayload} from '../../qianmu-chat-character-receipt.js';
-import {chatGalleryReceiptText} from '../../qianmu-chat-gallery-receipt.js';
+import {chatCharacterReceiptErrorPayload} from '../../features/chat/qianmu-chat-character-receipt.js';
+import {chatGalleryReceiptText} from '../../features/chat/qianmu-chat-gallery-receipt.js';
 export const sha=value=>createHash('sha256').update(value).digest('hex');
 export async function chatEvidenceFixture(t,options={}){
   const parent=await fs.realpath(os.tmpdir()),root=await fs.mkdtemp(path.join(parent,'qianmu-chat-evidence-'));

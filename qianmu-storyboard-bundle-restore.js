@@ -6,7 +6,7 @@ import { planCharacterLibraryRestore } from './qianmu-character-library-backup.j
 import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { createCharacterRestoreChoiceSnapshot } from './qianmu-character-backup-restore.js';
-import { sourceIdentityLabelsMatch } from './qianmu-source-identity-contract.js';
+import { sourceIdentityLabelsMatch } from './features/chat/qianmu-source-identity-contract.js';
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';
 import { storyboardResourceOriginsPage } from './qianmu-storyboard-resource-origins.js';
 import { createStoryboardEnvironmentReview } from './qianmu-storyboard-environment-map.js';

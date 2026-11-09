@@ -1,8 +1,8 @@
 import * as fs from 'node:fs/promises';
 import { chatStateFixture } from './chat-state-fixture.mjs';
-import { createHistoricalChatSaveSession } from '../../qianmu-historical-chat-save.js';
+import { createHistoricalChatSaveSession } from '../../features/chat/qianmu-historical-chat-save.js';
 import { captureStoryboardChatEvidence } from '../../qianmu-storyboard-chat-evidence.js';
-import { chatCharacterReceiptErrorPayload } from '../../qianmu-chat-character-receipt.js';
+import { chatCharacterReceiptErrorPayload } from '../../features/chat/qianmu-chat-character-receipt.js';
 export const consent = { confirmed: true, scope: 'historical-chat-metadata-only' };
 export const gate = () => { let release; const promise = new Promise(done => release = done); return { promise, release }; };
 export async function historicalChatSaveFixture(t) {

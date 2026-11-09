@@ -7,7 +7,7 @@ import http from 'node:http';
 import {createRequire} from 'node:module';
 import {historyExportFixture,png} from '../tests/helpers/history-export-fixture.mjs';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
-import {inspectHistoricalStoryboardBundle} from '../qianmu-historical-storyboard-bundle.js';
+import {inspectHistoricalStoryboardBundle} from '../features/chat/qianmu-historical-storyboard-bundle.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 const {chromium}=createRequire(import.meta.url)(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const f=await historyExportFixture(),errors=[],unexpected=[],checks=[],downloads=[],requests=[];

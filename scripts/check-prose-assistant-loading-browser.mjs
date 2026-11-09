@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
-const allowed=new Set(['qianmu-icon-renderer.js','qianmu-current-chat-source.js','qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js','qianmu-account-local-store.js',...['panel','window','source','context','session','request','messages','preferences','history-contract','history','history-runtime'].map(name=>'qianmu-prose-assistant-'+name+'.js')]);
+const allowed=new Set(['qianmu-icon-renderer.js','qianmu-current-chat-source.js','features/chat/qianmu-chat-file-target.js','qianmu-model-response.js','qianmu-llm-output.js','qianmu-portable-connection.js','qianmu-account-local-store.js',...['panel','window','source','context','session','request','messages','preferences','history-contract','history','history-runtime'].map(name=>'qianmu-prose-assistant-'+name+'.js')]);
 const assets=new Map(await Promise.all([...allowed].map(async name=>[name,await readFile(new URL('../'+name,import.meta.url),'utf8')])));
 const css=(await Promise.all(['style.css','qianmu-prose-assistant.css'].map(name=>readFile(new URL('../'+name,import.meta.url),'utf8')))).join('\n');
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),checks=[],errors=[];let external=0;

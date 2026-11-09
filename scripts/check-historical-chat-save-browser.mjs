@@ -54,12 +54,12 @@ async function initialise(page) {
       async saveMetadata() { hostPromises++; try { const response = await fetch('/fixture-native-save', { method: 'POST', body: JSON.stringify({ metadata: context.chatMetadata, messages: context.chat }) }); if (!response.ok) throw Error('test host acknowledgement lost'); } finally { hostPromises--; } } };
     window.select = () => Object.fromEntries(['storyboardImages', 'storyboardCollections', 'characterDrafts'].filter(key => Object.hasOwn(context.chatMetadata.story_director_liminale, key)).map(key => [key, structuredClone(context.chatMetadata.story_director_liminale[key])]));
     window.next = () => { const before = select(), after = structuredClone(before); after.storyboardImages.push({ id: 'browser-' + before.storyboardImages.length, createdAt: before.storyboardImages.length + 50, extension: { zero: 0 } }); return { ...proposal, before, after }; };
-    const { createHistoricalChatSaveSession } = await import('/qianmu-historical-chat-save.js');
+    const { createHistoricalChatSaveSession } = await import('/features/chat/qianmu-historical-chat-save.js');
     window.make = (options = {}) => createHistoricalChatSaveSession({ getContext: () => context, epoch: () => epoch, namespace: 'st-user:alice', account: async () => account,
       guard: async () => active, isCurrent: () => active, hostTimeoutMs: 100, ...options });
     window.session = make(); window.consent = { confirmed: true, scope: 'historical-chat-metadata-only' };
     const { createStoryboardPackageJournal } = await import('/qianmu-storyboard-package-journal.js');
-    const { createHistoricalChatMutation } = await import('/qianmu-historical-chat-journal.js');
+    const { createHistoricalChatMutation } = await import('/features/chat/qianmu-historical-chat-journal.js');
     window.newJournal = (dbName = 'qianmu-history-browser') => createStoryboardPackageJournal({ dbName });
     window.makeRecord = createHistoricalChatMutation;
   });
