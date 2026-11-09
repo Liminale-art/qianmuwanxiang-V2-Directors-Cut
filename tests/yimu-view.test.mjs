@@ -311,7 +311,32 @@ test('history and manual range controls are disabled by the master switch and no
     f.render({snapshot:{...f.state.snapshot,messages:[]}});
     assert.equal(f.document.querySelector('.ym-history-range').hidden,true);
     const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:0}}},'an empty chat follows from its first floor');
+});
+
+test('a new chat with only its opening floor skips the history question and counts every floor as new', async t => {
+    const f=fixture({snapshot:{...state().snapshot,messages:[{mes:'开场白'}]}}); t.after(()=>f.view.destroy());
+    const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:0}}});
+    // Before the enable result arrives (or after an older enable without a scope), turning auto on also supplies it.
+    f.render({document:{...f.state.document,enabled:true}});
+    assert.equal(f.document.querySelector('.ym-history-range').hidden,true,'no history question for the opening floor');
+    const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:0,total:0}}});
+    // Once a scope exists, nothing is resent; turning auto off never sends one.
+    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:0,total:0}}});
+    auto.checked=false; auto.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[2],{type:'autoSummary',payload:{value:false}});
+});
+
+test('an existing multi-floor chat still asks about history and sends no scope with the switches', async t => {
+    const f=fixture(); t.after(()=>f.view.destroy());
+    const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true}});
+    f.render({document:{...f.state.document,enabled:true}});
+    assert.equal(f.document.querySelector('.ym-history-range').hidden,false);
+    const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true}});
 });
 
 test('background work never disables the per-chat off action, and reopening a known chat does not ask initial range again', async t => {
@@ -1276,7 +1301,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.20 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.21 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1396,7 +1421,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.20'); assert.equal(pkg.version, '0.8.10');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.21'); assert.equal(pkg.version, '0.8.10');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

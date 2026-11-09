@@ -268,8 +268,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     }, rangeCancel));
     const historyRow = el('div', 'ym-inline-row'); historyRow.append(rangeHint, rangeEdit, rangeSubmit, rangeCancel);
     rangeForm.append(historyRow, rangeFields);
-    enabled.addEventListener('change', () => dispatch('enable', { enabled: enabled.checked }, enabled));
-    automatic.addEventListener('change', () => dispatch('autoSummary', { value: automatic.checked }, automatic));
+    // A new chat (at most the opening floor) has no history to choose: it follows
+    // from its first floor, so the "整理历史" question is skipped and every floor counts as new.
+    const freshScope = () => !state.document?.initialRange && (state.snapshot?.messages?.length || 0) <= 1
+        ? { start: 1, end: 0, total: 0 } : undefined;
+    enabled.addEventListener('change', () => dispatch('enable', { enabled: enabled.checked, ...(enabled.checked && freshScope() ? { range: freshScope() } : {}) }, enabled));
+    automatic.addEventListener('change', () => dispatch('autoSummary', { value: automatic.checked, ...(automatic.checked && freshScope() ? { initialRange: freshScope() } : {}) }, automatic));
     for (const input of [rangeStart, rangeEnd]) input.addEventListener('input', updateRangePreview);
     rangeForm.addEventListener('submit', async event => {
         event.preventDefault();
@@ -687,7 +691,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (total > 0) {
             if (rangeEnd.value === '0') rangeEnd.value = String(total);
         }
-        rangeForm.hidden = !available || !enabled.checked || Boolean(state.document?.initialRange) || !total;
+        rangeForm.hidden = !available || !enabled.checked || Boolean(state.document?.initialRange) || total <= 1;
         summarizeStart.max = summarizeEnd.max = rangeStart.max = rangeEnd.max = String(total);
         const canSummarize = available && state.document.enabled && !state.paused && state.sourceAvailable !== false;
         summarizeStart.disabled = summarizeEnd.disabled = !available;
