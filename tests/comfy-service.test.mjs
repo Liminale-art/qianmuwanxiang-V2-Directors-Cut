@@ -4,12 +4,12 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { createComfyService, comfyInstanceResource } from '../qianmu-comfy-service.js';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
-import { imageServiceChannelKey, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
+import { createComfyService, comfyInstanceResource } from '../server/qianmu-comfy-service.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
+import { imageServiceChannelKey, normalizeImageServiceChannel } from '../server/qianmu-image-service-queue.js';
 import { prepareComfySubmission } from '../qianmu-comfy-submission.js';
-import { generateImage } from '../qianmu-image-gateway.js';
+import { generateImage } from '../server/qianmu-image-gateway.js';
 
 const req = (handle = 'alice') => ({ user: { profile: { handle, enabled: true, admin: true } } });
 const binding = (attemptId = 'first', handle = 'alice') => ({ version: 1, attemptId, expectedAccount: imageServiceAccount(req(handle)).namespace, automatic: false });

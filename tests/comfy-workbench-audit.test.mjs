@@ -6,7 +6,7 @@ import * as capabilities from '../qianmu-service-capabilities.js';
 import * as storyboard from '../qianmu-storyboard.js';
 import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
 import {renderComfyLibrary} from '../qianmu-comfy-library-view.js';
-import { imageGatewayCapabilities } from '../qianmu-image-gateway.js';
+import { imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { createStoryboardFormFixture, storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 
 const workflow = () => ({image:{class_type:'EmptyImage',inputs:{width:512,height:512,batch_size:1}},

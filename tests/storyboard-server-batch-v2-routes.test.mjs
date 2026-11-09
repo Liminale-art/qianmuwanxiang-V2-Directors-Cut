@@ -6,9 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { init, exit } from '../server-plugin.js';
-import { installStoryboardServerBatchV2Routes } from '../qianmu-storyboard-server-batch-v2-routes.js';
-import { storyboardBatchV2Location } from '../qianmu-storyboard-server-batch-layout.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { installStoryboardServerBatchV2Routes } from '../server/qianmu-storyboard-server-batch-v2-routes.js';
+import { storyboardBatchV2Location } from '../server/qianmu-storyboard-server-batch-layout.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 import { uid } from '../qianmu-storyboard-utils.js';
 
 const BASE = '/image/storyboard/batches/v2';

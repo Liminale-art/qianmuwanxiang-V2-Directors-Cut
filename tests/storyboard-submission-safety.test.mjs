@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
-import { generateImage, imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
+import { generateImage, imageGatewayErrorPayload } from '../server/qianmu-image-gateway.js';
 import { createStoryboardDefaults, normalizeStoryboardState, storyboardAutomaticJobEnabled } from '../qianmu-storyboard.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');

@@ -6,10 +6,10 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createStoryboardServerBatchV2Store,
-  STORYBOARD_BATCH_V2_HARD_CAPACITY } from '../qianmu-storyboard-server-batch-v2-store.js';
-import { normalizePreparedBatch, storyboardServerBatchKey } from '../qianmu-storyboard-server-batch-contract.js';
-import { storyboardBatchV2Location } from '../qianmu-storyboard-server-batch-layout.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+  STORYBOARD_BATCH_V2_HARD_CAPACITY } from '../server/qianmu-storyboard-server-batch-v2-store.js';
+import { normalizePreparedBatch, storyboardServerBatchKey } from '../server/qianmu-storyboard-server-batch-contract.js';
+import { storyboardBatchV2Location } from '../server/qianmu-storyboard-server-batch-layout.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 import { uid } from '../qianmu-storyboard-utils.js';
 
 const request = handle => ({ user: { profile: { handle, enabled: true } } });
@@ -275,7 +275,7 @@ test('observed cross-process capacity-lock contention cannot claim slot 4096 twi
     const source = `
       import * as fs from 'node:fs/promises';
       import path from 'node:path';
-      import { createStoryboardServerBatchV2Store } from ${JSON.stringify(new URL('../qianmu-storyboard-server-batch-v2-store.js', import.meta.url).href)};
+      import { createStoryboardServerBatchV2Store } from ${JSON.stringify(new URL('../server/qianmu-storyboard-server-batch-v2-store.js', import.meta.url).href)};
       const value = JSON.parse(process.argv[1]);
       const directory = path.join(value.root, '.qianmu-service', 'storyboard-batches-v2');
       const lock = path.join(directory, '.capacity.lock');

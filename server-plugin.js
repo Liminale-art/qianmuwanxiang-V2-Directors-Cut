@@ -3,33 +3,33 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './qianmu-image-service.js';
-import { imageServiceAccount } from './qianmu-image-service-access.js';
-import { installStoryboardServerBatchV2Routes } from './qianmu-storyboard-server-batch-v2-routes.js';
-import { createImageRestoreService } from './qianmu-image-restore-service.js';
-import { createSourceIdentityService } from './qianmu-source-identity-service.js';
+import { createImageService, imageServiceTaskErrorPayload, IMAGE_SERVICE_TASK_VERSION } from './server/qianmu-image-service.js';
+import { imageServiceAccount } from './server/qianmu-image-service-access.js';
+import { installStoryboardServerBatchV2Routes } from './server/qianmu-storyboard-server-batch-v2-routes.js';
+import { createImageRestoreService } from './server/qianmu-image-restore-service.js';
+import { createSourceIdentityService } from './server/qianmu-source-identity-service.js';
 import { sourceIdentityError, sourceIdentityErrorPayload } from './qianmu-source-identity-contract.js';
-import { createNotesSyncService } from './qianmu-notes-sync-service.js';
+import { createNotesSyncService } from './server/qianmu-notes-sync-service.js';
 import { notesSyncError, notesSyncErrorPayload } from './qianmu-notes-sync-contract.js';
-import {installGalleryDiscoveryRoutes} from './qianmu-gallery-discovery-routes.js';
-import {installAssistantStorageRoutes} from './qianmu-assistant-storage-service.js';
-import {installGalleryOriginalRoutes} from './qianmu-gallery-original-routes.js';
-import { createChatCharacterReceiptService } from './qianmu-chat-character-receipt-service.js';
-import { createRecipeArchiveService } from './qianmu-recipe-archive-service.js';
+import {installGalleryDiscoveryRoutes} from './server/qianmu-gallery-discovery-routes.js';
+import {installAssistantStorageRoutes} from './server/qianmu-assistant-storage-service.js';
+import {installGalleryOriginalRoutes} from './server/qianmu-gallery-original-routes.js';
+import { createChatCharacterReceiptService } from './server/qianmu-chat-character-receipt-service.js';
+import { createRecipeArchiveService } from './server/qianmu-recipe-archive-service.js';
 import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
 import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './qianmu-chat-character-receipt.js';
 import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
-import {createVibeEncodingService,vibeServiceErrorPayload} from './qianmu-vibe-service.js';
-import { checkServerComfyReadiness } from './qianmu-comfy-readiness-server.js';
-import { createComfyServerTransport } from './qianmu-comfy-server-transport.js';
-import { createComfyTargetStore } from './qianmu-comfy-target-store.js';
-import { createComfyTargets } from './qianmu-comfy-targets.js';
-import { createComfyService } from './qianmu-comfy-service.js';
-import { createComfyCloudService } from './qianmu-comfy-cloud-service.js';
-import { authorizeComfyCloudTarget } from './qianmu-comfy-cloud-access.js';
-import { checkComfyCloudConnection } from './qianmu-comfy-cloud-check.js';
+import {createVibeEncodingService,vibeServiceErrorPayload} from './server/qianmu-vibe-service.js';
+import { checkServerComfyReadiness } from './server/qianmu-comfy-readiness-server.js';
+import { createComfyServerTransport } from './server/qianmu-comfy-server-transport.js';
+import { createComfyTargetStore } from './server/qianmu-comfy-target-store.js';
+import { createComfyTargets } from './server/qianmu-comfy-targets.js';
+import { createComfyService } from './server/qianmu-comfy-service.js';
+import { createComfyCloudService } from './server/qianmu-comfy-cloud-service.js';
+import { authorizeComfyCloudTarget } from './server/qianmu-comfy-cloud-access.js';
+import { checkComfyCloudConnection } from './server/qianmu-comfy-cloud-check.js';
 import { resolveStoryboardComfyCloud, requireComfyCloudImageSubmission } from './qianmu-comfy-cloud-protocol.js';
-import { createNativeBackupPolicyService, nativeBackupPolicyErrorPayload } from './qianmu-st-backup-policy-service.js';
+import { createNativeBackupPolicyService, nativeBackupPolicyErrorPayload } from './server/qianmu-st-backup-policy-service.js';
 import {
   checkImageConnection,
   ImageGatewayError,
@@ -37,14 +37,14 @@ import {
   imageGatewayErrorPayload,
   imageGatewayCapabilities,
   listImageModels,
-} from './qianmu-image-gateway.js';
+} from './server/qianmu-image-gateway.js';
 import {
   cancelMiniMaxH3Video,
   createMiniMaxH3Video,
   openMiniMaxH3VideoResult,
   queryMiniMaxH3Video,
   videoGatewayErrorPayload,
-} from './qianmu-video-gateway.js';
+} from './server/qianmu-video-gateway.js';
 import { MINIMAX_H3_PROVIDER_CAPABILITY } from './qianmu-video-minimax.js?v=1.59.202';
 
 const DOUBAO_ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional';

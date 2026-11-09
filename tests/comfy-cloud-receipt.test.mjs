@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
-import { normalizeComfyReceipt } from '../qianmu-comfy-receipt.js';
-import { COMFY_CLOUD_RECEIPT_SCHEMA as schema, normalizeComfyCloudReceipt as normalize, assertComfyCloudReceiptMatches as matches } from '../qianmu-comfy-cloud-receipt.js';
-import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from '../qianmu-comfy-cloud-receipt.js';
+import { normalizeComfyReceipt } from '../server/qianmu-comfy-receipt.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA as schema, normalizeComfyCloudReceipt as normalize, assertComfyCloudReceiptMatches as matches } from '../server/qianmu-comfy-cloud-receipt.js';
+import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent, assertComfyCloudReceiptForIntent } from '../server/qianmu-comfy-cloud-receipt.js';
 const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
 const stillOutput = { version: 1, model: 'workflow', previewNodeIds: ['preview'], execution: { version: 1, automatic: false, maxImages: 2, outputNodeIds: ['save'], expectedImages: 1 } };

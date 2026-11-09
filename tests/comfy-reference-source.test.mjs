@@ -4,8 +4,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
-import {createComfyReferenceSource} from '../qianmu-comfy-reference-source.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {createComfyReferenceSource} from '../server/qianmu-comfy-reference-source.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {planComfyCloudUpload} from '../qianmu-comfy-cloud-upload-contract.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 

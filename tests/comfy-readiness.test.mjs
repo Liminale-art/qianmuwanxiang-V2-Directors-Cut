@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { checkComfyReadiness, prepareComfyReadiness, inspectComfyDefinitions } from '../qianmu-comfy-readiness.js';
-import { checkServerComfyReadiness, pinnedComfyInspectionFetch } from '../qianmu-comfy-readiness-server.js';
+import { checkServerComfyReadiness, pinnedComfyInspectionFetch } from '../server/qianmu-comfy-readiness-server.js';
 
 const node = (class_type, inputs) => ({ class_type, inputs });
 const spec = (required, output, output_node = false) => ({ input: { required, optional: {} }, output, output_node });

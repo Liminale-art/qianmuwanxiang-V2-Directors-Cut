@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectComfyCloudStillResults as collect } from '../qianmu-comfy-cloud-results.js';
+import { collectComfyCloudStillResults as collect } from '../server/qianmu-comfy-cloud-results.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
-import { COMFY_CLOUD_RECEIPT_SCHEMA as schema } from '../qianmu-comfy-cloud-receipt.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA as schema } from '../server/qianmu-comfy-cloud-receipt.js';
 const connection = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const task = bindComfyCloudTask(connection, 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });
 const receipt = () => ({ schema, task, requestDigest: 'c'.repeat(64), workflow: { templateHash: 'a'.repeat(64), executionHash: 'b'.repeat(64) },

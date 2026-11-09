@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { createStoryboardServerBatchV2Store, STORYBOARD_BATCH_V2_HARD_CAPACITY } from '../qianmu-storyboard-server-batch-v2-store.js';
-import { storyboardBatchV2Location } from '../qianmu-storyboard-server-batch-layout.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { createStoryboardServerBatchV2Store, STORYBOARD_BATCH_V2_HARD_CAPACITY } from '../server/qianmu-storyboard-server-batch-v2-store.js';
+import { storyboardBatchV2Location } from '../server/qianmu-storyboard-server-batch-layout.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 import { uid } from '../qianmu-storyboard-utils.js';
 
 const request = (handle = 'alice') => ({ user: { profile: { handle, enabled: true } } });
@@ -142,7 +142,7 @@ test('global lock serializes cross-instance quota claims and preserves a failed 
 test('independent OS processes cannot both claim the final durable slot', async t => {
   const { root, store } = await fixture(t, { maxAccountRecords: 1, maxTotalRecords: 1 });
   const source = `
-    import { createStoryboardServerBatchV2Store } from ${JSON.stringify(new URL('../qianmu-storyboard-server-batch-v2-store.js', import.meta.url).href)};
+    import { createStoryboardServerBatchV2Store } from ${JSON.stringify(new URL('../server/qianmu-storyboard-server-batch-v2-store.js', import.meta.url).href)};
     const value = JSON.parse(process.argv[1]);
     const store = createStoryboardServerBatchV2Store({ dataRoot: value.root,
       maxAccountRecords: 1, maxTotalRecords: 1, lockWaitMs: 2000 });

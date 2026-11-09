@@ -5,7 +5,7 @@ import * as storyboard from '../qianmu-storyboard.js';
 import * as service from '../qianmu-service-capabilities.js';
 import {uniqueClean} from '../qianmu-storyboard-utils.js';
 import { normalizeOpenAIImageCompatibility, parseOpenAICompatibleHeaders } from '../qianmu-openai-image-compat.js';
-import { generateImage, imageGatewayCapabilities } from '../qianmu-image-gateway.js';
+import { generateImage, imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
 import { createStoryboardFormFixture, storyboardFunctionSource as fn } from './helpers/storyboard-form-fixture.mjs';
 

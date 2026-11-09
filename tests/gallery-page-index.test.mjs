@@ -137,7 +137,7 @@ test('index contract ships for read-only discovery, without wiring gallery pruni
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
   const implementation=await readFile(new URL('../qianmu-gallery-page-index.js',import.meta.url),'utf8');
   assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('qianmu-gallery-page-index.js'),true);
-  assert.equal(release.files.includes('qianmu-gallery-discovery-service.js'),true);
+  assert.equal(release.files.includes('server/qianmu-gallery-discovery-service.js'),true);
   assert.doesNotMatch(entry,/pruneStoryboardRetakeGallery\(/,'record count cannot authorize deleting gallery history');
   assert.doesNotMatch(implementation,/\bfetch\s*\(|\bindexedDB\b|\.unlink\(|\.writeFile\(|\.splice\(|\badmit\s*\(/);
 });

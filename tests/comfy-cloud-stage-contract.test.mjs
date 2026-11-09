@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeComfyCloudStage as normalize, COMFY_CLOUD_STAGE_SCHEMA as schema, RUNNINGHUB_STAGE_SCHEMA } from '../qianmu-comfy-cloud-stage-contract.js';
+import { normalizeComfyCloudStage as normalize, COMFY_CLOUD_STAGE_SCHEMA as schema, RUNNINGHUB_STAGE_SCHEMA } from '../server/qianmu-comfy-cloud-stage-contract.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
-import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA } from '../server/qianmu-comfy-cloud-receipt.js';
 
 const owner = { namespace: 'st-user:alice', channelKey: 'a'.repeat(64), attemptId: 'original', requestDigest: 'b'.repeat(64), fence: 'original-fence' };
 const task = bindComfyCloudTask(bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2'), 'original', { self: '/api/v2/jobs/original', cancel: '/api/v2/jobs/original/cancel' });

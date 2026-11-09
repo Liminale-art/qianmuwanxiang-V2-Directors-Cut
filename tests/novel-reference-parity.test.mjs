@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateDirectImage } from '../qianmu-image-direct.js';
-import { generateImage } from '../qianmu-image-gateway.js';
+import { generateImage } from '../server/qianmu-image-gateway.js';
 import { getStoryboardCapabilities } from '../qianmu-storyboard.js';
 
 const png = Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.from('image')]);

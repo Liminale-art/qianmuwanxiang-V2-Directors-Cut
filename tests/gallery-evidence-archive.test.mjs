@@ -8,7 +8,7 @@ import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js'
 import {STORYBOARD_CHAT_EVIDENCE_SCHEMA} from '../qianmu-storyboard-chat-evidence.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {chatEvidenceFixture} from './helpers/chat-evidence-fixture.mjs';
-import {createGalleryDiscoveryService} from '../qianmu-gallery-discovery-service.js';
+import {createGalleryDiscoveryService} from '../server/qianmu-gallery-discovery-service.js';
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');

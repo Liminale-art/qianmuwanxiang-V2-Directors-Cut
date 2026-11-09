@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {generateImage} from '../qianmu-image-gateway.js';
+import {generateImage} from '../server/qianmu-image-gateway.js';
 import * as roles from '../qianmu-comfy-character-plan.js';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as references from '../qianmu-comfy-references.js';

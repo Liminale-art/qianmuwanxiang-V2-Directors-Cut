@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
-import { createComfyCloudService } from '../qianmu-comfy-cloud-service.js';
-import { prepareComfyCloudSubmissionInput } from '../qianmu-comfy-cloud-prepare.js';
-import { normalizeComfyCloudChannel } from '../qianmu-comfy-cloud-channel-state.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
+import { createComfyCloudLedger } from '../server/qianmu-comfy-cloud-ledger.js';
+import { createComfyCloudService } from '../server/qianmu-comfy-cloud-service.js';
+import { prepareComfyCloudSubmissionInput } from '../server/qianmu-comfy-cloud-prepare.js';
+import { normalizeComfyCloudChannel } from '../server/qianmu-comfy-cloud-channel-state.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
 import { init, exit } from '../server-plugin.js';
 import { stillInput } from './helpers/runninghub-validation-fixture.mjs';
 

@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
-import {createRecipeArchiveService} from '../../qianmu-recipe-archive-service.js';
+import {createRecipeArchiveService} from '../../server/qianmu-recipe-archive-service.js';
 import {recipeArchiveErrorPayload} from '../../qianmu-recipe-archive-contract.js';
 import {createCurrentRecipeArchiveClient,openCurrentRecipeArchiveClient} from '../../qianmu-recipe-archive-client.js';
 

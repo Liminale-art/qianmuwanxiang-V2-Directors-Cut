@@ -8,7 +8,7 @@ import * as prompts from '../qianmu-comfy-prompt.js';
 import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
-import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
+import {prepareComfyCloudSubmission} from '../server/qianmu-comfy-cloud-prepare.js';
 import {normalizeRunningHubConsoleUrl,runningHubWorkflowId} from '../qianmu-comfy-console.js';
 import {createComfySceneCoordinator} from '../qianmu-comfy-lock-runtime.js';
 import {comfyCandidateExecutionKey} from '../qianmu-comfy-selection.js';

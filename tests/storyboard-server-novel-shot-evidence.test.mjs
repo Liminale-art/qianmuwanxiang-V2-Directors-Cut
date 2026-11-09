@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { inspectStoryboardNovelShotLedger } from '../qianmu-storyboard-server-novel-shot-evidence.js';
-import { createImageService } from '../qianmu-image-service.js';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { inspectStoryboardNovelShotLedger } from '../server/qianmu-storyboard-server-novel-shot-evidence.js';
+import { createImageService } from '../server/qianmu-image-service.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 
 const actor = (handle = 'alice') => ({ user: { profile: { handle, enabled: true } } });
 const attemptId = 'shotjob-abc-1-12345678';
@@ -129,5 +129,5 @@ test('the production service reads its existing store without creating a directo
 
 test('the internal evidence module is included in the release package', async () => {
   const release = JSON.parse(await fs.readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.equal(release.files.includes('qianmu-storyboard-server-novel-shot-evidence.js'), true);
+  assert.equal(release.files.includes('server/qianmu-storyboard-server-novel-shot-evidence.js'), true);
 });

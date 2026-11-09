@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
 import { checkDirectImageConnection } from '../qianmu-image-direct.js';
-import { checkImageConnection } from '../qianmu-image-gateway.js';
+import { checkImageConnection } from '../server/qianmu-image-gateway.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {

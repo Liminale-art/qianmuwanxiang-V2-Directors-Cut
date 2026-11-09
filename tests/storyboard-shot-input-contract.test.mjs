@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { sanitizeImageRequest } from '../qianmu-image-gateway.js';
+import { sanitizeImageRequest } from '../server/qianmu-image-gateway.js';
 import { projectStoryboardProtocolParameters } from '../qianmu-storyboard.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 

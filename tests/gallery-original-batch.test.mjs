@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import {createGalleryOriginalSource} from '../qianmu-gallery-original-source.js';
-import {createGalleryOriginalService} from '../qianmu-gallery-original-service.js';
+import {createGalleryOriginalSource} from '../server/qianmu-gallery-original-source.js';
+import {createGalleryOriginalService} from '../server/qianmu-gallery-original-service.js';
 import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
 import {galleryOriginalBatchRequest,galleryOriginalBatchPreserved} from '../qianmu-gallery-original-contract.js';
-import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
+import {createChatGalleryHeaderCapture} from '../server/qianmu-chat-gallery-header.js';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 import {galleryOriginalHttpFixture as httpFixture,originalPng as png} from './helpers/gallery-original-http-fixture.mjs';
 

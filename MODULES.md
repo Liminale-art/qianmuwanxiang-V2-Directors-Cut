@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 671 个，其中 `qianmu-*` 模块 654 个。
+根目录文件 606 个，其中 `qianmu-*` 模块 589 个。
 
 ## 入口、宿主与安装
 
@@ -32,6 +32,7 @@
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
 | `scripts/` | 158 |
+| `server/` | 65 |
 | `tests/` | 959 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
@@ -47,7 +48,7 @@
 | `README.md` | 是 |  |
 | `THIRD_PARTY_NOTICES.md` | 是 |  |
 
-## 分镜（storyboard）（108）
+## 分镜（storyboard）（103）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -132,11 +133,6 @@
 | `qianmu-storyboard-restore-storage-worker.js` | 是 |  |
 | `qianmu-storyboard-restore-storage.js` | 是 |  |
 | `qianmu-storyboard-result-inbox.js` | 是 | Only accepted original-image bytes cross an ST account switch. Recipes and |
-| `qianmu-storyboard-server-batch-contract.js` | 是 | R2-03 server-only prepared batch contract. A validated record is deliberately |
-| `qianmu-storyboard-server-batch-layout.js` | 是 | R2-03 server-only v2 layout checkpoint. This module makes no directories, |
-| `qianmu-storyboard-server-batch-v2-routes.js` | 是 | Authenticated HTTP access to the metadata-only v2 batch ledger. Nothing in |
-| `qianmu-storyboard-server-batch-v2-store.js` | 是 | Server-only, metadata-only v2 batch ledger. Importing this module does not |
-| `qianmu-storyboard-server-novel-shot-evidence.js` | 是 | Internal, ledger-only observation of one sealed NAI shot. This is neither a |
 | `qianmu-storyboard-source-proof.js` | 是 | Shared source primitives. Kept separate so ordinary and streaming source |
 | `qianmu-storyboard-stream-attempt.js` | 是 |  |
 | `qianmu-storyboard-stream-checkpoint-storage.js` | 是 |  |
@@ -160,7 +156,7 @@
 | `qianmu-storyboard-worldbooks.js` | 是 |  |
 | `qianmu-storyboard.js` | 是 |  |
 
-## Comfy／RunningHub 出图（94）
+## Comfy／RunningHub 出图（65）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -171,30 +167,11 @@
 | `qianmu-comfy-character-plan.js` | 是 | Optional preparation only. The caller must still run node readiness, output auditing and admission before dispatch. |
 | `qianmu-comfy-character-readiness.js` | 是 | Read-only per-shot verification, using the same explicitly selected requester as generation. |
 | `qianmu-comfy-classification.js` | 是 | Lightweight declarations; no candidate selection, storage, network or execution authority. |
-| `qianmu-comfy-cloud-access.js` | 是 | Official cloud egress belongs to the authenticated user's explicit request, |
-| `qianmu-comfy-cloud-asset-read.js` | 是 | Server-internal metadata coordination. Returned source URLs are short-lived |
-| `qianmu-comfy-cloud-asset.js` | 是 | Metadata plans/matching only. A plan or browser-supplied descriptor is NOT an |
-| `qianmu-comfy-cloud-cancel.js` | 是 | Explicit cancellation of one owned task. Not submission, retry, archive or deletion. |
-| `qianmu-comfy-cloud-channel-state.js` | 是 | Cloud ledger metadata only; no executor or automatic transition on remote acceptance. |
-| `qianmu-comfy-cloud-check.js` | 是 | Explicit, bounded account/queue probe. Never submits, lists model graphs, |
-| `qianmu-comfy-cloud-digest.js` | 是 | Server-only integrity computation. This does not grant ownership, persist a |
 | `qianmu-comfy-cloud-execution.js` | 是 | One original shot through the existing cloud client. No topology mutation, |
-| `qianmu-comfy-cloud-ledger.js` | 是 | Server-only reservation ledger. No network, executor, in-memory fallback or |
-| `qianmu-comfy-cloud-prepare.js` | 是 | Pure preparation. Reference preview is admission-only; actual upload receipts |
 | `qianmu-comfy-cloud-protocol.js` | 是 | Cloud request plans only. No IO, credentials, workflow edits or automatic protocol fallback. |
-| `qianmu-comfy-cloud-query.js` | 是 | One authenticated status read, not a scheduler, submitter, downloader or public route. |
 | `qianmu-comfy-cloud-readiness-client.js` | 是 | Reuse the existing account-bound cloud request path, without journal writes |
-| `qianmu-comfy-cloud-readiness.js` | 是 | Host-only, read-only Cloud main-site catalog inspection. It is not execution |
-| `qianmu-comfy-cloud-receipt.js` | 是 | Versioned cloud acceptance/output evidence, not a credential or permission grant. |
-| `qianmu-comfy-cloud-receive.js` | 是 | Server-internal collection coordinator, not an HTTP route. The host supplies |
 | `qianmu-comfy-cloud-request.js` | 是 | Browser-safe projection of an already prepared storyboard gateway request. |
-| `qianmu-comfy-cloud-response.js` | 是 | Bounded response reading and identity/status projection; no submission, billing or retry. |
-| `qianmu-comfy-cloud-results.js` | 是 | Pure projection of a bounded, parsed job response. Not a download or storage |
-| `qianmu-comfy-cloud-service.js` | 是 | Host-owned cloud service. New-task UI stays gated until the complete client |
-| `qianmu-comfy-cloud-stage-contract.js` | 是 | Pure, closed staging metadata. Identity and the complete selection must come |
-| `qianmu-comfy-cloud-submit.js` | 是 | One submission, not a generation scheduler or completion/result delivery API. |
 | `qianmu-comfy-cloud-upload-contract.js` | 是 | Metadata-only upload plans and replies. Neither function grants file access, |
-| `qianmu-comfy-cloud-upload.js` | 是 | Host-internal selected-source upload. No path guessing, public route, new job, |
 | `qianmu-comfy-cloud-workflow.js` | 是 | Bind host-issued uploads only at reference slots in the ORIGINAL template. |
 | `qianmu-comfy-console.js` | 是 | Explicit workflow metadata only. Never an API target, authentication source or workflow import. |
 | `qianmu-comfy-delivery-store.js` | 是 | Lazy, bounded delivery journal. Never stores a workflow, prompt, image or Key. |
@@ -215,13 +192,10 @@
 | `qianmu-comfy-preflight.js` | 是 | Local configuration checks before LLM spending; no remote readiness or paid probe is implied. |
 | `qianmu-comfy-prompt.js` | 是 | Final prompt projection for a classified workflow (fixed route or editable workbench). Never rewrites a graph. |
 | `qianmu-comfy-queue.js` | 是 | Page-local ordering only, never provider authorization or a durable lease. |
-| `qianmu-comfy-readiness-server.js` | 是 | Readiness uses the same account, private-network and DNS policy as generation. |
 | `qianmu-comfy-readiness.js` | 是 | Read-only legacy /object_info contract inspection. Never execute a workflow or a descriptor's remote route. |
-| `qianmu-comfy-receipt.js` | 是 | Small immutable output contract, not a workflow or prompt snapshot. Shared by |
 | `qianmu-comfy-recovery-action.js` | 是 | Manual receipt of an existing image. Never submit a new generation request. |
 | `qianmu-comfy-recovery-client.js` | 是 | Comfy delivery and single cloud acceptance. Selected file metadata only; |
 | `qianmu-comfy-reference-contract.js` | 是 | Lightweight file receipts only. No image bytes, implicit avatars or network access. |
-| `qianmu-comfy-reference-source.js` | 是 | Read-only selected-source grants. Reuses the image restore path contract and |
 | `qianmu-comfy-references.js` | 是 | Explicitly selected, immutable ST files. Loaded only for Comfy reference work. |
 | `qianmu-comfy-resource-backup.js` | 是 | Portable configuration only. No execution, connection authority, media upload or workflow rewriting. |
 | `qianmu-comfy-results.js` | 是 | Shared native-Comfy result contract; no provider submission, storage or polling. |
@@ -243,23 +217,16 @@
 | `qianmu-comfy-scene-task-navigation.js` | 是 | Read-only navigation to an existing log. This is not an archive proof, |
 | `qianmu-comfy-scene-view.js` | 是 |  |
 | `qianmu-comfy-selection.js` | 是 | Pure selection contract. This module cannot open storage, call an LLM, mutate a graph or authorize execution. |
-| `qianmu-comfy-server-transport.js` | 是 | One authenticated, pinned server egress boundary for the native Comfy API. |
-| `qianmu-comfy-service.js` | 是 | ST-only coordination of the native Comfy API. No browser-direct guarantee, |
 | `qianmu-comfy-storage-accounting.js` | 是 |  |
 | `qianmu-comfy-storage.js` | 是 | On-demand metadata inventory. Does not load workflow documents, render galleries or submit requests. |
 | `qianmu-comfy-submission.js` | 是 | Lazy, identity-only preparation. No workflow copy, storage or provider IO. |
-| `qianmu-comfy-target-store.js` | 是 | Server-only, small atomic registry under the trusted ST data root. No API keys. |
 | `qianmu-comfy-targets-view.js` | 是 | Lazy current-connection management. Never sends model keys or contacts Comfy. |
-| `qianmu-comfy-targets.js` | 是 |  |
-| `qianmu-comfy-validation-scope.js` | 是 | Host-owned identity of a tested still-workflow configuration. No credentials, |
 | `qianmu-comfy-workbench-binding.js` | 是 | Small workbench provenance only. Parameters and prompt additions remain editable, not pinned to recipe defaults. |
 | `qianmu-comfy-workbench.js` | 是 | Presentation-only, loaded on entry to the Comfy workbench. No network, storage or node execution. |
 | `qianmu-comfy-workflow.js` | 是 | Qianmu's explicit API Workflow input slots. No node-name guessing, network or persistence. |
-| `qianmu-runninghub-download.js` | 是 | Internal original-job download only. No submit, retry, archive or platform |
-| `qianmu-runninghub-results.js` | 是 | RH v2 owns task/status and, when supplied, output-node evidence. Only older |
 | `qianmu-runninghub-usage.js` | 是 | Task-level reported usage, never a price estimate or per-image sum. |
 
-## 图库与图片（75）
+## 图库与图片（61）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -282,9 +249,6 @@
 | `qianmu-gallery-details-view.js` | 是 |  |
 | `qianmu-gallery-directory-view.js` | 是 |  |
 | `qianmu-gallery-directory.js` | 是 |  |
-| `qianmu-gallery-discovery-contract.js` | 是 |  |
-| `qianmu-gallery-discovery-routes.js` | 是 |  |
-| `qianmu-gallery-discovery-service.js` | 是 |  |
 | `qianmu-gallery-evidence-source.js` | 是 |  |
 | `qianmu-gallery-external-recipe-migration.js` | 是 |  |
 | `qianmu-gallery-history-export.js` | 是 |  |
@@ -299,10 +263,6 @@
 | `qianmu-gallery-original-client.js` | 是 |  |
 | `qianmu-gallery-original-contract.js` | 是 | Shared browser/server contract. No filesystem imports or caller-selected paths. |
 | `qianmu-gallery-original-export.js` | 是 |  |
-| `qianmu-gallery-original-routes.js` | 是 |  |
-| `qianmu-gallery-original-service.js` | 是 | Server service. Routes provide authentication and bounded binary responses; |
-| `qianmu-gallery-original-source.js` | 是 | Server-only, selected original bytes. No network, writes, public routes or |
-| `qianmu-gallery-original-store.js` | 是 | Server-only, add-only original copies. No startup I/O, network, public paths, |
 | `qianmu-gallery-package-collections.js` | 是 |  |
 | `qianmu-gallery-page-index.js` | 是 | Shared paging contract used by read-only version discovery. No migration, |
 | `qianmu-gallery-preview-media.js` | 是 |  |
@@ -322,29 +282,21 @@
 | `qianmu-image-attempts.js` | 是 | Pure still-frame admission rules. Persistence must apply each operation inside one |
 | `qianmu-image-channel.js` | 是 | Browser-wide NAI serialization. Only opaque key fingerprints and request |
 | `qianmu-image-direct.js` | 是 | 千幕 · 浏览器生图直连适配层 |
-| `qianmu-image-gateway.js` | 是 |  |
 | `qianmu-image-info-view.js` | 是 |  |
 | `qianmu-image-models.js` | 是 | Shared model-catalog contract. No credentials, browser globals or generation requests. |
 | `qianmu-image-recovery-cli.js` | 是 | Offline administrative entry, deliberately separate from plugin HTTP routes. |
 | `qianmu-image-restore-client.js` | 是 |  |
 | `qianmu-image-restore-contract.js` | 是 |  |
-| `qianmu-image-restore-service.js` | 是 | Add-only, account-local image restoration. No upstream network, task submission, overwrite, rename-over or public disk paths. |
-| `qianmu-image-service-access.js` | 是 | The host's authenticated Request.user is the only source of account identity. |
 | `qianmu-image-service-client.js` | 是 | Optional service transport. Loading this module does not open storage or probe. |
-| `qianmu-image-service-queue.js` | 是 | Server-only queue contract. A durable, atomic transaction port is mandatory: |
 | `qianmu-image-service-recovery.js` | 是 | Offline administration only; never expose this module as a normal retry route. |
-| `qianmu-image-service-results.js` | 是 | Bounded private, temporary image results. The request ledger is never deleted |
-| `qianmu-image-service-store.js` | 是 | Private server-side metadata only. Not activated by importing this module. |
-| `qianmu-image-service.js` | 是 |  |
 | `qianmu-image-transport.js` | 是 | Explicit cross-family wire projection. Pure and bounded; native requests are never rewritten. |
 | `qianmu-image-zoom.js` | 是 | Local image viewing only; never reads media metadata or starts network work. |
 
-## Vibe／NAI（41）
+## Vibe／NAI（37）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-novel-service-channel-state.js` | 是 | Channel occupancy is not an image/encoding fee receipt. Each operation keeps its own historical ledger. |
-| `qianmu-novel-service-channel.js` | 是 |  |
 | `qianmu-novel-vibe.js` | 是 |  |
 | `qianmu-vibe-aggregate.js` | 是 |  |
 | `qianmu-vibe-asset-contract.js` | 是 |  |
@@ -353,7 +305,6 @@
 | `qianmu-vibe-assets-worker.js` | 是 |  |
 | `qianmu-vibe-assets.js` | 是 |  |
 | `qianmu-vibe-encoding-contract.js` | 是 |  |
-| `qianmu-vibe-encoding-gateway.js` | 是 |  |
 | `qianmu-vibe-encoding-retention.js` | 是 |  |
 | `qianmu-vibe-encoding-store.js` | 是 |  |
 | `qianmu-vibe-encoding.js` | 是 |  |
@@ -376,16 +327,14 @@
 | `qianmu-vibe-recipe.js` | 是 | Bounded source metadata only. A URL is not an immutable content receipt. |
 | `qianmu-vibe-restore.js` | 是 |  |
 | `qianmu-vibe-review.js` | 是 |  |
-| `qianmu-vibe-service-cache.js` | 是 |  |
 | `qianmu-vibe-service-client.js` | 是 |  |
-| `qianmu-vibe-service.js` | 是 |  |
 | `qianmu-vibe-stage-contract.js` | 是 |  |
 | `qianmu-vibe-stage-native.js` | 是 |  |
 | `qianmu-vibe-storage-accounting.js` | 是 |  |
 | `qianmu-vibe-storage-summary.js` | 是 | On-demand, metadata-only bridge into the global storage card. No media or fee mutation. |
 | `qianmu-vibe-storage.js` | 是 |  |
 
-## 视频（22）
+## 视频（21）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -396,7 +345,6 @@
 | `qianmu-video-draft-store.js` | 是 | 千幕动态镜头草稿仓适配器。只接受白名单草稿合同，不读取媒体、不访问网络。 |
 | `qianmu-video-draft.js` | 是 | 千幕动态镜头本地草稿合同。只保存编辑选择与稳定素材引用，不包含提示词、凭据、媒体或报价。 |
 | `qianmu-video-gallery.js` | 是 | 千幕动态阅片室轻索引、任务摘要与播放会话。列表不读取 Blob；只有打开单条成片时才创建临时 Object URL。 |
-| `qianmu-video-gateway.js` | 是 |  |
 | `qianmu-video-media.js` | 是 | 千幕动态镜头的瞬时素材解析层。只在用户明确提交时读取本聊天阅片记录， |
 | `qianmu-video-minimax.js` | 是 | MiniMax H3 官方 V2 渠道适配。只构建与解析请求，不在浏览器直连官方域名。 |
 | `qianmu-video-postproduction-store.js` | 是 | 千幕影片后期分层仓适配器。保存前绑定真实时间线重新校验，不读取任何媒体。 |
@@ -412,7 +360,7 @@
 | `qianmu-video-timeline-store.js` | 是 | 千幕完整影片时间线仓适配器。仅持久化时间线合同，不读取媒体、不访问网络。 |
 | `qianmu-video-timeline.js` | 是 | 千幕影片时间线纯数据合同。只编排稳定本地引用，不读取媒体、不联网、不执行转码。 |
 
-## 正文辅助（prose）与蜂巢（34）
+## 正文辅助（prose）与蜂巢（33）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -422,7 +370,6 @@
 | `qianmu-assistant-history-view.js` | 是 |  |
 | `qianmu-assistant-storage-client.js` | 是 |  |
 | `qianmu-assistant-storage-contract.js` | 是 | Size observations of owned ST files, not a conversation export or authority to |
-| `qianmu-assistant-storage-service.js` | 是 |  |
 | `qianmu-hive-commands.js` | 是 | Shared built-in commands; no runtime state or network dependencies. |
 | `qianmu-hive-ownership.js` | 是 | Built-in floating controls must never be captured as external plugin entries. |
 | `qianmu-hive-theme-logo.js` | 是 | Mechanically traced from assets/logos/qianmulogo.png by scripts/trace-hive-theme-logo.mjs. |
@@ -496,21 +443,17 @@
 | `qianmu-world-shot.js` | 是 | World-camera preparation only. No autonomous inference, archive mutation or media submission. |
 | `qianmu-world-source.js` | 是 | Lightweight provenance only. No settings, media reads, network or generation. |
 
-## 聊天、历史与保存（34）
+## 聊天、历史与保存（29）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-chat-backup-catalog.js` | 是 | Presentation-only catalog. A matching native filename is a search candidate, |
 | `qianmu-chat-character-receipt-client.js` | 是 |  |
-| `qianmu-chat-character-receipt-service.js` | 是 |  |
 | `qianmu-chat-character-receipt.js` | 是 |  |
 | `qianmu-chat-file-target.js` | 是 | Shared exact ST file locator. No filesystem, host state, credentials or narrative imports. |
 | `qianmu-chat-gallery-details.js` | 是 |  |
 | `qianmu-chat-gallery-digest.js` | 是 |  |
-| `qianmu-chat-gallery-evidence-reader.js` | 是 |  |
 | `qianmu-chat-gallery-evidence.js` | 是 |  |
-| `qianmu-chat-gallery-header-reader.js` | 是 |  |
-| `qianmu-chat-gallery-header.js` | 是 |  |
 | `qianmu-chat-gallery-receipt.js` | 是 |  |
 | `qianmu-chat-gallery-record.js` | 是 |  |
 | `qianmu-chat-gallery-state.js` | 是 |  |
@@ -533,9 +476,8 @@
 | `qianmu-historical-storyboard-source.js` | 是 |  |
 | `qianmu-source-identity-client.js` | 是 |  |
 | `qianmu-source-identity-contract.js` | 是 | Migration labels, not credentials or proof of authenticity. A complete server clone retains these labels. |
-| `qianmu-source-identity-service.js` | 是 |  |
 
-## 专注／阅读／文本（63）
+## 专注／阅读／文本（62）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -572,7 +514,6 @@
 | `qianmu-notes-sync-client.js` | 是 | Same-origin ST transport only. No provider URL, token, or note geometry is accepted. |
 | `qianmu-notes-sync-contract.js` | 是 | Account-wide plain-text originals. Geometry and device presentation never enter this contract. |
 | `qianmu-notes-sync-runtime.js` | 是 | Local-first note sessions. The transport is injected; this module performs no network request itself. |
-| `qianmu-notes-sync-service.js` | 是 |  |
 | `qianmu-notes-sync-store.js` | 是 | Account-scoped durable notes and outbox. Never opens or migrates the legacy notes database. |
 | `qianmu-notes-theme.js` | 是 | Notes live outside the main panel. Update only their theme-bearing attributes; |
 | `qianmu-notes.js` | 是 | 千幕 · 轻量便笺数据层 |
@@ -603,7 +544,7 @@
 | `qianmu-text-collection-view.js` | 是 |  |
 | `qianmu-text-collection.js` | 是 | Collection operations share the supplied page/account document session. |
 
-## 合奏、配方与包（49）
+## 合奏、配方与包（47）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -650,8 +591,6 @@
 | `qianmu-ensemble-view.js` | 是 |  |
 | `qianmu-recipe-archive-client.js` | 是 |  |
 | `qianmu-recipe-archive-contract.js` | 是 | Lossless JSON recipe transport. This is not proof that a model/workflow can still run. |
-| `qianmu-recipe-archive-service.js` | 是 |  |
-| `qianmu-recipe-archive-store.js` | 是 | Private, add-only immutable files. No startup writes, rename-over, original deletion or public image paths. |
 | `qianmu-recipe-batch-contract.js` | 是 | Selector-only batches. References prove saved recipe copies, not permission to |
 | `qianmu-recipe-restore-client.js` | 是 |  |
 | `qianmu-recipe-restore-contract.js` | 是 |  |
@@ -694,11 +633,10 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（28）
+## 模型、配置与账户（26）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-account-document-files.js` | 是 |  |
 | `qianmu-account-identity.js` | 是 | Account identity is shared by ordinary tools as well as image generation. |
 | `qianmu-account-local-store.js` | 是 | Shared lazy IndexedDB account-document transactions. Callers own schema, namespace and database. |
 | `qianmu-config-apply.js` | 是 | Synchronous configuration handoff only; independent originals are never read/deleted. |
@@ -719,7 +657,6 @@
 | `qianmu-openai-image-compat.js` | 是 | 千幕 · 自定义（兼容 OpenAI）生图能力档。 |
 | `qianmu-portable-connection.js` | 是 |  |
 | `qianmu-st-account-storage.js` | 是 |  |
-| `qianmu-st-backup-policy-service.js` | 是 |  |
 | `qianmu-st-context-sources.js` | 是 |  |
 | `qianmu-st-menu-entry.js` | 是 |  |
 | `qianmu-storage-backup-view.js` | 是 |  |
@@ -746,7 +683,7 @@
 | `qianmu-tags.js` | 是 | Local writing aids. These functions never choose a generation target or invoke a model. |
 | `qianmu-theaters.js` | 是 | 千幕 (Qianmu) 内置剧场组「千幕小剧场」——与「吱吱小剧场」平行、独立版本管理 |
 
-## 基础设施（存储、日志、迁移、加载）（25）
+## 基础设施（存储、日志、迁移、加载）（24）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -767,7 +704,6 @@
 | `qianmu-mutation-journal-body.js` | 是 |  |
 | `qianmu-mutation-journal-native.js` | 是 |  |
 | `qianmu-native-review-contract.js` | 是 |  |
-| `qianmu-native-review-service.js` | 是 |  |
 | `qianmu-original-image-zip.js` | 是 | Plain ZIP, stored entries only: PKWARE APPNOTE 4.3.7/4.3.12/4.3.16. |
 | `qianmu-release-version.js` | 是 | Read-only metadata for the exact official branch ST has already checked. |
 | `qianmu-resource-journal-contract.js` | 是 |  |

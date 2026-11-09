@@ -3,7 +3,7 @@ import path from 'node:path';
 import http from 'node:http';
 import {createHash} from 'node:crypto';
 import {init,exit} from '../../server-plugin.js';
-import {imageServiceAccount} from '../../qianmu-image-service-access.js';
+import {imageServiceAccount} from '../../server/qianmu-image-service-access.js';
 import {chatGalleryDigest} from '../../qianmu-chat-gallery-digest.js';
 import {recipeClientFixture} from './recipe-client-fixture.mjs';
 

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {createChatGalleryHeaderCapture,CHAT_GALLERY_HEADER_LIMITS as LIMIT} from '../qianmu-chat-gallery-header.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatGalleryHeaderCapture,CHAT_GALLERY_HEADER_LIMITS as LIMIT} from '../server/qianmu-chat-gallery-header.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {chatGalleryReceiptText,CHAT_GALLERY_RECEIPT_LIMITS} from '../qianmu-chat-gallery-receipt.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { collectComfyStillResults, comfyStillMime, comfyTaskId, readComfyImageBytes } from '../qianmu-comfy-results.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
-import { generateImage, imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
+import { generateImage, imageGatewayErrorPayload } from '../server/qianmu-image-gateway.js';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', 'base64');
 const descriptor = (filename='final.png',extra={}) => ({filename,type:'output',...extra});
 const envelope = (outputs={saved:{images:[descriptor()]}},status={completed:true,status_str:'success'}) => ({task:{outputs,status}});

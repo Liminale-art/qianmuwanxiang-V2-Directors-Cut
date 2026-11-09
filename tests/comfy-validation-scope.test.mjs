@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { comfyWorkflowValidationScope as scope } from '../qianmu-comfy-validation-scope.js';
-import { normalizeComfyCloudIntent, normalizeComfyCloudReceipt, assertComfyCloudReceiptForIntent } from '../qianmu-comfy-cloud-receipt.js';
-import { prepareComfyCloudSubmission } from '../qianmu-comfy-cloud-prepare.js';
+import { comfyWorkflowValidationScope as scope } from '../server/qianmu-comfy-validation-scope.js';
+import { normalizeComfyCloudIntent, normalizeComfyCloudReceipt, assertComfyCloudReceiptForIntent } from '../server/qianmu-comfy-cloud-receipt.js';
+import { prepareComfyCloudSubmission } from '../server/qianmu-comfy-cloud-prepare.js';
 import { bindComfyCloudTask, hasComfyCloudReadinessBasis } from '../qianmu-comfy-cloud-protocol.js';
 import { stillInput } from './helpers/runninghub-validation-fixture.mjs';
 

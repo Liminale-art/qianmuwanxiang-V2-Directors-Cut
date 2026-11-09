@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { generateDirectImage } from '../qianmu-image-direct.js';
-import { generateImage } from '../qianmu-image-gateway.js';
+import { generateImage } from '../server/qianmu-image-gateway.js';
 import * as core from '../qianmu-storyboard.js';
 import {prepareStoryboardVibes} from '../qianmu-vibe-prepare.js';
 import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { normalizeModelEntry, finalizeModelList, modelArrayFromJson, collectImageModelPages,
   modelsFromComfyObjectInfo, IMAGE_MODEL_LIST_LIMIT, IMAGE_MODEL_ID_LIMIT } from '../qianmu-image-models.js';
 import { listDirectImageModels, isDirectImageTransportError } from '../qianmu-image-direct.js';
-import { listImageModels } from '../qianmu-image-gateway.js';
+import { listImageModels } from '../server/qianmu-image-gateway.js';
 
 const json = (value, options) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' }, ...options });
 const input = (provider = 'openai') => ({ provider, baseUrl: 'https://relay.example/v1', apiKey: 'test-key' });
@@ -169,9 +169,9 @@ test('invalid addresses and transport failure never fall back to generation', as
 test('catalog helper is shared by the two transports and included in the release whitelist', async () => {
   const config = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.ok(config.files.includes('qianmu-image-models.js'));
-  for (const file of ['qianmu-image-direct.js', 'qianmu-image-gateway.js']) {
+  for (const file of ['qianmu-image-direct.js', 'server/qianmu-image-gateway.js']) {
     const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-    assert.match(source, /from '\.\/qianmu-image-models.js'/);
+    assert.match(source, /from '\.\.?\/qianmu-image-models.js'/);
     assert.doesNotMatch(source, /function imageModelHeuristic|function normalizeModelEntry/);
   }
 });

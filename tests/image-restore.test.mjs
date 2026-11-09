@@ -5,10 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import { createImageRestoreService } from '../qianmu-image-restore-service.js';
+import { createImageRestoreService } from '../server/qianmu-image-restore-service.js';
 import { imageRestoreReceipt, imageRestoreRequest, imageRestoreErrorPayload } from '../qianmu-image-restore-contract.js';
 import { createImageRestoreClient } from '../qianmu-image-restore-client.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 import { init, exit } from '../server-plugin.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

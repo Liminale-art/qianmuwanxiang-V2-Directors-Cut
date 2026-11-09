@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, imageServiceRequestDigest, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
-import { generateImage, sanitizeImageRequest } from '../qianmu-image-gateway.js';
+import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, imageServiceRequestDigest, normalizeImageServiceChannel } from '../server/qianmu-image-service-queue.js';
+import { generateImage, sanitizeImageRequest } from '../server/qianmu-image-gateway.js';
 
 const fixture = () => {
   const records = new Map(), tails = new Map(); let writes = 0;

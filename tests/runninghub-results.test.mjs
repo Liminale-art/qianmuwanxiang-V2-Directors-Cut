@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectRunningHubStillResults as collect,runningHubNeedsNodeEvidence as needsEvidence} from '../qianmu-runninghub-results.js';
-import {readComfyCloudTaskStatus as status} from '../qianmu-comfy-cloud-response.js';
+import {collectRunningHubStillResults as collect,runningHubNeedsNodeEvidence as needsEvidence} from '../server/qianmu-runninghub-results.js';
+import {readComfyCloudTaskStatus as status} from '../server/qianmu-comfy-cloud-response.js';
 import {bindComfyCloudProtocol,bindComfyCloudTask,planComfyCloudOperation} from '../qianmu-comfy-cloud-protocol.js';
-import {COMFY_CLOUD_RECEIPT_SCHEMA as schema} from '../qianmu-comfy-cloud-receipt.js';
+import {COMFY_CLOUD_RECEIPT_SCHEMA as schema} from '../server/qianmu-comfy-cloud-receipt.js';
 const task=bindComfyCloudTask(bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),'1904152026220003329');
 const receipt=()=>({schema,task,requestDigest:'a'.repeat(64),workflow:{templateHash:'b'.repeat(64),executionHash:'c'.repeat(64)},
   stillOutput:{version:1,model:'workflow',previewNodeIds:['preview'],execution:{version:1,automatic:false,maxImages:2,expectedImages:2,outputNodeIds:['10','2']}}});

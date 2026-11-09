@@ -7,7 +7,7 @@ import {
   parseOpenAICompatibleHeaders,
 } from '../qianmu-openai-image-compat.js';
 import { checkDirectImageConnection, generateDirectImage } from '../qianmu-image-direct.js';
-import { checkImageConnection, generateImage } from '../qianmu-image-gateway.js';
+import { checkImageConnection, generateImage } from '../server/qianmu-image-gateway.js';
 import { STORYBOARD_SCHEMA_VERSION, normalizeStoryboardConnectionProfile } from '../qianmu-storyboard.js';
 
 const publicDns = async () => [{ address: '8.8.8.8', family: 4 }];

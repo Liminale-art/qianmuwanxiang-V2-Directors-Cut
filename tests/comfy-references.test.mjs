@@ -12,7 +12,7 @@ import { comfyReferenceStillMime } from '../qianmu-comfy-results.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 import { renderComfyReferenceControls } from '../qianmu-comfy-workbench.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
-import { generateImage, imageGatewayCapabilities } from '../qianmu-image-gateway.js';
+import { generateImage, imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuComfyExecutionBinding } from '../qianmu-service-capabilities.js';
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');

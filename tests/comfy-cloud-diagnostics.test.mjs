@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PassThrough,Writable} from 'node:stream';
-import {normalizeComfyCloudFailureDiagnostic as normalize,describeComfyCloudFailureDiagnostic as describe,comfyCloudReadFailureDiagnostic as readDiagnostic,readComfyCloudAcceptance} from '../qianmu-comfy-cloud-response.js';
-import {createComfyCloudService} from '../qianmu-comfy-cloud-service.js';
-import {imageGatewayErrorPayload} from '../qianmu-image-gateway.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {normalizeComfyCloudFailureDiagnostic as normalize,describeComfyCloudFailureDiagnostic as describe,comfyCloudReadFailureDiagnostic as readDiagnostic,readComfyCloudAcceptance} from '../server/qianmu-comfy-cloud-response.js';
+import {createComfyCloudService} from '../server/qianmu-comfy-cloud-service.js';
+import {imageGatewayErrorPayload} from '../server/qianmu-image-gateway.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {stillInput} from './helpers/runninghub-validation-fixture.mjs';
 
 const secret='PRIVATE_RAW_MESSAGE_KEY_PROMPT_GRAPH_URL';

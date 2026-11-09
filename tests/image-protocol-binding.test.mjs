@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { IMAGE_NATIVE_PROTOCOLS, resolveImageProtocolBinding } from '../qianmu-image-models.js';
 import { buildStoryboardProviderPlan, resolveStoryboardModelBinding, STORYBOARD_PROVIDER_REGISTRY } from '../qianmu-storyboard.js';
 import { generateDirectImage, checkDirectImageConnection, listDirectImageModels, isDirectImageTransportError } from '../qianmu-image-direct.js';
-import { generateImage, sanitizeImageRequest, checkImageConnection, listImageModels, imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
+import { generateImage, sanitizeImageRequest, checkImageConnection, listImageModels, imageGatewayErrorPayload } from '../server/qianmu-image-gateway.js';
 
 const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]);
 const request = (provider, extra = {}) => ({ provider, baseUrl:'https://relay.example', apiKey:'offline-test-key', prompt:'garden', model:STORYBOARD_PROVIDER_REGISTRY[provider].defaultModel, ...extra });

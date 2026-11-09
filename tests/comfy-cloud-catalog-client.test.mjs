@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {resolveComfyCloudRecoveryKey} from '../qianmu-comfy-recovery-action.js';
 import {bindComfyCloudProtocol,bindComfyCloudTask} from '../qianmu-comfy-cloud-protocol.js';
-import {comfyCloudResourceKey} from '../qianmu-comfy-cloud-ledger.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {comfyCloudResourceKey} from '../server/qianmu-comfy-cloud-ledger.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const connection=bindComfyCloudProtocol('https://cloud.comfy.org','comfy-cloud-v2');
 const task=bindComfyCloudTask(connection,'original',{self:'/api/v2/jobs/original',cancel:'/api/v2/jobs/original/cancel'});

@@ -1,6 +1,6 @@
 import {chatStateFixture} from './chat-state-fixture.mjs';
 import {recipe} from './recipe-client-fixture.mjs';
-import {createRecipeArchiveService} from '../../qianmu-recipe-archive-service.js';
+import {createRecipeArchiveService} from '../../server/qianmu-recipe-archive-service.js';
 import {chatCharacterReceiptErrorPayload} from '../../qianmu-chat-character-receipt.js';
 import {recipeArchiveErrorPayload} from '../../qianmu-recipe-archive-contract.js';
 import {captureHistoricalStoryboardSource} from '../../qianmu-historical-storyboard-source.js';

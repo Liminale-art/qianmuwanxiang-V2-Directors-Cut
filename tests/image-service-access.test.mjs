@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { imageServiceAccount, imageServiceAccountStillMatches, queryImageServiceTask } from '../qianmu-image-service-access.js';
-import { imageServiceChannelKey, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
+import { imageServiceAccount, imageServiceAccountStillMatches, queryImageServiceTask } from '../server/qianmu-image-service-access.js';
+import { imageServiceChannelKey, normalizeImageServiceChannel } from '../server/qianmu-image-service-queue.js';
 
 const account = (handle = 'alice', admin = false) => ({ user: { profile: { handle, enabled: true, admin } } });
 const input = { apiKey: 'mock-access-key', attemptId: 'original-attempt' };

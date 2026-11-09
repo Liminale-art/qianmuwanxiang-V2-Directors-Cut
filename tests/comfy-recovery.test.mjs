@@ -4,11 +4,11 @@ import vm from 'node:vm';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { createComfyService } from '../qianmu-comfy-service.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
-import { normalizeComfyReceipt } from '../qianmu-comfy-receipt.js';
-import { recoverComfyImage } from '../qianmu-image-gateway.js';
-import { pinnedComfyFetch } from '../qianmu-comfy-server-transport.js';
+import { createComfyService } from '../server/qianmu-comfy-service.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
+import { normalizeComfyReceipt } from '../server/qianmu-comfy-receipt.js';
+import { recoverComfyImage } from '../server/qianmu-image-gateway.js';
+import { pinnedComfyFetch } from '../server/qianmu-comfy-server-transport.js';
 import { acknowledgeComfyImage } from '../qianmu-comfy-submission.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 

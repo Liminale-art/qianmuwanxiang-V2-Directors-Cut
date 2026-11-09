@@ -9,7 +9,7 @@ import {normalizeCharacterArchive,newCharacterArchive,exportCharacterArchive,imp
 import {buildStoryboardPlanContractRequest,parseStoryboardContractResponse,STORYBOARD_PLAN_RESPONSE_SCHEMA} from '../qianmu-storyboard-contract.js';
 import {readStaticReferenceImages} from '../qianmu-comfy-references.js';
 import {generateDirectImage} from '../qianmu-image-direct.js';
-import {generateImage} from '../qianmu-image-gateway.js';
+import {generateImage} from '../server/qianmu-image-gateway.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');

@@ -5,10 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { createSourceIdentityService } from '../qianmu-source-identity-service.js';
+import { createSourceIdentityService } from '../server/qianmu-source-identity-service.js';
 import { createSourceIdentityClient } from '../qianmu-source-identity-client.js';
 import { SOURCE_IDENTITY_SCHEMA, sourceIdentityRecord, sourceIdentityRequest, sourceIdentityResponse, sourceIdentityErrorPayload } from '../qianmu-source-identity-contract.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 import { init, exit } from '../server-plugin.js';
 import { prepareStoryboardBundleSource } from '../qianmu-storyboard-bundle-source.js';
 

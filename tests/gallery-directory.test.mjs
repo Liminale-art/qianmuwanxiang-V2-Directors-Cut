@@ -6,7 +6,7 @@ import { galleryDirectoryOwnerLabel as label } from '../qianmu-gallery-directory
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 import {CHAT_GALLERY_STREAM_LIMITS} from '../qianmu-chat-gallery-receipt.js';
 import {createCurrentChatGalleryReceiptClient} from '../qianmu-chat-character-receipt-client.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {readFile} from 'node:fs/promises';
 const ns = 'st-user:alice', source = { ownerKey: 'char:Alice.png', chatKey: 'chat' };

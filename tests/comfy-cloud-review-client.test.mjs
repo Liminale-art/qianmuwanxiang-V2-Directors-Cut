@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createComfyRecoveryClient } from '../qianmu-comfy-recovery-client.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 
 const channelKey = 'a'.repeat(64), confirmation = 'b'.repeat(64);
 const namespace = 'st-user:alice';

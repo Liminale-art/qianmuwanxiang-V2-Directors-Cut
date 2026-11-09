@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { init, exit } from '../server-plugin.js';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { createComfyTargetStore } from '../qianmu-comfy-target-store.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { createComfyTargetStore } from '../server/qianmu-comfy-target-store.js';
 
 const account = () => ({ user: { profile: { handle: 'host-root-fixture', enabled: true, admin: true } } });
 const response = () => ({

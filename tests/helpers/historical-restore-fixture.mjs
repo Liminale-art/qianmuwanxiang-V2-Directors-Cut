@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { historicalRecipeRestoreFixture } from './historical-recipe-restore-fixture.mjs';
-import { createImageRestoreService } from '../../qianmu-image-restore-service.js';
+import { createImageRestoreService } from '../../server/qianmu-image-restore-service.js';
 import { imageRestoreErrorPayload } from '../../qianmu-image-restore-contract.js';
 import { createHistoricalRestore } from '../../qianmu-historical-restore.js';
 import { inspectHistoricalChatMutation, historicalChatMutationNext } from '../../qianmu-historical-chat-journal.js';

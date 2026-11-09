@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { verifyComfyCloudImageDigest as verify } from '../qianmu-comfy-cloud-digest.js';
+import { verifyComfyCloudImageDigest as verify } from '../server/qianmu-comfy-cloud-digest.js';
 
 // BLAKE3-team official one-byte vector (input byte = 0).
 const oneByteHash = '2d3adedff11b61f14c886e35afa036736dcd87a74d27b5c1510225d0f592e213';

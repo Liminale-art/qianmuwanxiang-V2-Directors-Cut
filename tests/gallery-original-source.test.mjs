@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createGalleryOriginalSource,GALLERY_ORIGINAL_SOURCE_LIMITS as LIMIT} from '../qianmu-gallery-original-source.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {createGalleryOriginalSource,GALLERY_ORIGINAL_SOURCE_LIMITS as LIMIT} from '../server/qianmu-gallery-original-source.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 

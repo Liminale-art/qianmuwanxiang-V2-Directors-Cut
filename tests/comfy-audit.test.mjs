@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { auditComfyWorkflow, normalizeComfyExecution, requireComfyExecution, inspectComfyImageExecution } from '../qianmu-comfy-audit.js';
 import { collectComfyStillResults } from '../qianmu-comfy-results.js';
 import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
-import { generateImage, imageGatewayCapabilities, imageGatewayErrorPayload } from '../qianmu-image-gateway.js';
+import { generateImage, imageGatewayCapabilities, imageGatewayErrorPayload } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuComfyExecutionBinding } from '../qianmu-service-capabilities.js';
 
 const policy = extra => ({version:1,automatic:false,outputNodeIds:[],maxImages:8,allowUnverified:false,...extra});

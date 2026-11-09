@@ -7,7 +7,7 @@ import path from 'node:path';
 import { normalizeComfyLibraryDocument, exportComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { inspectComfyWorkflow } from '../qianmu-comfy-workflow.js';
 import { checkComfyConfiguration } from '../qianmu-comfy-preflight.js';
-import { prepareComfyCloudSubmission } from '../qianmu-comfy-cloud-prepare.js';
+import { prepareComfyCloudSubmission } from '../server/qianmu-comfy-cloud-prepare.js';
 import { bindComfyCloudProtocol } from '../qianmu-comfy-cloud-protocol.js';
 
 export const STILL_CANDIDATE_IDS = Object.freeze(['comfy-cloud-anime', 'comfy-cloud-cg', 'runninghub-anime', 'runninghub-cg']);

@@ -11,7 +11,7 @@ import {
   listImageModels,
   sanitizeImageRequest,
   validateGatewayBaseUrl,
-} from '../qianmu-image-gateway.js';
+} from '../server/qianmu-image-gateway.js';
 
 const publicDns = async () => [{ address: '8.8.8.8', family: 4 }];
 

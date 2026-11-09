@@ -6,7 +6,7 @@ import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 import {recipeArchiveBatchRequest,recipeArchiveBatchResponse,recipeArchiveBatchCapabilities,RECIPE_BATCH_LIMITS as LIMIT} from '../qianmu-recipe-batch-contract.js';
 import {recipeArchiveErrorPayload} from '../qianmu-recipe-archive-contract.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 const account='st-user:'+createHash('sha256').update('alice').digest('hex'),target={kind:'character',avatar:'Alice.png',chatId:'chat'};
 const input=rows=>({version:1,expectedAccount:account,target,gallerySha256:chatGalleryDigest(rows).sha256,selections:rows.map(row=>({recordId:row.id,createdAt:row.createdAt}))});
 const setup=async(e,count=3)=>{e.rows=Array.from({length:count},(_,i)=>({id:'image-'+i,createdAt:i,source:'comfy',snapshot:recipe('prompt-'+i),unknown:'DO_NOT_RETURN'}));await e.save();return input(e.rows);};

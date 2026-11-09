@@ -6,7 +6,7 @@ import { STILL_CANDIDATE_IDS, readStillCandidate, validateStillCandidate, prepar
   inspectStillCandidates, exportStillCandidate } from '../scripts/comfy-still-candidates.mjs';
 import { importComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { buildComfyCloudRequest } from '../qianmu-comfy-cloud-request.js';
-import { prepareComfyCloudSubmission } from '../qianmu-comfy-cloud-prepare.js';
+import { prepareComfyCloudSubmission } from '../server/qianmu-comfy-cloud-prepare.js';
 import { pinComfyRouteWorkflow, applyComfyRouteRecipe } from '../qianmu-comfy-route.js';
 import { collectReleaseFiles, validateReleasePlan } from '../scripts/build-release.mjs';
 

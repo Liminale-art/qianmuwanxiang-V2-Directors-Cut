@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol as bind, planComfyCloudOperation as plan } from '../qianmu-comfy-cloud-protocol.js';
-import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage, readRunningHubImageResponse as readRHImage } from '../qianmu-comfy-cloud-response.js';
-import { readComfyCloudDefinitionsResponse as readDefinitions } from '../qianmu-comfy-cloud-response.js';
+import { readComfyCloudAcceptance as accept, readComfyCloudTaskStatus as status, readComfyCloudJsonResponse as read, readComfyCloudImageResponse as readImage, readRunningHubImageResponse as readRHImage } from '../server/qianmu-comfy-cloud-response.js';
+import { readComfyCloudDefinitionsResponse as readDefinitions } from '../server/qianmu-comfy-cloud-response.js';
 const cloud = bind('https://dep-one.run.comfy.app', 'comfy-cloud-v2'), rh = bind('https://www.runninghub.cn', 'runninghub-workflow-v1');
 const id = 'original-id', rhId = '1904152026220003329';
 const urls = { self: `/deployment/dep-one/api/v2/jobs/${id}`, cancel: `/deployment/dep-one/api/v2/jobs/${id}/cancel` };

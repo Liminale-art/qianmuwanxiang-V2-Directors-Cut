@@ -4,11 +4,11 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { Writable, PassThrough } from 'node:stream';
-import { createComfyTargetStore, comfyTargetId } from '../qianmu-comfy-target-store.js';
-import { createComfyTargets } from '../qianmu-comfy-targets.js';
+import { createComfyTargetStore, comfyTargetId } from '../server/qianmu-comfy-target-store.js';
+import { createComfyTargets } from '../server/qianmu-comfy-targets.js';
 import { requestComfyTargets, requireTrustedComfyConnection } from '../qianmu-comfy-targets-view.js';
 import { init } from '../server-plugin.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 
 const admin = () => ({ user: { profile: { handle: 'alice', enabled: true, admin: true } } });
 const user = () => ({ user: { profile: { handle: 'bob', enabled: true, admin: false } } });

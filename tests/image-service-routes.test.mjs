@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { init, exit } from '../server-plugin.js';
 import {encodeNovelVibe,prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const key = 'mock-route-key';

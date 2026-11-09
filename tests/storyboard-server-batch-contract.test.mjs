@@ -6,7 +6,7 @@ import {
   STORYBOARD_SERVER_BATCH_MAX_BYTES,
   normalizePreparedBatch, normalizeBatchRecord, storyboardServerBatchKey, batchPublicView,
   createStoryboardServerBatchBusinessError, isStoryboardServerBatchBusinessError,
-} from '../qianmu-storyboard-server-batch-contract.js';
+} from '../server/qianmu-storyboard-server-batch-contract.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const account = `st-user:${digest('test-account')}`;

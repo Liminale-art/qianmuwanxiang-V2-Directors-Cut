@@ -5,8 +5,8 @@ import { readFile } from 'node:fs/promises';
 import {
   decideStoryboardBatchV2Prepare,
   storyboardBatchV2Location,
-} from '../qianmu-storyboard-server-batch-layout.js';
-import { normalizePreparedBatch, normalizeBatchRecord, storyboardServerBatchKey } from '../qianmu-storyboard-server-batch-contract.js';
+} from '../server/qianmu-storyboard-server-batch-layout.js';
+import { normalizePreparedBatch, normalizeBatchRecord, storyboardServerBatchKey } from '../server/qianmu-storyboard-server-batch-contract.js';
 import { uid } from '../qianmu-storyboard-utils.js';
 
 const ACCOUNT_A = `st-user:${'a'.repeat(64)}`;
@@ -129,11 +129,11 @@ test('wrong-account, wrong-ID or damaged existing records cannot be silently sel
 });
 
 test('layout remains pure and published HTTP wiring is read-only without execution', async () => {
-  const source = await readFile(new URL('../qianmu-storyboard-server-batch-layout.js', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../server/qianmu-storyboard-server-batch-layout.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /from ['"]node:fs|\bfetch\(|\bwriteFile\(|\bmkdir\(|\brename\(|\bunlink\(/);
   assert.match(source, /partition persistence and directory pagination[\s\S]*not implemented here/i);
   const plugin = await readFile(new URL('../server-plugin.js', import.meta.url), 'utf8');
-  const routes = await readFile(new URL('../qianmu-storyboard-server-batch-v2-routes.js', import.meta.url), 'utf8');
+  const routes = await readFile(new URL('../server/qianmu-storyboard-server-batch-v2-routes.js', import.meta.url), 'utf8');
   assert.match(plugin, /installStoryboardServerBatchV2Routes\(router,/);
   assert.doesNotMatch(plugin, /enableWrites:\s*true|scope:\s*['"]storyboard-batch['"]/,
     'production must not turn on writes or the old batch scope');
@@ -141,7 +141,7 @@ test('layout remains pure and published HTTP wiring is read-only without executi
   assert.doesNotMatch(routes, /\b(?:generateImage|createImageService|comfyTasksFor|tasksFor|fetch)\s*\(/,
     'metadata routes cannot submit or query a paid provider');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.equal(release.files.includes('qianmu-storyboard-server-batch-v2-store.js'), true);
-  assert.equal(release.files.includes('qianmu-storyboard-server-batch-v2-routes.js'), true);
+  assert.equal(release.files.includes('server/qianmu-storyboard-server-batch-v2-store.js'), true);
+  assert.equal(release.files.includes('server/qianmu-storyboard-server-batch-v2-routes.js'), true);
   assert.equal(release.files.includes('qianmu-storyboard-server-batch-store.js'), false);
 });

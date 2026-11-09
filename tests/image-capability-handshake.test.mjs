@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { imageGatewayCapabilities, sanitizeImageRequest, generateImage } from '../qianmu-image-gateway.js';
+import { imageGatewayCapabilities, sanitizeImageRequest, generateImage } from '../server/qianmu-image-gateway.js';
 import { STORYBOARD_MODEL_REGISTRY } from '../qianmu-storyboard.js';
 import { QIANMU_IMAGE_CAPABILITIES_ENDPOINT, probeQianmuImageCapabilities, checkQianmuImageModelBinding } from '../qianmu-service-capabilities.js';
 

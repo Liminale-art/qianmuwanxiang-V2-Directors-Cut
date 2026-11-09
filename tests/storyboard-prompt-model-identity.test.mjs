@@ -18,7 +18,7 @@ import {
   storyboardArtDirectionDefaults,
 } from '../qianmu-storyboard.js';
 import { generateDirectImage } from '../qianmu-image-direct.js';
-import { generateImage } from '../qianmu-image-gateway.js';
+import { generateImage } from '../server/qianmu-image-gateway.js';
 import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';

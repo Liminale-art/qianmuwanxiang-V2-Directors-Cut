@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {galleryDiscoveryFixture} from './helpers/gallery-discovery-fixture.mjs';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
@@ -11,7 +11,7 @@ import {createGallerySupplementStorage,captureGallerySupplement} from '../qianmu
 import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
 import {emptyChatCharacterCollection} from '../qianmu-character-chat-batch.js';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const documents=f=>[...f.transport.files.values()].map(JSON.parse).filter(row=>row.schema==='qianmu.st-account-document.v1').map(row=>row.value);
 const versions=f=>documents(f).filter(row=>/^qianmu\.gallery\.source-version\./.test(row.schema));

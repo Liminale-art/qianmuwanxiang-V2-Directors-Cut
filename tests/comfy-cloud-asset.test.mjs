@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
-import { planComfyCloudAssetMetadata as plan, matchComfyCloudAssetMetadata as match } from '../qianmu-comfy-cloud-asset.js';
+import { planComfyCloudAssetMetadata as plan, matchComfyCloudAssetMetadata as match } from '../server/qianmu-comfy-cloud-asset.js';
 const binding = bindComfyCloudProtocol('https://cloud.comfy.org', 'comfy-cloud-v2');
 const task = bindComfyCloudTask(binding, 'original', { self: '/deployment/saved/api/v2/jobs/original', cancel: '/deployment/saved/api/v2/jobs/original/cancel' });
 const assetId = 'aabbccdd-0000-4000-8000-000000000001', now = Date.parse('2026-09-13T00:00:00Z');

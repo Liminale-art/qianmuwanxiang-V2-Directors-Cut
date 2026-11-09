@@ -11,7 +11,7 @@ import {
   sanitizeMiniMaxH3GatewayCreate,
   sanitizeMiniMaxH3MediaInputs,
   videoGatewayErrorPayload,
-} from '../qianmu-video-gateway.js';
+} from '../server/qianmu-video-gateway.js';
 
 const baseInput = (extra = {}) => ({
   apiKey: 'private-api-key',

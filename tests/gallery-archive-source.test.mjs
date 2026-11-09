@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import {EventEmitter} from 'node:events';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';

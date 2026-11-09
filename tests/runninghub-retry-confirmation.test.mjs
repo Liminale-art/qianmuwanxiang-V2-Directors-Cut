@@ -7,7 +7,7 @@ import {confirmRunningHubRetryExecution} from '../qianmu-comfy-workbench.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {stillInput} from './helpers/runninghub-validation-fixture.mjs';
 import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
-import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
+import {prepareComfyCloudSubmission} from '../server/qianmu-comfy-cloud-prepare.js';
 import {normalizeRunningHubConsoleUrl,runningHubWorkflowId} from '../qianmu-comfy-console.js';
 const plain=value=>JSON.parse(JSON.stringify(value));
 const workflowId='2105524436618268674',workflowUrl=`https://www.runninghub.cn/workflow/${workflowId}`;

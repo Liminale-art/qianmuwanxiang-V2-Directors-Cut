@@ -5,12 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {createHash} from 'node:crypto';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {createChatCharacterReceiptClient,createCurrentChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
 import {CHAT_CHARACTER_RECEIPT_LIMITS,chatCharacterReceiptTarget,chatCharacterReceiptRequest,
   chatCharacterCollectionReceiptText,chatCharacterReceiptResponse,chatCharacterReceiptErrorPayload} from '../qianmu-chat-character-receipt.js';
 import {emptyChatCharacterCollection,prepareChatCharacterBatch} from '../qianmu-character-chat-batch.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {init,exit} from '../server-plugin.js';
 import {createChatGalleryReceiptClient,createCurrentChatGalleryReceiptClient,createChatGalleryRecordClient,createChatGalleryDetailsClient} from '../qianmu-chat-character-receipt-client.js';
 import {projectChatGalleryDetails,chatGalleryDetailsResponse,CHAT_GALLERY_DETAILS_RESPONSE_BYTES} from '../qianmu-chat-gallery-details.js';

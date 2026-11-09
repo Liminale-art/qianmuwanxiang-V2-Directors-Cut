@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
-import {createGalleryOriginalStore,galleryOriginalReference,GALLERY_ORIGINAL_STORE_LIMITS as LIMIT} from '../qianmu-gallery-original-store.js';
-import {createGalleryOriginalService} from '../qianmu-gallery-original-service.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {createGalleryOriginalStore,galleryOriginalReference,GALLERY_ORIGINAL_STORE_LIMITS as LIMIT} from '../server/qianmu-gallery-original-store.js';
+import {createGalleryOriginalService} from '../server/qianmu-gallery-original-service.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 

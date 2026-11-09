@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
-import {createRecipeArchiveStore} from '../qianmu-recipe-archive-store.js';
+import {createRecipeArchiveStore} from '../server/qianmu-recipe-archive-store.js';
 import {recipeArchiveStorageRequest,recipeArchiveStorageResponse,RECIPE_ARCHIVE_LIMITS as LIMIT} from '../qianmu-recipe-archive-contract.js';
 import {collectRecipeArchiveStorage} from '../qianmu-recipe-storage.js';
 const account='st-user:'+createHash('sha256').update('alice').digest('hex');

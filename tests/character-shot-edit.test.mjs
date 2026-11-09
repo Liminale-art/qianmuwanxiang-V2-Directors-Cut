@@ -10,7 +10,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 import {job as comfyJob,namespace} from './helpers/comfy-character-fixture.mjs';
 import {snapshot} from './helpers/character-shot-fixture.mjs';
 import {generateDirectImage} from '../qianmu-image-direct.js';
-import {generateImage} from '../qianmu-image-gateway.js';
+import {generateImage} from '../server/qianmu-image-gateway.js';
 import {prepareGalleryRecipeFieldRelease} from '../qianmu-gallery-recipe-fields.js';
 import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js?v=1.59.440';

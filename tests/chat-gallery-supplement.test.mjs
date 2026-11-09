@@ -6,7 +6,7 @@ import http from 'node:http';
 import {chatStateFixture} from './helpers/chat-state-fixture.mjs';
 import {sha} from './helpers/chat-evidence-fixture.mjs';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
-import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
+import {createChatGalleryHeaderCapture} from '../server/qianmu-chat-gallery-header.js';
 import {createChatGallerySupplementClient} from '../qianmu-chat-character-receipt-client.js';
 import {chatGallerySupplementResponse,chatGallerySupplementDigest,CHAT_GALLERY_SUPPLEMENT_LIMITS as LIMIT} from '../qianmu-chat-gallery-supplement.js';
 import {chatCharacterReceiptErrorPayload} from '../qianmu-chat-character-receipt.js';

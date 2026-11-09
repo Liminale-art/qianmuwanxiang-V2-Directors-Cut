@@ -4,8 +4,8 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createImageService } from '../qianmu-image-service.js';
-import { imageServiceChannelKey } from '../qianmu-image-service-queue.js';
+import { createImageService } from '../server/qianmu-image-service.js';
+import { imageServiceChannelKey } from '../server/qianmu-image-service-queue.js';
 const PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const actor=()=>({user:{profile:{handle:'alice',enabled:true}}});
 const request={provider:'novel',apiKey:'mock-lifecycle-key',model:'nai-diffusion-5-full',prompt:'scene'};
@@ -37,7 +37,7 @@ test('stopping before upstream dispatch releases only the never-sent task',async
   assert.equal(row.task.status,'released');assert.equal(row.task.resultAvailable,false);
 });
 test('an actual process exit after authorization never auto-replays on the next service instance',async t=>{
-  const root=await fixture(t),url=new URL('../qianmu-image-service.js',import.meta.url).href;
+  const root=await fixture(t),url=new URL('../server/qianmu-image-service.js',import.meta.url).href;
   const script=`import {createImageService} from ${JSON.stringify(url)};const service=createImageService({dataRoot:${JSON.stringify(root)},generate:async(_body,{beforeSubmit})=>{await beforeSubmit();process.exit(77);}});await service.submit(${JSON.stringify(actor())},${JSON.stringify(input('crashed'))});`;
   const child=spawn(process.execPath,['--input-type=module','-e',script],{windowsHide:true,stdio:['ignore','pipe','pipe']});let diagnostic='';child.stderr.on('data',data=>{diagnostic+=data;});
   const code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});assert.equal(code,77,diagnostic);

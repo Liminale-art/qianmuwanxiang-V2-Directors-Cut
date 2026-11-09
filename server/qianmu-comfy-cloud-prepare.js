@@ -1,0 +1,125 @@
+// Pure preparation. Reference preview is admission-only; actual upload receipts
+// must be supplied by the host before a task intent can be produced.
+import { createHash } from 'node:crypto';
+import { prepareComfyWorkflow } from '../qianmu-comfy-workflow.js?v=1.59.440';
+import { auditComfyWorkflow, requireComfyExecution } from '../qianmu-comfy-audit.js?v=1.59.440';
+import { normalizeComfyRouteBinding } from '../qianmu-comfy-route-contract.js';
+import { describeImageServiceRequest } from './qianmu-image-service-queue.js';
+import { parseBoundedJson } from '../qianmu-json-input.js';
+import { planComfyCloudOperation, RUNNINGHUB_INSTANCE_TYPES } from '../qianmu-comfy-cloud-protocol.js';
+import { COMFY_CLOUD_INTENT_SCHEMA, normalizeComfyCloudIntent } from './qianmu-comfy-cloud-receipt.js';
+import { prepareComfyCloudWorkflow } from '../qianmu-comfy-cloud-workflow.js?v=1.59.440';
+import { planComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
+import { COMFY_REFERENCE_LIMIT, COMFY_REFERENCE_TOTAL } from '../qianmu-comfy-reference-contract.js';
+import { comfyWorkflowValidationScope } from './qianmu-comfy-validation-scope.js';
+
+const LIMIT = 2 * 1024 * 1024;
+const hash = graph => createHash('sha256').update(JSON.stringify(graph)).digest('hex');
+const fail = () => { throw Object.assign(new Error('云工作流输入无效，请核对槽位、方案版本与出图数量'), { code: 'comfy_cloud_prepare_invalid', submissionState: 'not_submitted', retryable: false }); };
+const fields = (value, names) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !names.includes(key))) fail();
+};
+const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
+
+// RH resets seeds unless nodeInfoList repeats them (official doc-8287336).
+// Derive this transport mirror ONLY from the finished graph. It is not a second
+// editable input layer: no guessing node ids, replacing links or coercing uint64.
+function runningHubSeedMirror(graph) {
+  const entries = [];
+  for (const [nodeId, node] of Object.entries(graph)) {
+    for (const fieldName of ['seed', 'noise_seed']) {
+      if (!node?.inputs || !Object.hasOwn(node.inputs, fieldName)) continue;
+      const fieldValue = node.inputs[fieldName];
+      if (Array.isArray(fieldValue)) continue; // Linked values belong to the graph.
+      const valid = typeof fieldValue === 'number'
+        ? Number.isSafeInteger(fieldValue) && fieldValue >= 0
+        : typeof fieldValue === 'string' && /^\d{1,20}$/.test(fieldValue) && BigInt(fieldValue) <= 18446744073709551615n;
+      if (!valid) fail(); // Never submit a rounded or newly invented seed.
+      entries.push({ nodeId, fieldName, fieldValue });
+    }
+  }
+  return entries;
+}
+
+export function prepareComfyCloudSubmission(raw) {
+  const preparation = prepareComfyCloudSubmissionInput(raw);
+  if (Object.hasOwn(raw, 'references')) fail(); // Text-only callers cannot invent upload authority.
+  return preparation.complete([]);
+}
+
+export function prepareComfyCloudSubmissionInput(raw) {
+  try {
+    // Shared descriptor walk rejects getters/cycles before JSON serialization.
+    // Wrapping prevents the digest helper's top-level credential exclusions.
+    if (describeImageServiceRequest({ input: raw }).requestBytes > LIMIT) fail();
+    const source = parseBoundedJson(JSON.stringify(raw), { maxBytes: LIMIT, maxDepth: 40, maxNodes: 50000, label: '云工作流' });
+    fields(source, ['connection', 'workflow', 'prompt', 'negativePrompt', 'model', 'parameters', 'execution', 'binding', 'runninghub', 'references']);
+    fields(source.connection, ['version', 'provider', 'protocol', 'origin']);
+    fields(source.parameters ?? {}, ['width', 'height', 'steps', 'count', 'seed', 'scale', 'cfg', 'sampler', 'scheduler']);
+    fields(source.execution, ['version', 'automatic', 'maxImages', 'outputNodeIds', 'allowUnverified']);
+    if (typeof source.prompt !== 'string' || !source.prompt.trim() || source.prompt.length > 24000
+      || source.negativePrompt !== undefined && (typeof source.negativePrompt !== 'string' || source.negativePrompt.length > 24000)
+      || source.model !== undefined && (typeof source.model !== 'string' || source.model.length > 240)) fail();
+    const plan = planComfyCloudOperation(source.connection, 'submit');
+    const workflow = typeof source.workflow === 'string'
+      ? parseBoundedJson(source.workflow, { maxBytes: LIMIT, maxDepth: 40, maxNodes: 50000, label: '工作流' }) : source.workflow;
+    if (source.references !== undefined && (!Array.isArray(source.references) || source.references.length > COMFY_REFERENCE_LIMIT)) fail();
+    const references = (source.references || []).map(item => {
+      fields(item, ['url','name','mime','bytes','sha256']);
+      return planComfyCloudUpload(source.connection, item).source;
+    });
+    if (references.reduce((sum, item) => sum + item.bytes, 0) > COMFY_REFERENCE_TOTAL) fail();
+    source.references = references;
+    freeze(source);
+    const template = references.length ? prepareComfyCloudWorkflow(JSON.stringify(workflow), source) : null;
+    const preview = template?.preview || { workflow: prepareComfyWorkflow(workflow, { ...source, referenceCount: 0 }).bind([]), referenceLoadNodeIds: [] };
+    function compile({workflow:graph,referenceLoadNodeIds}) {
+    const execution = requireComfyExecution(auditComfyWorkflow(graph, source.execution, { referenceLoadNodeIds }), source.execution);
+    const identity = { templateHash: hash(workflow), executionHash: hash(graph), ...(source.binding ? { binding: normalizeComfyRouteBinding(source.binding) } : {}) };
+    if (plan.provider === 'runninghub') {
+      const scope = comfyWorkflowValidationScope(source, execution.outputNodeIds);
+      if (scope) identity.validationScope = scope;
+    }
+    // Keep the shared output receipt small; admission flags are hashed below,
+    // not misrepresented as provider output evidence.
+    const stillOutput = { version: 1, model: source.model || 'workflow', previewNodeIds: Object.entries(graph).filter(([, node]) => node.class_type === 'PreviewImage').map(([id]) => id),
+      execution: { version: execution.version, automatic: execution.automatic, maxImages: execution.maxImages,
+        outputNodeIds: execution.outputNodeIds, ...(execution.expectedImages != null ? { expectedImages: execution.expectedImages } : {}) } };
+    const body = plan.provider === 'comfy-cloud' ? { workflow: graph } : { workflow: JSON.stringify(graph) };
+    if (plan.provider === 'runninghub') {
+      const nodeInfoList = runningHubSeedMirror(graph);
+      if (nodeInfoList.length) body.nodeInfoList = nodeInfoList;
+    }
+    if (source.runninghub !== undefined) {
+      if (plan.provider !== 'runninghub') fail();
+      fields(source.runninghub, ['workflowId', 'instanceType']);
+      const { workflowId, instanceType } = source.runninghub;
+      if (workflowId === undefined && instanceType === undefined) fail();
+      if (workflowId !== undefined) {
+        if (typeof workflowId !== 'string' || !/^[0-9]{1,64}$/.test(workflowId)) fail();
+        body.workflowId = workflowId;
+      }
+      if (instanceType !== undefined) {
+        if (!RUNNINGHUB_INSTANCE_TYPES.includes(instanceType)) fail();
+        body.instanceType = instanceType;
+      }
+      // Keep the full frozen workflow alongside the explicit platform workflow ID.
+      // Only the derived seed mirror is allowed, never caller node overrides,
+      // silent tier escalation or paid retainSeconds.
+    }
+    const bodyBytes = Buffer.byteLength(JSON.stringify(body)); if (bodyBytes > LIMIT) fail();
+    const { requestDigest } = describeImageServiceRequest({ connection: source.connection, body, workflow: identity, execution });
+    const intent = normalizeComfyCloudIntent({ schema: COMFY_CLOUD_INTENT_SCHEMA, connection: source.connection, requestDigest, workflow: identity, stillOutput });
+    return freeze({ body, bodyBytes, intent });
+    }
+    const {automatic,outputNodeIds}=compile(preview).intent.stillOutput.execution; // Discard preview identity.
+    return freeze({ connection: source.connection, references, binding: source.binding, automatic,
+      readiness:{connection:source.connection,workflow,parameters:source.parameters||{},model:source.model,
+        referenceCount:references.length,outputNodeId:outputNodeIds[0]||'',...(source.runninghub?{runninghub:source.runninghub}:{})},complete(uploads) {
+      try {
+        if (!Array.isArray(uploads) || uploads.length !== references.length) fail();
+        return compile(template ? template.bind(uploads) : preview);
+      } catch (_) { fail(); }
+    } });
+  } catch (_) { fail(); }
+}

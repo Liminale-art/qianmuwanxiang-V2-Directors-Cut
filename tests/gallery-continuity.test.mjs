@@ -9,7 +9,7 @@ import {projectChatGallerySupplement,chatGallerySupplementResponse} from '../qia
 import {importCurrentRuntime} from './helpers/current-runtime.mjs';
 const {stageStoryboardContinuationLinks} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 const {saveStoryboardFloorTakes} = await importCurrentRuntime('qianmu-storyboard-floor-take.js');
-import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
+import {createChatGalleryHeaderCapture} from '../server/qianmu-chat-gallery-header.js';
 import {vibeDigest} from '../qianmu-vibe-file.js';
 const {storyboardContinuationIdentityInput} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 

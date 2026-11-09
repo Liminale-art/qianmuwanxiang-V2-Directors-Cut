@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateDirectImage} from '../qianmu-image-direct.js';
-import {generateImage,sanitizeImageRequest,imageGatewayCapabilities} from '../qianmu-image-gateway.js';
+import {generateImage,sanitizeImageRequest,imageGatewayCapabilities} from '../server/qianmu-image-gateway.js';
 import {normalizeNovelVibeEntries} from '../qianmu-novel-vibe.js';
 import {checkQianmuNovelVibeBinding,probeQianmuImageCapabilities} from '../qianmu-service-capabilities.js';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');

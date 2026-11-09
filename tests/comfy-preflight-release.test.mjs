@@ -49,7 +49,7 @@ test('RunningHub workflow-id consumers have an explicit local cache closure',asy
   const files=await collectReleaseFiles();
   // The whitelist kept growing after this release (691 then); only require that it did not shrink below it.
   assert.ok(files.length>=691&&new Set(files).size===files.length,'four creative runtime modules extend the existing whitelist');
-  for(const file of ['qianmu-comfy-console.js','qianmu-comfy-cloud-request.js','qianmu-comfy-library-view.js','qianmu-comfy-validation-scope.js'])assert.ok(files.includes(file));
+  for(const file of ['qianmu-comfy-console.js','qianmu-comfy-cloud-request.js','qianmu-comfy-library-view.js','server/qianmu-comfy-validation-scope.js'])assert.ok(files.includes(file));
   const helper=await import('../qianmu-comfy-console.js?v=1.59.435');
   assert.equal(helper.runningHubWorkflowId({comfyConsoleUrl:'https://www.runninghub.cn/post/1234567890123456789?source=workspace'},{baseUrl:'https://www.runninghub.cn'}),'1234567890123456789');
 });
@@ -70,7 +70,7 @@ test('workflow-id release leaves compatible preload and feature-loader addresses
 
 test('illustration update preserves host node evidence and refreshes original-task recovery actions',async()=>{
   const files=await collectReleaseFiles();
-  for(const file of ['qianmu-comfy-cloud-response.js','qianmu-comfy-cloud-query.js','qianmu-runninghub-results.js','qianmu-runninghub-download.js','qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
+  for(const file of ['server/qianmu-comfy-cloud-response.js','server/qianmu-comfy-cloud-query.js','server/qianmu-runninghub-results.js','server/qianmu-runninghub-download.js','server/qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
   const entry=await readFile(new URL('index.js',root),'utf8');
   assert.ok(entry.includes("const VERSION = '1.59.484';"));
   assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g)].map(match=>match[1]),
@@ -79,10 +79,10 @@ test('illustration update preserves host node evidence and refreshes original-ta
   assert.ok(!entry.includes("from './qianmu-comfy-recovery-action.js'"),'manual receipt must not load the stale action');
   const action=await import('../qianmu-comfy-recovery-action.js?v=1.59.440');
   assert.equal(typeof action.receiveComfyImage,'function');
-  const {comfyCloudReadFailureDiagnostic}=await import('../qianmu-comfy-cloud-response.js');
+  const {comfyCloudReadFailureDiagnostic}=await import('../server/qianmu-comfy-cloud-response.js');
   assert.deepEqual(comfyCloudReadFailureDiagnostic({code:'runninghub_results_match'},{stage:'outputs'}),
     {stage:'outputs',reason:'output_match',hasKnownTaskId:true});
-  const {runningHubNeedsNodeEvidence}=await import('../qianmu-runninghub-results.js');
+  const {runningHubNeedsNodeEvidence}=await import('../server/qianmu-runninghub-results.js');
   assert.equal(runningHubNeedsNodeEvidence({results:[{nodeId:'9'}]}),false);
   assert.equal(runningHubNeedsNodeEvidence({results:[{}]}),true);
 });

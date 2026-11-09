@@ -18,7 +18,7 @@ import {
 } from '../qianmu-storyboard.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-const gateway = await readFile(new URL('../qianmu-image-gateway.js', import.meta.url), 'utf8');
+const gateway = await readFile(new URL('../server/qianmu-image-gateway.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 assert.equal(STORYBOARD_SCHEMA_VERSION, 24);

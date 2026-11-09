@@ -5,7 +5,7 @@ import path from 'node:path';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
 import {galleryOriginalHttpFixture,originalPng as png} from './helpers/gallery-original-http-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';

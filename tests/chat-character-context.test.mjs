@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCurrentChatCharacterReceiptClient,createChatCharacterReceiptClient} from '../qianmu-chat-character-receipt-client.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const gate=()=>{let release;const promise=new Promise(resolve=>{release=resolve;});return {promise,release};};
 const context=()=>({characterId:0,groupId:null,chatId:'Chat A',characters:[{name:'Same name',avatar:'A.png',chat:'Chat A'},{name:'Same name',avatar:'B.png',chat:'Chat A'}],

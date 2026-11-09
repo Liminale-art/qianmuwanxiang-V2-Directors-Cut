@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import http from 'node:http';
 import {chatEvidenceFixture,sha} from './helpers/chat-evidence-fixture.mjs';
 import {chatGalleryDigest} from '../qianmu-chat-gallery-digest.js';
-import {CHAT_GALLERY_HEADER_LIMITS} from '../qianmu-chat-gallery-header.js';
+import {CHAT_GALLERY_HEADER_LIMITS} from '../server/qianmu-chat-gallery-header.js';
 import {CHAT_GALLERY_EVIDENCE_LIMITS as LIMIT,chatGalleryEvidenceSourceResponse,chatGalleryEvidenceResponse} from '../qianmu-chat-gallery-evidence.js';
 import {createChatGalleryEvidenceSourceClient} from '../qianmu-chat-character-receipt-client.js';
 import {chatCharacterReceiptErrorPayload} from '../qianmu-chat-character-receipt.js';

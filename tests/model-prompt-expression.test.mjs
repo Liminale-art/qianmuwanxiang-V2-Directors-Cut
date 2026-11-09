@@ -6,7 +6,7 @@ import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
 import {prepareCharacterShotEdit} from '../qianmu-character-shot-edit.js';
 import {adaptStoryboardSafetyContract,STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID} from '../qianmu-storyboard-contract.js';
 import {generateDirectImage} from '../qianmu-image-direct.js';
-import {generateImage} from '../qianmu-image-gateway.js';
+import {generateImage} from '../server/qianmu-image-gateway.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {compilerEnvironment} from './helpers/comfy-compiler-fixture.mjs';
 const copy=value=>structuredClone(value);

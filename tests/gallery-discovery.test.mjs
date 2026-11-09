@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createGalleryDiscoveryService} from '../qianmu-gallery-discovery-service.js';
-import {galleryDiscoveryRequest,galleryDiscoveryResponse,galleryDiscoveryErrorPayload,GALLERY_DISCOVERY_LIMITS} from '../qianmu-gallery-discovery-contract.js';
+import {createGalleryDiscoveryService} from '../server/qianmu-gallery-discovery-service.js';
+import {galleryDiscoveryRequest,galleryDiscoveryResponse,galleryDiscoveryErrorPayload,GALLERY_DISCOVERY_LIMITS} from '../server/qianmu-gallery-discovery-contract.js';
 import {galleryDiscoveryFixture as fixture} from './helpers/gallery-discovery-fixture.mjs';
 import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
-import {createChatCharacterReceiptService} from '../qianmu-chat-character-receipt-service.js';
+import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');

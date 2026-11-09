@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createAccountDocumentFiles} from '../qianmu-account-document-files.js';
+import {createAccountDocumentFiles} from '../server/qianmu-account-document-files.js';
 
 const options=root=>({root,filename:'.collection.json',lockname:'.collection.lock',temporaryPrefix:'.collection-write-',bytes:1024,label:'收藏',
   errorFactory:(code,message,status=409)=>Object.assign(new Error(message),{code:`fixture_${code}`,status}),empty:()=>({records:[]}),

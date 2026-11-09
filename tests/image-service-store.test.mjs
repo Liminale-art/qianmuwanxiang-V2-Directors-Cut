@@ -4,14 +4,14 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, normalizeImageServiceChannel } from '../qianmu-image-service-queue.js';
-import { generateImage } from '../qianmu-image-gateway.js';
-import { COMFY_CLOUD_CHANNEL_SCHEMA, normalizeComfyCloudChannel } from '../qianmu-comfy-cloud-channel-state.js';
-import { COMFY_CLOUD_RECEIPT_SCHEMA, COMFY_CLOUD_INTENT_SCHEMA } from '../qianmu-comfy-cloud-receipt.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest, normalizeImageServiceChannel } from '../server/qianmu-image-service-queue.js';
+import { generateImage } from '../server/qianmu-image-gateway.js';
+import { COMFY_CLOUD_CHANNEL_SCHEMA, normalizeComfyCloudChannel } from '../server/qianmu-comfy-cloud-channel-state.js';
+import { COMFY_CLOUD_RECEIPT_SCHEMA, COMFY_CLOUD_INTENT_SCHEMA } from '../server/qianmu-comfy-cloud-receipt.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
-import { comfyCloudResourceKey, createComfyCloudLedger } from '../qianmu-comfy-cloud-ledger.js';
-import { imageServiceAccount } from '../qianmu-image-service-access.js';
+import { comfyCloudResourceKey, createComfyCloudLedger } from '../server/qianmu-comfy-cloud-ledger.js';
+import { imageServiceAccount } from '../server/qianmu-image-service-access.js';
 
 const key = imageServiceChannelKey('mock-persistence-key');
 const never = () => assert.fail('must not authorize another request');
@@ -60,8 +60,8 @@ async function child(script) {
     instance.once('close', code => code === 0 ? resolve(output) : reject(Error(`test child failed ${code}: ${output.slice(0, 1000)}`)));
   });
 }
-const storeUrl = new URL('../qianmu-image-service-store.js', import.meta.url).href;
-const queueUrl = new URL('../qianmu-image-service-queue.js', import.meta.url).href;
+const storeUrl = new URL('../server/qianmu-image-service-store.js', import.meta.url).href;
+const queueUrl = new URL('../server/qianmu-image-service-queue.js', import.meta.url).href;
 
 function cloudMetadata() {
   const state = metadata(); state.schema = COMFY_CLOUD_CHANNEL_SCHEMA;
@@ -633,7 +633,7 @@ test('bounded waiting and closing reject unsent mutations without abandoning an 
 
 test('private metadata is only constructed through the task service and the release includes recovery', async () => {
   assert.doesNotMatch(await fs.readFile(new URL('../server-plugin.js', import.meta.url), 'utf8'), /createImageServiceStore/);
-  const source = await fs.readFile(new URL('../qianmu-image-service.js', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../server/qianmu-image-service.js', import.meta.url), 'utf8');
   assert.match(source, /createImageServiceStore/);
   assert.match(await fs.readFile(new URL('../release-files.json', import.meta.url), 'utf8'), /qianmu-image-service-store/);
 });

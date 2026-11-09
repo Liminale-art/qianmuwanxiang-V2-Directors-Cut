@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_NATIVE_PROTOCOLS, resolveImageProtocolBinding } from '../qianmu-image-models.js';
 import { prepareImageTransportRequest } from '../qianmu-image-transport.js';
 import { generateDirectImage, checkDirectImageConnection, listDirectImageModels, isDirectImageTransportError } from '../qianmu-image-direct.js';
-import { generateImage, sanitizeImageRequest, checkImageConnection, listImageModels, imageGatewayCapabilities } from '../qianmu-image-gateway.js';
+import { generateImage, sanitizeImageRequest, checkImageConnection, listImageModels, imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuImageProtocolBinding, checkQianmuImageModelBinding } from '../qianmu-service-capabilities.js';
 import { buildStoryboardProviderPlan, resolveStoryboardModelBinding } from '../qianmu-storyboard.js';
 

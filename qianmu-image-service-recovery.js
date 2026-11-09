@@ -3,7 +3,7 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
+import { normalizeImageServiceChannel } from './server/qianmu-image-service-queue.js';
 import { normalizeNovelServiceChannel } from './qianmu-novel-service-channel-state.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');

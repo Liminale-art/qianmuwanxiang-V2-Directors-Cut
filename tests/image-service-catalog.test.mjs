@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { createImageService, imageServiceTaskErrorPayload } from '../qianmu-image-service.js';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { createImageServiceResults } from '../qianmu-image-service-results.js';
-import { imageServiceChannelKey } from '../qianmu-image-service-queue.js';
+import { createImageService, imageServiceTaskErrorPayload } from '../server/qianmu-image-service.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { createImageServiceResults } from '../server/qianmu-image-service-results.js';
+import { imageServiceChannelKey } from '../server/qianmu-image-service-queue.js';
 import { createImageServiceClient } from '../qianmu-image-service-client.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareComfyCloudSubmission as prepare, prepareComfyCloudSubmissionInput } from '../qianmu-comfy-cloud-prepare.js';
+import { prepareComfyCloudSubmission as prepare, prepareComfyCloudSubmissionInput } from '../server/qianmu-comfy-cloud-prepare.js';
 import { planComfyCloudUpload, readComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
 import { bindComfyCloudProtocol } from '../qianmu-comfy-cloud-protocol.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';

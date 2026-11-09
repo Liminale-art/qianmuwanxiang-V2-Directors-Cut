@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { historicalSourceFixture } from './historical-source-fixture.mjs';
 import { captureHistoricalStoryboardBundle } from '../../qianmu-historical-storyboard-bundle.js';
-import { createImageRestoreService } from '../../qianmu-image-restore-service.js';
+import { createImageRestoreService } from '../../server/qianmu-image-restore-service.js';
 import { imageRestoreErrorPayload } from '../../qianmu-image-restore-contract.js';
 import { createHistoricalOriginalRestore } from '../../qianmu-historical-original-restore.js';
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {buildComfyCloudRequest} from '../qianmu-comfy-cloud-request.js';
-import {prepareComfyCloudSubmission} from '../qianmu-comfy-cloud-prepare.js';
+import {prepareComfyCloudSubmission} from '../server/qianmu-comfy-cloud-prepare.js';
 import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
 import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
@@ -13,8 +13,8 @@ import {auditComfyWorkflow,requireComfyExecution} from '../qianmu-comfy-audit.js
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';
 import {resolveStoryboardJobModelIdentity,resolveStoryboardConnectionBinding} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
-import {createComfyCloudService} from '../qianmu-comfy-cloud-service.js';
-import {imageGatewayErrorPayload} from '../qianmu-image-gateway.js';
+import {createComfyCloudService} from '../server/qianmu-comfy-cloud-service.js';
+import {imageGatewayErrorPayload} from '../server/qianmu-image-gateway.js';
 const connection=bindComfyCloudProtocol('https://cloud.comfy.org','comfy-cloud-v2');
 const workflow=()=>({model:{class_type:'CheckpointLoaderSimple',inputs:{ckpt_name:'fixed.safetensors'}},
   pos:{class_type:'CLIPTextEncode',inputs:{text:'fixed style, %qianmu_prompt%',clip:['model',1]}},

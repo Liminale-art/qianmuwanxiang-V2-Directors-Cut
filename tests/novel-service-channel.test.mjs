@@ -4,13 +4,13 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {spawn} from 'node:child_process';
-import {createNovelServiceChannel} from '../qianmu-novel-service-channel.js';
+import {createNovelServiceChannel} from '../server/qianmu-novel-service-channel.js';
 import {normalizeNovelServiceChannel} from '../qianmu-novel-service-channel-state.js';
-import {createImageServiceStore} from '../qianmu-image-service-store.js';
-import {createImageService} from '../qianmu-image-service.js';
-import {createVibeEncodingService} from '../qianmu-vibe-service.js';
-import {imageServiceChannelKey} from '../qianmu-image-service-queue.js';
-import {imageServiceAccount} from '../qianmu-image-service-access.js';
+import {createImageServiceStore} from '../server/qianmu-image-service-store.js';
+import {createImageService} from '../server/qianmu-image-service.js';
+import {createVibeEncodingService} from '../server/qianmu-vibe-service.js';
+import {imageServiceChannelKey} from '../server/qianmu-image-service-queue.js';
+import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {encodeNovelVibe,prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
 const PNG='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const actor=(handle='alice')=>({user:{profile:{handle,enabled:true}}});
@@ -125,7 +125,7 @@ test('corrupt occupancy never becomes an empty channel and does not damage origi
   assert.equal(await fs.readFile(file,'utf8'),'corrupted test fixture');
 });
 test('a different real Node process holds the same persistent channel until its operation finishes',async t=>{
-  const e=await fixture(t),gate=e.channel(),module=new URL('../qianmu-novel-service-channel.js',import.meta.url).href;
+  const e=await fixture(t),gate=e.channel(),module=new URL('../server/qianmu-novel-service-channel.js',import.meta.url).href;
   const script=`import {createNovelServiceChannel} from ${JSON.stringify(module)};const channel=createNovelServiceChannel({dataRoot:${JSON.stringify(e.root)}});await channel.run(${JSON.stringify(lease('child'))},async ticket=>{await ticket.beforeSubmit();process.send('ready');await new Promise(resolve=>process.once('message',resolve));});await channel.close();process.send('done');process.disconnect();`;
   const child=spawn(process.execPath,['--input-type=module'],{stdio:['pipe','pipe','pipe','ipc']});let errors='';child.stderr.on('data',chunk=>errors+=chunk);
   const exited=new Promise(resolve=>child.once('exit',code=>resolve(code)));t.after(()=>{if(child.exitCode===null)child.kill();});
@@ -134,7 +134,7 @@ test('a different real Node process holds the same persistent channel until its 
   child.send('finish');await second;assert.equal(entered,true);assert.equal(await exited,0);assert.equal(errors,'');
 });
 test('a real process exit after authorization leaves occupancy fenced; death and waiting do not prove the upstream stopped',async t=>{
-  const e=await fixture(t),module=new URL('../qianmu-novel-service-channel.js',import.meta.url).href;
+  const e=await fixture(t),module=new URL('../server/qianmu-novel-service-channel.js',import.meta.url).href;
   const child=spawn(process.execPath,['--input-type=module'],{stdio:['pipe','pipe','pipe']});let errors='';child.stderr.on('data',chunk=>errors+=chunk);
   const exited=new Promise((resolve,reject)=>{child.once('exit',resolve);child.once('error',reject);});t.after(()=>{if(child.exitCode===null)child.kill();});
   child.stdin.end(`import {createNovelServiceChannel} from ${JSON.stringify(module)};const c=createNovelServiceChannel({dataRoot:${JSON.stringify(e.root)}});await c.run(${JSON.stringify(lease('crashed'))},async t=>{await t.beforeSubmit();process.exit(0);});`);

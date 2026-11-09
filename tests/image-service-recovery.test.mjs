@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { createImageServiceStore } from '../qianmu-image-service-store.js';
-import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest } from '../qianmu-image-service-queue.js';
-import { imageServiceAccount, queryImageServiceTask } from '../qianmu-image-service-access.js';
+import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
+import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest } from '../server/qianmu-image-service-queue.js';
+import { imageServiceAccount, queryImageServiceTask } from '../server/qianmu-image-service-access.js';
 import { inspectImageServiceRecovery, recoverImageServiceRecords, restoreInterruptedImageRecovery } from '../qianmu-image-service-recovery.js';
 
 const key = imageServiceChannelKey('mock-recovery-key');
@@ -87,7 +87,7 @@ test('a live lock owner is never displaced and an existing maintenance owner is 
 
 test('actual crashed-process write locks and staged bytes are retained in the backup, not discarded', async t => {
   const { root, active, store } = await fixture(t, null);
-  const storeUrl = new URL('../qianmu-image-service-store.js', import.meta.url).href;
+  const storeUrl = new URL('../server/qianmu-image-service-store.js', import.meta.url).href;
   await child(`import * as fs from 'node:fs/promises';import {createImageServiceStore} from ${JSON.stringify(storeUrl)};
     const store=createImageServiceStore({dataRoot:${JSON.stringify(root)},fileSystem:{...fs,rename:async()=>process.exit(0)}});
     await store.transaction(${JSON.stringify(key)},()=>({state:${JSON.stringify(state('reserved'))}}));`);

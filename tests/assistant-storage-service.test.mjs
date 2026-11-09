@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { createAssistantStorageService, installAssistantStorageRoutes } from '../qianmu-assistant-storage-service.js';
+import { createAssistantStorageService, installAssistantStorageRoutes } from '../server/qianmu-assistant-storage-service.js';
 import { assistantStorageRequest, assistantStorageResponse, assistantStorageErrorPayload, assistantCatalogueRequest, assistantCatalogueResponse } from '../qianmu-assistant-storage-contract.js';
 import { createNativeProseAssistantHistoryStore } from '../qianmu-prose-assistant-native.js';
 import { emptyProseAssistantHistory } from '../qianmu-prose-assistant-history-contract.js';

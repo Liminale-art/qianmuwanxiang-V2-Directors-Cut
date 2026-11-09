@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as serviceCapabilities from '../qianmu-service-capabilities.js';
-import { imageGatewayCapabilities } from '../qianmu-image-gateway.js';
+import { imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import {
   STORYBOARD_PROVIDER_REGISTRY, STORYBOARD_MODEL_REGISTRY, STORYBOARD_PIPELINE_LOG_LIMIT,
   createStoryboardDefaults, getStoryboardModel, resolveStoryboardJobModelIdentity,

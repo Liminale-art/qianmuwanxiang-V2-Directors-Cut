@@ -8,7 +8,7 @@ import {
     patchNativeBackupCountConfig,
     readNativeBackupCountConfig,
     ST_NATIVE_BACKUP_POLICY,
-} from '../qianmu-st-backup-policy-service.js';
+} from '../server/qianmu-st-backup-policy-service.js';
 
 test('native backup policy reads and patches only backups.common.numberOfBackups', () => {
     const source = 'port: 8000\nbackups:\n  common:\n    numberOfBackups: 50 # keep this comment\n  chat:\n    enabled: true\n';

@@ -15,7 +15,7 @@ import {
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
-const gateway = await readFile(new URL('../qianmu-image-gateway.js', import.meta.url), 'utf8');
+const gateway = await readFile(new URL('../server/qianmu-image-gateway.js', import.meta.url), 'utf8');
 
 assert.deepEqual(Object.keys(STORYBOARD_SOURCES), ['novel', 'banana', 'openai', 'seedream', 'comfy'], '分镜 2.0 必须开放五种独立连接');
 assert.equal(STORYBOARD_SOURCES.banana.stSource, 'google', 'Banana 必须复用 ST 官方 Google 图像后端');

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {sha256} from '../vendor/noble-hashes-2.4.0/sha2.js';
 import {chatGalleryReceiptText,chatGalleryReceiptSummary,CHAT_GALLERY_STREAM_LIMITS as LIMIT} from '../qianmu-chat-gallery-receipt.js';
 import {chatGalleryDigest,scanChatGallery,createChatGalleryDigest,galleryDigestRecord} from '../qianmu-chat-gallery-digest.js';
-import {createChatGalleryHeaderCapture} from '../qianmu-chat-gallery-header.js';
+import {createChatGalleryHeaderCapture} from '../server/qianmu-chat-gallery-header.js';
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const oldSummary=rows=>{const {text,...rest}=chatGalleryReceiptText(rows);return {...rest,sha256:sha(text)};};
 const frame=i=>({id:'i'+i,createdAt:i,unknown:{arr:[null,false,0,'字🌙'],nested:{z:' \\"\n',a:i}}});
