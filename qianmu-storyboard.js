@@ -2,13 +2,13 @@ import {STORYBOARD_LEGACY_MAX_SHOTS,STORYBOARD_LEGACY_V2_MAX_SHOTS,STORYBOARD_MA
 export {STORYBOARD_MAX_CONCURRENCY,storyboardShotCount} from './qianmu-storyboard-limits.js';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';
 import {retainEnsembleRecoveryRecord} from './qianmu-ensemble-record.js';
-import {galleryMembershipSnapshot} from './qianmu-gallery-membership.js';
-import {DEFAULT_GALLERY_KEYWORDS} from './qianmu-gallery-keywords.js';
+import {galleryMembershipSnapshot} from './features/gallery/qianmu-gallery-membership.js';
+import {DEFAULT_GALLERY_KEYWORDS} from './features/gallery/qianmu-gallery-keywords.js';
 import {normalizeCompositionLibrary,DEFAULT_COMPOSITION_SCHEME} from './qianmu-composition-schemes.js';
 import {normalizePersonaWorldSelections} from './qianmu-storyboard-persona-world.js';
 import {retainStoryboardArtDirection} from './qianmu-art-directions.js';
 export {STORYBOARD_ART_DIRECTIONS,retainStoryboardArtDirection,storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
-export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
+export {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
 import {retainEnsembleStyleOrigin} from './qianmu-ensemble-origin.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,resolveStoryboardStreamReference,normalizeStoryboardStreamFinalCapture,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
 import {normalizeWorldAutomaticApproval} from './features/character/qianmu-world-automatic-approval.js?v=1.59.414';
@@ -17,7 +17,7 @@ import {normalizeStoryboardStreamAttempt} from './qianmu-storyboard-stream-attem
 import {readStoryboardContinuationLinks} from './qianmu-storyboard-continuation-proof.js?v=1.59.414';
 import {resolveStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';
 import { normalizeOpenAICompatibleHeaders, normalizeOpenAIImageCompatibility } from './qianmu-openai-image-compat.js';
-import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './qianmu-image-models.js';
+import { resolveImageProtocolBinding, IMAGE_NATIVE_PROTOCOLS, IMAGE_PROTOCOL_BINDING_VERSION } from './features/gallery/qianmu-image-models.js';
 import { inspectComfyWorkflow, comfyCandidateCount } from './qianmu-comfy-workflow.js?v=1.59.440';
 export { resolveStoryboardComfyCloud } from './qianmu-comfy-cloud-protocol.js';
 export { canRunStoryboardComfyJob } from './qianmu-comfy-queue.js';

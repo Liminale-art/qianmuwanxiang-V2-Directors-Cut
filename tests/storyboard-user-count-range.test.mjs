@@ -5,7 +5,7 @@ import {EventEmitter} from 'node:events';
 import * as board from '../qianmu-storyboard.js';
 import * as packageAssets from '../qianmu-storyboard-package-assets.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,preflightImageAttempts} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,preflightImageAttempts} from '../features/gallery/qianmu-image-attempts.js';
 import {applyCharacterCasting} from '../features/character/qianmu-character-casting.js';
 import {resolveStoryboardCompilerResult} from '../qianmu-storyboard-compiler-result.js';
 import {prepareStoryboardPackageDraft} from '../qianmu-storyboard-package-draft.js';

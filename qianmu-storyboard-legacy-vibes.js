@@ -1,6 +1,6 @@
 import { comfyReferencePath } from './qianmu-comfy-reference-contract.js';
 import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
-import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
+import { imageRestoreReceipt } from './features/gallery/qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 
 export const LEGACY_VIBE_ORIGINALS_SCHEMA = 'qianmu.storyboard.legacy-vibes.v1';

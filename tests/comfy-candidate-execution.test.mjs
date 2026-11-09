@@ -10,7 +10,7 @@ import { normalizeComfyCloudStage, RUNNINGHUB_STAGE_SCHEMA } from '../server/qia
 import { normalizeComfyCloudChannel, COMFY_CLOUD_CHANNEL_SCHEMA } from '../server/qianmu-comfy-cloud-channel-state.js';
 import { bindComfyCloudProtocol, bindComfyCloudTask } from '../qianmu-comfy-cloud-protocol.js';
 import { imageGatewayCapabilities, generateImage } from '../server/qianmu-image-gateway.js';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { probeQianmuImageCapabilities, checkQianmuComfyExecutionBinding } from '../qianmu-service-capabilities.js';
 import { planStoryboardProviderRequests, buildStoryboardProviderPlan } from '../qianmu-storyboard.js';
 import { prepareComfyWorkflow } from '../qianmu-comfy-workflow.js';

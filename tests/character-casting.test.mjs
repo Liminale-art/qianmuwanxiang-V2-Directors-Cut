@@ -6,7 +6,7 @@ import * as storyboard from '../qianmu-storyboard.js';
 import * as contract from '../qianmu-storyboard-contract.js';
 import {newCharacterArchive,normalizeCharacterArchive} from '../features/character/qianmu-character-archive.js';
 import {buildStoryboardPlanContractRequest,buildStoryboardSafetyContractRequest,adaptStoryboardSafetyContract,STORYBOARD_SAFETY_RESPONSE_SCHEMA_ID} from '../qianmu-storyboard-contract.js';
-import {generateDirectImage} from '../qianmu-image-direct.js';
+import {generateDirectImage} from '../features/gallery/qianmu-image-direct.js';
 import {generateImage} from '../server/qianmu-image-gateway.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {installCompilerDiagnosticsFixture} from './helpers/compiler-diagnostics-fixture.mjs';

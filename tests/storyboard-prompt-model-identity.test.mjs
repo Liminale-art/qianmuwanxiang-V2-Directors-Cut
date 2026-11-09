@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
-import {prepareGalleryRecipeFieldRelease} from '../qianmu-gallery-recipe-fields.js';
+import {galleryMembershipSnapshot} from '../features/gallery/qianmu-gallery-membership.js';
+import {prepareGalleryRecipeFieldRelease} from '../features/gallery/qianmu-gallery-recipe-fields.js';
 import {
   compileStoryboardPrompt, normalizeStoryboardShotSpec, createStoryboardDefaults,
   resolveStoryboardModelBinding, resolveStoryboardJobModelIdentity,
@@ -17,7 +17,7 @@ import {
   captureStoryboardVibeRecipe,
   storyboardArtDirectionDefaults,
 } from '../qianmu-storyboard.js';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage } from '../server/qianmu-image-gateway.js';
 import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';
 

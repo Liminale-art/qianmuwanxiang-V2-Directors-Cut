@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {galleryPreparedAssetsFixture} from './helpers/gallery-prepared-assets-fixture.mjs';
-import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
+import {createCurrentGalleryArchiveSession} from '../features/gallery/qianmu-gallery-archive-source.js';
 import {readCurrentGalleryLocalRecipe} from '../qianmu-gallery-local-recipe-current.js';
-import {galleryReviewedRecipeSlot} from '../qianmu-gallery-reviewed-recipe.js';
+import {galleryReviewedRecipeSlot} from '../features/gallery/qianmu-gallery-reviewed-recipe.js';
 const gate=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 
 async function legacy(t){

@@ -3,7 +3,7 @@ import { inspectStoryboardResourceBundle, collectStoryboardBundleRestoreOriginal
 import { planComfyLibraryRestore, comfyLibraryBackupDigest as digest } from './qianmu-comfy-library-backup.js';
 import { planComfyPoolRestore } from './qianmu-comfy-pool-backup.js';
 import { planCharacterLibraryRestore } from './features/character/qianmu-character-library-backup.js';
-import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
+import { imageRestoreReceipt } from './features/gallery/qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { createCharacterRestoreChoiceSnapshot } from './features/character/qianmu-character-backup-restore.js';
 import { sourceIdentityLabelsMatch } from './features/chat/qianmu-source-identity-contract.js';

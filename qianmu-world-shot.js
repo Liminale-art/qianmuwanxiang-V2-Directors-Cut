@@ -4,7 +4,7 @@ import {applyCharacterCasting,characterCastingInput} from './features/character/
 import {normalizeStoryboardShotSpec} from './qianmu-storyboard.js?v=1.59.440';
 import {applyCharacterReferenceChoice,renderCharacterReferencePicker} from './features/character/qianmu-character-reference.js?v=1.59.202';
 import {STORYBOARD_STILL_EXPRESSION_INSTRUCTIONS,STORYBOARD_WORLD_STILL_INSTRUCTION,storyboardStillFormatInstructions} from './qianmu-still-frame-instructions.js?v=1.59.439';
-import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './qianmu-gallery-keywords.js';
+import {galleryKeywordSchema,GALLERY_KEYWORD_INSTRUCTION} from './features/gallery/qianmu-gallery-keywords.js';
 import {rememberWorldGalleryKeywords,worldGalleryKeywords,carryWorldGalleryKeywords} from './features/character/qianmu-world-gallery-keywords.js';
 import {normalizeStoryboardPromptFormats,storyboardPromptRenderingsSchema,storyboardPromptRenderingSource,
   storyboardPromptFormatBudget,validateStoryboardPromptRenderings,bindStoryboardPromptRenderings,resolveStoryboardPromptRendering} from './qianmu-prompt-formats.js';

@@ -16,8 +16,8 @@ await context.route('**/*', async route => {
 try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); await page.goto('https://qianmu.test/');
     const result = await page.evaluate(async () => {
-        const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
-        const { galleryCatalogKey: key } = await import('/qianmu-gallery-catalog-contract.js');
+        const { createGalleryCatalogStore: create } = await import('/features/gallery/qianmu-gallery-catalog-store.js');
+        const { galleryCatalogKey: key } = await import('/features/gallery/qianmu-gallery-catalog-contract.js');
         const checks = [], scales = [], check = (name, passed) => { if (!passed) throw Error(name); checks.push(name); };
         const rejects = async (name, operation, code) => { let error; try { await operation(); } catch (cause) { error = cause; } check(name, Boolean(error) && (!code || error.code === 'gallery_catalog_' + code)); };
         const ns = 'st-user:alice', other = 'st-user:bob', source = { ownerKey: 'char:Alice.png', chatKey: 'Chat same name' };

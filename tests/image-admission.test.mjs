@@ -5,9 +5,9 @@ import * as floorTakes from '../qianmu-storyboard-floor-take.js';
 import {storyboardAutomaticJobEnabled} from '../qianmu-storyboard.js';
 import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
 import { readFile } from 'node:fs/promises';
-import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
+import { generateDirectImage, isDirectImageTransportError } from '../features/gallery/qianmu-image-direct.js';
 import { createImageAdmission, createImageAdmissionIdentity, createImageHistorySeeds, resolveImageAccountNamespace } from '../qianmu-image-admission.js';
-import { beginImageAttempt, continueImageAttempt, claimImageAttempt, preflightImageAttempts, importImageAttempts, settleImageAttempt, imageAttemptScopeKey, summarizeImageAttempts, IMAGE_RESERVATION_TTL_MS } from '../qianmu-image-attempts.js';
+import { beginImageAttempt, continueImageAttempt, claimImageAttempt, preflightImageAttempts, importImageAttempts, settleImageAttempt, imageAttemptScopeKey, summarizeImageAttempts, IMAGE_RESERVATION_TTL_MS } from '../features/gallery/qianmu-image-attempts.js';
 import { inspectComfyImageExecution, requireComfyExecution } from '../qianmu-comfy-audit.js';
 
 const NOW = 1_780_000_000_000;

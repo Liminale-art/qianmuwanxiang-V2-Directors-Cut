@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { projectGalleryCatalogEntry as project, galleryCatalogQuery as query, galleryCatalogMatches as matches,
-    galleryCatalogStoredRow as stored, galleryCatalogStoredEntry as validate, galleryCatalogTags as tags } from '../qianmu-gallery-catalog-contract.js';
-import { createGalleryCatalogStore } from '../qianmu-gallery-catalog-store.js';
+    galleryCatalogStoredRow as stored, galleryCatalogStoredEntry as validate, galleryCatalogTags as tags } from '../features/gallery/qianmu-gallery-catalog-contract.js';
+import { createGalleryCatalogStore } from '../features/gallery/qianmu-gallery-catalog-store.js';
 const ns = 'st-user:fixture', source = { ownerKey: 'char:Alice.png', chatKey: 'shared-name' };
 const entry = (extra = {}) => ({ id: 'shot', kind: 'still', createdAt: 100, tags: ['海岸', '旅人'], ...extra });
 const cursor = (q, after, revision = 1) => ({ version: 1, signature: q.signature, revision, after });
@@ -90,7 +90,7 @@ test('opening failure is recoverable and not an empty-success response', async (
     assert.equal(attempts, 2); store.close();
 });
 test('implementation has bounded cursor reads and no bulk body/asset/network access', async () => {
-    const code = await readFile(new URL('../qianmu-gallery-catalog-store.js', import.meta.url), 'utf8');
+    const code = await readFile(new URL('../features/gallery/qianmu-gallery-catalog-store.js', import.meta.url), 'utf8');
     assert.match(code, /openCursor\(range, 'prev'\)/); assert.match(code, /visited >= limits.scan/);
     assert.doesNotMatch(code, /\.getAll\(|\.getAllKeys\(|fetch\(|XMLHttpRequest|\.arrayBuffer\(|localStorage|\.clear\(|deleteDatabase/);
 });

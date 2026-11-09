@@ -5,11 +5,11 @@ const root = new URL('../', import.meta.url);
 const source = await readFile(new URL('index.js', root), 'utf8');
 const css = await readFile(new URL('style.css', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
-const galleryView = await readFile(new URL('qianmu-gallery-collections-view.js', root), 'utf8');
+const galleryView = await readFile(new URL('features/gallery/qianmu-gallery-collections-view.js', root), 'utf8');
 const gallery = source.slice(source.indexOf('function renderStoryboardGallery(state)'), source.indexOf('function renderStoryboardGalleryKindSwitch'));
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-assert.equal(manifest.js, `index.js?v=${manifest.version}-character-1`);
+assert.equal(manifest.js, `index.js?v=${manifest.version}-gallery-1`);
 assert.match(source, /function storyboardGalleryCollections\(\)[\s\S]*storyboardCollections/, 'collections must persist with chat metadata');
 assert.match(source, /function storyboardGalleryGroupId[\s\S]*variantRootId[\s\S]*planShotId[\s\S]*groupId/, 'old and new image records need stable variant grouping');
 assert.match(source, /function storyboardCreateRecord[\s\S]*variantRootId: job\.variantRootId \|\| job\.planShotId \|\| job\.id/, 'new images must record their variant root');
@@ -19,7 +19,7 @@ assert.doesNotMatch(gallery, /sd-media-library-shell|storyboardMediaSidebarMarku
 assert.match(galleryView, /sd-storyboard-stack-count">\$\{group\.variants\.length\}/, 'extracted image cards must preserve complete variant counts');
 assert.match(source, /sd-storyboard-gallery-new-folder[\s\S]*sd-media-collection-rename[\s\S]*sd-media-collection-delete/, 'collections need create, rename, and dissolve controls');
 assert.match(source, /bindGalleryBulkCollections\(root,\{readCollections:storyboardGalleryCollections,readRecords:storyboardGalleryRecords,readSelection:\(\)=>storyboardGallerySelection/, 'entry must wire bulk collection membership to the current records and selection');
-const taxonomy = await readFile(new URL('qianmu-gallery-taxonomy.js', root), 'utf8');
+const taxonomy = await readFile(new URL('features/gallery/qianmu-gallery-taxonomy.js', root), 'utf8');
 assert.match(taxonomy, /applyGalleryCollectionTarget\(records,chosen,target\)/, 'shared bulk handler must validate all changes before applying memberships');
 assert.match(source, /const collections=clone\(storyboardGalleryCollections\(\)\)[\s\S]*chat: \{ images: records, collections \}/, 'storyboard exports must include the captured media collections rather than reading a later chat');
 assert.match(source, /prepareStoryboardPackageDraft\(\{[\s\S]*collections: incomingCollections/, 'cross-device imports prepare collections in the detached batch');

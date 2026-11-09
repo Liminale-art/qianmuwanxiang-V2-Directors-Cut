@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {spawn} from 'node:child_process';
 import {createImageServiceStore} from '../server/qianmu-image-service-store.js';
-import {inspectImageServiceRecovery as inspect,recoverImageServiceRecords as recover,restoreInterruptedImageRecovery as restore} from '../qianmu-image-service-recovery.js';
+import {inspectImageServiceRecovery as inspect,recoverImageServiceRecords as recover,restoreInterruptedImageRecovery as restore} from '../features/gallery/qianmu-image-service-recovery.js';
 import {createImageService} from '../server/qianmu-image-service.js';
 import {createVibeEncodingService} from '../server/qianmu-vibe-service.js';
 import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
@@ -106,7 +106,7 @@ test('real image and Vibe process interruption can recover all stores then compl
 
 test('partial all-scope repair reports completed ledgers, preserves the native fence, and restores only the interrupted scope',async t=>{
   const e=await fixture(t);for(const scope of Object.keys(names))await e.seed(scope);
-  const plan=await inspect({dataRoot:e.root,scope:'all'}),recoveryUrl=new URL('../qianmu-image-service-recovery.js',import.meta.url).href;
+  const plan=await inspect({dataRoot:e.root,scope:'all'}),recoveryUrl=new URL('../features/gallery/qianmu-image-service-recovery.js',import.meta.url).href;
   const output=JSON.parse(await child(`import fs from 'node:fs/promises';import {syncBuiltinESMExports} from 'node:module';
     const rename=fs.rename;fs.rename=async(from,to)=>{await rename(from,to);if(String(to).includes('novel-channel-v1')&&String(to).endsWith('.json'))throw Error('synthetic post-rename failure');};syncBuiltinESMExports();
     const {recoverImageServiceRecords}=await import(${JSON.stringify(recoveryUrl)});
@@ -124,7 +124,7 @@ test('partial all-scope repair reports completed ledgers, preserves the native f
 
 test('actual offline CLI exposes explicit all-scope inspection but no HTTP recovery assertion',async t=>{
   const e=await fixture(t);await e.seed('vibe');await e.seed('native');
-  const output=await child(`process.argv=['node','recover','--data-root',${JSON.stringify(e.root)},'--scope','all','--inspect'];await import(${JSON.stringify(new URL('../qianmu-image-recovery-cli.js',import.meta.url).href)});`);
+  const output=await child(`process.argv=['node','recover','--data-root',${JSON.stringify(e.root)},'--scope','all','--inspect'];await import(${JSON.stringify(new URL('../features/gallery/qianmu-image-recovery-cli.js',import.meta.url).href)});`);
   const plan=JSON.parse(output);assert.equal(plan.scope,'all');assert.equal(plan.submitting,2);
   assert.doesNotMatch(await fs.readFile(new URL('../server-plugin.js',import.meta.url),'utf8'),/recoverImageServiceRecords|restoreInterruptedImageRecovery|serverStopped/);
 });

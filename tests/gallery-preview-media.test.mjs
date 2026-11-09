@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadGalleryPreviewImage as load, GALLERY_PREVIEW_MAX_BYTES as MAX } from '../qianmu-gallery-preview-media.js';
+import { loadGalleryPreviewImage as load, GALLERY_PREVIEW_MAX_BYTES as MAX } from '../features/gallery/qianmu-gallery-preview-media.js';
 const url='/user/images/fixture.png',png=new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,0]);
 const response=(bytes=png,headers={})=>new Response(bytes,{headers:{'content-type':'image/png',...headers}});
 const decode=async()=>({width:800,height:1200,close(){}});

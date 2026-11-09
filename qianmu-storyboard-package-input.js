@@ -3,7 +3,7 @@ import {STORYBOARD_PACKAGE_LIMITS,inspectStoryboardVibePackage} from './qianmu-s
 import {vibeDigest} from './qianmu-vibe-file.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
-import {assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
+import {assertGalleryPackageCollections} from './features/gallery/qianmu-gallery-package-collections.js';
 
 // Export and import share one limit until segmented packages are supported.
 export const STORYBOARD_PACKAGE_INPUT_LIMIT=STORYBOARD_PACKAGE_LIMITS.total;

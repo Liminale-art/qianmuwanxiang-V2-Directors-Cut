@@ -3,10 +3,10 @@ import { prepareComfyWorkflow, comfyCandidateCount } from '../qianmu-comfy-workf
 import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime } from '../qianmu-comfy-results.js?v=1.59.440';
 import { normalizeComfyReceipt } from './qianmu-comfy-receipt.js';
 import { auditComfyWorkflow, requireComfyExecution, normalizeComfyExecution, COMFY_EXECUTION_VERSION } from '../qianmu-comfy-audit.js?v=1.59.440';
-import { imageTransportProvider, prepareImageTransportRequest, resolveImageTransportBinding } from '../qianmu-image-transport.js';
-import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS } from '../qianmu-image-models.js';
+import { imageTransportProvider, prepareImageTransportRequest, resolveImageTransportBinding } from '../features/gallery/qianmu-image-transport.js';
+import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS } from '../features/gallery/qianmu-image-models.js';
 import {normalizeNovelVibeEntries,novelVibeParameters,NOVEL_VIBE_VERSION} from '../qianmu-novel-vibe.js';
-import { IMAGE_MODEL_BINDING_VERSION, NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from '../qianmu-image-models.js';
+import { IMAGE_MODEL_BINDING_VERSION, NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from '../features/gallery/qianmu-image-models.js';
 import { randomUUID } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';

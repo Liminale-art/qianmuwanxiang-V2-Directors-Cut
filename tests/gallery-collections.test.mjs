@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../qianmu-gallery-collections-view.js';
-import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
-import {renderGalleryWindowControls} from '../qianmu-gallery-window.js';
-import {galleryMembershipIds,assignGalleryMemberships} from '../qianmu-gallery-membership.js';
-import {bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../qianmu-gallery-taxonomy.js';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard} from '../features/gallery/qianmu-gallery-collections-view.js';
+import {summarizeGalleryRecords} from '../features/gallery/qianmu-gallery-summary.js';
+import {renderGalleryWindowControls} from '../features/gallery/qianmu-gallery-window.js';
+import {galleryMembershipIds,assignGalleryMemberships} from '../features/gallery/qianmu-gallery-membership.js';
+import {bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../features/gallery/qianmu-gallery-taxonomy.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const summarize=rows=>summarizeGalleryRecords(rows,row=>row.collectionIds||[]);

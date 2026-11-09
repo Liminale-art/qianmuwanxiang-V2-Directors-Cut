@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectGalleryDirectorySnapshot as project, galleryDirectoryTarget as target, createGalleryDirectorySession as create } from '../qianmu-gallery-directory.js';
-import { galleryCatalogScopeQuery as query } from '../qianmu-gallery-catalog-contract.js';
+import { projectGalleryDirectorySnapshot as project, galleryDirectoryTarget as target, createGalleryDirectorySession as create } from '../features/gallery/qianmu-gallery-directory.js';
+import { galleryCatalogScopeQuery as query } from '../features/gallery/qianmu-gallery-catalog-contract.js';
 import { galleryDirectoryOwnerLabel as label } from '../qianmu-gallery-directory-view.js';
 import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 import {CHAT_GALLERY_STREAM_LIMITS} from '../features/chat/qianmu-chat-gallery-receipt.js';

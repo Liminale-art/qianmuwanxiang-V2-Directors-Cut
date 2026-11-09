@@ -1,4 +1,4 @@
-import { createGalleryCatalogManagement } from './qianmu-gallery-catalog-management.js?v=1.59.202';
+import { createGalleryCatalogManagement } from './features/gallery/qianmu-gallery-catalog-management.js?v=1.59.202';
 import { galleryDirectoryOwnerLabel } from './qianmu-gallery-directory-view.js?v=1.59.414';
 import { htmlEscape as escape } from './qianmu-storyboard-utils.js?v=1.59.456';
 

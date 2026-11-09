@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {historyExportFixture,png} from './helpers/history-export-fixture.mjs';
 import {inspectHistoricalStoryboardBundle} from '../features/chat/qianmu-historical-storyboard-bundle.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
-import {createGalleryCatalogManagement} from '../qianmu-gallery-catalog-management.js';
+import {createGalleryCatalogManagement} from '../features/gallery/qianmu-gallery-catalog-management.js';
 const wait=()=>new Promise(done=>setTimeout(done,20));
 const awaitImageRead=(ready,finished)=>Promise.race([ready,finished.then(()=>{throw Error('Export settled before the controlled image read started');})]);
 

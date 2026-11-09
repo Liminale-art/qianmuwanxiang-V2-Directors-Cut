@@ -11,7 +11,7 @@ import { inspectComfyImageExecution, auditComfyWorkflow } from '../qianmu-comfy-
 import { comfyReferenceStillMime } from '../qianmu-comfy-results.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 import { renderComfyReferenceControls } from '../qianmu-comfy-workbench.js';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage, imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuComfyExecutionBinding } from '../qianmu-service-capabilities.js';
 

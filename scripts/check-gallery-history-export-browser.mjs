@@ -45,7 +45,7 @@ try{
   imageBytes=Buffer.from(await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=32;canvas.height=48;canvas.getContext('2d').fillRect(0,0,32,48);const blob=await new Promise(done=>canvas.toBlob(done,'image/png'));return [...new Uint8Array(await blob.arrayBuffer())];}));
   await page.addScriptTag({content:storyboardFunctionSource('ttsDownloadBlob')});
   await page.evaluate(async()=>{
-    const {createGalleryCatalogStore}=await import('/qianmu-gallery-catalog-store.js');window.store=createGalleryCatalogStore();window.account='st-user:alice';
+    const {createGalleryCatalogStore}=await import('/features/gallery/qianmu-gallery-catalog-store.js');window.store=createGalleryCatalogStore();window.account='st-user:alice';
     await store.upsert(account,{ownerKey:'char:Alice.png',chatKey:'chat-one'},[{id:'inline',createdAt:1,kind:'still',tags:[]}],{expectedRevision:0});
     window.openManager=(await import('/qianmu-gallery-catalog-management-view.js')).openGalleryCatalogManagement;
     window.host={chatId:'UNRELATED_CHAT',imagegen:{model:'UNRELATED_MODEL'}};

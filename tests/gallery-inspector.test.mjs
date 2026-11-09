@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import * as galleryGuard from '../qianmu-gallery-inspector.js';
-import {renderImageInfo} from '../qianmu-image-info-view.js';
+import * as galleryGuard from '../features/gallery/qianmu-gallery-inspector.js';
+import {renderImageInfo} from '../features/gallery/qianmu-image-info-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const {captureGalleryViewGuard}=galleryGuard;
 

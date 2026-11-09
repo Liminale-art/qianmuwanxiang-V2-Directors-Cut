@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
-import {GALLERY_ORIGINAL_MAX_BYTES} from '../qianmu-gallery-original-contract.js';
+import {createGalleryOriginalClient} from '../features/gallery/qianmu-gallery-original-client.js';
+import {GALLERY_ORIGINAL_MAX_BYTES} from '../features/gallery/qianmu-gallery-original-contract.js';
 import {originalPng as png,originalHash as sha} from './helpers/gallery-original-http-fixture.mjs';
 const gate=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 function fixture(t){

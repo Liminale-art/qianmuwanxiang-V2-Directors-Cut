@@ -3,7 +3,7 @@ import {isCharacterFloor} from '../qianmu-prose-floor-entries.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {galleryMembershipSnapshot} from '../features/gallery/qianmu-gallery-membership.js';
 import * as takes from '../qianmu-storyboard-floor-take.js';
 import * as receipts from '../qianmu-storyboard-floor-take-receipt.js';
 import * as capture from '../qianmu-storyboard-floor-capture.js';

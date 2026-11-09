@@ -3,8 +3,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {galleryOriginalHttpFixture,originalPng} from './gallery-original-http-fixture.mjs';
 import {streamCheckpointTransport} from './stream-checkpoint-fixture.mjs';
-import {createCurrentGalleryArchiveSession} from '../../qianmu-gallery-archive-source.js';
-import {createGalleryArchiveStorage} from '../../qianmu-gallery-archive-storage.js';
+import {createCurrentGalleryArchiveSession} from '../../features/gallery/qianmu-gallery-archive-source.js';
+import {createGalleryArchiveStorage} from '../../features/gallery/qianmu-gallery-archive-storage.js';
 import {chatGalleryDigest} from '../../features/chat/qianmu-chat-gallery-digest.js';
 import {vibeDigest} from '../../qianmu-vibe-file.js';
 

@@ -4,7 +4,7 @@ import { trackClientActivity } from './qianmu-client-activity.js';
 import { prepareComfySubmission, assertComfyAccount, acknowledgeComfyImage } from './qianmu-comfy-submission.js?v=1.59.202';
 import { requireComfyCloudImageSubmission, canSubmitComfyCloudImages } from './qianmu-comfy-cloud-protocol.js';
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js?v=1.59.440';
-import { imageChannelKey } from './qianmu-image-channel.js?v=1.59.202';
+import { imageChannelKey } from './features/gallery/qianmu-image-channel.js?v=1.59.202';
 import { createComfyDeliveryStore, normalizeComfyDelivery, assertComfyDeliveryUpdate } from './qianmu-comfy-delivery-store.js';
 import { bindComfyCloudTask, bindComfyCloudProtocol } from './qianmu-comfy-cloud-protocol.js';
 import { buildComfyCloudRequest } from './qianmu-comfy-cloud-request.js?v=1.59.440';

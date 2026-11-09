@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
-import {GALLERY_WINDOW_SIZE,galleryDisplayWindow,renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from '../qianmu-gallery-window.js';
+import {GALLERY_WINDOW_SIZE,galleryDisplayWindow,renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from '../features/gallery/qianmu-gallery-window.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const groups = count => Array.from({length:count},(_,i)=>({id:'group-'+i,variants:[{id:'image-'+i}]}));

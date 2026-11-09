@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prepareGalleryRecipeFieldRelease as prepare,prepareExternalGalleryRecipeFieldRelease as prepareExternal} from '../qianmu-gallery-recipe-fields.js';
+import {prepareGalleryRecipeFieldRelease as prepare,prepareExternalGalleryRecipeFieldRelease as prepareExternal} from '../features/gallery/qianmu-gallery-recipe-fields.js';
 import {storyboardProductionContext,storyboardDirectorDecisionSnapshot,storyboardProductionDeliveryPolicy} from '../qianmu-storyboard.js';
 const project=record=>({production:storyboardProductionContext(record),decision:storyboardDirectorDecisionSnapshot(record)});
 const decision=()=>({decisionId:'decision-a',owner:{chatKey:'chat'},status:'approved',truthMode:'speculative',

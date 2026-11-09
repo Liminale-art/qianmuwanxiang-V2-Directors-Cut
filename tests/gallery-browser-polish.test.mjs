@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {galleryBrowserProjection,galleryRecordSourceCharacter,galleryRecordMatchesQuery,renderGalleryImageCard,renderGalleryCollectionPath} from '../qianmu-gallery-collections-view.js';
-import {renderGalleryBulkCollections} from '../qianmu-gallery-taxonomy.js';
-import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
+import {galleryBrowserProjection,galleryRecordSourceCharacter,galleryRecordMatchesQuery,renderGalleryImageCard,renderGalleryCollectionPath} from '../features/gallery/qianmu-gallery-collections-view.js';
+import {renderGalleryBulkCollections} from '../features/gallery/qianmu-gallery-taxonomy.js';
+import {renderGalleryKeywordFilters} from '../features/gallery/qianmu-gallery-keywords-view.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 test('gallery global listeners are released before rerender, close, disable and the non-storyboard early return',()=>{

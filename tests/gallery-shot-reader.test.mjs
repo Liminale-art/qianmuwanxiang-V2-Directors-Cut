@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGalleryShotReader} from '../qianmu-gallery-shot-reader.js';
+import {createGalleryShotReader} from '../features/gallery/qianmu-gallery-shot-reader.js';
 
 const shot=()=>({id:'shot',characters:[{id:'char',name:'A'}],intent:{summary:'original'},future:{whole:'x'.repeat(26000),values:['',0,false,null]}});
 const options=patch=>({readSnapshot:()=>assert.fail('unexpected archive read'),readLegacy:()=>assert.fail('unexpected plan fallback'),isCurrent:()=>true,...patch});

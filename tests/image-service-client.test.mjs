@@ -4,10 +4,10 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as floorTakes from '../qianmu-storyboard-floor-take.js';
 import { runningHubUsageFields } from '../qianmu-runninghub-usage.js';
-import { createImageServiceClient, createImageServiceClientStore } from '../qianmu-image-service-client.js';
+import { createImageServiceClient, createImageServiceClientStore } from '../features/gallery/qianmu-image-service-client.js';
 import { receiveServiceImage } from '../qianmu-service-recovery-action.js';
 import { normalizeStoryboardState, sanitizeStoryboardSnapshot, storyboardAutomaticJobEnabled } from '../qianmu-storyboard.js';
-import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../qianmu-image-attempts.js';
+import { confirmImageAttemptResult, claimImageAttempt, beginImageAttempt } from '../features/gallery/qianmu-image-attempts.js';
 import { captureForeignAccountOriginals } from '../qianmu-storyboard-result-inbox.js';
 
 const capability = { ok: true, schemaVersion: 1, taskLocatorVersion: 1, accountBindingVersion: 1, nativeReviewVersion: 1, scope: 'coordinated-endpoints-only', providers: ['novel'], protocols: ['novelai'], resultRetrieval: true, resultAcknowledgement: true };
@@ -481,7 +481,7 @@ test('old server without catalog gives an actionable update message and never su
 });
 
 test('receipt reader separates original-only version from ordinary generation receipts without mutating input',async()=>{
-  const source=await readFile(new URL('../qianmu-image-service-client.js',import.meta.url),'utf8');
+  const source=await readFile(new URL('../features/gallery/qianmu-image-service-client.js',import.meta.url),'utf8');
   const context=vm.createContext({TextEncoder,sanitizeStoryboardSnapshot,sanitizeStoryboardDiagnosticData:value=>value});
   vm.runInContext(source.slice(source.indexOf('const BASE ='),source.indexOf('export function createImageServiceClientStore')),context);
   const ordinary={version:1,namespace:'st-user:alice',attemptId:'old-receipt',channelKey:'a'.repeat(64),status:'submitted',snapshot:job()};

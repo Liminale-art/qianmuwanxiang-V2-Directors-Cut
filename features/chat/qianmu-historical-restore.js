@@ -7,8 +7,8 @@ import { inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.
 import { createChatGalleryStateClient, createChatGalleryEvidenceClient } from './qianmu-chat-character-receipt-client.js';
 import { createHistoricalRecipeArchiveClient } from '../../qianmu-recipe-archive-client.js?v=1.59.414';
 import { createRecipeRestoreClient } from '../../qianmu-recipe-restore-client.js';
-import { createImageRestoreClient } from '../../qianmu-image-restore-client.js';
-import { imageRestoreReceipt } from '../../qianmu-image-restore-contract.js';
+import { createImageRestoreClient } from '../gallery/qianmu-image-restore-client.js';
+import { imageRestoreReceipt } from '../gallery/qianmu-image-restore-contract.js';
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { captureStoryboardChatEvidence, projectStoryboardChatMessages, storyboardChatProjectionMatches } from '../../qianmu-storyboard-chat-evidence.js';

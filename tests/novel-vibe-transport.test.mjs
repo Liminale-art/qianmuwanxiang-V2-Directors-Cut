@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generateDirectImage} from '../qianmu-image-direct.js';
+import {generateDirectImage} from '../features/gallery/qianmu-image-direct.js';
 import {generateImage,sanitizeImageRequest,imageGatewayCapabilities} from '../server/qianmu-image-gateway.js';
 import {normalizeNovelVibeEntries} from '../qianmu-novel-vibe.js';
 import {checkQianmuNovelVibeBinding,probeQianmuImageCapabilities} from '../qianmu-service-capabilities.js';

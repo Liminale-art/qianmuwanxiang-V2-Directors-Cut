@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {renderImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from '../qianmu-image-info-view.js';
+import {renderImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from '../features/gallery/qianmu-image-info-view.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 
 test('draft editor only treats an explicitly accepted generation as successful',()=>{

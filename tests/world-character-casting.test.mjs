@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {galleryMembershipSnapshot} from '../features/gallery/qianmu-gallery-membership.js';
 import * as casting from '../features/character/qianmu-character-casting.js';
 import * as world from '../qianmu-world-shot.js';
 import * as core from '../qianmu-storyboard.js';
@@ -25,7 +25,7 @@ import * as candidateRuntime from '../qianmu-director-candidate.js';
 import {buildWorldSourceIndex} from '../features/character/qianmu-world-source.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {createImageAdmission} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,settleImageAttempt} from '../features/gallery/qianmu-image-attempts.js';
 import {createEnsembleStorage} from '../qianmu-ensemble-storage.js';
 import {planCharacterReference,assertCharacterReferencePlan,characterReferenceNotice} from '../features/character/qianmu-character-reference.js';
 import {installWorldComfyAuto} from './helpers/world-comfy-auto-fixture.mjs';

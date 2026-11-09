@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {galleryMembershipSnapshot} from '../features/gallery/qianmu-gallery-membership.js';
 import {EventEmitter} from 'node:events';
 import {compilerEnvironment,casting,response} from './helpers/comfy-compiler-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {applyCharacterCasting} from '../features/character/qianmu-character-casting.js';
 import {resolveStoryboardMessageReference,createStoryboardMessageReference,normalizeStoryboardState,sortStoryboardInlineRecords,buildStoryboardInlineTasks,storyboardInlineDisplayIndexes,storyboardProductionDeliveryPolicy,storyboardPartialCompletion} from '../qianmu-storyboard.js';
 import {createImageAdmission} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,preflightImageAttempts,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt} from '../features/gallery/qianmu-image-attempts.js';
 import {captureStoryboardContinuation,saveStoryboardContinuation} from '../qianmu-storyboard-continuation.js';
 import {createStoryboardContinuationHost} from '../qianmu-storyboard-continuation-host.js';
 import {createStoryboardStreamScheduler,runStoryboardStreamPass} from '../qianmu-storyboard-stream-scheduler.js';

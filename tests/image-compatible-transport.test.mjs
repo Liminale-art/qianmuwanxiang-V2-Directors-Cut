@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_NATIVE_PROTOCOLS, resolveImageProtocolBinding } from '../qianmu-image-models.js';
-import { prepareImageTransportRequest } from '../qianmu-image-transport.js';
-import { generateDirectImage, checkDirectImageConnection, listDirectImageModels, isDirectImageTransportError } from '../qianmu-image-direct.js';
+import { IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_NATIVE_PROTOCOLS, resolveImageProtocolBinding } from '../features/gallery/qianmu-image-models.js';
+import { prepareImageTransportRequest } from '../features/gallery/qianmu-image-transport.js';
+import { generateDirectImage, checkDirectImageConnection, listDirectImageModels, isDirectImageTransportError } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage, sanitizeImageRequest, checkImageConnection, listImageModels, imageGatewayCapabilities } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuImageProtocolBinding, checkQianmuImageModelBinding } from '../qianmu-service-capabilities.js';
 import { buildStoryboardProviderPlan, resolveStoryboardModelBinding } from '../qianmu-storyboard.js';
@@ -210,7 +210,7 @@ test('gateway support is a separate explicit handshake; old NAI binding remains 
 
 test('cross-protocol dependency is in the release allowlist, not a hidden server-only file', () => {
   const release=JSON.parse(readFileSync(new URL('../release-files.json',import.meta.url)));
-  assert.ok(release.files.includes('qianmu-image-transport.js'));
+  assert.ok(release.files.includes('features/gallery/qianmu-image-transport.js'));
 });
 
 test('compatible requests require their own explicit address, never default to native hosts or carry embedded credentials', async () => {

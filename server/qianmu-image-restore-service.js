@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { comfyReferenceStillMime } from '../qianmu-comfy-results.js?v=1.59.440';
-import { imageRestoreError, imageRestoreRequest, IMAGE_RESTORE_MAX_BYTES } from '../qianmu-image-restore-contract.js';
+import { imageRestoreError, imageRestoreRequest, IMAGE_RESTORE_MAX_BYTES } from '../features/gallery/qianmu-image-restore-contract.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const fail = (code, message, status) => { throw imageRestoreError(code, message, status); };

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { historicalSourceFixture } from './historical-source-fixture.mjs';
 import { captureHistoricalStoryboardBundle } from '../../features/chat/qianmu-historical-storyboard-bundle.js';
 import { createImageRestoreService } from '../../server/qianmu-image-restore-service.js';
-import { imageRestoreErrorPayload } from '../../qianmu-image-restore-contract.js';
+import { imageRestoreErrorPayload } from '../../features/gallery/qianmu-image-restore-contract.js';
 import { createHistoricalOriginalRestore } from '../../features/chat/qianmu-historical-original-restore.js';
 
 export const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=', 'base64');

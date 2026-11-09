@@ -3,7 +3,7 @@ import path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { historicalRecipeRestoreFixture } from './historical-recipe-restore-fixture.mjs';
 import { createImageRestoreService } from '../../server/qianmu-image-restore-service.js';
-import { imageRestoreErrorPayload } from '../../qianmu-image-restore-contract.js';
+import { imageRestoreErrorPayload } from '../../features/gallery/qianmu-image-restore-contract.js';
 import { createHistoricalRestore } from '../../features/chat/qianmu-historical-restore.js';
 import { inspectHistoricalChatMutation, historicalChatMutationNext } from '../../features/chat/qianmu-historical-chat-journal.js';
 

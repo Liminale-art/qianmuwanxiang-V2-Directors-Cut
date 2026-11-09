@@ -7,7 +7,7 @@ import { createImageService, imageServiceTaskErrorPayload } from '../server/qian
 import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
 import { createImageServiceResults } from '../server/qianmu-image-service-results.js';
 import { imageServiceChannelKey } from '../server/qianmu-image-service-queue.js';
-import { createImageServiceClient } from '../qianmu-image-service-client.js';
+import { createImageServiceClient } from '../features/gallery/qianmu-image-service-client.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';
 const actor = (handle='alice') => ({user:{profile:{handle,enabled:true}}});

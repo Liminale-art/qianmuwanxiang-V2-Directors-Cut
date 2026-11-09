@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import * as direct from '../qianmu-image-direct.js';
+import * as direct from '../features/gallery/qianmu-image-direct.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as prompts from '../qianmu-comfy-prompt.js';
 import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';

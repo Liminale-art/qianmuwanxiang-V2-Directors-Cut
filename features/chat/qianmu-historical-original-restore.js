@@ -1,8 +1,8 @@
 import { inspectHistoricalStoryboardBundle } from './qianmu-historical-storyboard-bundle.js';
 import { openStoryboardBundle } from '../../qianmu-storyboard-bundle.js?v=1.59.202';
 import { planHistoricalStoryboardMerge } from './qianmu-historical-storyboard-merge.js';
-import { imageRestoreReceipt } from '../../qianmu-image-restore-contract.js';
-import { createImageRestoreClient } from '../../qianmu-image-restore-client.js';
+import { imageRestoreReceipt } from '../gallery/qianmu-image-restore-contract.js';
+import { createImageRestoreClient } from '../gallery/qianmu-image-restore-client.js';
 import { chatCharacterReceiptTarget } from './qianmu-chat-character-receipt.js';
 import { vibeDigest } from '../../qianmu-vibe-file.js';
 

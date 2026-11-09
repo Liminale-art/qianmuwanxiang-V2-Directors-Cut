@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage } from '../server/qianmu-image-gateway.js';
 import { getStoryboardCapabilities } from '../qianmu-storyboard.js';
 

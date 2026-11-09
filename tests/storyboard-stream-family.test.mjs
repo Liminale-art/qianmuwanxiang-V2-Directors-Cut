@@ -8,7 +8,7 @@ const {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} = aw
 const {bindStoryboardStreamBudgetFamily:bind,storyboardStreamBudgetReference:budget,normalizeStoryboardStreamReference:normalize,
   verifyStoryboardStreamReference:verify} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../features/gallery/qianmu-image-attempts.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 function store(){
   const rows=new Map(),now=1780000000000;

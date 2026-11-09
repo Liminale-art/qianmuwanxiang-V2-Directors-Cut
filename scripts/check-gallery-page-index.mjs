@@ -2,7 +2,7 @@
 // remote calls or timing claims about real ST/VPS/phone environments.
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
-import {GALLERY_PAGE_INDEX_LIMITS as LIMIT,encodeGalleryIndexPage,encodeGalleryIndexManifest,createGalleryPageIndexReader} from '../qianmu-gallery-page-index.js';
+import {GALLERY_PAGE_INDEX_LIMITS as LIMIT,encodeGalleryIndexPage,encodeGalleryIndexManifest,createGalleryPageIndexReader} from '../features/gallery/qianmu-gallery-page-index.js';
 
 const source={namespace:'st-user:synthetic-scale',ownerKey:'char:Synthetic.png',chatKey:'synthetic-gallery'};
 for(const count of [1000,10000,50000]){

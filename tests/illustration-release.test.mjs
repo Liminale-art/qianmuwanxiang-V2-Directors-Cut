@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles,buildRelease} from '../scripts/build-release.mjs';
 
 const root=new URL('../',import.meta.url),version='1.59.484',viewVersion='1.59.441';
-const edge=(parent,...children)=>children.map(child=>[parent,`qianmu-${child}.js`]);
+const edge=(parent,...children)=>children.map(child=>[parent,`features/gallery/qianmu-${child}.js`]);
 const affectedEdges=[
   ...edge('index.js','image-info-view','gallery-collections-view','gallery-taxonomy','gallery-summary'),
 ];
@@ -23,7 +23,7 @@ test('illustration entry, stylesheet and host package advertise one local versio
   assert.ok((await source('index.js')).includes(`const VERSION = '${version}';`));
   assert.match(await source('server-plugin.js'),/async function pluginVersion\(\)[\s\S]*?import\('\.\/package\.json'[\s\S]*?module.default\?\.version/,
     'the service reports the shared package version rather than a second hard-coded value');
-  for(const file of ['qianmu-image-info-view.js','qianmu-image-zoom.js','qianmu-storyboard-inline-reading.js','qianmu-storyboard-original-recovery.js'])
+  for(const file of ['features/gallery/qianmu-image-info-view.js','features/gallery/qianmu-image-zoom.js','qianmu-storyboard-inline-reading.js','qianmu-storyboard-original-recovery.js'])
     assert.ok(result.files.includes(file),`${file} must be available offline in the installed extension`);
 });
 

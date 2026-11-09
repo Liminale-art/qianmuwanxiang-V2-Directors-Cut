@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getStoryboardCapabilities, STORYBOARD_PROVIDER_REGISTRY, compileStoryboardPrompt, buildStoryboardProviderPlan } from '../qianmu-storyboard.js';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage } from '../server/qianmu-image-gateway.js';
 
 const png = Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]).toString('base64');

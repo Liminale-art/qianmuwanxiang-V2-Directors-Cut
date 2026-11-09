@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as storyboard from '../qianmu-storyboard.js';
-import { checkDirectImageConnection } from '../qianmu-image-direct.js';
+import { checkDirectImageConnection } from '../features/gallery/qianmu-image-direct.js';
 import { checkImageConnection } from '../server/qianmu-image-gateway.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');

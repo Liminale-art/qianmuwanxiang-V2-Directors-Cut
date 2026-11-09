@@ -1,7 +1,7 @@
 import {test as nodeTest} from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {migrateGallerySnapshots,GALLERY_SNAPSHOT_BATCH} from '../qianmu-gallery-snapshot-migration.js';
+import {migrateGallerySnapshots,GALLERY_SNAPSHOT_BATCH} from '../features/gallery/qianmu-gallery-snapshot-migration.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 const test=(name,run)=>nodeTest(name,{timeout:15000},run);

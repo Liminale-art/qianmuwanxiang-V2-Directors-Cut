@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 513 个，其中 `qianmu-*` 模块 496 个。
+根目录文件 457 个，其中 `qianmu-*` 模块 440 个。
 
 ## 入口、宿主与安装
 
@@ -31,7 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
-| `features/` | 93 |
+| `features/` | 149 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 959 |
@@ -227,71 +227,15 @@
 | `qianmu-comfy-workflow.js` | 是 | Qianmu's explicit API Workflow input slots. No node-name guessing, network or persistence. |
 | `qianmu-runninghub-usage.js` | 是 | Task-level reported usage, never a price estimate or per-image sum. |
 
-## 图库与图片（61）
+## 图库与图片（5）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-gallery-archive-coordinator.js` | 是 | One idle, add-only preservation pass per settled source. No startup scan, |
-| `qianmu-gallery-archive-evidence.js` | 是 |  |
-| `qianmu-gallery-archive-original.js` | 是 |  |
-| `qianmu-gallery-archive-recipe.js` | 是 |  |
-| `qianmu-gallery-archive-record.js` | 是 | Lossless single-record envelopes, independent of the live gallery and media. |
-| `qianmu-gallery-archive-source.js` | 是 | Connect immutable record/page storage to the exact SAVED current-chat source. |
-| `qianmu-gallery-archive-storage.js` | 是 | Add-only ST-native object storage. The gallery browser uses read methods only. |
-| `qianmu-gallery-archive-supplement.js` | 是 |  |
-| `qianmu-gallery-archive-version.js` | 是 | Shared, path-free source-version contract for native storage and discovery. |
-| `qianmu-gallery-catalog-contract.js` | 是 | A rebuildable search index, not an asset/identity ledger or an original-file receipt. |
 | `qianmu-gallery-catalog-management-view.js` | 是 |  |
-| `qianmu-gallery-catalog-management.js` | 是 |  |
-| `qianmu-gallery-catalog-store.js` | 是 |  |
-| `qianmu-gallery-choice-picker.js` | 是 |  |
-| `qianmu-gallery-collections-view.js` | 是 |  |
-| `qianmu-gallery-continuity.js` | 是 |  |
-| `qianmu-gallery-details-view.js` | 是 |  |
 | `qianmu-gallery-directory-view.js` | 是 |  |
-| `qianmu-gallery-directory.js` | 是 |  |
-| `qianmu-gallery-evidence-source.js` | 是 |  |
-| `qianmu-gallery-external-recipe-migration.js` | 是 |  |
-| `qianmu-gallery-history-export.js` | 是 |  |
-| `qianmu-gallery-inspector.js` | 是 | Capture values, not a mutable array. Detached/closed/replaced views fail closed. |
-| `qianmu-gallery-keywords-view.js` | 是 |  |
-| `qianmu-gallery-keywords.js` | 是 | Gallery metadata only: never a prompt fragment, generation route or identity. |
 | `qianmu-gallery-local-recipe-current.js` | 是 |  |
-| `qianmu-gallery-local-recipe.js` | 是 |  |
-| `qianmu-gallery-membership.js` | 是 |  |
-| `qianmu-gallery-narrative-inputs.js` | 是 |  |
-| `qianmu-gallery-narrative.js` | 是 |  |
-| `qianmu-gallery-original-client.js` | 是 |  |
-| `qianmu-gallery-original-contract.js` | 是 | Shared browser/server contract. No filesystem imports or caller-selected paths. |
-| `qianmu-gallery-original-export.js` | 是 |  |
-| `qianmu-gallery-package-collections.js` | 是 |  |
-| `qianmu-gallery-page-index.js` | 是 | Shared paging contract used by read-only version discovery. No migration, |
-| `qianmu-gallery-preview-media.js` | 是 |  |
-| `qianmu-gallery-preview-zoom.js` | 是 | Read-only image zoom/pan. No source lookup, download, media loading or persistence. |
-| `qianmu-gallery-recipe-fields.js` | 是 |  |
 | `qianmu-gallery-recipe-review-view.js` | 是 |  |
-| `qianmu-gallery-record-fingerprint.js` | 是 | Hash-only capture: the same complete canonical record and strict JSON limits, |
-| `qianmu-gallery-reviewed-recipe.js` | 是 |  |
-| `qianmu-gallery-shot-reader.js` | 是 |  |
-| `qianmu-gallery-snapshot-migration.js` | 是 |  |
-| `qianmu-gallery-summary.js` | 是 | Render-local, metadata-only projection. Never retain this across a gallery |
-| `qianmu-gallery-taxonomy.js` | 是 |  |
-| `qianmu-gallery-window.js` | 是 | Display-only paging. Full records and selection remain owned by the gallery; |
-| `qianmu-gallery-write-proposal.js` | 是 |  |
 | `qianmu-image-admission.js` | 是 |  |
-| `qianmu-image-attempt-store.js` | 是 |  |
-| `qianmu-image-attempts.js` | 是 | Pure still-frame admission rules. Persistence must apply each operation inside one |
-| `qianmu-image-channel.js` | 是 | Browser-wide NAI serialization. Only opaque key fingerprints and request |
-| `qianmu-image-direct.js` | 是 | 千幕 · 浏览器生图直连适配层 |
-| `qianmu-image-info-view.js` | 是 |  |
-| `qianmu-image-models.js` | 是 | Shared model-catalog contract. No credentials, browser globals or generation requests. |
-| `qianmu-image-recovery-cli.js` | 是 | Offline administrative entry, deliberately separate from plugin HTTP routes. |
-| `qianmu-image-restore-client.js` | 是 |  |
-| `qianmu-image-restore-contract.js` | 是 |  |
-| `qianmu-image-service-client.js` | 是 | Optional service transport. Loading this module does not open storage or probe. |
-| `qianmu-image-service-recovery.js` | 是 | Offline administration only; never expose this module as a normal retry route. |
-| `qianmu-image-transport.js` | 是 | Explicit cross-family wire projection. Pure and bounded; native requests are never rewritten. |
-| `qianmu-image-zoom.js` | 是 | Local image viewing only; never reads media metadata or starts network work. |
 
 ## Vibe／NAI（37）
 

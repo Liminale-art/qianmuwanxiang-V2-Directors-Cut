@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import * as runtime from '../qianmu-image-direct.js';
+import * as runtime from '../features/gallery/qianmu-image-direct.js';
 import * as capabilities from '../qianmu-service-capabilities.js';
 import * as storyboard from '../qianmu-storyboard.js';
 import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';

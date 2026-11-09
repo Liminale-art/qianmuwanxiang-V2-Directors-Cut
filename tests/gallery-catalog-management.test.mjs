@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGalleryCatalogManagement, collectGalleryCatalogStorage } from '../qianmu-gallery-catalog-management.js';
-import { galleryCatalogMaintenanceQuery as query } from '../qianmu-gallery-catalog-contract.js';
+import { createGalleryCatalogManagement, collectGalleryCatalogStorage } from '../features/gallery/qianmu-gallery-catalog-management.js';
+import { galleryCatalogMaintenanceQuery as query } from '../features/gallery/qianmu-gallery-catalog-contract.js';
 import { renderStorageBackupSection, runStorageInventoryJobs } from '../qianmu-storage-backup-view.js';
 import vm from 'node:vm';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';

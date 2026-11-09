@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
-import {createGalleryShotReader} from '../qianmu-gallery-shot-reader.js';
+import {migrateGallerySnapshots} from '../features/gallery/qianmu-gallery-snapshot-migration.js';
+import {createGalleryShotReader} from '../features/gallery/qianmu-gallery-shot-reader.js';
 import * as fs from 'node:fs/promises';
 import {recipeClientFixture,recipe} from './helpers/recipe-client-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';

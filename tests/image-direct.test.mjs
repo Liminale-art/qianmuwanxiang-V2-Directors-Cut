@@ -6,7 +6,7 @@ import {
   generateDirectImage,
   isDirectImageTransportError,
   novelDirectEndpoint,
-} from '../qianmu-image-direct.js';
+} from '../features/gallery/qianmu-image-direct.js';
 
 assert.equal(novelDirectEndpoint('https://image.novelai.net/', 'user/subscription'), 'https://image.novelai.net/ai/user/subscription');
 assert.equal(novelDirectEndpoint('https://mirror.example/ai/generate-image', 'generate-image'), 'https://mirror.example/ai/generate-image');

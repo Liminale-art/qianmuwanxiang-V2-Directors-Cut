@@ -8,7 +8,7 @@ import {normalizeCharacterCastingSnapshot} from '../features/character/qianmu-ch
 import {normalizeCharacterArchive,newCharacterArchive,exportCharacterArchive,importCharacterArchive} from '../features/character/qianmu-character-archive.js';
 import {buildStoryboardPlanContractRequest,parseStoryboardContractResponse,STORYBOARD_PLAN_RESPONSE_SCHEMA} from '../qianmu-storyboard-contract.js';
 import {readStaticReferenceImages} from '../qianmu-comfy-references.js';
-import {generateDirectImage} from '../qianmu-image-direct.js';
+import {generateDirectImage} from '../features/gallery/qianmu-image-direct.js';
 import {generateImage} from '../server/qianmu-image-gateway.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {exerciseImageInfo} from './helpers/image-info-edit-fixture.mjs';

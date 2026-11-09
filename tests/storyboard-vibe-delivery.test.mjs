@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage } from '../server/qianmu-image-gateway.js';
 import * as core from '../qianmu-storyboard.js';
 import {prepareStoryboardVibes} from '../qianmu-vibe-prepare.js';

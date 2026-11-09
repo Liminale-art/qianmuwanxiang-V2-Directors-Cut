@@ -5,7 +5,7 @@ import * as core from '../qianmu-storyboard.js';
 import {createStoryboardFloorTake} from '../qianmu-storyboard-floor-take.js';
 import * as auto from '../qianmu-comfy-auto-runtime.js';
 import * as routes from '../qianmu-comfy-route.js';
-import * as direct from '../qianmu-image-direct.js';
+import * as direct from '../features/gallery/qianmu-image-direct.js';
 import * as locks from '../qianmu-comfy-lock-runtime.js';
 import {hashText} from '../qianmu-storyboard-utils.js';
 import {changeComfySceneRecord,inspectComfySceneRecord,comfySceneScopeKey,captureComfySceneStyleLink,copyComfySceneStyleRecord} from '../qianmu-comfy-scene-lock.js';

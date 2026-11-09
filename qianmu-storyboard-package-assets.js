@@ -3,7 +3,7 @@ import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
 import {parseNovelVibeFile,vibeFileError} from './qianmu-vibe-file.js';
 import {inspectStoryboardPortableSelections} from './qianmu-storyboard-package-fields.js';
 import {assertPortableStoryboardData} from './qianmu-storyboard-package-security.js';
-import {assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
+import {assertGalleryPackageCollections} from './features/gallery/qianmu-gallery-package-collections.js';
 export {assertGalleryPackageCollections};
 export {assertPortableStoryboardData};
 export {assertStoryboardPresetDataRetained} from './qianmu-storyboard-package-presets.js';

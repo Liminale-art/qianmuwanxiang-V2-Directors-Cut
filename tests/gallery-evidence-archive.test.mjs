@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createGalleryEvidenceStorage,captureGalleryEvidence,GALLERY_EVIDENCE_PAGE_LIMITS as LIMIT} from '../qianmu-gallery-archive-evidence.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
+import {createGalleryEvidenceStorage,captureGalleryEvidence,GALLERY_EVIDENCE_PAGE_LIMITS as LIMIT} from '../features/gallery/qianmu-gallery-archive-evidence.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {STORYBOARD_CHAT_EVIDENCE_SCHEMA} from '../qianmu-storyboard-chat-evidence.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 import {chatEvidenceFixture} from './helpers/chat-evidence-fixture.mjs';
 import {createGalleryDiscoveryService} from '../server/qianmu-gallery-discovery-service.js';
-import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
+import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../features/gallery/qianmu-gallery-archive-version.js';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const scope={namespace:'st-user:alice',ownerKey:'char:Alice.png',chatKey:'chat-one'};

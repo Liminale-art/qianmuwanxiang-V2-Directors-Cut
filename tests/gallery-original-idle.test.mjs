@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
-import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
+import {createCurrentGalleryArchiveSession} from '../features/gallery/qianmu-gallery-archive-source.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
+import {createGalleryArchiveCoordinator} from '../features/gallery/qianmu-gallery-archive-coordinator.js';
 import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
-import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
+import {createGalleryOriginalClient} from '../features/gallery/qianmu-gallery-original-client.js';
 import {galleryOriginalHttpFixture,originalPng as png} from './helpers/gallery-original-http-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 

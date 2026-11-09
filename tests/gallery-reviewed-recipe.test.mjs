@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {captureGalleryRecipeReview,encodeGalleryReviewedRecipe,inspectGalleryReviewedRecipe,galleryReviewedRecipeSlot,galleryLegacyRecipeReference} from '../qianmu-gallery-reviewed-recipe.js';
-import {verifyGalleryLocalRecipeCopy} from '../qianmu-gallery-local-recipe.js';
+import {captureGalleryRecipeReview,encodeGalleryReviewedRecipe,inspectGalleryReviewedRecipe,galleryReviewedRecipeSlot,galleryLegacyRecipeReference} from '../features/gallery/qianmu-gallery-reviewed-recipe.js';
+import {verifyGalleryLocalRecipeCopy} from '../features/gallery/qianmu-gallery-local-recipe.js';
 const scope={namespace:'st-user:fixture',ownerKey:'char:Alice.png',chatKey:'chat'};
 const fixture=()=>({record:{id:'one',createdAt:1,chatKey:'chat',snapshotRef:'chat\u241fone'},row:{key:'chat\u241fone',chatKey:'chat',recordId:'one',snapshot:{source:'novel',prompt:' 原词\r\n',negative:'',profile:{z:0,a:1},payload:{},future:{keep:[null,false,0]}}}});
 test('review association preserves full raw recipe and honestly labels user confirmation, not original ownership proof',async()=>{

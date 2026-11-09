@@ -3,7 +3,7 @@ import {mergeStoryboardParameterMemory,assertStoryboardMemoryIdentitiesRetained,
 import {STORYBOARD_RELATION_FIELDS,captureStoryboardRelationData,assertStoryboardRelationsRetained,mergeStoryboardParameterSelection} from './qianmu-storyboard-package-relations.js';
 import {captureStoryboardHistoryData,assertStoryboardHistoryRetained} from './qianmu-storyboard-package-history.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
-import {GALLERY_PACKAGE_COLLECTION_LIMIT,assertGalleryPackageCollections} from './qianmu-gallery-package-collections.js';
+import {GALLERY_PACKAGE_COLLECTION_LIMIT,assertGalleryPackageCollections} from './features/gallery/qianmu-gallery-package-collections.js';
 import {STORYBOARD_ADDED_IMPORT_FIELDS,assertStoryboardSelectionRestoreScope,assertStoryboardAdditionalSettingsRetained} from './qianmu-storyboard-package-fields.js';
 import {storyboardConnectionsShareTarget,storyboardConnectionRestoreReview} from './qianmu-storyboard-connection-identity.js';
 import {assertStoryboardStructureBytes} from './qianmu-storyboard-limits.js';

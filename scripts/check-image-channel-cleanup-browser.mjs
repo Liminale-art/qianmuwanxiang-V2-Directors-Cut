@@ -8,13 +8,13 @@ let external=0;const errors=[];
 await context.route('**/*',async route=>{
   const url=new URL(route.request().url());
   if(url.href==='https://qianmu.test/')return route.fulfill({contentType:'text/html',body:'<!doctype html>'});
-  if(url.origin==='https://qianmu.test'&&['/qianmu-image-channel.js','/qianmu-image-attempt-store.js','/qianmu-image-attempts.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
+  if(url.origin==='https://qianmu.test'&&['/features/gallery/qianmu-image-channel.js','/features/gallery/qianmu-image-attempt-store.js','/features/gallery/qianmu-image-attempts.js'].includes(url.pathname))return route.fulfill({contentType:'application/javascript',body:await readFile(new URL('..'+url.pathname,import.meta.url))});
   external++;return route.abort();
 });
 try{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async()=>{
-    const {createBrowserImageChannel}=await import('/qianmu-image-channel.js'),dbName='synthetic-channel-cleanup',checks=[];
+    const {createBrowserImageChannel}=await import('/features/gallery/qianmu-image-channel.js'),dbName='synthetic-channel-cleanup',checks=[];
     const db=await new Promise((resolve,reject)=>{const r=indexedDB.open(dbName,1);r.onupgradeneeded=()=>r.result.createObjectStore('channels');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
     const rows=[{key:'a1',namespace:'account-a',status:'uncertain'},{key:'a2',namespace:'account-a',status:'uncertain'},{key:'b1',namespace:'account-b',status:'uncertain'}];
     const seed=()=>new Promise((resolve,reject)=>{const tx=db.transaction('channels','readwrite'),store=tx.objectStore('channels');store.clear();for(const row of rows)store.put(row,row.key);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
@@ -39,7 +39,7 @@ try{
         check('successful cleanup commits only the selected account and leaves the other intact',result.count===2&&JSON.stringify(await read())===JSON.stringify([rows[2]]));
       }finally{client.close();}
     }finally{db.close();}
-    const {createImageAttemptStore}=await import('/qianmu-image-attempt-store.js'),{normalizeImageAttempts,imageAttemptScopeKey}=await import('/qianmu-image-attempts.js');
+    const {createImageAttemptStore}=await import('/features/gallery/qianmu-image-attempt-store.js'),{normalizeImageAttempts,imageAttemptScopeKey}=await import('/features/gallery/qianmu-image-attempts.js');
     const attemptName='synthetic-attempt-cleanup',attemptDb=await new Promise((resolve,reject)=>{const r=indexedDB.open(attemptName,1);r.onupgradeneeded=()=>r.result.createObjectStore('scopes');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
     const scopes=['a1','a2','b1'].map(messageKey=>({namespace:messageKey[0]==='a'?'account-a':'account-b',chatKey:'chat',messageKey,revisionId:'revision'}));
     const ledgers=scopes.map(scope=>normalizeImageAttempts(null,scope));

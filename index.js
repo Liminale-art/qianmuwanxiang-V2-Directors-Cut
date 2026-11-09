@@ -18,17 +18,17 @@ import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';
-import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './qianmu-gallery-keywords.js';
-import {summarizeGalleryRecords} from './qianmu-gallery-summary.js?v=1.59.441';
-import {captureGalleryViewGuard} from './qianmu-gallery-inspector.js?v=1.59.440';
-import {openImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from './qianmu-image-info-view.js?v=1.59.441';
+import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
+import {summarizeGalleryRecords} from './features/gallery/qianmu-gallery-summary.js?v=1.59.441';
+import {captureGalleryViewGuard} from './features/gallery/qianmu-gallery-inspector.js?v=1.59.440';
+import {openImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from './features/gallery/qianmu-image-info-view.js?v=1.59.441';
 let storyboardImageInfoView=null,storyboardImageInfoOpening=0;
-import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices,bindGalleryToolbar,openGalleryNameDialog} from './qianmu-gallery-taxonomy.js?v=1.59.441';
-import {galleryMembershipIds,galleryMembershipSnapshot,assignGalleryMemberships,galleryMembershipChange} from './qianmu-gallery-membership.js';
-import {resetGalleryChoiceSessions} from './qianmu-gallery-choice-picker.js?v=1.59.440';
-import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryRecordSourceCharacter,galleryBrowserProjection,galleryRecordMatchesQuery} from './qianmu-gallery-collections-view.js?v=1.59.441';
-import {renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from './qianmu-gallery-window.js';
-import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './qianmu-gallery-keywords-view.js?v=1.59.440';
+import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices,bindGalleryToolbar,openGalleryNameDialog} from './features/gallery/qianmu-gallery-taxonomy.js?v=1.59.441';
+import {galleryMembershipIds,galleryMembershipSnapshot,assignGalleryMemberships,galleryMembershipChange} from './features/gallery/qianmu-gallery-membership.js';
+import {resetGalleryChoiceSessions} from './features/gallery/qianmu-gallery-choice-picker.js?v=1.59.440';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryRecordSourceCharacter,galleryBrowserProjection,galleryRecordMatchesQuery} from './features/gallery/qianmu-gallery-collections-view.js?v=1.59.441';
+import {renderGalleryWindowControls,bindGalleryWindowControls,galleryCardBindings} from './features/gallery/qianmu-gallery-window.js';
+import {renderGalleryKeywordEntry,bindGalleryKeywordEntry,renderGalleryKeywordFilters} from './features/gallery/qianmu-gallery-keywords-view.js?v=1.59.440';
 import {renderCompositionSelector,renderCompositionEditor,bindCompositionEditor} from './qianmu-composition-schemes-view.js';
 import {applyBoundComposition,importedCompositionPolicy} from './qianmu-composition-schemes.js';
 import {storyboardArtDirectionDefaults,selectStoryboardArtDirection,renderStoryboardArtDirectionChoice} from './qianmu-art-directions.js';
@@ -43,7 +43,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
-import { createGalleryNarrativeSession } from './qianmu-gallery-narrative.js?v=1.59.440';
+import { createGalleryNarrativeSession } from './features/gallery/qianmu-gallery-narrative.js?v=1.59.440';
 import {createStoryboardContinuationHost} from './qianmu-storyboard-continuation-host.js?v=1.59.414';
 import {createStoryboardStreamHost} from './qianmu-storyboard-stream-host.js?v=1.59.414';
 import {createStoryboardQueueWindow} from './qianmu-storyboard-queue-window.js?v=1.59.414';
@@ -67,8 +67,8 @@ import { normalizeRunningHubConsoleUrl, runningHubWorkflowId } from './qianmu-co
 import { createConfigUndoSlot } from './qianmu-config-undo.js';
 import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
-import {migrateGallerySnapshots} from './qianmu-gallery-snapshot-migration.js';
-import {createGalleryShotReader} from './qianmu-gallery-shot-reader.js';
+import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
+import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
 import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.440';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
@@ -407,9 +407,9 @@ async function mountFloorChatRecovery(root) {
   }
 }
 const featureRuntime = createFeatureRuntime({
-  imageZoom: { label: '全屏看图', load: () => import('./qianmu-image-zoom.js?v=1.59.440') },
+  imageZoom: { label: '全屏看图', load: () => import('./features/gallery/qianmu-image-zoom.js?v=1.59.440') },
   feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
-  galleryPreserver: { label: '图库空闲保全', load: () => import('./qianmu-gallery-archive-coordinator.js?v=1.59.414') },
+  galleryPreserver: { label: '图库空闲保全', load: () => import('./features/gallery/qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
   vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.414') },
   ensembleLibrary: { label: '镜组风格方案', load: () => loadLocalChunk('./qianmu-ensemble-ui.js?v=1.59.419') },
@@ -418,7 +418,7 @@ const featureRuntime = createFeatureRuntime({
   vibeStorage: { label: 'Vibe 文件空间', load: () => import('./qianmu-vibe-storage.js?v=1.59.202') },
   vibeStorageSummary: { label: 'Vibe 空间汇总', load: () => import('./qianmu-vibe-storage-summary.js?v=1.59.202') },
   recipeStorage: { label: '服务器配方占用', load: () => import('./qianmu-recipe-storage.js?v=1.59.202') },
-  galleryCatalogManagement: { label: '图库目录管理', load: () => import('./qianmu-gallery-catalog-management.js?v=1.59.202') },
+  galleryCatalogManagement: { label: '图库目录管理', load: () => import('./features/gallery/qianmu-gallery-catalog-management.js?v=1.59.202') },
   storyboardPackageAssets: { label: '分镜素材打包', load: () => import('./qianmu-storyboard-package-assets.js?v=1.59.202') },
   storyboardPackageInput: { label: '分镜包核对', load: () => import('./qianmu-storyboard-package-input.js?v=1.59.202') },
   storyboardPackageDraft: { label: '分镜导入准备', load: () => import('./qianmu-storyboard-package-draft.js?v=1.59.427') },
@@ -453,7 +453,7 @@ const featureRuntime = createFeatureRuntime({
   },
   imageDirect: {
     label: '生图传输',
-    load: () => import('./qianmu-image-direct.js?v=1.59.440'),
+    load: () => import('./features/gallery/qianmu-image-direct.js?v=1.59.440'),
   },
   imageAdmission: {
     label: '生图请求保护',
@@ -461,11 +461,11 @@ const featureRuntime = createFeatureRuntime({
   },
   imageChannel: {
     label: 'NAI 跨页顺序生成',
-    load: () => import('./qianmu-image-channel.js?v=1.59.202'),
+    load: () => import('./features/gallery/qianmu-image-channel.js?v=1.59.202'),
   },
   imageServiceClient: {
     label: '增强生图任务',
-    load: () => import('./qianmu-image-service-client.js?v=1.59.202'),
+    load: () => import('./features/gallery/qianmu-image-service-client.js?v=1.59.202'),
   },
   comfySubmission: {
     label: 'Comfy 实例排队',

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildGalleryNarrative,createGalleryNarrativeSession,GALLERY_UNPLACED} from '../qianmu-gallery-narrative.js';
-import {captureGalleryNarrativeInputs,sameGalleryNarrativeInputs,GALLERY_NARRATIVE_REUSE_LIMITS} from '../qianmu-gallery-narrative-inputs.js';
+import {buildGalleryNarrative,createGalleryNarrativeSession,GALLERY_UNPLACED} from '../features/gallery/qianmu-gallery-narrative.js';
+import {captureGalleryNarrativeInputs,sameGalleryNarrativeInputs,GALLERY_NARRATIVE_REUSE_LIMITS} from '../features/gallery/qianmu-gallery-narrative-inputs.js';
 import {createStoryboardMessageReference,createStoryboardParagraphAnchor,storyboardMessageIdentityInputs} from '../qianmu-storyboard.js';
 import {hashText} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';

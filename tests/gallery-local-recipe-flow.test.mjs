@@ -4,8 +4,8 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {galleryPreparedAssetsFixture} from './helpers/gallery-prepared-assets-fixture.mjs';
 import {readCurrentGalleryLocalRecipe} from '../qianmu-gallery-local-recipe-current.js';
-import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
-import {galleryLocalRecipeSlot} from '../qianmu-gallery-local-recipe.js';
+import {createCurrentGalleryArchiveSession} from '../features/gallery/qianmu-gallery-archive-source.js';
+import {galleryLocalRecipeSlot} from '../features/gallery/qianmu-gallery-local-recipe.js';
 const gate=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve};};
 
 test('real local recipe preservation -> restored exact row -> different-device read, without recipe uploads or raw record mutation',async t=>{

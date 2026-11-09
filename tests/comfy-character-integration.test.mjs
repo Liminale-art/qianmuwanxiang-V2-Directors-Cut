@@ -7,7 +7,7 @@ import {generateImage} from '../server/qianmu-image-gateway.js';
 import * as roles from '../qianmu-comfy-character-plan.js';
 import * as storyboard from '../qianmu-storyboard.js';
 import * as references from '../qianmu-comfy-references.js';
-import * as direct from '../qianmu-image-direct.js';
+import * as direct from '../features/gallery/qianmu-image-direct.js';
 import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
 import {renderComfyWorkbench} from '../qianmu-comfy-workbench.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';

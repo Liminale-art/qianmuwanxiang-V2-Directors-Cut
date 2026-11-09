@@ -347,7 +347,7 @@ export function createCharacterArchiveController({resolveNamespace,getContext,ge
     }));
     host.querySelector('[data-archive-backup-file]')?.addEventListener('change',event=>{const file=event.target.files?.[0],r=view.restoring;if(!file||!r)return;void run(async(guard,expected)=>{
       r.session?.close();r.workflows?.close();r.session=null;r.workflows=null;r.preview=null;r.choices={};r.bindingsReviewed=false;r.page=0;r.fileName=file.name;scrolls.restore=0;
-      const [files,module,imageModule]=await Promise.all([import('./features/character/qianmu-character-backup-file.js'),import('./features/character/qianmu-character-backup-restore.js'),import('./qianmu-image-restore-client.js')]);await guard();
+      const [files,module,imageModule]=await Promise.all([import('./features/character/qianmu-character-backup-file.js'),import('./features/character/qianmu-character-backup-restore.js'),import('./features/gallery/qianmu-image-restore-client.js')]);await guard();
       const account=namespace,chatKey=view.chatKey,scope=getScope?.();
       const same=()=>Boolean(visible()&&entry===expected&&namespace===account&&view.chatKey===chatKey&&view.restoring===r&&(!getScope||getScope()===scope));
       const active=async()=>{

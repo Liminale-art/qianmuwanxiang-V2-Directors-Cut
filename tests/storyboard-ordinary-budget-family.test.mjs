@@ -9,7 +9,7 @@ const {bindStoryboardStreamBudgetFamily:bind,storyboardStreamBudgetReference:bud
   verifyStoryboardStreamReference:verify,storyboardStreamDigest:digest,storyboardStreamFingerprint:fingerprint} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
 const {storyboardContinuationIdentityInput} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,settleImageAttempt} from '../features/gallery/qianmu-image-attempts.js';
 const copy=value=>JSON.parse(JSON.stringify(value));
 const namespace='st-user:test';
 const job=(ref,id)=>({id,chatKey:ref.chatKey,messageRef:copy(ref),automatic:true,target:'floor',source:'novel',profile:{count:'1'},prompt:id});

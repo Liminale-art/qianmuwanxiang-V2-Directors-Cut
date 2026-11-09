@@ -79,7 +79,7 @@ try{
     const {checkCloudComfyReadiness}=await import('/qianmu-comfy-readiness.js');
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
     const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');
-    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    const {imageChannelKey}=await import('/features/gallery/qianmu-image-channel.js');
     const calls=[],dbName='cloud-readiness-browser-synthetic';
     const input={baseUrl:connection.origin,apiKey:'synthetic-key',workflow:{text:{class_type:'CLIPTextEncode',inputs:{text:'%qianmu_prompt%'}}}};
     const result=await checkCloudComfyReadiness(input,{automatic:true,headers:{'x-csrf-token':'synthetic-csrf'},createClient:options=>createComfyRecoveryClient({...options,account:async()=>ns,store:createComfyDeliveryStore({dbName})}),
@@ -99,7 +99,7 @@ try{
     const {createComfyDeliveryStore}=await import('/qianmu-comfy-delivery-store.js');
     const {comfyWorkflowReferenceHash}=await import('/qianmu-comfy-references.js');
     const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
-    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    const {imageChannelKey}=await import('/features/gallery/qianmu-image-channel.js');
     for(const provider of ['comfy-cloud','runninghub'])for(const automatic of (provider==='comfy-cloud'?[false,true]:[false]))for(const enabled of [false,true]){
       const binding=bindComfyCloudProtocol(provider==='comfy-cloud'?'https://cloud.comfy.org':'https://www.runninghub.cn',provider==='comfy-cloud'?'comfy-cloud-v2':'runninghub-workflow-v1');
       const id=`browser-reference-${provider}-${automatic}-${enabled}`,graph={text:{class_type:'CLIPTextEncode',inputs:{text:'fixed, %qianmu_prompt%'}},
@@ -210,7 +210,7 @@ try{
       const body=init.body?JSON.parse(init.body):{};if(body.apiKey)throw Error('Catalog and cleanup must not use Key');
       if(url.endsWith('/capabilities')){
         if(capabilityMode==='old')return new Response('',{status:404});
-        const {imageChannelKey}=await import('/qianmu-image-channel.js');
+        const {imageChannelKey}=await import('/features/gallery/qianmu-image-channel.js');
         return new Response(JSON.stringify({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,expectedAccount:`st-user:${await imageChannelKey(ns.slice(8))}`,
           submission:false,cancellation:false,referenceUpload:false,resultRetrieval:capabilityMode==='ready',archiveConfirmation:capabilityMode==='ready',automaticReplay:false,
           queryProviders:['comfy-cloud','runninghub'],resultProviders:capabilityMode==='ready'?['comfy-cloud']:[]}));
@@ -241,7 +241,7 @@ try{
     const {createComfyRecoveryClient}=await import('/qianmu-comfy-recovery-client.js');
     const {prepareComfyWorkflow}=await import('/qianmu-comfy-workflow.js');
     const {auditComfyWorkflow,requireComfyExecution}=await import('/qianmu-comfy-audit.js');
-    const {imageChannelKey}=await import('/qianmu-image-channel.js');let posts=0;
+    const {imageChannelKey}=await import('/features/gallery/qianmu-image-channel.js');let posts=0;
     const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
       if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,
         expectedAccount:`st-user:${await imageChannelKey(ns.slice(8))}`,submission:true,resultRetrieval:true,archiveConfirmation:true,
@@ -323,7 +323,7 @@ try{
     const {bindComfyCloudProtocol,bindComfyCloudTask}=await import('/qianmu-comfy-cloud-protocol.js');
     const {prepareComfyWorkflow}=await import('/qianmu-comfy-workflow.js');
     const {auditComfyWorkflow,requireComfyExecution}=await import('/qianmu-comfy-audit.js');
-    const {imageChannelKey}=await import('/qianmu-image-channel.js');
+    const {imageChannelKey}=await import('/features/gallery/qianmu-image-channel.js');
     const connection=bindComfyCloudProtocol('https://www.runninghub.cn','runninghub-workflow-v1'),task=bindComfyCloudTask(connection,'1904152026220003330');
     let posts=0;const client=createComfyRecoveryClient({store,account:async()=>ns,fetchImpl:async(url,init)=>{
       if(url.endsWith('/capabilities'))return Response.json({ok:true,version:1,accountBindingVersion:1,catalogVersion:1,

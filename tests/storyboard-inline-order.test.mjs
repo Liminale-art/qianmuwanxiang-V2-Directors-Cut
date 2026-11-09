@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import {galleryMembershipSnapshot} from '../qianmu-gallery-membership.js';
+import {galleryMembershipSnapshot} from '../features/gallery/qianmu-gallery-membership.js';
 import {insertStoryboardProseImage,storyboardProseParagraphs} from '../qianmu-storyboard-inline-reading.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 

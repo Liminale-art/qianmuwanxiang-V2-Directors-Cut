@@ -4,7 +4,7 @@ import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { inspectStoryboardChatEvidence } from '../../qianmu-storyboard-chat-evidence.js';
 import { assertJsonInputBounds } from '../../qianmu-json-input.js';
 import { vibeDigest } from '../../qianmu-vibe-file.js';
-import { inspectGalleryWriteProposal,GALLERY_WRITE_PROPOSAL_KIND } from '../../qianmu-gallery-write-proposal.js';
+import { inspectGalleryWriteProposal,GALLERY_WRITE_PROPOSAL_KIND } from '../gallery/qianmu-gallery-write-proposal.js';
 
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];
 const phases = ['prepared', 'submitted', 'uncertain', 'verified'];

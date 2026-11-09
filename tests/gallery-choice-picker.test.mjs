@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {galleryChoiceWindow,renderGalleryChoicePicker,bindGalleryChoicePicker,resetGalleryChoiceSessions} from '../qianmu-gallery-choice-picker.js?v=1.59.440';
-import {galleryMembershipIds,galleryMembershipChange,assignGalleryMemberships,applyGalleryCollectionTarget,galleryCollectionChoices} from '../qianmu-gallery-membership.js';
-import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../qianmu-gallery-taxonomy.js';
+import {galleryChoiceWindow,renderGalleryChoicePicker,bindGalleryChoicePicker,resetGalleryChoiceSessions} from '../features/gallery/qianmu-gallery-choice-picker.js?v=1.59.440';
+import {galleryMembershipIds,galleryMembershipChange,assignGalleryMemberships,applyGalleryCollectionTarget,galleryCollectionChoices} from '../features/gallery/qianmu-gallery-membership.js';
+import {renderGalleryBulkCollections,bindGalleryBulkCollections,bindGalleryKeywordChoices} from '../features/gallery/qianmu-gallery-taxonomy.js';
 import {createChoiceRoot,ChoiceNode} from './helpers/gallery-choice-fixture.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 

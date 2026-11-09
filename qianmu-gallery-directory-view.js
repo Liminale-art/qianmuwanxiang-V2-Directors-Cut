@@ -1,7 +1,7 @@
 import { htmlEscape as escape } from './qianmu-storyboard-utils.js?v=1.59.456';
-import { createGalleryDirectorySession } from './qianmu-gallery-directory.js';
-import { bindGalleryPreviewZoom } from './qianmu-gallery-preview-zoom.js';
-import { bindGalleryGenerationDetails } from './qianmu-gallery-details-view.js';
+import { createGalleryDirectorySession } from './features/gallery/qianmu-gallery-directory.js';
+import { bindGalleryPreviewZoom } from './features/gallery/qianmu-gallery-preview-zoom.js';
+import { bindGalleryGenerationDetails } from './features/gallery/qianmu-gallery-details-view.js';
 
 const button = (action, label, disabled = false) => `<button type="button" class="sd-btn" data-directory-action="${action}" ${disabled ? 'disabled' : ''}>${label}</button>`;
 export function galleryDirectoryOwnerLabel(ownerKey, context) {

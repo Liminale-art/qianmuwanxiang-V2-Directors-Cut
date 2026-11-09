@@ -16,7 +16,7 @@ import { normalizeComfyRouteBinding } from './qianmu-comfy-route-contract.js';
 import { normalizeComfyReferenceSelection } from './qianmu-comfy-reference-contract.js';
 import { readStaticReferenceBlobs, comfyWorkflowReferenceHash } from './qianmu-comfy-references.js?v=1.59.202';
 import { comfyReferenceStillMime } from './qianmu-comfy-results.js?v=1.59.440';
-import { imageRestoreReceipt } from './qianmu-image-restore-contract.js';
+import { imageRestoreReceipt } from './features/gallery/qianmu-image-restore-contract.js';
 import { vibeDigest } from './qianmu-vibe-file.js';
 import { captureLegacyVibeOriginals, inspectLegacyVibeOriginals } from './qianmu-storyboard-legacy-vibes.js';
 import { captureBundleMappings, inspectBundleMappings } from './qianmu-bundle-mappings.js';

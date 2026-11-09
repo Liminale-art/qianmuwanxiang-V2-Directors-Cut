@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {vibeDigest} from '../qianmu-vibe-file.js';
-import {GALLERY_PAGE_INDEX_LIMITS as LIMIT,encodeGalleryIndexPage as encodePage,encodeGalleryIndexManifest as encodeHead,createGalleryPageIndexReader as create} from '../qianmu-gallery-page-index.js';
+import {GALLERY_PAGE_INDEX_LIMITS as LIMIT,encodeGalleryIndexPage as encodePage,encodeGalleryIndexManifest as encodeHead,createGalleryPageIndexReader as create} from '../features/gallery/qianmu-gallery-page-index.js';
 
 const source={namespace:'st-user:synthetic',ownerKey:'char:Alice.png',chatKey:'synthetic-chat'};
 // These are fake metadata pointers, NOT proof that original files exist.
@@ -135,8 +135,8 @@ test('synthetic 1k/10k/50k indexes keep first paint to one small page, without r
 
 test('index contract ships for read-only discovery, without wiring gallery pruning or generation',async()=>{
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  const implementation=await readFile(new URL('../qianmu-gallery-page-index.js',import.meta.url),'utf8');
-  assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('qianmu-gallery-page-index.js'),true);
+  const implementation=await readFile(new URL('../features/gallery/qianmu-gallery-page-index.js',import.meta.url),'utf8');
+  assert.doesNotMatch(entry,/qianmu-gallery-page-index/);assert.equal(release.files.includes('features/gallery/qianmu-gallery-page-index.js'),true);
   assert.equal(release.files.includes('server/qianmu-gallery-discovery-service.js'),true);
   assert.doesNotMatch(entry,/pruneStoryboardRetakeGallery\(/,'record count cannot authorize deleting gallery history');
   assert.doesNotMatch(implementation,/\bfetch\s*\(|\bindexedDB\b|\.unlink\(|\.writeFile\(|\.splice\(|\badmit\s*\(/);

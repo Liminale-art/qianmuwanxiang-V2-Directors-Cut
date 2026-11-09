@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {migrateGallerySnapshots} from '../features/gallery/qianmu-gallery-snapshot-migration.js';
 import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {preserveCapturedSnapshotArchives} from '../qianmu-plan-archive-write.js';

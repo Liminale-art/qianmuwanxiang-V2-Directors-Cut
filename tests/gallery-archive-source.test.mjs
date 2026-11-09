@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import {EventEmitter} from 'node:events';
-import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
+import {createCurrentGalleryArchiveSession} from '../features/gallery/qianmu-gallery-archive-source.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
 import {recipeClientFixture} from './helpers/recipe-client-fixture.mjs';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
-import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
+import {createGalleryArchiveCoordinator} from '../features/gallery/qianmu-gallery-archive-coordinator.js';
 import {chatGalleryDigest} from '../features/chat/qianmu-chat-gallery-digest.js';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};

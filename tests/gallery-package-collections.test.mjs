@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertGalleryPackageCollections,GALLERY_PACKAGE_COLLECTION_LIMIT} from '../qianmu-gallery-package-collections.js';
+import {assertGalleryPackageCollections,GALLERY_PACKAGE_COLLECTION_LIMIT} from '../features/gallery/qianmu-gallery-package-collections.js';
 import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js';
 import {inspectStoryboardPackageFile} from '../qianmu-storyboard-package-input.js';
 import {prepareStoryboardPackageDraft} from '../qianmu-storyboard-package-draft.js';

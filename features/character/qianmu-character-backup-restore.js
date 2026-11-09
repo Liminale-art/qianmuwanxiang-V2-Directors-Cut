@@ -2,7 +2,7 @@ import { inspectCharacterBackupFile } from './qianmu-character-backup-file.js';
 import { planCharacterLibraryRestore, characterLibraryBackupDigest as digest } from './qianmu-character-library-backup.js';
 import { planComfyLibraryRestore } from '../../qianmu-comfy-library-backup.js';
 import { comfyWorkflowReferenceHash } from '../../qianmu-comfy-references.js?v=1.59.202';
-import { imageRestoreReceipt } from '../../qianmu-image-restore-contract.js';
+import { imageRestoreReceipt } from '../gallery/qianmu-image-restore-contract.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'character_restore', submissionState: 'not_submitted' }); };
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);

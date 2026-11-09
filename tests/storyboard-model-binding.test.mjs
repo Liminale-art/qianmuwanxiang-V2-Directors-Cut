@@ -5,8 +5,8 @@ import {
   getStoryboardProvider, getStoryboardModel, getStoryboardCapabilities,
   resolveStoryboardModelBinding, buildStoryboardProviderPlan,
 } from '../qianmu-storyboard.js';
-import { novelModelCapabilities, isImageModelMetadataField } from '../qianmu-image-models.js';
-import { generateDirectImage } from '../qianmu-image-direct.js';
+import { novelModelCapabilities, isImageModelMetadataField } from '../features/gallery/qianmu-image-models.js';
+import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage, sanitizeImageRequest } from '../server/qianmu-image-gateway.js';
 
 const V3 = 'nai-diffusion-3', V45 = 'nai-diffusion-4-5-full', V5 = 'nai-diffusion-5-full';

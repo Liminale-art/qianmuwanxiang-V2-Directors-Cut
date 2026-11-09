@@ -7,7 +7,7 @@ import {comfyWorkflowReferenceHash} from '../qianmu-comfy-references.js';
 import {createComfyRecoveryClient} from '../qianmu-comfy-recovery-client.js';
 import {bindComfyCloudProtocol} from '../qianmu-comfy-cloud-protocol.js';
 import {bindComfyCloudTask} from '../qianmu-comfy-cloud-protocol.js';
-import {imageChannelKey} from '../qianmu-image-channel.js';
+import {imageChannelKey} from '../features/gallery/qianmu-image-channel.js';
 import {executeComfyCloudJob} from '../qianmu-comfy-cloud-execution.js';
 import {auditComfyWorkflow,requireComfyExecution} from '../qianmu-comfy-audit.js';
 import {prepareComfyWorkflow} from '../qianmu-comfy-workflow.js';

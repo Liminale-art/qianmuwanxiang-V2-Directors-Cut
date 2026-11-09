@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {vibeDigest} from '../qianmu-vibe-file.js';
-import {galleryLocalRecipeReference,encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot} from '../qianmu-gallery-local-recipe.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
+import {galleryLocalRecipeReference,encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot} from '../features/gallery/qianmu-gallery-local-recipe.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 
 const scope={namespace:'st-user:fixture',ownerKey:'char:Alice.png',chatKey:'chat'};

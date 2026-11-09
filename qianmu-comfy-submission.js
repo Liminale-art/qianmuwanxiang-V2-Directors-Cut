@@ -1,6 +1,6 @@
 // Lazy, identity-only preparation. No workflow copy, storage or provider IO.
 import { resolveImageAccountNamespace } from './qianmu-image-admission.js?v=1.59.440';
-import { imageChannelKey } from './qianmu-image-channel.js?v=1.59.202';
+import { imageChannelKey } from './features/gallery/qianmu-image-channel.js?v=1.59.202';
 
 export async function prepareComfySubmission(job, { account = resolveImageAccountNamespace } = {}) {
   const saved = job?.imageAdmission, namespace = saved?.namespace;

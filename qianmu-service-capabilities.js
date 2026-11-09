@@ -1,4 +1,4 @@
-import { IMAGE_MODEL_BINDING_VERSION, IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS, resolveImageProtocolBinding } from './qianmu-image-models.js';
+import { IMAGE_MODEL_BINDING_VERSION, IMAGE_PROTOCOL_BINDING_VERSION, IMAGE_COMPATIBLE_PROTOCOLS, resolveImageProtocolBinding } from './features/gallery/qianmu-image-models.js';
 
 export const QIANMU_OPTIONAL_SERVICE_ENDPOINT = '/api/plugins/qianmu-tts/health';
 export const QIANMU_IMAGE_CAPABILITIES_ENDPOINT = '/api/plugins/qianmu-tts/image/capabilities';

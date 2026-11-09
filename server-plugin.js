@@ -18,7 +18,7 @@ import { createChatCharacterReceiptService } from './server/qianmu-chat-characte
 import { createRecipeArchiveService } from './server/qianmu-recipe-archive-service.js';
 import { recipeArchiveError, recipeArchiveErrorPayload } from './qianmu-recipe-archive-contract.js';
 import { chatCharacterReceiptError, chatCharacterReceiptErrorPayload } from './features/chat/qianmu-chat-character-receipt.js';
-import { imageRestoreError, imageRestoreErrorPayload } from './qianmu-image-restore-contract.js';
+import { imageRestoreError, imageRestoreErrorPayload } from './features/gallery/qianmu-image-restore-contract.js';
 import {createVibeEncodingService,vibeServiceErrorPayload} from './server/qianmu-vibe-service.js';
 import { checkServerComfyReadiness } from './server/qianmu-comfy-readiness-server.js';
 import { createComfyServerTransport } from './server/qianmu-comfy-server-transport.js';

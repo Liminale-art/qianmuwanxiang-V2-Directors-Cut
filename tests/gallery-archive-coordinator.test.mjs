@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {migrateGallerySnapshots} from '../features/gallery/qianmu-gallery-snapshot-migration.js';
 import {storyboardRecipeRecordMetadata} from '../qianmu-storyboard.js';
 import {readFile} from 'node:fs/promises';
-import {createGalleryArchiveCoordinator} from '../qianmu-gallery-archive-coordinator.js';
+import {createGalleryArchiveCoordinator} from '../features/gallery/qianmu-gallery-archive-coordinator.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const gate=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};

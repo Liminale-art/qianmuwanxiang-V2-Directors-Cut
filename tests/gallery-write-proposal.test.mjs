@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import {createGalleryWriteProposal,inspectGalleryWriteProposal} from '../qianmu-gallery-write-proposal.js';
+import {createGalleryWriteProposal,inspectGalleryWriteProposal} from '../features/gallery/qianmu-gallery-write-proposal.js';
 import {createHistoricalChatMutation,inspectHistoricalChatMutation} from '../features/chat/qianmu-historical-chat-journal.js';
 import {createNativeHistoricalJournal} from '../features/chat/qianmu-historical-journal-native.js';
 import {collectRestoreStorage,clearRestoreStorage} from '../qianmu-storyboard-restore-storage.js';

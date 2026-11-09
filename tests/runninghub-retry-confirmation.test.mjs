@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import * as runtime from '../qianmu-image-direct.js';
+import * as runtime from '../features/gallery/qianmu-image-direct.js';
 import {confirmRunningHubRetryExecution} from '../qianmu-comfy-workbench.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {stillInput} from './helpers/runninghub-validation-fixture.mjs';

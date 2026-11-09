@@ -1,7 +1,7 @@
 import {historicalSourceFixture} from './historical-source-fixture.mjs';
 import {chatCharacterReceiptErrorPayload} from '../../features/chat/qianmu-chat-character-receipt.js';
-import {loadGalleryPreviewImage} from '../../qianmu-gallery-preview-media.js';
-import {exportGalleryHistory} from '../../qianmu-gallery-history-export.js';
+import {loadGalleryPreviewImage} from '../../features/gallery/qianmu-gallery-preview-media.js';
+import {exportGalleryHistory} from '../../features/gallery/qianmu-gallery-history-export.js';
 export const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=','base64');
 export async function historyExportFixture(t){
   const f=await historicalSourceFixture(t),original=f.fetch;f.downloads=[];f.mediaCalls=[];f.progress=[];

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {encodeGalleryArchiveRecipe as encode,inspectGalleryArchiveRecipe as inspect} from '../qianmu-gallery-archive-recipe.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
+import {encodeGalleryArchiveRecipe as encode,inspectGalleryArchiveRecipe as inspect} from '../features/gallery/qianmu-gallery-archive-recipe.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const scope={namespace:'st-user:fixture',ownerKey:'char:Alice.png',chatKey:'chat'};

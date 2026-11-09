@@ -1,5 +1,5 @@
-import {captureGalleryArchiveJson} from '../qianmu-gallery-page-index.js';
-import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../qianmu-gallery-archive-version.js';
+import {captureGalleryArchiveJson} from '../features/gallery/qianmu-gallery-page-index.js';
+import {galleryArchiveSourceSlot,galleryArchiveSourceVersion} from '../features/gallery/qianmu-gallery-archive-version.js';
 
 export const GALLERY_DISCOVERY_LIMITS=Object.freeze({page:32,scan:500000,pending:2,responseBytes:512*1024,timeoutMs:10000});
 export const galleryDiscoveryError=(code,message,status=409)=>Object.assign(Error(message),{code:`gallery_discovery_${code}`,status});

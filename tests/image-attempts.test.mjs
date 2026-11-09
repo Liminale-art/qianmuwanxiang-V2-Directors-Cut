@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, preflightImageAttempts, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult, importImageAttempts } from '../qianmu-image-attempts.js';
+import { IMAGE_ATTEMPT_SCHEMA, IMAGE_ATTEMPT_LIMIT, IMAGE_RESERVATION_TTL_MS, imageAttemptScopeKey, normalizeImageAttempts, claimImageAttempt, preflightImageAttempts, beginImageAttempt, settleImageAttempt, summarizeImageAttempts, reviewImageAttempt, confirmImageAttemptResult, importImageAttempts } from '../features/gallery/qianmu-image-attempts.js';
 
 const NOW = 1_780_000_000_000;
 const scope = { namespace: 'test-account', chatKey: 'chat', messageKey: 'floor-stable-id', revisionId: 'revision-a' };

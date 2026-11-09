@@ -11,7 +11,7 @@ import {createAutomaticWorldDirectorDecision} from '../qianmu-director-decision.
 import {createDirectorWorkOrder,directorWorkOrderToStoryboardShot} from '../qianmu-director-work-order.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,beginImageAttempt,continueImageAttempt,settleImageAttempt,importImageAttempts,summarizeImageAttempts} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,beginImageAttempt,continueImageAttempt,settleImageAttempt,importImageAttempts,summarizeImageAttempts} from '../features/gallery/qianmu-image-attempts.js';
 const namespace='st-user:world-test',chatKey='chat-a';
 const copy=value=>structuredClone(value);
 async function job(){

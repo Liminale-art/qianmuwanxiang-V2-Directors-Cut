@@ -21,13 +21,13 @@ try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); await page.goto('https://qianmu.test/');
     await page.addScriptTag({ content: storyboardFunctionSource('ttsDownloadBlob') });
     const result = await page.evaluate(async () => {
-        const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
-        const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
+        const { createGalleryCatalogStore: create } = await import('/features/gallery/qianmu-gallery-catalog-store.js');
+        const { createGalleryDirectorySession } = await import('/features/gallery/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
         const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient, createChatGalleryDetailsClient } = await import('/features/chat/qianmu-chat-character-receipt-client.js');
         const { projectChatGalleryDetails } = await import('/features/chat/qianmu-chat-gallery-details.js');
         const { projectChatGalleryRecord } = await import('/features/chat/qianmu-chat-gallery-record.js');
-        const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
+        const { loadGalleryPreviewImage } = await import('/features/gallery/qianmu-gallery-preview-media.js');
         const { chatGalleryReceiptText } = await import('/features/chat/qianmu-chat-gallery-receipt.js');
         const checks = [], check = (label, ok) => { if (!ok) throw Error(label); checks.push(label); };
         const ns = 'st-user:fixture', source = { ownerKey: 'char:A.png', chatKey: '同名聊天' };

@@ -1,6 +1,6 @@
 import { chatCharacterReceiptRequest, chatCharacterReceiptError } from './qianmu-chat-character-receipt.js';
 import { comfyReferencePath } from '../../qianmu-comfy-reference-contract.js';
-import { galleryCatalogTags } from '../../qianmu-gallery-catalog-contract.js';
+import { galleryCatalogTags } from '../gallery/qianmu-gallery-catalog-contract.js';
 
 export const CHAT_GALLERY_RECORD_RESPONSE_BYTES = 32768;
 const fail = (code, message, status = 400) => { throw chatCharacterReceiptError(code, message, status); };

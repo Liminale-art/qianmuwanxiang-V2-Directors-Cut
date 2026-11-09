@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {summarizeGalleryRecords} from '../qianmu-gallery-summary.js';
-import {renderImageInfo} from '../qianmu-image-info-view.js';
-import {galleryMembershipIds} from '../qianmu-gallery-membership.js';
-import {renderGalleryBulkCollections} from '../qianmu-gallery-taxonomy.js';
-import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryBrowserProjection,galleryRecordMatchesQuery} from '../qianmu-gallery-collections-view.js';
-import {renderGalleryKeywordFilters} from '../qianmu-gallery-keywords-view.js';
-import {galleryTagsMatch} from '../qianmu-gallery-keywords.js';
-import {createGalleryNarrativeSession} from '../qianmu-gallery-narrative.js';
-import {galleryDisplayWindow,renderGalleryWindowControls} from '../qianmu-gallery-window.js';
+import {summarizeGalleryRecords} from '../features/gallery/qianmu-gallery-summary.js';
+import {renderImageInfo} from '../features/gallery/qianmu-image-info-view.js';
+import {galleryMembershipIds} from '../features/gallery/qianmu-gallery-membership.js';
+import {renderGalleryBulkCollections} from '../features/gallery/qianmu-gallery-taxonomy.js';
+import {galleryCollectionEntries,galleryBrowserWindow,renderGalleryCollectionTile,renderGalleryCollectionPath,renderGalleryImageCard,galleryBrowserProjection,galleryRecordMatchesQuery} from '../features/gallery/qianmu-gallery-collections-view.js';
+import {renderGalleryKeywordFilters} from '../features/gallery/qianmu-gallery-keywords-view.js';
+import {galleryTagsMatch} from '../features/gallery/qianmu-gallery-keywords.js';
+import {createGalleryNarrativeSession} from '../features/gallery/qianmu-gallery-narrative.js';
+import {galleryDisplayWindow,renderGalleryWindowControls} from '../features/gallery/qianmu-gallery-window.js';
 import {uniqueClean, htmlEscape} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 

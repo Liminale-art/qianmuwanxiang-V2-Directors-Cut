@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { auditComfyWorkflow, normalizeComfyExecution, requireComfyExecution, inspectComfyImageExecution } from '../qianmu-comfy-audit.js';
 import { collectComfyStillResults } from '../qianmu-comfy-results.js';
-import { generateDirectImage, isDirectImageTransportError } from '../qianmu-image-direct.js';
+import { generateDirectImage, isDirectImageTransportError } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage, imageGatewayCapabilities, imageGatewayErrorPayload } from '../server/qianmu-image-gateway.js';
 import { probeQianmuImageCapabilities, checkQianmuComfyExecutionBinding } from '../qianmu-service-capabilities.js';
 

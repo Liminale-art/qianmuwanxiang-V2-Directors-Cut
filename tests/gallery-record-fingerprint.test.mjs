@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {galleryRecordFingerprintText} from '../qianmu-gallery-record-fingerprint.js';
+import {galleryRecordFingerprintText} from '../features/gallery/qianmu-gallery-record-fingerprint.js';
 import {chatGalleryReceiptRecordText,CHAT_GALLERY_RECEIPT_LIMITS as LIMIT} from '../features/chat/qianmu-chat-gallery-receipt.js';
-import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from '../qianmu-gallery-page-index.js';
+import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from '../features/gallery/qianmu-gallery-page-index.js';
 import {chatGalleryDigest,scanChatGallery,createChatGalleryDigest,galleryDigestRecord} from '../features/chat/qianmu-chat-gallery-digest.js';
 const legacy=raw=>chatGalleryReceiptRecordText(captureGalleryArchiveJson(raw,GALLERY_PAGE_INDEX_LIMITS.recordBytes));
 const digest=rows=>{const state=createChatGalleryDigest();try{for(const row of rows)state.append(row);return state.finish();}finally{state.close();}};

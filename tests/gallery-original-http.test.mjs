@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {EventEmitter} from 'node:events';
-import {galleryOriginalCapabilities,galleryOriginalPreserved,galleryOriginalErrorPayload,galleryOriginalReadRequest} from '../qianmu-gallery-original-contract.js';
-import {createGalleryOriginalClient} from '../qianmu-gallery-original-client.js';
+import {galleryOriginalCapabilities,galleryOriginalPreserved,galleryOriginalErrorPayload,galleryOriginalReadRequest} from '../features/gallery/qianmu-gallery-original-contract.js';
+import {createGalleryOriginalClient} from '../features/gallery/qianmu-gallery-original-client.js';
 import {galleryOriginalHttpFixture as fixture,originalPng as png,originalHash as sha} from './helpers/gallery-original-http-fixture.mjs';
 
 const failure=error=>/^gallery_original_/.test(error?.code);

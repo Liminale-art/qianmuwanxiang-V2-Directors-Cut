@@ -1,8 +1,8 @@
 import {captureCurrentChatSource} from './qianmu-current-chat-source.js';
-import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
+import {captureGalleryArchiveJson} from './features/gallery/qianmu-gallery-page-index.js';
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
-import {galleryLocalRecipeReference,encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,readGalleryLocalRecipeCopy,readLegacyGalleryRecipe} from './qianmu-gallery-local-recipe.js';
-import {galleryLegacyRecipeReference} from './qianmu-gallery-reviewed-recipe.js';
+import {galleryLocalRecipeReference,encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,readGalleryLocalRecipeCopy,readLegacyGalleryRecipe} from './features/gallery/qianmu-gallery-local-recipe.js';
+import {galleryLegacyRecipeReference} from './features/gallery/qianmu-gallery-reviewed-recipe.js';
 
 // Current-record consumption for redraw/export/edit. It does not migrate,
 // attach metadata, use current drawing settings, or borrow an unscoped cache.

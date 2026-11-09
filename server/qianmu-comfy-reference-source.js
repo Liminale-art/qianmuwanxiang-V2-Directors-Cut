@@ -3,7 +3,7 @@
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import path from 'node:path';
-import { imageRestoreReceipt } from '../qianmu-image-restore-contract.js';
+import { imageRestoreReceipt } from '../features/gallery/qianmu-image-restore-contract.js';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 import { planComfyCloudUpload } from '../qianmu-comfy-cloud-upload-contract.js';
 

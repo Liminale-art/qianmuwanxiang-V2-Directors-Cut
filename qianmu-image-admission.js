@@ -1,5 +1,5 @@
-import { createImageAttemptStore } from './qianmu-image-attempt-store.js';
-import { imageAttemptScopeKey } from './qianmu-image-attempts.js';
+import { createImageAttemptStore } from './features/gallery/qianmu-image-attempt-store.js';
+import { imageAttemptScopeKey } from './features/gallery/qianmu-image-attempts.js';
 import {hasStoryboardStreamReference,normalizeStoryboardStreamReference,verifyStoryboardStreamReference,storyboardStreamBudgetReference} from './qianmu-storyboard-stream-reference.js?v=1.59.414';
 import {verifyStoryboardOrdinaryContinuation} from './qianmu-storyboard-ordinary-continuation.js?v=1.59.414';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';

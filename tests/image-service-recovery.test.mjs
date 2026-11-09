@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
 import { createImageServiceQueue, imageServiceChannelKey, describeImageServiceRequest } from '../server/qianmu-image-service-queue.js';
 import { imageServiceAccount, queryImageServiceTask } from '../server/qianmu-image-service-access.js';
-import { inspectImageServiceRecovery, recoverImageServiceRecords, restoreInterruptedImageRecovery } from '../qianmu-image-service-recovery.js';
+import { inspectImageServiceRecovery, recoverImageServiceRecords, restoreInterruptedImageRecovery } from '../features/gallery/qianmu-image-service-recovery.js';
 
 const key = imageServiceChannelKey('mock-recovery-key');
 const account = { user: { profile: { handle: 'alice', enabled: true } } };
@@ -130,7 +130,7 @@ test('backup checksums match original bytes and recovery cannot be replayed from
 
 test('offline command inspection accepts only explicit arguments and never installs a live endpoint', async t => {
   const { root } = await fixture(t);
-  const script = new URL('../qianmu-image-recovery-cli.js', import.meta.url).href;
+  const script = new URL('../features/gallery/qianmu-image-recovery-cli.js', import.meta.url).href;
   const output = await child(`process.argv=['node','recover','--data-root',${JSON.stringify(root)},'--inspect']; await import(${JSON.stringify(script)});`);
   assert.equal(JSON.parse(output.output.trim()).submitting, 1);
   const runtime = await fs.readFile(new URL('../server-plugin.js', import.meta.url), 'utf8');
@@ -196,7 +196,7 @@ test('real process interruption and post-rename I/O failure retain a recoverable
     const { root, store, active } = await fixture(t), second = imageServiceChannelKey('partial-repair-second');
     await store.transaction(second, () => ({ state: state('reserved', second) }));
     const original = await inspectImageServiceRecovery({ dataRoot: root });
-    const recoveryUrl = new URL('../qianmu-image-service-recovery.js', import.meta.url).href;
+    const recoveryUrl = new URL('../features/gallery/qianmu-image-service-recovery.js', import.meta.url).href;
     await child(`import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';
       const rename=fs.promises.rename;let first=true;
       fs.promises.rename=async(...args)=>{await rename(...args);if(first){first=false;${mode === 'exit' ? 'process.exit(0);' : "throw Object.assign(Error('simulated post-rename failure'),{code:'EIO'});"}}};

@@ -6,7 +6,7 @@ import {prepareStoryboardPackageDraft as draft,mergeStoryboardPackageRows} from 
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 import {inspectStoryboardPackageFile} from '../qianmu-storyboard-package-input.js';
 import vm from 'node:vm';
-import {migrateGallerySnapshots} from '../qianmu-gallery-snapshot-migration.js';
+import {migrateGallerySnapshots} from '../features/gallery/qianmu-gallery-snapshot-migration.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const blob=settings=>new Blob([JSON.stringify({type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings,chat:{images:[],collections:[]},media:[]})]);

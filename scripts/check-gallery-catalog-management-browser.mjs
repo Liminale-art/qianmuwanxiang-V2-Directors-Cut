@@ -19,8 +19,8 @@ try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
     await page.exposeFunction('__setFixtureViewport', width => page.setViewportSize({ width, height: 800 })); await page.goto('https://qianmu.test/');
     const result = await page.evaluate(async () => {
-        const { createGalleryCatalogStore: create } = await import('/qianmu-gallery-catalog-store.js');
-        const { createGalleryCatalogManagement: manage } = await import('/qianmu-gallery-catalog-management.js');
+        const { createGalleryCatalogStore: create } = await import('/features/gallery/qianmu-gallery-catalog-store.js');
+        const { createGalleryCatalogManagement: manage } = await import('/features/gallery/qianmu-gallery-catalog-management.js');
         const { openGalleryCatalogManagement: open } = await import('/qianmu-gallery-catalog-management-view.js');
         const checks = [], check = (name, ok) => { if (!ok) throw Error(name); checks.push(name); };
         const rejects = async (name, fn) => { let error; try { await fn(); } catch (e) { error = e; } check(name, Boolean(error)); return error; };

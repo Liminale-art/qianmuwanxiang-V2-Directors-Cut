@@ -1,4 +1,4 @@
-import {novelModelCapabilities,novelReferenceIssue} from './qianmu-image-models.js';
+import {novelModelCapabilities,novelReferenceIssue} from './features/gallery/qianmu-image-models.js';
 import {VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 export const NOVEL_VIBE_VERSION=1;

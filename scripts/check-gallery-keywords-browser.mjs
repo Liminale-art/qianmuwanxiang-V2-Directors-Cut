@@ -6,7 +6,7 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const css=(await Promise.all(['style.css','qianmu-theme-skins.css'].map(file=>readFile(new URL('../'+file,import.meta.url),'utf8')))).join('\n');
 const out=new URL('../dist/local-qa/gallery-keywords/',import.meta.url);await mkdir(out,{recursive:true});
-const assets=new Set(['qianmu-gallery-keywords.js','qianmu-gallery-keywords-view.js','qianmu-theme-surfaces.js','qianmu-theme-palette.js']);
+const assets=new Set(['features/gallery/qianmu-gallery-keywords.js','features/gallery/qianmu-gallery-keywords-view.js','qianmu-theme-surfaces.js','qianmu-theme-palette.js']);
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext(),page=await context.newPage(),errors=[],checks=[],screenshots=[];let external=0;
 page.on('pageerror',error=>errors.push(error.message));
@@ -19,7 +19,7 @@ await context.route('**/*',async route=>{
 });
 try{
   await page.goto('https://qianmu.test/');await page.addStyleTag({content:css});
-  await page.evaluate(async()=>{window.view=await import('./qianmu-gallery-keywords-view.js');window.core=await import('./qianmu-gallery-keywords.js');window.theme=await import('./qianmu-theme-surfaces.js');});
+  await page.evaluate(async()=>{window.view=await import('./features/gallery/qianmu-gallery-keywords-view.js');window.core=await import('./features/gallery/qianmu-gallery-keywords.js');window.theme=await import('./qianmu-theme-surfaces.js');});
   for(const width of [320,393,1280])for(const skin of ['classic','editorial','glass'])for(const mode of ['light','dark']){
     await page.setViewportSize({width,height:900});
     await page.evaluate(({skin,mode})=>{

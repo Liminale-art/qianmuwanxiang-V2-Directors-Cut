@@ -3,7 +3,7 @@
 // Preserve accepts selectors, never user-provided bytes, URL or disk paths.
 import {createGalleryOriginalSource} from './qianmu-gallery-original-source.js';
 import {createGalleryOriginalStore,GALLERY_ORIGINAL_STORE_LIMITS} from './qianmu-gallery-original-store.js';
-import {galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalPreserved,galleryOriginalBatchRequest,galleryOriginalBatchPreserved} from '../qianmu-gallery-original-contract.js';
+import {galleryOriginalRequest,galleryOriginalReadRequest,galleryOriginalPreserved,galleryOriginalBatchRequest,galleryOriginalBatchPreserved} from '../features/gallery/qianmu-gallery-original-contract.js';
 import {imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 
 const fail=(code,message,status=409)=>{throw Object.assign(Error(message),{code:'gallery_original_service_'+code,status});};

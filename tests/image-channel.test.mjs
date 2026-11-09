@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { imageChannelKey, createBrowserImageChannel } from '../qianmu-image-channel.js';
+import { imageChannelKey, createBrowserImageChannel } from '../features/gallery/qianmu-image-channel.js';
 
 const args = (extra = {}) => ({ apiKey: 'mock-test-key', namespace: 'account-a', attemptId: 'job-a', automatic: true, ...extra });
 const neverWork = () => assert.fail('no provider work is authorized');

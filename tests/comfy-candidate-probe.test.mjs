@@ -5,7 +5,7 @@ import * as core from '../qianmu-storyboard.js';
 import * as auto from '../qianmu-comfy-auto-runtime.js';
 import * as routes from '../qianmu-comfy-route.js';
 import * as prompts from '../qianmu-comfy-prompt.js';
-import * as direct from '../qianmu-image-direct.js';
+import * as direct from '../features/gallery/qianmu-image-direct.js';
 import {checkComfyCharacterReadiness} from '../qianmu-comfy-character-readiness.js';
 import {bindStoryboardPromptRenderings} from '../qianmu-prompt-formats.js';
 import {normalizeComfyAutoPool,COMFY_SELECTION_SCHEMA} from '../qianmu-comfy-selection.js';

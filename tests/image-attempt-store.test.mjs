@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createImageAttemptStore } from '../qianmu-image-attempt-store.js';
-import {imageAttemptScopeKey,importImageAttempts} from '../qianmu-image-attempts.js';
+import { createImageAttemptStore } from '../features/gallery/qianmu-image-attempt-store.js';
+import {imageAttemptScopeKey,importImageAttempts} from '../features/gallery/qianmu-image-attempts.js';
 const scope = { namespace: 'test', chatKey: 'chat', messageKey: 'message', revisionId: 'revision' };
 const request = { attemptId: 'a', logicalShotId: 's', operationKey: 'o', ownerId: 'page', kind: 'automatic', maxAutomatic: 3, imageCount: 1 };
 

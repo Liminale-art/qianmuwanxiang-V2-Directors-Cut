@@ -1,6 +1,6 @@
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {createGalleryOriginalService} from './qianmu-gallery-original-service.js';
-import {galleryOriginalError,galleryOriginalErrorPayload,galleryOriginalCapabilities,galleryOriginalPreserved,galleryOriginalBatchPreserved,GALLERY_ORIGINAL_MAX_BYTES} from '../qianmu-gallery-original-contract.js';
+import {galleryOriginalError,galleryOriginalErrorPayload,galleryOriginalCapabilities,galleryOriginalPreserved,galleryOriginalBatchPreserved,GALLERY_ORIGINAL_MAX_BYTES} from '../features/gallery/qianmu-gallery-original-contract.js';
 
 // Account-private, selector-only operations. No generic upload, external URL,
 // static file serving, cross-account admin override or automatic startup copy.

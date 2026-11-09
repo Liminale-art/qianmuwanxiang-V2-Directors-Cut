@@ -23,11 +23,11 @@ try {
     const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); await page.goto('https://qianmu.test/');
     await page.addScriptTag({ content: storyboardFunctionSource('ttsDownloadBlob') });
     await page.evaluate(async () => {
-        const { createGalleryCatalogStore } = await import('/qianmu-gallery-catalog-store.js');
-        const { createGalleryDirectorySession } = await import('/qianmu-gallery-directory.js');
+        const { createGalleryCatalogStore } = await import('/features/gallery/qianmu-gallery-catalog-store.js');
+        const { createGalleryDirectorySession } = await import('/features/gallery/qianmu-gallery-directory.js');
         const { openGalleryDirectory } = await import('/qianmu-gallery-directory-view.js');
         const { createCurrentChatGalleryReceiptClient, createChatGalleryReceiptClient, createChatGalleryRecordClient } = await import('/features/chat/qianmu-chat-character-receipt-client.js');
-        const { loadGalleryPreviewImage } = await import('/qianmu-gallery-preview-media.js');
+        const { loadGalleryPreviewImage } = await import('/features/gallery/qianmu-gallery-preview-media.js');
         const { chatGalleryReceiptText } = await import('/features/chat/qianmu-chat-gallery-receipt.js');
         const ns = 'st-user:fixture', source = { ownerKey: 'char:D.png', chatKey: '历史聊天' };
         const frames = Array.from({length:110}, (_,i)=>({id:`id${i}`,createdAt:100+i,tags:['海岸'],url:`/user/images/image${i}.png`}));

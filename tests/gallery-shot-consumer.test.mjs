@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {EventEmitter} from 'node:events';
-import {createGalleryShotReader} from '../qianmu-gallery-shot-reader.js';
+import {createGalleryShotReader} from '../features/gallery/qianmu-gallery-shot-reader.js';
 import {captureCurrentChatSource} from '../qianmu-current-chat-source.js';
 import {normalizeStoryboardShotSpec} from '../qianmu-storyboard.js';
 import * as drafts from '../features/video/qianmu-video-draft.js';

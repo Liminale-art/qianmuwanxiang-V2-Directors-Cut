@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {galleryLocationFixture} from './helpers/gallery-location-fixture.mjs';
 import {attachGalleryContinuity} from './helpers/gallery-continuity-fixture.mjs';
 import {chatStateFixture} from './helpers/chat-state-fixture.mjs';
-import {projectGalleryContinuity,GALLERY_CONTINUITY_FIELDS,galleryContinuitySavePending} from '../qianmu-gallery-continuity.js';
+import {projectGalleryContinuity,GALLERY_CONTINUITY_FIELDS,galleryContinuitySavePending} from '../features/gallery/qianmu-gallery-continuity.js';
 import {projectChatGallerySupplement,chatGallerySupplementResponse} from '../features/chat/qianmu-chat-gallery-supplement.js';
 import {importCurrentRuntime} from './helpers/current-runtime.mjs';
 const {stageStoryboardContinuationLinks} = await importCurrentRuntime('qianmu-storyboard-continuation-proof.js');

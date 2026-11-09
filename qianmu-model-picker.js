@@ -1,4 +1,4 @@
-import { finalizeModelList } from './qianmu-image-models.js';
+import { finalizeModelList } from './features/gallery/qianmu-image-models.js';
 
 // Per-control, short-lived catalog. No persistent model cache, credential keys or startup work.
 export function createModelPickerSession({ provider, models, current, isCurrent, fetchModels, apply }) {

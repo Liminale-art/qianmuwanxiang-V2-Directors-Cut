@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clampImageView,zoomImageAt,bindImageZoom} from '../qianmu-image-zoom.js';
+import {clampImageView,zoomImageAt,bindImageZoom} from '../features/gallery/qianmu-image-zoom.js';
 
 const geometry={width:300,height:500,viewWidth:320,viewHeight:568};
 test('zoom stays between fit and 6x, clamps panning, and fits fully when reset',()=>{

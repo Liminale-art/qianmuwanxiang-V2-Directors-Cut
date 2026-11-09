@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { buildGalleryNarrative, createGalleryNarrativeSession, GALLERY_UNPLACED } from '../qianmu-gallery-narrative.js';
+import { buildGalleryNarrative, createGalleryNarrativeSession, GALLERY_UNPLACED } from '../features/gallery/qianmu-gallery-narrative.js';
 import { createStoryboardMessageReference, createStoryboardParagraphAnchor } from '../qianmu-storyboard.js';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
@@ -138,9 +138,9 @@ test('source-scoped groups follow verified paragraph order and frozen shot order
 });
 
 test('real gallery filter ignores saved model preference while retaining search, track and collection intersection', async () => {
-    const {galleryTagsMatch}=await import('../qianmu-gallery-keywords.js');
-    const {galleryMembershipIds}=await import('../qianmu-gallery-membership.js');
-    const {galleryBrowserProjection,galleryRecordMatchesQuery}=await import('../qianmu-gallery-collections-view.js');
+    const {galleryTagsMatch}=await import('../features/gallery/qianmu-gallery-keywords.js');
+    const {galleryMembershipIds}=await import('../features/gallery/qianmu-gallery-membership.js');
+    const {galleryBrowserProjection,galleryRecordMatchesQuery}=await import('../features/gallery/qianmu-gallery-collections-view.js');
     const records = [{ id: 'a', source: 'novel', prompt: 'coast', collectionIds: ['c'], track: 'main_camera' },
         { id: 'b', source: 'comfy', prompt: 'coast', collectionIds: [], track: 'main_camera' },
         { id: 'c', source: 'comfy', prompt: 'woods', collectionIds: ['c'], track: 'second_camera' }];
@@ -164,7 +164,7 @@ test('production gallery uses narrative source metadata without exposing a secon
     assert.match(storyboardFunctionSource('storyboardShowGalleryInspector'),/storyboardOpenImageInfo\(record,\{readonly:true\}\)/,'gallery opens the reading surface, not the prose prompt editor');
     assert.ok(!source.includes('class="text_pole sd-storyboard-gallery-source"'));
     const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-    for (const name of ['qianmu-gallery-narrative.js', 'qianmu-gallery-collections-view.js','qianmu-image-info-view.js']) assert.ok(release.files.includes(name));
+    for (const name of ['features/gallery/qianmu-gallery-narrative.js', 'features/gallery/qianmu-gallery-collections-view.js','features/gallery/qianmu-image-info-view.js']) assert.ok(release.files.includes(name));
     assert.ok(!release.files.includes('qianmu-gallery-narrative-view.js'));
     await assert.rejects(readFile(new URL('../qianmu-gallery-narrative-view.js',import.meta.url)),{code:'ENOENT'});
 });

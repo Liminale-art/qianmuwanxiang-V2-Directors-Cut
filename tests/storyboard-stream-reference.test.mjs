@@ -7,7 +7,7 @@ const {captureStoryboardStreamFrame,createStoryboardStreamMessageReference} = aw
 import {createStoryboardMessageReference,normalizeStoryboardMessageReference,resolveStoryboardMessageReference,sanitizeStoryboardSnapshot,createStoryboardWorkflowTicket} from '../qianmu-storyboard.js';
 const {verifyStoryboardStreamReference,storyboardStreamFingerprint,storyboardStreamDigest} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
 import {createImageAdmission,createImageAdmissionIdentity,createImageHistorySeeds} from '../qianmu-image-admission.js';
-import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../qianmu-image-attempts.js';
+import {imageAttemptScopeKey,claimImageAttempt,importImageAttempts,beginImageAttempt,continueImageAttempt,settleImageAttempt,summarizeImageAttempts} from '../features/gallery/qianmu-image-attempts.js';
 import {storyboardFunctionSource} from './helpers/storyboard-form-fixture.mjs';
 const clone=value=>JSON.parse(JSON.stringify(value));
 function fixture(){

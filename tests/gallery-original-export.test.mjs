@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 import { buildOriginalImageZip as zip, ORIGINAL_IMAGE_EXPORT_BYTES } from '../qianmu-original-image-zip.js';
-import { exportGalleryOriginals as run } from '../qianmu-gallery-original-export.js';
-import { galleryDirectoryTarget } from '../qianmu-gallery-directory.js';
+import { exportGalleryOriginals as run } from '../features/gallery/qianmu-gallery-original-export.js';
+import { galleryDirectoryTarget } from '../features/gallery/qianmu-gallery-directory.js';
 
 export async function readStoredZip(blob) {
     const data = Buffer.from(await blob.arrayBuffer()), result = new Map(); let at = 0;

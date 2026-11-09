@@ -8,7 +8,7 @@ const {normalizeStoryboardContinuationLinks,storyboardContinuationIdentityInput}
 const {storyboardStreamDigest} = await importCurrentRuntime('qianmu-storyboard-stream-reference.js');
 import {verifyStoryboardOrdinaryContinuation as verify} from '../qianmu-storyboard-ordinary-continuation.js';
 import {createImageAdmission,createImageAdmissionIdentity} from '../qianmu-image-admission.js';
-import {beginImageAttempt,continueImageAttempt,claimImageAttempt,importImageAttempts,settleImageAttempt,imageAttemptScopeKey} from '../qianmu-image-attempts.js';
+import {beginImageAttempt,continueImageAttempt,claimImageAttempt,importImageAttempts,settleImageAttempt,imageAttemptScopeKey} from '../features/gallery/qianmu-image-attempts.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 import {finishStoryboardStreamCapture} from '../qianmu-storyboard-stream-final.js';
 const copy=value=>JSON.parse(JSON.stringify(value));

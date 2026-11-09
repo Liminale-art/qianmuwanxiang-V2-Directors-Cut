@@ -6,7 +6,7 @@ import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
 } from '../qianmu-openai-image-compat.js';
-import { checkDirectImageConnection, generateDirectImage } from '../qianmu-image-direct.js';
+import { checkDirectImageConnection, generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { checkImageConnection, generateImage } from '../server/qianmu-image-gateway.js';
 import { STORYBOARD_SCHEMA_VERSION, normalizeStoryboardConnectionProfile } from '../qianmu-storyboard.js';
 

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createGalleryArchiveStorage as create} from '../qianmu-gallery-archive-storage.js';
-import {encodeGalleryArchiveRecord as encode,inspectGalleryArchiveRecord as inspect,galleryArchiveRecipeState} from '../qianmu-gallery-archive-record.js';
+import {createGalleryArchiveStorage as create} from '../features/gallery/qianmu-gallery-archive-storage.js';
+import {encodeGalleryArchiveRecord as encode,inspectGalleryArchiveRecord as inspect,galleryArchiveRecipeState} from '../features/gallery/qianmu-gallery-archive-record.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 
 const scope=()=>({namespace:'st-user:archive-test',ownerKey:'char:Alice.png',chatKey:'archive-chat'});
@@ -172,12 +172,12 @@ test('canonical record hash ignores JSON property order but not unknown fields; 
 test('record storage stays outside entry; automatic coordinator ships without deletion capabilities',async()=>{
   const entry=await readFile(new URL('../index.js',import.meta.url),'utf8'),release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
   for(const name of ['qianmu-gallery-archive-record.js','qianmu-gallery-archive-storage.js'])assert.equal(entry.includes(name),false);
-  assert.equal(release.files.includes('qianmu-gallery-archive-record.js'),true);
-  assert.equal(release.files.includes('qianmu-gallery-archive-storage.js'),true);
-  assert.equal(release.files.includes('qianmu-gallery-archive-coordinator.js'),true);
-  assert.equal(release.files.includes('qianmu-gallery-archive-source.js'),true);
+  assert.equal(release.files.includes('features/gallery/qianmu-gallery-archive-record.js'),true);
+  assert.equal(release.files.includes('features/gallery/qianmu-gallery-archive-storage.js'),true);
+  assert.equal(release.files.includes('features/gallery/qianmu-gallery-archive-coordinator.js'),true);
+  assert.equal(release.files.includes('features/gallery/qianmu-gallery-archive-source.js'),true);
   assert.match(entry,/galleryPreserver:.*qianmu-gallery-archive-coordinator/);
-  const code=await readFile(new URL('../qianmu-gallery-archive-storage.js',import.meta.url),'utf8');
+  const code=await readFile(new URL('../features/gallery/qianmu-gallery-archive-storage.js',import.meta.url),'utf8');
   assert.doesNotMatch(code,/\bfetch\s*\(|storage\.(?:delete|remove|update)\(|\.unlink\(|\.admit\(|storyboardImages\s*=/);
 });
 

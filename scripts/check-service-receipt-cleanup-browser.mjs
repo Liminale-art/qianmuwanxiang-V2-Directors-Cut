@@ -14,7 +14,7 @@ await context.route('**/*',async route=>{
 try{
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://qianmu.test/');
   const checks=await page.evaluate(async()=>{
-    const {createImageServiceClientStore,createImageServiceClient}=await import('/qianmu-image-service-client.js'),checks=[];
+    const {createImageServiceClientStore,createImageServiceClient}=await import('/features/gallery/qianmu-image-service-client.js'),checks=[];
     const verify=(name,valid)=>{if(!valid)throw Error(name);checks.push(name);};
     for(const mode of ['success','stale-write','changed-row','partial','account','busy']){
       const store=createImageServiceClientStore({dbName:'synthetic-receipt-'+mode});let live=true,namespace='account-a';

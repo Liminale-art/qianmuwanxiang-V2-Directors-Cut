@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as auto from '../../qianmu-comfy-auto-runtime.js';
 import * as routes from '../../qianmu-comfy-route.js';
-import * as direct from '../../qianmu-image-direct.js';
+import * as direct from '../../features/gallery/qianmu-image-direct.js';
 import * as locks from '../../qianmu-comfy-lock-runtime.js';
 import * as preflight from '../../qianmu-comfy-preflight.js';
 import * as prompt from '../../qianmu-comfy-prompt.js';

@@ -7,7 +7,7 @@ import { createImageService } from '../server/qianmu-image-service.js';
 import { createImageServiceStore } from '../server/qianmu-image-service-store.js';
 import { createImageServiceResults } from '../server/qianmu-image-service-results.js';
 import { imageServiceChannelKey } from '../server/qianmu-image-service-queue.js';
-import { createImageServiceClient } from '../qianmu-image-service-client.js';
+import { createImageServiceClient } from '../features/gallery/qianmu-image-service-client.js';
 import { imageServiceTaskErrorPayload } from '../server/qianmu-image-service.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

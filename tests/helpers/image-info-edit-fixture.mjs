@@ -1,7 +1,7 @@
 import vm from 'node:vm';
 import * as storyboard from '../../qianmu-storyboard.js';
-import * as membership from '../../qianmu-gallery-membership.js';
-import * as imageInfo from '../../qianmu-image-info-view.js';
+import * as membership from '../../features/gallery/qianmu-gallery-membership.js';
+import * as imageInfo from '../../features/gallery/qianmu-image-info-view.js';
 import {storyboardFunctionSource} from './storyboard-form-fixture.mjs';
 
 // Exercise the actual editor without DOM, persistence, providers or paid work.

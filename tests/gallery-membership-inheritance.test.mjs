@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as core from '../qianmu-storyboard.js';
-import {galleryMembershipSnapshot,galleryMembershipChange} from '../qianmu-gallery-membership.js';
+import {galleryMembershipSnapshot,galleryMembershipChange} from '../features/gallery/qianmu-gallery-membership.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 
 const ids=(n=140)=>Array.from({length:n},(_,i)=>'collection-'+i);

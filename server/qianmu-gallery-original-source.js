@@ -8,9 +8,9 @@ import {createHash} from 'node:crypto';
 import {createChatCharacterReceiptService} from './qianmu-chat-character-receipt-service.js';
 import {chatGalleryRecordRequest,chatGalleryRecordResponse} from '../features/chat/qianmu-chat-gallery-record.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
-import {imageRestoreReceipt,IMAGE_RESTORE_MAX_BYTES} from '../qianmu-image-restore-contract.js';
+import {imageRestoreReceipt,IMAGE_RESTORE_MAX_BYTES} from '../features/gallery/qianmu-image-restore-contract.js';
 import {comfyReferenceStillMime} from '../qianmu-comfy-results.js?v=1.59.440';
-import {galleryOriginalBatchRequest} from '../qianmu-gallery-original-contract.js';
+import {galleryOriginalBatchRequest} from '../features/gallery/qianmu-gallery-original-contract.js';
 
 export const GALLERY_ORIGINAL_SOURCE_LIMITS=Object.freeze({bytes:IMAGE_RESTORE_MAX_BYTES,pending:2,chunkBytes:64*1024,timeoutMs:30000});
 const LIMIT=GALLERY_ORIGINAL_SOURCE_LIMITS;

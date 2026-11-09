@@ -6,9 +6,9 @@ import {createHash} from 'node:crypto';
 import {createGalleryDiscoveryService} from '../server/qianmu-gallery-discovery-service.js';
 import {galleryDiscoveryRequest,galleryDiscoveryResponse,galleryDiscoveryErrorPayload,GALLERY_DISCOVERY_LIMITS} from '../server/qianmu-gallery-discovery-contract.js';
 import {galleryDiscoveryFixture as fixture} from './helpers/gallery-discovery-fixture.mjs';
-import {createCurrentGalleryArchiveSession} from '../qianmu-gallery-archive-source.js';
+import {createCurrentGalleryArchiveSession} from '../features/gallery/qianmu-gallery-archive-source.js';
 import {createChatCharacterReceiptService} from '../server/qianmu-chat-character-receipt-service.js';
-import {createGalleryArchiveStorage} from '../qianmu-gallery-archive-storage.js';
+import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};

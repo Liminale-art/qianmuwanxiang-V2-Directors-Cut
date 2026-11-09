@@ -4,10 +4,10 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const store = readFileSync(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
-const migration = readFileSync(new URL('../qianmu-gallery-snapshot-migration.js', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../features/gallery/qianmu-gallery-snapshot-migration.js', import.meta.url), 'utf8');
 const deliveryDrain = readFileSync(new URL('../qianmu-storyboard-delivery-drain.js', import.meta.url), 'utf8');
-const galleryArchive = readFileSync(new URL('../qianmu-gallery-archive-coordinator.js', import.meta.url), 'utf8');
-const galleryRecord = readFileSync(new URL('../qianmu-gallery-archive-record.js', import.meta.url), 'utf8');
+const galleryArchive = readFileSync(new URL('../features/gallery/qianmu-gallery-archive-coordinator.js', import.meta.url), 'utf8');
+const galleryRecord = readFileSync(new URL('../features/gallery/qianmu-gallery-archive-record.js', import.meta.url), 'utf8');
 
 test('storyboard redraw snapshots use an additive private IndexedDB store', () => {
 assert.match(store, /const DB_VERSION = 15/);

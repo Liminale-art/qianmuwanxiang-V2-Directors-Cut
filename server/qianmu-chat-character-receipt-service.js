@@ -13,7 +13,7 @@ import {readSavedChatGalleryEvidence} from './qianmu-chat-gallery-evidence-reade
 import {chatGalleryStateRequest,projectChatGalleryState,chatGalleryStateResponse} from '../features/chat/qianmu-chat-gallery-state.js';
 import {parseBoundedJson} from '../qianmu-json-input.js';
 import {readSavedChatGalleryHeader} from './qianmu-chat-gallery-header-reader.js';
-import {galleryOriginalBatchRequest} from '../qianmu-gallery-original-contract.js';
+import {galleryOriginalBatchRequest} from '../features/gallery/qianmu-gallery-original-contract.js';
 import {recipeArchiveBatchRequest,RECIPE_BATCH_LIMITS} from '../qianmu-recipe-batch-contract.js';
 import {chatGallerySupplementRequest,projectChatGallerySupplement,chatGallerySupplementDigest,chatGallerySupplementResponse} from '../features/chat/qianmu-chat-gallery-supplement.js';
 

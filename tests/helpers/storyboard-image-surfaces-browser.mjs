@@ -15,12 +15,12 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
   const ok=(label,value)=>{assert.ok(value,label);checks.push(label);};
   await page.evaluate(async source=>{
     const [utils,storyboard,info,characters,appearance,preferences,icons,membership,chatSource,shotReader,drafts]=await Promise.all([
-      import('/qianmu-storyboard-utils.js'),import('/qianmu-storyboard.js'),import('/qianmu-image-info-view.js'),
+      import('/qianmu-storyboard-utils.js'),import('/qianmu-storyboard.js'),import('/features/gallery/qianmu-image-info-view.js'),
       import('/features/character/qianmu-character-shot-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),
-      import('/qianmu-icon-renderer.js'),import('/qianmu-gallery-membership.js'),import('/qianmu-current-chat-source.js'),
-      import('/qianmu-gallery-shot-reader.js'),import('/features/video/qianmu-video-draft.js')]);
+      import('/qianmu-icon-renderer.js'),import('/features/gallery/qianmu-gallery-membership.js'),import('/qianmu-current-chat-source.js'),
+      import('/features/gallery/qianmu-gallery-shot-reader.js'),import('/features/video/qianmu-video-draft.js')]);
     Object.assign(window,utils,storyboard,info,icons,membership,chatSource,shotReader);
-    Object.assign(window,await import('/qianmu-image-zoom.js'));
+    Object.assign(window,await import('/features/gallery/qianmu-image-zoom.js'));
     const state=storyboard.createStoryboardDefaults();state.enabled=true;state.source='comfy';
     const store={},metadata={story_director_liminale:store};
     const host={chatId:'surface-fixture',characterId:0,characters:[{avatar:'fixture.png',chat:'surface-fixture'}],chatMetadata:metadata,chat:[{mes:'Synthetic test prose.'}]};
@@ -61,7 +61,7 @@ export async function checkStoryboardImageSurfacesBrowser(page) {
     window.featureRuntime={load:async name=>{
       if(window.runtimeGate?.name===name){const gate=runtimeGate;gate.entered=true;await gate.promise;if(gate.fail)throw Error('Delayed fixture runtime failure');}
       if(name==='imageAdmission')return {resolveImageAccountNamespace:async()=> 'st-user:surface-fixture'};
-      if(name==='imageZoom')return import('/qianmu-image-zoom.js');
+      if(name==='imageZoom')return import('/features/gallery/qianmu-image-zoom.js');
       if(name==='characterShotEditor')return characters;
       if(name==='videoDraft')return drafts;
       if(name==='videoDraftStore')return {createVideoDraftStoreAdapter:()=>draftStore};
