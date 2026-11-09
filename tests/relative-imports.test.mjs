@@ -73,3 +73,14 @@ test('relayout rewrites escaped source-text regex paths in tests', async () => {
   }
   assert.ok(!plan.unresolved.some(line => line.includes(String.raw`\.\/qianmu-notes\.js`)));
 });
+
+test('relayout rewrites root-served file names in browser check scripts', async () => {
+  const { planRelayout } = await import('../scripts/relayout.mjs');
+  const plan = await planRelayout([{ from: 'qianmu-chat-file-target.js', to: 'relayout-probe/qianmu-chat-file-target.js' }]);
+  const served = [...plan.edits].filter(([file, { notes }]) => file.startsWith('scripts/') && notes.some(note => note.endsWith('(served root)')));
+  assert.ok(served.length, 'some browser check serves the module by its root file name');
+  for (const [, { next }] of served) {
+    assert.ok(next.includes("'relayout-probe/qianmu-chat-file-target.js'"));
+    assert.ok(!next.includes("'qianmu-chat-file-target.js'"));
+  }
+});

@@ -75,6 +75,17 @@ export async function planRelayout(moves) {
         return map.has(target) ? (notes.push(`${target} -> ${map.get(target)} (source-text regex)`), `\\.\\/${escapeRegexPath(map.get(target))}`) : whole;
       });
     }
+    // Browser checks/previews in scripts/ serve the repo root as the page root: a quoted root file name
+    // ('x.js', '/x.js', './x.js' in page code, optional ?query) is a repo-root path there, read back with
+    // readFile('../' + file) or '..' + url.pathname. Rewritten to the moved repo-root path in the same form.
+    if (file.startsWith('scripts/')) {
+      next = next.replace(/(['"`])(\.\/|\/)?([\w.-]+\.(?:m?js|css))((?:\?[^'"`\s]*)?)\1/g, (whole, quote, lead = '', name, query) => {
+        if (!map.has(name) || name.includes('/')) return whole;
+        if (lead === './' && trackedSet.has(posix.join(posix.dirname(file), name))) return whole;
+        notes.push(`${lead}${name} -> ${lead}${map.get(name)} (served root)`);
+        return `${quote}${lead}${map.get(name)}${query}${quote}`;
+      });
+    }
     // Anything still naming a moved file outside a correctly resolving literal needs a human look.
     const targets = new Set(map.values());
     const home = posix.dirname(newPath(file));
@@ -82,7 +93,7 @@ export async function planRelayout(moves) {
       const rest = line
         .replace(literal, (whole, quote, specifier) => targets.has(posix.normalize(posix.join(home, specifier))) ? '' : whole)
         .replace(/"([^"]+)"/g, (whole, value) => file === 'release-files.json' && targets.has(value) ? '' : whole)
-        .replace(/(['"])\/?([\w.-]+\/[\w./-]+)\1/g, (whole, quote, value) => targets.has(value) ? '' : whole)
+        .replace(/(['"`])(?:\.?\/)?([\w.-]+\/[\w./-]+?)(?:\?[^'"`\s]*)?\1/g, (whole, quote, value) => targets.has(value) ? '' : whole)
         .replace(ESCAPED_ROOT_PATH, (whole, escapedPath) => targets.has(escapedPath.replace(/\\/g, '')) ? '' : whole);
       if ([...rest.matchAll(mention)].length) unresolved.push(`${file}: ${line.trim().slice(0, 160)}`);
     }
