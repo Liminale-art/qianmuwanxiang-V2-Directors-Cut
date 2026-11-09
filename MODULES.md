@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 673 个，其中 `qianmu-*` 模块 656 个。
+根目录文件 671 个，其中 `qianmu-*` 模块 654 个。
 
 ## 入口、宿主与安装
 
@@ -32,7 +32,7 @@
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
 | `scripts/` | 157 |
-| `tests/` | 960 |
+| `tests/` | 958 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -259,11 +259,10 @@
 | `qianmu-runninghub-results.js` | 是 | RH v2 owns task/status and, when supplied, output-node evidence. Only older |
 | `qianmu-runninghub-usage.js` | 是 | Task-level reported usage, never a price estimate or per-image sum. |
 
-## 图库与图片（77）
+## 图库与图片（75）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-cover-layout.js` | 否 | 封面母版的纯几何层：只接收面板可用空间，不读取主题、图片或浏览器状态。 |
 | `qianmu-gallery-archive-coordinator.js` | 是 | One idle, add-only preservation pass per settled source. No startup scan, |
 | `qianmu-gallery-archive-evidence.js` | 是 |  |
 | `qianmu-gallery-archive-original.js` | 是 |  |
@@ -318,7 +317,6 @@
 | `qianmu-gallery-taxonomy.js` | 是 |  |
 | `qianmu-gallery-window.js` | 是 | Display-only paging. Full records and selection remain owned by the gallery; |
 | `qianmu-gallery-write-proposal.js` | 是 |  |
-| `qianmu-image-accent.js` | 否 | Select an accent seed from a caller-owned, already downsampled RGBA image. |
 | `qianmu-image-admission.js` | 是 |  |
 | `qianmu-image-attempt-store.js` | 是 |  |
 | `qianmu-image-attempts.js` | 是 | Pure still-frame admission rules. Persistence must apply each operation inside one |
