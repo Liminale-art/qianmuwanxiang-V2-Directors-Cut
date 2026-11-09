@@ -12,7 +12,7 @@ test('boundary costs use the native ST confirm and only its affirmative result g
     const host = createHost({getContext: () => ctx});
     const scope = {ranges: [{start: 2, end: 4}, {start: 6, end: 8}]};
     assert.equal(await host.confirmStoryBoundary(scope), true);
-    assert.match(calls[0][1], /2—4、6—8/); assert.match(calls[0][1], /调用 2 次/); assert.match(calls[0][1], /可能产生费用/);
+    assert.match(calls[0][1], /1—3、5—7/); assert.match(calls[0][1], /调用 2 次/); assert.match(calls[0][1], /可能产生费用/);
     assert.deepEqual(calls[0][2], {okButton: '继续建立', cancelButton: '取消'});
     for (answer of [0, null, -1, 2, true, '1']) assert.equal(await host.confirmStoryBoundary(scope), false);
     delete ctx.Popup;

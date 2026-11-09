@@ -1,5 +1,5 @@
 // The only ST-facing layer. No direct chat writes, global connection switches or fetch patches.
-import { DEFAULTS, fingerprintMessages } from './contract.mjs';
+import { DEFAULTS, shownFloor, fingerprintMessages } from './contract.mjs';
 import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudget } from './budget.mjs';
 import { createApiSettings } from './api-settings.mjs';
 
@@ -131,7 +131,7 @@ export function createHost({
             || !Number.isSafeInteger(range?.end) || range.start < 1 || range.end < range.start)) throw new Error('续接边界范围无效，未调用总结 API');
         const popup = context().Popup?.show;
         if (typeof popup?.confirm !== 'function') throw new Error('当前 ST 无法确认续接的总结调用，未调用 API，请更新 ST 后重试');
-        const floors = ranges.map(range => `${range.start}—${range.end}`).join('、');
+        const floors = ranges.map(range => `${shownFloor(range.start)}—${shownFloor(range.end)}`).join('、');
         return await popup.confirm('整理续接边界？', `续接需要重新总结第 ${floors} 层，将使用当前总结 API 调用 ${ranges.length} 次，可能产生费用。只处理截止前正文，原聊天保持不变。是否继续？`,
             {okButton: '继续建立', cancelButton: '取消'}) === 1;
     }

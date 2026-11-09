@@ -1,4 +1,4 @@
-import { bindingKey, effectiveSettings, fingerprintMessages } from './contract.mjs';
+import { bindingKey, shownFloor, effectiveSettings, fingerprintMessages } from './contract.mjs';
 import { parseSummary, summaryPrompt } from './core.mjs';
 import { recallFits } from './recall.mjs';
 
@@ -87,7 +87,7 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                     for (const message of boundary.messages) messages[message.floor - 1] = message;
                     const prompt = summaryPrompt(messages, batch, settings);
                     if (!recallFits(prompt, budgetSettings, budgetSnapshot)) throw new Error('截止处原文超出当前整理容量，请调整忆幕连接或选择更早的完整记忆边界');
-                    view.status = `正在整理截止处第 ${batch.start}—${batch.end} 层；不会读取后续剧情。`; emit();
+                    view.status = `正在整理截止处第 ${shownFloor(batch.start)}—${shownFloor(batch.end)} 层；不会读取后续剧情。`; emit();
                     await assertCurrent(snapshot, stamp);
                     const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model, ...(connection ? {connection} : {}) });
                     await assertCurrent(snapshot, stamp);

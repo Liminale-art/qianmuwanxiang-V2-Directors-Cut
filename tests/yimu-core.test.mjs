@@ -353,3 +353,16 @@ test('automatic trigger fires at triggerFloors + 1 unsummarized floors (recent i
     assert.throws(() => validateSettingsFor({ triggerFloors: 2001 }), /超出范围/);
     assert.deepEqual(validateSettingsFor({ triggerFloors: 0 }), { triggerFloors: 0 });
 });
+
+test('floor numbers shown to the user follow ST #0 numbering while storage stays 1-based', async () => {
+    const { shownFloor, floorField, floorValue } = await import('../yimu/contract.mjs');
+    assert.equal(shownFloor(1), 0); assert.equal(shownFloor(15), 14);
+    assert.equal(floorField(1), '0'); assert.equal(floorField(15), '14'); assert.equal(floorField(0), ''); assert.equal(floorField(undefined), '');
+    assert.equal(floorValue('0'), 1); assert.equal(floorValue('14'), 15); assert.equal(floorValue(''), 0); assert.equal(floorValue(' '), 0);
+    for (const floor of [1, 2, 9, 120]) assert.equal(floorValue(floorField(floor)), floor);
+    assert.ok(Number.isNaN(floorValue('abc')));
+    // The manual range validator still rejects what an empty or invalid field converts to.
+    const live = Array.from({ length: 3 }, (_, i) => ({ mes: `正文${i}` }));
+    assert.throws(() => planManualRange(null, live, DEFAULTS, { start: floorValue(''), end: floorValue('2') }), /有效的起止楼层/);
+    assert.throws(() => planManualRange(null, live, DEFAULTS, { start: floorValue('0'), end: floorValue('3') }), /有效的起止楼层/);
+});

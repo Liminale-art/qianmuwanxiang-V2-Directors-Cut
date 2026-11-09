@@ -446,7 +446,7 @@ test('manual partial overlap requires visible expanded bounds, replaces whole au
     const f = await fixture(t); await manualReady(f);
     await manualRange(f, 1, 3); await manualRange(f, 4, 5); await manualRange(f, 6, 7);
     const before = clone(f.controller.state.document.entries), count = f.generated();
-    await assert.rejects(f.controller.action('summarizeRange', {range: {start: 2, end: 4}, expectedRange: {start: 2, end: 4}}), /1—5/);
+    await assert.rejects(f.controller.action('summarizeRange', {range: {start: 2, end: 4}, expectedRange: {start: 2, end: 4}}), /0—4/);
     assert.equal(f.generated(), count);
     f.model(async prompt => {
         const m = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
@@ -503,7 +503,7 @@ test('a transient summary failure retries in the background and reports the save
     assert.equal(attempts, 4);
     assert.equal((await f.api.read(binding)).document.entries.length, 1);
     assert.equal(f.notices.filter(item => item.tone === 'success' && /已存至记忆/.test(item.message)).length, 1);
-    assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：1–2/);
+    assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：0–1/);
 });
 
 test('ST prompt-only regexes do not change Yimu summary sources or floor replacement', async t => {

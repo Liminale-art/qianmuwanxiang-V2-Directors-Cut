@@ -142,13 +142,13 @@ const storyPlan = (binding, patch = {}) => ({ planId: 'plan-one', sourceBinding:
 
 test('story defaults to the last floor and needs only one create action', async t => {
     const f=fixture();t.after(()=>f.view.destroy());f.view.open();
-    assert.equal(f.get('续接楼层').value,'9');assert.equal(f.calls.length,0);assert.equal(f.get('故事延续方式'),undefined);assert.equal(f.get('预览带入内容'),undefined);
+    assert.equal(f.get('续接楼层').value,'8');assert.equal(f.calls.length,0);assert.equal(f.get('故事延续方式'),undefined);assert.equal(f.get('预览带入内容'),undefined);
     f.get('建立新聊天').click();await f.flush();assert.deepEqual(f.calls,[{type:'storyContinue',payload:{cutoff:9}}]);
 });
 
 test('story preserves an edited cutoff across ordinary rendering and validates it before action', async t => {
     const f=fixture();t.after(()=>f.view.destroy());f.get('续接楼层').value='4';f.get('续接楼层').emit('input');f.render({story:{status:''}});
-    assert.equal(f.get('续接楼层').value,'4');f.get('建立新聊天').click();await f.flush();assert.deepEqual(f.calls.at(-1),{type:'storyContinue',payload:{cutoff:4}});
+    assert.equal(f.get('续接楼层').value,'4');f.get('建立新聊天').click();await f.flush();assert.deepEqual(f.calls.at(-1),{type:'storyContinue',payload:{cutoff:5}});
     f.get('续接楼层').value='999';f.get('建立新聊天').click();await f.flush();assert.equal(f.calls.length,1);assert.match(f.notices.at(-1)[0],/有效的续接楼层/);
 });
 
@@ -168,8 +168,8 @@ test('unknown story results can only retry the same operation; completed results
 test('inherited entries retain source chat labels and edit controls but do not offer automatic rewriting', t => {
     const inherited = entry({ origin: { binding: { file: '原故事' }, offset: 0 } });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [inherited] } }); t.after(() => f.view.destroy());
-    assert.equal(sourceLabel(inherited), '原故事 · 第 1–3 层');
-    assert.ok(f.get('编辑原故事 · 第 1–3 层')); assert.equal(f.get('重新总结原故事 · 第 1–3 层'), undefined);
+    assert.equal(sourceLabel(inherited), '原故事 · 第 0–2 层');
+    assert.ok(f.get('编辑原故事 · 第 0–2 层')); assert.equal(f.get('重新总结原故事 · 第 0–2 层'), undefined);
 });
 
 
@@ -254,7 +254,7 @@ test('unacknowledged invalid slices remain in coverage and statistics stay displ
     const stats=f.document.querySelector('.ym-stats');assert.equal(stats.children.length,3);
     assert.ok(stats.children.every(node=>node.tagName==='DIV'));assert.equal(stats.querySelector('button'),null);
     stats.children[2].click();assert.deepEqual(f.calls,[]);
-    assert.equal(f.get('手动总结开始楼层').value,'1'); assert.equal(f.get('手动总结结束楼层').value,'9');
+    assert.equal(f.get('手动总结开始楼层').value,'0'); assert.equal(f.get('手动总结结束楼层').value,'8');
 });
 
 test('pending floor card keeps the kept-raw explanation on hover only', t => {
@@ -266,11 +266,11 @@ test('pending floor card keeps the kept-raw explanation on hover only', t => {
 
 test('compact history controls edit explicit bounds and persist cancellation rather than hiding a temporary form', async t => {
     const f = fixture({document: {...state().document, enabled: true}}); t.after(() => f.view.destroy());
-    assert.match(f.document.querySelector('.ym-history-question').textContent, /是否整理历史楼层 1–9/);
+    assert.match(f.document.querySelector('.ym-history-question').textContent, /是否整理历史楼层 0–8/);
     f.get('调整历史楼层').click();
     f.get('历史开始楼层').value = '8'; f.get('历史结束楼层').value = '3';
     f.get('确认整理历史').click(); await f.flush(); assert.equal(f.calls.length, 0);
-    f.get('历史开始楼层').value = '2'; f.get('历史结束楼层').value = '8';
+    f.get('历史开始楼层').value = '1'; f.get('历史结束楼层').value = '7';
     f.get('确认整理历史').click(); await f.flush();
     assert.deepEqual(f.calls[0], {type: 'history', payload: {range: {start: 2, end: 8, total: 9}}});
     f.get('不整理历史').click(); await f.flush();
@@ -286,7 +286,7 @@ test('hidden prose remains available for explicit summary and the panel never ch
     const original = structuredClone(messages);
     const f = fixture({snapshot:{...state().snapshot,messages},document:{...state().document,enabled:true,autoSummary:false}});
     t.after(()=>f.view.destroy());
-    f.get('手动总结开始楼层').value='1'; f.get('手动总结结束楼层').value='5';
+    f.get('手动总结开始楼层').value='0'; f.get('手动总结结束楼层').value='4';
     f.get('开始总结').click(); await f.flush();
     assert.deepEqual(f.calls[0], {type:'summarizeRange',payload:{range:{start:1,end:5},expectedRange:{start:1,end:5}}});
     assert.deepEqual(messages,original); assert.doesNotMatch(f.document.body.textContent,/已被 ST 隐藏.*不参与整理/);
@@ -295,10 +295,10 @@ test('hidden prose remains available for explicit summary and the panel never ch
 test('partial slice selection is visibly expanded and requires another explicit start before any call', async t => {
     const f=fixture({document:{...state().document,enabled:true,entries:[entry({source:{start:1,end:3}})]}});
     t.after(()=>f.view.destroy());
-    f.get('手动总结开始楼层').value='2'; f.get('手动总结结束楼层').value='2';
+    f.get('手动总结开始楼层').value='1'; f.get('手动总结结束楼层').value='1';
     f.get('开始总结').click(); await f.flush();
-    assert.deepEqual(f.calls,[]); assert.equal(f.get('手动总结开始楼层').value,'1');
-    assert.equal(f.get('手动总结结束楼层').value,'3');
+    assert.deepEqual(f.calls,[]); assert.equal(f.get('手动总结开始楼层').value,'0');
+    assert.equal(f.get('手动总结结束楼层').value,'2');
     assert.match(f.document.querySelector('.ym-manual-range').textContent,/请确认后开始/);
     f.get('开始总结').click(); await f.flush();
     assert.deepEqual(f.calls[0],{type:'summarizeRange',payload:{range:{start:1,end:3},expectedRange:{start:1,end:3}}});
@@ -349,14 +349,14 @@ test('background work never disables the per-chat off action, and reopening a kn
 test('source ordering excludes deleted entries and preserves explicit source-free manual supplements', () => {
     const items = [entry({ id: 'manual', source: null, kind: 'manual' }), entry({ id: 'later', source: { start: 8, end: 12 } }), entry(), entry({ id: 'deleted', status: 'deleted' })];
     assert.deepEqual(orderedEntries(items).map(item => item.id), ['slice-a', 'later', 'manual']);
-    assert.equal(sourceLabel(items[0]), '自定义切片'); assert.equal(sourceLabel(items[2]), '第 1–3 层');
+    assert.equal(sourceLabel(items[0]), '自定义切片'); assert.equal(sourceLabel(items[2]), '第 0–2 层');
 });
 
 test('stage labels retain genuine gaps instead of falsely claiming the whole min-max interval', () => {
     const first = entry(), next = entry({ id: 'slice-b', source: { start: 7, end: 9, hashes: ['d', 'e', 'f'] } });
-    assert.equal(sourceLabel(stage([first, next])), '阶段摘要 · 第 1–3、7–9 层');
+    assert.equal(sourceLabel(stage([first, next])), '阶段摘要 · 第 0–2、6–8 层');
     const adjacent = entry({ id: 'slice-c', source: { start: 4, end: 6, hashes: ['x', 'y', 'z'] } });
-    assert.equal(sourceLabel(stage([first, adjacent])), '阶段摘要 · 第 1–6 层');
+    assert.equal(sourceLabel(stage([first, adjacent])), '阶段摘要 · 第 0–5 层');
 });
 
 test('only active stages with exact valid unedited parents group their fine memories, each fine once', () => {
@@ -391,12 +391,12 @@ test('manual stage selection confirms full slice boundaries, refuses protected r
     const f = fixture({ sourceAvailable: true, document: { enabled: true, settings: {}, entries: [one, two, revised, later, last] } }); t.after(() => f.view.destroy());
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 20 }, () => ({ mes: 'synthetic' })) } });
     stageControl(f).click();
-    assert.equal(f.get('阶段摘要开始楼层').value, '1'); assert.equal(f.get('阶段摘要结束楼层').value, '15');
+    assert.equal(f.get('阶段摘要开始楼层').value, '0'); assert.equal(f.get('阶段摘要结束楼层').value, '14');
     assert.equal(f.get('开始阶段总结').disabled, true, 'a single manual range cannot skip an artificial hole around a protected slice');
-    f.get('阶段摘要结束楼层').value = '6'; f.get('阶段摘要结束楼层').emit('input');
-    f.get('阶段摘要开始楼层').value = '2'; f.get('阶段摘要开始楼层').emit('input');
+    f.get('阶段摘要结束楼层').value = '5'; f.get('阶段摘要结束楼层').emit('input');
+    f.get('阶段摘要开始楼层').value = '1'; f.get('阶段摘要开始楼层').emit('input');
     f.get('开始阶段总结').click(); await f.flush(); assert.equal(f.calls.length, 0);
-    assert.equal(f.get('阶段摘要开始楼层').value, '1', 'first partial-range submission only previews whole-slice alignment');
+    assert.equal(f.get('阶段摘要开始楼层').value, '0', 'first partial-range submission only previews whole-slice alignment');
     assert.match(f.get('忆幕').querySelector('.ym-stage-form').textContent, /已对齐完整切片范围，请确认后开始/);
     f.get('开始阶段总结').click(); await f.flush();
     assert.deepEqual(f.calls, [{ type: 'stage', payload: { start: 1, end: 6, includeCustom: false, expectedRange: { start: 1, end: 6 } } }]);
@@ -412,12 +412,12 @@ test('manual stage selection shares stage ownership rules including stopped, del
         f.render({ document: { ...f.state.document, entries: [one, two, later, last, overview] } });
         assert.equal(stageControl(f).disabled, false);
         stageControl(f).click();
-        assert.equal(f.get('阶段摘要开始楼层').value, '7'); assert.equal(f.get('阶段摘要结束楼层').value, '12');
+        assert.equal(f.get('阶段摘要开始楼层').value, '6'); assert.equal(f.get('阶段摘要结束楼层').value, '11');
         stageControl(f).click();
         f.render({ document: { ...f.state.document, entries: [one, two, overview] } });
         assert.equal(stageControl(f).disabled, false, 'the entry remains available so the user can inspect or select another range');
         stageControl(f).click();
-        f.get('阶段摘要开始楼层').value = '1'; f.get('阶段摘要结束楼层').value = '6'; f.get('阶段摘要结束楼层').emit('input');
+        f.get('阶段摘要开始楼层').value = '0'; f.get('阶段摘要结束楼层').value = '5'; f.get('阶段摘要结束楼层').emit('input');
         assert.equal(f.get('开始阶段总结').disabled, ['excluded', 'deleted'].includes(status), `${status} ownership must be respected by the actual confirmation action`);
         stageControl(f).click();
     }
@@ -432,7 +432,7 @@ test('stage controls reject singleton, disjoint, recent and locally invalid fine
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 14 }, () => ({ mes: 'synthetic' })) } });
     stageControl(f).click();
     assert.equal(f.get('开始阶段总结').disabled, false);
-    f.get('阶段摘要结束楼层').value = '3'; f.get('阶段摘要结束楼层').emit('input');
+    f.get('阶段摘要结束楼层').value = '2'; f.get('阶段摘要结束楼层').emit('input');
     assert.equal(f.get('开始阶段总结').disabled, true);
     f.get('忆幕').querySelector('.ym-stage-form').requestSubmit(); await f.flush(); assert.equal(f.calls.length, 0);
     f.render({ invalidSourceIds: ['slice-b'] }); assert.equal(f.get('开始阶段总结').disabled, true);
@@ -444,13 +444,13 @@ test('stage controls reject singleton, disjoint, recent and locally invalid fine
 test('stage grouping and invalidation do not detach an active fine editor mid-composition', t => {
     const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), overview = stage([one, two]);
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two] } }); t.after(() => f.view.destroy());
-    f.get('编辑第 1–3 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '正在输入'; editor.focus();
+    f.get('编辑第 0–2 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '正在输入'; editor.focus();
     const originalParent = editor.parentNode.parentNode.parentNode;
     f.render({ document: { ...f.state.document, entries: [one, two, overview] } });
     assert.equal(editor.parentNode.parentNode.parentNode, originalParent); assert.equal(f.document.activeElement, editor);
     f.get('取消编辑').click();
     const group = f.get('忆幕').querySelector('.ym-stage-children'); group.open = true;
-    f.get('编辑第 1–3 层').click(); const nestedEditor = f.get('编辑记忆内容'); nestedEditor.focus();
+    f.get('编辑第 0–2 层').click(); const nestedEditor = f.get('编辑记忆内容'); nestedEditor.focus();
     const nestedParent = nestedEditor.parentNode.parentNode.parentNode;
     f.render({ document: { ...f.state.document, entries: [{ ...one, revision: 3 }, two, overview] } });
     assert.equal(nestedEditor.parentNode.parentNode.parentNode, nestedParent); assert.equal(f.document.activeElement, nestedEditor);
@@ -496,14 +496,14 @@ test('the renamed trial switch preserves old global and chat-level false values 
 test('source-backed excerpts show the hydrated quotation and speaker as independent floor-ordered records, not their stored marker', t => {
     const one = entry(), two = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), quote = excerpt({ quoteText: '<img src=x>甲仍未告诉乙。' });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two, stage([one, two]), quote] } }); t.after(() => f.view.destroy());
-    assert.equal(sourceLabel(quote), '回查补充 · 第 2 层');
+    assert.equal(sourceLabel(quote), '回查补充 · 第 1 层');
     const card = f.get('忆幕').querySelector('[data-entry-id="excerpt-one"]');
     assert.equal(card.parentNode, f.get('忆幕').querySelector('.ym-list'));
     assert.equal(card.querySelector('.ym-memory-text').textContent, quote.quoteText);
     assert.equal(card.querySelector('.ym-quote-speaker').textContent, '甲');
     assert.doesNotMatch(card.textContent, /原文补充/); assert.equal(card.querySelector('img'), null);
-    assert.equal(f.get('重新总结回查补充 · 第 2 层'), undefined);
-    assert.ok(f.get('删除回查补充 · 第 2 层')); assert.ok(card.querySelector('.ym-more-actions'));
+    assert.equal(f.get('重新总结回查补充 · 第 1 层'), undefined);
+    assert.ok(f.get('删除回查补充 · 第 1 层')); assert.ok(card.querySelector('.ym-more-actions'));
 });
 
 test('a missing excerpt quotation only reports unavailable source and cannot edit or summarize a placeholder', t => {
@@ -511,8 +511,8 @@ test('a missing excerpt quotation only reports unavailable source and cannot edi
     const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
     const card = f.get('忆幕').querySelector('[data-entry-id="excerpt-one"]');
     assert.match(card.textContent, /原文来源暂不可用/); assert.equal(card.querySelector('.ym-memory-text'), null);
-    assert.doesNotMatch(card.textContent, /原文补充/); assert.equal(f.get('编辑回查补充 · 第 2 层').disabled, true);
-    assert.equal(f.get('重新总结回查补充 · 第 2 层'), undefined);
+    assert.doesNotMatch(card.textContent, /原文补充/); assert.equal(f.get('编辑回查补充 · 第 1 层').disabled, true);
+    assert.equal(f.get('重新总结回查补充 · 第 1 层'), undefined);
     f.render({ document: { ...f.state.document, entries: [{ ...quote, status: 'invalid' }] } });
     assert.equal(card.querySelectorAll('.ym-inline-warning').length, 1);
     assert.equal(f.calls.length, 0);
@@ -520,7 +520,7 @@ test('a missing excerpt quotation only reports unavailable source and cannot edi
 
 test('editing an excerpt starts with the real quotation and sends the normal protected edit action', async t => {
     const quote = excerpt(); const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
-    f.get('编辑回查补充 · 第 2 层').click(); const editor = f.get('编辑记忆内容');
+    f.get('编辑回查补充 · 第 1 层').click(); const editor = f.get('编辑记忆内容');
     assert.equal(editor.value, quote.quoteText);
     editor.value = '用户确认：乙仍不知道信的内容。'; editor.emit('input'); f.get('保存修订').click(); await f.flush();
     assert.deepEqual(f.calls, [{ type: 'edit', payload: { entryId: quote.id, expectedRevision: quote.revision, text: '用户确认：乙仍不知道信的内容。', scenes: [] } }]);
@@ -531,12 +531,12 @@ test('editing an excerpt starts with the real quotation and sends the normal pro
 test('excerpt deletion, exclusion and undo retain ordinary entry actions without a re-summary route', async t => {
     const quote = excerpt({ history: [{ status: 'active' }] });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [quote] } }); t.after(() => f.view.destroy());
-    f.get('更多回查补充 · 第 2 层').click(); f.get('将此切片注入屏蔽').click(); await f.flush();
-    f.get('删除回查补充 · 第 2 层').click(); await f.flush();
+    f.get('更多回查补充 · 第 1 层').click(); f.get('将此切片注入屏蔽').click(); await f.flush();
+    f.get('删除回查补充 · 第 1 层').click(); await f.flush();
     f.render({ document: { ...f.state.document, entries: [{ ...quote, status: 'deleted' }] } });
     const removed = f.get('忆幕').querySelector('.ym-deleted');
     assert.match(removed.textContent, /甲将那封信藏进抽屉/); assert.doesNotMatch(removed.textContent, /原文补充/);
-    f.get('撤回删除回查补充 · 第 2 层').click(); await f.flush();
+    f.get('撤回删除回查补充 · 第 1 层').click(); await f.flush();
     assert.deepEqual(f.calls.map(call => call.payload.action), ['exclude', 'delete', 'undo']);
 });
 
@@ -559,7 +559,7 @@ test('deleted memories remain absent from active cards but expose an explicit un
     const f = fixture({ document: { enabled: true, settings: {}, entries: [removed] } }); t.after(() => f.view.destroy());
     assert.equal(f.get('忆幕').querySelector('.ym-list').children.length, 0);
     assert.equal(f.get('忆幕').querySelector('.ym-deleted').open, false);
-    f.get('撤回删除第 1–3 层').click(); await f.flush();
+    f.get('撤回删除第 0–2 层').click(); await f.flush();
     assert.deepEqual(f.calls[0], { type: 'entry', payload: { entryId: 'slice-a', expectedRevision: 2, action: 'undo' } });
 });
 
@@ -567,7 +567,7 @@ test('locally stopped but not yet server-confirmed state remains visibly off and
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] }, paused: true }); t.after(() => f.view.destroy());
     assert.equal(f.get('启用忆幕').checked, false);
     assert.equal(f.get('开始总结').disabled, true);
-    assert.equal(Boolean(f.get('重新总结第 1–3 层').disabled), true);
+    assert.equal(Boolean(f.get('重新总结第 0–2 层').disabled), true);
 });
 
 test('all memory, draft and candidate text remains literal text instead of executable markup', t => {
@@ -579,7 +579,7 @@ test('all memory, draft and candidate text remains literal text instead of execu
 
 test('entry edits retain the exact editor and original revision during background refresh, then save against that revision', async t => {
     const initial = entry(); const f = fixture({ document: { enabled: true, settings: {}, entries: [initial] } }); t.after(() => f.view.destroy());
-    f.get('编辑第 1–3 层').click(); const input = f.get('编辑记忆内容'); input.value = '我的人工修订'; input.emit('input'); input.focus();
+    f.get('编辑第 0–2 层').click(); const input = f.get('编辑记忆内容'); input.value = '我的人工修订'; input.emit('input'); input.focus();
     const remote = entry({ revision: 3, text: '另一设备的新版本' });
     f.render({ document: { ...f.state.document, entries: [remote] }, status: '正在整理其他片段…' });
     assert.equal(f.get('编辑记忆内容'), input); assert.equal(f.document.activeElement, input); assert.equal(input.value, '我的人工修订');
@@ -591,15 +591,15 @@ test('entry edits retain the exact editor and original revision during backgroun
 
 test('a failed edit leaves its draft visible; cancel restores controls without modifying source or saved memory', async t => {
     const initial = entry(); const f = fixture({ document: { enabled: true, settings: {}, entries: [initial] } }, () => { throw Error('保存未确认'); }); t.after(() => f.view.destroy());
-    f.get('编辑第 1–3 层').click(); f.get('编辑记忆内容').value = 'draft'; f.get('保存修订').click(); await f.flush();
+    f.get('编辑第 0–2 层').click(); f.get('编辑记忆内容').value = 'draft'; f.get('保存修订').click(); await f.flush();
     assert.equal(f.get('编辑记忆内容').value, 'draft'); assert.match(f.all().find(node => node.attrs.role === 'status').textContent, /保存未确认/);
-    f.get('取消编辑').click(); assert.equal(f.get('编辑记忆内容'), undefined); assert.ok(f.get('编辑第 1–3 层'));
+    f.get('取消编辑').click(); assert.equal(f.get('编辑记忆内容'), undefined); assert.ok(f.get('编辑第 0–2 层'));
     assert.equal(initial.text, '两人第一次约会。甲没有得知乙的秘密。');
 });
 
 test('source changes and saved conflict choices appear inline while the active draft and focus stay connected', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry({ edited: true })] } }); t.after(() => f.view.destroy());
-    f.get('编辑第 1–3 层').click(); const input = f.get('编辑记忆内容'); input.value = '尚未完成的修订'; input.focus();
+    f.get('编辑第 0–2 层').click(); const input = f.get('编辑记忆内容'); input.value = '尚未完成的修订'; input.focus();
     f.render({ document: { ...f.state.document, entries: [entry({ edited: true, revision: 3, status: 'invalid', conflicts: [{ id: 'another', text: '另一端已保存的候选' }] })] } });
     assert.equal(f.get('编辑记忆内容'), input); assert.equal(input.isConnected, true); assert.equal(f.document.activeElement, input);
     assert.equal(input.value, '尚未完成的修订');
@@ -611,7 +611,7 @@ test('candidate and device-conflict decisions explicitly identify the record rev
     const current = entry({ edited: true, status: 'invalid', history: [{ text: 'old', revision: 1 }], candidate: { text: '新候选' }, conflicts: [{ id: 'conflict-b', text: '另一端修改' }] });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [current] } }); t.after(() => f.view.destroy());
     f.get('采用候选').click(); await f.flush(); f.get('保留已保存版本').click(); await f.flush();
-    f.get('更多第 1–3 层').click(); f.get('撤回上次修改').click(); await f.flush(); f.get('保留为自定义切片').click(); await f.flush();
+    f.get('更多第 0–2 层').click(); f.get('撤回上次修改').click(); await f.flush(); f.get('保留为自定义切片').click(); await f.flush();
     assert.deepEqual(f.calls.map(call => call.payload), [
         { entryId: 'slice-a', expectedRevision: 2, action: 'acceptCandidate' },
         { entryId: 'slice-a', expectedRevision: 2, action: 'discardConflict', conflictId: 'conflict-b' },
@@ -671,8 +671,8 @@ test('there is no redundant batch setting and the two per-entry limits are valid
 
 test('unverified source disables all summary launch controls while keeping manual records editable', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] }, sourceAvailable: false, error: '当前聊天原件尚未通过核对' }); t.after(() => f.view.destroy());
-    for (const label of ['开始总结', '重新总结失败部分', '重新总结第 1–3 层']) assert.equal(f.get(label).disabled, true, label);
-    assert.equal(f.get('插入自定义切片').disabled, false); assert.equal(f.get('编辑第 1–3 层').disabled, false);
+    for (const label of ['开始总结', '重新总结失败部分', '重新总结第 0–2 层']) assert.equal(f.get(label).disabled, true, label);
+    assert.equal(f.get('插入自定义切片').disabled, false); assert.equal(f.get('编辑第 0–2 层').disabled, false);
 });
 
 test('a successful settings save does not conceal the fact that an unverified chat cannot use memories', t => {
@@ -701,8 +701,8 @@ test('a stage source change keeps the review border but does not show a misleadi
 
 test('redo controls react to background busy changes without rebuilding or losing an entry editor', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] } }); t.after(() => f.view.destroy());
-    const redo = f.get('重新总结第 1–3 层'); assert.equal(redo.disabled, false);
-    f.get('编辑第 1–3 层').click(); const editor = f.get('编辑记忆内容'); editor.value = 'still editing';
+    const redo = f.get('重新总结第 0–2 层'); assert.equal(redo.disabled, false);
+    f.get('编辑第 0–2 层').click(); const editor = f.get('编辑记忆内容'); editor.value = 'still editing';
     f.render({ busy: true }); assert.equal(redo.disabled, true); assert.equal(f.get('编辑记忆内容'), editor);
     f.render({ busy: false }); assert.equal(redo.disabled, false); assert.equal(editor.value, 'still editing');
 });
@@ -791,7 +791,7 @@ test('the recent request shows an excerpt quotation from its saved snapshot, not
     const usedQuote = excerpt({ quoteText: '请求当时原文仍是秘密。', quoteSpeaker: '乙' });
     const f = fixture({ lastUsed: { entries: [usedQuote], tokens: 100 }, document: { enabled: true, settings: {}, entries: [excerpt({ quoteText: '之后重新读取的内容。' })] } }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
-    assert.match(used.textContent, /回查补充 · 第 2 层/); assert.match(used.textContent, /请求当时原文仍是秘密/);
+    assert.match(used.textContent, /回查补充 · 第 1 层/); assert.match(used.textContent, /请求当时原文仍是秘密/);
     assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/); assert.match(used.querySelector('p').title, /不代表模型已接收/);
     assert.equal(usedQuote.quoteText, '请求当时原文仍是秘密。');
 });
@@ -983,7 +983,7 @@ test('navigation and reopening retain each scroll position, search and exact edi
     const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] } }); t.after(() => f.view.destroy());
     f.view.open(); f.get('记忆').click();
     const scroller = f.document.querySelector('.ym-scroll'); scroller.scrollTop = 120;
-    f.get('编辑第 1–3 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '未保存的修订'; editor.emit('input');
+    f.get('编辑第 0–2 层').click(); const editor = f.get('编辑记忆内容'); editor.value = '未保存的修订'; editor.emit('input');
     const search = f.get('搜索记忆'); search.value = '约会'; search.emit('input');
     f.get('设置').click(); scroller.scrollTop = 70;
     f.get('正文保留层数').value = '8'; f.get('正文保留层数').emit('input');
@@ -1096,19 +1096,19 @@ test('search and attention filters do not hide active edits or mutate memory', t
     const one = entry(), other = entry({ id: 'other', text: '雨后重逢', status: 'invalid', source: { start: 4, end: 6 } });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, other] } }); t.after(() => f.view.destroy());
     f.get('记忆').click(); const search = f.get('搜索记忆'); search.value = '雨后'; search.emit('input');
-    assert.equal(f.get('编辑第 1–3 层').closest('.ym-memory').hidden, true);
-    assert.equal(f.get('编辑第 4–6 层').closest('.ym-memory').hidden, false);
-    f.get('编辑第 4–6 层').click(); search.value = '不存在'; search.emit('input');
-    assert.equal(f.get('编辑第 4–6 层').closest('.ym-memory').hidden, false, 'active draft stays accessible');
+    assert.equal(f.get('编辑第 0–2 层').closest('.ym-memory').hidden, true);
+    assert.equal(f.get('编辑第 3–5 层').closest('.ym-memory').hidden, false);
+    f.get('编辑第 3–5 层').click(); search.value = '不存在'; search.emit('input');
+    assert.equal(f.get('编辑第 3–5 层').closest('.ym-memory').hidden, false, 'active draft stays accessible');
     f.get('取消编辑').click(); search.value = ''; search.emit('input');
     f.get('筛选记忆').value = 'attention'; f.get('筛选记忆').emit('change');
-    assert.equal(f.get('编辑第 1–3 层').closest('.ym-memory').hidden, true);
-    assert.equal(f.get('编辑第 4–6 层').closest('.ym-memory').hidden, false); assert.deepEqual(f.calls, []);
+    assert.equal(f.get('编辑第 0–2 层').closest('.ym-memory').hidden, true);
+    assert.equal(f.get('编辑第 3–5 层').closest('.ym-memory').hidden, false); assert.deepEqual(f.calls, []);
 });
 
 test('a save in flight cannot submit twice or erase newer typing, and subsequent save uses the confirmed revision', async t => {
     let finish; const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] } }, () => new Promise(resolve => { finish = resolve; }));
-    t.after(() => f.view.destroy()); f.get('记忆').click(); f.get('编辑第 1–3 层').click();
+    t.after(() => f.view.destroy()); f.get('记忆').click(); f.get('编辑第 0–2 层').click();
     const editor = f.get('编辑记忆内容'); editor.value = '第一版'; editor.emit('input'); f.get('保存修订').click(); await f.flush();
     editor.value = '第一版之后继续输入'; editor.emit('input'); f.get('保存修订').click();
     assert.equal(f.calls.length, 1); assert.equal(f.get('保存修订').disabled, true);
@@ -1122,18 +1122,18 @@ test('a previously hidden slice becomes visible inside a newly grouped stage whe
     const one = entry(), two = entry({ id: 'two', text: '雨后重逢', source: { start: 4, end: 6 } });
     const f = fixture({ document: { enabled: true, settings: {}, entries: [one, two] } }); t.after(() => f.view.destroy());
     const search = f.get('搜索记忆'); search.value = '雨后'; search.emit('input');
-    assert.equal(f.get('编辑第 1–3 层').closest('.ym-memory').hidden, true);
+    assert.equal(f.get('编辑第 0–2 层').closest('.ym-memory').hidden, true);
     f.render({ document: { ...f.state.document, entries: [one, two, stage([one, two])] } });
     search.value = ''; search.emit('input');
-    assert.equal(f.get('编辑第 1–3 层').closest('.ym-memory').hidden, false);
-    assert.equal(f.get('编辑第 4–6 层').closest('.ym-memory').hidden, false);
+    assert.equal(f.get('编辑第 0–2 层').closest('.ym-memory').hidden, false);
+    assert.equal(f.get('编辑第 3–5 层').closest('.ym-memory').hidden, false);
 });
 
 test('a canceled save finishing late cannot close a newly opened editor for the same memory', async t => {
     let finish; const f = fixture({ document: { enabled: true, settings: {}, entries: [entry()] } }, () => new Promise(resolve => { finish = resolve; }));
-    t.after(() => f.view.destroy()); f.get('记忆').click(); f.get('编辑第 1–3 层').click();
+    t.after(() => f.view.destroy()); f.get('记忆').click(); f.get('编辑第 0–2 层').click();
     f.get('编辑记忆内容').value = '较早保存'; f.get('保存修订').click(); await f.flush();
-    f.get('取消编辑').click(); f.get('编辑第 1–3 层').click(); const fresh = f.get('编辑记忆内容'); fresh.value = '新的未保存草稿';
+    f.get('取消编辑').click(); f.get('编辑第 0–2 层').click(); const fresh = f.get('编辑记忆内容'); fresh.value = '新的未保存草稿';
     finish(true); await f.flush(); assert.equal(f.get('编辑记忆内容'), fresh); assert.equal(fresh.value, '新的未保存草稿');
 });
 
@@ -1158,14 +1158,14 @@ test('manual summary default follows the unsummarized range until the user edits
     const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
     const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
     t.after(() => f.view.destroy());
-    assert.equal(f.get('手动总结开始楼层').value, '4'); assert.equal(f.get('手动总结结束楼层').value, '9');
+    assert.equal(f.get('手动总结开始楼层').value, '3'); assert.equal(f.get('手动总结结束楼层').value, '8');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(11) } });
-    assert.equal(f.get('手动总结开始楼层').value, '4'); assert.equal(f.get('手动总结结束楼层').value, '11');
+    assert.equal(f.get('手动总结开始楼层').value, '3'); assert.equal(f.get('手动总结结束楼层').value, '10');
     f.render({ document: { ...f.state.document, entries: [entry({ source: { start: 1, end: 3 } }), entry({ id: 'slice-b', source: { start: 4, end: 6 } })] } });
-    assert.equal(f.get('手动总结开始楼层').value, '7'); assert.equal(f.get('手动总结结束楼层').value, '11');
-    f.get('手动总结开始楼层').value = '2';
+    assert.equal(f.get('手动总结开始楼层').value, '6'); assert.equal(f.get('手动总结结束楼层').value, '10');
+    f.get('手动总结开始楼层').value = '1';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(12) } });
-    assert.equal(f.get('手动总结开始楼层').value, '2'); assert.equal(f.get('手动总结结束楼层').value, '11');
+    assert.equal(f.get('手动总结开始楼层').value, '1'); assert.equal(f.get('手动总结结束楼层').value, '10');
     assert.deepEqual(f.calls, []);
 });
 
@@ -1174,52 +1174,52 @@ test('manual summary range follows deleted floors and resets an edit that no lon
     const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
     t.after(() => f.view.destroy());
     const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
-    assert.equal(start.value, '4'); assert.equal(end.value, '9');
+    assert.equal(start.value, '3'); assert.equal(end.value, '8');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
-    assert.equal(start.value, '4'); assert.equal(end.value, '7'); assert.equal(end.max, '7');
+    assert.equal(start.value, '3'); assert.equal(end.value, '6'); assert.equal(end.max, '6');
     // A swipe/edit that keeps the count leaves the default as is.
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
-    assert.equal(start.value, '4'); assert.equal(end.value, '7');
+    assert.equal(start.value, '3'); assert.equal(end.value, '6');
     // A typed range that still fits is kept after a deletion.
-    start.value = '2'; end.value = '5';
+    start.value = '1'; end.value = '4';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(6) } });
-    assert.equal(start.value, '2'); assert.equal(end.value, '5');
+    assert.equal(start.value, '1'); assert.equal(end.value, '4');
     // Once the deletion leaves it out of range it is replaced by the new default.
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(4) } });
-    assert.equal(start.value, '4'); assert.equal(end.value, '4');
+    assert.equal(start.value, '3'); assert.equal(end.value, '3');
     // The replacement is auto again, so later floors are followed.
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(8) } });
-    assert.equal(start.value, '4'); assert.equal(end.value, '8');
+    assert.equal(start.value, '3'); assert.equal(end.value, '7');
     // Deleting into summarized floors falls back to the whole remaining chat.
-    start.value = '6'; end.value = '8';
+    start.value = '5'; end.value = '7';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(3) } });
-    assert.equal(start.value, '3'); assert.equal(end.value, '3');
+    assert.equal(start.value, '2'); assert.equal(end.value, '2');
     f.render({ snapshot: { ...f.state.snapshot, messages: [] } });
-    assert.equal(start.value, '1'); assert.equal(end.value, '0');
+    assert.equal(start.value, '0'); assert.equal(end.value, '', 'an empty chat has no last floor to show');
     assert.deepEqual(f.calls, []);
 });
 
 test('a focused manual range field is not rewritten until the user leaves it', t => {
     const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
     const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
-    const end = f.get('手动总结结束楼层'); end.focus(); end.value = '9';
+    const end = f.get('手动总结结束楼层'); end.focus(); end.value = '8';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
-    assert.equal(end.value, '9');
+    assert.equal(end.value, '8');
     f.document.activeElement = null; f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
-    assert.equal(end.value, '5');
+    assert.equal(end.value, '4');
 });
 
 test('an initially empty chat receives usable ranges without replacing an edited range on later refreshes', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: null }, snapshot: { binding: { avatar: 'empty.png', file: 'empty' }, messages: [] } });
     t.after(() => f.view.destroy());
-    assert.equal(f.get('手动总结结束楼层').value, '0');
+    assert.equal(f.get('手动总结结束楼层').value, '');
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 8 }, () => ({ mes: '正文' })) } });
-    assert.equal(f.get('手动总结结束楼层').value, '8');
-    assert.equal(f.get('历史结束楼层').value, '8');
-    f.get('手动总结结束楼层').value = '4'; f.get('历史结束楼层').value = '6';
+    assert.equal(f.get('手动总结结束楼层').value, '7');
+    assert.equal(f.get('历史结束楼层').value, '7');
+    f.get('手动总结结束楼层').value = '3'; f.get('历史结束楼层').value = '5';
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 10 }, () => ({ mes: '正文' })) } });
-    assert.equal(f.get('手动总结结束楼层').value, '4');
-    assert.equal(f.get('历史结束楼层').value, '6'); assert.deepEqual(f.calls, []);
+    assert.equal(f.get('手动总结结束楼层').value, '3');
+    assert.equal(f.get('历史结束楼层').value, '5'); assert.deepEqual(f.calls, []);
 });
 
 test('a new custom slice save retains newer time and prose edits in the same editor until confirmed', async t => {
@@ -1239,8 +1239,8 @@ test('a new custom slice save retains newer time and prose edits in the same edi
 test('an existing slice edits time and prose in place and keeps newer typing across an in-flight save', async t => {
     let finish; const initial = entry({scenes:[{date:'五月十日',period:'清晨',place:'车站',characters:['甲'],nature:'present',event:'告别',evidence:{floors:[1]}}]});
     const f = fixture({ document: { enabled: true, settings: {}, entries: [initial] } }, () => new Promise(resolve => { finish = resolve; })); t.after(() => f.view.destroy());
-    f.get('编辑第 1–3 层').click(); const text = f.get('编辑记忆内容');
-    const card=f.get('编辑第 1–3 层').closest('.ym-memory');assert.equal(card.querySelectorAll('textarea').length,1);
+    f.get('编辑第 0–2 层').click(); const text = f.get('编辑记忆内容');
+    const card=f.get('编辑第 0–2 层').closest('.ym-memory');assert.equal(card.querySelectorAll('textarea').length,1);
     assert.equal(card.querySelector('.ym-memory-content').hidden,true);assert.ok(f.get('保存修订').closest('.ym-memory-head'));assert.equal(f.get('保存修订').textContent,'');
     assert.match(text.value,/五月十日.*清晨.*车站/);assert.equal(f.get('场景1日期'),undefined);
     text.value=text.value.replace('五月十日','五月十一日');text.emit('input');
@@ -1301,7 +1301,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.21 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.22 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1309,7 +1309,7 @@ test('the paired update notice is visible in settings without leaking a memory n
 
 test('the same redo button can stop its own pending action without submitting another model job', async t => {
     let finish;const f=fixture({document:{...state().document,enabled:true,entries:[entry()]}},type=>type==='redo'?new Promise(resolve=>{finish=resolve;}):true);t.after(()=>f.view.destroy());
-    f.get('记忆').click();const redo=f.get('重新总结第 1–3 层');redo.click();await f.flush();assert.equal(f.calls.length,1);assert.equal(redo.disabled,true);
+    f.get('记忆').click();const redo=f.get('重新总结第 0–2 层');redo.click();await f.flush();assert.equal(f.calls.length,1);assert.equal(redo.disabled,true);
     f.render({busy:true,activeEntryId:'slice-a'});assert.equal(redo.disabled,false);assert.match(redo.getAttribute('aria-label'),/停止总结/);
     redo.click();await f.flush();assert.deepEqual(f.calls.map(item=>item.type),['redo','stop']);assert.equal(f.calls[1].payload.entryId,'slice-a');
     f.render({busy:false,activeEntryId:null});finish(true);await f.flush();assert.equal(redo.disabled,false);assert.match(redo.getAttribute('aria-label'),/重新总结/);
@@ -1322,9 +1322,9 @@ test('only custom slices have a leading drag handle and deleted records use the 
     assert.equal(ordinary.querySelector('.ym-custom-drag'),null);assert.equal(manual.querySelector('summary').children[0],manual.querySelector('.ym-custom-drag'));
     assert.equal(manual.querySelector('.ym-custom-drag').draggable,true);
     const deleted=f.document.querySelector('[data-entry-id="gone"]');assert.equal(deleted.tagName,'DETAILS');assert.equal(deleted.open,false);
-    const undo=f.get('撤回删除第 5–6 层');assert.equal(undo.closest('.ym-memory-head'),deleted.querySelector('summary'));assert.equal(undo.textContent,'撤回');
+    const undo=f.get('撤回删除第 4–5 层');assert.equal(undo.closest('.ym-memory-head'),deleted.querySelector('summary'));assert.equal(undo.textContent,'撤回');
     deleted.open=true;f.render({status:'后台刷新'});assert.equal(f.document.querySelector('[data-entry-id="gone"]').open,true);
-    f.get('撤回删除第 5–6 层').click();await f.flush();assert.equal(f.calls[0].payload.action,'undo');
+    f.get('撤回删除第 4–5 层').click();await f.flush();assert.equal(f.calls[0].payload.action,'undo');
 });
 
 test('autosave coalesces typing and drains newer edits only after the earlier save is acknowledged', async t => {
@@ -1408,7 +1408,7 @@ test('slice headings have short names, custom accent class and at most ten recov
     const marker=entry({id:'discarded',text:'已删除',status:'deleted',discarded:true});
     const replaced=entry({id:'internal-stage',kind:'stage',status:'deleted',replacedBy:'new-stage',deletedRevision:999,history:[{status:'active'}]});
     const f=fixture({document:{...state().document,entries:[summary,custom,...removed,marker,replaced]}});t.after(()=>f.view.destroy());
-    const first=f.document.querySelector('[data-entry-id="slice-a"]');assert.equal(first.querySelector('.ym-entry-range').textContent,'楼层1-3');assert.equal(first.querySelector('.ym-entry-name').textContent,'雨夜重逢');
+    const first=f.document.querySelector('[data-entry-id="slice-a"]');assert.equal(first.querySelector('.ym-entry-range').textContent,'楼层0-2');assert.equal(first.querySelector('.ym-entry-name').textContent,'雨夜重逢');
     assert.ok(f.document.querySelector('[data-entry-id="custom"]').querySelector('.ym-custom-name'));
     const rows=f.document.querySelector('.ym-deleted-body').children;assert.equal(rows.length,10);assert.equal(rows[0].dataset.entryId,'removed11');
     assert.equal(f.document.querySelector('[data-entry-id="discarded"]'),null);assert.equal(rows[0].querySelector('.ym-undo-tag').textContent,'撤回');
@@ -1421,7 +1421,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.21'); assert.equal(pkg.version, '0.8.10');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.22'); assert.equal(pkg.version, '0.8.10');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

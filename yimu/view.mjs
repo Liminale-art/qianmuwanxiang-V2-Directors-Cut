@@ -7,7 +7,7 @@ import { manualRangeDefault, planManualRange, summaryCoverage } from './core.mjs
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
-import { FRONTEND_VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText } from './contract.mjs';
+import { FRONTEND_VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText, shownFloor, floorField, floorValue } from './contract.mjs';
 import { orderedEntries as timelineEntries, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
@@ -48,8 +48,8 @@ export function sourceLabel(entry) {
 }
 
 function localSourceLabel(entry) {
-    if (!entry?.source) return entry?.placement ? `自定义切片 · 第 ${entry.placement.fromFloor} 层后` : '自定义切片';
-    if (entry.kind === 'excerpt') return `回查补充 · 第 ${entry.source.start} 层`;
+    if (!entry?.source) return entry?.placement ? `自定义切片 · 第 ${shownFloor(entry.placement.fromFloor)} 层后` : '自定义切片';
+    if (entry.kind === 'excerpt') return `回查补充 · 第 ${shownFloor(entry.source.start)} 层`;
     if (entry.kind === 'stage') {
         const ranges = [];
         for (const range of [...(entry.source.ranges || [])].sort((a, b) => a.start - b.start)) {
@@ -57,9 +57,9 @@ function localSourceLabel(entry) {
             if (previous && range.start <= previous.end + 1) previous.end = Math.max(previous.end, range.end);
             else ranges.push({ start: range.start, end: range.end });
         }
-        return `阶段摘要 · 第 ${ranges.map(range => range.start === range.end ? range.start : `${range.start}–${range.end}`).join('、')} 层`;
+        return `阶段摘要 · 第 ${ranges.map(range => range.start === range.end ? shownFloor(range.start) : `${shownFloor(range.start)}–${shownFloor(range.end)}`).join('、')} 层`;
     }
-    return `第 ${entry.source.start}–${entry.source.end} 层`;
+    return `第 ${shownFloor(entry.source.start)}–${shownFloor(entry.source.end)} 层`;
 }
 
 export function orderedEntries(entries = [], entryOrder = []) {
@@ -254,7 +254,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const rangeForm = el('form', 'ym-range ym-history-range');
     rangeForm.hidden = true;
     const rangeStart = el('input', 'ym-range-input'), rangeEnd = el('input', 'ym-range-input');
-    for (const input of [rangeStart, rangeEnd]) { input.type = 'number'; input.min = '1'; input.required = true; }
+    for (const input of [rangeStart, rangeEnd]) { input.type = 'number'; input.min = '0'; input.required = true; }
     rangeStart.setAttribute('aria-label', '历史开始楼层'); rangeEnd.setAttribute('aria-label', '历史结束楼层');
     const rangeFields = el('div', 'ym-inline-row ym-history-fields'); rangeFields.hidden = true;
     rangeFields.append(rangeStart, el('span', '', '—'), rangeEnd, el('span', '', '层'));
@@ -278,7 +278,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     rangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const total = state.snapshot?.messages?.length ?? 0;
-        const start = Number(rangeStart.value), end = Number(rangeEnd.value);
+        const start = floorValue(rangeStart.value), end = floorValue(rangeEnd.value);
         if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > total) {
             localError = '请填写当前聊天内有效的起止楼层。'; localErrorPage = currentPage; updateStatus(); return;
         }
@@ -287,7 +287,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     const summarizeRangeForm = el('form', 'ym-manual-range');
     const summarizeStart = el('input', 'ym-range-input'), summarizeEnd = el('input', 'ym-range-input');
-    for (const input of [summarizeStart, summarizeEnd]) { input.type = 'number'; input.min = '1'; input.step = '1'; input.required = true; }
+    for (const input of [summarizeStart, summarizeEnd]) { input.type = 'number'; input.min = '0'; input.step = '1'; input.required = true; }
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
     const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
     const summarizeRow = el('div', 'ym-inline-row');
@@ -298,12 +298,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     summarizeRangeForm.append(summarizeRow, summarizeNotice);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
-        const range = { start: Number(summarizeStart.value), end: Number(summarizeEnd.value) };
+        const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
         try {
             const plan = planManualRange(state.document, state.snapshot?.messages || [], rangePreviewSettings(), range);
             if (plan.range.start !== range.start || plan.range.end !== range.end) {
-                summarizeStart.value = String(plan.range.start); summarizeEnd.value = String(plan.range.end);
-                summarizeNotice.textContent = `已有切片覆盖 ${plan.range.start}–${plan.range.end} 层，已调整范围，请确认后开始。`;
+                summarizeStart.value = floorField(plan.range.start); summarizeEnd.value = floorField(plan.range.end);
+                summarizeNotice.textContent = `已有切片覆盖 ${shownFloor(plan.range.start)}–${shownFloor(plan.range.end)} 层，已调整范围，请确认后开始。`;
                 summarizeNotice.hidden = false; return;
             }
             summarizeNotice.hidden = true;
@@ -321,13 +321,13 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!manualAuto || [summarizeStart, summarizeEnd].includes(document.activeElement)) return;
         const messages = state.snapshot?.messages || [], total = messages.length;
         const suggested = manualRangeDefault(state.document, messages, state.invalidSourceIds || []);
-        const start = Number(summarizeStart.value), end = Number(summarizeEnd.value);
+        const start = floorValue(summarizeStart.value), end = floorValue(summarizeEnd.value);
         const stale = start > Math.max(total, 1) || end > total;
         const auto = summarizeStart.value === manualAuto.start && summarizeEnd.value === manualAuto.end;
         // Deleted floors reset an out-of-range edit to the new default.
         const next = stale ? suggested || { start: 1, end: 0 } : auto && suggested && !suggested.complete ? suggested : null;
         if (!next) return;
-        summarizeStart.value = String(next.start); summarizeEnd.value = String(next.end); summarizeNotice.hidden = true;
+        summarizeStart.value = floorField(next.start); summarizeEnd.value = floorField(next.end); summarizeNotice.hidden = true;
         manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
     }
     overview.append(heroTop, rangeForm);
@@ -423,15 +423,15 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         stageFormGeneration++;
         if (!stageForm.hidden) { stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); return; }
         const eligible = stageEligible();
-        stageStart.value = String(eligible.find(entry => entry.source)?.source.start || 1);
-        stageEnd.value = String(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || DEFAULTS.recent)));
+        stageStart.value = floorField(eligible.find(entry => entry.source)?.source.start || 1);
+        stageEnd.value = floorField(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || DEFAULTS.recent)));
         stageForm.hidden = false; stageButton.setAttribute('aria-expanded', 'true'); updateStageRange(); stageStart.focus();
     });
     stageButton.setAttribute('aria-expanded', 'false'); stageButton.setAttribute('aria-controls', 'ym-stage-form');
     controlsRow.append(retry);
     const stageForm = el('form', 'ym-card ym-stage-form'); stageForm.hidden = true; stageForm.id = 'ym-stage-form';
     const stageStart = el('input'), stageEnd = el('input');
-    for (const input of [stageStart, stageEnd]) { input.type = 'number'; input.min = '1'; input.step = '1'; input.required = true; }
+    for (const input of [stageStart, stageEnd]) { input.type = 'number'; input.min = '0'; input.step = '1'; input.required = true; }
     stageStart.setAttribute('aria-label', '阶段摘要开始楼层'); stageEnd.setAttribute('aria-label', '阶段摘要结束楼层');
     const stageFields = el('div', 'ym-two-columns');
     stageFields.append(field('开始楼层', stageStart), field('结束楼层', stageEnd));
@@ -448,18 +448,18 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     stageForm.addEventListener('submit', async event => {
         event.preventDefault();
         if (!updateStageRange()) return;
-        const start = Number(stageStart.value), end = Number(stageEnd.value);
+        const start = floorValue(stageStart.value), end = floorValue(stageEnd.value);
         let plan;
         try {
             plan = planStageRange(state.document, rangePreviewSettings(), { start, end, includeCustom, recentCutoff: state.snapshot.messages.length - currentSettings().recent });
-            if (plan.expanded) { stageStart.value = String(plan.range.start); stageEnd.value = String(plan.range.end); stageHint.textContent = '已对齐完整切片范围，请确认后开始'; stageHint.hidden = false; return; }
+            if (plan.expanded) { stageStart.value = floorField(plan.range.start); stageEnd.value = floorField(plan.range.end); stageHint.textContent = '已对齐完整切片范围，请确认后开始'; stageHint.hidden = false; return; }
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); return; }
         const request = { scope: scopeGeneration, form: stageFormGeneration, includeCustom };
         const result = dispatch('stage', { start, end, includeCustom, expectedRange: plan.range }, stageSubmit);
         stageRequest = request; updateStageRange();
         if (await result) {
             if (request.scope === scopeGeneration && request.form === stageFormGeneration
-                && includeCustom === request.includeCustom && stageStart.value === String(start) && stageEnd.value === String(end)) {
+                && includeCustom === request.includeCustom && stageStart.value === floorField(start) && stageEnd.value === floorField(end)) {
                 stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false');
             }
         }
@@ -617,7 +617,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         statValues[2].textContent = coverage ? String(coverage.pendingFloors) : '0';
         // Pending excludes the newest floors kept as raw text and any history the user chose not to organize.
         const kept = coverage ? Math.min(total, Math.max(0, Number(currentSettings().recent) || 0)) : 0;
-        const pendingRange = coverage?.pendingRange ? `第 ${coverage.pendingRange.start}–${coverage.pendingRange.end} 层待整理` : '暂无待整理楼层';
+        const pendingRange = coverage?.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层待整理` : '暂无待整理楼层';
         statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start ? '；已选择不整理的历史楼层也不计入' : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
         for (const [name, card] of toolCards) {
@@ -687,12 +687,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         automatic.disabled = !available || !enabled.checked;
         const total = state.snapshot?.messages?.length || 0;
         // An empty chat may receive its first messages without changing its identity.
-        // Only replace the initial zero, never a range the user has started editing.
+        // Only fill the initially blank end, never a range the user has started editing.
         if (total > 0) {
-            if (rangeEnd.value === '0') rangeEnd.value = String(total);
+            if (rangeEnd.value === '') rangeEnd.value = floorField(total);
         }
         rangeForm.hidden = !available || !enabled.checked || Boolean(state.document?.initialRange) || total <= 1;
-        summarizeStart.max = summarizeEnd.max = rangeStart.max = rangeEnd.max = String(total);
+        summarizeStart.max = summarizeEnd.max = rangeStart.max = rangeEnd.max = String(Math.max(0, total - 1));
         const canSummarize = available && state.document.enabled && !state.paused && state.sourceAvailable !== false;
         summarizeStart.disabled = summarizeEnd.disabled = !available;
         summarizeSubmit.disabled = !canSummarize || Boolean(state.busy) || !total;
@@ -766,7 +766,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     function updateStageRange() {
         const locked = Boolean(stageRequest || state.busy);
         for (const control of [stageStart, stageEnd, stageCustom]) control.disabled = locked;
-        const start = Number(stageStart.value), end = Number(stageEnd.value);
+        const start = floorValue(stageStart.value), end = floorValue(stageEnd.value);
         const bounds = Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end;
         let plan = null, reason = '';
         try { if (bounds && state.document && state.snapshot) plan = planStageRange(state.document, rangePreviewSettings(), { start, end, includeCustom, recentCutoff: state.snapshot.messages.length - currentSettings().recent }); }
@@ -810,7 +810,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     }
     function entryHeading(entry) {
         const heading = el('h3', `ym-entry-title${entry.kind === 'manual' ? ' ym-custom-name' : ''}`);
-        const range = entry.source?.start !== undefined ? `楼层${entry.source.start}-${entry.source.end}`
+        const range = entry.source?.start !== undefined ? `楼层${shownFloor(entry.source.start)}-${shownFloor(entry.source.end)}`
             : entry.kind === 'stage' ? localSourceLabel(entry).replace('阶段摘要 · 第 ', '楼层').replace(' 层', '') : '';
         if (range) heading.append(el('small', 'ym-entry-range', range));
         const title = entry.kind === 'excerpt' ? '回查补充' : memoryTitle(entry);
@@ -1066,8 +1066,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             rangeForm.hidden = true; stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); includeCustom = false; stageCustom.setAttribute('aria-pressed', 'false');
             stageRequest = null; stageFormGeneration++;
             manualForm.hidden = true; manualInput.value = ''; manualTitle.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
-            rangeFields.hidden = true; rangeStart.value = summarizeStart.value = '1';
-            rangeEnd.value = summarizeEnd.value = String(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
+            rangeFields.hidden = true; rangeStart.value = summarizeStart.value = floorField(1);
+            rangeEnd.value = summarizeEnd.value = floorField(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
             manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
             search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear();

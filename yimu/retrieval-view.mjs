@@ -1,4 +1,5 @@
 import { createYimuIcon } from './icons.mjs';
+import { shownFloor } from './contract.mjs';
 
 // The retrieval page is deliberately a review surface, not a second memory store.
 // It exposes optional retrieval enhancements without creating a second memory store.
@@ -205,7 +206,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     const sourceText = candidate => {
         const start = Number.isSafeInteger(candidate?.start) ? candidate.start : null;
         const end = Number.isSafeInteger(candidate?.end) ? candidate.end : null;
-        return start === null ? '来源范围未知' : `第 ${start}–${end ?? start} 层`;
+        return start === null ? '来源范围未知' : `第 ${shownFloor(start)}–${shownFloor(end ?? start)} 层`;
     };
     function render(state = {}) {
         const retrieval = state.retrieval || {};

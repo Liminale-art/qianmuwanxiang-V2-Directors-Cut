@@ -107,9 +107,9 @@ test('story keeps one cutoff and one action without a preview stage', async () =
     const d=dom(),calls=[],view=createStoryView({document:d.document,pageMode:true,onAction:async(...args)=>calls.push(args)});
     const s=state();view.render(s);const get=label=>d.get(view.node,label);
     const row=d.all(view.node).find(node=>node.className==='ym-story-controls');assert.ok(row.children.includes(get('建立新聊天')));assert.ok(row.children[0].children.includes(get('续接楼层')));
-    assert.equal(get('续接楼层').value,'9');get('续接楼层').value='4';get('续接楼层').emit('input');
+    assert.equal(get('续接楼层').value,'8');get('续接楼层').value='4';get('续接楼层').emit('input');
     view.node.hidden=true;view.render(s);view.node.hidden=false;assert.equal(get('续接楼层').value,'4');
-    get('建立新聊天').click();await d.flush();assert.deepEqual(calls[0],['storyContinue',{cutoff:4}]);assert.equal(get('预览带入内容'),undefined);
+    get('建立新聊天').click();await d.flush();assert.deepEqual(calls[0],['storyContinue',{cutoff:5}]);assert.equal(get('预览带入内容'),undefined);
 });
 
 test('story omissions appear once in an ST warning, never as a permanent row; complete transfers stay success', async () => {

@@ -13,9 +13,15 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.21';
+export const FRONTEND_VERSION = '0.8.22';
 export const SERVICE_VERSION = '0.8.10';
 export const VERSION = SERVICE_VERSION;
+// Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
+// its messages from #0. Every floor number shown to the user goes through shownFloor so
+// labels match the chat, and inputs convert back with floorValue.
+export const shownFloor = floor => floor - 1;
+export const floorField = floor => Number.isSafeInteger(floor) && floor >= 1 ? String(floor - 1) : '';
+export const floorValue = text => String(text ?? '').trim() === '' ? 0 : Number(text) + 1;
 export const SCHEMA = 8;
 export const DEFAULTS = Object.freeze({ recent: 3, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, preference: '', profileId: '', model: '',
     stageAuto: false, stageBasis: 'tokens', stageThreshold: 65000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,

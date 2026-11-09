@@ -1,16 +1,17 @@
+import { floorField, floorValue } from './contract.mjs';
 // One floor and one action. Validation/planning remain internal, not another page.
 export function createStoryView({document = globalThis.document, onAction, onNotice = () => {}, pageMode = false} = {}) {
     const el = (tag, cls = '', text) => {const node=document.createElement(tag);node.className=cls;if(text!==undefined)node.textContent=text;return node;};
     const button = (text, action) => {const node=el('button','ym-button',text);node.type='button';node.setAttribute('aria-label',text);node.addEventListener('click',action);return node;};
     const node=el(pageMode?'section':'details',`ym-story ${pageMode?'ym-subpage-section':'ym-card'}`);
     if(!pageMode)node.append(el('summary','','故事续接'));
-    const body=el('div','ym-story-body'), cutoff=el('input');cutoff.type='number';cutoff.min='1';cutoff.step='1';cutoff.setAttribute('aria-label','续接楼层');
+    const body=el('div','ym-story-body'), cutoff=el('input');cutoff.type='number';cutoff.min='0';cutoff.step='1';cutoff.setAttribute('aria-label','续接楼层');
     const field=el('label','ym-field ym-story-cutoff');field.append(el('span','','续接楼层'),cutoff);
     const create=button('建立新聊天',()=>{
         const story=state.story||{},receipt=story.result?.receipt||story.receipt;
         if(receipt?.status==='complete')return invoke('storyOpen');
         if(story.pending||story.operation||story.operationId)return invoke('storyCreate',{retry:true});
-        return invoke('storyContinue',{cutoff:Number(cutoff.value)});
+        return invoke('storyContinue',{cutoff:floorValue(cutoff.value)});
     });create.className+=' ym-primary';
     const controls=el('div','ym-story-controls');controls.append(field,create);
     body.append(controls);node.append(body);
@@ -34,12 +35,12 @@ export function createStoryView({document = globalThis.document, onAction, onNot
     function update(){
         const story=state.story||{},busy=working||story.busy,available=!!state.snapshot&&!!state.document&&!state.loading&&state.sourceAvailable!==false;
         const receipt=story.result?.receipt||story.receipt,complete=receipt?.status==='complete',pending=!complete&&!!(story.pending||story.operation||story.operationId);
-        cutoff.max=String(count());cutoff.disabled=!available||!!busy||pending||complete;
+        cutoff.max=String(Math.max(0,count()-1));cutoff.disabled=!available||!!busy||pending||complete;
         create.disabled=!available||!!busy||!!state.busy;
         create.textContent=busy?'正在建立…':'建立新聊天';
         create.title=complete?'打开本次已建立的聊天，不重复建立':pending?'继续核对本次建立，不重复创建':'';
         node.setAttribute('aria-busy',String(!!busy));
     }
     cutoff.addEventListener('input',update);
-    return{node,render(next){state=next||{};const key=JSON.stringify(state.snapshot?.binding||null);if(key!==scope){scope=key;revision++;working=false;cutoff.value=String(count());if(!pageMode)node.open=false;}update();},destroy(){alive=false;revision++;node.remove();}};
+    return{node,render(next){state=next||{};const key=JSON.stringify(state.snapshot?.binding||null);if(key!==scope){scope=key;revision++;working=false;cutoff.value=floorField(count());if(!pageMode)node.open=false;}update();},destroy(){alive=false;revision++;node.remove();}};
 }

@@ -1,4 +1,4 @@
-import { DEFAULTS, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { DEFAULTS, shownFloor, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { sourceRanges, stageDependenciesValid, hasCustomParents } from './stage-contract.mjs';
 import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-scope.mjs';
@@ -80,7 +80,7 @@ export function nextBatch(document, messages, settings, { force = false, history
         const fits = tokens + size <= capacity && (!settings.fitsSummaryBatch || settings.fitsSummaryBatch(messages, { start: start || floor, end: floor }));
         if (start && !fits) break;
         // A single very large floor is never silently truncated into a misleading summary.
-        if (!start && !fits) throw new Error(`第 ${floor} 层与总结提示词超过此连接的可用输入容量，请为忆幕选择容量足够的连接`);
+        if (!start && !fits) throw new Error(`第 ${shownFloor(floor)} 层与总结提示词超过此连接的可用输入容量，请为忆幕选择容量足够的连接`);
         if (!start) start = floor;
         end = floor; tokens += size;
         if (tokens >= settings.trigger) break;
@@ -120,7 +120,7 @@ export function planManualRange(document, messages, settings, requestedRange) {
     const batchLimit = settings?.inputCapacity ?? settings?.batch ?? settings?.trigger;
     if (!Number.isSafeInteger(batchLimit) || batchLimit < 1) throw new Error('此连接的可用输入容量无效，请检查 API 设置');
     for (let floor = range.start; floor <= range.end; floor++) if (!canSummarize(messages[floor - 1])) {
-        throw new Error(`第 ${floor} 层为空或含工具调用，请调整整理范围`);
+        throw new Error(`第 ${shownFloor(floor)} 层为空或含工具调用，请调整整理范围`);
     }
     const batches = [];
     for (let floor = range.start; floor <= range.end;) {
@@ -141,7 +141,7 @@ export function planManualRange(document, messages, settings, requestedRange) {
             }
             end--;
         }
-        if (tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) throw new Error(`第 ${floor}—${end} 层与总结提示词超过此连接的可用输入容量，请选择容量足够的连接`);
+        if (tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) throw new Error(`第 ${shownFloor(floor)}—${shownFloor(end)} 层与总结提示词超过此连接的可用输入容量，请选择容量足够的连接`);
         const discardedSources = !redo ? discarded.filter(entry => entry.source.start <= end && entry.source.end >= floor)
             .map(entry => ({ id: entry.id, revision: entry.revision, source: structuredClone(entry.source) })) : [];
         batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}), ...(discardedSources.length ? { discardedSources } : {}) });

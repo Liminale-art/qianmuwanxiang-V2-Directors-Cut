@@ -1,4 +1,4 @@
-import { SERVICE_VERSION, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { SERVICE_VERSION, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, initialRangePreview, estimateTokens } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
@@ -80,7 +80,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (options.signal?.aborted || disposed || localStops.has(bindingKey(binding))) throw error;
                 if (retry === 0) notice(`本次${label}失败，发起重试：${error?.message || '未知错误'}`, 'warning');
                 if (isCurrent(binding)) {
-                    state.status = `正在重试${label}（${retry + 1}/3）· 楼层${start}–${end}`;
+                    state.status = `正在重试${label}（${retry + 1}/3）· 楼层${shownFloor(start)}–${shownFloor(end)}`;
                     emit();
                 }
             }
@@ -391,9 +391,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         lastRun: { count: candidates.length, localCount: candidates.length, externalCount: 0, at: retrieval.at } };
                     emit();
                 }
-                if (isCurrent(binding)) { state.status = `正在整理第 ${batch.start}—${batch.end} 层`; emit(); }
-                if (announce && !announced) { announced = true; notice(`忆幕：已达自动总结触发值，开始整理楼层${batch.start}–${batch.end}`, 'info'); }
-                else notice(`忆幕切片总结中：楼层${batch.start}–${batch.end}`, 'info');
+                if (isCurrent(binding)) { state.status = `正在整理第 ${shownFloor(batch.start)}—${shownFloor(batch.end)} 层`; emit(); }
+                if (announce && !announced) { announced = true; notice(`忆幕：已达自动总结触发值，开始整理楼层${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'info'); }
+                else notice(`忆幕切片总结中：楼层${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'info');
                 let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
@@ -455,7 +455,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
                 }
                 failedBatch = null; failedSource = null;
-                notice(`本次总结已存至记忆，总结范围：${batch.start}–${batch.end}`, 'success');
+                notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) manualIndex++;
                 if (entryId || !isCurrent(binding) || generating) break;
@@ -575,8 +575,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (source.ranges.some(range => range.end > snapshot.messages.length - settings.recent)) throw new Error('此阶段涉及近期原文，本轮不压缩');
                 failedStage = { kind: 'stage', entryId: group.existing?.id || entryId, range: { start: startFloor, end: endFloor },
                     parents: refs, includeCustom: useCustom, epoch: initial.epoch, defaultsRevision: defaults.revision };
-                if (isCurrent(binding)) { state.status = `正在整理第 ${startFloor}—${endFloor} 层的阶段摘要`; emit(); }
-                notice(`忆幕阶段总结中：楼层${startFloor}–${endFloor}`, 'info');
+                if (isCurrent(binding)) { state.status = `正在整理第 ${shownFloor(startFloor)}—${shownFloor(endFloor)} 层的阶段摘要`; emit(); }
+                notice(`忆幕阶段总结中：楼层${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'info');
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
                 const response = await generateWithRetries(stagePrompt(group.parents, settings),
@@ -595,7 +595,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const result = await change(binding, operation); processed = true;
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
-                notice(`本次总结已存至记忆，总结范围：${startFloor}–${endFloor}`, 'success');
+                notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
@@ -702,7 +702,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const plan = planStageRange(doc, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, { start: payload.start, end: payload.end,
                     recentCutoff: snapshot.messages.length - effectiveSettings(doc, state.defaults).recent, includeCustom: payload.includeCustom ?? false });
                 if (plan.expanded && (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end)) {
-                    throw new Error(`完整阶段范围为 ${plan.range.start}—${plan.range.end} 层，请确认范围后开始`);
+                    throw new Error(`完整阶段范围为 ${shownFloor(plan.range.start)}—${shownFloor(plan.range.end)} 层，请确认范围后开始`);
                 }
             }
             state.error = ''; emit(); deferFor(binding, () => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null, includeCustom: payload.includeCustom ?? false }), actionGeneration); return true;
@@ -715,7 +715,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (jobs.has(key)) return false;
             const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, payload.range);
             if (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end) {
-                throw new Error(`已有切片覆盖第 ${plan.range.start}—${plan.range.end} 层，请确认范围后开始`);
+                throw new Error(`已有切片覆盖第 ${shownFloor(plan.range.start)}—${shownFloor(plan.range.end)} 层，请确认范围后开始`);
             }
             state.error = ''; emit();
             const range = clone(payload.range), expectedRange = clone(payload.expectedRange);
