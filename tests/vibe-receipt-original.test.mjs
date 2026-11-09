@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeReceiptOriginals,validateVibeReceiptOriginal,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS as limits} from '../qianmu-vibe-receipt-original.js';
+import {createVibeReceiptOriginals,validateVibeReceiptOriginal,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS as limits} from '../features/vibe/qianmu-vibe-receipt-original.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {receiptInput,receiptLegacyFixture} from './helpers/vibe-receipt-fixture.mjs';
-import {VIBE_ENCODING_RECEIPT_LIMIT,VIBE_ENCODING_ARCHIVE_LIMIT} from '../qianmu-vibe-encoding-store.js';
+import {VIBE_ENCODING_RECEIPT_LIMIT,VIBE_ENCODING_ARCHIVE_LIMIT} from '../features/vibe/qianmu-vibe-encoding-store.js';
 
 async function fixture(t){const f=await characterNativeFixture(t),clients=[];t.after(()=>clients.forEach(c=>c.close()));
   const open=async(options={})=>{const client=await f.createStorage({maxBytes:limits.part});clients.push(client);return createVibeReceiptOriginals(client,options);};
@@ -97,7 +97,7 @@ test('late local completion preserves both exact originals and never silently re
 
 test('well-hashed but invalid lossless tag data cannot become a fee receipt',async t=>{
   const f=await fixture(t),input=await receiptInput(),saved=await f.originals.preserve(input),m=await manifest(f,saved);
-  const {vibeDigest}=await import('../qianmu-vibe-file.js');
+  const {vibeDigest}=await import('../features/vibe/qianmu-vibe-file.js');
   for(const text of ['["function","return true"]','["object",[["namespace","one"],["namespace","two"]]]','["array",[]]']){
     const part=await f.storage.preserveImmutable('vibe-receipt-part',text),forged={...m,bytes:Buffer.byteLength(text),digest:await vibeDigest(text),parts:[part.reference]};
     const original=await f.storage.preserveImmutable(VIBE_RECEIPT_ORIGINAL_SLOT,forged);await assert.rejects(f.originals.read(original.reference,selected(input)));
@@ -172,7 +172,7 @@ test('actual readonly census can be preserved and reread on a separate client wi
 });
 
 test('new original component is in the release but is not advertised or wired as a paid execution ledger',async()=>{
-  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));assert.ok(release.files.includes('qianmu-vibe-receipt-original.js'));
-  const source=await readFile(new URL('../qianmu-vibe-receipt-original.js',import.meta.url),'utf8');assert.doesNotMatch(source,/client\.(?:write|update|delete)\(|fetch\(|indexedDB/);
-  const retention=await readFile(new URL('../qianmu-vibe-encoding-retention.js',import.meta.url),'utf8');assert.doesNotMatch(retention,/qianmu-vibe-receipt-original/);
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));assert.ok(release.files.includes('features/vibe/qianmu-vibe-receipt-original.js'));
+  const source=await readFile(new URL('../features/vibe/qianmu-vibe-receipt-original.js',import.meta.url),'utf8');assert.doesNotMatch(source,/client\.(?:write|update|delete)\(|fetch\(|indexedDB/);
+  const retention=await readFile(new URL('../features/vibe/qianmu-vibe-encoding-retention.js',import.meta.url),'utf8');assert.doesNotMatch(retention,/qianmu-vibe-receipt-original/);
 });

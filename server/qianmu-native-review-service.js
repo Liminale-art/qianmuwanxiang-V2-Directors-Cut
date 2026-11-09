@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {createImageServiceStore} from './qianmu-image-service-store.js';
 import {normalizeImageServiceChannel} from './qianmu-image-service-queue.js';
-import {normalizeNovelServiceChannel} from '../qianmu-novel-service-channel-state.js';
+import {normalizeNovelServiceChannel} from '../features/vibe/qianmu-novel-service-channel-state.js';
 import {normalizeNativeReview} from '../qianmu-native-review-contract.js';
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const equal=(a,b)=>JSON.stringify(a)===JSON.stringify(b);

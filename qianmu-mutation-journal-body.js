@@ -1,6 +1,6 @@
 import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {assertJsonInputBounds,parseBoundedJson} from './qianmu-json-input.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 
 const slot='mutation-journal-part',limit=64*1048576,utf8=new TextEncoder();
 const fail=message=>{throw Object.assign(Error(message),{code:'mutation_journal_native',submissionState:'not_submitted'});};

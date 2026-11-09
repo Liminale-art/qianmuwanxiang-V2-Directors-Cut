@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {encodeNovelVibe,prepareNovelVibeEncoding,novelVibeEncodeEndpoint,VIBE_ENCODING_LIMIT} from '../qianmu-vibe-encoding.js';
+import {encodeNovelVibe,prepareNovelVibeEncoding,novelVibeEncodeEndpoint,VIBE_ENCODING_LIMIT} from '../features/vibe/qianmu-vibe-encoding.js';
 import {encodeGatewayNovelVibe} from '../server/qianmu-vibe-encoding-gateway.js';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const input=()=>({version:1,provider:'novel',baseUrl:'https://relay.example/prefix/ai',apiKey:'test-key',model:'relay/custom',capabilityModelId:'nai-diffusion-4-5-full',image,information:0});

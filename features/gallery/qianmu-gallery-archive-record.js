@@ -4,7 +4,7 @@ import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gall
 import {galleryCatalogAccount,galleryCatalogSource} from './qianmu-gallery-catalog-contract.js';
 import {chatGalleryReceiptText} from '../chat/qianmu-chat-gallery-receipt.js';
 import {recipeArchiveSnapshot,recipeArchiveReference} from '../../qianmu-recipe-archive-contract.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 export const GALLERY_ARCHIVE_RECORD_SCHEMA='qianmu.gallery.record.v1';
 export const GALLERY_ARCHIVE_RECORD_BYTES=1024*1024;

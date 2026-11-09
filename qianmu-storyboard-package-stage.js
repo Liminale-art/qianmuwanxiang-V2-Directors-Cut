@@ -1,5 +1,5 @@
 import {inspectStoryboardPackageFile} from './qianmu-storyboard-package-input.js?v=1.59.202';
-import {vibeDigest,vibeFilePreview} from './qianmu-vibe-file.js';
+import {vibeDigest,vibeFilePreview} from './features/vibe/qianmu-vibe-file.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_package_stage',submissionState:'not_submitted'});};
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const account=value=>typeof value==='string'&&/^st-user:.+/.test(value)&&value.length<=512&&!/[\u0000-\u001f\u007f]/.test(value);

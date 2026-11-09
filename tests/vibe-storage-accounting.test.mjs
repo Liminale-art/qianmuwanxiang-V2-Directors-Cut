@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {summarizeVibeAssetMetadata} from '../qianmu-vibe-storage-accounting.js';
-import {validateVibeStorageSummary} from '../qianmu-vibe-storage-summary.js';
-import {createVibeStorageOperations} from '../qianmu-vibe-storage.js';
+import {summarizeVibeAssetMetadata} from '../features/vibe/qianmu-vibe-storage-accounting.js';
+import {validateVibeStorageSummary} from '../features/vibe/qianmu-vibe-storage-summary.js';
+import {createVibeStorageOperations} from '../features/vibe/qianmu-vibe-storage.js';
 const namespace='st-user:vibe-accounting',id='a'.repeat(64),key=JSON.stringify([namespace,id]),size=row=>Buffer.byteLength(JSON.stringify(row));
 function fixture(){const head={key,namespace,assetId:id,bytes:1048576,previewBytes:69,summary:{name:'测试',type:'image',variants:[]}};
   return {heads:[head],usage:{key:namespace,count:1,bytes:head.bytes,previewBytes:69},documentKeys:[key],previewKeys:[key]};}

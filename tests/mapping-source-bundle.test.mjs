@@ -13,7 +13,7 @@ import {createBundleCarrierRestore} from '../qianmu-bundle-carrier-restore.js';
 import {planBundleMappingRestore,restoreBundleMappings,verifyBundleMappingRestore} from '../qianmu-bundle-mapping-restore.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {sameBundleMappingHead} from '../qianmu-bundle-mapping-contract.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 
 async function fixture(t,{seed=true}={}){
   const f=await characterNativeFixture(t,{account:namespace}),rows=await mappingReceiptsFixture({namespace});

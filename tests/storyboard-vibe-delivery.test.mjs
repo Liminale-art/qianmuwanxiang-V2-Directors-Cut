@@ -5,9 +5,9 @@ import vm from 'node:vm';
 import { generateDirectImage } from '../features/gallery/qianmu-image-direct.js';
 import { generateImage } from '../server/qianmu-image-gateway.js';
 import * as core from '../qianmu-storyboard.js';
-import {prepareStoryboardVibes} from '../qianmu-vibe-prepare.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {parseNovelVibeFile} from '../qianmu-vibe-file.js';
+import {prepareStoryboardVibes} from '../features/vibe/qianmu-vibe-prepare.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {parseNovelVibeFile} from '../features/vibe/qianmu-vibe-file.js';
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 function section(name) {

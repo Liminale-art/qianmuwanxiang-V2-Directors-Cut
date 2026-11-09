@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {writePreservedSnapshotArchives,writePreservedPlanArchives} from '../qianmu-plan-archive-write.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 
 // A bounded transaction event fixture, not browser IndexedDB acceptance.
 function database(initial=[]){

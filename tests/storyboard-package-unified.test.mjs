@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
 import {buildStoryboardVibePackage,STORYBOARD_PACKAGE_LIMITS} from '../qianmu-storyboard-package-assets.js';
-import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
+import {parseNovelVibeFile,vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {inspectStoryboardPackageFile,STORYBOARD_PACKAGE_INPUT_LIMIT,readStoryboardPackageImage} from '../qianmu-storyboard-package-input.js';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 async function packet(){

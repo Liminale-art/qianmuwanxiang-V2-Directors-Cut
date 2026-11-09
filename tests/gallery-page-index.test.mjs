@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {GALLERY_PAGE_INDEX_LIMITS as LIMIT,encodeGalleryIndexPage as encodePage,encodeGalleryIndexManifest as encodeHead,createGalleryPageIndexReader as create} from '../features/gallery/qianmu-gallery-page-index.js';
 
 const source={namespace:'st-user:synthetic',ownerKey:'char:Alice.png',chatKey:'synthetic-chat'};

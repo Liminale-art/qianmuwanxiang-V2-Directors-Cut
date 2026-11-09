@@ -5,7 +5,7 @@ import { historicalSourceFixture } from './helpers/historical-source-fixture.mjs
 import { planHistoricalStoryboardMerge as plan } from '../features/chat/qianmu-historical-storyboard-merge.js';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
 import { createChatCharacterDraft } from '../features/character/qianmu-character-chat-draft.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { captureHistoricalStoryboardSource } from '../features/chat/qianmu-historical-storyboard-source.js';
 
 async function fixture(t, prepare) {

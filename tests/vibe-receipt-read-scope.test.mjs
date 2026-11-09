@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../qianmu-vibe-receipt-catalogue.js';
-import {createNativeVibeEncodingStore} from '../qianmu-vibe-native-encoding-store.js';
+import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../features/vibe/qianmu-vibe-receipt-catalogue.js';
+import {createNativeVibeEncodingStore} from '../features/vibe/qianmu-vibe-native-encoding-store.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {receiptInput,receiptLegacyFixture} from './helpers/vibe-receipt-fixture.mjs';
 import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
@@ -94,7 +94,7 @@ test('empty native inventory does not invent an on-disk metadata record or trigg
   const f=await fixture(t),store=f.open();assert.deepEqual(await store.readAll(namespace),{rows:[],metadata:{count:0,bytes:0}});assert.equal(f.uploads,0);assert.equal(f.files.size,0);
 });
 test('decoded historical working set is explicitly cleared between receipts and is operation-local',async()=>{
-  const source=await readFile(new URL('../qianmu-vibe-receipt-catalogue.js',import.meta.url),'utf8');
+  const source=await readFile(new URL('../features/vibe/qianmu-vibe-receipt-catalogue.js',import.meta.url),'utf8');
   assert.match(source,/function cacheFor\(entry\)\{if\(loadedKey!==entry\.cacheKey\)\{snapshots\.clear\(\)/);
   assert.ok(source.indexOf('const snapshots=new Map()')>source.indexOf('const task=queue'));
   assert.ok(source.indexOf('const capturedSources=new Map()')>source.indexOf('const task=queue'));

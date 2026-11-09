@@ -1,4 +1,4 @@
-import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
+import {createConfiguredStAccountStorage,stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
 import {validateStoryboardPackageCheckpoint as validate,prepareVibeStageCheckpoint,sameVibeStageDefinition,VIBE_STAGE_PHASES} from './qianmu-vibe-stage-contract.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 

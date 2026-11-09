@@ -1,4 +1,4 @@
-import {createVibeAssetStore} from './qianmu-vibe-asset-store.js?v=1.59.202';
+import {createVibeAssetStore} from './features/vibe/qianmu-vibe-asset-store.js?v=1.59.202';
 import {buildStoryboardVibePackage} from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import {validateStoryboardPackageMedia} from './qianmu-storyboard-package-input.js?v=1.59.202';
 import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';

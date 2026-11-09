@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateDirectImage} from '../features/gallery/qianmu-image-direct.js';
 import {generateImage,sanitizeImageRequest,imageGatewayCapabilities} from '../server/qianmu-image-gateway.js';
-import {normalizeNovelVibeEntries} from '../qianmu-novel-vibe.js';
+import {normalizeNovelVibeEntries} from '../features/vibe/qianmu-novel-vibe.js';
 import {checkQianmuNovelVibeBinding,probeQianmuImageCapabilities} from '../qianmu-service-capabilities.js';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==','base64');
 const encoded=(i=0)=>({kind:'novelai-vibe-encoding',data:Buffer.alloc(64,i+1).toString('base64'),encodingModel:'v4-5full',information:null,strength:0});

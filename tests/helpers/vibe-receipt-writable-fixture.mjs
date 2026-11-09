@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createLocalVibeEncodingStore} from '../../qianmu-vibe-encoding-store.js';
+import {createLocalVibeEncodingStore} from '../../features/vibe/qianmu-vibe-encoding-store.js';
 import {namespace} from './character-native-fixture.mjs';
 
 // Five-table protocol double, not a browser IDB implementation. Readwrite

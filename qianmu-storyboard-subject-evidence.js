@@ -1,4 +1,4 @@
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 
 export const SUBJECT_EVIDENCE_SCHEMA = 'qianmu.storyboard.subject-evidence.v1';
 const fields = { char: ['name','description','personality','scenario','first_mes','mes_example','system_prompt','post_history_instructions','alternate_greetings'],

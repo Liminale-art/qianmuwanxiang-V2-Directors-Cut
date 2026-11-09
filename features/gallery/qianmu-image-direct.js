@@ -8,7 +8,7 @@ import {
   openAICompatibilityAllows,
 } from '../../qianmu-openai-image-compat.js';
 import { NOVEL_STATIC_MODELS, finalizeModelList, collectImageModelPages, modelsFromComfyObjectInfo, novelModelCapabilities, novelReferenceIssue, novelPreciseReferenceParameters, isImageModelMetadataField } from './qianmu-image-models.js';
-import {normalizeNovelVibeEntries,novelVibeParameters} from '../../qianmu-novel-vibe.js';
+import {normalizeNovelVibeEntries,novelVibeParameters} from '../vibe/qianmu-novel-vibe.js';
 import { prepareComfyWorkflow, comfyCandidateCount } from '../../qianmu-comfy-workflow.js?v=1.59.440';
 import { collectComfyStillResults, comfyTaskId, comfyStillMime, comfyReferenceStillMime, readComfyImageBytes } from '../../qianmu-comfy-results.js?v=1.59.440';
 import { auditComfyWorkflow, requireComfyExecution } from '../../qianmu-comfy-audit.js?v=1.59.440';

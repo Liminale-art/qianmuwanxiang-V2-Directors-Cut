@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {prepareStoryboardVibes,confirmVibeEncoding} from '../qianmu-vibe-prepare.js';
-import {encodeNovelVibe} from '../qianmu-vibe-encoding.js';
+import {prepareStoryboardVibes,confirmVibeEncoding} from '../features/vibe/qianmu-vibe-prepare.js';
+import {encodeNovelVibe} from '../features/vibe/qianmu-vibe-encoding.js';
 import {generateDirectImage,isDirectImageTransportError} from '../features/gallery/qianmu-image-direct.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createVibeEncodingRetention} from '../qianmu-vibe-encoding-retention.js';
-import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createVibeEncodingRetention} from '../features/vibe/qianmu-vibe-encoding-retention.js';
+import {parseNovelVibeFile,vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {resolveStoryboardVibeRecipe,sanitizeStoryboardSnapshot,storyboardAutomaticJobEnabled} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';

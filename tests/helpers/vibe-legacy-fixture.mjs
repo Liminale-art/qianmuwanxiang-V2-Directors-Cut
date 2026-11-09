@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {createLocalVibeAssetStore} from '../../qianmu-vibe-asset-store.js';
-import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../../qianmu-vibe-file.js';
+import {createLocalVibeAssetStore} from '../../features/vibe/qianmu-vibe-asset-store.js';
+import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../../features/vibe/qianmu-vibe-file.js';
 import {namespace} from './character-native-fixture.mjs';
 
 export async function vibeInput(name='Original',{preview=true}={}){

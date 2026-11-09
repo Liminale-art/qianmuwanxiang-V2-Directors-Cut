@@ -1,7 +1,7 @@
 import {validateVibeEncodingReceipt} from './qianmu-vibe-encoding-contract.js';
 import {resolveVibeReviewHistory,checkCombinedVibeReviews} from './qianmu-vibe-history.js';
-import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
 import {vibeDigest} from './qianmu-vibe-file.js';
 
 export const VIBE_RECEIPT_ORIGINAL_SLOT='vibe-receipt-original';

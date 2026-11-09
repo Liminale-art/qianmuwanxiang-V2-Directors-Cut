@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {chatGalleryReceiptText} from '../features/chat/qianmu-chat-gallery-receipt.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';
 
 const row=(id,time=id)=>({id:String(id),createdAt:time,url:'/user/images/test.png',chatKey:'chat',tags:['test'],unknown:{unchanged:true}});

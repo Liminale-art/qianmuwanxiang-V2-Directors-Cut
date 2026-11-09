@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {exportVibeReceiptFile,inspectVibeReceiptFile,VIBE_RECEIPT_FILE_LIMIT} from '../qianmu-vibe-receipt-file.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createVibeReviewActions} from '../qianmu-vibe-review.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {exportVibeReceiptFile,inspectVibeReceiptFile,VIBE_RECEIPT_FILE_LIMIT} from '../features/vibe/qianmu-vibe-receipt-file.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createVibeReviewActions} from '../features/vibe/qianmu-vibe-review.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 const namespace='st-user:receipt-owner',image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 async function receipt(){
   const {cacheKey,identity}=await prepareNovelVibeEncoding({version:1,provider:'novel',baseUrl:'https://relay.example',model:'nai-diffusion-4-full',image,information:0});

@@ -2,7 +2,7 @@
 import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-gallery-archive-record.js';
 import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gallery-page-index.js';
 import {CHAT_GALLERY_STREAM_LIMITS as CHAT_GALLERY_RECEIPT_LIMITS} from '../chat/qianmu-chat-gallery-receipt.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 import {CHAT_GALLERY_SUPPLEMENT_LIMITS} from '../chat/qianmu-chat-gallery-supplement.js';
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_version'});};
 export function galleryArchiveSourceReceipt(raw){

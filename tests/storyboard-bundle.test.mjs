@@ -12,7 +12,7 @@ import { normalizeComfyAutoPool, COMFY_SELECTION_SCHEMA } from '../qianmu-comfy-
 import { normalizeCharacterArchive, newCharacterArchive } from '../features/character/qianmu-character-archive.js';
 import { CHARACTER_LIBRARY_BACKUP_SCHEMA } from '../features/character/qianmu-character-library-backup.js';
 import { comfyWorkflowReferenceHash, readStaticReferenceBlobs, readStaticReferenceImages } from '../qianmu-comfy-references.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { createStoryboardEnvironmentReview } from '../qianmu-storyboard-environment-map.js';
 import { mappingHead } from '../qianmu-storyboard-mapping-contract.js';
 

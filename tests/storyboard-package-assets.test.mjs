@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import * as pack from '../qianmu-storyboard-package-assets.js';
 import * as board from '../qianmu-storyboard.js';
-import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
+import {parseNovelVibeFile,vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {exportStoryboardPackageAssets,closeStoryboardPackageRuntime} from '../qianmu-storyboard-package-runtime.js';
 import {storyboardFunctionSource as fn} from './helpers/storyboard-form-fixture.mjs';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
@@ -91,7 +91,7 @@ test('count and metadata limits stop oversized packets without silently clipping
 });
 
 test('packet worker uses a separate asset connection and has no fee store or service dependencies',async()=>{
-  const worker=await readFile(new URL('../qianmu-storyboard-package-worker.js',import.meta.url),'utf8'),shared=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
+  const worker=await readFile(new URL('../qianmu-storyboard-package-worker.js',import.meta.url),'utf8'),shared=await readFile(new URL('../features/vibe/qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
   assert.match(worker,/createVibeAssetStore/);assert.match(worker,/finally\{store\?\.close\(\);guards\.clear\(\);self\.close\(\)/);assert.doesNotMatch(worker,/encoding-store|fetch\(|putFile|remove\(/);assert.doesNotMatch(shared,/package-vibes-export/);
 });
 

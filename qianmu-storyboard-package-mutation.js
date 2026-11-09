@@ -1,7 +1,7 @@
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-fields.js';
 export {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-fields.js';
-export {vibeDigest as storyboardPackageDigest} from './qianmu-vibe-file.js';
+export {vibeDigest as storyboardPackageDigest} from './features/vibe/qianmu-vibe-file.js';
 const chatFields=['storyboardImages','storyboardCollections'];
 const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const hash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);

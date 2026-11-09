@@ -7,8 +7,8 @@ import {createVibeEncodingService,vibeServiceErrorPayload} from '../server/qianm
 import {createVibeServiceCache} from '../server/qianmu-vibe-service-cache.js';
 import {createImageServiceStore} from '../server/qianmu-image-service-store.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
-import {prepareNovelVibeEncoding,encodeNovelVibe} from '../qianmu-vibe-encoding.js';
-import {createVibeServiceClient} from '../qianmu-vibe-service-client.js';
+import {prepareNovelVibeEncoding,encodeNovelVibe} from '../features/vibe/qianmu-vibe-encoding.js';
+import {createVibeServiceClient} from '../features/vibe/qianmu-vibe-service-client.js';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const actor=(handle='alice')=>({user:{profile:{handle,enabled:true}}});
 const request=()=>({version:1,provider:'novel',protocol:'novelai',baseUrl:'https://relay.example',model:'nai-diffusion-4-5-full',apiKey:'private-fixture-key',information:0,image});

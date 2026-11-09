@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {filterStoryboardVibes,checkStoryboardVibeSelection} from '../qianmu-vibe-library-view.js';
 import {createStoryboardDefaults,getStoryboardCapabilities} from '../qianmu-storyboard.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {createVibeLibraryAssets} from '../qianmu-vibe-library-assets.js';
+import {createVibeLibraryAssets} from '../features/vibe/qianmu-vibe-library-assets.js';
 const item=(id='one',extra={})=>({id,name:id,previewUrl:'/user/images/one.png',providerIds:['novel'],modelIds:[],strength:0,informationExtracted:0,...extra});
 test('library search reads names and bounds image pages without mutating its source',()=>{
   const rows=Array.from({length:90},(_,i)=>item(String(i),{name:i%2?'Forest Light':'Night Sky'}));

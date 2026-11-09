@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeRestoreOperations} from '../qianmu-vibe-restore.js';
-import {createVibeStorageActions} from '../qianmu-vibe-storage.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../qianmu-vibe-file.js';
+import {createVibeRestoreOperations} from '../features/vibe/qianmu-vibe-restore.js';
+import {createVibeStorageActions} from '../features/vibe/qianmu-vibe-storage.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../features/vibe/qianmu-vibe-file.js';
 const namespace='st-user:restore',png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const encoding=btoa('encoded');
 async function fixture(){return {identifier:'novelai-vibe-transfer',version:1,type:'image',id:await vibeDigest(png),image:png,name:'Original',thumbnail:`data:image/png;base64,${png}`,
@@ -95,7 +95,7 @@ test('UI actions guard account changes, strict confirmation, and freeze file/pro
 });
 
 test('file-space recovery outlet and module ship without private development material or eager imports',async()=>{
-  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-vibe-restore.js'));
-  const worker=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8'),ui=await readFile(new URL('../qianmu-vibe-storage.js',import.meta.url),'utf8');
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('features/vibe/qianmu-vibe-restore.js'));
+  const worker=await readFile(new URL('../features/vibe/qianmu-vibe-assets-worker.js',import.meta.url),'utf8'),ui=await readFile(new URL('../features/vibe/qianmu-vibe-storage.js',import.meta.url),'utf8');
   assert.match(worker,/await import\('\.\/qianmu-vibe-restore.js'\)/);assert.match(ui,/sd-vibe-restore-open/);
 });

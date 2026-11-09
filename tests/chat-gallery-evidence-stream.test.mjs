@@ -9,7 +9,7 @@ import {CHAT_GALLERY_EVIDENCE_LIMITS as LIMIT,chatGalleryEvidenceSourceResponse,
 import {createChatGalleryEvidenceSourceClient} from '../features/chat/qianmu-chat-character-receipt-client.js';
 import {chatCharacterReceiptErrorPayload} from '../features/chat/qianmu-chat-character-receipt.js';
 import {captureStoryboardChatEvidence} from '../qianmu-storyboard-chat-evidence.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {init,exit} from '../server-plugin.js';
 
 const reject=(pending,code)=>assert.rejects(pending,{code:'chat_character_receipt_'+code});

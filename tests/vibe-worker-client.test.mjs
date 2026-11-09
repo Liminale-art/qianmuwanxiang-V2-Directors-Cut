@@ -8,7 +8,7 @@ test('worker client is lazy, shared and closes pending calls; stale worker failu
     terminate(){this.terminated=true;}
     finish(index,value){this.dispatchEvent(new MessageEvent('message',{data:{ticket:this.messages[index].ticket,value}}));}
   }
-  globalThis.Worker=Worker;const runtime=await import('../qianmu-vibe-assets.js');
+  globalThis.Worker=Worker;const runtime=await import('../features/vibe/qianmu-vibe-assets.js');
   try{
     assert.equal(workers.length,0);const a=runtime.callVibeAsset('head',{id:'a'}),b=runtime.callVibeAsset('preview',{id:'a'});
     assert.equal(workers.length,1);assert.equal(workers[0].options.type,'module');workers[0].finish(1,null);workers[0].finish(0,{id:'a'});assert.deepEqual(await a,{id:'a'});assert.equal(await b,null);

@@ -1,5 +1,5 @@
 import {normalizeComfyLibraryDocument,inspectComfyLibraryDocument,comfyLibraryError} from './qianmu-comfy-library.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 
 export const COMFY_LIBRARY_BACKUP_SCHEMA='qianmu.comfy.library-backup.v1';
 export const COMFY_LIBRARY_BACKUP_BYTES=80*1024*1024;

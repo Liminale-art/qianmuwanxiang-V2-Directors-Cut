@@ -1,7 +1,7 @@
 import {createConfiguredStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {inspectHistoricalChatMutation,historicalChatMutationNext,HISTORICAL_CHAT_JOURNAL_BYTES} from './qianmu-historical-chat-journal.js';
 import {parseBoundedJson} from '../../qianmu-json-input.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 const slot='historical-chat-journal',schema='qianmu.historical-chat-journal.v1',partSchema='qianmu.historical-chat-journal-part.v1';
 const utf8=new TextEncoder(),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b),hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);

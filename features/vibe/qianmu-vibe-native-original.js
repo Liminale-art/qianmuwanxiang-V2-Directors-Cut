@@ -1,7 +1,7 @@
 import {parseNovelVibeFile,vibeFileError,vibeDigest,vibeFilePreview} from './qianmu-vibe-file.js';
 import {vibeAssetNamespace,validateVibeAssetHead} from './qianmu-vibe-asset-contract.js';
-import {stAccountImmutableReference} from './qianmu-st-account-storage.js';
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
 
 export const VIBE_NATIVE_ORIGINAL_SLOT='vibe-original';
 export const VIBE_NATIVE_ORIGINAL_LIMITS=Object.freeze({body:64*1048576,preview:2*1048576,head:256*1024,manifest:1048576,part:512*1024,characters:65536});

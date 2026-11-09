@@ -2,7 +2,7 @@ import {captureGalleryArchiveJson} from './qianmu-gallery-page-index.js';
 import {encodeGalleryArchiveRecord,galleryArchiveScope} from './qianmu-gallery-archive-record.js';
 import {galleryOriginalPreserved,GALLERY_ORIGINAL_JSON_BYTES} from './qianmu-gallery-original-contract.js';
 import {chatGalleryReceiptText} from '../chat/qianmu-chat-gallery-receipt.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 const schema='qianmu.gallery.original-copy.v1';
 const fail=message=>{throw Object.assign(Error(message),{code:'gallery_archive_original'});};

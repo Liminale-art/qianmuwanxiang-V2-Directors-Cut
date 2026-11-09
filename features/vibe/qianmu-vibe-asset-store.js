@@ -1,7 +1,7 @@
 import {parseNovelVibeFile,vibeFileError,vibeFilePreview} from './qianmu-vibe-file.js';
 import {summarizeVibeAssetMetadata} from './qianmu-vibe-storage-accounting.js';
 import {VIBE_ASSET_LIMITS,vibeAssetNamespace as namespace,vibeAssetKey as key,validateVibeAssetHead as checkHead} from './qianmu-vibe-asset-contract.js';
-import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {isStAccountStorageConfigured} from '../../qianmu-st-account-storage.js';
 import {createNativeVibeAssetStore} from './qianmu-vibe-native-store.js';
 export {VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-contract.js';
 

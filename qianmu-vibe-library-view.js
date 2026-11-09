@@ -1,6 +1,6 @@
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
-import {captureStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
-import {VIBE_ENCODING_MODELS} from './qianmu-vibe-file.js';
+import {captureStoryboardVibeRecipe} from './features/vibe/qianmu-vibe-recipe.js';
+import {VIBE_ENCODING_MODELS} from './features/vibe/qianmu-vibe-file.js';
 
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const amount=(value,fallback)=>value==null||value===''?fallback:Number(value);

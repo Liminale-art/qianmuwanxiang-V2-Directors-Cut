@@ -2,7 +2,7 @@ import {BUNDLE_CARRIERS_SCHEMA,bundleCarrierEntryId,isBundleCarrierEntry,isBundl
 import {bundleCarrierHead,sameCarrierFields,summarizeBundleCarrierStorage,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
 import {inspectBundleCarrierProof,inspectBundleCarrierOriginal} from './qianmu-bundle-carrier.js';
 import {sameBundleMappingHead,sameBundleMappingReview} from './qianmu-bundle-mapping-contract.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carriers',submissionState:'not_submitted'});};
 const file=value=>new Blob([JSON.stringify(value)],{type:'application/json'});

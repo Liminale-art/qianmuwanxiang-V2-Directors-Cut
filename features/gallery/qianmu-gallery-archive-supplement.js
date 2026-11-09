@@ -1,7 +1,7 @@
 import {createConfiguredStAccountStorage} from '../../qianmu-st-account-storage.js';
 import {galleryArchiveScope,galleryArchiveObjectReference} from './qianmu-gallery-archive-record.js';
 import {chatGallerySupplementResponse,CHAT_GALLERY_SUPPLEMENT_LIMITS} from '../chat/qianmu-chat-gallery-supplement.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 export const GALLERY_ARCHIVE_SUPPLEMENT_BYTES=CHAT_GALLERY_SUPPLEMENT_LIMITS.responseBytes+8192;
 const schema='qianmu.gallery.supplement.v1',utf8=new TextEncoder();

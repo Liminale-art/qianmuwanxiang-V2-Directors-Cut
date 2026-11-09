@@ -8,7 +8,7 @@ import {recipeArchiveSnapshot,recipeArchiveReference,recipeArchiveEnvelope} from
 import {inspectStoryboardChatEvidence} from '../../qianmu-storyboard-chat-evidence.js';
 import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
 import {comfyReferenceStillMime} from '../../qianmu-comfy-results.js?v=1.59.440';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 const fail=message=>{throw Object.assign(new Error(message),{code:'historical_storyboard_bundle',submissionState:'not_submitted'});};
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));

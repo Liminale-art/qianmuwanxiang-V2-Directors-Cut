@@ -1,6 +1,6 @@
 import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
 import {validateResourceRestoreCheckpoint as validate,prepareResourceCheckpoint,advanceResourceCheckpoint} from './qianmu-resource-journal-contract.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 
 const schema='qianmu.resource-journal.v1',originalSlot='resource-journal-original',same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));

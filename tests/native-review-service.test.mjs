@@ -10,7 +10,7 @@ import {createNativeRequestReview} from '../server/qianmu-native-review-service.
 import {normalizeNativeReceipt,normalizeNativeReview} from '../qianmu-native-review-contract.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {imageServiceChannelKey} from '../server/qianmu-image-service-queue.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 const actor=(handle='one')=>({user:{profile:{handle,enabled:true}}}),account=imageServiceAccount(actor()).namespace;
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==',key='private-test-key';
 const uncertain=()=>Object.assign(Error('fixture unknown'),{submissionState:'unknown'});

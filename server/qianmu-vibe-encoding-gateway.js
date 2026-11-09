@@ -1,7 +1,7 @@
 import {request as httpsRequest} from 'node:https';
 import {lookup as dnsLookup} from 'node:dns/promises';
 import {Readable} from 'node:stream';
-import {encodeNovelVibe,prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {encodeNovelVibe,prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 import {validateGatewayBaseUrl} from './qianmu-image-gateway.js';
 
 // Operation-scoped DNS pinning, TLS for the original hostname, no redirects/cookies/private address opt-in.

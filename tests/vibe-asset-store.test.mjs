@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeAssetStore} from '../qianmu-vibe-asset-store.js';
+import {createVibeAssetStore} from '../features/vibe/qianmu-vibe-asset-store.js';
 import {readFile} from 'node:fs/promises';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 
 test('Vibe asset store opens lazily, uses its own DB, and closes permanently without touching old data',async()=>{
   let calls=0;const store=createVibeAssetStore({indexedDB:{open(name,version){calls++;assert.equal(name,'qianmu-vibe-assets');assert.equal(version,2);throw Error('unavailable');}}});
@@ -28,10 +28,10 @@ test('native numeric-code storage exceptions abort cleanly rather than throwing 
   await assert.rejects(()=>store.putFile('st-user:one',JSON.stringify(doc)),{code:'vibe_file_storage'});assert.equal(aborts,1);store.close();
 });
 test('asset foundation is packaged but not activated or allowed to make any external request',async()=>{
-  const code=await readFile(new URL('../qianmu-vibe-asset-store.js',import.meta.url),'utf8');
+  const code=await readFile(new URL('../features/vibe/qianmu-vibe-asset-store.js',import.meta.url),'utf8');
   assert.doesNotMatch(code,/fetch\(|localStorage|extension_settings|qianmu-blobstore|setInterval/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const file of ['qianmu-vibe-file.js','qianmu-vibe-asset-store.js'])assert.ok(release.files.includes(file));
+  for(const file of ['features/vibe/qianmu-vibe-file.js','features/vibe/qianmu-vibe-asset-store.js'])assert.ok(release.files.includes(file));
 });
 test('blocked/late open is closed and a timed-out open can be retried',async()=>{
   const requests=[];let closed=0;const store=createVibeAssetStore({timeoutMs:100,indexedDB:{open(){const request={};requests.push(request);return request;}}});

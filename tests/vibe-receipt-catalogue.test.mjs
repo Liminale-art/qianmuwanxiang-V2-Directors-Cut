@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../qianmu-vibe-receipt-catalogue.js';
-import {captureVibeReceiptOriginal,createVibeReceiptOriginals} from '../qianmu-vibe-receipt-original.js';
-import {vibeReceiptFollows,resolveVibeReceiptHeads} from '../qianmu-vibe-receipt-lineage.js';
-import {createVibeReviewSegment} from '../qianmu-vibe-history.js';
+import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../features/vibe/qianmu-vibe-receipt-catalogue.js';
+import {captureVibeReceiptOriginal,createVibeReceiptOriginals} from '../features/vibe/qianmu-vibe-receipt-original.js';
+import {vibeReceiptFollows,resolveVibeReceiptHeads} from '../features/vibe/qianmu-vibe-receipt-lineage.js';
+import {createVibeReviewSegment} from '../features/vibe/qianmu-vibe-history.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {receiptInput,receiptLegacyFixture} from './helpers/vibe-receipt-fixture.mjs';
 
@@ -201,7 +201,7 @@ test('conflict inspection is order-independent and no timestamp-only winner is i
 
 test('release includes the catalogue but existing paid reservation and original-account result sink are not silently replaced',async()=>{
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const file of ['qianmu-vibe-receipt-catalogue.js','qianmu-vibe-receipt-lineage.js'])assert.ok(release.files.includes(file));
-  const source=await readFile(new URL('../qianmu-vibe-receipt-catalogue.js',import.meta.url),'utf8');assert.doesNotMatch(source,/legacy\.(?:reserve|transition|review|recover)|fetch\(|encodeNovelVibe\(/);
-  for(const file of ['qianmu-vibe-encoding-retention.js','qianmu-vibe-assets-worker.js'])assert.doesNotMatch(await readFile(new URL('../'+file,import.meta.url),'utf8'),/qianmu-vibe-receipt-catalogue/);
+  for(const file of ['features/vibe/qianmu-vibe-receipt-catalogue.js','features/vibe/qianmu-vibe-receipt-lineage.js'])assert.ok(release.files.includes(file));
+  const source=await readFile(new URL('../features/vibe/qianmu-vibe-receipt-catalogue.js',import.meta.url),'utf8');assert.doesNotMatch(source,/legacy\.(?:reserve|transition|review|recover)|fetch\(|encodeNovelVibe\(/);
+  for(const file of ['features/vibe/qianmu-vibe-encoding-retention.js','features/vibe/qianmu-vibe-assets-worker.js'])assert.doesNotMatch(await readFile(new URL('../'+file,import.meta.url),'utf8'),/qianmu-vibe-receipt-catalogue/);
 });

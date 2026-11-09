@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { historicalRecipeRestoreFixture as fixture } from './helpers/historical-recipe-restore-fixture.mjs';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 const consent = view => ({ confirmed: true, scope: view.scope, expectedDigest: view.digest });
 const gate = () => { let release; const promise = new Promise(done => release = done); return { promise, release }; };
 const archives = async f => Promise.all((await fs.readdir(f.archive)).sort().map(async name => [name, await fs.readFile(path.join(f.archive, name), 'utf8')]));

@@ -3,7 +3,7 @@
 // prove byte integrity, not durable storage, authenticated ownership or deletion
 // authority. A future adapter must establish those separately before adoption.
 import {parseBoundedJson} from '../../qianmu-json-input.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 import {galleryCatalogAccount,galleryCatalogSource,galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
 
 export const GALLERY_PAGE_INDEX_LIMITS=Object.freeze({rows:128,pages:512,pageBytes:512*1024,manifestBytes:384*1024,recordBytes:2*1024*1024,result:60,scanPages:4,pending:4});

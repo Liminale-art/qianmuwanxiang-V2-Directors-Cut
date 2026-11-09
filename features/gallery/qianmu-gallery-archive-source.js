@@ -13,7 +13,7 @@ import {createGalleryOriginalClient} from './qianmu-gallery-original-client.js';
 import {GALLERY_ORIGINAL_BATCH_LIMIT} from './qianmu-gallery-original-contract.js';
 import {comfyReferencePath} from '../../qianmu-comfy-reference-contract.js';
 import {captureGallerySupplement} from './qianmu-gallery-archive-supplement.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 import {scanGalleryEvidenceSource} from './qianmu-gallery-evidence-source.js';
 import {galleryEvidenceSummary} from './qianmu-gallery-archive-evidence.js';
 import {GALLERY_SUPPLEMENT_FIELDS,galleryContinuitySavePending} from './qianmu-gallery-continuity.js?v=1.59.414';

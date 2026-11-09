@@ -8,7 +8,7 @@ import { COMFY_LIBRARY_BACKUP_SCHEMA, planComfyLibraryRestore } from '../qianmu-
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';
 import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-journal.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { renderCharacterArchive } from '../qianmu-character-archive-view.js';
 
 const namespace = 'st-user:alice', data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

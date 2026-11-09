@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeStorageOperations,createVibeStorageActions} from '../qianmu-vibe-storage.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createVibeAssetStore} from '../qianmu-vibe-asset-store.js';
+import {createVibeStorageOperations,createVibeStorageActions} from '../features/vibe/qianmu-vibe-storage.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createVibeAssetStore} from '../features/vibe/qianmu-vibe-asset-store.js';
 import {readFile} from 'node:fs/promises';
 const namespace='st-user:storage',id='a'.repeat(64),otherId='b'.repeat(64),source='c'.repeat(64);
 function fixture(){
@@ -86,5 +86,5 @@ test('actual library mount provides lazy storage actions and the module is prese
   assert.match(index,/createStorage:async onClose=>\{const storage=await featureRuntime.load\('vibeStorage'\)/);
   assert.match(index,/createVibeStorageActions\(\{namespace,call:assetRuntime.callVibeAsset,guard,items:\(\)=>state.vibeLibrary\}/);
   assert.match(view,/\['storage',createStorage,'Vibe 文件空间','fa-database'\]/);
-  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-vibe-storage.js'));
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('features/vibe/qianmu-vibe-storage.js'));
 });

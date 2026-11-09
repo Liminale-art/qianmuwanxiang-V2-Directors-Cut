@@ -1,7 +1,7 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {validateStoryboardMutation as validate} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
 import {createMutationJournalBody,validateMutationBodyReference,assertMutationBodyValue} from './qianmu-mutation-journal-body.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 
 const slot='configuration-mutation-journal',schema='qianmu.configuration-mutation-journal.v1',same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));

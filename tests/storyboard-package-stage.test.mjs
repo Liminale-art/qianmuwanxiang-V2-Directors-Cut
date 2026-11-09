@@ -5,7 +5,7 @@ import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js
 import {parseStoryboardPackageText,inspectStoryboardPackageFile,STORYBOARD_PACKAGE_INPUT_LIMIT} from '../qianmu-storyboard-package-input.js';
 import {createStoryboardPackageStage} from '../qianmu-storyboard-package-stage.js';
 import {validateStoryboardPackageCheckpoint} from '../qianmu-storyboard-package-journal.js';
-import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../qianmu-vibe-file.js';
+import {parseNovelVibeFile,vibeDigest,vibeFilePreview} from '../features/vibe/qianmu-vibe-file.js';
 const namespace='st-user:destination',sourceNamespace='st-user:source',chatKey='chat-a';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 async function fixture(count=3){

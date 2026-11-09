@@ -7,7 +7,7 @@ import {createBundleCarrierProof,inspectBundleCarrierProof,verifyBundleCarrierMe
 import {bundleCarrierHead,bundleCarrierOriginalHead} from '../qianmu-bundle-carrier-storage-contract.js';
 import {validateBundleCarriersTransportSummary} from '../qianmu-bundle-carriers-contract.js';
 import {comfyLibraryBackupDigest as digest} from '../qianmu-comfy-library-backup.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 const capture=f=>captureBundleCarriers({namespace,store:f.store,mappings:f.mappings});
 async function checked(entries){const built=await carrierPack(entries,30),opened=await openStoryboardBundle(built.file),mappings=await inspectBundleMappings(opened);return {built,opened,mappings,carriers:await inspectBundleCarriers(opened,{mappings})};}
 async function rehash(value){const {digest:_,...core}=value;return {...core,digest:await digest(core)};}

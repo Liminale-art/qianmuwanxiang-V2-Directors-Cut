@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeReviewSegment,resolveVibeReviewHistory,checkCombinedVibeReviews,validateVibeEncodingDelivery,checkReviewSource,checkReviewHistory} from '../qianmu-vibe-history.js';
-import {exportVibeReceiptFile,inspectVibeReceiptFile} from '../qianmu-vibe-receipt-file.js';
-import {createVibeReviewActions} from '../qianmu-vibe-review.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {createVibeReviewSegment,resolveVibeReviewHistory,checkCombinedVibeReviews,validateVibeEncodingDelivery,checkReviewSource,checkReviewHistory} from '../features/vibe/qianmu-vibe-history.js';
+import {exportVibeReceiptFile,inspectVibeReceiptFile} from '../features/vibe/qianmu-vibe-receipt-file.js';
+import {createVibeReviewActions} from '../features/vibe/qianmu-vibe-review.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 const namespace='st-user:history',cacheKey='a'.repeat(64),reference=s=>({version:1,id:s.id,count:s.count});
 const reviews=(start,count)=>Array.from({length:count},(_,i)=>({attemptId:`review-${start+i}`,feeReview:{version:1,method:'local-user',confirmation:'b'.repeat(64),previousStatus:'unknown',at:start+i}}));
 async function chain(){const first=await createVibeReviewSegment(namespace,cacheKey,null,reviews(100,32)),second=await createVibeReviewSegment(namespace,cacheKey,reference(first),reviews(200,16));return {first,second,ref:reference(second)};}

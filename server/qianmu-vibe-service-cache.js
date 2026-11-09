@@ -2,8 +2,8 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {checkPrivateResultDirectory as directory,readPrivateResultFile as read,replacePrivateResultFile as replace,syncPrivateResultDirectory as sync} from './qianmu-image-service-results.js';
-import {validateVibeEncodingIdentity,validateVibeServiceDelivery} from '../qianmu-vibe-encoding-store.js';
-import {VIBE_ENCODING_LIMIT} from '../qianmu-vibe-encoding.js';
+import {validateVibeEncodingIdentity,validateVibeServiceDelivery} from '../features/vibe/qianmu-vibe-encoding-store.js';
+import {VIBE_ENCODING_LIMIT} from '../features/vibe/qianmu-vibe-encoding.js';
 
 const HASH=/^[a-f0-9]{64}$/,MAX_FILE=12*1024*1024,SCHEMA='qianmu.vibe-result.v1';
 const sha=value=>createHash('sha256').update(value).digest('hex');

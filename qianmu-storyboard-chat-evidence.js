@@ -1,4 +1,4 @@
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 import { hashText } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { createStoryboardMessageReference } from './qianmu-storyboard.js?v=1.59.440';
 

@@ -5,7 +5,7 @@ import {galleryArchiveSupplementReference,galleryArchiveEvidenceReference} from 
 export {galleryArchiveEvidenceReference} from './qianmu-gallery-archive-version.js';
 import {chatGalleryEvidenceRequest,chatGalleryEvidenceSourceResponse,CHAT_GALLERY_EVIDENCE_LIMITS as SOURCE} from '../chat/qianmu-chat-gallery-evidence.js';
 import {STORYBOARD_CHAT_EVIDENCE_SCHEMA} from '../../qianmu-storyboard-chat-evidence.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 // Digest rows only, never narrative text. Each native document stays far below
 // its existing node/depth limits; raising a whole-document limit is not paging.

@@ -1,4 +1,4 @@
-import {isStAccountStorageConfigured} from './qianmu-st-account-storage.js';
+import {isStAccountStorageConfigured} from '../../qianmu-st-account-storage.js';
 import {createLocalVibeEncodingStore} from './qianmu-vibe-local-encoding-store.js';
 import {createNativeVibeEncodingStore} from './qianmu-vibe-native-encoding-store.js';
 export {createLocalVibeEncodingStore} from './qianmu-vibe-local-encoding-store.js';

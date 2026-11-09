@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {createStoryboardDefaults} from '../qianmu-storyboard.js';
-import {captureStoryboardVibeRecipe} from '../qianmu-vibe-recipe.js';
+import {captureStoryboardVibeRecipe} from '../features/vibe/qianmu-vibe-recipe.js';
 import * as references from '../qianmu-comfy-references.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 

@@ -2,7 +2,7 @@ import { createStoryboardBundleRestoreSession } from './qianmu-storyboard-bundle
 import { createComfyWorkflowStore } from './qianmu-comfy-library.js';
 import { createComfyPoolStore } from './qianmu-comfy-pool-store.js';
 import { createCharacterArchiveStore } from './features/character/qianmu-character-archive-store.js';
-import { createVibeAssetStore } from './qianmu-vibe-asset-store.js?v=1.59.202';
+import { createVibeAssetStore } from './features/vibe/qianmu-vibe-asset-store.js?v=1.59.202';
 import { createStoryboardPackageJournal } from './qianmu-storyboard-package-journal.js?v=1.59.414';
 import { createStoryboardPackageStage } from './qianmu-storyboard-package-stage.js?v=1.59.202';
 import { createImageRestoreClient } from './features/gallery/qianmu-image-restore-client.js';

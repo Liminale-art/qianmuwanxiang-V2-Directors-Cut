@@ -34,11 +34,11 @@ import { STORYBOARD_PROMPT_FORMATS, retainStoryboardPromptRenderingPack, resolve
 import { retainComfyWorkbenchBinding } from './qianmu-comfy-workbench-binding.js';
 import { retainComfyAutoBinding } from './qianmu-comfy-auto-binding.js';
 import {retainStoryboardArtistPromptLayer} from './qianmu-artist-prompt-layer.js';
-import {retainStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
-import {retainVibeAssetRef} from './qianmu-vibe-asset-ref.js';
+import {retainStoryboardVibeRecipe} from './features/vibe/qianmu-vibe-recipe.js';
+import {retainVibeAssetRef} from './features/vibe/qianmu-vibe-asset-ref.js';
 import {normalizeStoryboardFloorTake} from './qianmu-storyboard-floor-take.js?v=1.59.414';
 export {normalizeStoryboardFloorTake,createStoryboardCaptureReservation,bindStoryboardFloorTakeJobs,applyStoryboardFloorTakeToJob,storyboardFloorTakeInitialInline,saveStoryboardFloorTakes,settleStoryboardFloorTakes,pruneStoryboardRetakeGallery} from './qianmu-storyboard-floor-take.js?v=1.59.414';
-export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
+export {captureStoryboardVibeRecipe,resolveStoryboardVibeRecipe} from './features/vibe/qianmu-vibe-recipe.js';
 export {captureStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
 export { storyboardComfyPromptFormat } from './qianmu-comfy-workbench-binding.js';
 export { assertCharacterCastingSnapshots } from './features/character/qianmu-character-casting.js?v=1.59.202';

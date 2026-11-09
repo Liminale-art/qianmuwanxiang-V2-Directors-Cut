@@ -8,7 +8,7 @@ import { planComfyPoolRestore } from '../qianmu-comfy-pool-backup.js';
 import { planCharacterLibraryRestore } from '../features/character/qianmu-character-library-backup.js';
 import { validateResourceRestoreCheckpoint } from '../qianmu-storyboard-package-journal.js';
 import { createStoryboardDefaults } from '../qianmu-storyboard.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { hashText } from '../qianmu-storyboard-utils.js';
 import { captureStoryboardChatEvidence } from '../qianmu-storyboard-chat-evidence.js';

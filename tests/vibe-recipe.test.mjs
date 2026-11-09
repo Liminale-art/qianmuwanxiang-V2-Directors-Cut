@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {captureStoryboardVibeRecipe as capture,retainStoryboardVibeRecipe as retain,resolveStoryboardVibeRecipe as resolve} from '../qianmu-vibe-recipe.js';
+import {captureStoryboardVibeRecipe as capture,retainStoryboardVibeRecipe as retain,resolveStoryboardVibeRecipe as resolve} from '../features/vibe/qianmu-vibe-recipe.js';
 import {sanitizeStoryboardSnapshot,normalizeStoryboardState} from '../qianmu-storyboard.js';
 import {createStoryboardFormFixture,storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const row=(id='a')=>({id,name:'Vibe A',previewUrl:'/user/images/vibe-a.png',strength:0,informationExtracted:0});

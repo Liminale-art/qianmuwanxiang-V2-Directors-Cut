@@ -1,6 +1,6 @@
 import { inspectRecipeRestoreRequest, recipeRestoreRequest, recipeRestoreResponse } from './qianmu-recipe-restore-contract.js';
 import { recipeArchiveEnvelope } from './qianmu-recipe-archive-contract.js';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 
 const error = (message, started = false) => Object.assign(new Error(message), {
   code: 'recipe_restore_client', recipeWriteState: started ? 'unconfirmed' : 'not_started', submissionState: 'not_submitted',

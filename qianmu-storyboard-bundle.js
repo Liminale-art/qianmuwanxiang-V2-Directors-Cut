@@ -1,5 +1,5 @@
 import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 import { assertComfyRouteNamespace } from './qianmu-comfy-route-contract.js';
 import { sourceIdentityResponse, sourceIdentityForNamespace } from './features/chat/qianmu-source-identity-contract.js';
 import { BUNDLE_MAPPING_LIMITS, isBundleMappingEntry } from './qianmu-bundle-mapping-contract.js';

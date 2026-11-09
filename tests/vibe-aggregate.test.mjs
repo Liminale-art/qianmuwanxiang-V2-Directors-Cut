@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeVariantAccumulator,createVibeAggregationOperations} from '../qianmu-vibe-aggregate.js';
-import {parseNovelVibeFile as parse,vibeDigest,selectNovelVibeEncoding} from '../qianmu-vibe-file.js';
-import {createVibeStorageActions} from '../qianmu-vibe-storage.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
+import {createVibeVariantAccumulator,createVibeAggregationOperations} from '../features/vibe/qianmu-vibe-aggregate.js';
+import {parseNovelVibeFile as parse,vibeDigest,selectNovelVibeEncoding} from '../features/vibe/qianmu-vibe-file.js';
+import {createVibeStorageActions} from '../features/vibe/qianmu-vibe-storage.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
 const namespace='st-user:aggregate';
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const row=(n,info,extra={})=>({encoding:Buffer.alloc(160,n).toString('base64'),params:{information_extracted:info,...extra}});
@@ -141,7 +141,7 @@ test('conflicts, bad prepared files and stale manifests never reach a download',
 });
 
 test('aggregate implementation is lazy and included in the release without adding private development files',async()=>{
-  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-vibe-aggregate.js'));
-  const worker=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8');assert.match(worker,/await import\('\.\/qianmu-vibe-aggregate.js'\)/);
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('features/vibe/qianmu-vibe-aggregate.js'));
+  const worker=await readFile(new URL('../features/vibe/qianmu-vibe-assets-worker.js',import.meta.url),'utf8');assert.match(worker,/await import\('\.\/qianmu-vibe-aggregate.js'\)/);
   assert.ok(!release.files.some(name=>name.includes('local-qa')||name.includes('开发')||name.includes('实测')));
 });

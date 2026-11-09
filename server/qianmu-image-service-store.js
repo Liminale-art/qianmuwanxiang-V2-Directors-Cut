@@ -5,7 +5,7 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { normalizeImageServiceChannel } from './qianmu-image-service-queue.js';
-import {normalizeNovelServiceChannel} from '../qianmu-novel-service-channel-state.js';
+import {normalizeNovelServiceChannel} from '../features/vibe/qianmu-novel-service-channel-state.js';
 import {normalizeComfyCloudChannel} from './qianmu-comfy-cloud-channel-state.js';
 
 const DISK_SCHEMA = 'qianmu.image-service-disk.v1';

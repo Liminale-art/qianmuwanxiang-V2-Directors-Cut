@@ -2,7 +2,7 @@ import {captureGalleryArchiveJson as capture} from './qianmu-gallery-page-index.
 import {galleryArchiveScope,galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {recipeArchiveSnapshot} from '../../qianmu-recipe-archive-contract.js';
 import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 const schema='qianmu.gallery.reviewed-recipe.v1',limit=2*1024*1024;
 const fail=()=>{throw Error('旧配方核对内容或来源不符，未替换原资料');};

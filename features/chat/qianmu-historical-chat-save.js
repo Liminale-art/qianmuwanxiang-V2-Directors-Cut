@@ -5,7 +5,7 @@ import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { captureStoryboardChatEvidence, inspectStoryboardChatEvidence, projectStoryboardChatMessages, storyboardChatProjectionMatches } from '../../qianmu-storyboard-chat-evidence.js';
 import { acquireChatSaveLock, releaseChatSaveLock } from './qianmu-chat-save-lock.js';
-import { vibeDigest } from '../../qianmu-vibe-file.js';
+import { vibeDigest } from '../vibe/qianmu-vibe-file.js';
 import { createHistoricalChatMutation, inspectHistoricalChatMutation } from './qianmu-historical-chat-journal.js';
 
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];

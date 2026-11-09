@@ -8,7 +8,7 @@ import { newCharacterArchive, normalizeCharacterArchive, selectCharacterBinding 
 import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../qianmu-comfy-library.js';
 import { COMFY_LIBRARY_BACKUP_SCHEMA } from '../qianmu-comfy-library-backup.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { renderCharacterArchive } from '../qianmu-character-archive-view.js';
 const namespace = 'st-user:character-backup', clone = structuredClone;
 const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==', png = new Uint8Array(Buffer.from(data, 'base64'));

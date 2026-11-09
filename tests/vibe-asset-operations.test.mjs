@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {parseNovelVibeFile,vibeDigest} from '../qianmu-vibe-file.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {parseNovelVibeFile,vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const encoding=value=>btoa(value.repeat(32));
 async function fixture({encodedOnly=false}={}){

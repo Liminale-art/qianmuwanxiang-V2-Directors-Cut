@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoryboardVibeLibraryController} from '../qianmu-vibe-library-view.js';
-import {createVibeLibraryAssets} from '../qianmu-vibe-library-assets.js';
+import {createVibeLibraryAssets} from '../features/vibe/qianmu-vibe-library-assets.js';
 import {createComfyLibraryController,renderComfyLibrary} from '../qianmu-comfy-library-view.js';
 import {createComfyPoolController,renderComfyPools} from '../qianmu-comfy-pool-view.js';
 

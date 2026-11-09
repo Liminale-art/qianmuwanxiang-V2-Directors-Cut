@@ -8,7 +8,7 @@ import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js
 import {inspectStoryboardPackageFile} from '../qianmu-storyboard-package-input.js';
 import {fixture,namespace,file} from './fixtures/storyboard-bundle.mjs';
 import {createPackageImportFixture} from './helpers/storyboard-package-fixture.mjs';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 const clone=structuredClone;
 const scope={namespace,sourceNamespace:namespace};
 const draft=incoming=>prepareStoryboardPackageDraft({settings:normalizeStoryboardState(createStoryboardDefaults()),chat:{},incoming,images:[],collections:[],chatKey:'chat',...scope});

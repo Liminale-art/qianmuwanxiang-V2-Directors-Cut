@@ -5,7 +5,7 @@ import {createConfiguredStAccountStorage} from '../../qianmu-st-account-storage.
 import {captureGalleryArchiveJson,encodeGalleryIndexPage,encodeGalleryIndexManifest,createGalleryPageIndexReader,GALLERY_PAGE_INDEX_LIMITS as LIMIT} from './qianmu-gallery-page-index.js';
 import {galleryArchiveScope,galleryArchiveObjectReference,encodeGalleryArchiveRecord,inspectGalleryArchiveRecord,GALLERY_ARCHIVE_RECORD_BYTES} from './qianmu-gallery-archive-record.js';
 import {galleryCatalogTags} from './qianmu-gallery-catalog-contract.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 import {galleryArchiveSourceReceipt as sourceReceipt,galleryArchiveSourceSlot,galleryArchiveSourceVersion} from './qianmu-gallery-archive-version.js';
 import {encodeGalleryArchiveRecipe,inspectGalleryArchiveRecipe} from './qianmu-gallery-archive-recipe.js?v=1.59.392';
 import {recipeArchiveSnapshot} from '../../qianmu-recipe-archive-contract.js';

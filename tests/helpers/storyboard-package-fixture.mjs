@@ -6,7 +6,7 @@ import * as input from '../../qianmu-storyboard-package-input.js';
 import * as draft from '../../qianmu-storyboard-package-draft.js';
 import * as mutation from '../../qianmu-storyboard-package-mutation.js';
 import {createStoryboardPackageStage} from '../../qianmu-storyboard-package-stage.js';
-import {parseNovelVibeFile,vibeFilePreview} from '../../qianmu-vibe-file.js';
+import {parseNovelVibeFile,vibeFilePreview} from '../../features/vibe/qianmu-vibe-file.js';
 import {storyboardFunctionSource as fn} from './storyboard-form-fixture.mjs';
 export function createPackageImportFixture(){
   const e={state:board.createStoryboardDefaults(),store:{},namespace:'st-user:fixture',chatKey:'chat-a',messages:[],notices:[],events:[],confirm:true,choice:null,pending:null,files:new Map(),checkpoints:new Map()};

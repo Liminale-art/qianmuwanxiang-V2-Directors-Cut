@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeReceiptFileAccounting,validateVibeReceiptFileUsage} from '../qianmu-vibe-receipt-accounting.js';
-import {createVibeReceiptOriginals} from '../qianmu-vibe-receipt-original.js';
-import {createNativeVibeEncodingStore} from '../qianmu-vibe-native-encoding-store.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createVibeStorageController} from '../qianmu-vibe-storage.js';
-import {validateVibeStorageSummary,collectVibeStorage} from '../qianmu-vibe-storage-summary.js';
+import {createVibeReceiptFileAccounting,validateVibeReceiptFileUsage} from '../features/vibe/qianmu-vibe-receipt-accounting.js';
+import {createVibeReceiptOriginals} from '../features/vibe/qianmu-vibe-receipt-original.js';
+import {createNativeVibeEncodingStore} from '../features/vibe/qianmu-vibe-native-encoding-store.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createVibeStorageController} from '../features/vibe/qianmu-vibe-storage.js';
+import {validateVibeStorageSummary,collectVibeStorage} from '../features/vibe/qianmu-vibe-storage-summary.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {receiptInput} from './helpers/vibe-receipt-fixture.mjs';
 import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
@@ -140,7 +140,7 @@ test('actual Vibe manager presents the independent history-file partition after 
 });
 
 test('accounting details remain in the explicit manager rather than the ordinary inventory summary',async()=>{
-  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('qianmu-vibe-receipt-accounting.js'));
-  const code=await readFile(new URL('../qianmu-vibe-storage.js',import.meta.url),'utf8');assert.match(code,/已登记费用原件/);assert.match(code,/历史独有文件/);assert.match(code,/未登记残留/);assert.match(code,/不与.*相加/);
+  const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url)));assert.ok(release.files.includes('features/vibe/qianmu-vibe-receipt-accounting.js'));
+  const code=await readFile(new URL('../features/vibe/qianmu-vibe-storage.js',import.meta.url),'utf8');assert.match(code,/已登记费用原件/);assert.match(code,/历史独有文件/);assert.match(code,/未登记残留/);assert.match(code,/不与.*相加/);
   const summary=await readFile(new URL('../qianmu-storage-backup-view.js',import.meta.url),'utf8');assert.doesNotMatch(summary,/已登记费用原件|历史独有文件|未登记残留/);
 });

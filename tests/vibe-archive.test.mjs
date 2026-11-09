@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeReviewActions} from '../qianmu-vibe-review.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createVibeEncodingStore} from '../qianmu-vibe-encoding-store.js';
-import {createVibeStorageOperations} from '../qianmu-vibe-storage.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
-import {inspectVibeReceiptFile} from '../qianmu-vibe-receipt-file.js';
+import {createVibeReviewActions} from '../features/vibe/qianmu-vibe-review.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createVibeEncodingStore} from '../features/vibe/qianmu-vibe-encoding-store.js';
+import {createVibeStorageOperations} from '../features/vibe/qianmu-vibe-storage.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
+import {inspectVibeReceiptFile} from '../features/vibe/qianmu-vibe-receipt-file.js';
 
 const namespace='st-user:archive';
 async function receipt(){

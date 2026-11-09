@@ -1,6 +1,6 @@
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';
-import {novelModelCapabilities} from './features/gallery/qianmu-image-models.js';
-import {resolveImageTransportBinding} from './features/gallery/qianmu-image-transport.js';
+import {novelModelCapabilities} from '../gallery/qianmu-image-models.js';
+import {resolveImageTransportBinding} from '../gallery/qianmu-image-transport.js';
 import {VIBE_ENCODING_MODELS} from './qianmu-vibe-asset-ref.js';
 
 export const VIBE_ENCODING_VERSION=1;

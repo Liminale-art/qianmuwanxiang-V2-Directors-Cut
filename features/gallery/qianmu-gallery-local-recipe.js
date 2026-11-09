@@ -2,7 +2,7 @@ import {captureGalleryArchiveJson,GALLERY_PAGE_INDEX_LIMITS} from './qianmu-gall
 import {encodeGalleryArchiveRecord,galleryArchiveScope,galleryArchiveRecipeState} from './qianmu-gallery-archive-record.js';
 import {recipeArchiveSnapshot} from '../../qianmu-recipe-archive-contract.js';
 import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 import {galleryLegacyRecipeReference,galleryReviewedRecipeSlot,inspectGalleryReviewedRecipe} from './qianmu-gallery-reviewed-recipe.js';
 
 const schema='qianmu.gallery.local-recipe.v1',limit=GALLERY_PAGE_INDEX_LIMITS.recordBytes;

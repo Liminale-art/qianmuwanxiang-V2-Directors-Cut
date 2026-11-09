@@ -4,7 +4,7 @@ import { createRecipeRestoreClient } from '../../qianmu-recipe-restore-client.js
 import { chatCharacterReceiptTarget } from './qianmu-chat-character-receipt.js';
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
-import { vibeDigest } from '../../qianmu-vibe-file.js';
+import { vibeDigest } from '../vibe/qianmu-vibe-file.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'historical_recipe_restore', submissionState: 'not_submitted' }); };
 const clone = structuredClone;

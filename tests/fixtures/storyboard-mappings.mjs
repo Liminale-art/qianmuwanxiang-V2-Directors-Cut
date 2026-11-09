@@ -2,7 +2,7 @@ import {createStoryboardEnvironmentReview} from '../../qianmu-storyboard-environ
 import {createStoryboardSubjectMapReview,inspectStoryboardSubjectMapReview} from '../../qianmu-storyboard-subject-map.js';
 import {captureStoryboardSubjectEvidence} from '../../qianmu-storyboard-subject-evidence.js';
 import {comfyLibraryBackupDigest as digest} from '../../qianmu-comfy-library-backup.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../../features/vibe/qianmu-vibe-file.js';
 export const namespace='st-user:mapping-registry';
 export async function mappingFixture({bindings=25,namespace:targetNamespace=namespace}={}){
   const namespace=targetNamespace;

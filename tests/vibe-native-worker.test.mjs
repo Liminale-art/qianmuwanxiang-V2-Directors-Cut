@@ -2,23 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
-import {createVibeAssetStore} from '../qianmu-vibe-asset-store.js';
-import {createVibeEncodingStore} from '../qianmu-vibe-encoding-store.js';
+import {createVibeAssetStore} from '../features/vibe/qianmu-vibe-asset-store.js';
+import {createVibeEncodingStore} from '../features/vibe/qianmu-vibe-encoding-store.js';
 import {receiptInput} from './helpers/vibe-receipt-fixture.mjs';
 import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {vibeFileError} from '../qianmu-vibe-file.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {vibeFileError} from '../features/vibe/qianmu-vibe-file.js';
 import {characterWorkerStorageOptions} from '../features/character/qianmu-character-worker-storage.js';
 import {buildStoryboardVibePackage} from '../qianmu-storyboard-package-assets.js';
 import {validateStoryboardPackageMedia} from '../qianmu-storyboard-package-input.js';
-import {callVibeAsset,closeVibeAssetRuntime} from '../qianmu-vibe-assets.js';
+import {callVibeAsset,closeVibeAssetRuntime} from '../features/vibe/qianmu-vibe-assets.js';
 import {exportStoryboardPackageAssets,closeStoryboardPackageRuntime} from '../qianmu-storyboard-package-runtime.js';
 import {createVerifiedProgressWatch} from '../qianmu-verified-progress-watch.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {vibeLegacyFixture,vibeInput} from './helpers/vibe-legacy-fixture.mjs';
 
 const origin='https://st.fixture.invalid',settled=()=>new Promise(resolve=>setImmediate(resolve));
-const sources=await Promise.all(['qianmu-vibe-assets-worker.js','qianmu-storyboard-package-worker.js','qianmu-storyboard-bundle-restore-worker.js','qianmu-vibe-assets.js'].map(file=>readFile(new URL('../'+file,import.meta.url),'utf8')));
+const sources=await Promise.all(['features/vibe/qianmu-vibe-assets-worker.js','qianmu-storyboard-package-worker.js','qianmu-storyboard-bundle-restore-worker.js','features/vibe/qianmu-vibe-assets.js'].map(file=>readFile(new URL('../'+file,import.meta.url),'utf8')));
 const packet=input=>({type:'qianmu-storyboard',version:6,credentialsIncluded:false,settings:{vibeLibrary:[{id:'item',name:'item',strength:0,information:0,assetRef:{version:1,namespace,id:input.asset.assetId}}],logs:[],pipelineLogs:[],shotPlans:[],taskStates:[]},chat:{images:[],collections:[]},media:[]});
 async function fixture(t,inputs=[]){
   closeVibeAssetRuntime();closeStoryboardPackageRuntime();const f=await characterNativeFixture(t),local=vibeLegacyFixture(t,inputs),ledger=receiptWritableFixture();f.configure();t.mock.method(globalThis,'fetch',f.fetchImpl);
@@ -99,7 +99,7 @@ function clientClock(){let time=0,serial=0;const tasks=new Map();return {get tim
 function clientFixture(){
   const clock=clientClock(),workers=[],scope={};let account=namespace,captureHook=null;
   class Worker extends EventTarget{constructor(){super();this.sent=[];workers.push(this);}postMessage(value){this.sent.push(value);}terminate(){this.closed=true;}reply(value){this.dispatchEvent(new MessageEvent('message',{data:value}));}}
-  const source=sources[3].replace(/^import[^\n]*\n/gm,'').replace(/^export \{[^\n]*\n/gm,'').replaceAll('export ','').replaceAll('import.meta.url',JSON.stringify(new URL('../qianmu-vibe-assets.js',import.meta.url).href));
+  const source=sources[3].replace(/^import[^\n]*\n/gm,'').replace(/^export \{[^\n]*\n/gm,'').replaceAll('export ','').replaceAll('import.meta.url',JSON.stringify(new URL('../features/vibe/qianmu-vibe-assets.js',import.meta.url).href));
   const context=vm.createContext({Worker,URL,structuredClone,Date:{now:()=>clock.time},vibeFileError,isStAccountStorageConfigured:()=>true,getStAccountStorageReadScope:()=>scope,
     captureStAccountStorageWorkerContext:async()=>{await captureHook?.();return {namespace:account,origin,csrf:'synthetic'};},
     verifyStAccountStorageWorkerContext:async expected=>{await captureHook?.();if(account!==expected.namespace||origin!==expected.origin)throw vibeFileError('account','Vibe账户已变化');return true;},

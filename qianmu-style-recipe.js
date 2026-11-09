@@ -1,6 +1,6 @@
 import {resolveStoryboardJobModelIdentity,getStoryboardCapabilities} from './qianmu-storyboard.js?v=1.59.440';
 import {retainStoryboardArtistPromptLayer,resolveStoryboardArtistPromptBase} from './qianmu-artist-prompt-layer.js';
-import {resolveStoryboardVibeRecipe} from './qianmu-vibe-recipe.js';
+import {resolveStoryboardVibeRecipe} from './features/vibe/qianmu-vibe-recipe.js';
 
 const text=(value,max)=>typeof value==='string'&&value.length<=max&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 const fail=message=>Object.assign(new Error(message),{code:'storyboard_style_recipe'});

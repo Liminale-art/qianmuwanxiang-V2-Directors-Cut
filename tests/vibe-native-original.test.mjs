@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibeNativeOriginals,validateVibeNativeOriginal,VIBE_NATIVE_ORIGINAL_SLOT,VIBE_NATIVE_ORIGINAL_LIMITS as limits} from '../qianmu-vibe-native-original.js';
-import {validateVibeAssetHead,VIBE_ASSET_LIMITS,vibeAssetKey} from '../qianmu-vibe-asset-contract.js';
-import {parseNovelVibeFile,vibeFilePreview,vibeDigest,selectNovelVibeEncoding} from '../qianmu-vibe-file.js';
+import {createVibeNativeOriginals,validateVibeNativeOriginal,VIBE_NATIVE_ORIGINAL_SLOT,VIBE_NATIVE_ORIGINAL_LIMITS as limits} from '../features/vibe/qianmu-vibe-native-original.js';
+import {validateVibeAssetHead,VIBE_ASSET_LIMITS,vibeAssetKey} from '../features/vibe/qianmu-vibe-asset-contract.js';
+import {parseNovelVibeFile,vibeFilePreview,vibeDigest,selectNovelVibeEncoding} from '../features/vibe/qianmu-vibe-file.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
@@ -207,6 +207,6 @@ test('shared IDB head validation keeps the original legacy contract and new modu
   for(const change of [h=>h.previewBytes=-1,h=>h.bytes=0,h=>h.summary.variants[0].information=2,h=>h.createdAt=Infinity,h=>h.key='other']){
     const head=structuredClone(input.head);change(head);assert.throws(()=>validateVibeAssetHead(head,namespace));}
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));
-  for(const name of ['qianmu-vibe-asset-contract.js','qianmu-vibe-native-original.js'])assert.ok(release.files.includes(name));
-  const source=await readFile(new URL('../qianmu-vibe-native-original.js',import.meta.url),'utf8');assert.doesNotMatch(source,/fetch\(|indexedDB|client\.(?:delete|update|write)\(/);
+  for(const name of ['features/vibe/qianmu-vibe-asset-contract.js','features/vibe/qianmu-vibe-native-original.js'])assert.ok(release.files.includes(name));
+  const source=await readFile(new URL('../features/vibe/qianmu-vibe-native-original.js',import.meta.url),'utf8');assert.doesNotMatch(source,/fetch\(|indexedDB|client\.(?:delete|update|write)\(/);
 });

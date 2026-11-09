@@ -3,7 +3,7 @@ import {projectAliasBindings,selectUserAliasBindings} from './features/character
 import {validateCharacterLibraryBackup} from './features/character/qianmu-character-library-backup.js';
 import {inspectStoryboardSubjectEvidence,SUBJECT_EVIDENCE_SCHEMA} from './qianmu-storyboard-subject-evidence.js?v=1.59.202';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 
 export const BUNDLE_USER_ALIAS_SCHEMA='qianmu.storyboard.bundle-user-alias.v1';
 const fields=['schema','scope','namespace','sourceDigest','sourceEvidence','sourceBindings','selections','projectedEvidenceDigest','projectedBindingsDigest','digest'];

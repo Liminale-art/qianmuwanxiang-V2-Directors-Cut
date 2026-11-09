@@ -4,7 +4,7 @@ import {fixture,file,namespace,chatKey,receipt} from './fixtures/storyboard-bund
 import {openStoryboardBundle,buildStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {inspectStoryboardResourceBundle} from '../qianmu-storyboard-bundle-resources.js';
 import {projectStoryboardOriginPayload,buildStoryboardResourceOrigins,inspectStoryboardResourceOrigins,storyboardResourceOriginsPage as page,validStoryboardResourceOriginsPage,storyboardResourceOriginsSummary,validStoryboardResourceOriginsSummary} from '../qianmu-storyboard-resource-origins.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 
 const canonical=value=>JSON.stringify(value,(_,row)=>row&&typeof row==='object'&&!Array.isArray(row)?Object.fromEntries(Object.keys(row).sort().map(key=>[key,row[key]])):row);
 async function input(f){return {payload:await projectStoryboardOriginPayload(f.config),...f.sources,originals:[receipt]};}

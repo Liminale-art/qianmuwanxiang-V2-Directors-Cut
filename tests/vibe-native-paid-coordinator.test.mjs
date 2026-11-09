@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prepareStoryboardVibes} from '../qianmu-vibe-prepare.js';
-import {encodeNovelVibe} from '../qianmu-vibe-encoding.js';
-import {createVibeEncodingRetention} from '../qianmu-vibe-encoding-retention.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {createNativeVibeEncodingStore} from '../qianmu-vibe-native-encoding-store.js';
-import {parseNovelVibeFile} from '../qianmu-vibe-file.js';
+import {prepareStoryboardVibes} from '../features/vibe/qianmu-vibe-prepare.js';
+import {encodeNovelVibe} from '../features/vibe/qianmu-vibe-encoding.js';
+import {createVibeEncodingRetention} from '../features/vibe/qianmu-vibe-encoding-retention.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {createNativeVibeEncodingStore} from '../features/vibe/qianmu-vibe-native-encoding-store.js';
+import {parseNovelVibeFile} from '../features/vibe/qianmu-vibe-file.js';
 import {receiptWritableFixture} from './helpers/vibe-receipt-writable-fixture.mjs';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeComfyWorkflowStore } from '../qianmu-comfy-native-store.js';
-import { createNativeVibeAssetStore, VIBE_NATIVE_SLOT } from '../qianmu-vibe-native-store.js';
+import { createNativeVibeAssetStore, VIBE_NATIVE_SLOT } from '../features/vibe/qianmu-vibe-native-store.js';
 import { COMFY_NATIVE_SLOT } from '../qianmu-comfy-native-contract.js';
 import { characterNativeFixture, namespace } from './helpers/character-native-fixture.mjs';
 import { vibeLegacyFixture, vibeInput } from './helpers/vibe-legacy-fixture.mjs';

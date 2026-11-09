@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeReviewActions} from '../qianmu-vibe-review.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
-import {createVibeAssetOperations} from '../qianmu-vibe-assets-worker.js';
-import {parseNovelVibeFile} from '../qianmu-vibe-file.js';
+import {createVibeReviewActions} from '../features/vibe/qianmu-vibe-review.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
+import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
+import {parseNovelVibeFile} from '../features/vibe/qianmu-vibe-file.js';
 const namespace='st-user:one',image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 async function setup(){
   const prepared=await prepareNovelVibeEncoding({version:1,provider:'novel',model:'nai-diffusion-4-full',baseUrl:'https://relay.example',image,information:0});

@@ -1,4 +1,4 @@
-import {normalizeNovelServiceChannel} from './qianmu-novel-service-channel-state.js';
+import {normalizeNovelServiceChannel} from './features/vibe/qianmu-novel-service-channel-state.js';
 const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const fail=()=>Object.assign(new Error('原生请求核查凭据不完整，请保留原记录'),{code:'image_service_review_state',status:409,submissionState:'not_submitted'});

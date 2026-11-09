@@ -1,7 +1,7 @@
 import { parseStrictStoryboardJson } from './qianmu-storyboard-package-input.js?v=1.59.202';
 import { collectStoryboardVibeDependencies } from './qianmu-storyboard-package-assets.js?v=1.59.202';
 import { assertPortableConnection, assertPortableConnectionUrl } from './qianmu-storyboard-connection-identity.js';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 
 export const STORYBOARD_ORIGINS_SCHEMA = 'qianmu.storyboard.resource-origins.v1';
 export const STORYBOARD_ORIGINS_LIMITS = Object.freeze({ rows: 100000, bytes: 32 * 1048576, page: 24 });

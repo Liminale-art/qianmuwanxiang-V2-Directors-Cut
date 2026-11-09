@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createVibePreservationStore,exportVibePreservation,VIBE_PRESERVATION_TABLES} from '../qianmu-vibe-preservation.js';
-import {createVibePreservationActions} from '../qianmu-vibe-preservation-view.js';
-import {inspectVibeReceiptFile} from '../qianmu-vibe-receipt-file.js';
+import {createVibePreservationStore,exportVibePreservation,VIBE_PRESERVATION_TABLES} from '../features/vibe/qianmu-vibe-preservation.js';
+import {createVibePreservationActions} from '../features/vibe/qianmu-vibe-preservation-view.js';
+import {inspectVibeReceiptFile} from '../features/vibe/qianmu-vibe-receipt-file.js';
 const namespace='st-user:preserve',key=JSON.stringify([namespace,'broken-id']),json=async value=>JSON.parse(await value.text());
 
 test('preservation keeps original malformed text, unknown fields and JSON edge values without treating them as valid assets',async()=>{
@@ -52,9 +52,9 @@ test('actions only read explicit selection after exact consent and recheck the a
   const late=createVibePreservationActions({namespace,guard,call:async()=>{live=false;return {};}});await assert.rejects(()=>late.page('heads'),/account changed/);
 });
 test('entry points stay available independently of validated lists and preservation ships as an on-demand module',async()=>{
-  const index=await readFile(new URL('../index.js',import.meta.url),'utf8'),worker=await readFile(new URL('../qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
+  const index=await readFile(new URL('../index.js',import.meta.url),'utf8'),worker=await readFile(new URL('../features/vibe/qianmu-vibe-assets-worker.js',import.meta.url),'utf8');
   assert.match(index,/createPreservation=async onClose=>\{const preservation=await featureRuntime.load\('vibePreservation'\)/);
   assert.equal((index.match(/onClose,createPreservation,confirm:/g)||[]).length,2);assert.match(worker,/await import\('\.\/qianmu-vibe-preservation.js'\)/);
   const files=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url))).files;
-  for(const file of ['qianmu-vibe-preservation.js','qianmu-vibe-preservation-view.js'])assert.ok(files.includes(file));assert.equal(VIBE_PRESERVATION_TABLES.length,9);
+  for(const file of ['features/vibe/qianmu-vibe-preservation.js','features/vibe/qianmu-vibe-preservation-view.js'])assert.ok(files.includes(file));assert.equal(VIBE_PRESERVATION_TABLES.length,9);
 });

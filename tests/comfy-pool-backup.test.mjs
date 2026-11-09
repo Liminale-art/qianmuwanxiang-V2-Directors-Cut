@@ -8,7 +8,7 @@ import { normalizeComfyLibraryDocument, inspectComfyLibraryDocument } from '../q
 import { normalizeComfyAutoPool, COMFY_SELECTION_SCHEMA } from '../qianmu-comfy-selection.js';
 import { createComfyPoolStore, importComfyPoolDocument, exportComfyPoolDocument } from '../qianmu-comfy-pool-store.js';
 import { comfyWorkflowReferenceHash } from '../qianmu-comfy-references.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { renderComfyPools } from '../qianmu-comfy-pool-view.js';
 const namespace = 'st-user:backup', clone = value => JSON.parse(JSON.stringify(value));
 async function fixture(count = 2, poolId = 'pool') {

@@ -5,7 +5,7 @@ import { historicalChatSaveFixture } from './helpers/historical-chat-save-fixtur
 import { createHistoricalChatMutation, historicalChatMutationNext } from '../features/chat/qianmu-historical-chat-journal.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { renderRestoreStorageReview } from '../qianmu-storyboard-restore-storage-view.js';
-import { vibeDigest } from '../qianmu-vibe-file.js';
+import { vibeDigest } from '../features/vibe/qianmu-vibe-file.js';
 import { createPackageImportFixture } from './helpers/storyboard-package-fixture.mjs';
 import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs';
 const consent={confirmed:true,recoveryLossAccepted:true}, pick=row=>({kind:row.kind,key:row.key,fingerprint:row.fingerprint});

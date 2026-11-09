@@ -1,6 +1,6 @@
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {STORYBOARD_PACKAGE_LIMITS,inspectStoryboardVibePackage} from './qianmu-storyboard-package-assets.js?v=1.59.202';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 import {comfyReferenceStillMime} from './qianmu-comfy-results.js?v=1.59.440';
 import {STORYBOARD_IMPORT_FIELDS} from './qianmu-storyboard-package-mutation.js?v=1.59.202';
 import {assertGalleryPackageCollections} from './features/gallery/qianmu-gallery-package-collections.js';

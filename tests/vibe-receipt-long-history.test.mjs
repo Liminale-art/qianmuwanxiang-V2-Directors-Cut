@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../qianmu-vibe-receipt-catalogue.js';
-import {createVibeReceiptOriginals,captureVibeReceiptOriginal} from '../qianmu-vibe-receipt-original.js';
-import {resolveVibeReceiptLineage} from '../qianmu-vibe-receipt-lineage.js';
+import {createVibeReceiptCatalogue,VIBE_RECEIPT_CATALOGUE_SLOT as slot} from '../features/vibe/qianmu-vibe-receipt-catalogue.js';
+import {createVibeReceiptOriginals,captureVibeReceiptOriginal} from '../features/vibe/qianmu-vibe-receipt-original.js';
+import {resolveVibeReceiptLineage} from '../features/vibe/qianmu-vibe-receipt-lineage.js';
 import {characterNativeFixture,namespace} from './helpers/character-native-fixture.mjs';
 import {receiptInput,receiptLegacyFixture} from './helpers/vibe-receipt-fixture.mjs';
 

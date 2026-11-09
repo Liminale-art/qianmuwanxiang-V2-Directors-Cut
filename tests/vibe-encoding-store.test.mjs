@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeEncodingStore,validateVibeEncodingIdentity,validateVibeEncodingDelivery,validateVibeServiceDelivery,matchesVibeServiceDelivery} from '../qianmu-vibe-encoding-store.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {createVibeEncodingStore,validateVibeEncodingIdentity,validateVibeEncodingDelivery,validateVibeServiceDelivery,matchesVibeServiceDelivery} from '../features/vibe/qianmu-vibe-encoding-store.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 const image='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const prepared=()=>prepareNovelVibeEncoding({version:1,provider:'novel',baseUrl:'https://relay.example',model:'nai-diffusion-4-full',image,information:0});
 

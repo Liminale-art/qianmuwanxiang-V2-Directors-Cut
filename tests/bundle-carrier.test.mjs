@@ -5,7 +5,7 @@ import {buildStoryboardBundle,openStoryboardBundle,inspectStoryboardBundleManife
 import {createBundleCarrierProof,inspectBundleCarrierProof,verifyBundleCarrierMembers} from '../qianmu-bundle-carrier.js';
 import {validateBundleCarrierSummary,BUNDLE_CARRIER_LIMITS} from '../qianmu-bundle-carrier-contract.js';
 import {comfyLibraryBackupDigest as digest} from '../qianmu-comfy-library-backup.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 const file=value=>new Blob([JSON.stringify(value)],{type:'application/json'}),clone=structuredClone;
 async function pack(entries=[]){return buildStoryboardBundle({namespace,chatKey:'carrier-chat',createdAt:321,entries:[...['storyboard','workflows','pools','characters'].map(id=>({id,file:file({})})),...entries]});}
 async function fixture({empty=false}={}){

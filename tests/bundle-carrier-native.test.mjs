@@ -9,7 +9,7 @@ import {bundleCarrierOriginalHead,bundleCarrierHead} from '../qianmu-bundle-carr
 import {captureBundleCarriers,inspectBundleCarriers} from '../qianmu-bundle-carriers.js';
 import {openStoryboardBundle} from '../qianmu-storyboard-bundle.js';
 import {createBundleCarrierProof,inspectBundleCarrierProof} from '../qianmu-bundle-carrier.js';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {mappingReceiptsFixture} from './fixtures/storyboard-mapping-receipts.mjs';
 
 async function fixture(t,{seed=false}={}){

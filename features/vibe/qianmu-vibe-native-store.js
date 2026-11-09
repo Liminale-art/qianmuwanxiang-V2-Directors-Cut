@@ -1,8 +1,8 @@
-import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
+import {createConfiguredStAccountStorage,stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
 import {createVibeNativeOriginals,vibeNativeHeadText,VIBE_NATIVE_ORIGINAL_SLOT,VIBE_NATIVE_ORIGINAL_LIMITS} from './qianmu-vibe-native-original.js';
 import {parseNovelVibeFile,vibeFileError,vibeFilePreview} from './qianmu-vibe-file.js';
 import {vibeAssetNamespace,vibeAssetKey,validateVibeAssetHead,VIBE_ASSET_LIMITS} from './qianmu-vibe-asset-contract.js';
-import {parseBoundedJson} from './qianmu-json-input.js';
+import {parseBoundedJson} from '../../qianmu-json-input.js';
 
 export const VIBE_NATIVE_SLOT='vibe-assets';
 const schema='qianmu.vibe.assets.v1',maxIndex=8*1048576,utf8=new TextEncoder();

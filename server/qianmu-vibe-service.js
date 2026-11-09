@@ -3,7 +3,7 @@ import {createImageServiceStore} from './qianmu-image-service-store.js';
 import {createImageServiceQueue,imageServiceChannelKey,normalizeImageServiceChannel} from './qianmu-image-service-queue.js';
 import {imageServiceAccount,imageServiceAccountStillMatches} from './qianmu-image-service-access.js';
 import {createVibeServiceCache,validateVibeServiceResult} from './qianmu-vibe-service-cache.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 import {encodeGatewayNovelVibe} from './qianmu-vibe-encoding-gateway.js';
 import {createNovelServiceChannel} from './qianmu-novel-service-channel.js';
 import {createNativeRequestReview} from './qianmu-native-review-service.js';

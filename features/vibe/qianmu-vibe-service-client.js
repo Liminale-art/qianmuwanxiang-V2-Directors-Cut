@@ -1,6 +1,6 @@
 import {prepareNovelVibeEncoding,VIBE_ENCODING_LIMIT} from './qianmu-vibe-encoding.js';
 import {validateVibeServiceDelivery} from './qianmu-vibe-encoding-store.js';
-import {normalizeNativeReviewView} from './qianmu-native-review-contract.js';
+import {normalizeNativeReviewView} from '../../qianmu-native-review-contract.js';
 const BASE='/api/plugins/qianmu-tts/image/vibe',HASH=/^[a-f0-9]{64}$/;
 const fail=(message,state='not_submitted')=>Object.assign(new Error(message),{code:'vibe_service_client',submissionState:state,retryable:false});
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),byte=>byte.toString(16).padStart(2,'0')).join('');

@@ -1,4 +1,4 @@
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 import { inspectHistoricalChatMutation } from './features/chat/qianmu-historical-chat-journal.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'storyboard_restore_storage', submissionState: 'not_submitted' }); };

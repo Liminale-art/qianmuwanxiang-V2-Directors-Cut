@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {vibeDigest} from '../qianmu-vibe-file.js';
+import {vibeDigest} from '../features/vibe/qianmu-vibe-file.js';
 import {galleryLocalRecipeReference,encodeGalleryLocalRecipe,inspectGalleryLocalRecipe,galleryLocalRecipeSlot} from '../features/gallery/qianmu-gallery-local-recipe.js';
 import {createGalleryArchiveStorage} from '../features/gallery/qianmu-gallery-archive-storage.js';
 import {streamCheckpointTransport} from './helpers/stream-checkpoint-fixture.mjs';

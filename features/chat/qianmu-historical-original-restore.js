@@ -4,7 +4,7 @@ import { planHistoricalStoryboardMerge } from './qianmu-historical-storyboard-me
 import { imageRestoreReceipt } from '../gallery/qianmu-image-restore-contract.js';
 import { createImageRestoreClient } from '../gallery/qianmu-image-restore-client.js';
 import { chatCharacterReceiptTarget } from './qianmu-chat-character-receipt.js';
-import { vibeDigest } from '../../qianmu-vibe-file.js';
+import { vibeDigest } from '../vibe/qianmu-vibe-file.js';
 
 const fail = message => { throw Object.assign(new Error(message), { code: 'historical_original_restore', submissionState: 'not_submitted' }); };
 const clone = structuredClone;

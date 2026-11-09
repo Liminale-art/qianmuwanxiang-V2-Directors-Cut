@@ -3,7 +3,7 @@ import {normalizeStoryboardFloorTakeReceipts} from '../../qianmu-storyboard-floo
 import {storyboardFloorTakeSavePending} from '../../qianmu-storyboard-floor-take.js?v=1.59.414';
 import {parseBoundedJson} from '../../qianmu-json-input.js';
 import {assertPortableStoryboardData} from '../../qianmu-storyboard-package-security.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../vibe/qianmu-vibe-file.js';
 
 export const GALLERY_CONTINUITY_FIELDS=Object.freeze(['storyboardContinuations','storyboardFloorTakeReceipts']);
 export const GALLERY_SUPPLEMENT_FIELDS=Object.freeze(['storyboardCollections','characterDrafts',...GALLERY_CONTINUITY_FIELDS]);

@@ -21,7 +21,7 @@ try{
   await page.goto('https://qianmu.test/');
   await page.evaluate(async()=>{
     const [{createVibeReviewController},{createVibeStorageController},{createVibePreservationController},{createQianmuAppearanceSession},settings,{applyQianmuIcons}]=await Promise.all([
-      import('/qianmu-vibe-review.js'),import('/qianmu-vibe-storage.js'),import('/qianmu-vibe-preservation-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
+      import('/features/vibe/qianmu-vibe-review.js'),import('/features/vibe/qianmu-vibe-storage.js'),import('/features/vibe/qianmu-vibe-preservation-view.js'),import('/qianmu-appearance-session.js'),import('/qianmu-appearance-settings.js'),import('/qianmu-icon-renderer.js')]);
     window.appearanceSettings={theme:'dark'};window.appearanceSession=createQianmuAppearanceSession({readSettings:()=>appearanceSettings,loadStyles:()=>({promise:Promise.resolve(true),cancel(){}})});
     appearanceSession.mount(document.getElementById('story-director-modal'));
     window.setAppearance=async(family,mode)=>{appearanceSettings.appearance=settings.updateAppearancePreferences(appearanceSettings,{family,mode});await appearanceSession.sync();};

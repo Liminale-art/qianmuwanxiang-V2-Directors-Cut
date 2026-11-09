@@ -7,7 +7,7 @@ import { normalizeComfyAutoPool, COMFY_SELECTION_SCHEMA } from '../../qianmu-com
 import { normalizeCharacterArchive, newCharacterArchive } from '../../features/character/qianmu-character-archive.js';
 import { CHARACTER_LIBRARY_BACKUP_SCHEMA } from '../../features/character/qianmu-character-library-backup.js';
 import { comfyWorkflowReferenceHash } from '../../qianmu-comfy-references.js';
-import { vibeDigest } from '../../qianmu-vibe-file.js';
+import { vibeDigest } from '../../features/vibe/qianmu-vibe-file.js';
 
 const namespace = 'st-user:bundle', chatKey = 'chat-one', clone = structuredClone;
 const data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

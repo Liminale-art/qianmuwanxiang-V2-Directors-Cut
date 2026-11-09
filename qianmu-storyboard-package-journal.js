@@ -11,9 +11,9 @@ import {createNativeHistoricalJournal} from './features/chat/qianmu-historical-j
 import {createNativeMappingJournal} from './qianmu-mapping-journal-native.js';
 import {createNativeResourceJournal} from './qianmu-resource-journal-native.js';
 import {createNativeMutationJournal} from './qianmu-mutation-journal-native.js';
-import {createNativeVibeStageJournal} from './qianmu-vibe-stage-native.js';
-import {validateStoryboardPackageCheckpoint,prepareVibeStageCheckpoint,VIBE_STAGE_PHASES as phases} from './qianmu-vibe-stage-contract.js';
-export {validateStoryboardPackageCheckpoint} from './qianmu-vibe-stage-contract.js';
+import {createNativeVibeStageJournal} from './features/vibe/qianmu-vibe-stage-native.js';
+import {validateStoryboardPackageCheckpoint,prepareVibeStageCheckpoint,VIBE_STAGE_PHASES as phases} from './features/vibe/qianmu-vibe-stage-contract.js';
+export {validateStoryboardPackageCheckpoint} from './features/vibe/qianmu-vibe-stage-contract.js';
 import {validateResourceRestoreCheckpoint,resourceOrder} from './qianmu-resource-journal-contract.js';
 export {validateResourceRestoreCheckpoint} from './qianmu-resource-journal-contract.js';
 // Asset checkpoints are identity-only; the separate mutation store holds complete before/after configuration.

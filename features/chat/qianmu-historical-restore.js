@@ -12,7 +12,7 @@ import { imageRestoreReceipt } from '../gallery/qianmu-image-restore-contract.js
 import { chatGalleryReceiptText } from './qianmu-chat-gallery-receipt.js';
 import { projectChatGalleryState } from './qianmu-chat-gallery-state.js';
 import { captureStoryboardChatEvidence, projectStoryboardChatMessages, storyboardChatProjectionMatches } from '../../qianmu-storyboard-chat-evidence.js';
-import { vibeDigest } from '../../qianmu-vibe-file.js';
+import { vibeDigest } from '../vibe/qianmu-vibe-file.js';
 
 const scope = 'historical-originals-and-current-chat';
 const fields = ['storyboardImages', 'storyboardCollections', 'characterDrafts'];

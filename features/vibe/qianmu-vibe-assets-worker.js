@@ -1,5 +1,5 @@
 import {createVibeAssetStore} from './qianmu-vibe-asset-store.js?v=1.59.202';
-import {characterWorkerStorageOptions} from './features/character/qianmu-character-worker-storage.js';
+import {characterWorkerStorageOptions} from '../character/qianmu-character-worker-storage.js';
 import {createVibeEncodingStore,validateVibeEncodingIdentity} from './qianmu-vibe-encoding-store.js';
 import {exportNovelVibeFile,selectNovelVibeEncoding,vibeFilePreview,vibeFileError,vibeVariants,vibeDigest,appendNovelVibeEncoding,VIBE_FILE_LIMITS} from './qianmu-vibe-file.js';
 import {normalizeNovelVibeImage} from './qianmu-novel-vibe.js';

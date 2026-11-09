@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {createImageServiceStore} from './qianmu-image-service-store.js';
 import {imageServiceChannelKey} from './qianmu-image-service-queue.js';
-import {normalizeNovelServiceChannel} from '../qianmu-novel-service-channel-state.js';
+import {normalizeNovelServiceChannel} from '../features/vibe/qianmu-novel-service-channel-state.js';
 
 const fail=(code,message)=>Object.assign(new Error(message),{code:`image_service_channel_${code}`,status:409,submissionState:'not_submitted',retryable:false});
 const same=(a,b)=>a?.namespace===b.namespace&&a?.kind===b.kind&&a?.attemptId===b.attemptId&&a?.requestDigest===b.requestDigest;

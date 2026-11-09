@@ -6,7 +6,7 @@ import {streamCheckpointTransport} from './stream-checkpoint-fixture.mjs';
 import {createCurrentGalleryArchiveSession} from '../../features/gallery/qianmu-gallery-archive-source.js';
 import {createGalleryArchiveStorage} from '../../features/gallery/qianmu-gallery-archive-storage.js';
 import {chatGalleryDigest} from '../../features/chat/qianmu-chat-gallery-digest.js';
-import {vibeDigest} from '../../qianmu-vibe-file.js';
+import {vibeDigest} from '../../features/vibe/qianmu-vibe-file.js';
 
 // Real archive preservation of a current chat gallery, after which the live rows
 // are cleared. The retired restore preparation/asset layer is no longer built.

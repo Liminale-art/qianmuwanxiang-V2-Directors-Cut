@@ -1,8 +1,8 @@
 import test from 'node:test';
 import {createHash} from 'node:crypto';
-import {appendNovelVibeEncoding} from '../qianmu-vibe-file.js';
+import {appendNovelVibeEncoding} from '../features/vibe/qianmu-vibe-file.js';
 import assert from 'node:assert/strict';
-import {parseNovelVibeFile as parse,exportNovelVibeFile as serialize,vibeDigest as digest,vibeVariants,selectNovelVibeEncoding as select,VIBE_FILE_LIMITS} from '../qianmu-vibe-file.js';
+import {parseNovelVibeFile as parse,exportNovelVibeFile as serialize,vibeDigest as digest,vibeVariants,selectNovelVibeEncoding as select,VIBE_FILE_LIMITS} from '../features/vibe/qianmu-vibe-file.js';
 
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAX+XDSwAAAABJRU5ErkJggg==';
 const bytes=number=>Buffer.alloc(160,number).toString('base64');

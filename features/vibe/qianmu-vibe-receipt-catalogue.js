@@ -1,4 +1,4 @@
-import {createConfiguredStAccountStorage,stAccountImmutableReference} from './qianmu-st-account-storage.js';
+import {createConfiguredStAccountStorage,stAccountImmutableReference} from '../../qianmu-st-account-storage.js';
 import {createVibeReceiptOriginals,captureVibeReceiptOriginal,vibeReceiptEvidenceText,VIBE_RECEIPT_ORIGINAL_SLOT,VIBE_RECEIPT_ORIGINAL_LIMITS} from './qianmu-vibe-receipt-original.js';
 import {resolveVibeReceiptLineage,vibeReceiptFollows} from './qianmu-vibe-receipt-lineage.js';
 import {createVibeReceiptFileAccounting} from './qianmu-vibe-receipt-accounting.js';

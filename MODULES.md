@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 457 个，其中 `qianmu-*` 模块 440 个。
+根目录文件 421 个，其中 `qianmu-*` 模块 404 个。
 
 ## 入口、宿主与安装
 
@@ -31,7 +31,7 @@
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
 | `evaluation/` | 2 |
-| `features/` | 149 |
+| `features/` | 185 |
 | `scripts/` | 158 |
 | `server/` | 65 |
 | `tests/` | 960 |
@@ -237,47 +237,11 @@
 | `qianmu-gallery-recipe-review-view.js` | 是 |  |
 | `qianmu-image-admission.js` | 是 |  |
 
-## Vibe／NAI（37）
+## Vibe／NAI（1）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
-| `qianmu-novel-service-channel-state.js` | 是 | Channel occupancy is not an image/encoding fee receipt. Each operation keeps its own historical ledger. |
-| `qianmu-novel-vibe.js` | 是 |  |
-| `qianmu-vibe-aggregate.js` | 是 |  |
-| `qianmu-vibe-asset-contract.js` | 是 |  |
-| `qianmu-vibe-asset-ref.js` | 是 | Lightweight settings/snapshot reference only. No database, image codec or worker at startup. |
-| `qianmu-vibe-asset-store.js` | 是 |  |
-| `qianmu-vibe-assets-worker.js` | 是 |  |
-| `qianmu-vibe-assets.js` | 是 |  |
-| `qianmu-vibe-encoding-contract.js` | 是 |  |
-| `qianmu-vibe-encoding-retention.js` | 是 |  |
-| `qianmu-vibe-encoding-store.js` | 是 |  |
-| `qianmu-vibe-encoding.js` | 是 |  |
-| `qianmu-vibe-file.js` | 是 |  |
-| `qianmu-vibe-history.js` | 是 |  |
-| `qianmu-vibe-library-assets.js` | 是 |  |
 | `qianmu-vibe-library-view.js` | 是 |  |
-| `qianmu-vibe-local-encoding-store.js` | 是 |  |
-| `qianmu-vibe-native-encoding-store.js` | 是 |  |
-| `qianmu-vibe-native-original.js` | 是 |  |
-| `qianmu-vibe-native-store.js` | 是 |  |
-| `qianmu-vibe-prepare.js` | 是 |  |
-| `qianmu-vibe-preservation-view.js` | 是 |  |
-| `qianmu-vibe-preservation.js` | 是 |  |
-| `qianmu-vibe-receipt-accounting.js` | 是 | Verified immutable UTF-8 file bytes, not decoded receipt JSON, browser heap, |
-| `qianmu-vibe-receipt-catalogue.js` | 是 |  |
-| `qianmu-vibe-receipt-file.js` | 是 |  |
-| `qianmu-vibe-receipt-lineage.js` | 是 |  |
-| `qianmu-vibe-receipt-original.js` | 是 |  |
-| `qianmu-vibe-recipe.js` | 是 | Bounded source metadata only. A URL is not an immutable content receipt. |
-| `qianmu-vibe-restore.js` | 是 |  |
-| `qianmu-vibe-review.js` | 是 |  |
-| `qianmu-vibe-service-client.js` | 是 |  |
-| `qianmu-vibe-stage-contract.js` | 是 |  |
-| `qianmu-vibe-stage-native.js` | 是 |  |
-| `qianmu-vibe-storage-accounting.js` | 是 |  |
-| `qianmu-vibe-storage-summary.js` | 是 | On-demand, metadata-only bridge into the global storage card. No media or fee mutation. |
-| `qianmu-vibe-storage.js` | 是 |  |
 
 ## 正文辅助（prose）与蜂巢（33）
 

@@ -4,7 +4,7 @@ import {BUNDLE_CARRIER_SCHEMA,BUNDLE_CARRIER_SCOPE,BUNDLE_CARRIER_LIMITS,validat
 import {bundleMappingEntryId,isBundleMappingEntry} from './qianmu-bundle-mapping-contract.js';
 import {inspectBundleMappingIndex,inspectBundleMappingReceipt} from './qianmu-bundle-mappings.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 import {mappingHead} from './qianmu-storyboard-mapping-contract.js';
 import {validateBundleCarrierOriginalHead} from './qianmu-bundle-carrier-storage-contract.js';
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_carrier',submissionState:'not_submitted'});};

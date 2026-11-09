@@ -3,7 +3,7 @@ import {mappingHead,mappingBytes} from './qianmu-storyboard-mapping-contract.js'
 import {inspectStoryboardEnvironmentReview,validateStoryboardEnvironmentReceipt} from './qianmu-storyboard-environment-map.js';
 import {inspectStoryboardSubjectMapReview} from './qianmu-storyboard-subject-map.js';
 import {comfyLibraryBackupDigest as digest} from './qianmu-comfy-library-backup.js';
-import {vibeDigest} from './qianmu-vibe-file.js';
+import {vibeDigest} from './features/vibe/qianmu-vibe-file.js';
 import {bundleCarrierOriginalHead,summarizeBundleCarrierOriginals} from './qianmu-bundle-carrier-storage-contract.js';
 
 const fail=message=>{throw Object.assign(new Error(message),{code:'storyboard_bundle_mappings',submissionState:'not_submitted'});};

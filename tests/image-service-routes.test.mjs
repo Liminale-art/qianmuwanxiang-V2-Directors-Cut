@@ -5,7 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { init, exit } from '../server-plugin.js';
-import {encodeNovelVibe,prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {encodeNovelVibe,prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKuoAAAAASUVORK5CYII=';

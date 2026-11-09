@@ -8,7 +8,7 @@ import {createImageServiceStore} from '../server/qianmu-image-service-store.js';
 import {inspectImageServiceRecovery as inspect,recoverImageServiceRecords as recover,restoreInterruptedImageRecovery as restore} from '../features/gallery/qianmu-image-service-recovery.js';
 import {createImageService} from '../server/qianmu-image-service.js';
 import {createVibeEncodingService} from '../server/qianmu-vibe-service.js';
-import {prepareNovelVibeEncoding} from '../qianmu-vibe-encoding.js';
+import {prepareNovelVibeEncoding} from '../features/vibe/qianmu-vibe-encoding.js';
 import {imageServiceAccount} from '../server/qianmu-image-service-access.js';
 import {imageServiceChannelKey as keyOf} from '../server/qianmu-image-service-queue.js';
 const actor={user:{profile:{handle:'one',enabled:true}}},namespace=imageServiceAccount(actor).namespace,key='a'.repeat(64);
@@ -84,7 +84,7 @@ test('real image and Vibe process interruption can recover all stores then compl
   const vibeRequest={version:1,provider:'novel',protocol:'novelai',model:'nai-diffusion-4-5-full',baseUrl:'https://relay.invalid',apiKey:vibeKey,image,information:0};
   const prepared=await prepareNovelVibeEncoding(vibeRequest),vibeInput={version:1,expectedAccount:namespace,cacheKey:prepared.cacheKey,request:vibeRequest,confirmed:true,clientAttemptId:'original-browser'};
   await child(`import {createVibeEncodingService} from ${JSON.stringify(new URL('../server/qianmu-vibe-service.js',import.meta.url).href)};
-    import {prepareNovelVibeEncoding} from ${JSON.stringify(new URL('../qianmu-vibe-encoding.js',import.meta.url).href)};
+    import {prepareNovelVibeEncoding} from ${JSON.stringify(new URL('../features/vibe/qianmu-vibe-encoding.js',import.meta.url).href)};
     const service=createVibeEncodingService({dataRoot:${JSON.stringify(e.root)},encode:async(request,hooks)=>{const prepared=await prepareNovelVibeEncoding(request);await hooks.authorize(prepared.identity,prepared.cacheKey);process.exit(0);}});
     await service.submit(${JSON.stringify(actor)},${JSON.stringify(vibeInput)});`);
   const plan=await inspect({dataRoot:e.root,scope:'all'});assert.equal(plan.submitting,4);

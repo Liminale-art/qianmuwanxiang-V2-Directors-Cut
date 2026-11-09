@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import {createVibeEncodingStore} from '../../qianmu-vibe-encoding-store.js';
-import {prepareNovelVibeEncoding} from '../../qianmu-vibe-encoding.js';
-import {createVibeReviewSegment} from '../../qianmu-vibe-history.js';
+import {createVibeEncodingStore} from '../../features/vibe/qianmu-vibe-encoding-store.js';
+import {prepareNovelVibeEncoding} from '../../features/vibe/qianmu-vibe-encoding.js';
+import {createVibeReviewSegment} from '../../features/vibe/qianmu-vibe-history.js';
 import {namespace} from './character-native-fixture.mjs';
 
 export async function receiptInput({status='unknown',section='current',information=0,reviewCount=0,undefinedDelivery=false}={}){

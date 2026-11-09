@@ -1,6 +1,6 @@
 import { recipeArchiveEnvelope, recipeArchiveReference, recipeArchiveError, RECIPE_ARCHIVE_LIMITS } from './qianmu-recipe-archive-contract.js';
 import { assertPortableStoryboardData } from './qianmu-storyboard-package-security.js';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 
 const fail = message => { throw recipeArchiveError('restore_contract', message, 400); };
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)

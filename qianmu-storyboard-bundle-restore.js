@@ -4,7 +4,7 @@ import { planComfyLibraryRestore, comfyLibraryBackupDigest as digest } from './q
 import { planComfyPoolRestore } from './qianmu-comfy-pool-backup.js';
 import { planCharacterLibraryRestore } from './features/character/qianmu-character-library-backup.js';
 import { imageRestoreReceipt } from './features/gallery/qianmu-image-restore-contract.js';
-import { vibeDigest } from './qianmu-vibe-file.js';
+import { vibeDigest } from './features/vibe/qianmu-vibe-file.js';
 import { createCharacterRestoreChoiceSnapshot } from './features/character/qianmu-character-backup-restore.js';
 import { sourceIdentityLabelsMatch } from './features/chat/qianmu-source-identity-contract.js';
 import { validStoryboardConnectionReview } from './qianmu-storyboard-connection-identity.js';

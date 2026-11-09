@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVibeLibraryAssets} from '../qianmu-vibe-library-assets.js';
+import {createVibeLibraryAssets} from '../features/vibe/qianmu-vibe-library-assets.js';
 const namespace='st-user:one',assetId='a'.repeat(64),assetRef={version:1,namespace,id:assetId};
 const head=(id=assetId)=>({assetId:id,summary:{name:'Imported'},defaults:{strength:0,information:0}});
 function setup(call=async()=>[head()]){
