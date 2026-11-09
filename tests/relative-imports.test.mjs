@@ -61,3 +61,15 @@ test('relayout also rewrites root-served browser imports and release-list assert
   assert.match(browser[1].next, /import\('\/relayout-probe\/qianmu-storyboard-utils\.js'\)/);
   assert.doesNotMatch(browser[1].next, /import\('\/qianmu-storyboard-utils\.js'\)/);
 });
+
+test('relayout rewrites escaped source-text regex paths in tests', async () => {
+  const { planRelayout } = await import('../scripts/relayout.mjs');
+  const plan = await planRelayout([{ from: 'qianmu-notes.js', to: 'relayout-probe/qianmu-notes.js' }]);
+  const rewritten = [...plan.edits].filter(([file, { notes }]) => file.startsWith('tests/') && notes.some(note => note.endsWith('(source-text regex)')));
+  assert.ok(rewritten.length, 'some test asserts index.js text with an escaped ./qianmu-notes.js path');
+  for (const [, { next }] of rewritten) {
+    assert.ok(next.includes(String.raw`\.\/relayout-probe\/qianmu-notes\.js`));
+    assert.ok(!next.includes(String.raw`\.\/qianmu-notes\.js`));
+  }
+  assert.ok(!plan.unresolved.some(line => line.includes(String.raw`\.\/qianmu-notes\.js`)));
+});

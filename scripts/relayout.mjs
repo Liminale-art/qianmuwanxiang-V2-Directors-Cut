@@ -18,6 +18,10 @@ const posix = path.posix;
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
 const TEXT = /\.(?:m?js|css|json|html|sh|ps1)$/;
 
+// Regex-escaped "./a/b.js" as written in a regex literal: \.\/a\/b\.js (captures the part after \.\/).
+const ESCAPED_ROOT_PATH = /\\\.\\\/((?:[\w-]+(?:\\\.[\w-]+)*\\\/)*[\w-]+(?:\\\.[\w-]+)+)/g;
+const escapeRegexPath = value => value.replace(/\./g, '\\.').replace(/\//g, '\\/');
+
 function relativeSpecifier(fromFile, target) {
   let rel = posix.relative(posix.dirname(fromFile), target);
   if (!rel.startsWith('.')) rel = `./${rel}`;
@@ -63,6 +67,14 @@ export async function planRelayout(moves) {
       map.has(name) ? (notes.push(`/${name} -> /${map.get(name)}`), `${head}${quote}/${map.get(name)}${quote}`) : whole);
     next = next.replace(/(\bfiles\.includes\(\s*)(['"])([\w.-]+)\2/g, (whole, head, quote, name) =>
       map.has(name) ? (notes.push(`${name} -> ${map.get(name)} (release assertion)`), `${head}${quote}${map.get(name)}${quote}`) : whole);
+    // Source-text assertions in tests/scripts: regex literals such as /import\('\.\/qianmu-x\.js/ check what a
+    // root file (index.js, server-plugin.js) says, so the escaped "./" path is read from the repo root.
+    if (/^(?:tests|scripts)\//.test(file)) {
+      next = next.replace(ESCAPED_ROOT_PATH, (whole, escapedPath) => {
+        const target = escapedPath.replace(/\\/g, '');
+        return map.has(target) ? (notes.push(`${target} -> ${map.get(target)} (source-text regex)`), `\\.\\/${escapeRegexPath(map.get(target))}`) : whole;
+      });
+    }
     // Anything still naming a moved file outside a correctly resolving literal needs a human look.
     const targets = new Set(map.values());
     const home = posix.dirname(newPath(file));
@@ -70,7 +82,8 @@ export async function planRelayout(moves) {
       const rest = line
         .replace(literal, (whole, quote, specifier) => targets.has(posix.normalize(posix.join(home, specifier))) ? '' : whole)
         .replace(/"([^"]+)"/g, (whole, value) => file === 'release-files.json' && targets.has(value) ? '' : whole)
-        .replace(/(['"])\/?([\w.-]+\/[\w./-]+)\1/g, (whole, quote, value) => targets.has(value) ? '' : whole);
+        .replace(/(['"])\/?([\w.-]+\/[\w./-]+)\1/g, (whole, quote, value) => targets.has(value) ? '' : whole)
+        .replace(ESCAPED_ROOT_PATH, (whole, escapedPath) => targets.has(escapedPath.replace(/\\/g, '')) ? '' : whole);
       if ([...rest.matchAll(mention)].length) unresolved.push(`${file}: ${line.trim().slice(0, 160)}`);
     }
     if (next !== source) edits.set(file, { next, notes });
