@@ -89,10 +89,19 @@ export function nextBatch(document, messages, settings, { force = false, history
     return { start, end, ...(!force && start > initialTotal && end < targetEnd ? { targetEnd } : {}) };
 }
 
+/** Manual summary batch size in floors. A user preference of the manual card only;
+ * the automatic trigger, recent floors and floor trigger never shape manual batches. */
+export const MANUAL_BATCH_FLOORS = 20;
+export const MANUAL_BATCH_LIMIT = 2000;
+export const manualBatchFloors = value => Number.isSafeInteger(value) && value >= 1 && value <= MANUAL_BATCH_LIMIT ? value : MANUAL_BATCH_FLOORS;
+
 /** Read-only manual scope preview. Never relabel part of an old summary as if its
  * text only described the remainder. Expand to complete affected slices first;
- * the caller must show and confirm these actual bounds before sending originals. */
-export function planManualRange(document, messages, settings, requestedRange) {
+ * the caller must show and confirm these actual bounds before sending originals.
+ * New floors are cut every batchFloors floors, shortened only when the connection
+ * cannot hold them; a floor is never truncated. Existing slices are redone whole. */
+export function planManualRange(document, messages, settings, requestedRange, { batchFloors } = {}) {
+    const perBatch = manualBatchFloors(batchFloors);
     const requested = { start: requestedRange?.start, end: requestedRange?.end };
     if (!Array.isArray(messages) || !Number.isSafeInteger(requested.start) || !Number.isSafeInteger(requested.end)
         || requested.start < 1 || requested.end < requested.start || requested.end > messages.length) throw new Error('请选择有效的起止楼层');
@@ -133,11 +142,10 @@ export function planManualRange(document, messages, settings, requestedRange) {
             tokens = messages.slice(floor - 1, end).reduce((total, item) => total + estimateTokens(item.mes), 0);
         } else {
             const next = summaries.find(entry => entry.source.start > floor)?.source.start ?? Infinity;
-            for (end = floor; end <= range.end && end < next; end++) {
+            for (end = floor; end <= range.end && end < next && end < floor + perBatch; end++) {
                 const size = estimateTokens(messages[end - 1].mes);
                 if (end > floor && (tokens + size > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end }))) break;
                 tokens += size;
-                if (tokens >= settings.trigger) { end++; break; }
             }
             end--;
         }

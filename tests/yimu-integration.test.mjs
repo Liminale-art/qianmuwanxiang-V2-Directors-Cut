@@ -378,8 +378,8 @@ async function manualReady(f) {
     await f.controller.action('enable', {enabled: true});
     await f.flush();
 }
-async function manualRange(f, start, end, expectedRange = {start, end}) {
-    await f.controller.action('summarizeRange', {range: {start, end}, expectedRange});
+async function manualRange(f, start, end, expectedRange = {start, end}, batchFloors) {
+    await f.controller.action('summarizeRange', {range: {start, end}, expectedRange, ...(batchFloors ? {batchFloors} : {})});
     await f.flush();
 }
 
@@ -558,13 +558,58 @@ test('manual range batches continuously until complete without using or removing
     const f = await fixture(t);
     f.context.chat = f.context.chat.map((message, i) => ({...message, mes: `第${i + 1}层` + '原文'.repeat(140)}));
     await f.writeChat(f.context.chat); await manualReady(f);
-    await f.controller.action('settings', {values: {trigger: 256}}); await f.flush();
-    await manualRange(f, 1, 7);
+    // Batches follow the manual card's floor count; the automatic trigger plays no part.
+    await f.controller.action('settings', {values: {trigger: 1000000}}); await f.flush();
+    await manualRange(f, 1, 7, undefined, 1);
     assert.equal(f.generated(), 7);
     assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), Array.from({length: 7}, (_, i) => [i + 1, i + 1]));
     const result = await f.inject();
     assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
     assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), f.context.chat.slice(-5).map(message => message.mes));
+});
+
+test('manual summary shows batch progress, pauses after the current batch and keeps saved batches', async t => {
+    const f = await fixture(t); await manualReady(f);
+    const firstStarted = deferredValue(), release = deferredValue(); let calls = 0;
+    f.model(async prompt => {
+        calls += 1;
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        if (calls === 1) { firstStarted.resolve(); await release.promise; }
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: `合成经历第${match[1]}至${match[2]}层。`}]});
+    });
+    await f.controller.action('summarizeRange', {range: {start: 1, end: 6}, expectedRange: {start: 1, end: 6}, batchFloors: 2});
+    const job = f.flush();
+    await firstStarted.promise;
+    assert.deepEqual(f.controller.state.manualJob, {done: 0, total: 3, pausing: false});
+    assert.match(f.controller.state.status, /第 1／3 批/);
+    assert.equal(await f.controller.action('pauseManual', {}), true);
+    assert.equal(f.controller.state.manualJob.pausing, true);
+    assert.equal(await f.controller.action('pauseManual', {}), false, 'a second pause request is a no-op');
+    release.resolve(); await job;
+    const saved = (await f.api.read(binding)).document;
+    assert.deepEqual(saved.entries.map(entry => [entry.source.start, entry.source.end]), [[1, 2]], 'the running batch finishes and is saved');
+    assert.equal(calls, 1); assert.equal(f.controller.state.manualJob, null); assert.equal(f.controller.state.failedWork, null);
+    assert.match(f.controller.state.status, /已暂停：完成 1／3 批；剩余第 2—5 层/);
+    // Continuing is an ordinary manual run over the remaining floors.
+    await manualRange(f, 3, 6, undefined, 2);
+    assert.deepEqual((await f.api.read(binding)).document.entries.map(entry => [entry.source.start, entry.source.end]), [[1, 2], [3, 4], [5, 6]]);
+    assert.equal(f.controller.state.status, '本轮整理已完成');
+    assert.equal(await f.controller.action('pauseManual', {}), false, 'nothing to pause once idle');
+});
+
+test('a failed manual batch retries with the same floors per batch', async t => {
+    const f = await fixture(t); await manualReady(f); let failing = true;
+    f.model(async prompt => {
+        const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
+        if (failing && Number(match[1]) === 3) throw new Error('合成批次故障');
+        return JSON.stringify({slices: [{start: Number(match[1]), end: Number(match[2]), text: `合成经历第${match[1]}至${match[2]}层。`}]});
+    });
+    await manualRange(f, 1, 6, undefined, 2);
+    assert.deepEqual(f.controller.state.failedWork.range, {start: 3, end: 4});
+    assert.equal(f.controller.state.failedWork.batchFloors, 2);
+    failing = false;
+    await f.controller.action('retry'); await f.flush();
+    assert.deepEqual((await f.api.read(binding)).document.entries.map(entry => [entry.source.start, entry.source.end]), [[1, 2], [3, 4]]);
 });
 
 test('stopping a redo preserves the chat switch and original slice, discards late output and requires an explicit new attempt', async t => {

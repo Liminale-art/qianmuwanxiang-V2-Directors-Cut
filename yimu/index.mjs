@@ -9,7 +9,10 @@ let instance = null;
 export function boot() {
     if (instance || !globalThis.SillyTavern?.getContext?.() || !globalThis.document?.body) return instance;
     const notify = (message, tone = 'success') => (globalThis.document?.defaultView?.toastr || globalThis.toastr)?.[tone]?.(message);
-    const getUi = () => ({ showShortcut: globalThis.SillyTavern.getContext().extensionSettings?.yimu?.showShortcut === true });
+    const getUi = () => {
+        const saved = globalThis.SillyTavern.getContext().extensionSettings?.yimu;
+        return { showShortcut: saved?.showShortcut === true, ...(Number.isSafeInteger(saved?.manualBatchFloors) ? { manualBatchFloors: saved.manualBatchFloors } : {}) };
+    };
     let removeEntries = null, settledService = null;
     const host = createHost();
     // A background recheck keeps the last settled service status instead of flashing "checking".
@@ -25,7 +28,14 @@ export function boot() {
         if (!ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 尚不能保存界面设置，请稍后重试。');
         const previous = ctx.extensionSettings.yimu;
         const saved = previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {};
-        ctx.extensionSettings.yimu = { ...saved, showShortcut: payload.showShortcut === true };
+        // Each preference is saved on its own; an absent key keeps its stored value.
+        const next = { ...saved };
+        if ('showShortcut' in payload) next.showShortcut = payload.showShortcut === true;
+        if ('manualBatchFloors' in payload) {
+            if (!Number.isSafeInteger(payload.manualBatchFloors) || payload.manualBatchFloors < 1 || payload.manualBatchFloors > 2000) throw new Error('每批层数请填 1–2000 的整数。');
+            next.manualBatchFloors = payload.manualBatchFloors;
+        }
+        ctx.extensionSettings.yimu = next;
         try { await ctx.saveSettingsDebounced(); }
         catch (error) { if (previous === undefined) delete ctx.extensionSettings.yimu; else ctx.extensionSettings.yimu = previous; throw error; }
         render(controller.state);

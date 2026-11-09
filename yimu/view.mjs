@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { manualRangeDefault, planManualRange, summaryCoverage } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -251,56 +251,52 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     automatic.setAttribute('aria-label', '自动总结');
     const automaticLabel = el('label', 'ym-switch-row'); automaticLabel.append(el('span', '', '自动总结'), automatic);
     enableCard.append(enableLabel, automaticLabel);
-    const rangeForm = el('form', 'ym-range ym-history-range');
-    rangeForm.hidden = true;
-    const rangeStart = el('input', 'ym-range-input'), rangeEnd = el('input', 'ym-range-input');
-    for (const input of [rangeStart, rangeEnd]) { input.type = 'number'; input.min = '0'; input.required = true; }
-    rangeStart.setAttribute('aria-label', '历史开始楼层'); rangeEnd.setAttribute('aria-label', '历史结束楼层');
-    const rangeFields = el('div', 'ym-inline-row ym-history-fields'); rangeFields.hidden = true;
-    rangeFields.append(rangeStart, el('span', '', '—'), rangeEnd, el('span', '', '层'));
-    const rangeHint = el('span', 'ym-history-question');
-    const rangeEdit = iconButton('调整历史楼层', 'edit', () => {
-        rangeFields.hidden = !rangeFields.hidden; if (!rangeFields.hidden) rangeStart.focus();
-    });
-    const rangeSubmit = iconButton('确认整理历史', 'check', () => rangeForm.requestSubmit(), 'ym-primary');
-    const rangeCancel = iconButton('不整理历史', 'close', () => dispatch('history', {
-        range: { start: 1, end: 0, total: state.snapshot?.messages?.length || 0 },
-    }, rangeCancel));
-    const historyRow = el('div', 'ym-inline-row'); historyRow.append(rangeHint, rangeEdit, rangeSubmit, rangeCancel);
-    rangeForm.append(historyRow, rangeFields);
-    // A new chat (at most the opening floor) has no history to choose: it follows
-    // from its first floor, so the "整理历史" question is skipped and every floor counts as new.
-    const freshScope = () => !state.document?.initialRange && (state.snapshot?.messages?.length || 0) <= 1
-        ? { start: 1, end: 0, total: 0 } : undefined;
+    // Automatic summary starts from the floors that exist when it is first enabled;
+    // earlier history is organized through manual summary, never swept automatically.
+    // A new chat (at most the opening floor) counts every floor as new.
+    const freshScope = () => {
+        if (state.document?.initialRange) return undefined;
+        const total = state.snapshot?.messages?.length || 0;
+        return { start: 1, end: 0, total: total <= 1 ? 0 : total };
+    };
     enabled.addEventListener('change', () => dispatch('enable', { enabled: enabled.checked, ...(enabled.checked && freshScope() ? { range: freshScope() } : {}) }, enabled));
     automatic.addEventListener('change', () => dispatch('autoSummary', { value: automatic.checked, ...(automatic.checked && freshScope() ? { initialRange: freshScope() } : {}) }, automatic));
-    for (const input of [rangeStart, rangeEnd]) input.addEventListener('input', updateRangePreview);
-    rangeForm.addEventListener('submit', async event => {
-        event.preventDefault();
-        const total = state.snapshot?.messages?.length ?? 0;
-        const start = floorValue(rangeStart.value), end = floorValue(rangeEnd.value);
-        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > total) {
-            localError = '请填写当前聊天内有效的起止楼层。'; localErrorPage = currentPage; updateStatus(); return;
-        }
-        updateRangePreview();
-        if (await dispatch('history', { range: { start, end, total } }, rangeSubmit)) rangeForm.hidden = true;
-    });
     const summarizeRangeForm = el('form', 'ym-manual-range');
     const summarizeStart = el('input', 'ym-range-input'), summarizeEnd = el('input', 'ym-range-input');
     for (const input of [summarizeStart, summarizeEnd]) { input.type = 'number'; input.min = '0'; input.step = '1'; input.required = true; }
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
     const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
+    // Pausing lets the running batch finish and save, then stops before the next one.
+    const summarizePause = button('暂停', () => dispatch('pauseManual', {}, summarizePause));
+    summarizePause.hidden = true;
     const summarizeRow = el('div', 'ym-inline-row');
     const manualLabel = el('span', 'ym-manual-label');
     manualLabel.append(el('strong', '', '手动总结'));
-    summarizeRow.append(manualLabel, summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit);
+    summarizeRow.append(manualLabel, summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit, summarizePause);
+    // Floors per batch belong to the manual card only; automatic settings never shape it.
+    const batchInput = el('input', 'ym-range-input');
+    batchInput.type = 'number'; batchInput.min = '1'; batchInput.max = String(MANUAL_BATCH_LIMIT); batchInput.step = '1'; batchInput.required = true;
+    batchInput.setAttribute('aria-label', '手动总结每批层数'); batchInput.value = String(MANUAL_BATCH_FLOORS);
+    const batchRow = el('div', 'ym-inline-row ym-manual-batch');
+    const batchProgress = el('span', 'ym-muted ym-manual-progress'); batchProgress.setAttribute('role', 'status');
+    batchRow.append(el('span', '', '每批'), batchInput, el('span', '', '层'), batchProgress);
+    const savedBatchFloors = () => manualBatchFloors(state.ui?.manualBatchFloors);
+    const typedBatchFloors = () => /^\d+$/.test(batchInput.value.trim()) ? manualBatchFloors(Number(batchInput.value)) === Number(batchInput.value) ? Number(batchInput.value) : null : null;
+    batchInput.addEventListener('change', async () => {
+        const value = typedBatchFloors();
+        if (value === null) { batchInput.value = String(savedBatchFloors()); localError = `每批层数请填 1–${MANUAL_BATCH_LIMIT} 的整数。`; localErrorPage = currentPage; updateStatus(); return; }
+        if (value === savedBatchFloors()) return;
+        if (!await dispatch('uiSettings', { manualBatchFloors: value }, batchInput)) batchInput.value = String(savedBatchFloors());
+    });
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
-    summarizeRangeForm.append(summarizeRow, summarizeNotice);
+    summarizeRangeForm.append(summarizeRow, batchRow, summarizeNotice);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
+        const batchFloors = typedBatchFloors();
+        if (batchFloors === null) { localError = `每批层数请填 1–${MANUAL_BATCH_LIMIT} 的整数。`; localErrorPage = currentPage; updateStatus(); return; }
         try {
-            const plan = planManualRange(state.document, state.snapshot?.messages || [], rangePreviewSettings(), range);
+            const plan = planManualRange(state.document, state.snapshot?.messages || [], rangePreviewSettings(), range, { batchFloors });
             if (plan.range.start !== range.start || plan.range.end !== range.end) {
                 summarizeStart.value = floorField(plan.range.start); summarizeEnd.value = floorField(plan.range.end);
                 summarizeNotice.textContent = `已有切片覆盖 ${shownFloor(plan.range.start)}–${shownFloor(plan.range.end)} 层，已调整范围，请确认后开始。`;
@@ -308,7 +304,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             }
             summarizeNotice.hidden = true;
             // Once submitted, the default resumes following the next unsummarized range.
-            if (await dispatch('summarizeRange', { range, expectedRange: plan.range }, summarizeSubmit)) {
+            if (await dispatch('summarizeRange', { range, expectedRange: plan.range, batchFloors }, summarizeSubmit)) {
                 manualAuto = { start: summarizeStart.value, end: summarizeEnd.value }; syncManualDefault();
             }
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); }
@@ -330,7 +326,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         summarizeStart.value = floorField(next.start); summarizeEnd.value = floorField(next.end); summarizeNotice.hidden = true;
         manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
     }
-    overview.append(heroTop, rangeForm);
+    overview.append(heroTop);
     const manualSummaryCard = el('section', 'ym-card ym-manual-summary'); manualSummaryCard.append(summarizeRangeForm);
 
     const settings = el('section', 'ym-settings');
@@ -618,7 +614,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         // Pending excludes the newest floors kept as raw text and any history the user chose not to organize.
         const kept = coverage ? Math.min(total, Math.max(0, Number(currentSettings().recent) || 0)) : 0;
         const pendingRange = coverage?.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层待整理` : '暂无待整理楼层';
-        statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start ? '；已选择不整理的历史楼层也不计入' : ''}` : '';
+        statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start && doc.initialRange.total > 0 ? `；开启前的第 0–${shownFloor(doc.initialRange.total)} 层不自动整理，也不计入，可用手动总结整理` : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
         for (const [name, card] of toolCards) {
             card.hidden = false; card.button.disabled = name !== 'backup' && !doc;
@@ -684,20 +680,26 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         enabled.disabled = !available;
         enabled.checked = Boolean(state.document?.enabled && !state.paused);
         automatic.checked = state.document?.autoSummary === true;
-        automatic.disabled = !available || !enabled.checked;
+        // Toggling automatic summary changes the chat epoch, which would discard a
+        // running manual batch; keep it locked until the manual run pauses or ends.
+        const manualJob = state.manualJob || null;
+        automatic.disabled = !available || !enabled.checked || Boolean(manualJob);
+        // Older chats enabled before this version may still lack a starting point; switching
+        // automatic summary on again records it (nothing is written without that click).
+        automatic.title = manualJob ? '手动总结进行中，暂停或完成后可切换自动总结'
+            : state.document?.autoSummary && !state.document.initialRange ? '自动总结尚未确定起点，请关闭后重新开启一次' : '';
         const total = state.snapshot?.messages?.length || 0;
-        // An empty chat may receive its first messages without changing its identity.
-        // Only fill the initially blank end, never a range the user has started editing.
-        if (total > 0) {
-            if (rangeEnd.value === '') rangeEnd.value = floorField(total);
-        }
-        rangeForm.hidden = !available || !enabled.checked || Boolean(state.document?.initialRange) || total <= 1;
-        summarizeStart.max = summarizeEnd.max = rangeStart.max = rangeEnd.max = String(Math.max(0, total - 1));
+        summarizeStart.max = summarizeEnd.max = String(Math.max(0, total - 1));
         const canSummarize = available && state.document.enabled && !state.paused && state.sourceAvailable !== false;
         summarizeStart.disabled = summarizeEnd.disabled = !available;
         summarizeSubmit.disabled = !canSummarize || Boolean(state.busy) || !total;
-        rangeSubmit.disabled = rangeEdit.disabled = !canSummarize || Boolean(state.busy);
-        rangeCancel.disabled = !available || Boolean(state.busy);
+        summarizeSubmit.hidden = Boolean(manualJob);
+        summarizePause.hidden = !manualJob;
+        if (manualJob && !pendingButtons.has(summarizePause)) summarizePause.disabled = manualJob.pausing === true;
+        summarizePause.textContent = manualJob?.pausing ? '暂停中' : '暂停';
+        batchProgress.textContent = manualJob ? `已完成 ${manualJob.done}／${manualJob.total} 批${manualJob.pausing ? '，本批完成后暂停' : ''}` : '';
+        if (document.activeElement !== batchInput && !pendingButtons.has(batchInput)) batchInput.value = String(savedBatchFloors());
+        batchInput.disabled = !available || Boolean(manualJob);
         stageButton.disabled = !available;
         stageButton.title = !enabled.checked ? '请先启用忆幕后开始总结' : '';
         updateStageRange();
@@ -723,10 +725,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             item.disabled = !(state.busy && item.dataset.ymRedo === state.activeEntryId);
         }
         dialog.setAttribute('aria-busy', state.loading ? 'true' : 'false');
-    }
-    function updateRangePreview() {
-        if (rangeForm.hidden) return;
-        rangeHint.replaceChildren(el('span', '', '是否整理历史楼层 '), el('span', 'ym-history-numbers', `${rangeStart.value}–${rangeEnd.value}`));
     }
     function settingValue(key) {
         if (settingDraft.has(key)) return settingDraft.get(key) ?? effectiveSettings(null, state.defaults)[key] ?? DEFAULTS[key];
@@ -1063,11 +1061,11 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             for (const item of cards.values()) item.node.remove();
             cards.clear(); edits.clear(); groups.clear(); settingDraft.clear(); settingsDraftRevision = null; settingsSaveFailed = false;
             clearTimeout(settingsTimer); settingsTimer = null;
-            rangeForm.hidden = true; stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); includeCustom = false; stageCustom.setAttribute('aria-pressed', 'false');
+            stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); includeCustom = false; stageCustom.setAttribute('aria-pressed', 'false');
             stageRequest = null; stageFormGeneration++;
             manualForm.hidden = true; manualInput.value = ''; manualTitle.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
-            rangeFields.hidden = true; rangeStart.value = summarizeStart.value = floorField(1);
-            rangeEnd.value = summarizeEnd.value = floorField(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
+            summarizeStart.value = floorField(1);
+            summarizeEnd.value = floorField(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
             manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
             search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear();
@@ -1082,7 +1080,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         companion.render(state);
         backup.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries(); updateOverview(); retrieval.render(state); updateNavigation();
-        updateRangePreview();
         if (!stageForm.hidden) updateStageRange();
         updateUsed();
     }

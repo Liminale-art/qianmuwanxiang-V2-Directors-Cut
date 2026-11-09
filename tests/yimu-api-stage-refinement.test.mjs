@@ -120,7 +120,13 @@ test('trigger remains reachable above actual capacity and approves bounded conti
     assert.deepEqual(nextBatch({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 1000 }), { start: 1, end: 2 });
     assert.throws(() => nextBatch({ ...document, entries: [] }, [{ mes: '文'.repeat(1001) }, { mes: '近期' }], { ...settings, inputCapacity: 1000 }), /可用输入容量/);
     assert.equal(planManualRange({ ...document, entries: [] }, messages, { ...settings, batch: 50, inputCapacity: 1000 }, { start: 1, end: 2 }).batches.length, 1);
-    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 5 }).batches.map(batch => [batch.start, batch.end]), [[1, 2], [3, 4], [5, 5]]);
+    // Manual batches follow the chosen floor count, never the automatic trigger.
+    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 5 }).batches.map(batch => [batch.start, batch.end]), [[1, 5]]);
+    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 5 }, { batchFloors: 2 }).batches.map(batch => [batch.start, batch.end]), [[1, 2], [3, 4], [5, 5]]);
+    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, trigger: 256, inputCapacity: 10000 }, { start: 1, end: 5 }, { batchFloors: 5 }).batches.map(batch => [batch.start, batch.end]), [[1, 5]], 'a small automatic trigger does not split manual batches');
+    // Only the connection's capacity may shorten a batch; a floor is never truncated.
+    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 700 }, { start: 1, end: 5 }, { batchFloors: 5 }).batches.map(batch => [batch.start, batch.end]), [[1, 2], [3, 4], [5, 5]]);
+    assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 5 }, { batchFloors: 0 }).batches.length, 1, 'an invalid count falls back to the default');
     const oldSlice = { id: 'whole', kind: 'summary', status: 'active', source: { start: 1, end: 4 }, revision: 1 };
     assert.deepEqual(planManualRange({ ...document, entries: [oldSlice] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 4 }).batches.map(batch => [batch.start, batch.end]), [[1, 4]], 'redo keeps the existing complete slice even above trigger');
 });

@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, initialRangePreview, estimateTokens } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -58,6 +58,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         busy: state.busy || Boolean(state.snapshot && jobs.has(bindingKey(state.snapshot.binding))),
         failedWork: state.snapshot ? failures.get(bindingKey(state.snapshot.binding)) || null : null,
         activeEntryId: state.snapshot ? jobs.get(bindingKey(state.snapshot.binding))?.entryId || null : null,
+        manualJob: state.snapshot && jobs.get(bindingKey(state.snapshot.binding))?.manual ? { ...jobs.get(bindingKey(state.snapshot.binding)).manual } : null,
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     const emit = () => { if (!disposed) onChange(snapshotState()); };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
@@ -250,7 +251,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         try { await task; } finally { if (refreshing === task) refreshing = null; }
     }
 
-    async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, historyOnly = false, errorPage = entryId ? 'memory' : requestedRange || historyOnly ? 'overview' : 'memory' } = {}) {
+    async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, batchFloors, historyOnly = false, errorPage = entryId ? 'memory' : requestedRange || historyOnly ? 'overview' : 'memory' } = {}) {
         if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || !force && !state.document.autoSummary) return;
         // Automatic rounds never overlap a reply that is still streaming.
         if (!force && hostBusy() === true) { waitForSave(); return; }
@@ -286,12 +287,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         emit();
         let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false;
         const retryState = { exhausted: false };
+        let manualPlan = null;
         try {
             const run = summaryRun(settings, snapshot);
-            const manualPlan = requestedRange ? planManualRange(doc, snapshot.messages, settings, requestedRange) : null;
+            manualPlan = requestedRange ? planManualRange(doc, snapshot.messages, settings, requestedRange, { batchFloors }) : null;
             if (manualPlan && (expectedRange?.start !== manualPlan.range.start || expectedRange?.end !== manualPlan.range.end)) {
                 throw new Error('已有切片范围已变化，请确认当前整理范围后重试');
             }
+            // Manual progress is visible to the view; pausing stops after the current batch.
+            if (manualPlan) { controller.manual = { done: 0, total: manualPlan.batches.length, pausing: false }; emit(); }
             const plannedHashes = manualPlan ? await fingerprintMessages(snapshot.messages) : null;
             let manualIndex = 0;
             for (;;) {
@@ -391,9 +395,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         lastRun: { count: candidates.length, localCount: candidates.length, externalCount: 0, at: retrieval.at } };
                     emit();
                 }
-                if (isCurrent(binding)) { state.status = `正在整理第 ${shownFloor(batch.start)}—${shownFloor(batch.end)} 层`; emit(); }
+                const progress = manualPlan ? `第 ${manualIndex + 1}／${manualPlan.batches.length} 批，` : '';
+                if (isCurrent(binding)) { state.status = `正在整理${progress}第 ${shownFloor(batch.start)}—${shownFloor(batch.end)} 层`; emit(); }
                 if (announce && !announced) { announced = true; notice(`忆幕：已达自动总结触发值，开始整理楼层${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'info'); }
-                else notice(`忆幕切片总结中：楼层${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'info');
+                else notice(`忆幕切片总结中：${progress}楼层${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'info');
                 let previousContext = jobDocument.entries.filter(entry => entry.status === 'active' && entry.kind === 'summary'
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
@@ -457,10 +462,17 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 failedBatch = null; failedSource = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
-                if (manualPlan) manualIndex++;
-                if (entryId || !isCurrent(binding) || generating) break;
+                if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
+                if (entryId || !isCurrent(binding) || generating || controller.manual?.pausing) break;
             }
-            if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); saveWaits = 0; state.status = '本轮整理已完成'; emit(); }
+            // Saved batches stay saved. A paused or interrupted manual run reports what
+            // is left; the manual range default already follows the next unsummarized floor.
+            const remaining = manualPlan && processed && !controller.signal.aborted ? manualPlan.batches[manualIndex] : null;
+            if (remaining && isCurrent(binding)) {
+                failures.delete(key); saveWaits = 0;
+                state.status = `已暂停：完成 ${manualIndex}／${manualPlan.batches.length} 批；剩余第 ${shownFloor(remaining.start)}—${shownFloor(manualPlan.range.end)} 层，请确认范围后点“开始总结”继续`;
+                emit();
+            } else if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); saveWaits = 0; state.status = '本轮整理已完成'; emit(); }
             else if (awaitingSave) { if (announce && !announced) catchUp = true; waitForSave(); }
             else if (force && noWork && isCurrent(binding) && !controller.signal.aborted) {
                 const preview = historyOnly && doc.initialRange ? initialRangePreview(jobDocument, snapshot.messages, doc.initialRange, settings) : null;
@@ -472,7 +484,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
-                    range: { start: failedBatch.start, end: failedBatch.end }, source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
+                    range: { start: failedBatch.start, end: failedBatch.end }, ...(manualPlan ? { batchFloors } : {}), source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
                 if (isCurrent(binding)) { state.error = error.message; state.errorPage = errorPage; state.status = '本轮整理未完成；原文与已保存记忆保留。'; emit(); }
                 if (retryState.exhausted) notice(`本次总结重试3次均失败：${error?.message || '未知错误'}`, 'error');
                 else if (!controller.signal.aborted) notice(`本次总结失败：${error?.message || '未知错误'}`, 'error');
@@ -665,6 +677,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             job.abort(); if (jobs.get(key) === job) jobs.delete(key);
             failures.delete(key); state.error = ''; state.errorPage = ''; state.status = '已中止本次整理'; emit(); return true;
         }
+        if (type === 'pauseManual') {
+            const job = jobs.get(key);
+            if (!job?.manual || job.manual.pausing) return false;
+            job.manual.pausing = true; state.status = '本批完成后暂停'; emit(); return true;
+        }
         if (type === 'enable' && !payload.enabled) {
             localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; emit();
         }
@@ -691,8 +708,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (failure.kind === 'stage') deferFor(binding, () => startStage({ force: true, ...failure.range, start: failure.range.start, end: failure.range.end, entryId: failure.entryId, includeCustom: failure.includeCustom ?? false }), actionGeneration);
             else if (failure.entryId) deferFor(binding, () => start({ force: true, entryId: failure.entryId }), actionGeneration);
             else {
-                const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, failure.range);
-                deferFor(binding, () => start({ force: true, range: failure.range, expectedRange: plan.range }), actionGeneration);
+                const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, failure.range, { batchFloors: failure.batchFloors });
+                deferFor(binding, () => start({ force: true, range: failure.range, expectedRange: plan.range, batchFloors: failure.batchFloors }), actionGeneration);
             }
             return true;
         }
@@ -713,13 +730,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
         if (type === 'summarizeRange') {
             if (jobs.has(key)) return false;
-            const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, payload.range);
+            const batchFloors = manualBatchFloors(payload.batchFloors);
+            const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, payload.range, { batchFloors });
             if (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end) {
                 throw new Error(`已有切片覆盖第 ${shownFloor(plan.range.start)}—${shownFloor(plan.range.end)} 层，请确认范围后开始`);
             }
             state.error = ''; emit();
             const range = clone(payload.range), expectedRange = clone(payload.expectedRange);
-            deferFor(binding, () => start({ force: true, range, expectedRange }), actionGeneration);
+            deferFor(binding, () => start({ force: true, range, expectedRange, batchFloors }), actionGeneration);
             return true;
         }
         let operation = { id: id() };

@@ -210,8 +210,8 @@ test('first card has independent master and automatic switches, manual stays ava
     assert.equal(master.closest('.ym-hero'), null, 'switches are now a separate card above the chat card');
     assert.equal(automatic.disabled, true); assert.equal(f.get('开始总结').disabled, true);
     master.checked = true; master.emit('change'); await f.flush();
-    assert.deepEqual(f.calls, [{type: 'enable', payload: {enabled: true}}]);
-    f.render({document: {...f.state.document, enabled: true, autoSummary: false}});
+    assert.deepEqual(f.calls, [{type: 'enable', payload: {enabled: true, range: {start: 1, end: 0, total: 9}}}]);
+    f.render({document: {...f.state.document, enabled: true, autoSummary: false, initialRange: {start: 1, end: 0, total: 9}}});
     assert.equal(automatic.disabled, false); assert.equal(f.get('开始总结').disabled, false);
     automatic.checked = true; automatic.emit('change'); await f.flush();
     assert.deepEqual(f.calls.at(-1), {type: 'autoSummary', payload: {value: true}});
@@ -264,21 +264,34 @@ test('pending floor card keeps the kept-raw explanation on hover only', t => {
     assert.match(pending.textContent,/^\d+待整理层$/);assert.match(pending.title,/最新 5 层作为近期原文保留/);
 });
 
-test('compact history controls edit explicit bounds and persist cancellation rather than hiding a temporary form', async t => {
-    const f = fixture({document: {...state().document, enabled: true}}); t.after(() => f.view.destroy());
-    assert.match(f.document.querySelector('.ym-history-question').textContent, /是否整理历史楼层 0–8/);
-    f.get('调整历史楼层').click();
-    f.get('历史开始楼层').value = '8'; f.get('历史结束楼层').value = '3';
-    f.get('确认整理历史').click(); await f.flush(); assert.equal(f.calls.length, 0);
-    f.get('历史开始楼层').value = '1'; f.get('历史结束楼层').value = '7';
-    f.get('确认整理历史').click(); await f.flush();
-    assert.deepEqual(f.calls[0], {type: 'history', payload: {range: {start: 2, end: 8, total: 9}}});
-    f.get('不整理历史').click(); await f.flush();
-    assert.deepEqual(f.calls[1], {type: 'history', payload: {range: {start: 1, end: 0, total: 9}}});
-    f.render({document: {...f.state.document, initialRange: {start:1,end:0,total:9}}});
-    f.view.close(); f.view.open();
-    assert.equal(f.document.querySelector('.ym-history-range').hidden, true);
-    assert.equal(f.get('开始总结').disabled, false);
+test('history is organized from the manual card: floors per batch is its own saved preference and a run can pause', async t => {
+    const f = fixture({document: {...state().document, enabled: true, initialRange: {start: 1, end: 0, total: 9}}}); t.after(() => f.view.destroy());
+    assert.equal(f.document.querySelector('.ym-history-range'), null, 'no separate history question');
+    assert.equal(f.get('确认整理历史'), undefined); assert.equal(f.get('不整理历史'), undefined);
+    const perBatch = f.get('手动总结每批层数');
+    assert.ok(perBatch.closest('.ym-manual-range')); assert.equal(perBatch.value, '20');
+    // Invalid counts are refused locally and never saved or sent.
+    perBatch.value = '0'; perBatch.emit('change'); await f.flush();
+    assert.deepEqual(f.calls, []); assert.equal(perBatch.value, '20');
+    perBatch.value = '3'; perBatch.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0], {type: 'uiSettings', payload: {manualBatchFloors: 3}});
+    f.render({ui: {showShortcut: false, manualBatchFloors: 3}});
+    assert.equal(perBatch.value, '3');
+    f.get('开始总结').click(); await f.flush();
+    assert.deepEqual(f.calls[1], {type: 'summarizeRange', payload: {range: {start: 1, end: 9}, expectedRange: {start: 1, end: 9}, batchFloors: 3}});
+    // While a manual run is active: progress shows, Pause replaces Start, and the count and auto switch are locked.
+    f.render({busy: true, manualJob: {done: 1, total: 3, pausing: false}});
+    const pause = f.get('暂停');
+    assert.equal(pause.hidden, false); assert.equal(pause.disabled, false); assert.equal(f.get('开始总结').hidden, true);
+    assert.equal(perBatch.disabled, true); assert.equal(f.get('自动总结').disabled, true);
+    assert.match(f.document.querySelector('.ym-manual-progress').textContent, /已完成 1／3 批/);
+    pause.click(); await f.flush();
+    assert.deepEqual(f.calls[2], {type: 'pauseManual', payload: {}});
+    f.render({manualJob: {done: 1, total: 3, pausing: true}});
+    assert.equal(pause.disabled, true); assert.match(f.document.querySelector('.ym-manual-progress').textContent, /本批完成后暂停/);
+    f.render({busy: false, manualJob: null});
+    assert.equal(pause.hidden, true); assert.equal(f.get('开始总结').hidden, false); assert.equal(perBatch.disabled, false);
+    assert.equal(f.document.querySelector('.ym-manual-progress').textContent, '');
 });
 
 test('hidden prose remains available for explicit summary and the panel never changes its ST flags', async t => {
@@ -288,7 +301,7 @@ test('hidden prose remains available for explicit summary and the panel never ch
     t.after(()=>f.view.destroy());
     f.get('手动总结开始楼层').value='0'; f.get('手动总结结束楼层').value='4';
     f.get('开始总结').click(); await f.flush();
-    assert.deepEqual(f.calls[0], {type:'summarizeRange',payload:{range:{start:1,end:5},expectedRange:{start:1,end:5}}});
+    assert.deepEqual(f.calls[0], {type:'summarizeRange',payload:{range:{start:1,end:5},expectedRange:{start:1,end:5},batchFloors:20}});
     assert.deepEqual(messages,original); assert.doesNotMatch(f.document.body.textContent,/已被 ST 隐藏.*不参与整理/);
 });
 
@@ -301,15 +314,14 @@ test('partial slice selection is visibly expanded and requires another explicit 
     assert.equal(f.get('手动总结结束楼层').value,'2');
     assert.match(f.document.querySelector('.ym-manual-range').textContent,/请确认后开始/);
     f.get('开始总结').click(); await f.flush();
-    assert.deepEqual(f.calls[0],{type:'summarizeRange',payload:{range:{start:1,end:3},expectedRange:{start:1,end:3}}});
+    assert.deepEqual(f.calls[0],{type:'summarizeRange',payload:{range:{start:1,end:3},expectedRange:{start:1,end:3},batchFloors:20}});
 });
 
-test('history and manual range controls are disabled by the master switch and no hidden enabling is submitted', async t => {
+test('manual range controls are disabled by the master switch and no hidden enabling is submitted', async t => {
     const f=fixture(); t.after(()=>f.view.destroy());
-    f.get('开始总结').click(); f.get('确认整理历史').click(); f.get('自动总结').click();
+    f.get('开始总结').click(); f.get('自动总结').click();
     await f.flush(); assert.deepEqual(f.calls,[]);
     f.render({snapshot:{...f.state.snapshot,messages:[]}});
-    assert.equal(f.document.querySelector('.ym-history-range').hidden,true);
     const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:0}}},'an empty chat follows from its first floor');
 });
@@ -320,7 +332,6 @@ test('a new chat with only its opening floor skips the history question and coun
     assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:0}}});
     // Before the enable result arrives (or after an older enable without a scope), turning auto on also supplies it.
     f.render({document:{...f.state.document,enabled:true}});
-    assert.equal(f.document.querySelector('.ym-history-range').hidden,true,'no history question for the opening floor');
     const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
     assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:0,total:0}}});
     // Once a scope exists, nothing is resent; turning auto off never sends one.
@@ -329,14 +340,17 @@ test('a new chat with only its opening floor skips the history question and coun
     assert.deepEqual(f.calls[2],{type:'autoSummary',payload:{value:false}});
 });
 
-test('an existing multi-floor chat still asks about history and sends no scope with the switches', async t => {
+test('an existing multi-floor chat is never asked about history: automatic summary starts after its current floors', async t => {
     const f=fixture(); t.after(()=>f.view.destroy());
     const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true}});
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:9}}});
+    // An older chat enabled without a scope records it when auto is turned on.
     f.render({document:{...f.state.document,enabled:true}});
-    assert.equal(f.document.querySelector('.ym-history-range').hidden,false);
     const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true}});
+    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:0,total:9}}});
+    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:0,total:9}}});
+    assert.equal(f.get('开始总结').disabled,false,'earlier floors stay available to manual summary');
+    assert.match(f.document.querySelector('.ym-stats').children[2].title,/开启前的第 0–8 层不自动整理/);
 });
 
 test('background work never disables the per-chat off action, and reopening a known chat does not ask initial range again', async t => {
@@ -1215,11 +1229,9 @@ test('an initially empty chat receives usable ranges without replacing an edited
     assert.equal(f.get('手动总结结束楼层').value, '');
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 8 }, () => ({ mes: '正文' })) } });
     assert.equal(f.get('手动总结结束楼层').value, '7');
-    assert.equal(f.get('历史结束楼层').value, '7');
-    f.get('手动总结结束楼层').value = '3'; f.get('历史结束楼层').value = '5';
+    f.get('手动总结结束楼层').value = '3';
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 10 }, () => ({ mes: '正文' })) } });
-    assert.equal(f.get('手动总结结束楼层').value, '3');
-    assert.equal(f.get('历史结束楼层').value, '5'); assert.deepEqual(f.calls, []);
+    assert.equal(f.get('手动总结结束楼层').value, '3'); assert.deepEqual(f.calls, []);
 });
 
 test('a new custom slice save retains newer time and prose edits in the same editor until confirmed', async t => {
@@ -1301,7 +1313,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.22 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.23 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1421,7 +1433,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.22'); assert.equal(pkg.version, '0.8.10');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.23'); assert.equal(pkg.version, '0.8.10');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
