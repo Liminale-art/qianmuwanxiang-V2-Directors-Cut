@@ -13,6 +13,7 @@ import {buildPlan} from '../yimu/core.mjs';
 import {buildBudgetedMessages, captureCore, byteBudget, memoryMessage} from '../yimu/budget.mjs';
 import {recallCandidates} from '../yimu/recall.mjs';
 import {excerptRecords, recallBlockReason} from '../yimu/recall-contract.mjs';
+import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 
 // Full local route/client/store/runtime/host flow with synthetic stories and model outputs.
 // No browser, real account, server deployment, credentials or paid model calls.
@@ -39,6 +40,7 @@ async function fixture(t, {floors = 12, longFloors = false, ambiguous = false, r
     const writeChat = (items = context.chat) => fs.writeFile(rawPath, [{chat_metadata: {integrity: binding.integrity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await fs.writeFile(rawPath, [{chat_metadata: {integrity: binding.integrity}}, ...messages].map(JSON.stringify).join('\n'), 'utf8');
     const request = {user: {profile: {handle: 'synthetic-fixture'}, directories: {root: account, chats}}};
+    await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root}), routes = new Map(), calls = [], faults = {};
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
     const fetcher = async (url, options) => {

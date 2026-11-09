@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
+import { DEFAULTS as FACTORY_DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults as factoryDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
+import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
+// Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
+const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
 const binding = { avatar: 'Fixture.png', file: 'fixture', integrity: 'fixture-id' };
 const messages = Array.from({ length: 12 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: `合成第${i + 1}层：两人首次约会，秘密并未告诉旁人。`, send_date: `2026-10-25 ${i}` }));
@@ -278,11 +281,11 @@ test('stale enable and summary epochs cannot overwrite changes, replay IDs never
 });
 
 test('global defaults patch rather than resetting unrelated settings, explicit null resets just that field', () => {
-    let defaults = applyDefaultsOperation(createDefaults(), { id: 'd1', expectedRevision: 0, values: { profileId: 'profile', preference: '侧重承诺' } }).defaults;
+    let defaults = applyDefaultsOperation(factoryDefaults(), { id: 'd1', expectedRevision: 0, values: { profileId: 'profile', preference: '侧重承诺' } }).defaults;
     defaults = applyDefaultsOperation(defaults, { id: 'd2', expectedRevision: 1, values: { recent: 8 } }).defaults;
     assert.equal(defaults.values.profileId, 'profile');
     defaults = applyDefaultsOperation(defaults, { id: 'd3', expectedRevision: 2, values: { recent: null } }).defaults;
-    assert.equal(defaults.values.recent, 5);
+    assert.equal(defaults.values.recent, FACTORY_DEFAULTS.recent);
     assert.equal(defaults.values.preference, '侧重承诺');
 });
 
@@ -324,16 +327,29 @@ test('schema eight accepts optional temporal fields for fact lifecycle tracking'
 });
 
 
-test('automatic trigger fires on floors or tokens, whichever comes first, with a minimum token floor', () => {
+test('automatic trigger fires at triggerFloors + 1 unsummarized floors (recent included) and organizes all but the recent ones', async () => {
     const live = Array.from({ length: 30 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: '文'.repeat(400), send_date: `t${i}` }));
     const doc = enable({ start: 1, end: 0, total: 0 });
-    const tokensOnly = { ...DEFAULTS, trigger: 50000 };
-    assert.equal(nextBatch(doc, live, tokensOnly), null, 'blank floor count keeps token-only behaviour');
-    assert.equal(nextBatch(doc, live, { ...tokensOnly, triggerFloors: 0 }), null);
-    assert.deepEqual(nextBatch(doc, live, { ...tokensOnly, triggerFloors: 10 }), { start: 1, end: 10 });
-    assert.deepEqual(nextBatch(doc, live, { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
+    const tokensOnly = { ...DEFAULTS, trigger: 50000, triggerFloors: 0 };
+    assert.equal(nextBatch(doc, live, tokensOnly), null, 'zero floor count keeps token-only behaviour');
+    // The user's example: trigger 12, keep 5 -> nothing at 12 floors, eight floors organized once floor 13 exists.
+    const habit = { ...DEFAULTS, trigger: 50000, triggerFloors: 12, recent: 5 };
+    assert.equal(nextBatch(doc, live.slice(0, 12), habit), null);
+    assert.deepEqual(nextBatch(doc, live.slice(0, 13), habit), { start: 1, end: 8 });
+    // Factory defaults (10 / 3): eleven floors organize eight, leaving three for rerolls.
+    const factory = { ...FACTORY_DEFAULTS, trigger: 50000 };
+    assert.equal(FACTORY_DEFAULTS.triggerFloors, 10); assert.equal(FACTORY_DEFAULTS.recent, 3);
+    assert.equal(nextBatch(doc, live.slice(0, 10), factory), null);
+    assert.deepEqual(nextBatch(doc, live.slice(0, 11), factory), { start: 1, end: 8 });
+    // Later rounds count only unsummarized floors: after 1-8 are organized, floors 9-19 trigger 9-16.
+    const hashes = await fingerprintMessages(live);
+    const organized = applyOperation(doc, { id: 'a1', type: 'append', expectedEpoch: doc.epoch, entry: { id: 's1', kind: 'summary', text: '摘要',
+        source: { start: 1, end: 8, hashes: hashes.slice(0, 8) } } }).document;
+    assert.equal(nextBatch(organized, live.slice(0, 18), factory), null);
+    assert.deepEqual(nextBatch(organized, live.slice(0, 19), factory), { start: 9, end: 16 });
+    assert.deepEqual(nextBatch(doc, live.slice(0, 20), { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
     const short = live.map(message => ({ ...message, mes: '短句。' }));
-    assert.equal(nextBatch(doc, short, { ...tokensOnly, triggerFloors: 3 }), null, 'a few short floors never form a slice');
+    assert.deepEqual(nextBatch(doc, short.slice(0, 4), { ...tokensOnly, triggerFloors: 3, recent: 1 }), { start: 1, end: 3 }, 'no minimum token floor once the floor count is reached');
     assert.throws(() => validateSettingsFor({ triggerFloors: 2001 }), /超出范围/);
     assert.deepEqual(validateSettingsFor({ triggerFloors: 0 }), { triggerFloors: 0 });
 });

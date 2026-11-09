@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOperation, createDocument, createDefaults, DEFAULTS, effectiveSettings, fingerprintMessages, validateDocument, canUndoText, stageSourceFromParents, SCHEMA } from '../yimu/contract.mjs';
+import { applyOperation, createDocument, createDefaults as factoryDefaults, DEFAULTS as FACTORY_DEFAULTS, effectiveSettings, fingerprintMessages, validateDocument, canUndoText, stageSourceFromParents, SCHEMA } from '../yimu/contract.mjs';
+import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 import { normalizeEntryOrder, orderedEntries, orderForInjection } from '../yimu/timeline.mjs';
 import { validateScenes, unknownScenes, sceneProjection } from '../yimu/scene-contract.mjs';
 import { parseSummary, buildPlan, summaryPrompt, summaryCoverage } from '../yimu/core.mjs';
 import { stageGroups, planStageRange, nextStage } from '../yimu/layers.mjs';
 import { buildBudgetedMessages, captureCore, byteBudget, memoryMessage } from '../yimu/budget.mjs';
+// Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
+const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
 const binding = { avatar: 'Timeline.png', file: 'Story', integrity: 'timeline-id' };
 const messages = Array.from({ length: 14 }, (_, i) => ({ name: i % 2 ? '甲' : '乙', is_user: i % 2 === 0,
@@ -282,7 +285,7 @@ test('protected custom originals are embedded once in stage admission and surviv
 
 test('zero factory values resolve only at the shared boundary while zero memory budget remains automatic', () => {
     const settings = effectiveSettings({ settings: { recent: 0, trigger: 0, batch: 0, stageBasis: 'slices', stageThreshold: 0, budget: 0 } }, createDefaults());
-    assert.equal(settings.recent, 5); assert.equal(settings.trigger, 50000); assert.equal(settings.batch, 50000);
+    assert.equal(settings.recent, FACTORY_DEFAULTS.recent); assert.equal(settings.trigger, 50000); assert.equal(settings.batch, 50000);
     assert.equal(settings.stageThreshold, 12); assert.equal(settings.budget, 0);
     assert.throws(() => normalizeEntryOrder({ entries: [{ id: 'a' }], entryOrder: ['a', 'a'] }), /排列无效/);
 });

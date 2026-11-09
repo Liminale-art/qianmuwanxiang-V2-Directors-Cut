@@ -11,6 +11,7 @@ import {createHost, MEMORY_PROMPT_KEY} from '../yimu/host.mjs';
 import {effectiveSettings, fingerprintMessages} from '../yimu/contract.mjs';
 import {summaryCoverage, summaryPrompt} from '../yimu/core.mjs';
 import {summaryRequestBudget} from '../yimu/budget.mjs';
+import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Integration.png', file: 'Synthetic-chat', integrity: 'integration_identity'};
@@ -22,7 +23,7 @@ const deferredValue = () => {
     return {promise, resolve, reject};
 };
 
-async function fixture(t) {
+async function fixture(t, {legacyDefaults = true} = {}) {
     const parent = await fs.realpath(os.tmpdir());
     const root = await fs.mkdtemp(path.join(parent, 'yimu-integration-test-'));
     const account = path.join(root, 'account');
@@ -32,6 +33,7 @@ async function fixture(t) {
     const writeChat = async (items = messages, identity = binding.integrity, name = binding.file) => fs.writeFile(
         path.join(chats, 'Integration', `${name}.jsonl`), [{chat_metadata: {integrity: identity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await writeChat();
+    if (legacyDefaults) await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root});
     const routes = new Map(), faults = {loseChangeReply: false, failRead: false, delayChangeReply: null, delayReadReply: null};
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
@@ -610,7 +612,7 @@ test('a threshold needing multiple admitted batches keeps its frozen range despi
 });
 
 test('homepage prompts use read-only defaults, confirm a lost write receipt and reject a stale concurrent save', async t => {
-    const f = await fixture(t); f.context.characterId = undefined; await f.controller.refresh();
+    const f = await fixture(t, {legacyDefaults: false}); f.context.characterId = undefined; await f.controller.refresh();
     assert.equal(f.controller.state.document, null); assert.equal(f.controller.state.defaults.revision, 0);
     assert.deepEqual(await fs.readdir(path.join(f.account, '.yimu')), [], 'opening the homepage creates no chat or settings file');
     const prompts = clone(f.controller.state.defaults.values.prompts); prompts.groups.summary[0].text += '\n合成的用户偏好。';

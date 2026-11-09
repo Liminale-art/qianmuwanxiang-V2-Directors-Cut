@@ -9,6 +9,7 @@ import {createApi} from '../yimu/client.mjs';
 import {createHost} from '../yimu/host.mjs';
 import {createController} from '../yimu/runtime.mjs';
 import {fingerprintMessages} from '../yimu/contract.mjs';
+import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 
 test('full isolated story loop uses real client routes, server creation, native-open adapter and inherited next request', async t => {
     const base = await fs.realpath(os.tmpdir()), root = await fs.mkdtemp(path.join(base, 'yimu-story-loop-'));
@@ -21,6 +22,7 @@ test('full isolated story loop uses real client routes, server creation, native-
     const sourcePath = path.join(folder, 'source.jsonl');
     const original = [{chat_metadata: metadata}, ...messages].map(JSON.stringify).join('\n'); await fs.writeFile(sourcePath, original);
     const request = {user: {profile: {handle: 'fixture'}, directories: {root: account, chats}}};
+    await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root}), routes = new Map();
     registerYimuRoutes({get: (url, fn) => routes.set(`GET ${url}`, fn), post: (url, fn) => routes.set(`POST ${url}`, fn)}, {store});
     const readRows = async file => (await fs.readFile(path.join(folder, `${file}.jsonl`), 'utf8')).trim().split('\n').map(JSON.parse);

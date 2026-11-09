@@ -1,5 +1,5 @@
 // The only ST-facing layer. No direct chat writes, global connection switches or fetch patches.
-import { fingerprintMessages } from './contract.mjs';
+import { DEFAULTS, fingerprintMessages } from './contract.mjs';
 import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudget } from './budget.mjs';
 import { createApiSettings } from './api-settings.mjs';
 
@@ -331,7 +331,7 @@ export function createHost({
             const result = await buildBudgetedMessages(payload, {
                 entries: record.plan.entries, entryOrder: record.plan.entryOrder, processed: record.processed, sourceHashes,
                 hiddenFloors: record.hiddenFloors,
-                recent: record.plan.settings?.recent ?? 5, budget: record.plan.settings?.budget ?? 0,
+                recent: record.plan.settings?.recent ?? DEFAULTS.recent, budget: record.plan.settings?.budget ?? 0,
                 contextTokens: record.route.context, responseTokens,
             }, { countTokens: typeof ctx.getTokenCountAsync === 'function' ? value => ctx.getTokenCountAsync(value) : null, isCurrent: current });
             if (!result.applied) return result;

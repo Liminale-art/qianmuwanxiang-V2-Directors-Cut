@@ -9,6 +9,7 @@ import {fingerprintMessages, stageDependenciesValid, applyOperation, validateDoc
 import {buildPlan} from '../yimu/core.mjs';
 import {sceneDependenciesValid} from '../yimu/scene-contract.mjs';
 import {portableDocument, restoreBackupDocument} from '../yimu/backup-contract.mjs';
+import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 const hash = text => createHash('sha256').update(text).digest('hex');
 const binding = {avatar: 'Story.png', file: 'Original', integrity: 'original_identity'};
 const clone = value => structuredClone(value);
@@ -23,6 +24,7 @@ async function fixture(t, {io = null} = {}) {
     const chatFile = path.join(folder, binding.file + '.jsonl');
     const writeChat = (items = messages) => fs.writeFile(chatFile, [{chat_metadata: {integrity: binding.integrity, foreign_future: 'must-not-copy'}}, ...items].map(JSON.stringify).join('\n') + '\n');
     await writeChat();
+    await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root, ...(io ? {io} : {})});
     let sequence = 0;
     const change = (operation, target = binding) => store.change(request, target, {id: `op_${++sequence}`, ...operation});

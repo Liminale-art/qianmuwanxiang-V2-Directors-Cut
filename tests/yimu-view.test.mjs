@@ -827,18 +827,18 @@ test('shortcut colors distinguish execution failure from unavailable states with
     dispose(); dispose.update({ showShortcut: true }, ready); assert.equal(shortcut.isConnected, false);
 });
 
-test('trigger floor count sits right after the token trigger with its own hint and blank-when-off value', t => {
+test('trigger floor count sits right after the token trigger with its own hint and shows the factory default', t => {
     const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
     const trigger = f.get('自动总结触发'), floors = f.get('自动总结触发楼层数');
     const group = floors.closest('.ym-settings-group'), rows = group.querySelectorAll('.ym-setting-row');
     assert.equal(group, trigger.closest('.ym-settings-group')); assert.match(group.textContent, /切片总结/);
     assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
-    assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '不启用');
-    assert.equal(floors.closest('.ym-setting-row').title, '待整理层达到此数也会触发（与 token 阈值先到先触发）；留空仅按 token');
+    assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '10');
+    assert.equal(floors.closest('.ym-setting-row').title, '未总结楼层（含正文保留层）达到此数 +1 时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token');
     assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
-    assert.equal(floors.value, '');
+    assert.equal(floors.value, '10');
     f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');
-    f.render({ document: { ...f.state.document, configRevision: 2, settings: { triggerFloors: 0 } } }); assert.equal(floors.value, '');
+    f.render({ document: { ...f.state.document, configRevision: 2, settings: { triggerFloors: 0 } } }); assert.equal(floors.value, '0');
 });
 
 test('reopening a loaded chat refreshes quietly while a cold or failed open uses the full refresh', async () => {
@@ -1276,7 +1276,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.19 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.20 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1396,7 +1396,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.19'); assert.equal(pkg.version, '0.8.10');
+    assert.equal(manifest.js, `index.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.20'); assert.equal(pkg.version, '0.8.10');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

@@ -1,4 +1,4 @@
-import { sourceMatches } from './contract.mjs';
+import { DEFAULTS, sourceMatches } from './contract.mjs';
 import { sourceLabel } from './source-scope.mjs';
 import { orderForInjection } from './timeline.mjs';
 import { sceneProjection } from './scene-contract.mjs';
@@ -163,7 +163,7 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
 
 /** Pure transaction planner. The caller alone commits messages after its final source/lifecycle guard. */
 export async function buildBudgetedMessages(payload, {
-    entries, processed, sourceHashes, hiddenFloors = [], recent = 5, budget = 0, contextTokens, responseTokens, entryOrder = [],
+    entries, processed, sourceHashes, hiddenFloors = [], recent = DEFAULTS.recent, budget = 0, contextTokens, responseTokens, entryOrder = [],
 }, { countTokens, isCurrent = () => true, countTimeoutMs = 1200 } = {}) {
     const unsupported = payloadSupport(payload);
     if (unsupported) return failure(unsupported);

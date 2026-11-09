@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDocument, createDefaults, DEFAULTS, fingerprintMessages, applyOperation} from '../yimu/contract.mjs';
+import {createDocument, createDefaults as factoryDefaults, DEFAULTS as FACTORY_DEFAULTS, fingerprintMessages, applyOperation} from '../yimu/contract.mjs';
+import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 import {buildPlan, inspectSources, nextBatch} from '../yimu/core.mjs';
 import {captureCore, buildBudgetedMessages} from '../yimu/budget.mjs';
 import {stageGroups} from '../yimu/layers.mjs';
 import {recallCandidates} from '../yimu/recall.mjs';
 import {createController} from '../yimu/runtime.mjs';
+// Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
+const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
 const binding = {avatar: 'Fixture.png', file: 'branch', integrity: 'branch-id'};
 const ancestor = {...binding, file: 'original', integrity: 'original-id'};

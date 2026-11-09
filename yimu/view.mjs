@@ -33,9 +33,9 @@ const SETTINGS = [
 // Hover hints; values that read as "off" at 0 render blank.
 const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
-    triggerFloors: '待整理层达到此数也会触发（与 token 阈值先到先触发）；留空仅按 token',
+    triggerFloors: '未总结楼层（含正文保留层）达到此数 +1 时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
 };
-const BLANK_ZERO = new Set(['budget', 'triggerFloors']);
+const BLANK_ZERO = new Set(['budget']);
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
 const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
@@ -349,7 +349,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (type !== 'textarea' && type !== 'select') input.type = type;
         if (type === 'checkbox') input.className = 'ym-switch';
         if (min !== undefined) { input.min = String(min); input.step = '1'; }
-        if (type === 'number') input.placeholder = key === 'budget' ? '留空自动' : key === 'triggerFloors' ? '不启用' : String(DEFAULTS[key] ?? '');
+        if (type === 'number') input.placeholder = key === 'budget' ? '留空自动' : String(DEFAULTS[key] ?? '');
         const readInput = event => {
             if (settingsDraftRevision === null || settingsSaveFailed) settingsDraftRevision = state.document?.configRevision ?? 0;
             settingsSaveFailed = false;
@@ -420,7 +420,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!stageForm.hidden) { stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); return; }
         const eligible = stageEligible();
         stageStart.value = String(eligible.find(entry => entry.source)?.source.start || 1);
-        stageEnd.value = String(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || 5)));
+        stageEnd.value = String(Math.max(1, (state.snapshot?.messages?.length || 0) - (currentSettings().recent || DEFAULTS.recent)));
         stageForm.hidden = false; stageButton.setAttribute('aria-expanded', 'true'); updateStageRange(); stageStart.focus();
     });
     stageButton.setAttribute('aria-expanded', 'false'); stageButton.setAttribute('aria-controls', 'ym-stage-form');
@@ -754,7 +754,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     }
     function stageEligible(start = 1, end = Infinity) {
         if (!state.document || !state.snapshot) return [];
-        const recent = state.document.settings?.recent ?? state.defaults?.values?.recent ?? 5;
+        const recent = state.document.settings?.recent ?? state.defaults?.values?.recent ?? DEFAULTS.recent;
         const entries = state.document.entries.map(entry => entry.status === 'active' && state.invalidSourceIds?.includes(entry.id)
             ? { ...entry, status: 'invalid' } : entry);
         return stageGroups({ ...state.document, entries }, { start, end: Math.min(end, state.snapshot.messages.length - recent) }).flat();

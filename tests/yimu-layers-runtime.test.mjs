@@ -8,6 +8,7 @@ import {createController} from '../yimu/runtime.mjs';
 import {fingerprintMessages, sourceRanges} from '../yimu/contract.mjs';
 import {buildPlan} from '../yimu/core.mjs';
 import {stageWeight} from '../yimu/layers.mjs';
+import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 
 const clone = value => structuredClone(value);
 const deferred = () => {
@@ -28,6 +29,7 @@ async function fixture(t, {floors = 11, fine = 6} = {}) {
     const writeChat = items => fs.writeFile(rawPath, [{chat_metadata: {integrity: binding.integrity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await writeChat(messages);
     const request = {user: {profile: {handle: 'fixture'}, directories: {root: account, chats}}};
+    await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root});
     const api = {health: async () => ({}), read: key => store.read(request, key), change: (key, op) => store.change(request, key, op),
         defaults: op => store.defaults(request, op), rename: (old, next) => store.rename(request, old, next)};

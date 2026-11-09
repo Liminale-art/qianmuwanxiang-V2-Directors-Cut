@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOperation, createDocument, createDefaults, fingerprintMessages, DEFAULTS } from '../yimu/contract.mjs';
+import { applyOperation, createDocument, createDefaults as factoryDefaults, fingerprintMessages, DEFAULTS as FACTORY_DEFAULTS } from '../yimu/contract.mjs';
+import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 import { stageSourceFromParents } from '../yimu/stage-contract.mjs';
 import { nextStage } from '../yimu/layers.mjs';
 import { buildPlan } from '../yimu/core.mjs';
+// Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
+const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
 // Independent synthetic review cases; no network, browser, real account or model calls.
 const binding = { avatar: 'Review.png', file: 'Synthetic story', integrity: 'review-layer-identity' };

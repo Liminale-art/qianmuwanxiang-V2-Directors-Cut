@@ -1,4 +1,4 @@
-import { effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { DEFAULTS, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
 import { sourceRanges, stageDependenciesValid, hasCustomParents } from './stage-contract.mjs';
 import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd } from './source-scope.mjs';
@@ -8,14 +8,13 @@ import { validateScenes, sceneProjection, sceneDependenciesValid, validateGenera
 import { composePrompt } from './prompt-settings.mjs';
 import { filterContextText } from './context-filter.mjs';
 
-export const FLOOR_TRIGGER_MIN_TOKENS = 2000;
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
 const canSummarize = message => message && typeof message.mes === 'string' && message.mes.trim()
     && !message.extra?.tool_invocations && !message.tool_calls && !message.tool_call_id;
 
 // Hidden is ST's prompt/display flag, not permission to exclude story sources.
 // It remains untouched; recent raw text and handled sources are counted separately.
-export function initialRangePreview(document, messages, { start, end }, { recent = 5 } = {}) {
+export function initialRangePreview(document, messages, { start, end }, { recent = DEFAULTS.recent } = {}) {
     const result = { valid: false, hidden: [], recent: [], handled: [], unsupported: [], eligible: [] };
     if (!Array.isArray(messages) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
         || start < 1 || end < start || end > messages.length || !Number.isSafeInteger(recent) || recent < 1) return result;
@@ -59,16 +58,20 @@ export function nextBatch(document, messages, settings, { force = false, history
     if (!first) return null;
     let targetEnd = last;
     if (!force && first > initialTotal) {
-        // Tokens or floors, whichever is reached first. The floor count still
-        // needs a small token floor so a few short replies never become a slice.
-        const floors = settings.triggerFloors > 0 ? settings.triggerFloors : Infinity;
-        const minimum = Math.min(settings.trigger, FLOOR_TRIGGER_MIN_TOKENS);
-        let pending = 0, count = 0; targetEnd = 0;
-        for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
-            pending += estimateTokens(messages[floor - 1].mes); count++;
-            if (pending >= settings.trigger || count >= floors && pending >= minimum) { targetEnd = floor; break; }
+        // Tokens or floors, whichever is reached first. The floor count includes
+        // the kept recent floors: at triggerFloors + 1 unsummarized floors, every
+        // floor before the kept ones is organized, leaving room to reroll the newest.
+        const floors = settings.triggerFloors > 0 ? settings.triggerFloors + 1 : Infinity;
+        let unsummarized = 0;
+        for (let floor = first; floor <= messages.length && unsummarized < floors; floor++) if (eligible(floor)) unsummarized++;
+        if (unsummarized < floors) {
+            let pending = 0; targetEnd = 0;
+            for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
+                pending += estimateTokens(messages[floor - 1].mes);
+                if (pending >= settings.trigger) { targetEnd = floor; break; }
+            }
+            if (!targetEnd) return null;
         }
-        if (!targetEnd) return null;
     }
     let start = 0, end = 0, tokens = 0;
     for (let floor = first; floor <= targetEnd; floor++) {
