@@ -139,7 +139,6 @@ import {
   quickHiveCellFits,
   infoTag,
   modelReasoningText,
-  modelMessageReasoning,
   directorItemText,
   directorSimilarity,
   isNoisePresetName,
@@ -219,9 +218,8 @@ import {
   normalizeQianmuStructuredOutputMode,
   normalizeQianmuChatApiRoot,
   parseQianmuDialoguePayload,
-  qianmuChatCompletionError,
-  qianmuChatCompletionText,
 } from './qianmu-llm-output.js?v=1.59.202';
+import { createStModelProxy } from './qianmu-st-model-proxy.js?v=1.59.484';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -4133,36 +4131,11 @@ async function generateDirectorPlan(showSuccessToast = true, silentFailure = fal
   }
 }
 
-// MIGRATED to qianmu-storyboard-utils.js (commit 19)
-// function parseModelList(data) {
-//   const candidates = [];
-//   if (Array.isArray(data?.data)) candidates.push(...data.data.map((x) => x?.id || x?.name || x));
-//   if (Array.isArray(data?.models)) candidates.push(...data.models.map((x) => x?.id || x?.name || x));
-//   if (Array.isArray(data)) candidates.push(...data.map((x) => x?.id || x?.name || x));
-//   if (data?.data && typeof data.data === 'object' && !Array.isArray(data.data)) candidates.push(...Object.keys(data.data));
-//   if (data?.models && typeof data.models === 'object' && !Array.isArray(data.models)) candidates.push(...Object.keys(data.models));
-//   return uniqueClean(candidates).sort((a, b) => a.localeCompare(b));
-// }
-
+// MIGRATED to qianmu-storyboard-utils.js (commit 19)：parseModelList 现由 qianmu-model-compat.js 统一（测试按此注释切片，勿删）
 async function fetchModels() {
   try {
-    const rawUrl = String(settings.apiUrl || '').trim().replace(/\/+$/, '');
-    if (!rawUrl || !settings.apiKey) throw new Error('missing');
-    // 借 ST 后端代理拉取（绕过浏览器 CORS）；原始 URL 交后端拼 /models 路径
-    let res = await fetchViaSTProxy(rawUrl, `Authorization: Bearer ${settings.apiKey}`);
-    if (!res.ok && (res.status === 401 || res.status === 403)) {
-      res = await fetchViaSTProxy(rawUrl, `Authorization: ${settings.apiKey}`);
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    // 兼容多种返回结构：{models:[]} / {data:[]} / 顶层数组；元素可为字符串或 {id}/{name} 对象
-    let list = [];
-    if (data && Array.isArray(data.models)) list = data.models;
-    else if (data && Array.isArray(data.data)) list = data.data;
-    else if (Array.isArray(data)) list = data;
-    settings.availableModels = list
-      .map((x) => typeof x === 'string' ? x : x?.id || x?.name)
-      .filter(Boolean);
+    if (!String(settings.apiUrl || '').trim() || !settings.apiKey) throw new Error('missing');
+    settings.availableModels = await stModelProxy.listModels({ apiUrl: settings.apiUrl, apiKey: settings.apiKey });
     if (!settings.model && settings.availableModels.length) settings.model = settings.availableModels[0];
     saveSettings();
     toast(`已拉取 ${settings.availableModels.length} 个模型。`, 'success');
@@ -10714,14 +10687,7 @@ async function callTtsExternalExtractModel(messages, config) {
     signal: controller.signal,
   };
   try {
-    try {
-      return await generateViaSTProxy(apiUrl, `Authorization: Bearer ${apiKey}`, model, messages, options);
-    } catch (error) {
-      if (/HTTP\s*(?:401|403)\b|\b(?:Unauthorized|Forbidden)\b/i.test(String(error?.message || ''))) {
-        return await generateViaSTProxy(apiUrl, `Authorization: ${apiKey}`, model, messages, options);
-      }
-      throw error;
-    }
+    return await generateViaSTProxy(apiUrl, apiKey, model, messages, options);
   } catch (proxyError) {
     if (!ttsExtractProxyUnavailable(proxyError)) throw proxyError;
     return callExternalApi(messages, null, { ...config, stream: false }, controller);
@@ -25112,25 +25078,15 @@ function bindActiveTabEvents(root) {
   });
   root.querySelector('.sd-test-api')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
-    const rawUrl = String(root.querySelector('.sd-api-url')?.value || '').trim().replace(/\/+$/, '');
+    const apiUrl = String(root.querySelector('.sd-api-url')?.value || '').trim();
     const apiKey = root.querySelector('.sd-api-key')?.value || '';
-    if (!(rawUrl && apiKey)) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
+    if (!(apiUrl && apiKey)) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
     btn.disabled = true;
     const icon = btn.querySelector('i');
     const prevIcon = icon?.className;
     setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
     try {
-      // 借 ST 后端代理探活（绕过浏览器 CORS）
-      let res = await fetchViaSTProxy(rawUrl, `Authorization: Bearer ${apiKey}`);
-      if (!res.ok && (res.status === 401 || res.status === 403)) {
-        res = await fetchViaSTProxy(rawUrl, `Authorization: ${apiKey}`);
-      }
-      if (res.ok) {
-        toast('连接成功', 'success');
-      } else {
-        const text = await res.text().catch(() => '');
-        toast(`连接失败：HTTP ${res.status}${text ? ` · ${text.slice(0, 120)}` : ''}`, 'error');
-      }
+      apiTestToast(await stModelProxy.testConnection({ apiUrl, apiKey, model: root.querySelector('.sd-model-select')?.value || '' }));
     } catch (err) {
       toast(`连接失败：${err?.message || err}`, 'error');
     } finally {
@@ -25802,149 +25758,45 @@ const DEFAULT_MAINLINE_SUMMARY_PROMPT = `只提取所选主线消息中与当前
 明确区分书中事实、角色观点与用户观点，不把推测写成已发生事实。保留关键原话与专名，全程第三人称客观陈述。
 篇幅控制在 150 至 250 字，并给出 3 至 10 个可准确召回的人名、事件或概念关键词。行文禁用破折号（——）。`;
 
-// 向量/重排接口的通用测试连接 + 拉取模型（OpenAI 兼容 /v1/models、/v1/embeddings、rerank）。
-// kind = 'vector' | 'rerank'。字段前缀同名（vectorApiUrl / rerankApiUrl…）。
-// 由用户填的接口 URL 推「API 根」用于拉模型/探活：先剥常见业务端点后缀（/rerank /embeddings /chat/completions /completions /models），
-// 再交 normalizeUrl 收尾（去尾斜杠+去尾 /v1）。修 rerank 填 https://host/v1/rerank 时 ${base}/v1/models=.../v1/rerank/v1/models → 404。
-function apiRootFrom(url) {
-  let v = String(url || '').trim().replace(/\/+$/, '');
-  v = v.replace(/\/(v1\/)?(chat\/completions|completions|rerank|reranking|embeddings|models)\/?$/i, '');
-  return normalizeUrl(v);
-}
+// 经 ST 后端 custom 渠道调用外部接口（绕浏览器 CORS）：地址、鉴权回退、回复解析统一在 qianmu-st-model-proxy.js。
+// 非流式；失败文字为「HTTP 状态 · 详情」，调用方据此决定是否回落浏览器直连。
+const stModelProxy = createStModelProxy({ headers: () => ctx().getRequestHeaders?.() || {} });
+const generateViaSTProxy = (apiUrl, apiKey, model, messages, opts = {}) => stModelProxy.generate({ ...opts, apiUrl, apiKey, model, messages });
 
-// 借 ST 后端 /api/backends/chat-completions/status 端点转发外部 API 请求（纯前端·后端代理绕过浏览器 CORS）。
-// custom_url=外部接口原始 URL，custom_include_headers=完整鉴权头串（如 "Authorization: Bearer sk-xxx"）。
-async function fetchViaSTProxy(url, authHeaderStr) {
-  const stHeaders = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {};
-  const body = {
-    chat_completion_source: 'custom',
-    custom_url: url,
-    reverse_proxy: url,
-    proxy_password: '',
-    custom_include_headers: authHeaderStr || '',
-  };
-
-  const res = await fetch('/api/backends/chat-completions/status', {
-    method: 'POST',
-    headers: { ...stHeaders, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`ST backend proxy failed: HTTP ${res.status}${text ? ` · ${text.slice(0, 120)}` : ''}`);
-  }
-
-  return res;  // 返回标准 Response 对象
-}
-
-// 借 ST 后端 /api/backends/chat-completions/generate 端点做「生成」（非仅探活）——纯前端调外部 API（火山方舟等）绕浏览器 CORS 的正路。
-// 后端以 chat_completion_source:'custom' 转发到 custom_url，鉴权头走 custom_include_headers。返回 OpenAI 兼容结构，取 choices[0].message.content。
-// 非流式（后端代理不透传 SSE·总结场景取全文即可）。失败抛 HTTP 错误交上层 coreadExplainError 翻译。
-async function generateViaSTProxy(url, authHeaderStr, model, messages, opts = {}) {
-  const stHeaders = typeof ctx().getRequestHeaders === 'function' ? ctx().getRequestHeaders() : {};
-  const body = {
-    chat_completion_source: 'custom',
-    custom_url: normalizeQianmuChatApiRoot(url),
-    reverse_proxy: '',
-    proxy_password: '',
-    custom_include_headers: authHeaderStr || '',
-    model,
-    messages,
-    temperature: Number(opts.temperature != null ? opts.temperature : 0.75),
-    stream: false,
-  };
-  if (Number(opts.maxTokens) > 0) body.max_tokens = Number(opts.maxTokens);
-  const res = await fetch('/api/backends/chat-completions/generate', {
-    method: 'POST',
-    headers: { ...stHeaders, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: opts.signal,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}${text ? ` · ${text.slice(0, 300)}` : ''}`);
-  }
-  const data = await res.json().catch(() => ({}));
-  const upstreamError = qianmuChatCompletionError(data);
-  if (upstreamError) throw new Error(`上游模型请求失败：${upstreamError}`);
-  const message = data?.choices?.[0]?.message || {};
-  const reasoning = modelMessageReasoning(message);
-  if (reasoning && typeof opts.onReasoning === 'function') opts.onReasoning(reasoning);
-  const content = qianmuChatCompletionText(data);
-  if (!content.trim()) throw new Error('上游模型未返回可用正文');
-  return content;
-}
-
-async function coreadFetchMemModels(kind, btn) {
+async function coreadMemApiAction(kind, btn, run) {
   const m = coreadMemory();
-  const rawUrl = String(m[`${kind}ApiUrl`] || '').trim();
-  const base = apiRootFrom(rawUrl);
-  const key = m[`${kind}ApiKey`];
-  if (!base || !key) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
+  const apiUrl = String(m[`${kind}ApiUrl`] || '').trim(), apiKey = m[`${kind}ApiKey`];
+  if (!apiUrl || !apiKey) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
   const icon = btn?.querySelector('i'); const prev = icon?.className;
   if (btn) btn.disabled = true;
   setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-  try {
-    // 直接传原始 URL（后端负责拼 /models 路径，此处不自拼 /v1/models 免路径重复）
-    const proxyUrl = rawUrl.replace(/\/+$/, '');
-    // 先试标准 Bearer 前缀
-    let authHeader = `Authorization: Bearer ${key}`;
-    let res = await fetchViaSTProxy(proxyUrl, authHeader);
-    if (!res.ok && (res.status === 401 || res.status === 403)) {
-      authHeader = `Authorization: ${key}`;
-      res = await fetchViaSTProxy(proxyUrl, authHeader);
-    }
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status}${t ? ` · ${t.slice(0, 120)}` : ''}`);
-    }
-    const data = await res.json();
-    // 兼容多种返回结构：{models:[]} / {data:[]} / 顶层数组；元素可为字符串或 {id}/{name} 对象
-    let modelsList = [];
-    if (data && Array.isArray(data.models)) modelsList = data.models;
-    else if (data && Array.isArray(data.data)) modelsList = data.data;
-    else if (Array.isArray(data)) modelsList = data;
-    const models = modelsList
-      .map((model) => typeof model === 'string' ? model : model?.id || model?.name)
-      .filter(Boolean);
-    if (!models.length) { toast('接口没返回模型列表，请检查 URL / Key 是否正确。', 'warning'); return; }
-    m[`${kind}Models`] = models;
-    if (!m[`${kind}Model`] && models.length) m[`${kind}Model`] = models[0];
-    saveSettings();
-    toast(`已拉取 ${models.length} 个模型。`, 'success');
-    rerenderMoreIfOpen();
-  } catch (err) {
-    toast(`拉取失败：${err?.message || err}`, 'error');
-  } finally {
+  try { await run(m, { apiUrl, apiKey, model: m[`${kind}Model`], chatModel: kind === 'summary' }); }
+  finally {
     if (btn) btn.disabled = false;
     if (prev) setQianmuIconClass(icon, prev);
   }
 }
 
-// 借 ST 后端代理探活（绕过浏览器 CORS）：三类接口都用 /status 通道试连，能连通即视作可用。
-async function coreadTestMemConn(kind, btn) {
-  const m = coreadMemory();
-  const rawUrl = String(m[`${kind}ApiUrl`] || '').trim().replace(/\/+$/, '');
-  const key = m[`${kind}ApiKey`];
-  if (!rawUrl || !key) { toast('请先填写 API URL 与 Key。', 'warning'); return; }
-  const icon = btn?.querySelector('i'); const prev = icon?.className;
-  if (btn) btn.disabled = true;
-  setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-  try {
-    let res = await fetchViaSTProxy(rawUrl, `Authorization: Bearer ${key}`);
-    if (!res.ok && (res.status === 401 || res.status === 403)) {
-      res = await fetchViaSTProxy(rawUrl, `Authorization: ${key}`);
-    }
-    if (res.ok) toast('连接成功', 'success');
-    else { const t = await res.text().catch(() => ''); toast(`连接失败：HTTP ${res.status}${t ? ` · ${t.slice(0, 100)}` : ''}`, 'error'); }
-  } catch (err) {
-    toast(`连接失败：${err?.message || err}`, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-    if (prev) setQianmuIconClass(icon, prev);
-  }
+const coreadFetchMemModels = (kind, btn) => coreadMemApiAction(kind, btn, async (m, conn) => {
+  let models;
+  try { models = await stModelProxy.listModels(conn); }
+  catch (err) { toast(`拉取失败：${err?.message || err}`, 'error'); return; }
+  if (!models.length) { toast('接口没返回模型列表，请检查 URL / Key 是否正确。', 'warning'); return; }
+  m[`${kind}Models`] = models;
+  if (!m[`${kind}Model`]) m[`${kind}Model`] = models[0];
+  saveSettings();
+  toast(`已拉取 ${models.length} 个模型。`, 'success');
+  rerenderMoreIfOpen();
+});
+
+// 测试连接：先查模型目录；目录不可用时，总结接口用所选模型补一次 1 token 探测（向量／重排只查目录）。
+function apiTestToast(result) {
+  toast(result.scope === 'chat-probe' ? '连接成功（模型目录不可用，已用所选模型完成探测）' : '连接成功', 'success');
 }
+const coreadTestMemConn = (kind, btn) => coreadMemApiAction(kind, btn, async (_, conn) => {
+  try { apiTestToast(await stModelProxy.testConnection(conn)); }
+  catch (err) { toast(`连接失败：${err?.message || err}`, 'error'); }
+});
 
 // 保存当前向量/重排配置为预设。
 async function coreadSaveMemProfile(kind) {
@@ -26539,20 +26391,10 @@ async function callCoreadModel(systemPrompt, userPrompt, opts = {}) {
   const signal = opts.signal;   // 可选 AbortSignal：停止按钮触发时中断在途请求
   if (conn) {
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
-    // custom_url 传「API 根」（含 /v1），后端自拼 /chat/completions——与 /status 拉模型同约定，避免路径重复
     const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
-    // 首选 ST 后端代理生成（绕浏览器 CORS·火山方舟等直连会被拦）：先试标准 Bearer，401/403 再试裸 Key
+    // 首选 ST 后端代理生成（绕浏览器 CORS·火山方舟等直连会被拦）；Bearer→裸 Key 回退在代理模块内
     try {
-      let authHeader = `Authorization: Bearer ${conn.apiKey}`;
-      try {
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
-      } catch (err) {
-        if (/HTTP\s*(401|403)/.test(String(err?.message || ''))) {
-          authHeader = `Authorization: ${conn.apiKey}`;
-          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
-        }
-        throw err;
-      }
+      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
     } catch (proxyErr) {
       // 后端代理不可用（老版 ST / 端点缺失）才回落浏览器直连——支持 CORS 的接口仍能用
       if (/ST backend proxy failed|Failed to fetch|NetworkError/i.test(String(proxyErr?.message || ''))) {
@@ -26597,18 +26439,9 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
   if (conn) {
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
-    // 首选 ST 后端代理生成（火山方舟等直连会被浏览器 CORS 拦）：先试标准 Bearer，401/403 再试裸 Key
+    // 首选 ST 后端代理生成（火山方舟等直连会被浏览器 CORS 拦）
     try {
-      let authHeader = `Authorization: Bearer ${conn.apiKey}`;
-      try {
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
-      } catch (err) {
-        if (/HTTP\s*(401|403)/.test(String(err?.message || ''))) {
-          authHeader = `Authorization: ${conn.apiKey}`;
-          return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
-        }
-        throw err;
-      }
+      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
     } catch (proxyErr) {
       // 后端代理不可用（老版 ST / 端点缺失 / 网络错误）才回落浏览器直连——支持 CORS 的接口仍能用
       if (/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyErr?.message || ''))) {
@@ -26644,16 +26477,7 @@ async function callCoreadAssistantModel(systemPrompt, userPrompt, opts = {}) {
   const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
   const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
   try {
-    let authHeader = `Authorization: Bearer ${conn.apiKey}`;
-    try {
-      return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
-    } catch (error) {
-      if (/HTTP\s*(401|403)/.test(String(error?.message || ''))) {
-        authHeader = `Authorization: ${conn.apiKey}`;
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
-      }
-      throw error;
-    }
+    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
   } catch (proxyError) {
     if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
     return callExternalApi(messages, opts.onDelta || null, {
@@ -26724,16 +26548,7 @@ async function callCoreadVisionModel(systemPrompt, userPrompt, imageUrls, opts =
   const controller = opts.controller || new AbortController();
   const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
   try {
-    let authHeader = `Authorization: Bearer ${conn.apiKey}`;
-    try {
-      return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
-    } catch (error) {
-      if (/HTTP\s*(401|403)/.test(String(error?.message || ''))) {
-        authHeader = `Authorization: ${conn.apiKey}`;
-        return await generateViaSTProxy(genUrl, authHeader, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
-      }
-      throw error;
-    }
+    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
   } catch (proxyError) {
     if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
     return callExternalApi(messages, opts.onDelta || null, {

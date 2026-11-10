@@ -209,6 +209,7 @@
     "qianmu-model-response.js",
     "qianmu-model-compat.js",
     "qianmu-model-external.js",
+    "qianmu-st-model-proxy.js",
     "qianmu-model-host.js",
     "qianmu-director-live.js",
     "qianmu-director-leave-guard.js",
