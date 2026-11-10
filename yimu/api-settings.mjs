@@ -355,6 +355,22 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             throw new Error(errorText(error, config));
         } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
     }
+    async function chatProbe(config, signal) {
+        if (!text(config.model)) fail('请选择或填写整理模型');
+        aborted(signal);
+        const controller = new AbortController(), cancel = () => controller.abort(signal?.reason);
+        signal?.addEventListener('abort', cancel, { once: true });
+        const timer = setTimeout(() => controller.abort(new Error('连接请求超时，请检查地址与服务状态')), statusTimeoutMs);
+        try {
+            const response = await request('/api/backends/chat-completions/generate', config,
+                { model: config.model, messages: [{ role: 'user', content: '连接测试' }], temperature: 0, max_tokens: 1, stream: false }, controller.signal);
+            const json = await response.json().catch(() => ({})); aborted(controller.signal);
+            if (json?.error) fail(errorText(json.error, config));
+        } catch (error) {
+            if (controller.signal.aborted) throw new Error(errorText(controller.signal.reason, config));
+            throw new Error(errorText(error, config));
+        } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
+    }
     async function fetchModels({ signal } = {}) {
         await saving.catch(() => {}); const config = read();
         const list = await models(config, signal);
@@ -366,9 +382,33 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     }
     async function testConnection({ signal } = {}) {
         await saving.catch(() => {}); const config = read();
-        await models(config, signal);
-        if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
-        return { ok: true, scope: 'model-list' };
+        // The models-list probe (/status → provider /v1/models) is cheapest, but
+        // many unified/third-party gateways (one-api、new-api、火山方舟 等) serve
+        // /chat/completions while returning 503/404 on /models. A list failure
+        // alone must not read as "连接不可用" when summarization actually works, so
+        // fall back to the same /generate path the real summary uses: a minimal
+        // 1-token probe. Succeeds if the gateway returns any non-error completion.
+        let listError;
+        try {
+            await models(config, signal);
+            if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
+            return { ok: true, scope: 'model-list' };
+        } catch (error) {
+            aborted(signal);
+            listError = error;
+        }
+        // Fall back only when the list endpoint positively rejected (e.g. 503/404
+        // on /models). A timeout or network stall must not trigger a second
+        // request — the test endpoint is simply unreachable.
+        if (!text(config.model) || /超时/.test(String(listError?.message || ''))) throw new Error(errorText(listError, config));
+        try {
+            await chatProbe(config, signal);
+            if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
+            return { ok: true, scope: 'chat-probe' };
+        } catch (error) {
+            aborted(signal);
+            throw new Error(errorText(error, config));
+        }
     }
     async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens, onChunk } = {}) {
         await saving.catch(() => {}); let config = read();

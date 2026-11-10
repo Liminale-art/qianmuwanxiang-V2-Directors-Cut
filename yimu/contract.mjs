@@ -13,7 +13,7 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.24';
+export const FRONTEND_VERSION = '0.8.25';
 export const SERVICE_VERSION = '0.8.10';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers

@@ -69,6 +69,31 @@ test('models and connection test use only the ST status proxy, accepting keyless
     }
 });
 
+test('connection test falls back to a minimal chat probe when the models list endpoint fails', async () => {
+    const f = fixture(); await f.api.update(external);
+    f.answer = (path) => path.endsWith('/status')
+        ? new Response('upstream unavailable', { status: 503 })
+        : Response.json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] });
+    assert.deepEqual(await f.api.testConnection(), { ok: true, scope: 'chat-probe' });
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.calls[0].path, '/api/backends/chat-completions/status');
+    const probe = f.calls[1];
+    assert.equal(probe.path, '/api/backends/chat-completions/generate');
+    assert.equal(probe.body.max_tokens, 1);
+    assert.equal(probe.body.stream, false);
+    assert.equal(probe.body.model, external.model);
+    assert.deepEqual(JSON.parse(probe.body.custom_include_headers), { Authorization: `Bearer ${external.apiKey}` });
+});
+
+test('connection test surfaces the chat probe error when both the list and probe fail', async () => {
+    const f = fixture(); await f.api.update(external);
+    f.answer = (path) => path.endsWith('/status')
+        ? new Response('no models', { status: 503 })
+        : Response.json({ error: { message: `probe denied for ${external.apiKey}` } });
+    await assert.rejects(f.api.testConnection(), error => error.message.includes('probe denied') && !error.message.includes(external.apiKey));
+    assert.equal(f.calls.length, 2);
+});
+
 test('a late model list cannot attach to a different endpoint', async () => {
     const f = fixture(); await f.api.update(external);
     let finish, started; const ready = new Promise(resolve => { started = resolve; });
