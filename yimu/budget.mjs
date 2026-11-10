@@ -5,6 +5,28 @@ import { sceneProjection } from './scene-contract.mjs';
 
 const clone = value => structuredClone(value);
 const messageKey = message => JSON.stringify([message.role, message.content, message.name || '']);
+// The 保底 slot (setExtensionPrompt('yimu-memory', …)) bakes a <yimu_memory>
+// block into the assembled payload so memory still reaches the model whenever the
+// surgical rewrite cannot run. On the success path the authoritative inline block
+// is inserted instead, so any baked copy must be removed first to avoid a double
+// injection. ST's squashSystemMessages may have merged that copy into another
+// nameless system message, so strip only the tagged block, never the whole message.
+const MEMORY_BLOCK = /\n?<yimu_memory>[\s\S]*?<\/yimu_memory>\n?/g;
+export const hasMemoryShadow = message => !!message && message.role === 'system'
+    && typeof message.content === 'string' && message.content.includes('<yimu_memory>');
+/** Remove any baked 保底 memory block in place. Returns true when one was removed. */
+export function withdrawMemoryShadow(messages) {
+    if (!Array.isArray(messages)) return false;
+    let removed = false;
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (!hasMemoryShadow(message)) continue;
+        const stripped = message.content.replace(MEMORY_BLOCK, '').trim();
+        if (stripped) message.content = stripped; else messages.splice(index, 1);
+        removed = true;
+    }
+    return removed;
+}
 const roles = new Set(['system', 'developer', 'user', 'assistant']);
 const messageFields = new Set(['role', 'content', 'name']);
 const failure = reason => ({ applied: false, reason, entries: [], removedFloors: [], estimated: true });
@@ -172,7 +194,10 @@ export async function buildBudgetedMessages(payload, {
         || contextTokens <= responseTokens || responseTokens < 1) return failure('unknown-context-budget');
     if (!Array.isArray(processed) || !processed.length || !Array.isArray(entries)
         || !Number.isSafeInteger(recent) || recent < 1 || !Number.isSafeInteger(budget) || budget < 0) return failure('invalid-plan');
-    const original = clone(payload.messages), map = mapping(original, processed);
+    // A baked 保底 copy (from the extension-prompt slot) must never survive into the
+    // surgically rewritten request, or the model would receive two memory blocks.
+    const original = clone(payload.messages); withdrawMemoryShadow(original);
+    const map = mapping(original, processed);
     if (!map) return failure('unverified-mapping');
     const recentItems = processed.slice(-recent), recentFloors = recentItems.map(item => item.floor);
     if (recentFloors.some(floor => map.ambiguous.has(floor) || !map.found.has(floor))) return failure('recent-originals-missing');

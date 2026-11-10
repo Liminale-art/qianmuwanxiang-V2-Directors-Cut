@@ -239,6 +239,20 @@ export function createHost({
         return true;
     }
 
+    // 保底 injection slot. When the surgical final-request rewrite cannot run (an
+    // unsupported route, capability, or a late state change), this baked block is
+    // the only path that still delivers memory to the model. The success path strips
+    // it (budget.mjs withdrawMemoryShadow) so the request never carries two copies.
+    // It does NOT bump `generation`; it only writes the slot the next assembly reads.
+    function offer(prompt) {
+        const content = text(prompt);
+        if (!content) return false;
+        const ctx = getContext();
+        if (typeof ctx?.setExtensionPrompt !== 'function') return false;
+        ctx.setExtensionPrompt(MEMORY_PROMPT_KEY, content, 1, 0, false, 0);
+        return true;
+    }
+
     function profiles() {
         return connectionApi.qianmuProfiles();
     }
@@ -419,7 +433,7 @@ export function createHost({
         return body?.dataset ? body.dataset.generating === 'true' : null;
     }
 
-    return { snapshot, generate, profiles, busyGenerating, characters, clear, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
+    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         vectorCandidates: request => connectionApi.vectorCandidates(request),
         rerankCandidates: request => connectionApi.rerankCandidates(request),

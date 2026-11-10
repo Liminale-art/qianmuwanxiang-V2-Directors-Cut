@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fingerprintMessages } from '../yimu/contract.mjs';
-import { buildBudgetedMessages, byteBudget, captureCore, memoryMessage, payloadSupport } from '../yimu/budget.mjs';
+import { buildBudgetedMessages, byteBudget, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
 
 async function fixture({ count = 12, length = 512, type = 'normal', namesBehavior = 0 } = {}) {
     const source = { messages: Array.from({ length: count }, (_, i) => ({
@@ -25,6 +25,32 @@ async function fixture({ count = 12, length = 512, type = 'normal', namesBehavio
         contextTokens: 32768, responseTokens: 1024 };
     return { source, core, processed, sourceHashes, payload, options, entry };
 }
+
+test('a baked 保底 memory shadow never produces a second memory block on the success path', async () => {
+    const f = await fixture();
+    // Simulate the slot ST baked before assembly: a standalone <yimu_memory> system
+    // message right after the fixed prompts (ST IN_PROMPT end placement).
+    const shadow = memoryMessage(f.options.entries, []);
+    f.payload.messages.splice(2, 0, structuredClone(shadow));
+    const result = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(result.applied, true);
+    assert.equal(result.messages.filter(message => message.content.includes('<yimu_memory>')).length, 1,
+        'only the authoritative inline block survives, the baked shadow is stripped');
+    // Recent originals remain verbatim; the fixed character prompt is untouched.
+    assert.deepEqual(result.messages.slice(-5), f.processed.slice(-5).map(item => item.request));
+    assert.equal(result.messages[0].content, 'Fixed character and world rules.');
+});
+
+test('withdrawMemoryShadow strips only the tagged block, never a squash-merged jailbreak', () => {
+    const merged = { role: 'system', content: '越狱指令：务必保持风格。\n' + memoryMessage([], []).content };
+    const standalone = memoryMessage([], []);
+    const messages = [{ role: 'system', content: '固定设定' }, structuredClone(merged), { role: 'user', content: '正文' }, structuredClone(standalone)];
+    assert.equal(withdrawMemoryShadow(messages), true);
+    assert.equal(messages.length, 3, 'a standalone shadow message is removed entirely');
+    assert.equal(messages[1].content, '越狱指令：务必保持风格。', 'a merged system prompt keeps its non-memory text');
+    assert.ok(!messages.some(message => message.content.includes('<yimu_memory>')));
+    assert.equal(withdrawMemoryShadow(messages), false, 'a second pass finds nothing to strip');
+});
 
 test('whole-request admission replaces only verified old source while preserving every recent floor and fixed prompt', async () => {
     const f = await fixture(), before = structuredClone({ payload: f.payload, source: f.source, core: f.core }), counted = [];

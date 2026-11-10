@@ -1070,8 +1070,17 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         usedBody.dataset.ymSignature = signature; usedBody.replaceChildren();
         if (!use) {
             if (!skip) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
-            const headline = el('p', 'ym-skip-head', '本轮未改写请求，已回退到 ST 原上下文');
             const [why, hint] = describeSkip(skip.reason);
+            if (skip.offered) {
+                // 保底生效：未做原文替换/隐藏旧楼，但记忆已随请求送达模型。
+                const headline = el('p', 'ym-skip-head', '本轮以保底方式附加记忆，未隐藏旧楼');
+                headline.title = `原因代码：${skip.reason}`; usedBody.append(headline);
+                usedBody.append(el('p', 'ym-muted', '记忆已作为附加资料加入本轮请求，但未替换/隐藏旧楼原文。'));
+                usedBody.append(el('p', 'ym-muted', why));
+                if (hint) usedBody.append(el('p', 'ym-muted', hint));
+                return;
+            }
+            const headline = el('p', 'ym-skip-head', '本轮未改写请求，已回退到 ST 原上下文');
             headline.title = `原因代码：${skip.reason}`; usedBody.append(headline);
             usedBody.append(el('p', 'ym-muted', why));
             if (hint) usedBody.append(el('p', 'ym-muted', hint));

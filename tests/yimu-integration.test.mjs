@@ -347,6 +347,45 @@ test('skip diagnostics record why a round fell back and clear on the next succes
     assert.equal(f.controller.state.lastSkip, null, 'a later success clears the stale skip reason');
 });
 
+test('保底 injection slot still delivers memory when the surgical rewrite cannot run', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    // A normal round primes the persistent slot and does the surgical inline rewrite.
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'baseline round injects inline');
+    // Now the final request blocks the surgical rewrite (structured output field).
+    const blocked = await f.inject({transform: payload => { payload.response_format = {type: 'json_object'}; }});
+    assert.equal(f.controller.state.lastUsed, null, 'blocked round cannot do the inline source replacement');
+    assert.ok(f.controller.state.lastSkip, 'blocked round records a diagnostic reason');
+    assert.equal(f.controller.state.lastSkip.reason, 'unsupported-tools-or-schema');
+    // 保底: memory was written to the persistent injection slot during intercept, so ST
+    // bakes it into this very request — the diagnostic marks it offered and the UI says
+    // memory still reached the model instead of a full revert. The surgical path did not run,
+    // so no old floor is hidden — exactly the "附加记忆、未隐藏旧楼" state.
+    assert.equal(f.controller.state.lastSkip.offered, true, 'blocked round still offered the 保底 memory');
+    const slot = f.prompts.get(MEMORY_PROMPT_KEY);
+    assert.ok(slot && slot.includes('<yimu_memory>'), 'the 保底 slot carries the memory block for this round');
+    // The fixture builds its payload directly (no ST assembly), so its own payload is left
+    // untouched; the slot is the contract ST would bake. A recovery round clears the skip.
+    assert.ok(blocked.prompt === '' || !blocked.prompt.includes('<yimu_memory>'));
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'recovery round injects inline again');
+    assert.equal(f.controller.state.lastSkip, null, 'a later success clears the stale skip reason');
+});
+
+test('the 保底 slot is primed every eligible round, so a late fallback always has memory to deliver', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    // Even on a fully successful round the slot is primed during intercept (ST bakes it,
+    // the success path then strips the baked copy and inserts the authoritative inline block).
+    // Priming unconditionally is what guarantees a late capability fallback still delivers memory.
+    await f.inject();
+    const primed = f.prompts.get(MEMORY_PROMPT_KEY);
+    assert.ok(primed && primed.includes('<yimu_memory>'), 'intercept primes the 保底 slot for the round');
+    assert.ok(f.controller.state.lastUsed, 'the success path still did the inline rewrite');
+    assert.equal(f.controller.state.lastSkip, null);
+});
+
 test('insufficient final-request capacity leaves every original message and latest-use diagnostics untouched', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();

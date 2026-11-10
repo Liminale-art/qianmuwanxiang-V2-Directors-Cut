@@ -22,7 +22,7 @@ const clone = value => structuredClone(value);
 export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null }) {
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
-    let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0;
+    let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
     const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
@@ -809,7 +809,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     }
 
     async function intercept(coreChat, contextSize, abort, type = '') {
-        host.clear(); prepared = null;
+        host.clear(); prepared = null; offered = false;
         if (generationRefresh) {
             let timer;
             const ready = await Promise.race([generationRefresh.then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), 500); })]);
@@ -828,8 +828,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
             const result = host.prepare(coreChat, plan, snapshot, type);
-            if (result.prepared) prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch,
+            if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch,
                 foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };
+                // 保底：把记忆写入持久注入槽，由 ST 烘焙进本轮 payload。若最终请求边界无法安全
+                // 改写（能力/路由受限等），这段记忆仍随原请求送达模型；成功改写时
+                // budget.withdrawMemoryShadow 会先移除烘焙副本，避免重复注入。此处不隐藏旧楼。
+                // 含继承（origin）记忆的方案改写需在最终边界重核，烘焙槽无法事后回核，故不走保底，
+                // 维持原有仅改写路径——这也让下方 verify 分支下 offered 恒为 false，语义一致。
+                offered = prepared.foreignIds.length ? false : host.offer(plan.prompt); }
             else if (ticket === generation && isCurrent(doc.binding) && result.reason !== 'empty') { state.lastSkip = { stage: 'prepare', reason: result.reason || 'unknown', at: ++skipSeq }; emit(); }
         } catch { host.clear(); /* Failure retains ST's unchanged original context. */ }
     }
@@ -838,7 +844,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (disposed) return;
         if (name === 'GENERATION_STARTED') {
             if (args[2]) return;
-            generation++; generating = true; prepared = null; state.lastUsed = null; state.lastSkip = null; host.clear();
+            generation++; generating = true; prepared = null; offered = false; state.lastUsed = null; state.lastSkip = null; host.clear();
             settleIdle = 0; pollSettle(generation);
             generationRefresh = refresh({ quiet: true, auto: false });
             return;
@@ -851,6 +857,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (name === 'GENERATE_AFTER_DATA') {
             if (args[1] || Array.isArray(args[0]?.prompt)) return; // ST also emits this intermediate event for chat completion.
             // Text/instruct payloads do not expose a reliable message boundary. Keep them untouched.
+            // 文本/指令补全无可靠消息边界，不做原文替换，也不主张保底投递（文本模式对注入槽的
+            // 取用与 chat-completion 不同，不过度声明）。保持原回退语义。
             if (prepared) { prepared = null; host.clear(); state.lastSkip = { stage: 'boundary', reason: 'text-completion-boundary-unavailable', at: ++skipSeq }; state.status = '当前请求不支持安全原文替换，本轮保留 ST 原上下文。'; emit(); }
             return;
         }
@@ -881,10 +889,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
                     requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
                 state.lastSkip = null;
-                prepared = null; emit();
+                prepared = null; offered = false; emit();
             } else {
-                // 诊断：本轮未改写 payload（退回 ST 原上下文）。记录原因供「记忆调阅」显示，不改变注入行为。
-                state.lastSkip = { stage: 'apply', reason: result.reason || 'unknown', at: ++skipSeq };
+                // 诊断：未能做原文替换/隐藏旧楼。但若已成功写入保底注入槽（offered），这段记忆
+                // 已在装配前烘焙进本轮 payload，仍送达模型——此时为「保底注入、未隐藏旧楼」，
+                // 而非完全回退。记录 offered 供「记忆调阅」如实说明。
+                state.lastSkip = { stage: 'apply', reason: result.reason || 'unknown', at: ++skipSeq, offered };
                 emit();
             }
             return;
