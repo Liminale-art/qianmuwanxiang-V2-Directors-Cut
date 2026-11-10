@@ -20,14 +20,37 @@ export function editedMemoryValue(value, entry) {
     // stale structured dates/places or guess how to split the user's wording.
     return { text, scenes: [] };
 }
+// Reading view: short labelled chips for the fields that are actually known, in a
+// fixed order (时间 → 地点 → 人物 → 世界 → 性质), then the one-line event. Unknown
+// fields are omitted rather than repeated as “未注明” noise; the full anchor stays
+// available as the row tooltip and in the editor text above.
+const sceneChips = scene => {
+    const nature = NATURES.find(([key]) => key === scene.nature)?.[1];
+    return [
+        ['when', '时间', [scene.date, scene.period].filter(Boolean).join(' · ')],
+        ['where', '地点', scene.place || ''],
+        ['who', '人物', scene.characters?.length ? scene.characters.join('、') : ''],
+        ['world', '世界', [scene.world, scene.timeline].filter(Boolean).join('／')],
+        ['nature', '', nature && !['present', 'unknown'].includes(scene.nature) ? nature : ''],
+    ].filter(([, , value]) => value);
+};
 export function renderSceneLabels(container, scenes = [], { document = container.ownerDocument } = {}) {
     const list = Array.isArray(scenes) ? scenes.filter(hasScene) : [];
     for (const scene of list) {
         const row = document.createElement('div'); row.className = 'ym-scene-row';
-        const anchor = document.createElement('span'); anchor.className = 'ym-muted';
-        anchor.textContent = anchorText(scene);
-        row.append(anchor);
-        if (scene.event) { const event = document.createElement('p'); event.textContent = scene.event; row.append(event); }
+        row.title = anchorText(scene);
+        const chips = sceneChips(scene);
+        if (chips.length) {
+            const meta = document.createElement('div'); meta.className = 'ym-scene-meta';
+            for (const [kind, label, value] of chips) {
+                const chip = document.createElement('span'); chip.className = 'ym-scene-chip'; chip.dataset.kind = kind;
+                if (label) { const key = document.createElement('span'); key.className = 'ym-scene-key'; key.textContent = label; chip.append(key); }
+                const content = document.createElement('span'); content.textContent = value; chip.append(content);
+                meta.append(chip);
+            }
+            row.append(meta);
+        }
+        if (scene.event) { const event = document.createElement('p'); event.className = 'ym-scene-event'; event.textContent = scene.event; row.append(event); }
         container.append(row);
     }
 }

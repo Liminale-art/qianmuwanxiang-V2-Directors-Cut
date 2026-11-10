@@ -30,3 +30,17 @@ test('plain custom content and quotations use the same editor without a second m
     const { doc, parent } = textCollectionDom(); renderSceneLabels(parent, [{}], { document: doc });
     assert.equal(parent.children.length, 0);
 });
+
+test('reading view shows only known scene fields as ordered labelled chips, then the one-line event', () => {
+    const { doc, parent } = textCollectionDom();
+    renderSceneLabels(parent, [...sample().scenes, { place: '书房', event: '', characters: [], nature: 'unknown', evidence: { floors: [3] } }], { document: doc });
+    assert.equal(parent.children.length, 3);
+    const [first, second, sparse] = parent.children;
+    const chips = row => row.children[0].children.map(chip => [chip.dataset.kind, chip.textContent]);
+    assert.deepEqual(chips(first), [['when', '时间五月十日 · 傍晚'], ['where', '地点车站'], ['who', '人物甲、乙'], ['world', '世界故乡／原时空']]);
+    assert.equal(first.children[1].className, 'ym-scene-event'); assert.equal(first.children[1].textContent, '二人在车站告别。');
+    assert.deepEqual(chips(second).at(-1), ['nature', '同时异地'], 'a non-present nature is flagged, present is not');
+    assert.deepEqual(chips(sparse), [['where', '地点书房']], 'unknown fields are omitted, not repeated as 未注明');
+    assert.equal(sparse.children.length, 1, 'no empty event paragraph');
+    assert.match(first.title, /五月十日.*车站/, 'the full anchor remains available as a tooltip');
+});
