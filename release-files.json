@@ -207,6 +207,7 @@
     "qianmu-storage-gallery-check.js",
     "features/tts/qianmu-audio-cache-backup.js",
     "qianmu-model-response.js",
+    "qianmu-model-compat.js",
     "qianmu-model-external.js",
     "qianmu-model-host.js",
     "qianmu-director-live.js",
