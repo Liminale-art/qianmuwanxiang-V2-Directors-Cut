@@ -8,6 +8,8 @@
     "features/chat/qianmu-chat-recovery.js",
     "features/chat/qianmu-chat-recovery-view.js",
     "features/chat/qianmu-chat-backup-catalog.js",
+    "features/chat/qianmu-chat-ringtone.js",
+    "features/chat/qianmu-chat-ringtone-view.js",
     "server/qianmu-st-backup-policy-service.js",
     "qianmu-font-library.js",
     "qianmu-font-library-state.js",
