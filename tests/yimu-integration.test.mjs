@@ -329,6 +329,24 @@ test('latest-request diagnostics require the complete final memory payload and r
     assert.deepEqual(f.controller.state.lastUsed, used, 'diagnostics keep the actual earlier request snapshot, not the latest edited row');
 });
 
+test('skip diagnostics record why a round fell back and clear on the next successful injection', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'baseline injection applies');
+    assert.equal(f.controller.state.lastSkip, null, 'a successful round carries no skip reason');
+    // 最终请求带了不受支持的结构化字段 → applyPrepared 回退，必须记录原因且不写 lastUsed。
+    const blocked = await f.inject({transform: payload => { payload.response_format = {type: 'json_object'}; }});
+    assert.equal(f.controller.state.lastUsed, null, 'blocked round injects nothing');
+    assert.ok(f.controller.state.lastSkip, 'blocked round records a diagnostic reason');
+    assert.equal(f.controller.state.lastSkip.reason, 'unsupported-tools-or-schema');
+    assert.ok(blocked.prompt === '' || !blocked.prompt.includes('<yimu_memory>'), 'blocked round leaves ST original context');
+    // 下一轮正常注入应清掉上一轮的回退原因。
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'recovery round injects again');
+    assert.equal(f.controller.state.lastSkip, null, 'a later success clears the stale skip reason');
+});
+
 test('insufficient final-request capacity leaves every original message and latest-use diagnostics untouched', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();

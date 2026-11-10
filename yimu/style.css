@@ -113,6 +113,7 @@
 .ym-status { padding: 10px 12px; border-radius: var(--ym-control-radius); border: 1px solid var(--ym-border); overflow-wrap: anywhere; }
 .ym-error, .ym-inline-warning { color: var(--ym-ink); border-inline-start: 3px solid var(--ym-danger); padding-inline-start: 10px; }
 .ym-muted { color: var(--ym-muted); font-size: var(--ym-type-caption); }
+.ym-skip-head { margin: 0 0 4px; font-size: var(--ym-type-caption); font-weight: 600; color: color-mix(in srgb, var(--ym-ink) 86%, transparent); }
 .ym-dialog input:not([type="checkbox"]), .ym-dialog textarea, .ym-dialog select {
     width: 100%; max-width: 100%; min-width: 0; min-height: 30px; margin: 0; padding: 4px 10px; border-radius: var(--ym-control-radius); border: 1px solid var(--ym-border);
     background: var(--ym-raised); color: var(--ym-ink); font: inherit; text-shadow: none; box-shadow: none;

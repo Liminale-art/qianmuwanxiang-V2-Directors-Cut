@@ -1042,12 +1042,41 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         }
         applyFilter();
     }
+    // 把守卫回退代码翻成大白话（为什么没注入 + 怎么办）。只用于「记忆调阅」诊断显示。
+    function describeSkip(reason) {
+        const map = {
+            'text-completion-boundary-unavailable': ['当前连接不是 Chat Completion（对话补全）模式，忆幕无法安全替换原文。', '请在 ST 把 API 切到“Chat Completion”类连接（OpenAI 兼容），文本补全/Text Completion 下忆幕不改写。'],
+            'unsupported-tools-or-schema': ['本轮请求带了工具调用 / 函数 / 结构化输出等字段，忆幕不介入以免冲突。', '如非必要，关闭当前预设里的工具调用、函数、Web 搜索或 JSON Schema 后重试。'],
+            'custom-prompt-rewrite': ['当前预设启用了提示词后处理 / 前缀补全 / 自定义正文插入，与忆幕的原文替换冲突。', '关闭“Prompt Post-Processing”“Assistant Prefill”等自定义改写后，忆幕即可接管。'],
+            'unsupported-message-shape': ['本轮消息结构不被忆幕支持（含非文本内容或额外字段）。', '多为多模态/图片消息，纯文本对话不受影响。'],
+            'unsupported-tools': ['本轮上下文含工具消息（tool 角色），忆幕不介入。', '关闭工具调用相关功能后重试。'],
+            'memory-does-not-fit': ['可注入的记忆在当前上下文预算内放不下。', '可在忆幕设置里收紧记忆预算，或先做阶段总结压缩体量。'],
+            'recent-originals-missing': ['最近若干层原文未能逐字核对（可能刚编辑/翻页/未保存）。', '保存聊天后重新打开忆幕，或等自动核对完成再生成。'],
+            'unverified-mapping': ['当前聊天与忆幕记录的原文对不上（编辑/删除/翻页导致）。', '这是安全保护：旧记忆已降级为只读，不会越权删正文。保存后重开忆幕可恢复替换权限。'],
+            'unverified-hidden-floors': ['待隐藏楼层未通过核对。', '保存聊天后重新打开忆幕再试。'],
+            'context-budget-exceeded': ['按 ST 真实分词复核后仍超出上下文预算。', '收紧记忆预算或压缩阶段总结后重试。'],
+            'unknown-context-budget': ['无法读到当前连接的上下文容量。', '在 ST 为该连接正确设置上下文长度后重试。'],
+            'unsupported-system-role': ['o1 系列模型的 system 处理方式特殊，忆幕本轮不介入。', '换用普通 Chat Completion 模型即可。'],
+            'origin-reverify-failed': ['引用的上游原文在最终核对时不可用或已变化。', '稍后重试；忆幕宁可回退也不注入未经核对的原文。'],
+            'source-or-route-changed': ['生成前聊天或连接发生了变化，本轮放弃改写。', '通常下一轮即恢复，无需处理。'],
+            'different-route': ['最终请求的模型/渠道与准备时不一致。', '通常下一轮即恢复。'],
+        };
+        return map[reason] || ['本轮因一次安全守卫回退，未改写请求。', `原因代码：${reason}。如持续出现请反馈。`];
+    }
     function updateUsed() {
-        const use = state.lastUsed;
-        const signature = JSON.stringify([use, use && !use.entries ? (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id) || null) : null]);
+        const use = state.lastUsed, skip = use ? null : state.lastSkip;
+        const signature = JSON.stringify([use, skip, use && !use.entries ? (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id) || null) : null]);
         if (usedBody.dataset.ymSignature === signature) return;
         usedBody.dataset.ymSignature = signature; usedBody.replaceChildren();
-        if (!use) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
+        if (!use) {
+            if (!skip) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
+            const headline = el('p', 'ym-skip-head', '本轮未改写请求，已回退到 ST 原上下文');
+            const [why, hint] = describeSkip(skip.reason);
+            headline.title = `原因代码：${skip.reason}`; usedBody.append(headline);
+            usedBody.append(el('p', 'ym-muted', why));
+            if (hint) usedBody.append(el('p', 'ym-muted', hint));
+            return;
+        }
         const injectedTitle = el('p', 'ym-muted', '最后一次注入的内容');
         injectedTitle.title = '记录已加入生成请求的内容，不代表模型已接收。'; usedBody.append(injectedTitle);
         if (Array.isArray(use.removedFloors) && Array.isArray(use.recentFloors)) usedBody.append(el('p', 'ym-muted',

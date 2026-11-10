@@ -20,9 +20,9 @@ const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
 export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null }) {
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
-    let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null;
+    let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
     const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
@@ -201,7 +201,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         const data = await api.defaults();
                         if (ticket !== sequence || disposed) return;
                         host.clear(); prepared = null;
-                        state.snapshot = null; state.document = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.sourceAvailable = false; state.invalidSourceIds = [];
+                        state.snapshot = null; state.document = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.sourceAvailable = false; state.invalidSourceIds = [];
                         state.story = {}; state.companion = {};
                         state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.streamPreview = ''; state.status = '';
                         state.error = error.message === '请先打开一个角色的聊天' ? '' : error.message;
@@ -213,7 +213,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
                     host.clear(); prepared = null;
-                    state.document = null; state.defaults = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
                     state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
@@ -241,7 +241,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
                 if (identityFailed) {
-                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
+                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
                     state.busy = false; state.streamPreview = ''; state.status = ''; state.invalidSourceIds = [];
                 }
                 host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.errorPage = 'overview'; state.loading = false; emit();
@@ -683,7 +683,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             job.manual.pausing = true; state.status = '本批完成后暂停'; emit(); return true;
         }
         if (type === 'enable' && !payload.enabled) {
-            localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; emit();
+            localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; state.lastSkip = null; emit();
         }
         if (type === 'autoSummary' && payload.value === false) jobs.get(key)?.abort();
         if (['error', 'mismatch'].includes(state.service.status)) throw new Error('忆幕服务尚不可用，请先刷新检测；当前修改可继续保留。');
@@ -830,6 +830,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             const result = host.prepare(coreChat, plan, snapshot, type);
             if (result.prepared) prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch,
                 foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };
+            else if (ticket === generation && isCurrent(doc.binding) && result.reason !== 'empty') { state.lastSkip = { stage: 'prepare', reason: result.reason || 'unknown', at: ++skipSeq }; emit(); }
         } catch { host.clear(); /* Failure retains ST's unchanged original context. */ }
     }
 
@@ -837,7 +838,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (disposed) return;
         if (name === 'GENERATION_STARTED') {
             if (args[2]) return;
-            generation++; generating = true; prepared = null; state.lastUsed = null; host.clear();
+            generation++; generating = true; prepared = null; state.lastUsed = null; state.lastSkip = null; host.clear();
             settleIdle = 0; pollSettle(generation);
             generationRefresh = refresh({ quiet: true, auto: false });
             return;
@@ -850,7 +851,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (name === 'GENERATE_AFTER_DATA') {
             if (args[1] || Array.isArray(args[0]?.prompt)) return; // ST also emits this intermediate event for chat completion.
             // Text/instruct payloads do not expose a reliable message boundary. Keep them untouched.
-            if (prepared) { prepared = null; host.clear(); state.status = '当前请求不支持安全原文替换，本轮保留 ST 原上下文。'; emit(); }
+            if (prepared) { prepared = null; host.clear(); state.lastSkip = { stage: 'boundary', reason: 'text-completion-boundary-unavailable', at: ++skipSeq }; state.status = '当前请求不支持安全原文替换，本轮保留 ST 原上下文。'; emit(); }
             return;
         }
         if (name === 'CHAT_COMPLETION_SETTINGS_READY') {
@@ -870,7 +871,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (!isCurrentRequest() || !verified?.sourceAvailable || verified.document.revision !== pending.revision
                     || verified.defaults.revision !== pending.defaultsRevision || pending.foreignIds.some(id =>
                         verified.document.entries.find(entry => entry.id === id)?.originVerified !== true)) {
-                    if (pending === prepared) { prepared = null; host.clear(); } return;
+                    if (pending === prepared) { prepared = null; host.clear(); state.lastSkip = { stage: 'verify', reason: 'origin-reverify-failed', at: ++skipSeq }; emit(); } return;
                 }
             }
             const result = await host.applyPrepared(args[0], pending.session, { isCurrent: isCurrentRequest });
@@ -879,7 +880,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared',
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
                     requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
+                state.lastSkip = null;
                 prepared = null; emit();
+            } else {
+                // 诊断：本轮未改写 payload（退回 ST 原上下文）。记录原因供「记忆调阅」显示，不改变注入行为。
+                state.lastSkip = { stage: 'apply', reason: result.reason || 'unknown', at: ++skipSeq };
+                emit();
             }
             return;
         }
