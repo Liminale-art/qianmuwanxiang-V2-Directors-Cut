@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFontRuntime, fontPreviewFamily, fontScopeCss } from '../qianmu-font-runtime.js';
+import { createFontRuntime, fontPreviewFamily, fontScopeCss, detectLayerSupport } from '../qianmu-font-runtime.js';
 
-function fixture({ load, readLocal, loadTimeout = 100, accountKey = 'alice' } = {}) {
+function fixture({ load, readLocal, loadTimeout = 100, accountKey = 'alice', supportsLayer } = {}) {
   const faces = new Set(), elements = [], statuses = [], requests = [], revoked = [], anchors = [];
   const document = {
     fonts: {
@@ -13,7 +13,7 @@ function fixture({ load, readLocal, loadTimeout = 100, accountKey = 'alice' } = 
     createElement() { return { dataset: {}, textContent: '', remove() { const index = elements.indexOf(this); if (index >= 0) elements.splice(index, 1); } }; },
   };
   class FontFace { constructor(family, source, descriptors) { Object.assign(this, { family, source, descriptors }); } }
-  const runtime = createFontRuntime({ document, FontFace, readLocal, accountKey, loadTimeout,
+  const runtime = createFontRuntime({ document, FontFace, readLocal, accountKey, loadTimeout, supportsLayer,
     onStatus: (id, value) => statuses.push({ id, ...value }),
     beforeApply: () => { anchors.push('before'); return 7; }, afterApply: (token) => anchors.push(token),
     URL: { createObjectURL: () => 'blob:owned-font', revokeObjectURL: (url) => revoked.push(url) },
@@ -402,4 +402,28 @@ test('load timeout is bounded and never claims ready', async () => {
   await f.runtime.sync(state([web()], { body: choice('web1') }));
   assert.equal(f.statuses.at(-1).status, 'error'); assert.match(f.statuses.at(-1).message, /超时/);
   assert.equal(f.css(), ''); f.runtime.dispose();
+});
+
+test('mobile webviews without @layer support receive the same rules unlayered so the interface font still applies', async () => {
+  const f = fixture({ load: async () => [{}], supportsLayer: false });
+  await f.runtime.sync(state([web('ui-font')], { st: choice('ui-font') }));
+  const css = f.css();
+  assert.ok(css, 'an unlayered sheet is still emitted on no-@layer engines');
+  assert.doesNotMatch(css, /@layer/, 'the @layer wrapper is stripped so the block is not dropped');
+  assert.ok(css.includes('--qm-interface-font:'), 'the interface assignment survives unlayered');
+  assert.ok(css.includes('!important'), 'the inner !important declarations are preserved to outrank the theme font');
+  f.runtime.dispose();
+});
+
+test('browsers with @layer support keep the layered sheet byte-for-byte', async () => {
+  const layered = fixture({ load: async () => [{}], supportsLayer: true });
+  await layered.runtime.sync(state([web('ui-font')], { st: choice('ui-font') }));
+  assert.equal(layered.css(), fontScopeCss('st', layered.runtime.family('ui-font'), choice('ui-font')));
+  layered.runtime.dispose();
+});
+
+test('layer capability detection only strips for a browser that positively lacks CSSLayerBlockRule', () => {
+  assert.equal(detectLayerSupport({}), true, 'non-browser scope keeps the layer path');
+  assert.equal(detectLayerSupport({ CSS: { supports: () => true } }), false, 'CSS.supports without CSSLayerBlockRule is a no-@layer engine');
+  assert.equal(detectLayerSupport({ CSS: { supports: () => true }, CSSLayerBlockRule: function () {} }), true, 'modern browser keeps the layer path');
 });

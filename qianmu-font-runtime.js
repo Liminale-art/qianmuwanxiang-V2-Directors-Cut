@@ -116,14 +116,40 @@ export function fontScopeCss(scope, family, selection = {}) {
   return layer(`:root { --qm-interface-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\n${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
 }
 
-export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, readBuiltin = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, Blob: BlobClass = globalThis.Blob, URL: UrlApi = globalThis.URL, loadTimeout = 12000 } = {}) {
+export function detectLayerSupport(scope = globalThis) {
+  try {
+    const CSSApi = scope?.CSS;
+    // Only a browser that positively lacks CSSLayerBlockRule while still having
+    // CSS.supports is a known-no-@layer engine. Non-browser (test/SSR) scopes
+    // have no CSS API and keep the layer path.
+    if (CSSApi && typeof CSSApi.supports === 'function') return typeof scope?.CSSLayerBlockRule === 'function';
+  } catch (_) {}
+  return true;
+}
+
+export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, readBuiltin = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, Blob: BlobClass = globalThis.Blob, URL: UrlApi = globalThis.URL, loadTimeout = 12000, supportsLayer } = {}) {
   const slots = new Map(), applied = new Map(), retired = new Set(), probes = new Set();
-  let generation = 0, revision = 0, disposed = false, styleElement = null;
+  let generation = 0, revision = 0, disposed = false, styleElement = null, layerOk;
   const notify = (id, status, message = '') => { try { onStatus(id, { status, message }); } catch (_) {} };
+  // Some older mobile webviews parse neither `@layer` nor `:has()`; when a block
+  // sits inside an unsupported `@layer`, the whole sheet is dropped and ST's
+  // theme font wins. Only when we positively detect a real browser without
+  // `@layer` do we strip the wrapper, leaving the inner `!important` rules
+  // unlayered. Tests/SSR (no CSS API) and modern browsers keep the layer path.
+  const LAYER_OPEN = '@layer qianmu-font-application {\n';
+  function layerSupported() {
+    if (layerOk !== undefined) return layerOk;
+    layerOk = typeof supportsLayer === 'boolean' ? supportsLayer : detectLayerSupport();
+    return layerOk;
+  }
+  function unlayer(block) { return block.startsWith(LAYER_OPEN) && block.endsWith('\n}') ? block.slice(LAYER_OPEN.length, -2) : block; }
   function paint() {
+    const useLayer = layerSupported();
     const css = ['body', 'st'].map((scope) => {
       const entry = applied.get(scope);
-      return entry ? fontScopeCss(scope, entry.family, entry.selection) : '';
+      if (!entry) return '';
+      const block = fontScopeCss(scope, entry.family, entry.selection);
+      return useLayer ? block : unlayer(block);
     }).filter(Boolean).join('\n');
     if ((styleElement?.textContent || '') === css) return;
     let anchor;
