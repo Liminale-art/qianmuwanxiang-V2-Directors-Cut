@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 421 个，其中 `qianmu-*` 模块 404 个。
+根目录文件 422 个，其中 `qianmu-*` 模块 405 个。
 
 ## 入口、宿主与安装
 
@@ -34,11 +34,11 @@
 | `features/` | 185 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 960 |
+| `tests/` | 962 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
-| `yimu/` | 52 |
+| `yimu/` | 54 |
 
 ## 文档
 
@@ -439,7 +439,7 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（26）
+## 模型、配置与账户（27）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -456,6 +456,7 @@
 | `qianmu-mapping-journal-native.js` | 是 |  |
 | `qianmu-mapping-native-contract.js` | 是 |  |
 | `qianmu-memory-context.js` | 是 | Read-only interoperability with gaga-dog-summary schema 6/7. |
+| `qianmu-model-compat.js` | 是 | 千幕 · 模型接口兼容层：地址、鉴权、ST 代理请求体、错误文字与模型目录的唯一标准。 |
 | `qianmu-model-external.js` | 是 |  |
 | `qianmu-model-host.js` | 是 |  |
 | `qianmu-model-picker.js` | 是 |  |

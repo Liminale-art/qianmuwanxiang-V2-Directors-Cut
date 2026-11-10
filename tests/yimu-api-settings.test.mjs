@@ -132,11 +132,52 @@ test('a long prompt fails before sending and is never truncated to fit', async (
 });
 
 test('HTTP, provider and network failures neither fall back nor retry and redact known secrets', async () => {
-    for (const response of [() => new Response('', { status: 403 }), () => Response.json({ error: { message: `bad ${external.apiKey} at ${external.apiUrl}` } }), () => { throw Error(`network ${external.apiKey}`); }]) {
+    for (const response of [() => new Response('', { status: 503 }), () => Response.json({ error: { message: `bad ${external.apiKey} at ${external.apiUrl}` } }), () => { throw Error(`network ${external.apiKey}`); }]) {
         const f = fixture(); await f.api.update(external); f.answer = response;
         await assert.rejects(f.api.generate('原文'), error => !error.message.includes(external.apiKey) && !error.message.includes(external.apiUrl));
         assert.equal(f.calls.length, 1); assert.equal(f.raw.length, 0); assert.equal(f.profile.length, 0);
     }
+});
+
+test('an auth rejection resends once with the bare key, whether ST reports it as HTTP 401/403 or as a 200 error envelope', async () => {
+    for (const rejection of [() => new Response('', { status: 403 }), () => new Response('Unauthorized', { status: 400 }), () => Response.json({ error: { message: 'Unauthorized' } })]) {
+        const f = fixture(); await f.api.update(external);
+        f.answer = () => f.calls.length === 1 ? rejection() : Response.json({ choices: [{ message: { content: '裸 Key 可用' }, finish_reason: 'stop' }] });
+        assert.equal(await f.api.generate('原文'), '裸 Key 可用');
+        assert.deepEqual(f.calls.map(call => JSON.parse(call.body.custom_include_headers).Authorization), [`Bearer ${external.apiKey}`, external.apiKey]);
+    }
+    const f = fixture(); await f.api.update(external); f.answer = () => new Response('', { status: 401 });
+    await assert.rejects(f.api.generate('原文'), /鉴权失败（HTTP 401）/); assert.equal(f.calls.length, 2, 'never more than one fallback');
+});
+
+test('summary addresses follow the shared rule: bare hosts gain /v1, vendor paths stay, a trailing # is verbatim', async () => {
+    assert.equal(apiRoot('https://api.deepseek.com'), 'https://api.deepseek.com/v1');
+    assert.equal(apiRoot('https://ark.cn-beijing.volces.com/api/v3/chat/completions'), 'https://ark.cn-beijing.volces.com/api/v3');
+    assert.equal(apiRoot('https://gateway.example/odd/models#'), 'https://gateway.example/odd/models');
+    assert.throws(() => apiRoot(''), /请填写 API URL/); assert.throws(() => apiRoot('not a url'), /API URL 格式无效/);
+    const f = fixture(); await f.api.update({ ...external, apiUrl: 'https://api.deepseek.com' });
+    await f.api.generate('原文'); assert.equal(f.calls[0].body.custom_url, 'https://api.deepseek.com/v1');
+    assert.equal(f.calls[0].body.reverse_proxy, ''); assert.equal(f.calls[0].body.chat_completion_source, 'custom');
+    await f.api.updateVector({ apiUrl: 'https://vector.example#', model: 'embed-fixture' });
+    assert.equal(f.api.vectorRead().apiUrl, 'https://vector.example#', 'the verbatim marker survives saving');
+    f.answer = () => Response.json({ data: [{ index: 0, embedding: [1, 0] }, { index: 1, embedding: [1, 0] }] });
+    await f.api.vectorCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] });
+    assert.equal(f.calls.at(-1).path, 'https://vector.example/embeddings');
+    await f.api.updateRerank({ apiUrl: 'https://rank.example', model: 'rank-fixture' });
+    f.answer = () => Response.json({ results: [{ index: 0, relevance_score: 0.5 }] });
+    await f.api.rerankCandidates({ query: '当前', candidates: [{ id: 'a', text: '记忆' }] });
+    assert.equal(f.calls.at(-1).path, 'https://rank.example/v1/rerank');
+});
+
+test('summaries decode Anthropic-style replies and reasoning streams through the shared decoder', async () => {
+    const f = fixture(); await f.api.update(external);
+    f.answer = () => Response.json({ type: 'message', content: [{ type: 'thinking', thinking: '内部' }, { type: 'text', text: '克劳德摘要' }], stop_reason: 'end_turn' });
+    assert.equal(await f.api.generate('原文'), '克劳德摘要');
+    await f.api.update({ stream: true });
+    f.answer = () => new Response('data: {"choices":[{"delta":{"reasoning_content":"想"}}]}\n\ndata: {"choices":[{"delta":{"content":"正文"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    assert.equal(await f.api.generate('原文'), '正文');
+    f.answer = () => new Response('data: {"choices":[{"delta":{"content":"半"}}]}\n\ndata: {broken\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    await assert.rejects(f.api.generate('原文'), /流式结果格式不完整，未保存/);
 });
 
 test('connection changes after generation starts discard late results without retry', async () => {

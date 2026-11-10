@@ -1,6 +1,9 @@
 // Account-scoped ST settings only. Never put connection secrets in a memory document or backup.
 import { summaryRequestBudget } from './budget.mjs';
 import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
+import { resolveApiRoot, sendWithAuthFallback, stProxyBody, proxyPayloadError, describeHttpFailure, redactSecrets, parseModelList, probeConnection,
+    chatPayload, probePayload } from './model-compat.mjs';
+import { readModelResponse } from './model-response.mjs';
 
 const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
@@ -19,15 +22,17 @@ const object = value => value && typeof value === 'object' && !Array.isArray(val
 const fail = message => { throw new Error(message); };
 const aborted = signal => { if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'); };
 
-function vectorRoot(value) {
-    const input = text(value);
-    if (!input) fail('请填写向量 API URL');
-    let url;
-    try { url = new URL(input); } catch { fail('向量 API URL 格式无效'); }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('向量 API URL 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段');
-    url.pathname = url.pathname.replace(/\/embeddings\/?$/i, '').replace(/\/+$/, '');
-    return url.toString().replace(/\/+$/, '');
+// 地址统一按 model-compat 规则（剥一个已知后缀、裸域名补 /v1、其余路径保留、结尾 # 原样使用），
+// 错误文字保持忆幕原有说法。label 区分整理／向量／重排。
+function checkedRoot(label, value) {
+    const input = text(value), name = label ? `${label} API URL` : 'API URL';
+    if (!input) fail(label ? `请填写${label} API URL` : '请填写 API URL');
+    try { return resolveApiRoot(input); }
+    catch (error) { fail(error?.code === 'MODEL_URL_INVALID' ? `${name} 格式无效` : `${name} 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段`); }
 }
+// 保存时写规范地址；结尾 # 一并保留，否则重读时会丢失“原样使用”。
+const storedRoot = (label, value) => checkedRoot(label, value) + (text(value).endsWith('#') ? '#' : '');
+const vectorRoot = value => storedRoot('向量', value);
 
 function validateVector(patch) {
     if (!object(patch)) fail('向量连接设置无效');
@@ -68,15 +73,7 @@ function savedVector(ctx) {
     return result;
 }
 
-function rerankRoot(value) {
-    const input = text(value);
-    if (!input) fail('请填写重排 API URL');
-    let url;
-    try { url = new URL(input); } catch { fail('重排 API URL 格式无效'); }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('重排 API URL 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段');
-    url.pathname = url.pathname.replace(/\/(?:rerank|reranking)\/?$/i, '').replace(/\/+$/, '');
-    return url.toString().replace(/\/+$/, '');
-}
+const rerankRoot = value => storedRoot('重排', value);
 
 function validateRerank(patch) {
     if (!object(patch)) fail('重排连接设置无效');
@@ -118,15 +115,7 @@ function validateRetrievalTimeout(value) {
     return seconds * 1000;
 }
 
-export function apiRoot(value) {
-    const input = text(value);
-    if (!input) fail('请填写 API URL');
-    let url;
-    try { url = new URL(input); } catch { fail('API URL 格式无效'); }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail('API URL 需为 HTTP 或 HTTPS 地址，不包含密码、查询参数或片段');
-    url.pathname = url.pathname.replace(/\/(?:chat\/completions|models)\/?$/, '').replace(/\/+$/, '');
-    return url.toString().replace(/\/+$/, '');
-}
+export const apiRoot = value => checkedRoot('', value);
 
 function validate(patch) {
     if (!object(patch)) fail('连接设置无效');
@@ -158,53 +147,21 @@ function savedConfig(ctx) {
 }
 
 function errorText(error, config) {
-    let message = typeof error === 'string' ? error : error?.message || '连接请求失败';
-    for (const secret of [config.apiKey, config.apiUrl].filter(Boolean)) message = String(message).split(secret).join('[已隐藏]');
-    return String(message).replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, 240);
+    const message = typeof error === 'string' ? error : error?.message || '连接请求失败';
+    let root = ''; try { root = resolveApiRoot(config.apiUrl); } catch {}
+    return redactSecrets(message, [config.apiKey, config.apiUrl, root]).slice(0, 240);
 }
 
-async function completion(response, config, signal, onChunk) {
-    const readContent = content => typeof content === 'string' ? content : Array.isArray(content)
-        ? content.filter(part => part?.type === 'text' && typeof part.text === 'string').map(part => part.text).join('') : '';
-    const check = json => { if (json?.error) fail(errorText(json.error, config)); };
-    if (!String(response.headers?.get?.('content-type') || '').includes('text/event-stream')) {
-        const json = await response.json(); check(json);
-        const reason = json?.choices?.[0]?.finish_reason;
-        if (reason === 'length' || reason === 'max_tokens') fail('整理结果达到输出上限，未保存；请提高最大输出或缩小整理范围');
-        if (reason && !['stop', 'end_turn'].includes(reason)) fail('服务未完整结束整理，结果未保存');
-        const result = readContent(json?.choices?.[0]?.message?.content ?? json?.content);
-        if (result) onChunk?.(result, result);
-        return result;
+// 共用解析器（OpenAI／SSE／reasoning／Anthropic／Gemini／Cohere）的失败，映射回忆幕原有的“未保存”说法。
+const TRUNCATED = ['length', 'max_tokens', 'max_output_tokens', 'model_length'];
+function summaryFailure(error, config) {
+    if (error?.code === 'MODEL_OUTPUT_INCOMPLETE') {
+        const reason = String(error.modelResponse?.finishReason || '').toLowerCase();
+        if (TRUNCATED.includes(reason)) return '整理结果达到输出上限，未保存；请提高最大输出或缩小整理范围';
+        return reason ? '服务未完整结束整理，结果未保存' : '连接提前结束，整理结果未完整确认';
     }
-    const reader = response.body?.getReader?.();
-    if (!reader) fail('当前浏览器无法读取流式结果');
-    const decoder = new TextDecoder(); let pending = '', output = '', complete = false, finish = '';
-    const consume = block => {
-        const data = block.split('\n').filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
-        if (!data) return;
-        if (data.trim() === '[DONE]') { complete = true; return; }
-        let json; try { json = JSON.parse(data); } catch { fail('流式结果格式不完整，未保存'); }
-        check(json);
-        const choice = json?.choices?.[0];
-        const delta = readContent(choice?.delta?.content ?? choice?.message?.content);
-        output += delta;
-        if (delta) onChunk?.(delta, output);
-        if (choice?.finish_reason) finish = choice.finish_reason;
-    };
-    try {
-        while (!complete) {
-            aborted(signal); const chunk = await reader.read();
-            pending += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done }).replace(/\r\n/g, '\n');
-            let boundary;
-            while ((boundary = pending.indexOf('\n\n')) >= 0) { consume(pending.slice(0, boundary)); pending = pending.slice(boundary + 2); }
-            if (chunk.done) { if (pending.trim()) consume(pending); break; }
-        }
-        aborted(signal);
-        if (finish === 'length' || finish === 'max_tokens') fail('整理结果达到输出上限，未保存；请提高最大输出或缩小整理范围');
-        if (finish && !['stop', 'end_turn'].includes(finish)) fail('服务未完整结束整理，结果未保存');
-        if (!complete && !['stop', 'end_turn'].includes(finish)) fail('连接提前结束，整理结果未完整确认');
-        return output;
-    } finally { try { await reader.cancel(); } catch {} reader.releaseLock?.(); }
+    if (error?.code === 'MODEL_PROTOCOL_ERROR') return config.stream ? '流式结果格式不完整，未保存' : '整理结果格式无效，未保存';
+    return errorText(error, config);
 }
 
 export function createApiSettings({ getContext = () => globalThis.SillyTavern?.getContext?.(), fetchImpl = (...args) => globalThis.fetch(...args),
@@ -326,17 +283,28 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             if (expected.owner !== live.owner || expected.signature !== presetSignature(live.profile)) fail('千幕 API 预设已变化，本次结果未采用');
         }
     };
+    // 经 ST custom 渠道代理。显式空 Authorization 防止 ST 当前生效的 Key 带到无 Key 的本地服务。
+    // ST 非流式把上游失败包成 HTTP 200 + {error}，流式把 401 改成 400 并带原文；都读出正文再判断。
+    // 鉴权被拒时只换裸 Key 重发一次（鉴权失败发生在生成之前，不计费）。
     async function request(path, config, body, signal) {
         aborted(signal);
-        // Explicit empty Authorization prevents ST's active custom key leaking to a keyless local endpoint.
-        const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
-        const response = await fetchImpl(path, { method: 'POST', cache: 'no-store', signal,
-            headers: { ...context().getRequestHeaders?.(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_completion_source: 'custom', custom_url: apiRoot(config.apiUrl),
-                custom_include_headers: JSON.stringify({ Authorization: auth }), custom_include_body: '', custom_exclude_body: '', ...body }) });
-        aborted(signal);
-        if (!response.ok) fail(`连接请求失败（HTTP ${response.status}）`);
-        return response;
+        const root = apiRoot(config.apiUrl);
+        const send = async authorization => {
+            const response = await fetchImpl(path, { method: 'POST', cache: 'no-store', signal,
+                headers: { ...context().getRequestHeaders?.(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(stProxyBody(root, authorization, body)) });
+            aborted(signal);
+            if (!response.ok) {
+                const detail = String(await response.text().catch(() => '')).trim().slice(0, 200);
+                throw Object.assign(new Error(detail ? `${describeHttpFailure(response.status)} · ${detail}` : describeHttpFailure(response.status)), { status: response.status });
+            }
+            if (/json/i.test(response.headers?.get?.('content-type') || '')) {
+                const problem = proxyPayloadError(await response.clone().json().catch(() => null));
+                if (problem) { try { await response.body?.cancel(); } catch {} fail(problem); }
+            }
+            return response;
+        };
+        return sendWithAuthFallback(config.apiKey, send);
     }
     async function models(config, signal) {
         aborted(signal);
@@ -345,11 +313,9 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         const timer = setTimeout(() => controller.abort(new Error('连接请求超时，请检查地址与服务状态')), statusTimeoutMs);
         try {
             const response = await request('/api/backends/chat-completions/status', config, {}, controller.signal);
-            const json = await response.json(); aborted(controller.signal);
-            if (json?.error) fail(errorText(json.error, config));
-            const list = Array.isArray(json) ? json : json?.data ?? json?.models;
-            if (!Array.isArray(list)) fail('连接未返回可用的模型列表');
-            return [...new Set(list.map(item => typeof item === 'string' ? item : item?.id || item?.name).filter(item => typeof item === 'string' && item.trim() && item.length <= 2048))];
+            const list = parseModelList(await response.json().catch(() => null)); aborted(controller.signal);
+            if (!list.length) fail('连接未返回可用的模型列表');
+            return list;
         } catch (error) {
             if (controller.signal.aborted) throw new Error(errorText(controller.signal.reason, config));
             throw new Error(errorText(error, config));
@@ -362,10 +328,9 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         signal?.addEventListener('abort', cancel, { once: true });
         const timer = setTimeout(() => controller.abort(new Error('连接请求超时，请检查地址与服务状态')), statusTimeoutMs);
         try {
-            const response = await request('/api/backends/chat-completions/generate', config,
-                { model: config.model, messages: [{ role: 'user', content: '连接测试' }], temperature: 0, max_tokens: 1, stream: false }, controller.signal);
-            const json = await response.json().catch(() => ({})); aborted(controller.signal);
-            if (json?.error) fail(errorText(json.error, config));
+            const response = await request('/api/backends/chat-completions/generate', config, probePayload(config.model), controller.signal);
+            try { await response.body?.cancel?.(); } catch {}
+            aborted(controller.signal);
         } catch (error) {
             if (controller.signal.aborted) throw new Error(errorText(controller.signal.reason, config));
             throw new Error(errorText(error, config));
@@ -380,35 +345,19 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         });
         return list;
     }
+    // 先查模型目录；统一网关常在 /models 回 503/404 而 /chat/completions 可用，此时补一次 1 token 探测。
+    // 超时、取消或连接已变化不补发。
     async function testConnection({ signal } = {}) {
         await saving.catch(() => {}); const config = read();
-        // The models-list probe (/status → provider /v1/models) is cheapest, but
-        // many unified/third-party gateways (one-api、new-api、火山方舟 等) serve
-        // /chat/completions while returning 503/404 on /models. A list failure
-        // alone must not read as "连接不可用" when summarization actually works, so
-        // fall back to the same /generate path the real summary uses: a minimal
-        // 1-token probe. Succeeds if the gateway returns any non-error completion.
-        let listError;
+        const unchanged = () => { if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试'); };
         try {
-            await models(config, signal);
-            if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
-            return { ok: true, scope: 'model-list' };
-        } catch (error) {
-            aborted(signal);
-            listError = error;
-        }
-        // Fall back only when the list endpoint positively rejected (e.g. 503/404
-        // on /models). A timeout or network stall must not trigger a second
-        // request — the test endpoint is simply unreachable.
-        if (!text(config.model) || /超时/.test(String(listError?.message || ''))) throw new Error(errorText(listError, config));
-        try {
-            await chatProbe(config, signal);
-            if (read().apiUrl !== config.apiUrl || read().apiKey !== config.apiKey) fail('连接已变化，请重新测试');
-            return { ok: true, scope: 'chat-probe' };
-        } catch (error) {
-            aborted(signal);
-            throw new Error(errorText(error, config));
-        }
+            const { scope } = await probeConnection({ model: config.model,
+                listModels: async () => { const list = await models(config, signal); unchanged(); return list; },
+                probe: () => chatProbe(config, signal),
+                retryable: error => !signal?.aborted && !/超时|连接已变化/.test(String(error?.message || '')) });
+            unchanged();
+            return { ok: true, scope };
+        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
     }
     async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens, onChunk } = {}) {
         await saving.catch(() => {}); let config = read();
@@ -428,11 +377,14 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         if (summaryRequestBudget(prompt, systemPrompt) + outputTokens > config.contextTokens) fail('整理内容超出此连接的上下文容量，请缩小整理范围或提高上下文 Token 数');
         try {
             const response = await request('/api/backends/chat-completions/generate', config,
-                { model: config.model, messages, temperature: config.temperature, max_tokens: outputTokens, stream: config.stream }, signal);
-            const result = await completion(response, config, signal, onChunk); aborted(signal); assertCurrent(connection || { revision: config.revision });
+                chatPayload({ model: config.model, messages, temperature: config.temperature, maxTokens: outputTokens, stream: config.stream }), signal);
+            let shown = '';
+            const onDelta = full => { const delta = full.slice(shown.length); shown = full; if (delta) onChunk?.(delta, full); };
+            const result = (await readModelResponse(response, { stream: config.stream, signal, onDelta })).text;
+            aborted(signal); assertCurrent(connection || { revision: config.revision });
             if (!result.trim()) fail('忆幕没有收到可用的整理结果');
             return result;
-        } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
+        } catch (error) { aborted(signal); throw new Error(summaryFailure(error, config)); }
     }
     function savePreset(name) {
         const label = text(name); if (!label || label.length > 120) return Promise.reject(new Error('请输入 1—120 字的预设名称'));
@@ -476,10 +428,8 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     });
     const deleteRerankPreset = id => commitRerank(current => ({ ...current, presets: current.presets.filter(item => item.id !== id), selectedPreset: current.selectedPreset === id ? '' : current.selectedPreset }));
     const vectorEndpoint = config => {
-        const root = vectorRoot(config.apiUrl);
-        return /\/v1$/i.test(root) ? `${root}/embeddings` : `${root}/v1/embeddings`;
+        return `${checkedRoot('向量', config.apiUrl)}/embeddings`;
     };
-    const providerAuth = config => config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
     const providerRequest = async (kind, config, { method = 'POST', body, signal } = {}) => {
         const endpoint = kind === 'vector' ? vectorEndpoint(config) : rerankEndpoint(config);
         const controller = new AbortController();
@@ -487,15 +437,13 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('连接请求超时，请检查地址与服务状态')); }, statusTimeoutMs);
         const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
         if (signal?.aborted) relay(); else signal?.addEventListener('abort', relay, { once: true });
-        const auth = providerAuth(config);
         const call = authorization => fetchImpl(endpoint, { method, cache: 'no-store', signal: controller.signal,
             headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
         try {
-            let response = await call(auth);
-            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            const response = await sendWithAuthFallback(config.apiKey, call);
             aborted(signal);
-            if (!response.ok) fail(errorText(new Error(`连接请求失败（HTTP ${response.status}）`), config));
+            if (!response.ok) fail(errorText(new Error(describeHttpFailure(response.status)), config));
             return response;
         } catch (error) {
             aborted(signal);
@@ -505,29 +453,23 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             clearTimeout(timer); signal?.removeEventListener('abort', relay);
         }
     };
-    const providerModelList = json => {
-        const list = Array.isArray(json) ? json : json?.data ?? json?.models;
-        if (!Array.isArray(list)) fail('连接未返回可用的模型列表');
-        return [...new Set(list.map(item => typeof item === 'string' ? item : item?.id || item?.name)
-            .filter(item => typeof item === 'string' && item.trim() && item.length <= 2048))];
-    };
     async function fetchProviderModels(kind, { signal } = {}) {
         const config = kind === 'vector' ? vectorRead() : rerankRead();
         if (!config.apiUrl) fail(kind === 'vector' ? '请填写向量 API URL' : '请填写重排 API URL');
-        const root = kind === 'vector' ? vectorRoot(config.apiUrl) : rerankRoot(config.apiUrl);
+        const root = checkedRoot(kind === 'vector' ? '向量' : '重排', config.apiUrl);
         const controller = new AbortController(); let timedOut = false;
         const timer = setTimeout(() => { timedOut = true; controller.abort(new Error('连接请求超时，请检查地址与服务状态')); }, statusTimeoutMs);
         const relay = () => controller.abort(signal?.reason instanceof Error ? signal.reason : new Error('忆幕任务已取消'));
         if (signal?.aborted) relay(); else signal?.addEventListener('abort', relay, { once: true });
-        const auth = providerAuth(config);
         try {
             const call = authorization => fetchImpl(`${root}/models`, { method: 'GET', cache: 'no-store', signal: controller.signal,
                 headers: { ...(authorization ? { Authorization: authorization } : {}) } });
-            let response = await call(auth);
-            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            const response = await sendWithAuthFallback(config.apiKey, call);
             aborted(signal);
-            if (!response.ok) fail(errorText(new Error(`模型列表请求失败（HTTP ${response.status}）`), config));
-            return providerModelList(await response.json());
+            if (!response.ok) fail(errorText(new Error(`模型列表请求失败：${describeHttpFailure(response.status)}`), config));
+            const list = parseModelList(await response.json().catch(() => null));
+            if (!list.length) fail('连接未返回可用的模型列表');
+            return list;
         } catch (error) {
             aborted(signal);
             if (timedOut) fail(errorText(new Error('连接请求超时，请检查地址与服务状态'), config));
@@ -556,16 +498,14 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         }));
         if (!safeQuery || !safeCandidates.length) return [];
         if (!config.apiUrl || !config.model) return [];
-        const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
         const scope = requestScope(signal, '向量候选请求超时，已回退关键词召回');
         try {
             const call = authorization => fetchImpl(vectorEndpoint(config), { method: 'POST', cache: 'no-store', signal: scope.signal,
                 headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
                 body: JSON.stringify({ model: config.model, input: [safeQuery, ...safeCandidates.map(candidate => candidate.text)] }) });
-            let response = await call(auth);
-            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            const response = await sendWithAuthFallback(config.apiKey, call);
             aborted(signal);
-            if (!response.ok) fail(errorText(new Error(`向量接口请求失败（HTTP ${response.status}）`), config));
+            if (!response.ok) fail(errorText(new Error(`向量接口请求失败：${describeHttpFailure(response.status)}`), config));
             let json; try { json = await response.json(); } catch { fail('向量接口返回格式无效'); }
             const data = Array.isArray(json?.data) ? json.data : [];
             const vectors = new Array(safeCandidates.length + 1);
@@ -582,8 +522,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         } finally { scope.dispose(); }
     }
     const rerankEndpoint = config => {
-        const root = rerankRoot(config.apiUrl);
-        return /\/v1$/i.test(root) ? `${root}/rerank` : `${root}/v1/rerank`;
+        return `${checkedRoot('重排', config.apiUrl)}/rerank`;
     };
     const requestScope = (signal, message) => {
         const controller = new AbortController();
@@ -603,16 +542,14 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         if (!safeQuery || !safeCandidates.length) return [];
         if (!config.apiUrl || !config.model) return [];
         const topN = Math.max(1, Math.min(Number.isSafeInteger(limit) ? limit : config.topN, config.topN, 64));
-        const auth = config.apiKey ? /^Bearer\s/i.test(config.apiKey) ? config.apiKey : `Bearer ${config.apiKey}` : '';
         const scope = requestScope(signal, '重排候选请求超时，已保留当前顺序');
         try {
             const call = authorization => fetchImpl(rerankEndpoint(config), { method: 'POST', cache: 'no-store', signal: scope.signal,
                 headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
                 body: JSON.stringify({ model: config.model, query: safeQuery.slice(0, 20000), documents: safeCandidates.map(candidate => candidate.text), top_n: topN }) });
-            let response = await call(auth);
-            if (!response.ok && (response.status === 401 || response.status === 403) && config.apiKey && auth !== config.apiKey) response = await call(config.apiKey);
+            const response = await sendWithAuthFallback(config.apiKey, call);
             aborted(signal);
-            if (!response.ok) fail(errorText(new Error(`重排接口请求失败（HTTP ${response.status}）`), config));
+            if (!response.ok) fail(errorText(new Error(`重排接口请求失败：${describeHttpFailure(response.status)}`), config));
             let json; try { json = await response.json(); } catch { fail('重排接口返回格式无效'); }
             const rows = Array.isArray(json?.results) ? json.results : Array.isArray(json?.data) ? json.data : [];
             const ranked = rows.map(row => {
