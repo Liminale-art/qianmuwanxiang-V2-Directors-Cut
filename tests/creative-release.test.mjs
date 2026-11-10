@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url);
 // Creative prompts/runtime changed in f1b7c99e (identity anchor); their literal consumers moved to v484.
 const version = '1.59.484';
 const releaseVersion = '1.59.484';
+const manifestVersion = '1.59.485';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
@@ -69,11 +70,11 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(sources.get('qianmu-creative-runtime.js').includes("from './qianmu-storyboard-utils.js?v=1.59.456'"));
   const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
   const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
-  assert.equal(pkg.version, releaseVersion);
-  assert.equal(manifest.version, releaseVersion);
+  assert.equal(pkg.version, manifestVersion);
+  assert.equal(manifest.version, manifestVersion);
   // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
-  assert.ok(manifest.js.startsWith(`index.js?v=${releaseVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.js.slice(`index.js?v=${releaseVersion}`.length)));
-  assert.ok(manifest.css.startsWith(`style.css?v=${releaseVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(`style.css?v=${releaseVersion}`.length)));
+  assert.ok(manifest.js.startsWith(`index.js?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.js.slice(`index.js?v=${manifestVersion}`.length)));
+  assert.ok(manifest.css.startsWith(`style.css?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(`style.css?v=${manifestVersion}`.length)));
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));
   assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${releaseVersion}')`));
@@ -89,7 +90,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
     assert.ok(sources.get('index.js').includes(`from './${file}${query}'`), `${file} is used by the real entry with a refreshed identity when updated`);
   }
   assert.match(await readFile(new URL('style.css', root), 'utf8'), /@import url\('\.\/qianmu-creative-social\.css\?v=1\.59\.458'\)/);
-  assert.ok(sources.get('index.js').includes(`const VERSION = '${releaseVersion}';`));
+  assert.ok(sources.get('index.js').includes(`const VERSION = '${manifestVersion}';`));
 });
 
 test('world display helpers share one storyboard-utils identity across every importer', () => {
