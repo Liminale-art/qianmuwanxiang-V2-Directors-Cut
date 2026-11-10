@@ -1,16 +1,18 @@
 // 千幕 · 经 ST 后端 custom 渠道调用外部 OpenAI 兼容接口（伴读总结／对话／小助手／识图、台词提取、千幕主 API 目录与测试）。
 // 地址、鉴权回退、请求体与目录解析统一走 qianmu-model-compat.js；回复解析走 qianmu-model-response.js。
-// 始终非流式：ST 代理不透传 SSE。失败文字保持 “HTTP <状态> · <详情>” 形式，调用方据此判断是否回落浏览器直连。
+// 流式与否完全由调用方传入的用户开关决定，本模块不做限制；渠道不支持流式时由上游自行回 JSON，解析器照常读取。
+// 失败文字保持 “HTTP <状态> · <详情>” 形式，调用方据此判断是否回落浏览器直连。
 import { resolveApiRoot, stProxyBody, chatPayload, probePayload, sendWithAuthFallback, proxyPayloadError,
   parseModelList, probeConnection, redactSecrets } from './qianmu-model-compat.js?v=1.59.484';
-import { createModelResponseAccumulator } from './qianmu-model-response.js?v=1.59.452';
+import { createModelResponseAccumulator, readModelResponse } from './qianmu-model-response.js?v=1.59.452';
 import { qianmuChatCompletionText } from './qianmu-llm-output.js?v=1.59.202';
 
 const GENERATE = '/api/backends/chat-completions/generate';
 const STATUS = '/api/backends/chat-completions/status';
+const isJson = response => /json/i.test(response.headers?.get?.('content-type') || '');
 
 export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), headers = () => ({}) } = {}) {
-  // send 返回已解析的 JSON；ST 把上游失败包成 200 + {error}，在此抛出交鉴权回退判断（Unauthorized 换裸 Key 重试一次）。
+  // 返回 Response。ST 把上游失败包成 200 + {error}（流式失败时同样回 JSON），在此抛出交鉴权回退判断（Unauthorized 换裸 Key 重试一次）。
   async function post(path, apiUrl, apiKey, payload, signal, label) {
     const root = resolveApiRoot(apiUrl);
     return sendWithAuthFallback(apiKey, async authorization => {
@@ -21,12 +23,14 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
         const detail = String(await response.text().catch(() => '')).trim().slice(0, 300);
         throw Object.assign(new Error(`HTTP ${response.status}${detail ? ` · ${detail}` : ''}`), { status: response.status });
       }
-      const json = await response.json().catch(() => null);
-      const problem = proxyPayloadError(json);
-      if (problem) throw new Error(`${label}：${problem}`);
-      return json;
+      if (isJson(response)) {
+        const problem = proxyPayloadError(await response.clone().json().catch(() => null));
+        if (problem) { try { await response.body?.cancel(); } catch (_) {} throw new Error(`${label}：${problem}`); }
+      }
+      return response;
     }, { rejected: () => false });
   }
+  const postJson = async (...args) => (await post(...args)).json().catch(() => null);
 
   const guarded = run => async (options = {}) => {
     try { return await run(options); }
@@ -36,28 +40,45 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
     }
   };
 
-  const generate = guarded(async ({ apiUrl, apiKey, model, messages, temperature, maxTokens = 0, signal, onReasoning }) => {
-    const json = await post(GENERATE, apiUrl, apiKey,
-      chatPayload({ model, messages, temperature: temperature ?? 0.75, maxTokens, stream: false }), signal, '上游模型请求失败');
+  // 非流式：只借解析器收敛多家回复形态（OpenAI／reasoning／Anthropic／Gemini／Cohere）；
+  // 结束原因不在此拦截，保持伴读既有行为（截断的总结由上层 JSON 校验与重试处理）。
+  function decodeJson(json, onReasoning) {
     if (!json || typeof json !== 'object') throw new Error('上游模型未返回可用正文');
-    // 只借解析器收敛多家回复形态（OpenAI／reasoning／Anthropic／Gemini／Cohere）；
-    // 结束原因不在此拦截，保持伴读既有行为（截断的总结由上层 JSON 校验与重试处理）。
     const accumulator = createModelResponseAccumulator({ onReasoning });
     accumulator.consume(json, { streaming: false });
     const parsed = accumulator.snapshot().text;
     // 强制函数调用等形态把正文放在 tool_calls.arguments 里，解析器不收，沿用旧的取文规则兜底。
-    const text = String(parsed || '').trim() ? parsed : qianmuChatCompletionText(json);
+    return String(parsed || '').trim() ? parsed : qianmuChatCompletionText(json);
+  }
+
+  // 流式：与非流式同一口径——模型给出了任何结束原因（含截断）都交还正文；连接中断、没有结束标记才算失败。
+  async function decodeStream(response, { signal, onDelta, onReasoning }) {
+    try { return (await readModelResponse(response, { stream: true, signal, onDelta, onReasoning })).text; }
+    catch (error) {
+      const partial = error?.modelResponse;
+      if (error?.code === 'MODEL_OUTPUT_INCOMPLETE' && partial?.finishReason && String(partial.text || '').trim()) return partial.text;
+      throw error;
+    }
+  }
+
+  const generate = guarded(async ({ apiUrl, apiKey, model, messages, temperature, maxTokens = 0, stream = false, signal, onDelta, onReasoning }) => {
+    const response = await post(GENERATE, apiUrl, apiKey,
+      chatPayload({ model, messages, temperature: temperature ?? 0.75, maxTokens, stream: Boolean(stream) }), signal, '上游模型请求失败');
+    const text = stream && !isJson(response)
+      ? await decodeStream(response, { signal, onDelta, onReasoning })
+      : decodeJson(await response.json().catch(() => null), onReasoning);
     if (!String(text || '').trim()) throw new Error('上游模型未返回可用正文');
+    if (stream && isJson(response)) onDelta?.(text);
     return text;
   });
 
   // 返回去重排序后的模型名；目录为空时返回空数组，由调用方决定提示。
   const listModels = guarded(async ({ apiUrl, apiKey, signal }) =>
-    parseModelList(await post(STATUS, apiUrl, apiKey, {}, signal, '模型目录不可用')));
+    parseModelList(await postJson(STATUS, apiUrl, apiKey, {}, signal, '模型目录不可用')));
 
   // 1 token 生成探测：只确认能生成，不读取正文、不看结束原因。
   const probe = guarded(async ({ apiUrl, apiKey, model, signal }) => {
-    await post(GENERATE, apiUrl, apiKey, probePayload(model), signal, '上游模型请求失败');
+    await postJson(GENERATE, apiUrl, apiKey, probePayload(model), signal, '上游模型请求失败');
   });
 
   // 先查目录；目录失败或为空且已选模型时补一次 1 token 探测（统一网关 /models 503 不再误判）。

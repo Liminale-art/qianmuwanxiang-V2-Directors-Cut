@@ -220,6 +220,7 @@ import {
   parseQianmuDialoguePayload,
 } from './qianmu-llm-output.js?v=1.59.202';
 import { createStModelProxy } from './qianmu-st-model-proxy.js?v=1.59.484';
+import { resolveApiRoot, sendWithAuthFallback } from './qianmu-model-compat.js?v=1.59.484';
 import {
   normalizeOpenAIImageCompatibility,
   parseOpenAICompatibleHeaders,
@@ -10684,18 +10685,19 @@ async function callTtsExternalExtractModel(messages, config) {
   if (!(normalizeUrl(apiUrl) && apiKey && model)) throw new Error('INVALID_API_SETTINGS');
   const options = {
     temperature: config?.temperature ?? settings.temperature,
+    stream: !!settings.streamEnabled,
     signal: controller.signal,
   };
   try {
     return await generateViaSTProxy(apiUrl, apiKey, model, messages, options);
   } catch (proxyError) {
     if (!ttsExtractProxyUnavailable(proxyError)) throw proxyError;
-    return callExternalApi(messages, null, { ...config, stream: false }, controller);
+    return callExternalApi(messages, options.stream ? () => {} : null, { ...config, stream: options.stream }, controller);
   }
 }
 
 // 调用模型做提取：cfg 存在或主模式为 external 时走千幕 API；否则走 ST generateRaw。
-// 不走流式（提取要完整 JSON），并与推演/幕外的中止句柄隔离。
+// 流式按千幕“流式传输”开关（结果仍在完整接收后统一解析 JSON），并与推演/幕外的中止句柄隔离。
 async function callTtsExtractModel(systemPrompt, userPrompt, cfg) {
   const mainExternalReady = settings.providerMode === 'external'
     && !!(normalizeUrl(normalizeQianmuChatApiRoot(settings.apiUrl)) && settings.apiKey && settings.model);
@@ -26392,9 +26394,9 @@ async function callCoreadModel(systemPrompt, userPrompt, opts = {}) {
   if (conn) {
     const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
     const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
-    // 首选 ST 后端代理生成（绕浏览器 CORS·火山方舟等直连会被拦）；Bearer→裸 Key 回退在代理模块内
+    // 首选 ST 后端代理生成（绕浏览器 CORS·火山方舟等直连会被拦）；Bearer→裸 Key 回退在代理模块内；流式按总结卡开关
     try {
-      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, signal });
+      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: m.summaryTemperature, maxTokens: m.summaryMaxTokens || 0, stream: !!m.summaryStream, signal });
     } catch (proxyErr) {
       // 后端代理不可用（老版 ST / 端点缺失）才回落浏览器直连——支持 CORS 的接口仍能用
       if (/ST backend proxy failed|Failed to fetch|NetworkError/i.test(String(proxyErr?.message || ''))) {
@@ -26441,7 +26443,7 @@ async function callCoreadDialogModel(systemPrompt, userPrompt, opts = {}) {
     const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
     // 首选 ST 后端代理生成（火山方舟等直连会被浏览器 CORS 拦）
     try {
-      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal, onReasoning: opts.onReasoning });
+      return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, stream: !!settings.streamEnabled && !!onDelta, signal, onDelta, onReasoning: opts.onReasoning });
     } catch (proxyErr) {
       // 后端代理不可用（老版 ST / 端点缺失 / 网络错误）才回落浏览器直连——支持 CORS 的接口仍能用
       if (/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyErr?.message || ''))) {
@@ -26477,7 +26479,7 @@ async function callCoreadAssistantModel(systemPrompt, userPrompt, opts = {}) {
   const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }];
   const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
   try {
-    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
+    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, stream: !!settings.streamEnabled && !!opts.onDelta, signal: controller.signal, onDelta: opts.onDelta || null });
   } catch (proxyError) {
     if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
     return callExternalApi(messages, opts.onDelta || null, {
@@ -26548,7 +26550,7 @@ async function callCoreadVisionModel(systemPrompt, userPrompt, imageUrls, opts =
   const controller = opts.controller || new AbortController();
   const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
   try {
-    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, signal: controller.signal });
+    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, stream: !!settings.streamEnabled && !!opts.onDelta, signal: controller.signal, onDelta: opts.onDelta || null });
   } catch (proxyError) {
     if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
     return callExternalApi(messages, opts.onDelta || null, {
@@ -27571,15 +27573,13 @@ async function coreadEmbed(texts, m) {
   const key = m.vectorApiKey || '';
   const model = m.vectorModel || '';
   if (!rawUrl || !key || !model) throw new Error('向量接口未配置（URL/Key/模型）');
-  let ep = rawUrl.replace(/\/+$/, '');
-  if (!/\/embeddings$/i.test(ep)) ep = /\/v1$/i.test(ep) ? `${ep}/embeddings` : `${ep}/v1/embeddings`;
+  const ep = `${resolveApiRoot(rawUrl)}/embeddings`;   // 统一地址规则：裸域名补 /v1，/api/v3 等原路径保留，结尾 # 原样
   const call = async (auth) => fetch(ep, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: auth },
     body: JSON.stringify({ model, input: list }),
   });
-  let res = await call(`Bearer ${key}`);
-  if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
+  const res = await sendWithAuthFallback(key, call);
   if (!res.ok) { const t = await res.text().catch(() => ''); const error = new Error(`embeddings HTTP ${res.status}${t ? ` · ${t.slice(0, 100)}` : ''}`); error.status = res.status; throw error; }
   const data = await res.json();
   const arr = Array.isArray(data?.data) ? data.data : [];
@@ -27732,16 +27732,15 @@ async function coreadRerank(queryText, cands, m) {
   const key = m.rerankApiKey || '';
   const model = m.rerankModel || '';
   if (!rawUrl || !key || !model || !cands.length) return cands;   // 未配置=不视作错误，静默用融合结果
-  let ep = rawUrl.replace(/\/+$/, '');
-  if (!/\/rerank(ing)?$/i.test(ep)) ep = /\/v1$/i.test(ep) ? `${ep}/rerank` : `${ep}/v1/rerank`;
+  // 统一地址规则；用户填了 /reranking 端点则沿用该名
+  const ep = `${resolveApiRoot(rawUrl)}/${/\/reranking\/*$/i.test(rawUrl) ? 'reranking' : 'rerank'}`;
   const docs = cands.map((h) => String(h.slice.summary || ''));
   const call = async (auth) => fetch(ep, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: auth },
     body: JSON.stringify({ model, query: String(queryText || ''), documents: docs, top_n: Math.min(cands.length, Math.max(1, m.rerankTopN || 4)) }),
   });
-  let res = await call(`Bearer ${key}`);
-  if (!res.ok && (res.status === 401 || res.status === 403)) res = await call(String(key));
+  const res = await sendWithAuthFallback(key, call);
   if (!res.ok) { const t = await res.text().catch(() => ''); const error = new Error(`rerank HTTP ${res.status}${t ? ` · ${t.slice(0, 80)}` : ''}`); error.status = res.status; throw error; }
   const data = await res.json();
   const results = Array.isArray(data?.results) ? data.results : [];

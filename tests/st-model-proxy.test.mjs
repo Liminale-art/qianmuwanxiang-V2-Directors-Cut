@@ -139,3 +139,32 @@ test('cancellation is passed through and not retried', async () => {
   await assert.rejects(proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [], signal: controller.signal }), { name: 'AbortError' });
   assert.equal(calls.length, 1);
 });
+
+const sse = frames => new Response(frames.map(frame => `data: ${typeof frame === 'string' ? frame : JSON.stringify(frame)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } });
+
+test('streaming follows the caller switch: SSE is decoded incrementally, JSON fallbacks are accepted', async () => {
+  const deltas = [];
+  let h = harness([sse([{ choices: [{ delta: { content: '流' } }] }, { choices: [{ delta: { content: '式' }, finish_reason: 'stop' }] }, '[DONE]'])]);
+  assert.equal(await h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [], stream: true, onDelta: text => deltas.push(text) }), '流式');
+  assert.equal(h.calls[0].body.stream, true);
+  assert.deepEqual(deltas, ['流', '流式']);
+
+  h = harness([ok('整段')]);
+  const seen = [];
+  assert.equal(await h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [], stream: true, onDelta: text => seen.push(text) }), '整段', 'a channel without streaming may answer JSON');
+  assert.deepEqual(seen, ['整段']);
+
+  h = harness([ok('x')]);
+  await h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [] });
+  assert.equal(h.calls[0].body.stream, false, 'streaming is off unless the user switch asks for it');
+});
+
+test('streaming keeps the same finish policy and still retries rejected auth', async () => {
+  let h = harness([sse([{ choices: [{ delta: { content: '截' }, finish_reason: 'length' }] }, '[DONE]'])]);
+  assert.equal(await h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [], stream: true }), '截');
+  h = harness([sse([{ choices: [{ delta: { content: '断' } }] }])]);
+  await assert.rejects(h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'k-1234', model: 'm', messages: [], stream: true }), /完成标记/);
+  h = harness([json({ error: { message: 'Unauthorized' } }), sse([{ choices: [{ delta: { content: '好' }, finish_reason: 'stop' }] }])]);
+  assert.equal(await h.proxy.generate({ apiUrl: 'https://relay.example/v1', apiKey: 'raw-key-9', model: 'm', messages: [], stream: true }), '好');
+  assert.deepEqual(h.calls.map(call => call.auth), ['Bearer raw-key-9', 'raw-key-9']);
+});

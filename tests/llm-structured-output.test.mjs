@@ -62,6 +62,6 @@ assert.match(source, /return runtime\.callStoryboardCompiler\(messages,profileId
 assert.match(await readFile(new URL('../qianmu-storyboard-compiler-transport.js',import.meta.url),'utf8'), /jsonSchema:requestOptions\.jsonSchema/, '分镜编译器必须传入严格 Schema');
 const stProxy = await readFile(new URL('../qianmu-st-model-proxy.js', import.meta.url), 'utf8');
 assert.match(stProxy, /const root = resolveApiRoot\(apiUrl\)[\s\S]*stProxyBody\(root,/, 'ST 代理生成前必须消除完整端点重复拼接');
-assert.match(stProxy, /const problem = proxyPayloadError\(json\);\s*if \(problem\) throw/, 'ST 代理返回 200 错误包时不得继续伪装成功');
+assert.match(stProxy, /const problem = proxyPayloadError\(await response\.clone\(\)\.json\(\)[^\n]*\n\s*if \(problem\) \{[^\n]*throw new Error/, 'ST 代理返回 200 错误包时不得继续伪装成功');
 
 console.log('LLM structured-output capability negotiation OK');

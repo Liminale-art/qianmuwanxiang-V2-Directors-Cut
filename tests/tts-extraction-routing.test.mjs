@@ -12,7 +12,7 @@ assert.match(proxyHelper, /generateViaSTProxy\(apiUrl, apiKey, model, messages, 
 assert.match(proxyHelper, /normalizeQianmuChatApiRoot\(config\?\.apiUrl\)/, '完整 chat/completions 地址必须先折回 API 根地址');
 assert.match(source, /const generateViaSTProxy = [^\n]*stModelProxy\.generate\(/, '台词提取与伴读共用统一的 ST 代理生成');
 assert.match(stProxy, /sendWithAuthFallback\(apiKey,/, '代理封装上游鉴权错误后仍须兼容裸 API Key（统一由兼容层判断）');
-assert.match(proxyHelper, /callExternalApi\(messages, null, \{ \.\.\.config, stream: false \}, controller\)/, '旧版 ST 缺少生成代理时必须保留直连回退');
+assert.match(proxyHelper, /callExternalApi\(messages, options\.stream \? \(\) => \{\} : null, \{ \.\.\.config, stream: options\.stream \}, controller\)/, '旧版 ST 缺少生成代理时必须保留直连回退');
 assert.match(dispatcher, /callTtsExternalExtractModel\(messages, eff\)/, '外部预设和千幕主 API 必须汇入同一条可靠提取链路');
 assert.match(dispatcher, /const mainExternalReady =[\s\S]*const useExternal = !!cfg \|\| mainExternalReady/, '空的千幕外部配置不得阻断 ST 当前文本模型');
 assert.match(dispatcher, /callSillyTavernModel\(userPrompt, systemPrompt, null\)/, '跟随 SillyTavern 当前 API 的路径必须保持不变');
