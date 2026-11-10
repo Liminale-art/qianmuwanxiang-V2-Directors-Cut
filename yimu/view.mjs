@@ -269,17 +269,25 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     // Pausing lets the running batch finish and save, then stops before the next one.
     const summarizePause = button('暂停', () => dispatch('pauseManual', {}, summarizePause));
     summarizePause.hidden = true;
-    const summarizeRow = el('div', 'ym-inline-row');
+    // Layout: title with live progress, then the floor range and floors per batch as two
+    // matching groups, then one full-width action (Start, or Pause while running).
+    const manualHead = el('div', 'ym-manual-head');
     const manualLabel = el('span', 'ym-manual-label');
     manualLabel.append(el('strong', '', '手动总结'));
-    summarizeRow.append(manualLabel, summarizeStart, el('span', '', '—'), summarizeEnd, el('span', '', '层'), summarizeSubmit, summarizePause);
+    const rangeGroup = el('div', 'ym-manual-group ym-manual-floors');
+    rangeGroup.append(el('span', '', '楼层'), summarizeStart, el('span', 'ym-range-separator', '—'), summarizeEnd);
+    const summarizeActions = el('div', 'ym-manual-actions');
+    summarizeActions.append(summarizeSubmit, summarizePause);
     // Floors per batch belong to the manual card only; automatic settings never shape it.
     const batchInput = el('input', 'ym-range-input');
     batchInput.type = 'number'; batchInput.min = '1'; batchInput.max = String(MANUAL_BATCH_LIMIT); batchInput.step = '1'; batchInput.required = true;
     batchInput.setAttribute('aria-label', '手动总结每批层数'); batchInput.value = String(MANUAL_BATCH_FLOORS);
-    const batchRow = el('div', 'ym-inline-row ym-manual-batch');
+    const batchGroup = el('div', 'ym-manual-group ym-manual-batch');
+    batchGroup.append(el('span', '', '每批'), batchInput, el('span', '', '层'));
     const batchProgress = el('span', 'ym-muted ym-manual-progress'); batchProgress.setAttribute('role', 'status');
-    batchRow.append(el('span', '', '每批'), batchInput, el('span', '', '层'), batchProgress);
+    manualHead.append(manualLabel, batchProgress);
+    const manualFields = el('div', 'ym-manual-fields');
+    manualFields.append(rangeGroup, batchGroup);
     const savedBatchFloors = () => manualBatchFloors(state.ui?.manualBatchFloors);
     const typedBatchFloors = () => /^\d+$/.test(batchInput.value.trim()) ? manualBatchFloors(Number(batchInput.value)) === Number(batchInput.value) ? Number(batchInput.value) : null : null;
     batchInput.addEventListener('change', async () => {
@@ -289,7 +297,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!await dispatch('uiSettings', { manualBatchFloors: value }, batchInput)) batchInput.value = String(savedBatchFloors());
     });
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
-    summarizeRangeForm.append(summarizeRow, batchRow, summarizeNotice);
+    summarizeRangeForm.append(manualHead, manualFields, summarizeActions, summarizeNotice);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
