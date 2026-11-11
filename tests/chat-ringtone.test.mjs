@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   RINGTONE_PRESETS, RINGTONE_TAB_ICONS, RINGTONE_LIMITS, RINGTONE_DEFAULTS,
-  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone,
+  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_POSITIONS, applyToastSkin,
 } from '../features/chat/qianmu-chat-ringtone.js';
 
 const root = new URL('../', import.meta.url);
@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.486'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.487'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Four-tab navigation with the ring tab.
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -223,4 +223,54 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
   const ids = new Set(RINGTONE_PRESETS.map(p => p.id));
   assert.ok(!ids.has('get-deluxe-item') && !ids.has('interact-sound'), '已移除旧铃声');
   assert.ok(ids.has('crisp-droplet-echo') && ids.has('crisp-wind-chime'), '已加入两个新铃声');
+});
+
+test('toast skin: only three centred positions, normalized and applied through one html attribute', () => {
+  assert.deepEqual(TOAST_POSITIONS.map(([id]) => id), ['top', 'bottom', 'middle']);
+  const s = normalizeRingtone({ ringtone: { toastSkin: 'yes', toastPosition: 'top-right' } });
+  assert.equal(s.toastSkin, false);
+  assert.equal(s.toastPosition, 'top');
+  const attrs = {};
+  const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
+  applyToastSkin(doc, { toastSkin: true, toastPosition: 'middle' });
+  assert.equal(attrs['data-qm-toast'], 'middle');
+  applyToastSkin(doc, { toastSkin: false, toastPosition: 'middle' });
+  assert.ok(!('data-qm-toast' in attrs));
+  applyToastSkin(doc, null);
+  assert.ok(!('data-qm-toast' in attrs));
+});
+
+test('toast skin runtime: activate applies the saved skin, update re-applies, dispose removes it', () => {
+  const attrs = {};
+  const { doc } = fakeDocument();
+  doc.documentElement = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
+  const settings = { ringtone: { toastSkin: true, toastPosition: 'bottom' } };
+  const ring = createChatRingtone({ getOwner: () => settings, save: () => {}, getContext: () => ({ chat: [] }), resolveNamespace: () => 'ns',
+    document: doc, window: { addEventListener() {}, removeEventListener() {} }, Audio: class {}, indexedDB: null,
+    loadView: async () => ({ mountChatRingtoneView: () => ({ render() {}, dispose() {} }) }), setInterval: () => 1, clearInterval: () => {} });
+  assert.ok(!('data-qm-toast' in attrs), '未激活前不改页面');
+  ring.activate();
+  assert.equal(attrs['data-qm-toast'], 'bottom');
+  ring.actions.update({ toastPosition: 'middle' });
+  assert.equal(attrs['data-qm-toast'], 'middle');
+  ring.actions.update({ toastSkin: false });
+  assert.ok(!('data-qm-toast' in attrs));
+  ring.actions.update({ toastSkin: true });
+  ring.dispose();
+  assert.ok(!('data-qm-toast' in attrs), '卸载后还原 ST 原样');
+});
+
+test('toast skin never hooks toastr: no observers, polling, or toastr rewrites', async () => {
+  const source = await readFile(new URL('features/chat/qianmu-chat-ringtone.js', root), 'utf8');
+  const skin = source.slice(source.indexOf('export const TOAST_POSITIONS'), source.indexOf('/** Repairs the stored settings'));
+  for (const banned of ['MutationObserver', 'setInterval', 'setTimeout', 'requestAnimationFrame', 'toastr', 'querySelector']) {
+    assert.ok(!skin.includes(banned), `提示框美化不得使用 ${banned}`);
+  }
+  assert.ok(!/toastr\s*\.\s*(options|subscribe|\w+\s*=)/.test(source), '不得改写 toastr 配置或方法');
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  const rules = css.split('\n').filter(line => line.includes('#toast-container') && !line.startsWith('html body'))
+    .map(line => line.replace(/^@media[^{]*\{\s*/, ''));
+  assert.ok(rules.length > 0 && rules.every(line => line.startsWith('html[data-qm-toast')), '所有换皮规则都挂在 html[data-qm-toast] 下');
+  assert.ok(css.includes('var(--qm-interface-font, var(--mainFontFamily'), '字体跟随字体库界面设置');
+  assert.ok(!/data-qm-toast="(?:left|right|top-left|top-right|bottom-left|bottom-right)"/.test(css), '不提供偏左右位置');
 });

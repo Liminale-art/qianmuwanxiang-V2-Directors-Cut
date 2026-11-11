@@ -40,7 +40,7 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
-import { createChatRingtone } from './features/chat/qianmu-chat-ringtone.js?v=1.59.486';
+import { createChatRingtone } from './features/chat/qianmu-chat-ringtone.js?v=1.59.487';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -317,7 +317,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.486';
+const VERSION = '1.59.487';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -35777,6 +35777,7 @@ function init() {
     observeChatWriteBaseline();
     fontLibrary.activate();
     void fontLibrary.sync().catch(error => console.warn('[千幕] 字体尚未恢复', error.message));
+    chatRingtone.activate();   // 通知：按已存设置给 ST 提示框换皮（仅 html 属性，不挂钩 toastr）
     storyboardScheduleGalleryPreservation();
     void focusClockRestoreLock();
     startFloatHostGuard();

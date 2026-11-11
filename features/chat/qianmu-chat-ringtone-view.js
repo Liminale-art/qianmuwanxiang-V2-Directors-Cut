@@ -1,4 +1,5 @@
-// Notification tab of the chat toolkit: completion sound (built-in / link / local file), volume, and background-tab flash.
+// Notification tab of the chat toolkit: completion sound (built-in / link / local file), volume, background-tab flash,
+// and the ST notification skin.
 // Pure DOM over the actions handed in by qianmu-chat-ringtone.js; it stores nothing itself.
 const SOURCE_LABELS = [['builtin', '内置'], ['url', '链接'], ['local', '本地']];
 const formatSize = bytes => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -170,11 +171,28 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     return card;
   }
 
+  function toastCard(s) {
+    const card = el('section', 'qm-ring-card');
+    const head = el('div', 'qm-ring-head');
+    head.append(el('h4', '', '提示框美化'), capsule('', s.toastSkin, on => actions.update({ toastSkin: on }), { ariaLabel: '开启提示框美化' }));
+    card.append(head);
+    const row = el('div', 'qm-ring-source-row');
+    const positions = el('div', 'qm-ring-sources qm-ring-toast-pos'); positions.setAttribute('role', 'radiogroup'); positions.setAttribute('aria-label', '提示框位置');
+    for (const [id, label] of actions.toastPositions) {
+      const node = button(label, s.toastPosition === id ? 'is-active' : '', () => actions.update({ toastPosition: id }));
+      node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(s.toastPosition === id)); node.dataset.toastPosition = id;
+      positions.append(node);
+    }
+    row.append(positions, iconButton('fa-eye', '预览', 'qm-ring-toast-test', async () => actions.previewToast()));
+    card.append(row);
+    return card;
+  }
+
   function render(s) {
     if (disposed) return;
     last = s; closeSheet();
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
-    root.replaceChildren(soundCard(s), flashCard(s));
+    root.replaceChildren(soundCard(s), flashCard(s), toastCard(s));
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
   // Update only the preview button so preview's pause/ended events never re-render an open picker.

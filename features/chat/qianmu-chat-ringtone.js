@@ -26,7 +26,21 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '新消息', iconSource: 'builtin', customIcons: [],
+  toastSkin: false, toastPosition: 'top',
 });
+// ST notification skin: three centred positions only (side-anchored long toasts read poorly).
+export const TOAST_POSITIONS = Object.freeze([['top', '顶部居中'], ['bottom', '底部居中'], ['middle', '上下居中']]);
+const TOAST_ATTR = 'data-qm-toast';
+/**
+ * Skins ST notifications purely through CSS keyed on one <html> attribute. It never
+ * observes, polls, wraps or rewrites the toast library or its nodes, so a busy burst
+ * costs nothing extra and removing the attribute restores ST's own look.
+ */
+export function applyToastSkin(document, s) {
+  const root = document?.documentElement;
+  if (!root?.setAttribute) return;
+  if (s?.toastSkin) root.setAttribute(TOAST_ATTR, s.toastPosition); else root.removeAttribute(TOAST_ATTR);
+}
 const SOURCES = ['builtin', 'url', 'local'];
 const isIconData = value => typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= RINGTONE_LIMITS.iconDataChars;
 const isLocalId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
@@ -60,6 +74,8 @@ export function normalizeRingtone(owner) {
   next.volume = Number.isFinite(volume) ? Math.min(100, Math.max(0, Math.round(volume))) : RINGTONE_DEFAULTS.volume;
   next.flashText = typeof next.flashText === 'string' ? [...next.flashText.trim()].slice(0, RINGTONE_LIMITS.flashText).join('') : RINGTONE_DEFAULTS.flashText;
   next.iconSource = next.iconSource === 'custom' ? 'custom' : 'builtin';
+  next.toastSkin = next.toastSkin === true;
+  if (!TOAST_POSITIONS.some(([id]) => id === next.toastPosition)) next.toastPosition = RINGTONE_DEFAULTS.toastPosition;
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
   return next;
@@ -192,12 +208,12 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.486'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.487'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
   const player = createRingPlayer({ Audio, onChange: () => syncPlaying() });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
-  let armed = false, lastRing = 0, mounted = null, disposed = false, listening = false, localSeq = 0;
+  let armed = false, lastRing = 0, mounted = null, disposed = false, listening = false, localSeq = 0, skinActive = false;
   const localUrls = new Map(); // id -> object URL cache for this session
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
@@ -205,10 +221,11 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   // Preview playback toggles fire pause/ended events; updating only the preview
   // button (instead of a full re-render) keeps an open <select> from snapping shut.
   const syncPlaying = () => { if (mounted?.view?.syncPlaying) mounted.view.syncPlaying(player.playing()); else refresh(); };
+  const syncToast = () => { if (skinActive) applyToastSkin(document, state()); };
   function update(patch) {
     Object.assign(state(), patch);
     normalizeRingtone(getOwner());
-    save(); refresh();
+    save(); syncToast(); refresh();
   }
   const newLocalId = () => `l${now().toString(36)}${(localSeq++).toString(36)}`;
   async function localSource(id) {
@@ -318,6 +335,8 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     },
     clearIcons() { update({ customIcons: [], iconSource: 'builtin' }); },
     testFlash() { return flash({ duration: 6000 }); },
+    toastPositions: TOAST_POSITIONS,
+    previewToast() { notify('提示框预览：较长的提示也会在卡片内自动换行，保持居中显示。', 'info'); },
   });
   async function mount(host) {
     if (!host || mounted?.host === host) return;
@@ -330,6 +349,8 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   }
   function unmount() { mounted?.view?.dispose(); mounted = null; }
   // Runtime teardown; a later re-enable may mount again.
-  function dispose() { disposed = true; unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); armed = false; }
-  return Object.freeze({ events, mount, unmount, dispose, actions, state });
+  // Applies the saved toast skin once settings are loaded (runtime init).
+  function activate() { skinActive = true; syncToast(); }
+  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); armed = false; }
+  return Object.freeze({ events, mount, unmount, activate, dispose, actions, state });
 }
