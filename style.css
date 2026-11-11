@@ -886,12 +886,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 通知 · ST 提示框美化：只按 <html data-qm-toast> 换皮，不监听、不改写 toastr；移除属性即还原 ST 原样 */
 /* 容器统一铺满视口做定位层：纵向由 justify-content 决定上/中/下，横向由 align-items 居中；
    避免依赖 left/right/width 的居中算法与 ST 的 margin-top，彻底解决窄屏/移动端偏差。
-   仅限 body 直系子节点：弹窗打开时 ST 会把通知容器搬进 <dialog>（带 transform 动画），
-   届时本定位层自动失效、交回 ST 弹窗内的原生定位规则，提示框不再闪到弹窗位置。 */
-html[data-qm-toast] body > #toast-container { inset: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; width: auto !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: calc(var(--topBarBlockSize, 44px) + 8px) 12px calc(var(--bottomFormBlockSize, 44px) + 16px) !important; transform: none !important; display: flex !important; flex-direction: column; align-items: center; pointer-events: none; }
-html[data-qm-toast="top"] body > #toast-container { justify-content: flex-start !important; }
-html[data-qm-toast="bottom"] body > #toast-container { justify-content: flex-end !important; }
-html[data-qm-toast="middle"] body > #toast-container { justify-content: center !important; }
+   用后代选择器匹配任意嵌套深度（ST 实际把容器挂在 body 下某层，非直系子节点）；
+   仅排除 .popup 弹窗内：弹窗打开时 ST 会把通知容器搬进 <dialog.popup>（带 transform 动画），
+   此时本定位层自动失效、交回 ST 弹窗内的原生定位规则，提示框不再闪到弹窗位置。 */
+html[data-qm-toast] body #toast-container:not(.popup *) { inset: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; width: auto !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: calc(var(--topBarBlockSize, 44px) + 8px) 12px calc(var(--bottomFormBlockSize, 44px) + 16px) !important; transform: none !important; display: flex !important; flex-direction: column; align-items: center; pointer-events: none; }
+html[data-qm-toast="top"] body #toast-container:not(.popup *) { justify-content: flex-start !important; }
+html[data-qm-toast="bottom"] body #toast-container:not(.popup *) { justify-content: flex-end !important; }
+html[data-qm-toast="middle"] body #toast-container:not(.popup *) { justify-content: center !important; }
 html[data-qm-toast] body #toast-container > div {
   --qm-toast-accent: #4f8fa6;
   pointer-events: auto; width: min(440px, 100%) !important; max-width: 100% !important; margin: 0 0 8px !important; padding: 11px 14px 11px 34px !important;
