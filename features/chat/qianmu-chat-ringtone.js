@@ -26,20 +26,24 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '新消息', iconSource: 'builtin', customIcons: [],
-  toastSkin: false, toastPosition: 'top',
+  toastSkin: false, toastPosition: 'top', toastStyle: 'default',
 });
 // ST notification skin: three centred positions only (side-anchored long toasts read poorly).
 export const TOAST_POSITIONS = Object.freeze([['top', '顶部居中'], ['bottom', '底部居中'], ['middle', '上下居中']]);
+// Card decoration presets. 'default' keeps the plain status dot; 'mosaic' adds the static left-to-right pixel ribbon.
+export const TOAST_STYLES = Object.freeze([['default', '默认'], ['mosaic', '马赛克']]);
 const TOAST_ATTR = 'data-qm-toast';
+const TOAST_STYLE_ATTR = 'data-qm-toast-style';
 /**
- * Skins ST notifications purely through CSS keyed on one <html> attribute. It never
+ * Skins ST notifications purely through CSS keyed on two <html> attributes. It never
  * observes, polls, wraps or rewrites the toast library or its nodes, so a busy burst
- * costs nothing extra and removing the attribute restores ST's own look.
+ * costs nothing extra and removing the attributes restores ST's own look.
  */
 export function applyToastSkin(document, s) {
   const root = document?.documentElement;
   if (!root?.setAttribute) return;
-  if (s?.toastSkin) root.setAttribute(TOAST_ATTR, s.toastPosition); else root.removeAttribute(TOAST_ATTR);
+  if (s?.toastSkin) { root.setAttribute(TOAST_ATTR, s.toastPosition); root.setAttribute(TOAST_STYLE_ATTR, s.toastStyle); }
+  else { root.removeAttribute(TOAST_ATTR); root.removeAttribute(TOAST_STYLE_ATTR); }
 }
 const SOURCES = ['builtin', 'url', 'local'];
 const isIconData = value => typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= RINGTONE_LIMITS.iconDataChars;
@@ -76,6 +80,7 @@ export function normalizeRingtone(owner) {
   next.iconSource = next.iconSource === 'custom' ? 'custom' : 'builtin';
   next.toastSkin = next.toastSkin === true;
   if (!TOAST_POSITIONS.some(([id]) => id === next.toastPosition)) next.toastPosition = RINGTONE_DEFAULTS.toastPosition;
+  if (!TOAST_STYLES.some(([id]) => id === next.toastStyle)) next.toastStyle = RINGTONE_DEFAULTS.toastStyle;
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
   return next;
@@ -208,7 +213,7 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.489'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.490'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
   const player = createRingPlayer({ Audio, onChange: () => syncPlaying() });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
@@ -336,6 +341,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     clearIcons() { update({ customIcons: [], iconSource: 'builtin' }); },
     testFlash() { return flash({ duration: 6000 }); },
     toastPositions: TOAST_POSITIONS,
+    toastStyles: TOAST_STYLES,
     previewToast() { notify('提示框预览：较长的提示也会在卡片内自动换行，保持居中显示。', 'info'); },
   });
   async function mount(host) {

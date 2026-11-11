@@ -189,6 +189,13 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const head = el('div', 'qm-ring-head');
     head.append(el('h4', '', '提示框美化'), capsule('', s.toastSkin, on => actions.update({ toastSkin: on }), { ariaLabel: '开启提示框美化' }));
     card.append(head);
+    const styles = el('div', 'qm-ring-sources qm-ring-toast-style'); styles.setAttribute('role', 'radiogroup'); styles.setAttribute('aria-label', '提示框样式');
+    for (const [id, label] of actions.toastStyles) {
+      const node = button(label, s.toastStyle === id ? 'is-active' : '', () => actions.update({ toastStyle: id }));
+      node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(s.toastStyle === id)); node.dataset.toastStyle = id;
+      styles.append(node);
+    }
+    card.append(styles);
     const row = el('div', 'qm-ring-source-row');
     const positions = el('div', 'qm-ring-sources qm-ring-toast-pos'); positions.setAttribute('role', 'radiogroup'); positions.setAttribute('aria-label', '提示框位置');
     for (const [id, label] of actions.toastPositions) {
