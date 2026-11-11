@@ -111,13 +111,16 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     } else {
       // Local library: a custom picker (lists all cached sounds, each deletable) + upload + preview, three in one row.
       const current = s.localSounds.find(item => item.id === s.localId);
-      const picker = button(current ? current.name : '选择本地铃声', 'qm-ring-picker', async () =>
+      const picker = button(current ? current.name : '选择本地铃声', 'qm-ring-picker', async () => {
+        // 空列表时静默无反应：不弹出任何弹层或提示。
+        if (!s.localSounds.length) return;
         openSheet({
           title: '本地铃声', currentId: s.localId,
           groups: [{ label: '', items: s.localSounds.map(item => ({ id: item.id, label: `${item.name} · ${formatSize(item.size)}` })) }],
           onPick: id => actions.selectLocal(id),
           onDelete: id => actions.clearLocal(id),
-        }));
+        });
+      });
       picker.append(icon('fa-chevron-down'));
       const upload = filePicker('audio/*', file => actions.pickLocal(file));
       row.append(picker, upload, iconButton('fa-arrow-up-from-bracket', '上传本地音频', 'qm-ring-upload', async () => upload.click()));
@@ -132,7 +135,17 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     range.addEventListener('input', () => { value.textContent = `${range.value}%`; actions.setVolume(Number(range.value)); });
     range.addEventListener('change', () => actions.setVolume(Number(range.value), true));
     volume.append(el('span', '', '音量'), range, value);
-    card.append(volume, capsule('仅在切到后台时响铃', s.soundOnlyHidden, on => actions.update({ soundOnlyHidden: on }), { after: true }));
+    card.append(volume);
+    return card;
+  }
+
+  // 「仅在切到后台时响铃」独立成卡，样式与消息完成提示音卡一致，胶囊开关在右侧。
+  function backgroundCard(s) {
+    const card = el('section', 'qm-ring-card');
+    const head = el('div', 'qm-ring-head');
+    head.append(el('h4', '', '仅在切到后台时响铃'), capsule('', s.soundOnlyHidden, on => actions.update({ soundOnlyHidden: on }), { ariaLabel: '仅在切到后台时响铃' }));
+    card.append(head);
+    card.append(el('p', 'qm-ring-note', '开启后，只有当浏览器标签切到后台时才会响铃；留在当前聊天时保持安静。'));
     return card;
   }
 
@@ -141,14 +154,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const head = el('div', 'qm-ring-head');
     head.append(el('h4', '', '标签页闪烁提醒'), capsule('', s.flashEnabled, on => actions.update({ flashEnabled: on }), { ariaLabel: '开启标签页闪烁提醒' }));
     card.append(head);
-    const text = el('div', 'qm-ring-field');
-    const input = el('input', 'qm-ring-flash-text'); input.maxLength = actions.limits.flashText * 2; input.value = s.flashText; input.placeholder = '新消息';
-    input.addEventListener('change', () => run(() => actions.update({ flashText: input.value })));
-    // 预览 sits right after the 新消息 input.
-    const test = iconButton('fa-eye', '预览', 'qm-ring-test', async () => { if (!actions.testFlash()) notify('请先填写提醒文字或设置图标。', 'warning'); });
-    text.append(el('span', '', '提醒文字'), input, test);
-    card.append(text);
-    // Two circular frames side by side; click the image itself to change (and preview) it — no separate buttons.
+    // 两个圆形可点图标移至提醒文字之上；点击图片本身即更换（并预览），无相机角标。
     const icons = el('div', 'qm-ring-icons');
     const frames = actions.iconFrames();
     for (const slot of [0, 1]) {
@@ -157,7 +163,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       cell.title = `点击更换图标 ${slot + 1}`; cell.setAttribute('aria-label', `更换闪烁图标 ${slot + 1}`);
       const image = el('img'); image.alt = `闪烁图标 ${slot + 1}`; image.width = 40; image.height = 40;
       if (frames[slot]) image.src = frames[slot]; else cell.classList.add('is-empty');
-      cell.append(image, icon('fa-camera'));
+      cell.append(image);
       cell.addEventListener('click', () => picker.click());
       cell.appendChild(picker);
       icons.append(cell);
@@ -168,6 +174,13 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       tools.append(button('恢复默认图标', 'qm-ring-clear', () => actions.clearIcons()));
       card.append(tools);
     }
+    const text = el('div', 'qm-ring-field');
+    const input = el('input', 'qm-ring-flash-text'); input.maxLength = actions.limits.flashText * 2; input.value = s.flashText; input.placeholder = '新消息';
+    input.addEventListener('change', () => run(() => actions.update({ flashText: input.value })));
+    // 预览 sits right after the 新消息 input.
+    const test = iconButton('fa-eye', '预览', 'qm-ring-test', async () => { if (!actions.testFlash()) notify('请先填写提醒文字或设置图标。', 'warning'); });
+    text.append(el('span', '', '提醒文字'), input, test);
+    card.append(text);
     return card;
   }
 
@@ -192,7 +205,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     if (disposed) return;
     last = s; closeSheet();
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
-    root.replaceChildren(soundCard(s), flashCard(s), toastCard(s));
+    root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
   // Update only the preview button so preview's pause/ended events never re-render an open picker.
