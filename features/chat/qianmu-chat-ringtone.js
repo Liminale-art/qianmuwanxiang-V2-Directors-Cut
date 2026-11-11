@@ -17,18 +17,19 @@ const PRESET_ROWS = [
   ['chiikawa', 'chiikawa-usagi', 'usagi', 'mp3'], ['chiikawa', 'chiikawa-usagi-2', 'usagi 2', 'mp3'], ['chiikawa', 'chiikawa-car-honk', 'car honk', 'mp3'],
   ['其他', 'bubble-pop', 'Q 弹气泡', 'mp3'], ['其他', 'mario-coin', 'mario coin', 'mp3'], ['其他', 'bowl-432hz', '432Hz 钵', 'mp3'],
   ['其他', 'christmas-chimes', 'christmas chimes', 'mp3'], ['其他', 'jingle-bells', 'jingle bells', 'mp3'],
-  ['其他', 'get-deluxe-item', 'Get Deluxe Item', 'flac'], ['其他', 'interact-sound', 'Interact Sound', 'flac'],
+  ['其他', 'crisp-droplet-echo', '清脆回响水滴', 'mp3'], ['其他', 'crisp-wind-chime', '清脆风铃', 'mp3'],
 ];
 export const RINGTONE_PRESETS = Object.freeze(PRESET_ROWS.map(([group, id, label, ext]) =>
   Object.freeze({ group, id, label, url: new URL(`../../assets/ringtones/${id}.${ext}`, import.meta.url).href })));
 export const RINGTONE_TAB_ICONS = Object.freeze([1, 2].map(n => new URL(`../../assets/tab-icons/doro-${n}.ico`, import.meta.url).href));
-export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024, iconInputBytes: 4 * 1024 * 1024, iconSize: 64, iconDataChars: 96 * 1024, flashText: 12, url: 2048 });
+export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024, localSoundCount: 20, iconInputBytes: 4 * 1024 * 1024, iconSize: 64, iconDataChars: 96 * 1024, flashText: 12, url: 2048 });
 export const RINGTONE_DEFAULTS = Object.freeze({
-  soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localName: '', localSize: 0,
+  soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '新消息', iconSource: 'builtin', customIcons: [],
 });
 const SOURCES = ['builtin', 'url', 'local'];
 const isIconData = value => typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= RINGTONE_LIMITS.iconDataChars;
+const isLocalId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 
 /** Repairs the stored settings in place so the toolkit and the event path read one shape. */
 export function normalizeRingtone(owner) {
@@ -38,8 +39,23 @@ export function normalizeRingtone(owner) {
   if (!SOURCES.includes(next.soundSource)) next.soundSource = 'builtin';
   if (!RINGTONE_PRESETS.some(item => item.id === next.soundPreset)) next.soundPreset = RINGTONE_DEFAULTS.soundPreset;
   next.soundUrl = typeof next.soundUrl === 'string' ? next.soundUrl.trim().slice(0, RINGTONE_LIMITS.url) : '';
-  next.localName = typeof next.localName === 'string' ? next.localName.slice(0, 120) : '';
-  next.localSize = Number.isFinite(Number(next.localSize)) ? Math.max(0, Math.round(Number(next.localSize))) : 0;
+  // Multi-record local library: each entry is { id, name, size }. Migrate the legacy single local sound (keyed 'message').
+  let sounds = Array.isArray(next.localSounds) ? next.localSounds : [];
+  sounds = sounds.filter(item => item && typeof item === 'object' && isLocalId(item.id)).slice(0, RINGTONE_LIMITS.localSoundCount).map(item => ({
+    id: item.id,
+    name: typeof item.name === 'string' && item.name.trim() ? item.name.slice(0, 120) : '本地铃声',
+    size: Number.isFinite(Number(item.size)) ? Math.max(0, Math.round(Number(item.size))) : 0,
+  }));
+  if (!sounds.length && typeof raw.localName === 'string' && raw.localName.trim()) {
+    sounds = [{ id: 'message', name: raw.localName.slice(0, 120), size: Number.isFinite(Number(raw.localSize)) ? Math.max(0, Math.round(Number(raw.localSize))) : 0 }];
+  }
+  // Drop duplicate ids, keeping the first occurrence.
+  const seen = new Set();
+  next.localSounds = sounds.filter(item => (seen.has(item.id) ? false : (seen.add(item.id), true)));
+  next.localId = isLocalId(next.localId) && next.localSounds.some(item => item.id === next.localId)
+    ? next.localId
+    : (next.localSounds[0]?.id || '');
+  delete next.localName; delete next.localSize;
   const volume = Number(next.volume);
   next.volume = Number.isFinite(volume) ? Math.min(100, Math.max(0, Math.round(volume))) : RINGTONE_DEFAULTS.volume;
   next.flashText = typeof next.flashText === 'string' ? [...next.flashText.trim()].slice(0, RINGTONE_LIMITS.flashText).join('') : RINGTONE_DEFAULTS.flashText;
@@ -146,9 +162,9 @@ export function createLocalSoundStore({ indexedDB = globalThis.indexedDB, resolv
     } finally { db.close(); }
   }
   return Object.freeze({
-    get: () => withStore('readonly', (store, done) => { const request = store.get('message'); request.onsuccess = () => done(request.result || null); }),
-    put: blob => withStore('readwrite', store => { store.put(blob, 'message'); }),
-    clear: () => withStore('readwrite', store => { store.delete('message'); }),
+    get: id => withStore('readonly', (store, done) => { const request = store.get(String(id)); request.onsuccess = () => done(request.result || null); }),
+    put: (id, blob) => withStore('readwrite', store => { store.put(blob, String(id)); }),
+    delete: id => withStore('readwrite', store => { store.delete(String(id)); }),
   });
 }
 
@@ -176,33 +192,43 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.485'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
-  const player = createRingPlayer({ Audio, onChange: () => refresh() });
+  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.486'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  const player = createRingPlayer({ Audio, onChange: () => syncPlaying() });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
-  let armed = false, lastRing = 0, localUrl = '', localLoading = null, mounted = null, disposed = false, listening = false;
+  let armed = false, lastRing = 0, mounted = null, disposed = false, listening = false, localSeq = 0;
+  const localUrls = new Map(); // id -> object URL cache for this session
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
+  // Preview playback toggles fire pause/ended events; updating only the preview
+  // button (instead of a full re-render) keeps an open <select> from snapping shut.
+  const syncPlaying = () => { if (mounted?.view?.syncPlaying) mounted.view.syncPlaying(player.playing()); else refresh(); };
   function update(patch) {
     Object.assign(state(), patch);
     normalizeRingtone(getOwner());
     save(); refresh();
   }
-  async function localSource() {
-    if (localUrl) return localUrl;
-    localLoading ||= store.get().then(blob => {
-      if (disposed || !blob) return '';
-      localUrl = URLClass.createObjectURL(blob);
-      return localUrl;
-    }).finally(() => { localLoading = null; });
-    return localLoading;
+  const newLocalId = () => `l${now().toString(36)}${(localSeq++).toString(36)}`;
+  async function localSource(id) {
+    if (!id) return '';
+    if (localUrls.has(id)) return localUrls.get(id);
+    const blob = await store.get(id).catch(() => null);
+    if (disposed || !blob) return '';
+    const url = URLClass.createObjectURL(blob);
+    localUrls.set(id, url);
+    return url;
   }
-  function dropLocalUrl() { if (localUrl) { player.stop(); URLClass.revokeObjectURL(localUrl); localUrl = ''; } }
+  function dropLocalUrl(id) {
+    if (id) { const url = localUrls.get(id); if (url) { URLClass.revokeObjectURL(url); localUrls.delete(id); } return; }
+    player.stop();
+    for (const url of localUrls.values()) URLClass.revokeObjectURL(url);
+    localUrls.clear();
+  }
   async function soundSource(s = state()) {
     if (s.soundSource === 'url') return safeSoundUrl(s.soundUrl);
-    if (s.soundSource === 'local') return s.localName ? localSource().catch(() => '') : '';
+    if (s.soundSource === 'local') return s.localId ? localSource(s.localId).catch(() => '') : '';
     return (RINGTONE_PRESETS.find(item => item.id === s.soundPreset) || RINGTONE_PRESETS[0]).url;
   }
   const iconFrames = (s = state()) => {
@@ -249,12 +275,12 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     update,
     playing: () => player.playing(),
     async preview() {
-      if (player.playing()) { player.stop(); refresh(); return; }
+      if (player.playing()) { player.stop(); syncPlaying(); return; }
       const s = state(), url = await soundSource(s);
       if (!url) { notify(s.soundSource === 'url' ? '请先填写以 http(s) 开头的音频链接。' : '请先选择本地音频文件。', 'warning'); return; }
       const ok = await player.play(url, s.volume);
       if (!ok && player.source() === url && !player.playing()) notify('铃声无法播放，请检查音频地址、格式或浏览器媒体权限。', 'warning');
-      refresh();
+      syncPlaying();
     },
     setVolume(value, commit = false) {
       const s = state(); s.volume = value; normalizeRingtone(getOwner());
@@ -267,12 +293,24 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       if (file.type && !/^audio\//i.test(file.type)) throw new Error('请选择音频文件');
       const probe = file.type && document.createElement?.('audio');
       if (probe?.canPlayType && !probe.canPlayType(file.type)) throw new Error('当前浏览器不支持这种音频格式，请转成 MP3 后再选');
-      await store.put(file);
-      dropLocalUrl();
-      update({ soundSource: 'local', localName: String(file.name || '本地铃声'), localSize: file.size });
+      const existing = state().localSounds;
+      if (existing.length >= RINGTONE_LIMITS.localSoundCount) throw new Error(`本地铃声最多保存 ${RINGTONE_LIMITS.localSoundCount} 个，请先移除一些`);
+      const id = newLocalId();
+      await store.put(id, file);
+      const entry = { id, name: String(file.name || '本地铃声'), size: file.size };
+      update({ soundSource: 'local', localSounds: [...existing, entry], localId: id });
       notify('本地铃声已保存在此浏览器。', 'success');
     },
-    async clearLocal() { await store.clear(); dropLocalUrl(); update({ localName: '', localSize: 0 }); },
+    selectLocal(id) { if (state().localSounds.some(item => item.id === id)) update({ localId: id }); },
+    async clearLocal(id) {
+      const s = state();
+      const target = id || s.localId;
+      if (!target) return;
+      await store.delete(target).catch(() => {});
+      dropLocalUrl(target);
+      const remaining = s.localSounds.filter(item => item.id !== target);
+      update({ localSounds: remaining, localId: remaining[0]?.id || '' });
+    },
     async pickIcon(slot, file) {
       const data = await imageToFavicon(file, { document, URL: URLClass });
       const icons = [...state().customIcons]; icons[slot === 1 ? 1 : 0] = data;

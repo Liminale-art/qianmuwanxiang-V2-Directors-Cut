@@ -30,11 +30,13 @@
 | `.claude/` | 1 |
 | `assets/focus-sounds/` | 8 |
 | `assets/logos/` | 5 |
+| `assets/ringtones/` | 49 |
+| `assets/tab-icons/` | 2 |
 | `evaluation/` | 2 |
-| `features/` | 185 |
+| `features/` | 187 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 964 |
+| `tests/` | 965 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |

@@ -814,31 +814,62 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-prose-checks { display: grid; grid-template-columns: .82fr 1.45fr .88fr; gap: 8px; }
 #story-director-floor-nav .sd-prose-checks label { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 0 10px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: inherit; }
 #story-director-floor-nav .sd-prose-checks input { accent-color: var(--sd-accent); }
-/* 聊天工具包 · 铃声 */
+/* 聊天工具包 · 通知 */
 #story-director-floor-nav [data-floor-view="ring"] { gap: 10px; }
 #story-director-floor-nav .qm-ring-card { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 12px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); }
 #story-director-floor-nav .qm-ring-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 #story-director-floor-nav .qm-ring-head h4 { margin: 0; color: var(--sd-text); font-size: var(--qm-type-label); font-weight: 600; }
-#story-director-floor-nav .qm-ring-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--sd-text); font-size: var(--qm-type-caption); cursor: pointer; }
-#story-director-floor-nav .qm-ring-switch { color: var(--sd-muted); }
-#story-director-floor-nav .qm-ring-toggle input { margin: 0; accent-color: var(--sd-accent); }
+/* 胶囊开关 */
+#story-director-floor-nav .qm-ring-cap { display: inline-flex; align-items: center; gap: 8px; color: var(--sd-text); font-size: var(--qm-type-caption); cursor: pointer; }
+#story-director-floor-nav .qm-ring-cap-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+#story-director-floor-nav .qm-ring-cap-track { position: relative; flex: 0 0 auto; width: 40px; height: 22px; border-radius: 999px; background: var(--sd-glass-weak); border: 1px solid var(--sd-border); transition: background .18s ease, border-color .18s ease; }
+#story-director-floor-nav .qm-ring-cap-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--sd-muted); box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .18s ease, background .18s ease; }
+#story-director-floor-nav .qm-ring-cap-input:checked + .qm-ring-cap-track { background: var(--sd-primary); border-color: transparent; }
+#story-director-floor-nav .qm-ring-cap-input:checked + .qm-ring-cap-track .qm-ring-cap-knob { transform: translateX(18px); background: var(--sd-primary-text, #fff); }
+#story-director-floor-nav .qm-ring-cap-input:focus-visible + .qm-ring-cap-track { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
+#story-director-floor-nav .qm-ring-cap-label { min-width: 0; }
 #story-director-floor-nav .qm-ring-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); }
 #story-director-floor-nav .qm-ring-sources button { min-height: 30px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-ring-sources button.is-active { background: var(--sd-card); color: var(--sd-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
 #story-director-floor-nav .qm-ring-source-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-#story-director-floor-nav .qm-ring-source-row :is(select, input:not([type="file"])) { flex: 1 1 auto; }
-#story-director-floor-nav .qm-ring-local-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-muted); font-size: var(--qm-type-caption); }
-#story-director-floor-nav [data-floor-view="ring"] :is(select, input[type="url"], input:not([type])), #story-director-floor-nav [data-floor-view="ring"] .qm-ring-flash-text { box-sizing: border-box; min-width: 0; min-height: 34px; padding: 6px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
-#story-director-floor-nav [data-floor-view="ring"] button:not(.qm-ring-sources button) { flex: 0 0 auto; min-height: 34px; padding: 0 12px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: var(--qm-type-caption); white-space: nowrap; }
-#story-director-floor-nav [data-floor-view="ring"] .qm-ring-preview { border-color: transparent; background: var(--sd-primary); color: var(--sd-primary-text); }
+#story-director-floor-nav .qm-ring-source-row > .qm-ring-preset, #story-director-floor-nav .qm-ring-source-row > .qm-ring-picker, #story-director-floor-nav .qm-ring-source-row > .qm-ring-url { flex: 1 1 auto; min-width: 0; }
+#story-director-floor-nav [data-floor-view="ring"] :is(select, input[type="url"]), #story-director-floor-nav [data-floor-view="ring"] .qm-ring-flash-text { box-sizing: border-box; min-width: 0; min-height: 34px; padding: 6px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
+/* 自绘下拉按钮（内置/本地选择） */
+#story-director-floor-nav .qm-ring-picker { display: flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: 34px; padding: 6px 12px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font-size: var(--qm-type-body); text-align: left; overflow: hidden; }
+#story-director-floor-nav .qm-ring-picker > span, #story-director-floor-nav .qm-ring-picker { white-space: nowrap; text-overflow: ellipsis; }
+#story-director-floor-nav .qm-ring-picker i { flex: 0 0 auto; font-size: 11px; color: var(--sd-muted); }
+/* 小图标按钮（参照音色库 sd-icon-btn） */
+#story-director-floor-nav .qm-ring-iconbtn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 34px; height: 34px; padding: 0; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; }
+#story-director-floor-nav .qm-ring-iconbtn:hover:not(:disabled) { filter: brightness(1.08); }
+#story-director-floor-nav .qm-ring-iconbtn i { font-size: 13px; }
+#story-director-floor-nav .qm-ring-preview { border-color: transparent; background: var(--sd-primary); color: var(--sd-primary-text); }
+/* PC 用原生 select（内置源），隐藏内置源的自绘按钮；移动端相反。本地源始终用自绘选择器 */
+#story-director-floor-nav .qm-ring-picker-builtin { display: none; }
 #story-director-floor-nav .qm-ring-volume, #story-director-floor-nav .qm-ring-field { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 9px; color: var(--sd-text); font-size: var(--qm-type-label); }
-#story-director-floor-nav .qm-ring-field { grid-template-columns: 64px minmax(0, 1fr); }
 #story-director-floor-nav .qm-ring-volume input { width: 100%; min-width: 0; accent-color: var(--sd-accent); }
 #story-director-floor-nav .qm-ring-volume output { min-width: 3.2em; color: var(--sd-muted); font-size: var(--qm-type-caption); text-align: right; font-variant-numeric: tabular-nums; }
-#story-director-floor-nav .qm-ring-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-#story-director-floor-nav .qm-ring-icon { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); }
-#story-director-floor-nav .qm-ring-icon img { width: 32px; height: 32px; flex: 0 0 32px; object-fit: contain; image-rendering: auto; }
+/* 两个圆形可点图标 */
+#story-director-floor-nav .qm-ring-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; justify-items: center; }
+#story-director-floor-nav .qm-ring-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 58px; height: 58px; padding: 0; border: 1px dashed var(--sd-border); border-radius: 50%; background: var(--sd-glass-weak); cursor: pointer; overflow: hidden; }
+#story-director-floor-nav .qm-ring-icon img { width: 40px; height: 40px; object-fit: contain; image-rendering: auto; border-radius: 50%; }
+#story-director-floor-nav .qm-ring-icon i { position: absolute; right: 3px; bottom: 3px; font-size: 10px; color: var(--sd-primary-text, #fff); background: var(--sd-primary); width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: .92; }
+#story-director-floor-nav .qm-ring-icon.is-empty { border-style: dashed; color: var(--sd-muted); }
 #story-director-floor-nav .qm-ring-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+#story-director-floor-nav .qm-ring-tools button { min-height: 32px; padding: 0 12px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: var(--qm-type-caption); }
+/* 移动端底部弹层分组选择器 */
+#story-director-floor-nav .qm-ring-sheet { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.4); animation: qm-ring-fade .16s ease; }
+#story-director-floor-nav .qm-ring-sheet-panel { width: 100%; max-width: 460px; max-height: 70vh; display: flex; flex-direction: column; border-radius: 16px 16px 0 0; background: var(--sd-card); border: 1px solid var(--sd-hairline); animation: qm-ring-rise .2s ease; }
+#story-director-floor-nav .qm-ring-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--sd-hairline); }
+#story-director-floor-nav .qm-ring-sheet-head h4 { margin: 0; font-size: var(--qm-type-label); color: var(--sd-text); }
+#story-director-floor-nav .qm-ring-sheet-body { overflow-y: auto; padding: 8px 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+#story-director-floor-nav .qm-ring-sheet-group { padding: 10px 6px 4px; font-size: var(--qm-type-caption); color: var(--sd-muted); font-weight: 600; }
+#story-director-floor-nav .qm-ring-sheet-item { display: flex; align-items: center; gap: 6px; }
+#story-director-floor-nav .qm-ring-sheet-pick { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--sd-text); font-size: var(--qm-type-body); text-align: left; }
+#story-director-floor-nav .qm-ring-sheet-item.is-active .qm-ring-sheet-pick { background: var(--sd-glass-weak); color: var(--sd-primary); font-weight: 600; }
+#story-director-floor-nav .qm-ring-sheet-del { flex: 0 0 auto; width: 34px; height: 34px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); }
+#story-director-floor-nav .qm-ring-sheet-empty { margin: 0; padding: 18px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
+@keyframes qm-ring-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qm-ring-rise { from { transform: translateY(12px); } to { transform: translateY(0); } }
 #story-director-floor-nav .qm-ring-note { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.5; }
 #story-director-floor-nav [data-floor-view="ring"] [hidden] { display: none !important; }
 .mes.sd-floor-jump-hit { animation: sd-floor-hit 1.8s ease !important; }
@@ -851,9 +882,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   #story-director-floor-nav .sd-prose-checks { grid-template-columns: .9fr 1.35fr .9fr; gap: 5px; }
   #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 5px; white-space: nowrap; }
   #story-director-floor-nav .qm-ring-card { padding: 10px; }
-  #story-director-floor-nav .qm-ring-source-row { flex-wrap: wrap; }
-  #story-director-floor-nav .qm-ring-source-row :is(select, input:not([type="file"]), .qm-ring-local-name) { flex-basis: 100%; }
-  #story-director-floor-nav .qm-ring-icons { grid-template-columns: 1fr; }
+  /* 移动端：原生 select 的分组弹窗观感差，换成自绘分组弹层；三个控件仍并排一行 */
+  #story-director-floor-nav .qm-ring-preset { display: none; }
+  #story-director-floor-nav .qm-ring-picker-builtin { display: flex; }
 }
 
 /* 富卡保留整条消息的原生宽度，正文只在各自的段落区域内套用排版。 */

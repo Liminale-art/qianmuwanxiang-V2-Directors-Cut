@@ -13,7 +13,7 @@ test('normalizeRingtone repairs a missing or malformed shape in place', () => {
   const owner = {};
   const value = normalizeRingtone(owner);
   assert.equal(owner.ringtone, value);
-  assert.deepEqual({ ...value }, { ...RINGTONE_DEFAULTS, customIcons: [] });
+  assert.deepEqual({ ...value }, { ...RINGTONE_DEFAULTS, customIcons: [], localSounds: [] });
   // Out-of-range and wrong-typed fields fall back to safe values.
   const dirty = { ringtone: { soundEnabled: 'yes', soundSource: 'ftp', soundPreset: 'nope', volume: 999, flashText: '一二三四五六七八九十甲乙丙', customIcons: ['x', 'data:image/png;base64,QQ=='] } };
   const fixed = normalizeRingtone(dirty);
@@ -23,6 +23,19 @@ test('normalizeRingtone repairs a missing or malformed shape in place', () => {
   assert.equal(fixed.volume, 100);
   assert.equal([...fixed.flashText].length, RINGTONE_LIMITS.flashText);
   assert.deepEqual(fixed.customIcons, ['', 'data:image/png;base64,QQ==']);
+});
+
+test('normalizeRingtone migrates the legacy single local sound into the multi-record library', () => {
+  const legacy = normalizeRingtone({ ringtone: { soundSource: 'local', localName: '旧铃声.mp3', localSize: 2048 } });
+  assert.equal(legacy.localSounds.length, 1);
+  assert.equal(legacy.localSounds[0].id, 'message');
+  assert.equal(legacy.localSounds[0].name, '旧铃声.mp3');
+  assert.equal(legacy.localId, 'message');
+  assert.ok(!('localName' in legacy) && !('localSize' in legacy));
+  // Bad ids and duplicates are dropped; localId falls back to the first valid entry.
+  const multi = normalizeRingtone({ ringtone: { localSounds: [{ id: 'bad id!' }, { id: 'a1', name: 'A', size: 1 }, { id: 'a1', name: 'dup' }, { id: 'b2', name: 'B' }], localId: 'zzz' } });
+  assert.deepEqual(multi.localSounds.map(i => i.id), ['a1', 'b2']);
+  assert.equal(multi.localId, 'a1');
 });
 
 test('safeSoundUrl only accepts http(s) URLs', () => {
@@ -186,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.485'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.486'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Four-tab navigation with the ring tab.
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -200,8 +213,14 @@ test('index.js wires the ringtone tab, whitelist and events', async () => {
   assert.ok(entry.includes('chatRingtone.unmount();'));
 });
 
-test('tab labels read 跳层/排版/备份/铃声', async () => {
+test('tab labels read 跳层/排版/备份/通知', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  const order = ['跳层', '排版', '备份', '铃声'].map(label => entry.indexOf(label));
+  const order = ['跳层', '排版', '备份', '通知'].map(label => entry.indexOf(label));
   assert.ok(order.every(i => i >= 0), '四个页签文案齐全');
+});
+
+test('the deprecated presets are gone and the two new ringtones are present', () => {
+  const ids = new Set(RINGTONE_PRESETS.map(p => p.id));
+  assert.ok(!ids.has('get-deluxe-item') && !ids.has('interact-sound'), '已移除旧铃声');
+  assert.ok(ids.has('crisp-droplet-echo') && ids.has('crisp-wind-chime'), '已加入两个新铃声');
 });
