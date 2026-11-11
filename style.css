@@ -813,9 +813,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-prose-control input[type="range"] { width: 100%; min-width: 0; accent-color: var(--sd-accent); }
 #story-director-floor-nav .sd-prose-control input[type="number"] { width: 100%; min-width: 0; box-sizing: border-box; padding: 6px 5px; border: 0; border-bottom: 1px solid var(--sd-hairline); border-radius: 7px 7px 2px 2px; outline: 0; background: var(--sd-input-bg); color: inherit; text-align: center; font-variant-numeric: tabular-nums; }
 #story-director-floor-nav .sd-prose-control small { color: var(--sd-muted); font-size: var(--qm-type-caption); text-align: left; }
-#story-director-floor-nav .sd-prose-checks { display: grid; grid-template-columns: .82fr 1.45fr .88fr; gap: 8px; }
-#story-director-floor-nav .sd-prose-checks label { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 0 10px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: inherit; }
-#story-director-floor-nav .sd-prose-checks input { accent-color: var(--sd-accent); }
+#story-director-floor-nav .sd-prose-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+#story-director-floor-nav .sd-prose-checks label { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 42px; padding: 0 12px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: inherit; white-space: nowrap; }
+#story-director-floor-nav .sd-prose-checks input { accent-color: var(--sd-accent); flex: 0 0 auto; }
 /* 聊天工具包 · 通知 */
 #story-director-floor-nav [data-floor-view="ring"] { gap: 10px; }
 #story-director-floor-nav .qm-ring-card { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 12px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); }
@@ -885,11 +885,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 
 /* 通知 · ST 提示框美化：只按 <html data-qm-toast> 换皮，不监听、不改写 toastr；移除属性即还原 ST 原样 */
 /* 容器统一铺满视口做定位层：纵向由 justify-content 决定上/中/下，横向由 align-items 居中；
-   避免依赖 left/right/width 的居中算法与 ST 的 margin-top，彻底解决窄屏/移动端偏差 */
-html[data-qm-toast] body #toast-container { inset: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; width: auto !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: calc(var(--topBarBlockSize, 44px) + 8px) 12px calc(var(--bottomFormBlockSize, 44px) + 16px) !important; transform: none !important; display: flex !important; flex-direction: column; align-items: center; pointer-events: none; }
-html[data-qm-toast="top"] body #toast-container { justify-content: flex-start !important; }
-html[data-qm-toast="bottom"] body #toast-container { justify-content: flex-end !important; }
-html[data-qm-toast="middle"] body #toast-container { justify-content: center !important; }
+   避免依赖 left/right/width 的居中算法与 ST 的 margin-top，彻底解决窄屏/移动端偏差。
+   仅限 body 直系子节点：弹窗打开时 ST 会把通知容器搬进 <dialog>（带 transform 动画），
+   届时本定位层自动失效、交回 ST 弹窗内的原生定位规则，提示框不再闪到弹窗位置。 */
+html[data-qm-toast] body > #toast-container { inset: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; width: auto !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: calc(var(--topBarBlockSize, 44px) + 8px) 12px calc(var(--bottomFormBlockSize, 44px) + 16px) !important; transform: none !important; display: flex !important; flex-direction: column; align-items: center; pointer-events: none; }
+html[data-qm-toast="top"] body > #toast-container { justify-content: flex-start !important; }
+html[data-qm-toast="bottom"] body > #toast-container { justify-content: flex-end !important; }
+html[data-qm-toast="middle"] body > #toast-container { justify-content: center !important; }
 html[data-qm-toast] body #toast-container > div {
   --qm-toast-accent: #4f8fa6;
   pointer-events: auto; width: min(440px, 100%) !important; max-width: 100% !important; margin: 0 0 8px !important; padding: 11px 14px 11px 34px !important;
@@ -920,8 +922,8 @@ html[data-qm-toast] body #toast-container > div .toast-progress { height: 3px; b
   #story-director-floor-nav .sd-floor-shell { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   #story-director-floor-nav .sd-floor-panel { padding: 15px; border-radius: 18px; }
   #story-director-floor-nav .sd-prose-control { grid-template-columns: 56px minmax(70px, 1fr) 58px 24px; gap: 6px; padding-inline: 8px; }
-  #story-director-floor-nav .sd-prose-checks { grid-template-columns: .9fr 1.35fr .9fr; gap: 5px; }
-  #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 5px; white-space: nowrap; }
+  #story-director-floor-nav .sd-prose-checks { gap: 5px; }
+  #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 9px; }
   #story-director-floor-nav .qm-ring-card { padding: 10px; }
   /* 移动端：原生 select 的分组弹窗观感差，换成自绘分组弹层；三个控件仍并排一行 */
   #story-director-floor-nav .qm-ring-preset { display: none; }
