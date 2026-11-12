@@ -457,7 +457,7 @@ test('停留时间 / 堆叠数量 use a horizontal wheel: centre is the pick, si
   const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
   assert.ok(view.includes("wheel('停留时间', actions.toastDurations") && view.includes("wheel('堆叠数量', actions.toastStacks"), '两项都改为滚轮');
   assert.ok(!view.includes('qm-ring-stack-input') && !view.includes("stack.type = 'number'"), '旧数字输入已移除');
-  assert.ok(view.includes("addEventListener('scrollend', settle)") && view.includes('if (!touching) commit(nearest())'), '停稳后才提交，手指按着不提交');
+  assert.ok(view.includes("addEventListener('scrollend', settle)") && view.includes('if (!touching) { commit(nearest()); relayout(); }'), '停稳后才提交，手指按着不提交');
   assert.ok(view.includes("strip.setAttribute('role', 'radiogroup')"), '滚轮条保留 radiogroup 语义');
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(/\.qm-ring-wheel-strip \{[^}]*scroll-snap-type: x mandatory[^}]*mask-image: linear-gradient\(90deg, transparent/.test(css), '吸附居中、两侧渐隐');
@@ -497,7 +497,8 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   assert.deepEqual(updates, [], '手指还按着时不提交');
   stack.listeners.touchend(); stack.listeners.scrollend();
   assert.deepEqual(updates, [{ toastStack: 6 }], '停在中间指针处的即为选择');
-  assert.ok(stack.children[5].classList.contains('is-center') && stack.children[5].attrs['aria-checked'] === 'true');
+  const centred = stack.children.find(c => c.attrs['aria-checked'] === 'true');
+  assert.ok(centred && centred.classList.contains('is-center') && centred.dataset.value === '6', '居中项高亮且语义选中');
   stack.listeners.keydown({ key: 'ArrowLeft', preventDefault() {} });
   assert.deepEqual(updates.at(-1), { toastStack: 5 }, '方向键逐项选择');
   const duration = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
@@ -523,6 +524,72 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   dur0.children[3].listeners.click(); // the click that fires right after a drag must be swallowed
   assert.equal(updates.length, before, '真实拖动后紧随的点击不误选');
   view.dispose();
+});
+
+test('wheel picker renders head/tail copies and snaps a copy-centre back to the real band seamlessly', async () => {
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  assert.ok(view.includes('const loop = n > 2;'), '项数>2 才做循环复制');
+  assert.ok(/if \(loop\) options\.forEach\(opt => makeItem\(opt, false\)\);[\s\S]*const items = options\.map\(opt => makeItem\(opt, true\)\);[\s\S]*if \(loop\) options\.forEach\(opt => makeItem\(opt, false\)\);/.test(view), '前后各一份副本夹住本体');
+  assert.ok(view.includes("node.classList.add('is-copy')") && view.includes("node.setAttribute('aria-hidden', 'true')"), '副本标记 is-copy 且 aria-hidden');
+  assert.ok(view.includes('if (child >= n && child < 2 * n) return;') && view.includes('strip.scrollLeft = real.offsetLeft'), '落在副本区则无动画跳回本体同值');
+
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  const nodes = [];
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', isConnected: true, style: { setProperty() {}, removeProperty() {} },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on) this.set.add(c); else this.set.delete(c); } },
+      append(...kids) { this.children.push(...kids); }, appendChild(kid) { this.children.push(kid); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      querySelector() { return null; }, contains() { return false; }, closest() { return null; }, scrollTo({ left }) { this.scrollLeft = left; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    nodes.push(node); return node;
+  };
+  const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
+  const updates = [];
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+    toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: patch => { updates.push(patch); } };
+  const v = mountChatRingtoneView({ root: host, actions });
+  v.render(normalizeRingtone({}));
+  const dur = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
+  const n = TOAST_DURATIONS.length;
+  assert.equal(dur.children.length, 3 * n, '渲染三份（前副本+本体+后副本）');
+  const copies = dur.children.filter(c => c.classList.contains('is-copy'));
+  assert.equal(copies.length, 2 * n, '两侧均为 aria-hidden 副本');
+  assert.ok(copies.every(c => c.attrs['aria-hidden'] === 'true'), '副本一律 aria-hidden');
+  // Lay out: 46px items at 46px pitch, 230px track. Land the centre on a tail copy (child index 2n+1),
+  // settle must jump scrollLeft so the real item n+1 sits under the pointer.
+  dur.clientWidth = 230;
+  dur.children.forEach((item, i) => { item.offsetWidth = 46; item.offsetLeft = i * 46; });
+  const copyChild = 2 * n + 1; // second item of the trailing copy band
+  dur.scrollLeft = copyChild * 46 - (230 - 46) / 2;
+  dur.listeners.scrollend();
+  const realChild = n + 1;
+  assert.equal(dur.scrollLeft, realChild * 46 - (230 - 46) / 2, '停在副本上则瞬移回本体同值项，无动画');
+  assert.deepEqual(updates.at(-1), { toastDuration: TOAST_DURATIONS[1][0] }, '提交的是真实下标对应值');
+  v.dispose();
+});
+
+test('wheel picker with too few values keeps a plain strip (no copies)', async () => {
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  const nodes = [];
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', isConnected: true, style: { setProperty() {}, removeProperty() {} },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on) this.set.add(c); else this.set.delete(c); } },
+      append(...kids) { this.children.push(...kids); }, appendChild(kid) { this.children.push(kid); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      querySelector() { return null; }, contains() { return false; }, closest() { return null; }, scrollTo({ left }) { this.scrollLeft = left; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    nodes.push(node); return node;
+  };
+  const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+    toastDurations: [[1, '1s'], [2, '2s']], toastStacks: TOAST_STACKS, update() {} };
+  const v = mountChatRingtoneView({ root: host, actions });
+  v.render(normalizeRingtone({}));
+  const dur = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
+  assert.equal(dur.children.length, 2, '两项时不复制，保持原样');
+  assert.ok(!dur.children.some(c => c.classList.contains('is-copy')), '无副本');
+  v.dispose();
 });
 
 test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice then expand glitch once', async () => {

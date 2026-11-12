@@ -226,21 +226,44 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const frame = el('div', 'qm-ring-wheel');
     // The key class comes first: render() restores focus by the first class name.
     const strip = el('div', `qm-ring-wheel-${key} qm-ring-wheel-strip`); strip.setAttribute('role', 'radiogroup'); strip.setAttribute('aria-label', `提示框${label}`); strip.tabIndex = 0;
-    const items = options.map(([value, text]) => {
+    const n = options.length;
+    const loop = n > 2; // too few values to copy convincingly: keep a plain strip
+    const makeItem = ([value, text], real) => {
       const node = el('button', 'qm-ring-wheel-item', text); node.type = 'button'; node.tabIndex = -1;
       node.setAttribute('role', 'radio'); node.dataset.value = String(value);
+      if (!real) { node.classList.add('is-copy'); node.setAttribute('aria-hidden', 'true'); }
       strip.append(node); return node;
-    });
+    };
+    // Seamless loop: flank the real strip with head/tail copies; once a settle lands the centre on a
+    // copy, jump scrollLeft by one full set so the identical real value sits under the pointer (no motion).
+    if (loop) options.forEach(opt => makeItem(opt, false));
+    const items = options.map(opt => makeItem(opt, true));
+    if (loop) options.forEach(opt => makeItem(opt, false));
     let index = Math.max(0, options.findIndex(([value]) => value === current)), touching = false, quiet = 0;
-    const n = options.length;
     const wrap = i => ((i % n) + n) % n; // head-tail cyclic: stepping past either end lands on the other
-    const mark = at => items.forEach((node, i) => { node.classList.toggle('is-center', i === at); node.setAttribute('aria-checked', String(i === at)); });
+    const nearestChild = () => {
+      const middle = strip.scrollLeft + strip.clientWidth / 2;
+      const kids = loop ? strip.children : items;
+      let best = 0, gap = Infinity;
+      kids.forEach((node, i) => { const d = Math.abs(node.offsetLeft + node.offsetWidth / 2 - middle); if (d < gap) { gap = d; best = i; } });
+      return best;
+    };
+    // When a settle rests the pointer over a head/tail copy, jump scrollLeft by one full set so the
+    // identical real value sits under the pointer — no animation, so the loop reads as seamless.
+    const relayout = () => {
+      if (!loop || !strip.clientWidth) return;
+      const child = nearestChild();
+      if (child >= n && child < 2 * n) return; // already on the real middle band
+      const real = items[child % n]; if (!real) return;
+      strip.scrollLeft = real.offsetLeft - (strip.clientWidth - real.offsetWidth) / 2;
+    };
+    const mark = at => {
+      items.forEach((node, i) => { node.classList.toggle('is-center', i === at); node.setAttribute('aria-checked', String(i === at)); });
+      if (loop) for (const node of strip.children) node.classList.toggle('is-center', Number(node.dataset.value) === options[at]?.[0]);
+    };
     const nearest = () => {
       if (!strip.clientWidth) return index; // not laid out yet: keep the saved value
-      const middle = strip.scrollLeft + strip.clientWidth / 2;
-      let best = index, gap = Infinity;
-      items.forEach((node, i) => { const d = Math.abs(node.offsetLeft + node.offsetWidth / 2 - middle); if (d < gap) { gap = d; best = i; } });
-      return best;
+      return loop ? nearestChild() % n : nearestChild();
     };
     const centre = (at, smooth) => {
       const node = items[at]; if (!node) return;
@@ -252,7 +275,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       index = at; mark(at);
       if (options[at][0] !== current) run(() => actions.update({ [key]: options[at][0] }));
     };
-    const settle = () => { clearTimeout(quiet); quiet = 0; if (!touching) commit(nearest()); };
+    const settle = () => { clearTimeout(quiet); quiet = 0; if (!touching) { commit(nearest()); relayout(); } };
     strip.addEventListener('scroll', () => { mark(nearest()); clearTimeout(quiet); quiet = setTimeout(settle, 160); }, { passive: true });
     strip.addEventListener('scrollend', settle);
     // A browser-driven touch scroll fires pointercancel while the finger is still down, so touch is
@@ -297,7 +320,8 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key]; if (!step) return;
       event.preventDefault(); const at = wrap(index + step); centre(at, true); commit(at); // head-tail loop
     });
-    items.forEach((node, i) => node.addEventListener('click', () => { if (dragMoved) { dragMoved = false; return; } centre(i, true); commit(i); }));
+    const kids = loop ? strip.children : items;
+    kids.forEach((node, i) => node.addEventListener('click', () => { if (dragMoved) { dragMoved = false; return; } const at = loop ? i % n : i; centre(at, true); commit(at); relayout(); }));
     mark(index);
     afterRender.push(() => centre(index, false));
     frame.append(strip);
