@@ -605,13 +605,14 @@ test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice th
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(glow), '日间半透毛玻璃');
   assert.ok(glow.includes('--gw-edge: var(--qm-toast-status)'), '边沿辉光跟随提示状态色');
   assert.ok(glow.includes('--gw-soft: color-mix(in srgb, var(--gw-edge), white 45%)'), '柔光色比边线更亮');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*linear-gradient\(90deg, var\(--gw-edge\) 0 3px, transparent 3px, transparent calc\(100% - 3px\), var\(--gw-edge\) calc\(100% - 3px\)\)/.test(glow), '左右粗边线用同一 clip 切出的背景色条，不被斜切裁断');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div::after \{[^}]*inset: 0[^}]*clip-path: polygon\(0 100%, 10px 0, calc\(100% - 4px\) 0, 100% 0, calc\(100% - 10px\) 100%, calc\(100% - 14px\) 100%, calc\(100% - 4px\) 0, 14px 0, 4px 100%\)/.test(glow), '左右粗边线由 ::after 多边形画出，与卡片共用 10px 斜率，任意高度不被裁断');
+  assert.ok(!glow.includes('linear-gradient(90deg, var(--gw-edge) 0 3px'), '弃用被斜切裁成三角的竖直色条');
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*filter: drop-shadow\(0 0 4px color-mix\(in srgb, var\(--gw-soft\)/.test(glow), '边线外加柔光');
   assert.ok(!glow.includes('inset 3px 0 0 0 var(--gw-edge)'), '弃用被裁的 inset 边线');
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*transform-origin: left center/.test(glow), '从左向右展开');
   assert.ok(/animation: qm-toast-glow-expand 540ms cubic-bezier\(\.22, 1, \.36, 1\)[^!]*both !important/.test(glow) && /@keyframes qm-toast-glow-expand \{ 0% \{[^}]*scaleX\(\.04\)[^}]*\}[^@]*100% \{ transform: scaleX\(1\)/.test(css), '面板由左向右单段丝滑展开，仅进场一次');
   assert.ok(!css.includes('qm-toast-glow-glitch') && !/@keyframes qm-toast-glow-expand[^@]*translateX/.test(css), '去掉 glitch 抖动');
-  assert.ok(glow.includes('animation: qm-toast-glow-flash 180ms') && /@keyframes qm-toast-glow-flash \{[^@]*opacity: 1[^@]*opacity: 0[^@]*opacity: 1[^@]*opacity: 0/.test(css), '左边线进场前快闪两下（约 180ms）');
+  assert.ok(/::after \{[^}]*animation: qm-toast-glow-edge 540ms/.test(glow) && /@keyframes qm-toast-glow-edge \{[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1/.test(css) && !css.includes('qm-toast-glow-flash'), '边线进场先快闪两下再常亮');
   assert.ok(glow.includes('--gw-flash: linear-gradient(180deg, #e8f4ff, #9fd0ff)') && glow.includes('--gw-flash: linear-gradient(180deg, #a9bccf, #8fa3b8)'), '闪色日间白蓝、夜间灰蓝');
   assert.ok(/::before \{[^}]*background: color-mix\(in srgb, var\(--gw-edge\) 68%, white\)/.test(glow), '荧光小方块提亮');
   assert.ok(!css.includes('qm-toast-glow-sweep'), '弃用旧光带动画');
