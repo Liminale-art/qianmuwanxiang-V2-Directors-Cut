@@ -1,12 +1,14 @@
 // Notification tab of the chat toolkit: completion sound (built-in / link / local file), volume, background-tab flash,
 // and the ST notification skin.
 // Pure DOM over the actions handed in by qianmu-chat-ringtone.js; it stores nothing itself.
+// Built-in and local sounds use the phone-OS pattern: tapping a row in the list auditions and selects it at once,
+// so there is no separate preview button; the list is an in-panel sub-page reached by a back-arrow page switch.
 const SOURCE_LABELS = [['builtin', '内置'], ['url', '链接'], ['local', '本地']];
 const formatSize = bytes => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
   const document = root.ownerDocument;
-  let disposed = false, last = null, previewBtn = null, sheet = null;
+  let disposed = false, last = null, page = 'main';
   const run = async action => {
     try { await action(); } catch (error) { if (!disposed) notify(error?.message || '操作未完成，请重试。', 'warning'); }
   };
@@ -42,39 +44,59 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     return input;
   };
 
-  function closeSheet() { if (sheet) { sheet.remove(); sheet = null; } }
-  // One grouped bottom sheet for the mobile preset picker and the local-sound picker.
-  function openSheet({ title, groups, currentId, onPick, onDelete }) {
-    closeSheet();
-    const overlay = el('div', 'qm-ring-sheet'); sheet = overlay;
-    overlay.addEventListener('click', event => { if (event.target === overlay) closeSheet(); });
-    const panel = el('div', 'qm-ring-sheet-panel');
-    const head = el('div', 'qm-ring-sheet-head');
-    head.append(el('h4', '', title), iconButton('fa-xmark', '关闭', 'qm-ring-sheet-close', async () => closeSheet()));
-    panel.append(head);
-    const body = el('div', 'qm-ring-sheet-body');
-    if (!groups.length || groups.every(g => !g.items.length)) body.append(el('p', 'qm-ring-sheet-empty', '还没有可选项。'));
-    for (const group of groups) {
-      if (!group.items.length) continue;
-      if (group.label) body.append(el('div', 'qm-ring-sheet-group', group.label));
-      for (const item of group.items) {
-        const rowEl = el('div', `qm-ring-sheet-item${item.id === currentId ? ' is-active' : ''}`);
-        const pick = button(item.label, 'qm-ring-sheet-pick', async () => { closeSheet(); await onPick(item.id); });
-        if (item.id === currentId) pick.append(icon('fa-check'));
-        rowEl.append(pick);
-        if (onDelete) rowEl.append(iconButton('fa-trash', '删除', 'qm-ring-sheet-del', () => onDelete(item.id)));
-        body.append(rowEl);
-      }
-    }
-    panel.append(body); overlay.append(panel); root.append(overlay);
-  }
-
   const presetLabel = id => actions.presets.find(p => p.id === id)?.label || '选择铃声';
   const presetGroups = () => {
     const map = new Map();
     for (const p of actions.presets) { if (!map.has(p.group)) map.set(p.group, []); map.get(p.group).push({ id: p.id, label: p.label }); }
     return [...map].map(([label, items]) => ({ label, items }));
   };
+
+  function goMain() { actions.stopSound(); page = 'main'; render(last); }
+  function openList(kind) { page = kind; render(last); }
+
+  // Phone-OS style chooser: each row auditions + selects on tap; the filled radio marks the current pick.
+  // Selection persists without a re-render (actions.select*), so tapping never resets the list scroll.
+  function listPage({ title, groups, currentId, onPick, onDelete, headExtra = null }) {
+    const wrap = el('div', 'qm-ring-subpage');
+    const head = el('div', 'qm-ring-subhead');
+    head.append(iconButton('fa-arrow-left', '返回', 'qm-ring-back', async () => goMain()), el('h4', '', title));
+    if (headExtra) head.append(headExtra);
+    wrap.append(head);
+    const listEl = el('div', 'qm-ring-list'); listEl.setAttribute('role', 'radiogroup'); listEl.setAttribute('aria-label', title);
+    const items = [];
+    const paint = active => { for (const node of items) { const on = node.dataset.id === active; node.classList.toggle('is-active', on); node.setAttribute('aria-checked', String(on)); } };
+    for (const group of groups) {
+      if (!group.items.length) continue;
+      if (group.label) listEl.append(el('div', 'qm-ring-list-group', group.label));
+      for (const item of group.items) {
+        const rowEl = el('div', 'qm-ring-list-row');
+        const choose = el('button', `qm-ring-list-item${item.id === currentId ? ' is-active' : ''}`); choose.type = 'button';
+        choose.setAttribute('role', 'radio'); choose.setAttribute('aria-checked', String(item.id === currentId)); choose.dataset.id = item.id;
+        choose.append(el('span', 'qm-ring-list-name', item.label), el('span', 'qm-ring-radio'));
+        choose.addEventListener('click', () => run(async () => { await onPick(item.id); paint(item.id); }));
+        items.push(choose); rowEl.append(choose);
+        if (onDelete) rowEl.append(iconButton('fa-trash', '删除', 'qm-ring-list-del', () => onDelete(item.id)));
+        listEl.append(rowEl);
+      }
+    }
+    if (!items.length) listEl.append(el('p', 'qm-ring-list-empty', onDelete ? '还没有本地铃声，点右上角＋上传。' : '暂无可选项。'));
+    wrap.append(listEl);
+    return wrap;
+  }
+
+  function builtinListPage(s) {
+    return listPage({ title: '选择内置铃声', groups: presetGroups(), currentId: s.soundPreset, onPick: id => actions.selectPreset(id) });
+  }
+  function localListPage(s) {
+    const upload = filePicker('audio/*', file => actions.pickLocal(file));
+    const add = iconButton('fa-plus', '上传本地铃声', 'qm-ring-list-add', async () => upload.click());
+    add.append(upload);
+    return listPage({
+      title: '选择本地铃声', currentId: s.localId,
+      groups: [{ label: '', items: s.localSounds.map(item => ({ id: item.id, label: `${item.name} · ${formatSize(item.size)}` })) }],
+      onPick: id => actions.selectLocal(id), onDelete: id => actions.clearLocal(id), headExtra: add,
+    });
+  }
 
   function soundCard(s) {
     const card = el('section', 'qm-ring-card');
@@ -90,44 +112,22 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     card.append(sources);
     const row = el('div', 'qm-ring-source-row');
     if (s.soundSource === 'builtin') {
-      // PC keeps the native grouped select; mobile swaps to a custom grouped sheet (CSS toggles which shows).
-      const select = el('select', 'qm-ring-preset'); select.setAttribute('aria-label', '内置铃声');
-      const groups = new Map();
-      for (const preset of actions.presets) {
-        if (!groups.has(preset.group)) { const group = el('optgroup'); group.label = preset.group; groups.set(preset.group, group); select.append(group); }
-        const option = el('option', '', preset.label); option.value = preset.id; option.selected = preset.id === s.soundPreset;
-        groups.get(preset.group).append(option);
-      }
-      select.addEventListener('change', () => run(() => actions.update({ soundPreset: select.value })));
-      const picker = button(presetLabel(s.soundPreset), 'qm-ring-picker qm-ring-picker-builtin', async () =>
-        openSheet({ title: '选择内置铃声', groups: presetGroups(), currentId: s.soundPreset, onPick: id => actions.update({ soundPreset: id }) }));
-      picker.append(icon('fa-chevron-down'));
-      row.append(select, picker);
+      // One picker button → the built-in list sub-page (tap a row to audition + select).
+      const picker = button(presetLabel(s.soundPreset), 'qm-ring-picker', async () => openList('builtin'));
+      picker.append(icon('fa-chevron-right'));
+      row.append(picker);
     } else if (s.soundSource === 'url') {
       const input = el('input', 'qm-ring-url'); input.type = 'url'; input.inputMode = 'url'; input.maxLength = actions.limits.url;
       input.placeholder = 'https://…/铃声.mp3'; input.value = s.soundUrl;
       input.addEventListener('change', () => run(() => actions.update({ soundUrl: input.value })));
       row.append(input);
     } else {
-      // Local library: a custom picker (lists all cached sounds, each deletable) + upload + preview, three in one row.
+      // Local library: one picker button → the local list sub-page, where rows audition + select and uploading lives in its header.
       const current = s.localSounds.find(item => item.id === s.localId);
-      const picker = button(current ? current.name : '选择本地铃声', 'qm-ring-picker', async () => {
-        // 空列表时静默无反应：不弹出任何弹层或提示。
-        if (!s.localSounds.length) return;
-        openSheet({
-          title: '本地铃声', currentId: s.localId,
-          groups: [{ label: '', items: s.localSounds.map(item => ({ id: item.id, label: `${item.name} · ${formatSize(item.size)}` })) }],
-          onPick: id => actions.selectLocal(id),
-          onDelete: id => actions.clearLocal(id),
-        });
-      });
-      picker.append(icon('fa-chevron-down'));
-      const upload = filePicker('audio/*', file => actions.pickLocal(file));
-      row.append(picker, upload, iconButton('fa-arrow-up-from-bracket', '上传本地音频', 'qm-ring-upload', async () => upload.click()));
+      const picker = button(current ? current.name : '选择本地铃声', 'qm-ring-picker', async () => openList('local'));
+      picker.append(icon('fa-chevron-right'));
+      row.append(picker);
     }
-    previewBtn = iconButton(actions.playing() ? 'fa-stop' : 'fa-play', actions.playing() ? '停止' : '预览', 'qm-ring-preview', () => actions.preview());
-    previewBtn.dataset.ringPreview = '1';
-    row.append(previewBtn);
     card.append(row);
     const volume = el('label', 'qm-ring-volume');
     const range = el('input'); range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '1'; range.value = String(s.volume);
@@ -210,17 +210,12 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
 
   function render(s) {
     if (disposed) return;
-    last = s; closeSheet();
+    last = s;
+    if (page === 'builtin') { root.replaceChildren(builtinListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
+    if (page === 'local') { root.replaceChildren(localListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
     root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
-  // Update only the preview button so preview's pause/ended events never re-render an open picker.
-  function syncPlaying(playing) {
-    if (disposed || !previewBtn) return;
-    previewBtn.replaceChildren(icon(playing ? 'fa-stop' : 'fa-play'));
-    const title = playing ? '停止' : '预览';
-    previewBtn.title = title; previewBtn.setAttribute('aria-label', title);
-  }
-  return Object.freeze({ render, syncPlaying, dispose() { disposed = true; closeSheet(); root.replaceChildren(); }, state: () => last });
+  return Object.freeze({ render, dispose() { disposed = true; root.replaceChildren(); }, state: () => last });
 }

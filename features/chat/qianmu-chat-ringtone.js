@@ -213,8 +213,8 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.491'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
-  const player = createRingPlayer({ Audio, onChange: () => syncPlaying() });
+  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.492'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  const player = createRingPlayer({ Audio, onChange: () => {} });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
@@ -223,9 +223,6 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
-  // Preview playback toggles fire pause/ended events; updating only the preview
-  // button (instead of a full re-render) keeps an open <select> from snapping shut.
-  const syncPlaying = () => { if (mounted?.view?.syncPlaying) mounted.view.syncPlaying(player.playing()); else refresh(); };
   const syncToast = () => { if (skinActive) applyToastSkin(document, state()); };
   function update(patch) {
     Object.assign(state(), patch);
@@ -295,14 +292,13 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const actions = Object.freeze({
     presets: RINGTONE_PRESETS, limits: RINGTONE_LIMITS, builtinIcons: RINGTONE_TAB_ICONS, iconFrames: () => iconFrames(),
     update,
-    playing: () => player.playing(),
-    async preview() {
-      if (player.playing()) { player.stop(); syncPlaying(); return; }
-      const s = state(), url = await soundSource(s);
-      if (!url) { notify(s.soundSource === 'url' ? '请先填写以 http(s) 开头的音频链接。' : '请先选择本地音频文件。', 'warning'); return; }
-      const ok = await player.play(url, s.volume);
-      if (!ok && player.source() === url && !player.playing()) notify('铃声无法播放，请检查音频地址、格式或浏览器媒体权限。', 'warning');
-      syncPlaying();
+    // Phone-OS list behaviour: picking a row auditions it and records the choice at once (no separate preview button).
+    stopSound() { player.stop(); },
+    async selectPreset(id) {
+      const preset = RINGTONE_PRESETS.find(item => item.id === id);
+      if (!preset) return;
+      const s = state(); s.soundPreset = id; normalizeRingtone(getOwner()); save();
+      await player.play(preset.url, s.volume);
     },
     setVolume(value, commit = false) {
       const s = state(); s.volume = value; normalizeRingtone(getOwner());
@@ -323,7 +319,12 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       update({ soundSource: 'local', localSounds: [...existing, entry], localId: id });
       notify('本地铃声已保存在此浏览器。', 'success');
     },
-    selectLocal(id) { if (state().localSounds.some(item => item.id === id)) update({ localId: id }); },
+    async selectLocal(id) {
+      if (!state().localSounds.some(item => item.id === id)) return;
+      const s = state(); s.localId = id; normalizeRingtone(getOwner()); save();
+      const url = await localSource(id).catch(() => '');
+      if (url) await player.play(url, s.volume);
+    },
     async clearLocal(id) {
       const s = state();
       const target = id || s.localId;
@@ -353,7 +354,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     mounted.view = module.mountChatRingtoneView({ root: host, actions, notify });
     refresh();
   }
-  function unmount() { mounted?.view?.dispose(); mounted = null; }
+  function unmount() { player.stop(); mounted?.view?.dispose(); mounted = null; }
   // Runtime teardown; a later re-enable may mount again.
   // Applies the saved toast skin once settings are loaded (runtime init).
   function activate() { skinActive = true; syncToast(); }

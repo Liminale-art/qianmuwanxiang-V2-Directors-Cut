@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.491'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.492'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Four-tab navigation with the ring tab.
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -273,4 +273,30 @@ test('toast skin never hooks toastr: no observers, polling, or toastr rewrites',
   assert.ok(rules.length > 0 && rules.every(line => line.startsWith('html[data-qm-toast')), '所有换皮规则都挂在 html[data-qm-toast] 下');
   assert.ok(css.includes('var(--qm-interface-font, var(--mainFontFamily'), '字体跟随字体库界面设置');
   assert.ok(!/data-qm-toast="(?:left|right|top-left|top-right|bottom-left|bottom-right)"/.test(css), '不提供偏左右位置');
+});
+
+test('list rows audition on select: selectPreset/selectLocal persist the pick and play it; stopSound halts', async () => {
+  const played = [];
+  let paused = 0;
+  const h = harness({ Audio: class { constructor() { this.paused = true; } addEventListener() {} async play() { played.push(this.src); this.paused = false; } pause() { paused += 1; this.paused = true; } } });
+  const target = RINGTONE_PRESETS[RINGTONE_PRESETS.length - 1];
+  await h.ring.actions.selectPreset(target.id);
+  assert.equal(h.settings.ringtone.soundPreset, target.id, '点选即保存');
+  assert.equal(played.length, 1, '点选即试听');
+  await h.ring.actions.selectPreset('no-such-preset');
+  assert.equal(h.settings.ringtone.soundPreset, target.id, '未知项不改选择');
+  assert.equal(played.length, 1);
+  await h.ring.actions.selectLocal('missing');
+  assert.equal(played.length, 1, '不存在的本地铃声不播放');
+  h.ring.actions.stopSound();
+  assert.ok(paused >= 1, '返回时停止试听');
+  assert.ok(!('preview' in h.ring.actions), '不再提供单独的试听按钮动作');
+});
+
+test('ringtone view has no separate preview button or bottom-sheet list', async () => {
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  for (const gone of ['qm-ring-preview', 'qm-ring-sheet']) assert.ok(!view.includes(gone), `已移除 ${gone}`);
+  assert.ok(!/actions\.preview\(/.test(view), '已移除铃声试听动作（提示框预览 previewToast 保留）');
+  assert.ok(view.includes("openList('builtin')") && view.includes("openList('local')"), '内置/本地都进入面板内列表子页');
+  assert.ok(view.includes('actions.stopSound()'), '返回主页时停止试听');
 });
