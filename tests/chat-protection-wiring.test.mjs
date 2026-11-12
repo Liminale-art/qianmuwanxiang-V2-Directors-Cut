@@ -76,6 +76,10 @@ test('toolbox opens without an active chat and backup scans stay behind the expl
     assert.match(mount, /confirmDialog\('聊天备份', htmlEscape\(message\)\)/);
     assert.match(open, /__qianmuOutsideHandler/); assert.match(open, /document\.addEventListener\('pointerdown', outside, true\)/);
     assert.match(close, /document\.removeEventListener\('pointerdown', outside, true\)/);
+    // Isolated from ST's document-level drawer dismissal, as the notes panel is.
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'touchstart', 'click'])
+        assert.match(open, new RegExp(`root\\.on${type} = isolateFromHostMenus`));
+    assert.match(open, /const isolateFromHostMenus = \(event\) => event\.stopPropagation\(\)/);
     assert.doesNotMatch(storyboardFunctionSource('closeFloorNavigator'), /chatRecoveryClient.*dispose/);
     assert.match(source, /chatRecoveryClient\?\.dispose\(\); chatRecoveryClient = null/);
 });

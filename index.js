@@ -6048,6 +6048,15 @@ function openFloorNavigator(initialView = floorNavigatorView) {
         <section class="sd-floor-view" data-floor-view="ring"></section>
       </section></div>`;
   document.body.appendChild(root);
+  // Like the notes panel: ST closes its open drawers (user settings etc.) on
+  // document-level presses, so toolkit presses must not bubble out to them.
+  // The outside handler below is a document capture listener and still runs.
+  const isolateFromHostMenus = (event) => event.stopPropagation();
+  root.onpointerdown = isolateFromHostMenus;
+  root.onpointerup = isolateFromHostMenus;
+  root.onmousedown = isolateFromHostMenus;
+  root.ontouchstart = isolateFromHostMenus;
+  root.onclick = isolateFromHostMenus;
   applyQianmuIcons(root);
   bindFloorNavigatorViewport(root);
   appearanceSession.mountPortal(root);
