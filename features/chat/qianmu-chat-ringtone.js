@@ -164,12 +164,17 @@ export function createTabAlert({ document, setInterval = globalThis.setInterval,
   return Object.freeze({ start, stop, active: () => Boolean(timer), setClock(fn) { now = fn; } });
 }
 
-/** A single reusable media element; volume is the stored percentage. */
+/**
+ * A single reusable media element; volume is the stored percentage.
+ * `onChange(state)` reports 'idle' | 'loading' | 'playing' (drives the list's audio bar), once per change.
+ */
 export function createRingPlayer({ Audio, onChange = () => {} }) {
-  let media = null, source = '', sequence = 0;
+  let media = null, source = '', sequence = 0, status = 'idle';
+  const report = next => { if (next === status) return; status = next; try { onChange(next); } catch (_) {} };
   function stop() {
     sequence += 1;
     try { media?.pause(); if (media) media.currentTime = 0; } catch (_) {}
+    report('idle');
   }
   async function play(url, volume) {
     if (!url) return false;
@@ -178,19 +183,22 @@ export function createRingPlayer({ Audio, onChange = () => {} }) {
       try { media?.removeAttribute?.('src'); media?.load?.(); } catch (_) {}
       media = new Audio(url); media.preload = 'auto'; source = url;
       const own = media;
-      for (const name of ['ended', 'pause', 'error']) own.addEventListener?.(name, () => { if (own === media) onChange(); });
+      const on = (names, next) => { for (const name of names) own.addEventListener?.(name, () => { if (own === media) report(next); }); };
+      on(['ended', 'pause', 'error'], 'idle'); on(['waiting'], 'loading'); on(['playing'], 'playing');
     }
     const mine = ++sequence;
+    report('loading');
     try {
       media.volume = Math.min(1, Math.max(0, Number(volume) / 100));
       media.currentTime = 0;
       await media.play();
+      if (mine === sequence && !media.paused && !media.ended) report('playing');
       return mine === sequence;
-    } catch (_) { return false; }
+    } catch (_) { if (mine === sequence) report('idle'); return false; }
   }
   const playing = () => Boolean(media && !media.paused && !media.ended);
   function dispose() { stop(); try { media?.removeAttribute?.('src'); media?.load?.(); } catch (_) {} media = null; source = ''; }
-  return Object.freeze({ play, stop, playing, dispose, source: () => source });
+  return Object.freeze({ play, stop, playing, dispose, source: () => source, state: () => status });
 }
 
 /** The local sound lives in this browser only (one record per account), never in synced settings. */
@@ -248,7 +256,8 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
   indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.494'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
-  const player = createRingPlayer({ Audio, onChange: () => {} });
+  // The list's audio bar mirrors the audition: idle (grey) / loading / playing (green).
+  const player = createRingPlayer({ Audio, onChange: next => mounted?.view?.setAudio?.(next) });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
@@ -388,6 +397,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     const module = await loadView();
     if (disposed || mounted?.token !== token || !host.isConnected) return;
     mounted.view = module.mountChatRingtoneView({ root: host, actions, notify });
+    mounted.view.setAudio?.(player.state());
     refresh();
   }
   function unmount() { player.stop(); mounted?.view?.dispose(); mounted = null; }

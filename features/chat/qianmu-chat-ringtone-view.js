@@ -8,7 +8,7 @@ const formatSize = bytes => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFi
 
 export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
   const document = root.ownerDocument;
-  let disposed = false, last = null, page = 'main';
+  let disposed = false, last = null, page = 'main', audio = 'idle', eq = null;
   const run = async action => {
     try { await action(); } catch (error) { if (!disposed) notify(error?.message || '操作未完成，请重试。', 'warning'); }
   };
@@ -99,8 +99,22 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       }
     }
     if (!items.length) listEl.append(el('p', 'qm-ring-list-empty', onDelete ? '还没有本地铃声，点右上角＋上传。' : '暂无可选项。'));
+    eq = audioBar(); listEl.append(eq);
     wrap.append(listEl);
     return wrap;
+  }
+
+  // Dot-matrix audio bar under the list: a semi-transparent underlay pinned to the list bottom.
+  // Grey while idle, a soft pulse while the audition loads, light green and dancing while it plays (CSS only).
+  const EQ_HEIGHTS = [3, 5, 4, 7, 5, 8, 6, 4, 7, 9, 6, 5, 8, 6, 4, 7, 5, 8, 6, 9, 5, 7, 4, 6, 8, 5, 3, 6];
+  function audioBar() {
+    const bar = el('div', 'qm-ring-eq'); bar.setAttribute('aria-hidden', 'true'); bar.dataset.audio = audio;
+    EQ_HEIGHTS.forEach((h, i) => { const col = el('span'); col.style.setProperty('--h', String(h)); col.style.setProperty('--d', `${(i * 137) % 900}ms`); bar.append(col); });
+    return bar;
+  }
+  function setAudio(next) {
+    audio = ['loading', 'playing'].includes(next) ? next : 'idle';
+    if (eq) eq.dataset.audio = audio;
   }
 
   function builtinListPage(s) {
@@ -246,12 +260,12 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
 
   function render(s) {
     if (disposed) return;
-    last = s;
+    last = s; eq = null;
     if (page === 'builtin') { root.replaceChildren(builtinListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
     if (page === 'local') { root.replaceChildren(localListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
     root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
-  return Object.freeze({ render, dispose() { disposed = true; lockPanel(false); root.replaceChildren(); }, state: () => last });
+  return Object.freeze({ render, setAudio, dispose() { disposed = true; lockPanel(false); root.replaceChildren(); }, state: () => last });
 }

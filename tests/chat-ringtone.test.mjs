@@ -442,3 +442,41 @@ test('toolkit panel caps at the Qianmu window size and tapping a toast keeps it 
   const open = entry.slice(entry.indexOf('function openFloorNavigator('), entry.indexOf('root.__qianmuOutsideHandler = outside'));
   assert.ok(open.includes("target?.closest?.('#toast-container')"), '点提示框不关闭工具包');
 });
+
+test('ring player reports idle → loading → playing → idle once per change', async () => {
+  const { createRingPlayer } = await import('../features/chat/qianmu-chat-ringtone.js');
+  const seen = [], media = [];
+  class FakeAudio {
+    constructor(src) { this.src = src; this.paused = true; this.ended = false; this.listeners = {}; media.push(this); }
+    addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
+    fire(name) { for (const fn of this.listeners[name] || []) fn(); }
+    async play() { this.paused = false; }
+    pause() { this.paused = true; }
+  }
+  const player = createRingPlayer({ Audio: FakeAudio, onChange: state => seen.push(state) });
+  assert.equal(player.state(), 'idle');
+  await player.play('a.mp3', 50);
+  assert.deepEqual(seen, ['loading', 'playing']);
+  media[0].fire('playing');
+  assert.deepEqual(seen, ['loading', 'playing'], '重复状态不重复通知');
+  media[0].paused = true; media[0].ended = true; media[0].fire('ended');
+  assert.deepEqual(seen, ['loading', 'playing', 'idle']);
+  class Blocked extends FakeAudio { async play() { throw new Error('autoplay'); } }
+  const blocked = [];
+  const quiet = createRingPlayer({ Audio: Blocked, onChange: state => blocked.push(state) });
+  assert.equal(await quiet.play('b.mp3', 50), false);
+  assert.deepEqual(blocked, ['loading', 'idle'], '播放失败回到灰色');
+  player.stop(); assert.equal(player.state(), 'idle');
+});
+
+test('ringtone list carries a dot-matrix audio bar underlay driven by setAudio', async () => {
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  assert.ok(view.includes("el('div', 'qm-ring-eq')") && view.includes('listEl.append(eq)'), '音频条位于列表底部');
+  assert.ok(/render, setAudio, dispose/.test(view), '视图暴露 setAudio');
+  const entry = await readFile(new URL('features/chat/qianmu-chat-ringtone.js', root), 'utf8');
+  assert.ok(entry.includes('onChange: next => mounted?.view?.setAudio?.(next)'), '播放器状态驱动音频条');
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(/\.qm-ring-eq \{[^}]*position: sticky; bottom: 0;[^}]*pointer-events: none/.test(css), '半透明衬底钉在列表底部且不挡点击');
+  assert.ok(css.includes('.qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142'), '播放时淡绿');
+  assert.ok(/\.qm-ring-eq \{ --qm-eq-dot: rgba\(150, 150, 150, \.3\)/.test(css), '空闲浅灰');
+});
