@@ -89,7 +89,7 @@ export function readRegexSources(context) {
 }
 
 export function createChatRegex({ getContext = () => ({}), notify = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.496') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.497') } = {}) {
   let mounted = null, disposed = false, view = 'order';
   const state = () => Object.freeze({ view, sources: readRegexSources(attempt(() => getContext(), {})) });
   const refresh = () => mounted?.view?.render(state());

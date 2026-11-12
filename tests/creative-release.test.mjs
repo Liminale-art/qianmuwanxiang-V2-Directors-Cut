@@ -6,16 +6,16 @@ import { collectReleaseFiles } from '../scripts/build-release.mjs';
 const root = new URL('../', import.meta.url);
 // Creative prompts/runtime changed in f1b7c99e (identity anchor); their literal consumers moved to v484.
 const version = '1.59.484';
-const releaseVersion = '1.59.484';
-const manifestVersion = '1.59.496';
+// 1.59.497 (节点 C-9 a-d): font library/state/view/runtime/sources/css changed, so their stamps moved together.
+const releaseVersion = '1.59.497';
+const manifestVersion = '1.59.497';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
   ...['qianmu-font-library-view.js', 'qianmu-font-library-state.js'].map(file => [file, releaseVersion]),
-  // Body font now exposes --qm-body-font for the TTS line list; entry and controller carry the hotfix stamp.
-  ...['qianmu-font-library.js', 'qianmu-font-runtime.js'].map(file => [file, `${releaseVersion}-tts-font-1`]),
+  ...['qianmu-font-library.js', 'qianmu-font-runtime.js'].map(file => [file, releaseVersion]),
   ['qianmu-font-sources.js', releaseVersion],
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
