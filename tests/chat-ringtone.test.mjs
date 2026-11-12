@@ -433,3 +433,12 @@ test('涂鸦 style: day/night only, per-status clash colours, outside square bar
   assert.ok(splat.includes('animation: qm-toast-splat') && /@keyframes qm-toast-splat \{ 0% \{[^}]*scale\(\.6\)/.test(css), '由小到大弹出');
   assert.ok(!css.includes('data-qm-toast="arc"'), '旧样式1规则已替换');
 });
+
+test('toolkit panel caps at the Qianmu window size and tapping a toast keeps it open', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(css.includes('#story-director-floor-nav .sd-floor-panel { max-height: min(760px, calc(100dvh - 28px)); }'), '最大高度与千幕大面板一致');
+  assert.ok(/\.sd-floor-panel > \.sd-floor-view \{[^}]*overflow-y: auto[^}]*scrollbar-width: none/.test(css), '超出部分页内滚动');
+  const entry = await readFile(new URL('index.js', root), 'utf8');
+  const open = entry.slice(entry.indexOf('function openFloorNavigator('), entry.indexOf('root.__qianmuOutsideHandler = outside'));
+  assert.ok(open.includes("target?.closest?.('#toast-container')"), '点提示框不关闭工具包');
+});

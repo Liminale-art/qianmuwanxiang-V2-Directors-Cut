@@ -726,6 +726,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-floor-tabs button.is-active { background: transparent; color: var(--sd-text); box-shadow: none; font-weight: 600; }
 #story-director-floor-nav .sd-floor-view { display: flex; flex-direction: column; gap: 12px; }
 #story-director-floor-nav .sd-floor-view[hidden] { display: none !important; }
+/* 整个工具包最大尺寸与千幕大面板一致（min(760px, 视口-28px)）；头部与页签固定，当前页超出部分在页内滚动（隐藏滚动条） */
+#story-director-floor-nav .sd-floor-panel { max-height: min(760px, calc(100dvh - 28px)); }
+#story-director-floor-nav .sd-floor-panel > :is(header, .sd-floor-tabs) { flex: 0 0 auto; }
+#story-director-floor-nav .sd-floor-panel > .sd-floor-view { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#story-director-floor-nav .sd-floor-panel > .sd-floor-view::-webkit-scrollbar { width: 0; height: 0; }
+#story-director-floor-nav .sd-floor-panel > .sd-floor-view > * { flex-shrink: 0; }
 #story-director-floor-nav .sd-floor-chat-count { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-hint { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-recovery-loading-shell { display: grid; gap: 10px; }

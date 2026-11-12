@@ -6053,6 +6053,8 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     const panel = root.querySelector('.sd-floor-panel');
     const fontWindow = root.querySelector('.qm-font-window');
     if (panel?.contains?.(target) || fontWindow?.contains?.(target)) return;
+    // Tapping an ST notification (e.g. the toast preview) is not leaving the toolkit.
+    if (target?.closest?.('#toast-container')) return;
     closeFloorNavigator();
   };
   root.__qianmuOutsideHandler = outside;
