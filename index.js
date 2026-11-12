@@ -35784,6 +35784,7 @@ function init() {
     renderFloatButton();
     proseFloorTools.renderHive();
     floorHive.render();
+    renderFloatingNotes();   // 便笺入口与两个 hive 一样启动即无条件挂载，避免窄屏刷新需最大化触发 resize 才复位
     bindQuickDockCapture();
     restoreQuickDockedPlugins();
     storyboardBindChat();
