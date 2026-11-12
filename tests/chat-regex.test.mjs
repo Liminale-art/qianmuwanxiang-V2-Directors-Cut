@@ -151,3 +151,23 @@ test('chat toolkit has a lazily mounted 5th 正则 tab', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('.sd-floor-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));'), '五个页签等分');
 });
+
+test('chat toolkit pages share one spacing scale and inner scrollers never reserve a one-sided gutter', async () => {
+  const root = new URL('../', import.meta.url);
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.sd-floor-panel \{[^}]*--qm-floor-pad: 14px;[^}]*--qm-floor-gap: 8px;[^}]*--qm-floor-card-pad: 10px;[^}]*padding: var\(--qm-floor-pad\);/, '面板/页内/卡片间距统一为一组变量');
+  assert.ok(css.includes('.sd-floor-view { display: flex; flex-direction: column; gap: var(--qm-floor-gap); }'), '所有页的卡片竖向间距相同');
+  for (const rule of ['.qm-regex-card {', '.qm-ring-card {']) {
+    const body = css.slice(css.indexOf(rule)).split('}')[0];
+    assert.match(body, /padding: var\(--qm-floor-card-pad\)/, `${rule} 使用统一卡片内边距`);
+  }
+  // ST 全局 ::-webkit-scrollbar 宽 0.7rem，只挤右侧 → 页内滚动区一律不占槽位，且不再额外右侧留白
+  assert.ok(css.includes('#story-director-floor-nav .sd-floor-panel * { scrollbar-width: none; }'));
+  assert.ok(css.includes('#story-director-floor-nav .sd-floor-panel *::-webkit-scrollbar { width: 0; height: 0; }'));
+  assert.doesNotMatch(css.slice(css.indexOf('.qm-recovery-list {')).split('}')[0], /padding-right/);
+  assert.doesNotMatch(css.slice(css.indexOf('.qm-regex-row {')).split('}')[0], /padding: 0 2px/);
+  // 单聊天备份数上限：更矮、标签加粗
+  assert.match(css, /\.qm-recovery-native-policy \{[^}]*gap: 4px;[^}]*padding: 6px 10px;/);
+  assert.match(css, /\.qm-recovery-native-policy-field \{[^}]*font-weight: 600;/);
+  assert.match(css, /@media \(max-width: 520px\) \{[^@]*\.sd-floor-panel \{ --qm-floor-pad: 12px;/, '窄屏收一档但同样对称');
+});
