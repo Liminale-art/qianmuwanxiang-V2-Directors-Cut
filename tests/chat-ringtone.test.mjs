@@ -201,10 +201,10 @@ test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
   assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.496'"));
   assert.ok(entry.includes('createChatRingtone({'));
-  // Four-tab navigation with the ring tab.
+  // Toolkit navigation includes the ring tab (5 tabs since the regex tab).
   assert.ok(entry.includes('data-floor-tab="ring"'));
   assert.ok(entry.includes('data-floor-view="ring"'));
-  assert.ok(entry.includes("['layout', 'recovery', 'ring'].includes("));
+  assert.ok(entry.includes("['layout', 'recovery', 'ring', 'regex'].includes("));
   // Event bindings.
   for (const name of ['generationStarted', 'generationStopped', 'messageReceived', 'chatChanged']) {
     assert.ok(entry.includes(`chatRingtone.events[name]`) || entry.includes(name), `missing event binding ${name}`);

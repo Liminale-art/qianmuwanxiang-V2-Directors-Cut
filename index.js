@@ -42,6 +42,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.496';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.496';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -328,6 +329,7 @@ let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 // 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
 let floorHive=null;
+const chatRegex=createChatRegex({getContext:ctx,notify:toast});
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -5857,6 +5859,7 @@ function closeFloorNavigator() {
   if (outside) document.removeEventListener('pointerdown', outside, true);
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   chatRingtone.unmount();
+  chatRegex.unmount();
   fontLibrary.detach();
   floorViewportCleanup?.();
   floorViewportCleanup = null;
@@ -6030,14 +6033,14 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  floorNavigatorView = ['layout', 'recovery', 'ring'].includes(initialView) ? initialView : 'jump';
+  floorNavigatorView = ['layout', 'recovery', 'ring', 'regex'].includes(initialView) ? initialView : 'jump';
   const root = document.createElement('div');
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="聊天工具包">
         <header><h3>聊天工具包</h3><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button></nav>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button><button type="button" role="tab" data-floor-tab="regex">正则</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <p class="sd-floor-chat-count">${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p>
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
@@ -6046,6 +6049,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
         <section class="sd-floor-view" data-floor-view="layout">${floorProseLayoutMarkup()}</section>
         <section class="sd-floor-view" data-floor-view="recovery"></section>
         <section class="sd-floor-view" data-floor-view="ring"></section>
+        <section class="sd-floor-view" data-floor-view="regex"></section>
       </section></div>`;
   document.body.appendChild(root);
   // Like the notes panel: ST closes its open drawers (user settings etc.) on
@@ -6082,7 +6086,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
   const setView = (view) => {
-    floorNavigatorView = ['layout', 'recovery', 'ring'].includes(view) ? view : 'jump';
+    floorNavigatorView = ['layout', 'recovery', 'ring', 'regex'].includes(view) ? view : 'jump';
     root.querySelectorAll('[data-floor-tab]').forEach((button) => {
       const active = button.dataset.floorTab === floorNavigatorView;
       button.classList.toggle('is-active', active);
@@ -6091,6 +6095,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     root.querySelectorAll('[data-floor-view]').forEach((section) => { section.hidden = section.dataset.floorView !== floorNavigatorView; });
     if (floorNavigatorView === 'recovery') void mountFloorChatRecovery(root);
     if (floorNavigatorView === 'ring') void chatRingtone.mount(root.querySelector('[data-floor-view="ring"]')).catch(error => toast(error?.message || '铃声面板加载失败', 'warning'));
+    if (floorNavigatorView === 'regex') void chatRegex.mount(root.querySelector('[data-floor-view="regex"]')).catch(error => toast(error?.message || '正则面板加载失败', 'warning'));
   };
   root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
   setView(floorNavigatorView);
@@ -35863,6 +35868,7 @@ function cleanupRuntime(resetSettings = false) {
   chatRecoveryClient?.dispose(); chatRecoveryClient = null;
   chatRecoveryNamespace = null;
   chatRingtone.dispose();
+  chatRegex.dispose();
   fontLibrary.dispose();
   resetCreativeSocialState();
   proseFloorTools.dispose();
