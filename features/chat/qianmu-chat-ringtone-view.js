@@ -267,6 +267,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     strip.addEventListener('pointerdown', event => {
       if (event?.pointerType === 'touch' || event.button !== 0) return;
       drag = { x: event.clientX, left: strip.scrollLeft }; dragMoved = false;
+      strip.classList.add('is-dragging'); // suspend scroll-snap so the drag can't be yanked back
       try { strip.setPointerCapture?.(event.pointerId); } catch (_) {}
     });
     strip.addEventListener('pointermove', event => {
@@ -278,6 +279,8 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     for (const type of ['pointerup', 'pointercancel', 'pointerleave']) strip.addEventListener(type, event => {
       if (!drag) return;
       drag = null;
+      strip.classList.remove('is-dragging'); // restore snap, then glide to the nearest value
+      if (dragMoved) centre(nearest(), true);
       try { strip.releasePointerCapture?.(event.pointerId); } catch (_) {}
     });
     // A vertical mouse wheel steps one value per notch instead of scrolling the panel; small trackpad

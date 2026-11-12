@@ -462,6 +462,7 @@ test('停留时间 / 堆叠数量 use a horizontal wheel: centre is the pick, si
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(/\.qm-ring-wheel-strip \{[^}]*scroll-snap-type: x mandatory[^}]*mask-image: linear-gradient\(90deg, transparent/.test(css), '吸附居中、两侧渐隐');
   assert.ok(css.includes('.qm-ring-wheel-item { flex: 0 0 46px') && css.includes('scroll-snap-align: center'), '每项居中吸附');
+  assert.ok(/\.qm-ring-wheel-strip\.is-dragging \{[^}]*scroll-snap-type: none/.test(css), '拖动时关掉吸附，松手不回弹');
   assert.ok(!css.includes('qm-ring-stack-input'), '旧输入框样式已移除');
 });
 
@@ -514,9 +515,11 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   const before = updates.length;
   dur0.scrollLeft = 200;
   dur0.listeners.pointerdown({ pointerType: 'mouse', button: 0, clientX: 100 });
+  assert.ok(dur0.classList.contains('is-dragging'), '拖动时挂 is-dragging 关掉 scroll-snap，避免被吸回');
   dur0.listeners.pointermove({ pointerType: 'mouse', clientX: 140 });
   assert.equal(dur0.scrollLeft, 160, '按住拖动改变滚动位置（200 - 40）');
   dur0.listeners.pointerup({ pointerType: 'mouse' });
+  assert.ok(!dur0.classList.contains('is-dragging'), '松手移除 is-dragging 恢复吸附');
   dur0.children[3].listeners.click(); // the click that fires right after a drag must be swallowed
   assert.equal(updates.length, before, '真实拖动后紧随的点击不误选');
   view.dispose();
