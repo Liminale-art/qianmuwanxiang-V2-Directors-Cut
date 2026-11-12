@@ -29,8 +29,8 @@ export const RINGTONE_DEFAULTS = Object.freeze({
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
 // 'default' follows the Qianmu theme and day/night; 辉光 is a narrow glow-edge chamfered block that only
-// follows day/night (edge tinted by status), with a left→right light sweep; 虹彩 is a soft iridescent liquid glass.
-export const TOAST_STYLES = Object.freeze([['default', '默认'], ['glow', '辉光'], ['iris', '虹彩']]);
+// follows day/night (edge tinted by status), with a left→right light sweep; 玻璃 is a soft iridescent liquid glass.
+export const TOAST_STYLES = Object.freeze([['default', '默认'], ['glow', '辉光'], ['iris', '玻璃']]);
 export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
 // 停留时间 1–10 s and 堆叠数量 1–8 are both picked on a horizontal wheel.
 export const TOAST_DURATIONS = Object.freeze(Array.from({ length: 10 }, (_, i) => Object.freeze([i + 1, `${i + 1}s`])));

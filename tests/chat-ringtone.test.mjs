@@ -231,7 +231,7 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
 });
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
-  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['glow', '辉光'], ['iris', '虹彩']]);
+  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['glow', '辉光'], ['iris', '玻璃']]);
   assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['1s', '2s', '3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s']);
   assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'glow', '旧样式1迁移为辉光');
   assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'splat' } }).toastStyle, 'glow', '涂鸦弃用后迁移为辉光');
@@ -534,13 +534,17 @@ test('辉光 style: day/night only, status-tinted glow edge, chamfer, left→rig
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
 });
 
-test('虹彩 style: glass pill, bell icon with status glow, scale-wiggle-shrink bell animation', async () => {
+test('玻璃 style: glass pill, fluorescent bell icon with glow behind it, scale-wiggle-shrink bell animation', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   const iris = css.split('\n').filter(line => line.includes('data-qm-toast="iris"')).join('\n');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-radius: 999px/.test(iris), '玻璃胶囊大圆角');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(iris), '玻璃质感');
+  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.28\)/.test(iris), '外框线更细更透明');
   assert.ok(iris.includes("mask: url(\"data:image/svg+xml") && iris.includes('a7 7 0'), '状态图标为铃铛 SVG');
-  assert.ok(/::before \{[^}]*background: var\(--qm-toast-status\)/.test(iris) && iris.includes('drop-shadow(0 2px 5px color-mix(in srgb, var(--qm-toast-status)'), '铃铛底部状态色柔光');
+  assert.ok(/::before \{[^}]*width: 22px[^}]*height: 22px/.test(iris), '标准铃铛尺寸增大到 22px');
+  assert.ok(iris.includes('--iris-glow: color-mix(in srgb, var(--qm-toast-status) 72%, #9effe6)'), '色相偏荧光');
+  assert.ok(/::before \{[^}]*filter: drop-shadow\(0 0 6px color-mix\(in srgb, var\(--iris-glow\)/.test(iris), '铃铛自带发光');
+  assert.ok(/::after \{[^}]*animation: qm-toast-bell-glow/.test(iris) && css.includes('@keyframes qm-toast-bell-glow'), '铃铛背后柔光');
   assert.ok(iris.includes('animation: qm-toast-bell') && /@keyframes qm-toast-bell \{ 0% \{[^}]*scale\(\.5\)[^}]*\}[^@]*scale\(1\.22\)[^@]*rotate\(-14deg\)/.test(css), '放大→晃一晃→缩回');
   assert.ok(!css.includes('qm-toast-iris') && !css.includes('--qm-toast-iris'), '旧流动虹彩已移除');
 });
