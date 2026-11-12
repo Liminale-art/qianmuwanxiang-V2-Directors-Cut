@@ -136,7 +136,7 @@ test('tag metadata is normalized strictly and an invalid edit cannot mutate the 
 
 test('Web tag editing distinguishes omission, replacement and explicit clearing without changing classification or choices', () => {
   let state = updateFontLibrary(fixture(), 'update-fonts', { ids: ['a'], folder: '阅读', tags: ['原标签'] });
-  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a', weight: '700' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'all', fontId: 'a', weight: '700' });
   const original = structuredClone(state), record = { ...font('a'), name: '新名称', tags: ['来源默认标签'] };
   const kept = updateFontLibrary(state, 'replace-web', { id: 'a', record });
   assert.deepEqual(kept.fonts[0].tags, ['原标签']);
@@ -146,7 +146,7 @@ test('Web tag editing distinguishes omission, replacement and explicit clearing 
   assert.deepEqual(cleared.fonts[0].tags, []);
   for (const result of [kept, changed, cleared]) {
     assert.equal(result.fonts[0].id, 'a'); assert.equal(result.fonts[0].folder, '阅读');
-    for (const target of ['body', 'st', 'shared', 'enabled', 'mode']) assert.deepEqual(result[target], original[target]);
+    for (const target of ['body', 'st', 'quote', 'enabled']) assert.deepEqual(result[target], original[target]);
     assert.deepEqual(result.fonts[1], original.fonts[1]);
   }
   assert.deepEqual(state, original);
@@ -185,19 +185,19 @@ test('master application gate defaults on for legacy libraries and strictly pres
   assert.equal(normalizeFontLibrary(legacy).enabled, true);
   let state = updateFontLibrary(legacy, 'apply-font', { target: 'body', fontId: 'a', weight: '700' });
   state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
-  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'quote', fontId: 'a' });
   const original = structuredClone(state);
   state = updateFontLibrary(state, 'set-enabled', { enabled: false });
   assert.deepEqual(state, { ...original, enabled: false });
   state = updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'b' });
   assert.equal(state.enabled, false);
-  assert.deepEqual(state.shared, original.shared);
+  assert.deepEqual(state.quote, original.quote);
   state = mergeFontLibraryRecords(state, [font('c')], () => 'c').state;
   assert.equal(state.enabled, false);
   state = updateFontLibrary(state, 'delete-fonts', { ids: ['c'] });
   assert.equal(state.enabled, false);
   state = updateFontLibrary(state, 'set-enabled', { enabled: true });
-  assert.equal(state.body.fontId, 'b'); assert.equal(state.mode, 'separate');
+  assert.equal(state.body.fontId, 'b'); assert.equal(state.st.fontId, 'b');
   for (const enabled of [null, 'false', 0, {}]) {
     assert.throws(() => updateFontLibrary(state, 'set-enabled', { enabled }), /启用设置无效/);
     assert.throws(() => normalizeFontLibrary({ ...state, enabled }), /启用设置无效/);
@@ -223,15 +223,13 @@ test('ordinary settings migration retains the full font catalogue and unrelated 
   assert.deepEqual(original, before);
   assert.equal(migrateQianmuSettingsV2(result.value).value, result.value);
 });
-test('separate choices survive shared mode and disabling does not delete fonts or sizes', () => {
+test('independent 正文/界面/引用 scopes retain their own choices and disabling keeps fonts and sizes', () => {
   let state = fixture();
   state = updateFontLibrary(state, 'set-assignment', { target: 'body', fontId: 'a', weight: '400' });
   state = updateFontLibrary(state, 'set-assignment', { target: 'st', fontId: 'b', weight: '400' });
   const separate = structuredClone(state);
-  state = updateFontLibrary(state, 'set-mode', { mode: 'shared' });
-  state = updateFontLibrary(state, 'set-assignment', { target: 'shared', fontId: 'b', weight: '400' });
-  state = updateFontLibrary(state, 'set-mode', { mode: 'separate' });
-  assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st);
+  state = updateFontLibrary(state, 'set-assignment', { target: 'quote', fontId: 'b', weight: '400' });
+  assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st); assert.equal(state.quote.fontId, 'b');
   state = updateFontLibrary(state, 'set-assignment', { target: 'body', fontId: '', enabled: false });
   assert.equal(state.body.enabled, false); assert.equal(state.fonts.length, 2);
   assert.ok(!JSON.stringify(state).includes('fontSize'));
@@ -246,16 +244,16 @@ test('library classification and selection changes are local and preserve unrela
   assert.equal(state.fonts.length, 1); assert.equal(state.st.fontId, 'b');
 });
 
-test('list application atomically chooses its mode and retains independent preferences', () => {
+test('"全部" writes 正文/界面/引用 together while single targets stay independent', () => {
   let state = updateFontLibrary(fixture(), 'apply-font', { target: 'body', fontId: 'a', weight: '700' });
   state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
   const separate = structuredClone(state);
-  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'a' });
-  assert.equal(state.mode, 'shared');
-  assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st);
+  state = updateFontLibrary(state, 'apply-font', { target: 'all', fontId: 'a' });
+  assert.equal(state.body.fontId, 'a'); assert.equal(state.st.fontId, 'a'); assert.equal(state.quote.fontId, 'a');
   state = updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'b' });
-  assert.equal(state.mode, 'separate'); assert.equal(state.body.fontId, 'b'); assert.deepEqual(state.st, separate.st);
+  assert.equal(state.body.fontId, 'b'); assert.equal(state.st.fontId, 'a'); assert.equal(state.quote.fontId, 'a');
   assert.throws(() => updateFontLibrary(state, 'apply-font', { target: 'body', fontId: 'missing' }));
+  assert.throws(() => updateFontLibrary(state, 'apply-font', { target: 'all', fontId: 'missing' }));
 });
 
 test('restore actions preserve other scopes and ignore stale or dormant choices', () => {
@@ -263,11 +261,10 @@ test('restore actions preserve other scopes and ignore stale or dormant choices'
   state = updateFontLibrary(state, 'apply-font', { target: 'st', fontId: 'b' });
   assert.deepEqual(updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'b' }), state);
   const separate = structuredClone(state);
-  state = updateFontLibrary(state, 'apply-font', { target: 'shared', fontId: 'b' });
-  assert.deepEqual(updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'a' }), state);
-  state = updateFontLibrary(state, 'restore-font', { target: 'shared', fontId: 'b' });
-  assert.equal(state.mode, 'separate'); assert.deepEqual(state.body, separate.body); assert.deepEqual(state.st, separate.st);
-  state = updateFontLibrary(state, 'restore-font', { target: 'body', fontId: 'a' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'all', fontId: 'b' });
+  state = updateFontLibrary(state, 'restore-font', { target: 'all', fontId: 'b' });
+  assert.equal(state.body.enabled, false); assert.equal(state.st.enabled, false); assert.equal(state.quote.enabled, false);
+  state = updateFontLibrary(separate, 'restore-font', { target: 'body', fontId: 'a' });
   assert.equal(state.body.enabled, false); assert.deepEqual(state.st, separate.st); assert.equal(state.fonts.length, 2);
 });
 test('imports deduplicate sources, remap collisions and do not activate fonts', () => {
@@ -323,13 +320,18 @@ test('reading existing libraries does not add a new aggregate face gate intended
   assert.deepEqual(normalized.pinnedIds, value.pinnedIds); assert.equal(normalized.sortOrder, 'desc');
   assert.deepEqual(normalized.fonts.map(item => item.faces), fonts.map(item => item.faces)); assert.deepEqual(value, before);
 });
-test('quote scope is an independent overlay that never switches separate/shared mode', () => {
+test('legacy shared mode folds into independent 正文+界面 while quote stays its own overlay', () => {
   assert.deepEqual(normalizeFontLibrary().quote, { fontId: '', weight: '400', style: 'normal', enabled: false });
-  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'shared', fontId: 'a' });
+  // Legacy persisted libraries used mode:'shared' + a single shared assignment.
+  const legacy = normalizeFontLibrary({ ...fixture(), mode: 'shared', shared: { fontId: 'a', weight: '600', style: 'normal', enabled: true }, body: { fontId: '', weight: '400', style: 'normal', enabled: false }, st: { fontId: '', weight: '400', style: 'normal', enabled: false }, quote: { fontId: 'b', weight: '700', style: 'normal', enabled: true } });
+  assert.equal(legacy.body.fontId, 'a'); assert.equal(legacy.body.weight, '600'); assert.equal(legacy.st.fontId, 'a');
+  assert.equal(legacy.quote.fontId, 'b'); assert.equal(legacy.quote.weight, '700');
+  assert.equal('mode' in legacy, false); assert.equal('shared' in legacy, false);
+  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'all', fontId: 'a' });
   state = updateFontLibrary(state, 'apply-font', { target: 'quote', fontId: 'b', weight: '700' });
-  assert.equal(state.mode, 'shared'); assert.equal(state.quote.fontId, 'b'); assert.equal(state.quote.weight, '700'); assert.equal(state.shared.fontId, 'a');
+  assert.equal(state.quote.fontId, 'b'); assert.equal(state.quote.weight, '700'); assert.equal(state.body.fontId, 'a'); assert.equal(state.st.fontId, 'a');
   state = updateFontLibrary(state, 'restore-font', { target: 'quote', fontId: 'b' });
-  assert.equal(state.quote.enabled, false); assert.equal(state.mode, 'shared'); assert.equal(state.shared.enabled, true);
+  assert.equal(state.quote.enabled, false); assert.equal(state.body.enabled, true); assert.equal(state.st.enabled, true);
   state = updateFontLibrary(state, 'apply-font', { target: 'quote', fontId: 'b' });
   state = updateFontLibrary(state, 'delete-fonts', { ids: ['b'] });
   assert.equal(state.quote.enabled, false); assert.equal(state.quote.fontId, '');

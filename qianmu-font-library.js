@@ -142,8 +142,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (!node) return;
     try {
       const state = read(), name = target => state[target].enabled ? state.fonts.find(font => font.id === state[target].fontId)?.name || '原生字体' : '原生字体';
-      const quoteText = state.quote?.enabled ? ` / 引用 · ${name('quote')}` : '';
-      node.textContent = !state.enabled ? '当前：字体未启用' : state.mode === 'shared' ? `当前：全部 · ${name('shared')}${quoteText}` : `当前：正文 · ${name('body')} / 界面 · ${name('st')}${quoteText}`;
+      const parts = [['body', '正文'], ['quote', '引用'], ['st', '界面']].filter(([target]) => state[target]?.enabled).map(([target, label]) => `${label} · ${name(target)}`);
+      node.textContent = !state.enabled ? '当前：字体未启用' : parts.length === 3 ? `当前：全部 · ${name('body')}` : parts.length ? `当前：${parts.join(' / ')}` : '当前：原生字体';
     } catch { node.textContent = '当前：配置待检查'; }
     node.title = node.textContent;
   }
@@ -239,7 +239,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           next = updateFontLibrary(read(), 'replace-web', { id: originalFont.id, record: records[0], tags });
           if (JSON.stringify(originalFont.faces) !== JSON.stringify(next.fonts.find(font => font.id === originalFont.id).faces)) {
             const replacement = next.fonts.find(font => font.id === originalFont.id);
-            const effective = [...(next.mode === 'shared' ? ['shared'] : ['body', 'st']), 'quote'];
+            const effective = ['body', 'st', 'quote'];
             const target = effective.find(key => next[key].enabled && next[key].fontId === originalFont.id);
             await runtime.verifyWebFont(replacement, target ? next[target] : replacement.faces[0], next.previewText);
             guard();
@@ -332,10 +332,10 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       }
       guard(); const previous = read(); if (!imported) commit(next, token);
       if (type === 'apply-font' && current(token) && (!originView || originView === viewIdentity)) {
-        const target = payload.target, label = { body: '正文', st: '界面', shared: '全部', quote: '引用文本' }[target], scopes = target === 'shared' ? ['body', 'st'] : [target];
+        const target = payload.target, label = { body: '正文', st: '界面', all: '全部', quote: '引用文本' }[target], scopes = target === 'all' ? ['body', 'st', 'quote'] : [target];
         if (next.enabled === false) { try { notify(`已保存${label}字体选择，字体库尚未启用`, 'info'); } catch (_) {} }
         else applicationNotice = { token, operation: operationToken, settings: owner.fontLibrary, viewIdentity: originView, scopes, label,
-          font: next.fonts.find(font => font.id === payload.fontId), selection: next[target] };
+          font: next.fonts.find(font => font.id === payload.fontId), selection: next[scopes[0]] };
       }
       if (type === 'add-web' || type === 'edit-web') {
         const draftTags = typeof viewSession?.webTags === 'string' ? [...new Set(viewSession.webTags.split(/[,，]/).map(value => value.trim()).filter(Boolean))] : [];

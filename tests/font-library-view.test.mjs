@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createFontLibraryView, renderFontLibrary, renderFontLibraryCards, selectFontLibraryPage, sortFontLibraryEntries, collectFontLibraryTags, fontLibraryWeightControl, fontLibraryPreviewSize, FONT_LIBRARY_PAGE_SIZE } from '../qianmu-font-library-view.js';
 const entry = (id = 'one', patch = {}) => ({ id, name: `字体 ${id}`, sourceType: 'web', folder: '', tags: [], weights: ['400', '700'], styles: ['normal', 'italic'], ...patch });
-const state = (patch = {}) => ({ entries: [entry()], mode: 'separate', previewText: '山海相逢 ABC 123', body: { enabled: false, fontId: '' }, st: { enabled: false, fontId: '' }, shared: { enabled: false, fontId: '' }, ...patch });
+const state = (patch = {}) => ({ entries: [entry()], previewText: '山海相逢 ABC 123', body: { enabled: false, fontId: '' }, st: { enabled: false, fontId: '' }, quote: { enabled: false, fontId: '' }, ...patch });
 
 test('name-row submission is outside the disclosure header and sends one trusted toast on failure', async () => {
     const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE'), { userMessage: '字体链接不可用' }); });
@@ -28,7 +28,7 @@ function fixture(initial = state(), action = () => {}, initialSession = {}) {
         contains: () => true, setAttribute: (key, value) => attributes.set(key, value), querySelector: selector => queries.get(selector) || null,
         querySelectorAll: selector => allQueries.get(selector) || (selector === '[data-font-sample]' ? samples : selector === '[data-font-load-state]' ? statuses : selector === '[data-font-apply]' ? applyPickers : []), addEventListener: (event, handler) => handlers.set(event, handler), removeEventListener: event => handlers.delete(event) };
     const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, notify: (text, level) => notices.push({ text, level }), onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
-    return { root, view, calls, notices, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('change')?.({ target: node('[data-font-apply]', { value: target, dataset: { fontApply: id } }) }) };
+    return { root, view, calls, notices, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('click')?.({ target: node('[data-font-scope]', { dataset: { fontScope: id, fontScopeTarget: target } }) }) };
 }
 
 test('main panel shell uses real inline theme icons and removes the old mode/settings prose', () => {
@@ -325,15 +325,16 @@ test('font progress never calls browser-wide scroll helpers or scrollIntoView', 
     const source = await readFile(new URL('../qianmu-font-library-view.js', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /\.scrollIntoView\s*\(|(?:window|globalThis)\.scroll(?:To|By)\s*\(|document\.(?:body|documentElement|scrollingElement)\.scroll/);
 });
-test('per-card dropdown has only actual scopes and the relevant ST restore choice, without placeholder or shared cancellation', () => {
+test('per-card scope chips are independent multi-select checkboxes plus an 全部 shortcut', () => {
+    const chip = (html, target) => html.match(new RegExp(`<button[^>]*data-font-scope-target="${target}"[^>]*>`))?.[0] || '';
     const plain = renderFontLibraryCards(state());
-    for (const target of ['body', 'st', 'shared']) assert.match(plain, new RegExp(`option value="${target}"`)); assert.doesNotMatch(plain, /value="restore-/);
+    for (const target of ['body', 'quote', 'st', 'all']) { assert.match(chip(plain, target), /role="menuitemcheckbox" aria-checked="false"/); }
+    assert.doesNotMatch(plain, /<select|<option|data-font-apply=|取消全部/); assert.match(plain, /qm-font-apply-pick" data-applied="false" title="应用字体"/);
     const used = renderFontLibraryCards(state({ body: { enabled: true, fontId: 'one', weight: '700', style: 'normal' } }));
-    assert.match(used, /data-applied="true" title="正文"/); assert.doesNotMatch(used, /value="restore-body"|value="restore-st"|应用于/);
-    const shared = renderFontLibraryCards(state({ mode: 'shared', shared: { enabled: true, fontId: 'one' } }));
-    assert.match(shared, /data-applied="true" title="全部"/); assert.doesNotMatch(shared, /value="restore-body"|restore-shared|取消全部/);
-    const ui = renderFontLibraryCards(state({ st: { enabled: true, fontId: 'one' } })); assert.match(ui, /data-applied="true" title="界面"/); assert.match(ui, /value="st">界面/); assert.match(ui, /value="restore-st">恢复界面/); assert.doesNotMatch(ui, /ST界面/);
-    assert.doesNotMatch(plain, /<option value=""|>应用<|取消全部/); assert.match(plain, /qm-font-apply-pick" data-applied="false"/); assert.match(shared, /qm-font-apply-pick" data-applied="true"/); assert.doesNotMatch(plain.match(/<div class="qm-font-card-foot">[\s\S]*?<\/div>/)?.[0] || '', /data-font-apply/);
+    assert.match(used, /data-applied="true" title="正文"/); assert.match(chip(used, 'body'), /aria-checked="true"/); assert.match(chip(used, 'st'), /aria-checked="false"/); assert.match(chip(used, 'all'), /aria-checked="false"/);
+    const every = { enabled: true, fontId: 'one' }, all = renderFontLibraryCards(state({ body: every, st: every, quote: every }));
+    assert.match(all, /data-applied="true" title="全部"/); assert.match(chip(all, 'all'), /aria-checked="true"/);
+    const ui = renderFontLibraryCards(state({ st: { enabled: true, fontId: 'one' } })); assert.match(ui, /data-applied="true" title="界面"/); assert.doesNotMatch(ui, /ST界面/);
 });
 test('source tags and default-style explanations are gone; only varying styles have a menu', () => {
     const html = renderFontLibraryCards(state({ entries: [entry('local', { sourceType: 'local', variantKnown: false, styles: ['normal'], weights: ['400'] })] }));
@@ -395,10 +396,10 @@ test('master enable is the first card, add collapses as a unit and search direct
 test('every card collapses edit/delete and variants behind more, regardless of variable axes', async () => {
     const fixed = id => entry(id, { weights: ['400'], styles: ['normal'] }), f = fixture(state({ entries: [fixed('one'), fixed('two')] })), html = f.root.innerHTML;
     assert.equal((html.match(/data-font-action="more"/g) || []).length, 2); assert.doesNotMatch(html, /data-font-action="edit"|data-font-action="delete-one"/);
-    assert.match(html, /data-font-apply=/);
+    assert.match(html, /data-font-scope=/);
     const collapsed = renderFontLibraryCards(state()); assert.match(collapsed, /data-font-action="more"/); assert.doesNotMatch(collapsed, /data-font-action="edit"|data-font-action="delete-one"|data-font-action="pin"/);
     const openFixed = renderFontLibraryCards(state({ entries: [fixed('one')] }), { expandedId: 'one' });
-    assert.match(openFixed, /data-font-action="pin"/); assert.match(openFixed, /data-font-action="delete-one"/); assert.doesNotMatch(openFixed, /data-font-style=|data-font-apply=/);
+    assert.match(openFixed, /data-font-action="pin"/); assert.match(openFixed, /data-font-action="delete-one"/); assert.doesNotMatch(openFixed, /data-font-style=/);
     const linked = attachCard(f, 'two'); await f.emit('click', linked.action('more')); await f.click('delete-one', { fontId: 'two' }); await f.click('delete-one', { fontId: 'missing' }); assert.deepEqual(f.calls, [{ type: 'delete-font', id: 'two' }]); f.view.destroy();
 });
 test('preview size preserves a non-preset body size and only accepts the five explicit sample sizes', () => {
@@ -428,20 +429,23 @@ test('preview blur save does not swallow the following explicit application', as
     const saving = f.emit('change', f.node('[data-font-preview]', { value: '预览后应用' })); await f.apply('body');
     assert.deepEqual(f.calls.map(value => value.type), ['set-preview', 'apply-font']); resolve(); await saving; f.view.destroy();
 });
-test('dragging weight and selecting style only update sample until dropdown application', async () => {
+test('dragging weight and selecting style only update sample until a scope chip applies them', async () => {
     const f = fixture(state({ entries: [entry('one', { weights: ['100 900'] })] })), slider = f.node('[data-font-weight]', { value: '687', dataset: { fontWeight: 'one' } });
     f.emit('input', slider); assert.equal(f.samples[0].style['font-weight'], '687'); assert.equal(f.calls.length, 0); assert.equal(f.visible.length, 1, 'drag does not repeatedly request preview sources');
     await f.emit('change', slider); await f.emit('change', f.node('[data-font-style]', { value: 'italic', dataset: { fontStyle: 'one' } })); assert.equal(f.samples[0].style['font-style'], 'italic'); assert.equal(f.calls.length, 0);
     await f.apply('body'); assert.deepEqual(f.calls, [{ type: 'apply-font', target: 'body', fontId: 'one', weight: '687', style: 'italic' }]); f.view.destroy();
 });
-test('dropdown restore sends its exact font and target without mutating other choices locally', async () => {
-    const f = fixture(); await f.apply('restore-st'); assert.deepEqual(f.calls, [{ type: 'restore-font', fontId: 'one', target: 'st' }]); f.view.destroy();
+test('clicking a checked chip restores its exact font and target without mutating other choices locally', async () => {
+    const f = fixture(state({ st: { enabled: true, fontId: 'one', weight: '400', style: 'normal' } })); await f.apply('st'); assert.deepEqual(f.calls, [{ type: 'restore-font', fontId: 'one', target: 'st' }]); f.view.destroy();
 });
 
-test('scope pickers start with no implicit selection and can reapply the same scope after changing a preview', async () => {
-    const f = fixture(state({ body: { enabled: true, fontId: 'one', weight: '400', style: 'normal' } })); assert.ok(f.applyPickers.every(picker => picker.selectedIndex === -1)); assert.equal(f.calls.length, 0);
-    await f.apply('body'); f.emit('input', f.node('[data-font-weight]', { value: '1', dataset: { fontWeight: 'one' } })); await f.apply('body'); assert.deepEqual(f.calls.map(call => [call.type, call.target, call.weight]), [['apply-font', 'body', '400'], ['apply-font', 'body', '700']]);
-    await f.apply(''); await f.apply('restore-shared'); assert.equal(f.calls.length, 2); f.view.destroy();
+test('a checked chip toggles off, but re-applies when the sample variant has changed; 全部 fills the missing scopes', async () => {
+    const f = fixture(state({ body: { enabled: true, fontId: 'one', weight: '400', style: 'normal' } })); assert.equal(f.calls.length, 0);
+    await f.apply('body'); f.emit('input', f.node('[data-font-weight]', { value: '1', dataset: { fontWeight: 'one' } })); await f.apply('body');
+    assert.deepEqual(f.calls.map(call => [call.type, call.target, call.weight]), [['restore-font', 'body', undefined], ['apply-font', 'body', '700']]);
+    await f.apply('all'); assert.deepEqual(f.calls.at(-1), { type: 'apply-font', fontId: 'one', target: 'all', weight: '700', style: 'normal' }); f.view.destroy();
+    const every = { enabled: true, fontId: 'one', weight: '400', style: 'normal' }, full = fixture(state({ body: every, st: every, quote: every }));
+    await full.apply('all'); assert.deepEqual(full.calls, [{ type: 'restore-font', fontId: 'one', target: 'all' }]); full.view.destroy();
 });
 test('web source drafts survive rejected and unrelated updates with precise trusted errors', async () => {
     const f = fixture(state(), () => { throw Object.assign(Error('PRIVATE RAW'), { userMessage: '未找到可用的字体声明。' }); });
@@ -833,7 +837,7 @@ test('CSS adds layout and sample controls without rewriting theme fonts or old f
     assert.match(css, /\.qm-font-window \.qm-font-header/); assert.match(css, /\.qm-font-weight-pop/); assert.match(css, /\.qm-font-sample \{[^}]*font-size:18px/); assert.match(css, /@media\(max-width:440px\)/);
     assert.doesNotMatch(css, /font-family\s*:|\.mes_text|body\s*\{|html\s*\{/); assert.match(css, /\.qm-font-file-pick>input\[type="file"\]/);
     assert.match(css, /#story-director-floor-nav\.qm-font-library-open \.sd-floor-panel \{ display:none !important; \}/); assert.match(css, /grid-template-columns:minmax\(0,1fr\) auto/);
-    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /qm-font-apply-pick\)>select[^}]*opacity:0/); assert.doesNotMatch(css, /\.qm-font-card-foot|\.qm-font-meta|\.qm-font-tag \{/);
+    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /\.qm-font-scope-chip\[aria-checked="true"\]/); assert.doesNotMatch(css, /\.qm-font-card-foot|\.qm-font-meta|\.qm-font-tag \{/);
     assert.match(css, /\.qm-font-entry>small \{[^}]*white-space:nowrap;[^}]*text-overflow:ellipsis/); assert.match(css, /\.qm-font-header h2[^}]*font-size:16px !important/);
     assert.match(css, /data-qm-theme="glass"\] \.qm-font-window \.qm-font-header \.qm-font-icon \{ border-radius:50% !important/); assert.match(css, /data-qm-theme="editorial"\][^\n]*border-radius:0 !important/);
     assert.match(css, /input\[data-font-enabled\][^}]*border-radius:999px !important/); assert.doesNotMatch(css, /data-font-sync-originals/); assert.match(css, /qm-font-imports \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
@@ -871,9 +875,9 @@ test('entry, font controller, view and styles use the same refreshed UI cache st
     for (const path of ['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-package.js']) assert.ok((await read(path)).includes(`'./qianmu-font-sources.js?v=${fix}'`));
     assert.ok((await read('style.css')).includes(`'./qianmu-font-library.css?v=${stamp}'`));
 });
-test('apply dropdown offers 引用 and restores it independently', () => {
+test('引用 is its own chip and is checked independently of 正文', () => {
     const plain = renderFontLibraryCards(state());
-    assert.match(plain, /option value="quote">引用</); assert.doesNotMatch(plain, /restore-quote/);
+    assert.match(plain, /data-font-scope-target="quote" role="menuitemcheckbox" aria-checked="false">引用</);
     const quoted = renderFontLibraryCards(state({ body: { enabled: true, fontId: 'one' }, quote: { enabled: true, fontId: 'one' } }));
-    assert.match(quoted, /data-applied="true" title="正文 · 引用"/); assert.match(quoted, /value="restore-quote">恢复引用/);
+    assert.match(quoted, /data-applied="true" title="正文 · 引用"/); assert.match(quoted, /data-font-scope-target="quote" role="menuitemcheckbox" aria-checked="true"/);
 });

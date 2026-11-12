@@ -65,18 +65,19 @@ export function fontLibraryWeightControl(entry, current = {}) {
         value: continuous ? Number(selected.weight) : values.indexOf(Number(selected.weight)), weight: selected.weight, continuous, disabled: values.length < 2 };
 }
 function activeTargets(state, id) {
-    const quote = state.quote?.enabled && state.quote.fontId === id ? ['quote'] : [];
-    if (state.mode === 'shared') return [...(state.shared?.enabled && state.shared.fontId === id ? ['shared'] : []), ...quote];
-    return [...['body', 'st'].filter(target => state[target]?.enabled && state[target].fontId === id), ...quote];
+    return ['body', 'quote', 'st'].filter(target => state[target]?.enabled && state[target].fontId === id);
 }
 function initialChoice(state, entry, draft) { const target = activeTargets(state, entry.id)[0]; return choice(entry, draft || (target ? state[target] : {})); }
 function hasVariants(entry, selected) { return fontStyles(entry).length > 1 || !fontLibraryWeightControl(entry, selected).disabled; }
 function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || view.expandedId !== entry.id ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
+const SCOPE_CHIPS = [['body', '正文'], ['quote', '引用'], ['st', '界面']];
 function applyControl(state, entry) {
-    const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', shared: '全部', quote: '引用' };
-    const current = active.length ? active.map(target => labels[target]).join(' · ') : '应用字体';
-    const restore = `${active.includes('st') ? '<option value="restore-st">恢复界面</option>' : ''}${active.includes('quote') ? '<option value="restore-quote">恢复引用</option>' : ''}`;
-    return `<label class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(current)}">${icon(active.length ? 'font-applied' : 'font-apply')}<select class="qm-font-apply" data-font-apply="${escape(entry.id)}" aria-label="${escape(entry.name)}应用"><option value="body">正文</option><option value="st">界面</option><option value="shared">全部</option><option value="quote">引用</option>${restore}</select></label>`;
+    const active = activeTargets(state, entry.id), activeSet = new Set(active), labels = { body: '正文', st: '界面', quote: '引用' };
+    const all = active.length === SCOPE_CHIPS.length;
+    const title = active.length ? (all ? '全部' : active.map(target => labels[target]).join(' · ')) : '应用字体';
+    const chips = SCOPE_CHIPS.map(([target, label]) => `<button type="button" class="qm-font-scope-chip" data-font-scope="${escape(entry.id)}" data-font-scope-target="${target}" role="menuitemcheckbox" aria-checked="${activeSet.has(target)}">${label}</button>`).join('');
+    const allChip = `<button type="button" class="qm-font-scope-chip qm-font-scope-all" data-font-scope="${escape(entry.id)}" data-font-scope-target="all" role="menuitemcheckbox" aria-checked="${all}">全部</button>`;
+    return `<div class="qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(title)}" role="group" aria-label="${escape(entry.name)}应用范围">${icon(active.length ? 'font-applied' : 'font-apply')}<div class="qm-font-scope-chips">${chips}${allChip}</div></div>`;
 }
 function variantTools(entry, current) {
     const selected = choice(entry, current), range = fontLibraryWeightControl(entry, selected), available = fontStyles(entry), id = escape(entry.id);
@@ -250,7 +251,6 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
             const rename = card.querySelector?.('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || expandedId !== id;
             const mark = card.querySelector?.('.qm-font-pin-mark'); if (mark && entry) mark.hidden = !managing && expandedId === id;
         }
-        for (const picker of qa('[data-font-apply]')) picker.selectedIndex = -1;
         if (!managing || !selected.size) { const editor = q('[data-font-bulk-editor]'); if (editor) editor.hidden = true; bulk = false; if (tagTarget === 'bulk') closeTags(); }
     }
     function renderCards(current = state()) { if (disposed) return; const host = q('[data-font-cards]'); if (!host) return; closeTags(); const library = q('.qm-font-library'); if (library) library.style.paddingBottom = ''; page = selectFontLibraryPage(current, viewState()).page; host.innerHTML = renderFontLibraryCards(current, viewState()); setBusy(busy); selection(current); samples(true, current); }
@@ -311,7 +311,6 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const current = state(), entry = array(current.entries).find(item => item.id === id), card = qa('.qm-font-card').find(node => node.dataset.fontId === id), host = card?.querySelector('.qm-font-card-tools');
         if (!entry || !host) return;
         host.innerHTML = cardTools(current, entry, initialChoice(current, entry, variants[id]), viewState());
-        for (const picker of host.querySelectorAll('[data-font-apply]')) picker.selectedIndex = -1;
         const rename = card.querySelector('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || expandedId !== id;
         const mark = card.querySelector('.qm-font-pin-mark'); if (mark) mark.hidden = !managing && expandedId === id;
     }
@@ -349,6 +348,15 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         closeTagsOutside(target);
         collapseOutside(target);
         const selectedCard = target.closest?.('.qm-font-card'); if (managing && selectedCard) { toggleCard(selectedCard); return; }
+        const chip = target.closest?.('[data-font-scope]');
+        if (chip && !chip.disabled) {
+            const id = chip.dataset.fontScope, scope = chip.dataset.fontScopeTarget, current = state(), entry = array(current.entries).find(item => item.id === id);
+            if (!entry) return;
+            const active = new Set(['body', 'quote', 'st'].filter(key => current[key]?.enabled && current[key].fontId === id));
+            const draft = initialChoice(current, entry, variants[id]), scopes = scope === 'all' ? ['body', 'quote', 'st'] : [scope];
+            const same = scopes.every(key => active.has(key) && String(current[key].weight) === draft.weight && (current[key].style || 'normal') === draft.style);
+            return same ? dispatch('restore-font', { fontId: id, target: scope }) : dispatch('apply-font', { fontId: id, target: scope, ...draft });
+        }
         const button = target.closest?.('[data-font-action]');
         if (!button || button.disabled) {
             if (!target.closest?.('[data-font-weight-pop]')) closePopovers();
@@ -410,7 +418,6 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (target.matches?.('[data-font-file]')) { const files = [...(target.files || [])]; target.value = ''; if (!files.length) return; if (target.dataset.fontFile === 'local') { localUploads = files.map(file => ({ file, fileName: file.name, name: String(file.name || '').replace(/\.(?:woff2?|ttf|otf)$/i, '').slice(0, 160), tags: '' })); closePopovers(); render(); q('[data-font-local-name="0"]')?.focus(); return; } return dispatch('import', { file: files[0] }); }
         if (target.matches?.('[data-font-weight]')) return dragWeight(target, true);
         if (target.matches?.('[data-font-style]')) return setVariant(target.dataset.fontStyle, { style: target.value });
-        if (target.matches?.('[data-font-apply]')) { const id = target.dataset.fontApply, value = target.value, current = state(), entry = array(current.entries).find(item => item.id === id); target.selectedIndex = -1; target.value = ''; if (!entry || !/^(?:body|st|shared|quote|restore-st|restore-quote)$/.test(value)) return; return value.startsWith('restore-') ? dispatch('restore-font', { fontId: id, target: value.slice(8) }) : dispatch('apply-font', { fontId: id, target: value, ...initialChoice(current, entry, variants[id]) }); }
     }
     function isolateField(event) { if (event.target?.closest?.('input,textarea,select')) event.stopPropagation?.(); }
     function keydown(event) {

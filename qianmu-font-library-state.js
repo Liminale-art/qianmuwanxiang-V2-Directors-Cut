@@ -22,6 +22,9 @@ const names = (values, limit, label) => {
 };
 export const fontLibraryTags = values => names(values, 32, '标签');
 const blankAssignment = () => ({ fontId: '', weight: '400', style: 'normal', enabled: false });
+// The three independent application scopes. 正文 / 界面 / 引用 each carry their
+// own font; "全部" is a shortcut that writes all three at once.
+const SCOPES = ['body', 'st', 'quote'];
 function supportedAssignment(assignment, faces) {
   const styleOf = face => String(face.style || 'normal').split(' ')[0];
   const style = faces.some(face => styleOf(face) === assignment.style) ? assignment.style : styleOf(faces[0]);
@@ -41,7 +44,7 @@ export function fontAssignment(value = {}) {
   return { fontId, weight, style, enabled: Boolean(fontId && value.enabled !== false) };
 }
 export function normalizeFontLibrary(value) {
-  if (value == null) return { version: 1, enabled: true, syncLocalOriginals: true, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, mode: 'separate', body: blankAssignment(), st: blankAssignment(), shared: blankAssignment(), quote: blankAssignment() };
+  if (value == null) return { version: 1, enabled: true, syncLocalOriginals: true, fonts: [], folders: [], pinnedIds: [], sortBy: 'name', sortOrder: 'asc', previewText: FONT_LIBRARY_SAMPLE, body: blankAssignment(), st: blankAssignment(), quote: blankAssignment() };
   if (!plain(value) || value.version !== 1 || !Array.isArray(value.fonts) || value.fonts.length > 200) fail('字体库格式无效，未覆盖原资料');
   if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail('字体启用设置无效');
   if (value.syncLocalOriginals !== undefined && typeof value.syncLocalOriginals !== 'boolean') fail('字体原件同步设置无效');
@@ -67,14 +70,16 @@ export function normalizeFontLibrary(value) {
     version: 1, enabled: value.enabled !== false, syncLocalOriginals: true, fonts, folders: names(value.folders || [], 200, '文件夹'),
     pinnedIds: pinnedIds.filter(id => seen.has(id)), sortBy, sortOrder,
     previewText: text(value.previewText == null || LEGACY_FONT_LIBRARY_SAMPLES.has(value.previewText) ? FONT_LIBRARY_SAMPLE : value.previewText, 500, '预览文案'),
-    mode: value.mode === 'shared' ? 'shared' : 'separate',
-    body: fontAssignment(value.body), st: fontAssignment(value.st), shared: fontAssignment(value.shared),
-    // Quoted dialogue is an independent overlay: unset, it follows the body
-    // font; set, it wins over body/shared without changing their mode.
+    // 正文 / 界面 / 引用 are three independent overlays; any combination may be
+    // unified onto one font. Legacy data used a shared/separate mode: when
+    // mode was 'shared' the single shared assignment covered 正文+界面, so fold
+    // it into both independent scopes here.
+    body: fontAssignment(value.mode === 'shared' && !value.body?.fontId ? value.shared : value.body),
+    st: fontAssignment(value.mode === 'shared' && !value.st?.fontId ? value.shared : value.st),
     quote: fontAssignment(value.quote),
   };
   for (const font of fonts) if (font.folder && !result.folders.includes(font.folder)) result.folders.push(font.folder);
-  for (const key of ['body', 'st', 'shared', 'quote']) if (!seen.has(result[key].fontId)) result[key] = blankAssignment();
+  for (const key of ['body', 'st', 'quote']) if (!seen.has(result[key].fontId)) result[key] = blankAssignment();
   return result;
 }
 export function fontRecordSignature(font) {
@@ -113,9 +118,6 @@ export function updateFontLibrary(state, type, payload = {}) {
     const by = payload.by === undefined ? next.sortBy : payload.by;
     if (!['name', 'added'].includes(by) || !['asc', 'desc'].includes(payload.order)) fail('字体排序设置无效');
     next.sortBy = by; next.sortOrder = payload.order;
-  } else if (type === 'set-mode') {
-    if (!['separate', 'shared'].includes(payload.mode)) fail('字体应用方式无效');
-    next.mode = payload.mode;
   } else if (type === 'replace-web') {
     const id = fontLibraryId(payload.id), index = next.fonts.findIndex(font => font.id === id);
     if (index < 0 || next.fonts[index].source.kind !== 'web') fail('原网络字体已变化，请重新打开编辑');
@@ -124,25 +126,22 @@ export function updateFontLibrary(state, type, payload = {}) {
     const previous = next.fonts[index];
     next.fonts[index] = { ...record, id, folder: previous.folder, tags: payload.tags === undefined ? previous.tags : fontLibraryTags(payload.tags) };
     if (JSON.stringify(previous.faces) !== JSON.stringify(record.faces)) {
-      for (const target of ['body', 'st', 'shared', 'quote']) if (next[target].fontId === id) next[target] = supportedAssignment(next[target], record.faces);
+      for (const target of SCOPES) if (next[target].fontId === id) next[target] = supportedAssignment(next[target], record.faces);
     }
   } else if (type === 'apply-font') {
-    if (!['body', 'st', 'shared', 'quote'].includes(payload.target)) fail('字体目标无效');
+    const targets = payload.target === 'all' ? SCOPES : [payload.target];
+    if (targets.some(target => !SCOPES.includes(target))) fail('字体目标无效');
     const assignment = fontAssignment({ ...payload, enabled: true });
     if (!assignment.fontId || !next.fonts.some(font => font.id === assignment.fontId)) fail('字体已不在库中');
-    next[payload.target] = assignment;
-    if (payload.target !== 'quote') next.mode = payload.target === 'shared' ? 'shared' : 'separate';
+    for (const target of targets) next[target] = assignment;
   } else if (type === 'restore-font') {
-    if (!['body', 'st', 'shared', 'quote'].includes(payload.target)) fail('字体目标无效');
+    const targets = payload.target === 'all' ? SCOPES : [payload.target];
+    if (targets.some(target => !SCOPES.includes(target))) fail('字体目标无效');
     const id = fontLibraryId(payload.fontId);
     // A stale dropdown must not clear a newer choice or a dormant preference.
-    const effective = payload.target === 'quote' || (next.mode === 'shared' ? payload.target === 'shared' : payload.target !== 'shared');
-    if (effective && next[payload.target].enabled && next[payload.target].fontId === id) {
-      if (payload.target === 'shared') next.mode = 'separate';
-      else next[payload.target] = blankAssignment();
-    }
+    for (const target of targets) if (next[target].enabled && next[target].fontId === id) next[target] = blankAssignment();
   } else if (type === 'set-assignment') {
-    if (!['body', 'st', 'shared', 'quote'].includes(payload.target)) fail('字体目标无效');
+    if (!SCOPES.includes(payload.target)) fail('字体目标无效');
     next[payload.target] = fontAssignment(payload);
     if (next[payload.target].fontId && !next.fonts.some(font => font.id === next[payload.target].fontId)) fail('字体已不在库中');
   } else if (type === 'set-preview') next.previewText = text(payload.text, 500, '预览文案');

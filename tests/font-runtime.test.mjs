@@ -22,7 +22,7 @@ function fixture({ load, readLocal, loadTimeout = 100, accountKey = 'alice', sup
 }
 const web = (id = 'web1', face = {}) => ({ id, source: { kind: 'web' }, faces: [{ urls: [{ url: 'https://fonts.example/font.woff2', format: 'woff2' }], weight: '400', style: 'normal', ...face }] });
 const choice = (fontId, extra = {}) => ({ fontId, weight: 400, style: 'normal', enabled: true, ...extra });
-const state = (fonts, assignments = {}) => ({ fonts, mode: 'separate', previewText: '人间有信 Aa', ...assignments });
+const state = (fonts, assignments = {}) => ({ fonts, previewText: '人间有信 Aa', ...assignments });
 
 test('classic theme receives only the verified interface family token and restores it with interface disable', async () => {
   let reject = false;
@@ -37,7 +37,7 @@ test('classic theme receives only the verified interface family token and restor
   reject = true; await f.runtime.sync(state(fonts, { body: choice('body'), st: choice('next') }));
   assert.equal(f.css(), previous, 'a failed interface replacement preserves the real previous family');
   await f.runtime.sync(state(fonts, { body: choice('body') })); assert.doesNotMatch(f.css(), /--qm-interface-font:/);
-  reject = false; await f.runtime.sync({ ...state(fonts), mode: 'shared', shared: choice('interface') }); assert.match(f.css(), /--qm-interface-font:/);
+  reject = false; await f.runtime.sync(state(fonts, { body: choice('interface'), st: choice('interface') })); assert.match(f.css(), /--qm-interface-font:/);
   await f.runtime.sync({ ...state(fonts), enabled: false }); assert.equal(f.css(), '');
   f.runtime.dispose(); assert.equal(f.css(), '');
 });
@@ -86,9 +86,9 @@ test('composer body rules share failure retention, restore, shared selection and
   await f.runtime.sync(state(fonts, { st }));
   assert.equal(f.css(), fontScopeCss('st', f.runtime.family('ui-font'), st), 'no body assignment leaves no composer override');
   const shared = choice('ui-font');
-  await f.runtime.sync({ ...state(fonts), mode: 'shared', shared });
+  await f.runtime.sync(state(fonts, { body: shared, st: shared }));
   assert.equal(f.css(), [fontScopeCss('body', f.runtime.family('ui-font'), shared), fontScopeCss('st', f.runtime.family('ui-font'), shared)].join('\n'));
-  await f.runtime.sync({ ...state(fonts), enabled: false, mode: 'shared', shared }); assert.equal(f.css(), '');
+  await f.runtime.sync({ ...state(fonts, { body: shared, st: shared }), enabled: false }); assert.equal(f.css(), '');
   await f.runtime.sync(state(fonts, { body })); assert.match(f.css(), /textarea#send_textarea,\n#chat /);
   f.runtime.dispose(); assert.equal(f.css(), '');
 });
@@ -201,7 +201,7 @@ test('an earlier same-id edit resolving late cannot replace a newer successful s
 test('master off removes both scopes immediately while preserving selected fonts and independent previews', async () => {
   let finish;
   const f = fixture({ load: async font => font.includes(fontPreviewFamily('preview')) ? new Promise(resolve => { finish = resolve; }) : [{}] });
-  const active = state([web('a'), web('b'), web('preview')], { body: choice('a'), st: choice('b'), shared: choice('a') });
+  const active = state([web('a'), web('b'), web('preview')], { body: choice('a'), st: choice('b') });
   const original = structuredClone(active);
   await f.runtime.sync(active);
   assert.match(f.css(), new RegExp(fontPreviewFamily('a')));
@@ -212,10 +212,10 @@ test('master off removes both scopes immediately while preserving selected fonts
   finish([{}]); await disabled;
   assert.equal(f.css(), ''); assert.equal(f.faces.size, 1);
   assert.deepEqual(active, original);
-  await f.runtime.sync({ ...active, enabled: true, mode: 'shared' });
+  await f.runtime.sync({ ...active, enabled: true, st: choice('a') });
   assert.match(f.css(), new RegExp(fontPreviewFamily('a')));
   assert.doesNotMatch(f.css(), new RegExp(fontPreviewFamily('b')));
-  await f.runtime.sync({ ...active, enabled: false, mode: 'shared' });
+  await f.runtime.sync({ ...active, enabled: false, st: choice('a') });
   assert.equal(f.css(), ''); assert.equal(f.faces.size, 0); f.runtime.dispose();
 });
 
@@ -265,15 +265,15 @@ test('independent body and interface use separate opaque fonts without global fo
   f.runtime.dispose(); assert.equal(f.css(), '');
 });
 
-test('shared setting changes both scopes without mutating independent assignments', async () => {
-  const f = fixture(), s = state([web('a'), web('b')], { mode: 'shared', body: choice('a'), st: choice('a'), shared: choice('b') });
+test('identical 正文/界面 assignments share one face load without mutating state', async () => {
+  const f = fixture(), s = state([web('a'), web('b')], { body: choice('b'), st: choice('b') });
   const original = JSON.stringify(s);
   await f.runtime.sync(s);
   assert.equal(JSON.stringify(s), original);
   assert.match(f.css(), new RegExp(fontPreviewFamily('b')));
   assert.doesNotMatch(f.css(), new RegExp(fontPreviewFamily('a')));
   assert.equal(f.requests.length, 1, 'shared verification coalesces identical face loads');
-  await f.runtime.sync({ ...s, mode: 'separate' });
+  await f.runtime.sync({ ...s, body: choice('a'), st: choice('a') });
   assert.match(f.css(), new RegExp(fontPreviewFamily('a')));
   f.runtime.dispose();
 });
