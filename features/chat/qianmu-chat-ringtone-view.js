@@ -243,7 +243,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const wrap = i => ((i % n) + n) % n; // head-tail cyclic: stepping past either end lands on the other
     const nearestChild = () => {
       const middle = strip.scrollLeft + strip.clientWidth / 2;
-      const kids = loop ? strip.children : items;
+      const kids = loop ? Array.from(strip.children) : items;
       let best = 0, gap = Infinity;
       kids.forEach((node, i) => { const d = Math.abs(node.offsetLeft + node.offsetWidth / 2 - middle); if (d < gap) { gap = d; best = i; } });
       return best;
@@ -320,7 +320,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key]; if (!step) return;
       event.preventDefault(); const at = wrap(index + step); centre(at, true); commit(at); // head-tail loop
     });
-    const kids = loop ? strip.children : items;
+    const kids = loop ? Array.from(strip.children) : items;
     kids.forEach((node, i) => node.addEventListener('click', () => { if (dragMoved) { dragMoved = false; return; } const at = loop ? i % n : i; centre(at, true); commit(at); relayout(); }));
     mark(index);
     afterRender.push(() => centre(index, false));

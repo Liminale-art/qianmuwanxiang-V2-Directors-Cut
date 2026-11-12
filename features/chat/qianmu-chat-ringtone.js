@@ -257,7 +257,7 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.497'), now = () => Date.now(), fetch: fetchFn = (...args) => globalThis.fetch(...args), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.498'), now = () => Date.now(), fetch: fetchFn = (...args) => globalThis.fetch(...args), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
   // The list's audio bar mirrors the audition: idle (grey) / loading / playing (green).
   const player = createRingPlayer({ Audio, onChange: next => mounted?.view?.setAudio?.(next) });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });

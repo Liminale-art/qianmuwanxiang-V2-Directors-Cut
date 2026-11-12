@@ -8,7 +8,7 @@ const root = new URL('../', import.meta.url);
 const version = '1.59.484';
 // 1.59.497 (节点 C-9 a-d): font library/state/view/runtime/sources/css changed, so their stamps moved together.
 const releaseVersion = '1.59.497';
-const manifestVersion = '1.59.497';
+const manifestVersion = '1.59.498';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',

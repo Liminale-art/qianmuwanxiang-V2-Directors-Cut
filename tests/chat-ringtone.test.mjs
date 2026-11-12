@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.497'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.498'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Toolkit navigation includes the ring tab (5 tabs since the regex tab).
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -532,6 +532,10 @@ test('wheel picker renders head/tail copies and snaps a copy-centre back to the 
   assert.ok(/if \(loop\) options\.forEach\(opt => makeItem\(opt, false\)\);[\s\S]*const items = options\.map\(opt => makeItem\(opt, true\)\);[\s\S]*if \(loop\) options\.forEach\(opt => makeItem\(opt, false\)\);/.test(view), '前后各一份副本夹住本体');
   assert.ok(view.includes("node.classList.add('is-copy')") && view.includes("node.setAttribute('aria-hidden', 'true')"), '副本标记 is-copy 且 aria-hidden');
   assert.ok(view.includes('if (child >= n && child < 2 * n) return;') && view.includes('strip.scrollLeft = real.offsetLeft'), '落在副本区则无动画跳回本体同值');
+  // strip.children is a live HTMLCollection (no .forEach); iterating it as an array would throw
+  // "kids.forEach is not a function" in the browser and break the whole panel render.
+  assert.ok(!/loop \? strip\.children : items;[\s\S]{0,120}?kids\.forEach/.test(view), '不得对 HTMLCollection 直接 forEach');
+  assert.equal((view.match(/Array\.from\(strip\.children\)/g) || []).length, 2, 'nearestChild 与 click 绑定都用 Array.from 包住 children');
 
   const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
   const nodes = [];
