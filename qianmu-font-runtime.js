@@ -13,6 +13,7 @@ const PROSE_EDIT = '#chat .mes .mes_text textarea.edit_textarea';
 const PROSE_MIXED_PARAGRAPH = '#chat .mes .mes_text:not([data-sd-prose-mixed="1"]):has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style])) > :is(p, div):not([class], [style]):not(:has(style, .np-min-card, [data-sd-prose-exempt], :is(div, section, article, p):is([class], [style])))';
 const PROSE_TEXT_EXEMPT = 'pre, code, kbd, samp, svg, canvas, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="icon"], .np-min-card, [data-sd-prose-exempt], [id^="story-director-"], :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)';
 const PROSE_TEXT_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) :is(p, div, span, a, b, strong, em, i, u, s, q, blockquote, ul, ol, li, h1, h2, h3, h4, h5, h6, sub, sup, small):not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
+const PROSE_QUOTE_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) q:not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
 // Body carries state classes such as sd-prose-layout; those are not a Qianmu
 // window and must not accidentally exempt the whole host interface.
 const OWN_SURFACE = '[id^="story-director-"], :is([class^="sd-"], [class*=" sd-"], [class^="qm-"], [class*=" qm-"]):not(html):not(body)';
@@ -115,6 +116,10 @@ export function fontScopeCss(scope, family, selection = {}) {
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
   if (scope === 'body') return layer(`:root { --qm-body-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\ntextarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${READING_META_PSEUDO} { ${font} }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  // ST's messageFormatting wraps "…" “…” «…» 「…」 『…』 ＂…＂ in <q>. Same
+  // specificity as PROSE_TEXT_TARGET; painted after body so it wins by order.
+  if (scope === 'quote') return layer(`${PROSE_QUOTE_TARGET} { ${font} font-weight:${weight} !important; font-style:${style} !important; }
+${PROSE_QUOTE_TARGET} * { ${font} }`);
   if (scope !== 'st') return '';
   // Classic Qianmu panels may follow the applied interface family without
   // widening ST_TARGET or changing the host's native --mainFontFamily. Paper
@@ -152,7 +157,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
   function unlayer(block) { return block.startsWith(LAYER_OPEN) && block.endsWith('\n}') ? block.slice(LAYER_OPEN.length, -2) : block; }
   function paint() {
     const useLayer = layerSupported();
-    const css = ['body', 'st'].map((scope) => {
+    const css = ['body', 'st', 'quote'].map((scope) => {
       const entry = applied.get(scope);
       if (!entry) return '';
       const block = fontScopeCss(scope, entry.family, entry.selection);
@@ -276,8 +281,8 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       if (disposed) return;
       const turn = ++generation;
       const fonts = new Map((Array.isArray(state.fonts) ? state.fonts : []).filter((font) => typeof font?.id === 'string').map((font) => [font.id, font]));
-      const choices = state.enabled === false ? { body: null, st: null }
-        : state.mode === 'shared' ? { body: state.shared, st: state.shared } : { body: state.body, st: state.st };
+      const choices = state.enabled === false ? { body: null, st: null, quote: null }
+        : { ...(state.mode === 'shared' ? { body: state.shared, st: state.shared } : { body: state.body, st: state.st }), quote: state.quote || null };
       const needed = new Set(previewIds.filter((id) => fonts.has(id)));
       for (const [scope, selection] of Object.entries(choices)) {
         if (applied.has(scope) && !fonts.has(applied.get(scope).id)) applied.delete(scope);

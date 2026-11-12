@@ -323,3 +323,14 @@ test('reading existing libraries does not add a new aggregate face gate intended
   assert.deepEqual(normalized.pinnedIds, value.pinnedIds); assert.equal(normalized.sortOrder, 'desc');
   assert.deepEqual(normalized.fonts.map(item => item.faces), fonts.map(item => item.faces)); assert.deepEqual(value, before);
 });
+test('quote scope is an independent overlay that never switches separate/shared mode', () => {
+  assert.deepEqual(normalizeFontLibrary().quote, { fontId: '', weight: '400', style: 'normal', enabled: false });
+  let state = updateFontLibrary(fixture(), 'apply-font', { target: 'shared', fontId: 'a' });
+  state = updateFontLibrary(state, 'apply-font', { target: 'quote', fontId: 'b', weight: '700' });
+  assert.equal(state.mode, 'shared'); assert.equal(state.quote.fontId, 'b'); assert.equal(state.quote.weight, '700'); assert.equal(state.shared.fontId, 'a');
+  state = updateFontLibrary(state, 'restore-font', { target: 'quote', fontId: 'b' });
+  assert.equal(state.quote.enabled, false); assert.equal(state.mode, 'shared'); assert.equal(state.shared.enabled, true);
+  state = updateFontLibrary(state, 'apply-font', { target: 'quote', fontId: 'b' });
+  state = updateFontLibrary(state, 'delete-fonts', { ids: ['b'] });
+  assert.equal(state.quote.enabled, false); assert.equal(state.quote.fontId, '');
+});

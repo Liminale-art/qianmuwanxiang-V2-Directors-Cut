@@ -439,3 +439,11 @@ test('theme-drawn pseudo labels follow the chosen fonts (top-bar drawer labels, 
   assert.ok(body.includes('#chat > .mes > .mesAvatarWrapper::after {'), '正文阅读信息伪元素跟随正文字体');
   for (const css of [st, body]) assert.match(css, /^@layer qianmu-font-application \{/);
 });
+test('quote scope targets ST <q> dialogue inside prose only and paints after body', async () => {
+  const quote = fontScopeCss('quote', fontPreviewFamily('quote-font'), { weight: '700', style: 'italic' });
+  assert.match(quote, /^@layer qianmu-font-application \{/);
+  assert.match(quote, /\.mes_text[^{]*\) q:not\(/); assert.match(quote, / q:not\([^{]*\) \* \{/);
+  assert.match(quote, /font-weight:700 !important; font-style:italic !important;/);
+  assert.doesNotMatch(quote, /send_textarea|edit_textarea|--qm-body-font|html body/);
+  assert.equal(fontScopeCss('quote', 'not a family'), '');
+});

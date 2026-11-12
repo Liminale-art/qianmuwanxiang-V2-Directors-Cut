@@ -65,17 +65,18 @@ export function fontLibraryWeightControl(entry, current = {}) {
         value: continuous ? Number(selected.weight) : values.indexOf(Number(selected.weight)), weight: selected.weight, continuous, disabled: values.length < 2 };
 }
 function activeTargets(state, id) {
-    if (state.mode === 'shared') return state.shared?.enabled && state.shared.fontId === id ? ['shared'] : [];
-    return ['body', 'st'].filter(target => state[target]?.enabled && state[target].fontId === id);
+    const quote = state.quote?.enabled && state.quote.fontId === id ? ['quote'] : [];
+    if (state.mode === 'shared') return [...(state.shared?.enabled && state.shared.fontId === id ? ['shared'] : []), ...quote];
+    return [...['body', 'st'].filter(target => state[target]?.enabled && state[target].fontId === id), ...quote];
 }
 function initialChoice(state, entry, draft) { const target = activeTargets(state, entry.id)[0]; return choice(entry, draft || (target ? state[target] : {})); }
 function hasVariants(entry, selected) { return fontStyles(entry).length > 1 || !fontLibraryWeightControl(entry, selected).disabled; }
 function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || (hasVariants(entry, selected) && view.expandedId !== entry.id) ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
 function applyControl(state, entry) {
-    const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', shared: '全部' };
-    const current = active.length > 1 ? '全部' : active.length ? labels[active[0]] : '应用字体';
-    const restore = active.includes('st') ? '<option value="restore-st">恢复界面</option>' : '';
-    return `<label class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(current)}">${icon(active.length ? 'font-applied' : 'font-apply')}<select class="qm-font-apply" data-font-apply="${escape(entry.id)}" aria-label="${escape(entry.name)}应用"><option value="body">正文</option><option value="st">界面</option><option value="shared">全部</option>${restore}</select></label>`;
+    const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', shared: '全部', quote: '引用' };
+    const current = active.length ? active.map(target => labels[target]).join(' · ') : '应用字体';
+    const restore = `${active.includes('st') ? '<option value="restore-st">恢复界面</option>' : ''}${active.includes('quote') ? '<option value="restore-quote">恢复引用</option>' : ''}`;
+    return `<label class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(current)}">${icon(active.length ? 'font-applied' : 'font-apply')}<select class="qm-font-apply" data-font-apply="${escape(entry.id)}" aria-label="${escape(entry.name)}应用"><option value="body">正文</option><option value="st">界面</option><option value="shared">全部</option><option value="quote">引用</option>${restore}</select></label>`;
 }
 function variantTools(entry, current) {
     const selected = choice(entry, current), range = fontLibraryWeightControl(entry, selected), available = fontStyles(entry), id = escape(entry.id);
@@ -399,7 +400,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (target.matches?.('[data-font-file]')) { const files = [...(target.files || [])]; target.value = ''; if (!files.length) return; if (target.dataset.fontFile === 'local') { localUploads = files.map(file => ({ file, fileName: file.name, name: String(file.name || '').replace(/\.(?:woff2?|ttf|otf)$/i, '').slice(0, 160), tags: '' })); closePopovers(); render(); q('[data-font-local-name="0"]')?.focus(); return; } return dispatch('import', { file: files[0] }); }
         if (target.matches?.('[data-font-weight]')) return dragWeight(target, true);
         if (target.matches?.('[data-font-style]')) return setVariant(target.dataset.fontStyle, { style: target.value });
-        if (target.matches?.('[data-font-apply]')) { const id = target.dataset.fontApply, value = target.value, current = state(), entry = array(current.entries).find(item => item.id === id); target.selectedIndex = -1; target.value = ''; if (!entry || !/^(?:body|st|shared|restore-st)$/.test(value)) return; return value === 'restore-st' ? dispatch('restore-font', { fontId: id, target: 'st' }) : dispatch('apply-font', { fontId: id, target: value, ...initialChoice(current, entry, variants[id]) }); }
+        if (target.matches?.('[data-font-apply]')) { const id = target.dataset.fontApply, value = target.value, current = state(), entry = array(current.entries).find(item => item.id === id); target.selectedIndex = -1; target.value = ''; if (!entry || !/^(?:body|st|shared|quote|restore-st|restore-quote)$/.test(value)) return; return value.startsWith('restore-') ? dispatch('restore-font', { fontId: id, target: value.slice(8) }) : dispatch('apply-font', { fontId: id, target: value, ...initialChoice(current, entry, variants[id]) }); }
     }
     function isolateField(event) { if (event.target?.closest?.('input,textarea,select')) event.stopPropagation?.(); }
     function keydown(event) {

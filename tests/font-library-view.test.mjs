@@ -851,3 +851,9 @@ test('entry, font controller, view and styles use the same refreshed UI cache st
     for (const path of ['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-package.js']) assert.ok((await read(path)).includes(`'./qianmu-font-sources.js?v=${stamp}'`));
     assert.ok((await read('style.css')).includes(`'./qianmu-font-library.css?v=${stamp}'`));
 });
+test('apply dropdown offers 引用 and restores it independently', () => {
+    const plain = renderFontLibraryCards(state());
+    assert.match(plain, /option value="quote">引用</); assert.doesNotMatch(plain, /restore-quote/);
+    const quoted = renderFontLibraryCards(state({ body: { enabled: true, fontId: 'one' }, quote: { enabled: true, fontId: 'one' } }));
+    assert.match(quoted, /data-applied="true" title="正文 · 引用"/); assert.match(quoted, /value="restore-quote">恢复引用/);
+});
