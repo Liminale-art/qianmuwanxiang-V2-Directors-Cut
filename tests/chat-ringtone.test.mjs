@@ -489,6 +489,17 @@ test('辉光 style: day/night only, status-tinted glow edge, chamfer, left→rig
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
 });
 
+test('虹彩 style: glass pill, bell icon with status glow, scale-wiggle-shrink bell animation', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  const iris = css.split('\n').filter(line => line.includes('data-qm-toast="iris"')).join('\n');
+  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-radius: 999px/.test(iris), '玻璃胶囊大圆角');
+  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(iris), '玻璃质感');
+  assert.ok(iris.includes("mask: url(\"data:image/svg+xml") && iris.includes('a7 7 0'), '状态图标为铃铛 SVG');
+  assert.ok(/::before \{[^}]*background: var\(--qm-toast-status\)/.test(iris) && iris.includes('drop-shadow(0 2px 5px color-mix(in srgb, var(--qm-toast-status)'), '铃铛底部状态色柔光');
+  assert.ok(iris.includes('animation: qm-toast-bell') && /@keyframes qm-toast-bell \{ 0% \{[^}]*scale\(\.5\)[^}]*\}[^@]*scale\(1\.22\)[^@]*rotate\(-14deg\)/.test(css), '放大→晃一晃→缩回');
+  assert.ok(!css.includes('qm-toast-iris') && !css.includes('--qm-toast-iris'), '旧流动虹彩已移除');
+});
+
 test('toolkit panel caps at the Qianmu window size and tapping a toast keeps it open', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('#story-director-floor-nav .sd-floor-panel { max-height: min(760px, calc(100dvh - 28px)); }'), '最大高度与千幕大面板一致');
