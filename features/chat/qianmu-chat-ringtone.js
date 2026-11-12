@@ -4,13 +4,12 @@ const PRESET_ROWS = [
   ['LINE', 'line-default', '默认铃声', 'mp3'], ['LINE', 'line-slow-chime', '慢连音', 'mp3'], ['LINE', 'line-dulcimer-1', '扬琴 1', 'mp3'],
   ['LINE', 'line-dulcimer-2', '扬琴 2', 'mp3'], ['LINE', 'line-crystal', '水晶', 'mp3'], ['LINE', 'line-droplet', '水滴', 'mp3'], ['LINE', 'line-bug', '调皮小虫', 'mp3'],
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13].map(n => ['消息提示短音', `short-notification-${n}`, `notification ${n}`, 'mp3']),
-  ['消息提示短音', 'short-notification-14', 'notification 14', 'flac'],
   ['消息提示短音', 'short-clear-combo-1', 'clear combo 1', 'mp3'], ['消息提示短音', 'short-clear-combo-2', 'clear combo 2', 'mp3'],
   ['消息提示短音', 'short-combine-special', 'combine special', 'mp3'], ['消息提示短音', 'short-item-pick-up', 'item pick up', 'mp3'],
   ['消息提示短音', 'short-level-complete', 'level complete', 'mp3'],
   ['果壳铃', 'shell-bell-water', '水铃桐', 'mp3'], ['果壳铃', 'shell-bell-ethereal', '略带空灵的水铃', 'mp3'],
   ['塞尔达', 'zelda-yahaha', '呀哈哈', 'mp3'], ['塞尔达', 'zelda-complete', '完成', 'mp3'], ['塞尔达', 'zelda-sheikah', '希卡', 'mp3'],
-  ['塞尔达', 'zelda-sheikah-update', '希卡更新', 'mp3'], ['塞尔达', 'zelda-get', '获取', 'mp3'],
+  ['塞尔达', 'zelda-sheikah-update', '希卡更新', 'mp3'], ['塞尔达', 'zelda-get', '获取', 'mp3'], ['塞尔达', 'short-notification-14', '获取新物品', 'flac'],
   ['宝可梦', 'pokemon-item-found', '物品发现', 'mp3'], ['宝可梦', 'pokemon-pick-berry', '摘果子', 'mp3'], ['宝可梦', 'pokemon-heal', '治疗', 'mp3'],
   ['宝可梦', 'pokemon-forget-move', '技能遗忘', 'mp3'],
   ['星露谷', 'stardew-fish-bite', '钓鱼上钩', 'mp3'], ['星露谷', 'stardew-chicken', '鸡', 'mp3'], ['星露谷', 'stardew-cow', '牛', 'mp3'],
@@ -204,14 +203,14 @@ export function createRingPlayer({ Audio, onChange = () => {} }) {
 }
 
 /** The local sound lives in this browser only (one record per account), never in synced settings. */
-export function createLocalSoundStore({ indexedDB = globalThis.indexedDB, resolveNamespace }) {
+export function createLocalSoundStore({ indexedDB = globalThis.indexedDB, resolveNamespace, dbPrefix = 'qianmu-ringtone', storeName = 'sounds' }) {
   async function withStore(mode, action) {
     const namespace = String(await resolveNamespace() || '').trim();
     if (!namespace) throw new Error('尚未确认当前账户，不能存取本地铃声');
     if (!indexedDB?.open) throw new Error('此浏览器不支持保存本地铃声，请改用链接');
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open(`qianmu-ringtone:${encodeURIComponent(namespace)}`, 1);
-      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('sounds')) request.result.createObjectStore('sounds'); };
+      const request = indexedDB.open(`${dbPrefix}:${encodeURIComponent(namespace)}`, 1);
+      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(storeName)) request.result.createObjectStore(storeName); };
       request.onerror = () => reject(new Error('本地铃声库无法打开，请检查浏览器存储权限'));
       request.onblocked = () => reject(new Error('本地铃声库正被其他页面占用，请关闭旧页面后重试'));
       request.onsuccess = () => resolve(request.result);
@@ -219,10 +218,10 @@ export function createLocalSoundStore({ indexedDB = globalThis.indexedDB, resolv
     try {
       return await new Promise((resolve, reject) => {
         let result = null;
-        const tx = db.transaction('sounds', mode);
+        const tx = db.transaction(storeName, mode);
         tx.oncomplete = () => resolve(result);
         tx.onerror = tx.onabort = () => reject(new Error(mode === 'readonly' ? '本地铃声读取失败' : '本地铃声未保存，请检查浏览器存储空间'));
-        action(tx.objectStore('sounds'), value => { result = value; });
+        action(tx.objectStore(storeName), value => { result = value; });
       });
     } finally { db.close(); }
   }
@@ -230,6 +229,7 @@ export function createLocalSoundStore({ indexedDB = globalThis.indexedDB, resolv
     get: id => withStore('readonly', (store, done) => { const request = store.get(String(id)); request.onsuccess = () => done(request.result || null); }),
     put: (id, blob) => withStore('readwrite', store => { store.put(blob, String(id)); }),
     delete: id => withStore('readwrite', store => { store.delete(String(id)); }),
+    clear: () => withStore('readwrite', store => { store.clear(); }),
   });
 }
 
@@ -257,14 +257,48 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.495'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.496'), now = () => Date.now(), fetch: fetchFn = (...args) => globalThis.fetch(...args), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
   // The list's audio bar mirrors the audition: idle (grey) / loading / playing (green).
   const player = createRingPlayer({ Audio, onChange: next => mounted?.view?.setAudio?.(next) });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
+  // Only the currently-selected built-in/link preset is mirrored into this browser so a network
+  // wobble can't interrupt the ringtone; its blob lives in a separate store, one record at a time.
+  const presetStore = createLocalSoundStore({ indexedDB, resolveNamespace, dbPrefix: 'qianmu-ringtone-preset', storeName: 'presets' });
   let armed = false, lastRing = 0, mounted = null, disposed = false, listening = false, localSeq = 0, skinActive = false;
   const localUrls = new Map(); // id -> object URL cache for this session
+  const presetUrls = new Map(); // preset id -> cached object URL for this session
+  function dropPresetUrls(keep) {
+    for (const [id, url] of presetUrls) { if (id === keep) continue; URLClass.revokeObjectURL(url); presetUrls.delete(id); }
+  }
+  // Fetch the current preset once and keep its blob as the single cached record; failures stay silent (fall back to network).
+  async function cachePreset(id, url) {
+    if (!id || !url || presetUrls.has(id)) return;
+    try {
+      const response = await fetchFn(url);
+      if (!response?.ok) return;
+      const blob = await response.blob();
+      // A later pick superseded this one: never let a slow fetch overwrite the newer choice.
+      if (disposed || !blob?.size || state().soundPreset !== id) return;
+      // Keep only the current preset: wipe the store, then store this one.
+      await presetStore.clear().catch(() => {});
+      await presetStore.put(id, blob).catch(() => {});
+      dropPresetUrls(id);
+      if (!presetUrls.has(id)) presetUrls.set(id, URLClass.createObjectURL(blob));
+    } catch (_) { /* network/storage hiccup: keep using the network URL */ }
+  }
+  // Resolve the preset to a cached object URL when available (memory, then IndexedDB); otherwise the network URL.
+  async function presetSource(id, fallback) {
+    if (!id) return fallback;
+    if (presetUrls.has(id)) return presetUrls.get(id);
+    const blob = await presetStore.get(id).catch(() => null);
+    if (disposed || !blob?.size) return fallback;
+    dropPresetUrls(id);
+    const url = URLClass.createObjectURL(blob);
+    presetUrls.set(id, url);
+    return url;
+  }
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
@@ -293,7 +327,8 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   async function soundSource(s = state()) {
     if (s.soundSource === 'url') return safeSoundUrl(s.soundUrl);
     if (s.soundSource === 'local') return s.localId ? localSource(s.localId).catch(() => '') : '';
-    return (RINGTONE_PRESETS.find(item => item.id === s.soundPreset) || RINGTONE_PRESETS[0]).url;
+    const preset = RINGTONE_PRESETS.find(item => item.id === s.soundPreset) || RINGTONE_PRESETS[0];
+    return presetSource(preset.id, preset.url).catch(() => preset.url);
   }
   const iconFrames = (s = state()) => {
     if (s.iconSource !== 'custom') return [...RINGTONE_TAB_ICONS];
@@ -343,6 +378,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       const preset = RINGTONE_PRESETS.find(item => item.id === id);
       if (!preset) return;
       const s = state(); s.soundPreset = id; normalizeRingtone(getOwner()); save();
+      void cachePreset(preset.id, preset.url);
       await player.play(preset.url, s.volume);
     },
     setVolume(value, commit = false) {
@@ -408,6 +444,6 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   function activate() { skinActive = true; syncToast(); }
   // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
   function refreshLook() { syncToast(); }
-  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); armed = false; }
+  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
   return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state });
 }

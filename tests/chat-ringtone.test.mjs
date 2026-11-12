@@ -223,6 +223,11 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
   const ids = new Set(RINGTONE_PRESETS.map(p => p.id));
   assert.ok(!ids.has('get-deluxe-item') && !ids.has('interact-sound'), '已移除旧铃声');
   assert.ok(ids.has('crisp-droplet-echo') && ids.has('crisp-wind-chime'), '已加入两个新铃声');
+  const n14 = RINGTONE_PRESETS.find(p => p.id === 'short-notification-14');
+  assert.ok(n14, 'notification 14 仍在（id 不变）');
+  assert.equal(n14.label, '获取新物品', '改名为获取新物品');
+  assert.equal(n14.group, '塞尔达', '移至塞尔达组');
+  assert.ok(n14.url.endsWith('.flac'), '扩展名 flac 不变');
 });
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
@@ -342,6 +347,29 @@ test('list rows audition on select: selectPreset/selectLocal persist the pick an
   assert.ok(paused >= 1, '返回时停止试听');
   assert.ok(!('preview' in h.ring.actions), '不再提供单独的试听按钮动作');
 });
+
+test('selecting a preset caches it locally so a later network drop keeps the ringtone', async () => {
+  const fetched = [];
+  const fetch = async url => { fetched.push(url); return { ok: true, blob: async () => ({ size: 12, type: 'audio/flac' }) }; };
+  const made = [];
+  const URL = { createObjectURL: () => { const u = `blob:preset-${made.length}`; made.push(u); return u; }, revokeObjectURL: () => {} };
+  const h = harness({ fetch, URL });
+  const target = RINGTONE_PRESETS[RINGTONE_PRESETS.length - 1];
+  await h.ring.actions.selectPreset(target.id);
+  await new Promise(r => setTimeout(r, 0)); // let the background cache settle
+  assert.ok(fetched.includes(target.url), '选中后后台抓取该预设并缓存');
+  assert.ok(made.length >= 1, '缓存命中时用本地 blob URL');
+});
+
+test('a failed cache fetch never interrupts selecting a preset', async () => {
+  const fetch = async () => { throw new Error('offline'); };
+  const h = harness({ fetch });
+  const target = RINGTONE_PRESETS[RINGTONE_PRESETS.length - 1];
+  await h.ring.actions.selectPreset(target.id); // must not throw
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(h.settings.ringtone.soundPreset, target.id, '抓取失败仍记住选择，静默回落网络地址');
+});
+
 
 test('ringtone view has no separate preview button or bottom-sheet list', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
