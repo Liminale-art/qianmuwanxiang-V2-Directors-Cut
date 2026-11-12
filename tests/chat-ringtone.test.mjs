@@ -522,15 +522,19 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   view.dispose();
 });
 
-test('辉光 style: day/night only, status-tinted glow edge, chamfer, left→right sweep', async () => {
+test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice then expand glitch once', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   const glow = css.split('\n').filter(line => line.includes('data-qm-toast="glow"')).join('\n');
   assert.ok(!glow.includes('data-qm-toast-theme'), '只按日夜，不额外读主题');
   assert.ok(/html\[data-qm-toast="glow"\]\[data-qm-toast-mode="dark"\]/.test(glow), '夜间半透深色块');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*clip-path: polygon/.test(glow), '斜切边角');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*clip-path: polygon/.test(glow), '左倾平行四边形');
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(glow), '日间半透毛玻璃');
   assert.ok(glow.includes('--gw-edge: var(--qm-toast-status)'), '边沿辉光跟随提示状态色');
-  assert.ok(glow.includes('animation: qm-toast-glow-sweep') && /@keyframes qm-toast-glow-sweep \{ 0% \{[^}]*translateX\(-120%\)/.test(css), '光带从左向右划出');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*inset 3px 0 0 0 var\(--gw-edge\), inset -3px 0 0 0 var\(--gw-edge\)/.test(glow), '仅左右对角粗边线');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*transform-origin: left center/.test(glow), '从左向右展开');
+  assert.ok(/animation: qm-toast-glow-glitch [^!]*both !important/.test(glow) && /@keyframes qm-toast-glow-glitch \{ 0% \{[^}]*scaleX\(\.04\)/.test(css), '面板由左向右展开带 glitch，仅进场一次');
+  assert.ok(glow.includes('animation: qm-toast-glow-flash') && /@keyframes qm-toast-glow-flash \{[^@]*opacity: 1[^@]*opacity: 0[^@]*opacity: 1[^@]*opacity: 0[^@]*opacity: 1/.test(css), '左边线进场前闪两下');
+  assert.ok(!css.includes('qm-toast-glow-sweep'), '弃用旧光带动画');
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
 });
 
