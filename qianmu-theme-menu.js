@@ -49,6 +49,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
     let boundsObserver = null;
     let pickerHsv = { h: 0, s: 0, v: 1 };
     let pickerHex = '', committedPicker = null, pendingHsv = null, pickerFrame = null, svPointer = null, svBounds = null;
+    let colorFrame = null, pendingColor = null;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     function positionMenu() {
         if (disposed || menu.hidden || !menu.style || !view || !menu.getBoundingClientRect) return;
@@ -181,6 +182,7 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
         if (pointer !== null) { try { sv?.releasePointerCapture?.(pointer); } catch { /* Already released by the browser. */ } }
     }
     function cancelPicker() {
+        cancelColorFrame();
         if (pickerFrame !== null) view?.cancelAnimationFrame?.(pickerFrame);
         pickerFrame = null; pendingHsv = null; releaseSv();
         if (committedPicker) syncPicker(committedPicker.hex, committedPicker.hsv);
@@ -332,14 +334,36 @@ export function bindQianmuThemeMenu(root, onSelect, appearance = null) {
             option.setAttribute('aria-checked', String(option === button));
         }
     }
+    function cancelColorFrame() {
+        if (colorFrame !== null) view?.cancelAnimationFrame?.(colorFrame);
+        colorFrame = null; pendingColor = null;
+    }
+    function commitColor(value) {
+        pendingColor = null; actionError = ''; sequence++;
+        try { const result = appearance.change({ accent: value, source: 'manual' }); refresh(); settle(result); }
+        catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
+    }
+    function flushColor() {
+        colorFrame = null;
+        const value = pendingColor; pendingColor = null;
+        if (value === null || disposed || menu.hidden || !appearance || appearance.read().family === 'classic') return;
+        commitColor(value);
+    }
     function chooseColor(event) {
         if (disposed || menu.hidden || event.target !== color || !visible(color) || !appearance || appearance.read().family === 'classic' || !/^#[a-f\d]{6}$/i.test(color.value)) return;
         // A failed native input is rolled back by refresh. Its trailing change
         // must not clear the failure by "successfully" applying the old color.
         if (event.type === 'change' && actionError && color.value === appearance.read().accent) return;
-        const value = color.value; cancelPicker(); actionError = ''; sequence++;
-        try { const result = appearance.change({ accent: value, source: 'manual' }); refresh(); settle(result); }
-        catch { actionError = '颜色切换未完成，已保留原设置。'; refresh(); }
+        const value = color.value; cancelPicker();
+        // The native color input fires `input` on every drag tick. Coalesce those to
+        // one settings write per animation frame; `change` cancels the pending frame
+        // and commits immediately so the drop always lands.
+        if (event.type === 'input' && view?.requestAnimationFrame) {
+            pendingColor = value;
+            if (colorFrame === null) colorFrame = view.requestAnimationFrame(flushColor);
+            return;
+        }
+        cancelColorFrame(); commitColor(value);
     }
     function toggleCustomPicker(event) {
         if (!customColor || !customPicker || !appearance || appearance.read().family === 'classic') return;

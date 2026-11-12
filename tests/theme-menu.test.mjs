@@ -113,6 +113,32 @@ test('hue covers all HSV primaries and preserves the red 360 endpoint through re
     f.dispose();
 });
 
+test('native color drag coalesces input to one settings write per frame; change commits immediately',()=>{
+    const f=colorFixture({accent:'#527c69',source:'manual'});
+    // Three consecutive `input` ticks within one frame collapse to a single appearance.change on the next frame.
+    f.color.value='#111111';f.color.emit('input');
+    f.color.value='#222222';f.color.emit('input');
+    f.color.value='#333333';f.color.emit('input');
+    assert.equal(f.changes.length,0,'no write before the frame fires');
+    f.frame();
+    assert.equal(f.changes.length,1);assert.equal(f.appearance.read().accent,'#333333','only the latest value is committed');
+    // A trailing `change` cancels any pending frame and commits at once.
+    f.color.value='#444444';f.color.emit('input');
+    f.color.value='#555555';f.color.emit('change');
+    assert.equal(f.changes.length,2);assert.equal(f.appearance.read().accent,'#555555');
+    f.frame();
+    assert.equal(f.changes.length,2,'the superseded input frame does not re-commit');
+    f.dispose();
+});
+
+test('disposing while a native color input frame is pending cancels the write',()=>{
+    const f=colorFixture({accent:'#527c69',source:'manual'});
+    f.color.value='#abcdef';f.color.emit('input');
+    assert.equal(f.changes.length,0);
+    f.dispose();f.frame();
+    assert.equal(f.changes.length,0,'a pending frame after dispose never commits');
+});
+
 test('gray and black retain latent hue and black retains saturation until SV restores visibility',()=>{
     const f=colorFixture({accent:'#808080',source:'manual'});
     f.hue.value='240';f.hue.emit('input');f.hue.emit('change');

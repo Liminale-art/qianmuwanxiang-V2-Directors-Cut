@@ -1340,6 +1340,12 @@ html body.sd-prose-split-breaks #chat .mes .mes_text [data-sd-prose-indent="1"] 
   -webkit-text-fill-color: currentColor !important;
   color: var(--sd-text) !important;
 }
+/* 主题/强调色切换期间临时关闭千幕自绘界面的颜色过渡，避免一次切换触发约 50 处过渡动画造成的延迟感。
+   仅作用于带 [data-qm-theme] 的千幕根及其子树，ST 原生界面不受影响；属性由外观会话在 sync 时置两帧。 */
+html[data-qm-theme-switching] [data-qm-theme],
+html[data-qm-theme-switching] [data-qm-theme] * {
+  transition: none !important;
+}
 #story-director-modal[data-qm-theme="glass"] .sd-header h2,
 #story-director-floor-nav[data-qm-theme="glass"] .qm-font-window .sd-header h2 {
   background: var(--sd-title-grad, linear-gradient(92deg, var(--sd-accent), var(--sd-text))) !important;

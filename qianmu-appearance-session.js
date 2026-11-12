@@ -39,6 +39,21 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         readSettings: () => ready ? readSettings() : { theme: readSettings()?.theme }, readCoverAccent, WeakReference,
     });
     let runtime = createRuntime();
+    // Suppress Qianmu's own color/background transitions for a couple of frames
+    // around a theme/accent write, so a switch repaints in one step instead of
+    // animating ~50 properties. Scoped to <html> via an attribute; ST is untouched
+    // because the CSS rule only matches Qianmu roots. App-owned, no observer.
+    let switchFrame = null, switchTimer = null;
+    function suppressTransitions() {
+        const node = document?.documentElement; if (!node?.setAttribute) return;
+        const view = document.defaultView;
+        if (switchFrame !== null) view?.cancelAnimationFrame?.(switchFrame);
+        if (switchTimer !== null) clearTimeout(switchTimer);
+        node.setAttribute('data-qm-theme-switching', '');
+        const clear = () => { switchFrame = null; switchTimer = null; try { node.removeAttribute('data-qm-theme-switching'); } catch { /* detached */ } };
+        if (view?.requestAnimationFrame) switchFrame = view.requestAnimationFrame(() => { switchFrame = view.requestAnimationFrame(clear); });
+        else switchTimer = setTimeout(clear, 48);
+    }
     function syncFont() {
         const family = readAppearancePreferences(readSettings()).family;
         if (!ready || !runtime.supported || !Object.hasOwn(THEME_FONT_URLS, family)) {
@@ -58,6 +73,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
             else if (!root.isConnected) mounted.get(root)?.off();
         }
         runtime.sync();
+        suppressTransitions();
         syncFont();
         if (!runtime.supported || ready || failed || readAppearancePreferences(readSettings()).family === 'classic') return Promise.resolve(ready);
         if (!loading) {
@@ -126,6 +142,11 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         retry() { if (failed) { failed = false; loading?.cancel(); loading = null; } return sync(); },
         reset() {
             epoch++;
+            const node = document?.documentElement, view = document?.defaultView;
+            if (switchFrame !== null) view?.cancelAnimationFrame?.(switchFrame);
+            if (switchTimer !== null) clearTimeout(switchTimer);
+            switchFrame = null; switchTimer = null;
+            try { node?.removeAttribute?.('data-qm-theme-switching'); } catch { /* detached */ }
             for (const reference of roots) { const root = reference.deref(); if (root) mounted.get(root)?.off(); }
             roots.clear(); runtime.dispose(); loading?.cancel(); fontLoading?.cancel(); loading = null; fontLoading = null; fontFamily = ''; ready = false; failed = false; mounted = new WeakMap(); runtime = createRuntime();
         },

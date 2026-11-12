@@ -28,6 +28,21 @@ function fixture(document) {
     return { session, loads, fontLoads, errors, set: value => settings = value };
 }
 
+test('a theme/accent sync flags html for two frames so Qianmu transitions are suppressed, not ST', () => {
+    const html = element(), frames = []; let frameId = 0;
+    const view = { requestAnimationFrame: fn => { frames.push([++frameId, fn]); return frameId; }, cancelAnimationFrame: id => { const i = frames.findIndex(([f]) => f === id); if (i >= 0) frames.splice(i, 1); } };
+    const runFrame = () => { const next = frames.shift(); next?.[1](); };
+    const document = { documentElement: html, defaultView: view, createElement: () => element(), head: { appendChild() {} } };
+    const f = fixture(document), root = element(); f.session.mount(root);
+    f.session.sync();
+    assert.equal(html.getAttribute('data-qm-theme-switching'), '', 'attribute set immediately on sync');
+    runFrame(); assert.equal(html.getAttribute('data-qm-theme-switching'), '', 'still held after one frame');
+    runFrame(); assert.equal(html.getAttribute('data-qm-theme-switching'), null, 'cleared on the second frame');
+    // A fresh sync re-arms and a reset clears a pending attribute.
+    f.session.sync(); assert.equal(html.getAttribute('data-qm-theme-switching'), '');
+    f.session.reset(); assert.equal(html.getAttribute('data-qm-theme-switching'), null, 'reset clears a pending switch flag');
+});
+
 test('paper and minimal fonts are opt-in, nonblocking and shared by owned portals, with local fallback on failure', async () => {
     const f = fixture(), root = element(); f.session.mount(root); await f.session.sync();
     assert.equal(f.fontLoads.length, 0);
