@@ -107,7 +107,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
 
   // Dot-matrix audio bar on the sub-page base plate: flush to the bottom, outside the scrollable list.
   // Grey while idle, a soft pulse while the audition loads, light green and dancing while it plays (CSS only).
-  const EQ_HEIGHTS = [3, 5, 4, 7, 5, 8, 6, 4, 7, 9, 6, 5, 8, 6, 4, 7, 5, 8, 6, 9, 5, 7, 4, 6, 8, 5, 3, 6];
+  const EQ_HEIGHTS = [3, 5, 4, 7, 5, 8, 6, 4, 7, 9, 6, 5, 8, 6, 4, 7, 5, 8, 6, 9, 5, 7, 4, 6, 8, 5, 3, 6, 8, 5, 7, 4, 6, 9, 5, 8, 6, 4, 7, 5, 9, 6, 4, 8, 5, 7, 6, 3];
   function audioBar() {
     const bar = el('div', 'qm-ring-eq'); bar.setAttribute('aria-hidden', 'true'); bar.dataset.audio = audio;
     EQ_HEIGHTS.forEach((h, i) => { const col = el('span'); col.style.setProperty('--h', String(h)); col.style.setProperty('--d', `${(i * 137) % 900}ms`); bar.append(col); });
