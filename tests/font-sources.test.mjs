@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     FONT_SOURCE_LIMITS, normalizeFontUrl, parseFontStylesheet, resolveWebFontSource,
-    validateLocalFontBytes, createLocalFontRecord, validateFontRecord, exportFontPack, importFontPack,
+    validateLocalFontBytes, createLocalFontRecord, repairLocalFontBytes, repairLocalFontBlob, validateFontRecord, exportFontPack, importFontPack,
 } from '../qianmu-font-sources.js';
 
 const css = (src = './font.woff2', extra = '') => `@font-face {font-family: "春日字体"; src: local('Old'),url('${src}') format('woff2'); ${extra}}`;
@@ -401,4 +401,56 @@ test('font packs keep the 8192-face aggregate limit, preserve every allowed face
     assert.throws(() => exportFontPack(excessive), /分片总量过多.*请分批导出/u);
     assert.throws(() => importFontPack(JSON.stringify({ type: 'qianmu-font-library', version: 1, fonts: excessive, localFiles: {} })), /分片总量过多/u);
     assert.deepEqual(excessive, excessiveBefore);
+});
+
+// 华康古籍木兰 等字体的 vhea 版本写成 0x00010001（应为 1.1 = 0x00011000），Chrome OTS 因此整份拒收
+// （"vhea: Unsupported table version: 0x10001"）。1.0/1.1 布局相同，改版本号 + 重算校验和即可无损修复。
+function vheaFont(version) {
+    const bytes = new Uint8Array(12 + 16 + 36), view = new DataView(bytes.buffer);
+    view.setUint32(0, 0x00010000); view.setUint16(4, 1);
+    bytes.set(new TextEncoder().encode('vhea'), 12); view.setUint32(20, 28); view.setUint32(24, 36);
+    view.setUint32(28, version); view.setInt16(32, 500); view.setUint16(62, 7);
+    return bytes;
+}
+const tableSum = (bytes, offset, length) => { let sum = 0; for (let at = offset; at < offset + length; at += 4) { let w = 0; for (let k = 0; k < 4; k++) w = w * 256 + (at + k < offset + length ? bytes[at + k] : 0); sum = (sum + w) >>> 0; } return sum; };
+
+test('a vhea mis-versioned 0x00010001 is rewritten to 1.1 with a matching checksum; other bytes untouched', () => {
+    const bytes = vheaFont(0x00010001), before = bytes.slice();
+    const { bytes: out, repaired } = repairLocalFontBytes(bytes);
+    const view = new DataView(out.buffer);
+    assert.deepEqual(repaired, ['vhea']);
+    assert.equal(view.getUint32(28), 0x00011000);
+    assert.equal(view.getUint32(16), tableSum(out, 28, 36));
+    for (let i = 0; i < out.length; i++) if (i < 16 || i >= 20) if (i < 28 || i >= 32) assert.equal(out[i], before[i], `byte ${i}`);
+});
+
+test('valid vhea versions, non-SFNT and truncated input are left exactly as they were', () => {
+    for (const version of [0x00010000, 0x00011000]) {
+        const bytes = vheaFont(version), before = bytes.slice();
+        assert.deepEqual(repairLocalFontBytes(bytes).repaired, []); assert.deepEqual(bytes, before);
+    }
+    const woff2 = makeFont('woff2'), w2 = woff2.slice();
+    assert.deepEqual(repairLocalFontBytes(woff2).repaired, []); assert.deepEqual(woff2, w2);
+    const cut = vheaFont(0x00010001).slice(0, 40);
+    assert.deepEqual(repairLocalFontBytes(cut).repaired, []);
+});
+
+test('createLocalFontRecord repairs vhea before the decode probe so the browser sees the fixed bytes', async () => {
+    let probed;
+    class SeeingFace { constructor(_family, source) { probed = new DataView(source).getUint32(28); } load() { return Promise.resolve(this); } }
+    const created = await createLocalFontRecord(file(vheaFont(0x00010001), '华康古籍木兰.ttf'), { FontFace: SeeingFace });
+    assert.equal(probed, 0x00011000);
+    assert.equal(new DataView(created.bytes.buffer, created.bytes.byteOffset).getUint32(28), 0x00011000);
+});
+
+test('an already-stored mis-versioned font Blob is repaired at read time; healthy Blobs are returned as the same object', async () => {
+    const bad = new Blob([vheaFont(0x00010001)]);
+    const fixed = await repairLocalFontBlob(bad);
+    assert.notEqual(fixed, bad);
+    assert.equal(new DataView(await fixed.arrayBuffer()).getUint32(28), 0x00011000);
+    const good = new Blob([vheaFont(0x00010000)]);
+    assert.equal(await repairLocalFontBlob(good), good);
+    assert.equal(await repairLocalFontBlob(null), null);
+    const odd = { size: 5, slice() { throw new Error('boom'); } };
+    assert.equal(await repairLocalFontBlob(odd), odd);
 });

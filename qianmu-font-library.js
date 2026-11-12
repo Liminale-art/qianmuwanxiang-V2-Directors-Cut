@@ -1,9 +1,9 @@
-import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.497';
-import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.497';
+import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.498';
+import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, repairLocalFontBlob, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.498';
 import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.497';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.497';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
-import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.497';
+import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.498';
 import { readBuiltinFont } from './qianmu-font-builtins.js';
 
 function fontInputName(value) {
@@ -46,7 +46,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     const head = typeof file.slice === 'function' ? new Uint8Array(await file.slice(0, 4).arrayBuffer()) : [];
     guard();
     if ((head[0] === 0x50 && head[1] === 0x4b) || /\.zip$/i.test(file.name || '')) {
-      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.497'); guard();
+      const { openFontArchive } = await import('./qianmu-font-package.js?v=1.59.498'); guard();
       return openFontArchive(file, { guard, yieldTask });
     }
     // Old JSON packs remain readable, but only ZIP is written now. Keep the
@@ -106,7 +106,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       close(false); release(); owner = candidate; namespace = resolved;
       store = localStoreFactory({ namespace });
       try { accountSync = accountSyncFactory?.({}); } catch { accountSync = null; }
-      runtime = runtimeFactory({ document, readLocal: id => store.get(id), readBuiltin: builtinReader, accountKey: namespace, onStatus: status, beforeApply, afterApply });
+      runtime = runtimeFactory({ document, readLocal: async id => repairLocalFontBlob(await store.get(id)), readBuiltin: builtinReader, accountKey: namespace, onStatus: status, beforeApply, afterApply });
       if (accountSync && !accountSyncHydrated) {
         // Opening the panel must not wait for the account-file round trip. The
         // local IndexedDB catalog is immediately usable; a later successful
@@ -319,7 +319,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         if (!fonts.length) throw new Error('请先添加或选择字体');
         try {
           progress('export', { processedBytes: 0, totalBytes: 0, stage: 'preparing' });
-          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.497'); guard();
+          const { buildFontArchive } = await import('./qianmu-font-package.js?v=1.59.498'); guard();
           let latest;
           const packed = await buildFontArchive(fonts, { readLocal: id => store.get(id), folders: state.folders, previewText: state.previewText, guard, yieldTask, onProgress: value => { latest = value; progress('export', value); } }); guard();
           download(packed, `qianmu-fonts-${Date.now()}.zip`);

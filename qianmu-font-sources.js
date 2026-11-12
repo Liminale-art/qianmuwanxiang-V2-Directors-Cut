@@ -488,9 +488,68 @@ async function assertFontDecodes(bytes, FontFaceClass) {
     catch (error) { fail(describeFontDecodeError(error)); }
 }
 
+// Some CJK fonts (e.g. 华康古籍木兰) carry vhea/vmtx with version 0x00010001 —
+// a mis-encoded "1.1" (the spec value is 0x00011000). Chrome's OTS rejects
+// the whole font for it ("vhea: Unsupported table version"). The 1.0 and 1.1
+// layouts are byte-identical, so rewriting the version word to 1.1 and fixing
+// the table checksum is lossless. Only uncompressed SFNT is touched; anything
+// else is returned untouched.
+const VHEA_BAD_VERSION = 0x00010001, VHEA_V11 = 0x00011000;
+export function repairLocalFontBytes(value) {
+    const bytes = fontBytes(value), repaired = [];
+    if (bytes.byteLength < 12) return { bytes, repaired };
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const signature = view.getUint32(0);
+    if (signature !== 0x00010000 && signature !== 0x4f54544f && signature !== 0x74727565) return { bytes, repaired };
+    const count = view.getUint16(4);
+    if (12 + count * 16 > bytes.byteLength) return { bytes, repaired };
+    for (let index = 0; index < count; index += 1) {
+        const entry = 12 + index * 16;
+        if (String.fromCharCode(...bytes.subarray(entry, entry + 4)) !== 'vhea') continue;
+        const offset = view.getUint32(entry + 8), length = view.getUint32(entry + 12);
+        if (length < 36 || offset + length > bytes.byteLength || view.getUint32(offset) !== VHEA_BAD_VERSION) continue;
+        view.setUint32(offset, VHEA_V11);
+        let sum = 0;
+        for (let at = offset; at < offset + length; at += 4) {
+            let word = 0;
+            for (let k = 0; k < 4; k += 1) word = word * 256 + (at + k < offset + length ? bytes[at + k] : 0);
+            sum = (sum + word) >>> 0;
+        }
+        view.setUint32(entry + 4, sum);
+        repaired.push('vhea');
+    }
+    return { bytes, repaired };
+}
+
+/** Same repair for a font already stored before it existed. Reads only the
+ * table directory and vhea version word; the full file is read only when a
+ * repair is actually needed. Any failure returns the original Blob. */
+export async function repairLocalFontBlob(blob, { Blob: BlobClass = globalThis.Blob } = {}) {
+    try {
+        if (!blob?.size || typeof blob.slice !== 'function' || typeof BlobClass !== 'function') return blob;
+        const head = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+        if (head.byteLength < 12) return blob;
+        const headView = new DataView(head.buffer), signature = headView.getUint32(0);
+        if (signature !== 0x00010000 && signature !== 0x4f54544f && signature !== 0x74727565) return blob;
+        const count = headView.getUint16(4), directory = new Uint8Array(await blob.slice(12, 12 + count * 16).arrayBuffer());
+        if (directory.byteLength < count * 16) return blob;
+        const dirView = new DataView(directory.buffer);
+        let needed = false;
+        for (let index = 0; index < count && !needed; index += 1) {
+            const entry = index * 16;
+            if (String.fromCharCode(...directory.subarray(entry, entry + 4)) !== 'vhea') continue;
+            const offset = dirView.getUint32(entry + 8), word = new Uint8Array(await blob.slice(offset, offset + 4).arrayBuffer());
+            needed = word.byteLength === 4 && new DataView(word.buffer).getUint32(0) === VHEA_BAD_VERSION;
+        }
+        if (!needed) return blob;
+        const { bytes, repaired } = repairLocalFontBytes(new Uint8Array(await blob.arrayBuffer()));
+        return repaired.length ? new BlobClass([bytes], { type: blob.type || 'application/octet-stream' }) : blob;
+    } catch { return blob; }
+}
+
 export async function createLocalFontRecord(file, { name, FontFace: FontFaceClass } = {}) {
     if (!file || typeof file.arrayBuffer !== 'function' || !Number.isFinite(file.size)) fail('请选择有效的字体文件');
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { bytes } = repairLocalFontBytes(new Uint8Array(await file.arrayBuffer()));
     const { format } = validateLocalFontBytes(bytes);
     await assertFontDecodes(bytes, FontFaceClass);
     const { known, ...descriptors } = localFontDescriptors(bytes, format);
