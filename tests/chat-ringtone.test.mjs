@@ -502,6 +502,23 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   const duration = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
   duration.children[9].listeners.click();
   assert.deepEqual(updates.at(-1), { toastDuration: 10 }, '点选某个值也可选择');
+  // Head-tail cyclic loop: ArrowLeft from index 0 wraps to the last value, ArrowRight from last wraps back to the first.
+  const dur0 = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
+  dur0.children[0].listeners.click();
+  assert.deepEqual(updates.at(-1), { toastDuration: 1 }, '先回到第一项');
+  dur0.listeners.keydown({ key: 'ArrowLeft', preventDefault() {} });
+  assert.deepEqual(updates.at(-1), { toastDuration: TOAST_DURATIONS.at(-1)[0] }, '最左再按左键循环到末项');
+  dur0.listeners.keydown({ key: 'ArrowRight', preventDefault() {} });
+  assert.deepEqual(updates.at(-1), { toastDuration: TOAST_DURATIONS[0][0] }, '最右再按右键循环回首项');
+  // PC press-drag: a mouse drag scrubs the strip and suppresses the accidental click-pick that follows.
+  const before = updates.length;
+  dur0.scrollLeft = 200;
+  dur0.listeners.pointerdown({ pointerType: 'mouse', button: 0, clientX: 100 });
+  dur0.listeners.pointermove({ pointerType: 'mouse', clientX: 140 });
+  assert.equal(dur0.scrollLeft, 160, '按住拖动改变滚动位置（200 - 40）');
+  dur0.listeners.pointerup({ pointerType: 'mouse' });
+  dur0.children[3].listeners.click(); // the click that fires right after a drag must be swallowed
+  assert.equal(updates.length, before, '真实拖动后紧随的点击不误选');
   view.dispose();
 });
 

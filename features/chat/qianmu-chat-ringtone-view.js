@@ -232,6 +232,8 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       strip.append(node); return node;
     });
     let index = Math.max(0, options.findIndex(([value]) => value === current)), touching = false, quiet = 0;
+    const n = options.length;
+    const wrap = i => ((i % n) + n) % n; // head-tail cyclic: stepping past either end lands on the other
     const mark = at => items.forEach((node, i) => { node.classList.toggle('is-center', i === at); node.setAttribute('aria-checked', String(i === at)); });
     const nearest = () => {
       if (!strip.clientWidth) return index; // not laid out yet: keep the saved value
@@ -260,6 +262,24 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     for (const type of ['touchend', 'touchcancel']) strip.addEventListener(type, release, { passive: true });
     strip.addEventListener('pointerdown', event => { if (event?.pointerType !== 'touch') touching = true; });
     for (const type of ['pointerup', 'pointercancel']) strip.addEventListener(type, event => { if (event?.pointerType !== 'touch') release(); });
+    // PC press-and-drag: a mouse/pen can scrub the strip horizontally (touch keeps native scroll).
+    let drag = null, dragMoved = false;
+    strip.addEventListener('pointerdown', event => {
+      if (event?.pointerType === 'touch' || event.button !== 0) return;
+      drag = { x: event.clientX, left: strip.scrollLeft }; dragMoved = false;
+      try { strip.setPointerCapture?.(event.pointerId); } catch (_) {}
+    });
+    strip.addEventListener('pointermove', event => {
+      if (!drag) return;
+      const dx = event.clientX - drag.x;
+      if (Math.abs(dx) > 3) dragMoved = true;
+      strip.scrollLeft = drag.left - dx;
+    });
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) strip.addEventListener(type, event => {
+      if (!drag) return;
+      drag = null;
+      try { strip.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    });
     // A vertical mouse wheel steps one value per notch instead of scrolling the panel; small trackpad
     // deltas accumulate first. Horizontal swipes are left to native scroll + snap.
     let wheelAcc = 0;
@@ -268,13 +288,13 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       event.preventDefault();
       wheelAcc += event.deltaY; if (Math.abs(wheelAcc) < 40) return;
       const step = Math.sign(wheelAcc); wheelAcc = 0;
-      index = Math.min(options.length - 1, Math.max(0, nearest() + step)); mark(index); centre(index, true);
+      index = wrap(nearest() + step); mark(index); centre(index, true); // head-tail loop
     }, { passive: false });
     strip.addEventListener('keydown', event => {
       const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key]; if (!step) return;
-      event.preventDefault(); const at = Math.min(options.length - 1, Math.max(0, index + step)); centre(at, true); commit(at);
+      event.preventDefault(); const at = wrap(index + step); centre(at, true); commit(at); // head-tail loop
     });
-    items.forEach((node, i) => node.addEventListener('click', () => { centre(i, true); commit(i); }));
+    items.forEach((node, i) => node.addEventListener('click', () => { if (dragMoved) { dragMoved = false; return; } centre(i, true); commit(i); }));
     mark(index);
     afterRender.push(() => centre(index, false));
     frame.append(strip);
