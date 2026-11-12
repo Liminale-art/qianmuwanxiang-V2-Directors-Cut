@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   RINGTONE_PRESETS, RINGTONE_TAB_ICONS, RINGTONE_LIMITS, RINGTONE_DEFAULTS,
-  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_STYLES, TOAST_FONT_SIZES, TOAST_DURATIONS, applyToastSkin, toastCallOptions,
+  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_STYLES, TOAST_FONT_SIZES, TOAST_DURATIONS, TOAST_STACK_MAX, applyToastSkin, toastCallOptions,
 } from '../features/chat/qianmu-chat-ringtone.js';
 
 const root = new URL('../', import.meta.url);
@@ -401,4 +401,35 @@ test('list rows mark the pick before the audition finishes loading', async () =>
   assert.ok(target.classList.contains('is-active'), '点下即显示选中，不等音频');
   assert.equal(target.attrs['aria-checked'], 'true');
   release();
+});
+
+test('toast stack count: normalized, mirrored to an html attribute, enforced by CSS only', async () => {
+  assert.equal(RINGTONE_DEFAULTS.toastStack, 0, '默认不限，保持 ST 原样');
+  assert.equal(normalizeRingtone({ ringtone: { toastStack: 3 } }).toastStack, 3);
+  for (const bad of [-1, 2.5, 'x', TOAST_STACK_MAX + 1]) assert.equal(normalizeRingtone({ ringtone: { toastStack: bad } }).toastStack, 0);
+  const attrs = {};
+  const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 2 }, { theme: 'light', mode: 'light' });
+  assert.equal(attrs['data-qm-toast-stack'], '2');
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 0 }, null);
+  assert.ok(!('data-qm-toast-stack' in attrs), '0 为不限');
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 4 }, null);
+  applyToastSkin(doc, { toastSkin: false });
+  assert.deepEqual(attrs, {});
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  for (let n = 1; n <= TOAST_STACK_MAX; n += 1) {
+    assert.ok(css.includes(`html[data-qm-toast-stack="${n}"] body #toast-container > div:nth-child(n+${n + 1}) { display: none !important; }`), `堆叠 ${n} 规则`);
+  }
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  assert.ok(view.includes("stack.type = 'number'") && view.includes('toastStack'), '堆叠数量为输入框');
+});
+
+test('涂鸦 style: day/night only, per-status clash colours, outside square bar, pop-in', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  const splat = css.split('\n').filter(line => line.includes('data-qm-toast="splat"')).join('\n');
+  assert.ok(!splat.includes('--qm-toast-accent') && !splat.includes('data-qm-toast-theme'), '不跟随主题强调色，只按日夜');
+  for (const status of ['.toast-success', '.toast-warning', '.toast-error']) assert.ok(splat.includes(status), `${status} 有独立配色`);
+  assert.ok(/::before \{ left: -\d+px[^}]*border-radius: 0/.test(splat), '竖条在框外且直角');
+  assert.ok(splat.includes('animation: qm-toast-splat') && /@keyframes qm-toast-splat \{ 0% \{[^}]*scale\(\.6\)/.test(css), '由小到大弹出');
+  assert.ok(!css.includes('data-qm-toast="arc"'), '旧样式1规则已替换');
 });

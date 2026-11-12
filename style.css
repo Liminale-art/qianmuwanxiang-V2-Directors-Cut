@@ -895,6 +895,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 通知 · 提示框字号 / 停留时间（分段按钮） */
 #story-director-floor-nav .qm-ring-toast-field { grid-template-columns: 4.5em minmax(0, 1fr); }
 #story-director-floor-nav .qm-ring-toast-seg { min-width: 0; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+#story-director-floor-nav .qm-ring-toast-stack { grid-template-columns: 4.5em 6em minmax(0, 1fr); }
+#story-director-floor-nav .qm-ring-stack-input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 4px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); text-align: center; }
+#story-director-floor-nav .qm-ring-stack-hint { color: var(--sd-muted); font-size: var(--qm-type-caption); }
 
 /* 通知 · ST 提示框美化：只按 <html data-qm-toast*> 换皮，不监听、不改写 toastr；移除属性即还原 ST 原样。
    位置完全交给 ST 原生（顶部居中；弹窗打开时 ST 会把容器搬进弹窗），这里不碰容器，只给卡片换皮。
@@ -925,13 +928,39 @@ html[data-qm-toast] body #toast-container > div .toast-message :is(a, label) { c
 html[data-qm-toast] body #toast-container > div .toast-close-button { color: inherit !important; background: transparent !important; text-shadow: none !important; opacity: .55 !important; }
 html[data-qm-toast] body #toast-container > div .toast-progress { left: 0 !important; right: auto !important; bottom: 0 !important; width: auto; height: 3px !important; border-radius: 0 !important; background: var(--qm-toast-accent) !important; opacity: .7 !important; }
 html[data-qm-toast="default"][data-qm-toast-theme="editorial"] body #toast-container > div { border-radius: 0 !important; }
-/* 样式1：毛玻璃 + 高亮强调色圆弧竖线 */
-html[data-qm-toast="splat"] body #toast-container > div { padding-left: 26px !important; border-radius: 14px !important; border-color: color-mix(in srgb, var(--qm-toast-ink) 10%, transparent) !important; background: color-mix(in srgb, var(--qm-toast-bg) 66%, transparent) !important; backdrop-filter: blur(16px) saturate(1.5) !important; -webkit-backdrop-filter: blur(16px) saturate(1.5) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 10px 30px var(--qm-toast-drop) !important; }
-html[data-qm-toast="splat"] body #toast-container > div::before { top: 10px !important; bottom: 10px !important; left: 10px !important; width: 4px !important; height: auto !important; border-radius: 999px !important; background: linear-gradient(180deg, color-mix(in srgb, var(--qm-toast-accent) 68%, #fff), var(--qm-toast-accent)) !important; box-shadow: 0 0 10px color-mix(in srgb, var(--qm-toast-accent) 60%, transparent) !important; }
+/* 涂鸦：高饱和撞色贴纸风（参考斯普拉遁）。只跟日夜，不读主题强调色；每种状态一组撞色。
+   竖条在文字框外、粗直角；右上角贴纸；墨点＋斜纹底；硬投影；由小到大回弹弹出。 */
+html[data-qm-toast="splat"] body #toast-container > div { --sp-main: #1ee3ff; --sp-clash: #ff2bb8; --sp-ink: #15111d; --sp-glyph: "★"; --sp-bg: var(--sp-main); --sp-line: var(--sp-ink); --sp-text: var(--sp-ink); --sp-dot: color-mix(in srgb, var(--sp-clash) 42%, transparent); }
+html[data-qm-toast="splat"] body #toast-container > .toast-success { --sp-main: #b4ff2a; --sp-clash: #7a2bff; --sp-glyph: "✓"; }
+html[data-qm-toast="splat"] body #toast-container > .toast-warning { --sp-main: #ffe41a; --sp-clash: #15111d; --sp-glyph: "!"; }
+html[data-qm-toast="splat"] body #toast-container > .toast-error { --sp-main: #ff3d7f; --sp-clash: #ff8a00; --sp-glyph: "✕"; }
+html[data-qm-toast="splat"][data-qm-toast-mode="dark"] body #toast-container > div { --sp-bg: #1a1426; --sp-line: var(--sp-main); --sp-text: #f7f3ff; --sp-dot: color-mix(in srgb, var(--sp-main) 30%, transparent); }
+html[data-qm-toast="splat"][data-qm-toast-mode="dark"] body #toast-container > .toast-warning { --sp-clash: #ff7a1a; }
+html[data-qm-toast="splat"] body #toast-container > div { overflow: visible !important; width: min(420px, calc(100vw - 56px)) !important; margin: 12px auto 12px !important; padding: 11px 16px 11px 16px !important; border: 3px solid var(--sp-line) !important; border-radius: 6px !important; color: var(--sp-text) !important; background: radial-gradient(circle at 91% 24%, var(--sp-dot) 0 8px, transparent 8.5px), radial-gradient(circle at 82% 80%, var(--sp-dot) 0 4px, transparent 4.5px), radial-gradient(circle at 97% 66%, var(--sp-dot) 0 3px, transparent 3.5px), radial-gradient(circle at 74% 14%, var(--sp-dot) 0 2px, transparent 2.5px), repeating-linear-gradient(-45deg, rgba(255, 255, 255, .16) 0 6px, transparent 6px 15px), var(--sp-bg) !important; box-shadow: 5px 5px 0 var(--sp-clash) !important; font-weight: 700 !important; letter-spacing: .02em !important; transform: rotate(-.8deg); animation: qm-toast-splat 340ms cubic-bezier(.34, 1.56, .64, 1) both !important; }
+html[data-qm-toast="splat"] body #toast-container > div::before { left: -17px !important; top: 3px !important; bottom: 3px !important; width: 10px !important; height: auto !important; border: 3px solid var(--sp-line) !important; border-radius: 0 !important; background: var(--sp-clash) !important; box-shadow: 3px 3px 0 var(--sp-line) !important; }
+html[data-qm-toast="splat"][data-qm-toast-mode="dark"] body #toast-container > div::before { background: var(--sp-main) !important; box-shadow: 3px 3px 0 var(--sp-clash) !important; }
+html[data-qm-toast="splat"] body #toast-container > .toast-warning::before { background: repeating-linear-gradient(-45deg, #15111d 0 4px, #ffe41a 4px 8px) !important; }
+html[data-qm-toast="splat"] body #toast-container > div::after { content: var(--sp-glyph) !important; position: absolute !important; top: -11px !important; right: -9px !important; z-index: 1; width: 24px !important; height: 24px !important; display: grid !important; place-items: center; margin: 0 !important; padding: 0 !important; border: 2.5px solid var(--sp-line) !important; border-radius: 50% 46% 52% 44% !important; background: var(--sp-clash) !important; color: #fff !important; font-size: 12px !important; font-weight: 900 !important; line-height: 1 !important; box-shadow: 2px 2px 0 var(--sp-line) !important; transform: rotate(12deg); pointer-events: none !important; animation: qm-toast-sticker 420ms 120ms cubic-bezier(.34, 1.56, .64, 1) both; }
+html[data-qm-toast="splat"] body #toast-container > .toast-warning::after { color: #ffe41a !important; }
+html[data-qm-toast="splat"] body #toast-container > div .toast-title { font-weight: 900 !important; }
+html[data-qm-toast="splat"] body #toast-container > div .toast-progress { height: 4px !important; background: var(--sp-clash) !important; opacity: 1 !important; }
+html[data-qm-toast="splat"][data-qm-toast-mode="dark"] body #toast-container > div .toast-progress { background: var(--sp-main) !important; }
+@keyframes qm-toast-splat { 0% { opacity: 0; transform: rotate(-4deg) scale(.6); } 55% { opacity: 1; transform: rotate(.6deg) scale(1.06); } 100% { opacity: 1; transform: rotate(-.8deg) scale(1); } }
+@keyframes qm-toast-sticker { 0% { transform: rotate(-30deg) scale(0); } 70% { transform: rotate(18deg) scale(1.2); } 100% { transform: rotate(12deg) scale(1); } }
 /* 样式2：淡饱和虹彩液态玻璃，边缘辉光随提示状态变色；可选缓慢流动（仅 CSS，减少动态效果时关闭） */
 html[data-qm-toast="iris"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 70% 84% / .5), hsl(262 58% 87% / .42) 36%, hsl(330 66% 89% / .42) 66%, hsl(158 52% 85% / .5)); border-radius: 16px !important; border-color: rgba(255, 255, 255, .55) !important; background: color-mix(in srgb, var(--qm-toast-bg) 58%, transparent) !important; backdrop-filter: blur(18px) saturate(1.6) !important; -webkit-backdrop-filter: blur(18px) saturate(1.6) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 34%, transparent), 0 0 16px color-mix(in srgb, var(--qm-toast-accent) 40%, transparent), 0 10px 28px var(--qm-toast-drop) !important; }
 html[data-qm-toast="iris"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 60% 42% / .2), hsl(262 50% 46% / .17) 36%, hsl(330 52% 46% / .17) 66%, hsl(158 46% 40% / .2)); border-color: rgba(255, 255, 255, .14) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 42%, transparent), 0 0 18px color-mix(in srgb, var(--qm-toast-accent) 46%, transparent), 0 10px 30px var(--qm-toast-drop) !important; }
 html[data-qm-toast="iris"] body #toast-container > div::after { content: "" !important; position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; z-index: -1; margin: 0 !important; border: 0 !important; border-radius: inherit !important; background: var(--qm-toast-iris) !important; background-size: 240% 240% !important; opacity: 1 !important; pointer-events: none !important; animation: qm-toast-iris 9s ease-in-out infinite alternate; }
+/* 堆叠数量：最新在最上（toastr 默认 newestOnTop），只用 CSS 隐藏超出条目，不碰 toastr 队列与计时 */
+html[data-qm-toast-stack="1"] body #toast-container > div:nth-child(n+2) { display: none !important; }
+html[data-qm-toast-stack="2"] body #toast-container > div:nth-child(n+3) { display: none !important; }
+html[data-qm-toast-stack="3"] body #toast-container > div:nth-child(n+4) { display: none !important; }
+html[data-qm-toast-stack="4"] body #toast-container > div:nth-child(n+5) { display: none !important; }
+html[data-qm-toast-stack="5"] body #toast-container > div:nth-child(n+6) { display: none !important; }
+html[data-qm-toast-stack="6"] body #toast-container > div:nth-child(n+7) { display: none !important; }
+html[data-qm-toast-stack="7"] body #toast-container > div:nth-child(n+8) { display: none !important; }
+html[data-qm-toast-stack="8"] body #toast-container > div:nth-child(n+9) { display: none !important; }
+html[data-qm-toast-stack="9"] body #toast-container > div:nth-child(n+10) { display: none !important; }
 @keyframes qm-toast-in { from { transform: translateY(6px) scale(.985); } to { transform: none; } }
 @keyframes qm-toast-iris { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 @media (prefers-reduced-motion: reduce) { html[data-qm-toast] body #toast-container > div, html[data-qm-toast] body #toast-container > div::after { animation: none !important; } }

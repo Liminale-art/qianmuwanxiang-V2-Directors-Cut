@@ -230,6 +230,17 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     };
     card.append(segmented('字号', actions.toastFontSizes, s.toastFontSize, 'toastFontSize'),
       segmented('停留时间', actions.toastDurations, s.toastDuration, 'toastDuration'));
+    // 堆叠数量: how many notifications show at once; empty or 0 = unlimited (ST's own behaviour).
+    const stackField = el('div', 'qm-ring-field qm-ring-toast-field qm-ring-toast-stack');
+    const stack = el('input', 'qm-ring-stack-input'); stack.type = 'number'; stack.inputMode = 'numeric';
+    stack.min = '0'; stack.max = String(actions.toastStackMax); stack.step = '1';
+    stack.value = s.toastStack ? String(s.toastStack) : ''; stack.placeholder = '不限'; stack.setAttribute('aria-label', '提示框堆叠显示数量（留空为不限）');
+    stack.addEventListener('change', () => run(() => {
+      const value = Math.round(Number(stack.value || 0));
+      return actions.update({ toastStack: Number.isFinite(value) ? Math.min(actions.toastStackMax, Math.max(0, value)) : 0 });
+    }));
+    stackField.append(el('span', '', '堆叠数量'), stack, el('span', 'qm-ring-stack-hint', `条 · 最多 ${actions.toastStackMax}`));
+    card.append(stackField);
     return card;
   }
 

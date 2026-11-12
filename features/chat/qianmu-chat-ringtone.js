@@ -26,7 +26,7 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [],
-  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4,
+  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4, toastStack: 0,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
 // 'default' follows the Qianmu theme and day/night; 涂鸦 is a high-saturation sticker/graffiti card that only
@@ -34,10 +34,13 @@ export const RINGTONE_DEFAULTS = Object.freeze({
 export const TOAST_STYLES = Object.freeze([['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
 export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
 export const TOAST_DURATIONS = Object.freeze([[3, '3s'], [4, '4s'], [6, '6s'], [10, '10s']]);
+// How many notifications stay visible at once (newest first); 0 keeps ST's own unlimited stack.
+export const TOAST_STACK_MAX = 9;
 const TOAST_ATTR = 'data-qm-toast';
 const TOAST_SIZE_ATTR = 'data-qm-toast-size';
 const TOAST_MODE_ATTR = 'data-qm-toast-mode';
 const TOAST_THEME_ATTR = 'data-qm-toast-theme';
+const TOAST_STACK_ATTR = 'data-qm-toast-stack';
 const TOAST_THEMES = ['light', 'dark', 'summer', 'candy', 'kraft', 'dream', 'editorial', 'glass'];
 /**
  * Skins ST notifications purely through CSS keyed on <html> attributes. It never
@@ -53,8 +56,12 @@ export function applyToastSkin(document, s, look = null) {
     root.setAttribute(TOAST_SIZE_ATTR, s.toastFontSize);
     root.setAttribute(TOAST_MODE_ATTR, look?.mode === 'dark' ? 'dark' : 'light');
     root.setAttribute(TOAST_THEME_ATTR, TOAST_THEMES.includes(look?.theme) ? look.theme : 'light');
+    // Extra cards beyond the stack count are hidden by CSS only; the library keeps its own queue and timers.
+    const stack = Number(s.toastStack);
+    if (Number.isInteger(stack) && stack >= 1 && stack <= TOAST_STACK_MAX) root.setAttribute(TOAST_STACK_ATTR, String(stack));
+    else root.removeAttribute(TOAST_STACK_ATTR);
   } else {
-    for (const name of [TOAST_ATTR, TOAST_SIZE_ATTR, TOAST_MODE_ATTR, TOAST_THEME_ATTR]) root.removeAttribute(name);
+    for (const name of [TOAST_ATTR, TOAST_SIZE_ATTR, TOAST_MODE_ATTR, TOAST_THEME_ATTR, TOAST_STACK_ATTR]) root.removeAttribute(name);
   }
 }
 const SOURCES = ['builtin', 'url', 'local'];
@@ -95,6 +102,8 @@ export function normalizeRingtone(owner) {
   if (!TOAST_STYLES.some(([id]) => id === next.toastStyle)) next.toastStyle = RINGTONE_DEFAULTS.toastStyle;
   if (!TOAST_FONT_SIZES.some(([id]) => id === next.toastFontSize)) next.toastFontSize = RINGTONE_DEFAULTS.toastFontSize;
   if (!TOAST_DURATIONS.some(([seconds]) => seconds === next.toastDuration)) next.toastDuration = RINGTONE_DEFAULTS.toastDuration;
+  const stack = Number(next.toastStack);
+  next.toastStack = Number.isInteger(stack) && stack >= 0 && stack <= TOAST_STACK_MAX ? stack : RINGTONE_DEFAULTS.toastStack;
   delete next.toastPosition; // retired: placement is always ST's native top-centre
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
@@ -369,6 +378,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     toastStyles: TOAST_STYLES,
     toastFontSizes: TOAST_FONT_SIZES,
     toastDurations: TOAST_DURATIONS,
+    toastStackMax: TOAST_STACK_MAX,
     previewToast() { notify('(｡･∀･)ﾉﾞoi，这是一条提示框预览', 'info'); },
   });
   async function mount(host) {
