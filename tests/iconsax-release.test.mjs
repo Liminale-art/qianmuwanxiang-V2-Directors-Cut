@@ -18,7 +18,7 @@ const unifiedRelease = new Map([
   ['qianmu-storyboard-capture-view.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
   ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-text-collection-host.js', '1.59.484'],
   ['features/tts/qianmu-tts-floor-ui.js', '1.59.484'], ['qianmu-prose-assistant-floor.js', '1.59.452'],
-  ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.446'],
+  ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.494'],
   ['qianmu-prose-floor-entries.js', '1.59.440'], ['qianmu-main-tabs.js', '1.59.421'],
 ]);
 const moduleRelease = file => unifiedRelease.get(file) || (localLoaderClosure.has(file) ? '1.59.425' : ICONSAX_RELEASE);

@@ -9,6 +9,7 @@ import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
+import {createProseHive} from './qianmu-prose-hive.js?v=1.59.494';
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.484-tts-font-1';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
@@ -325,6 +326,8 @@ let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+// 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
+let floorHive=null;
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -4802,7 +4805,8 @@ function normalizeQuickWheelSettings() {
 function quickWheelPrimaryItems() {
   normalizeQuickWheelSettings();
   const ids = settings.quickWheelCustomOrder.filter((id) => settings.quickWheelCustomEnabled.includes(id)
-    && !(id === 'notes' && settings?.notes?.detached) && !(id === 'assistant' && proseFloorTools.assistantDetached));
+    && !(id === 'notes' && settings?.notes?.detached) && !(id === 'assistant' && proseFloorTools.assistantDetached)
+    && !(id === 'floor' && floorHive?.detached));
   return ids.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
 }
 
@@ -6197,6 +6201,7 @@ function openQuickWheel(btn) {
     holder.appendChild(button);
     if (item.id === 'notes') bindNotesHiveDetachDrag(button, item, layout);
     proseFloorTools.bindHive(button,item,layout);
+    floorHive?.bind(button,item,layout);
     if (item.external) {
       quickDockBindIconFallback(button, item);
       bindQuickWheelUndockDrag(button, item, layout);
@@ -6835,6 +6840,7 @@ function clampDetachedNotesEntry(position = {}) {
 
 function renderFloatingNotes() {
   proseFloorTools.renderHive();
+  floorHive?.render();
   document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
   const noteSettings = notesFeatureSettings();
   if (settings.enabled === false || !notesFeatureEnabled() || !noteSettings.detached || notesPanelOpen) return;
@@ -35764,8 +35770,11 @@ function init() {
     applyProseLayout();
     renderSettingsPanel();
     proseFloorTools.configureHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,mount:root=>appearanceSession.mountHive(root),canDock:entry=>!proseFloorTools.assistantBusy&&detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel});
+    floorHive?.dispose();
+    floorHive=createProseHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,applyIcons:applyQianmuIcons,mount:root=>appearanceSession.mountHive(root),canDock:entry=>detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel,open:openFloorNavigator,commandId:'floor',storageKey:'qianmu-floor-hive-device-v1',title:'聊天工具包（拖回千幕归巢）',ariaLabel:'打开聊天工具包'});
     renderFloatButton();
     proseFloorTools.renderHive();
+    floorHive.render();
     bindQuickDockCapture();
     restoreQuickDockedPlugins();
     storyboardBindChat();
@@ -35847,6 +35856,7 @@ function cleanupRuntime(resetSettings = false) {
   fontLibrary.dispose();
   resetCreativeSocialState();
   proseFloorTools.dispose();
+  floorHive?.dispose(); floorHive=null;
   directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }

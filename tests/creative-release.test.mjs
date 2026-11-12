@@ -28,7 +28,7 @@ const retained = new Map([
   ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
   // index.js consumes the renamed floor label (b9c4b65b); prose-hive only reads the unchanged assistant command.
   // 2026-11-08 stamp unification: every importer of a module now shares its newest address.
-  ['qianmu-hive-commands.js', '1.59.477'], ['qianmu-prose-hive.js', '1.59.446'],
+  ['qianmu-hive-commands.js', '1.59.477'], ['qianmu-prose-hive.js', '1.59.494'],
   ['qianmu-appearance-session.js', '1.59.476'],
   ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.450'],
