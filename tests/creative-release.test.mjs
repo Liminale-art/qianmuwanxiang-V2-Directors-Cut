@@ -7,7 +7,7 @@ const root = new URL('../', import.meta.url);
 // Creative prompts/runtime changed in f1b7c99e (identity anchor); their literal consumers moved to v484.
 const version = '1.59.484';
 const releaseVersion = '1.59.484';
-const manifestVersion = '1.59.495';
+const manifestVersion = '1.59.496';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
