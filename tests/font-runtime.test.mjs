@@ -326,6 +326,24 @@ test('local font is read only under an account and owned object URL is revoked',
   missing.runtime.dispose();
 });
 
+test('an opaque sanitizer NetworkError is translated to an actionable hint while the raw text is kept as detail', async () => {
+  const err = new DOMException('A network error occurred.', 'NetworkError');
+  const f = fixture({ readLocal: async () => new Blob(['font']), load: async () => { throw err; } });
+  await f.runtime.sync(state([{ id: 'bad', source: { kind: 'local' }, faces: [{ weight: '400', style: 'normal', urls: [] }] }], { body: choice('bad') }));
+  const last = f.statuses.at(-1);
+  assert.equal(last.status, 'error');
+  assert.match(last.message, /无法解码此字体文件.*woff2/su);
+  assert.equal(last.detail, 'A network error occurred.');
+  assert.equal(f.css(), '', 'the native appearance is retained'); f.runtime.dispose();
+});
+
+test('a plain load failure keeps its own message and carries no misleading decode hint', async () => {
+  const f = fixture({ load: async () => { throw new Error('offline'); } });
+  await f.runtime.sync(state([web('w')], { body: choice('w') }));
+  const last = f.statuses.at(-1);
+  assert.equal(last.status, 'error'); assert.equal(last.message, 'offline'); assert.equal(last.detail, ''); f.runtime.dispose();
+});
+
 test('missing local bytes reports actionable failure and retains native appearance', async () => {
   const f = fixture({ readLocal: async () => null });
   await f.runtime.sync(state([{ id: 'gone', source: { kind: 'local' }, faces: [{}] }], { st: choice('gone') }));

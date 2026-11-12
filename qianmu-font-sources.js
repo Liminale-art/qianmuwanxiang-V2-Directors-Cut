@@ -469,10 +469,30 @@ function localFontDescriptors(bytes, format) {
     return descriptor;
 }
 
-export async function createLocalFontRecord(file, { name } = {}) {
+// The header check proves the table directory is in bounds; it cannot prove the
+// browser's own sanitizer (OTS) will accept the file. A single real decode here
+// rejects a file that would otherwise import cleanly and then fail at paint time
+// with an opaque DOMException. Skipped when no FontFace is injected (pure tests).
+export const FONT_DECODE_HINT = '浏览器无法解码此字体文件（可能字体表结构异常或文件过大），请尝试转换为 woff2 或换来源';
+export function describeFontDecodeError(error) {
+    const raw = (error?.message || error?.name || '').toString().slice(0, 160);
+    return raw ? `${FONT_DECODE_HINT}（${raw}）` : FONT_DECODE_HINT;
+}
+async function assertFontDecodes(bytes, FontFaceClass) {
+    if (typeof FontFaceClass !== 'function') return;
+    const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    let face;
+    try { face = new FontFaceClass('qm-font-decode-probe', source); }
+    catch (error) { fail(describeFontDecodeError(error)); }
+    try { await face.load(); }
+    catch (error) { fail(describeFontDecodeError(error)); }
+}
+
+export async function createLocalFontRecord(file, { name, FontFace: FontFaceClass } = {}) {
     if (!file || typeof file.arrayBuffer !== 'function' || !Number.isFinite(file.size)) fail('请选择有效的字体文件');
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { format } = validateLocalFontBytes(bytes);
+    await assertFontDecodes(bytes, FontFaceClass);
     const { known, ...descriptors } = localFontDescriptors(bytes, format);
     const fileName = boundedText(file.name || '本地字体', 240, '文件名');
     return { record: { name: boundedText(name, 160, '字体名称') || fileName.replace(/\.(woff2?|ttf|otf)$/iu, '').slice(0, 160),

@@ -312,6 +312,26 @@ test('duplicate local uploads retain saved metadata, application and byte conten
   f.stop();
 });
 
+test('a reimport overwrites a present-but-unreadable original instead of trusting the content-hashed key', async () => {
+  const { file, bytes } = fontFile(), store = new Map();
+  // A corrupt entry: right key, wrong/unreadable bytes (dead IndexedDB handle).
+  const corrupt = { size: bytes.length, arrayBuffer: async () => { throw new DOMException('blob gone', 'NotReadableError'); } };
+  const puts = [];
+  const f = setup({ localStoreFactory: () => ({
+    get: async id => store.get(id) || null,
+    put: async (id, data) => { puts.push(id); store.set(id, new Blob([data])); },
+    delete: async ids => ids.forEach(id => store.delete(id)), dispose() {},
+  }) });
+  const id = await digestId(bytes);
+  store.set(id, corrupt);
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '损坏重导', tags: [] }] });
+  assert.deepEqual(puts, [id], 'the unreadable blob was rewritten once');
+  assert.deepEqual(new Uint8Array(await store.get(id).arrayBuffer()), bytes);
+  // A readable blob of the right size is left untouched on the next reimport.
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '不应重写', tags: [] }] });
+  assert.deepEqual(puts, [id], 'a readable original is not rewritten'); f.stop();
+});
+
 test('legacy local payloads and blank optional metadata preserve the derived display name', async () => {
   for (const metadata of [undefined, [{}], [{ name: '  ', tags: [] }]]) {
     const f = setup();

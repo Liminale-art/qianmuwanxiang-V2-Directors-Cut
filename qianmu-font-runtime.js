@@ -142,7 +142,19 @@ export function detectLayerSupport(scope = globalThis) {
 export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, readBuiltin = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, Blob: BlobClass = globalThis.Blob, URL: UrlApi = globalThis.URL, loadTimeout = 12000, supportsLayer } = {}) {
   const slots = new Map(), applied = new Map(), retired = new Set(), probes = new Set();
   let generation = 0, revision = 0, disposed = false, styleElement = null, layerOk;
-  const notify = (id, status, message = '') => { try { onStatus(id, { status, message }); } catch (_) {} };
+  const notify = (id, status, message = '', detail = '') => { try { onStatus(id, { status, message, detail }); } catch (_) {} };
+  // The browser's font sanitizer rejects a structurally-valid file with an
+  // opaque `NetworkError: A network error occurred.` DOMException. Surfaced raw,
+  // it reads as a connectivity problem for a purely local file. Translate it to
+  // an actionable Chinese hint and keep the original text as a title detail.
+  const FONT_DECODE_HINT = '浏览器无法解码此字体文件（可能字体表结构异常或文件过大），请尝试转换为 woff2 或换来源';
+  function fontFailure(error, fallback) {
+    const name = error?.name || '', raw = (error?.message || '').toString();
+    if (name === 'NetworkError' || /network error|failed to decode|could not be loaded|ots|parsing error/i.test(raw)) {
+      return { message: FONT_DECODE_HINT, detail: raw.slice(0, 200) };
+    }
+    return { message: raw || fallback, detail: '' };
+  }
   // Some older mobile webviews parse neither `@layer` nor `:has()`; when a block
   // sits inside an unsupported `@layer`, the whole sheet is dropped and ST's
   // theme font wins. Only when we positively detect a real browser without
@@ -226,7 +238,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       notify(font.id, 'available');
       return slot;
     })().catch((error) => {
-      if (!disposed && slots.get(font.id) === slot) notify(font.id, 'error', error?.message || '字体加载失败');
+      if (!disposed && slots.get(font.id) === slot) { const f = fontFailure(error, '字体加载失败'); notify(font.id, 'error', f.message, f.detail); }
       removeSlot(slot); if (slots.get(font.id) === slot) slots.delete(font.id);
       return null;
     });
@@ -314,7 +326,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
           applied.set(scope, { id: slot.id, family: slot.family, slot, selection: { ...selection } });
           notify(slot.id, 'ready');
         } catch (error) {
-          if (!disposed && generation === turn) notify(slot.id, 'error', error?.message || '字体加载失败，已保留原字体');
+          if (!disposed && generation === turn) { const f = fontFailure(error, '字体加载失败，已保留原字体'); notify(slot.id, 'error', f.message, f.detail); }
         }
       }));
       if (!disposed && generation === turn) { paint(); try { onApplied?.(); } catch (_) {} }
@@ -327,7 +339,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
           await verify(slot, selected || { weight: firstFace.weight, style: String(firstFace.style || '').startsWith('oblique') ? 'oblique' : firstFace.style });
           if (!disposed && generation === turn) notify(id, 'ready');
         } catch (error) {
-          if (!disposed && generation === turn) notify(id, 'error', error?.message || '字体预览加载失败');
+          if (!disposed && generation === turn) { const f = fontFailure(error, '字体预览加载失败'); notify(id, 'error', f.message, f.detail); }
         }
       }));
       await Promise.all(pending.values());

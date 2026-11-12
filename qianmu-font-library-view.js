@@ -231,7 +231,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
             node.style.setProperty('font-family', typeof family === 'string' ? family : '', 'important'); node.style.setProperty('font-weight', variant.weight, 'important'); node.style.setProperty('font-style', variant.style, 'important');
             ids.push(id); previewChoices[id] = variant;
         }
-        for (const node of qa('[data-font-load-state]')) if (loadingStates.has(node.dataset.fontLoadState)) node.textContent = loadingStates.get(node.dataset.fontLoadState);
+        for (const node of qa('[data-font-load-state]')) if (loadingStates.has(node.dataset.fontLoadState)) { const entry = loadingStates.get(node.dataset.fontLoadState); node.textContent = entry.text; if (entry.title) node.title = entry.title; else node.removeAttribute('title'); }
         sizeSamples(current);
         if (notify) try { Promise.resolve(onVisibleFonts?.(ids, previewChoices)).catch(() => { if (!disposed) message('部分字体预览暂未载入。', { error: true }); }); } catch { message('字体预览暂未载入。', { error: true }); }
     }
@@ -424,7 +424,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
     root.addEventListener('click', click); root.addEventListener('input', input); root.addEventListener('change', change); root.addEventListener('keydown', keydown);
     for (const event of ['keyup', 'keypress', 'focusin']) root.addEventListener(event, isolateField); render();
     return { render, captureSession, clearWebDraft, revealFont, setStatus: message, setProgress,
-        setFontStatus(id, text) { if (disposed) return; loadingStates.set(String(id), String(text || '')); for (const node of qa('[data-font-load-state]')) if (node.dataset.fontLoadState === String(id)) node.textContent = String(text || ''); for (const node of qa('[data-font-sample]')) if (node.dataset.fontSample === String(id)) node.style.setProperty('font-family', fontFamily(String(id)) || '', 'important'); },
+        setFontStatus(id, text, detail = '') { if (disposed) return; loadingStates.set(String(id), { text: String(text || ''), title: String(detail || '') }); for (const node of qa('[data-font-load-state]')) if (node.dataset.fontLoadState === String(id)) { node.textContent = String(text || ''); if (detail) node.title = String(detail); else node.removeAttribute('title'); } for (const node of qa('[data-font-sample]')) if (node.dataset.fontSample === String(id)) node.style.setProperty('font-family', fontFamily(String(id)) || '', 'important'); },
         destroy() { if (disposed) return; disposed = true; localUploads = []; root.removeEventListener('click', click); root.removeEventListener('input', input); root.removeEventListener('change', change); root.removeEventListener('keydown', keydown); for (const event of ['keyup', 'keypress', 'focusin']) root.removeEventListener(event, isolateField); }
     };
 }

@@ -255,6 +255,24 @@ test('all four local font formats are accepted, bytes remain separate from recor
     }
 });
 
+test('an injected FontFace decode probe rejects a header-valid file the browser sanitizer refuses, keeping the raw reason in the message', async () => {
+    const bytes = makeFont('truetype');
+    // No FontFace injected: pure validation path stays decode-free and accepts.
+    const plain = await createLocalFontRecord(file(bytes));
+    assert.equal(plain.record.source.format, 'truetype');
+    // Constructor throws (malformed per the browser) → Chinese hint + raw tail.
+    class ThrowingFace { constructor() { throw new DOMException('A network error occurred.', 'NetworkError'); } }
+    await assert.rejects(() => createLocalFontRecord(file(bytes), { FontFace: ThrowingFace }), /无法解码此字体文件.*A network error occurred/su);
+    // load() rejects (OTS decode failure) → same hint.
+    class RejectingFace { load() { return Promise.reject(new Error('OTS parsing error: invalid sfntVersion')); } }
+    await assert.rejects(() => createLocalFontRecord(file(bytes), { FontFace: RejectingFace }), /无法解码此字体文件.*OTS parsing error/su);
+    // A FontFace that decodes cleanly is accepted unchanged.
+    let loaded = false;
+    class GoodFace { load() { loaded = true; return Promise.resolve(this); } }
+    const ok = await createLocalFontRecord(file(bytes), { FontFace: GoodFace });
+    assert.equal(loaded, true); assert.equal(ok.record.source.format, 'truetype'); assert.deepEqual(ok.bytes, bytes);
+});
+
 test('local SFNT OS/2 and fvar metadata supplies actual weight/style instead of filename guesses', async () => {
     const bytes = new Uint8Array(160), view = new DataView(bytes.buffer);
     view.setUint32(0, 0x00010000); view.setUint16(4, 2);

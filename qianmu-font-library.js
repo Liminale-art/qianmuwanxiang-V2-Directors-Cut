@@ -30,7 +30,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   notify = () => {}, download, confirm = async () => false, beforeApply, afterApply, closePanel,
   localStoreFactory = createFontLocalStore, runtimeFactory = createFontRuntime, viewFactory = createFontLibraryView,
   webResolver = resolveWebFontSource, localReader = createLocalFontRecord, accountSyncFactory = createFontAccountSync,
-  builtinReader = readBuiltinFont } = {}) {
+  builtinReader = readBuiltinFont, FontFace = globalThis.FontFace } = {}) {
   let owner = null, namespace = '', store = null, runtime = null, accountSync = null, view = null, portal = null, container = null;
   let accountSyncHydrated = false;
   let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
@@ -69,16 +69,25 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     const id = await localId(bytes); guard();
     const merged = mergeFontLibraryRecords(draft, [{ ...record, id }], makeId), target = merged.mapping.get(id);
     // An existing directory entry on another device may still need its bytes.
+    // A present-but-unreadable Blob (dead IndexedDB handle, truncated write) is
+    // worse than a missing one: its id is content-hashed, so a reimport would
+    // otherwise skip it forever and keep failing at paint. Verify and rewrite.
     const existing = await store.get?.(target); guard();
-    if (!existing) { onSaving?.(); await store.put(target, bytes, 'application/octet-stream'); guard(); }
+    if (!existing || !(await localBytesReadable(existing, bytes.byteLength))) { guard(); onSaving?.(); await store.put(target, bytes, 'application/octet-stream'); guard(); }
     return merged.state;
+  }
+  async function localBytesReadable(blob, expectedBytes) {
+    if (!blob || blob.size !== expectedBytes) return false;
+    if (typeof blob.arrayBuffer !== 'function') return true;
+    try { return (await blob.arrayBuffer()).byteLength === expectedBytes; }
+    catch { return false; }
   }
   const read = () => normalizeFontLibrary(getOwner()?.fontLibrary);
   const current = token => !disposed && token === generation && isCurrent() && getOwner() === owner;
   const assertCurrent = token => { if (!current(token)) throw new Error('字体库所属设置已变化，请重新打开'); };
   function status(id, value) {
     statuses.set(id, value);
-    view?.setFontStatus(id, value.status === 'error' ? value.message || '字体暂不可用' : value.status === 'loading' ? '加载中…' : '');
+    view?.setFontStatus(id, value.status === 'error' ? value.message || '字体暂不可用' : value.status === 'loading' ? '加载中…' : '', value.status === 'error' ? value.detail || '' : '');
   }
   function release() {
     if (accountPushTimer) { clearTimeout(accountPushTimer); accountPushTimer = null; }
@@ -253,7 +262,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         });
         next = read();
         for (const [index, file] of files.entries()) {
-          const item = await localReader(file); guard();
+          const item = await localReader(file, { FontFace }); guard();
           if (details[index]) item.record = { ...item.record, ...details[index], name: details[index].name || item.record.name };
           validateFontRecord(item.record);
           next = await stageLocal(item.record, item.bytes, next, guard);
