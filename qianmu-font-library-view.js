@@ -71,7 +71,7 @@ function activeTargets(state, id) {
 }
 function initialChoice(state, entry, draft) { const target = activeTargets(state, entry.id)[0]; return choice(entry, draft || (target ? state[target] : {})); }
 function hasVariants(entry, selected) { return fontStyles(entry).length > 1 || !fontLibraryWeightControl(entry, selected).disabled; }
-function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || (hasVariants(entry, selected) && view.expandedId !== entry.id) ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
+function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || view.expandedId !== entry.id ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
 function applyControl(state, entry) {
     const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', shared: '全部', quote: '引用' };
     const current = active.length ? active.map(target => labels[target]).join(' · ') : '应用字体';
@@ -87,11 +87,12 @@ export function fontLibraryPreviewSize(state = {}, view = {}) {
     return { values: [12, 14, 16, 18, 20], value };
 }
 function cardTools(state, entry, selected, view = {}) {
-    const id = escape(entry.id), variants = hasVariants(entry, selected), expanded = variants && view.expandedId === entry.id, pinned = array(state.pinnedIds).includes(entry.id);
+    const id = escape(entry.id), variants = hasVariants(entry, selected), expanded = view.expandedId === entry.id;
+    const pinned = array(state.pinnedIds).includes(entry.id);
     const pin = iconButton('pin', pinned ? 'qm-fill-push-pin' : 'qm-regular-push-pin', pinned ? `取消置顶 ${entry.name}` : `置顶 ${entry.name}`, `data-font-id="${id}" aria-pressed="${pinned}"`, pinned ? 'is-pinned' : '');
     const builtin = entry.source?.kind === 'builtin';
     const editing = builtin ? '' : iconButton('edit', 'fa-pen', `编辑 ${entry.name}`, `data-font-id="${id}"`) + iconButton('delete-one', 'fa-trash', `删除 ${entry.name}`, `data-font-id="${id}"`);
-    return `${variants ? iconButton('more', 'fa-ellipsis', expanded ? '收起字体操作' : '更多字体操作', `data-font-id="${id}" aria-expanded="${expanded}"`) : ''}${expanded ? variantTools(entry, selected) + pin + editing : !variants ? pin + editing : ''}${expanded ? '' : applyControl(state, entry)}`;
+    return `${iconButton('more', 'fa-ellipsis', expanded ? '收起字体操作' : '更多字体操作', `data-font-id="${id}" aria-expanded="${expanded}"`)}${expanded ? (variants ? variantTools(entry, selected) : '') + pin + editing : applyControl(state, entry)}`;
 }
 function localUploadDialog(view) {
     if (!array(view.localUploads).length) return '';
@@ -118,7 +119,7 @@ export function renderFontLibraryCards(state = {}, view = {}) {
     const page = selectFontLibraryPage(state, view), selected = new Set(array(view.selected));
     const cards = page.entries.map(entry => {
         const value = initialChoice(state, entry, view.variants?.[entry.id]), id = escape(entry.id);
-        const pinned = array(state.pinnedIds).includes(entry.id), renameVisible = !view.managing && view.renameId === entry.id && (!hasVariants(entry, value) || view.expandedId === entry.id);
+        const pinned = array(state.pinnedIds).includes(entry.id), renameVisible = !view.managing && view.renameId === entry.id && view.expandedId === entry.id;
         const editor = `<div class="qm-font-rename-pop" data-font-rename-pop="${id}"${renameVisible ? '' : ' hidden'}><div class="qm-font-rename-row"><input data-font-rename="${id}" aria-label="字体名称" maxlength="160" value="${escape(view.renameId === entry.id ? view.renameDraft : entry.name)}">${iconButton('rename-save', 'fa-check', '保存字体修改', `data-font-id="${id}"`)}${iconButton('rename-cancel', 'fa-xmark', '取消编辑字体', `data-font-id="${id}"`)}</div>${tagEditor(`rename-${entry.id}`, `<input data-font-rename-tags="${id}" type="text" maxlength="2623" placeholder="如：宋体,黑体，多个标签用逗号分隔" value="${escape(view.renameId === entry.id ? view.renameTags ?? array(entry.tags).join(', ') : array(entry.tags).join(', '))}" aria-label="字体标签">`)}</div>`;
         return `<article class="sd-card qm-font-card${view.managing ? ` is-selecting${selected.has(entry.id) ? ' is-selected' : ''}` : ''}" data-font-id="${id}"${view.managing ? ` role="button" tabindex="0" aria-label="选择 ${escape(entry.name)}" aria-pressed="${selected.has(entry.id)}"` : ''}><div class="qm-font-card-head"><div class="qm-font-name"><strong title="${escape(entry.name)}">${escape(entry.name)}</strong>${pinned ? pinMarker(entry, value, view) : ''}</div><div class="qm-font-card-tools"${view.managing ? ' hidden' : ''}>${cardTools(state, entry, value, view)}</div></div>${editor}<p class="qm-font-sample qm-font-preview" data-font-sample="${id}">${escape(state.previewText || FONT_LIBRARY_PREVIEW_TEXT)}</p><span class="qm-font-load-state" data-font-load-state="${id}" aria-live="polite">${escape(entry.status || '')}</span></article>`;
     }).join('');
@@ -246,8 +247,8 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
             if (managing) { card.setAttribute('role', 'button'); card.setAttribute('tabindex', '0'); card.setAttribute('aria-label', `选择 ${entry?.name || ''}`); card.setAttribute('aria-pressed', String(selected.has(id))); }
             else for (const attribute of ['role', 'tabindex', 'aria-label', 'aria-pressed']) card.removeAttribute?.(attribute);
             const tools = card.querySelector?.('.qm-font-card-tools'); if (tools) tools.hidden = managing;
-            const rename = card.querySelector?.('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || (entry && hasVariants(entry, initialChoice(current, entry, variants[id])) && expandedId !== id);
-            const mark = card.querySelector?.('.qm-font-pin-mark'); if (mark && entry) mark.hidden = !managing && (!hasVariants(entry, initialChoice(current, entry, variants[id])) || expandedId === id);
+            const rename = card.querySelector?.('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || expandedId !== id;
+            const mark = card.querySelector?.('.qm-font-pin-mark'); if (mark && entry) mark.hidden = !managing && expandedId === id;
         }
         for (const picker of qa('[data-font-apply]')) picker.selectedIndex = -1;
         if (!managing || !selected.size) { const editor = q('[data-font-bulk-editor]'); if (editor) editor.hidden = true; bulk = false; if (tagTarget === 'bulk') closeTags(); }
@@ -311,8 +312,8 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (!entry || !host) return;
         host.innerHTML = cardTools(current, entry, initialChoice(current, entry, variants[id]), viewState());
         for (const picker of host.querySelectorAll('[data-font-apply]')) picker.selectedIndex = -1;
-        const rename = card.querySelector('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || (hasVariants(entry, initialChoice(current, entry, variants[id])) && expandedId !== id);
-        const mark = card.querySelector('.qm-font-pin-mark'); if (mark) mark.hidden = !managing && (!hasVariants(entry, initialChoice(current, entry, variants[id])) || expandedId === id);
+        const rename = card.querySelector('[data-font-rename-pop]'); if (rename) rename.hidden = managing || renameId !== id || expandedId !== id;
+        const mark = card.querySelector('.qm-font-pin-mark'); if (mark) mark.hidden = !managing && expandedId === id;
     }
     function collapseMore({ focus = false } = {}) {
         if (!expandedId) return false;

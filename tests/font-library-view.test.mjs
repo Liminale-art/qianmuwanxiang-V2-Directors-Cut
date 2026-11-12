@@ -392,11 +392,14 @@ test('master enable is the first card, add collapses as a unit and search direct
     assert.match(html, /class="sd-card qm-font-preview-editor"/); assert.match(html, /data-font-preview-size/);
     assert.match(renderFontLibraryCards(state({ previewText: '' })), /一念起幕，万象成诗。 AaBbCc123456/);
 });
-test('fixed fonts expose edit/delete directly while variable fonts keep them inside more', async () => {
+test('every card collapses edit/delete and variants behind more, regardless of variable axes', async () => {
     const fixed = id => entry(id, { weights: ['400'], styles: ['normal'] }), f = fixture(state({ entries: [fixed('one'), fixed('two')] })), html = f.root.innerHTML;
-    assert.equal((html.match(/data-font-action="delete-one"/g) || []).length, 2); assert.doesNotMatch(html, /data-font-action="more"/);
-    const collapsed = renderFontLibraryCards(state()); assert.match(collapsed, /data-font-action="more"/); assert.doesNotMatch(collapsed, /data-font-action="edit"|data-font-action="delete-one"/);
-    await f.click('delete-one', { fontId: 'two' }); await f.click('delete-one', { fontId: 'missing' }); assert.deepEqual(f.calls, [{ type: 'delete-font', id: 'two' }]); f.view.destroy();
+    assert.equal((html.match(/data-font-action="more"/g) || []).length, 2); assert.doesNotMatch(html, /data-font-action="edit"|data-font-action="delete-one"/);
+    assert.match(html, /data-font-apply=/);
+    const collapsed = renderFontLibraryCards(state()); assert.match(collapsed, /data-font-action="more"/); assert.doesNotMatch(collapsed, /data-font-action="edit"|data-font-action="delete-one"|data-font-action="pin"/);
+    const openFixed = renderFontLibraryCards(state({ entries: [fixed('one')] }), { expandedId: 'one' });
+    assert.match(openFixed, /data-font-action="pin"/); assert.match(openFixed, /data-font-action="delete-one"/); assert.doesNotMatch(openFixed, /data-font-style=|data-font-apply=/);
+    const linked = attachCard(f, 'two'); await f.emit('click', linked.action('more')); await f.click('delete-one', { fontId: 'two' }); await f.click('delete-one', { fontId: 'missing' }); assert.deepEqual(f.calls, [{ type: 'delete-font', id: 'two' }]); f.view.destroy();
 });
 test('preview size preserves a non-preset body size and only accepts the five explicit sample sizes', () => {
     assert.deepEqual(fontLibraryPreviewSize({ defaultPreviewSize: 64 }), { values: [12, 14, 16, 18, 20], value: 64 }); assert.equal(fontLibraryPreviewSize().value, 18);
@@ -638,7 +641,7 @@ test('sort control is beside management and pin status stays recognizable withou
     assert.ok(html.indexOf('data-font-action="manage"') < html.indexOf('data-font-sort-order')); assert.match(html, /data-font-sort-order aria-label="字体排序"><option value="asc">名称正序<\/option><option value="desc" selected>名称倒序<\/option><option value="added-asc">添加时间正序<\/option><option value="added-desc">添加时间倒序/);
     const collapsed = renderFontLibraryCards(state({ pinnedIds: ['one'] })); assert.match(collapsed, /qm-font-pin-mark" aria-label="已置顶" title="已置顶">/); assert.doesNotMatch(collapsed, /data-font-action="pin"/);
     const expanded = renderFontLibraryCards(state({ pinnedIds: ['one'] }), { expandedId: 'one' }); assert.match(expanded, /qm-font-pin-mark"[^>]* hidden>/); assert.match(expanded, /data-font-action="pin"[^>]*aria-pressed="true"/);
-    const fixed = renderFontLibraryCards(state({ entries: [entry('one', { weights: ['400'], styles: ['normal'] })], pinnedIds: ['one'] })); assert.match(fixed, /qm-font-pin-mark"[^>]* hidden>/); assert.match(fixed, /data-font-action="pin"[^>]*aria-pressed="true"/);
+    const fixed = renderFontLibraryCards(state({ entries: [entry('one', { weights: ['400'], styles: ['normal'] })], pinnedIds: ['one'] })); assert.match(fixed, /qm-font-pin-mark" aria-label="已置顶" title="已置顶">/); assert.doesNotMatch(fixed, /data-font-action="pin"/);
 });
 test('sorted reveal locates its actual page and pin toggles locate the moved font without losing multi-selection', async () => {
     let input = state({ entries: Array.from({ length: 12 }, (_, index) => entry(String(index))), pinnedIds: ['11'], sortOrder: 'desc' }), f;
