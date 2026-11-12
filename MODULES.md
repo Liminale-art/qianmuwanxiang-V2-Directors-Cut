@@ -3,13 +3,14 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 423 个，其中 `qianmu-*` 模块 406 个。
+根目录文件 424 个，其中 `qianmu-*` 模块 406 个。
 
 ## 入口、宿主与安装
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `LICENSE` | 是 |  |
+| `_tmp_f.mjs` | 否 |  |
 | `builtin-theaters.js` | 是 | 千幕 (Qianmu) 内置剧场组「吱吱小剧场」 |
 | `index.js` | 是 | 千幕 (Qianmu) - SillyTavern third-party UI extension |
 | `install-server-plugin.ps1` | 是 |  |
@@ -36,7 +37,7 @@
 | `features/` | 187 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 965 |
+| `tests/` | 966 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
