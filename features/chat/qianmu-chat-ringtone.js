@@ -29,9 +29,9 @@ export const RINGTONE_DEFAULTS = Object.freeze({
   toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4, toastStack: 3,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
-// 'default' follows the Qianmu theme and day/night; 涂鸦 is a high-saturation sticker/graffiti card that only
-// follows day/night (never the accent), one colour clash per status; 虹彩 is a soft iridescent liquid glass.
-export const TOAST_STYLES = Object.freeze([['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
+// 'default' follows the Qianmu theme and day/night; 辉光 is a narrow glow-edge chamfered block that only
+// follows day/night (edge tinted by status), with a left→right light sweep; 虹彩 is a soft iridescent liquid glass.
+export const TOAST_STYLES = Object.freeze([['default', '默认'], ['glow', '辉光'], ['iris', '虹彩']]);
 export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
 // 停留时间 1–10 s and 堆叠数量 1–8 are both picked on a horizontal wheel.
 export const TOAST_DURATIONS = Object.freeze(Array.from({ length: 10 }, (_, i) => Object.freeze([i + 1, `${i + 1}s`])));
@@ -100,7 +100,7 @@ export function normalizeRingtone(owner) {
   next.flashText = typeof next.flashText === 'string' ? [...next.flashText.trim()].slice(0, RINGTONE_LIMITS.flashText).join('') : RINGTONE_DEFAULTS.flashText;
   next.iconSource = next.iconSource === 'custom' ? 'custom' : 'builtin';
   next.toastSkin = next.toastSkin === true;
-  if (next.toastStyle === 'arc') next.toastStyle = 'splat'; // 样式1 renamed 涂鸦
+  if (next.toastStyle === 'arc' || next.toastStyle === 'splat') next.toastStyle = 'glow'; // 样式1 历次更名→辉光
   if (!TOAST_STYLES.some(([id]) => id === next.toastStyle)) next.toastStyle = RINGTONE_DEFAULTS.toastStyle;
   if (!TOAST_FONT_SIZES.some(([id]) => id === next.toastFontSize)) next.toastFontSize = RINGTONE_DEFAULTS.toastFontSize;
   if (!TOAST_DURATIONS.some(([seconds]) => seconds === next.toastDuration)) next.toastDuration = RINGTONE_DEFAULTS.toastDuration;

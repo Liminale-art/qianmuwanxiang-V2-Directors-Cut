@@ -226,9 +226,10 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
 });
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
-  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
+  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['glow', '辉光'], ['iris', '虹彩']]);
   assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['1s', '2s', '3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s']);
-  assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'splat', '旧样式1迁移为涂鸦');
+  assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'glow', '旧样式1迁移为辉光');
+  assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'splat' } }).toastStyle, 'glow', '涂鸦弃用后迁移为辉光');
   assert.deepEqual(TOAST_FONT_SIZES.map(([id]) => id), ['sm', 'md', 'lg']);
   assert.ok(TOAST_DURATIONS.every(([seconds]) => Number.isFinite(seconds) && seconds > 0));
   const s = normalizeRingtone({ ringtone: { toastSkin: 'yes', toastPosition: 'top-right', toastStyle: 'mosaic', toastFontSize: 'xl', toastDuration: 99 } });
@@ -264,14 +265,14 @@ test('toast skin runtime: activate applies, update and refreshLook re-apply, dis
   const attrs = {};
   const { doc } = fakeDocument();
   doc.documentElement = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
-  const settings = { ringtone: { toastSkin: true, toastStyle: 'splat' } };
+  const settings = { ringtone: { toastSkin: true, toastStyle: 'glow' } };
   let look = { theme: 'summer', mode: 'light' };
   const ring = createChatRingtone({ getOwner: () => settings, save: () => {}, getContext: () => ({ chat: [] }), resolveNamespace: () => 'ns',
     document: doc, window: { addEventListener() {}, removeEventListener() {} }, Audio: class {}, indexedDB: null, getLook: () => look,
     loadView: async () => ({ mountChatRingtoneView: () => ({ render() {}, dispose() {} }) }), setInterval: () => 1, clearInterval: () => {} });
   assert.ok(!('data-qm-toast' in attrs), '未激活前不改页面');
   ring.activate();
-  assert.equal(attrs['data-qm-toast'], 'splat');
+  assert.equal(attrs['data-qm-toast'], 'glow');
   assert.equal(attrs['data-qm-toast-theme'], 'summer');
   ring.actions.update({ toastStyle: 'iris', toastFontSize: 'sm' });
   assert.equal(attrs['data-qm-toast'], 'iris');
@@ -410,11 +411,11 @@ test('toast stack count: normalized, mirrored to an html attribute, enforced by 
   for (const bad of [0, -1, 2.5, 'x', TOAST_STACK_MAX + 1]) assert.equal(normalizeRingtone({ ringtone: { toastStack: bad } }).toastStack, 3);
   const attrs = {};
   const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
-  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 2 }, { theme: 'light', mode: 'light' });
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'glow', toastFontSize: 'md', toastStack: 2 }, { theme: 'light', mode: 'light' });
   assert.equal(attrs['data-qm-toast-stack'], '2');
-  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 0 }, null);
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'glow', toastFontSize: 'md', toastStack: 0 }, null);
   assert.ok(!('data-qm-toast-stack' in attrs), '0 为不限');
-  applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 4 }, null);
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'glow', toastFontSize: 'md', toastStack: 4 }, null);
   applyToastSkin(doc, { toastSkin: false });
   assert.deepEqual(attrs, {});
   const css = await readFile(new URL('style.css', root), 'utf8');
@@ -476,14 +477,16 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   view.dispose();
 });
 
-test('涂鸦 style: day/night only, per-status clash colours, outside square bar, pop-in', async () => {
+test('辉光 style: day/night only, status-tinted glow edge, chamfer, left→right sweep', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
-  const splat = css.split('\n').filter(line => line.includes('data-qm-toast="splat"')).join('\n');
-  assert.ok(!splat.includes('--qm-toast-accent') && !splat.includes('data-qm-toast-theme'), '不跟随主题强调色，只按日夜');
-  for (const status of ['.toast-success', '.toast-warning', '.toast-error']) assert.ok(splat.includes(status), `${status} 有独立配色`);
-  assert.ok(/::before \{ left: -\d+px[^}]*border-radius: 0/.test(splat), '竖条在框外且直角');
-  assert.ok(splat.includes('animation: qm-toast-splat') && /@keyframes qm-toast-splat \{ 0% \{[^}]*scale\(\.6\)/.test(css), '由小到大弹出');
-  assert.ok(!css.includes('data-qm-toast="arc"'), '旧样式1规则已替换');
+  const glow = css.split('\n').filter(line => line.includes('data-qm-toast="glow"')).join('\n');
+  assert.ok(!glow.includes('data-qm-toast-theme'), '只按日夜，不额外读主题');
+  assert.ok(/html\[data-qm-toast="glow"\]\[data-qm-toast-mode="dark"\]/.test(glow), '夜间半透深色块');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*clip-path: polygon/.test(glow), '斜切边角');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(glow), '日间半透毛玻璃');
+  assert.ok(glow.includes('--gw-edge: var(--qm-toast-status)'), '边沿辉光跟随提示状态色');
+  assert.ok(glow.includes('animation: qm-toast-glow-sweep') && /@keyframes qm-toast-glow-sweep \{ 0% \{[^}]*translateX\(-120%\)/.test(css), '光带从左向右划出');
+  assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
 });
 
 test('toolkit panel caps at the Qianmu window size and tapping a toast keeps it open', async () => {
