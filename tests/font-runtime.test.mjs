@@ -427,3 +427,15 @@ test('layer capability detection only strips for a browser that positively lacks
   assert.equal(detectLayerSupport({ CSS: { supports: () => true } }), false, 'CSS.supports without CSSLayerBlockRule is a no-@layer engine');
   assert.equal(detectLayerSupport({ CSS: { supports: () => true }, CSSLayerBlockRule: function () {} }), true, 'modern browser keeps the layer path');
 });
+
+test('theme-drawn pseudo labels follow the chosen fonts (top-bar drawer labels, reading meta)', () => {
+  const family = fontPreviewFamily('sample');
+  const st = fontScopeCss('st', family);
+  const label = st.split('\n').find(line => line.startsWith('#top-settings-holder > .drawer > .drawer-toggle > .drawer-icon::before'));
+  assert.ok(label, '顶栏抽屉文字标签（美化主题用 ::before 绘制）单独覆盖');
+  assert.match(label, /font-family:var\(--fa-style-family,"Font Awesome 6 Free"\),"QianmuFont_[a-z0-9_]+",var\(--mainFontFamily/, '图标字体在前保住原生图标，中文标签回落到所选字体');
+  assert.match(label, /!important; \}$/);
+  const body = fontScopeCss('body', family);
+  assert.ok(body.includes('#chat > .mes > .mesAvatarWrapper::after {'), '正文阅读信息伪元素跟随正文字体');
+  for (const css of [st, body]) assert.match(css, /^@layer qianmu-font-application \{/);
+});

@@ -24,6 +24,13 @@ const RECENT_TEXT = '.welcomePanel .recentChatList > .recentChat > .recentChatIn
 const READING_META = `${MESSAGE_META}, ${RECENT_TEXT}`;
 const READING_META_CONTAINERS = '#chat > .mes > .mesAvatarWrapper, #chat > .mes > .mes_block > .ch_name, #chat > .mes > .swipeRightBlock, .welcomePanel .recentChatList > .recentChat > .recentChatInfo';
 const EXEMPT = 'textarea#send_textarea, .mes_text, .mes_text *, pre, pre *, code, code *, kbd, kbd *, samp, samp *, svg, svg *, canvas, i, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="fa-"] *, [class*="icon"], [class*="icon"] *, [data-sd-prose-exempt], [data-sd-prose-exempt] *, [style*="font-family" i], [style*="font-family" i] *';
+// Beautify themes draw the top-bar drawer labels ("参数"/"连接"…) as ::before text with their own
+// `font-family: … !important`. The host element is an icon (exempt above) and a pseudo-element is
+// never matched by ST_TARGET, so the label gets its own rule. Font Awesome stays first so plain ST
+// keeps its glyph icons; CJK label characters have no glyph there and fall through to our family.
+const ST_LABEL_PSEUDO = '#top-settings-holder > .drawer > .drawer-toggle > .drawer-icon::before';
+// Reading-meta text such themes paint on message chrome (e.g. "正在阅读") with their own font.
+const READING_META_PSEUDO = '#chat > .mes > .mesAvatarWrapper::after';
 // Do not style body or message/Qianmu ancestors: an excluded descendant must
 // not inherit a changed font from an otherwise eligible host container.
 const ST_TARGET = `html body :is(div, span, p, a, label, button, input, textarea, select, option, summary, legend, h1, h2, h3, h4, h5, h6, li, td, th, small):not(:is(${EXEMPT})):not(:is(${READING_META_CONTAINERS})):not(:is(${READING_META_CONTAINERS}) *):not(:is(${OWN_SURFACE})):not(:is(${OWN_SURFACE}) *):not(:has(textarea#send_textarea, .mes_text, ${OWN_SURFACE}, .ch_name .name_text, .ch_name .timestamp, .recentChatInfo))`;
@@ -107,13 +114,13 @@ export function fontScopeCss(scope, family, selection = {}) {
   // never rewrites another extension's stylesheet or its enabled state.
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
-  if (scope === 'body') return layer(`:root { --qm-body-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\ntextarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  if (scope === 'body') return layer(`:root { --qm-body-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\ntextarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${READING_META_PSEUDO} { ${font} }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
   if (scope !== 'st') return '';
   // Classic Qianmu panels may follow the applied interface family without
   // widening ST_TARGET or changing the host's native --mainFontFamily. Paper
   // and minimal themes keep their own fonts; removing this sheet restores the
   // original cascade, including while an unverified replacement is loading.
-  return layer(`:root { --qm-interface-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\n${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }`);
+  return layer(`:root { --qm-interface-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\n${ST_TARGET} { ${font} }\n${ST_TARGET}:not(:is(b, b *, strong, strong *, h1, h2, h3, h4, h5, h6)) { font-weight:${weight} !important; }\n${ST_TARGET}:not(:is(em, em *, i, i *)) { font-style:${style} !important; }\n${ST_LABEL_PSEUDO} { font-family:var(--fa-style-family,"Font Awesome 6 Free"),${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important; }`);
 }
 
 export function detectLayerSupport(scope = globalThis) {
