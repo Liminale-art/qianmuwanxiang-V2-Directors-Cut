@@ -58,6 +58,7 @@ function fixture(overrides = {}) {
         notesSyncPanel: { hide: () => calls.push('hide-notes-sync') },
         stopNotesPanelResizeTracking: () => calls.push('stop-notes-resize'),
         proseFloorTools: { renderHive: () => calls.push('render-notes') },
+        floorHive: { render: () => calls.push('render-floor'), detached: false },
         notesFeatureSettings: () => settings.notes,
         clampDetachedNotesEntry: value => ({ ...value }), detachedNotesGeometry: () => ({ width: 42, height: 48 }),
         currentHivePalette: () => ({ edges: ['#123'], lightFill: '#fff', darkFill: '#000', lightIcon: '#111', darkIcon: '#eee' }),
@@ -211,7 +212,7 @@ test('notes label alone hides and restores the detached entry, preserving placem
 
 test('global widget refresh clears active gestures and resynchronizes existing controls without resetting note choice', () => {
     const f = fixture(); f.context.refreshWidgetRuntime();
-    assert.deepEqual(f.calls, ['close-wheel', 'clear-drag', 'render-float', 'render-notes', 'restore-dock', 'sync-origin']);
+    assert.deepEqual(f.calls, ['close-wheel', 'clear-drag', 'render-float', 'render-notes', 'render-floor', 'restore-dock', 'sync-origin']);
     const before = plain(f.settings.quickWheelCustomEnabled);
     const mounted = f.mount(); mounted.widget('floating').click();
     assert.equal(f.settings.floatingButton, false);
