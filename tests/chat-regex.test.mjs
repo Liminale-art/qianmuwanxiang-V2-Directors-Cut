@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   stripOrdinal, regexGroupKey, groupRegexScripts, summarizeRegexScript, readRegexSources, createChatRegex, UNGROUPED_LABEL,
+  locateRegexScript, writeRegexToggle, REGEX_RELOAD_DELAY,
 } from '../features/chat/qianmu-chat-regex.js';
 
 const root = new URL('../', import.meta.url);
@@ -77,12 +78,149 @@ test('readRegexSources degrades when ST lacks preset regex or throws', () => {
   assert.equal(readRegexSources(undefined).global.available, false);
 });
 
-test('regex module is read-only: never writes to ST settings or calls save', async () => {
-  const src = await readFile(new URL('features/chat/qianmu-chat-regex.js', root), 'utf8');
+// A fake ST: global list on extensionSettings, preset list behind a preset manager that copies on write.
+function fakeST({ global = [], preset = [], writePreset = true, save = true } = {}) {
+  const log = { saves: 0, presetWrites: [], reloads: 0 };
+  let presetList = structuredClone(preset);
+  const manager = { apiId: 'openai', getSelectedPresetName: () => '预设A',
+    readPresetExtensionField: ({ path }) => (path === 'regex_scripts' ? presetList : null) };
+  if (writePreset) manager.writePresetExtensionField = async ({ path, value }) => { log.presetWrites.push({ path, value }); presetList = value; };
+  const ctx = { extensionSettings: { regex: structuredClone(global) }, getPresetManager: () => manager,
+    getCurrentChatId: () => 'chat-1', reloadCurrentChat: async () => { log.reloads += 1; } };
+  if (save) ctx.saveSettingsDebounced = () => { log.saves += 1; };
+  return { ctx, log, preset: () => presetList };
+}
+const manualTimers = () => {
+  const queue = new Map(); let next = 1;
+  return { set(fn, ms) { const id = next++; queue.set(id, { fn, ms }); return id; }, clear(id) { queue.delete(id); },
+    get size() { return queue.size; }, get last() { return [...queue.values()].at(-1); },
+    flush() { const all = [...queue.values()]; queue.clear(); all.forEach(t => t.fn()); } };
+};
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('readRegexSources marks a source writable only when ST exposes its save path', () => {
+  assert.equal(readRegexSources(fakeST().ctx).global.writable, true);
+  assert.equal(readRegexSources(fakeST().ctx).preset.writable, true);
+  assert.equal(readRegexSources(fakeST({ save: false }).ctx).global.writable, false, '没有 saveSettingsDebounced → 全局只读');
+  assert.equal(readRegexSources(fakeST({ writePreset: false }).ctx).preset.writable, false, '没有 writePresetExtensionField → 预设只读');
+  assert.equal(readRegexSources({ extensionSettings: {} }).global.writable, false);
+});
+
+test('locateRegexScript matches by id, and a synthetic #index only while that slot keeps its name', () => {
+  const list = [{ id: 'a', scriptName: 'A' }, { scriptName: '无ID' }, { id: 'c', scriptName: 'C' }];
+  assert.equal(locateRegexScript(list, { id: 'c', name: 'C' }), 2);
+  assert.equal(locateRegexScript(list, { id: '#1', name: '无ID' }), 1);
+  assert.equal(locateRegexScript(list, { id: '#1', name: '别的' }), -1, '同位但名字变了 → 拒绝');
+  assert.equal(locateRegexScript(list, { id: '#0', name: 'A' }), -1, '该位已有真实 id → 不按序号');
+  assert.equal(locateRegexScript(list, { id: 'gone', name: 'x' }), -1);
+  assert.equal(locateRegexScript(null, { id: 'a' }), -1);
+});
+
+test('global toggle flips disabled in ST extension settings and saves like ST does', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '美化', disabled: false, findRegex: '/x/' }, { id: 'g2', scriptName: '其它' }] });
+  assert.equal(await writeRegexToggle(st.ctx, { source: 'global', id: 'g1', name: '美化', enabled: false }), false);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, true);
+  assert.equal(st.ctx.extensionSettings.regex[0].findRegex, '/x/', '其它字段原样保留');
+  assert.equal(st.ctx.extensionSettings.regex[1].disabled, undefined, '只动目标那一条');
+  assert.equal(st.log.saves, 1);
+  assert.equal(await writeRegexToggle(st.ctx, { source: 'global', id: 'g1', name: '美化', enabled: true }), true);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false);
+});
+
+test('preset toggle writes a fresh array through writePresetExtensionField', async () => {
+  const st = fakeST({ preset: [{ id: 'p1', scriptName: '预设-1' }, { scriptName: '无ID', disabled: true }] });
+  const before = st.preset();
+  assert.equal(await writeRegexToggle(st.ctx, { source: 'preset', id: '#1', name: '无ID', enabled: true }), true);
+  assert.equal(st.log.presetWrites.length, 1);
+  assert.equal(st.log.presetWrites[0].path, 'regex_scripts');
+  assert.notEqual(st.log.presetWrites[0].value, before, '写入新数组，不就地改 ST 设置对象');
+  assert.equal(before[1].disabled, true, '原数组未被改动');
+  assert.equal(st.preset()[1].disabled, false);
+  assert.equal(st.preset()[0], before[0], '未改的条目保持原引用');
+  assert.equal(st.log.saves, 0, '预设走 writePresetExtensionField 自己的保存');
+});
+
+test('writeRegexToggle refuses missing capabilities, stale rows and unknown sources', async () => {
+  await assert.rejects(writeRegexToggle(fakeST({ save: false, global: [{ id: 'g' }] }).ctx, { source: 'global', id: 'g', enabled: false }), /不支持/);
+  await assert.rejects(writeRegexToggle(fakeST({ writePreset: false, preset: [{ id: 'p' }] }).ctx, { source: 'preset', id: 'p', enabled: false }), /不支持/);
+  await assert.rejects(writeRegexToggle(fakeST({ global: [{ id: 'g' }] }).ctx, { source: 'global', id: 'gone', enabled: false }), /已在别处被修改/);
+  await assert.rejects(writeRegexToggle(fakeST().ctx, { source: 'character', id: 'x' }), /未知/);
+});
+
+test('controller toggle marks the row busy, refreshes, and reloads the chat once after a quiet window', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
+  const timers = manualTimers(), renders = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers,
+    loadView: async () => ({ mountChatRegexView: () => ({ render: s => renders.push(s), dispose() {} }) }) });
+  await ctrl.mount({ isConnected: true });
+  const first = ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  assert.deepEqual([...renders.at(-1).pending], ['global:g1'], '写回期间该行忙碌');
+  assert.equal(await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false }), null, '同一行重复点按被忽略');
+  assert.equal(await first, false);
+  assert.deepEqual([...renders.at(-1).pending], []);
+  assert.equal(renders.at(-1).sources.global.items[0].enabled, false, '刷新后显示新状态');
+  await ctrl.actions.toggle({ source: 'global', id: 'g2', name: 'B', enabled: false });
+  assert.equal(timers.size, 1, '连续切换只排一次重载');
+  assert.equal(timers.last.ms, REGEX_RELOAD_DELAY);
+  assert.equal(st.log.reloads, 0);
+  timers.flush(); await settle();
+  assert.equal(st.log.reloads, 1);
+  ctrl.dispose();
+});
+
+test('controller waits for an idle host before reloading and flushes a pending reload on close', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const timers = manualTimers();
+  let idle = false;
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, canReload: () => idle,
+    loadView: async () => ({ mountChatRegexView: () => ({ render() {}, dispose() {} }) }) });
+  await ctrl.mount({ isConnected: true });
+  await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  timers.flush(); await settle();
+  assert.equal(st.log.reloads, 0, '生成中不重载');
+  assert.equal(timers.size, 1, '顺延再试');
+  idle = true;
+  ctrl.unmount(); await settle();
+  assert.equal(st.log.reloads, 1, '关闭工具包立即补上重载');
+  assert.equal(timers.size, 0);
+  ctrl.dispose();
+});
+
+test('controller reports write failures and never reloads for them', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const timers = manualTimers(), notes = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, notify: (m, k) => notes.push([m, k]),
+    loadView: async () => ({ mountChatRegexView: () => ({ render() {}, dispose() {} }) }) });
+  await ctrl.mount({ isConnected: true });
+  assert.equal(await ctrl.actions.toggle({ source: 'global', id: 'missing', name: 'x', enabled: false }), null);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0][1], 'warning');
+  assert.equal(timers.size, 0);
+  const noChat = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] }); noChat.ctx.getCurrentChatId = () => undefined;
+  const c2 = createChatRegex({ getContext: () => noChat.ctx, timers, loadView: async () => ({ mountChatRegexView: () => ({ render() {}, dispose() {} }) }) });
+  await c2.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  timers.flush(); await settle();
+  assert.equal(noChat.log.reloads, 0, '没有打开的聊天就不重载');
+  ctrl.dispose(); c2.dispose();
+});
+
+test('dispose cancels a pending reload', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const timers = manualTimers();
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers });
+  await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  ctrl.dispose();
+  assert.equal(timers.size, 0);
+  await settle();
+  assert.equal(st.log.reloads, 0);
+});
+
+test('regex view never writes to ST directly: only the controller owns the write path', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-regex-view.js', root), 'utf8');
-  for (const code of [src, view]) {
-    assert.ok(!/saveSettings|writePresetExtensionField|\.disabled\s*=[^=]/.test(code), '本片只读，不写回');
-  }
+  assert.ok(!/saveSettings|writePresetExtensionField|extensionSettings|reloadCurrentChat|(?:script|item|\])\.disabled\s*=[^=]/.test(view), '视图只调 actions.toggle');
+  assert.ok(view.includes('actions.toggle({ source, id: item.id, name: item.name, enabled: !item.enabled })'));
+  const index = await readFile(new URL('index.js', root), 'utf8');
+  assert.match(index, /createChatRegex\(\{getContext:ctx,notify:toast,canReload:\(\)=>\{const host=directorHostRuntime\(\)/, '重载前查询宿主是否空闲');
 });
 
 test('createChatRegex lazily mounts the view, refreshes on view switch, and tears down', async () => {
@@ -135,6 +273,7 @@ test('view renders both sections, grouped headers and a not-supported notice', a
   const rows = all.filter(n => n.classList.contains('qm-regex-row'));
   assert.equal(rows.length, 3);
   assert.equal(rows.filter(n => n.classList.contains('is-off')).length, 1, '停用的条目变灰');
+  assert.equal(all.filter(n => n.classList.contains('qm-regex-switch')).length, 0, '不可写时只显示状态圆点');
   const order = all.find(n => n.tagName === 'button' && n.textContent === '原始顺序');
   order.listeners.click();
   assert.equal(picked, 'order');
@@ -170,4 +309,45 @@ test('chat toolkit pages share one spacing scale and inner scrollers never reser
   assert.match(css, /\.qm-recovery-native-policy \{[^}]*gap: 4px;[^}]*padding: 6px 10px;/);
   assert.match(css, /\.qm-recovery-native-policy-field \{[^}]*font-weight: 600;/);
   assert.match(css, /@media \(max-width: 520px\) \{[^@]*\.sd-floor-panel \{ --qm-floor-pad: 12px;/, '窄屏收一档但同样对称');
+});
+
+test('writable sources render accessible switches that call actions.toggle and show busy rows', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make };
+  const calls = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '开着' }, { id: 'g2', scriptName: '关着', disabled: true }], preset: [{ id: 'p1', scriptName: '预设' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, toggle: args => { calls.push(args); return null; } } });
+  view.render(Object.freeze({ ...ctrl.state(), pending: ['global:g2'] }));
+  const switches = walk(host).filter(n => n.classList.contains('qm-regex-switch'));
+  assert.equal(switches.length, 3, '全局 2 + 预设 1');
+  const [on, off, preset] = switches;
+  assert.equal(on.attrs.role, 'switch');
+  assert.equal(on.attrs['aria-checked'], 'true');
+  assert.equal(off.attrs['aria-checked'], 'false');
+  assert.equal(off.disabled, true, '写回中的行禁用');
+  assert.equal(off.attrs['aria-busy'], 'true');
+  on.listeners.click(); preset.listeners.click(); off.listeners.click();
+  await settle();
+  assert.deepEqual(calls, [{ source: 'global', id: 'g1', name: '开着', enabled: false }, { source: 'preset', id: 'p1', name: '预设', enabled: false }]);
+  const hint = walk(host).find(n => n.classList.contains('qm-regex-hint'));
+  assert.match(hint.textContent, /即时写回 ST/);
+  view.dispose();
+});
+
+test('switch styling: compact pill with a sliding knob, focus ring and reduced-motion', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto auto; }'));
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch.is-on .qm-regex-knob { transform: translateX(14px); }'));
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch:focus-visible {'));
+  assert.ok(css.includes('@media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }'));
 });

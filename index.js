@@ -42,7 +42,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.498';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.497';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.499';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -329,7 +329,7 @@ let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 // 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
 let floorHive=null;
-const chatRegex=createChatRegex({getContext:ctx,notify:toast});
+const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;}});   // 正则开关写回后重载聊天：生成/保存中顺延
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
