@@ -22,18 +22,18 @@ const PRESET_ROWS = [
 export const RINGTONE_PRESETS = Object.freeze(PRESET_ROWS.map(([group, id, label, ext]) =>
   Object.freeze({ group, id, label, url: new URL(`../../assets/ringtones/${id}.${ext}`, import.meta.url).href })));
 export const RINGTONE_TAB_ICONS = Object.freeze([1, 2].map(n => new URL(`../../assets/tab-icons/doro-${n}.ico`, import.meta.url).href));
-export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024, localSoundCount: 20, iconInputBytes: 4 * 1024 * 1024, iconSize: 64, iconDataChars: 96 * 1024, flashText: 12, url: 2048 });
+export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024, localSoundCount: 20, iconInputBytes: 4 * 1024 * 1024, iconSize: 64, iconDataChars: 96 * 1024, flashText: 24, url: 2048 });
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
-  volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '新消息', iconSource: 'builtin', customIcons: [],
+  volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [],
   toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
-// 'default' follows the Qianmu theme and day/night; 样式1 is frosted glass with an accent arc bar;
-// 样式2 is a soft iridescent liquid glass whose edge glow follows the toast status.
-export const TOAST_STYLES = Object.freeze([['default', '默认'], ['arc', '样式1'], ['iris', '样式2']]);
+// 'default' follows the Qianmu theme and day/night; 涂鸦 is a high-saturation sticker/graffiti card that only
+// follows day/night (never the accent), one colour clash per status; 虹彩 is a soft iridescent liquid glass.
+export const TOAST_STYLES = Object.freeze([['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
 export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
-export const TOAST_DURATIONS = Object.freeze([[3, '3秒'], [4, '4秒'], [6, '6秒'], [10, '10秒']]);
+export const TOAST_DURATIONS = Object.freeze([[3, '3s'], [4, '4s'], [6, '6s'], [10, '10s']]);
 const TOAST_ATTR = 'data-qm-toast';
 const TOAST_SIZE_ATTR = 'data-qm-toast-size';
 const TOAST_MODE_ATTR = 'data-qm-toast-mode';
@@ -91,6 +91,7 @@ export function normalizeRingtone(owner) {
   next.flashText = typeof next.flashText === 'string' ? [...next.flashText.trim()].slice(0, RINGTONE_LIMITS.flashText).join('') : RINGTONE_DEFAULTS.flashText;
   next.iconSource = next.iconSource === 'custom' ? 'custom' : 'builtin';
   next.toastSkin = next.toastSkin === true;
+  if (next.toastStyle === 'arc') next.toastStyle = 'splat'; // 样式1 renamed 涂鸦
   if (!TOAST_STYLES.some(([id]) => id === next.toastStyle)) next.toastStyle = RINGTONE_DEFAULTS.toastStyle;
   if (!TOAST_FONT_SIZES.some(([id]) => id === next.toastFontSize)) next.toastFontSize = RINGTONE_DEFAULTS.toastFontSize;
   if (!TOAST_DURATIONS.some(([seconds]) => seconds === next.toastDuration)) next.toastDuration = RINGTONE_DEFAULTS.toastDuration;

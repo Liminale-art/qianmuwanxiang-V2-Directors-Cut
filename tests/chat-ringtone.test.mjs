@@ -15,7 +15,7 @@ test('normalizeRingtone repairs a missing or malformed shape in place', () => {
   assert.equal(owner.ringtone, value);
   assert.deepEqual({ ...value }, { ...RINGTONE_DEFAULTS, customIcons: [], localSounds: [] });
   // Out-of-range and wrong-typed fields fall back to safe values.
-  const dirty = { ringtone: { soundEnabled: 'yes', soundSource: 'ftp', soundPreset: 'nope', volume: 999, flashText: '一二三四五六七八九十甲乙丙', customIcons: ['x', 'data:image/png;base64,QQ=='] } };
+  const dirty = { ringtone: { soundEnabled: 'yes', soundSource: 'ftp', soundPreset: 'nope', volume: 999, flashText: '一二三四五六七八九十甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳', customIcons: ['x', 'data:image/png;base64,QQ=='] } };
   const fixed = normalizeRingtone(dirty);
   assert.equal(fixed.soundEnabled, false);
   assert.equal(fixed.soundSource, 'builtin');
@@ -226,7 +226,9 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
 });
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
-  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['arc', '样式1'], ['iris', '样式2']]);
+  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
+  assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['3s', '4s', '6s', '10s']);
+  assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'splat', '旧样式1迁移为涂鸦');
   assert.deepEqual(TOAST_FONT_SIZES.map(([id]) => id), ['sm', 'md', 'lg']);
   assert.ok(TOAST_DURATIONS.every(([seconds]) => Number.isFinite(seconds) && seconds > 0));
   const s = normalizeRingtone({ ringtone: { toastSkin: 'yes', toastPosition: 'top-right', toastStyle: 'mosaic', toastFontSize: 'xl', toastDuration: 99 } });
@@ -262,14 +264,14 @@ test('toast skin runtime: activate applies, update and refreshLook re-apply, dis
   const attrs = {};
   const { doc } = fakeDocument();
   doc.documentElement = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
-  const settings = { ringtone: { toastSkin: true, toastStyle: 'arc' } };
+  const settings = { ringtone: { toastSkin: true, toastStyle: 'splat' } };
   let look = { theme: 'summer', mode: 'light' };
   const ring = createChatRingtone({ getOwner: () => settings, save: () => {}, getContext: () => ({ chat: [] }), resolveNamespace: () => 'ns',
     document: doc, window: { addEventListener() {}, removeEventListener() {} }, Audio: class {}, indexedDB: null, getLook: () => look,
     loadView: async () => ({ mountChatRingtoneView: () => ({ render() {}, dispose() {} }) }), setInterval: () => 1, clearInterval: () => {} });
   assert.ok(!('data-qm-toast' in attrs), '未激活前不改页面');
   ring.activate();
-  assert.equal(attrs['data-qm-toast'], 'arc');
+  assert.equal(attrs['data-qm-toast'], 'splat');
   assert.equal(attrs['data-qm-toast-theme'], 'summer');
   ring.actions.update({ toastStyle: 'iris', toastFontSize: 'sm' });
   assert.equal(attrs['data-qm-toast'], 'iris');
@@ -358,4 +360,45 @@ test('paper (editorial) theme squares the toolkit notice/backup controls but kee
   for (const round of ['.qm-ring-cap-track', '.qm-ring-cap-knob', '.qm-ring-radio', '.qm-ring-icon', '.qm-recovery-loading-dot']) {
     assert.ok(!list.includes(round), `${round} 保持圆形`);
   }
+});
+
+test('ringtone defaults: new reminder copy fits the limit; background note removed; preview sits in the style row', async () => {
+  assert.equal(RINGTONE_DEFAULTS.flashText, '( •̀ .̫ •́ )✧叮咚，您有新订单啦~');
+  assert.ok([...RINGTONE_DEFAULTS.flashText].length <= RINGTONE_LIMITS.flashText);
+  assert.equal(normalizeRingtone({}).flashText, RINGTONE_DEFAULTS.flashText, '默认文案不被截断');
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  assert.ok(!view.includes('只有当浏览器标签切到后台时才会响铃'), '后台响铃说明已去除');
+  const toast = view.slice(view.indexOf('function toastCard'), view.indexOf('function render'));
+  assert.ok(toast.indexOf('qm-ring-toast-test') < toast.indexOf('card.append(styles)'), '预览图标与样式同排');
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(/qm-ring-list {[^}]*scrollbar-width: none/.test(css) && css.includes('.qm-ring-list::-webkit-scrollbar { width: 0; height: 0; }'), '列表隐藏滚动条但保留滚动');
+});
+
+test('list rows mark the pick before the audition finishes loading', async () => {
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  const nodes = [];
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, className: '', textContent: '', style: { setProperty() {}, removeProperty() {} },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on) this.set.add(c); else this.set.delete(c); } },
+      append(...kids) { this.children.push(...kids); }, appendChild(kid) { this.children.push(kid); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      querySelector() { return null; }, contains() { return false; }, closest() { return null; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    nodes.push(node); return node;
+  };
+  const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
+  let release;
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 3), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES, toastDurations: TOAST_DURATIONS,
+    selectPreset: () => new Promise(resolve => { release = resolve; }) };
+  const view = mountChatRingtoneView({ root: host, actions });
+  const s = normalizeRingtone({});
+  view.render(s);
+  nodes.find(n => n.classList.contains('qm-ring-picker')).listeners.click();
+  await new Promise(r => setTimeout(r, 0));
+  const rows = nodes.filter(n => n.classList.contains('qm-ring-list-item'));
+  const target = rows.find(n => n.dataset.id !== s.soundPreset);
+  target.listeners.click();
+  assert.ok(target.classList.contains('is-active'), '点下即显示选中，不等音频');
+  assert.equal(target.attrs['aria-checked'], 'true');
+  release();
 });

@@ -847,6 +847,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-iconbtn { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 34px; height: 34px; padding: 0; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); cursor: pointer; }
 #story-director-floor-nav .qm-ring-iconbtn:hover:not(:disabled) { filter: brightness(1.08); }
 #story-director-floor-nav .qm-ring-iconbtn i { font-size: 13px; }
+/* 提示框样式排：三个样式 + 末尾预览小眼睛同排 */
+#story-director-floor-nav .qm-ring-toast-style { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+#story-director-floor-nav .qm-ring-toast-style .qm-ring-toast-test { width: 30px; height: 30px; min-height: 30px; color: var(--sd-text); }
 #story-director-floor-nav .qm-ring-volume, #story-director-floor-nav .qm-ring-field { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 9px; color: var(--sd-text); font-size: var(--qm-type-label); }
 /* 提醒文字标签更紧凑，输入框更宽 */
 #story-director-floor-nav .qm-ring-field { grid-template-columns: max-content minmax(0, 1fr) auto; gap: 7px; }
@@ -884,7 +887,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open > :is(header, .sd-floor-tabs) { display: none; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open > [data-floor-view="ring"] { flex: 1 1 auto; min-height: 0; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-subpage { flex: 1 1 auto; min-height: 0; animation: qm-ring-sub-in .22s ease-out; }
-#story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+#story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+#story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list::-webkit-scrollbar { width: 0; height: 0; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list > * { flex-shrink: 0; }
 @keyframes qm-ring-sub-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-subpage { animation: none; } }
@@ -922,8 +926,8 @@ html[data-qm-toast] body #toast-container > div .toast-close-button { color: inh
 html[data-qm-toast] body #toast-container > div .toast-progress { left: 0 !important; right: auto !important; bottom: 0 !important; width: auto; height: 3px !important; border-radius: 0 !important; background: var(--qm-toast-accent) !important; opacity: .7 !important; }
 html[data-qm-toast="default"][data-qm-toast-theme="editorial"] body #toast-container > div { border-radius: 0 !important; }
 /* 样式1：毛玻璃 + 高亮强调色圆弧竖线 */
-html[data-qm-toast="arc"] body #toast-container > div { padding-left: 26px !important; border-radius: 14px !important; border-color: color-mix(in srgb, var(--qm-toast-ink) 10%, transparent) !important; background: color-mix(in srgb, var(--qm-toast-bg) 66%, transparent) !important; backdrop-filter: blur(16px) saturate(1.5) !important; -webkit-backdrop-filter: blur(16px) saturate(1.5) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 10px 30px var(--qm-toast-drop) !important; }
-html[data-qm-toast="arc"] body #toast-container > div::before { top: 10px !important; bottom: 10px !important; left: 10px !important; width: 4px !important; height: auto !important; border-radius: 999px !important; background: linear-gradient(180deg, color-mix(in srgb, var(--qm-toast-accent) 68%, #fff), var(--qm-toast-accent)) !important; box-shadow: 0 0 10px color-mix(in srgb, var(--qm-toast-accent) 60%, transparent) !important; }
+html[data-qm-toast="splat"] body #toast-container > div { padding-left: 26px !important; border-radius: 14px !important; border-color: color-mix(in srgb, var(--qm-toast-ink) 10%, transparent) !important; background: color-mix(in srgb, var(--qm-toast-bg) 66%, transparent) !important; backdrop-filter: blur(16px) saturate(1.5) !important; -webkit-backdrop-filter: blur(16px) saturate(1.5) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 10px 30px var(--qm-toast-drop) !important; }
+html[data-qm-toast="splat"] body #toast-container > div::before { top: 10px !important; bottom: 10px !important; left: 10px !important; width: 4px !important; height: auto !important; border-radius: 999px !important; background: linear-gradient(180deg, color-mix(in srgb, var(--qm-toast-accent) 68%, #fff), var(--qm-toast-accent)) !important; box-shadow: 0 0 10px color-mix(in srgb, var(--qm-toast-accent) 60%, transparent) !important; }
 /* 样式2：淡饱和虹彩液态玻璃，边缘辉光随提示状态变色；可选缓慢流动（仅 CSS，减少动态效果时关闭） */
 html[data-qm-toast="iris"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 70% 84% / .5), hsl(262 58% 87% / .42) 36%, hsl(330 66% 89% / .42) 66%, hsl(158 52% 85% / .5)); border-radius: 16px !important; border-color: rgba(255, 255, 255, .55) !important; background: color-mix(in srgb, var(--qm-toast-bg) 58%, transparent) !important; backdrop-filter: blur(18px) saturate(1.6) !important; -webkit-backdrop-filter: blur(18px) saturate(1.6) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 34%, transparent), 0 0 16px color-mix(in srgb, var(--qm-toast-accent) 40%, transparent), 0 10px 28px var(--qm-toast-drop) !important; }
 html[data-qm-toast="iris"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 60% 42% / .2), hsl(262 50% 46% / .17) 36%, hsl(330 52% 46% / .17) 66%, hsl(158 46% 40% / .2)); border-color: rgba(255, 255, 255, .14) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 42%, transparent), 0 0 18px color-mix(in srgb, var(--qm-toast-accent) 46%, transparent), 0 10px 30px var(--qm-toast-drop) !important; }
@@ -931,7 +935,6 @@ html[data-qm-toast="iris"] body #toast-container > div::after { content: "" !imp
 @keyframes qm-toast-in { from { transform: translateY(6px) scale(.985); } to { transform: none; } }
 @keyframes qm-toast-iris { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 @media (prefers-reduced-motion: reduce) { html[data-qm-toast] body #toast-container > div, html[data-qm-toast] body #toast-container > div::after { animation: none !important; } }
-#story-director-floor-nav .qm-ring-note { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); line-height: 1.5; }
 #story-director-floor-nav [data-floor-view="ring"] [hidden] { display: none !important; }
 .mes.sd-floor-jump-hit { animation: sd-floor-hit 1.8s ease !important; }
 @keyframes sd-floor-hit { 0%, 100% { box-shadow: none; } 18%, 62% { box-shadow: inset 4px 0 #d8a15e, 0 0 0 2px rgba(216, 161, 94, .22); } }

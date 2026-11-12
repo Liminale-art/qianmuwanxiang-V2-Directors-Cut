@@ -87,7 +87,12 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
         const choose = el('button', `qm-ring-list-item${item.id === currentId ? ' is-active' : ''}`); choose.type = 'button';
         choose.setAttribute('role', 'radio'); choose.setAttribute('aria-checked', String(item.id === currentId)); choose.dataset.id = item.id;
         choose.append(el('span', 'qm-ring-list-name', item.label), el('span', 'qm-ring-radio'));
-        choose.addEventListener('click', () => run(async () => { await onPick(item.id); paint(item.id); }));
+        // Mark the pick at once; the audition loads behind it. A failed pick restores the previous mark.
+        choose.addEventListener('click', () => {
+          const previous = items.find(node => node.classList.contains('is-active'))?.dataset.id;
+          paint(item.id);
+          run(async () => { try { await onPick(item.id); } catch (error) { paint(previous); throw error; } });
+        });
         items.push(choose); rowEl.append(choose);
         if (onDelete) rowEl.append(iconButton('fa-trash', '删除', 'qm-ring-list-del', () => onDelete(item.id)));
         listEl.append(rowEl);
@@ -159,7 +164,6 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const head = el('div', 'qm-ring-head');
     head.append(el('h4', '', '仅在切到后台时响铃'), capsule('', s.soundOnlyHidden, on => actions.update({ soundOnlyHidden: on }), { ariaLabel: '仅在切到后台时响铃' }));
     card.append(head);
-    card.append(el('p', 'qm-ring-note', '开启后，只有当浏览器标签切到后台时才会响铃；留在当前聊天时保持安静。'));
     return card;
   }
 
@@ -209,8 +213,10 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(s.toastStyle === id)); node.dataset.toastStyle = id;
       styles.append(node);
     }
+    // The preview eye sits at the end of the style row.
+    styles.append(iconButton('fa-eye', '预览', 'qm-ring-toast-test', async () => actions.previewToast()));
     card.append(styles);
-    // 字号 / 停留时间: compact segmented rows; the preview sits under them.
+    // 字号 / 停留时间: compact segmented rows.
     const segmented = (label, options, current, key) => {
       const field = el('div', 'qm-ring-field qm-ring-toast-field');
       const group = el('div', 'qm-ring-sources qm-ring-toast-seg'); group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', `提示框${label}`);
@@ -224,9 +230,6 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     };
     card.append(segmented('字号', actions.toastFontSizes, s.toastFontSize, 'toastFontSize'),
       segmented('停留时间', actions.toastDurations, s.toastDuration, 'toastDuration'));
-    const tools = el('div', 'qm-ring-tools');
-    tools.append(iconButton('fa-eye', '预览', 'qm-ring-toast-test', async () => actions.previewToast()));
-    card.append(tools);
     return card;
   }
 
