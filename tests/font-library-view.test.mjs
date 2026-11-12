@@ -87,22 +87,39 @@ test('return restores a filled link as enabled but canceling Web edit disables t
 });
 test('normal list has no checks and management makes whole cards accessible selectable targets', () => {
     const html = renderFontLibrary(state({ entries: [entry('one', { tags: ['阅读'], folder: '中文' })] }));
-    assert.match(html, /class="sd-reader-search"/); assert.match(html, /placeholder="搜索字体 \/ 标签"/); assert.doesNotMatch(html, /data-font-folder|qm-font-folder|sd-reader-tags|data-font-tag=|bulk-folder|文件夹/); assert.match(html, /<span class="qm-font-tag">阅读<\/span>/); assert.doesNotMatch(html, /#阅读|>中文</);
+    assert.match(html, /class="sd-reader-search"/); assert.match(html, /placeholder="搜索字体 \/ 标签"/); assert.doesNotMatch(html, /data-font-folder|qm-font-folder|sd-reader-tags|data-font-tag=|bulk-folder|文件夹/); assert.doesNotMatch(html, /qm-font-tag"|qm-font-meta|qm-font-card-foot/); assert.doesNotMatch(html, /#阅读|>中文<|>阅读</);
     assert.doesNotMatch(html, /data-font-select=|sd-reader-book-check/); assert.match(html, /qm-font-bulk-actions" hidden/); assert.match(html, /data-font-action="manage"[^>]*aria-expanded="false"/);
     const managing = renderFontLibrary(state(), { managing: true, selected: ['one'] }); assert.match(managing, /qm-font-card is-selecting is-selected" data-font-id="one" role="button" tabindex="0" aria-label="选择 字体 one" aria-pressed="true"/); assert.match(managing, /qm-font-card-tools" hidden/); assert.doesNotMatch(managing, /data-font-select=|qm-font-bulk-actions" hidden/);
 });
 
-test('font card tags remain complete in one keyboard-accessible horizontal row', async () => {
-    const tags = Array.from({ length: 32 }, (_, index) => `标签${index}`); tags[0] = '长'.repeat(80);
-    const html = renderFontLibraryCards(state({ entries: [entry('tagged', { tags }), entry('empty')] }));
-    assert.equal((html.match(/class="qm-font-tag"/g) || []).length, 32);
-    assert.match(html, /class="qm-font-meta" tabindex="0" role="group" aria-label="字体标签，可横向滚动查看"/);
-    assert.match(html, /class="qm-font-meta"><\/span>/);
-    for (const tag of tags) assert.ok(html.includes(`>${tag}</span>`));
+test('font cards no longer display tags, yet tag text still finds the font in search', async () => {
+    const tags = ['阅读', '中文', '长'.repeat(80)];
+    const input = state({ entries: [entry('tagged', { tags }), entry('plain')] });
+    const html = renderFontLibraryCards(input);
+    assert.doesNotMatch(html, /qm-font-tag"|qm-font-meta|qm-font-card-foot|字体标签，可横向滚动查看/);
+    for (const tag of tags) assert.ok(!html.includes(`>${tag}</span>`));
+    assert.deepEqual(selectFontLibraryPage(input, { query: '阅读' }).entries.map(item => item.id), ['tagged']);
+    assert.deepEqual(selectFontLibraryPage(input, { query: '中文' }).entries.map(item => item.id), ['tagged']);
     const css = await readFile(new URL('../qianmu-font-library.css', import.meta.url), 'utf8');
-    assert.match(css, /\.qm-font-meta \{[^}]*flex-wrap:nowrap;[^}]*min-width:0;[^}]*max-width:100%;[^}]*overflow-x:auto;[^}]*overflow-y:hidden/);
-    assert.match(css, /\.qm-font-meta:focus-visible \{[^}]*outline:2px solid/);
-    assert.match(css, /\.qm-font-tag \{[^}]*flex:0 0 auto;[^}]*white-space:nowrap/);
+    assert.doesNotMatch(css, /\.qm-font-meta|\.qm-font-card-foot|\.qm-font-tag \{/);
+});
+
+test('page buttons wrap first↔last, stay disabled for a single page, and turning a page scrolls back to the cards', async () => {
+    const single = renderFontLibraryCards(state());
+    assert.match(single.match(/data-font-action="previous"[^>]*>/)[0], /\bdisabled\b/);
+    assert.match(single.match(/data-font-action="next"[^>]*>/)[0], /\bdisabled\b/);
+    const many = state({ entries: Array.from({ length: 25 }, (_, index) => entry(String(index))) });
+    const first = renderFontLibraryCards(many);
+    assert.doesNotMatch(first.match(/data-font-action="previous"[^>]*>/)[0], /\bdisabled\b/);
+    assert.match(first, /跳到末页/);
+    assert.match(renderFontLibraryCards(many, { page: 2 }), /回到首页/);
+    const rc = (top, height) => ({ top, bottom: top + height, height });
+    const f = fixture(many), body = f.node('.sd-body', { scrollTop: 900, getBoundingClientRect: () => rc(0, 600) });
+    f.node('[data-font-cards]', { getBoundingClientRect: () => rc(-860, 400) });
+    await f.click('previous'); assert.equal(f.view.captureSession().page, 2); assert.equal(body.scrollTop, 34); f.view.destroy();
+    const g = fixture(many); g.node('.sd-body', { scrollTop: 300 }); g.node('[data-font-cards]');
+    await g.click('next'); await g.click('next'); assert.equal(g.view.captureSession().page, 2);
+    await g.click('next'); assert.equal(g.view.captureSession().page, 0); assert.equal(g.queries.get('.sd-body').scrollTop, 0); g.view.destroy();
 });
 
 test('font packs accept ZIP and legacy JSON with hidden progress inside the preview card after its text field', async () => {
@@ -813,11 +830,11 @@ test('CSS adds layout and sample controls without rewriting theme fonts or old f
     assert.match(css, /\.qm-font-window \.qm-font-header/); assert.match(css, /\.qm-font-weight-pop/); assert.match(css, /\.qm-font-sample \{[^}]*font-size:18px/); assert.match(css, /@media\(max-width:440px\)/);
     assert.doesNotMatch(css, /font-family\s*:|\.mes_text|body\s*\{|html\s*\{/); assert.match(css, /\.qm-font-file-pick>input\[type="file"\]/);
     assert.match(css, /#story-director-floor-nav\.qm-font-library-open \.sd-floor-panel \{ display:none !important; \}/); assert.match(css, /grid-template-columns:minmax\(0,1fr\) auto/);
-    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /qm-font-apply-pick\)>select[^}]*opacity:0/); assert.match(css, /\.qm-font-card-foot \{[^}]*flex-wrap:nowrap/);
+    assert.match(css, /\.qm-font-library :where\(input:not/); assert.match(css, /qm-font-apply-pick\)>select[^}]*opacity:0/); assert.doesNotMatch(css, /\.qm-font-card-foot|\.qm-font-meta|\.qm-font-tag \{/);
     assert.match(css, /\.qm-font-entry>small \{[^}]*white-space:nowrap;[^}]*text-overflow:ellipsis/); assert.match(css, /\.qm-font-header h2[^}]*font-size:16px !important/);
     assert.match(css, /data-qm-theme="glass"\] \.qm-font-window \.qm-font-header \.qm-font-icon \{ border-radius:50% !important/); assert.match(css, /data-qm-theme="editorial"\][^\n]*border-radius:0 !important/);
     assert.match(css, /input\[data-font-enabled\][^}]*border-radius:999px !important/); assert.doesNotMatch(css, /data-font-sync-originals/); assert.match(css, /qm-font-imports \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/); assert.match(css, /input::placeholder,[\s\S]*?font-size:12px !important/);
-    assert.match(css, /\.qm-font-tag \{[^}]*flex:0 0 auto;[^}]*white-space:nowrap/); assert.doesNotMatch(css, /\.qm-font-folder-menu/);
+    assert.doesNotMatch(css, /\.qm-font-folder-menu/);
     assert.match(css, /\.qm-font-preview-editor \.qm-font-field-head \{ justify-content:space-between;/); assert.match(css, /\.qm-font-local-files \{[^}]*overflow:auto/); assert.match(css, /\.qm-font-local-dialog>footer \{[^}]*repeat\(2,minmax\(0,1fr\)\)/);
     assert.match(css, /input\[data-font-enabled\]::before \{ content:none !important; display:none !important/); assert.match(css, /input\[data-font-enabled\]::after \{[^}]*width:16px !important;[^}]*clip-path:none !important;[^}]*transform:none !important/); assert.match(css, /input\[data-font-enabled\]:checked::after \{ transform:translateX\(16px\) !important/);
     assert.match(css, /\.qm-font-add>summary::marker \{ content:""; \}/); assert.match(css, /\.qm-font-add>summary::-webkit-details-marker \{ display:none; \}/); assert.match(css, /\.qm-font-name>strong \{[^}]*font-weight:400 !important/); assert.match(css, /:is\(\.qm-font-card-tools,\.qm-font-rename-pop\) \.qm-font-icon \{ background:none !important; border:0 !important; box-shadow:none !important/);

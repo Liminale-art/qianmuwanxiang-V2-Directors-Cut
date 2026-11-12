@@ -94,12 +94,6 @@
 .qm-font-library .qm-font-weight-pop input { min-width:0; width:100%; accent-color:var(--sd-accent); }
 .qm-font-library .qm-font-weight-pop output { min-width:3ch; font-variant-numeric:tabular-nums; font-size:var(--qm-type-caption,11px); }
 .qm-font-library .qm-font-sample { margin:2px 0; font-size:18px; line-height:1.5; overflow-wrap:anywhere; white-space:pre-wrap; }
-.qm-font-library .qm-font-card-foot { display:flex; flex-wrap:nowrap; align-items:center; min-width:0; }
-.qm-font-library .qm-font-meta { display:flex; flex:1 1 0; flex-wrap:nowrap; align-items:center; gap:4px; min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; overscroll-behavior-x:contain; scrollbar-width:thin; color:var(--sd-muted); font-size:var(--qm-type-caption,11px); }
-.qm-font-library .qm-font-meta:focus-visible { outline:2px solid var(--sd-accent); outline-offset:-2px; }
-.qm-font-library .qm-font-tag { display:inline-block; flex:0 0 auto; min-width:0; padding:2px 6px; border:1px solid var(--sd-hairline); border-radius:var(--qm-button-radius,6px); background:color-mix(in srgb,var(--sd-accent) 7%,var(--sd-glass-weak)); line-height:1.4; white-space:nowrap; }
-.qm-font-library .qm-font-meta:empty { display:none; }
-.qm-font-library .qm-font-card-foot:has(.qm-font-meta:empty) { display:none; }
 .qm-font-library .qm-font-rename-pop { display:flex; flex-direction:column; gap:8px; width:100%; min-width:0; padding:8px; border:1px solid var(--sd-border); border-radius:var(--qm-button-radius,9px); background:var(--sd-folder-head,var(--sd-card)); box-shadow:0 6px 22px #0003; }
 .qm-font-library .qm-font-rename-row { display:flex; align-items:center; gap:5px; min-width:0; }
 .qm-font-library .qm-font-rename-row>input { flex:1; min-width:0; }
@@ -129,4 +123,4 @@
 .qm-font-window .qm-font-local-dialog>footer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; flex:none; }
 #story-director-floor-nav.qm-font-library-open .qm-font-window .qm-font-local-dialog>footer>button { min-width:0; margin:0; }
 .qm-font-window .qm-font-local-dialog :disabled { opacity:.5; cursor:progress; }
-@media(max-width:440px) { .sd-reader-lib.qm-font-library { gap:6px; } .qm-font-library .qm-font-toolbar { gap:6px; } .qm-font-library .qm-font-card-foot { gap:6px; } .qm-font-library .qm-font-bulk-actions { gap:5px; } }
+@media(max-width:440px) { .sd-reader-lib.qm-font-library { gap:6px; } .qm-font-library .qm-font-toolbar { gap:6px; } .qm-font-library .qm-font-bulk-actions { gap:5px; } }
