@@ -216,6 +216,71 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     return card;
   }
 
+  // Horizontal wheel picker: the value resting under the centre pointer is the choice; both sides fade out.
+  // Scroll-snap does the physics; the choice is committed once scrolling settles (scrollend, or a short quiet
+  // gap where scrollend is missing) and never while a finger is still down. Tapping a value or arrow keys also pick.
+  let afterRender = [];
+  function wheel(label, options, current, key) {
+    const field = el('div', 'qm-ring-field qm-ring-toast-field qm-ring-wheel-field');
+    const frame = el('div', 'qm-ring-wheel');
+    // The key class comes first: render() restores focus by the first class name.
+    const strip = el('div', `qm-ring-wheel-${key} qm-ring-wheel-strip`); strip.setAttribute('role', 'radiogroup'); strip.setAttribute('aria-label', `提示框${label}`); strip.tabIndex = 0;
+    const items = options.map(([value, text]) => {
+      const node = el('button', 'qm-ring-wheel-item', text); node.type = 'button'; node.tabIndex = -1;
+      node.setAttribute('role', 'radio'); node.dataset.value = String(value);
+      strip.append(node); return node;
+    });
+    let index = Math.max(0, options.findIndex(([value]) => value === current)), touching = false, quiet = 0;
+    const mark = at => items.forEach((node, i) => { node.classList.toggle('is-center', i === at); node.setAttribute('aria-checked', String(i === at)); });
+    const nearest = () => {
+      if (!strip.clientWidth) return index; // not laid out yet: keep the saved value
+      const middle = strip.scrollLeft + strip.clientWidth / 2;
+      let best = index, gap = Infinity;
+      items.forEach((node, i) => { const d = Math.abs(node.offsetLeft + node.offsetWidth / 2 - middle); if (d < gap) { gap = d; best = i; } });
+      return best;
+    };
+    const centre = (at, smooth) => {
+      const node = items[at]; if (!node) return;
+      const left = node.offsetLeft - (strip.clientWidth - node.offsetWidth) / 2;
+      if (smooth && strip.scrollTo) strip.scrollTo({ left, behavior: 'smooth' }); else strip.scrollLeft = left;
+    };
+    const commit = at => {
+      if (disposed || strip.isConnected === false || at < 0 || at >= options.length) return;
+      index = at; mark(at);
+      if (options[at][0] !== current) run(() => actions.update({ [key]: options[at][0] }));
+    };
+    const settle = () => { clearTimeout(quiet); quiet = 0; if (!touching) commit(nearest()); };
+    strip.addEventListener('scroll', () => { mark(nearest()); clearTimeout(quiet); quiet = setTimeout(settle, 160); }, { passive: true });
+    strip.addEventListener('scrollend', settle);
+    // A browser-driven touch scroll fires pointercancel while the finger is still down, so touch is
+    // tracked with touch events; mouse/pen with pointer events.
+    const release = () => { touching = false; clearTimeout(quiet); quiet = setTimeout(settle, 160); };
+    strip.addEventListener('touchstart', () => { touching = true; }, { passive: true });
+    for (const type of ['touchend', 'touchcancel']) strip.addEventListener(type, release, { passive: true });
+    strip.addEventListener('pointerdown', event => { if (event?.pointerType !== 'touch') touching = true; });
+    for (const type of ['pointerup', 'pointercancel']) strip.addEventListener(type, event => { if (event?.pointerType !== 'touch') release(); });
+    // A vertical mouse wheel steps one value per notch instead of scrolling the panel; small trackpad
+    // deltas accumulate first. Horizontal swipes are left to native scroll + snap.
+    let wheelAcc = 0;
+    strip.addEventListener('wheel', event => {
+      if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      wheelAcc += event.deltaY; if (Math.abs(wheelAcc) < 40) return;
+      const step = Math.sign(wheelAcc); wheelAcc = 0;
+      index = Math.min(options.length - 1, Math.max(0, nearest() + step)); mark(index); centre(index, true);
+    }, { passive: false });
+    strip.addEventListener('keydown', event => {
+      const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key]; if (!step) return;
+      event.preventDefault(); const at = Math.min(options.length - 1, Math.max(0, index + step)); centre(at, true); commit(at);
+    });
+    items.forEach((node, i) => node.addEventListener('click', () => { centre(i, true); commit(i); }));
+    mark(index);
+    afterRender.push(() => centre(index, false));
+    frame.append(strip);
+    field.append(el('span', '', label), frame);
+    return field;
+  }
+
   function toastCard(s) {
     const card = el('section', 'qm-ring-card');
     const head = el('div', 'qm-ring-head');
@@ -243,18 +308,8 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       return field;
     };
     card.append(segmented('字号', actions.toastFontSizes, s.toastFontSize, 'toastFontSize'),
-      segmented('停留时间', actions.toastDurations, s.toastDuration, 'toastDuration'));
-    // 堆叠数量: how many notifications show at once; empty or 0 = unlimited (ST's own behaviour).
-    const stackField = el('div', 'qm-ring-field qm-ring-toast-field qm-ring-toast-stack');
-    const stack = el('input', 'qm-ring-stack-input'); stack.type = 'number'; stack.inputMode = 'numeric';
-    stack.min = '0'; stack.max = String(actions.toastStackMax); stack.step = '1';
-    stack.value = s.toastStack ? String(s.toastStack) : ''; stack.placeholder = '不限'; stack.setAttribute('aria-label', '提示框堆叠显示数量（留空为不限）');
-    stack.addEventListener('change', () => run(() => {
-      const value = Math.round(Number(stack.value || 0));
-      return actions.update({ toastStack: Number.isFinite(value) ? Math.min(actions.toastStackMax, Math.max(0, value)) : 0 });
-    }));
-    stackField.append(el('span', '', '堆叠数量'), stack, el('span', 'qm-ring-stack-hint', `条 · 最多 ${actions.toastStackMax}`));
-    card.append(stackField);
+      wheel('停留时间', actions.toastDurations || [], s.toastDuration, 'toastDuration'),
+      wheel('堆叠数量', actions.toastStacks || [], s.toastStack, 'toastStack'));
     return card;
   }
 
@@ -264,7 +319,9 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     if (page === 'builtin') { root.replaceChildren(builtinListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
     if (page === 'local') { root.replaceChildren(localListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
+    afterRender = [];
     root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
+    for (const task of afterRender.splice(0)) task();
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
   return Object.freeze({ render, setAudio, dispose() { disposed = true; lockPanel(false); root.replaceChildren(); }, state: () => last });

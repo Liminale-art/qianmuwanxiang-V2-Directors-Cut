@@ -913,9 +913,17 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 通知 · 提示框字号 / 停留时间（分段按钮） */
 #story-director-floor-nav .qm-ring-toast-field { grid-template-columns: 4.5em minmax(0, 1fr); }
 #story-director-floor-nav .qm-ring-toast-seg { min-width: 0; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-#story-director-floor-nav .qm-ring-toast-stack { grid-template-columns: 4.5em 6em minmax(0, 1fr); }
-#story-director-floor-nav .qm-ring-stack-input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 4px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); text-align: center; }
-#story-director-floor-nav .qm-ring-stack-hint { color: var(--sd-muted); font-size: var(--qm-type-caption); }
+/* 通知 · 停留时间 / 堆叠数量：横向滚轮，停在中间指针处即为选择，两侧渐隐（scroll-snap + mask） */
+#story-director-floor-nav .qm-ring-wheel { position: relative; min-width: 0; height: 34px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); overflow: hidden; }
+#story-director-floor-nav .qm-ring-wheel::before { content: ""; position: absolute; left: 50%; top: 3px; bottom: 3px; width: 46px; transform: translateX(-50%); border-radius: 999px; background: var(--sd-card); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); pointer-events: none; }
+#story-director-floor-nav .qm-ring-wheel::after { content: ""; position: absolute; left: 50%; top: 0; width: 0; height: 0; transform: translateX(-50%); border: 4px solid transparent; border-top-color: var(--sd-primary); pointer-events: none; }
+#story-director-floor-nav .qm-ring-wheel-strip { position: relative; display: flex; align-items: center; height: 100%; padding: 0 calc(50% - 23px); box-sizing: border-box; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; scroll-snap-type: x mandatory; scrollbar-width: none; touch-action: pan-x; -webkit-mask-image: linear-gradient(90deg, transparent, #000 34%, #000 66%, transparent); mask-image: linear-gradient(90deg, transparent, #000 34%, #000 66%, transparent); outline: none; }
+#story-director-floor-nav .qm-ring-wheel-strip::-webkit-scrollbar { width: 0; height: 0; }
+#story-director-floor-nav .qm-ring-wheel-strip:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sd-primary) 45%, transparent); border-radius: 999px; }
+#story-director-floor-nav .qm-ring-wheel-item { flex: 0 0 46px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); font-variant-numeric: tabular-nums; scroll-snap-align: center; cursor: pointer; transition: color .15s ease, transform .15s ease; }
+#story-director-floor-nav .qm-ring-wheel-item.is-center { color: var(--sd-text); font-weight: 700; transform: scale(1.08); }
+#story-director-floor-nav[data-qm-theme] .qm-ring-wheel-item.is-center { color: var(--qm-ink, var(--sd-text)) !important; }
+#story-director-floor-nav[data-qm-theme="editorial"] .qm-ring-wheel::before, #story-director-floor-nav[data-qm-theme="editorial"] .qm-ring-wheel-strip { border-radius: 0 !important; }
 
 /* 通知 · ST 提示框美化：只按 <html data-qm-toast*> 换皮，不监听、不改写 toastr；移除属性即还原 ST 原样。
    位置完全交给 ST 原生（顶部居中；弹窗打开时 ST 会把容器搬进弹窗），这里不碰容器，只给卡片换皮。
@@ -969,7 +977,7 @@ html[data-qm-toast="splat"][data-qm-toast-mode="dark"] body #toast-container > d
 html[data-qm-toast="iris"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 70% 84% / .5), hsl(262 58% 87% / .42) 36%, hsl(330 66% 89% / .42) 66%, hsl(158 52% 85% / .5)); border-radius: 16px !important; border-color: rgba(255, 255, 255, .55) !important; background: color-mix(in srgb, var(--qm-toast-bg) 58%, transparent) !important; backdrop-filter: blur(18px) saturate(1.6) !important; -webkit-backdrop-filter: blur(18px) saturate(1.6) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 34%, transparent), 0 0 16px color-mix(in srgb, var(--qm-toast-accent) 40%, transparent), 0 10px 28px var(--qm-toast-drop) !important; }
 html[data-qm-toast="iris"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-iris: linear-gradient(120deg, hsl(196 60% 42% / .2), hsl(262 50% 46% / .17) 36%, hsl(330 52% 46% / .17) 66%, hsl(158 46% 40% / .2)); border-color: rgba(255, 255, 255, .14) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 0 0 1px color-mix(in srgb, var(--qm-toast-accent) 42%, transparent), 0 0 18px color-mix(in srgb, var(--qm-toast-accent) 46%, transparent), 0 10px 30px var(--qm-toast-drop) !important; }
 html[data-qm-toast="iris"] body #toast-container > div::after { content: "" !important; position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; z-index: -1; margin: 0 !important; border: 0 !important; border-radius: inherit !important; background: var(--qm-toast-iris) !important; background-size: 240% 240% !important; opacity: 1 !important; pointer-events: none !important; animation: qm-toast-iris 9s ease-in-out infinite alternate; }
-/* 堆叠数量：最新在最上（toastr 默认 newestOnTop），只用 CSS 隐藏超出条目，不碰 toastr 队列与计时 */
+/* 堆叠数量 1–8（默认 3）：最新在最上（toastr 默认 newestOnTop），只用 CSS 隐藏超出条目，不碰 toastr 队列与计时 */
 html[data-qm-toast-stack="1"] body #toast-container > div:nth-child(n+2) { display: none !important; }
 html[data-qm-toast-stack="2"] body #toast-container > div:nth-child(n+3) { display: none !important; }
 html[data-qm-toast-stack="3"] body #toast-container > div:nth-child(n+4) { display: none !important; }
@@ -978,7 +986,6 @@ html[data-qm-toast-stack="5"] body #toast-container > div:nth-child(n+6) { displ
 html[data-qm-toast-stack="6"] body #toast-container > div:nth-child(n+7) { display: none !important; }
 html[data-qm-toast-stack="7"] body #toast-container > div:nth-child(n+8) { display: none !important; }
 html[data-qm-toast-stack="8"] body #toast-container > div:nth-child(n+9) { display: none !important; }
-html[data-qm-toast-stack="9"] body #toast-container > div:nth-child(n+10) { display: none !important; }
 @keyframes qm-toast-in { from { transform: translateY(6px) scale(.985); } to { transform: none; } }
 @keyframes qm-toast-iris { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 @media (prefers-reduced-motion: reduce) { html[data-qm-toast] body #toast-container > div, html[data-qm-toast] body #toast-container > div::after { animation: none !important; } }

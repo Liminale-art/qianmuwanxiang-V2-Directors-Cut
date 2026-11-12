@@ -26,16 +26,18 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [],
-  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4, toastStack: 0,
+  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4, toastStack: 3,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
 // 'default' follows the Qianmu theme and day/night; 涂鸦 is a high-saturation sticker/graffiti card that only
 // follows day/night (never the accent), one colour clash per status; 虹彩 is a soft iridescent liquid glass.
 export const TOAST_STYLES = Object.freeze([['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
 export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
-export const TOAST_DURATIONS = Object.freeze([[3, '3s'], [4, '4s'], [6, '6s'], [10, '10s']]);
-// How many notifications stay visible at once (newest first); 0 keeps ST's own unlimited stack.
-export const TOAST_STACK_MAX = 9;
+// 停留时间 1–10 s and 堆叠数量 1–8 are both picked on a horizontal wheel.
+export const TOAST_DURATIONS = Object.freeze(Array.from({ length: 10 }, (_, i) => Object.freeze([i + 1, `${i + 1}s`])));
+// How many notifications stay visible at once (newest first); default 3 keeps bursts from flooding the screen.
+export const TOAST_STACK_MAX = 8;
+export const TOAST_STACKS = Object.freeze(Array.from({ length: TOAST_STACK_MAX }, (_, i) => Object.freeze([i + 1, String(i + 1)])));
 const TOAST_ATTR = 'data-qm-toast';
 const TOAST_SIZE_ATTR = 'data-qm-toast-size';
 const TOAST_MODE_ATTR = 'data-qm-toast-mode';
@@ -103,7 +105,7 @@ export function normalizeRingtone(owner) {
   if (!TOAST_FONT_SIZES.some(([id]) => id === next.toastFontSize)) next.toastFontSize = RINGTONE_DEFAULTS.toastFontSize;
   if (!TOAST_DURATIONS.some(([seconds]) => seconds === next.toastDuration)) next.toastDuration = RINGTONE_DEFAULTS.toastDuration;
   const stack = Number(next.toastStack);
-  next.toastStack = Number.isInteger(stack) && stack >= 0 && stack <= TOAST_STACK_MAX ? stack : RINGTONE_DEFAULTS.toastStack;
+  next.toastStack = Number.isInteger(stack) && stack >= 1 && stack <= TOAST_STACK_MAX ? stack : RINGTONE_DEFAULTS.toastStack;
   delete next.toastPosition; // retired: placement is always ST's native top-centre
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
@@ -387,7 +389,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     toastStyles: TOAST_STYLES,
     toastFontSizes: TOAST_FONT_SIZES,
     toastDurations: TOAST_DURATIONS,
-    toastStackMax: TOAST_STACK_MAX,
+    toastStacks: TOAST_STACKS,
     previewToast() { notify('(｡･∀･)ﾉﾞoi，这是一条提示框预览', 'info'); },
   });
   async function mount(host) {

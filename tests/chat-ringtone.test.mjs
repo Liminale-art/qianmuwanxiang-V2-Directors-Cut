@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   RINGTONE_PRESETS, RINGTONE_TAB_ICONS, RINGTONE_LIMITS, RINGTONE_DEFAULTS,
-  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_STYLES, TOAST_FONT_SIZES, TOAST_DURATIONS, TOAST_STACK_MAX, applyToastSkin, toastCallOptions,
+  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_STYLES, TOAST_FONT_SIZES, TOAST_DURATIONS, TOAST_STACK_MAX, TOAST_STACKS, applyToastSkin, toastCallOptions,
 } from '../features/chat/qianmu-chat-ringtone.js';
 
 const root = new URL('../', import.meta.url);
@@ -227,7 +227,7 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
   assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['splat', '涂鸦'], ['iris', '虹彩']]);
-  assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['3s', '4s', '6s', '10s']);
+  assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['1s', '2s', '3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s']);
   assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'splat', '旧样式1迁移为涂鸦');
   assert.deepEqual(TOAST_FONT_SIZES.map(([id]) => id), ['sm', 'md', 'lg']);
   assert.ok(TOAST_DURATIONS.every(([seconds]) => Number.isFinite(seconds) && seconds > 0));
@@ -404,9 +404,10 @@ test('list rows mark the pick before the audition finishes loading', async () =>
 });
 
 test('toast stack count: normalized, mirrored to an html attribute, enforced by CSS only', async () => {
-  assert.equal(RINGTONE_DEFAULTS.toastStack, 0, '默认不限，保持 ST 原样');
-  assert.equal(normalizeRingtone({ ringtone: { toastStack: 3 } }).toastStack, 3);
-  for (const bad of [-1, 2.5, 'x', TOAST_STACK_MAX + 1]) assert.equal(normalizeRingtone({ ringtone: { toastStack: bad } }).toastStack, 0);
+  assert.equal(TOAST_STACK_MAX, 8);
+  assert.equal(RINGTONE_DEFAULTS.toastStack, 3, '默认 3 条，避免刷屏');
+  assert.equal(normalizeRingtone({ ringtone: { toastStack: 8 } }).toastStack, 8);
+  for (const bad of [0, -1, 2.5, 'x', TOAST_STACK_MAX + 1]) assert.equal(normalizeRingtone({ ringtone: { toastStack: bad } }).toastStack, 3);
   const attrs = {};
   const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
   applyToastSkin(doc, { toastSkin: true, toastStyle: 'splat', toastFontSize: 'md', toastStack: 2 }, { theme: 'light', mode: 'light' });
@@ -420,8 +421,59 @@ test('toast stack count: normalized, mirrored to an html attribute, enforced by 
   for (let n = 1; n <= TOAST_STACK_MAX; n += 1) {
     assert.ok(css.includes(`html[data-qm-toast-stack="${n}"] body #toast-container > div:nth-child(n+${n + 1}) { display: none !important; }`), `堆叠 ${n} 规则`);
   }
+  assert.ok(!css.includes('data-qm-toast-stack="9"'), '最多 8 条');
+});
+
+test('停留时间 / 堆叠数量 use a horizontal wheel: centre is the pick, sides fade', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
-  assert.ok(view.includes("stack.type = 'number'") && view.includes('toastStack'), '堆叠数量为输入框');
+  assert.ok(view.includes("wheel('停留时间', actions.toastDurations") && view.includes("wheel('堆叠数量', actions.toastStacks"), '两项都改为滚轮');
+  assert.ok(!view.includes('qm-ring-stack-input') && !view.includes("stack.type = 'number'"), '旧数字输入已移除');
+  assert.ok(view.includes("addEventListener('scrollend', settle)") && view.includes('if (!touching) commit(nearest())'), '停稳后才提交，手指按着不提交');
+  assert.ok(view.includes("strip.setAttribute('role', 'radiogroup')"), '滚轮条保留 radiogroup 语义');
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(/\.qm-ring-wheel-strip \{[^}]*scroll-snap-type: x mandatory[^}]*mask-image: linear-gradient\(90deg, transparent/.test(css), '吸附居中、两侧渐隐');
+  assert.ok(css.includes('.qm-ring-wheel-item { flex: 0 0 46px') && css.includes('scroll-snap-align: center'), '每项居中吸附');
+  assert.ok(!css.includes('qm-ring-stack-input'), '旧输入框样式已移除');
+});
+
+test('wheel picker commits the value under the centre pointer once scrolling settles', async () => {
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  const nodes = [];
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', isConnected: true, style: { setProperty() {}, removeProperty() {} },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on) this.set.add(c); else this.set.delete(c); } },
+      append(...kids) { this.children.push(...kids); }, appendChild(kid) { this.children.push(kid); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      querySelector() { return null; }, contains() { return false; }, closest() { return null; }, scrollTo({ left }) { this.scrollLeft = left; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    nodes.push(node); return node;
+  };
+  const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
+  const updates = [];
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+    toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: patch => { updates.push(patch); } };
+  const view = mountChatRingtoneView({ root: host, actions });
+  const s = normalizeRingtone({});
+  // Lay the strips out: 46px items, 230px visible track.
+  const layout = () => nodes.filter(n => n.classList.contains('qm-ring-wheel-strip')).forEach(strip => {
+    strip.clientWidth = 230; strip.scrollLeft = 0;
+    strip.children.forEach((item, i) => { item.offsetWidth = 46; item.offsetLeft = 92 + i * 46; });
+  });
+  const origin = view.render; origin(s); layout();
+  const stack = nodes.find(n => n.classList.contains('qm-ring-wheel-toastStack'));
+  assert.ok(stack, '堆叠滚轮已渲染');
+  const pickAt = i => { stack.scrollLeft = 92 + i * 46 - (230 - 46) / 2; };
+  stack.listeners.touchstart(); pickAt(5); stack.listeners.pointercancel({ pointerType: 'touch' }); stack.listeners.scroll(); stack.listeners.scrollend();
+  assert.deepEqual(updates, [], '手指还按着时不提交');
+  stack.listeners.touchend(); stack.listeners.scrollend();
+  assert.deepEqual(updates, [{ toastStack: 6 }], '停在中间指针处的即为选择');
+  assert.ok(stack.children[5].classList.contains('is-center') && stack.children[5].attrs['aria-checked'] === 'true');
+  stack.listeners.keydown({ key: 'ArrowLeft', preventDefault() {} });
+  assert.deepEqual(updates.at(-1), { toastStack: 5 }, '方向键逐项选择');
+  const duration = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
+  duration.children[9].listeners.click();
+  assert.deepEqual(updates.at(-1), { toastDuration: 10 }, '点选某个值也可选择');
+  view.dispose();
 });
 
 test('涂鸦 style: day/night only, per-status clash colours, outside square bar, pop-in', async () => {
