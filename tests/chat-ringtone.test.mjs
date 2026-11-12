@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   RINGTONE_PRESETS, RINGTONE_TAB_ICONS, RINGTONE_LIMITS, RINGTONE_DEFAULTS,
-  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_POSITIONS, applyToastSkin,
+  normalizeRingtone, safeSoundUrl, createTabAlert, createChatRingtone, TOAST_STYLES, TOAST_FONT_SIZES, TOAST_DURATIONS, applyToastSkin, toastCallOptions,
 } from '../features/chat/qianmu-chat-ringtone.js';
 
 const root = new URL('../', import.meta.url);
@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.492'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.493'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Four-tab navigation with the ring tab.
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -225,44 +225,91 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
   assert.ok(ids.has('crisp-droplet-echo') && ids.has('crisp-wind-chime'), '已加入两个新铃声');
 });
 
-test('toast skin: only three centred positions, normalized and applied through one html attribute', () => {
-  assert.deepEqual(TOAST_POSITIONS.map(([id]) => id), ['top', 'bottom', 'middle']);
-  const s = normalizeRingtone({ ringtone: { toastSkin: 'yes', toastPosition: 'top-right' } });
+test('toast skin: styles/font size/duration are normalized; position is retired', () => {
+  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['arc', '样式1'], ['iris', '样式2']]);
+  assert.deepEqual(TOAST_FONT_SIZES.map(([id]) => id), ['sm', 'md', 'lg']);
+  assert.ok(TOAST_DURATIONS.every(([seconds]) => Number.isFinite(seconds) && seconds > 0));
+  const s = normalizeRingtone({ ringtone: { toastSkin: 'yes', toastPosition: 'top-right', toastStyle: 'mosaic', toastFontSize: 'xl', toastDuration: 99 } });
   assert.equal(s.toastSkin, false);
-  assert.equal(s.toastPosition, 'top');
-  const attrs = {};
-  const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
-  applyToastSkin(doc, { toastSkin: true, toastPosition: 'middle' });
-  assert.equal(attrs['data-qm-toast'], 'middle');
-  applyToastSkin(doc, { toastSkin: false, toastPosition: 'middle' });
-  assert.ok(!('data-qm-toast' in attrs));
-  applyToastSkin(doc, null);
-  assert.ok(!('data-qm-toast' in attrs));
+  assert.equal(s.toastStyle, 'default', '已弃用的马赛克回落为默认');
+  assert.equal(s.toastFontSize, RINGTONE_DEFAULTS.toastFontSize);
+  assert.equal(s.toastDuration, RINGTONE_DEFAULTS.toastDuration);
+  assert.ok(!('toastPosition' in s), '位置设置已移除，固定 ST 原生顶部居中');
 });
 
-test('toast skin runtime: activate applies the saved skin, update re-applies, dispose removes it', () => {
+test('toast skin: html attributes carry style, size, theme and day/night; off removes them all', () => {
+  const attrs = {};
+  const doc = { documentElement: { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } } };
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'iris', toastFontSize: 'lg' }, { theme: 'glass', mode: 'dark' });
+  assert.deepEqual(attrs, { 'data-qm-toast': 'iris', 'data-qm-toast-size': 'lg', 'data-qm-toast-theme': 'glass', 'data-qm-toast-mode': 'dark' });
+  applyToastSkin(doc, { toastSkin: true, toastStyle: 'default', toastFontSize: 'md' }, { theme: 'bogus', mode: 'weird' });
+  assert.equal(attrs['data-qm-toast-theme'], 'light', '未知主题回落为日间经典');
+  assert.equal(attrs['data-qm-toast-mode'], 'light');
+  applyToastSkin(doc, { toastSkin: false });
+  assert.deepEqual(attrs, {});
+  applyToastSkin(doc, null);
+  assert.deepEqual(attrs, {});
+});
+
+test('toast duration is a per-call option and only while the skin is on', () => {
+  assert.equal(toastCallOptions(null), null);
+  assert.equal(toastCallOptions({ toastSkin: false, toastDuration: 6 }), null);
+  assert.deepEqual(toastCallOptions({ toastSkin: true, toastDuration: 6 }), { timeOut: 6000, extendedTimeOut: 6000 });
+  assert.equal(toastCallOptions({ toastSkin: true, toastDuration: 123 }).timeOut, RINGTONE_DEFAULTS.toastDuration * 1000);
+});
+
+test('toast skin runtime: activate applies, update and refreshLook re-apply, dispose removes', () => {
   const attrs = {};
   const { doc } = fakeDocument();
   doc.documentElement = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
-  const settings = { ringtone: { toastSkin: true, toastPosition: 'bottom' } };
+  const settings = { ringtone: { toastSkin: true, toastStyle: 'arc' } };
+  let look = { theme: 'summer', mode: 'light' };
   const ring = createChatRingtone({ getOwner: () => settings, save: () => {}, getContext: () => ({ chat: [] }), resolveNamespace: () => 'ns',
-    document: doc, window: { addEventListener() {}, removeEventListener() {} }, Audio: class {}, indexedDB: null,
+    document: doc, window: { addEventListener() {}, removeEventListener() {} }, Audio: class {}, indexedDB: null, getLook: () => look,
     loadView: async () => ({ mountChatRingtoneView: () => ({ render() {}, dispose() {} }) }), setInterval: () => 1, clearInterval: () => {} });
   assert.ok(!('data-qm-toast' in attrs), '未激活前不改页面');
   ring.activate();
-  assert.equal(attrs['data-qm-toast'], 'bottom');
-  ring.actions.update({ toastPosition: 'middle' });
-  assert.equal(attrs['data-qm-toast'], 'middle');
+  assert.equal(attrs['data-qm-toast'], 'arc');
+  assert.equal(attrs['data-qm-toast-theme'], 'summer');
+  ring.actions.update({ toastStyle: 'iris', toastFontSize: 'sm' });
+  assert.equal(attrs['data-qm-toast'], 'iris');
+  assert.equal(attrs['data-qm-toast-size'], 'sm');
+  look = { theme: 'dark', mode: 'dark' };
+  ring.refreshLook();
+  assert.equal(attrs['data-qm-toast-mode'], 'dark', '切换主题/日夜后默认样式跟随');
   ring.actions.update({ toastSkin: false });
   assert.ok(!('data-qm-toast' in attrs));
   ring.actions.update({ toastSkin: true });
   ring.dispose();
-  assert.ok(!('data-qm-toast' in attrs), '卸载后还原 ST 原样');
+  assert.deepEqual(attrs, {}, '卸载后还原 ST 原样');
+});
+
+test('toast preview copy', async () => {
+  const shown = [];
+  const h = harness({ notify: (message, type) => shown.push([message, type]) });
+  h.ring.actions.previewToast();
+  assert.deepEqual(shown, [['(｡･∀･)ﾉﾞoi，这是一条提示框预览', 'info']]);
+});
+
+test('index.js passes the duration per call and re-syncs the toast look on theme changes', async () => {
+  const entry = await readFile(new URL('index.js', root), 'utf8');
+  assert.ok(entry.includes('toastCallOptions(settings?.ringtone)'), 'toast() 按单次调用传入停留时间');
+  assert.ok(entry.includes('getLook:qianmuToastLook'), '提示框读取千幕主题与日夜间');
+  assert.ok((entry.match(/chatRingtone\.refreshLook\(\)/g) || []).length >= 3, '经典主题/旧路径/新外观切换后都重同步');
+});
+
+test('ringtone list sub-page takes over the toolkit panel at the 通知 page height', async () => {
+  const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
+  assert.ok(view.includes("closest?.('.sd-floor-panel')") && view.includes('qm-ring-subpage-open') && view.includes('--qm-ring-lock-h'));
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(css.includes('.sd-floor-panel.qm-ring-subpage-open > :is(header, .sd-floor-tabs) { display: none; }'), '列表页隐藏标题与页签');
+  assert.ok(/qm-ring-subpage-open \.qm-ring-list \{[^}]*overflow-y: auto/.test(css), '超出在列表内滚动');
+  assert.ok(!css.includes('qm-toast-style="mosaic"') && !css.includes(':not(.popup *)'), '马赛克与自定定位层已移除');
 });
 
 test('toast skin never hooks toastr: no observers, polling, or toastr rewrites', async () => {
   const source = await readFile(new URL('features/chat/qianmu-chat-ringtone.js', root), 'utf8');
-  const skin = source.slice(source.indexOf('export const TOAST_POSITIONS'), source.indexOf('/** Repairs the stored settings'));
+  const skin = source.slice(source.indexOf('export const TOAST_STYLES'), source.indexOf('/** Repairs the stored settings'));
   for (const banned of ['MutationObserver', 'setInterval', 'setTimeout', 'requestAnimationFrame', 'toastr', 'querySelector']) {
     assert.ok(!skin.includes(banned), `提示框美化不得使用 ${banned}`);
   }
@@ -299,4 +346,16 @@ test('ringtone view has no separate preview button or bottom-sheet list', async 
   assert.ok(!/actions\.preview\(/.test(view), '已移除铃声试听动作（提示框预览 previewToast 保留）');
   assert.ok(view.includes("openList('builtin')") && view.includes("openList('local')"), '内置/本地都进入面板内列表子页');
   assert.ok(view.includes('actions.stopSound()'), '返回主页时停止试听');
+});
+
+test('paper (editorial) theme squares the toolkit notice/backup controls but keeps round dots and switches', async () => {
+  const skins = await readFile(new URL('qianmu-theme-skins.css', root), 'utf8');
+  const start = skins.indexOf('[data-qm-theme="editorial"] :is(');
+  const list = skins.slice(start, skins.indexOf(') { border-radius: 0 !important; }', start));
+  for (const cls of ['.qm-ring-sources', '.qm-ring-list', '.qm-ring-card', '.qm-recovery-native-policy', '.qm-recovery-role-picker', '.qm-recovery-status', '.qm-recovery-receipt']) {
+    assert.ok(list.includes(cls), `纸间直角覆盖 ${cls}`);
+  }
+  for (const round of ['.qm-ring-cap-track', '.qm-ring-cap-knob', '.qm-ring-radio', '.qm-ring-icon', '.qm-recovery-loading-dot']) {
+    assert.ok(!list.includes(round), `${round} 保持圆形`);
+  }
 });

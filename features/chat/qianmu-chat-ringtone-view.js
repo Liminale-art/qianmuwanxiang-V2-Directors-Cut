@@ -51,8 +51,22 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     return [...map].map(([label, items]) => ({ label, items }));
   };
 
-  function goMain() { actions.stopSound(); page = 'main'; render(last); }
-  function openList(kind) { page = kind; render(last); }
+  // A list sub-page takes over the whole toolkit panel at the height the 通知 page had,
+  // so opening it never stretches the panel; longer lists scroll inside.
+  function lockPanel(on) {
+    const panel = root.closest?.('.sd-floor-panel');
+    if (!panel?.classList) return;
+    if (on) {
+      const height = panel.getBoundingClientRect?.().height;
+      if (height > 0) panel.style.setProperty('--qm-ring-lock-h', `${Math.round(height)}px`);
+      panel.classList.add('qm-ring-subpage-open');
+    } else {
+      panel.classList.remove('qm-ring-subpage-open');
+      panel.style.removeProperty('--qm-ring-lock-h');
+    }
+  }
+  function goMain() { actions.stopSound(); page = 'main'; lockPanel(false); render(last); }
+  function openList(kind) { lockPanel(true); page = kind; render(last); }
 
   // Phone-OS style chooser: each row auditions + selects on tap; the filled radio marks the current pick.
   // Selection persists without a re-render (actions.select*), so tapping never resets the list scroll.
@@ -196,15 +210,23 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       styles.append(node);
     }
     card.append(styles);
-    const row = el('div', 'qm-ring-source-row');
-    const positions = el('div', 'qm-ring-sources qm-ring-toast-pos'); positions.setAttribute('role', 'radiogroup'); positions.setAttribute('aria-label', '提示框位置');
-    for (const [id, label] of actions.toastPositions) {
-      const node = button(label, s.toastPosition === id ? 'is-active' : '', () => actions.update({ toastPosition: id }));
-      node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(s.toastPosition === id)); node.dataset.toastPosition = id;
-      positions.append(node);
-    }
-    row.append(positions, iconButton('fa-eye', '预览', 'qm-ring-toast-test', async () => actions.previewToast()));
-    card.append(row);
+    // 字号 / 停留时间: compact segmented rows; the preview sits under them.
+    const segmented = (label, options, current, key) => {
+      const field = el('div', 'qm-ring-field qm-ring-toast-field');
+      const group = el('div', 'qm-ring-sources qm-ring-toast-seg'); group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', `提示框${label}`);
+      for (const [id, text] of options) {
+        const node = button(text, current === id ? 'is-active' : '', () => actions.update({ [key]: id }));
+        node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(current === id));
+        group.append(node);
+      }
+      field.append(el('span', '', label), group);
+      return field;
+    };
+    card.append(segmented('字号', actions.toastFontSizes, s.toastFontSize, 'toastFontSize'),
+      segmented('停留时间', actions.toastDurations, s.toastDuration, 'toastDuration'));
+    const tools = el('div', 'qm-ring-tools');
+    tools.append(iconButton('fa-eye', '预览', 'qm-ring-toast-test', async () => actions.previewToast()));
+    card.append(tools);
     return card;
   }
 
@@ -217,5 +239,5 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
-  return Object.freeze({ render, dispose() { disposed = true; root.replaceChildren(); }, state: () => last });
+  return Object.freeze({ render, dispose() { disposed = true; lockPanel(false); root.replaceChildren(); }, state: () => last });
 }

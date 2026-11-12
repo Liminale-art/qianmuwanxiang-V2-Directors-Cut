@@ -26,24 +26,36 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '新消息', iconSource: 'builtin', customIcons: [],
-  toastSkin: false, toastPosition: 'top', toastStyle: 'default',
+  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4,
 });
-// ST notification skin: three centred positions only (side-anchored long toasts read poorly).
-export const TOAST_POSITIONS = Object.freeze([['top', '顶部居中'], ['bottom', '底部居中'], ['middle', '上下居中']]);
-// Card decoration presets. 'default' keeps the plain status dot; 'mosaic' adds the static left-to-right pixel ribbon.
-export const TOAST_STYLES = Object.freeze([['default', '默认'], ['mosaic', '马赛克']]);
+// ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
+// 'default' follows the Qianmu theme and day/night; 样式1 is frosted glass with an accent arc bar;
+// 样式2 is a soft iridescent liquid glass whose edge glow follows the toast status.
+export const TOAST_STYLES = Object.freeze([['default', '默认'], ['arc', '样式1'], ['iris', '样式2']]);
+export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
+export const TOAST_DURATIONS = Object.freeze([[3, '3秒'], [4, '4秒'], [6, '6秒'], [10, '10秒']]);
 const TOAST_ATTR = 'data-qm-toast';
-const TOAST_STYLE_ATTR = 'data-qm-toast-style';
+const TOAST_SIZE_ATTR = 'data-qm-toast-size';
+const TOAST_MODE_ATTR = 'data-qm-toast-mode';
+const TOAST_THEME_ATTR = 'data-qm-toast-theme';
+const TOAST_THEMES = ['light', 'dark', 'summer', 'candy', 'kraft', 'dream', 'editorial', 'glass'];
 /**
- * Skins ST notifications purely through CSS keyed on two <html> attributes. It never
+ * Skins ST notifications purely through CSS keyed on <html> attributes. It never
  * observes, polls, wraps or rewrites the toast library or its nodes, so a busy burst
  * costs nothing extra and removing the attributes restores ST's own look.
+ * `look` carries the current Qianmu theme so the default card follows it and day/night.
  */
-export function applyToastSkin(document, s) {
+export function applyToastSkin(document, s, look = null) {
   const root = document?.documentElement;
   if (!root?.setAttribute) return;
-  if (s?.toastSkin) { root.setAttribute(TOAST_ATTR, s.toastPosition); root.setAttribute(TOAST_STYLE_ATTR, s.toastStyle); }
-  else { root.removeAttribute(TOAST_ATTR); root.removeAttribute(TOAST_STYLE_ATTR); }
+  if (s?.toastSkin) {
+    root.setAttribute(TOAST_ATTR, s.toastStyle);
+    root.setAttribute(TOAST_SIZE_ATTR, s.toastFontSize);
+    root.setAttribute(TOAST_MODE_ATTR, look?.mode === 'dark' ? 'dark' : 'light');
+    root.setAttribute(TOAST_THEME_ATTR, TOAST_THEMES.includes(look?.theme) ? look.theme : 'light');
+  } else {
+    for (const name of [TOAST_ATTR, TOAST_SIZE_ATTR, TOAST_MODE_ATTR, TOAST_THEME_ATTR]) root.removeAttribute(name);
+  }
 }
 const SOURCES = ['builtin', 'url', 'local'];
 const isIconData = value => typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value) && value.length <= RINGTONE_LIMITS.iconDataChars;
@@ -79,11 +91,23 @@ export function normalizeRingtone(owner) {
   next.flashText = typeof next.flashText === 'string' ? [...next.flashText.trim()].slice(0, RINGTONE_LIMITS.flashText).join('') : RINGTONE_DEFAULTS.flashText;
   next.iconSource = next.iconSource === 'custom' ? 'custom' : 'builtin';
   next.toastSkin = next.toastSkin === true;
-  if (!TOAST_POSITIONS.some(([id]) => id === next.toastPosition)) next.toastPosition = RINGTONE_DEFAULTS.toastPosition;
   if (!TOAST_STYLES.some(([id]) => id === next.toastStyle)) next.toastStyle = RINGTONE_DEFAULTS.toastStyle;
+  if (!TOAST_FONT_SIZES.some(([id]) => id === next.toastFontSize)) next.toastFontSize = RINGTONE_DEFAULTS.toastFontSize;
+  if (!TOAST_DURATIONS.some(([seconds]) => seconds === next.toastDuration)) next.toastDuration = RINGTONE_DEFAULTS.toastDuration;
+  delete next.toastPosition; // retired: placement is always ST's native top-centre
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
   return next;
+}
+
+/**
+ * Per-call display options for Qianmu's own notifications while the skin is on. Nothing in
+ * the toast library is changed: the caller passes these as the third argument of one toast.
+ */
+export function toastCallOptions(s) {
+  if (!s?.toastSkin) return null;
+  const ms = Math.round((TOAST_DURATIONS.some(([seconds]) => seconds === s.toastDuration) ? s.toastDuration : RINGTONE_DEFAULTS.toastDuration) * 1000);
+  return { timeOut: ms, extendedTimeOut: Math.max(ms, 1000) };
 }
 
 export const safeSoundUrl = value => /^https?:\/\/[^\s]+$/i.test(String(value || '').trim()) ? String(value).trim() : '';
@@ -213,7 +237,7 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.492'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
+  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.493'), now = () => Date.now(), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
   const player = createRingPlayer({ Audio, onChange: () => {} });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
@@ -223,7 +247,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
-  const syncToast = () => { if (skinActive) applyToastSkin(document, state()); };
+  const syncToast = () => { if (skinActive) applyToastSkin(document, state(), getLook()); };
   function update(patch) {
     Object.assign(state(), patch);
     normalizeRingtone(getOwner());
@@ -341,9 +365,10 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     },
     clearIcons() { update({ customIcons: [], iconSource: 'builtin' }); },
     testFlash() { return flash({ duration: 6000 }); },
-    toastPositions: TOAST_POSITIONS,
     toastStyles: TOAST_STYLES,
-    previewToast() { notify('提示框预览：较长的提示也会在卡片内自动换行，保持居中显示。', 'info'); },
+    toastFontSizes: TOAST_FONT_SIZES,
+    toastDurations: TOAST_DURATIONS,
+    previewToast() { notify('(｡･∀･)ﾉﾞoi，这是一条提示框预览', 'info'); },
   });
   async function mount(host) {
     if (!host || mounted?.host === host) return;
@@ -358,6 +383,8 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   // Runtime teardown; a later re-enable may mount again.
   // Applies the saved toast skin once settings are loaded (runtime init).
   function activate() { skinActive = true; syncToast(); }
+  // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
+  function refreshLook() { syncToast(); }
   function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); armed = false; }
-  return Object.freeze({ events, mount, unmount, activate, dispose, actions, state });
+  return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state });
 }

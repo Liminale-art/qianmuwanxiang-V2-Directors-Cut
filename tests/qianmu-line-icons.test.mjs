@@ -240,8 +240,8 @@ for (const [theme, active] of [['editorial', 'bold'], ['glass', 'twotone']]) {
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/, '发行版本必须是有效的三段版本号');
 assert.equal(packageJson.version, manifest.version);
-assert.equal(manifest.js, `index.js?v=${manifest.version}-toast-6`);
-assert.equal(manifest.css, `style.css?v=${manifest.version}-toast-6`);
+assert.equal(manifest.js, `index.js?v=${manifest.version}-toast-7`);
+assert.equal(manifest.css, `style.css?v=${manifest.version}-toast-7`);
 assert.match(indexSource, /from '\.\/qianmu-icon-renderer\.js\?v=\d+\.\d+\.\d+';/);
 
 class FakeClassList {

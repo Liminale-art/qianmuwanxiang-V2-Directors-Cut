@@ -40,7 +40,7 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
-import { createChatRingtone } from './features/chat/qianmu-chat-ringtone.js?v=1.59.492';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.493';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -317,7 +317,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.492';
+const VERSION = '1.59.493';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -325,7 +325,7 @@ let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
-const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner()});
+const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
   getState: coreadYimuState, resolveAccount: resolveImageAccountNamespace,
@@ -955,6 +955,14 @@ const FACTION_RELATION_KINDS = ['冲突', '同盟', '张力', '中立', '依附'
 
 function currentHiveThemeKey() {
   return THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
+}
+
+// Theme + day/night the notification skin's default card follows.
+function qianmuToastLook() {
+  const prefs = readAppearancePreferences(settings);
+  if (prefs.family !== 'classic') return { theme: prefs.family, mode: prefs.mode };
+  const theme = currentHiveThemeKey();
+  return { theme, mode: theme === 'dark' ? 'dark' : 'light' };
 }
 
 function currentHivePalette() {
@@ -1893,7 +1901,9 @@ function getChatStore() {
 
 function toast(message, type = 'info') {
   const t = globalThis.toastr;
-  if (t?.[type]) t[type](message);
+  // The notification skin's duration applies per call; the library's own defaults stay untouched.
+  const options = toastCallOptions(settings?.ringtone);
+  if (t?.[type]) { if (options) t[type](message, '', options); else t[type](message); }
   else console.log(`[${EXTENSION_NAME}] ${message}`);
 }
 
@@ -7243,13 +7253,15 @@ function renderModal() {
     if (appearanceSession.supported) {
       try { selectQianmuClassicTheme({settings,themeKey:next,session:appearanceSession,save:saveSettings,resolveLogo:key=>FLOAT_LOGO_URLS[key]||FLOAT_LOGO_URL}); }
       catch (error) { toast('外观切换未完成，已保留原设置。','warning'); console.warn('[千幕] 外观切换失败',error); return false; }
+      chatRingtone.refreshLook();
       return;
     }
     if (next && next !== settings.theme) { settings.theme = next; saveSettings(); }
+    chatRingtone.refreshLook();
     renderFloatButton();
     renderModal();   // 不支持弱引用的旧浏览器维持原经典行为
     syncNotesTheme();
-  }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.sync(),retry:()=>appearanceSession.retry(),change:patch=>changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings})} : null);
+  }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.sync(),retry:()=>appearanceSession.retry(),change:patch=>{try{return changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings});}finally{chatRingtone.refreshLook();}}} : null);
   bindQianmuMainTabNavigation(modal, (el) => {
     focusClockCloseVoiceDrawer();
     if (el.dataset.tab !== 'theater') theaterView = null;
