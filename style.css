@@ -908,8 +908,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-list-empty { margin: 0; padding: 22px 14px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-ring-list-add { flex: 0 0 auto; }
 /* 铃声音频条：点阵，C-14 起是子页头与列表之间的独立条卡（与可滚动列表并列的兄弟，不随列表滚动）。
+   C-15：底内边距 8px→1px，点阵直接落在条卡底边（最高 9 格=36px 恰好放进 37px 内容盒）。
    未加载/空闲浅灰；加载中灰色呼吸；播放中淡绿并跳动。只用 clip-path 动画，不触发排版。 */
-#story-director-floor-nav .qm-ring-eq { --qm-eq-dot: rgba(150, 150, 150, .3); flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; height: 44px; padding: 0 16px 8px; box-sizing: border-box; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); pointer-events: none; transition: opacity .3s ease; }
+#story-director-floor-nav .qm-ring-eq { --qm-eq-dot: rgba(150, 150, 150, .3); flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; height: 44px; padding: 4px 16px 1px; box-sizing: border-box; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); pointer-events: none; transition: opacity .3s ease; }
 #story-director-floor-nav[data-qm-theme] .qm-ring-eq { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
 #story-director-floor-nav .qm-ring-eq > span { flex: 0 0 3px; height: calc(var(--h) * 4px); background: radial-gradient(circle, var(--qm-eq-dot) 0 1.3px, transparent 1.6px) center bottom / 3px 4px repeat-y; }
 #story-director-floor-nav .qm-ring-eq[data-audio="loading"] > span { animation: qm-ring-eq-wait 1.1s ease-in-out infinite alternate; }

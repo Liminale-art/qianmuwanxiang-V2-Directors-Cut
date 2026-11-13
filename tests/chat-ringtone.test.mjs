@@ -691,6 +691,8 @@ test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven 
   assert.ok(/\.qm-ring-eq \{[^}]*pointer-events: none/.test(css), '音频条不挡点击');
   assert.ok(/qm-ring-subpage-open \.qm-ring-list \{[^}]*flex: 1 1 auto/.test(css), '列表占满剩余高度');
   assert.ok(/\.qm-ring-eq \{[^}]*border-radius: var\(--qm-card-radius/.test(css) && !css.includes('margin-bottom: calc(-1 * var(--qm-ring-eq-flush'), 'C-14：条卡自成一卡、不再负边距贴底');
+  assert.ok(/\.qm-ring-eq \{[^}]*height: 44px; padding: 4px 16px 1px;/.test(css), 'C-15：点阵落到条卡底边（底内边距 1px）');
+  assert.ok(/\.qm-ring-wheel, \.qm-ring-eq,/.test(await readFile(new URL('qianmu-theme-skins.css', root), 'utf8')), '编辑风皮肤条卡同样直角');
   assert.ok(css.includes('.qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142'), '播放时淡绿');
   assert.ok(/\.qm-ring-eq \{ --qm-eq-dot: rgba\(150, 150, 150, \.3\)/.test(css), '空闲浅灰');
 });
