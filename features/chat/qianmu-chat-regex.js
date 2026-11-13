@@ -262,7 +262,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
   readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.500') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.501') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();

@@ -878,7 +878,7 @@ test('entry, font controller, view and styles use the same refreshed UI cache st
     // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/account-sync/state/sources/package 不动。
     const stamp = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
-    assert.equal(manifest.js, `index.js?v=1.59.500-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.500-toast-14`);
+    assert.equal(manifest.js, `index.js?v=1.59.501-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.501-toast-14`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));
     assert.ok((await read('qianmu-font-library.js')).includes(`'./qianmu-font-library-view.js?v=${stamp}'`));
     const controller = await read('qianmu-font-library.js');

@@ -7,7 +7,7 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
 // The installed entry/style follow the current release.
-const CURRENT_RELEASE = '1.59.500';
+const CURRENT_RELEASE = '1.59.501';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);

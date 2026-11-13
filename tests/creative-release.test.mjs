@@ -14,7 +14,8 @@ const fontFixVersion = '1.59.498';
 const fontScopeVersion = '1.59.499';
 // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/state/sources/package 不动。
 const fontUiVersion = '1.59.500';
-const manifestVersion = '1.59.500';
+// 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
+const manifestVersion = '1.59.501';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
