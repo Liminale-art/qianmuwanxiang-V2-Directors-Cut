@@ -181,11 +181,11 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   // 管理态卡头「新建」：开编辑子页的新建模式。
   function newButton(source) {
-    const button = el('button', 'qm-regex-tool qm-regex-new'); button.type = 'button';
+    const button = el('button', 'qm-regex-tool qm-regex-new qm-regex-new-icon'); button.type = 'button';
     button.dataset.key = `new:${source}`;
-    button.setAttribute('aria-label', '新建正则');
+    button.setAttribute('aria-label', '新建正则'); button.title = '新建正则';
     const ic = el('i', 'fa-solid fa-plus'); ic.setAttribute('aria-hidden', 'true');
-    button.append(ic, el('span', 'qm-regex-tool-label', '新建'));
+    button.append(ic);
     button.addEventListener('click', () => { try { actions.openEditor?.({ isNew: true, source }); } catch (error) { notify(error?.message || '新建失败', 'warning'); } });
     return button;
   }
@@ -421,7 +421,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       bindBtn.setAttribute('aria-label', `绑定此聊天：${binding.enabled ? '已开启，进聊天自动套用预设与正则' : '未开启'}`);
       bindBtn.title = binding.enabled ? '绑定此聊天（已开启：预设与正则改动会记入本聊天，进聊天自动套用）' : '绑定此聊天（开启后记住当前预设，预设与正则改动记入本聊天，进聊天自动套用）';
       const bg = el('i', 'fa-solid fa-link'); bg.setAttribute('aria-hidden', 'true');
-      bindBtn.append(bg, el('span', 'qm-regex-tool-label', '绑定'));
+      bindBtn.append(bg, el('span', 'qm-regex-tool-label', '绑定此聊天'));
       bindBtn.addEventListener('click', () => {
         if (bindBtn.disabled) return;
         Promise.resolve().then(() => actions.setBindingEnabled(!binding.enabled))
@@ -446,6 +446,21 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       manageBtn.addEventListener('click', () => { try { actions.setManaging(!managing); } catch (error) { notify(error?.message || '管理切换失败', 'warning'); } });
       tools.append(manageBtn);
     }
+    // C-15 s5：回收站。有被删条目时出现；点按切到「已删除」列表，再点返回正则列表。
+    const recycle = state.recycle && typeof state.recycle === 'object' ? state.recycle : { open: false, count: 0, items: [] };
+    if (typeof actions.setRecycle === 'function' && (recycle.count > 0 || recycle.open)) {
+      const binBtn = el('button', `qm-regex-tool qm-regex-recycle-toggle${recycle.open ? ' is-on' : ''}`); binBtn.type = 'button';
+      binBtn.dataset.key = 'recycle';
+      binBtn.setAttribute('aria-pressed', String(recycle.open));
+      binBtn.setAttribute('aria-label', recycle.open ? '回收站：已打开，点按返回正则列表' : `回收站：${recycle.count} 条已删除，点按查看`);
+      binBtn.title = recycle.open ? '回收站（返回正则列表）' : `回收站（${recycle.count} 条已删除，可还原）`;
+      const bi = el('i', 'fa-solid fa-trash-can'); bi.setAttribute('aria-hidden', 'true');
+      binBtn.append(bi, el('span', 'qm-regex-tool-label', recycle.open ? '返回' : `回收站 ${recycle.count}`));
+      binBtn.addEventListener('click', () => { try { actions.setRecycle(!recycle.open); } catch (error) { notify(error?.message || '回收站切换失败', 'warning'); } });
+      tools.append(binBtn);
+    }
+    // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
+    if (recycle.open) { root.replaceChildren(tools, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
     const common = { pending, bound, managing, selected };
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
       { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, ...common });
@@ -453,19 +468,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (p.available) presetNote = `${p.items.length} 条${p.items.length && !p.allowed ? ' · 未被允许运行' : ''}`;   // C-14e：预设名已在页顶快切里，卡内不再重复
     const presetCard = section('预设正则', presetNote, p.items, view,
       { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, ...common });
-    const writable = anyWritable;
-    const hint = el('p', 'qm-regex-hint', writable
-      ? (binding.enabled
-        ? '已绑定此聊天：现在切的预设、拨动的开关都会记入本聊天，下次进来自动套用；其它聊天不受影响。'
-        : '开关即时写回 ST；连续切换后聊天会自动重载一次，让已显示的楼层按新正则重新渲染。')
-      : '只读预览：当前 ST 不支持在此切换，请在 ST 正则面板修改。');
     const presets = state.presets && typeof state.presets === 'object' ? state.presets : { available: false, names: [] };
     const head = presets.available && typeof actions.selectPreset === 'function' ? [presetSwitch(presets, binding)] : [];
-    // 管理态选择工具条 + 撤销条，都随状态条件渲染。
+    // 管理态选择工具条随状态条件渲染（撤销已并入回收站）。
     const bars = [];
     if (managing) bars.push(selectionBar([...selectedSet], sources));
-    if (state.undo && typeof actions.undoRemove === 'function') bars.push(undoBar(state.undo));
-    root.replaceChildren(...head, tools, ...bars, globalCard, presetCard, hint);
+    root.replaceChildren(...head, tools, ...bars, globalCard, presetCard);
     if (typeof scroll === 'number') root.scrollTop = scroll;
     if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
   }
@@ -501,7 +509,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // 二次确认 / 分组名输入：优先用宿主的原生对话框；测试 fake DOM 无 window 时放行（默认不阻断）。
   function confirmDelete(n) {
     const confirm = root.ownerDocument?.defaultView?.confirm;
-    return typeof confirm === 'function' ? confirm(`确定删除选中的 ${n} 条正则？可在快切页顶撤销。`) : true;
+    return typeof confirm === 'function' ? confirm(`确定删除选中的 ${n} 条正则？可在回收站还原。`) : true;
   }
   function askGroup() {
     const prompt = root.ownerDocument?.defaultView?.prompt;
@@ -510,15 +518,41 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return value === null ? null : String(value).trim();
   }
 
-  function undoBar(undo) {
-    const bar = el('div', 'qm-regex-undobar');
-    bar.append(el('span', 'qm-regex-undobar-text', `已删除 ${undo.count} 条`));
-    const button = el('button', 'qm-regex-selact', '撤销删除'); button.type = 'button';
-    button.dataset.key = 'undo';
-    button.setAttribute('aria-label', `撤销删除 ${undo.count} 条正则`);
-    button.addEventListener('click', () => { Promise.resolve().then(() => actions.undoRemove()).catch(error => notify(error?.message || '撤销失败', 'warning')); });
-    bar.append(button);
-    return bar;
+  // C-15 s5：回收站列表。样式同正则卡；每条尾部换成还原图标。顶部「全部还原」，底部内存态小字。
+  function recycleList(recycle) {
+    const card = el('section', 'qm-regex-card qm-regex-recycle');
+    const head = el('header', 'qm-regex-card-head');
+    head.append(el('h4', 'qm-regex-title', '已删除'));
+    head.append(el('span', 'qm-regex-note', `${recycle.count} 条`));
+    if (recycle.count && typeof actions.undoRemove === 'function') {
+      const all = el('button', 'qm-regex-tool qm-regex-recycle-all'); all.type = 'button';
+      all.dataset.key = 'recycle-all';
+      all.setAttribute('aria-label', `全部还原 ${recycle.count} 条`); all.title = '全部还原';
+      const ic = el('i', 'fa-solid fa-rotate-left'); ic.setAttribute('aria-hidden', 'true');
+      all.append(ic, el('span', 'qm-regex-tool-label', '全部还原'));
+      all.addEventListener('click', () => { Promise.resolve().then(() => actions.undoRemove({})).catch(error => notify(error?.message || '还原失败', 'warning')); });
+      head.append(all);
+    }
+    card.append(head);
+    const box = el('div', 'qm-regex-list');
+    if (!recycle.items.length) box.append(el('p', 'qm-regex-empty', '回收站是空的'));
+    for (const entry of recycle.items) {
+      const node = el('div', 'qm-regex-row qm-regex-trash-row');
+      node.dataset.key = `trash:${entry.key}`;
+      const name = el('span', 'qm-regex-name', entry.name); name.title = entry.name;
+      if (entry.source === 'preset') name.append(document.createTextNode(entry.preset ? `（预设「${entry.preset}」）` : '（预设）'));
+      const restore = el('button', 'qm-regex-trash-restore'); restore.type = 'button';
+      restore.dataset.key = `restore:${entry.key}`;
+      restore.setAttribute('aria-label', `还原「${entry.name}」`); restore.title = '还原';
+      const ri = el('i', 'fa-solid fa-rotate-left'); ri.setAttribute('aria-hidden', 'true');
+      restore.append(ri);
+      restore.addEventListener('click', () => { Promise.resolve().then(() => actions.undoRemove({ keys: [entry.key] })).catch(error => notify(error?.message || '还原失败', 'warning')); });
+      node.append(name, restore);
+      box.append(node);
+    }
+    card.append(box);
+    card.append(el('p', 'qm-regex-recycle-note', '刷新或重启 ST 后自动清空'));
+    return card;
   }
 
   function dispose() { disposed = true; lockPanel(false); root.replaceChildren?.(); }

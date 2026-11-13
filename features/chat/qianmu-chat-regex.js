@@ -399,8 +399,10 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
   const folded = new Set();   // C-14e：卡片/分组折叠态（card:global / group:preset:xx），跨页签保持
-  // C-14f：管理态（多选 / 拖动 / 分组改名）、编辑子页目标、结构性写回中、最近一次删除（可撤销）。都只活在本次会话。
-  let managing = false, editing = null, writing = false, lastRemoved = null;
+  // C-14f：管理态（多选 / 拖动 / 分组改名）、编辑子页目标、结构性写回中。都只活在本次会话。
+  // C-15 s5：回收站——被删条目累积在内存里（刷新/重启即清空），可逐条或整批还原。
+  let managing = false, editing = null, writing = false, recycleOpen = false;
+  const removed = [];
   const selected = new Set();
   const context = () => attempt(() => getContext(), {});
   // 本聊天绑定的规范形：{ enabled, overrides, preset }。所有写入都在它之上打补丁，绝不丢掉其它字段。
@@ -421,7 +423,11 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const b = currentBinding();
     return Object.freeze({ view, pending: Object.freeze([...pending]), folded: Object.freeze([...folded]),
       managing, writing, selected: Object.freeze([...selected]), editing: editing ? Object.freeze({ ...editing }) : null,
-      undo: lastRemoved ? Object.freeze({ count: lastRemoved.reduce((n, batch) => n + batch.removed.length, 0) }) : null,
+      // C-15 s5：回收站。最近删除在前；每条带还原键。开着时视图改显「已删除」列表。
+      recycle: Object.freeze({ open: recycleOpen, count: removed.length,
+        items: Object.freeze([...removed].reverse().map(entry => Object.freeze({
+          key: entry.key, source: entry.source, preset: entry.preset,
+          name: text(entry.script?.scriptName) || '（未命名）' }))) }),
       binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
       sources: readRegexSources(context()) });
@@ -632,34 +638,44 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       return index < 0 ? null : structuredClone(list[index]);
     } catch (_) { return null; }
   }
-  // 删除：整批写回；记下被删条目与原位置，可一键撤销（预设已切换则拒绝撤销到别的预设里）。
+  // 删除：整批写回；被删条目逐条进回收站（含原下标），可逐条或整批还原。回收站是内存态，刷新/重启即清空。
+  let removedSeq = 0;
   const removeMany = ({ items } = {}) => structural('删除正则', async ctx => {
-    const batches = []; let reload = false, count = 0;
+    const staged = []; let reload = false, count = 0;
     for (const [source, list] of bySource(items)) {
       const out = await editRegexList(ctx, source, raw => {
-        const { next, removed } = removeRegexEntries(raw, locateIndices(raw, list));
-        return { next, touched: removed.map(entry => entry.script), result: removed };
+        const { next, removed: gone } = removeRegexEntries(raw, locateIndices(raw, list));
+        return { next, touched: gone.map(entry => entry.script), result: gone };
       });
-      batches.push({ source, preset: source === 'preset' ? presetNameNow() : '', removed: out.result });
+      const preset = source === 'preset' ? presetNameNow() : '';
+      for (const entry of out.result) staged.push({ key: `trash-${++removedSeq}`, source, preset, index: entry.index, script: entry.script });
       count += out.result.length; reload ||= out.reload;
     }
-    lastRemoved = count ? batches : lastRemoved;
-    if (count) notify(`已删除 ${count} 条正则，可在快切页顶撤销`, 'success');
+    if (count) { removed.push(...staged); notify(`已删除 ${count} 条正则，可在回收站还原`, 'success'); }
     return { reload, result: count };
   });
-  const undoRemove = () => structural('撤销删除', async ctx => {
-    if (!lastRemoved) return { result: 0 };
-    let reload = false, count = 0;
-    for (const batch of lastRemoved) {
-      if (batch.source === 'preset' && batch.preset !== presetNameNow()) throw new Error(`删除发生在预设「${batch.preset}」，切回该预设后再撤销`);
+  // 还原：keys 省略＝全部还原；否则只还原指定条目。预设已切换则拒绝还原到别的预设里。还原成功的从回收站移除。
+  const undoRemove = ({ keys } = {}) => structural('撤销删除', async ctx => {
+    const pick = Array.isArray(keys) ? new Set(keys.map(String)) : null;
+    const chosen = removed.filter(entry => !pick || pick.has(entry.key));
+    if (!chosen.length) return { result: 0 };
+    const batches = new Map();
+    for (const entry of chosen) {
+      if (entry.source === 'preset' && entry.preset !== presetNameNow()) throw new Error(`删除发生在预设「${entry.preset}」，切回该预设后再还原`);
+      if (!batches.has(entry.source)) batches.set(entry.source, []);
+      batches.get(entry.source).push(entry);
     }
-    for (const batch of lastRemoved) {
-      const out = await editRegexList(ctx, batch.source, raw => ({ next: restoreRegexEntries(raw, batch.removed), touched: batch.removed.map(entry => entry.script) }));
-      reload ||= out.reload; count += batch.removed.length;
+    let reload = false, count = 0; const done = new Set();
+    for (const [source, entries] of batches) {
+      const out = await editRegexList(ctx, source, raw => ({ next: restoreRegexEntries(raw, entries), touched: entries.map(entry => entry.script) }));
+      reload ||= out.reload; count += entries.length;
+      for (const entry of entries) done.add(entry.key);
     }
-    lastRemoved = null;
+    for (let i = removed.length - 1; i >= 0; i -= 1) if (done.has(removed[i].key)) removed.splice(i, 1);
+    if (!removed.length) recycleOpen = false;
     return { reload, result: count };
   });
+  function setRecycle(on) { recycleOpen = on === true && removed.length > 0; refresh(); }
   // 复制：to 省略或同源 = 原地复制（紧跟原条目、名字加「副本」）；to 为另一来源 = 原名复制到那一来源末尾。
   const copyMany = ({ items, to = '' } = {}) => structural('复制正则', async ctx => {
     let reload = false, count = 0;
@@ -769,7 +785,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
-    readScript, removeMany, undoRemove, copyMany, move, moveRow, insert, saveScript, regroup,
+    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, insert, saveScript, regroup,
     setManaging, setSelected, openEditor, closeEditor,
   });
   async function mount(host) {

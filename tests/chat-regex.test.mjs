@@ -474,8 +474,7 @@ test('writable sources render accessible switches that call actions.toggle and s
   on.listeners.click(); preset.listeners.click(); off.listeners.click();
   await settle();
   assert.deepEqual(calls, [{ source: 'global', id: 'g1', name: '开着', enabled: false }, { source: 'preset', id: 'p1', name: '预设', enabled: false }]);
-  const hint = walk(host).find(n => n.classList.contains('qm-regex-hint'));
-  assert.match(hint.textContent, /即时写回 ST/);
+  assert.equal(walk(host).find(n => n.classList.contains('qm-regex-hint')), undefined, '底部提示已移除');
   view.dispose();
 });
 
@@ -914,16 +913,29 @@ const mgr = (overrides = {}) => {
   return { st, timers, notes, ctrl };
 };
 
-test('removeMany deletes a batch, exposes an undo count, and undoRemove restores them', async () => {
+test('removeMany moves a batch into the recycle bin, exposes a count, and undoRemove restores them', async () => {
   const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }, { id: 'g3', scriptName: 'C' }] });
   const n = await ctrl.actions.removeMany({ items: [{ source: 'global', id: 'g1', name: 'A' }, { source: 'global', id: 'g3', name: 'C' }] });
   assert.equal(n, 2);
   assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g2']);
-  assert.equal(ctrl.state().undo.count, 2, '撤销计数');
+  assert.equal(ctrl.state().recycle.count, 2, '回收站计数');
+  assert.deepEqual(ctrl.state().recycle.items.map(e => e.name), ['C', 'A'], '最近删除在前');
   const back = await ctrl.actions.undoRemove();
   assert.equal(back, 2);
   assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], '还原到原位');
-  assert.equal(ctrl.state().undo, null, '撤销后清空');
+  assert.equal(ctrl.state().recycle.count, 0, '全部还原后清空');
+});
+
+test('the recycle bin accumulates across deletions and restores a single entry by key', async () => {
+  const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }, { id: 'g3', scriptName: 'C' }] });
+  await ctrl.actions.removeMany({ items: [{ source: 'global', id: 'g1', name: 'A' }] });
+  await ctrl.actions.removeMany({ items: [{ source: 'global', id: 'g3', name: 'C' }] });
+  assert.equal(ctrl.state().recycle.count, 2, '多次删除累积');
+  const first = ctrl.state().recycle.items.find(e => e.name === 'A');
+  const back = await ctrl.actions.undoRemove({ keys: [first.key] });
+  assert.equal(back, 1);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2'], 'A 回到原位，C 仍在回收站');
+  assert.deepEqual(ctrl.state().recycle.items.map(e => e.name), ['C'], '只剩未还原的那条');
 });
 
 test('copyMany duplicates in place for the same source and appends across sources', async () => {
@@ -1059,18 +1071,26 @@ test('manage toggle turns rows into checkbox + reorder + editable name, and a se
   view.dispose();
 });
 
-test('an undo bar appears when state.undo is set and calls actions.undoRemove', async () => {
+test('a recycle toggle appears when entries are deleted; opening it lists them and restores by key', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const host = fakeDom();
-  let undone = 0;
+  const restored = [];
   const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
-  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, undoRemove: () => { undone += 1; } } });
-  view.render(Object.freeze({ ...ctrl.state(), undo: { count: 3 } }));
-  const bar = walkAll(host).find(n => n.classList?.contains('qm-regex-undobar'));
-  assert.ok(bar, '撤销条出现');
-  byKey(host, 'undo').listeners.click(); await settle();
-  assert.equal(undone, 1);
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setRecycle: () => {}, undoRemove: args => { restored.push(args); return 1; } } });
+  const recycle = { open: false, count: 2, items: [{ key: 'trash-2', source: 'global', preset: '', name: 'C' }, { key: 'trash-1', source: 'global', preset: '', name: 'A' }] };
+  // 折叠态：工具行里出现回收站开关，没有旧的「撤销条」。
+  view.render(Object.freeze({ ...ctrl.state(), recycle: { ...recycle, open: false } }));
+  assert.ok(byKey(host, 'recycle'), '回收站开关出现');
+  assert.equal(walkAll(host).find(n => n.classList?.contains('qm-regex-undobar')), undefined, '旧撤销条已移除');
+  // 打开态：列表显示已删除条目 + 还原图标 + 全部还原 + 内存态小字。
+  view.render(Object.freeze({ ...ctrl.state(), recycle: { ...recycle, open: true } }));
+  const text = walkAll(host).map(n => n.textContent).join('|');
+  assert.ok(text.includes('已删除') && text.includes('刷新或重启 ST 后自动清空'), '回收站标题与内存态说明');
+  byKey(host, 'restore:trash-1').listeners.click(); await settle();
+  assert.deepEqual(restored.at(-1), { keys: ['trash-1'] }, '单条按键还原');
+  byKey(host, 'recycle-all').listeners.click(); await settle();
+  assert.deepEqual(restored.at(-1), {}, '全部还原');
   view.dispose();
 });
 
