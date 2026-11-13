@@ -82,9 +82,12 @@ test('account changes after submission hide old private state and cannot resubmi
 function dom() {
   const document = { createElement: tag => new Element(tag) };
   class Element {
-    constructor(tag) { this.tag = tag; this.children = []; this.handlers = {}; this.ownerDocument = document; this.value = ''; this.textContent = ''; this.classList = { toggle() {} }; }
-    append(...children) { this.children.push(...children); }
-    replaceChildren(...children) { this.children = children; }
+    constructor(tag) { this.tag = tag; this.children = []; this.handlers = {}; this.ownerDocument = document; this.value = ''; this.textContent = ''; this.classList = { toggle() {} }; this.style = {}; }
+    remove() { this.removed = true; }
+    // Like the real DOM, appending moves a node out of its previous parent.
+    adopt(children) { for (const child of children) { if (child.parentNode && child.parentNode !== this) child.parentNode.children = child.parentNode.children.filter(node => node !== child); child.parentNode = this; } }
+    append(...children) { this.adopt(children); this.children.push(...children); }
+    replaceChildren(...children) { this.adopt(children); this.children = children; }
     addEventListener(type, handler) { this.handlers[type] = handler; }
     focus() {}
     setAttribute() {}
@@ -137,7 +140,7 @@ test('role autocomplete binds the selected avatar, keeps the controls icon-only,
   assert.equal(list.children.at(-1), ui.find(node => node.className === 'qm-recovery-load-more'), 'load-more is inside the scroll container');
 });
 
-test('role picker is an in-panel list and writes the chosen role into the search field', async () => {
+test('role picker (inline fallback without a toolkit panel) writes the chosen role into the search field', async () => {
   const f = fixture(); await f.controller.load();
   const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
   const icon = ui.find(node => node.className === 'qm-recovery-icon-button'); await icon.handlers.click();
@@ -148,6 +151,33 @@ test('role picker is an in-panel list and writes the chosen role into the search
   await choice.handlers.click();
   assert.equal(ui.find(node => node.tag === 'input' && node.placeholder === '搜索角色名').value, '合成角色');
   assert.equal(ui.find(node => node.tag === 'button' && node.innerHTML?.includes('fa-rotate')).disabled, false);
+});
+
+test('C-15: inside the toolkit panel the role picker floats on a panel-level layer instead of the scrolling view', async () => {
+  const f = fixture(); await f.controller.load();
+  const ui = dom(); const panel = ui.root.ownerDocument.createElement('div'); panel.className = 'sd-floor-panel';
+  const rect = (top, left, width, height) => ({ top, left, width, height, bottom: top + height, right: left + width });
+  const listeners = {}; ui.root.addEventListener = (type, handler) => { listeners[type] = handler; }; ui.root.removeEventListener = type => { delete listeners[type]; };
+  ui.root.closest = selector => selector === '.sd-floor-panel' ? panel : null;
+  ui.root.getBoundingClientRect = () => rect(100, 20, 500, 400);
+  panel.getBoundingClientRect = () => rect(0, 0, 540, 700); panel.clientWidth = 540; panel.clientHeight = 700;
+  let anchorTop = 120;
+  const view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const layer = panel.children.find(node => node.className === 'qm-recovery-layer');
+  assert.ok(layer, 'overlay layer is appended to the panel, outside the scroll container');
+  const picker = layer.children.find(node => node.className === 'qm-recovery-role-picker');
+  assert.ok(picker && !ui.find(node => node === picker), 'picker no longer lives inside the scrolling view');
+  assert.ok(layer.children.some(node => node.className === 'qm-recovery-role-suggestions'), 'suggestions share the layer');
+  const control = ui.find(node => node.className === 'qm-recovery-character-control');
+  control.getBoundingClientRect = () => rect(anchorTop, 34, 40, 36);
+  const icon = ui.find(node => node.className === 'qm-recovery-icon-button'); await icon.handlers.click();
+  assert.equal(picker.hidden, false);
+  assert.equal(picker.style.top, '162px'); assert.equal(picker.style.left, '34px');
+  anchorTop = 60; listeners.scroll();
+  assert.equal(picker.style.top, '102px', 'scrolling the view re-anchors the overlay');
+  assert.equal(picker.style.visibility, 'hidden', 'anchor scrolled out of the view hides the overlay');
+  view.dispose();
+  assert.equal(layer.removed, true, 'dispose removes the panel-level layer'); assert.equal(listeners.scroll, undefined);
 });
 
 test('native ST Assistant is omitted from the recovery role picker and suggestions', async () => {

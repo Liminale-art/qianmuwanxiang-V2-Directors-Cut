@@ -393,7 +393,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.484')]);
+    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.503')]);
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;

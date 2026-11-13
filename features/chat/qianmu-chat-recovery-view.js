@@ -216,7 +216,30 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     }));
     previewActions.append(targetLabel, recover);
 
-    root.replaceChildren(status, tools, nativePolicy, suggestions, loadedCount, list, previewActions);
+    // C-15: the role picker and the typed suggestions are overlays. Inside the
+    // scrolling view they were clipped and scrolled away with the page, so when
+    // the view sits in the toolkit panel they move to a panel-level layer (the
+    // panel is positioned and never clips) and follow their anchors by
+    // coordinates. Without a panel (tests, detached hosts) they stay inline.
+    const panel = root.closest?.('.sd-floor-panel') || null;
+    const layer = panel ? element('div', 'qm-recovery-layer') : null;
+    if (layer) { layer.append(rolePicker, suggestions); panel.append(layer); }
+    const placeOverlay = (node, anchor, matchWidth, cap) => {
+        if (node.hidden || !panel || typeof anchor.getBoundingClientRect !== 'function') return;
+        const box = panel.getBoundingClientRect(), view = root.getBoundingClientRect(), at = anchor.getBoundingClientRect();
+        const ox = box.left + (panel.clientLeft || 0), oy = box.top + (panel.clientTop || 0);
+        // The anchor scrolled out of the visible page: hide instead of floating over the header.
+        node.style.visibility = at.bottom < view.top || at.top > view.bottom ? 'hidden' : '';
+        if (matchWidth) node.style.width = `${Math.round(at.width)}px`;
+        const width = node.offsetWidth || at.width, inner = panel.clientWidth || box.width;
+        const top = at.bottom - oy + 6, left = Math.max(8, Math.min(at.left - ox, inner - width - 8));
+        node.style.top = `${Math.round(top)}px`; node.style.left = `${Math.round(left)}px`;
+        node.style.maxHeight = `${Math.round(Math.max(120, Math.min(cap, (panel.clientHeight || box.height) - top - 8)))}px`;
+    };
+    const placeOverlays = () => { if (disposed || !layer) return; placeOverlay(rolePicker, characterControl, false, 420); placeOverlay(suggestions, tools, true, 220); };
+    const win = document.defaultView;
+    if (layer) { root.addEventListener('scroll', placeOverlays, { passive: true }); win?.addEventListener?.('resize', placeOverlays); }
+    root.replaceChildren(status, tools, nativePolicy, ...(layer ? [] : [suggestions]), loadedCount, list, previewActions);
 
     const createPreviewSection = currentPreview => {
         const section = element('section', 'qm-recovery-preview');
@@ -358,6 +381,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             ? '正在读取备份…'
             : hasRead ? `当前已加载 ${loadedRole} ${loadedVisible} / ${rows.length} 份聊天记录` : '';
         loadedCount.hidden = !snapshot.busy && !hasRead;
+        placeOverlays();
         previewActions.hidden = !currentPreview;
         list.replaceChildren();
         const shownRows = rows.slice(0, visibleLimit);
@@ -432,5 +456,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     if (typeof controller.inspectNativeBackupPolicy === 'function' && controller.snapshot()?.nativeBackupPolicy?.availability === 'unknown') {
         void run(() => controller.inspectNativeBackupPolicy());
     }
-    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren(); } });
+    return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
+        if (layer) { root.removeEventListener?.('scroll', placeOverlays); win?.removeEventListener?.('resize', placeOverlays); layer.remove?.(); } } });
 }

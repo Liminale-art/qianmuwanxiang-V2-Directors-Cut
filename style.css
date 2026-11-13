@@ -782,6 +782,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 #story-director-floor-nav .qm-recovery-role-suggestions { display: grid; gap: 4px; max-height: 220px; overflow: auto; padding: 5px; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-card); box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
 #story-director-floor-nav .qm-recovery-role-suggestions[hidden] { display: none !important; }
+/* C-15：角色下拉与联想列表挂到面板级浮层（.qm-recovery-layer，display:contents），不再被页内滚动容器裁切；坐标由视图脚本按触发控件换算。离开备份页即隐藏。 */
+#story-director-floor-nav .qm-recovery-layer { display: contents; }
+#story-director-floor-nav .qm-recovery-layer > :is(.qm-recovery-role-picker, .qm-recovery-role-suggestions) { position: absolute; z-index: 40; box-sizing: border-box; }
+#story-director-floor-nav .sd-floor-panel:has(> [data-floor-view="recovery"][hidden]) > .qm-recovery-layer { display: none; }
 #story-director-floor-nav .qm-recovery-suggestion { width: 100%; min-width: 0; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-floor-nav .qm-recovery-suggestion[role="option"] { min-height: 32px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--sd-text); }
 #story-director-floor-nav .qm-recovery-suggestion[role="option"]:hover,
@@ -799,8 +803,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-target-fixed { margin: 0; font-size: var(--qm-type-label); overflow-wrap: anywhere; }
 #story-director-floor-nav .qm-recovery-file-details { font-size: var(--qm-type-caption); color: var(--sd-muted); }
 #story-director-floor-nav .qm-recovery-file-details p { margin: 6px 0 0; overflow-wrap: anywhere; }
-#story-director-floor-nav [data-floor-view="recovery"] :is(input, select, button) { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
-#story-director-floor-nav [data-floor-view="recovery"] button:disabled { opacity: .5; cursor: default; }
+#story-director-floor-nav :is([data-floor-view="recovery"], .qm-recovery-layer) :is(input, select, button) { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
+#story-director-floor-nav :is([data-floor-view="recovery"], .qm-recovery-layer) button:disabled { opacity: .5; cursor: default; }
 #story-director-floor-nav .qm-recovery-list { display: grid; gap: 5px; min-width: 0; max-width: 100%; max-height: min(60vh, 640px); overflow: auto; }
 #story-director-floor-nav .qm-recovery-row { display: grid; gap: 5px; min-width: 0; max-width: 100%; }
 #story-director-floor-nav .qm-recovery-list .qm-recovery-item { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-align: start; background: var(--sd-card); }
@@ -815,7 +819,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-load-more { width: 100%; }
 #story-director-floor-nav .qm-recovery-preview,
 #story-director-floor-nav .qm-recovery-receipt { display: flex; flex-direction: column; gap: var(--qm-floor-gap); padding: var(--qm-floor-card-pad); border: 1px solid var(--sd-border); border-radius: var(--qm-card-radius, 12px); background: var(--sd-card); }
-#story-director-floor-nav [data-floor-view="recovery"] [hidden] { display: none !important; }
+#story-director-floor-nav :is([data-floor-view="recovery"], .qm-recovery-layer) [hidden] { display: none !important; }
 #story-director-floor-nav .qm-recovery-preview h4 { margin: 0; font-size: var(--qm-type-label); }
 #story-director-floor-nav .qm-recovery-preview-body { display: grid; gap: 6px; }
 #story-director-floor-nav .qm-recovery-preview-hint { display: block; margin: 0 0 2px; color: var(--sd-muted); font-size: var(--qm-type-caption); }
