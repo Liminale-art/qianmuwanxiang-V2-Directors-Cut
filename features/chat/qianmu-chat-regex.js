@@ -59,6 +59,96 @@ export function groupRegexScripts(items) {
   return groups;
 }
 
+// C-15 s9：单一模式「原始顺序 + 相邻同类折叠」——永不重排（显示顺序 = 执行顺序），只把相邻同类折成一段。
+// 【X】/[X] 标签 = 显式分组（手动命名写的就是它），优先于一切自动规则；否则剥掉互斥标记（(A选一)、B选一、二选一…）
+// 与尾部序号（-1、(2)、①②…），再按相邻两条的「相同核心 / 相同分隔前缀 / 共同前缀≥2 / 共同尾词≥2」成段。
+const EXCLUSIVE_MARK = /^\s*[（(]?\s*[A-Za-zＡ-Ｚ一二三四五六七八九十多]\s*选\s*[一1壹]\s*[）)]?[-_·:：|｜/\s]*/u;
+const EXCLUSIVE_TAIL = /[-_·:：|｜/\s]*[（(]\s*[A-Za-zＡ-Ｚ一二三四五六七八九十多]\s*选\s*[一1壹]\s*[）)]\s*$/u;
+const CIRCLED_TAIL = /[\s\-_]*[①-⑳❶-❿⓫-⓴]+\s*$/u;
+const EDGE_JUNK = /[-_·:：|｜/\s（()）【】[\]]/u;
+const WORDY = /[A-Za-z0-9]/;
+
+export function regexFamilyKey(name) {
+  const raw = text(name);
+  const bracket = raw.match(LEAD_BRACKET);
+  const tag = bracket?.[1]?.trim() || '';
+  let core = (tag ? raw.slice(bracket[0].length) : raw).replace(EXCLUSIVE_MARK, '').replace(EXCLUSIVE_TAIL, '');
+  for (let i = 0; i < 3; i += 1) {
+    const next = stripOrdinal(core.replace(CIRCLED_TAIL, ''));
+    if (next === core) break;
+    core = next;
+  }
+  core = core.trim() || raw;
+  const cut = core.search(SEPARATOR);
+  return Object.freeze({ tag, core, head: cut > 0 ? core.slice(0, cut).trim() : '' });
+}
+
+// 两串的共同前缀（fromEnd=共同尾巴），去掉边缘分隔/括号；拉丁词不在词中间截断；需 ≥2 字且含文字，否则返回空。
+function sharedEdge(a, b, fromEnd) {
+  const x = fromEnd ? [...a].reverse() : [...a], y = fromEnd ? [...b].reverse() : [...b];
+  let n = 0;
+  while (n < x.length && n < y.length && x[n] === y[n]) n += 1;
+  if (n > 0 && WORDY.test(x[n - 1]) && ((n < x.length && WORDY.test(x[n])) || (n < y.length && WORDY.test(y[n])))) {
+    while (n > 0 && WORDY.test(x[n - 1])) n -= 1;
+  }
+  const part = x.slice(0, n);
+  while (part.length && EDGE_JUNK.test(part[part.length - 1])) part.pop();
+  if (fromEnd) part.reverse();
+  while (part.length && EDGE_JUNK.test(part[0])) part.shift();
+  return part.length >= 2 && /\p{L}/u.test(part.join('')) ? part.join('') : '';
+}
+
+function pairFamily(a, b) {
+  if (a.tag || b.tag) return a.tag && a.tag === b.tag ? { mode: 'tag', label: a.tag } : null;
+  if (a.core === b.core) return { mode: 'prefix', label: a.core };
+  if (a.head && a.head === b.head) return { mode: 'prefix', label: a.head };
+  const pre = sharedEdge(a.core, b.core, false);
+  if (pre) return { mode: 'prefix', label: pre };
+  const suf = sharedEdge(a.core, b.core, true);
+  return suf ? { mode: 'suffix', label: suf } : null;
+}
+
+// 段已定类别后，下一条能否并入；能则返回（可能收窄的）新标签。
+function extendFamily(run, f) {
+  if (run.mode === 'tag') return f.tag === run.label ? run.label : '';
+  if (f.tag) return '';
+  if (f.core === run.label || f.head === run.label) return run.label;
+  return sharedEdge(run.label, f.core, run.mode === 'suffix');
+}
+
+// 段：{ key, label, mode, items }。成组段 label 非空、≥2 条；散条连续合为一个 label 为空的段。
+// key 在同名段重复出现时带 #n，供折叠状态区分；拼回所有段的 items 恰为原列表。
+export function groupAdjacentRegex(items) {
+  const list = Array.isArray(items) ? items : [];
+  const fams = list.map(item => regexFamilyKey(item?.name));
+  const out = [], seen = new Map();
+  let loose = null;
+  for (let i = 0; i < list.length;) {
+    const pair = i + 1 < list.length ? pairFamily(fams[i], fams[i + 1]) : null;
+    if (!pair) {
+      if (!loose) { loose = { key: '', label: '', mode: '', items: [] }; out.push(loose); }
+      loose.items.push(list[i]); i += 1; continue;
+    }
+    loose = null;
+    const run = { ...pair };
+    let j = i + 2;
+    for (; j < list.length; j += 1) { const next = extendFamily(run, fams[j]); if (!next) break; run.label = next; }
+    const n = (seen.get(run.label) || 0) + 1; seen.set(run.label, n);
+    out.push({ key: n > 1 ? `${run.label}#${n}` : run.label, label: run.label, mode: run.mode, items: list.slice(i, j) });
+    i = j;
+  }
+  return out;
+}
+
+// 手动命名 = 写入开头的【标签】（替换已有标签），不改名字正文；tag 为空 = 去掉标签。
+export function tagRegexName(name, tag) {
+  const raw = text(name), dest = text(tag).replace(/[【】[\]]/gu, '').trim();
+  const bracket = raw.match(LEAD_BRACKET);
+  const body = bracket ? raw.slice(bracket[0].length).trim() : raw;
+  if (!dest) return body || raw;
+  return `【${dest}】${body}`;
+}
+
 export function summarizeRegexScript(raw, index = 0) {
   const script = raw && typeof raw === 'object' ? raw : {};
   const placement = (Array.isArray(script.placement) ? script.placement : [])

@@ -6,7 +6,7 @@ import {
   locateRegexScript, writeRegexToggle, writeRegexStates, REGEX_RELOAD_DELAY,
   regexBindingKey, resolveRegexTarget,
   blankRegexScript, removeRegexEntries, restoreRegexEntries, cloneRegexScript, copyRegexEntries, moveRegexEntries,
-  assignRegexGroup, editRegexList, parseRegexLiteral, previewRegexScript,
+  assignRegexGroup, editRegexList, parseRegexLiteral, previewRegexScript, regexFamilyKey, groupAdjacentRegex, tagRegexName,
   readPresetChoices, resolvePresetTarget, switchPreset, presetDisplaySignature,
 } from '../features/chat/qianmu-chat-regex.js';
 
@@ -46,6 +46,54 @@ test('groupRegexScripts needs two members per group and keeps the rest under 未
   assert.deepEqual(groupRegexScripts(null), []);
   // Grouping never loses or duplicates a script.
   assert.equal(groups.reduce((n, g) => n + g.items.length, 0), list.length);
+});
+
+// C-15 s9：用户举的例子写死。
+test('regexFamilyKey strips exclusive marks, bracket tags and ordinals', () => {
+  assert.deepEqual({ ...regexFamilyKey('(A选一)角色状态栏') }, { tag: '', core: '角色状态栏', head: '' });
+  assert.equal(regexFamilyKey('（B选一）简洁状态栏').core, '简洁状态栏');
+  assert.equal(regexFamilyKey('A选一-状态栏').core, '状态栏', '无括号互斥标记也剥掉');
+  assert.equal(regexFamilyKey('状态栏(二选一)').core, '状态栏', '尾部互斥标记');
+  assert.equal(regexFamilyKey('去自检注释①').core, '去自检注释');
+  assert.equal(regexFamilyKey('去自检注释 ②').core, '去自检注释');
+  assert.equal(regexFamilyKey('美化-3').core, '美化');
+  assert.deepEqual({ ...regexFamilyKey('【小剧场】折叠') }, { tag: '小剧场', core: '折叠', head: '' });
+  assert.equal(regexFamilyKey('状态栏-隐藏').head, '状态栏');
+  assert.equal(regexFamilyKey('A选一').core, 'A选一', '只剩标记时保留原名');
+});
+
+test('groupAdjacentRegex folds adjacent same-family runs without reordering', () => {
+  const list = items('不发送剧场', '不发送片尾', '不发送剧情走向', '去自检注释①', '去自检注释②',
+    '(A选一)角色状态栏', '(A选一)简洁状态栏', '(B选一)详细状态栏', '独立', '美化', '不发送日志');
+  const runs = groupAdjacentRegex(list);
+  assert.deepEqual(runs.map(r => r.label), ['不发送', '去自检注释', '状态栏', '']);
+  assert.deepEqual(names(runs[0].items), ['不发送剧场', '不发送片尾', '不发送剧情走向']);
+  assert.deepEqual(names(runs[1].items), ['去自检注释①', '去自检注释②']);
+  assert.deepEqual(names(runs[2].items), ['(A选一)角色状态栏', '(A选一)简洁状态栏', '(B选一)详细状态栏'], 'A选一/B选一 不单独成类');
+  assert.deepEqual(names(runs[3].items), ['独立', '美化', '不发送日志'], '不相邻的同类不并入前面的组');
+  assert.deepEqual(runs.flatMap(r => r.items), list, '拼回恰为原列表（不重排、不丢不重）');
+  assert.deepEqual(groupAdjacentRegex([]), []);
+  assert.deepEqual(groupAdjacentRegex(null), []);
+});
+
+test('groupAdjacentRegex: explicit 【tag】 wins, separators and repeats', () => {
+  const runs = groupAdjacentRegex(items('【排版】标题', '【排版】段落', '【美化】标题', '状态栏-隐藏', '状态栏-美化', 'xxx-1', 'xxx-2', 'yy', 'xxx-3', 'xxx-4'));
+  assert.deepEqual(runs.map(r => [r.label, r.mode, r.items.length]),
+    [['排版', 'tag', 2], ['', '', 1], ['状态栏', 'prefix', 2], ['xxx', 'prefix', 2], ['', '', 1], ['xxx', 'prefix', 2]]);
+  assert.deepEqual(runs.map(r => r.key), ['排版', '', '状态栏', 'xxx', '', 'xxx#2'], '同名段 key 带序号区分折叠');
+  // 共同前缀需 ≥2 字：单字「去」不成组；拉丁词不在词中截断。
+  assert.deepEqual(groupAdjacentRegex(items('去括号', '去空行')).map(r => r.label), ['']);
+  assert.deepEqual(groupAdjacentRegex(items('Status bar', 'Statistics')).map(r => r.label), ['']);
+  assert.deepEqual(groupAdjacentRegex(items('think-hide', 'think-fold')).map(r => r.label), ['think']);
+  // 手动标签与自动规则不混：有标签的不与无标签的成段。
+  assert.deepEqual(groupAdjacentRegex(items('【组】状态栏', '状态栏-美化')).map(r => r.label), ['']);
+});
+
+test('tagRegexName writes, replaces or clears the leading 【tag】', () => {
+  assert.equal(tagRegexName('不发送剧场', '屏蔽'), '【屏蔽】不发送剧场');
+  assert.equal(tagRegexName('【旧】甲', '新'), '【新】甲');
+  assert.equal(tagRegexName('[旧] 甲', ''), '甲');
+  assert.equal(tagRegexName('甲', ' 【乙】 '), '【乙】甲', '组名里的括号被剥掉');
 });
 
 test('summarizeRegexScript reads ST script fields without trusting their shape', () => {
