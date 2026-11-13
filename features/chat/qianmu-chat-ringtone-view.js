@@ -265,15 +265,25 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       if (!strip.clientWidth) return index; // not laid out yet: keep the saved value
       return loop ? nearestChild() % n : nearestChild();
     };
+    // C-15: glide to the copy of the value nearest the pointer (a head/tail copy when the strip rests there),
+    // never across a whole set back to the real band; relayout() then swaps to the real band without motion.
+    const closest = at => {
+      if (!loop || !strip.clientWidth) return items[at];
+      const middle = strip.scrollLeft + strip.clientWidth / 2;
+      let best = items[at], gap = Infinity;
+      Array.from(strip.children).forEach((node, i) => { if (i % n !== at) return; const d = Math.abs(node.offsetLeft + node.offsetWidth / 2 - middle); if (d < gap) { gap = d; best = node; } });
+      return best;
+    };
     const centre = (at, smooth) => {
-      const node = items[at]; if (!node) return;
+      const node = smooth ? closest(at) : items[at]; if (!node) return;
       const left = node.offsetLeft - (strip.clientWidth - node.offsetWidth) / 2;
       if (smooth && strip.scrollTo) strip.scrollTo({ left, behavior: 'smooth' }); else strip.scrollLeft = left;
     };
     const commit = at => {
       if (disposed || strip.isConnected === false || at < 0 || at >= options.length) return;
       index = at; mark(at);
-      if (options[at][0] !== current) run(() => actions.update({ [key]: options[at][0] }));
+      // C-15: a wheel pick saves quietly (no panel rebuild), so the strip never jumps back mid-glide.
+      if (options[at][0] !== current) { current = options[at][0]; run(() => actions.update({ [key]: current }, { quiet: true })); }
     };
     const settle = () => { clearTimeout(quiet); quiet = 0; if (!touching) { commit(nearest()); relayout(); } };
     strip.addEventListener('scroll', () => { mark(nearest()); clearTimeout(quiet); quiet = setTimeout(settle, 160); }, { passive: true });

@@ -535,7 +535,7 @@ test('wheel picker renders head/tail copies and snaps a copy-centre back to the 
   // strip.children is a live HTMLCollection (no .forEach); iterating it as an array would throw
   // "kids.forEach is not a function" in the browser and break the whole panel render.
   assert.ok(!/loop \? strip\.children : items;[\s\S]{0,120}?kids\.forEach/.test(view), '不得对 HTMLCollection 直接 forEach');
-  assert.equal((view.match(/Array\.from\(strip\.children\)/g) || []).length, 2, 'nearestChild 与 click 绑定都用 Array.from 包住 children');
+  assert.equal((view.match(/Array\.from\(strip\.children\)/g) || []).length, 3, 'nearestChild / closest / click 绑定都用 Array.from 包住 children');
 
   const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
   const nodes = [];
@@ -549,9 +549,9 @@ test('wheel picker renders head/tail copies and snaps a copy-centre back to the 
     nodes.push(node); return node;
   };
   const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
-  const updates = [];
+  const updates = [], opts = [];
   const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
-    toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: patch => { updates.push(patch); } };
+    toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: (patch, o) => { updates.push(patch); opts.push(o); } };
   const v = mountChatRingtoneView({ root: host, actions });
   v.render(normalizeRingtone({}));
   const dur = nodes.find(n => n.classList.contains('qm-ring-wheel-toastDuration'));
@@ -570,6 +570,18 @@ test('wheel picker renders head/tail copies and snaps a copy-centre back to the 
   const realChild = n + 1;
   assert.equal(dur.scrollLeft, realChild * 46 - (230 - 46) / 2, '停在副本上则瞬移回本体同值项，无动画');
   assert.deepEqual(updates.at(-1), { toastDuration: TOAST_DURATIONS[1][0] }, '提交的是真实下标对应值');
+  assert.deepEqual(opts.at(-1), { quiet: true }, 'C-15：滚轮提交静默保存，不整页重建');
+  // C-15 regression (PC 回弹): a mouse drag released over a head copy glides to that copy — never a whole
+  // set (n × 46px) back to the real band — and only the settle swaps to the real band without motion.
+  const headChild = 3, headPos = headChild * 46 - (230 - 46) / 2;
+  dur.scrollLeft = headPos + 20;
+  dur.listeners.pointerdown({ pointerType: 'mouse', button: 0, clientX: 100 });
+  dur.listeners.pointermove({ pointerType: 'mouse', clientX: 120 });
+  dur.listeners.pointerup({ pointerType: 'mouse' });
+  assert.equal(dur.scrollLeft, headPos, '松手就近滑到副本上的同值项，不跨整段滑回');
+  dur.listeners.scrollend();
+  assert.equal(dur.scrollLeft, (n + headChild) * 46 - (230 - 46) / 2, '落定后瞬移回本体同值项');
+  assert.deepEqual(updates.at(-1), { toastDuration: TOAST_DURATIONS[headChild][0] }, '提交该值');
   v.dispose();
 });
 

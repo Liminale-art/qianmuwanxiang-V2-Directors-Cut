@@ -303,10 +303,11 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
   const syncToast = () => { if (skinActive) applyToastSkin(document, state(), getLook()); };
-  function update(patch) {
+  // { quiet: true }: the view already shows the change (wheel pick), so skip the full panel re-render.
+  function update(patch, { quiet = false } = {}) {
     Object.assign(state(), patch);
     normalizeRingtone(getOwner());
-    save(); syncToast(); refresh();
+    save(); syncToast(); if (!quiet) refresh();
   }
   const newLocalId = () => `l${now().toString(36)}${(localSeq++).toString(36)}`;
   async function localSource(id) {
