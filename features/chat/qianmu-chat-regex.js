@@ -157,6 +157,57 @@ export async function writeRegexToggle(context, { source, id, name, enabled } = 
   return enabled === true;
 }
 
+// ── C-11d：正则绑定聊天 ──────────────────────────────────────────────────────
+// ST 的正则 disabled 是全局/预设级、写盘的，直接按聊天改会泄漏到别的聊天。于是用「全局默认 + 每聊天覆盖」：
+// 进聊天时把 默认 ⊕ 本聊天 overrides 解析成每条脚本的目标态，与 live flags 逐条比较，只写差异，
+// 且仅当被改脚本影响显示（非「仅提示词」）时才需要重载聊天。离开有覆盖的聊天后，默认值把未被覆盖的条目复位，
+// 避免一个聊天的开关泄漏到下一个聊天。只绑定有真实 id 的脚本；synthetic「#index」行不可绑定（重排会指错）。
+
+// 绑定 key：全局按 id，预设按「预设名 + id」，预设换名后旧覆盖自然失配（安全空转）。
+const BINDING_SOURCES = Object.freeze(['global', 'preset']);
+const isRealId = id => text(id) && !/^#\d+$/.test(text(id));
+export function regexBindingKey(source, presetName, id) {
+  if (source === 'global') return `global:${text(id)}`;
+  if (source === 'preset') return `preset:${text(presetName)}:${text(id)}`;
+  return '';
+}
+
+// 把 readRegexSources 的快照摊平成 [{source, key, id, name, enabled, display}]，只含可写且有真实 id 的脚本。
+function flattenBindableScripts(sources) {
+  const snap = sources && typeof sources === 'object' ? sources : {};
+  const rows = [];
+  for (const source of BINDING_SOURCES) {
+    const bucket = snap[source];
+    if (!bucket || bucket.writable !== true || !Array.isArray(bucket.items)) continue;
+    const presetName = source === 'preset' ? bucket.name : '';
+    for (const item of bucket.items) {
+      if (!isRealId(item?.id)) continue;
+      rows.push({ source, key: regexBindingKey(source, presetName, item.id), id: item.id, name: item.name,
+        enabled: item.enabled === true, display: item.scope !== '仅提示词' });
+    }
+  }
+  return rows;
+}
+
+// 纯函数：给定全局默认绑定、本聊天覆盖绑定、当前 live 快照，算出应写回的差异。
+// 目标态优先级：本聊天覆盖 > 全局默认 > 维持现状（不写）。返回 { changes:{global:[],preset:[]}, affectsDisplay }。
+export function resolveRegexTarget({ defaults = {}, overrides = {}, sources = {} } = {}) {
+  const base = defaults && typeof defaults === 'object' ? defaults : {};
+  const over = overrides && typeof overrides === 'object' ? overrides : {};
+  const changes = { global: [], preset: [] };
+  let affectsDisplay = false;
+  for (const row of flattenBindableScripts(sources)) {
+    const pick = Object.prototype.hasOwnProperty.call(over, row.key) ? over[row.key]
+      : Object.prototype.hasOwnProperty.call(base, row.key) ? base[row.key] : null;
+    if (!pick || typeof pick !== 'object') continue;        // 两处都没有 → 维持现状
+    const target = pick.enabled === true;
+    if (target === row.enabled) continue;                   // 已是目标态 → 不写
+    changes[row.source].push({ id: row.id, name: row.name, enabled: target });
+    if (row.display) affectsDisplay = true;
+  }
+  return Object.freeze({ changes: Object.freeze({ global: Object.freeze(changes.global), preset: Object.freeze(changes.preset) }), affectsDisplay });
+}
+
 // Quiet window before the chat reload, so flipping several switches in a row re-renders the chat once.
 export const REGEX_RELOAD_DELAY = 700;
 

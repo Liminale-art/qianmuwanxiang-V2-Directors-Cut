@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   stripOrdinal, regexGroupKey, groupRegexScripts, summarizeRegexScript, readRegexSources, createChatRegex, UNGROUPED_LABEL,
   locateRegexScript, writeRegexToggle, writeRegexStates, REGEX_RELOAD_DELAY,
+  regexBindingKey, resolveRegexTarget,
 } from '../features/chat/qianmu-chat-regex.js';
 
 const root = new URL('../', import.meta.url);
@@ -440,4 +441,47 @@ test('switch styling: rounded line with a sliding dot, focus ring and reduced-mo
   assert.doesNotMatch(css, /\.qm-regex-(?:views|meta)\b/, '旧两段切换与摘要样式已清除');
   assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch:focus-visible {'));
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }'));
+});
+
+test('regexBindingKey namespaces global by id and preset by name+id', () => {
+  assert.equal(regexBindingKey('global', '', 'abc'), 'global:abc');
+  assert.equal(regexBindingKey('preset', '少前', 'p1'), 'preset:少前:p1');
+  assert.equal(regexBindingKey('other', 'x', 'y'), '');
+});
+
+test('resolveRegexTarget: overrides beat defaults, no-op rows and absent keys are skipped', () => {
+  const sources = {
+    global: { writable: true, items: [
+      { id: 'g1', name: '显A', enabled: false, scope: '' },
+      { id: 'g2', name: '显B', enabled: true, scope: '' },
+      { id: '#0', name: '无ID', enabled: true, scope: '' },
+    ] },
+    preset: { writable: true, name: '少前', items: [
+      { id: 'p1', name: '提示P', enabled: false, scope: '仅提示词' },
+    ] },
+  };
+  const defaults = { 'global:g1': { enabled: true }, 'global:g2': { enabled: true } };
+  const overrides = { 'global:g2': { enabled: false }, 'preset:少前:p1': { enabled: true } };
+  const r = resolveRegexTarget({ defaults, overrides, sources });
+  // g1: default on (live off) → change; g2: override off (live on) → change; #0 unbindable; p1 override on.
+  assert.deepEqual(r.changes.global.map(c => [c.id, c.enabled]), [['g1', true], ['g2', false]]);
+  assert.deepEqual(r.changes.preset.map(c => [c.id, c.enabled]), [['p1', true]]);
+  assert.equal(r.affectsDisplay, true, 'g1/g2 是显示类');
+});
+
+test('resolveRegexTarget: display flag ignores prompt-only scripts', () => {
+  const sources = { preset: { writable: true, name: 'P', items: [
+    { id: 'p1', name: '仅提示', enabled: false, scope: '仅提示词' },
+  ] } };
+  const r = resolveRegexTarget({ overrides: { 'preset:P:p1': { enabled: true } }, sources });
+  assert.deepEqual(r.changes.preset.map(c => c.id), ['p1']);
+  assert.equal(r.affectsDisplay, false, '仅提示词改动不需重载');
+});
+
+test('resolveRegexTarget: read-only sources and empty bindings produce no changes', () => {
+  const sources = { global: { writable: false, items: [{ id: 'g1', name: 'A', enabled: false, scope: '' }] } };
+  const r = resolveRegexTarget({ defaults: { 'global:g1': { enabled: true } }, sources });
+  assert.deepEqual(r.changes.global, []);
+  assert.deepEqual(r.changes.preset, []);
+  assert.equal(r.affectsDisplay, false);
 });
