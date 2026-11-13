@@ -626,12 +626,24 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   stroke-linejoin: round !important;
   vector-effect: non-scaling-stroke;
 }
-#story-director-float.sd-hive-theme-dream > .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
+/* C-14: 主 Logo、便笺与可拖出蜂巢格统一虹彩边线（全主题）。主格描边为隔离 ST 美化带 !important，
+   动画无法覆盖 important 声明，因此改为只动画一个注册颜色变量，描边以 important 引用它。
+   仅 1-3 个小多边形的颜色插值，不触发布局；减少动态效果时回到主题边线色。 */
+@property --sd-hive-rainbow { syntax: '<color>'; inherits: false; initial-value: #b7a5e3; }
+#story-director-float.sd-hive-theme-dream > .sd-hive-hex-outline polygon,
+#story-director-float > .sd-hive-hex-outline polygon,
+#qianmu-notes-float-layer .sd-detached-notes-entry > .sd-hive-hex-outline polygon,
+.qm-prose-hive-layer .sd-hive-hex-outline polygon { stroke: var(--sd-hive-rainbow, #b7a5e3) !important; animation: sd-hive-dream-edge 12s ease-in-out infinite; }
 @keyframes sd-hive-dream-edge {
-  0%, 100% { stroke: #b7a5e3; }
-  25% { stroke: #8ec9c0; }
-  50% { stroke: #e4cd8e; }
-  75% { stroke: #e6a8c7; }
+  0%, 100% { --sd-hive-rainbow: #b7a5e3; }
+  25% { --sd-hive-rainbow: #8ec9c0; }
+  50% { --sd-hive-rainbow: #e4cd8e; }
+  75% { --sd-hive-rainbow: #e6a8c7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #story-director-float > .sd-hive-hex-outline polygon { stroke: var(--sd-float-edge, #c99b51) !important; animation: none; }
+  #qianmu-notes-float-layer .sd-detached-notes-entry > .sd-hive-hex-outline polygon,
+  .qm-prose-hive-layer .sd-hive-hex-outline polygon { stroke: var(--sd-wheel-edge) !important; animation: none; }
 }
 #story-director-quick-wheel .sd-wheel-command i {
   color: inherit !important;
@@ -2489,7 +2501,6 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 .sd-detached-notes-entry > i { position: relative; z-index: 2; font-size: calc(var(--sd-notes-entry-height, 48px) * .39); }
 .sd-detached-notes-entry > .sd-hive-hex-outline { position: absolute; inset: .65px; z-index: 3; width: calc(100% - 1.3px); height: calc(100% - 1.3px); pointer-events: none; overflow: visible; }
 .sd-detached-notes-entry > .sd-hive-hex-outline polygon { fill: none; stroke: var(--sd-wheel-edge); stroke-width: 1.2px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-#qianmu-notes-float-layer.sd-hive-theme-dream .sd-detached-notes-entry > .sd-hive-hex-outline polygon, .qm-prose-hive-layer.sd-hive-theme-dream .sd-hive-hex-outline polygon { animation: sd-hive-dream-edge 12s ease-in-out infinite; }
 .sd-detached-notes-entry:active,
 .sd-detached-notes-entry.is-dragging { cursor: grabbing; transform: scale(.96); }
 .sd-detached-notes-entry.is-dragging { transform: none; }

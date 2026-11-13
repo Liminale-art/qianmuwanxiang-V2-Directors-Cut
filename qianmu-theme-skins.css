@@ -66,8 +66,6 @@
 /* New families recolor the same traced logo from their live ink/accent tokens.
    Classic keeps the original image and its remembered color when opting out. */
 #story-director-float[data-qm-theme] > img { display: none !important; }
-/* A remembered classic dream class must not animate over the live accent. */
-#qianmu-notes-float-layer[data-qm-theme] .sd-detached-notes-entry > .sd-hive-hex-outline polygon { animation: none !important; }
 #story-director-float[data-qm-theme] > svg.qm-hive-theme-logo {
   display: block !important;
   width: 100%;

@@ -105,6 +105,10 @@ assert.match(css, /clip-path:\s*polygon\(50% 0, 100% 25%, 100% 75%/, '蜂巢入�
 assert.match(classic, /mainEdge: '#c99b51'[\s\S]*mainEdge: '#8faf9b'[\s\S]*mainEdge: '#9fca62'[\s\S]*mainEdge: '#e3a0b8'/, '主 Logo 边线必须覆盖日间、夜间、柠夏与粉糯的指定强调色');
 assert.match(classic, /kraft:[\s\S]*mainEdge: '#c99b51'/, '旧笺主 Logo 必须沿用金色边线');
 assert.match(css, /#story-director-float\.sd-hive-theme-dream[^}]*animation:\s*sd-hive-dream-edge 12s/, '幻梦主 Logo 边线必须缓慢虹彩变化');
+assert.match(css, /#story-director-float > \.sd-hive-hex-outline polygon,\s*#qianmu-notes-float-layer \.sd-detached-notes-entry > \.sd-hive-hex-outline polygon,\s*\.qm-prose-hive-layer \.sd-hive-hex-outline polygon \{[^}]*var\(--sd-hive-rainbow[^}]*animation:\s*sd-hive-dream-edge 12s/, 'C-14: 主 Logo、便笺与拖出蜂巢格必须全主题统一虹彩边线');
+assert.match(css, /@property --sd-hive-rainbow \{[^}]*syntax: '<color>'/, '虹彩只插值注册颜色变量，绕开主格 important 描边');
+assert.match(css, /prefers-reduced-motion: reduce\)\s*\{\s*#story-director-float > \.sd-hive-hex-outline polygon \{[^}]*animation: none/, '减少动态效果时虹彩边线必须静止');
+assert.doesNotMatch(source, /便笺入口已浮贴|便笺入口已回到千幕蜂巢/, 'C-14: 便笺拖出/归巢不再弹提示');
 assert.match(source, /QUICK_HEX_BORDER_SVG[\s\S]*<polygon points="43\.301,0 86\.602,25 86\.602,75 43\.301,100 0,75 0,25"/, '主悬浮窗与蜂巢片必须使用左右直边的真实六边形矢量描边');
 assert.match(css, /#story-director-float\s*\{[^}]*backdrop-filter:\s*blur\(22px\) saturate\(1\.12\)/, '主悬浮窗必须直接采样页面背景形成毛玻璃');
 const floatGlass = css.slice(css.indexOf('#story-director-float::before'), css.indexOf('#story-director-float:hover'));

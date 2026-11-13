@@ -5594,7 +5594,6 @@ function bindNotesHiveDetachDrag(button, item, layout) {
     saveSettings();
     closeQuickWheel();
     renderFloatingNotes();
-    toast('便笺入口已浮贴，拖回千幕即可归巢。', 'success');
   };
   button.addEventListener('pointerup', (event) => finish(event));
   button.addEventListener('pointercancel', (event) => finish(event, true));
@@ -6944,10 +6943,7 @@ function bindFloatingNoteEvents(layer) {
     noteSettings.position = position;
     if (inside) noteSettings.detached = false;
     persistNotesDevice();
-    if (inside) {
-      renderFloatingNotes();
-      toast('便笺入口已回到千幕蜂巢。', 'success');
-    }
+    if (inside) renderFloatingNotes();
   };
   entry.addEventListener('pointerup', (event) => { event.stopPropagation(); finish(event); });
   entry.addEventListener('pointercancel', (event) => { event.stopPropagation(); finish(event, true); });
