@@ -334,11 +334,11 @@ let floorHive=null;
 function regexBindingRead() {
   const meta = ctx().chatMetadata?.[MODULE_NAME];
   const b = meta?.regexBinding;
-  return { enabled: b?.enabled === true, overrides: isPlainObject(b?.overrides) ? b.overrides : {} };
+  return { enabled: b?.enabled === true, overrides: isPlainObject(b?.overrides) ? b.overrides : {}, preset: typeof b?.preset === 'string' ? b.preset : '' };
 }
 function regexBindingWrite(value) {
   const store = getChatStore();
-  store.regexBinding = { enabled: value?.enabled === true, overrides: isPlainObject(value?.overrides) ? value.overrides : {} };
+  store.regexBinding = { enabled: value?.enabled === true, overrides: isPlainObject(value?.overrides) ? value.overrides : {}, ...(typeof value?.preset === 'string' && value.preset.trim() ? { preset: value.preset.trim() } : {}) };   // C-12：preset 只记名字
   void saveMetadata();
 }
 function regexBindingDefaultsRead() {
@@ -35784,7 +35784,8 @@ function bindEvents() {
     [types.GROUP_UPDATED || 'group_updated', rerenderHandler],
     [types.CHARACTER_SELECTED || 'character_selected', rerenderHandler],
     ...[['GENERATION_STARTED', 'generation_started', 'generationStarted'], ['GENERATION_STOPPED', 'generation_stopped', 'generationStopped'], ['MESSAGE_RECEIVED', 'message_received', 'messageReceived'], ['CHAT_CHANGED', 'chat_id_changed', 'chatChanged']].map(([key, fallback, name]) => [types[key] || fallback, chatRingtone.events[name]]),   // 聊天工具包·铃声：仅成功回复响铃／后台闪烁
-    [types.CHAT_CHANGED || 'chat_changed', chatRegex.events.chatChanged],   // C-11d：进聊天自动套用本聊天的正则绑定（未启用绑定时整条空转）
+    [types.CHAT_CHANGED || 'chat_changed', chatRegex.events.chatChanged],   // C-11d/C-12：进聊天先切本聊天绑定的预设再套正则（未启用绑定时整条空转）
+    ...['PRESET_CHANGED', 'PRESET_RENAMED', 'PRESET_DELETED', 'MAIN_API_CHANGED'].filter(key => types[key]).map(key => [types[key], chatRegex.events.presetChanged]),   // C-12：预设快切下拉跟随原生（旧 ST 无此事件则不接）
   ];
   for (const [type, handler] of pairs) {
     source.on(type, handler);

@@ -5,6 +5,7 @@ import {
   stripOrdinal, regexGroupKey, groupRegexScripts, summarizeRegexScript, readRegexSources, createChatRegex, UNGROUPED_LABEL,
   locateRegexScript, writeRegexToggle, writeRegexStates, REGEX_RELOAD_DELAY,
   regexBindingKey, resolveRegexTarget,
+  readPresetChoices, resolvePresetTarget, switchPreset, presetDisplaySignature,
 } from '../features/chat/qianmu-chat-regex.js';
 
 const root = new URL('../', import.meta.url);
@@ -602,4 +603,186 @@ test('view shows a 绑定 toggle and marks bound rows when binding is on', async
   const marks = walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark'));
   assert.equal(marks.length, 1, '仅被覆盖的 g1 带标记');
   view.dispose();
+});
+
+// —— C-12 预设绑定 + 聊天内预设快切 ——
+// 一个带原生选预设能力的假 ST：每个预设各带自己的正则数组，selectPreset 按 option value 切换。
+function fakePresetST({ presets = { 甲: [], 乙: [] }, selected = '甲', global = [], allowed = null } = {}) {
+  const log = { selects: [], saves: 0, reloads: 0 };
+  const names = Object.keys(presets);
+  let current = selected;
+  const lists = structuredClone(presets);
+  const manager = {
+    apiId: 'openai',
+    getAllPresets: () => [...names],
+    getSelectedPresetName: () => current,
+    findPreset: name => (names.includes(name) ? String(names.indexOf(name)) : undefined),
+    selectPreset: async value => { log.selects.push(value); current = names[Number(value)]; },
+    readPresetExtensionField: ({ path }) => (path === 'regex_scripts' ? lists[current] : null),
+    writePresetExtensionField: async ({ path, value }) => { if (path === 'regex_scripts') lists[current] = value; },
+  };
+  const ctx = { extensionSettings: { regex: structuredClone(global), preset_allowed_regex: { openai: allowed ?? names } },
+    getPresetManager: () => manager, saveSettingsDebounced: () => { log.saves += 1; },
+    getCurrentChatId: () => 'chat-1', reloadCurrentChat: async () => { log.reloads += 1; } };
+  return { ctx, log, current: () => current, lists };
+}
+
+test('resolvePresetTarget: none when unbound or already selected, missing when gone, else switch', () => {
+  assert.deepEqual({ ...resolvePresetTarget({ bound: '', current: '甲', names: ['甲'] }) }, { action: 'none', name: '' });
+  assert.equal(resolvePresetTarget({ bound: '甲', current: '甲', names: ['甲'] }).action, 'none');
+  assert.equal(resolvePresetTarget({ bound: '丙', current: '甲', names: ['甲', '乙'] }).action, 'missing');
+  assert.deepEqual({ ...resolvePresetTarget({ bound: ' 乙 ', current: '甲', names: ['甲', '乙'] }) }, { action: 'switch', name: '乙' });
+  assert.equal(resolvePresetTarget().action, 'none');
+});
+
+test('readPresetChoices lists names of the active API and degrades without native switching', () => {
+  const st = fakePresetST({ presets: { 甲: [], 乙: [], '': [] } });
+  const read = readPresetChoices(st.ctx);
+  assert.equal(read.available, true);
+  assert.equal(read.current, '甲');
+  assert.deepEqual([...read.names], ['甲', '乙'], '空名被滤掉');
+  assert.equal(readPresetChoices({ getPresetManager: () => ({ getSelectedPresetName: () => 'x' }) }).available, false, '缺 selectPreset → 不支持');
+  assert.equal(readPresetChoices(undefined).available, false);
+});
+
+test('switchPreset goes through native findPreset + selectPreset and refuses a missing name', async () => {
+  const st = fakePresetST();
+  assert.equal(await switchPreset(st.ctx, '乙'), true);
+  assert.deepEqual(st.log.selects, ['1'], '传的是 option value，不是名字');
+  assert.equal(st.current(), '乙');
+  await assert.rejects(switchPreset(st.ctx, '丙'), /已不存在/);
+  await assert.rejects(switchPreset({}, '甲'), /不支持/);
+});
+
+test('presetDisplaySignature only counts enabled display scripts of an allowed preset', () => {
+  const items = [{ id: 'a', enabled: true, scope: '' }, { id: 'b', enabled: true, scope: '仅提示词' }, { id: 'c', enabled: false, scope: '' }];
+  assert.equal(presetDisplaySignature({ preset: { allowed: true, items } }), 'a');
+  assert.equal(presetDisplaySignature({ preset: { allowed: false, items } }), '', '未被允许运行 → 不影响显示');
+  assert.equal(presetDisplaySignature({}), '');
+});
+
+test('applyBinding switches to the bound preset first, then applies regex overrides of that preset', async () => {
+  const st = fakePresetST({ presets: { 甲: [], 乙: [{ id: 'p1', scriptName: '乙显示', disabled: true }] } });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: true, preset: '乙', overrides: { 'preset:乙:p1': { enabled: true } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  const changed = await ctrl.applyBinding();
+  assert.equal(st.current(), '乙', '先切预设');
+  assert.equal(st.lists.乙[0].disabled, false, '再按新预设名套用预设正则覆盖');
+  assert.equal(changed, 2);
+  assert.equal(timers.size, 1, '显示类改动 → 一次重载');
+  timers.flush(); await settle();
+  assert.equal(await ctrl.applyBinding(), 0, '幂等：第二遍不再切、不再写');
+  assert.deepEqual(st.log.selects, ['1'], '只切过一次');
+});
+
+test('applyBinding warns once per chat when the bound preset is gone, and still applies regex', async () => {
+  const st = fakePresetST({ global: [{ id: 'g1', scriptName: 'A', disabled: true, promptOnly: true }] });
+  const notes = [];
+  const bind = fakeBinding({ enabled: true, preset: '已删', overrides: { 'global:g1': { enabled: true } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, k) => notes.push([m, k]), ...bind });
+  assert.equal(await ctrl.applyBinding(), 1, '正则照常套用');
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false);
+  await ctrl.applyBinding();
+  assert.equal(notes.filter(([m]) => m.includes('已删')).length, 1, '同一聊天只提示一次');
+  assert.equal(st.current(), '甲', '预设不动');
+});
+
+test('switching to a preset without display regex does not reload the chat', async () => {
+  const st = fakePresetST({ presets: { 甲: [], 乙: [{ id: 'p1', scriptName: '仅提示', promptOnly: true }] } });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: true, preset: '乙', overrides: {} });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  assert.equal(await ctrl.applyBinding(), 1);
+  assert.equal(timers.size, 0, '前后显示签名相同 → 不重载');
+});
+
+test('selectPreset quick-switches natively and records the preset only while binding is on', async () => {
+  const st = fakePresetST();
+  const bind = fakeBinding({ enabled: false, overrides: {} });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), ...bind });
+  assert.equal(await ctrl.actions.selectPreset('乙'), true);
+  assert.equal(st.current(), '乙');
+  assert.equal(bind.binding.preset, undefined, '绑定关着 → 只切不记');
+  await ctrl.actions.setBindingEnabled(true);
+  await ctrl.actions.selectPreset('甲');
+  assert.equal(bind.binding.preset, '甲', '绑定开着 → 记入本聊天');
+  assert.equal(bind.binding.enabled, true);
+  const notes = [];
+  const c2 = createChatRegex({ getContext: () => st.ctx, notify: m => notes.push(m), timers: manualTimers(), ...bind });
+  assert.equal(await c2.actions.selectPreset('丙'), false);
+  assert.ok(notes.some(m => m.includes('已不存在')));
+});
+
+test('turning binding on records the current preset if none is bound; regex writers keep it', async () => {
+  const st = fakePresetST({ selected: '乙', global: [{ id: 'g1', scriptName: 'A' }] });
+  const bind = fakeBinding({ enabled: false, overrides: {} });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), ...bind });
+  await ctrl.actions.setBindingEnabled(true);
+  assert.equal(bind.binding.preset, '乙', '开绑定 = 记住此刻的预设');
+  ctrl.actions.setBindingOverride({ key: 'global:g1', enabled: false, liveEnabled: true });
+  ctrl.actions.clearBindingOverride('global:g1');
+  await ctrl.actions.setBindingEnabled(false);
+  assert.equal(bind.binding.preset, '乙', '正则覆盖增删与关绑定都不丢预设');
+  assert.equal(bind.binding.enabled, false);
+  assert.equal(ctrl.state().presets.current, '乙');
+});
+
+test('presetChanged event only refreshes the panel and never records a binding', async () => {
+  const st = fakePresetST();
+  const bind = fakeBinding({ enabled: true, overrides: {} });
+  let renders = 0;
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), ...bind,
+    loadView: async () => ({ mountChatRegexView: () => ({ render() { renders += 1; }, dispose() {} }) }) });
+  await ctrl.mount({ isConnected: true });
+  const before = renders;
+  await st.ctx.getPresetManager().selectPreset('1');
+  ctrl.events.presetChanged();
+  assert.equal(renders, before + 1);
+  assert.equal(bind.binding.preset, undefined, 'ST 自动选预设也发此事件，不能拿来记绑定');
+});
+
+test('view heads the page with a preset quick switch that calls actions.selectPreset and marks the bound preset', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false, value: '', selected: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make, createTextNode: t => ({ text: t }) };
+  const picks = [];
+  const st = fakePresetST();
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: name => { picks.push(name); } } });
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '乙' } }));
+  assert.equal(host.children[0].className, 'qm-regex-preset', '预设快切在页顶');
+  const select = walk(host).find(n => n.dataset.key === 'preset');
+  assert.equal(select.value, '甲');
+  const labels = select.children.map(o => o.textContent);
+  assert.deepEqual(labels, ['甲', '乙（本聊天）']);
+  assert.ok(walk(host).some(n => n.classList?.contains('qm-regex-preset-bound') && n.classList.contains('is-off')), '当前不是绑定预设 → 链环转灰');
+  select.value = '乙'; select.listeners.change(); await settle();
+  assert.deepEqual(picks, ['乙']);
+  select.value = '甲'; select.listeners.change(); await settle();
+  assert.deepEqual(picks, ['乙'], '选回当前预设不触发');
+  // 不支持快切的 ST：不渲染
+  view.render(Object.freeze({ ...ctrl.state(), presets: { available: false, names: [] } }));
+  assert.equal(walk(host).some(n => n.dataset.key === 'preset'), false);
+  view.dispose();
+});
+
+test('preset quick switch is wired natively and never writes presets itself', async () => {
+  const source = await readFile(new URL('features/chat/qianmu-chat-regex.js', root), 'utf8');
+  assert.match(source, /manager\.findPreset\(/);
+  assert.match(source, /await manager\.selectPreset\(value\)/);
+  assert.ok(!/savePreset|preset_settings_openai\s*=/.test(source), '不旁路写预设');
+  const index = await readFile(new URL('index.js', root), 'utf8');
+  assert.match(index, /\['PRESET_CHANGED', 'PRESET_RENAMED', 'PRESET_DELETED', 'MAIN_API_CHANGED'\]\.filter\(key => types\[key\]\)\.map\(key => \[types\[key\], chatRegex\.events\.presetChanged\]\)/);
+  assert.match(index, /preset: typeof b\?\.preset === 'string' \? b\.preset : ''/, '读路径带出 preset');
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(css.includes('.qm-regex-preset-select { flex: 1 1 auto;'));
 });

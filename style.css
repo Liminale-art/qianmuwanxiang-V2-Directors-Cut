@@ -946,6 +946,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
 #story-director-floor-nav .qm-regex-bind-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
 #story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
+/* C-12 预设快切：「预设」+ 原生下拉一行，绑定的预设带链环（当前不是它时链环转灰） */
+#story-director-floor-nav .qm-regex-preset { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#story-director-floor-nav .qm-regex-preset-label { flex: none; margin: 0; font-size: var(--qm-type-caption); font-weight: 600; color: var(--sd-muted); }
+#story-director-floor-nav .qm-regex-preset-select { flex: 1 1 auto; min-width: 0; min-height: 30px; margin: 0; padding: 0 8px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-body); text-overflow: ellipsis; cursor: pointer; }
+#story-director-floor-nav .qm-regex-preset-select:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav .qm-regex-preset-select:disabled { opacity: .5; cursor: default; }
+#story-director-floor-nav .qm-regex-preset-bound { flex: none; color: var(--sd-primary); font-size: .8em; }
+#story-director-floor-nav .qm-regex-preset-bound.is-off { color: var(--sd-muted); opacity: .6; }
 #story-director-floor-nav .qm-regex-row { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 34px; padding: 0; border-top: 1px solid var(--sd-hairline); }
 #story-director-floor-nav .qm-regex-row:first-child, #story-director-floor-nav .qm-regex-group + .qm-regex-row { border-top: 0; }
 #story-director-floor-nav .qm-regex-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-hairline); }

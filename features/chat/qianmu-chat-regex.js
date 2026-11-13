@@ -1,4 +1,4 @@
-// Regex tab of the chat toolkit (D-a list + D-b single toggle + C-11 batch toggle).
+// Regex tab of the chat toolkit (D-a list + D-b single toggle + C-11 batch toggle + C-12 preset quick switch).
 // Lists SillyTavern's global regex scripts and the current preset's regex scripts, in original order or
 // auto-grouped by name prefix. A single script can be switched on/off and is written back the way ST's own
 // regex panel does it (global: extension settings + saveSettingsDebounced; preset: writePresetExtensionField),
@@ -208,6 +208,50 @@ export function resolveRegexTarget({ defaults = {}, overrides = {}, sources = {}
   return Object.freeze({ changes: Object.freeze({ global: Object.freeze(changes.global), preset: Object.freeze(changes.preset) }), affectsDisplay });
 }
 
+// ── C-12：预设绑定 + 聊天内预设快切 ──────────────────────────────────────────────
+// 只记预设「名字」、不分 API：用当前 API 的原生 PresetManager 查名切换（findPreset + selectPreset，
+// 与在 ST 原生下拉里点选同一路径），预设内容与保存都交给 ST，千幕不旁路写盘。
+// ST 自带的「按角色名自动选预设」同挂 CHAT_CHANGED 且注册更早，千幕后执行，故用户显式绑定天然优先。
+const canSwitchPresets = manager => ['getAllPresets', 'getSelectedPresetName', 'findPreset', 'selectPreset']
+  .every(name => typeof manager?.[name] === 'function');
+
+// 当前 API 下的预设名单与选中项；available:false 表示此 ST 不支持在此快切。
+export function readPresetChoices(context) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const manager = presetManager(ctx);
+  if (!canSwitchPresets(manager)) return Object.freeze({ available: false, current: '', names: Object.freeze([]) });
+  const raw = attempt(() => manager.getAllPresets(), []);
+  const names = [...new Set((Array.isArray(raw) ? raw : []).map(text).filter(Boolean))];
+  const current = text(attempt(() => manager.getSelectedPresetName(), ''));
+  return Object.freeze({ available: true, current, names: Object.freeze(names) });
+}
+
+// 纯函数：本聊天绑定的预设名 vs 当前选中 → none（无绑定/已是它）| missing（预设已不存在）| switch。
+export function resolvePresetTarget({ bound = '', current = '', names = [] } = {}) {
+  const name = text(bound);
+  if (!name || name === text(current)) return Object.freeze({ action: 'none', name });
+  if (!(Array.isArray(names) ? names : []).includes(name)) return Object.freeze({ action: 'missing', name });
+  return Object.freeze({ action: 'switch', name });
+}
+
+// 走原生选预设。新版 ST 的 selectPreset 在预设完全套用后才 resolve；旧版同步返回，await 一样成立。
+export async function switchPreset(context, name) {
+  const manager = presetManager(context && typeof context === 'object' ? context : {});
+  if (!canSwitchPresets(manager)) throw new Error('当前 ST 不支持在此切换预设');
+  const value = attempt(() => manager.findPreset(text(name)), undefined);
+  if (value === undefined || value === null) throw new Error(`预设「${text(name)}」已不存在`);
+  await manager.selectPreset(value);
+  return true;
+}
+
+// 预设正则对已显示楼层的影响签名：仅在被允许运行时，取启用中的显示类脚本 id。
+// 切预设前后签名不同才需要重载聊天，两个预设都没有显示类正则时不白白重载。
+export function presetDisplaySignature(sources) {
+  const preset = sources?.preset;
+  if (!preset || preset.allowed !== true || !Array.isArray(preset.items)) return '';
+  return preset.items.filter(item => item?.enabled === true && item.scope !== '仅提示词').map(item => item.id).join('\n');
+}
+
 // Quiet window before the chat reload, so flipping several switches in a row re-renders the chat once.
 export const REGEX_RELOAD_DELAY = 700;
 
@@ -220,13 +264,30 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
   loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.500') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
+  let presetBusy = false, missingNoticed = '';
   const pending = new Set();
   const context = () => attempt(() => getContext(), {});
-  const readOverrides = () => { const b = attempt(() => readBinding(), {}); return b && typeof b === 'object' && b.overrides && typeof b.overrides === 'object' ? b.overrides : {}; };
-  const bindingEnabled = () => attempt(() => readBinding(), {})?.enabled === true;
-  const state = () => Object.freeze({ view, pending: Object.freeze([...pending]),
-    binding: Object.freeze({ enabled: bindingEnabled(), overrides: Object.freeze({ ...readOverrides() }) }),
-    sources: readRegexSources(context()) });
+  // 本聊天绑定的规范形：{ enabled, overrides, preset }。所有写入都在它之上打补丁，绝不丢掉其它字段。
+  const currentBinding = () => {
+    const b = attempt(() => readBinding(), {}) || {};
+    return { enabled: b.enabled === true, overrides: b.overrides && typeof b.overrides === 'object' ? b.overrides : {}, preset: text(b.preset) };
+  };
+  const saveBinding = patch => {
+    const next = { ...currentBinding(), ...patch };
+    const value = { enabled: next.enabled === true, overrides: next.overrides };
+    if (text(next.preset)) value.preset = text(next.preset);
+    writeBinding(value);
+  };
+  const readOverrides = () => currentBinding().overrides;
+  const bindingEnabled = () => currentBinding().enabled;
+  const currentChatId = () => attempt(() => { const ctx = context(); return typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId; }, null);
+  const state = () => {
+    const b = currentBinding();
+    return Object.freeze({ view, pending: Object.freeze([...pending]),
+      binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
+      presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
+      sources: readRegexSources(context()) });
+  };
   const refresh = () => mounted?.view?.render(state());
 
   // ST re-applies display regexes only when messages are rendered again, exactly like its own panel does
@@ -247,31 +308,79 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     try { await ctx.reloadCurrentChat(); } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
   }
 
-  // 进聊天时把 全局默认 ⊕ 本聊天覆盖 套用到 live 正则：逐条比较只写差异，仅显示类改动才重载。
+  // 切到指定预设（已是它则不动），返回 { switched, reload }：reload 仅当预设正则的显示签名前后不同。
+  async function moveToPreset(name) {
+    const choices = readPresetChoices(context());
+    const target = resolvePresetTarget({ bound: name, current: choices.current, names: choices.names });
+    if (!choices.available || target.action === 'none') return { switched: false, reload: false };
+    if (target.action === 'missing') throw new Error(`预设「${target.name}」已不存在`);
+    const before = presetDisplaySignature(readRegexSources(context()));
+    await switchPreset(context(), target.name);
+    return { switched: true, reload: before !== presetDisplaySignature(readRegexSources(context())) };
+  }
+
+  // 进聊天时先切到本聊天绑定的预设（预设正则的覆盖 key 带预设名，必须先切再算），
+  // 再把 全局默认 ⊕ 本聊天覆盖 套用到 live 正则：逐条比较只写差异，仅显示类改动才重载。
   // reloadCurrentChat 会再触发 chatChanged→applyBinding，但第二次比较已无差异即停，天然幂等不成环。
   async function applyBinding() {
     if (disposed || applying) return 0;
     if (!bindingEnabled()) return 0;
-    const chatId = attempt(() => { const ctx = context(); return typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId; }, null);
+    const chatId = currentChatId();
     if (!chatId) return 0;                                   // 欢迎屏/无聊天：不动
-    const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: readOverrides(), sources: readRegexSources(context()) });
-    const total = plan.changes.global.length + plan.changes.preset.length;
-    if (!total) { refresh(); return 0; }
     applying = true;
-    let changed = 0;
+    let changed = 0, reload = false;
     try {
-      for (const source of BINDING_SOURCES) {
-        if (!plan.changes[source].length) continue;
-        changed += await writeRegexStates(context(), { source, changes: plan.changes[source] }) || 0;
+      const bound = currentBinding().preset;
+      try {
+        const moved = await moveToPreset(bound);
+        if (moved.switched) { changed += 1; reload = moved.reload; }
+      } catch (error) {
+        // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
+        const notice = `${chatId}\n${bound}`;
+        if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
       }
-    } catch (error) {
-      notify(error?.message || '正则绑定套用失败', 'warning');
+      const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: readOverrides(), sources: readRegexSources(context()) });
+      let regexChanged = 0;
+      try {
+        for (const source of BINDING_SOURCES) {
+          if (!plan.changes[source].length) continue;
+          regexChanged += await writeRegexStates(context(), { source, changes: plan.changes[source] }) || 0;
+        }
+      } catch (error) {
+        notify(error?.message || '正则绑定套用失败', 'warning');
+      }
+      changed += regexChanged;
+      if (regexChanged && plan.affectsDisplay) reload = true;
     } finally {
       applying = false;
     }
-    if (changed && plan.affectsDisplay) scheduleReload();
+    if (reload) scheduleReload();
     refresh();
     return changed;
+  }
+
+  // 聊天内预设快切：走原生切换；绑定开着时顺手记入本聊天，并补一次正则绑定（预设正则的覆盖随预设名走）。
+  async function selectPreset(name) {
+    const target = text(name);
+    if (!target || presetBusy || disposed) return false;
+    presetBusy = true; refresh();
+    let reload = false;
+    try {
+      reload = (await moveToPreset(target)).reload;
+      if (bindingEnabled()) {
+        saveBinding({ preset: target });
+        presetBusy = false;
+        await applyBinding();
+      }
+      return true;
+    } catch (error) {
+      notify(error?.message || '预设切换失败', 'warning');
+      return false;
+    } finally {
+      presetBusy = false;
+      if (reload) scheduleReload();
+      refresh();
+    }
   }
 
   async function toggle({ source, id, name, enabled } = {}) {
@@ -318,10 +427,15 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     if (Object.prototype.hasOwnProperty.call(defaults, key)) return;
     writeDefaults({ ...defaults, [key]: { enabled: liveEnabled === true } });
   }
-  // 开/关「绑定此聊天」总开关。打开后立即套用一次。
+  // 开/关「绑定此聊天」总开关。打开时若本聊天还没记预设，就记下当前预设（懒人：开绑定 = 记住此刻的预设+正则），
+  // 随后立即套用一次。关闭只停用，不清掉已记的预设与覆盖，再打开即恢复。
   async function setBindingEnabled(on) {
-    const b = attempt(() => readBinding(), {}) || {};
-    writeBinding({ enabled: on === true, overrides: b.overrides && typeof b.overrides === 'object' ? b.overrides : {} });
+    const patch = { enabled: on === true };
+    if (on === true && !currentBinding().preset) {
+      const choices = readPresetChoices(context());
+      if (choices.available && choices.current) patch.preset = choices.current;
+    }
+    saveBinding(patch);
     refresh();
     if (on === true) await applyBinding(); else refresh();
   }
@@ -329,18 +443,17 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   function setBindingOverride({ key, enabled, liveEnabled } = {}) {
     if (!text(key)) return;
     ensureDefault(key, liveEnabled);
-    const b = attempt(() => readBinding(), {}) || {};
-    const overrides = { ...(b.overrides && typeof b.overrides === 'object' ? b.overrides : {}) };
+    const overrides = { ...currentBinding().overrides };
     overrides[key] = { enabled: enabled === true };
-    writeBinding({ enabled: b.enabled === true, overrides });
+    saveBinding({ overrides });
     refresh();
   }
   function clearBindingOverride(key) {
     if (!text(key)) return;
-    const b = attempt(() => readBinding(), {}) || {};
-    if (!b.overrides || typeof b.overrides !== 'object' || !Object.prototype.hasOwnProperty.call(b.overrides, key)) return;
-    const overrides = { ...b.overrides }; delete overrides[key];
-    writeBinding({ enabled: b.enabled === true, overrides });
+    const current = currentBinding().overrides;
+    if (!Object.prototype.hasOwnProperty.call(current, key)) return;
+    const overrides = { ...current }; delete overrides[key];
+    saveBinding({ overrides });
     refresh();
   }
   const actions = Object.freeze({
@@ -355,6 +468,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingEnabled,
     setBindingOverride,
     clearBindingOverride,
+    selectPreset,
   });
   async function mount(host) {
     if (!host) return;
@@ -374,6 +488,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     unmount();
   }
   // 进聊天钩子：index.js 把 CHAT_CHANGED / appReady 接到这里，自动套用本聊天绑定。
-  const events = Object.freeze({ chatChanged: () => { void applyBinding(); } });
+  // presetChanged 只刷新面板：ST 的自动选预设也会发这个事件，拿它记绑定会把用户的选择冲掉。
+  const events = Object.freeze({ chatChanged: () => { void applyBinding(); }, presetChanged: () => { refresh(); } });
   return Object.freeze({ mount, unmount, dispose, actions, state, applyBinding, events });
 }

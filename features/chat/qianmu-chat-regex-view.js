@@ -3,6 +3,8 @@
 // a switch only calls actions.toggle(), which owns the write-back. Two sections (global / current preset),
 // each in original order or auto-grouped by name prefix. A source that cannot be written shows a status dot.
 // Rows show the script name only; page-level icon controls share one tool row (the list view is a single toggle).
+// C-12: a preset quick switch heads the page — a native-style select over the active API's presets that only
+// calls actions.selectPreset(); a link mark shows which preset this chat is bound to.
 const VIEW_LABELS = Object.freeze({ order: '原始顺序', group: '自动分组' });
 const VIEW_ICONS = Object.freeze({ order: 'fa-list-ol', group: 'fa-layer-group' });
 
@@ -110,6 +112,41 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return active && typeof root.contains === 'function' && root.contains(active) ? active.dataset?.key || '' : '';
   }
 
+  // 预设快切：一行「预设」+ 下拉。选中即走原生切换；本聊天绑定的预设名旁带链环标记。
+  function presetSwitch(presets, binding) {
+    const box = el('div', 'qm-regex-preset');
+    const label = el('label', 'qm-regex-preset-label', '预设');
+    const select = el('select', 'qm-regex-preset-select');
+    select.dataset.key = 'preset';
+    const id = 'qm-regex-preset-select'; select.id = id; label.setAttribute('for', id);
+    const boundName = binding.enabled ? binding.preset || '' : '';
+    const names = [...presets.names];
+    if (presets.current && !names.includes(presets.current)) names.unshift(presets.current);
+    for (const name of names) {
+      const option = el('option', '', name === boundName ? `${name}（本聊天）` : name);
+      option.value = name;
+      if (name === presets.current) option.selected = true;
+      select.append(option);
+    }
+    select.value = presets.current;
+    select.setAttribute('aria-label', boundName ? `切换预设（本聊天绑定：${boundName}）` : '切换预设');
+    if (presets.busy || !names.length) { select.disabled = true; if (presets.busy) select.setAttribute('aria-busy', 'true'); }
+    select.addEventListener('change', () => {
+      const next = select.value;
+      if (!next || next === presets.current) return;
+      Promise.resolve().then(() => actions.selectPreset(next))
+        .catch(error => notify(error?.message || '预设切换失败', 'warning'));
+    });
+    box.append(label, select);
+    if (boundName) {
+      const mark = el('i', `fa-solid fa-link qm-regex-preset-bound${boundName === presets.current ? '' : ' is-off'}`);
+      mark.setAttribute('aria-hidden', 'true');
+      box.title = boundName === presets.current ? '已是本聊天绑定的预设' : `本聊天绑定的是「${boundName}」`;
+      box.append(mark);
+    }
+    return box;
+  }
+
   function render(state) {
     if (disposed || !state) return;
     const { view, sources } = state;
@@ -133,8 +170,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const bindBtn = el('button', `qm-regex-tool qm-regex-bind-toggle${binding.enabled ? ' is-on' : ''}`); bindBtn.type = 'button';
       bindBtn.dataset.key = 'bind';
       bindBtn.setAttribute('aria-pressed', String(binding.enabled === true));
-      bindBtn.setAttribute('aria-label', `绑定此聊天：${binding.enabled ? '已开启，进聊天自动套用' : '未开启'}`);
-      bindBtn.title = binding.enabled ? '绑定此聊天（已开启：改动会记入本聊天，进聊天自动套用）' : '绑定此聊天（开启后改动记入本聊天，进聊天自动套用）';
+      bindBtn.setAttribute('aria-label', `绑定此聊天：${binding.enabled ? '已开启，进聊天自动套用预设与正则' : '未开启'}`);
+      bindBtn.title = binding.enabled ? '绑定此聊天（已开启：预设与正则改动会记入本聊天，进聊天自动套用）' : '绑定此聊天（开启后记住当前预设，预设与正则改动记入本聊天，进聊天自动套用）';
       const bg = el('i', 'fa-solid fa-link'); bg.setAttribute('aria-hidden', 'true');
       bindBtn.append(bg, el('span', 'qm-regex-tool-label', '绑定'));
       bindBtn.addEventListener('click', () => {
@@ -154,10 +191,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const writable = g.writable === true || p.writable === true;
     const hint = el('p', 'qm-regex-hint', writable
       ? (binding.enabled
-        ? '已绑定此聊天：现在拨动的开关会记入本聊天，下次进来自动套用；其它聊天不受影响。'
+        ? '已绑定此聊天：现在切的预设、拨动的开关都会记入本聊天，下次进来自动套用；其它聊天不受影响。'
         : '开关即时写回 ST；连续切换后聊天会自动重载一次，让已显示的楼层按新正则重新渲染。')
       : '只读预览：当前 ST 不支持在此切换，请在 ST 正则面板修改。');
-    root.replaceChildren(tools, globalCard, presetCard, hint);
+    const presets = state.presets && typeof state.presets === 'object' ? state.presets : { available: false, names: [] };
+    const head = presets.available && typeof actions.selectPreset === 'function' ? [presetSwitch(presets, binding)] : [];
+    root.replaceChildren(...head, tools, globalCard, presetCard, hint);
     if (typeof scroll === 'number') root.scrollTop = scroll;
     if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
   }
