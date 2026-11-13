@@ -36,24 +36,39 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return button;
   }
 
-  // 全开 / 全关 for a section or group of a writable source; each is disabled when it would change nothing.
-  function batchTools(items, source, label, pending) {
-    const box = el('span', 'qm-regex-batch');
-    const busy = items.some(item => pending.includes(`${source}:${item.id}`));
-    for (const [enabled, icon, verb] of [[true, 'fa-toggle-on', '全部启用'], [false, 'fa-toggle-off', '全部停用']]) {
-      const button = el('button', 'qm-regex-tool qm-regex-batch-button'); button.type = 'button';
-      button.dataset.key = `batch:${source}:${label}:${enabled ? 'on' : 'off'}`;
-      button.setAttribute('aria-label', `${label}：${verb}`); button.title = `${label}：${verb}`;
-      const glyph = el('i', `fa-solid ${icon}`); glyph.setAttribute('aria-hidden', 'true'); button.append(glyph);
-      if (busy || !items.some(item => item.enabled !== enabled)) button.disabled = true;
-      button.addEventListener('click', () => {
-        if (button.disabled) return;
-        Promise.resolve().then(() => actions.toggleMany({ source, items, enabled }))
-          .catch(error => notify(error?.message || '正则批量开关写回失败', 'warning'));
-      });
-      box.append(button);
-    }
-    return box;
+  // C-14e：一个分区/分组只给一个胶囊总开关——全部开着时为开（点按全部停用），否则点按全部启用；部分开着显示半态。
+  function batchSwitch(items, source, label, pending) {
+    const on = items.length > 0 && items.every(item => item.enabled);
+    const mixed = !on && items.some(item => item.enabled);
+    const button = el('button', `qm-regex-pill${on ? ' is-on' : ''}${mixed ? ' is-mixed' : ''}`); button.type = 'button';
+    button.dataset.key = `batch:${source}:${label}`;
+    button.setAttribute('role', 'switch');
+    button.setAttribute('aria-checked', String(on));
+    const verb = on ? '已全部启用，点按全部停用' : mixed ? '部分启用，点按全部启用' : '已全部停用，点按全部启用';
+    button.setAttribute('aria-label', `${label}：${verb}`); button.title = `${label}：${verb}`;
+    if (items.some(item => pending.includes(`${source}:${item.id}`))) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+    button.append(el('span', 'qm-regex-pill-knob'));
+    button.addEventListener('click', event => {
+      event?.stopPropagation?.();
+      if (button.disabled) return;
+      Promise.resolve().then(() => actions.toggleMany({ source, items, enabled: !on }))
+        .catch(error => notify(error?.message || '正则批量开关写回失败', 'warning'));
+    });
+    return button;
+  }
+
+  // C-14e：卡片与分组都可折叠；折叠态存在控制器里（视图不存状态），切页签回来仍保持。
+  const isFolded = key => typeof actions.isFolded === 'function' && actions.isFolded(key);
+  function foldButton(key, label, className, text) {
+    const folded = isFolded(key);
+    const button = el('button', `qm-regex-fold ${className}`); button.type = 'button';
+    button.dataset.key = `fold:${key}`;
+    button.setAttribute('aria-expanded', String(!folded));
+    button.setAttribute('aria-label', `${label}：${folded ? '已折叠，点按展开' : '点按折叠'}`);
+    const chevron = el('i', 'fa-solid fa-chevron-down qm-regex-fold-mark'); chevron.setAttribute('aria-hidden', 'true');
+    button.append(chevron, el('span', 'qm-regex-fold-text', text));
+    button.addEventListener('click', () => { try { actions.setFolded?.(key, !folded); } catch (error) { notify(error?.message || '折叠失败', 'warning'); } });
+    return button;
   }
 
   function row(item, source, { writable = false, pending = [], bound = () => false } = {}) {
@@ -86,21 +101,27 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (!items.length) { box.append(el('p', 'qm-regex-empty', '没有正则脚本')); return box; }
     if (mode !== 'group') { box.append(...items.map(make)); return box; }
     for (const group of actions.group(items)) {
-      const head = el('div', 'qm-regex-group');
-      head.append(el('span', 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
-      if (options.writable) head.append(batchTools(group.items, source, group.label, options.pending));
-      box.append(head, ...group.items.map(make));
+      const key = `group:${source}:${group.label}`;
+      const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}`);
+      head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
+      if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
+      box.append(head);
+      if (!isFolded(key)) box.append(...group.items.map(make));
     }
     return box;
   }
 
   function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false } = {}) {
-    const card = el('section', 'qm-regex-card');
+    const key = `card:${source}`, folded = isFolded(key);
+    const card = el('section', `qm-regex-card${folded ? ' is-folded' : ''}`);
     const head = el('header', 'qm-regex-card-head');
-    head.append(el('h4', 'qm-regex-title', title));
+    const heading = el('h4', 'qm-regex-title');
+    heading.append(foldButton(key, title, 'qm-regex-card-fold', title));
+    head.append(heading);
     if (note) head.append(el('span', 'qm-regex-note', note));
-    if (!unavailable && writable && items.length) head.append(batchTools(items, source, title, pending));
+    if (!unavailable && writable && items.length) head.append(batchSwitch(items, source, title, pending));
     card.append(head);
+    if (folded) return card;
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
     else card.append(list(items, mode, source, { writable, pending, bound }));
     return card;
@@ -185,7 +206,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
       { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, pending, bound });
     let presetNote = '';
-    if (p.available) presetNote = `${p.name || '当前预设'} · ${p.items.length} 条${p.items.length && !p.allowed ? ' · 未被允许运行' : ''}`;
+    if (p.available) presetNote = `${p.items.length} 条${p.items.length && !p.allowed ? ' · 未被允许运行' : ''}`;   // C-14e：预设名已在页顶快切里，卡内不再重复
     const presetCard = section('预设正则', presetNote, p.items, view,
       { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, pending, bound });
     const writable = g.writable === true || p.writable === true;

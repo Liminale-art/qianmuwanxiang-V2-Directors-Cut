@@ -243,7 +243,7 @@ test('controller toggleMany marks every row busy, skips no-op rows and reloads o
   ctrl.dispose();
 });
 
-test('view offers 全部启用/全部停用 per writable section and group, disabled when nothing would change', async () => {
+test('view offers one pill switch per writable section and group (all on → off, else → on)', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const make = tag => {
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
@@ -260,24 +260,69 @@ test('view offers 全部启用/全部停用 per writable section and group, disa
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, toggleMany: args => { calls.push(args); return 0; } } });
   view.render(Object.freeze({ ...ctrl.state(), view: 'order' }));
-  let batch = walk(host).filter(n => n.classList.contains('qm-regex-batch-button'));
-  assert.equal(batch.length, 2, '原始顺序：只有全局分区的一组（预设无条目）');
-  assert.equal(batch[0].attrs['aria-label'], '全局正则：全部启用');
-  assert.equal(batch[0].disabled, false); assert.equal(batch[1].disabled, false);
-  batch[1].listeners.click(); await settle();
-  assert.equal(calls.length, 1); assert.equal(calls[0].source, 'global'); assert.equal(calls[0].enabled, false); assert.equal(calls[0].items.length, 3);
+  let pills = walk(host).filter(n => n.classList.contains('qm-regex-pill'));
+  assert.equal(pills.length, 1, '原始顺序：只有全局分区一个胶囊（预设无条目）');
+  assert.equal(walk(host).filter(n => n.classList.contains('qm-regex-batch-button')).length, 0, '不再是两个批量按钮');
+  assert.equal(pills[0].attrs.role, 'switch');
+  assert.equal(pills[0].attrs['aria-checked'], 'false');
+  assert.ok(pills[0].classList.contains('is-mixed'), '部分开着 → 半态');
+  assert.match(pills[0].attrs['aria-label'], /^全局正则：部分启用，点按全部启用/);
+  pills[0].listeners.click(); await settle();
+  assert.equal(calls.length, 1); assert.equal(calls[0].source, 'global'); assert.equal(calls[0].enabled, true); assert.equal(calls[0].items.length, 3);
   view.render(Object.freeze({ ...ctrl.state(), view: 'group' }));
-  batch = walk(host).filter(n => n.classList.contains('qm-regex-batch-button'));
-  assert.equal(batch.length, 6, '分区 + 两个分组各一对');
-  const groupA = batch.filter(n => n.attrs['aria-label'].startsWith('a：'));
-  assert.equal(groupA[0].disabled, true, 'a 组全开时「全部启用」不可点');
-  assert.equal(groupA[1].disabled, false);
+  pills = walk(host).filter(n => n.classList.contains('qm-regex-pill'));
+  assert.equal(pills.length, 3, '分区 + 两个分组各一个');
+  const groupA = pills.find(n => n.attrs['aria-label'].startsWith('a：'));
+  assert.equal(groupA.attrs['aria-checked'], 'true', 'a 组全开 → 开');
+  groupA.listeners.click(); await settle();
+  assert.equal(calls.at(-1).enabled, false, '全开时点按 → 全部停用');
+  assert.equal(calls.at(-1).items.length, 2);
   view.render(Object.freeze({ ...ctrl.state(), view: 'group', pending: ['global:g1'] }));
-  assert.ok(walk(host).filter(n => n.classList.contains('qm-regex-batch-button') && n.attrs['aria-label'].startsWith('a：')).every(n => n.disabled), '组内有行写回中时批量不可点');
+  assert.equal(walk(host).find(n => n.classList.contains('qm-regex-pill') && n.attrs['aria-label'].startsWith('a：')).disabled, true, '组内有行写回中时总开关不可点');
   const readOnly = createChatRegex({ getContext: () => fakeST({ save: false, global: [{ id: 'g1', scriptName: 'x' }] }).ctx });
   view.render(Object.freeze({ ...readOnly.state(), view: 'group' }));
-  assert.equal(walk(host).filter(n => n.classList.contains('qm-regex-batch-button')).length, 0, '只读来源不给批量');
+  assert.equal(walk(host).filter(n => n.classList.contains('qm-regex-pill')).length, 0, '只读来源不给总开关');
   view.dispose();
+});
+
+test('cards and groups fold through the controller and stay folded across renders; preset card drops the preset name', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make };
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'a-1' }, { id: 'g2', scriptName: 'a-2' }, { id: 'g3', scriptName: '独立' }], preset: [{ id: 'p1', scriptName: 'P' }] });
+  const renders = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(),
+    loadView: async () => ({ mountChatRegexView: ({ root, actions }) => { const v = mountChatRegexView({ root, actions }); return { render: s => { renders.push(s); v.render(s); }, dispose: v.dispose }; } }) });
+  await ctrl.mount(Object.assign(host, { isConnected: true }));
+  ctrl.actions.setView('group');
+  const rows = () => walk(host).filter(n => n.classList.contains('qm-regex-row')).length;
+  assert.equal(rows(), 4);
+  const fold = key => walk(host).find(n => n.dataset.key === `fold:${key}`);
+  assert.equal(fold('card:global').attrs['aria-expanded'], 'true');
+  fold('group:global:a').listeners.click();
+  assert.equal(rows(), 2, '折叠 a 组只剩其它行');
+  assert.equal(fold('group:global:a').attrs['aria-expanded'], 'false');
+  fold('card:preset').listeners.click();
+  assert.equal(rows(), 1, '预设卡折叠');
+  assert.ok(walk(host).find(n => n.classList.contains('qm-regex-card') && n.classList.contains('is-folded')));
+  assert.deepEqual([...renders.at(-1).folded].sort(), ['card:preset', 'group:global:a']);
+  ctrl.actions.reload();
+  assert.equal(rows(), 1, '重绘后折叠态保持');
+  fold('card:global').listeners.click();
+  assert.equal(rows(), 0);
+  fold('card:global').listeners.click(); fold('group:global:a').listeners.click(); fold('card:preset').listeners.click();
+  assert.equal(rows(), 4, '全部展开');
+  const notes = walk(host).filter(n => n.classList.contains('qm-regex-note')).map(n => n.textContent);
+  assert.ok(notes.every(t => !t.includes('预设A')), '预设卡不再显示预设名');
+  ctrl.dispose();
 });
 
 test('dispose cancels a pending reload', async () => {
@@ -369,9 +414,9 @@ test('view renders both sections, grouped headers and a not-supported notice', a
   assert.deepEqual(host.children, []);
 });
 
-test('chat toolkit has a lazily mounted 5th 正则 tab', async () => {
+test('chat toolkit has a lazily mounted 5th 快切 tab', async () => {
   const index = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(index.includes('data-floor-tab="regex">正则</button>') && index.includes('data-floor-view="regex"></section>'));
+  assert.ok(index.includes('data-floor-tab="regex">快切</button>') && index.includes('data-floor-view="regex"></section>'));
   assert.equal(index.split("['layout', 'recovery', 'ring', 'regex'].includes(").length - 1, 2, '初始视图与 setView 都认 regex');
   assert.ok(index.includes(`if (floorNavigatorView === 'regex') void chatRegex.mount(`), '切到正则才挂载');
   assert.ok(index.includes('chatRegex.unmount();') && index.includes('chatRegex.dispose();'), '关闭工具包卸载，运行时销毁');

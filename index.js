@@ -6060,7 +6060,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="聊天工具包">
         <header><h3>聊天工具包</h3><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button><button type="button" role="tab" data-floor-tab="regex">正则</button></nav>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button><button type="button" role="tab" data-floor-tab="regex">快切</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <p class="sd-floor-chat-count">${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p>
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>

@@ -266,6 +266,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
+  const folded = new Set();   // C-14e：卡片/分组折叠态（card:global / group:preset:xx），跨页签保持
   const context = () => attempt(() => getContext(), {});
   // 本聊天绑定的规范形：{ enabled, overrides, preset }。所有写入都在它之上打补丁，绝不丢掉其它字段。
   const currentBinding = () => {
@@ -283,7 +284,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const currentChatId = () => attempt(() => { const ctx = context(); return typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId; }, null);
   const state = () => {
     const b = currentBinding();
-    return Object.freeze({ view, pending: Object.freeze([...pending]),
+    return Object.freeze({ view, pending: Object.freeze([...pending]), folded: Object.freeze([...folded]),
       binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
       sources: readRegexSources(context()) });
@@ -462,6 +463,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     group: groupRegexScripts,
     bindingKey: regexBindingKey,
     setView(next) { view = REGEX_VIEWS.includes(next) ? next : 'order'; refresh(); },
+    isFolded: key => folded.has(String(key)),
+    setFolded(key, on) { if (!text(key)) return; if (on) folded.add(String(key)); else folded.delete(String(key)); refresh(); },
     reload() { refresh(); },
     toggle,
     toggleMany,
