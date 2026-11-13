@@ -5,6 +5,8 @@ import {
   stripOrdinal, regexGroupKey, groupRegexScripts, summarizeRegexScript, readRegexSources, createChatRegex, UNGROUPED_LABEL,
   locateRegexScript, writeRegexToggle, writeRegexStates, REGEX_RELOAD_DELAY,
   regexBindingKey, resolveRegexTarget,
+  blankRegexScript, removeRegexEntries, restoreRegexEntries, cloneRegexScript, copyRegexEntries, moveRegexEntries,
+  assignRegexGroup, editRegexList, parseRegexLiteral, previewRegexScript,
   readPresetChoices, resolvePresetTarget, switchPreset, presetDisplaySignature,
 } from '../features/chat/qianmu-chat-regex.js';
 
@@ -830,4 +832,308 @@ test('preset quick switch is wired natively and never writes presets itself', as
   assert.match(index, /preset: typeof b\?\.preset === 'string' \? b\.preset : ''/, '读路径带出 preset');
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('.qm-regex-preset-select { flex: 1 1 auto;'));
+});
+
+// —— C-14f 条目管理：纯函数 ——
+test('blankRegexScript defaults to an AI-output display script with a fresh id', () => {
+  const a = blankRegexScript(), b = blankRegexScript();
+  assert.notEqual(a.id, b.id, '每次新 id');
+  assert.deepEqual(a.placement, [2]);
+  assert.equal(a.disabled, false);
+  assert.equal(a.runOnEdit, true);
+  assert.equal(blankRegexScript({ scriptName: '命名', placement: [1] }).scriptName, '命名');
+  assert.deepEqual(blankRegexScript({ placement: [1] }).placement, [1]);
+});
+
+test('removeRegexEntries + restoreRegexEntries round-trips entries back to their slots', () => {
+  const list = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  const { next, removed } = removeRegexEntries(list, [2, 0]);
+  assert.deepEqual(next.map(s => s.id), ['b', 'd']);
+  assert.deepEqual(removed.map(r => r.index), [0, 2], '按升序记录原位');
+  const back = restoreRegexEntries(next, removed);
+  assert.deepEqual(back.map(s => s.id), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(restoreRegexEntries([{ id: 'a' }, { id: 'b' }, { id: 'd' }], removed).filter(s => s.id === 'a').length, 1);
+});
+
+test('cloneRegexScript + copyRegexEntries place a 副本 right after each original', () => {
+  const clone = cloneRegexScript({ id: 'x', scriptName: '原' });
+  assert.notEqual(clone.id, 'x');
+  assert.equal(clone.scriptName, '原 副本');
+  const list = [{ id: 'a', scriptName: 'A' }, { id: 'b', scriptName: 'B' }];
+  const next = copyRegexEntries(list, [0]);
+  assert.deepEqual(next.map(s => s.scriptName), ['A', 'A 副本', 'B']);
+  assert.notEqual(next[1].id, 'a', '副本带新 id');
+});
+
+test('moveRegexEntries slides a selection before a target index', () => {
+  const list = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  assert.deepEqual(moveRegexEntries(list, [2], 0).map(s => s.id), ['c', 'a', 'b', 'd'], '移到最前');
+  assert.deepEqual(moveRegexEntries(list, [0], 4).map(s => s.id), ['b', 'c', 'd', 'a'], '移到末尾');
+});
+
+test('assignRegexGroup rewrites the name prefix and clears it when moving out', () => {
+  assert.equal(assignRegexGroup('美化-标题', { from: '美化', to: '排版' }), '排版-标题');
+  assert.equal(assignRegexGroup('美化-标题', { from: '美化', to: '' }), '标题', '移出分组去掉前缀');
+  assert.equal(assignRegexGroup('独立', { from: '', to: '新组' }), '新组-独立', '未分组加前缀');
+  assert.equal(assignRegexGroup('【标签】甲', { from: '标签', to: '乙' }), '【乙】甲', '方括号标签改写');
+});
+
+test('parseRegexLiteral reads /pat/flags and falls back to escaped literal text', () => {
+  assert.equal(parseRegexLiteral('/a.c/i').flags, 'i');
+  assert.equal(parseRegexLiteral('/a.c/i').source, 'a.c');
+  assert.equal(parseRegexLiteral('a.c').source, 'a\\.c', '纯文本转义');
+  assert.equal(parseRegexLiteral('/(/'), null, '非法正则 → null');
+  assert.equal(parseRegexLiteral(''), null);
+});
+
+test('previewRegexScript applies capture groups, {{match}} and trim strings like the engine', () => {
+  assert.deepEqual(previewRegexScript({ findRegex: '/(\\w+)@(\\w+)/', replaceString: '$2.$1' }, 'a@b').output, 'b.a');
+  assert.equal(previewRegexScript({ findRegex: '/x/g', replaceString: '[{{match}}]' }, 'xx').output, '[x][x]');
+  assert.equal(previewRegexScript({ findRegex: '/<(\\w+)>/', replaceString: '$1', trimStrings: ['_'] }, '<a_b>').output, 'ab', '捕获组先剔除修剪串');
+  assert.equal(previewRegexScript({ findRegex: '/(/', replaceString: 'x' }, 'y').ok, false, '非法正则不改原文');
+  assert.equal(previewRegexScript({ findRegex: '/(/', replaceString: 'x' }, 'y').output, 'y');
+});
+
+test('editRegexList reads raw, writes once and flags reload only for display scripts', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+  const promptOnly = await editRegexList(st.ctx, 'global', raw => ({ next: [...raw, { id: 'g2', scriptName: 'B', promptOnly: true }], touched: [{ promptOnly: true }] }));
+  assert.equal(promptOnly.reload, false, 'promptOnly 改动不重载');
+  assert.equal(st.log.saves, 1);
+  const display = await editRegexList(st.ctx, 'global', raw => ({ next: [...raw], touched: [{ disabled: false }] }));
+  assert.equal(display.reload, true);
+  const noop = await editRegexList(st.ctx, 'global', () => ({ next: null }));
+  assert.equal(noop.changed, false, 'next 为空不写');
+});
+
+// —— C-14f 条目管理：控制器 ——
+const mgr = (overrides = {}) => {
+  const st = fakeST(overrides);
+  const timers = manualTimers();
+  const notes = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, notify: (m, t) => notes.push([t, m]) });
+  return { st, timers, notes, ctrl };
+};
+
+test('removeMany deletes a batch, exposes an undo count, and undoRemove restores them', async () => {
+  const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }, { id: 'g3', scriptName: 'C' }] });
+  const n = await ctrl.actions.removeMany({ items: [{ source: 'global', id: 'g1', name: 'A' }, { source: 'global', id: 'g3', name: 'C' }] });
+  assert.equal(n, 2);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g2']);
+  assert.equal(ctrl.state().undo.count, 2, '撤销计数');
+  const back = await ctrl.actions.undoRemove();
+  assert.equal(back, 2);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], '还原到原位');
+  assert.equal(ctrl.state().undo, null, '撤销后清空');
+});
+
+test('copyMany duplicates in place for the same source and appends across sources', async () => {
+  const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }], preset: [{ id: 'p1', scriptName: 'P' }] });
+  await ctrl.actions.copyMany({ items: [{ source: 'global', id: 'g1', name: 'A' }] });
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['A', 'A 副本']);
+  await ctrl.actions.copyMany({ items: [{ source: 'global', id: 'g1', name: 'A' }], to: 'preset' });
+  assert.deepEqual(st.preset().map(s => s.scriptName), ['P', 'A'], '跨源用原名追加到末尾');
+});
+
+test('move reorders one source and insert adds a named entry returning its id', async () => {
+  const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
+  await ctrl.actions.move({ source: 'global', items: [{ id: 'g2', name: 'B' }], to: 0 });
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g2', 'g1']);
+  const id = await ctrl.actions.insert({ source: 'global', script: { scriptName: '新条目' } });
+  assert.equal(typeof id, 'string');
+  assert.equal(st.ctx.extensionSettings.regex.at(-1).scriptName, '新条目');
+  const bad = await ctrl.actions.insert({ source: 'global', script: { scriptName: '' } });
+  assert.equal(bad, null, '无名拒绝新建');
+});
+
+test('saveScript replaces fields in place and keeps the real id', async () => {
+  const { st, ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A', findRegex: '/a/' }] });
+  await ctrl.actions.saveScript({ source: 'global', id: 'g1', name: 'A', script: { scriptName: 'A2', replaceString: 'x' } });
+  const row = st.ctx.extensionSettings.regex[0];
+  assert.equal(row.id, 'g1', 'id 不变');
+  assert.equal(row.scriptName, 'A2');
+  assert.equal(row.replaceString, 'x');
+});
+
+test('regroup moves selected entries into a named group without a reload', async () => {
+  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '甲' }, { id: 'g2', scriptName: '乙' }] });
+  const n = await ctrl.actions.regroup({ items: [{ source: 'global', id: 'g1', name: '甲' }, { source: 'global', id: 'g2', name: '乙' }], to: '组' });
+  assert.equal(n, 2);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['组-甲', '组-乙']);
+  assert.equal(timers.size, 0, '改名不触发重载');
+});
+
+test('structural actions are mutually exclusive: a second one bails while the first is still writing', async () => {
+  const { st, ctrl } = mgr({ preset: [{ id: 'p1', scriptName: 'A' }, { id: 'p2', scriptName: 'B' }] });
+  let release;
+  const slow = new Promise(r => { release = r; });
+  const manager = st.ctx.getPresetManager();
+  const realWrite = manager.writePresetExtensionField;
+  manager.writePresetExtensionField = async args => { await slow; return realWrite(args); };
+  const first = ctrl.actions.removeMany({ items: [{ source: 'preset', id: 'p1', name: 'A' }] });
+  await settle();
+  const blocked = await ctrl.actions.copyMany({ items: [{ source: 'preset', id: 'p2', name: 'B' }] });
+  assert.equal(blocked, null, '已有结构性写回在跑时第二个直接退出');
+  release();
+  assert.equal(await first, 1);
+  assert.deepEqual(st.preset().map(s => s.id), ['p2'], '只删了第一个，复制没发生');
+});
+
+test('setManaging/setSelected track selection and clear it on exit; openEditor/closeEditor drive the sub-page', () => {
+  const { ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A' }] });
+  ctrl.actions.setManaging(true);
+  ctrl.actions.setSelected(['global:g1']);
+  assert.deepEqual(ctrl.state().selected, ['global:g1']);
+  assert.equal(ctrl.state().managing, true);
+  ctrl.actions.setManaging(false);
+  assert.deepEqual(ctrl.state().selected, [], '退出管理态清空选择');
+  ctrl.actions.openEditor({ source: 'global', id: 'g1', name: 'A' });
+  assert.deepEqual(ctrl.state().editing, { isNew: false, source: 'global', id: 'g1', name: 'A' });
+  ctrl.actions.openEditor({ isNew: true, source: 'preset' });
+  assert.deepEqual(ctrl.state().editing, { isNew: true, source: 'preset' });
+  ctrl.actions.closeEditor();
+  assert.equal(ctrl.state().editing, null);
+});
+
+test('readScript returns a deep copy and unmount resets editing/managing/selection', async () => {
+  const { ctrl } = mgr({ global: [{ id: 'g1', scriptName: 'A', trimStrings: ['x'] }] });
+  const copy = ctrl.actions.readScript({ source: 'global', id: 'g1', name: 'A' });
+  copy.trimStrings.push('y');
+  assert.deepEqual(ctrl.actions.readScript({ source: 'global', id: 'g1', name: 'A' }).trimStrings, ['x'], '改副本不影响源');
+  ctrl.actions.setManaging(true); ctrl.actions.setSelected(['global:g1']); ctrl.actions.openEditor({ source: 'global', id: 'g1', name: 'A' });
+  ctrl.unmount();
+  assert.equal(ctrl.state().managing, false);
+  assert.equal(ctrl.state().editing, null);
+  assert.deepEqual(ctrl.state().selected, []);
+});
+
+// —— C-14f 管理态 UI / C-14g 编辑子页：视图 ——
+function fakeDom() {
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false, value: '', type: '', placeholder: '',
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); },
+        toggle(c, on) { if (on === undefined ? this.set.has(c) : !on) this.set.delete(c); else this.set.add(c); } },
+      style: { setProperty() {}, removeProperty() {} },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      closest() { return null; }, getBoundingClientRect() { return { height: 400 }; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const host = make('div');
+  host.ownerDocument = { createElement: make, createTextNode: t => ({ text: t }), defaultView: {} };
+  return host;
+}
+const walkAll = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walkAll(k, out)); return out; };
+const byKey = (host, key) => walkAll(host).find(n => n.dataset?.key === key);
+
+test('manage toggle turns rows into checkbox + reorder + editable name, and a selection bar batches delete/copy/group', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const calls = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const stub = { ...ctrl.actions };
+  for (const name of ['setManaging', 'setSelected', 'removeMany', 'copyMany', 'regroup', 'moveRow', 'openEditor']) stub[name] = (...args) => { calls.push([name, args]); return null; };
+  const view = mountChatRegexView({ root: host, actions: stub });
+  // 非管理态：没有复选框
+  view.render(Object.freeze({ ...ctrl.state(), managing: false }));
+  assert.equal(walkAll(host).some(n => n.dataset?.key?.startsWith?.('sel:')), false);
+  // 管理态：每行一个复选框 + 上下移 + 可编辑名字
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, selected: ['global:g1'] }));
+  const checks = walkAll(host).filter(n => n.dataset?.key?.startsWith?.('sel:'));
+  assert.equal(checks.length, 2);
+  assert.equal(checks[0].attrs['aria-checked'], 'true', 'g1 已选');
+  checks[1].listeners.click();
+  assert.deepEqual(calls.at(-1), ['setSelected', ['global:g2', true]]);
+  byKey(host, 'edit:global:g1').listeners.click();
+  assert.deepEqual(calls.at(-1), ['openEditor', [{ source: 'global', id: 'g1', name: 'A' }]]);
+  byKey(host, 'move:up:global:g2').listeners.click();
+  assert.deepEqual(calls.at(-1), ['moveRow', [{ source: 'global', item: { id: 'g2', name: 'B' }, dir: 'up', group: '' }]]);
+  // 选择工具条
+  byKey(host, 'sel-act:del').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['removeMany', [{ items: [{ source: 'global', id: 'g1', name: 'A' }] }]]);
+  byKey(host, 'sel-act:copy').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['copyMany', [{ items: [{ source: 'global', id: 'g1', name: 'A' }] }]]);
+  byKey(host, 'sel-act:cancel').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['setManaging', [false]]);
+  view.dispose();
+});
+
+test('an undo bar appears when state.undo is set and calls actions.undoRemove', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  let undone = 0;
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, undoRemove: () => { undone += 1; } } });
+  view.render(Object.freeze({ ...ctrl.state(), undo: { count: 3 } }));
+  const bar = walkAll(host).find(n => n.classList?.contains('qm-regex-undobar'));
+  assert.ok(bar, '撤销条出现');
+  byKey(host, 'undo').listeners.click(); await settle();
+  assert.equal(undone, 1);
+  view.dispose();
+});
+
+test('editor sub-page mirrors ST fields, saves collected data through insert/saveScript, and previews via actions.preview', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const saved = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', findRegex: '/x/', replaceString: 'y', placement: [2], trimStrings: ['q'] }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const stub = { ...ctrl.actions,
+    readScript: () => ({ scriptName: 'A', findRegex: '/x/', replaceString: 'y', placement: [2], trimStrings: ['q'], markdownOnly: false, promptOnly: false, runOnEdit: true, disabled: false, substituteRegex: 0, minDepth: null, maxDepth: null }),
+    saveScript: args => { saved.push(['save', args]); return true; },
+    insert: args => { saved.push(['insert', args]); return 'new-id'; },
+    closeEditor: () => { saved.push(['close']); },
+    preview: (script, input) => ({ ok: true, output: `${script.replaceString}:${input}` }) };
+  const view = mountChatRegexView({ root: host, actions: stub });
+  // 编辑现有：字段预填
+  view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: 'g1', name: 'A' } }));
+  assert.ok(walkAll(host).some(n => n.classList?.contains('qm-regex-editor')), '进入编辑子页');
+  const nameField = byKey(host, 'field:scriptName');
+  assert.equal(nameField.value, 'A');
+  const findField = byKey(host, 'field:findRegex');
+  assert.equal(findField.value, '/x/');
+  // 展开按钮切换 is-tall
+  const findTextarea = findField;
+  const expand = walkAll(host).find(n => n.classList?.contains('qm-regex-expand'));
+  expand.listeners.click();
+  assert.equal(findTextarea.classList.contains('is-tall'), true, '展开');
+  // 改名 + 作用位置勾选 + 测试
+  nameField.value = 'A2';
+  byKey(host, 'place:1').listeners.click();
+  const testIn = byKey(host, 'field:testInput'); testIn.value = 'hi';
+  byKey(host, 'editor-test').listeners.click();
+  assert.match(walkAll(host).find(n => n.classList?.contains('qm-regex-testout')).textContent, /y:hi/);
+  // 保存：收集字段 → saveScript
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved[0][0], 'save');
+  assert.equal(saved[0][1].script.scriptName, 'A2');
+  assert.ok(saved[0][1].script.placement.includes(1) && saved[0][1].script.placement.includes(2), '作用位置含新勾选的 1 与原有 2');
+  assert.deepEqual(saved.at(-1), ['close'], '保存成功后返回列表');
+  // 返回按钮
+  byKey(host, 'editor-back').listeners.click();
+  assert.equal(saved.at(-1)[0], 'close');
+  view.dispose();
+});
+
+test('editor new mode inserts a blank script and refuses an empty name', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const saved = []; const notes = [];
+  const st = fakeST({ global: [] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, notify: (m, t) => notes.push([t, m]),
+    actions: { ...ctrl.actions, insert: args => { saved.push(args); return 'id'; }, closeEditor: () => saved.push('close') } });
+  view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: true, source: 'global' } }));
+  // 空名保存被拒
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.length, 0);
+  assert.match(notes.at(-1)[1], /填写正则名称/);
+  // 填名后新建
+  byKey(host, 'field:scriptName').value = '新建条目';
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved[0].source, 'global');
+  assert.equal(saved[0].script.scriptName, '新建条目');
+  view.dispose();
 });

@@ -157,6 +157,138 @@ export async function writeRegexToggle(context, { source, id, name, enabled } = 
   return enabled === true;
 }
 
+// ── C-14f：条目管理（删除 / 复制 / 拖动排序 / 新建 / 编辑 / 分组）──────────────────────────────────
+// 与开关走同一条写回路径：读 ST 原始数组 → 在副本上改 → 全局就地换内容（保住 ST 持有的数组引用）+ saveSettingsDebounced；
+// 预设写一份新数组经 writePresetExtensionField。定位一律走 locateRegexScript，任何一条失效整批拒绝，绝不半写。
+const SEPARATOR_RUN = /^[-_·:：|｜/\s]+/u;
+const newRegexId = () => attempt(() => globalThis.crypto.randomUUID(), '') || `qm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// 与 ST 原生「新建正则」同一组字段；作用位置默认 AI 输出。
+export function blankRegexScript(patch = {}) {
+  return { id: newRegexId(), scriptName: '', findRegex: '', replaceString: '', trimStrings: [], placement: [2], disabled: false,
+    markdownOnly: false, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null, ...patch };
+}
+
+// 纯函数：按下标删除，返回新数组 + 被删条目（含原下标，供撤销按原位插回）。
+export function removeRegexEntries(list, indices) {
+  const drop = new Set(indices);
+  const removed = [...drop].sort((a, b) => a - b).map(index => ({ index, script: list[index] }));
+  return { next: list.filter((_, i) => !drop.has(i)), removed };
+}
+
+// 纯函数：把被删条目按原下标插回（升序插，下标即最终位置）；已有同 id 的跳过，避免重复。
+export function restoreRegexEntries(list, removed) {
+  const next = [...list];
+  const ids = new Set(next.map(script => text(script?.id)).filter(Boolean));
+  for (const { index, script } of [...removed].sort((a, b) => a.index - b.index)) {
+    if (text(script?.id) && ids.has(text(script.id))) continue;
+    next.splice(Math.min(index, next.length), 0, script);
+  }
+  return next;
+}
+
+// 纯函数：副本换新 id、名字加后缀；copyRegexEntries 让每条副本紧跟在原条目后。
+export function cloneRegexScript(script, { makeId = newRegexId, suffix = ' 副本' } = {}) {
+  const copy = structuredClone(script && typeof script === 'object' ? script : {});
+  copy.id = makeId();
+  copy.scriptName = `${text(script?.scriptName) || '（未命名）'}${suffix}`;
+  return copy;
+}
+export function copyRegexEntries(list, indices, options = {}) {
+  const pick = new Set(indices);
+  const next = [];
+  list.forEach((script, i) => { next.push(script); if (pick.has(i)) next.push(cloneRegexScript(script, options)); });
+  return next;
+}
+
+// 纯函数：把选中的条目（保持相对顺序）整体移到原数组下标 to 之前（to = list.length 即末尾）。
+export function moveRegexEntries(list, indices, to) {
+  const pick = new Set(indices);
+  const moving = list.filter((_, i) => pick.has(i));
+  const rest = list.filter((_, i) => !pick.has(i));
+  const before = list.slice(0, Math.max(0, Math.min(Number(to) || 0, list.length))).filter((_, i) => !pick.has(i)).length;
+  rest.splice(before, 0, ...moving);
+  return rest;
+}
+
+// 纯函数：分组由名字前缀自动得出，所以「改分组」就是改名字前缀。from 为原组名（未分组为空）。
+// 【旧】→【新】，或开头旧前缀换成新前缀；to 为空 = 移出分组（去掉前缀与紧随的分隔符）；未分组条目加「新-」前缀。
+export function assignRegexGroup(name, { from = '', to = '' } = {}) {
+  const raw = text(name), src = text(from), dest = text(to);
+  if (!src) return dest ? `${dest}-${raw}` : raw;
+  const bracket = raw.match(LEAD_BRACKET);
+  if (bracket && bracket[1].trim() === src) {
+    const rest = raw.slice(bracket[0].length);
+    return dest ? `【${dest}】${rest}` : (rest.replace(SEPARATOR_RUN, '') || raw);
+  }
+  if (raw.startsWith(src)) {
+    const rest = raw.slice(src.length);
+    return dest ? `${dest}${rest}` : (rest.replace(SEPARATOR_RUN, '') || raw);
+  }
+  return raw;
+}
+
+function readRawList(ctx, source) {
+  if (source === 'global') {
+    const list = attempt(() => ctx.extensionSettings?.regex, undefined);
+    if (!Array.isArray(list) || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 不支持在此修改全局正则');
+    return list;
+  }
+  if (source === 'preset') {
+    const manager = presetManager(ctx);
+    if (typeof manager?.readPresetExtensionField !== 'function' || typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此修改预设正则');
+    const list = manager.readPresetExtensionField({ path: 'regex_scripts' });
+    return Array.isArray(list) ? list : [];
+  }
+  throw new Error('未知的正则来源');
+}
+async function writeRawList(ctx, source, next) {
+  if (source === 'global') {
+    const list = ctx.extensionSettings.regex;
+    list.splice(0, list.length, ...next);
+    ctx.saveSettingsDebounced();
+    return;
+  }
+  await presetManager(ctx).writePresetExtensionField({ path: 'regex_scripts', value: next });
+}
+// 改动是否影响已显示楼层：涉及任一启用中、非「仅提示词」的脚本才需要重载。
+const touchesDisplay = scripts => scripts.some(script => script && script.disabled !== true && script.promptOnly !== true);
+
+// 读 → 改 → 写，一个来源一次保存。mutate(list) 返回 { next, touched, result }，next 为空表示无改动、不写盘。
+export async function editRegexList(context, source, mutate) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const list = readRawList(ctx, source);
+  const out = mutate(list) || {};
+  if (!out.next) return { changed: false, reload: false, result: out.result };
+  await writeRawList(ctx, source, out.next);
+  return { changed: true, reload: touchesDisplay(out.touched || []), result: out.result };
+}
+const locateIndices = (list, items) => [...locateAll(list, items.map(item => ({ ...item, enabled: true }))).keys()];
+
+// 编辑子页的「测试」：与 ST 引擎同一套替换语义的纯函数预览——"/pat/flags" 或纯文本模式，
+// {{match}} 即 $0，$1 / $<名> 取捕获组且先按「修剪掉」逐条剔除。不展开宏（预览只看正则本身）。
+export function parseRegexLiteral(source) {
+  const raw = typeof source === 'string' ? source : '';
+  if (!raw) return null;
+  const literal = /^\/([\s\S]+)\/([dgimsuvy]*)$/.exec(raw);
+  try { return literal ? new RegExp(literal[1], literal[2]) : new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); }
+  catch (_) { return null; }
+}
+export function previewRegexScript({ findRegex = '', replaceString = '', trimStrings = [] } = {}, input = '') {
+  const pattern = parseRegexLiteral(findRegex);
+  if (!pattern) return { ok: !findRegex, output: String(input), error: findRegex ? '查找正则无效' : '' };
+  const trims = (Array.isArray(trimStrings) ? trimStrings : []).filter(Boolean);
+  const trim = value => trims.reduce((out, cut) => out.split(cut).join(''), String(value ?? ''));
+  const template = String(replaceString).replace(/{{match}}/gi, '$0');
+  const output = String(input).replace(pattern, (...args) => {
+    const hasGroups = typeof args.at(-1) === 'object' && args.at(-1) !== null;
+    const groups = hasGroups ? args.at(-1) : {};
+    const captures = args.slice(0, hasGroups ? -3 : -2);
+    return template.replace(/\$(\d+)|\$<([^>]+)>/g, (_, num, name) => trim(num !== undefined ? captures[Number(num)] : groups?.[name]));
+  });
+  return { ok: true, output, error: '' };
+}
+
 // ── C-11d：正则绑定聊天 ──────────────────────────────────────────────────────
 // ST 的正则 disabled 是全局/预设级、写盘的，直接按聊天改会泄漏到别的聊天。于是用「全局默认 + 每聊天覆盖」：
 // 进聊天时把 默认 ⊕ 本聊天 overrides 解析成每条脚本的目标态，与 live flags 逐条比较，只写差异，
@@ -267,6 +399,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
   const folded = new Set();   // C-14e：卡片/分组折叠态（card:global / group:preset:xx），跨页签保持
+  // C-14f：管理态（多选 / 拖动 / 分组改名）、编辑子页目标、结构性写回中、最近一次删除（可撤销）。都只活在本次会话。
+  let managing = false, editing = null, writing = false, lastRemoved = null;
+  const selected = new Set();
   const context = () => attempt(() => getContext(), {});
   // 本聊天绑定的规范形：{ enabled, overrides, preset }。所有写入都在它之上打补丁，绝不丢掉其它字段。
   const currentBinding = () => {
@@ -285,6 +420,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const state = () => {
     const b = currentBinding();
     return Object.freeze({ view, pending: Object.freeze([...pending]), folded: Object.freeze([...folded]),
+      managing, writing, selected: Object.freeze([...selected]), editing: editing ? Object.freeze({ ...editing }) : null,
+      undo: lastRemoved ? Object.freeze({ count: lastRemoved.reduce((n, batch) => n + batch.removed.length, 0) }) : null,
       binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
       sources: readRegexSources(context()) });
@@ -386,7 +523,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
 
   async function toggle({ source, id, name, enabled } = {}) {
     const key = `${source}:${id}`;
-    if (pending.has(key)) return null;
+    if (pending.has(key) || writing) return null;
     pending.add(key); refresh();
     try {
       const next = await writeRegexToggle(context(), { source, id, name, enabled });
@@ -407,7 +544,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const changes = (Array.isArray(items) ? items : []).filter(item => item && text(item.id) && item.enabled !== (enabled === true))
       .map(item => ({ id: item.id, name: item.name, enabled: enabled === true }));
     const keys = changes.map(change => `${source}:${change.id}`);
-    if (!changes.length || keys.some(key => pending.has(key))) return 0;
+    if (!changes.length || writing || keys.some(key => pending.has(key))) return 0;
     keys.forEach(key => pending.add(key)); refresh();
     try {
       const changed = await writeRegexStates(context(), { source, changes });
@@ -457,10 +594,170 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     saveBinding({ overrides });
     refresh();
   }
+  // ── C-14f 条目管理 ──
+  // 结构性写回一次只跑一个，且与开关写回互斥；成功后清掉已不存在的选择，按需排一次重载。
+  async function structural(label, run) {
+    if (writing || disposed || pending.size) return null;
+    writing = true; refresh();
+    try {
+      const out = await run(context());
+      if (out?.reload) scheduleReload();
+      return out?.result ?? true;
+    } catch (error) {
+      notify(error?.message || `${label}失败`, 'warning');
+      return null;
+    } finally {
+      writing = false;
+      const live = readRegexSources(context());
+      const keys = new Set(BINDING_SOURCES.flatMap(source => live[source].items.map(item => `${source}:${item.id}`)));
+      for (const key of [...selected]) if (!keys.has(key)) selected.delete(key);
+      refresh();
+    }
+  }
+  const bySource = items => {
+    const out = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!item || !BINDING_SOURCES.includes(item.source) || !text(item.id)) continue;
+      if (!out.has(item.source)) out.set(item.source, []);
+      out.get(item.source).push({ id: item.id, name: item.name, ...(item.from !== undefined ? { from: item.from } : {}) });
+    }
+    return out;
+  };
+  const presetNameNow = () => readRegexSources(context()).preset.name;
+  // 编辑子页读原始字段（深拷贝，视图改不到 ST 的对象）。
+  function readScript({ source, id, name } = {}) {
+    try {
+      const list = readRawList(context(), source);
+      const index = locateRegexScript(list, { id, name });
+      return index < 0 ? null : structuredClone(list[index]);
+    } catch (_) { return null; }
+  }
+  // 删除：整批写回；记下被删条目与原位置，可一键撤销（预设已切换则拒绝撤销到别的预设里）。
+  const removeMany = ({ items } = {}) => structural('删除正则', async ctx => {
+    const batches = []; let reload = false, count = 0;
+    for (const [source, list] of bySource(items)) {
+      const out = await editRegexList(ctx, source, raw => {
+        const { next, removed } = removeRegexEntries(raw, locateIndices(raw, list));
+        return { next, touched: removed.map(entry => entry.script), result: removed };
+      });
+      batches.push({ source, preset: source === 'preset' ? presetNameNow() : '', removed: out.result });
+      count += out.result.length; reload ||= out.reload;
+    }
+    lastRemoved = count ? batches : lastRemoved;
+    if (count) notify(`已删除 ${count} 条正则，可在快切页顶撤销`, 'success');
+    return { reload, result: count };
+  });
+  const undoRemove = () => structural('撤销删除', async ctx => {
+    if (!lastRemoved) return { result: 0 };
+    let reload = false, count = 0;
+    for (const batch of lastRemoved) {
+      if (batch.source === 'preset' && batch.preset !== presetNameNow()) throw new Error(`删除发生在预设「${batch.preset}」，切回该预设后再撤销`);
+    }
+    for (const batch of lastRemoved) {
+      const out = await editRegexList(ctx, batch.source, raw => ({ next: restoreRegexEntries(raw, batch.removed), touched: batch.removed.map(entry => entry.script) }));
+      reload ||= out.reload; count += batch.removed.length;
+    }
+    lastRemoved = null;
+    return { reload, result: count };
+  });
+  // 复制：to 省略或同源 = 原地复制（紧跟原条目、名字加「副本」）；to 为另一来源 = 原名复制到那一来源末尾。
+  const copyMany = ({ items, to = '' } = {}) => structural('复制正则', async ctx => {
+    let reload = false, count = 0;
+    for (const [source, list] of bySource(items)) {
+      if (!to || to === source) {
+        const out = await editRegexList(ctx, source, raw => {
+          const indices = locateIndices(raw, list);
+          return { next: copyRegexEntries(raw, indices), touched: indices.map(i => raw[i]), result: indices.length };
+        });
+        reload ||= out.reload; count += out.result;
+        continue;
+      }
+      const from = readRawList(ctx, source);
+      const copies = locateIndices(from, list).map(i => cloneRegexScript(from[i], { suffix: '' }));
+      const out = await editRegexList(ctx, to, raw => ({ next: [...raw, ...copies], touched: copies, result: copies.length }));
+      reload ||= out.reload; count += out.result;
+    }
+    if (count) notify(`已复制 ${count} 条正则`, 'success');
+    return { reload, result: count };
+  });
+  // 排序：把条目整体移到原始下标 to 之前（拖动与上移/下移都走这里）。
+  const move = ({ source, items, to } = {}) => structural('调整顺序', ctx => editRegexList(ctx, source, raw => {
+    const indices = locateIndices(raw, (Array.isArray(items) ? items : []).map(item => ({ id: item.id, name: item.name })));
+    const next = moveRegexEntries(raw, indices, to);
+    if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
+    return { next, touched: indices.map(i => raw[i]), result: true };
+  }));
+  // 上移/下移一格：按原始下标与相邻条目对调（管理态列表的无拖动兜底）。
+  const moveRow = ({ source, item, dir } = {}) => structural('调整顺序', ctx => editRegexList(ctx, source, raw => {
+    const index = locateRegexScript(raw, item);
+    if (index < 0) throw stale();
+    const swap = dir === 'up' ? index - 1 : index + 1;
+    if (swap < 0 || swap >= raw.length) return { next: null, result: false };
+    const next = [...raw]; [next[index], next[swap]] = [next[swap], next[index]];
+    return { next, touched: [raw[index], raw[swap]], result: true };
+  }));
+  // 新建：插到来源末尾（或指定下标），返回新 id。
+  const insert = ({ source, script, index } = {}) => structural('新建正则', ctx => editRegexList(ctx, source, raw => {
+    const entry = blankRegexScript(script && typeof script === 'object' ? script : {});
+    if (!text(entry.scriptName)) throw new Error('请先填写正则名称');
+    const at = Number.isInteger(index) ? Math.max(0, Math.min(index, raw.length)) : raw.length;
+    const next = [...raw]; next.splice(at, 0, entry);
+    return { next, touched: [entry], result: entry.id };
+  }));
+  // 编辑保存：按原 id/名定位、原位替换；有真实 id 的保持 id 不变（绑定与排序不受影响）。
+  const saveScript = ({ source, id, name, script } = {}) => structural('保存正则', ctx => editRegexList(ctx, source, raw => {
+    const index = locateRegexScript(raw, { id, name });
+    if (index < 0) throw stale();
+    const entry = { ...raw[index], ...(script && typeof script === 'object' ? script : {}) };
+    entry.id = text(raw[index]?.id) || text(entry.id) || newRegexId();
+    if (!text(entry.scriptName)) throw new Error('请先填写正则名称');
+    const next = [...raw]; next[index] = entry;
+    return { next, touched: [raw[index], entry], result: true };
+  }));
+  // 分组改名 / 移入移出分组：都是改名字前缀。from 为原组名（未分组传空或「未分组」；单条可带自己的 from），to 为新组名（空 = 移出）。
+  const regroup = ({ items, from = '', to = '' } = {}) => structural('调整分组', async ctx => {
+    let count = 0;
+    const plain = value => (text(value) === UNGROUPED_LABEL ? '' : text(value));
+    for (const [source, list] of bySource(items)) {
+      const out = await editRegexList(ctx, source, raw => {
+        const origin = new Map();
+        for (const item of list) {
+          const index = locateRegexScript(raw, item);
+          if (index < 0) throw stale();
+          origin.set(index, plain(item.from ?? from));
+        }
+        let hits = 0;
+        const next = raw.map((script, i) => {
+          if (!origin.has(i)) return script;
+          const renamed = assignRegexGroup(text(script?.scriptName), { from: origin.get(i), to });
+          if (!renamed || renamed === text(script?.scriptName)) return script;
+          hits += 1; return { ...script, scriptName: renamed };
+        });
+        return hits ? { next, touched: [], result: hits } : { next: null, result: 0 };
+      });
+      count += out.result || 0;
+    }
+    return { reload: false, result: count };
+  });
+  function setManaging(on) { managing = on === true; if (!managing) selected.clear(); refresh(); }
+  function setSelected(keys, on = true) {
+    for (const key of Array.isArray(keys) ? keys : [keys]) { if (!text(key)) continue; if (on) selected.add(String(key)); else selected.delete(String(key)); }
+    refresh();
+  }
+  function openEditor(target = {}) {
+    if (target.isNew) editing = { isNew: true, source: BINDING_SOURCES.includes(target.source) ? target.source : 'global' };
+    else if (BINDING_SOURCES.includes(target.source) && text(target.id)) editing = { isNew: false, source: target.source, id: text(target.id), name: text(target.name) };
+    else return;
+    refresh();
+  }
+  function closeEditor() { editing = null; refresh(); }
+
   const actions = Object.freeze({
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
     group: groupRegexScripts,
+    preview: previewRegexScript,
+    placementLabels: REGEX_PLACEMENTS,
     bindingKey: regexBindingKey,
     setView(next) { view = REGEX_VIEWS.includes(next) ? next : 'order'; refresh(); },
     isFolded: key => folded.has(String(key)),
@@ -472,6 +769,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
+    readScript, removeMany, undoRemove, copyMany, move, moveRow, insert, saveScript, regroup,
+    setManaging, setSelected, openEditor, closeEditor,
   });
   async function mount(host) {
     if (!host) return;
@@ -484,7 +783,12 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     refresh();
   }
   // Closing the toolkit applies a pending reload right away instead of waiting out the quiet window.
-  function unmount() { mounted?.view?.dispose?.(); mounted = null; if (reloadPending && reloadTimer !== null) void flushReload(); }
+  // C-14f：同时退出编辑子页与管理态（下次打开回到列表）；折叠态保留。
+  function unmount() {
+    mounted?.view?.dispose?.(); mounted = null;
+    editing = null; managing = false; selected.clear();
+    if (reloadPending && reloadTimer !== null) void flushReload();
+  }
   function dispose() {
     disposed = true; reloadPending = false;
     if (reloadTimer !== null) { timers.clear(reloadTimer); reloadTimer = null; }
