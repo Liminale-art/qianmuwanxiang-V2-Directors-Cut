@@ -300,7 +300,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
   }
 
-  // ST 原生正则编辑器的作用位置：1 用户输入 / 2 AI 输出 / 3 快捷命令 / 5 世界书 / 6 推理。
+  // ST 原生正则编辑器的作用范围：1 用户输入 / 2 AI 输出 / 3 快捷命令 / 5 世界书 / 6 推理。
   const PLACEMENTS = Object.freeze([[1, '用户输入'], [2, 'AI 输出'], [3, '快捷命令'], [5, '世界书'], [6, '推理']]);
   const SUBSTITUTE = Object.freeze([[0, '不替换'], [1, '原样宏'], [2, '转义宏']]);
 
@@ -343,64 +343,69 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const nameField = el('input', 'qm-regex-input'); nameField.type = 'text';
     nameField.id = 'qm-regex-name'; nameField.dataset.key = 'field:scriptName';
     nameField.value = data.scriptName == null ? '' : String(data.scriptName);
-    nameField.placeholder = '正则名称';
-    const nameLabel = el('label', 'qm-regex-field-label', '名称'); nameLabel.setAttribute('for', 'qm-regex-name');
+    nameField.placeholder = '脚本名称';
+    const nameLabel = el('label', 'qm-regex-field-label', '脚本名称'); nameLabel.setAttribute('for', 'qm-regex-name');
     const nameWrap = el('div', 'qm-regex-field'); nameWrap.append(nameLabel, nameField);
     form.append(nameWrap);
 
-    const find = growTextarea('findRegex', '查找正则', data.findRegex, 2);
+    const find = growTextarea('findRegex', '查找正则表达式', data.findRegex, 2);
     const replace = growTextarea('replaceString', '替换为', data.replaceString, 3);
-    const trim = growTextarea('trimStrings', '修剪掉（每行一条）', (Array.isArray(data.trimStrings) ? data.trimStrings : []).join('\n'), 2);
+    const trim = growTextarea('trimStrings', '修剪掉', (Array.isArray(data.trimStrings) ? data.trimStrings : []).join('\n'), 2);
     form.append(find.wrap, replace.wrap, trim.wrap);
 
-    // 作用位置多选
-    const placeSet = new Set((Array.isArray(data.placement) ? data.placement : [2]).map(Number));
-    const placeBox = el('div', 'qm-regex-checks');
-    placeBox.append(el('span', 'qm-regex-field-label', '作用位置'));
-    const placeChecks = new Map();
-    for (const [value, label] of PLACEMENTS) {
-      const b = el('button', `qm-regex-chip${placeSet.has(value) ? ' is-on' : ''}`); b.type = 'button';
-      b.dataset.key = `place:${value}`;
-      b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(placeSet.has(value)));
-      b.setAttribute('aria-label', label); b.append(el('span', '', label));
-      b.addEventListener('click', () => { const on = !b.classList?.contains('is-on'); if (on) b.classList?.add('is-on'); else b.classList?.remove('is-on'); b.setAttribute('aria-checked', String(on)); });
-      placeChecks.set(value, b); placeBox.append(b);
-    }
-    form.append(placeBox);
-
-    // 布尔开关：仅显示 / 仅提示词 / 编辑时运行 / 已禁用
-    const flagDefs = [['markdownOnly', '仅作用于显示', data.markdownOnly === true], ['promptOnly', '仅作用于提示词', data.promptOnly === true],
-      ['runOnEdit', '编辑时运行', data.runOnEdit !== false], ['disabled', '已停用', data.disabled === true]];
-    const flagBox = el('div', 'qm-regex-flags');
-    const flagChecks = new Map();
-    for (const [key, label, on] of flagDefs) {
-      const b = el('button', `qm-regex-chip${on ? ' is-on' : ''}`); b.type = 'button';
-      b.dataset.key = `flag:${key}`;
+    // 圆点式多选：选中显示实心圆点。作用范围与其他选项各自 3 等分列。
+    const optButton = (keyName, value, label, on) => {
+      const b = el('button', `qm-regex-opt${on ? ' is-on' : ''}`); b.type = 'button';
+      b.dataset.key = `${keyName}:${value}`;
       b.setAttribute('role', 'checkbox'); b.setAttribute('aria-checked', String(on));
-      b.setAttribute('aria-label', label); b.append(el('span', '', label));
+      b.setAttribute('aria-label', label);
+      const dot = el('span', 'qm-regex-opt-dot'); dot.setAttribute('aria-hidden', 'true');
+      b.append(dot, el('span', 'qm-regex-opt-text', label));
       b.addEventListener('click', () => { const next = !b.classList?.contains('is-on'); if (next) b.classList?.add('is-on'); else b.classList?.remove('is-on'); b.setAttribute('aria-checked', String(next)); });
-      flagChecks.set(key, b); flagBox.append(b);
-    }
-    form.append(flagBox);
+      return b;
+    };
 
-    // 宏替换模式 + 深度
+    // 作用范围多选（ST：placement）
+    const placeSet = new Set((Array.isArray(data.placement) ? data.placement : [2]).map(Number));
+    const placeField = el('div', 'qm-regex-field');
+    placeField.append(el('span', 'qm-regex-field-label', '作用范围'));
+    const placeGrid = el('div', 'qm-regex-optgrid');
+    const placeChecks = new Map();
+    for (const [value, label] of PLACEMENTS) { const b = optButton('place', value, label, placeSet.has(value)); placeChecks.set(value, b); placeGrid.append(b); }
+    placeField.append(placeGrid);
+    form.append(placeField);
+
+    // 其他选项（ST：已禁用 / 在编辑时运行 / 仅影响显示 / 仅影响后端提示词）
+    const flagDefs = [['disabled', '已禁用', data.disabled === true], ['runOnEdit', '在编辑时运行', data.runOnEdit !== false],
+      ['markdownOnly', '仅影响显示', data.markdownOnly === true], ['promptOnly', '仅影响后端提示词', data.promptOnly === true]];
+    const flagField = el('div', 'qm-regex-field');
+    flagField.append(el('span', 'qm-regex-field-label', '其他选项'));
+    const flagGrid = el('div', 'qm-regex-optgrid');
+    const flagChecks = new Map();
+    for (const [key, label, on] of flagDefs) { const b = optButton('flag', key, label, on); flagChecks.set(key, b); flagGrid.append(b); }
+    flagField.append(flagGrid);
+    form.append(flagField);
+
+    // 正则表达式查找时的宏 + 最小/最大深度：同排。
     const subSel = el('select', 'qm-regex-select'); subSel.dataset.key = 'field:substituteRegex';
     for (const [value, label] of SUBSTITUTE) { const o = el('option', '', label); o.value = String(value); if (Number(data.substituteRegex || 0) === value) o.selected = true; subSel.append(o); }
     subSel.value = String(Number(data.substituteRegex || 0));
-    const subLabel = el('label', 'qm-regex-field-label', '宏替换'); subLabel.setAttribute('for', 'qm-regex-sub'); subSel.id = 'qm-regex-sub';
-    const subWrap = el('div', 'qm-regex-field'); subWrap.append(subLabel, subSel);
+    const subLabel = el('label', 'qm-regex-field-label', '正则表达式查找时的宏'); subLabel.setAttribute('for', 'qm-regex-sub'); subSel.id = 'qm-regex-sub';
+    const subWrap = el('div', 'qm-regex-field qm-regex-macro'); subWrap.append(subLabel, subSel);
     const depthMin = el('input', 'qm-regex-input qm-regex-depth'); depthMin.type = 'number'; depthMin.dataset.key = 'field:minDepth';
     depthMin.value = data.minDepth == null ? '' : String(data.minDepth); depthMin.placeholder = '最小深度';
     const depthMax = el('input', 'qm-regex-input qm-regex-depth'); depthMax.type = 'number'; depthMax.dataset.key = 'field:maxDepth';
     depthMax.value = data.maxDepth == null ? '' : String(data.maxDepth); depthMax.placeholder = '最大深度';
     const depthWrap = el('div', 'qm-regex-field qm-regex-depths');
-    depthWrap.append(el('span', 'qm-regex-field-label', '深度范围'), depthMin, depthMax);
-    form.append(subWrap, depthWrap);
+    depthWrap.append(el('span', 'qm-regex-field-label', '最小 / 最大深度'), depthMin, depthMax);
+    const macroRow = el('div', 'qm-regex-macro-row');
+    macroRow.append(subWrap, depthWrap);
+    form.append(macroRow);
 
-    // 测试：拿当前表单字段跑纯函数预览，不写 ST。
-    const testIn = growTextarea('testInput', '测试输入', '', 2);
+    // 测试模式：默认折叠；展开后输入 + 预览（预览为空时隐藏）。拿当前表单字段跑纯函数，不写 ST。
+    const testIn = growTextarea('testInput', '测试模式 · 输入', '', 2);
     const testOut = el('pre', 'qm-regex-testout', '');
-    const testBtn = el('button', 'qm-regex-selact', '测试'); testBtn.type = 'button'; testBtn.dataset.key = 'editor-test';
+    const testBtn = el('button', 'qm-regex-selact', '运行测试'); testBtn.type = 'button'; testBtn.dataset.key = 'editor-test';
     testBtn.setAttribute('aria-label', '用当前字段测试替换效果');
     const collect = () => ({
       scriptName: nameField.value.trim(),
@@ -416,21 +421,33 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       minDepth: depthMin.value === '' ? null : Number(depthMin.value),
       maxDepth: depthMax.value === '' ? null : Number(depthMax.value),
     });
+    const showOut = text => {
+      testOut.textContent = text == null ? '' : String(text);
+      if (testOut.textContent) testOut.classList?.remove('is-empty'); else testOut.classList?.add('is-empty');
+    };
+    showOut('');
     testBtn.addEventListener('click', () => {
       try {
         const preview = typeof actions.preview === 'function' ? actions.preview(collect(), testIn.area.value) : { ok: true, output: testIn.area.value };
-        testOut.textContent = preview.ok ? preview.output : `⚠ ${preview.error || '正则无效'}`;
-      } catch (error) { testOut.textContent = `⚠ ${error?.message || '测试失败'}`; }
+        showOut(preview.ok ? preview.output : `⚠ ${preview.error || '正则无效'}`);
+      } catch (error) { showOut(`⚠ ${error?.message || '测试失败'}`); }
     });
-    const testWrap = el('div', 'qm-regex-test');
-    testWrap.append(testIn.wrap, testBtn, testOut);
+    const testBody = el('div', 'qm-regex-test-body');
+    testBody.append(testIn.wrap, testBtn, testOut);
+    const testWrap = el('details', 'qm-regex-test');
+    const testSummary = el('summary', 'qm-regex-test-summary', '测试模式'); testSummary.dataset.key = 'editor-test-toggle';
+    testWrap.append(testSummary, testBody);
     form.append(testWrap);
 
-    // 底部动作：保存 / 取消
+    // 底部动作：取消（左）/ 保存（右），图标小按钮分置两端。
     const foot = el('div', 'qm-regex-editor-foot');
-    const cancel = el('button', 'qm-regex-selact is-quiet', '取消'); cancel.type = 'button'; cancel.dataset.key = 'editor-cancel';
+    const cancel = el('button', 'qm-regex-footbtn is-quiet', ''); cancel.type = 'button'; cancel.dataset.key = 'editor-cancel';
+    cancel.setAttribute('aria-label', '取消'); cancel.title = '取消';
+    const ci = el('i', 'fa-solid fa-xmark'); ci.setAttribute('aria-hidden', 'true'); cancel.append(ci);
     cancel.addEventListener('click', () => { try { actions.closeEditor?.(); } catch (error) { notify(error?.message || '取消失败', 'warning'); } });
-    const save = el('button', 'qm-regex-selact is-primary', '保存'); save.type = 'button'; save.dataset.key = 'editor-save';
+    const save = el('button', 'qm-regex-footbtn is-primary', ''); save.type = 'button'; save.dataset.key = 'editor-save';
+    save.setAttribute('aria-label', '保存'); save.title = '保存';
+    const si = el('i', 'fa-solid fa-check'); si.setAttribute('aria-hidden', 'true'); save.append(si);
     save.addEventListener('click', () => {
       const script = collect();
       if (!script.scriptName) { notify('请先填写正则名称', 'warning'); return; }

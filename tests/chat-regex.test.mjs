@@ -1159,6 +1159,15 @@ test('editor sub-page mirrors ST fields, saves collected data through insert/sav
   assert.equal(nameField.value, 'A');
   const findField = byKey(host, 'field:findRegex');
   assert.equal(findField.value, '/x/');
+  // s8：ST 原生中文命名 + 圆点式选项 + 测试模式默认折叠 + 取消/保存为图标按钮
+  const labels = walkAll(host).filter(n => n.classList?.contains('qm-regex-field-label')).map(n => n.textContent);
+  assert.ok(labels.includes('脚本名称') && labels.includes('查找正则表达式') && labels.includes('作用范围') && labels.includes('其他选项') && labels.includes('正则表达式查找时的宏'), '采用 ST 原生字段名');
+  assert.ok(walkAll(host).some(n => n.classList?.contains('qm-regex-opt')), '选项改圆点式');
+  const testDetails = walkAll(host).find(n => n.classList?.contains('qm-regex-test'));
+  assert.equal(testDetails.attrs?.open, undefined, '测试模式默认折叠');
+  assert.ok(byKey(host, 'editor-cancel').children.some(c => c.classList?.contains?.('fa-xmark') || c.classList?.set?.has?.('fa-xmark')), '取消为图标');
+  const testOut0 = walkAll(host).find(n => n.classList?.contains('qm-regex-testout'));
+  assert.equal(testOut0.classList.contains('is-empty'), true, '预览为空时隐藏');
   // 展开按钮切换 is-tall
   const findTextarea = findField;
   const expand = walkAll(host).find(n => n.classList?.contains('qm-regex-expand'));

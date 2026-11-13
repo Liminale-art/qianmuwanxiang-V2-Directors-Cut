@@ -1074,6 +1074,31 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-input { width: 100%; box-sizing: border-box; min-height: 32px; margin: 0; padding: 0 9px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-body); }
 #story-director-floor-nav .qm-regex-input:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav :is(.qm-regex-checks, .qm-regex-flags) { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+/* C-15 s8：作用范围 / 其他选项改圆点式，3 等分列；宏与深度同排；测试模式折叠；取消/保存图标分置 */
+#story-director-floor-nav .qm-regex-optgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; min-width: 0; margin-top: 4px; }
+#story-director-floor-nav .qm-regex-opt { display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 28px; margin: 0; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); text-align: left; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
+#story-director-floor-nav .qm-regex-opt:hover { background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-opt:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav .qm-regex-opt-dot { flex: none; width: 13px; height: 13px; box-sizing: border-box; border: 1.5px solid color-mix(in srgb, var(--sd-muted) 55%, transparent); border-radius: 50%; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+#story-director-floor-nav .qm-regex-opt.is-on { color: var(--sd-text); }
+#story-director-floor-nav .qm-regex-opt.is-on .qm-regex-opt-dot { border-color: var(--sd-primary); background: var(--sd-primary); box-shadow: inset 0 0 0 2.5px var(--sd-card, #fff); }
+#story-director-floor-nav .qm-regex-opt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-floor-nav .qm-regex-macro-row { display: flex; align-items: flex-end; gap: 10px; min-width: 0; flex-wrap: wrap; }
+#story-director-floor-nav .qm-regex-macro { flex: 1 1 10em; min-width: 0; }
+#story-director-floor-nav .qm-regex-test { padding: 0; border: 1px dashed var(--sd-hairline); border-radius: 10px; }
+#story-director-floor-nav .qm-regex-test-summary { list-style: none; padding: 8px 10px; font-size: var(--qm-type-caption); font-weight: 600; color: var(--sd-muted); cursor: pointer; }
+#story-director-floor-nav .qm-regex-test-summary::-webkit-details-marker { display: none; }
+#story-director-floor-nav .qm-regex-test-summary::before { content: "▸ "; color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-test[open] .qm-regex-test-summary::before { content: "▾ "; }
+#story-director-floor-nav .qm-regex-test-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0 10px 10px; }
+#story-director-floor-nav .qm-regex-testout.is-empty { display: none; }
+#story-director-floor-nav .qm-regex-footbtn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-card); color: var(--sd-text); cursor: pointer; transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
+#story-director-floor-nav .qm-regex-footbtn:hover { background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-footbtn:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav .qm-regex-footbtn.is-quiet { color: var(--sd-muted); border-color: transparent; background: transparent; }
+#story-director-floor-nav .qm-regex-footbtn.is-quiet:hover { background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-footbtn.is-primary { color: #fff; background: var(--sd-primary); border-color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-footbtn.is-primary:hover { background: color-mix(in srgb, var(--sd-primary) 86%, #000); }
 #story-director-floor-nav .qm-regex-chip { min-height: 26px; margin: 0; padding: 0 10px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-card); color: var(--sd-muted); font-size: var(--qm-type-caption); cursor: pointer; transition: color .15s ease, background-color .15s ease, border-color .15s ease; }
 #story-director-floor-nav .qm-regex-chip.is-on { color: #fff; background: var(--sd-primary); border-color: var(--sd-primary); }
 #story-director-floor-nav .qm-regex-chip:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
@@ -1082,7 +1107,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-depth { width: 6em; flex: none; }
 #story-director-floor-nav .qm-regex-test { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border: 1px dashed var(--sd-hairline); border-radius: 10px; }
 #story-director-floor-nav .qm-regex-testout { margin: 0; padding: 6px 8px; min-height: 2em; max-height: 160px; overflow: auto; border-radius: 8px; background: var(--sd-glass-weak); color: var(--sd-text); font-family: var(--sd-mono, ui-monospace, monospace); font-size: var(--qm-type-caption); white-space: pre-wrap; word-break: break-word; }
-#story-director-floor-nav .qm-regex-editor-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; padding-top: 2px; }
+#story-director-floor-nav .qm-regex-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-check, .qm-regex-check-mark) { transition: none; } #story-director-floor-nav .sd-floor-panel.qm-regex-subpage-open .qm-regex-editor { animation: none; } }
 #story-director-floor-nav .qm-ring-wheel-strip:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sd-primary) 45%, transparent); border-radius: 999px; }
 #story-director-floor-nav .qm-ring-wheel-item { flex: 0 0 46px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); font-variant-numeric: tabular-nums; scroll-snap-align: center; cursor: pointer; transition: color .15s ease, transform .15s ease; }
