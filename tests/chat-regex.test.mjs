@@ -1071,12 +1071,12 @@ test('manage toggle turns rows into checkbox + reorder + editable name, and a se
   const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const stub = { ...ctrl.actions };
-  for (const name of ['setManaging', 'setSelected', 'removeMany', 'copyMany', 'regroup', 'moveRow', 'openEditor']) stub[name] = (...args) => { calls.push([name, args]); return null; };
+  for (const name of ['setManaging', 'setSelected', 'removeMany', 'copyMany', 'regroup', 'pickMove', 'dropMove', 'openEditor']) stub[name] = (...args) => { calls.push([name, args]); return null; };
   const view = mountChatRegexView({ root: host, actions: stub });
   // 非管理态：没有复选框
   view.render(Object.freeze({ ...ctrl.state(), managing: false }));
   assert.equal(walkAll(host).some(n => n.dataset?.key?.startsWith?.('sel:')), false);
-  // 管理态：每行一个复选框 + 上下移 + 可编辑名字
+  // 管理态：每行一个复选框 + 行尾图标（拾取/编辑/复制/删除）+ 可点名编辑
   view.render(Object.freeze({ ...ctrl.state(), managing: true, selected: ['global:g1'] }));
   const checks = walkAll(host).filter(n => n.dataset?.key?.startsWith?.('sel:'));
   assert.equal(checks.length, 2);
@@ -1085,9 +1085,28 @@ test('manage toggle turns rows into checkbox + reorder + editable name, and a se
   assert.deepEqual(calls.at(-1), ['setSelected', ['global:g2', true]]);
   byKey(host, 'edit:global:g1').listeners.click();
   assert.deepEqual(calls.at(-1), ['openEditor', [{ source: 'global', id: 'g1', name: 'A' }]]);
-  byKey(host, 'move:up:global:g2').listeners.click();
-  assert.deepEqual(calls.at(-1), ['moveRow', [{ source: 'global', item: { id: 'g2', name: 'B' }, dir: 'up', group: '' }]]);
-  // 选择工具条
+  // 行尾图标：复制 / 删除（删除走二次确认，fake DOM 无 confirm → 放行）
+  byKey(host, 'rowcopy:global:g2').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['copyMany', [{ items: [{ source: 'global', id: 'g2', name: 'B' }] }]]);
+  byKey(host, 'rowdel:global:g2').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['removeMany', [{ items: [{ source: 'global', id: 'g2', name: 'B' }] }]]);
+  // 移动：废弃上下箭头，改拾取 → 插入。拾取 g2（点按 grip），再点目标落点插入
+  assert.equal(walkAll(host).some(n => n.dataset?.key?.startsWith?.('move:')), false, '不再有上下箭头');
+  byKey(host, 'pick:global:g2').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['pickMove', [{ source: 'global', items: [{ source: 'global', id: 'g2', name: 'B' }] }]]);
+  // 拖拽 grip：dragstart 也触发 pickMove
+  byKey(host, 'pick:global:g1').listeners.dragstart?.({ dataTransfer: {} }); await settle();
+  assert.deepEqual(calls.at(-1), ['pickMove', [{ source: 'global', items: [{ source: 'global', id: 'g1', name: 'A' }] }]]);
+  // 拾取态：出现落点；点落点＝落定到该条目之前
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, picking: [{ source: 'global', id: 'g2', name: 'B' }] }));
+  const drops = walkAll(host).filter(n => n.dataset?.key?.startsWith?.('drop:global:'));
+  assert.ok(drops.length >= 2, '每条前 + 末尾各一个落点');
+  byKey(host, 'drop:global:g1').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: 'A' } }]]);
+  byKey(host, 'drop:global:end').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: null }]]);
+  // 选择工具条（回到选中态）
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, selected: ['global:g1'] }));
   byKey(host, 'sel-act:del').listeners.click(); await settle();
   assert.deepEqual(calls.at(-1), ['removeMany', [{ items: [{ source: 'global', id: 'g1', name: 'A' }] }]]);
   byKey(host, 'sel-act:copy').listeners.click(); await settle();

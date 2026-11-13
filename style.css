@@ -1009,18 +1009,27 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-check-mark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .62em; color: #fff; opacity: 0; transition: opacity .15s ease; }
 #story-director-floor-nav .qm-regex-check.is-on .qm-regex-check-mark { opacity: 1; }
 #story-director-floor-nav .qm-regex-check:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; }
-#story-director-floor-nav .qm-regex-name.is-editable { cursor: text; }
+#story-director-floor-nav .qm-regex-name.is-editable { cursor: pointer; }
 #story-director-floor-nav .qm-regex-name.is-editable:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; border-radius: 4px; }
-#story-director-floor-nav .qm-regex-reorder { display: inline-flex; flex: none; flex-direction: column; gap: 1px; }
-#story-director-floor-nav .qm-regex-step { display: flex; align-items: center; justify-content: center; width: 20px; height: 15px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--sd-muted); font-size: .66em; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
-#story-director-floor-nav .qm-regex-step:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
-#story-director-floor-nav .qm-regex-step:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+/* C-15 s7：行尾图标（拾取移动 / 编辑 / 复制 / 删除）+ 拾取落点 + 置顶选择条 */
+#story-director-floor-nav .qm-regex-rowact { display: inline-flex; flex: none; align-items: center; gap: 1px; }
+#story-director-floor-nav .qm-regex-rowbtn { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--sd-muted); font-size: .72em; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
+#story-director-floor-nav .qm-regex-rowbtn:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-rowbtn:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav .qm-regex-rowbtn.is-danger:hover { color: var(--sd-danger, #d9534f); background: color-mix(in srgb, var(--sd-danger, #d9534f) 12%, transparent); }
+#story-director-floor-nav .qm-regex-grip { cursor: grab; }
+#story-director-floor-nav .qm-regex-grip.is-picking { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 16%, transparent); }
+#story-director-floor-nav .qm-regex-row.is-picking { background: color-mix(in srgb, var(--sd-primary) 8%, transparent); border-radius: 8px; }
+#story-director-floor-nav .qm-regex-drop { display: block; width: 100%; height: 10px; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+#story-director-floor-nav .qm-regex-drop::before { content: ""; display: block; height: 2px; margin: 4px 0; border-radius: 999px; background: color-mix(in srgb, var(--sd-primary) 55%, transparent); opacity: .5; transition: opacity .15s ease, height .15s ease; }
+#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; }
+#story-director-floor-nav .qm-regex-drop:focus-visible { outline: none; }
 #story-director-floor-nav .qm-regex-group-edit { flex: none; min-width: 0; }
 #story-director-floor-nav .qm-regex-group-input { width: 7.5em; min-width: 0; min-height: 24px; margin: 0; padding: 0 6px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-regex-group-input:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-manage-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
 #story-director-floor-nav .qm-regex-new-icon { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; color: var(--sd-primary); }
-#story-director-floor-nav .qm-regex-selbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-selbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: color-mix(in srgb, var(--sd-card) 88%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 #story-director-floor-nav .qm-regex-selbar-count { flex: 1 1 auto; min-width: 0; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 /* C-15 s5 回收站：顶部开关 + 已删除列表 + 内存态小字 */
 #story-director-floor-nav .qm-regex-recycle-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }

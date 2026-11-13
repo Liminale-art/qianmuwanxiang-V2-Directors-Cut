@@ -73,7 +73,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return button;
   }
 
-  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '' } = {}) {
+  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '', siblings = [], selectedKeys = [], picking = [] } = {}) {
     const node = el('div', 'qm-regex-row');
     node.dataset.id = item.id;
     const name = el('span', 'qm-regex-name', item.name);
@@ -88,6 +88,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       node.classList.add('is-managing');
       const key = `${source}:${item.id}`, on = selected(key);
       if (on) node.classList.add('is-selected');
+      const picked = picking.some(p => p.source === source && String(p.id) === String(item.id));
+      if (picked) node.classList.add('is-picking');
       const check = el('button', `qm-regex-check${on ? ' is-on' : ''}`); check.type = 'button';
       check.dataset.key = `sel:${key}`;
       check.setAttribute('role', 'checkbox'); check.setAttribute('aria-checked', String(on));
@@ -95,22 +97,39 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const tick = el('i', 'fa-solid fa-check qm-regex-check-mark'); tick.setAttribute('aria-hidden', 'true');
       check.append(tick);
       check.addEventListener('click', () => { try { actions.setSelected?.(key, !on); } catch (error) { notify(error?.message || '选择失败', 'warning'); } });
-      const openEdit = () => { try { actions.openEditor?.({ source, id: item.id, name: item.name }); } catch (error) { notify(error?.message || '打开编辑失败', 'warning'); } };
-      name.classList.add('is-editable'); name.setAttribute('role', 'button'); name.setAttribute('tabindex', '0');
-      name.dataset.key = `edit:${key}`;
-      name.addEventListener('click', openEdit);
-      const reorder = el('div', 'qm-regex-reorder');
-      const step = (dir, label) => {
-        const b = el('button', 'qm-regex-step'); b.type = 'button';
-        b.dataset.key = `move:${dir}:${key}`;
+      // 拾取载荷：若本行在多选内，整批同源选择一起拾起；否则只拾本行。
+      const pickItems = () => {
+        if (on && selectedKeys.length > 1) {
+          const picks = selectedKeys.map(k => { const [s, ...r] = String(k).split(':'); const id = r.join(':');
+            const found = siblings.find(it => String(it.id) === id); return s === source && found ? { source, id, name: found.name } : null; }).filter(Boolean);
+          if (picks.length) return picks;
+        }
+        return [{ source, id: item.id, name: item.name }];
+      };
+      // 行尾图标：拾取移动 / 编辑 / 复制 / 删除。拖拽与拾取走同一落定路径。
+      const act = el('div', 'qm-regex-rowact');
+      const iconBtn = (cls, keyName, label, glyph, run) => {
+        const b = el('button', `qm-regex-rowbtn ${cls}`); b.type = 'button';
+        b.dataset.key = `${keyName}:${key}`;
         b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
-        const ic = el('i', `fa-solid fa-chevron-${dir === 'up' ? 'up' : 'down'}`); ic.setAttribute('aria-hidden', 'true');
-        b.append(ic);
-        b.addEventListener('click', () => { try { actions.moveRow?.({ source, item: { id: item.id, name: item.name }, dir, group }); } catch (error) { notify(error?.message || '移动失败', 'warning'); } });
+        const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true'); b.append(ic);
+        b.addEventListener('click', () => { Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
         return b;
       };
-      reorder.append(step('up', '上移'), step('down', '下移'));
-      node.append(check, name, reorder);
+      const grip = iconBtn('qm-regex-grip' + (picked ? ' is-picking' : ''), 'pick', picked ? '放下（取消移动）' : '拾取移动', 'fa-up-down-left-right', () => actions.pickMove?.({ source, items: pickItems() }));
+      grip.draggable = true;
+      grip.addEventListener?.('dragstart', event => { try { actions.pickMove?.({ source, items: pickItems() }); event?.dataTransfer && (event.dataTransfer.effectAllowed = 'move'); } catch (_) {} });
+      const openEdit = () => actions.openEditor?.({ source, id: item.id, name: item.name });
+      name.classList.add('is-editable'); name.setAttribute('role', 'button'); name.setAttribute('tabindex', '0');
+      name.dataset.key = `edit:${key}`;
+      name.addEventListener('click', () => { try { openEdit(); } catch (error) { notify(error?.message || '打开编辑失败', 'warning'); } });
+      act.append(
+        grip,
+        iconBtn('', 'rowedit', '编辑', 'fa-pen', openEdit),
+        iconBtn('', 'rowcopy', '复制', 'fa-copy', () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] })),
+        iconBtn('is-danger', 'rowdel', '删除', 'fa-trash-can', () => { if (!confirmDelete(1)) return; return actions.removeMany?.({ items: [{ source, id: item.id, name: item.name }] }); }),
+      );
+      node.append(check, name, act);
       if (!item.enabled) node.classList.add('is-off');
       return node;
     }
@@ -129,9 +148,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   function list(items, mode, source, options) {
     const box = el('div', 'qm-regex-list');
-    const make = item => row(item, source, options);
     if (!items.length) { box.append(el('p', 'qm-regex-empty', '没有正则脚本')); return box; }
-    if (mode !== 'group') { box.append(...items.map(item => row(item, source, { ...options, group: '' }))); return box; }
+    const picking = Array.isArray(options.picking) ? options.picking : [];
+    const dropHere = picking.length && picking[0]?.source === source;
+    // 拾取态：每条前插「插入到此前」落点（拖拽也 drop 到这里），列表尾再补一个末尾落点；仅同源列表显示。
+    const rowOf = (item, group) => {
+      const node = row(item, source, { ...options, group });
+      return dropHere ? [dropTarget(source, item), node] : [node];
+    };
+    if (mode !== 'group') {
+      for (const item of items) box.append(...rowOf(item, ''));
+      if (dropHere) box.append(dropTarget(source, null));
+      return box;
+    }
     for (const group of actions.group(items)) {
       const key = `group:${source}:${group.label}`;
       const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}`);
@@ -139,9 +168,24 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       if (options.managing && options.writable) head.append(groupRename(group, source));
       else if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
       box.append(head);
-      if (!isFolded(key)) box.append(...group.items.map(item => row(item, source, { ...options, group: group.label })));
+      if (!isFolded(key)) for (const item of group.items) box.append(...rowOf(item, group.label));
     }
+    if (dropHere) box.append(dropTarget(source, null));
     return box;
+  }
+
+  // C-15 s7：拾取态落点。dropTarget 是独立「插入到此」节点：before 省略＝末尾落点；点按或 drop 都走 dropMove。
+  function dropTarget(source, before) {
+    const spot = el('button', 'qm-regex-drop'); spot.type = 'button';
+    spot.dataset.key = before ? `drop:${source}:${before.id}` : `drop:${source}:end`;
+    const label = before ? `移动到「${before.name}」之前` : '移动到末尾';
+    spot.setAttribute('aria-label', label); spot.title = label;
+    const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null });
+    const go = () => { Promise.resolve().then(run).catch(error => notify(error?.message || '移动失败', 'warning')); };
+    spot.addEventListener('click', go);
+    spot.addEventListener('dragover', event => { event?.preventDefault?.(); });
+    spot.addEventListener('drop', event => { event?.preventDefault?.(); go(); });
+    return spot;
   }
 
   // 管理态分组头：改名按钮，把整组条目移入新组名（空 = 移出分组）。用 prompt 式输入框简洁落地。
@@ -164,7 +208,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return wrap;
   }
 
-  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false } = {}) {
+  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false, siblings = [], selectedKeys = [], picking = [] } = {}) {
     const key = `card:${source}`, folded = isFolded(key);
     const card = el('section', `qm-regex-card${folded ? ' is-folded' : ''}${managing && writable ? ' is-managing' : ''}`);
     const head = el('header', 'qm-regex-card-head');
@@ -177,7 +221,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     card.append(head);
     if (folded) return card;
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
-    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected }));
+    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected, siblings, selectedKeys, picking }));
     return card;
   }
 
@@ -441,6 +485,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const managing = state.managing === true;
     const selectedSet = new Set(Array.isArray(state.selected) ? state.selected : []);
     const selected = key => selectedSet.has(key);
+    // C-15 s7：拾取移动——当前拾起的条目（同源）；视图据此在同源行前/列表尾显示插入位。
+    const picking = Array.isArray(state.picking) ? state.picking : [];
     const g = sources.global, p = sources.preset;
     const anyWritable = g.writable === true || p.writable === true;
     // C-14f：管理态总开关（仅可写时出现）。进管理态后行变多选 + 排序 + 点名编辑，批量操作走底部工具条。
@@ -470,13 +516,13 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
     // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
     if (recycle.open) { root.replaceChildren(tools, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
-    const common = { pending, bound, managing, selected };
+    const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking };
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
-      { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, ...common });
+      { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, siblings: g.items, ...common });
     let presetNote = '';
     if (p.available) presetNote = `${p.items.length} 条${p.items.length && !p.allowed ? ' · 未被允许运行' : ''}`;   // C-14e：预设名已在页顶快切里，卡内不再重复
     const presetCard = section('预设正则', presetNote, p.items, view,
-      { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, ...common });
+      { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, siblings: p.items, ...common });
     const presets = state.presets && typeof state.presets === 'object' ? state.presets : { available: false, names: [] };
     const head = presets.available && typeof actions.selectPreset === 'function' ? [presetSwitch(presets, binding)] : [];
     // 管理态选择工具条随状态条件渲染（撤销已并入回收站）。

@@ -401,8 +401,10 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const folded = new Set();   // C-14e：卡片/分组折叠态（card:global / group:preset:xx），跨页签保持
   // C-14f：管理态（多选 / 拖动 / 分组改名）、编辑子页目标、结构性写回中。都只活在本次会话。
   // C-15 s5：回收站——被删条目累积在内存里（刷新/重启即清空），可逐条或整批还原。
+  // C-15 s7：拾取移动——拾起的条目（单条或整批同源选择）暂存在 picking，点插入位即落定；拖拽走同一条落定路径。
   let managing = false, editing = null, writing = false, recycleOpen = false;
   const removed = [];
+  let picking = [];
   const selected = new Set();
   const context = () => attempt(() => getContext(), {});
   // 本聊天绑定的规范形：{ enabled, overrides, preset }。所有写入都在它之上打补丁，绝不丢掉其它字段。
@@ -423,6 +425,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const b = currentBinding();
     return Object.freeze({ view, pending: Object.freeze([...pending]), folded: Object.freeze([...folded]),
       managing, writing, selected: Object.freeze([...selected]), editing: editing ? Object.freeze({ ...editing }) : null,
+      // C-15 s7：拾取移动——拾起的条目（同源），视图据此显示插入位；空数组＝未拾取。
+      picking: Object.freeze(picking.map(entry => Object.freeze({ ...entry }))),
       // C-15 s5：回收站。最近删除在前；每条带还原键。开着时视图改显「已删除」列表。
       recycle: Object.freeze({ open: recycleOpen, count: removed.length,
         items: Object.freeze([...removed].reverse().map(entry => Object.freeze({
@@ -712,6 +716,35 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const next = [...raw]; [next[index], next[swap]] = [next[swap], next[index]];
     return { next, touched: [raw[index], raw[swap]], result: true };
   }));
+  // C-15 s7：拾取移动。拾起同源的一条或整批（当前多选），视图据此显示插入位；再次拾取同一组＝取消。
+  function pickMove({ source, items } = {}) {
+    if (writing || disposed) return;
+    const list = (Array.isArray(items) ? items : [])
+      .filter(item => item && BINDING_SOURCES.includes(source) && text(item.id))
+      .map(item => ({ source, id: text(item.id), name: text(item.name) }));
+    const same = picking.length === list.length && list.length > 0
+      && picking.every((p, i) => p.source === list[i].source && p.id === list[i].id);
+    picking = same ? [] : list;
+    refresh();
+  }
+  function cancelPick() { if (picking.length) { picking = []; refresh(); } }
+  // 落定：把拾取（或拖拽传入）的同源条目移到目标条目 before 之前（before 省略＝移到末尾）；完成后清空拾取。
+  // 目标位按 id 在原始数组里定位（跨「原始顺序 / 自动分组」两种视图都正确），拖拽与点插入走同一路径。
+  const dropMove = ({ source, items, before = null } = {}) => {
+    const chosen = (Array.isArray(items) && items.length ? items : picking).filter(item => item && item.source === source);
+    picking = [];
+    if (!chosen.length) { refresh(); return null; }
+    const moving = chosen.map(item => ({ id: item.id, name: item.name }));
+    return structural('调整顺序', ctx => editRegexList(ctx, source, raw => {
+      const indices = locateIndices(raw, moving);
+      const to = before && text(before.id)
+        ? (() => { const at = locateRegexScript(raw, before); if (at < 0) throw stale(); return at; })()
+        : raw.length;
+      const next = moveRegexEntries(raw, indices, to);
+      if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
+      return { next, touched: indices.map(i => raw[i]), result: true };
+    }));
+  };
   // 新建：插到来源末尾（或指定下标），返回新 id。
   const insert = ({ source, script, index } = {}) => structural('新建正则', ctx => editRegexList(ctx, source, raw => {
     const entry = blankRegexScript(script && typeof script === 'object' ? script : {});
@@ -755,7 +788,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     return { reload: false, result: count };
   });
-  function setManaging(on) { managing = on === true; if (!managing) selected.clear(); refresh(); }
+  function setManaging(on) { managing = on === true; if (!managing) { selected.clear(); picking = []; } refresh(); }
   function setSelected(keys, on = true) {
     for (const key of Array.isArray(keys) ? keys : [keys]) { if (!text(key)) continue; if (on) selected.add(String(key)); else selected.delete(String(key)); }
     refresh();
@@ -785,7 +818,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
-    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, insert, saveScript, regroup,
+    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, regroup,
     setManaging, setSelected, openEditor, closeEditor,
   });
   async function mount(host) {
