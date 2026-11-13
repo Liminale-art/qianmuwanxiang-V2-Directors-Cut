@@ -5,6 +5,8 @@
 // Rows show the script name only; page-level icon controls share one tool row (the list view is a single toggle).
 // C-12: a preset quick switch heads the page — a native-style select over the active API's presets that only
 // calls actions.selectPreset(); a link mark shows which preset this chat is bound to.
+// C-15 s6: the dropdown drops its「预设」label and groups version series into <optgroup>s (same catalogue logic as 幕外目录).
+import { groupPresetNames } from '../../qianmu-st-context-sources.js?v=1.59.450';
 const VIEW_LABELS = Object.freeze({ order: '原始顺序', group: '自动分组' });
 const VIEW_ICONS = Object.freeze({ order: 'fa-list-ol', group: 'fa-layer-group' });
 
@@ -199,18 +201,25 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // 预设快切：一行「预设」+ 下拉。选中即走原生切换；本聊天绑定的预设名旁带链环标记。
   function presetSwitch(presets, binding) {
     const box = el('div', 'qm-regex-preset');
-    const label = el('label', 'qm-regex-preset-label', '预设');
     const select = el('select', 'qm-regex-preset-select');
     select.dataset.key = 'preset';
-    const id = 'qm-regex-preset-select'; select.id = id; label.setAttribute('for', id);
+    select.id = 'qm-regex-preset-select';
     const boundName = binding.enabled ? binding.preset || '' : '';
     const names = [...presets.names];
     if (presets.current && !names.includes(presets.current)) names.unshift(presets.current);
-    for (const name of names) {
-      const option = el('option', '', name === boundName ? `${name}（本聊天）` : name);
-      option.value = name;
-      if (name === presets.current) option.selected = true;
-      select.append(option);
+    // C-15 s6：选项按版本系列折进 <optgroup>（同幕外目录逻辑，零浮层风险）；绑定预设仍带「（本聊天）」。
+    const option = name => {
+      const node = el('option', '', name === boundName ? `${name}（本聊天）` : name);
+      node.value = name;
+      if (name === presets.current) node.selected = true;
+      return node;
+    };
+    for (const row of groupPresetNames(names)) {
+      if (!row.grouped) { select.append(option(row.name)); continue; }
+      const group = el('optgroup');
+      group.label = row.base;
+      for (const item of row.items) group.append(option(item.name));
+      select.append(group);
     }
     select.value = presets.current;
     select.setAttribute('aria-label', boundName ? `切换预设（本聊天绑定：${boundName}）` : '切换预设');
@@ -221,7 +230,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       Promise.resolve().then(() => actions.selectPreset(next))
         .catch(error => notify(error?.message || '预设切换失败', 'warning'));
     });
-    box.append(label, select);
+    box.append(select);
     if (boundName) {
       const mark = el('i', `fa-solid fa-link qm-regex-preset-bound${boundName === presets.current ? '' : ' is-off'}`);
       mark.setAttribute('aria-hidden', 'true');

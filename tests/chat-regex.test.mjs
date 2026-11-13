@@ -821,6 +821,32 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   view.dispose();
 });
 
+test('the preset dropdown folds version series into optgroups and keeps lone presets flat', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', label: '', disabled: false, value: '', selected: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make, createTextNode: t => ({ text: t }) };
+  const st = fakePresetST({ presets: { '写作 v1': [], '写作 v2': [], '独立预设': [] }, selected: '写作 v1' });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: () => {} } });
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '写作 v2' } }));
+  const select = walk(host).find(n => n.dataset.key === 'preset');
+  const group = select.children.find(n => n.tagName === 'optgroup');
+  assert.ok(group, '同系列预设进 optgroup');
+  assert.equal(group.label, '写作');
+  assert.deepEqual(group.children.map(o => o.textContent), ['写作 v2（本聊天）', '写作 v1']);
+  assert.ok(select.children.some(n => n.tagName === 'option' && n.textContent === '独立预设'), '孤立预设保持平铺');
+  assert.equal(select.children.some(n => n.tagName === 'option' && n.textContent === '写作 v1'), false, '系列成员不再平铺');
+  view.dispose();
+});
+
 test('preset quick switch is wired natively and never writes presets itself', async () => {
   const source = await readFile(new URL('features/chat/qianmu-chat-regex.js', root), 'utf8');
   assert.match(source, /manager\.findPreset\(/);
