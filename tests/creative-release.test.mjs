@@ -14,6 +14,8 @@ const fontFixVersion = '1.59.498';
 const fontScopeVersion = '1.59.499';
 // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/state/sources/package 不动。
 const fontUiVersion = '1.59.500';
+// 1.59.503 (节点 C-15e): 跨端重复导入自动匹配只改 library.js/view；css/runtime/state/sources/package 不动。
+const fontMatchVersion = '1.59.503';
 // 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
 const manifestVersion = '1.59.502';
 const refreshed = new Set([
@@ -21,7 +23,7 @@ const refreshed = new Set([
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library-view.js', 'qianmu-font-library.js'].map(file => [file, fontUiVersion]),
+  ...['qianmu-font-library-view.js', 'qianmu-font-library.js'].map(file => [file, fontMatchVersion]),
   ...['qianmu-font-runtime.js', 'qianmu-font-library-state.js'].map(file => [file, fontScopeVersion]),
   ['qianmu-font-sources.js', fontFixVersion],
   ['qianmu-creative-social.js', '1.59.460'],

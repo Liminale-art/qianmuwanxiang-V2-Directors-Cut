@@ -148,7 +148,7 @@ export function renderFontLibrary(state = {}, view = {}) {
 }
 
 /** Sample font changes are local to cards; only apply-font writes host choices. */
-export function createFontLibraryView({ root, getState, onAction, onVisibleFonts, onBack, notify = () => {}, initialSession = {}, fontFamily = () => '' } = {}) {
+export function createFontLibraryView({ root, getState, onAction, onVisibleFonts, onBack, notify = () => {}, initialSession = {}, fontFamily = () => '', matchLocal } = {}) {
     if (!root || typeof getState !== 'function' || typeof onAction !== 'function') throw new TypeError('字体库视图缺少宿主');
     let disposed = false, busy = false, rendered = false, page = Number(initialSession?.page) || 0, query = String(initialSession?.query || ''), managing = false,
         previewDraft = typeof initialSession?.previewDraft === 'string' ? initialSession.previewDraft.slice(0, 500) : undefined,
@@ -311,6 +311,25 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         catch (error) { if (!disposed) { if (type === 'set-enabled') { const enabled = q('[data-font-enabled]'); if (enabled) enabled.checked = getState().enabled !== false; } if (type === 'set-sort-order') { const order = q('[data-font-sort-order]'); if (order) order.value = sortValue(getState()); } message(error?.userMessage || '操作未完成，请检查输入或稍后重试。', { error: true }); } }
         finally { if (exclusive) { busy = false; if (!disposed) setBusy(false); } }
     }
+    // C-15: files already in the library (same bytes, e.g. added on another
+    // device) are matched silently by the host; only the rest need a name.
+    function openLocalDialog(files, unmatched) {
+        localUploads = (unmatched || files.map((_file, index) => ({ index }))).map(({ index, name, tags }) => { const file = files[index]; return { file, fileName: file.name, name: name || String(file.name || '').replace(/\.(?:woff2?|ttf|otf)$/i, '').slice(0, 160), tags: Array.isArray(tags) ? tags.join(', ') : '' }; });
+        closePopovers(); render(); if (localUploads.length) q('[data-font-local-name="0"]')?.focus();
+    }
+    async function pickLocal(files) {
+        if (typeof matchLocal !== 'function') return openLocalDialog(files);
+        if (disposed || busy) return; setBusy(true); message('');
+        let result = null;
+        try { result = await matchLocal(files); } catch { result = null; }
+        finally { busy = false; if (!disposed) setBusy(false); }
+        if (disposed) return;
+        const matched = Array.isArray(result?.matchResult?.matched) ? result.matchResult.matched : [];
+        if (matched.length) message(`已自动匹配字体库中的 ${matched.length} 款字体：${matched.map(item => item.name).join('、')}`);
+        const unmatched = Array.isArray(result?.matchResult?.unmatched) ? result.matchResult.unmatched.filter(item => files[item?.index]) : null;
+        if (unmatched && !unmatched.length) { closePopovers(); if (!result.revealFontId || !revealFont(result.revealFontId)) render(); return; }
+        openLocalDialog(files, unmatched);
+    }
     function closePopovers() { for (const pop of qa('[data-font-weight-pop]')) pop.hidden = true; for (const button of qa('[data-font-action="weight"]')) button.setAttribute('aria-expanded', 'false'); }
     function refreshTools(id) {
         const current = state(), entry = array(current.entries).find(item => item.id === id), card = qa('.qm-font-card').find(node => node.dataset.fontId === id), host = card?.querySelector('.qm-font-card-tools');
@@ -426,7 +445,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (target.matches?.('[data-font-preview-size]')) return previewSize(target);
         if (target.matches?.('[data-font-sort-order]')) { if (!Object.hasOwn(sortLabels, target.value)) return; collapseMore(); return dispatch('set-sort-order', { by: target.value.startsWith('added-') ? 'added' : 'name', order: target.value.endsWith('desc') ? 'desc' : 'asc' }); }
         if (target.matches?.('[data-font-preview]')) return dispatch('set-preview', { text: target.value }, { refresh: false, exclusive: false });
-        if (target.matches?.('[data-font-file]')) { const files = [...(target.files || [])]; target.value = ''; if (!files.length) return; if (target.dataset.fontFile === 'local') { localUploads = files.map(file => ({ file, fileName: file.name, name: String(file.name || '').replace(/\.(?:woff2?|ttf|otf)$/i, '').slice(0, 160), tags: '' })); closePopovers(); render(); q('[data-font-local-name="0"]')?.focus(); return; } return dispatch('import', { file: files[0] }); }
+        if (target.matches?.('[data-font-file]')) { const files = [...(target.files || [])]; target.value = ''; if (!files.length) return; if (target.dataset.fontFile === 'local') return pickLocal(files); return dispatch('import', { file: files[0] }); }
         if (target.matches?.('[data-font-weight]')) return dragWeight(target, true);
         if (target.matches?.('[data-font-style]')) return setVariant(target.dataset.fontStyle, { style: target.value });
     }

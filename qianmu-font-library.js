@@ -1,6 +1,6 @@
 import { normalizeFontLibrary, mergeFontLibraryRecords, updateFontLibrary, fontLibraryTags } from './qianmu-font-library-state.js?v=1.59.499';
 import { FONT_SOURCE_LIMITS, resolveWebFontSource, createLocalFontRecord, repairLocalFontBlob, validateFontRecord, validateLocalFontBytes, importFontPack } from './qianmu-font-sources.js?v=1.59.498';
-import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.500';
+import { createFontLibraryView } from './qianmu-font-library-view.js?v=1.59.503';
 import { createFontRuntime } from './qianmu-font-runtime.js?v=1.59.499';
 import { createFontLocalStore } from './qianmu-font-local-store.js';
 import { createFontAccountSync } from './qianmu-font-account-sync.js?v=1.59.499';
@@ -217,7 +217,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       const token = await ensure(); let original = owner.fontLibrary;
       const guard = () => { assertCurrent(token); if (owner.fontLibrary !== original) throw new Error('字体库已变化，未覆盖新的选择'); };
       const progress = (phase, value) => { if (current(token) && (!originView || originView === viewIdentity)) view?.setProgress?.(value ? { phase, ...value } : null); };
-      let next, revealFontId = '', editedFontId = '', imported = false;
+      let next, revealFontId = '', editedFontId = '', imported = false, matchResult = null;
       if (type === 'add-web' || type === 'edit-web') {
         const tags = payload.tags === undefined ? undefined : fontLibraryTags(payload.tags);
         const name = fontInputName(payload.name);
@@ -269,6 +269,35 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           await yieldTask(); guard();
         }
         revealFontId = next.fonts.find(font => !read().fonts.some(previous => previous.id === font.id))?.id || '';
+      } else if (type === 'match-local') {
+        // C-15: a local font's id is the SHA-256 of its bytes, so a file chosen
+        // on device B that was already added on device A (the account catalog
+        // synced its entry, not its bytes) is recognised by content alone. Store
+        // the bytes under the existing entry and keep its name/tags; only files
+        // that match nothing go on to the name/tag dialog. A same-file-name entry
+        // only pre-fills that dialog; it never binds different bytes to it.
+        const files = Array.from(payload.files || []);
+        if (!files.length || files.length > 20) throw new Error('一次请选择1–20个字体文件');
+        // First open on a new device: let the account catalog land before matching.
+        if (accountHydration) { await accountHydration; assertCurrent(token); original = owner.fontLibrary; }
+        next = read(); matchResult = { matched: [], unmatched: [] };
+        const locals = next.fonts.filter(font => font.source.kind === 'local');
+        for (const [index, file] of files.entries()) {
+          let item = null;
+          try { item = await localReader(file, { FontFace }); } catch { item = null; }
+          guard();
+          const id = item ? await localId(item.bytes) : ''; guard();
+          const existing = id && locals.find(font => font.id === id);
+          if (existing) {
+            next = await stageLocal(existing, item.bytes, next, guard);
+            matchResult.matched.push({ index, id: existing.id, name: existing.name });
+          } else {
+            const hint = locals.find(font => font.source.fileName && font.source.fileName === String(file?.name || ''));
+            matchResult.unmatched.push(hint ? { index, name: hint.name, tags: [...hint.tags] } : { index });
+          }
+          await yieldTask(); guard();
+        }
+        revealFontId = matchResult.matched[0]?.id || '';
       } else if (type === 'import') {
         let pack, completed = 0, saved = 0, batchBytes = 0, recordCount = 0, processedBytes = 0, totalBytes = 0;
         const reportImport = (stage, bytes = processedBytes) => progress('import', { processedBytes: bytes, totalBytes, stage });
@@ -330,7 +359,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         if (type === 'delete-fonts' && !await confirm('移除字体', '移除选中的字体及本机原件？正在使用的字体将恢复原生字体。')) return;
         guard(); next = updateFontLibrary(read(), type === 'delete-font' ? 'delete-fonts' : type, type === 'delete-font' ? { ids: [payload.id] } : payload);
       }
-      guard(); const previous = read(); if (!imported) commit(next, token);
+      guard(); const previous = read(); if (!imported && !(matchResult && JSON.stringify(next) === JSON.stringify(previous))) commit(next, token);
       if (type === 'apply-font' && current(token) && (!originView || originView === viewIdentity)) {
         const target = payload.target, label = { body: '正文', st: '界面', all: '全部', quote: '引用文本' }[target], scopes = target === 'all' ? ['body', 'st', 'quote'] : [target];
         if (next.enabled === false) { try { notify(`已保存${label}字体选择，字体库尚未启用`, 'info'); } catch (_) {} }
@@ -365,7 +394,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
           }
         } else { view?.render(); await sync(); }
       }
-      return { ...(revealFontId ? { revealFontId } : {}), ...(editedFontId ? { editedFontId } : {}) };
+      return { ...(revealFontId ? { revealFontId } : {}), ...(editedFontId ? { editedFontId } : {}), ...(matchResult ? { matchResult } : {}) };
     } catch (error) {
       error.userMessage ||= error.message || '字体操作未完成，请保留原资料后重试';
       throw error;
@@ -386,7 +415,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
       container.setAttribute('role', 'dialog'); container.setAttribute('aria-modal', 'true'); container.setAttribute('aria-label', '字体库管理');
       root.querySelector('.sd-floor-shell').appendChild(container);
       const identity = {}; viewIdentity = identity;
-      view = viewFactory({ root: container, getState: uiState, onAction: payload => action(payload, {}, identity), onVisibleFonts: (ids, choices) => visible(ids, choices, identity), initialSession: viewSession,
+      view = viewFactory({ root: container, getState: uiState, onAction: payload => action(payload, {}, identity), matchLocal: files => action({ type: 'match-local', files }, {}, identity), onVisibleFonts: (ids, choices) => visible(ids, choices, identity), initialSession: viewSession,
         notify: (text, level) => { if (identity === viewIdentity && current(generation)) notify(text, level); },
         onBack: () => { close(); root.querySelector('[data-font-library]')?.focus(); },
         onClose: () => closePanel ? closePanel() : root.querySelector('.sd-floor-close')?.click(),

@@ -1042,3 +1042,32 @@ test('closing and reopening or changing account discards delayed application not
     if (changeAccount) assert.deepEqual(f.owner, {}); f.stop();
   }
 });
+
+test('C-15: re-choosing an already-catalogued local font on another device auto-matches by content and restores its bytes', async () => {
+  const f = setup(), { file, bytes } = fontFile(), other = fontFile();
+  other.bytes[31] = 9; other.file.name = '新字体.ttf';
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '甲端命名', tags: ['正文'] }] });
+  const id = f.owner.fontLibrary.fonts[0].id;
+  // Device B: the account catalog carried the entry but not the original.
+  f.binaries.clear(); const before = structuredClone(f.owner.fontLibrary), saves = f.saves.length;
+  const result = await f.library.action('match-local', { files: [file, other.file] });
+  assert.deepEqual(result.matchResult.matched, [{ index: 0, id, name: '甲端命名' }]);
+  assert.deepEqual(result.matchResult.unmatched, [{ index: 1 }], 'only the new font goes on to the name/tag dialog');
+  assert.equal(result.revealFontId, id);
+  assert.deepEqual(new Uint8Array(await f.binaries.get('one' + id).arrayBuffer()), bytes, 'the matched original is stored again');
+  assert.equal(f.binaries.size, 1, 'an unmatched file is not stored before the user confirms it');
+  assert.deepEqual(f.owner.fontLibrary, before, 'name, tags and directory are kept'); assert.equal(f.saves.length, saves);
+  f.stop();
+});
+
+test('C-15: a same-file-name but different-content local font only pre-fills the dialog, never binds to the old entry', async () => {
+  const f = setup(), { file } = fontFile(), changed = fontFile();
+  changed.bytes[31] = 5; // same name '本地.ttf', different bytes
+  await f.library.action('add-local', { files: [file], metadata: [{ name: '旧版', tags: ['标题'] }] });
+  f.binaries.clear(); const before = structuredClone(f.owner.fontLibrary);
+  const result = await f.library.action('match-local', { files: [changed.file, { name: 'broken.ttf', size: 1, arrayBuffer: async () => new ArrayBuffer(1) }] });
+  assert.deepEqual(result.matchResult.matched, []);
+  assert.deepEqual(result.matchResult.unmatched, [{ index: 0, name: '旧版', tags: ['标题'] }, { index: 1 }], 'unreadable files fall through to the normal flow');
+  assert.equal(f.binaries.size, 0); assert.deepEqual(f.owner.fontLibrary, before);
+  f.stop();
+});

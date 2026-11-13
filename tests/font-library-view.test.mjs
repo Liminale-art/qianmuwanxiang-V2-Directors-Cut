@@ -16,7 +16,7 @@ test('name-row submission is outside the disclosure header and sends one trusted
     f.view.destroy(); f.view.setStatus('迟到失败', { error: true }); assert.equal(f.notices.length, 2);
 });
 
-function fixture(initial = state(), action = () => {}, initialSession = {}) {
+function fixture(initial = state(), action = () => {}, initialSession = {}, extra = {}) {
     const handlers = new Map(), samples = [], statuses = [], applyPickers = [], queries = new Map(), allQueries = new Map(), calls = [], notices = [], visible = [], attributes = new Map();
     let html = '', current = structuredClone(initial), reads = 0;
     function node(selector, fields = {}) {
@@ -27,7 +27,7 @@ function fixture(initial = state(), action = () => {}, initialSession = {}) {
     const root = { get innerHTML() { return html; }, set innerHTML(value) { html = value; samples.length = 0; statuses.length = 0; applyPickers.length = 0; for (const match of value.matchAll(/data-font-sample="([^"]+)"/g)) samples.push(node('[data-font-sample]', { dataset: { fontSample: match[1] } })); for (const match of value.matchAll(/data-font-load-state="([^"]+)"/g)) statuses.push(node('[data-font-load-state]', { dataset: { fontLoadState: match[1] } })); for (const match of value.matchAll(/data-font-apply="([^"]+)"/g)) applyPickers.push(node('[data-font-apply]', { selectedIndex: 0, value: 'body', dataset: { fontApply: match[1] } })); },
         contains: () => true, setAttribute: (key, value) => attributes.set(key, value), querySelector: selector => queries.get(selector) || null,
         querySelectorAll: selector => allQueries.get(selector) || (selector === '[data-font-sample]' ? samples : selector === '[data-font-load-state]' ? statuses : selector === '[data-font-apply]' ? applyPickers : []), addEventListener: (event, handler) => handlers.set(event, handler), removeEventListener: event => handlers.delete(event) };
-    const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, notify: (text, level) => notices.push({ text, level }), onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }) });
+    const view = createFontLibraryView({ root, getState: () => { reads++; return current; }, initialSession, notify: (text, level) => notices.push({ text, level }), onAction: async payload => { calls.push(payload); return action(payload); }, onVisibleFonts: (ids, choices) => visible.push({ ids, choices }), fontFamily: id => current.families?.[id] || `QianmuFont_${id}`, onBack: () => calls.push({ type: 'back' }), ...extra });
     return { root, view, calls, notices, visible, samples, statuses, applyPickers, attributes, handlers, queries, allQueries, node, get reads() { return reads; }, setState: value => { current = value; }, emit: (event, target) => handlers.get(event)?.({ target }), clickCard: id => handlers.get('click')?.({ target: node('.qm-font-card', { dataset: { fontId: id } }) }), click: (action, fields = {}) => handlers.get('click')?.({ target: node('[data-font-action]', { dataset: { fontAction: action, ...fields } }) }), apply: (target, id = 'one') => handlers.get('click')?.({ target: node('[data-font-scope]', { dataset: { fontScope: id, fontScopeTarget: target } }) }) };
 }
 
@@ -876,7 +876,8 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
     // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/account-sync/state/sources/package 不动。
-    const stamp = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    // 1.59.503 (节点 C-15e): 跨端重复导入自动匹配只改 library.js/view；css/runtime/account-sync/state/sources/package 不动仍是旧址。
+    const stamp = '1.59.503', css = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
     assert.equal(manifest.js, `index.js?v=1.59.502-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.502-toast-14`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));
@@ -888,11 +889,28 @@ test('entry, font controller, view and styles use the same refreshed UI cache st
     assert.ok(controller.includes(`'./qianmu-font-library-state.js?v=${scope}'`));
     assert.ok((await read('qianmu-font-account-sync.js')).includes(`'./qianmu-font-library-state.js?v=${scope}'`));
     for (const path of ['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-package.js']) assert.ok((await read(path)).includes(`'./qianmu-font-sources.js?v=${fix}'`));
-    assert.ok((await read('style.css')).includes(`'./qianmu-font-library.css?v=${stamp}'`));
+    assert.ok((await read('style.css')).includes(`'./qianmu-font-library.css?v=${css}'`));
 });
 test('引用 is its own chip and is checked independently of 正文', () => {
     const plain = renderFontLibraryCards(state(), { applyId: 'one' });
     assert.match(plain, /data-font-scope-target="quote" role="menuitemcheckbox" aria-checked="false">引用</);
     const quoted = renderFontLibraryCards(state({ body: { enabled: true, fontId: 'one' }, quote: { enabled: true, fontId: 'one' } }), { applyId: 'one' });
     assert.match(quoted, /data-applied="true" title="正文 · 引用"/); assert.match(quoted, /data-font-scope-target="quote" role="menuitemcheckbox" aria-checked="true"/);
+});
+
+test('C-15: local files already in the library are auto-matched; only new ones open the name dialog, pre-filled from a same-name entry', async () => {
+    const files = [{ name: 'known.woff2' }, { name: 'renamed.ttf' }, { name: 'fresh.otf' }], asked = [];
+    const f = fixture(state(), () => {}, {}, { matchLocal: async picked => { asked.push(picked); return { revealFontId: 'one', matchResult: { matched: [{ index: 0, id: 'one', name: '甲端命名' }], unmatched: [{ index: 1, name: '旧版', tags: ['标题', '衬线'] }, { index: 2 }] } }; } });
+    await f.emit('change', f.node('[data-font-file]', { files, dataset: { fontFile: 'local' } }));
+    assert.deepEqual(asked, [files]); assert.deepEqual(f.notices, [{ text: '已自动匹配字体库中的 1 款字体：甲端命名', level: 'info' }]);
+    assert.match(f.root.innerHTML, /data-font-local-dialog/); assert.doesNotMatch(f.root.innerHTML, /known\.woff2/);
+    assert.match(f.root.innerHTML, /data-font-local-name="0" value="旧版"/); assert.match(f.root.innerHTML, /data-font-local-tags="0" value="标题, 衬线"/); assert.match(f.root.innerHTML, /data-font-local-name="1" value="fresh"/);
+    await f.click('local-confirm'); assert.deepEqual(f.calls.at(-1), { type: 'add-local', files: [files[1], files[2]], metadata: [{ name: '旧版', tags: ['标题', '衬线'] }, { name: 'fresh', tags: [] }] });
+    f.view.destroy();
+    const all = fixture(state(), () => {}, {}, { matchLocal: async () => ({ matchResult: { matched: [{ index: 0, id: 'one', name: 'A' }], unmatched: [] } }) });
+    await all.emit('change', all.node('[data-font-file]', { files: [files[0]], dataset: { fontFile: 'local' } }));
+    assert.doesNotMatch(all.root.innerHTML, /data-font-local-dialog/, 'a fully matched pick skips the dialog'); assert.equal(all.calls.length, 0); all.view.destroy();
+    const failed = fixture(state(), () => {}, {}, { matchLocal: async () => { throw new Error('offline'); } });
+    await failed.emit('change', failed.node('[data-font-file]', { files: [files[0]], dataset: { fontFile: 'local' } }));
+    assert.match(failed.root.innerHTML, /data-font-local-name="0" value="known"/, 'a matching failure falls back to the normal dialog'); failed.view.destroy();
 });

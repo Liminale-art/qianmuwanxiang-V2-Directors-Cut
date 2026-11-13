@@ -10,7 +10,7 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.494';
-import {createFontLibrary} from './qianmu-font-library.js?v=1.59.500';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.503';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
