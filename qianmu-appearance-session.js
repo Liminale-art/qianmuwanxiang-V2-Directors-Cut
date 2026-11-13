@@ -97,7 +97,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         if (!root?.isConnected || !runtime.supported) return () => {};
         // Register only this caller-owned subtree's known scroll containers.
         const signature = `${role}/${tone}/${edgeIndex}`, prior = mounted.get(root);
-        if (prior?.signature === signature && runtime.has(root)) { void sync(); return prior.off; }
+        if (prior?.signature === signature && runtime.has(root)) { if (!ready) void sync(); else syncFont(); return prior.off; }
         prior?.off();
         const release = runtime.register(root, { role, tone, edgeIndex,
             scrollTargets: () => [root, ...root.querySelectorAll(SCROLL_TARGETS)],

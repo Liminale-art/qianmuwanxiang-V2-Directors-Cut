@@ -6571,7 +6571,7 @@ function syncFontWithST() {
     const modal = document.getElementById(MODAL_ID);
     if (!modal) return;
     const bodyFont = getComputedStyle(document.body).fontFamily;
-    if (bodyFont) modal.style.setProperty('--sd-font', bodyFont);
+    if (bodyFont && modal.style.getPropertyValue('--sd-font') !== bodyFont) modal.style.setProperty('--sd-font', bodyFont);
   } catch (_) {}
 }
 
