@@ -274,9 +274,21 @@ test('view renders both sections, grouped headers and a not-supported notice', a
   assert.equal(rows.length, 3);
   assert.equal(rows.filter(n => n.classList.contains('is-off')).length, 1, '停用的条目变灰');
   assert.equal(all.filter(n => n.classList.contains('qm-regex-switch')).length, 0, '不可写时只显示状态圆点');
-  const order = all.find(n => n.tagName === 'button' && n.textContent === '原始顺序');
-  order.listeners.click();
-  assert.equal(picked, 'order');
+  assert.equal(all.filter(n => n.classList.contains('qm-regex-meta')).length, 0, '条目只显示正则名，不再显示作用位置摘要');
+  assert.ok(!text.includes('未设作用位置') && !text.includes('AI 输出') && !text.includes('用户输入'));
+  assert.equal(host.children[0].className, 'qm-regex-tools', '图标控件并为页顶一排');
+  const toggles = all.filter(n => n.classList.contains('qm-regex-view-toggle'));
+  assert.equal(toggles.length, 1, '列表视图只有一个切换按钮');
+  assert.equal(all.filter(n => n.attrs.role === 'radio').length, 0, '不再是两段单选');
+  assert.equal(toggles[0].attrs['aria-pressed'], 'true');
+  assert.ok(walk(toggles[0]).some(n => n.textContent === '自动分组'));
+  toggles[0].listeners.click();
+  assert.equal(picked, 'order', '自动分组 → 点按切到原始顺序');
+  view.render(Object.freeze({ ...ctrl.state(), view: 'order' }));
+  const back = walk(host).find(n => n.classList.contains('qm-regex-view-toggle'));
+  assert.equal(back.attrs['aria-pressed'], 'false');
+  back.listeners.click();
+  assert.equal(picked, 'group', '原始顺序 → 点按切到自动分组');
   view.dispose();
   assert.deepEqual(host.children, []);
 });
@@ -344,10 +356,14 @@ test('writable sources render accessible switches that call actions.toggle and s
   view.dispose();
 });
 
-test('switch styling: compact pill with a sliding knob, focus ring and reduced-motion', async () => {
+test('switch styling: rounded line with a sliding dot, focus ring and reduced-motion', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.ok(css.includes('#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto auto; }'));
-  assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch.is-on .qm-regex-knob { transform: translateX(14px); }'));
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto; }'));
+  assert.match(css, /#story-director-floor-nav \.qm-regex-switch \{[^}]*border: 0;[^}]*background: transparent;/, '不再是胶囊底');
+  assert.match(css, /#story-director-floor-nav \.qm-regex-switch::before \{[^}]*height: 2px;[^}]*border-radius: 999px;/, '圆弧横线');
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch.is-on::before { background: color-mix(in srgb, var(--sd-primary) 62%, transparent); }'));
+  assert.match(css, /#story-director-floor-nav \.qm-regex-switch\.is-on \.qm-regex-knob \{ transform: translateX\(14px\); background: var\(--sd-primary\);/, '圆点滑到右端并染状态色');
+  assert.doesNotMatch(css, /\.qm-regex-(?:views|meta)\b/, '旧两段切换与摘要样式已清除');
   assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch:focus-visible {'));
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }'));
 });

@@ -928,9 +928,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-wheel-strip::-webkit-scrollbar { width: 0; height: 0; }
 #story-director-floor-nav .qm-ring-wheel-strip.is-dragging { scroll-snap-type: none; scroll-behavior: auto; }
 /* 聊天工具包·正则（D-a 只读）：视图切换胶囊 + 全局/预设两张卡，行内只读启用圆点 */
-#story-director-floor-nav .qm-regex-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 3px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); }
-#story-director-floor-nav .qm-regex-views button { min-height: 30px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); }
-#story-director-floor-nav .qm-regex-views button.is-active { background: var(--sd-card); color: var(--sd-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+#story-director-floor-nav .qm-regex-tools { display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+#story-director-floor-nav .qm-regex-tool { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; margin: 0; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); cursor: pointer; transition: color .18s ease, background-color .18s ease; }
+#story-director-floor-nav .qm-regex-tool:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-tool[aria-pressed="true"] { color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-tool:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--qm-floor-card-pad); border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); }
 #story-director-floor-nav[data-qm-theme] .qm-regex-card { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
 #story-director-floor-nav .qm-regex-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
@@ -938,18 +940,19 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-note { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 #story-director-floor-nav .qm-regex-list { display: flex; flex-direction: column; min-width: 0; }
 #story-director-floor-nav .qm-regex-group { padding: 8px 0 3px; font-size: var(--qm-type-caption); color: var(--sd-muted); font-weight: 600; }
-#story-director-floor-nav .qm-regex-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 34px; padding: 0; border-top: 1px solid var(--sd-hairline); }
+#story-director-floor-nav .qm-regex-row { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 34px; padding: 0; border-top: 1px solid var(--sd-hairline); }
 #story-director-floor-nav .qm-regex-row:first-child, #story-director-floor-nav .qm-regex-group + .qm-regex-row { border-top: 0; }
 #story-director-floor-nav .qm-regex-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-hairline); }
 #story-director-floor-nav .qm-regex-dot.is-on { background: var(--sd-primary); }
 #story-director-floor-nav .qm-regex-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--qm-type-body); color: var(--sd-text); }
 #story-director-floor-nav .qm-regex-row.is-off .qm-regex-name { color: var(--sd-muted); }
-#story-director-floor-nav .qm-regex-meta { font-size: var(--qm-type-caption); color: var(--sd-muted); white-space: nowrap; }
-#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto auto; }
-#story-director-floor-nav .qm-regex-switch { position: relative; flex: none; width: 34px; height: 20px; min-height: 0; margin: 0; padding: 0; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); cursor: pointer; transition: background-color .18s ease, border-color .18s ease, opacity .18s ease; }
-#story-director-floor-nav .qm-regex-switch.is-on { background: var(--sd-primary); border-color: transparent; }
-#story-director-floor-nav .qm-regex-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .22); transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
-#story-director-floor-nav .qm-regex-switch.is-on .qm-regex-knob { transform: translateX(14px); }
+#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto; }
+/* Line + dot switch: a thin rounded line with a sliding dot; same status-colour transition as the old pill. */
+#story-director-floor-nav .qm-regex-switch { position: relative; flex: none; width: 34px; height: 20px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; transition: opacity .18s ease; }
+#story-director-floor-nav .qm-regex-switch::before { content: ""; position: absolute; top: 9px; left: 6px; right: 6px; height: 2px; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 42%, transparent); transition: background-color .18s ease; }
+#story-director-floor-nav .qm-regex-switch.is-on::before { background: color-mix(in srgb, var(--sd-primary) 62%, transparent); }
+#story-director-floor-nav .qm-regex-knob { position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; background: var(--sd-card, #fff); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sd-muted) 70%, transparent); transition: transform .18s cubic-bezier(.22, 1, .36, 1), background-color .18s ease, box-shadow .18s ease; }
+#story-director-floor-nav .qm-regex-switch.is-on .qm-regex-knob { transform: translateX(14px); background: var(--sd-primary); box-shadow: inset 0 0 0 2px var(--sd-primary), 0 0 0 3px color-mix(in srgb, var(--sd-primary) 16%, transparent); }
 #story-director-floor-nav .qm-regex-switch:disabled { opacity: .55; cursor: progress; }
 #story-director-floor-nav .qm-regex-switch:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }

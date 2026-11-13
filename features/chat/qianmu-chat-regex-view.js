@@ -2,7 +2,9 @@
 // Pure DOM over the actions handed in by qianmu-chat-regex.js; it stores nothing and never touches ST itself:
 // a switch only calls actions.toggle(), which owns the write-back. Two sections (global / current preset),
 // each in original order or auto-grouped by name prefix. A source that cannot be written shows a status dot.
-const VIEW_LABELS = [['order', '原始顺序'], ['group', '自动分组']];
+// Rows show the script name only; page-level icon controls share one tool row (the list view is a single toggle).
+const VIEW_LABELS = Object.freeze({ order: '原始顺序', group: '自动分组' });
+const VIEW_ICONS = Object.freeze({ order: 'fa-list-ol', group: 'fa-layer-group' });
 
 export function mountChatRegexView({ root, actions, notify = () => {} }) {
   const document = root.ownerDocument;
@@ -36,15 +38,15 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const node = el('div', 'qm-regex-row');
     node.dataset.id = item.id;
     const name = el('span', 'qm-regex-name', item.name);
-    const meta = el('span', 'qm-regex-meta', [...item.placement, item.scope].filter(Boolean).join(' · ') || '未设作用位置');
+    name.title = item.name;
     if (writable) {
       node.classList.add('is-writable');
-      node.append(name, meta, toggleButton(item, source, pending.includes(`${source}:${item.id}`)));
+      node.append(name, toggleButton(item, source, pending.includes(`${source}:${item.id}`)));
     } else {
       const dot = el('span', `qm-regex-dot${item.enabled ? ' is-on' : ''}`);
       dot.setAttribute('role', 'img');
       dot.setAttribute('aria-label', item.enabled ? '已启用' : '已停用');
-      node.append(dot, name, meta);
+      node.append(dot, name);
     }
     if (!item.enabled) node.classList.add('is-off');
     return node;
@@ -84,15 +86,17 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const { view, sources } = state;
     const pending = Array.isArray(state.pending) ? state.pending : [];
     const keep = focusedKey(), scroll = root.scrollTop;
-    const seg = el('div', 'qm-regex-views');
-    seg.setAttribute('role', 'radiogroup');
-    seg.setAttribute('aria-label', '列表视图');
-    for (const [value, label] of VIEW_LABELS) {
-      const b = el('button', value === view ? 'is-active' : '', label); b.type = 'button';
-      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(value === view));
-      b.addEventListener('click', () => { try { actions.setView(value); } catch (error) { notify(error?.message || '切换失败', 'warning'); } });
-      seg.append(b);
-    }
+    const tools = el('div', 'qm-regex-tools');
+    const current = view === 'group' ? 'group' : 'order', next = current === 'group' ? 'order' : 'group';
+    const toggleView = el('button', 'qm-regex-tool qm-regex-view-toggle'); toggleView.type = 'button';
+    toggleView.dataset.key = 'view';
+    toggleView.setAttribute('aria-pressed', String(current === 'group'));
+    toggleView.setAttribute('aria-label', `列表视图：${VIEW_LABELS[current]}，点按切换为${VIEW_LABELS[next]}`);
+    toggleView.title = `${VIEW_LABELS[current]}（点按切换为${VIEW_LABELS[next]}）`;
+    const glyph = el('i', `fa-solid ${VIEW_ICONS[current]}`); glyph.setAttribute('aria-hidden', 'true');
+    toggleView.append(glyph, el('span', 'qm-regex-tool-label', VIEW_LABELS[current]));
+    toggleView.addEventListener('click', () => { try { actions.setView(next); } catch (error) { notify(error?.message || '切换失败', 'warning'); } });
+    tools.append(toggleView);
     const g = sources.global, p = sources.preset;
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
       { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, pending });
@@ -104,9 +108,9 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const hint = el('p', 'qm-regex-hint', writable
       ? '开关即时写回 ST；连续切换后聊天会自动重载一次，让已显示的楼层按新正则重新渲染。'
       : '只读预览：当前 ST 不支持在此切换，请在 ST 正则面板修改。');
-    root.replaceChildren(seg, globalCard, presetCard, hint);
+    root.replaceChildren(tools, globalCard, presetCard, hint);
     if (typeof scroll === 'number') root.scrollTop = scroll;
-    if (keep) [...(root.querySelectorAll?.('.qm-regex-switch') || [])].find(node => node.dataset.key === keep)?.focus?.();
+    if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
   }
 
   function dispose() { disposed = true; root.replaceChildren?.(); }
