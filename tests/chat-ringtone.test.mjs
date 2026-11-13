@@ -605,7 +605,9 @@ test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice th
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(glow), '日间半透毛玻璃');
   assert.ok(glow.includes('--gw-edge: var(--qm-toast-status)'), '边沿辉光跟随提示状态色');
   assert.ok(glow.includes('--gw-soft: color-mix(in srgb, var(--gw-edge), white 45%)'), '柔光色比边线更亮');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div::after \{[^}]*inset: 0[^}]*clip-path: polygon\(0 100%, 10px 0, calc\(100% - 4px\) 0, 100% 0, calc\(100% - 10px\) 100%, calc\(100% - 14px\) 100%, calc\(100% - 4px\) 0, 14px 0, 4px 100%\)/.test(glow), '左右粗边线由 ::after 多边形画出，与卡片共用 10px 斜率，任意高度不被裁断');
+  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div::after \{[^}]*inset: 0[^}]*clip-path: polygon\(0 100%, 10px 0, calc\(100% - 4px\) 0, 100% 0, calc\(100% - 10px\) 100%, calc\(100% - 14px\) 100%, calc\(100% - 4px\) 0, 18px 0, 8px 100%\)/.test(glow), '左右粗边线由 ::after 多边形画出，与卡片共用 10px 斜率，任意高度不被裁断；左粗线 8px（C-11 加倍）');
+  assert.ok(glow.includes('var(--gw-edge) 9%, transparent) 0, transparent 62%)') && glow.includes('var(--gw-edge) 14%, transparent) 0, transparent 62%)'), '透明区颜色更淡（日 9%、夜 14%）');
+  assert.ok(/::before \{ left: 22px/.test(glow) && glow.includes(':is(.toast-title, .toast-message) { padding-left: 24px'), '小方块离左粗线更远，文字同步右移');
   assert.ok(!glow.includes('linear-gradient(90deg, var(--gw-edge) 0 3px'), '弃用被斜切裁成三角的竖直色条');
   assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*filter: drop-shadow\(0 0 4px color-mix\(in srgb, var\(--gw-soft\)/.test(glow), '边线外加柔光');
   assert.ok(!glow.includes('inset 3px 0 0 0 var(--gw-edge)'), '弃用被裁的 inset 边线');
@@ -614,7 +616,7 @@ test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice th
   assert.ok(!css.includes('qm-toast-glow-glitch') && !/@keyframes qm-toast-glow-expand[^@]*translateX/.test(css), '去掉 glitch 抖动');
   assert.ok(/::after \{[^}]*animation: qm-toast-glow-edge 540ms/.test(glow) && /@keyframes qm-toast-glow-edge \{[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1/.test(css) && !css.includes('qm-toast-glow-flash'), '边线进场先快闪两下再常亮');
   assert.ok(glow.includes('--gw-flash: linear-gradient(180deg, #e8f4ff, #9fd0ff)') && glow.includes('--gw-flash: linear-gradient(180deg, #a9bccf, #8fa3b8)'), '闪色日间白蓝、夜间灰蓝');
-  assert.ok(/::before \{[^}]*background: color-mix\(in srgb, var\(--gw-edge\) 68%, white\)/.test(glow), '荧光小方块提亮');
+  assert.ok(/::before \{[^}]*background: color-mix\(in srgb, var\(--gw-edge\) 90%, white\)/.test(glow), '荧光小方块更纯更亮（少掺白）');
   assert.ok(!css.includes('qm-toast-glow-sweep'), '弃用旧光带动画');
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
 });
@@ -624,11 +626,11 @@ test('玻璃 style: glass pill, fluorescent bell icon with glow behind it, scale
   const iris = css.split('\n').filter(line => line.includes('data-qm-toast="iris"')).join('\n');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-radius: 999px/.test(iris), '玻璃胶囊大圆角');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(iris), '玻璃质感');
-  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.16\)/.test(iris), '外框线更细更透明');
-  assert.ok(/html\[data-qm-toast="iris"\]\[data-qm-toast-mode="dark"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.06\)/.test(iris), '夜间外框更淡');
+  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.11\)/.test(iris) && iris.includes('0 0 9px color-mix(in srgb, var(--qm-toast-status) 32%'), '外框线更细更透明、外发光收窄');
+  assert.ok(/html\[data-qm-toast="iris"\]\[data-qm-toast-mode="dark"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.045\)/.test(iris) && iris.includes('0 0 10px color-mix(in srgb, var(--qm-toast-status) 42%'), '夜间外框更淡、外发光收窄');
   assert.ok(iris.includes("mask: url(\"data:image/svg+xml") && iris.includes('a7 7 0'), '状态图标为铃铛 SVG');
   assert.ok(/::before \{[^}]*width: 22px[^}]*height: 22px/.test(iris), '标准铃铛尺寸增大到 22px');
-  assert.ok(iris.includes('--iris-glow: color-mix(in srgb, var(--qm-toast-status) 72%, #9effe6)'), '色相偏荧光');
+  assert.ok(iris.includes('--iris-glow: color-mix(in srgb, var(--qm-toast-status) 90%, white)') && !iris.includes('#9effe6'), '铃铛色只掺少量白提亮，不再掺薄荷发灰');
   assert.ok(/::before \{[^}]*filter: drop-shadow\(0 0 6px color-mix\(in srgb, var\(--iris-glow\)/.test(iris), '铃铛自带发光');
   assert.ok(/::after \{[^}]*animation: qm-toast-bell-glow/.test(iris) && css.includes('@keyframes qm-toast-bell-glow'), '铃铛背后柔光');
   assert.ok(iris.includes('animation: qm-toast-bell') && /@keyframes qm-toast-bell \{ 0% \{[^}]*scale\(\.5\)[^}]*\}[^@]*scale\(1\.22\)[^@]*rotate\(-14deg\)/.test(css), '放大→晃一晃→缩回');
