@@ -875,18 +875,18 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 });
 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
-    // 1.59.499: scope rework touched state/view/runtime/library/account-sync/css; sources & package stay at the 498 fix.
-    const stamp = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/account-sync/state/sources/package 不动。
+    const stamp = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
-    assert.equal(manifest.js, `index.js?v=1.59.499-toast-13`); assert.equal(manifest.css, `style.css?v=1.59.499-toast-13`);
+    assert.equal(manifest.js, `index.js?v=1.59.500-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.500-toast-14`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${stamp}'`));
     assert.ok((await read('qianmu-font-library.js')).includes(`'./qianmu-font-library-view.js?v=${stamp}'`));
     const controller = await read('qianmu-font-library.js');
-    assert.ok(controller.includes(`'./qianmu-font-runtime.js?v=${stamp}'`) && controller.includes(`'./qianmu-font-account-sync.js?v=${stamp}'`));
+    assert.ok(controller.includes(`'./qianmu-font-runtime.js?v=${scope}'`) && controller.includes(`'./qianmu-font-account-sync.js?v=${scope}'`));
     assert.ok(controller.includes(`import('./qianmu-font-package.js?v=${fix}')`));
     assert.doesNotMatch(controller, /from ['"].*qianmu-font-package/);
-    assert.ok(controller.includes(`'./qianmu-font-library-state.js?v=${stamp}'`));
-    assert.ok((await read('qianmu-font-account-sync.js')).includes(`'./qianmu-font-library-state.js?v=${stamp}'`));
+    assert.ok(controller.includes(`'./qianmu-font-library-state.js?v=${scope}'`));
+    assert.ok((await read('qianmu-font-account-sync.js')).includes(`'./qianmu-font-library-state.js?v=${scope}'`));
     for (const path of ['qianmu-font-library.js', 'qianmu-font-library-state.js', 'qianmu-font-package.js']) assert.ok((await read(path)).includes(`'./qianmu-font-sources.js?v=${fix}'`));
     assert.ok((await read('style.css')).includes(`'./qianmu-font-library.css?v=${stamp}'`));
 });

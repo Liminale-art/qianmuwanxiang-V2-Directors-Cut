@@ -12,13 +12,16 @@ const releaseVersion = '1.59.497';
 const fontFixVersion = '1.59.498';
 // 1.59.499 (节点 C-10): 三范围独立多选改了 state/view/runtime/library 与 css；sources/package 不动仍是 498。
 const fontScopeVersion = '1.59.499';
-const manifestVersion = '1.59.499';
+// 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/state/sources/package 不动。
+const fontUiVersion = '1.59.500';
+const manifestVersion = '1.59.500';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library-view.js', 'qianmu-font-runtime.js', 'qianmu-font-library.js', 'qianmu-font-library-state.js'].map(file => [file, fontScopeVersion]),
+  ...['qianmu-font-library-view.js', 'qianmu-font-library.js'].map(file => [file, fontUiVersion]),
+  ...['qianmu-font-runtime.js', 'qianmu-font-library-state.js'].map(file => [file, fontScopeVersion]),
   ['qianmu-font-sources.js', fontFixVersion],
   ['qianmu-creative-social.js', '1.59.460'],
   ['qianmu-director-leave-guard.js', '1.59.463'],
@@ -80,7 +83,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.ok(manifest.css.startsWith(`style.css?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(`style.css?v=${manifestVersion}`.length)));
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));
-  assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${fontScopeVersion}')`));
+  assert.ok((await readFile(new URL('style.css', root), 'utf8')).includes(`@import url('./qianmu-font-library.css?v=${fontUiVersion}')`));
   assert.ok(sources.get('qianmu-font-library.js').includes(`from './qianmu-font-sources.js?v=${fontFixVersion}'`));
   assert.ok(sources.get('qianmu-font-library-view.js').includes("from './qianmu-icon-renderer.js?v=1.59.478'"));
   assert.ok(sources.get('qianmu-font-library-state.js').includes(`from './qianmu-font-sources.js?v=${fontFixVersion}'`), 'source and validator consumers share the compatible fragment limit');
