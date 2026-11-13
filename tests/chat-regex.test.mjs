@@ -485,3 +485,121 @@ test('resolveRegexTarget: read-only sources and empty bindings produce no change
   assert.deepEqual(r.changes.preset, []);
   assert.equal(r.affectsDisplay, false);
 });
+
+// —— C-11d 控制器绑定套用 ——
+function fakeBinding(initial = { enabled: false, overrides: {} }) {
+  let binding = structuredClone(initial), defaults = {};
+  return {
+    readBinding: () => binding, writeBinding: v => { binding = structuredClone(v); },
+    readDefaults: () => defaults, writeDefaults: v => { defaults = structuredClone(v); },
+    get binding() { return binding; }, get defaults() { return defaults; },
+  };
+}
+
+test('applyBinding is inert while the binding toggle is off', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+  const bind = fakeBinding({ enabled: false, overrides: { 'global:g1': { enabled: false } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), ...bind });
+  assert.equal(await ctrl.applyBinding(), 0);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false, '未启用绑定 → 不写');
+  assert.equal(st.log.saves, 0);
+});
+
+test('applyBinding writes only the diff and reloads once for display-type changes', async () => {
+  const st = fakeST({ global: [
+    { id: 'g1', scriptName: '显示A', disabled: true },
+    { id: 'g2', scriptName: '仅提示', disabled: false, promptOnly: true },
+    { id: 'g3', scriptName: '已达标', disabled: false },
+  ] });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: true, overrides: {
+    'global:g1': { enabled: true }, 'global:g2': { enabled: false }, 'global:g3': { enabled: true },
+  } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  const changed = await ctrl.applyBinding();
+  assert.equal(changed, 2, 'g1 开、g2 关；g3 已达标不写');
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false);
+  assert.equal(st.ctx.extensionSettings.regex[1].disabled, true);
+  assert.equal(st.log.saves, 1, '整批一次保存');
+  assert.equal(timers.size, 1, '有显示类改动 → 安排一次重载');
+  timers.flush(); await settle();
+  assert.equal(st.log.reloads, 1);
+});
+
+test('applyBinding does not reload when only prompt-only scripts change', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '仅提示', disabled: false, promptOnly: true }] });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: true, overrides: { 'global:g1': { enabled: false } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  assert.equal(await ctrl.applyBinding(), 1);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, true);
+  assert.equal(timers.size, 0, '仅提示词改动不重载');
+});
+
+test('applyBinding is idempotent: a second pass finds no diff and schedules no reload', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '显示A', disabled: true }] });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: true, overrides: { 'global:g1': { enabled: true } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  await ctrl.applyBinding(); timers.flush(); await settle();
+  const saves = st.log.saves, reloads = st.log.reloads;
+  assert.equal(await ctrl.applyBinding(), 0, '第二遍无差异');
+  assert.equal(st.log.saves, saves, '不再保存');
+  assert.equal(timers.size, 0, '不再安排重载');
+  assert.equal(st.log.reloads, reloads);
+});
+
+test('setBindingOverride captures the live baseline into defaults so other chats reset', () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+  const bind = fakeBinding({ enabled: true, overrides: {} });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), ...bind });
+  ctrl.actions.setBindingOverride({ key: 'global:g1', enabled: false, liveEnabled: true });
+  assert.deepEqual(bind.defaults['global:g1'], { enabled: true }, '首次纳入抓当前 live 态作基线');
+  assert.deepEqual(bind.binding.overrides['global:g1'], { enabled: false });
+  ctrl.actions.clearBindingOverride('global:g1');
+  assert.equal('global:g1' in bind.binding.overrides, false, '移出覆盖');
+});
+
+test('setBindingEnabled off then on toggles enable and applies immediately', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '显示A', disabled: true }] });
+  const timers = manualTimers();
+  const bind = fakeBinding({ enabled: false, overrides: { 'global:g1': { enabled: true } } });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
+  await ctrl.actions.setBindingEnabled(true);
+  assert.equal(bind.binding.enabled, true);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false, '开启后立即套用');
+});
+
+test('view shows a 绑定 toggle and marks bound rows when binding is on', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make, createTextNode: t => ({ text: t }) };
+  const calls = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setBindingEnabled: on => { calls.push(on); } } });
+  // off: 绑定按钮在、未按下、无 bound 标记
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: false, overrides: {} } }));
+  let bind = walk(host).find(n => n.dataset.key === 'bind');
+  assert.ok(bind, '有绑定按钮');
+  assert.equal(bind.attrs['aria-pressed'], 'false');
+  assert.equal(walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark')).length, 0, '未开绑定无标记');
+  bind.listeners.click(); await settle();
+  assert.deepEqual(calls, [true], '点击切换绑定开启');
+  // on: 按下态 + g1 被标记
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: { 'global:g1': { enabled: false } } } }));
+  bind = walk(host).find(n => n.dataset.key === 'bind');
+  assert.equal(bind.attrs['aria-pressed'], 'true');
+  assert.ok(bind.classList.contains('is-on'));
+  const marks = walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark'));
+  assert.equal(marks.length, 1, '仅被覆盖的 g1 带标记');
+  view.dispose();
+});

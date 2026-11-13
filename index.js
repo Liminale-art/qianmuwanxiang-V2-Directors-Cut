@@ -329,7 +329,27 @@ let feedbackOpenScope = null;
 const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 // 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
 let floorHive=null;
-const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;}});   // 正则开关写回后重载聊天：生成/保存中顺延
+// 正则绑定存取（C-11d）：本聊天覆盖存 chat_metadata.story_director_liminale.regexBinding（随分支/千幕备份跟随），
+// 全局默认基线存 settings.regexBindingDefaults。读路径纯只读（不建 store、不迁移），只有写时才走 getChatStore/getSettings 持久化。
+function regexBindingRead() {
+  const meta = ctx().chatMetadata?.[MODULE_NAME];
+  const b = meta?.regexBinding;
+  return { enabled: b?.enabled === true, overrides: isPlainObject(b?.overrides) ? b.overrides : {} };
+}
+function regexBindingWrite(value) {
+  const store = getChatStore();
+  store.regexBinding = { enabled: value?.enabled === true, overrides: isPlainObject(value?.overrides) ? value.overrides : {} };
+  void saveMetadata();
+}
+function regexBindingDefaultsRead() {
+  const d = getSettings().regexBindingDefaults;
+  return isPlainObject(d) ? d : {};
+}
+function regexBindingDefaultsWrite(value) {
+  getSettings().regexBindingDefaults = isPlainObject(value) ? value : {};
+  saveSettings();
+}
+const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -1032,6 +1052,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelCustomEnabled: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: true,
+  regexBindingDefaults: {},   // C-11d：正则绑定的全局默认基线 { 'global:<id>'|'preset:<预设名>:<id>': { enabled } }，每聊天覆盖存 chat_metadata
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -35719,6 +35740,7 @@ function bindEvents() {
     rerenderIfOpen();
     ttsStartChat();   // ST 就绪后 #chat 已存在，挂上有声注入（init 抢跑时 #chat 可能尚未就位）
     storyboardScheduleInlineRender(160);
+    chatRegex.events.chatChanged();   // C-11d：直接进聊天（APP_READY 早于/无 CHAT_CHANGED）时兜底套用正则绑定
   };
   const personaChangedHandler = async () => {
     await refreshCoreadPersonaAvatar();
@@ -35762,6 +35784,7 @@ function bindEvents() {
     [types.GROUP_UPDATED || 'group_updated', rerenderHandler],
     [types.CHARACTER_SELECTED || 'character_selected', rerenderHandler],
     ...[['GENERATION_STARTED', 'generation_started', 'generationStarted'], ['GENERATION_STOPPED', 'generation_stopped', 'generationStopped'], ['MESSAGE_RECEIVED', 'message_received', 'messageReceived'], ['CHAT_CHANGED', 'chat_id_changed', 'chatChanged']].map(([key, fallback, name]) => [types[key] || fallback, chatRingtone.events[name]]),   // 聊天工具包·铃声：仅成功回复响铃／后台闪烁
+    [types.CHAT_CHANGED || 'chat_changed', chatRegex.events.chatChanged],   // C-11d：进聊天自动套用本聊天的正则绑定（未启用绑定时整条空转）
   ];
   for (const [type, handler] of pairs) {
     source.on(type, handler);

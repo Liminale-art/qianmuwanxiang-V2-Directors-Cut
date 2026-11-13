@@ -213,11 +213,20 @@ export const REGEX_RELOAD_DELAY = 700;
 
 export function createChatRegex({ getContext = () => ({}), notify = () => {},
   canReload = () => true, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) },
+  // C-11d 绑定存取（默认空操作 → 未接线时整套绑定完全惰性，不写 ST）：
+  // readBinding 读本聊天覆盖（只读，无副作用）；writeBinding 持久化本聊天覆盖；
+  // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
+  readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
+  readDefaults = () => ({}), writeDefaults = () => {},
   loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.499') } = {}) {
-  let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false;
+  let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   const pending = new Set();
   const context = () => attempt(() => getContext(), {});
-  const state = () => Object.freeze({ view, pending: Object.freeze([...pending]), sources: readRegexSources(context()) });
+  const readOverrides = () => { const b = attempt(() => readBinding(), {}); return b && typeof b === 'object' && b.overrides && typeof b.overrides === 'object' ? b.overrides : {}; };
+  const bindingEnabled = () => attempt(() => readBinding(), {})?.enabled === true;
+  const state = () => Object.freeze({ view, pending: Object.freeze([...pending]),
+    binding: Object.freeze({ enabled: bindingEnabled(), overrides: Object.freeze({ ...readOverrides() }) }),
+    sources: readRegexSources(context()) });
   const refresh = () => mounted?.view?.render(state());
 
   // ST re-applies display regexes only when messages are rendered again, exactly like its own panel does
@@ -238,12 +247,41 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     try { await ctx.reloadCurrentChat(); } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
   }
 
+  // 进聊天时把 全局默认 ⊕ 本聊天覆盖 套用到 live 正则：逐条比较只写差异，仅显示类改动才重载。
+  // reloadCurrentChat 会再触发 chatChanged→applyBinding，但第二次比较已无差异即停，天然幂等不成环。
+  async function applyBinding() {
+    if (disposed || applying) return 0;
+    if (!bindingEnabled()) return 0;
+    const chatId = attempt(() => { const ctx = context(); return typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId; }, null);
+    if (!chatId) return 0;                                   // 欢迎屏/无聊天：不动
+    const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: readOverrides(), sources: readRegexSources(context()) });
+    const total = plan.changes.global.length + plan.changes.preset.length;
+    if (!total) { refresh(); return 0; }
+    applying = true;
+    let changed = 0;
+    try {
+      for (const source of BINDING_SOURCES) {
+        if (!plan.changes[source].length) continue;
+        changed += await writeRegexStates(context(), { source, changes: plan.changes[source] }) || 0;
+      }
+    } catch (error) {
+      notify(error?.message || '正则绑定套用失败', 'warning');
+    } finally {
+      applying = false;
+    }
+    if (changed && plan.affectsDisplay) scheduleReload();
+    refresh();
+    return changed;
+  }
+
   async function toggle({ source, id, name, enabled } = {}) {
     const key = `${source}:${id}`;
     if (pending.has(key)) return null;
     pending.add(key); refresh();
     try {
       const next = await writeRegexToggle(context(), { source, id, name, enabled });
+      // 「懒人」绑定：开着绑定时，用户在本聊天随手拨动开关 = 记住这条。基线抓拨动前的态，其它聊天据此复位。
+      if (bindingEnabled() && isRealId(id)) setBindingOverride({ key, enabled: enabled === true, liveEnabled: enabled !== true });
       scheduleReload();
       return next;
     } catch (error) {
@@ -263,6 +301,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     keys.forEach(key => pending.add(key)); refresh();
     try {
       const changed = await writeRegexStates(context(), { source, changes });
+      if (bindingEnabled()) for (const change of changes) if (isRealId(change.id)) setBindingOverride({ key: `${source}:${change.id}`, enabled: change.enabled, liveEnabled: !change.enabled });
       if (changed) scheduleReload();
       return changed;
     } catch (error) {
@@ -272,14 +311,50 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       keys.forEach(key => pending.delete(key)); refresh();
     }
   }
+  // 当某条脚本首次纳入绑定时，把它当前的 live 态写入全局默认基线——这样别的聊天不覆盖它时会复位到基线，
+  // 而不是停留在上一个聊天改出来的态，根治「一个聊天的开关泄漏到下一个聊天」。
+  function ensureDefault(key, liveEnabled) {
+    const defaults = attempt(() => readDefaults(), {}) || {};
+    if (Object.prototype.hasOwnProperty.call(defaults, key)) return;
+    writeDefaults({ ...defaults, [key]: { enabled: liveEnabled === true } });
+  }
+  // 开/关「绑定此聊天」总开关。打开后立即套用一次。
+  async function setBindingEnabled(on) {
+    const b = attempt(() => readBinding(), {}) || {};
+    writeBinding({ enabled: on === true, overrides: b.overrides && typeof b.overrides === 'object' ? b.overrides : {} });
+    refresh();
+    if (on === true) await applyBinding(); else refresh();
+  }
+  // 把某条脚本纳入/移出本聊天覆盖；纳入时同时确保它在全局默认里有基线。
+  function setBindingOverride({ key, enabled, liveEnabled } = {}) {
+    if (!text(key)) return;
+    ensureDefault(key, liveEnabled);
+    const b = attempt(() => readBinding(), {}) || {};
+    const overrides = { ...(b.overrides && typeof b.overrides === 'object' ? b.overrides : {}) };
+    overrides[key] = { enabled: enabled === true };
+    writeBinding({ enabled: b.enabled === true, overrides });
+    refresh();
+  }
+  function clearBindingOverride(key) {
+    if (!text(key)) return;
+    const b = attempt(() => readBinding(), {}) || {};
+    if (!b.overrides || typeof b.overrides !== 'object' || !Object.prototype.hasOwnProperty.call(b.overrides, key)) return;
+    const overrides = { ...b.overrides }; delete overrides[key];
+    writeBinding({ enabled: b.enabled === true, overrides });
+    refresh();
+  }
   const actions = Object.freeze({
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
     group: groupRegexScripts,
+    bindingKey: regexBindingKey,
     setView(next) { view = REGEX_VIEWS.includes(next) ? next : 'order'; refresh(); },
     reload() { refresh(); },
     toggle,
     toggleMany,
+    setBindingEnabled,
+    setBindingOverride,
+    clearBindingOverride,
   });
   async function mount(host) {
     if (!host) return;
@@ -298,5 +373,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     if (reloadTimer !== null) { timers.clear(reloadTimer); reloadTimer = null; }
     unmount();
   }
-  return Object.freeze({ mount, unmount, dispose, actions, state });
+  // 进聊天钩子：index.js 把 CHAT_CHANGED / appReady 接到这里，自动套用本聊天绑定。
+  const events = Object.freeze({ chatChanged: () => { void applyBinding(); } });
+  return Object.freeze({ mount, unmount, dispose, actions, state, applyBinding, events });
 }

@@ -944,6 +944,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-batch { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
 #story-director-floor-nav .qm-regex-batch-button { min-height: 24px; padding: 0 5px; }
 #story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
+#story-director-floor-nav .qm-regex-bind-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
+#story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
 #story-director-floor-nav .qm-regex-row { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 34px; padding: 0; border-top: 1px solid var(--sd-hairline); }
 #story-director-floor-nav .qm-regex-row:first-child, #story-director-floor-nav .qm-regex-group + .qm-regex-row { border-top: 0; }
 #story-director-floor-nav .qm-regex-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-hairline); }
