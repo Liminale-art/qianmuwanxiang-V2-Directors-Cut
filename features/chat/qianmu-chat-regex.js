@@ -878,6 +878,25 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     return { reload: false, result: count };
   });
+  // C-15 s9：手动命名组 = 给条目写开头【标签】（不改名字正文；标签优先于自动归类）。tag 空 = 去掉标签。不重载。
+  const retag = ({ items, tag = '' } = {}) => structural('分组命名', async ctx => {
+    let count = 0;
+    for (const [source, list] of bySource(items)) {
+      const out = await editRegexList(ctx, source, raw => {
+        const hit = new Set(locateIndices(raw, list));
+        let hits = 0;
+        const next = raw.map((script, i) => {
+          if (!hit.has(i)) return script;
+          const renamed = tagRegexName(text(script?.scriptName), tag);
+          if (!renamed || renamed === text(script?.scriptName)) return script;
+          hits += 1; return { ...script, scriptName: renamed };
+        });
+        return hits ? { next, touched: [], result: hits } : { next: null, result: 0 };
+      });
+      count += out.result || 0;
+    }
+    return { reload: false, result: count };
+  });
   function setManaging(on) { managing = on === true; if (!managing) { selected.clear(); picking = []; } refresh(); }
   function setSelected(keys, on = true) {
     for (const key of Array.isArray(keys) ? keys : [keys]) { if (!text(key)) continue; if (on) selected.add(String(key)); else selected.delete(String(key)); }
@@ -895,6 +914,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
     group: groupAdjacentRegex,   // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；groupRegexScripts 保留导出便于回退
+    familyKey: regexFamilyKey,
+    tagName: tagRegexName,
     preview: previewRegexScript,
     placementLabels: REGEX_PLACEMENTS,
     bindingKey: regexBindingKey,
@@ -908,7 +929,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
-    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, regroup,
+    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, regroup, retag,
     setManaging, setSelected, openEditor, closeEditor,
   });
   async function mount(host) {

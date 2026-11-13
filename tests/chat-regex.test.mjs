@@ -1266,3 +1266,100 @@ test('editor new mode inserts a blank script and refuses an empty name', async (
   assert.equal(saved[0].script.scriptName, '新建条目');
   view.dispose();
 });
+
+// C-15 s9c：手动命名组 = 写【标签】；双击组名就地改名；整组拾取；编辑页分组栏。
+test('retag writes a leading 【tag】 per entry without a reload, and empty tag clears it', async () => {
+  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '[旧]不发送片尾' }, { id: 'g3', scriptName: '独立' }] });
+  const items = [{ source: 'global', id: 'g1', name: '不发送剧场' }, { source: 'global', id: 'g2', name: '[旧]不发送片尾' }];
+  assert.equal(await ctrl.actions.retag({ items, tag: '屏蔽' }), 2);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['【屏蔽】不发送剧场', '【屏蔽】不发送片尾', '独立']);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], 'id 不变（绑定不受影响）');
+  assert.equal(timers.size, 0, '改名不触发重载');
+  assert.equal(await ctrl.actions.retag({ items, tag: '' }), 2);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['不发送剧场', '不发送片尾', '独立']);
+});
+
+test('managing group header: double-click renames via retag, grip picks the whole group, drop lands before the header', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const calls = [];
+  const st = fakeST({ global: [{ id: 'g0', scriptName: '独立' }, { id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '不发送片尾' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const stub = { ...ctrl.actions };
+  for (const name of ['retag', 'pickMove', 'dropMove']) stub[name] = (...args) => { calls.push([name, args]); return null; };
+  const view = mountChatRegexView({ root: host, actions: stub });
+  view.render(Object.freeze({ ...ctrl.state(), managing: true }));
+  assert.equal(byKey(host, 'view'), undefined, '无视图切换按钮');
+  const title = byKey(host, 'gname:global:不发送');
+  assert.ok(title, '组名可双击改名');
+  assert.equal(byKey(host, 'grename:global:不发送'), undefined, '平时不显示输入框');
+  title.listeners.dblclick();
+  const field = byKey(host, 'grename:global:不发送');
+  assert.equal(field.value, '不发送');
+  field.value = '屏蔽'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
+  assert.equal(calls[0][0], 'retag');
+  assert.equal(calls[0][1][0].tag, '屏蔽');
+  assert.deepEqual(calls[0][1][0].items.map(i => i.id), ['g1', 'g2'], '整组成员');
+  field.listeners.blur(); await settle();
+  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, 'Enter 后失焦不重复提交');
+  // 触屏双点：两次 click 间隔 <400ms 也进入改名；Esc 取消不写
+  view.render(Object.freeze({ ...ctrl.state(), managing: true }));
+  const t2 = byKey(host, 'gname:global:不发送');
+  t2.listeners.click({ timeStamp: 1000 }); t2.listeners.click({ timeStamp: 1200 });
+  const f2 = byKey(host, 'grename:global:不发送');
+  assert.ok(f2, '双点进入改名');
+  f2.value = '别的'; f2.listeners.keydown({ key: 'Escape', preventDefault() {} }); await settle();
+  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, 'Esc 不提交');
+  // 自动组清空名字 = 不改
+  view.render(Object.freeze({ ...ctrl.state(), managing: true }));
+  byKey(host, 'gname:global:不发送').listeners.dblclick();
+  const f3 = byKey(host, 'grename:global:不发送'); f3.value = ''; f3.listeners.blur(); await settle();
+  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, '自动组留空不写');
+  // 整组拾取
+  byKey(host, 'gpick:global:不发送').listeners.click(); await settle();
+  const pick = calls.find(c => c[0] === 'pickMove');
+  assert.deepEqual(pick[1][0].items.map(i => i.id), ['g1', 'g2']);
+  // 拾取态：组头前有落点（插到组首成员之前），组首行前不重复落点
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, picking: [{ source: 'global', id: 'g0', name: '独立' }] }));
+  const list = walkAll(host).find(n => n.classList?.contains('qm-regex-list'));
+  const seq = list.children.map(n => n.dataset?.key || (n.classList?.contains('qm-regex-group') ? 'HEAD' : n.dataset?.id));
+  assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'g1', 'drop:global:g2', 'g2', 'drop:global:end']);
+  view.dispose();
+});
+
+test('editor 分组 field edits the 【tag】 separately and keeps an untouched name verbatim', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const saved = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '[排版]标题' }, { id: 'g2', scriptName: '【排版】段落' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  let raw = '[排版]标题';
+  const stub = { ...ctrl.actions, readScript: () => ({ scriptName: raw, placement: [2] }),
+    saveScript: args => { saved.push(args); return true; }, closeEditor: () => {} };
+  const view = mountChatRegexView({ root: host, actions: stub });
+  const open = () => view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: 'g1', name: raw } }));
+  open();
+  assert.equal(byKey(host, 'field:scriptName').value, '标题', '名字栏只显示正文');
+  assert.equal(byKey(host, 'field:group').value, '排版', '分组栏显示标签');
+  assert.ok(walkAll(host).some(n => n.tagName === 'datalist' && n.children.some(o => o.value === '排版')), '已有组可选');
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.at(-1).script.scriptName, '[排版]标题', '未改动时原样保留（不把 [X] 改写成【X】）');
+  open();
+  byKey(host, 'field:group').value = '美化';
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.at(-1).script.scriptName, '【美化】标题');
+  open();
+  byKey(host, 'field:group').value = '';
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.at(-1).script.scriptName, '标题', '留空 = 去掉标签');
+  raw = '不发送剧场'; open();
+  assert.equal(byKey(host, 'field:group').value, '');
+  byKey(host, 'field:group').value = '屏蔽';
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.at(-1).script.scriptName, '【屏蔽】不发送剧场');
+  raw = '甲'; open();
+  byKey(host, 'field:scriptName').value = '【手写】甲';
+  byKey(host, 'editor-save').listeners.click(); await settle();
+  assert.equal(saved.at(-1).script.scriptName, '【手写】甲', '分组栏留空时名字栏里手写的标签原样保留');
+  view.dispose();
+});

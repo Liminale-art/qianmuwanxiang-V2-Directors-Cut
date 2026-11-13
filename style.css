@@ -1024,8 +1024,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-drop::before { content: ""; display: block; height: 2px; margin: 4px 0; border-radius: 999px; background: color-mix(in srgb, var(--sd-primary) 55%, transparent); opacity: .5; transition: opacity .15s ease, height .15s ease; }
 #story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; }
 #story-director-floor-nav .qm-regex-drop:focus-visible { outline: none; }
-#story-director-floor-nav .qm-regex-group-edit { flex: none; min-width: 0; }
-#story-director-floor-nav .qm-regex-group-input { width: 7.5em; min-width: 0; min-height: 24px; margin: 0; padding: 0 6px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-caption); }
+/* C-15 s9：管理态组头——折叠箭头+数量 / 双击改名的组名 / 整组拾取。组名就地变输入框。 */
+#story-director-floor-nav .qm-regex-group.is-managing { justify-content: flex-start; gap: 4px; }
+#story-director-floor-nav .qm-regex-group.is-managing .qm-regex-group-label { flex: none; }
+#story-director-floor-nav .qm-regex-group-name { flex: 0 1 auto; display: inline-flex; min-width: 0; }
+#story-director-floor-nav .qm-regex-group-count { flex: none; }
+#story-director-floor-nav .qm-regex-group-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: text; border-radius: 4px; padding: 0 2px; user-select: none; }
+#story-director-floor-nav .qm-regex-group-title:hover { background: var(--sd-glass-weak); color: var(--sd-text); }
+#story-director-floor-nav .qm-regex-group-title:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav .qm-regex-group-grip { margin-left: auto; }
+#story-director-floor-nav .qm-regex-group-input { width: 9em; min-width: 0; min-height: 22px; margin: 0; padding: 0 6px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-caption); font-weight: 600; }
 #story-director-floor-nav .qm-regex-group-input:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-manage-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
 #story-director-floor-nav .qm-regex-new-icon { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; color: var(--sd-primary); }
