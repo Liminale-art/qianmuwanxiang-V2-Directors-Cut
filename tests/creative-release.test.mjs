@@ -17,7 +17,7 @@ const fontUiVersion = '1.59.500';
 // 1.59.503 (节点 C-15e): 跨端重复导入自动匹配只改 library.js/view；css/runtime/state/sources/package 不动。
 const fontMatchVersion = '1.59.503';
 // 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
-const manifestVersion = '1.59.502';
+const manifestVersion = '1.59.503';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
@@ -38,7 +38,7 @@ const retained = new Map([
   // index.js consumes the renamed floor label (b9c4b65b); prose-hive only reads the unchanged assistant command.
   // 2026-11-08 stamp unification: every importer of a module now shares its newest address.
   ['qianmu-hive-commands.js', '1.59.477'], ['qianmu-prose-hive.js', '1.59.494'],
-  ['qianmu-appearance-session.js', '1.59.502'],
+  ['qianmu-appearance-session.js', '1.59.503'],
   ['qianmu-memory-context.js', '1.59.448'],
   ['qianmu-st-context-sources.js', '1.59.450'],
 ]);

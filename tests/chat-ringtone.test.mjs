@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.498'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.503'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Toolkit navigation includes the ring tab (5 tabs since the regex tab).
   assert.ok(entry.includes('data-floor-tab="ring"'));

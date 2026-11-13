@@ -41,8 +41,8 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.498';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.502';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.503';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.503';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -209,7 +209,7 @@ import { QIANMU_HIVE_THEME_LOGO } from './qianmu-hive-theme-logo.js';
 import { THEMES, THEME_KEYS, QUICK_HIVE_THEME_PALETTES, READER_PORTAL_BG } from './qianmu-classic-palettes.js';
 import { selectQianmuClassicTheme, changeQianmuAppearance } from './qianmu-appearance-actions.js';
 import { readAppearancePreferences } from './qianmu-appearance-settings.js';
-import { createQianmuAppearanceSession } from './qianmu-appearance-session.js?v=1.59.502';
+import { createQianmuAppearanceSession } from './qianmu-appearance-session.js?v=1.59.503';
 import { bindQianmuStoryboardNavigation, preserveQianmuStoryboardNav } from './qianmu-storyboard-nav-lifecycle.js';
 import { migrateQianmuChatStoreV2, migrateQianmuSettingsV2 } from './qianmu-data-migrations.js?v=1.59.202';
 import { createFeatureRuntime, loadLocalChunk, mountLocalChunkFailure } from './qianmu-feature-runtime.js?v=1.59.425';
@@ -319,7 +319,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.502';
+const VERSION = '1.59.503';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
