@@ -34,6 +34,26 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return button;
   }
 
+  // 全开 / 全关 for a section or group of a writable source; each is disabled when it would change nothing.
+  function batchTools(items, source, label, pending) {
+    const box = el('span', 'qm-regex-batch');
+    const busy = items.some(item => pending.includes(`${source}:${item.id}`));
+    for (const [enabled, icon, verb] of [[true, 'fa-toggle-on', '全部启用'], [false, 'fa-toggle-off', '全部停用']]) {
+      const button = el('button', 'qm-regex-tool qm-regex-batch-button'); button.type = 'button';
+      button.dataset.key = `batch:${source}:${label}:${enabled ? 'on' : 'off'}`;
+      button.setAttribute('aria-label', `${label}：${verb}`); button.title = `${label}：${verb}`;
+      const glyph = el('i', `fa-solid ${icon}`); glyph.setAttribute('aria-hidden', 'true'); button.append(glyph);
+      if (busy || !items.some(item => item.enabled !== enabled)) button.disabled = true;
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        Promise.resolve().then(() => actions.toggleMany({ source, items, enabled }))
+          .catch(error => notify(error?.message || '正则批量开关写回失败', 'warning'));
+      });
+      box.append(button);
+    }
+    return box;
+  }
+
   function row(item, source, { writable = false, pending = [] } = {}) {
     const node = el('div', 'qm-regex-row');
     node.dataset.id = item.id;
@@ -58,7 +78,9 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (!items.length) { box.append(el('p', 'qm-regex-empty', '没有正则脚本')); return box; }
     if (mode !== 'group') { box.append(...items.map(make)); return box; }
     for (const group of actions.group(items)) {
-      const head = el('div', 'qm-regex-group', `${group.label}（${group.items.length}）`);
+      const head = el('div', 'qm-regex-group');
+      head.append(el('span', 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
+      if (options.writable) head.append(batchTools(group.items, source, group.label, options.pending));
       box.append(head, ...group.items.map(make));
     }
     return box;
@@ -69,6 +91,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const head = el('header', 'qm-regex-card-head');
     head.append(el('h4', 'qm-regex-title', title));
     if (note) head.append(el('span', 'qm-regex-note', note));
+    if (!unavailable && writable && items.length) head.append(batchTools(items, source, title, pending));
     card.append(head);
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
     else card.append(list(items, mode, source, { writable, pending }));

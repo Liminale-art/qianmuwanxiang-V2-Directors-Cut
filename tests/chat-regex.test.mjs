@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   stripOrdinal, regexGroupKey, groupRegexScripts, summarizeRegexScript, readRegexSources, createChatRegex, UNGROUPED_LABEL,
-  locateRegexScript, writeRegexToggle, REGEX_RELOAD_DELAY,
+  locateRegexScript, writeRegexToggle, writeRegexStates, REGEX_RELOAD_DELAY,
 } from '../features/chat/qianmu-chat-regex.js';
 
 const root = new URL('../', import.meta.url);
@@ -202,6 +202,80 @@ test('controller reports write failures and never reloads for them', async () =>
   timers.flush(); await settle();
   assert.equal(noChat.log.reloads, 0, '没有打开的聊天就不重载');
   ctrl.dispose(); c2.dispose();
+});
+
+test('writeRegexStates writes a whole batch in one save and refuses it entirely when any row went stale', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B', disabled: true }, { id: 'g3', scriptName: 'C' }],
+    preset: [{ id: 'p1', scriptName: 'P', disabled: true }, { scriptName: '无ID', disabled: true }] });
+  const off = [{ id: 'g1', name: 'A', enabled: false }, { id: 'g2', name: 'B', enabled: false }, { id: 'g3', name: 'C', enabled: false }];
+  assert.equal(await writeRegexStates(st.ctx, { source: 'global', changes: off }), 2, '已是目标状态的条目不计');
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(r => r.disabled), [true, true, true]);
+  assert.equal(st.log.saves, 1, '整批只保存一次');
+  assert.equal(await writeRegexStates(st.ctx, { source: 'global', changes: off }), 0);
+  assert.equal(st.log.saves, 1, '无变化不保存');
+  await assert.rejects(writeRegexStates(st.ctx, { source: 'global', changes: [{ id: 'g1', name: 'A', enabled: true }, { id: 'gone', name: 'x', enabled: true }] }), /已在别处被修改/);
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, true, '有一条失效则整批不写');
+  assert.equal(await writeRegexStates(st.ctx, { source: 'preset', changes: [{ id: 'p1', name: 'P', enabled: true }, { id: '#1', name: '无ID', enabled: true }] }), 2);
+  assert.equal(st.log.presetWrites.length, 1, '预设整批一次写入');
+  assert.deepEqual(st.preset().map(r => r.disabled), [false, false]);
+});
+
+test('controller toggleMany marks every row busy, skips no-op rows and reloads once', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B', disabled: true }, { id: 'g3', scriptName: 'C' }] });
+  const timers = manualTimers(), renders = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers,
+    loadView: async () => ({ mountChatRegexView: () => ({ render: s => renders.push(s), dispose() {} }) }) });
+  await ctrl.mount({ isConnected: true });
+  const items = renders.at(-1).sources.global.items;
+  const run = ctrl.actions.toggleMany({ source: 'global', items, enabled: false });
+  assert.deepEqual([...renders.at(-1).pending], ['global:g1', 'global:g3'], '只有要变的行忙碌');
+  assert.equal(await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false }), null, '批量写回中单条点按被忽略');
+  assert.equal(await run, 2);
+  assert.deepEqual([...renders.at(-1).pending], []);
+  assert.ok(renders.at(-1).sources.global.items.every(item => !item.enabled));
+  assert.equal(st.log.saves, 1);
+  assert.equal(await ctrl.actions.toggleMany({ source: 'global', items: renders.at(-1).sources.global.items, enabled: false }), 0, '全部已关时什么都不做');
+  assert.equal(timers.size, 1, '只排一次重载');
+  timers.flush(); await settle();
+  assert.equal(st.log.reloads, 1);
+  ctrl.dispose();
+});
+
+test('view offers 全部启用/全部停用 per writable section and group, disabled when nothing would change', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
+      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    return node;
+  };
+  const walk = (node, out = []) => { out.push(node); (node.children || []).forEach(k => walk(k, out)); return out; };
+  const host = make('div'); host.ownerDocument = { createElement: make };
+  const calls = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'a-1' }, { id: 'g2', scriptName: 'a-2' }, { id: 'g3', scriptName: '独立', disabled: true }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, toggleMany: args => { calls.push(args); return 0; } } });
+  view.render(Object.freeze({ ...ctrl.state(), view: 'order' }));
+  let batch = walk(host).filter(n => n.classList.contains('qm-regex-batch-button'));
+  assert.equal(batch.length, 2, '原始顺序：只有全局分区的一组（预设无条目）');
+  assert.equal(batch[0].attrs['aria-label'], '全局正则：全部启用');
+  assert.equal(batch[0].disabled, false); assert.equal(batch[1].disabled, false);
+  batch[1].listeners.click(); await settle();
+  assert.equal(calls.length, 1); assert.equal(calls[0].source, 'global'); assert.equal(calls[0].enabled, false); assert.equal(calls[0].items.length, 3);
+  view.render(Object.freeze({ ...ctrl.state(), view: 'group' }));
+  batch = walk(host).filter(n => n.classList.contains('qm-regex-batch-button'));
+  assert.equal(batch.length, 6, '分区 + 两个分组各一对');
+  const groupA = batch.filter(n => n.attrs['aria-label'].startsWith('a：'));
+  assert.equal(groupA[0].disabled, true, 'a 组全开时「全部启用」不可点');
+  assert.equal(groupA[1].disabled, false);
+  view.render(Object.freeze({ ...ctrl.state(), view: 'group', pending: ['global:g1'] }));
+  assert.ok(walk(host).filter(n => n.classList.contains('qm-regex-batch-button') && n.attrs['aria-label'].startsWith('a：')).every(n => n.disabled), '组内有行写回中时批量不可点');
+  const readOnly = createChatRegex({ getContext: () => fakeST({ save: false, global: [{ id: 'g1', scriptName: 'x' }] }).ctx });
+  view.render(Object.freeze({ ...readOnly.state(), view: 'group' }));
+  assert.equal(walk(host).filter(n => n.classList.contains('qm-regex-batch-button')).length, 0, '只读来源不给批量');
+  view.dispose();
 });
 
 test('dispose cancels a pending reload', async () => {

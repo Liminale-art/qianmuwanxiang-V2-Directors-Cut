@@ -1,9 +1,9 @@
-// Regex tab of the chat toolkit (D-a list + D-b single toggle).
+// Regex tab of the chat toolkit (D-a list + D-b single toggle + C-11 batch toggle).
 // Lists SillyTavern's global regex scripts and the current preset's regex scripts, in original order or
 // auto-grouped by name prefix. A single script can be switched on/off and is written back the way ST's own
 // regex panel does it (global: extension settings + saveSettingsDebounced; preset: writePresetExtensionField),
-// then the open chat is reloaded once so already-rendered messages pick up the change. Bulk switches,
-// locating and the recycle bin are later slices. Every host call is capability-probed: a source whose write
+// then the open chat is reloaded once so already-rendered messages pick up the change. A batch (a whole
+// section or group) is written the same way in one save. Locating and the recycle bin are later slices. Every host call is capability-probed: a source whose write
 // path is missing stays read-only instead of failing.
 
 // ST regex placement enum (upstream extensions/regex/engine.js regex_placement); 0 is the retired markdown slot.
@@ -110,30 +110,51 @@ export function locateRegexScript(list, { id, name } = {}) {
 
 const stale = () => new Error('这条正则已在别处被修改或移除，列表已刷新，请重试');
 
-// Writes one script's on/off state back to ST. Resolves to the script's new `enabled`.
-export async function writeRegexToggle(context, { source, id, name, enabled } = {}) {
+// Locates every change first and refuses the whole batch if any row went stale, so a batch never half-applies.
+function locateAll(list, changes) {
+  const slots = new Map();
+  for (const change of changes) {
+    const index = locateRegexScript(list, change);
+    if (index < 0) throw stale();
+    slots.set(index, change.enabled !== true);
+  }
+  return slots;
+}
+
+// Writes the on/off state of one or more scripts of one source back to ST in a single save.
+// Resolves to the number of scripts whose state actually changed.
+export async function writeRegexStates(context, { source, changes } = {}) {
   const ctx = context && typeof context === 'object' ? context : {};
-  const disabled = enabled !== true;
+  const batch = (Array.isArray(changes) ? changes : []).filter(change => change && text(change.id));
   if (source === 'global') {
     const list = attempt(() => ctx.extensionSettings?.regex, undefined);
     if (!Array.isArray(list) || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 不支持在此修改全局正则');
-    const index = locateRegexScript(list, { id, name });
-    if (index < 0) throw stale();
-    list[index].disabled = disabled;
-    ctx.saveSettingsDebounced();
-    return !disabled;
+    const slots = locateAll(list, batch);
+    let changed = 0;
+    for (const [index, disabled] of slots) if ((list[index].disabled === true) !== disabled) { list[index].disabled = disabled; changed += 1; }
+    if (changed) ctx.saveSettingsDebounced();
+    return changed;
   }
   if (source === 'preset') {
     const manager = presetManager(ctx);
     if (typeof manager?.readPresetExtensionField !== 'function' || typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此修改预设正则');
     const list = manager.readPresetExtensionField({ path: 'regex_scripts' });
-    const index = locateRegexScript(list, { id, name });
-    if (index < 0) throw stale();
-    const value = list.map((script, i) => (i === index ? { ...script, disabled } : script));
-    await manager.writePresetExtensionField({ path: 'regex_scripts', value });
-    return !disabled;
+    const slots = locateAll(list, batch);
+    let changed = 0;
+    const value = list.map((script, i) => {
+      if (!slots.has(i) || (script?.disabled === true) === slots.get(i)) return script;
+      changed += 1; return { ...script, disabled: slots.get(i) };
+    });
+    if (changed) await manager.writePresetExtensionField({ path: 'regex_scripts', value });
+    return changed;
   }
   throw new Error('未知的正则来源');
+}
+
+// Writes one script's on/off state back to ST. Resolves to the script's new `enabled`.
+export async function writeRegexToggle(context, { source, id, name, enabled } = {}) {
+  await writeRegexStates(context, { source, changes: [{ id, name, enabled: enabled === true }] });
+  return enabled === true;
 }
 
 // Quiet window before the chat reload, so flipping several switches in a row re-renders the chat once.
@@ -181,6 +202,25 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       pending.delete(key); refresh();
     }
   }
+  // Switches a whole section or group of one source in one write and one reload. Rows already in the wanted
+  // state are skipped; a row being written elsewhere blocks the batch instead of racing it.
+  async function toggleMany({ source, items, enabled } = {}) {
+    const changes = (Array.isArray(items) ? items : []).filter(item => item && text(item.id) && item.enabled !== (enabled === true))
+      .map(item => ({ id: item.id, name: item.name, enabled: enabled === true }));
+    const keys = changes.map(change => `${source}:${change.id}`);
+    if (!changes.length || keys.some(key => pending.has(key))) return 0;
+    keys.forEach(key => pending.add(key)); refresh();
+    try {
+      const changed = await writeRegexStates(context(), { source, changes });
+      if (changed) scheduleReload();
+      return changed;
+    } catch (error) {
+      notify(error?.message || '正则批量开关写回失败', 'warning');
+      return null;
+    } finally {
+      keys.forEach(key => pending.delete(key)); refresh();
+    }
+  }
   const actions = Object.freeze({
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
@@ -188,6 +228,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setView(next) { view = REGEX_VIEWS.includes(next) ? next : 'order'; refresh(); },
     reload() { refresh(); },
     toggle,
+    toggleMany,
   });
   async function mount(host) {
     if (!host) return;

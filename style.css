@@ -935,11 +935,15 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-tool:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--qm-floor-card-pad); border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); }
 #story-director-floor-nav[data-qm-theme] .qm-regex-card { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
-#story-director-floor-nav .qm-regex-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+#story-director-floor-nav .qm-regex-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #story-director-floor-nav .qm-regex-title { margin: 0; font-size: var(--qm-type-body); font-weight: 600; color: var(--sd-text); }
-#story-director-floor-nav .qm-regex-note { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--qm-type-caption); color: var(--sd-muted); }
+#story-director-floor-nav .qm-regex-note { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 #story-director-floor-nav .qm-regex-list { display: flex; flex-direction: column; min-width: 0; }
-#story-director-floor-nav .qm-regex-group { padding: 8px 0 3px; font-size: var(--qm-type-caption); color: var(--sd-muted); font-weight: 600; }
+#story-director-floor-nav .qm-regex-group { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 2px; font-size: var(--qm-type-caption); color: var(--sd-muted); font-weight: 600; }
+#story-director-floor-nav .qm-regex-group-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#story-director-floor-nav .qm-regex-batch { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
+#story-director-floor-nav .qm-regex-batch-button { min-height: 24px; padding: 0 5px; }
+#story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
 #story-director-floor-nav .qm-regex-row { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 34px; padding: 0; border-top: 1px solid var(--sd-hairline); }
 #story-director-floor-nav .qm-regex-row:first-child, #story-director-floor-nav .qm-regex-group + .qm-regex-row { border-top: 0; }
 #story-director-floor-nav .qm-regex-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sd-hairline); }
