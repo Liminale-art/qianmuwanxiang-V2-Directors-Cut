@@ -894,7 +894,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const actions = Object.freeze({
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
-    group: groupRegexScripts,
+    group: groupAdjacentRegex,   // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；groupRegexScripts 保留导出便于回退
     preview: previewRegexScript,
     placementLabels: REGEX_PLACEMENTS,
     bindingKey: regexBindingKey,

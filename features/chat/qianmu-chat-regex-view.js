@@ -1,14 +1,13 @@
 // Regex tab of the chat toolkit (D-a list + D-b single toggle).
 // Pure DOM over the actions handed in by qianmu-chat-regex.js; it stores nothing and never touches ST itself:
 // a switch only calls actions.toggle(), which owns the write-back. Two sections (global / current preset),
-// each in original order or auto-grouped by name prefix. A source that cannot be written shows a status dot.
-// Rows show the script name only; page-level icon controls share one tool row (the list view is a single toggle).
+// each in original order with adjacent same-family runs folded. A source that cannot be written shows a status dot.
+// Rows show the script name only; page-level icon controls share one tool row (grouping has no view toggle since C-15 s9).
 // C-12: a preset quick switch heads the page — a native-style select over the active API's presets that only
 // calls actions.selectPreset(); a link mark shows which preset this chat is bound to.
 // C-15 s6: the dropdown drops its「预设」label and groups version series into <optgroup>s (same catalogue logic as 幕外目录).
 import { groupPresetNames } from '../../qianmu-st-context-sources.js?v=1.59.450';
-const VIEW_LABELS = Object.freeze({ order: '原始顺序', group: '自动分组' });
-const VIEW_ICONS = Object.freeze({ order: 'fa-list-ol', group: 'fa-layer-group' });
+// C-15 s9: one list mode — original order with adjacent same-family runs folded under a header (no view toggle).
 
 export function mountChatRegexView({ root, actions, notify = () => {} }) {
   const document = root.ownerDocument;
@@ -156,13 +155,11 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const node = row(item, source, { ...options, group });
       return dropHere ? [dropTarget(source, item), node] : [node];
     };
-    if (mode !== 'group') {
-      for (const item of items) box.append(...rowOf(item, ''));
-      if (dropHere) box.append(dropTarget(source, null));
-      return box;
-    }
-    for (const group of actions.group(items)) {
-      const key = `group:${source}:${group.label}`;
+    // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」——mode 参数不再区分；段按原顺序排列，散条段不加组头。
+    const runs = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
+    for (const group of runs) {
+      if (!group.label) { for (const item of group.items) box.append(...rowOf(item, '')); continue; }
+      const key = `group:${source}:${group.key || group.label}`;
       const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}`);
       head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
       if (options.managing && options.writable) head.append(groupRename(group, source));
@@ -504,16 +501,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const pending = Array.isArray(state.pending) ? state.pending : [];
     const keep = focusedKey(), scroll = root.scrollTop;
     const tools = el('div', 'qm-regex-tools');
-    const current = view === 'group' ? 'group' : 'order', next = current === 'group' ? 'order' : 'group';
-    const toggleView = el('button', 'qm-regex-tool qm-regex-view-toggle'); toggleView.type = 'button';
-    toggleView.dataset.key = 'view';
-    toggleView.setAttribute('aria-pressed', String(current === 'group'));
-    toggleView.setAttribute('aria-label', `列表视图：${VIEW_LABELS[current]}，点按切换为${VIEW_LABELS[next]}`);
-    toggleView.title = `${VIEW_LABELS[current]}（点按切换为${VIEW_LABELS[next]}）`;
-    const glyph = el('i', `fa-solid ${VIEW_ICONS[current]}`); glyph.setAttribute('aria-hidden', 'true');
-    toggleView.append(glyph, el('span', 'qm-regex-tool-label', VIEW_LABELS[current]));
-    toggleView.addEventListener('click', () => { try { actions.setView(next); } catch (error) { notify(error?.message || '切换失败', 'warning'); } });
-    tools.append(toggleView);
+    // C-15 s9：视图切换按钮移除（单一模式）；控制器仍保留 setView 便于回退。
     // C-11d：绑定此聊天总开关。开着时，随手拨动任一开关即记入本聊天，进聊天自动套用。
     if (typeof actions.setBindingEnabled === 'function') {
       const bindBtn = el('button', `qm-regex-tool qm-regex-bind-toggle${binding.enabled ? ' is-on' : ''}`); bindBtn.type = 'button';
