@@ -100,12 +100,12 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     }
     if (!items.length) listEl.append(el('p', 'qm-ring-list-empty', onDelete ? '还没有本地铃声，点右上角＋上传。' : '暂无可选项。'));
     eq = audioBar();
-    // The audio bar sits on the sub-page base plate (a sibling of the scrollable list), pinned flush to the bottom.
-    wrap.append(listEl, eq);
+    // C-14: the audio bar is its own strip card above the list (pinning it flush to the bottom never held up).
+    wrap.append(eq, listEl);
     return wrap;
   }
 
-  // Dot-matrix audio bar on the sub-page base plate: flush to the bottom, outside the scrollable list.
+  // Dot-matrix audio bar as a strip card between the sub-page head and the list, outside the scrollable list.
   // Grey while idle, a soft pulse while the audition loads, light green and dancing while it plays (CSS only).
   const EQ_HEIGHTS = [3, 5, 4, 7, 5, 8, 6, 4, 7, 9, 6, 5, 8, 6, 4, 7, 5, 8, 6, 9, 5, 7, 4, 6, 8, 5, 3, 6, 8, 5, 7, 4, 6, 9, 5, 8, 6, 4, 7, 5, 9, 6, 4, 8, 5, 7, 6, 3];
   function audioBar() {

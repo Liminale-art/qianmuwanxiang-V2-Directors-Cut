@@ -707,7 +707,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
   --qm-floor-pad: 14px;
   --qm-floor-gap: 8px;
   --qm-floor-card-pad: 10px;
-  --qm-ring-eq-flush: var(--qm-floor-pad);
   padding: var(--qm-floor-pad);
   border: 1px solid var(--sd-border);
   border-radius: 22px;
@@ -896,9 +895,10 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-list-del { flex: 0 0 auto; width: 34px; height: 34px; margin-right: 8px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); }
 #story-director-floor-nav .qm-ring-list-empty { margin: 0; padding: 22px 14px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-ring-list-add { flex: 0 0 auto; }
-/* 铃声音频条：点阵，坐在子页一级底板上、贴底不留缝（与可滚动列表并列的兄弟，不随列表滚动）。
+/* 铃声音频条：点阵，C-14 起是子页头与列表之间的独立条卡（与可滚动列表并列的兄弟，不随列表滚动）。
    未加载/空闲浅灰；加载中灰色呼吸；播放中淡绿并跳动。只用 clip-path 动画，不触发排版。 */
-#story-director-floor-nav .qm-ring-eq { --qm-eq-dot: rgba(150, 150, 150, .3); flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; height: 40px; padding: 0 14px 6px; box-sizing: border-box; pointer-events: none; transition: opacity .3s ease; }
+#story-director-floor-nav .qm-ring-eq { --qm-eq-dot: rgba(150, 150, 150, .3); flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; height: 44px; padding: 0 16px 8px; box-sizing: border-box; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); pointer-events: none; transition: opacity .3s ease; }
+#story-director-floor-nav[data-qm-theme] .qm-ring-eq { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
 #story-director-floor-nav .qm-ring-eq > span { flex: 0 0 3px; height: calc(var(--h) * 4px); background: radial-gradient(circle, var(--qm-eq-dot) 0 1.3px, transparent 1.6px) center bottom / 3px 4px repeat-y; }
 #story-director-floor-nav .qm-ring-eq[data-audio="loading"] > span { animation: qm-ring-eq-wait 1.1s ease-in-out infinite alternate; }
 #story-director-floor-nav .qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142 62% 52% / .55); }
@@ -914,7 +914,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list::-webkit-scrollbar { width: 0; height: 0; }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-list > * { flex-shrink: 0; }
-#story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-eq { flex: 0 0 auto; margin-top: 0; margin-bottom: calc(-1 * var(--qm-ring-eq-flush, 18px)); padding-bottom: 1px; }
 @keyframes qm-ring-sub-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open .qm-ring-subpage { animation: none; } }
 /* 通知 · 提示框字号 / 停留时间（分段按钮） */

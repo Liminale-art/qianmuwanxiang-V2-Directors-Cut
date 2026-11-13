@@ -674,7 +674,8 @@ test('ring player reports idle → loading → playing → idle once per change'
 
 test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven by setAudio', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
-  assert.ok(view.includes("el('div', 'qm-ring-eq')") && view.includes('wrap.append(listEl, eq)'), '音频条坐在子页底板、与列表并列');
+  assert.ok(view.includes("el('div', 'qm-ring-eq')") && view.includes('wrap.append(eq, listEl)'), 'C-14：音频条是列表上方的独立条卡');
+  assert.ok(!view.includes('wrap.append(listEl, eq)'), '不再尝试贴底');
   assert.ok(!view.includes('listEl.append(eq)'), '音频条不再塞进可滚动列表');
   assert.ok(/render, setAudio, dispose/.test(view), '视图暴露 setAudio');
   const entry = await readFile(new URL('features/chat/qianmu-chat-ringtone.js', root), 'utf8');
@@ -682,7 +683,8 @@ test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven 
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(!/\.qm-ring-eq \{[^}]*position: sticky/.test(css), '不再用 sticky 衬底方案');
   assert.ok(/\.qm-ring-eq \{[^}]*pointer-events: none/.test(css), '音频条不挡点击');
-  assert.ok(/qm-ring-subpage-open \.qm-ring-list \{[^}]*flex: 1 1 auto/.test(css), '列表占满、音频条贴底');
+  assert.ok(/qm-ring-subpage-open \.qm-ring-list \{[^}]*flex: 1 1 auto/.test(css), '列表占满剩余高度');
+  assert.ok(/\.qm-ring-eq \{[^}]*border-radius: var\(--qm-card-radius/.test(css) && !css.includes('margin-bottom: calc(-1 * var(--qm-ring-eq-flush'), 'C-14：条卡自成一卡、不再负边距贴底');
   assert.ok(css.includes('.qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142'), '播放时淡绿');
   assert.ok(/\.qm-ring-eq \{ --qm-eq-dot: rgba\(150, 150, 150, \.3\)/.test(css), '空闲浅灰');
 });
