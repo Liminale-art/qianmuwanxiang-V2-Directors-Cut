@@ -71,13 +71,16 @@ function initialChoice(state, entry, draft) { const target = activeTargets(state
 function hasVariants(entry, selected) { return fontStyles(entry).length > 1 || !fontLibraryWeightControl(entry, selected).disabled; }
 function pinMarker(entry, selected, view) { return `<span class="qm-font-pin-mark" aria-label="已置顶" title="已置顶"${view.managing || view.expandedId !== entry.id ? '' : ' hidden'}>${icon('qm-fill-push-pin')}</span>`; }
 const SCOPE_CHIPS = [['body', '正文'], ['quote', '引用'], ['st', '界面']];
-function applyControl(state, entry) {
-    const active = activeTargets(state, entry.id), activeSet = new Set(active), labels = { body: '正文', st: '界面', quote: '引用' };
-    const all = active.length === SCOPE_CHIPS.length;
-    const title = active.length ? (all ? '全部' : active.map(target => labels[target]).join(' · ')) : '应用字体';
-    const chips = SCOPE_CHIPS.map(([target, label]) => `<button type="button" class="qm-font-scope-chip" data-font-scope="${escape(entry.id)}" data-font-scope-target="${target}" role="menuitemcheckbox" aria-checked="${activeSet.has(target)}">${label}</button>`).join('');
+function applyButton(state, entry, open) {
+    const active = activeTargets(state, entry.id), labels = { body: '正文', st: '界面', quote: '引用' };
+    const title = active.length ? (active.length === SCOPE_CHIPS.length ? '全部' : active.map(target => labels[target]).join(' · ')) : '应用字体';
+    return `<button type="button" class="sd-icon-btn qm-font-icon qm-font-apply-pick" data-font-action="apply" data-font-id="${escape(entry.id)}" data-applied="${active.length > 0}" title="${escape(title)}" aria-label="${escape(open ? '收起应用范围' : `应用范围：${title}`)}" aria-expanded="${open}">${icon(active.length ? 'font-applied' : 'font-apply')}</button>`;
+}
+function scopeChips(state, entry) {
+    const active = new Set(activeTargets(state, entry.id)), all = active.size === SCOPE_CHIPS.length;
+    const chips = SCOPE_CHIPS.map(([target, label]) => `<button type="button" class="qm-font-scope-chip" data-font-scope="${escape(entry.id)}" data-font-scope-target="${target}" role="menuitemcheckbox" aria-checked="${active.has(target)}">${label}</button>`).join('');
     const allChip = `<button type="button" class="qm-font-scope-chip qm-font-scope-all" data-font-scope="${escape(entry.id)}" data-font-scope-target="all" role="menuitemcheckbox" aria-checked="${all}">全部</button>`;
-    return `<div class="qm-font-apply-pick" data-applied="${active.length > 0}" title="${escape(title)}" role="group" aria-label="${escape(entry.name)}应用范围">${icon(active.length ? 'font-applied' : 'font-apply')}<div class="qm-font-scope-chips">${chips}${allChip}</div></div>`;
+    return `<div class="qm-font-scope-chips" role="group" aria-label="${escape(entry.name)}应用范围">${chips}${allChip}</div>`;
 }
 function variantTools(entry, current) {
     const selected = choice(entry, current), range = fontLibraryWeightControl(entry, selected), available = fontStyles(entry), id = escape(entry.id);
@@ -88,12 +91,14 @@ export function fontLibraryPreviewSize(state = {}, view = {}) {
     return { values: [12, 14, 16, 18, 20], value };
 }
 function cardTools(state, entry, selected, view = {}) {
-    const id = escape(entry.id), variants = hasVariants(entry, selected), expanded = view.expandedId === entry.id;
+    const id = escape(entry.id), variants = hasVariants(entry, selected), expanded = view.expandedId === entry.id, applying = !expanded && view.applyId === entry.id;
     const pinned = array(state.pinnedIds).includes(entry.id);
     const pin = iconButton('pin', pinned ? 'qm-fill-push-pin' : 'qm-regular-push-pin', pinned ? `取消置顶 ${entry.name}` : `置顶 ${entry.name}`, `data-font-id="${id}" aria-pressed="${pinned}"`, pinned ? 'is-pinned' : '');
     const builtin = entry.source?.kind === 'builtin';
     const editing = builtin ? '' : iconButton('edit', 'fa-pen', `编辑 ${entry.name}`, `data-font-id="${id}"`) + iconButton('delete-one', 'fa-trash', `删除 ${entry.name}`, `data-font-id="${id}"`);
-    return `${iconButton('more', 'fa-ellipsis', expanded ? '收起字体操作' : '更多字体操作', `data-font-id="${id}" aria-expanded="${expanded}"`)}${expanded ? (variants ? variantTools(entry, selected) : '') + pin + editing : applyControl(state, entry)}`;
+    // 应用 / 更多 are two mutually exclusive in-place disclosures; the opened content sits before both toggles so they keep their position.
+    const content = expanded ? (variants ? variantTools(entry, selected) : '') + pin + editing : applying ? scopeChips(state, entry) : '';
+    return `${content}${applyButton(state, entry, applying)}${iconButton('more', 'fa-ellipsis', expanded ? '收起字体操作' : '更多字体操作', `data-font-id="${id}" aria-expanded="${expanded}"`)}`;
 }
 function localUploadDialog(view) {
     if (!array(view.localUploads).length) return '';
@@ -150,11 +155,11 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         previewSizeOverride = validPreviewSize(initialSession?.previewSizeOverride) ? Number(initialSession.previewSizeOverride) : undefined,
         webName = String(initialSession?.webName || ''), webSource = String(initialSession?.webSource || ''), webTags = String(initialSession?.webTags || ''), editWebId = String(initialSession?.editWebId || ''), editWebSourceMissing = initialSession?.editWebSourceMissing === true,
         addOpen = typeof initialSession?.addOpen === 'boolean' ? initialSession.addOpen : !!initialSession?.editWebId || !array(getState().entries).length,
-        renameId = String(initialSession?.renameId || ''), renameDraft = String(initialSession?.renameDraft || ''), renameTags = typeof initialSession?.renameTags === 'string' ? initialSession.renameTags : undefined, expandedId = String(initialSession?.renameId || ''), bulk = false, localUploads = [], tagTarget = '', progress = null;
+        renameId = String(initialSession?.renameId || ''), renameDraft = String(initialSession?.renameDraft || ''), renameTags = typeof initialSession?.renameTags === 'string' ? initialSession.renameTags : undefined, expandedId = String(initialSession?.renameId || ''), applyId = '', bulk = false, localUploads = [], tagTarget = '', progress = null;
     const selected = new Set(), variants = Object.create(null), loadingStates = new Map();
     for (const entry of array(getState().entries)) { if (initialSession?.variants?.[entry.id]) variants[entry.id] = choice(entry, initialSession.variants[entry.id]); if (renameId === entry.id && renameTags === undefined) renameTags = array(entry.tags).join(', '); }
     const state = () => ({ ...getState(), ...(previewDraft === undefined ? {} : { previewText: previewDraft }) });
-    const viewState = () => ({ page, query, selected: [...selected], variants, managing, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, localUploads, renameId, renameDraft, renameTags, expandedId, previewSizeOverride, progress });
+    const viewState = () => ({ page, query, selected: [...selected], variants, managing, webName, webSource, webTags, editWebId, editWebSourceMissing, addOpen, localUploads, renameId, renameDraft, renameTags, expandedId, applyId, previewSizeOverride, progress });
     const q = selector => root.querySelector(selector), qa = selector => [...root.querySelectorAll(selector)];
     const tagInput = key => key === 'web' ? q('[data-font-web-tags]') : key === 'bulk' ? q('[data-font-bulk-value]') : key.startsWith('rename-') ? qa('[data-font-rename-tags]').find(node => node.dataset.fontRenameTags === key.slice(7)) : /^local-\d+$/.test(key) ? q(`[data-font-local-tags="${Number(key.slice(6))}"]`) : null;
     const tagPanel = key => qa('[data-font-tag-options]').find(node => node.dataset.fontTagOptions === key);
@@ -315,15 +320,21 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         const mark = card.querySelector('.qm-font-pin-mark'); if (mark) mark.hidden = !managing && expandedId === id;
     }
     function collapseMore({ focus = false } = {}) {
-        if (!expandedId) return false;
-        const id = expandedId; expandedId = ''; closePopovers(); refreshTools(id);
-        if (focus) qa('[data-font-action="more"]').find(node => node.dataset.fontId === id)?.focus({ preventScroll: true });
+        const id = expandedId || applyId, kind = expandedId ? 'more' : 'apply'; if (!id) return false;
+        expandedId = ''; applyId = ''; closePopovers(); refreshTools(id);
+        if (focus) qa(`[data-font-action="${kind}"]`).find(node => node.dataset.fontId === id)?.focus({ preventScroll: true });
         return true;
     }
     function collapseOutside(target) {
-        if (!expandedId) return;
-        const card = target.closest?.('.qm-font-card'), inside = card?.dataset.fontId === expandedId && ['.qm-font-card-tools', '[data-font-weight-pop]', '[data-font-rename-pop]'].some(selector => target.closest?.(selector));
+        const open = expandedId || applyId; if (!open) return;
+        const card = target.closest?.('.qm-font-card'), inside = card?.dataset.fontId === open && ['.qm-font-card-tools', '[data-font-weight-pop]', '[data-font-rename-pop]'].some(selector => target.closest?.(selector));
         if (!inside) collapseMore();
+    }
+    function toggleTool(id, kind) {
+        const before = [expandedId, applyId], next = (kind === 'more' ? expandedId : applyId) === id ? '' : id;
+        expandedId = kind === 'more' ? next : ''; applyId = kind === 'apply' ? next : '';
+        for (const card of new Set([...before, id])) if (card) refreshTools(card);
+        if (expandedId && expandedId === renameId) showLocalEditor();
     }
     function toggleCard(card) { const id = card?.dataset.fontId; if (!id || !array(state().entries).some(entry => entry.id === id)) return; selected.has(id) ? selected.delete(id) : selected.add(id); selection(); }
     function setVariant(id, patch, notify = true) {
@@ -369,7 +380,7 @@ export function createFontLibraryView({ root, getState, onAction, onVisibleFonts
         if (action === 'local-confirm' && localUploads.length) return dispatch('add-local', { files: localUploads.map(item => item.file), metadata: localUploads.map(item => ({ name: item.name, tags: parseTags(item.tags) })) });
         if (action === 'weight') { const pop = qa('[data-font-weight-pop]').find(node => node.dataset.fontWeightPop === button.dataset.fontId); if (pop) { const opening = pop.hidden; closePopovers(); pop.hidden = !opening; button.setAttribute('aria-expanded', String(opening)); if (opening) pop.querySelector('input,button')?.focus(); } return; }
         closePopovers();
-        if (action === 'more') { const id = button.dataset.fontId; expandedId = expandedId === id ? '' : id; refreshTools(id); if (expandedId === renameId) showLocalEditor(); return; }
+        if (action === 'more' || action === 'apply') return toggleTool(button.dataset.fontId, action);
         if (action === 'pin') { const id = button.dataset.fontId; if (array(state().entries).some(entry => entry.id === id)) return dispatch('set-font-pinned', { id, pinned: !array(state().pinnedIds).includes(id) }); return; }
         if (action === 'edit') {
             const entry = array(state().entries).find(item => item.id === button.dataset.fontId); if (!entry) return;
