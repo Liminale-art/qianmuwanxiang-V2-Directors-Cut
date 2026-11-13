@@ -305,7 +305,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   const SUBSTITUTE = Object.freeze([[0, '不替换'], [1, '原样宏'], [2, '转义宏']]);
 
   // 可拖拽高度 + 一键展开的文本域。resize:vertical 由 CSS 给，展开按钮加/去 is-tall 类。
-  function growTextarea(key, label, value, rows = 3) {
+  // highlight=true 时在文本域后叠一层只读 <pre> 着色层（文字透明 + 光标可见），实现轻量语法高亮，无第三方依赖。
+  function growTextarea(key, label, value, rows = 3, { highlight = false } = {}) {
     const wrap = el('div', 'qm-regex-field');
     const bar = el('div', 'qm-regex-field-bar');
     const tag = el('label', 'qm-regex-field-label', label); tag.setAttribute('for', `qm-regex-f-${key}`);
@@ -314,13 +315,43 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const ei = el('i', 'fa-solid fa-up-right-and-down-left-from-center'); ei.setAttribute('aria-hidden', 'true');
     expand.append(ei);
     bar.append(tag, expand);
-    const area = el('textarea', 'qm-regex-textarea');
+    const area = el('textarea', `qm-regex-textarea${highlight ? ' is-code' : ''}`);
     area.id = `qm-regex-f-${key}`; area.dataset.key = `field:${key}`;
     area.value = value == null ? '' : String(value);
     area.setAttribute('rows', String(rows));
     expand.addEventListener('click', () => { if (area.classList?.contains('is-tall')) area.classList.remove('is-tall'); else area.classList?.add('is-tall'); });
-    wrap.append(bar, area);
+    if (!highlight) { wrap.append(bar, area); return { wrap, area }; }
+    const box = el('div', 'qm-regex-codebox');
+    const pre = el('pre', 'qm-regex-hl'); pre.setAttribute('aria-hidden', 'true');
+    const paint = () => { try { pre.replaceChildren(...highlightSpans(area.value)); } catch (_) {} };
+    paint();
+    area.addEventListener('input', paint);
+    area.addEventListener('scroll', () => { pre.scrollTop = area.scrollTop; pre.scrollLeft = area.scrollLeft; });
+    box.append(pre, area);
+    wrap.append(bar, box);
     return { wrap, area };
+  }
+
+  // 纯着色：{{宏}} / $1·$&·$<名> 反向引用 / \x 转义 / ()[]{} 分组 / .*+?|^$ 元字符；其余为普通文本。
+  const HL_RE = /(\{\{[^}]*\}\})|(\$(?:\d+|&|<[^>]*>))|(\\[\s\S])|([()\[\]{}])|([.*+?|^$])/g;
+  const HL_CLASS = ['qm-hl-macro', 'qm-hl-ref', 'qm-hl-esc', 'qm-hl-group', 'qm-hl-meta'];
+  function highlightSpans(value) {
+    const str = value == null ? '' : String(value);
+    const nodes = [];
+    const pushText = t => { if (t) nodes.push(document.createTextNode(t)); };
+    let last = 0, m;
+    HL_RE.lastIndex = 0;
+    while ((m = HL_RE.exec(str))) {
+      pushText(str.slice(last, m.index));
+      const gi = [1, 2, 3, 4, 5].find(i => m[i] != null);
+      const span = el('span', HL_CLASS[gi - 1], m[0]);
+      nodes.push(span);
+      last = m.index + m[0].length;
+      if (m[0] === '') HL_RE.lastIndex++;   // 防零宽死循环
+    }
+    pushText(str.slice(last));
+    pushText('​');   // 末行占位，防尾随换行塌陷
+    return nodes;
   }
 
   function renderEditor(state) {
@@ -348,8 +379,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const nameWrap = el('div', 'qm-regex-field'); nameWrap.append(nameLabel, nameField);
     form.append(nameWrap);
 
-    const find = growTextarea('findRegex', '查找正则表达式', data.findRegex, 2);
-    const replace = growTextarea('replaceString', '替换为', data.replaceString, 3);
+    const find = growTextarea('findRegex', '查找正则表达式', data.findRegex, 2, { highlight: true });
+    const replace = growTextarea('replaceString', '替换为', data.replaceString, 3, { highlight: true });
     const trim = growTextarea('trimStrings', '修剪掉', (Array.isArray(data.trimStrings) ? data.trimStrings : []).join('\n'), 2);
     form.append(find.wrap, replace.wrap, trim.wrap);
 

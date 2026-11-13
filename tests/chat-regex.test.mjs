@@ -1168,6 +1168,19 @@ test('editor sub-page mirrors ST fields, saves collected data through insert/sav
   assert.ok(byKey(host, 'editor-cancel').children.some(c => c.classList?.contains?.('fa-xmark') || c.classList?.set?.has?.('fa-xmark')), '取消为图标');
   const testOut0 = walkAll(host).find(n => n.classList?.contains('qm-regex-testout'));
   assert.equal(testOut0.classList.contains('is-empty'), true, '预览为空时隐藏');
+  // s8b：查找/替换带着色层；输入含 {{宏}}/$1/\d/(组)/.* 时 <pre> 出现对应 token span
+  const hl = walkAll(host).find(n => n.classList?.contains('qm-regex-hl'));
+  assert.ok(hl, '查找框有着色层');
+  const codeArea = byKey(host, 'field:findRegex');
+  codeArea.value = '{{user}}(\\d+).*$1';
+  codeArea.listeners.input?.();
+  const classesOf = node => [...(node.classList?.set || [])];
+  const tokenClasses = (hl.children || []).flatMap(classesOf);
+  assert.ok(tokenClasses.includes('qm-hl-macro'), '{{宏}} 着色');
+  assert.ok(tokenClasses.includes('qm-hl-group'), '() 分组着色');
+  assert.ok(tokenClasses.includes('qm-hl-esc'), '\\d 转义着色');
+  assert.ok(tokenClasses.includes('qm-hl-meta'), '.* 元字符着色');
+  assert.ok(tokenClasses.includes('qm-hl-ref'), '$1 反向引用着色');
   // 展开按钮切换 is-tall
   const findTextarea = findField;
   const expand = walkAll(host).find(n => n.classList?.contains('qm-regex-expand'));

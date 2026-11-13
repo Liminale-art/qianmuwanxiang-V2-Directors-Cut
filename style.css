@@ -1069,6 +1069,15 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-expand:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 #story-director-floor-nav .qm-regex-expand:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-textarea { width: 100%; min-height: 44px; box-sizing: border-box; margin: 0; padding: 7px 9px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-family: var(--sd-mono, ui-monospace, monospace); font-size: var(--qm-type-caption); line-height: 1.5; resize: vertical; }
+/* C-15 s8b：正则/替换着色层——textarea 文字透明（光标仍可见），底层只读 <pre> 同度量着色 */
+#story-director-floor-nav .qm-regex-codebox { position: relative; min-width: 0; }
+#story-director-floor-nav .qm-regex-codebox .qm-regex-textarea.is-code { position: relative; z-index: 1; background: transparent; color: transparent; caret-color: var(--sd-text); -webkit-text-fill-color: transparent; }
+#story-director-floor-nav .qm-regex-hl { position: absolute; inset: 0; z-index: 0; overflow: hidden; margin: 0; padding: 7px 9px; box-sizing: border-box; border: 1px solid transparent; border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-family: var(--sd-mono, ui-monospace, monospace); font-size: var(--qm-type-caption); line-height: 1.5; white-space: pre-wrap; word-break: break-word; pointer-events: none; }
+#story-director-floor-nav .qm-hl-macro { color: #b5179e; font-weight: 600; }
+#story-director-floor-nav .qm-hl-ref { color: #2a9d8f; font-weight: 600; }
+#story-director-floor-nav .qm-hl-esc { color: #e76f51; }
+#story-director-floor-nav .qm-hl-group { color: #4361ee; font-weight: 600; }
+#story-director-floor-nav .qm-hl-meta { color: #f4a261; }
 #story-director-floor-nav .qm-regex-textarea.is-tall { min-height: 180px; }
 #story-director-floor-nav .qm-regex-textarea:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-input { width: 100%; box-sizing: border-box; min-height: 32px; margin: 0; padding: 0 9px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-body); }
