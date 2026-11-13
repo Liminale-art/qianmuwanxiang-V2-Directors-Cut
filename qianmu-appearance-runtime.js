@@ -76,6 +76,17 @@ export function createQianmuAppearanceRuntime({ readSettings, readCoverAccent = 
             preferences = next.preferences;
             return preferences;
         },
+        // Re-apply the current theme to ONE registered root (its owner rewrote inline paint, e.g. the
+        // main hive button re-rendering its classic fill). Other roots are left alone.
+        refresh(root) {
+            assertLive();
+            const entry = roots.get(root);
+            if (!entry) return false;
+            const next = current();
+            entry.controller.setTheme(next.options);
+            preferences = next.preferences;
+            return true;
+        },
         register(root, { scrollTargets = () => [], ...options } = {}) {
             assertLive();
             if (!supported) return () => {};

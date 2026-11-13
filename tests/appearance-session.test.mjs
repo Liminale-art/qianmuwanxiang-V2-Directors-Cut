@@ -210,6 +210,22 @@ test('hive main and entries retain position while owning their inline important 
     f.set({ theme: 'light' }); await f.session.sync(); assert.equal(main.style.getPropertyValue('background-color'), 'red'); assert.equal(main.style.getPropertyPriority('background-color'), 'important'); assert.equal(button.style.getPropertyValue('color'), 'pink'); f.session.reset();
 });
 
+test('C-15: a same-signature hive-main remount re-applies the theme after the owner repaints its classic fill', async () => {
+    const f = fixture(), main = element(), other = element();
+    f.set({ appearance: { version: 1, family: 'glass', mode: 'dark' } });
+    f.session.mount(main, { role: 'hive-main' }); f.session.mount(other); const ready = f.session.sync(); f.loads[0].resolve(true); await ready;
+    const themedFill = main.style.getPropertyValue('background-color'), themedEdge = main.style.getPropertyValue('--sd-float-edge');
+    assert.ok(themedFill && themedEdge, 'ready theme paints the main hive');
+    // renderFloatButton() rewrites the classic light fill/edge on the reused element, then mounts again.
+    main.style.setProperty('background-color', 'white', 'important'); main.style.setProperty('--sd-float-edge', '#c99b51');
+    other.setAttribute('data-qm-theme', 'stale');
+    f.session.mount(main, { role: 'hive-main' });
+    assert.equal(main.style.getPropertyValue('background-color'), themedFill, 'dark fill restored without opening the panel');
+    assert.equal(main.style.getPropertyValue('--sd-float-edge'), themedEdge, 'accent edge restored');
+    assert.equal(other.getAttribute('data-qm-theme'), 'stale', 'only the remounted root is refreshed (C-14d stays cheap)');
+    f.session.reset();
+});
+
 test('mountNotes gives detached entry a theme-following role without rewriting saved classic appearance', async () => {
     const f = fixture(), floating = element(), entry = element();
     const settings = { theme: 'dream', notes: { appearance: { tone: 'dark', edgeIndex: 0 } }, appearance: { ...preference, accent: '#d24962' } };

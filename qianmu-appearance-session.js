@@ -27,6 +27,7 @@ export function loadQianmuAppearanceStyles(document, url, { timeoutMs = 8000, sc
 }
 
 /** App-owned mount boundaries, not a document observer. Never renders or saves. */
+const REPAINTED_ROLES = new Set(['hive-main', 'hive-entry', 'notes-entry']);
 export function createQianmuAppearanceSession({ readSettings, styleUrl, document = globalThis.document,
     readCoverAccent, loadStyles = () => loadQianmuAppearanceStyles(document, styleUrl),
     loadFont = family => loadQianmuAppearanceStyles(document, THEME_FONT_URLS[family], { external: true }),
@@ -97,7 +98,13 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         if (!root?.isConnected || !runtime.supported) return () => {};
         // Register only this caller-owned subtree's known scroll containers.
         const signature = `${role}/${tone}/${edgeIndex}`, prior = mounted.get(root);
-        if (prior?.signature === signature && runtime.has(root)) { if (!ready) void sync(); else syncFont(); return prior.off; }
+        // C-15: hive entries repaint their own classic inline fill on every re-render; re-apply the theme
+        // to that one root, otherwise night mode shows the light tile until the next full sync.
+        if (prior?.signature === signature && runtime.has(root)) {
+            if (!ready) void sync();
+            else { if (REPAINTED_ROLES.has(role)) runtime.refresh(root); syncFont(); }
+            return prior.off;
+        }
         prior?.off();
         const release = runtime.register(root, { role, tone, edgeIndex,
             scrollTargets: () => [root, ...root.querySelectorAll(SCROLL_TARGETS)],
