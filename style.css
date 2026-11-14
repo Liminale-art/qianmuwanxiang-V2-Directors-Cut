@@ -1009,7 +1009,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-dot.is-on { background: var(--sd-primary); }
 #story-director-floor-nav .qm-regex-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--qm-type-body); color: var(--sd-text); }
 #story-director-floor-nav .qm-regex-row.is-off .qm-regex-name { color: var(--sd-muted); }
-#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto; }
+#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 6px; }
 /* Line + dot switch: a thin rounded line with a sliding dot; same status-colour transition as the old pill. */
 #story-director-floor-nav .qm-regex-switch { position: relative; flex: none; width: 34px; height: 20px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; transition: opacity .18s ease; }
 #story-director-floor-nav .qm-regex-switch::before { content: ""; position: absolute; top: 9px; left: 6px; right: 6px; height: 2px; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 42%, transparent); transition: background-color .18s ease; }
@@ -1021,7 +1021,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }
 #story-director-floor-nav .qm-regex-empty { margin: 0; padding: 8px 0; text-align: center; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 /* C-14f 正则管理态：行多选 + 排序 + 点名编辑，底部选择工具条 / 撤销条，分组改名，卡头新建 */
-#story-director-floor-nav .qm-regex-row.is-managing { grid-template-columns: 22px minmax(0, 1fr) auto; }
+#story-director-floor-nav .qm-regex-row.is-managing { grid-template-columns: 24px 22px minmax(0, 1fr) auto; gap: 6px; }
 #story-director-floor-nav .qm-regex-row.is-selected { background: color-mix(in srgb, var(--sd-primary) 10%, transparent); border-radius: 8px; }
 #story-director-floor-nav .qm-regex-check { position: relative; flex: none; width: 18px; height: 18px; padding: 0; border: 1.5px solid color-mix(in srgb, var(--sd-muted) 55%, transparent); border-radius: 5px; background: transparent; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
 #story-director-floor-nav .qm-regex-check.is-on { background: var(--sd-primary); border-color: var(--sd-primary); }
@@ -1040,13 +1040,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-grip.is-picking { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 16%, transparent); }
 #story-director-floor-nav .qm-regex-row.is-picking { background: color-mix(in srgb, var(--sd-primary) 8%, transparent); border-radius: 8px; }
 #story-director-floor-nav .qm-regex-drop { display: block; width: 100%; height: 10px; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
-#story-director-floor-nav .qm-regex-drop::before { content: ""; display: block; height: 2px; margin: 4px 0; border-radius: 999px; background: color-mix(in srgb, var(--sd-primary) 55%, transparent); opacity: .5; transition: opacity .15s ease, height .15s ease; }
-#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; }
+#story-director-floor-nav .qm-regex-drop::before { content: ""; display: block; height: 2px; margin: 4px 0; border-radius: 999px; background: color-mix(in srgb, var(--sd-primary) 55%, transparent); opacity: .6; transition: opacity .15s ease, height .15s ease, box-shadow .15s ease; }
+/* C-17 s3：落点线不再呼吸——静止细线；选中插入位置（悬停/聚焦）时加粗 + 发光 */
+#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; box-shadow: 0 0 6px color-mix(in srgb, var(--sd-primary) 60%, transparent); }
 #story-director-floor-nav .qm-regex-drop:focus-visible { outline: none; }
 /* C-16 s1：操作可视化——落点线呼吸、写回中的行转圈 + 整卡锁定、工具行状态提示 */
-#story-director-floor-nav .qm-regex-drop::before { animation: qm-regex-drop-breathe 1.6s ease-in-out infinite; }
-#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { animation: none; box-shadow: 0 0 6px color-mix(in srgb, var(--sd-primary) 60%, transparent); }
-@keyframes qm-regex-drop-breathe { 0%, 100% { opacity: .35; box-shadow: 0 0 0 transparent; } 50% { opacity: 1; box-shadow: 0 0 6px color-mix(in srgb, var(--sd-primary) 55%, transparent); } }
 #story-director-floor-nav .qm-regex-row.is-busy { background: color-mix(in srgb, var(--sd-primary) 7%, transparent); border-radius: 8px; }
 #story-director-floor-nav .qm-regex-busy-mark { color: var(--sd-primary); font-size: .8em; }
 #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { pointer-events: none; opacity: .72; transition: opacity .15s ease; }
@@ -1054,17 +1052,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* C-16 s3：异源落点（预设↔全局移入）用强调色区分，与同源排序落点一眼可辨 */
 #story-director-floor-nav .qm-regex-drop.is-across::before { height: 3px; background: color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
 #story-director-floor-nav .qm-regex-drop.is-across:hover::before, #story-director-floor-nav .qm-regex-drop.is-across:focus-visible::before { height: 4px; box-shadow: 0 0 8px color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
-@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-drop::before { animation: none; opacity: .85; } #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-drop::before { transition: none; } #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { transition: none; } }
 /* C-16 s5：非管理态单条操作常驻——行尾「拨杆 + ⋯菜单」，菜单浮层默认收起，点开浮出编辑/复制/删除 */
-#story-director-floor-nav .qm-regex-rowtail { position: relative; display: inline-flex; flex: none; align-items: center; gap: 2px; }
+#story-director-floor-nav .qm-regex-rowtail { display: inline-flex; flex: none; align-items: center; gap: 2px; }
 #story-director-floor-nav .qm-regex-rowmenu { color: var(--sd-muted); }
-#story-director-floor-nav .qm-regex-rowpop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 6; display: none; flex-direction: column; min-width: 92px; padding: 4px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: var(--sd-card); box-shadow: 0 10px 28px rgba(0, 0, 0, .18); }
-#story-director-floor-nav .qm-regex-rowpop.is-open { display: flex; }
-#story-director-floor-nav .qm-regex-rowpop-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; margin: 0; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--sd-text); font-size: var(--qm-type-caption); text-align: left; cursor: pointer; transition: color .15s ease, background-color .15s ease; }
-#story-director-floor-nav .qm-regex-rowpop-item:hover { background: var(--sd-glass-weak); }
-#story-director-floor-nav .qm-regex-rowpop-item.is-danger:hover { color: var(--sd-danger, #d9534f); background: color-mix(in srgb, var(--sd-danger, #d9534f) 12%, transparent); }
-#story-director-floor-nav .qm-regex-rowpop-item:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
-#story-director-floor-nav .qm-regex-rowpop-item i { flex: none; width: 1em; font-size: .9em; color: var(--sd-muted); }
+#story-director-floor-nav .qm-regex-rowtail.is-open .qm-regex-rowmenu { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 12%, transparent); }
+/* C-17 s3：⋯ 在拨杆之前，点开后在行内向左横向展开纯图标条（编辑/复制/删除），点其他处收起 */
+#story-director-floor-nav .qm-regex-rowstrip { display: inline-flex; align-items: center; gap: 1px; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden; transition: max-width .18s ease, opacity .15s ease, visibility 0s linear .18s; }
+#story-director-floor-nav .qm-regex-rowstrip.is-open { max-width: 84px; opacity: 1; visibility: visible; padding: 0 2px; border-radius: 8px; background: var(--sd-glass-weak); transition: max-width .18s ease, opacity .15s ease; }
+#story-director-floor-nav .qm-regex-rowgrip { color: color-mix(in srgb, var(--sd-muted) 80%, transparent); }
+@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-rowstrip { transition: none; } }
 #story-director-floor-nav .qm-regex-group { cursor: pointer; }
 /* C-15 s9：管理态组头——折叠箭头+数量 / 双击改名的组名 / 整组拾取。组名就地变输入框。 */
 #story-director-floor-nav .qm-regex-group.is-managing { justify-content: flex-start; gap: 4px; }

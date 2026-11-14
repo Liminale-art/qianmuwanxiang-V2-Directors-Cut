@@ -88,15 +88,15 @@ test('dropMove on success notifies "N 项已移至指定位置" (success)', asyn
   assert.match(success[0][0], /1 项已移至指定位置/);
 });
 
-test('CSS contains busy row, locked card, status indicator, breathing animation and reduced-motion override', async () => {
+test('CSS contains busy row, locked card, status indicator; drop line is static (C-17 s3 removed breathing)', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('.qm-regex-row.is-busy'), 'busy 行样式');
   assert.ok(css.includes('.qm-regex-busy-mark'), 'spinner 图标');
   assert.ok(css.includes('.qm-regex-card.is-locked .qm-regex-list'), '锁定卡列表');
   assert.ok(css.includes('.qm-regex-status'), '状态提示');
-  assert.ok(css.includes('@keyframes qm-regex-drop-breathe'), '呼吸动画');
+  assert.ok(!css.includes('qm-regex-drop-breathe'), 'C-17 s3：去掉呼吸动画');
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-motion');
-  assert.ok(css.includes('animation: qm-regex-drop-breathe'), '落点线使用动画');
+  assert.match(css, /.qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; box-shadow:/, '选中插入位置时加粗 + 发光');
 });
 
 test('view renders busy rows with spinner and is-busy class, buttons disabled', async () => {
@@ -320,8 +320,8 @@ test('item4: non-managing writable row keeps the toggle and adds a single-item m
   assert.ok(all.some(n => n.classList?.contains('qm-regex-switch')), '拨杆仍在');
   const menu = all.find(n => n.dataset?.key === 'rowmenu:global:g1');
   assert.ok(menu, '有单条菜单按钮');
-  const pop = all.find(n => n.classList?.contains('qm-regex-rowpop'));
-  assert.ok(pop, '有菜单浮层');
+  const pop = all.find(n => n.classList?.contains('qm-regex-rowstrip'));
+  assert.ok(pop, '有横向展开条（C-17 s3）');
   assert.ok(!pop.classList.contains('is-open'), '默认收起');
   menu.listeners.click();
   assert.ok(pop.classList.contains('is-open'), '点击展开');
@@ -376,5 +376,5 @@ test('item5: tools row spreads across the full width (space-between), recycle an
   const tools = css.match(/\.qm-regex-tools\s*\{[^}]*\}/)?.[0] || '';
   assert.match(tools, /justify-content:\s*space-between/, '工具行整行铺开');
   assert.ok(css.includes('.qm-regex-trash-origin'), '归属小字样式');
-  assert.ok(css.includes('.qm-regex-rowpop'), '单条菜单浮层样式');
+  assert.ok(css.includes('.qm-regex-rowstrip.is-open'), '单条横向展开条样式');
 });

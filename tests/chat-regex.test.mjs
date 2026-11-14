@@ -553,7 +553,7 @@ test('writable sources render accessible switches that call actions.toggle and s
 
 test('switch styling: rounded line with a sliding dot, focus ring and reduced-motion', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.ok(css.includes('#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: minmax(0, 1fr) auto; }'));
+  assert.ok(css.includes('#story-director-floor-nav .qm-regex-row.is-writable { grid-template-columns: 24px minmax(0, 1fr) auto; gap: 6px; }'), 'C-17 s3：行首移动图标列');
   assert.match(css, /#story-director-floor-nav \.qm-regex-switch \{[^}]*border: 0;[^}]*background: transparent;/, '不再是胶囊底');
   assert.match(css, /#story-director-floor-nav \.qm-regex-switch::before \{[^}]*height: 2px;[^}]*border-radius: 999px;/, '圆弧横线');
   assert.ok(css.includes('#story-director-floor-nav .qm-regex-switch.is-on::before { background: color-mix(in srgb, var(--sd-primary) 62%, transparent); }'));

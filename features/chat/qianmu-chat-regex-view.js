@@ -94,12 +94,37 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       name.append(document.createTextNode(' '), mark);
       name.title = `${item.name}（已记入本聊天绑定）`;
     }
+    const key = `${source}:${item.id}`;
+    const picked = writable && picking.some(p => p.source === source && String(p.id) === String(item.id));
+    if (picked) node.classList.add('is-picking');
+    const iconBtn = (cls, keyName, label, glyph, run, after) => {
+      const b = el('button', `qm-regex-rowbtn ${cls}`); b.type = 'button';
+      b.dataset.key = `${keyName}:${key}`;
+      b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
+      const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true'); b.append(ic);
+      if (working) b.disabled = true;
+      b.addEventListener('click', () => { if (b.disabled) return; after?.(); Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
+      return b;
+    };
+    // C-17 s3：移动图标常驻行首（管理态与非管理态都有）。管理态下若本行在多选内，整批同源选择一起拾起。
+    const pickItems = () => {
+      if (managing && selected(key) && selectedKeys.length > 1) {
+        const picks = selectedKeys.map(k => { const [s, ...r] = String(k).split(':'); const id = r.join(':');
+          const found = siblings.find(it => String(it.id) === id); return s === source && found ? { source, id, name: found.name } : null; }).filter(Boolean);
+        if (picks.length) return picks;
+      }
+      return [{ source, id: item.id, name: item.name }];
+    };
+    const gripFor = () => {
+      const grip = iconBtn('qm-regex-grip qm-regex-rowgrip' + (picked ? ' is-picking' : ''), 'pick', picked ? '放下（取消移动）' : '拾取移动', 'fa-up-down-left-right', () => actions.pickMove?.({ source, items: pickItems() }));
+      grip.draggable = true;
+      grip.addEventListener?.('dragstart', event => { try { actions.pickMove?.({ source, items: pickItems() }); event?.dataTransfer && (event.dataTransfer.effectAllowed = 'move'); } catch (_) {} });
+      return grip;
+    };
     if (managing && writable) {
       node.classList.add('is-managing');
-      const key = `${source}:${item.id}`, on = selected(key);
+      const on = selected(key);
       if (on) node.classList.add('is-selected');
-      const picked = picking.some(p => p.source === source && String(p.id) === String(item.id));
-      if (picked) node.classList.add('is-picking');
       const check = el('button', `qm-regex-check${on ? ' is-on' : ''}`); check.type = 'button';
       check.dataset.key = `sel:${key}`;
       check.setAttribute('role', 'checkbox'); check.setAttribute('aria-checked', String(on));
@@ -107,78 +132,56 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const tick = el('i', 'fa-solid fa-check qm-regex-check-mark'); tick.setAttribute('aria-hidden', 'true');
       check.append(tick);
       check.addEventListener('click', () => { try { actions.setSelected?.(key, !on); } catch (error) { notify(error?.message || '选择失败', 'warning'); } });
-      // 拾取载荷：若本行在多选内，整批同源选择一起拾起；否则只拾本行。
-      const pickItems = () => {
-        if (on && selectedKeys.length > 1) {
-          const picks = selectedKeys.map(k => { const [s, ...r] = String(k).split(':'); const id = r.join(':');
-            const found = siblings.find(it => String(it.id) === id); return s === source && found ? { source, id, name: found.name } : null; }).filter(Boolean);
-          if (picks.length) return picks;
-        }
-        return [{ source, id: item.id, name: item.name }];
-      };
-      // 行尾图标：拾取移动 / 编辑 / 复制 / 删除。拖拽与拾取走同一落定路径。
+      // 行尾图标：编辑 / 复制 / 删除；移动图标已挪到行首。拖拽与拾取走同一落定路径。
       const act = el('div', 'qm-regex-rowact');
-      const iconBtn = (cls, keyName, label, glyph, run) => {
-        const b = el('button', `qm-regex-rowbtn ${cls}`); b.type = 'button';
-        b.dataset.key = `${keyName}:${key}`;
-        b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
-        const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true'); b.append(ic);
-        if (working) b.disabled = true;
-        b.addEventListener('click', () => { if (b.disabled) return; Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
-        return b;
-      };
-      const grip = iconBtn('qm-regex-grip' + (picked ? ' is-picking' : ''), 'pick', picked ? '放下（取消移动）' : '拾取移动', 'fa-up-down-left-right', () => actions.pickMove?.({ source, items: pickItems() }));
-      grip.draggable = true;
-      grip.addEventListener?.('dragstart', event => { try { actions.pickMove?.({ source, items: pickItems() }); event?.dataTransfer && (event.dataTransfer.effectAllowed = 'move'); } catch (_) {} });
       const openEdit = () => actions.openEditor?.({ source, id: item.id, name: item.name });
       name.classList.add('is-editable'); name.setAttribute('role', 'button'); name.setAttribute('tabindex', '0');
       name.dataset.key = `edit:${key}`;
       name.addEventListener('click', () => { try { openEdit(); } catch (error) { notify(error?.message || '打开编辑失败', 'warning'); } });
       act.append(
-        grip,
         iconBtn('', 'rowedit', '编辑', 'fa-pen', openEdit),
         iconBtn('', 'rowcopy', '复制', 'fa-copy', () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] })),
         iconBtn('is-danger', 'rowdel', '删除', 'fa-trash-can', () => { if (!confirmDelete(1)) return; return actions.removeMany?.({ items: [{ source, id: item.id, name: item.name }] }); }),
       );
-      node.append(check, name, act);
+      node.append(gripFor(), check, name, act);
       if (!item.enabled) node.classList.add('is-off');
       return node;
     }
     if (writable) {
       node.classList.add('is-writable');
-      // C-16 s5：非管理态也常驻单条操作——一个「⋯」菜单按钮，点开浮出编辑/复制/删除；名字过长自动省略号。
-      const key = `${source}:${item.id}`;
-      const pop = el('div', 'qm-regex-rowpop');
-      const popItem = (keyName, label, glyph, danger, run) => {
-        const b = el('button', `qm-regex-rowpop-item${danger ? ' is-danger' : ''}`); b.type = 'button';
-        b.dataset.key = `${keyName}:${key}`;
-        b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
-        const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true');
-        b.append(ic, el('span', 'qm-regex-rowpop-text', label));
-        if (working) b.disabled = true;
-        b.addEventListener('click', () => { if (b.disabled) return; pop.classList?.remove('is-open'); Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
-        return b;
-      };
-      pop.append(
-        popItem('rowedit', '编辑', 'fa-pen', false, () => actions.openEditor?.({ source, id: item.id, name: item.name })),
-        popItem('rowcopy', '复制', 'fa-copy', false, () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] })),
-        popItem('rowdel', '删除', 'fa-trash-can', true, () => { if (!confirmDelete(1)) return; return actions.removeMany?.({ items: [{ source, id: item.id, name: item.name }] }); }),
-      );
+      // C-17 s3：行尾 = [横向展开条][⋯][拨杆]。⋯ 在拨杆之前；点开后向左横向展开纯图标（编辑/复制/删除），
+      // 点页面其他任何位置收起（document pointerdown，重绘/dispose 时清理），同一时刻只开一条。
+      const strip = el('div', 'qm-regex-rowstrip');
+      strip.setAttribute('role', 'group'); strip.setAttribute('aria-label', `${item.name}：单条操作`);
       const menu = el('button', 'qm-regex-rowbtn qm-regex-rowmenu'); menu.type = 'button';
       menu.dataset.key = `rowmenu:${key}`;
       menu.setAttribute('aria-label', `${item.name}：更多操作`); menu.title = '更多操作';
-      menu.setAttribute('aria-haspopup', 'true'); menu.setAttribute('aria-expanded', 'false');
+      menu.setAttribute('aria-expanded', 'false');
       const mi = el('i', 'fa-solid fa-ellipsis'); mi.setAttribute('aria-hidden', 'true'); menu.append(mi);
       if (working) menu.disabled = true;
-      menu.addEventListener('click', () => {
-        if (menu.disabled) return;
-        const open = !pop.classList?.contains('is-open');
-        if (open) pop.classList?.add('is-open'); else pop.classList?.remove('is-open');
+      const tail = el('div', 'qm-regex-rowtail');
+      let closeStrip = null;
+      const setOpen = open => {
+        for (const n of [strip, tail]) { if (open) n.classList?.add('is-open'); else n.classList?.remove('is-open'); }
         menu.setAttribute('aria-expanded', String(open));
-      });
-      const rowact = el('div', 'qm-regex-rowtail');
-      rowact.append(toggleButton(item, source, working || pending.includes(key)), menu, pop);
-      node.append(name, rowact);
+        if (!open) { const done = closeStrip; closeStrip = null; done?.(); return; }
+        clearPresetCleanups();
+        const outside = event => { const t = event?.target; if (t && typeof tail.contains === 'function' && tail.contains(t)) return; setOpen(false); };
+        const onKey = event => { if (event?.key === 'Escape') setOpen(false); };
+        document.addEventListener?.('pointerdown', outside, true);
+        document.addEventListener?.('keydown', onKey);
+        closeStrip = () => { document.removeEventListener?.('pointerdown', outside, true); document.removeEventListener?.('keydown', onKey); };
+        presetCleanups.push(() => { if (closeStrip) setOpen(false); });
+      };
+      const close = () => setOpen(false);
+      strip.append(
+        iconBtn('', 'rowedit', '编辑', 'fa-pen', () => actions.openEditor?.({ source, id: item.id, name: item.name }), close),
+        iconBtn('', 'rowcopy', '复制', 'fa-copy', () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] }), close),
+        iconBtn('is-danger', 'rowdel', '删除', 'fa-trash-can', () => { if (!confirmDelete(1)) return; return actions.removeMany?.({ items: [{ source, id: item.id, name: item.name }] }); }, close),
+      );
+      menu.addEventListener('click', () => { if (menu.disabled) return; setOpen(!strip.classList?.contains('is-open')); });
+      tail.append(strip, menu, toggleButton(item, source, working || pending.includes(key)));
+      node.append(gripFor(), name, tail);
     } else {
       const dot = el('span', `qm-regex-dot${item.enabled ? ' is-on' : ''}`);
       dot.setAttribute('role', 'img');

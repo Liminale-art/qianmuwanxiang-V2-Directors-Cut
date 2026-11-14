@@ -122,3 +122,70 @@ test('s2: 作用范围 one option per row; 深度 controls sit under their label
   assert.ok(depths.children[1].classList.contains('qm-regex-depth-pair'), '最小/最大在标题下方');
   view.dispose();
 });
+
+async function mountList(state = {}, extra = {}) {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const calls = [];
+  const stub = { ...ctrl.actions, pickMove: a => calls.push(['pick', a]), openEditor: a => calls.push(['edit', a]), ...extra };
+  const view = mountChatRegexView({ root: host, actions: stub });
+  view.render(Object.freeze({ ...ctrl.state(), ...state }));
+  return { host, view, calls, ctrl };
+}
+
+test('s3: non-manage row = [move grip][name][strip][⋯][switch]; grip picks the row', async () => {
+  const { host, view, calls } = await mountList();
+  const rowNode = walkAll(host).find(n => n.classList?.contains('qm-regex-row') && n.dataset.id === 'g1');
+  assert.ok(rowNode.children[0].classList.contains('qm-regex-rowgrip'), '移动图标在行首');
+  assert.equal(rowNode.children[0].dataset.key, 'pick:global:g1');
+  const tail = rowNode.children[2];
+  assert.ok(tail.classList.contains('qm-regex-rowtail'));
+  assert.deepEqual(tail.children.map(n => [...n.classList.set].find(c => /rowstrip|rowmenu|qm-regex-switch/.test(c))), ['qm-regex-rowstrip', 'qm-regex-rowmenu', 'qm-regex-switch'], '⋯ 在拨杆之前');
+  rowNode.children[0].listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['pick', { source: 'global', items: [{ source: 'global', id: 'g1', name: 'A' }] }]);
+  view.dispose();
+});
+
+test('s3: ⋯ opens an icon-only horizontal strip; outside pointerdown closes it and removes the listener', async () => {
+  const { host, view, calls } = await mountList();
+  const menu = byKey(host, 'rowmenu:global:g1');
+  const strip = walkAll(host).find(n => n.classList?.contains('qm-regex-rowstrip'));
+  assert.equal(walkAll(strip).filter(n => n.classList?.contains('qm-regex-rowpop-text')).length, 0, '无文字');
+  assert.ok(walkAll(strip).filter(n => n.tagName === 'button').every(b => b.attrs['aria-label']), '图标按钮有无障碍名');
+  menu.listeners.click();
+  assert.ok(strip.classList.contains('is-open'));
+  assert.equal(menu.attrs['aria-expanded'], 'true');
+  assert.equal(host.docListeners.pointerdown.length, 1);
+  host.docListeners.pointerdown[0]({ target: strip.children[0] });
+  assert.ok(strip.classList.contains('is-open'), '点条内不收起');
+  host.docListeners.pointerdown[0]({ target: host });
+  assert.ok(!strip.classList.contains('is-open'), '点其他处收起');
+  assert.equal(host.docListeners.pointerdown.length, 0, '监听已清理');
+  menu.listeners.click();
+  byKey(host, 'rowedit:global:g1').listeners.click(); await settle();
+  assert.ok(!strip.classList.contains('is-open'), '点操作后收起');
+  assert.deepEqual(calls.at(-1), ['edit', { source: 'global', id: 'g1', name: 'A' }]);
+  menu.listeners.click();
+  view.dispose();
+  assert.equal(host.docListeners.pointerdown.length, 0, 'dispose 清理');
+});
+
+test('s3: manage row puts the move grip first, before the checkbox', async () => {
+  const { host, view } = await mountList({ managing: true });
+  const rowNode = walkAll(host).find(n => n.classList?.contains('qm-regex-row') && n.dataset.id === 'g1');
+  assert.ok(rowNode.classList.contains('is-managing'));
+  assert.equal(rowNode.children[0].dataset.key, 'pick:global:g1');
+  assert.equal(rowNode.children[1].dataset.key, 'sel:global:g1');
+  assert.ok(!walkAll(rowNode.children[3]).some(n => n.dataset?.key === 'pick:global:g1'), '行尾不再重复移动图标');
+  view.dispose();
+});
+
+test('s3: CSS — leading grip column, horizontal strip, drop line without breathing', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.qm-regex-row\.is-writable \{ grid-template-columns: 24px minmax\(0, 1fr\) auto;/);
+  assert.match(css, /\.qm-regex-row\.is-managing \{ grid-template-columns: 24px 22px minmax\(0, 1fr\) auto;/);
+  assert.ok(!/qm-regex-drop[^{]*\{[^}]*animation:/.test(css), '落点线无动画');
+  assert.ok(!css.includes('qm-regex-rowpop {'), '旧竖向浮层已移除');
+});
