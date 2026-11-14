@@ -1,10 +1,10 @@
-// C-16 s1：快切操作可视化——busy / reloading / 拾取与落定提示 / 落点呼吸 CSS
+// C-16 s1/s2：快切操作可视化——busy / reloading / 拾取与落定提示 / 落点呼吸 CSS；轻量重绘与回退
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const root = new URL('..', import.meta.url);
-const { createChatRegex, readRegexSources } = await import('../features/chat/qianmu-chat-regex.js');
+const { createChatRegex, readRegexSources, rerenderRenderedMessages, REGEX_RELOAD_DELAY, REGEX_STRUCTURAL_DELAY } = await import('../features/chat/qianmu-chat-regex.js');
 
 function fakeST({ global = [], preset = [], writePreset = true, save = true } = {}) {
   const log = { saves: 0, presetWrites: [], reloads: 0 };
@@ -132,4 +132,158 @@ test('view renders writing=true with locked card and reloading=true with status 
   assert.ok(status, 'reloading 时状态指示器');
   assert.ok(walkAll(status).some(n => n.textContent?.includes('刷新聊天中')));
   view.dispose();
+});
+
+// ---- C-16 s2：轻量重绘 ----
+const fakeChatDoc = ids => ({ querySelectorAll: sel => (sel === '#chat .mes[mesid]' ? ids.map(id => ({ getAttribute: k => (k === 'mesid' ? String(id) : null) })) : []) });
+
+test('rerenderRenderedMessages: updateMessageBlock + MESSAGE_UPDATED per rendered floor, skips unknown ids', async () => {
+  const calls = [], emitted = [];
+  const ctx = { chat: [{ mes: 'a' }, { mes: 'b' }, { mes: 'c' }], updateMessageBlock: (id, m) => calls.push([id, m.mes]),
+    eventSource: { emit: async (t, id) => { emitted.push([t, id]); } }, eventTypes: { MESSAGE_UPDATED: 'message_updated' } };
+  const n = await rerenderRenderedMessages(ctx, { root: fakeChatDoc([2, 0, 7, 'x']) });
+  assert.equal(n, 2);
+  assert.deepEqual(calls, [[2, 'c'], [0, 'a']]);
+  assert.deepEqual(emitted, [['message_updated', 2], ['message_updated', 0]]);
+});
+
+test('rerenderRenderedMessages returns -1 when capability is missing', async () => {
+  assert.equal(await rerenderRenderedMessages(null), -1);
+  assert.equal(await rerenderRenderedMessages({ chat: [] }, { root: fakeChatDoc([0]) }), -1);
+  assert.equal(await rerenderRenderedMessages({ chat: [{}], updateMessageBlock() {} }, { root: {} }), -1);
+  const noEmit = await rerenderRenderedMessages({ chat: [{}], updateMessageBlock() {} }, { root: fakeChatDoc([0]) });
+  assert.equal(noEmit, 1, '没有 eventSource 仍可重绘');
+});
+
+test('flushReload prefers the light path and skips reloadCurrentChat when ST exposes updateMessageBlock', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+  const updated = [];
+  st.ctx.chat = [{ mes: 'x' }, { mes: 'y' }];
+  st.ctx.updateMessageBlock = id => updated.push(id);
+  const saved = globalThis.document; globalThis.document = fakeChatDoc([0, 1]);
+  try {
+    const timers = manualTimers();
+    const ctrl = createChatRegex({ getContext: () => st.ctx, timers });
+    await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+    timers.flush(); await settle(); await settle();
+    assert.deepEqual(updated, [0, 1]);
+    assert.equal(st.log.reloads, 0, '不走整聊重载');
+    assert.equal(ctrl.state().reloading, false);
+  } finally { globalThis.document = saved; }
+});
+
+test('flushReload falls back to reloadCurrentChat when the light path is unavailable or throws', async () => {
+  const saved = globalThis.document;
+  try {
+    const a = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+    globalThis.document = fakeChatDoc([0]);
+    const t1 = manualTimers(); const c1 = createChatRegex({ getContext: () => a.ctx, timers: t1 });
+    await c1.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+    t1.flush(); await settle(); await settle();
+    assert.equal(a.log.reloads, 1, '无 updateMessageBlock → 整聊重载');
+
+    const b = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+    b.ctx.chat = [{ mes: 'x' }]; b.ctx.updateMessageBlock = () => { throw new Error('boom'); };
+    const t2 = manualTimers(); const c2 = createChatRegex({ getContext: () => b.ctx, timers: t2 });
+    await c2.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+    t2.flush(); await settle(); await settle();
+    assert.equal(b.log.reloads, 1, '轻量路径抛错 → 整聊重载');
+  } finally { globalThis.document = saved; }
+});
+
+test('structural writes schedule a short reload while toggles keep the 700ms debounce; canReload=false still defers', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }, { id: 'g2', scriptName: 'B', disabled: false }] });
+  const timers = manualTimers();
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers });
+  await ctrl.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  assert.equal(timers.last.ms, REGEX_RELOAD_DELAY);
+  await ctrl.actions.removeMany({ items: [{ source: 'global', id: 'g2', name: 'B' }] });
+  assert.equal(timers.last.ms, REGEX_STRUCTURAL_DELAY);
+  assert.ok(REGEX_STRUCTURAL_DELAY < REGEX_RELOAD_DELAY);
+
+  const st2 = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }] });
+  const t2 = manualTimers();
+  const c2 = createChatRegex({ getContext: () => st2.ctx, timers: t2, canReload: () => false });
+  await c2.actions.toggle({ source: 'global', id: 'g1', name: 'A', enabled: false });
+  t2.flush(); await settle();
+  assert.equal(st2.log.reloads, 0);
+  assert.equal(t2.size, 1, '顺延一个定时器');
+});
+
+// ---- C-16 s3：预设 ↔ 全局跨源移动 ----
+test('dropMove across sources inserts into the target (keeping id) before the anchor, then removes from the source', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }, { id: 'g2', scriptName: 'B', disabled: true }],
+    preset: [{ id: 'p1', scriptName: 'P1' }, { id: 'p2', scriptName: 'P2' }] });
+  const notes = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, k) => notes.push([m, k]) });
+  ctrl.actions.pickMove({ source: 'global', items: [{ id: 'g1', name: 'A' }, { id: 'g2', name: 'B' }] });
+  assert.equal(ctrl.state().picking.length, 2);
+  const out = await ctrl.actions.dropMove({ source: 'preset', before: { id: 'p2', name: 'P2' } });
+  assert.equal(out, 2);
+  assert.deepEqual(st.preset().map(s => s.id), ['p1', 'g1', 'g2', 'p2'], '目标源在锚点前插入，id 不变');
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), [], '源头删除');
+  assert.equal(ctrl.state().picking.length, 0);
+  assert.equal(ctrl.state().recycle.count, 0, '跨源移动不进回收站');
+  assert.ok(notes.some(([m, k]) => /2 项已移至预设/.test(m) && k === 'success'));
+  // 反向：预设 → 全局末尾
+  ctrl.actions.pickMove({ source: 'preset', items: [{ id: 'g2', name: 'B' }] });
+  assert.equal(await ctrl.actions.dropMove({ source: 'global', before: null }), 1);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g2']);
+  assert.deepEqual(st.preset().map(s => s.id), ['p1', 'g1', 'p2']);
+});
+
+test('cross-source move migrates binding override and default keys from src:id to dst:id', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }], preset: [{ id: 'p1', scriptName: 'P1' }] });
+  let binding = { enabled: true, overrides: { 'global:g1': { enabled: false }, 'preset:p1': { enabled: true } } };
+  let defaults = { 'global:g1': { enabled: true } };
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(),
+    readBinding: () => binding, writeBinding: v => { binding = v; }, readDefaults: () => defaults, writeDefaults: v => { defaults = v; } });
+  ctrl.actions.pickMove({ source: 'global', items: [{ id: 'g1', name: 'A' }] });
+  await ctrl.actions.dropMove({ source: 'preset', before: null });
+  assert.deepEqual(binding.overrides, { 'preset:p1': { enabled: true }, 'preset:g1': { enabled: false } });
+  assert.deepEqual(defaults, { 'preset:g1': { enabled: true } });
+});
+
+test('cross-source move never loses entries: when the source delete fails the copy stays in the target', async () => {
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }], preset: [{ id: 'p1', scriptName: 'P1' }] });
+  let writes = 0;
+  const manager = st.ctx.getPresetManager();
+  const realWrite = manager.writePresetExtensionField;
+  manager.writePresetExtensionField = async args => { writes += 1; if (writes === 2) throw new Error('disk full'); return realWrite(args); };
+  const notes = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, k) => notes.push([m, k]) });
+  // 预设 → 全局：第一步写全局成功，第二步写预设（删除）失败
+  ctrl.actions.pickMove({ source: 'preset', items: [{ id: 'p1', name: 'P1' }] });
+  st.ctx.saveSettingsDebounced = () => { writes += 1; };
+  assert.equal(await ctrl.actions.dropMove({ source: 'global', before: null }), null);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'p1'], '目标已有副本');
+  assert.deepEqual(st.preset().map(s => s.id), ['p1'], '源头仍在，未丢失');
+  assert.ok(notes.some(([, k]) => k === 'warning'));
+  assert.equal(ctrl.state().writing, false);
+});
+
+test('view shows drop targets on both writable cards while picking; foreign card targets are marked is-across', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }], preset: [{ id: 'p1', scriptName: 'P1' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const calls = [];
+  const stub = { ...ctrl.actions, dropMove: (...args) => { calls.push(args); return null; } };
+  const host = fakeDom();
+  const view = mountChatRegexView({ root: host, actions: stub });
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, picking: [{ source: 'global', id: 'g1', name: 'A' }] }));
+  const all = walkAll(host);
+  const presetDrops = all.filter(n => n.dataset?.key?.startsWith?.('drop:preset:'));
+  const globalDrops = all.filter(n => n.dataset?.key?.startsWith?.('drop:global:'));
+  assert.ok(globalDrops.length >= 1 && presetDrops.length >= 2, '两张卡都有落点');
+  assert.ok(presetDrops.every(n => n.classList.contains('is-across')), '异源落点标 is-across');
+  assert.ok(globalDrops.every(n => !n.classList.contains('is-across')));
+  const target = presetDrops.find(n => n.dataset.key === 'drop:preset:p1');
+  assert.match(target.attrs['aria-label'], /移入预设/);
+  target.listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), [{ source: 'preset', before: { id: 'p1', name: 'P1' } }]);
+  // 空列表的异源卡也给一个末尾落点
+  const empty = fakeST({ global: [{ id: 'g1', scriptName: 'A' }], preset: [] });
+  const c2 = createChatRegex({ getContext: () => empty.ctx, timers: manualTimers() });
+  const h2 = fakeDom(); mountChatRegexView({ root: h2, actions: c2.actions }).render(Object.freeze({ ...c2.state(), managing: true, picking: [{ source: 'global', id: 'g1', name: 'A' }] }));
+  assert.ok(walkAll(h2).some(n => n.dataset?.key === 'drop:preset:end'));
 });

@@ -476,6 +476,33 @@ export function presetDisplaySignature(sources) {
 
 // Quiet window before the chat reload, so flipping several switches in a row re-renders the chat once.
 export const REGEX_RELOAD_DELAY = 700;
+// C-16 s2：结构性写回（删除/复制/移动/分组）用更短的静默窗，操作后尽快重绘，减少「等很久没反应」的卡顿感。
+export const REGEX_STRUCTURAL_DELAY = 250;
+
+// C-16 s2：轻量重绘——只重画已渲染的楼层，避开整聊 reloadCurrentChat 的卡顿。
+// 读 #chat 里已渲染的 .mes[mesid]，对每条调用 updateMessageBlock(id, chat[id]) 重新套用显示正则，
+// 有 eventSource 时补发 MESSAGE_UPDATED（与 ST 原生编辑后同一信号，让其它监听者跟进）。
+// 返回实际重绘的楼层数；缺少 chat / updateMessageBlock / 可查询的文档时返回 -1，交给调用方回退整聊重载。
+export async function rerenderRenderedMessages(context, { root } = {}) {
+  const ctx = context && typeof context === 'object' ? context : null;
+  const chat = ctx && Array.isArray(ctx.chat) ? ctx.chat : null;
+  if (!ctx || !chat || typeof ctx.updateMessageBlock !== 'function') return -1;
+  const doc = root || attempt(() => globalThis.document, null);
+  if (!doc || typeof doc.querySelectorAll !== 'function') return -1;
+  const nodes = attempt(() => doc.querySelectorAll('#chat .mes[mesid]'), []);
+  const rows = nodes ? [...nodes] : [];
+  const emitter = ctx.eventSource && typeof ctx.eventSource.emit === 'function' ? ctx.eventSource : null;
+  const updatedType = attempt(() => ctx.eventTypes?.MESSAGE_UPDATED, '') || 'message_updated';
+  let count = 0;
+  for (const node of rows) {
+    const id = Number(attempt(() => node.getAttribute('mesid'), null));
+    if (!Number.isInteger(id) || id < 0 || id >= chat.length) continue;   // 未映射的 mesid 跳过
+    ctx.updateMessageBlock(id, chat[id]);
+    if (emitter) await emitter.emit(updatedType, id);
+    count += 1;
+  }
+  return count;
+}
 
 export function createChatRegex({ getContext = () => ({}), notify = () => {},
   canReload = () => true, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) },
@@ -544,10 +571,16 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     if (attempt(() => canReload(), true) === false) { scheduleReload(REGEX_RELOAD_DELAY * 2); return; }
     reloadPending = false;
     const ctx = context();
-    const chatId = attempt(() => (typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId), null);
-    if (!chatId || typeof ctx.reloadCurrentChat !== 'function') return;
     reloading = true; refresh();
-    try { await ctx.reloadCurrentChat(); } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
+    try {
+      // C-16 s2：先走轻量重绘（只重画已渲染楼层），只有它不可用/抛错时才退回整聊重载。
+      let painted = -1;
+      try { painted = await rerenderRenderedMessages(ctx); } catch (_) { painted = -1; }
+      if (painted < 0) {
+        const chatId = attempt(() => (typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId), null);
+        if (chatId && typeof ctx.reloadCurrentChat === 'function') await ctx.reloadCurrentChat();
+      }
+    } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
     finally { reloading = false; if (!disposed) refresh(); }
   }
 
@@ -699,6 +732,26 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     saveBinding({ overrides });
     refresh();
   }
+  // C-16 s3：跨源移动后，把本聊天覆盖与全局默认里属于这些条目的绑定键从 旧源:id 迁到 新源:id，
+  // 否则移走后旧键永久失配、新源下又没有记录，等于悄悄丢了用户的绑定。只迁移存在的键，不新建。
+  function migrateBindingKeys(fromSource, toSource, moving) {
+    if (fromSource === toSource) return;
+    const ids = (Array.isArray(moving) ? moving : []).map(item => text(item?.id)).filter(Boolean);
+    if (!ids.length) return;
+    const remap = (map, prevKey, nextKey) => {
+      if (!map || typeof map !== 'object' || !Object.prototype.hasOwnProperty.call(map, prevKey)) return false;
+      const out = { ...map }; out[nextKey] = out[prevKey]; delete out[prevKey]; return out;
+    };
+    let overrides = currentBinding().overrides, overChanged = false;
+    let defaults = attempt(() => readDefaults(), {}) || {}, defChanged = false;
+    for (const id of ids) {
+      const prev = `${fromSource}:${id}`, next = `${toSource}:${id}`;
+      const o = remap(overrides, prev, next); if (o) { overrides = o; overChanged = true; }
+      const d = remap(defaults, prev, next); if (d) { defaults = d; defChanged = true; }
+    }
+    if (overChanged) saveBinding({ overrides });
+    if (defChanged) writeDefaults(defaults);
+  }
   // ── C-14f 条目管理 ──
   // 结构性写回一次只跑一个，且与开关写回互斥；成功后清掉已不存在的选择，按需排一次重载。
   // keys：本次涉及的条目（"source:id"），写回期间在视图里转圈锁定。
@@ -709,7 +762,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     refresh();
     try {
       const out = await run(context());
-      if (out?.reload) scheduleReload();
+      if (out?.reload) scheduleReload(REGEX_STRUCTURAL_DELAY);
       return out?.result ?? true;
     } catch (error) {
       notify(error?.message || `${label}失败`, 'warning');
@@ -829,26 +882,51 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     refresh();
   }
   function cancelPick() { if (picking.length) { picking = []; refresh(); } }
-  // 落定：把拾取（或拖拽传入）的同源条目移到目标条目 before 之前（before 省略＝移到末尾）；完成后清空拾取。
+  // 落定：把拾取（或拖拽传入）的条目移到目标位 before 之前（before 省略＝移到末尾）；完成后清空拾取。
+  // 同源＝排序（moveRegexEntries）；跨源（预设↔全局）＝先插目标、后删源，绝不半途丢条目。
   // 目标位按 id 在原始数组里定位（跨「原始顺序 / 自动分组」两种视图都正确），拖拽与点插入走同一路径。
   const dropMove = ({ source, items, before = null } = {}) => {
-    const chosen = (Array.isArray(items) && items.length ? items : picking).filter(item => item && item.source === source);
+    const chosen = (Array.isArray(items) && items.length ? items : picking).filter(item => item && text(item.id));
     picking = [];
     if (!chosen.length) { refresh(); return null; }
+    // 拾取的条目当前所在来源（pickMove 为每条打上 source）；缺失时按落点来源处理（同源）。
+    const origin = BINDING_SOURCES.includes(text(chosen[0].source)) ? chosen[0].source : source;
     const moving = chosen.map(item => ({ id: item.id, name: item.name }));
-    return structural('调整顺序', async ctx => {
-      const out = await editRegexList(ctx, source, raw => {
-        const indices = locateIndices(raw, moving);
-        const to = before && text(before.id)
-          ? (() => { const at = locateRegexScript(raw, before); if (at < 0) throw stale(); return at; })()
-          : raw.length;
-        const next = moveRegexEntries(raw, indices, to);
-        if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
-        return { next, touched: indices.map(i => raw[i]), result: true };
+    const anchorIndex = (raw, by) => by && text(by.id)
+      ? (() => { const at = locateRegexScript(raw, by); if (at < 0) throw stale(); return at; })()
+      : raw.length;
+    if (origin === source) {
+      return structural('调整顺序', async ctx => {
+        const out = await editRegexList(ctx, source, raw => {
+          const indices = locateIndices(raw, moving);
+          const next = moveRegexEntries(raw, indices, anchorIndex(raw, before));
+          if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
+          return { next, touched: indices.map(i => raw[i]), result: true };
+        });
+        if (out.result) notify(`${moving.length} 项已移至指定位置`, 'success');
+        return out;
+      }, keysOf(moving, source));
+    }
+    // 跨源：先把整批（保留 id 的深拷贝）插入目标源，成功后再从原源删除，最后迁移绑定键。
+    // 若第二步删除失败，目标已存一份、原源仍在 —— 条目绝不丢失，只是重复，提示 warning 由 structural 兜底。
+    return structural('移动正则', async ctx => {
+      const fromList = readRawList(ctx, origin);
+      const pickIdx = locateIndices(fromList, moving);
+      if (pickIdx.length !== moving.length) throw stale();
+      const scripts = pickIdx.map(i => structuredClone(fromList[i]));
+      const destOut = await editRegexList(ctx, source, raw => {
+        const next = [...raw]; next.splice(anchorIndex(raw, before), 0, ...scripts);
+        return { next, touched: scripts, result: scripts.length };
       });
-      if (out.result) notify(`${moving.length} 项已移至指定位置`, 'success');
-      return out;
-    }, keysOf(moving, source));
+      const srcOut = await editRegexList(ctx, origin, raw => {
+        const idx = locateIndices(raw, moving);
+        const { next } = removeRegexEntries(raw, idx);
+        return { next, touched: idx.map(i => raw[i]), result: idx.length };
+      });
+      migrateBindingKeys(origin, source, moving);
+      notify(`${moving.length} 项已移至${source === 'preset' ? '预设' : '全局'}`, 'success');
+      return { reload: destOut.reload || srcOut.reload, result: moving.length };
+    }, keysOf(moving, origin));
   };
   // 新建：插到来源末尾（或指定下标），返回新 id。
   const insert = ({ source, script, index } = {}) => structural('新建正则', ctx => editRegexList(ctx, source, raw => {

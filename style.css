@@ -1032,6 +1032,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-busy-mark { color: var(--sd-primary); font-size: .8em; }
 #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { pointer-events: none; opacity: .72; transition: opacity .15s ease; }
 #story-director-floor-nav .qm-regex-status { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 6px; color: var(--sd-primary); font-size: var(--qm-type-caption); white-space: nowrap; }
+/* C-16 s3：异源落点（预设↔全局移入）用强调色区分，与同源排序落点一眼可辨 */
+#story-director-floor-nav .qm-regex-drop.is-across::before { height: 3px; background: color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
+#story-director-floor-nav .qm-regex-drop.is-across:hover::before, #story-director-floor-nav .qm-regex-drop.is-across:focus-visible::before { height: 4px; box-shadow: 0 0 8px color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-drop::before { animation: none; opacity: .85; } #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { transition: none; } }
 /* C-15 s9：管理态组头——折叠箭头+数量 / 双击改名的组名 / 整组拾取。组名就地变输入框。 */
 #story-director-floor-nav .qm-regex-group.is-managing { justify-content: flex-start; gap: 4px; }

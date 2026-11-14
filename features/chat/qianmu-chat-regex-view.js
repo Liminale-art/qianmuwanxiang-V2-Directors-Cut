@@ -155,13 +155,21 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   function list(items, mode, source, options) {
     const box = el('div', 'qm-regex-list');
-    if (!items.length) { box.append(el('p', 'qm-regex-empty', '没有正则脚本')); return box; }
     const picking = Array.isArray(options.picking) ? options.picking : [];
-    const dropHere = picking.length && picking[0]?.source === source;
-    // 拾取态：每条前插「插入到此前」落点（拖拽也 drop 到这里），列表尾再补一个末尾落点；仅同源列表显示。
+    // C-16 s3：拾取态时每张可写卡都显示落点——同源＝排序，异源（预设↔全局）＝移入。
+    const pickingFrom = picking.length ? (picking[0]?.source || source) : '';
+    const dropHere = picking.length > 0 && options.writable;
+    const across = dropHere && pickingFrom !== source;
+    if (!items.length) {
+      // 空列表：异源拾取时仍给一个末尾落点（可把条目移入空的预设/全局），否则显示占位文案。
+      if (dropHere) box.append(dropTarget(source, null, across));
+      else box.append(el('p', 'qm-regex-empty', '没有正则脚本'));
+      return box;
+    }
+    // 拾取态：每条前插「插入到此前」落点（拖拽也 drop 到这里），列表尾再补一个末尾落点。
     const rowOf = (item, group) => {
       const node = row(item, source, { ...options, group });
-      return dropHere ? [dropTarget(source, item), node] : [node];
+      return dropHere ? [dropTarget(source, item, across), node] : [node];
     };
     // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」——mode 参数不再区分；段按原顺序排列，散条段不加组头。
     const runs = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
@@ -171,7 +179,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}`);
       // 管理态：折叠箭头 + 可双击改名的组名 + 整组拾取/拖拽；落点放在组头前（折叠时也能插到组前）。
       if (options.managing && options.writable) {
-        if (dropHere) box.append(dropTarget(source, group.items[0]));
+        if (dropHere) box.append(dropTarget(source, group.items[0], across));
         head.classList.add('is-managing');
         head.append(foldButton(key, group.label, 'qm-regex-group-label', ''), groupName(group, source),
           el('span', 'qm-regex-group-count', `（${group.items.length}）`), groupGrip(group, source, picking));
@@ -184,15 +192,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       box.append(head);
       if (!isFolded(key)) for (const item of group.items) box.append(...rowOf(item, group.label));
     }
-    if (dropHere) box.append(dropTarget(source, null));
+    if (dropHere) box.append(dropTarget(source, null, across));
     return box;
   }
 
   // C-15 s7：拾取态落点。dropTarget 是独立「插入到此」节点：before 省略＝末尾落点；点按或 drop 都走 dropMove。
-  function dropTarget(source, before) {
-    const spot = el('button', 'qm-regex-drop'); spot.type = 'button';
+  // C-16 s3：across＝异源落点（把拾取条目移入另一来源），加 is-across 标记与「移入预设/全局」文案。
+  function dropTarget(source, before, across = false) {
+    const spot = el('button', `qm-regex-drop${across ? ' is-across' : ''}`); spot.type = 'button';
     spot.dataset.key = before ? `drop:${source}:${before.id}` : `drop:${source}:end`;
-    const label = before ? `移动到「${before.name}」之前` : '移动到末尾';
+    const dest = source === 'preset' ? '预设' : '全局';
+    const label = across
+      ? (before ? `移入${dest}「${before.name}」之前` : `移入${dest}末尾`)
+      : (before ? `移动到「${before.name}」之前` : '移动到末尾');
     spot.setAttribute('aria-label', label); spot.title = label;
     const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null });
     const go = () => { Promise.resolve().then(run).catch(error => notify(error?.message || '移动失败', 'warning')); };
