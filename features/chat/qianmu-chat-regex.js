@@ -1030,6 +1030,57 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     refresh();
   }
   function closeEditor() { editing = null; refresh(); }
+  function importMany() {
+    return new Promise((resolve, reject) => {
+      const picker = document.createElement('input');
+      picker.type = 'file'; picker.accept = '.json';
+      picker.style.display = 'none';
+      picker.addEventListener('change', async () => {
+        try {
+          if (!picker.files?.length) return resolve();
+          const file = picker.files[0];
+          const raw = await file.text();
+          const parsed = JSON.parse(raw);
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          const valid = arr.filter(item => item && typeof item === 'object' && item.findRegex);
+          if (!valid.length) return reject(new Error('未找到有效的regex定义'));
+          const imported = valid.map(script => {
+            const clone = cloneRegexScript(script, { makeId: newRegexId, suffix: '' });
+            return clone;
+          });
+          window.SillyTavern?.core?.chat?.regexes?.unshift(...imported);
+          loadRegexScripts(); refresh();
+          notify(`已导入 ${imported.length} 条regex`, 'success');
+          resolve();
+        } catch (err) {
+          reject(err);
+        } finally {
+          picker.remove();
+        }
+      }, { once: true });
+      document.body.append(picker);
+      picker.click();
+    });
+  }
+  function exportMany({ items }) {
+    if (!items?.length) return;
+    const keys = items.map(it => `${it.source}:${it.id}`);
+    const rows = keys.map(key => {
+      const [source, ...rest] = String(key).split(':'); const id = rest.join(':');
+      const arr = source === 'chat' ? chatRegexScripts() : getRegexScripts();
+      return arr.find(item => String(item.id) === id);
+    }).filter(Boolean);
+    if (!rows.length) return;
+    const json = JSON.stringify(rows, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `regex-export-${Date.now()}.json`;
+    a.style.display = 'none';
+    document.body.append(a); a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 100);
+    notify(`已导出 ${rows.length} 条regex`, 'success');
+  }
 
   const actions = Object.freeze({
     views: REGEX_VIEWS,
@@ -1051,7 +1102,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     clearBindingOverride,
     selectPreset,
     readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, regroup, retag,
-    setManaging, setSelected, openEditor, closeEditor,
+    setManaging, setSelected, openEditor, closeEditor, importMany, exportMany,
   });
   async function mount(host) {
     if (!host) return;

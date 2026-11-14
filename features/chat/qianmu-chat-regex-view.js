@@ -259,6 +259,25 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return spot;
   }
 
+  // C-17 s5：管理态分组级全选复选框（all/some/none 状态）。
+  function groupCheck(source, siblings, selectedKeys) {
+    const allKeys = siblings.map(item => `${source}:${item.id}`);
+    const isAll = allKeys.length > 0 && allKeys.every(k => selectedKeys.includes(k));
+    const isSome = !isAll && allKeys.some(k => selectedKeys.includes(k));
+    const state = isAll ? 'all' : isSome ? 'some' : 'none';
+    const b = el('button', `qm-regex-groupcheck qm-regex-groupcheck-${state}`); b.type = 'button';
+    b.dataset.key = `groupcheck:${source}`;
+    b.setAttribute('role', 'checkbox');
+    b.setAttribute('aria-checked', isAll ? 'true' : isSome ? 'mixed' : 'false');
+    b.setAttribute('aria-label', isAll ? `全选（已全选 ${allKeys.length} 条，点按取消）` : `全选（点按全选 ${allKeys.length} 条）`);
+    b.title = isAll ? '取消全选' : '全选';
+    const mark = el('i', 'fa-solid qm-regex-groupcheck-mark'); mark.setAttribute('aria-hidden', 'true');
+    mark.classList.add(isAll || isSome ? 'fa-check' : 'fa-minus');
+    b.append(mark);
+    b.addEventListener('click', () => { try { actions.setSelected?.(allKeys, !isAll); } catch (error) { notify(error?.message || '全选失败', 'warning'); } });
+    return b;
+  }
+
   // C-15 s9：组名双击（触屏双点同样生效，按时间戳判定、不用定时器）就地改名。改名 = 给整组写【标签】（不改名字正文），
   // 手动标签优先于自动归类；手动组清空名字 = 去掉标签回到自动归类；自动组清空 = 不改。Enter 提交、Esc 取消、失焦提交。
   function groupName(group, source) {
@@ -330,7 +349,10 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     head.append(heading);
     if (note) head.append(el('span', 'qm-regex-note', note));
     if (!unavailable && writable && !managing && items.length) head.append(batchSwitch(items, source, title, pending));
-    if (!unavailable && writable && managing) head.append(newButton(source));
+    if (!unavailable && writable && managing) {
+      head.append(groupCheck(source, siblings, selectedKeys));
+      head.append(newButton(source));
+    }
     card.append(head);
     if (folded) return card;
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
@@ -355,37 +377,44 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return active && typeof root.contains === 'function' && root.contains(active) ? active.dataset?.key || '' : '';
   }
 
-  // 预设快切：触发钮 + 自定义浮层列表。
-  // C-16 s2：原生 <select> 在移动端会弹整页 OS 选择器、桌面也无法对齐幕外目录风格，改为按钮 + role=listbox 浮层；
-  // 版本系列折进分组（同幕外目录逻辑）；本聊天绑定的预设名旁带链环标记。
-  function presetSwitch(presets, binding) {
-    const box = el('div', 'qm-regex-preset');
+  // C-17 s6：内联可折叠预设目录（不再用浮层弹窗）。
+  // 触发钮 + 内联展开列表，折叠时完全隐藏；版本系列折进分组，绑定预设带链环标记。
+  function presetDirectory(presets, binding) {
+    const box = el('div', 'qm-regex-preset-box');
     const boundName = binding.enabled ? binding.preset || '' : '';
     const names = [...presets.names];
     if (presets.current && !names.includes(presets.current)) names.unshift(presets.current);
     const label = name => (name === boundName ? `${name}（本聊天）` : name);
     const disabled = presets.busy || !names.length;
+    const expanded = false;
 
+    const triggerRow = el('div', 'qm-regex-preset-trigger-row');
     const trigger = el('button', 'qm-regex-preset-trigger'); trigger.type = 'button';
     trigger.dataset.key = 'preset';
-    trigger.setAttribute('aria-haspopup', 'listbox');
-    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-expanded', String(expanded));
     trigger.setAttribute('aria-label', boundName ? `切换预设（本聊天绑定：${boundName}）` : '切换预设');
     trigger.append(el('span', 'qm-regex-preset-current', presets.current ? label(presets.current) : '（无预设）'));
-    const caret = el('i', 'fa-solid fa-chevron-down qm-regex-preset-caret'); caret.setAttribute('aria-hidden', 'true');
+    const caret = el('i', 'fa-solid fa-chevron-right qm-regex-preset-caret'); caret.setAttribute('aria-hidden', 'true');
     trigger.append(caret);
     if (disabled) { trigger.disabled = true; if (presets.busy) trigger.setAttribute('aria-busy', 'true'); }
+    triggerRow.append(trigger);
 
-    const menu = el('div', 'qm-regex-preset-menu');
-    menu.setAttribute('role', 'listbox');
-    menu.setAttribute('aria-label', '预设列表');
-    const close = () => { menu.classList?.remove('is-open'); trigger.setAttribute('aria-expanded', 'false'); };
+    if (boundName) {
+      const mark = el('i', `fa-solid fa-link qm-regex-preset-bound${boundName === presets.current ? '' : ' is-off'}`);
+      mark.setAttribute('aria-hidden', 'true');
+      mark.title = boundName === presets.current ? '已是本聊天绑定的预设' : `本聊天绑定的是「${boundName}」`;
+      triggerRow.append(mark);
+    }
+
+    const dir = el('div', 'qm-regex-preset-dir');
+    dir.setAttribute('role', 'list');
+    dir.setAttribute('aria-label', '预设列表');
+    const close = () => { trigger.setAttribute('aria-expanded', 'false'); };
     const option = name => {
       const node = el('button', `qm-regex-preset-option${name === presets.current ? ' is-current' : ''}`, label(name));
       node.type = 'button';
       node.dataset.value = name;
-      node.setAttribute('role', 'option');
-      node.setAttribute('aria-selected', String(name === presets.current));
+      node.setAttribute('role', 'listitem');
       node.addEventListener('click', () => {
         close();
         if (!name || name === presets.current) return;
@@ -395,32 +424,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       return node;
     };
     for (const row of groupPresetNames(names)) {
-      if (!row.grouped) { menu.append(option(row.name)); continue; }
+      if (!row.grouped) { dir.append(option(row.name)); continue; }
       const group = el('div', 'qm-regex-preset-group');
       group.append(el('div', 'qm-regex-preset-group-label', row.base));
       for (const item of row.items) group.append(option(item.name));
-      menu.append(group);
+      dir.append(group);
     }
     trigger.addEventListener('click', () => {
       if (trigger.disabled) return;
-      const open = !menu.classList?.contains('is-open');
-      menu.classList?.toggle('is-open', open);
+      const open = trigger.getAttribute('aria-expanded') !== 'true';
       trigger.setAttribute('aria-expanded', String(open));
     });
-    // 点击浮层外或 Esc 收起。
-    const onOutside = event => { const t = event?.target; if (box.contains?.(t)) return; close(); };
-    const onKey = event => { if (event?.key === 'Escape') close(); };
-    document.addEventListener?.('pointerdown', onOutside, true);
-    document.addEventListener?.('keydown', onKey, true);
-    presetCleanups.push(() => { document.removeEventListener?.('pointerdown', onOutside, true); document.removeEventListener?.('keydown', onKey, true); });
 
-    box.append(trigger, menu);
-    if (boundName) {
-      const mark = el('i', `fa-solid fa-link qm-regex-preset-bound${boundName === presets.current ? '' : ' is-off'}`);
-      mark.setAttribute('aria-hidden', 'true');
-      box.title = boundName === presets.current ? '已是本聊天绑定的预设' : `本聊天绑定的是「${boundName}」`;
-      box.append(mark);
-    }
+    box.append(triggerRow, dir);
     return box;
   }
 
@@ -812,10 +828,14 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       status.append(si, el('span', 'qm-regex-status-text', state.writing === true ? '写入中' : '刷新聊天中'));
       tools.append(status);
     }
+    // C-17 s4：工具行独立成一张窄条卡（bind / manage / recycle），保持 space-between 排开。
+    const toolsCard = el('section', 'qm-regex-card qm-regex-card-tools');
+    toolsCard.append(tools);
     // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
-    if (recycle.open) { root.replaceChildren(tools, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
+    if (recycle.open) { root.replaceChildren(toolsCard, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
     const busy = Array.isArray(state.busy) ? state.busy : [];
     const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking, busy, writing: state.writing === true };
+    // C-17 s4：多选工具条套在置顶毛玻璃固钉层内（selbar 本身仍 sticky 0，方形毛玻璃撑着背景）。
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
       { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, siblings: g.items, ...common });
     let presetNote = '';
@@ -823,11 +843,11 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const presetCard = section('预设正则', presetNote, p.items, view,
       { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, siblings: p.items, ...common });
     const presets = state.presets && typeof state.presets === 'object' ? state.presets : { available: false, names: [] };
-    const head = presets.available && typeof actions.selectPreset === 'function' ? [presetSwitch(presets, binding)] : [];
+    const head = presets.available && typeof actions.selectPreset === 'function' ? [presetDirectory(presets, binding)] : [];
     // 管理态选择工具条随状态条件渲染（撤销已并入回收站）。
-    const bars = [];
-    if (managing) bars.push(selectionBar([...selectedSet], sources));
-    root.replaceChildren(...head, tools, ...bars, globalCard, presetCard);
+    const dock = managing ? el('div', 'qm-regex-seldock') : null;
+    if (dock) dock.append(selectionBar([...selectedSet], sources));
+    root.replaceChildren(...head, toolsCard, ...(dock ? [dock] : []), globalCard, presetCard);
     if (typeof scroll === 'number') root.scrollTop = scroll;
     if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
   }
@@ -852,6 +872,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       return b;
     };
     bar.append(
+      act('导入', '', 'import', () => actions.importMany()),
+      act('导出', '', 'export', its => actions.exportMany({ items: its })),
       act('删除', 'is-danger', 'del', its => { if (!confirmDelete(its.length)) return; return actions.removeMany({ items: its }); }),
       act('复制', '', 'copy', its => actions.copyMany({ items: its })),
       // C-15 s9：移入分组 = 写【标签】（与双击改名同一模型）；留空 = 去掉标签回到自动归类。

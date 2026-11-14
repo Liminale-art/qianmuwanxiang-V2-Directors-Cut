@@ -944,6 +944,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-wheel-strip::-webkit-scrollbar { width: 0; height: 0; }
 #story-director-floor-nav .qm-ring-wheel-strip.is-dragging { scroll-snap-type: none; scroll-behavior: auto; }
 /* 聊天工具包·正则（D-a 只读）：视图切换胶囊 + 全局/预设两张卡，行内只读启用圆点 */
+/* C-17 s4：工具行独立成窄条卡；多选条外套正方毛玻璃固钉（不抖边角），与下文卡齐左右 */
+#story-director-floor-nav .qm-regex-card-tools { padding: 6px 10px; }
 #story-director-floor-nav .qm-regex-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; min-width: 0; }
 #story-director-floor-nav .qm-regex-tool { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; margin: 0; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--sd-muted); font-size: var(--qm-type-caption); cursor: pointer; transition: color .18s ease, background-color .18s ease; }
 #story-director-floor-nav .qm-regex-tool:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
@@ -978,17 +980,18 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-bind-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
 #story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
 /* C-12 预设快切：「预设」+ 原生下拉一行，绑定的预设带链环（当前不是它时链环转灰） */
-#story-director-floor-nav .qm-regex-preset { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
-/* C-16 s2：预设快切改自定义下拉（触发钮 + role=listbox 浮层），移动端不再弹整页 OS 选择器、风格对齐幕外目录。 */
+/* C-17 s6：预设快切改为内联可折叠目录（不再用浮层），触发钮和绑定标记在同一行，列表展开后紧跟其下。 */
+#story-director-floor-nav .qm-regex-preset-box { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+#story-director-floor-nav .qm-regex-preset-trigger-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #story-director-floor-nav .qm-regex-preset-trigger { flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 30px; margin: 0; padding: 0 10px; border: 1px solid var(--sd-hairline); border-radius: 8px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-body); text-align: left; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
 #story-director-floor-nav .qm-regex-preset-trigger:hover { border-color: var(--sd-border); }
 #story-director-floor-nav .qm-regex-preset-trigger:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-preset-trigger:disabled { opacity: .5; cursor: default; }
 #story-director-floor-nav .qm-regex-preset-current { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #story-director-floor-nav .qm-regex-preset-caret { flex: none; font-size: .8em; color: var(--sd-muted); transition: transform .15s ease; }
-#story-director-floor-nav .qm-regex-preset-trigger[aria-expanded="true"] .qm-regex-preset-caret { transform: rotate(180deg); }
-#story-director-floor-nav .qm-regex-preset-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: none; flex-direction: column; width: min(320px, calc(100% + 0px)); max-width: 100%; max-height: min(60vh, 420px); overflow: auto; padding: 5px; border: 1px solid var(--sd-border); border-radius: 11px; background: var(--sd-card); box-shadow: 0 12px 30px rgba(0, 0, 0, .18); }
-#story-director-floor-nav .qm-regex-preset-menu.is-open { display: flex; }
+#story-director-floor-nav .qm-regex-preset-trigger[aria-expanded="true"] .qm-regex-preset-caret { transform: rotate(90deg); }
+#story-director-floor-nav .qm-regex-preset-dir { display: none; flex-direction: column; gap: 2px; min-width: 0; padding: 5px; border: 1px solid var(--sd-hairline); border-radius: 9px; background: var(--sd-card); }
+#story-director-floor-nav .qm-regex-preset-trigger[aria-expanded="true"] ~ .qm-regex-preset-dir { display: flex; }
 #story-director-floor-nav .qm-regex-preset-group { display: flex; flex-direction: column; }
 #story-director-floor-nav .qm-regex-preset-group-label { padding: 6px 10px 2px; color: var(--sd-muted); font-size: var(--qm-type-caption); font-weight: 600; }
 #story-director-floor-nav .qm-regex-preset-group .qm-regex-preset-option { padding-left: 18px; }
@@ -1028,6 +1031,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-check-mark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .62em; color: #fff; opacity: 0; transition: opacity .15s ease; }
 #story-director-floor-nav .qm-regex-check.is-on .qm-regex-check-mark { opacity: 1; }
 #story-director-floor-nav .qm-regex-check:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; }
+/* C-17 s5: group-level select-all checkbox with all/some/none states */
+#story-director-floor-nav .qm-regex-groupcheck { position: relative; flex: none; width: 18px; height: 18px; padding: 0; border: 1.5px solid color-mix(in srgb, var(--sd-muted) 55%, transparent); border-radius: 5px; background: transparent; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+#story-director-floor-nav .qm-regex-groupcheck.qm-regex-groupcheck-all { background: var(--sd-primary); border-color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-groupcheck.qm-regex-groupcheck-some { background: var(--sd-primary); border-color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-groupcheck-mark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .62em; color: #fff; opacity: 0; transition: opacity .15s ease; }
+#story-director-floor-nav .qm-regex-groupcheck-all .qm-regex-groupcheck-mark,
+#story-director-floor-nav .qm-regex-groupcheck-some .qm-regex-groupcheck-mark { opacity: 1; }
+#story-director-floor-nav .qm-regex-groupcheck:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; }
 #story-director-floor-nav .qm-regex-name.is-editable { cursor: pointer; }
 #story-director-floor-nav .qm-regex-name.is-editable:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; border-radius: 4px; }
 /* C-15 s7：行尾图标（拾取移动 / 编辑 / 复制 / 删除）+ 拾取落点 + 置顶选择条 */
@@ -1076,7 +1087,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-group-input:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-manage-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }
 #story-director-floor-nav .qm-regex-new-icon { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; color: var(--sd-primary); }
-#story-director-floor-nav .qm-regex-selbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: color-mix(in srgb, var(--sd-card) 88%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+#story-director-floor-nav .qm-regex-seldock { position: sticky; top: 0; z-index: 3; padding: var(--qm-floor-card-pad); border: 0; border-radius: 0; background: color-mix(in srgb, var(--qm-skin-material, var(--sd-card)) 78%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#story-director-floor-nav .qm-regex-selbar { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; padding: 7px 10px; border: 1px solid var(--sd-hairline); border-radius: 10px; background: color-mix(in srgb, var(--sd-card) 88%, transparent); }
 #story-director-floor-nav .qm-regex-selbar-count { flex: 1 1 auto; min-width: 0; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 /* C-15 s5 回收站：顶部开关 + 已删除列表 + 内存态小字 */
 #story-director-floor-nav .qm-regex-recycle-toggle.is-on { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 14%, transparent); }

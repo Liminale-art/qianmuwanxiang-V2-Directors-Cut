@@ -189,3 +189,84 @@ test('s3: CSS — leading grip column, horizontal strip, drop line without breat
   assert.ok(!/qm-regex-drop[^{]*\{[^}]*animation:/.test(css), '落点线无动画');
   assert.ok(!css.includes('qm-regex-rowpop {'), '旧竖向浮层已移除');
 });
+
+test('s4: tools row wrapped in qm-regex-card-tools, keeps space-between', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.qm-regex-tools \{ display: flex; align-items: center; justify-content: space-between;/, 'space-between');
+  const { host, view } = await mountList();
+  const card = host.children[0];
+  assert.ok(card.classList.contains('qm-regex-card-tools'));
+  assert.ok(card.children[0].classList.contains('qm-regex-tools'));
+  view.dispose();
+});
+
+test('s4: selbar wrapped in qm-regex-seldock (sticky frosted square); selbar no longer sticky', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.qm-regex-seldock \{ position: sticky; top: 0; z-index: 3;/, 'dock sticky');
+  assert.match(css, /backdrop-filter: blur\(8px\)/, 'backdrop');
+  assert.match(css, /\.qm-regex-seldock.*border-radius: 0;/, 'square');
+  assert.ok(!css.match(/\.qm-regex-selbar \{.*position: sticky/), 'selbar itself no longer sticky');
+  const { host, view } = await mountList({ managing: true });
+  const dock = walkAll(host).find(n => n.classList?.contains('qm-regex-seldock'));
+  assert.ok(dock);
+  assert.ok(dock.children[0].classList.contains('qm-regex-selbar'));
+  view.dispose();
+});
+
+test('s5: managing mode shows groupCheck button in card head', async () => {
+  const { host, view } = await mountList({ managing: true });
+  const cards = walkAll(host).filter(n => n.classList?.contains('qm-regex-card') && !n.classList?.contains('qm-regex-card-tools') && n.dataset?.key !== 'recycle');
+  assert.ok(cards.length > 0, 'at least one card');
+  const gc = walkAll(cards[0]).find(n => n.classList?.contains('qm-regex-groupcheck'));
+  assert.ok(gc, 'groupCheck exists');
+  assert.strictEqual(gc.getAttribute('role'), 'checkbox');
+  view.dispose();
+});
+
+test('s5: groupCheck has all/some/none states', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.qm-regex-groupcheck-all/, 'all state class');
+  assert.match(css, /\.qm-regex-groupcheck-some/, 'some state class');
+  const { host, view } = await mountList({ managing: true });
+  const gc = walkAll(host).find(n => n.classList?.contains('qm-regex-groupcheck'));
+  assert.ok(gc);
+  const state = gc.classList.contains('qm-regex-groupcheck-all') ? 'all' : gc.classList.contains('qm-regex-groupcheck-some') ? 'some' : 'none';
+  assert.ok(['all', 'some', 'none'].includes(state), `has valid state: ${state}`);
+  view.dispose();
+});
+
+test('s5: selbar includes import and export buttons', async () => {
+  const { host, view } = await mountList({ managing: true });
+  const dock = walkAll(host).find(n => n.classList?.contains('qm-regex-seldock'));
+  assert.ok(dock);
+  const bar = dock.children[0];
+  assert.ok(bar.classList.contains('qm-regex-selbar'));
+  const buttons = walkAll(bar).filter(n => n.tagName === 'BUTTON' && n.dataset?.key?.startsWith('sel-act:'));
+  const importBtn = buttons.find(b => b.dataset.key === 'sel-act:import');
+  const exportBtn = buttons.find(b => b.dataset.key === 'sel-act:export');
+  assert.ok(importBtn, 'import button exists');
+  assert.ok(exportBtn, 'export button exists');
+  view.dispose();
+});
+
+test('s6: preset directory is inline collapsible (not floating overlay)', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(!css.match(/\.qm-regex-preset-menu.*position: absolute/), 'no absolute positioning');
+  assert.match(css, /\.qm-regex-preset-dir/, 'uses dir class');
+  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\] ~ \.qm-regex-preset-dir \{ display: flex;/, 'sibling selector for expansion');
+  const { host, view } = await mountList();
+  const box = walkAll(host).find(n => n.classList?.contains('qm-regex-preset-box'));
+  assert.ok(box, 'box exists');
+  const trigger = walkAll(box).find(n => n.classList?.contains('qm-regex-preset-trigger'));
+  const dir = walkAll(box).find(n => n.classList?.contains('qm-regex-preset-dir'));
+  assert.ok(trigger, 'trigger exists');
+  assert.ok(dir, 'dir exists');
+  assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false', 'initially collapsed');
+  view.dispose();
+});
+
+test('s6: caret rotates right when expanded (not down)', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\].*\.qm-regex-preset-caret.*rotate\(90deg\)/, 'right rotation on expand');
+  view.dispose();
+});
