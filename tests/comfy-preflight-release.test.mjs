@@ -72,7 +72,7 @@ test('illustration update preserves host node evidence and refreshes original-ta
   const files=await collectReleaseFiles();
   for(const file of ['server/qianmu-comfy-cloud-response.js','server/qianmu-comfy-cloud-query.js','server/qianmu-runninghub-results.js','server/qianmu-runninghub-download.js','server/qianmu-comfy-cloud-receive.js'])assert.ok(files.includes(file));
   const entry=await readFile(new URL('index.js',root),'utf8');
-  assert.ok(entry.includes("const VERSION = '1.59.503';"));
+  assert.ok(entry.includes("const VERSION = '1.59.504';"));
   assert.deepEqual([...entry.matchAll(/'\.\/([^']+\.js)\?v=1\.59\.439'/g)].map(match=>match[1]),
     ['qianmu-world-shot.js','qianmu-comfy-prompt.js','qianmu-storyboard-contract.js']);
   assert.ok(entry.includes("'./qianmu-comfy-recovery-action.js?v=1.59.440'"));
