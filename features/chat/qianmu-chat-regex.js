@@ -493,6 +493,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-15 s5：回收站——被删条目累积在内存里（刷新/重启即清空），可逐条或整批还原。
   // C-15 s7：拾取移动——拾起的条目（单条或整批同源选择）暂存在 picking，点插入位即落定；拖拽走同一条落定路径。
   let managing = false, editing = null, writing = false, recycleOpen = false;
+  // C-16 s1：busy＝结构性写回正在处理的条目键（行内转圈 + 锁定），reloading＝写回后正在重绘聊天。
+  let reloading = false;
+  const busy = new Set();
   const removed = [];
   let picking = [];
   const selected = new Set();
@@ -514,7 +517,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const state = () => {
     const b = currentBinding();
     return Object.freeze({ view, pending: Object.freeze([...pending]), folded: Object.freeze([...folded]),
-      managing, writing, selected: Object.freeze([...selected]), editing: editing ? Object.freeze({ ...editing }) : null,
+      managing, writing, reloading, busy: Object.freeze([...busy]), selected: Object.freeze([...selected]), editing: editing ? Object.freeze({ ...editing }) : null,
       // C-15 s7：拾取移动——拾起的条目（同源），视图据此显示插入位；空数组＝未拾取。
       picking: Object.freeze(picking.map(entry => Object.freeze({ ...entry }))),
       // C-15 s5：回收站。最近删除在前；每条带还原键。开着时视图改显「已删除」列表。
@@ -543,7 +546,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const ctx = context();
     const chatId = attempt(() => (typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId), null);
     if (!chatId || typeof ctx.reloadCurrentChat !== 'function') return;
+    reloading = true; refresh();
     try { await ctx.reloadCurrentChat(); } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
+    finally { reloading = false; if (!disposed) refresh(); }
   }
 
   // 切到指定预设（已是它则不动），返回 { switched, reload }：reload 仅当预设正则的显示签名前后不同。
@@ -696,9 +701,12 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   }
   // ── C-14f 条目管理 ──
   // 结构性写回一次只跑一个，且与开关写回互斥；成功后清掉已不存在的选择，按需排一次重载。
-  async function structural(label, run) {
+  // keys：本次涉及的条目（"source:id"），写回期间在视图里转圈锁定。
+  async function structural(label, run, keys = []) {
     if (writing || disposed || pending.size) return null;
-    writing = true; refresh();
+    writing = true;
+    for (const key of keys) if (text(key)) busy.add(String(key));
+    refresh();
     try {
       const out = await run(context());
       if (out?.reload) scheduleReload();
@@ -707,7 +715,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       notify(error?.message || `${label}失败`, 'warning');
       return null;
     } finally {
-      writing = false;
+      writing = false; busy.clear();
       const live = readRegexSources(context());
       const keys = new Set(BINDING_SOURCES.flatMap(source => live[source].items.map(item => `${source}:${item.id}`)));
       for (const key of [...selected]) if (!keys.has(key)) selected.delete(key);
@@ -723,6 +731,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     return out;
   };
+  const keysOf = (items, source) => (Array.isArray(items) ? items : [])
+    .filter(item => item && text(item.id)).map(item => `${source || item.source}:${item.id}`);
   const presetNameNow = () => readRegexSources(context()).preset.name;
   // 编辑子页读原始字段（深拷贝，视图改不到 ST 的对象）。
   function readScript({ source, id, name } = {}) {
@@ -747,7 +757,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     if (count) { removed.push(...staged); notify(`已删除 ${count} 条正则，可在回收站还原`, 'success'); }
     return { reload, result: count };
-  });
+  }, keysOf(items));
   // 还原：keys 省略＝全部还原；否则只还原指定条目。预设已切换则拒绝还原到别的预设里。还原成功的从回收站移除。
   const undoRemove = ({ keys } = {}) => structural('撤销删除', async ctx => {
     const pick = Array.isArray(keys) ? new Set(keys.map(String)) : null;
@@ -789,7 +799,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     if (count) notify(`已复制 ${count} 条正则`, 'success');
     return { reload, result: count };
-  });
+  }, keysOf(items));
   // 排序：把条目整体移到原始下标 to 之前（拖动与上移/下移都走这里）。
   const move = ({ source, items, to } = {}) => structural('调整顺序', ctx => editRegexList(ctx, source, raw => {
     const indices = locateIndices(raw, (Array.isArray(items) ? items : []).map(item => ({ id: item.id, name: item.name })));
@@ -815,6 +825,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     const same = picking.length === list.length && list.length > 0
       && picking.every((p, i) => p.source === list[i].source && p.id === list[i].id);
     picking = same ? [] : list;
+    if (picking.length) notify('请选择移动位置', 'info');
     refresh();
   }
   function cancelPick() { if (picking.length) { picking = []; refresh(); } }
@@ -825,15 +836,19 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     picking = [];
     if (!chosen.length) { refresh(); return null; }
     const moving = chosen.map(item => ({ id: item.id, name: item.name }));
-    return structural('调整顺序', ctx => editRegexList(ctx, source, raw => {
-      const indices = locateIndices(raw, moving);
-      const to = before && text(before.id)
-        ? (() => { const at = locateRegexScript(raw, before); if (at < 0) throw stale(); return at; })()
-        : raw.length;
-      const next = moveRegexEntries(raw, indices, to);
-      if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
-      return { next, touched: indices.map(i => raw[i]), result: true };
-    }));
+    return structural('调整顺序', async ctx => {
+      const out = await editRegexList(ctx, source, raw => {
+        const indices = locateIndices(raw, moving);
+        const to = before && text(before.id)
+          ? (() => { const at = locateRegexScript(raw, before); if (at < 0) throw stale(); return at; })()
+          : raw.length;
+        const next = moveRegexEntries(raw, indices, to);
+        if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
+        return { next, touched: indices.map(i => raw[i]), result: true };
+      });
+      if (out.result) notify(`${moving.length} 项已移至指定位置`, 'success');
+      return out;
+    }, keysOf(moving, source));
   };
   // 新建：插到来源末尾（或指定下标），返回新 id。
   const insert = ({ source, script, index } = {}) => structural('新建正则', ctx => editRegexList(ctx, source, raw => {
@@ -852,7 +867,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     if (!text(entry.scriptName)) throw new Error('请先填写正则名称');
     const next = [...raw]; next[index] = entry;
     return { next, touched: [raw[index], entry], result: true };
-  }));
+  }), keysOf([{ id }], source));
   // 分组改名 / 移入移出分组：都是改名字前缀。from 为原组名（未分组传空或「未分组」；单条可带自己的 from），to 为新组名（空 = 移出）。
   const regroup = ({ items, from = '', to = '' } = {}) => structural('调整分组', async ctx => {
     let count = 0;
@@ -877,7 +892,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       count += out.result || 0;
     }
     return { reload: false, result: count };
-  });
+  }, keysOf(items));
   // C-15 s9：手动命名组 = 给条目写开头【标签】（不改名字正文；标签优先于自动归类）。tag 空 = 去掉标签。不重载。
   const retag = ({ items, tag = '' } = {}) => structural('分组命名', async ctx => {
     let count = 0;
@@ -896,7 +911,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       count += out.result || 0;
     }
     return { reload: false, result: count };
-  });
+  }, keysOf(items));
   function setManaging(on) { managing = on === true; if (!managing) { selected.clear(); picking = []; } refresh(); }
   function setSelected(keys, on = true) {
     for (const key of Array.isArray(keys) ? keys : [keys]) { if (!text(key)) continue; if (on) selected.add(String(key)); else selected.delete(String(key)); }

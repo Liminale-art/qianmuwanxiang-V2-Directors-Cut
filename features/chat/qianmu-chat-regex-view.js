@@ -72,10 +72,17 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return button;
   }
 
-  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '', siblings = [], selectedKeys = [], picking = [] } = {}) {
+  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '', siblings = [], selectedKeys = [], picking = [], busy = [] } = {}) {
     const node = el('div', 'qm-regex-row');
     node.dataset.id = item.id;
-    const name = el('span', 'qm-regex-name', item.name);
+    // C-16 s1：结构性写回涉及本行 → 名前转圈、行内按钮全禁用，直到写回结束。
+    const working = busy.includes(`${source}:${item.id}`);
+    const name = el('span', 'qm-regex-name', working ? undefined : item.name);
+    if (working) {
+      node.classList.add('is-busy'); node.setAttribute('aria-busy', 'true');
+      const spin = el('i', 'fa-solid fa-spinner fa-spin qm-regex-busy-mark'); spin.setAttribute('aria-hidden', 'true');
+      name.append(spin, document.createTextNode(` ${item.name}`));
+    }
     name.title = item.name;
     if (writable && bound(`${source}:${item.id}`)) {
       node.classList.add('is-bound');
@@ -112,7 +119,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         b.dataset.key = `${keyName}:${key}`;
         b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
         const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true'); b.append(ic);
-        b.addEventListener('click', () => { Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
+        if (working) b.disabled = true;
+        b.addEventListener('click', () => { if (b.disabled) return; Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
         return b;
       };
       const grip = iconBtn('qm-regex-grip' + (picked ? ' is-picking' : ''), 'pick', picked ? '放下（取消移动）' : '拾取移动', 'fa-up-down-left-right', () => actions.pickMove?.({ source, items: pickItems() }));
@@ -134,7 +142,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
     if (writable) {
       node.classList.add('is-writable');
-      node.append(name, toggleButton(item, source, pending.includes(`${source}:${item.id}`)));
+      node.append(name, toggleButton(item, source, working || pending.includes(`${source}:${item.id}`)));
     } else {
       const dot = el('span', `qm-regex-dot${item.enabled ? ' is-on' : ''}`);
       dot.setAttribute('role', 'img');
@@ -254,9 +262,11 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return b;
   }
 
-  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false, siblings = [], selectedKeys = [], picking = [] } = {}) {
+  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false, siblings = [], selectedKeys = [], picking = [], busy = [], writing = false } = {}) {
     const key = `card:${source}`, folded = isFolded(key);
     const card = el('section', `qm-regex-card${folded ? ' is-folded' : ''}${managing && writable ? ' is-managing' : ''}`);
+    // C-16 s1：结构性写回进行中整卡锁定（防重复点击），读屏也知道在忙。
+    if (writing && writable) { card.classList.add('is-locked'); card.setAttribute('aria-busy', 'true'); }
     const head = el('header', 'qm-regex-card-head');
     const heading = el('h4', 'qm-regex-title');
     heading.append(foldButton(key, title, 'qm-regex-card-fold', title));
@@ -267,7 +277,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     card.append(head);
     if (folded) return card;
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
-    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected, siblings, selectedKeys, picking }));
+    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected, siblings, selectedKeys, picking, busy }));
     return card;
   }
 
@@ -634,9 +644,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       binBtn.addEventListener('click', () => { try { actions.setRecycle(!recycle.open); } catch (error) { notify(error?.message || '回收站切换失败', 'warning'); } });
       tools.append(binBtn);
     }
+    // C-16 s1：写回 / 重绘聊天进行中的状态提示（工具行尾小转圈），让用户知道操作已被接收。
+    if (state.writing === true || state.reloading === true) {
+      const status = el('span', 'qm-regex-status');
+      status.dataset.key = 'status';
+      status.setAttribute('role', 'status');
+      const si = el('i', 'fa-solid fa-spinner fa-spin'); si.setAttribute('aria-hidden', 'true');
+      status.append(si, el('span', 'qm-regex-status-text', state.writing === true ? '写入中' : '刷新聊天中'));
+      tools.append(status);
+    }
     // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
     if (recycle.open) { root.replaceChildren(tools, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
-    const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking };
+    const busy = Array.isArray(state.busy) ? state.busy : [];
+    const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking, busy, writing: state.writing === true };
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
       { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, siblings: g.items, ...common });
     let presetNote = '';
