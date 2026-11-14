@@ -248,6 +248,14 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const placeOverlays = () => { if (disposed || !layer) return; placeOverlay(rolePicker, characterControl, false, 420); placeOverlay(suggestions, tools, true, 220); };
     const win = document.defaultView;
     if (layer) { root.addEventListener('scroll', placeOverlays, { passive: true }); win?.addEventListener?.('resize', placeOverlays); }
+    // C-17 s7: click outside the picker or control closes the picker
+    const closePickerOnClickOutside = event => {
+        if (disposed || !pickerOpen) return;
+        if (!event.target) return;
+        if (characterControl.contains(event.target) || (layer && rolePicker.contains(event.target))) return;
+        pickerOpen = false; render();
+    };
+    document.addEventListener('click', closePickerOnClickOutside, { capture: true });
     root.replaceChildren(status, tools, nativePolicy, ...(layer ? [] : [suggestions]), loadedCount, list, previewActions);
 
     const createPreviewSection = currentPreview => {
@@ -323,6 +331,9 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
             });
             other.className = `qm-recovery-role-option${selection === OTHER ? ' is-selected' : ''}`; other.setAttribute('role', 'option');
             rolePickerList.replaceChildren(...choices, other);
+            // C-17 s7: apply fixed height when list has ≥8 rows
+            const rowCount = choices.length + 1;
+            rolePicker.classList.toggle('has-many', rowCount >= 8);
             if (pickerQuery) {
                 const match = [...rolePickerList.children].find(node => node.getAttribute?.('data-query-match') === 'true');
                 match?.scrollIntoView?.({ block: 'nearest' });
@@ -466,5 +477,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         void run(() => controller.inspectNativeBackupPolicy());
     }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
+        document.removeEventListener('click', closePickerOnClickOutside, { capture: true });
         if (layer) { root.removeEventListener?.('scroll', placeOverlays); win?.removeEventListener?.('resize', placeOverlays); layer.remove?.(); } } });
 }

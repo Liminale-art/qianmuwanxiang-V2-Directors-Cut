@@ -479,7 +479,7 @@ test('view renders both sections, grouped headers and a not-supported notice', a
   assert.equal(all.filter(n => n.classList.contains('qm-regex-switch')).length, 0, '不可写时只显示状态圆点');
   assert.equal(all.filter(n => n.classList.contains('qm-regex-meta')).length, 0, '条目只显示正则名，不再显示作用位置摘要');
   assert.ok(!text.includes('未设作用位置') && !text.includes('AI 输出') && !text.includes('用户输入'));
-  assert.equal(host.children[0].className, 'qm-regex-tools', '图标控件并为页顶一排');
+  assert.ok(host.children[0].classList.contains('qm-regex-card-tools'), 'C-17 s4：工具行卡片');
   assert.equal(all.filter(n => n.classList.contains('qm-regex-view-toggle')).length, 0, 'C-15 s9：单一模式，不再有视图切换按钮');
   assert.equal(all.filter(n => n.attrs.role === 'radio').length, 0, '不再是两段单选');
   assert.equal(picked, null);

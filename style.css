@@ -765,6 +765,8 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-recovery-character-tools input { width: 100%; }
 #story-director-floor-nav .qm-recovery-character-select { min-width: 0; width: 100%; text-overflow: ellipsis; }
 #story-director-floor-nav .qm-recovery-role-picker { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: min(320px, calc(100vw - 32px)); max-height: min(60vh, 420px); overflow: auto; padding: 5px; border: 1px solid var(--sd-border); border-radius: 11px; background: var(--sd-card); box-shadow: 0 12px 30px rgba(0, 0, 0, .18); }
+/* C-17 s7: fixed height when list has ≥8 rows (8 × (34px min-height + 12px padding + 3px gap) + 5px × 2 picker padding + 38px more button ≈ 440px) */
+#story-director-floor-nav .qm-recovery-role-picker.has-many { max-height: 440px; }
 #story-director-floor-nav .qm-recovery-role-picker-list { display: grid; gap: 3px; }
 #story-director-floor-nav .qm-recovery-role-option { width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; overflow: hidden; border: 0; border-radius: 8px; background: transparent; color: var(--sd-text); text-align: start; text-overflow: ellipsis; white-space: nowrap; }
 #story-director-floor-nav .qm-recovery-role-option:hover,

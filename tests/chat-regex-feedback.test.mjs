@@ -124,7 +124,7 @@ test('view renders writing=true with locked card and reloading=true with status 
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const view = mountChatRegexView({ root: host, actions: ctrl.actions });
   view.render({ ...ctrl.state(), writing: true });
-  const card = walkAll(host).find(n => n.classList?.contains('qm-regex-card') && n.dataset?.key !== 'recycle');
+  const card = walkAll(host).find(n => n.classList?.contains('qm-regex-card') && !n.classList?.contains('qm-regex-card-tools') && n.dataset?.key !== 'recycle');
   assert.ok(card?.classList.contains('is-locked'), 'writing 时卡片 is-locked');
   assert.equal(card?.attrs['aria-busy'], 'true');
   view.render({ ...ctrl.state(), reloading: true });
