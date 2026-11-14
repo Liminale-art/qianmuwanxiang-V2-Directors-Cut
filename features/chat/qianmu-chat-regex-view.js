@@ -432,7 +432,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       }
       panel.classList.add('qm-regex-subpage-open');
     } else {
-      panel.classList.remove('qm-regex-subpage-open');
+      panel.classList.remove('qm-regex-subpage-open', 'qm-regex-field-full');
       panel.style?.removeProperty?.('--qm-regex-lock-h');
     }
   }
@@ -443,26 +443,37 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   // 可拖拽高度 + 一键展开的文本域。resize:vertical 由 CSS 给，展开按钮加/去 is-tall 类。
   // highlight=true 时在文本域后叠一层只读 <pre> 着色层（文字透明 + 光标可见），实现轻量语法高亮，无第三方依赖。
-  function growTextarea(key, label, value, rows = 3, { highlight = false } = {}) {
-    const wrap = el('div', 'qm-regex-field');
-    const bar = el('div', 'qm-regex-field-bar');
-    const tag = el('label', 'qm-regex-field-label', label); tag.setAttribute('for', `qm-regex-f-${key}`);
+  // C-17 s2：全屏 = 铺满整个工具包面板（不是编辑器内容区）。面板加 qm-regex-field-full，编辑器让出定位基准，
+  // 全屏层以面板为包含块 inset:0；同一时刻只允许一个全屏层。
+  function expandButton(label, target) {
     const expand = el('button', 'qm-regex-expand'); expand.type = 'button';
-    expand.setAttribute('aria-label', `${label}：全屏编辑`); expand.title = '全屏编辑';
+    expand.dataset.key = 'editor-expand';
+    expand.setAttribute('aria-label', `${label}：全屏`); expand.setAttribute('aria-pressed', 'false'); expand.title = '全屏';
     const ei = el('i', 'fa-solid fa-up-right-and-down-left-from-center'); ei.setAttribute('aria-hidden', 'true');
     expand.append(ei);
-    bar.append(tag, expand);
+    expand.addEventListener('click', () => setFull(target, expand, !target.classList?.contains('is-full')));
+    return expand;
+  }
+  function setFull(target, button, on) {
+    const panel = root.closest?.('.sd-floor-panel');
+    if (on) for (const other of root.querySelectorAll?.('.is-full') || []) if (other !== target) other.classList?.remove('is-full');
+    target.classList?.toggle('is-full', on);
+    panel?.classList?.toggle('qm-regex-field-full', on);
+    button.setAttribute('aria-pressed', String(on));
+    button.title = on ? '退出全屏' : '全屏';
+    const icon = button.querySelector?.('i');
+    if (icon) icon.className = on ? 'fa-solid fa-down-left-and-up-right-to-center' : 'fa-solid fa-up-right-and-down-left-from-center';
+  }
+  function growTextarea(key, label, value, rows = 3, { highlight = false, bare = false } = {}) {
+    const wrap = el('div', 'qm-regex-field');
     const area = el('textarea', `qm-regex-textarea${highlight ? ' is-code' : ''}`);
     area.id = `qm-regex-f-${key}`; area.dataset.key = `field:${key}`;
     area.value = value == null ? '' : String(value);
     area.setAttribute('rows', String(rows));
-    // C-16 s6：展开 = 全屏编辑（整个字段铺满面板），再次点击退出。
-    expand.addEventListener('click', () => {
-      const on = !wrap.classList?.contains('is-full');
-      wrap.classList?.toggle('is-full', on);
-      expand.setAttribute('aria-pressed', String(on));
-      expand.title = on ? '退出全屏' : '全屏编辑';
-    });
+    if (bare) { area.setAttribute('aria-label', label); wrap.append(area); return { wrap, area }; }
+    const bar = el('div', 'qm-regex-field-bar');
+    const tag = el('label', 'qm-regex-field-label', label); tag.setAttribute('for', `qm-regex-f-${key}`);
+    bar.append(tag, expandButton(label, wrap));
     if (!highlight) { wrap.append(bar, area); return { wrap, area }; }
     const box = el('div', 'qm-regex-codebox');
     const pre = el('pre', 'qm-regex-hl'); pre.setAttribute('aria-hidden', 'true');
@@ -514,6 +525,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const base = isNew ? null : (typeof actions.readScript === 'function' ? actions.readScript({ source, id: editing.id, name: editing.name }) : null);
     if (!isNew && !base) { notify('这条正则已不存在，返回列表', 'warning'); try { actions.closeEditor?.(); } catch (_) {} return; }
     const data = base || {};
+    root.closest?.('.sd-floor-panel')?.classList?.remove('qm-regex-field-full');
     const wrap = el('div', 'qm-regex-editor');
     const subhead = el('div', 'qm-regex-subhead');
     const back = el('button', 'qm-regex-back'); back.type = 'button';
@@ -573,7 +585,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const placeSet = new Set((Array.isArray(data.placement) ? data.placement : [2]).map(Number));
     const placeField = el('div', 'qm-regex-field');
     placeField.append(el('span', 'qm-regex-field-label', '作用范围'));
-    const placeGrid = el('div', 'qm-regex-optgrid');
+    const placeGrid = el('div', 'qm-regex-optgrid qm-regex-optgrid-col');
     const placeChecks = new Map();
     for (const [value, label] of PLACEMENTS) { const b = optButton('place', value, label, placeSet.has(value)); placeChecks.set(value, b); placeGrid.append(b); }
     placeField.append(placeGrid);
@@ -603,14 +615,28 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const depthMax = el('input', 'qm-regex-input qm-regex-depth'); depthMax.type = 'number'; depthMax.dataset.key = 'field:maxDepth';
     depthMax.value = data.maxDepth == null ? '' : String(data.maxDepth); depthMax.placeholder = '最大';
     const depthWrap = el('div', 'qm-regex-field qm-regex-depths');
-    depthWrap.append(el('span', 'qm-regex-field-label', '深度'), depthMin, depthMax);
+    const depthPair = el('div', 'qm-regex-depth-pair'); depthPair.append(depthMin, depthMax);
+    depthWrap.append(el('span', 'qm-regex-field-label', '深度'), depthPair);
     const macroRow = el('div', 'qm-regex-macro-row');
     macroRow.append(subWrap, depthWrap);
     form.append(macroRow);
 
     // C-16 s6：测试区——标题只写「测试」；输入框 + 按钮常驻，预览默认隐藏、运行后浮现；美化模式开关。拿当前表单字段跑纯函数，不写 ST。
-    const testIn = growTextarea('testInput', '测试', '', 2);
+    const testIn = growTextarea('testInput', '测试输入', '', 2, { bare: true });
+    testIn.area.placeholder = '粘贴要测试的原文';
     const testOut = el('pre', 'qm-regex-testout', '');
+    // C-17 s1：美化模式 = 把替换结果当 HTML 渲染（与 ST「仅影响显示」的状态栏类正则同感）。沙箱 iframe：
+    // 不给 allow-scripts，脚本一律不跑；allow-same-origin 仅用于读内容高度自适应。
+    const testFrame = el('iframe', 'qm-regex-testframe');
+    testFrame.setAttribute('sandbox', 'allow-same-origin'); testFrame.setAttribute('title', '美化预览');
+    testFrame.setAttribute('referrerpolicy', 'no-referrer'); testFrame.hidden = true;
+    testFrame.addEventListener('load', () => {
+      try {
+        const doc = testFrame.contentDocument;
+        const height = Math.max(doc?.documentElement?.scrollHeight || 0, doc?.body?.scrollHeight || 0);
+        if (height > 0) testFrame.style?.setProperty?.('--qm-frame-h', `${Math.ceil(height) + 2}px`);
+      } catch (_) {}
+    });
     const testBtn = el('button', 'qm-regex-selact', '运行测试'); testBtn.type = 'button'; testBtn.dataset.key = 'editor-test';
     testBtn.setAttribute('aria-label', '用当前字段测试替换效果');
     const composeName = (body, tag) => {
@@ -633,39 +659,56 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       maxDepth: depthMax.value === '' ? null : Number(depthMax.value),
     });
     const showOut = text => {
+      testFrame.hidden = true;
+      testOut.hidden = false;
       testOut.textContent = text == null ? '' : String(text);
       if (testOut.textContent) testOut.classList?.remove('is-empty'); else testOut.classList?.add('is-empty');
     };
+    const frameDoc = html => {
+      let ink = '';
+      try { ink = getComputedStyle(testOut).color || ''; } catch (_) {}
+      const base = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>html{color-scheme:light dark}body{margin:8px;font:13px/1.55 system-ui,sans-serif;${ink ? `color:${ink};` : ''}word-break:break-word}</style>`;
+      return base + String(html ?? '');
+    };
+    const showFrame = html => {
+      testOut.hidden = true;
+      testOut.classList?.add('is-empty');
+      testFrame.style?.removeProperty?.('--qm-frame-h');
+      testFrame.srcdoc = frameDoc(html);
+      testFrame.hidden = false;
+    };
+    const hasOutput = () => !testOut.classList?.contains('is-empty') || testFrame.hidden === false;
     showOut('');
-    // 美化模式：开启后预览按可读方式呈现（显示空白/转义、等宽排版）。
+    // 美化模式：开启后按 HTML 渲染替换结果（沙箱 iframe，脚本不执行）；关闭 = 代码模式，显示替换后的原始文本。
     let beautify = false;
     const beautifyBtn = el('button', 'qm-regex-beautify'); beautifyBtn.type = 'button'; beautifyBtn.dataset.key = 'editor-beautify';
     beautifyBtn.setAttribute('role', 'switch'); beautifyBtn.setAttribute('aria-checked', 'false');
-    beautifyBtn.setAttribute('aria-label', '美化模式'); beautifyBtn.title = '美化模式：预览显示空白与换行';
+    beautifyBtn.setAttribute('aria-label', '美化模式'); beautifyBtn.title = '美化模式：按 HTML 渲染替换结果（脚本不执行）';
     const bbi = el('i', 'fa-solid fa-wand-magic-sparkles'); bbi.setAttribute('aria-hidden', 'true');
     beautifyBtn.append(bbi, el('span', 'qm-regex-beautify-text', '美化模式'));
-    const prettify = text => String(text).replace(/\t/g, '→   ').replace(/ (?= )/g, '·');
     const runTest = () => {
       try {
         const preview = typeof actions.preview === 'function' ? actions.preview(collect(), testIn.area.value) : { ok: true, output: testIn.area.value };
         if (!preview.ok) { showOut(`⚠ ${preview.error || '正则无效'}`); return; }
-        showOut(beautify ? prettify(preview.output) : preview.output);
-        if (beautify) testOut.classList?.add('is-beautify'); else testOut.classList?.remove('is-beautify');
+        if (beautify) showFrame(preview.output); else showOut(preview.output);
       } catch (error) { showOut(`⚠ ${error?.message || '测试失败'}`); }
     };
     beautifyBtn.addEventListener('click', () => {
       beautify = !beautify;
       beautifyBtn.classList?.toggle('is-on', beautify);
       beautifyBtn.setAttribute('aria-checked', String(beautify));
-      if (!testOut.classList?.contains('is-empty')) runTest();
+      if (hasOutput()) runTest();
     });
     testBtn.addEventListener('click', runTest);
     const testHead = el('div', 'qm-regex-test-head');
     const testTitle = el('h5', 'qm-regex-test-title', '测试'); testTitle.dataset.key = 'editor-test-title';
-    testHead.append(testTitle, beautifyBtn);
-    const testBody = el('div', 'qm-regex-test-body');
-    testBody.append(testIn.wrap, testBtn, testOut);
     const testWrap = el('section', 'qm-regex-test');
+    // C-17 s2：全屏图标紧跟「测试」标题，全屏的是整个测试区（输入 + 预览），去掉输入框上多余的「测试」小标题。
+    const testLead = el('div', 'qm-regex-test-lead');
+    testLead.append(testTitle, expandButton('测试', testWrap));
+    testHead.append(testLead, beautifyBtn);
+    const testBody = el('div', 'qm-regex-test-body');
+    testBody.append(testIn.wrap, testBtn, testOut, testFrame);
     testWrap.append(testHead, testBody);
     form.append(testWrap);
 

@@ -1174,10 +1174,29 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-depth { width: 6em; flex: none; }
 #story-director-floor-nav .qm-regex-test { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 8px; border: 1px dashed var(--sd-hairline); border-radius: 10px; }
 #story-director-floor-nav .qm-regex-testout { margin: 0; padding: 6px 8px; min-height: 2em; max-height: 160px; overflow: auto; border-radius: 8px; background: var(--sd-glass-weak); color: var(--sd-text); font-family: var(--sd-mono, ui-monospace, monospace); font-size: var(--qm-type-caption); white-space: pre-wrap; word-break: break-word; }
-/* C-16 s6：展开 = 全屏编辑，字段铺满整个面板，文本域撑高 */
-#story-director-floor-nav .qm-regex-field.is-full { position: absolute; inset: 0; z-index: 12; margin: 0; padding: 12px; border-radius: 0; background: var(--sd-card); display: flex; flex-direction: column; }
-#story-director-floor-nav .qm-regex-field.is-full .qm-regex-codebox, #story-director-floor-nav .qm-regex-field.is-full .qm-regex-textarea { flex: 1 1 auto; height: auto; }
-#story-director-floor-nav .qm-regex-field.is-full .qm-regex-textarea { min-height: 0; }
+/* C-17 s2：全屏 = 铺满整个工具包面板。面板 position:relative 是包含块；编辑器让出 relative，全屏层 inset:0 盖住整个面板（含头部） */
+#story-director-floor-nav .sd-floor-panel.qm-regex-field-full .qm-regex-editor { position: static; animation: none; }
+#story-director-floor-nav .sd-floor-panel.qm-regex-field-full :is(.qm-regex-field, .qm-regex-test).is-full { position: absolute; inset: 0; z-index: 12; box-sizing: border-box; margin: 0; padding: var(--qm-floor-pad, 14px); border: 0; border-radius: inherit; background: var(--qm-skin-window, var(--sd-window-bg, var(--sd-card))); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+#story-director-floor-nav .qm-regex-field.is-full > :is(.qm-regex-codebox, .qm-regex-textarea) { flex: 1 1 auto; min-height: 0; }
+#story-director-floor-nav .qm-regex-field.is-full .qm-regex-codebox { display: flex; }
+#story-director-floor-nav .qm-regex-field.is-full .qm-regex-codebox > .qm-regex-textarea { flex: 1 1 auto; height: auto; min-height: 0; resize: none; }
+#story-director-floor-nav .qm-regex-field.is-full > .qm-regex-textarea { height: auto; resize: none; }
+#story-director-floor-nav .qm-regex-test.is-full .qm-regex-test-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#story-director-floor-nav .qm-regex-test.is-full .qm-regex-test-body > .qm-regex-field .qm-regex-textarea { min-height: 120px; }
+#story-director-floor-nav .qm-regex-test.is-full :is(.qm-regex-testout, .qm-regex-testframe) { flex: 1 1 auto; max-height: none; min-height: 160px; }
+/* C-17 s2：文本域/着色层/预览随主题圆角（编辑风 0、经典 8、玻璃按钮档） */
+#story-director-floor-nav :is(.qm-regex-textarea, .qm-regex-hl, .qm-regex-testout, .qm-regex-testframe, .qm-regex-input, .qm-regex-select) { border-radius: var(--qm-button-radius, 8px); }
+/* C-17 s2：「测试」标题 + 全屏图标同组；查找宏收窄，深度与之并排，控件都排在各自小标题下方 */
+#story-director-floor-nav .qm-regex-test-lead { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+#story-director-floor-nav .qm-regex-macro-row { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr); align-items: start; gap: 14px; flex-wrap: nowrap; }
+#story-director-floor-nav .qm-regex-macro { flex: none; }
+#story-director-floor-nav .qm-regex-macro .qm-regex-select { width: 100%; }
+#story-director-floor-nav .qm-regex-depths { flex-direction: column; align-items: stretch; gap: 4px; }
+#story-director-floor-nav .qm-regex-depth-pair { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#story-director-floor-nav .qm-regex-depth-pair .qm-regex-depth { width: auto; flex: 1 1 0; min-width: 0; max-width: 7em; }
+/* C-17 s1：美化模式预览 = 沙箱 iframe 渲染替换后的 HTML，高度按内容自适应（上限 360px） */
+#story-director-floor-nav .qm-regex-testframe { display: block; width: 100%; height: var(--qm-frame-h, 140px); max-height: 360px; box-sizing: border-box; border: 1px solid var(--sd-hairline); background: color-mix(in srgb, var(--sd-primary) 4%, var(--sd-glass-weak)); }
+#story-director-floor-nav .qm-regex-testframe[hidden], #story-director-floor-nav .qm-regex-testout[hidden] { display: none; }
 #story-director-floor-nav .qm-regex-editor-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding-top: 2px; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-check, .qm-regex-check-mark) { transition: none; } #story-director-floor-nav .sd-floor-panel.qm-regex-subpage-open .qm-regex-editor { animation: none; } }
 #story-director-floor-nav .qm-ring-wheel-strip:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sd-primary) 45%, transparent); border-radius: 999px; }
