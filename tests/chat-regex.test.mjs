@@ -50,16 +50,26 @@ test('groupRegexScripts needs two members per group and keeps the rest under 未
 
 // C-15 s9：用户举的例子写死。
 test('regexFamilyKey strips exclusive marks, bracket tags and ordinals', () => {
-  assert.deepEqual({ ...regexFamilyKey('(A选一)角色状态栏') }, { tag: '', core: '角色状态栏', head: '' });
+  assert.deepEqual({ ...regexFamilyKey('(A选一)角色状态栏') }, { tag: '', core: '角色状态栏', head: '', seq: false });
   assert.equal(regexFamilyKey('（B选一）简洁状态栏').core, '简洁状态栏');
   assert.equal(regexFamilyKey('A选一-状态栏').core, '状态栏', '无括号互斥标记也剥掉');
   assert.equal(regexFamilyKey('状态栏(二选一)').core, '状态栏', '尾部互斥标记');
   assert.equal(regexFamilyKey('去自检注释①').core, '去自检注释');
   assert.equal(regexFamilyKey('去自检注释 ②').core, '去自检注释');
   assert.equal(regexFamilyKey('美化-3').core, '美化');
-  assert.deepEqual({ ...regexFamilyKey('【小剧场】折叠') }, { tag: '小剧场', core: '折叠', head: '' });
+  assert.deepEqual({ ...regexFamilyKey('【小剧场】折叠') }, { tag: '小剧场', core: '折叠', head: '', seq: false });
   assert.equal(regexFamilyKey('状态栏-隐藏').head, '状态栏');
   assert.equal(regexFamilyKey('A选一').core, 'A选一', '只剩标记时保留原名');
+});
+
+// C-16 s4：剥掉开头序号 (N)/（N）/N. ——让「(1)群聊」「(2)群聊」按核心词「群聊」归类。
+test('regexFamilyKey strips leading ordinal prefixes', () => {
+  assert.equal(regexFamilyKey('(1)群聊').core, '群聊');
+  assert.equal(regexFamilyKey('（2）群聊').core, '群聊');
+  assert.equal(regexFamilyKey('3.群聊').core, '群聊');
+  assert.equal(regexFamilyKey('4、群聊').core, '群聊');
+  assert.equal(regexFamilyKey('(10) 群聊').core, '群聊', '多位数 + 空格');
+  assert.equal(regexFamilyKey('(1)').core, '(1)', '只剩序号时保留原名');
 });
 
 test('groupAdjacentRegex folds adjacent same-family runs without reordering', () => {
@@ -87,6 +97,27 @@ test('groupAdjacentRegex: explicit 【tag】 wins, separators and repeats', () =
   assert.deepEqual(groupAdjacentRegex(items('think-hide', 'think-fold')).map(r => r.label), ['think']);
   // 手动标签与自动规则不混：有标签的不与无标签的成段。
   assert.deepEqual(groupAdjacentRegex(items('【组】状态栏', '状态栏-美化')).map(r => r.label), ['']);
+});
+
+// C-16 s4：同核心的分片被中间 1~2 条异类打断时，桥接回一个连续组（用户举例：(1)群聊…中间夹几条…(4)群聊）。
+test('groupAdjacentRegex bridges a same-core run interrupted by 1-2 foreign entries', () => {
+  // (1)群聊 (2)群聊 [夹一条] (3)群聊 (4)群聊 → 全部并入「群聊」，中间异类也被纳入这一连续段
+  const runs = groupAdjacentRegex(items('(1)群聊', '(2)群聊', '世界书注入', '(3)群聊', '(4)群聊'));
+  assert.deepEqual(runs.map(r => r.label), ['群聊']);
+  assert.deepEqual(names(runs[0].items), ['(1)群聊', '(2)群聊', '世界书注入', '(3)群聊', '(4)群聊'], '中间条目被桥接纳入，顺序不变');
+
+  // 夹两条也桥接
+  const two = groupAdjacentRegex(items('(1)群聊', '杂项A', '杂项B', '(2)群聊'));
+  assert.deepEqual(two.map(r => r.label), ['群聊']);
+  assert.equal(two[0].items.length, 4);
+
+  // 夹三条则不桥接（间隔过大，各自回到散条/后段）
+  const three = groupAdjacentRegex(items('(1)群聊', 'x1', 'x2', 'x3', '(2)群聊'));
+  assert.notDeepEqual(three.map(r => r.label), ['群聊']);
+
+  // 桥接后仍能继续扩展，不丢不重
+  const list = items('(1)群聊', '分隔', '(2)群聊', '(3)群聊');
+  assert.deepEqual(groupAdjacentRegex(list).flatMap(r => r.items), list, '拼回恰为原列表');
 });
 
 test('tagRegexName writes, replaces or clears the leading 【tag】', () => {
@@ -834,7 +865,7 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const make = tag => {
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false, value: '', selected: false,
-      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on === undefined ? this.set.has(c) : !on) this.set.delete(c); else this.set.add(c); } },
       append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
     Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
@@ -847,15 +878,26 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: name => { picks.push(name); } } });
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '乙' } }));
-  assert.equal(host.children[0].className, 'qm-regex-preset', '预设快切在页顶');
-  const select = walk(host).find(n => n.dataset.key === 'preset');
-  assert.equal(select.value, '甲');
-  const labels = select.children.map(o => o.textContent);
-  assert.deepEqual(labels, ['甲', '乙（本聊天）']);
+  assert.equal(host.children[0].className.includes('qm-regex-preset'), true, '预设快切在页顶');
+  // C-16 item2：原生 <select> 换成自定义下拉（触发钮 + 浮层列表），避免移动端整页弹窗、风格对齐幕外
+  const trigger = walk(host).find(n => n.dataset.key === 'preset');
+  assert.ok(trigger && trigger.tagName === 'button', '触发器是按钮不是 select');
+  assert.equal(trigger.attrs['aria-haspopup'], 'listbox');
+  assert.ok(walk(trigger).some(n => n.textContent === '甲'), '触发器显示当前预设');
+  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-menu'));
+  assert.ok(menu, '有浮层列表');
+  assert.equal(menu.attrs.role, 'listbox');
+  assert.ok(!menu.classList.contains('is-open'), '默认收起');
+  const options = walk(host).filter(n => n.classList?.contains('qm-regex-preset-option'));
+  assert.deepEqual(options.map(o => o.textContent), ['甲', '乙（本聊天）']);
   assert.ok(walk(host).some(n => n.classList?.contains('qm-regex-preset-bound') && n.classList.contains('is-off')), '当前不是绑定预设 → 链环转灰');
-  select.value = '乙'; select.listeners.change(); await settle();
+  trigger.listeners.click();
+  assert.ok(menu.classList.contains('is-open'), '点触发器展开');
+  options.find(o => o.dataset.value === '乙').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙']);
-  select.value = '甲'; select.listeners.change(); await settle();
+  assert.ok(!menu.classList.contains('is-open'), '选中后收起');
+  trigger.listeners.click();
+  options.find(o => o.dataset.value === '甲').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙'], '选回当前预设不触发');
   // 不支持快切的 ST：不渲染
   view.render(Object.freeze({ ...ctrl.state(), presets: { available: false, names: [] } }));
@@ -863,11 +905,11 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   view.dispose();
 });
 
-test('the preset dropdown folds version series into optgroups and keeps lone presets flat', async () => {
+test('the preset dropdown folds version series into groups and keeps lone presets flat', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const make = tag => {
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', label: '', disabled: false, value: '', selected: false,
-      classList: { set: new Set(), add(c) { this.set.add(c); }, contains(c) { return this.set.has(c); } },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on === undefined ? this.set.has(c) : !on) this.set.delete(c); else this.set.add(c); } },
       append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
     Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
@@ -879,13 +921,16 @@ test('the preset dropdown folds version series into optgroups and keeps lone pre
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: () => {} } });
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '写作 v2' } }));
-  const select = walk(host).find(n => n.dataset.key === 'preset');
-  const group = select.children.find(n => n.tagName === 'optgroup');
-  assert.ok(group, '同系列预设进 optgroup');
-  assert.equal(group.label, '写作');
-  assert.deepEqual(group.children.map(o => o.textContent), ['写作 v2（本聊天）', '写作 v1']);
-  assert.ok(select.children.some(n => n.tagName === 'option' && n.textContent === '独立预设'), '孤立预设保持平铺');
-  assert.equal(select.children.some(n => n.tagName === 'option' && n.textContent === '写作 v1'), false, '系列成员不再平铺');
+  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-menu'));
+  const group = menu.children.find(n => n.classList?.contains('qm-regex-preset-group'));
+  assert.ok(group, '同系列预设进分组');
+  const groupLabel = walk(group).find(n => n.classList?.contains('qm-regex-preset-group-label'));
+  assert.equal(groupLabel.textContent, '写作');
+  const groupOptions = walk(group).filter(n => n.classList?.contains('qm-regex-preset-option'));
+  assert.deepEqual(groupOptions.map(o => o.textContent), ['写作 v2（本聊天）', '写作 v1']);
+  const flat = menu.children.filter(n => n.classList?.contains('qm-regex-preset-option'));
+  assert.ok(flat.some(o => o.textContent === '独立预设'), '孤立预设保持平铺');
+  assert.equal(flat.some(o => o.textContent === '写作 v1'), false, '系列成员不再平铺');
   view.dispose();
 });
 
@@ -898,7 +943,8 @@ test('preset quick switch is wired natively and never writes presets itself', as
   assert.match(index, /\['PRESET_CHANGED', 'PRESET_RENAMED', 'PRESET_DELETED', 'MAIN_API_CHANGED'\]\.filter\(key => types\[key\]\)\.map\(key => \[types\[key\], chatRegex\.events\.presetChanged\]\)/);
   assert.match(index, /preset: typeof b\?\.preset === 'string' \? b\.preset : ''/, '读路径带出 preset');
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.ok(css.includes('.qm-regex-preset-select { flex: 1 1 auto;'));
+  assert.ok(css.includes('.qm-regex-preset-trigger'), '自定义触发钮样式');
+  assert.ok(css.includes('.qm-regex-preset-menu'), '自定义浮层样式');
 });
 
 // —— C-14f 条目管理：纯函数 ——
@@ -1201,12 +1247,12 @@ test('editor sub-page mirrors ST fields, saves collected data through insert/sav
   assert.equal(nameField.value, 'A');
   const findField = byKey(host, 'field:findRegex');
   assert.equal(findField.value, '/x/');
-  // s8：ST 原生中文命名 + 圆点式选项 + 测试模式默认折叠 + 取消/保存为图标按钮
+  // s8→C-16 s6：ST 原生中文命名（宏标签精简）+ 圆点式选项 + 测试区常驻 + 取消/保存为图标按钮
   const labels = walkAll(host).filter(n => n.classList?.contains('qm-regex-field-label')).map(n => n.textContent);
-  assert.ok(labels.includes('脚本名称') && labels.includes('查找正则表达式') && labels.includes('作用范围') && labels.includes('其他选项') && labels.includes('正则表达式查找时的宏'), '采用 ST 原生字段名');
+  assert.ok(labels.includes('脚本名称') && labels.includes('查找正则表达式') && labels.includes('作用范围') && labels.includes('其他选项') && labels.includes('正则表达式查找宏'), '采用 ST 原生字段名');
   assert.ok(walkAll(host).some(n => n.classList?.contains('qm-regex-opt')), '选项改圆点式');
-  const testDetails = walkAll(host).find(n => n.classList?.contains('qm-regex-test'));
-  assert.equal(testDetails.attrs?.open, undefined, '测试模式默认折叠');
+  const testTitle = byKey(host, 'editor-test-title');
+  assert.equal(testTitle?.textContent, '测试', '测试区标题只写「测试」');
   assert.ok(byKey(host, 'editor-cancel').children.some(c => c.classList?.contains?.('fa-xmark') || c.classList?.set?.has?.('fa-xmark')), '取消为图标');
   const testOut0 = walkAll(host).find(n => n.classList?.contains('qm-regex-testout'));
   assert.equal(testOut0.classList.contains('is-empty'), true, '预览为空时隐藏');
@@ -1223,11 +1269,11 @@ test('editor sub-page mirrors ST fields, saves collected data through insert/sav
   assert.ok(tokenClasses.includes('qm-hl-esc'), '\\d 转义着色');
   assert.ok(tokenClasses.includes('qm-hl-meta'), '.* 元字符着色');
   assert.ok(tokenClasses.includes('qm-hl-ref'), '$1 反向引用着色');
-  // 展开按钮切换 is-tall
-  const findTextarea = findField;
+  // 展开按钮切换全屏 is-full（作用在字段 wrap 上）
   const expand = walkAll(host).find(n => n.classList?.contains('qm-regex-expand'));
+  const findWrap = walkAll(host).find(n => n.classList?.contains('qm-regex-field') && walkAll(n).includes(expand));
   expand.listeners.click();
-  assert.equal(findTextarea.classList.contains('is-tall'), true, '展开');
+  assert.equal(findWrap.classList.contains('is-full'), true, '展开进入全屏');
   // 改名 + 作用位置勾选 + 测试
   nameField.value = 'A2';
   byKey(host, 'place:1').listeners.click();
@@ -1362,4 +1408,70 @@ test('editor 分组 field edits the 【tag】 separately and keeps an untouched 
   byKey(host, 'editor-save').listeners.click(); await settle();
   assert.equal(saved.at(-1).script.scriptName, '【手写】甲', '分组栏留空时名字栏里手写的标签原样保留');
   view.dispose();
+});
+
+// —— C-16 s6 编辑页重构（反馈项 6）——
+function openEditorView(data) {
+  return (async () => {
+    const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+    const host = fakeDom();
+    const st = fakeST({ global: [{ id: 'g1', scriptName: data.scriptName || 'A' }] });
+    const ctrl = createChatRegex({ getContext: () => st.ctx });
+    const stub = { ...ctrl.actions, readScript: () => structuredClone(data), closeEditor: () => {},
+      preview: (script, input) => previewRegexScript(script, input) };
+    const view = mountChatRegexView({ root: host, actions: stub });
+    view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: 'g1', name: data.scriptName || 'A' } }));
+    return { host, view };
+  })();
+}
+
+test('item6: 宏标签改名、深度合并为「深度」、作用范围/其他选项分左右两列', async () => {
+  const { host, view } = await openEditorView({ scriptName: 'A', placement: [2], substituteRegex: 0 });
+  const labels = walkAll(host).filter(n => n.classList?.contains('qm-regex-field-label')).map(n => n.textContent);
+  assert.ok(labels.includes('正则表达式查找宏'), '宏标签改为「正则表达式查找宏」');
+  assert.ok(!labels.some(t => t === '正则表达式查找时的宏'), '旧宏标签移除');
+  assert.ok(labels.includes('深度'), '深度合并为单一「深度」标签');
+  assert.ok(!labels.some(t => t && t.includes('最小 / 最大')), '旧「最小 / 最大深度」标签移除');
+  const cols = walkAll(host).find(n => n.classList?.contains('qm-regex-optcols'));
+  assert.ok(cols, '作用范围与其他选项放进两列容器');
+  assert.equal(cols.children.length, 2, '两列');
+  view.dispose();
+});
+
+test('item6: 测试区标题仅「测试」、预览默认隐藏触发后显示、含美化模式开关', async () => {
+  const { host, view } = await openEditorView({ scriptName: 'A', findRegex: '/a/g', replaceString: 'b' });
+  const title = walkAll(host).find(n => n.dataset?.key === 'editor-test-title');
+  assert.ok(title, '有测试区标题');
+  assert.equal(title.textContent, '测试', '标题仅「测试」');
+  const out = walkAll(host).find(n => n.classList?.contains('qm-regex-testout'));
+  assert.ok(out.classList.contains('is-empty'), '预览默认隐藏');
+  const beautify = walkAll(host).find(n => n.dataset?.key === 'editor-beautify');
+  assert.ok(beautify, '有美化模式开关');
+  beautify.listeners.click();
+  assert.ok(beautify.classList.contains('is-on'), '美化模式可切换');
+  const input = walkAll(host).find(n => n.dataset?.key === 'field:testInput');
+  input.value = 'aaa';
+  walkAll(host).find(n => n.dataset?.key === 'editor-test').listeners.click();
+  assert.ok(!out.classList.contains('is-empty'), '运行后预览显示');
+  assert.equal(out.textContent, 'bbb');
+  view.dispose();
+});
+
+test('item6: 展开按钮进入全屏（is-full），再次点击退出', async () => {
+  const { host, view } = await openEditorView({ scriptName: 'A', findRegex: '/a/' });
+  const expand = walkAll(host).find(n => n.classList?.contains('qm-regex-expand'));
+  assert.ok(expand, '有展开按钮');
+  const field = walkAll(host).find(n => n.classList?.contains('qm-regex-field') && walkAll(n).includes(expand));
+  expand.listeners.click();
+  assert.ok(field.classList.contains('is-full'), '点击进入全屏');
+  expand.listeners.click();
+  assert.ok(!field.classList.contains('is-full'), '再次点击退出全屏');
+  view.dispose();
+});
+
+test('item6: 全屏/两列/美化模式的 CSS 落位', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  assert.ok(css.includes('.qm-regex-optcols'), '两列容器样式');
+  assert.match(css, /\.qm-regex-field\.is-full\b/, '全屏态样式');
+  assert.ok(css.includes('.qm-regex-beautify'), '美化开关样式');
 });

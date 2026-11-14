@@ -3,15 +3,19 @@
 // a switch only calls actions.toggle(), which owns the write-back. Two sections (global / current preset),
 // each in original order with adjacent same-family runs folded. A source that cannot be written shows a status dot.
 // Rows show the script name only; page-level icon controls share one tool row (grouping has no view toggle since C-15 s9).
-// C-12: a preset quick switch heads the page — a native-style select over the active API's presets that only
-// calls actions.selectPreset(); a link mark shows which preset this chat is bound to.
-// C-15 s6: the dropdown drops its「预设」label and groups version series into <optgroup>s (same catalogue logic as 幕外目录).
+// C-12: a preset quick switch heads the page. C-16 s2: the native <select> became a custom button + role=listbox
+// dropdown — the native one popped a full-page OS picker on mobile and couldn't match 幕外; a link mark shows which
+// preset this chat is bound to. The popup closes on outside-pointerdown / Esc (listeners cleaned on re-render & dispose).
 import { groupPresetNames } from '../../qianmu-st-context-sources.js?v=1.59.450';
+// C-15 s6: the dropdown groups version series the same way as 幕外目录 (groupPresetNames).
 // C-15 s9: one list mode — original order with adjacent same-family runs folded under a header (no view toggle).
 
 export function mountChatRegexView({ root, actions, notify = () => {} }) {
   const document = root.ownerDocument;
   let disposed = false;
+  // 预设浮层挂的全局监听（点外收起 / Esc）；每次重绘与 dispose 前清掉，避免跨渲染累积。
+  let presetCleanups = [];
+  const clearPresetCleanups = () => { presetCleanups.splice(0).forEach(fn => { try { fn(); } catch { /* noop */ } }); };
   const el = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -142,7 +146,39 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
     if (writable) {
       node.classList.add('is-writable');
-      node.append(name, toggleButton(item, source, working || pending.includes(`${source}:${item.id}`)));
+      // C-16 s5：非管理态也常驻单条操作——一个「⋯」菜单按钮，点开浮出编辑/复制/删除；名字过长自动省略号。
+      const key = `${source}:${item.id}`;
+      const pop = el('div', 'qm-regex-rowpop');
+      const popItem = (keyName, label, glyph, danger, run) => {
+        const b = el('button', `qm-regex-rowpop-item${danger ? ' is-danger' : ''}`); b.type = 'button';
+        b.dataset.key = `${keyName}:${key}`;
+        b.setAttribute('aria-label', `${item.name}：${label}`); b.title = label;
+        const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true');
+        b.append(ic, el('span', 'qm-regex-rowpop-text', label));
+        if (working) b.disabled = true;
+        b.addEventListener('click', () => { if (b.disabled) return; pop.classList?.remove('is-open'); Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
+        return b;
+      };
+      pop.append(
+        popItem('rowedit', '编辑', 'fa-pen', false, () => actions.openEditor?.({ source, id: item.id, name: item.name })),
+        popItem('rowcopy', '复制', 'fa-copy', false, () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] })),
+        popItem('rowdel', '删除', 'fa-trash-can', true, () => { if (!confirmDelete(1)) return; return actions.removeMany?.({ items: [{ source, id: item.id, name: item.name }] }); }),
+      );
+      const menu = el('button', 'qm-regex-rowbtn qm-regex-rowmenu'); menu.type = 'button';
+      menu.dataset.key = `rowmenu:${key}`;
+      menu.setAttribute('aria-label', `${item.name}：更多操作`); menu.title = '更多操作';
+      menu.setAttribute('aria-haspopup', 'true'); menu.setAttribute('aria-expanded', 'false');
+      const mi = el('i', 'fa-solid fa-ellipsis'); mi.setAttribute('aria-hidden', 'true'); menu.append(mi);
+      if (working) menu.disabled = true;
+      menu.addEventListener('click', () => {
+        if (menu.disabled) return;
+        const open = !pop.classList?.contains('is-open');
+        if (open) pop.classList?.add('is-open'); else pop.classList?.remove('is-open');
+        menu.setAttribute('aria-expanded', String(open));
+      });
+      const rowact = el('div', 'qm-regex-rowtail');
+      rowact.append(toggleButton(item, source, working || pending.includes(key)), menu, pop);
+      node.append(name, rowact);
     } else {
       const dot = el('span', `qm-regex-dot${item.enabled ? ' is-on' : ''}`);
       dot.setAttribute('role', 'img');
@@ -189,6 +225,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       }
       head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
       if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
+      // C-16 s5：组头空白区（标题文字、计数间距）整体可折叠，不再只认小箭头。点到总开关/落点等交互件则放行。
+      head.addEventListener('click', event => {
+        const t = event?.target;
+        if (t && typeof t.closest === 'function' && t.closest('.qm-regex-pill, .qm-regex-fold, button')) return;
+        try { actions.setFolded?.(key, !isFolded(key)); } catch (error) { notify(error?.message || '折叠失败', 'warning'); }
+      });
       box.append(head);
       if (!isFolded(key)) for (const item of group.items) box.append(...rowOf(item, group.label));
     }
@@ -310,39 +352,66 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return active && typeof root.contains === 'function' && root.contains(active) ? active.dataset?.key || '' : '';
   }
 
-  // 预设快切：一行「预设」+ 下拉。选中即走原生切换；本聊天绑定的预设名旁带链环标记。
+  // 预设快切：触发钮 + 自定义浮层列表。
+  // C-16 s2：原生 <select> 在移动端会弹整页 OS 选择器、桌面也无法对齐幕外目录风格，改为按钮 + role=listbox 浮层；
+  // 版本系列折进分组（同幕外目录逻辑）；本聊天绑定的预设名旁带链环标记。
   function presetSwitch(presets, binding) {
     const box = el('div', 'qm-regex-preset');
-    const select = el('select', 'qm-regex-preset-select');
-    select.dataset.key = 'preset';
-    select.id = 'qm-regex-preset-select';
     const boundName = binding.enabled ? binding.preset || '' : '';
     const names = [...presets.names];
     if (presets.current && !names.includes(presets.current)) names.unshift(presets.current);
-    // C-15 s6：选项按版本系列折进 <optgroup>（同幕外目录逻辑，零浮层风险）；绑定预设仍带「（本聊天）」。
+    const label = name => (name === boundName ? `${name}（本聊天）` : name);
+    const disabled = presets.busy || !names.length;
+
+    const trigger = el('button', 'qm-regex-preset-trigger'); trigger.type = 'button';
+    trigger.dataset.key = 'preset';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', boundName ? `切换预设（本聊天绑定：${boundName}）` : '切换预设');
+    trigger.append(el('span', 'qm-regex-preset-current', presets.current ? label(presets.current) : '（无预设）'));
+    const caret = el('i', 'fa-solid fa-chevron-down qm-regex-preset-caret'); caret.setAttribute('aria-hidden', 'true');
+    trigger.append(caret);
+    if (disabled) { trigger.disabled = true; if (presets.busy) trigger.setAttribute('aria-busy', 'true'); }
+
+    const menu = el('div', 'qm-regex-preset-menu');
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', '预设列表');
+    const close = () => { menu.classList?.remove('is-open'); trigger.setAttribute('aria-expanded', 'false'); };
     const option = name => {
-      const node = el('option', '', name === boundName ? `${name}（本聊天）` : name);
-      node.value = name;
-      if (name === presets.current) node.selected = true;
+      const node = el('button', `qm-regex-preset-option${name === presets.current ? ' is-current' : ''}`, label(name));
+      node.type = 'button';
+      node.dataset.value = name;
+      node.setAttribute('role', 'option');
+      node.setAttribute('aria-selected', String(name === presets.current));
+      node.addEventListener('click', () => {
+        close();
+        if (!name || name === presets.current) return;
+        Promise.resolve().then(() => actions.selectPreset(name))
+          .catch(error => notify(error?.message || '预设切换失败', 'warning'));
+      });
       return node;
     };
     for (const row of groupPresetNames(names)) {
-      if (!row.grouped) { select.append(option(row.name)); continue; }
-      const group = el('optgroup');
-      group.label = row.base;
+      if (!row.grouped) { menu.append(option(row.name)); continue; }
+      const group = el('div', 'qm-regex-preset-group');
+      group.append(el('div', 'qm-regex-preset-group-label', row.base));
       for (const item of row.items) group.append(option(item.name));
-      select.append(group);
+      menu.append(group);
     }
-    select.value = presets.current;
-    select.setAttribute('aria-label', boundName ? `切换预设（本聊天绑定：${boundName}）` : '切换预设');
-    if (presets.busy || !names.length) { select.disabled = true; if (presets.busy) select.setAttribute('aria-busy', 'true'); }
-    select.addEventListener('change', () => {
-      const next = select.value;
-      if (!next || next === presets.current) return;
-      Promise.resolve().then(() => actions.selectPreset(next))
-        .catch(error => notify(error?.message || '预设切换失败', 'warning'));
+    trigger.addEventListener('click', () => {
+      if (trigger.disabled) return;
+      const open = !menu.classList?.contains('is-open');
+      menu.classList?.toggle('is-open', open);
+      trigger.setAttribute('aria-expanded', String(open));
     });
-    box.append(select);
+    // 点击浮层外或 Esc 收起。
+    const onOutside = event => { const t = event?.target; if (box.contains?.(t)) return; close(); };
+    const onKey = event => { if (event?.key === 'Escape') close(); };
+    document.addEventListener?.('pointerdown', onOutside, true);
+    document.addEventListener?.('keydown', onKey, true);
+    presetCleanups.push(() => { document.removeEventListener?.('pointerdown', onOutside, true); document.removeEventListener?.('keydown', onKey, true); });
+
+    box.append(trigger, menu);
     if (boundName) {
       const mark = el('i', `fa-solid fa-link qm-regex-preset-bound${boundName === presets.current ? '' : ' is-off'}`);
       mark.setAttribute('aria-hidden', 'true');
@@ -379,7 +448,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const bar = el('div', 'qm-regex-field-bar');
     const tag = el('label', 'qm-regex-field-label', label); tag.setAttribute('for', `qm-regex-f-${key}`);
     const expand = el('button', 'qm-regex-expand'); expand.type = 'button';
-    expand.setAttribute('aria-label', `${label}：展开/收起编辑框`); expand.title = '展开/收起';
+    expand.setAttribute('aria-label', `${label}：全屏编辑`); expand.title = '全屏编辑';
     const ei = el('i', 'fa-solid fa-up-right-and-down-left-from-center'); ei.setAttribute('aria-hidden', 'true');
     expand.append(ei);
     bar.append(tag, expand);
@@ -387,7 +456,13 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     area.id = `qm-regex-f-${key}`; area.dataset.key = `field:${key}`;
     area.value = value == null ? '' : String(value);
     area.setAttribute('rows', String(rows));
-    expand.addEventListener('click', () => { if (area.classList?.contains('is-tall')) area.classList.remove('is-tall'); else area.classList?.add('is-tall'); });
+    // C-16 s6：展开 = 全屏编辑（整个字段铺满面板），再次点击退出。
+    expand.addEventListener('click', () => {
+      const on = !wrap.classList?.contains('is-full');
+      wrap.classList?.toggle('is-full', on);
+      expand.setAttribute('aria-pressed', String(on));
+      expand.title = on ? '退出全屏' : '全屏编辑';
+    });
     if (!highlight) { wrap.append(bar, area); return { wrap, area }; }
     const box = el('div', 'qm-regex-codebox');
     const pre = el('pre', 'qm-regex-hl'); pre.setAttribute('aria-hidden', 'true');
@@ -502,37 +577,39 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const placeChecks = new Map();
     for (const [value, label] of PLACEMENTS) { const b = optButton('place', value, label, placeSet.has(value)); placeChecks.set(value, b); placeGrid.append(b); }
     placeField.append(placeGrid);
-    form.append(placeField);
 
     // 其他选项（ST：已禁用 / 在编辑时运行 / 仅影响显示 / 仅影响后端提示词）
     const flagDefs = [['disabled', '已禁用', data.disabled === true], ['runOnEdit', '在编辑时运行', data.runOnEdit !== false],
       ['markdownOnly', '仅影响显示', data.markdownOnly === true], ['promptOnly', '仅影响后端提示词', data.promptOnly === true]];
     const flagField = el('div', 'qm-regex-field');
     flagField.append(el('span', 'qm-regex-field-label', '其他选项'));
-    const flagGrid = el('div', 'qm-regex-optgrid');
+    const flagGrid = el('div', 'qm-regex-optgrid qm-regex-optgrid-col');
     const flagChecks = new Map();
     for (const [key, label, on] of flagDefs) { const b = optButton('flag', key, label, on); flagChecks.set(key, b); flagGrid.append(b); }
     flagField.append(flagGrid);
-    form.append(flagField);
+    // C-16 s6：作用范围与其他选项分左右两列。
+    const optCols = el('div', 'qm-regex-optcols');
+    optCols.append(placeField, flagField);
+    form.append(optCols);
 
-    // 正则表达式查找时的宏 + 最小/最大深度：同排。
+    // 正则表达式查找宏 + 深度：同排。深度合并为单一「深度」标签下的 min/max 两格。
     const subSel = el('select', 'qm-regex-select'); subSel.dataset.key = 'field:substituteRegex';
     for (const [value, label] of SUBSTITUTE) { const o = el('option', '', label); o.value = String(value); if (Number(data.substituteRegex || 0) === value) o.selected = true; subSel.append(o); }
     subSel.value = String(Number(data.substituteRegex || 0));
-    const subLabel = el('label', 'qm-regex-field-label', '正则表达式查找时的宏'); subLabel.setAttribute('for', 'qm-regex-sub'); subSel.id = 'qm-regex-sub';
+    const subLabel = el('label', 'qm-regex-field-label', '正则表达式查找宏'); subLabel.setAttribute('for', 'qm-regex-sub'); subSel.id = 'qm-regex-sub';
     const subWrap = el('div', 'qm-regex-field qm-regex-macro'); subWrap.append(subLabel, subSel);
     const depthMin = el('input', 'qm-regex-input qm-regex-depth'); depthMin.type = 'number'; depthMin.dataset.key = 'field:minDepth';
-    depthMin.value = data.minDepth == null ? '' : String(data.minDepth); depthMin.placeholder = '最小深度';
+    depthMin.value = data.minDepth == null ? '' : String(data.minDepth); depthMin.placeholder = '最小';
     const depthMax = el('input', 'qm-regex-input qm-regex-depth'); depthMax.type = 'number'; depthMax.dataset.key = 'field:maxDepth';
-    depthMax.value = data.maxDepth == null ? '' : String(data.maxDepth); depthMax.placeholder = '最大深度';
+    depthMax.value = data.maxDepth == null ? '' : String(data.maxDepth); depthMax.placeholder = '最大';
     const depthWrap = el('div', 'qm-regex-field qm-regex-depths');
-    depthWrap.append(el('span', 'qm-regex-field-label', '最小 / 最大深度'), depthMin, depthMax);
+    depthWrap.append(el('span', 'qm-regex-field-label', '深度'), depthMin, depthMax);
     const macroRow = el('div', 'qm-regex-macro-row');
     macroRow.append(subWrap, depthWrap);
     form.append(macroRow);
 
-    // 测试模式：默认折叠；展开后输入 + 预览（预览为空时隐藏）。拿当前表单字段跑纯函数，不写 ST。
-    const testIn = growTextarea('testInput', '测试模式 · 输入', '', 2);
+    // C-16 s6：测试区——标题只写「测试」；输入框 + 按钮常驻，预览默认隐藏、运行后浮现；美化模式开关。拿当前表单字段跑纯函数，不写 ST。
+    const testIn = growTextarea('testInput', '测试', '', 2);
     const testOut = el('pre', 'qm-regex-testout', '');
     const testBtn = el('button', 'qm-regex-selact', '运行测试'); testBtn.type = 'button'; testBtn.dataset.key = 'editor-test';
     testBtn.setAttribute('aria-label', '用当前字段测试替换效果');
@@ -560,17 +637,36 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       if (testOut.textContent) testOut.classList?.remove('is-empty'); else testOut.classList?.add('is-empty');
     };
     showOut('');
-    testBtn.addEventListener('click', () => {
+    // 美化模式：开启后预览按可读方式呈现（显示空白/转义、等宽排版）。
+    let beautify = false;
+    const beautifyBtn = el('button', 'qm-regex-beautify'); beautifyBtn.type = 'button'; beautifyBtn.dataset.key = 'editor-beautify';
+    beautifyBtn.setAttribute('role', 'switch'); beautifyBtn.setAttribute('aria-checked', 'false');
+    beautifyBtn.setAttribute('aria-label', '美化模式'); beautifyBtn.title = '美化模式：预览显示空白与换行';
+    const bbi = el('i', 'fa-solid fa-wand-magic-sparkles'); bbi.setAttribute('aria-hidden', 'true');
+    beautifyBtn.append(bbi, el('span', 'qm-regex-beautify-text', '美化模式'));
+    const prettify = text => String(text).replace(/\t/g, '→   ').replace(/ (?= )/g, '·');
+    const runTest = () => {
       try {
         const preview = typeof actions.preview === 'function' ? actions.preview(collect(), testIn.area.value) : { ok: true, output: testIn.area.value };
-        showOut(preview.ok ? preview.output : `⚠ ${preview.error || '正则无效'}`);
+        if (!preview.ok) { showOut(`⚠ ${preview.error || '正则无效'}`); return; }
+        showOut(beautify ? prettify(preview.output) : preview.output);
+        if (beautify) testOut.classList?.add('is-beautify'); else testOut.classList?.remove('is-beautify');
       } catch (error) { showOut(`⚠ ${error?.message || '测试失败'}`); }
+    };
+    beautifyBtn.addEventListener('click', () => {
+      beautify = !beautify;
+      beautifyBtn.classList?.toggle('is-on', beautify);
+      beautifyBtn.setAttribute('aria-checked', String(beautify));
+      if (!testOut.classList?.contains('is-empty')) runTest();
     });
+    testBtn.addEventListener('click', runTest);
+    const testHead = el('div', 'qm-regex-test-head');
+    const testTitle = el('h5', 'qm-regex-test-title', '测试'); testTitle.dataset.key = 'editor-test-title';
+    testHead.append(testTitle, beautifyBtn);
     const testBody = el('div', 'qm-regex-test-body');
     testBody.append(testIn.wrap, testBtn, testOut);
-    const testWrap = el('details', 'qm-regex-test');
-    const testSummary = el('summary', 'qm-regex-test-summary', '测试模式'); testSummary.dataset.key = 'editor-test-toggle';
-    testWrap.append(testSummary, testBody);
+    const testWrap = el('section', 'qm-regex-test');
+    testWrap.append(testHead, testBody);
     form.append(testWrap);
 
     // 底部动作：取消（左）/ 保存（右），图标小按钮分置两端。
@@ -599,6 +695,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   function render(state) {
     if (disposed || !state) return;
+    clearPresetCleanups();
     if (state.editing && typeof actions.saveScript === 'function') { lockPanel(true); renderEditor(state); return; }
     lockPanel(false);
     const { view, sources } = state;
@@ -632,6 +729,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const g = sources.global, p = sources.preset;
     const anyWritable = g.writable === true || p.writable === true;
     // C-14f：管理态总开关（仅可写时出现）。进管理态后行变多选 + 排序 + 点名编辑，批量操作走底部工具条。
+    // C-15 s5：回收站。C-16 s5：控件常显（即便为空），可写时就给入口；点按切到「已删除」列表，再点返回。
+    const recycle = state.recycle && typeof state.recycle === 'object' ? state.recycle : { open: false, count: 0, items: [] };
     if (anyWritable && typeof actions.setManaging === 'function') {
       const manageBtn = el('button', `qm-regex-tool qm-regex-manage-toggle${managing ? ' is-on' : ''}`); manageBtn.type = 'button';
       manageBtn.dataset.key = 'manage';
@@ -640,12 +739,14 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       manageBtn.title = managing ? '管理条目（已开启：多选、删除、复制、排序、改分组、新建、点名编辑）' : '管理条目（多选、删除、复制、排序、改分组、新建、点名编辑）';
       const mg = el('i', 'fa-solid fa-sliders'); mg.setAttribute('aria-hidden', 'true');
       manageBtn.append(mg, el('span', 'qm-regex-tool-label', '管理'));
-      manageBtn.addEventListener('click', () => { try { actions.setManaging(!managing); } catch (error) { notify(error?.message || '管理切换失败', 'warning'); } });
+      // C-16 s5：回收站开着时点「管理」——先退出回收站再进管理，不再卡在回收站视图。
+      manageBtn.addEventListener('click', () => {
+        try { if (recycle.open) actions.setRecycle?.(false); actions.setManaging(!managing); }
+        catch (error) { notify(error?.message || '管理切换失败', 'warning'); }
+      });
       tools.append(manageBtn);
     }
-    // C-15 s5：回收站。有被删条目时出现；点按切到「已删除」列表，再点返回正则列表。
-    const recycle = state.recycle && typeof state.recycle === 'object' ? state.recycle : { open: false, count: 0, items: [] };
-    if (typeof actions.setRecycle === 'function' && (recycle.count > 0 || recycle.open)) {
+    if (typeof actions.setRecycle === 'function' && anyWritable) {
       const binBtn = el('button', `qm-regex-tool qm-regex-recycle-toggle${recycle.open ? ' is-on' : ''}`); binBtn.type = 'button';
       binBtn.dataset.key = 'recycle';
       binBtn.setAttribute('aria-pressed', String(recycle.open));
@@ -748,14 +849,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const node = el('div', 'qm-regex-row qm-regex-trash-row');
       node.dataset.key = `trash:${entry.key}`;
       const name = el('span', 'qm-regex-name', entry.name); name.title = entry.name;
-      if (entry.source === 'preset') name.append(document.createTextNode(entry.preset ? `（预设「${entry.preset}」）` : '（预设）'));
+      // C-16 s5：预设来源的归属改为灰色小字组名（独立 span），不再用「（预设「X」）」括号拼名。
+      let origin = null;
+      if (entry.source === 'preset') {
+        origin = el('span', 'qm-regex-trash-origin', entry.preset || '预设');
+        origin.title = entry.preset ? `来自预设「${entry.preset}」` : '来自预设';
+      }
       const restore = el('button', 'qm-regex-trash-restore'); restore.type = 'button';
       restore.dataset.key = `restore:${entry.key}`;
       restore.setAttribute('aria-label', `还原「${entry.name}」`); restore.title = '还原';
       const ri = el('i', 'fa-solid fa-rotate-left'); ri.setAttribute('aria-hidden', 'true');
       restore.append(ri);
       restore.addEventListener('click', () => { Promise.resolve().then(() => actions.undoRemove({ keys: [entry.key] })).catch(error => notify(error?.message || '还原失败', 'warning')); });
-      node.append(name, restore);
+      node.append(name, ...(origin ? [origin] : []), restore);
       box.append(node);
     }
     card.append(box);
@@ -763,6 +869,6 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return card;
   }
 
-  function dispose() { disposed = true; lockPanel(false); root.replaceChildren?.(); }
+  function dispose() { disposed = true; clearPresetCleanups(); lockPanel(false); root.replaceChildren?.(); }
   return Object.freeze({ render, dispose });
 }

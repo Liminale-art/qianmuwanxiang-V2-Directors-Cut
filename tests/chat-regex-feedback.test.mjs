@@ -287,3 +287,94 @@ test('view shows drop targets on both writable cards while picking; foreign card
   const h2 = fakeDom(); mountChatRegexView({ root: h2, actions: c2.actions }).render(Object.freeze({ ...c2.state(), managing: true, picking: [{ source: 'global', id: 'g1', name: 'A' }] }));
   assert.ok(walkAll(h2).some(n => n.dataset?.key === 'drop:preset:end'));
 });
+
+// ---- C-16 s5：快切行/工具栏布局（反馈项 3/4/5） ----
+test('item3: non-managing group header is clickable on the blank area, not only the arrow', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '状态栏-隐藏' }, { id: 'g2', scriptName: '状态栏-美化' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const folds = [];
+  const stub = { ...ctrl.actions, setFolded: (key, on) => folds.push([key, on]) };
+  const host = fakeDom();
+  const view = mountChatRegexView({ root: host, actions: stub });
+  view.render(ctrl.state());
+  const head = walkAll(host).find(n => n.classList?.contains('qm-regex-group'));
+  assert.ok(head, '有分组头');
+  assert.equal(typeof head.listeners.click, 'function', '组头整体可点');
+  head.listeners.click({ target: head });
+  assert.equal(folds.length, 1, '点空白区触发折叠');
+  assert.match(folds[0][0], /^group:global:/);
+  view.dispose();
+});
+
+test('item4: non-managing writable row keeps the toggle and adds a single-item menu with edit/copy/delete', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const opened = [], copied = [];
+  const stub = { ...ctrl.actions, openEditor: a => opened.push(a), copyMany: a => { copied.push(a); return null; } };
+  const host = fakeDom();
+  const view = mountChatRegexView({ root: host, actions: stub });
+  view.render(ctrl.state());
+  const all = walkAll(host);
+  assert.ok(all.some(n => n.classList?.contains('qm-regex-switch')), '拨杆仍在');
+  const menu = all.find(n => n.dataset?.key === 'rowmenu:global:g1');
+  assert.ok(menu, '有单条菜单按钮');
+  const pop = all.find(n => n.classList?.contains('qm-regex-rowpop'));
+  assert.ok(pop, '有菜单浮层');
+  assert.ok(!pop.classList.contains('is-open'), '默认收起');
+  menu.listeners.click();
+  assert.ok(pop.classList.contains('is-open'), '点击展开');
+  const edit = walkAll(pop).find(n => n.dataset?.key === 'rowedit:global:g1');
+  const copy = walkAll(pop).find(n => n.dataset?.key === 'rowcopy:global:g1');
+  const del = walkAll(pop).find(n => n.dataset?.key === 'rowdel:global:g1');
+  assert.ok(edit && copy && del, '编辑/复制/删除俱全');
+  edit.listeners.click(); await settle();
+  assert.deepEqual(opened.at(-1), { source: 'global', id: 'g1', name: 'A' });
+  copy.listeners.click(); await settle();
+  assert.deepEqual(copied.at(-1), { items: [{ source: 'global', id: 'g1', name: 'A' }] });
+  view.dispose();
+});
+
+test('item5: recycle toggle shows even when empty; clicking 管理 while recycle open returns to the list', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const calls = [];
+  const stub = { ...ctrl.actions, setRecycle: v => calls.push(['recycle', v]), setManaging: v => calls.push(['manage', v]) };
+  const host = fakeDom();
+  const view = mountChatRegexView({ root: host, actions: stub });
+  // 空回收站也显示控件
+  view.render(ctrl.state());
+  assert.ok(walkAll(host).some(n => n.dataset?.key === 'recycle'), '空回收站也有入口');
+  // 回收站打开时点「管理」先关回收站再进管理
+  view.render(Object.freeze({ ...ctrl.state(), recycle: { open: true, count: 2, items: [] } }));
+  const manage = walkAll(host).find(n => n.dataset?.key === 'manage');
+  manage.listeners.click();
+  assert.ok(calls.some(c => c[0] === 'recycle' && c[1] === false), '先关回收站');
+  assert.ok(calls.some(c => c[0] === 'manage'), '再切管理');
+  view.dispose();
+});
+
+test('item5: deleted preset attribution renders as gray small-text group name, not parentheses', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const host = fakeDom();
+  const view = mountChatRegexView({ root: host, actions: ctrl.actions });
+  view.render(Object.freeze({ ...ctrl.state(), recycle: { open: true, count: 1,
+    items: [{ key: 'trash-1', source: 'preset', preset: '预设甲', name: '被删正则' }] } }));
+  const origin = walkAll(host).find(n => n.classList?.contains('qm-regex-trash-origin'));
+  assert.ok(origin, '归属用独立 span');
+  assert.equal(origin.textContent, '预设甲', '只显示组名，无括号');
+  assert.ok(!walkAll(host).some(n => typeof n.text === 'string' && n.text.includes('（预设「')), '不再是括号形式');
+  view.dispose();
+});
+
+test('item5: tools row spreads across the full width (space-between), recycle animation respects reduced-motion', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  const tools = css.match(/\.qm-regex-tools\s*\{[^}]*\}/)?.[0] || '';
+  assert.match(tools, /justify-content:\s*space-between/, '工具行整行铺开');
+  assert.ok(css.includes('.qm-regex-trash-origin'), '归属小字样式');
+  assert.ok(css.includes('.qm-regex-rowpop'), '单条菜单浮层样式');
+});

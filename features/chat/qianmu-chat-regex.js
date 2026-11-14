@@ -65,6 +65,8 @@ export function groupRegexScripts(items) {
 const EXCLUSIVE_MARK = /^\s*[（(]?\s*[A-Za-zＡ-Ｚ一二三四五六七八九十多]\s*选\s*[一1壹]\s*[）)]?[-_·:：|｜/\s]*/u;
 const EXCLUSIVE_TAIL = /[-_·:：|｜/\s]*[（(]\s*[A-Za-zＡ-Ｚ一二三四五六七八九十多]\s*选\s*[一1壹]\s*[）)]\s*$/u;
 const CIRCLED_TAIL = /[\s\-_]*[①-⑳❶-❿⓫-⓴]+\s*$/u;
+// C-16 s4：开头序号前缀——(1) （2） 1. 1、 ——只是给同类条目编号，归类时剥掉（但不能把整名吃空）。
+const LEAD_ORDINAL = /^\s*(?:[（(]\s*\d+\s*[）)]|\d+\s*[.、．])[-_·:：|｜/\s]*/u;
 const EDGE_JUNK = /[-_·:：|｜/\s（()）【】[\]]/u;
 const WORDY = /[A-Za-z0-9]/;
 
@@ -73,6 +75,9 @@ export function regexFamilyKey(name) {
   const bracket = raw.match(LEAD_BRACKET);
   const tag = bracket?.[1]?.trim() || '';
   let core = (tag ? raw.slice(bracket[0].length) : raw).replace(EXCLUSIVE_MARK, '').replace(EXCLUSIVE_TAIL, '');
+  // C-16 s4：带开头序号前缀的条目标为 seq——同核心序列被少量异类打断时可桥接回一段。
+  const seq = !tag && LEAD_ORDINAL.test(core) && core.replace(LEAD_ORDINAL, '').trim() !== '';
+  if (!tag) { const lead = core.replace(LEAD_ORDINAL, ''); if (lead.trim()) core = lead; }
   for (let i = 0; i < 3; i += 1) {
     const next = stripOrdinal(core.replace(CIRCLED_TAIL, ''));
     if (next === core) break;
@@ -80,7 +85,7 @@ export function regexFamilyKey(name) {
   }
   core = core.trim() || raw;
   const cut = core.search(SEPARATOR);
-  return Object.freeze({ tag, core, head: cut > 0 ? core.slice(0, cut).trim() : '' });
+  return Object.freeze({ tag, core, head: cut > 0 ? core.slice(0, cut).trim() : '', seq });
 }
 
 // 两串的共同前缀（fromEnd=共同尾巴），去掉边缘分隔/括号；拉丁词不在词中间截断；需 ≥2 字且含文字，否则返回空。
@@ -123,18 +128,34 @@ export function groupAdjacentRegex(items) {
   const fams = list.map(item => regexFamilyKey(item?.name));
   const out = [], seen = new Map();
   let loose = null;
+  const push = run => {
+    loose = null;
+    const n = (seen.get(run.label) || 0) + 1; seen.set(run.label, n);
+    out.push({ key: n > 1 ? `${run.label}#${n}` : run.label, label: run.label, mode: run.mode, items: list.slice(run.from, run.to) });
+  };
   for (let i = 0; i < list.length;) {
+    // C-16 s4：带开头序号的同核心序列（(1)群聊、(2)群聊…）即便被 ≤2 条异类打断也桥接成一段。
+    if (fams[i].seq) {
+      const core = fams[i].core;
+      const isMember = k => fams[k].seq && fams[k].core === core;
+      let last = i, p = i + 1;
+      while (p < list.length) {
+        if (isMember(p)) { last = p; p += 1; continue; }
+        let f = p; while (f < list.length && !isMember(f)) f += 1;
+        if (f < list.length && f - p <= 2) { last = f; p = f + 1; continue; }
+        break;
+      }
+      if (last > i) { push({ label: core, mode: 'prefix', from: i, to: last + 1 }); i = last + 1; continue; }
+    }
     const pair = i + 1 < list.length ? pairFamily(fams[i], fams[i + 1]) : null;
     if (!pair) {
       if (!loose) { loose = { key: '', label: '', mode: '', items: [] }; out.push(loose); }
       loose.items.push(list[i]); i += 1; continue;
     }
-    loose = null;
     const run = { ...pair };
     let j = i + 2;
     for (; j < list.length; j += 1) { const next = extendFamily(run, fams[j]); if (!next) break; run.label = next; }
-    const n = (seen.get(run.label) || 0) + 1; seen.set(run.label, n);
-    out.push({ key: n > 1 ? `${run.label}#${n}` : run.label, label: run.label, mode: run.mode, items: list.slice(i, j) });
+    push({ label: run.label, mode: run.mode, from: i, to: j });
     i = j;
   }
   return out;
@@ -511,7 +532,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
   readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.503') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.504') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
