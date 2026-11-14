@@ -252,10 +252,10 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     const closePickerOnClickOutside = event => {
         if (disposed || !pickerOpen) return;
         if (!event.target) return;
-        if (characterControl.contains(event.target) || (layer && rolePicker.contains(event.target))) return;
+        if (characterControl.contains?.(event.target) || (layer && rolePicker.contains?.(event.target))) return;
         pickerOpen = false; render();
     };
-    document.addEventListener('click', closePickerOnClickOutside, { capture: true });
+    document.addEventListener?.('click', closePickerOnClickOutside, { capture: true });
     root.replaceChildren(status, tools, nativePolicy, ...(layer ? [] : [suggestions]), loadedCount, list, previewActions);
 
     const createPreviewSection = currentPreview => {
@@ -477,6 +477,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         void run(() => controller.inspectNativeBackupPolicy());
     }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
-        document.removeEventListener('click', closePickerOnClickOutside, { capture: true });
+        document.removeEventListener?.('click', closePickerOnClickOutside, { capture: true });
         if (layer) { root.removeEventListener?.('scroll', placeOverlays); win?.removeEventListener?.('resize', placeOverlays); layer.remove?.(); } } });
 }
