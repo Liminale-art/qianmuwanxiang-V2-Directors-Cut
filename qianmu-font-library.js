@@ -142,8 +142,13 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     if (!node) return;
     try {
       const state = read(), name = target => state[target].enabled ? state.fonts.find(font => font.id === state[target].fontId)?.name || '原生字体' : '原生字体';
-      const parts = [['body', '正文'], ['quote', '引用'], ['st', '界面']].filter(([target]) => state[target]?.enabled).map(([target, label]) => `${label} · ${name(target)}`);
-      node.textContent = !state.enabled ? '当前：字体未启用' : parts.length === 3 ? `当前：全部 · ${name('body')}` : parts.length ? `当前：${parts.join(' / ')}` : '当前：原生字体';
+      // 同一款字体的范围合并成一段（正文·引用 霞鹜文楷 / 界面 思源宋体）；三个范围同款才写「全部」。
+      const scopes = [['body', '正文'], ['quote', '引用'], ['st', '界面']].filter(([target]) => state[target]?.enabled);
+      const byFont = new Map();
+      for (const [target, label] of scopes) { const key = name(target); byFont.set(key, [...(byFont.get(key) || []), label]); }
+      const parts = [...byFont].map(([font, labels]) => `${labels.length === 3 ? '全部' : labels.join('·')} · ${font}`);
+      node.textContent = !state.enabled ? '当前：字体未启用' : parts.length ? `当前：${parts.join(' / ')}` : '当前：原生字体';
+      node.title = node.textContent;
     } catch { node.textContent = '当前：配置待检查'; }
     node.title = node.textContent;
   }

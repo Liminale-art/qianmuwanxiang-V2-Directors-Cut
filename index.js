@@ -10,7 +10,7 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.494';
-import {createFontLibrary} from './qianmu-font-library.js?v=1.59.503';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.506';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
@@ -42,7 +42,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.503';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.505';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.506';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -319,7 +319,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.505';
+const VERSION = '1.59.506';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -393,7 +393,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.505')]);
+    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.506')]);
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
@@ -5997,7 +5997,7 @@ function floorProseLayoutMarkup() {
       <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
       <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
     </div>
-    <div class="qm-font-entry"><small data-font-library-summary>当前：沿用原生字体</small><button type="button" data-font-library>字体库</button></div>
+    <div class="qm-font-entry"><small data-font-library-summary>当前：沿用原生字体</small><button type="button" data-font-library>字库</button></div>
     <div class="sd-prose-controls">${controls}</div>`;
 }
 

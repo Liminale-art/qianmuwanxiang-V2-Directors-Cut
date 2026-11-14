@@ -103,8 +103,16 @@ function sharedEdge(a, b, fromEnd) {
   return part.length >= 2 && /\p{L}/u.test(part.join('')) ? part.join('') : '';
 }
 
+// C-18：手动【标签】= 明确声明「属于名为该标签的组」。所以带【群聊】的条目可以并入自动归出来的「群聊」组
+// （无标签一方的核心或分隔前缀恰为该标签），不再只能和同标签条目成段——否则「移入分组」只多了个前缀却进不了组。
+const fitsTag = (tag, plain) => !plain.tag && (plain.core === tag || plain.head === tag);
 function pairFamily(a, b) {
-  if (a.tag || b.tag) return a.tag && a.tag === b.tag ? { mode: 'tag', label: a.tag } : null;
+  if (a.tag || b.tag) {
+    if (a.tag && a.tag === b.tag) return { mode: 'tag', label: a.tag };
+    if (a.tag && fitsTag(a.tag, b)) return { mode: 'prefix', label: a.tag };
+    if (b.tag && fitsTag(b.tag, a)) return { mode: 'prefix', label: b.tag };
+    return null;
+  }
   if (a.core === b.core) return { mode: 'prefix', label: a.core };
   if (a.head && a.head === b.head) return { mode: 'prefix', label: a.head };
   const pre = sharedEdge(a.core, b.core, false);
@@ -115,8 +123,8 @@ function pairFamily(a, b) {
 
 // 段已定类别后，下一条能否并入；能则返回（可能收窄的）新标签。
 function extendFamily(run, f) {
-  if (run.mode === 'tag') return f.tag === run.label ? run.label : '';
-  if (f.tag) return '';
+  if (run.mode === 'tag') return f.tag === run.label || fitsTag(run.label, f) ? run.label : '';
+  if (f.tag) return f.tag === run.label ? run.label : '';
   if (f.core === run.label || f.head === run.label) return run.label;
   return sharedEdge(run.label, f.core, run.mode === 'suffix');
 }
@@ -180,6 +188,42 @@ export function tagRegexName(name, tag) {
   const body = bracket ? raw.slice(bracket[0].length).trim() : raw;
   if (!dest) return body || raw;
   return `【${dest}】${body}`;
+}
+
+// C-18：条目要属于组 group 时应带的名字——名字本身就属于该组（核心/分隔前缀即组名）则不加标签（并去掉旧标签），
+// 否则写【组名】。group 为空 = 去掉标签。
+export function fitRegexGroupName(name, group) {
+  const dest = text(group).replace(/[【】[\]]/gu, '').trim();
+  const bare = tagRegexName(name, '');
+  if (!dest) return bare;
+  const fam = regexFamilyKey(bare);
+  return fam.core === dest || fam.head === dest ? bare : tagRegexName(bare, dest);
+}
+
+// C-18：把一批条目真正放进组 group——改名（fitRegexGroupName）并挪到该组现有成员的末尾；该组还不存在时，
+// 把这批条目收拢到其中第一条的位置（相邻同标签自然成组）。返回新数组（无变化返回 null）。
+export function joinRegexGroup(list, indices, group) {
+  const pick = new Set(indices);
+  if (!pick.size) return null;
+  const nameOf = script => text(script?.scriptName);
+  const renamed = list.map((script, i) => {
+    if (!pick.has(i)) return script;
+    const to = fitRegexGroupName(nameOf(script), group);
+    return to && to !== nameOf(script) ? { ...script, scriptName: to } : script;
+  });
+  const dest = text(group).replace(/[【】[\]]/gu, '').trim();
+  let next = renamed;
+  if (dest) {
+    const moving = renamed.filter((_, i) => pick.has(i));
+    const rest = renamed.filter((_, i) => !pick.has(i));
+    const runs = groupAdjacentRegex(rest.map(script => ({ name: nameOf(script), script })));
+    const home = [...runs].reverse().find(run => run.label === dest);
+    let at;
+    if (home) at = rest.indexOf(home.items[home.items.length - 1].script) + 1;
+    else at = renamed.slice(0, Math.min(...pick)).filter((_, i) => !pick.has(i)).length;
+    next = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+  }
+  return next.every((script, i) => script === list[i]) ? null : next;
 }
 
 export function summarizeRegexScript(raw, index = 0) {
@@ -645,7 +689,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
   readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.505') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.506') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -1023,7 +1067,13 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // 落定：把拾取（或拖拽传入）的条目移到目标位 before 之前（before 省略＝移到末尾）；完成后清空拾取。
   // 同源＝排序（moveRegexEntries）；跨源（预设↔全局）＝先插目标、后删源，绝不半途丢条目。
   // 目标位按 id 在原始数组里定位（跨「原始顺序 / 自动分组」两种视图都正确），拖拽与点插入走同一路径。
-  const dropMove = ({ source, items, before = null } = {}) => {
+  // C-18：group 非空 = 落点在某个组内（含组内末尾）——落定的条目同时改成属于该组的名字，否则只是位置挨着、进不了组。
+  const dropMove = ({ source, items, before = null, group = '' } = {}) => {
+    const inGroup = script => {
+      if (!text(group)) return script;
+      const to = fitRegexGroupName(text(script?.scriptName), group);
+      return to && to !== text(script?.scriptName) ? { ...script, scriptName: to } : script;
+    };
     const chosen = (Array.isArray(items) && items.length ? items : picking).filter(item => item && text(item.id));
     picking = [];
     if (!chosen.length) { refresh(); return null; }
@@ -1037,7 +1087,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       return structural('调整顺序', async ctx => {
         const out = await editRegexList(ctx, source, raw => {
           const indices = locateIndices(raw, moving);
-          const next = moveRegexEntries(raw, indices, anchorIndex(raw, before));
+          const hit = new Set(indices);
+          const named = raw.map((script, i) => (hit.has(i) ? inGroup(script) : script));
+          const next = moveRegexEntries(named, indices, anchorIndex(raw, before));
           if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
           return { next, touched: indices.map(i => raw[i]), result: true };
         });
@@ -1051,7 +1103,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       const fromList = readRawList(ctx, origin);
       const pickIdx = locateIndices(fromList, moving);
       if (pickIdx.length !== moving.length) throw stale();
-      const scripts = pickIdx.map(i => structuredClone(fromList[i]));
+      const scripts = pickIdx.map(i => inGroup(structuredClone(fromList[i])));
       const destOut = await editRegexList(ctx, source, raw => {
         const next = [...raw]; next.splice(anchorIndex(raw, before), 0, ...scripts);
         return { next, touched: scripts, result: scripts.length };
@@ -1082,8 +1134,14 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     entry.id = text(raw[index]?.id) || text(entry.id) || newRegexId();
     if (!text(entry.scriptName)) throw new Error('请先填写正则名称');
     const next = [...raw]; next[index] = entry;
-    return { next, touched: [raw[index], entry], result: true };
+    return { next, touched: [raw[index], entry], result: entry.id };
   }), keysOf([{ id }], source));
+  // C-18：双击改名——只改名字，其它字段不动。
+  const rename = ({ source, id, name, to } = {}) => {
+    const next = text(to);
+    if (!next || next === text(name)) return Promise.resolve(false);
+    return saveScript({ source, id, name, script: { scriptName: next } });
+  };
   // 分组改名 / 移入移出分组：都是改名字前缀。from 为原组名（未分组传空或「未分组」；单条可带自己的 from），to 为新组名（空 = 移出）。
   const regroup = ({ items, from = '', to = '' } = {}) => structural('调整分组', async ctx => {
     let count = 0;
@@ -1109,24 +1167,21 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
     return { reload: false, result: count };
   }, keysOf(items));
-  // C-15 s9：手动命名组 = 给条目写开头【标签】（不改名字正文；标签优先于自动归类）。tag 空 = 去掉标签。不重载。
-  const retag = ({ items, tag = '' } = {}) => structural('分组命名', async ctx => {
-    let count = 0;
+  // C-15 s9 / C-18：移入分组、组改名 = 让条目真正属于该组（joinRegexGroup：必要时写【标签】，并挪到该组末尾）。
+  // tag 空 = 去掉标签回到自动归类。挪动改变了执行顺序，涉及显示类脚本时重载一次。
+  const retag = ({ items, tag = '' } = {}) => structural('调整分组', async ctx => {
+    let count = 0, reload = false;
     for (const [source, list] of bySource(items)) {
       const out = await editRegexList(ctx, source, raw => {
-        const hit = new Set(locateIndices(raw, list));
-        let hits = 0;
-        const next = raw.map((script, i) => {
-          if (!hit.has(i)) return script;
-          const renamed = tagRegexName(text(script?.scriptName), tag);
-          if (!renamed || renamed === text(script?.scriptName)) return script;
-          hits += 1; return { ...script, scriptName: renamed };
-        });
-        return hits ? { next, touched: [], result: hits } : { next: null, result: 0 };
+        const indices = locateIndices(raw, list);
+        const next = joinRegexGroup(raw, indices, tag);
+        if (!next) return { next: null, result: 0 };
+        const moved = next.some((script, i) => text(script?.id) !== text(raw[i]?.id));
+        return { next, touched: moved ? indices.map(i => raw[i]) : [], result: indices.length };
       });
-      count += out.result || 0;
+      count += out.result || 0; reload ||= out.reload;
     }
-    return { reload: false, result: count };
+    return { reload, result: count };
   }, keysOf(items));
   function setManaging(on) { managing = on === true; if (!managing) { selected.clear(); picking = []; } refresh(); }
   function setSelected(keys, on = true) {
@@ -1204,7 +1259,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
-    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, regroup, retag,
+    readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, rename, regroup, retag,
     setManaging, setSelected, openEditor, closeEditor, importMany, exportMany,
   });
   async function mount(host) {

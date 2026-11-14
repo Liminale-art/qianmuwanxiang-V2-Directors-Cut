@@ -181,8 +181,9 @@ test('C-15: inside the toolkit panel the role picker floats on a panel-level lay
 });
 
 // C-17 s7 (replaces the C-16 "flip above" behaviour): the picker always opens below its anchor — opening upward
-// covered the tab bar — and instead of being squeezed, the panel reserves enough height for 8 rows while it is open.
-test('C-17 s7: the backup role picker always opens below and makes the panel tall enough for 8 rows', async () => {
+// covered the tab bar. C-18: it floats above the toolkit (may extend past the panel's bottom edge) and keeps its
+// 8-row height; the panel itself is no longer stretched.
+test('C-18: the backup role picker opens below as a floating layer with 8 rows and never resizes the panel', async () => {
   const f = fixture(); await f.controller.load();
   const ui = dom(); const panel = ui.root.ownerDocument.createElement('div'); panel.className = 'sd-floor-panel';
   const rect = (top, left, width, height) => ({ top, left, width, height, bottom: top + height, right: left + width });
@@ -205,11 +206,10 @@ test('C-17 s7: the backup role picker always opens below and makes the panel tal
   assert.equal(picker.hidden, false);
   const top = parseInt(picker.style.top, 10), maxH = parseInt(picker.style.maxHeight, 10);
   assert.equal(top, 102, 'opens right below the anchor, never above it');
-  assert.equal(panel.style.minHeight, '442px', 'the panel reserves anchor offset + 8 rows');
-  assert.equal(maxH, 332, 'the list keeps its full 8-row height instead of the old 120px squeeze');
+  assert.equal(panel.style.minHeight, undefined, 'the panel is not stretched to fit the list');
+  assert.equal(maxH, 332, 'the list keeps its full 8-row height even though the panel is only 300px tall');
   await icon.handlers.click();
   assert.equal(picker.hidden, true);
-  assert.equal(panel.style.minHeight, undefined, 'closing the list gives the reserved height back');
   view.dispose();
 });
 

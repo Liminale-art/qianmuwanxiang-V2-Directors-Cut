@@ -1193,7 +1193,9 @@ test('manage toggle turns rows into checkbox + reorder + editable name, and a se
   assert.equal(checks[0].attrs['aria-checked'], 'true', 'g1 已选');
   checks[1].listeners.click();
   assert.deepEqual(calls.at(-1), ['setSelected', ['global:g2', true]]);
-  byKey(host, 'edit:global:g1').listeners.click();
+  // C-18：名字不再单击开编辑（改为双击就地改名），编辑走行尾图标
+  assert.equal(byKey(host, 'edit:global:g1'), undefined);
+  byKey(host, 'rowedit:global:g1').listeners.click(); await settle();
   assert.deepEqual(calls.at(-1), ['openEditor', [{ source: 'global', id: 'g1', name: 'A' }]]);
   // 行尾图标：复制 / 删除（删除走二次确认，fake DOM 无 confirm → 放行）
   byKey(host, 'rowcopy:global:g2').listeners.click(); await settle();
@@ -1391,7 +1393,14 @@ test('managing group header: double-click renames via retag, grip picks the whol
   view.render(Object.freeze({ ...ctrl.state(), managing: true, picking: [{ source: 'global', id: 'g0', name: '独立' }] }));
   const list = walkAll(host).find(n => n.classList?.contains('qm-regex-list'));
   const seq = list.children.map(n => n.dataset?.key || (n.classList?.contains('qm-regex-group') ? 'HEAD' : n.dataset?.id));
-  assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'g1', 'drop:global:g2', 'g2', 'drop:global:end']);
+  // C-18：组内最后一条之后多一个「组内末尾」落点，落定即归入该组
+  assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'g1', 'drop:global:g2', 'g2', 'drop:global:groupend:不发送', 'drop:global:end']);
+  byKey(host, 'drop:global:groupend:不发送').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: null, group: '不发送' }]]);
+  byKey(host, 'drop:global:g2').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g2', name: '不发送片尾' }, group: '不发送' }]], '组内成员之间的落点也归入该组');
+  byKey(host, 'drop:global:g1').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送剧场' } }]], '组头之前 = 组外');
   view.dispose();
 });
 
@@ -1403,19 +1412,25 @@ test('editor 分组 field edits the 【tag】 separately and keeps an untouched 
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   let raw = '[排版]标题';
   const stub = { ...ctrl.actions, readScript: () => ({ scriptName: raw, placement: [2] }),
-    saveScript: args => { saved.push(args); return true; }, closeEditor: () => {} };
+    saveScript: args => { saved.push(args); return true; }, retag: args => { joined.push(args); return 1; }, closeEditor: () => {} };
+  const joined = [];
   const view = mountChatRegexView({ root: host, actions: stub });
   const open = () => view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: 'g1', name: raw } }));
   open();
   assert.equal(byKey(host, 'field:scriptName').value, '标题', '名字栏只显示正文');
   assert.equal(byKey(host, 'field:group').value, '排版', '分组栏显示标签');
-  assert.ok(walkAll(host).some(n => n.tagName === 'datalist' && n.children.some(o => o.value === '排版')), '已有组可选');
+  // C-18：已有组是一排可点的小标签（不再用带系统滚动条的 datalist）
+  assert.equal(walkAll(host).some(n => n.tagName === 'datalist'), false);
+  const chip = byKey(host, 'group-chip:排版');
+  assert.ok(chip && chip.classList.contains('is-on'), '已有组可选，当前组高亮');
   byKey(host, 'editor-save').listeners.click(); await settle();
   assert.equal(saved.at(-1).script.scriptName, '[排版]标题', '未改动时原样保留（不把 [X] 改写成【X】）');
+  assert.equal(joined.length, 0, '分组没变不挪位置');
   open();
   byKey(host, 'field:group').value = '美化';
   byKey(host, 'editor-save').listeners.click(); await settle();
   assert.equal(saved.at(-1).script.scriptName, '【美化】标题');
+  assert.deepEqual(joined.at(-1), { items: [{ source: 'global', id: 'g1', name: '【美化】标题' }], tag: '美化' }, 'C-18：保存后真正归入该组');
   open();
   byKey(host, 'field:group').value = '';
   byKey(host, 'editor-save').listeners.click(); await settle();

@@ -231,33 +231,28 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         // The anchor scrolled out of the visible page: hide instead of floating over the header.
         node.style.visibility = at.bottom < view.top || at.top > view.bottom ? 'hidden' : '';
         if (matchWidth) node.style.width = `${Math.round(at.width)}px`;
-        const width = node.offsetWidth || at.width, inner = panel.clientWidth || box.width, panelH = panel.clientHeight || box.height;
+        const width = node.offsetWidth || at.width, inner = panel.clientWidth || box.width;
         const left = Math.max(8, Math.min(at.left - ox, inner - width - 8));
         // C-16 item1: the dropdown was clamped to whatever room was left below the anchor, so a low
         // anchor squeezed it down to the 120px floor. Measure both gaps and open toward the roomier
         // side; when flipping up, anchor the bottom to just above the control and cap by the space above.
-        // C-17 s7: always open below the anchor (opening upward covered the tab bar). Instead of squeezing
-        // the list into whatever room is left, the panel itself is given enough height while a list is
-        // open (min-height, still bounded by the panel's own max-height), so ≥8 rows stay visible.
+        // C-18: the lists float above the toolkit again (the panel never clips its overlay layer), always
+        // opening below the anchor. Their height is bounded by the viewport, not by the panel, so 8 rows
+        // stay visible even when the panel itself is short — the panel is no longer stretched to fit.
         const below = at.top - oy + at.height + 6;
-        const wanted = Math.min(cap, node.scrollHeight || cap);
-        const need = Math.ceil(below + wanted + 8 + (box.height - panelH));
-        if (need > reserved) { reserved = need; panel.style.minHeight = `${reserved}px`; }
-        const roomBelow = (panel.clientHeight || panelH) - below - 8;
+        const viewport = Number(win?.innerHeight) || 0;
+        const roomBelow = viewport > 0 ? viewport - (at.bottom + 6) - 8 : cap;
         const maxHeight = Math.max(120, Math.min(cap, roomBelow));
         node.style.top = `${Math.round(below)}px`; node.style.left = `${Math.round(left)}px`;
         node.style.maxHeight = `${Math.round(maxHeight)}px`;
     };
     // 8 rows × 36px + 7 gaps × 3px + 10px padding ≈ 320px; a little slack shows the 9th row peeking as a scroll hint.
     const OVERLAY_CAP = 332;
-    let reserved = 0;
-    const releasePanel = () => { if (!reserved) return; reserved = 0; panel?.style?.removeProperty?.('min-height'); };
+    const win = document.defaultView;
     const placeOverlays = () => {
         if (disposed || !layer) return;
-        if (rolePicker.hidden && suggestions.hidden) { releasePanel(); return; }
         placeOverlay(rolePicker, characterControl, false, OVERLAY_CAP); placeOverlay(suggestions, tools, true, OVERLAY_CAP);
     };
-    const win = document.defaultView;
     if (layer) { root.addEventListener('scroll', placeOverlays, { passive: true }); win?.addEventListener?.('resize', placeOverlays); }
     // C-17 s7: click outside the picker or control closes the picker
     const closePickerOnClickOutside = event => {
@@ -492,6 +487,5 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
         document.removeEventListener?.('click', closePickerOnClickOutside, { capture: true });
-        releasePanel();
         if (layer) { root.removeEventListener?.('scroll', placeOverlays); win?.removeEventListener?.('resize', placeOverlays); layer.remove?.(); } } });
 }

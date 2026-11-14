@@ -36,7 +36,8 @@ test('s2: CSS — whole-panel fullscreen, theme radius, macro/depth columns, one
   assert.match(css, /\.sd-floor-panel\.qm-regex-field-full :is\(\.qm-regex-field, \.qm-regex-test\)\.is-full \{[^}]*position: absolute; inset: 0;/, '全屏层以面板为包含块铺满');
   assert.match(css, /\.sd-floor-panel\.qm-regex-field-full \.qm-regex-editor \{ position: static;/, '编辑器让出定位基准');
   assert.match(css, /:is\(\.qm-regex-textarea, \.qm-regex-hl,[^)]*\) \{ border-radius: var\(--qm-button-radius, 8px\); \}/, '文本域圆角随主题');
-  assert.match(css, /\.qm-regex-macro-row \{ display: grid; grid-template-columns: minmax\(0, 11em\)/, '查找宏收窄、深度并排');
+  assert.match(css, /\.qm-regex-macro-row \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/, '查找宏与深度并排、撑满页宽（C-18）');
+  assert.match(css, /\.is-full \{[^}]*border-radius: var\(--qm-regex-full-radius, 22px\)/, '全屏层圆角跟随面板（C-18）');
   assert.ok(css.includes('.qm-regex-testframe'), '美化预览 iframe 样式');
 });
 
@@ -325,7 +326,9 @@ test('s6: preset directory is an inline directory control (not a floating overla
 
 test('s6: carets rotate right when expanded (not down)', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\] \.qm-regex-preset-caret,[^{]*\.qm-regex-preset-group-caret \{ transform: rotate\(90deg\); \}/, 'right rotation on expand');
+  assert.match(css, /\.qm-regex-preset-group-head\[aria-expanded="true"\] \.qm-regex-preset-group-caret \{ transform: rotate\(90deg\); \}/, 'right rotation on expand');
+  assert.ok(!css.includes('.qm-regex-preset-caret'), 'C-18：预设目录标题前不再有箭头');
+  assert.ok(!/\.qm-regex-preset-group-body \{[^}]*border-left/.test(css), 'C-18：组内列表左侧无竖线');
 });
 
 test('s8: a group interrupted by 1-2 foreign rows is bridged back into one run (user case: 群聊 / 不发送群聊 / 群聊-功能)', async () => {

@@ -16,6 +16,39 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // 预设浮层挂的全局监听（点外收起 / Esc）；每次重绘与 dispose 前清掉，避免跨渲染累积。
   let presetCleanups = [];
   const clearPresetCleanups = () => { presetCleanups.splice(0).forEach(fn => { try { fn(); } catch { /* noop */ } }); };
+  // C-18：双击就地改名（条目名、组名）。重绘会换掉所有节点，所以「正在改哪一个」「上一次点的是谁」都记在视图上。
+  // 双击判定只认真实事件的 timeStamp（两次点同一目标且间隔 < 400ms），不用定时器。
+  let lastState = null, renaming = '', lastTap = { key: '', at: 0 };
+  const tapTwice = (key, event) => {
+    const at = Number(event?.timeStamp);
+    if (!Number.isFinite(at) || at <= 0) return false;
+    const hit = lastTap.key === key && at - lastTap.at < 400;
+    lastTap = hit ? { key: '', at: 0 } : { key, at };
+    return hit;
+  };
+  const startRename = key => { if (renaming === key) return; renaming = key; render(lastState); };
+  // 改名输入框：Enter / 失焦提交，Esc 取消；commit(to) 只在内容确有变化时调用。
+  function renameField(key, value, label, commit, allowEmpty = false) {
+    const field = el('input', 'qm-regex-group-input qm-regex-rename'); field.type = 'text';
+    field.value = value; field.dataset.key = `rename:${key}`;
+    field.setAttribute('aria-label', label);
+    let done = false;
+    const finish = ok => {
+      if (done) return;
+      done = true; renaming = '';
+      const to = String(field.value || '').trim();
+      if (!ok || to === value || (!to && !allowEmpty)) { render(lastState); return; }
+      Promise.resolve().then(() => commit(to)).then(result => { if (result === null || result === false) render(lastState); })
+        .catch(error => { notify(error?.message || '改名失败', 'warning'); render(lastState); });
+    };
+    field.addEventListener('keydown', event => {
+      if (event?.key === 'Enter') { event.preventDefault?.(); finish(true); }
+      else if (event?.key === 'Escape') { event.preventDefault?.(); finish(false); }
+    });
+    field.addEventListener('blur', () => finish(true));
+    field.addEventListener('click', event => event?.stopPropagation?.());
+    return field;
+  }
   const el = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -81,13 +114,28 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     node.dataset.id = item.id;
     // C-16 s1：结构性写回涉及本行 → 名前转圈、行内按钮全禁用，直到写回结束。
     const working = busy.includes(`${source}:${item.id}`);
-    const name = el('span', 'qm-regex-name', working ? undefined : item.name);
+    // C-18：在组内时，名字开头与组名相同的【标签】只是「属于本组」的记号，不重复显示。
+    const ownTag = group && typeof actions.familyKey === 'function' && typeof actions.tagName === 'function' && actions.familyKey(item.name).tag === group ? group : '';
+    const shown = ownTag ? actions.tagName(item.name, '') : item.name;
+    const renameKey = `r:${source}:${item.id}`;
+    const canRename = writable && !working && typeof actions.rename === 'function';
+    let name;
+    if (canRename && renaming === renameKey) {
+      name = renameField(`${source}:${item.id}`, shown, `${item.name}：改名`,
+        to => actions.rename({ source, id: item.id, name: item.name, to: ownTag ? actions.tagName(to, ownTag) : to }));
+      name.classList.add('qm-regex-name');
+    } else name = el('span', 'qm-regex-name', working ? undefined : shown);
     if (working) {
       node.classList.add('is-busy'); node.setAttribute('aria-busy', 'true');
       const spin = el('i', 'fa-solid fa-spinner fa-spin qm-regex-busy-mark'); spin.setAttribute('aria-hidden', 'true');
-      name.append(spin, document.createTextNode(` ${item.name}`));
+      name.append(spin, document.createTextNode(` ${shown}`));
     }
     name.title = item.name;
+    if (canRename && renaming !== renameKey) {
+      name.classList.add('is-renamable'); name.title = `${item.name}（双击改名）`;
+      name.addEventListener('dblclick', () => startRename(renameKey));
+      name.addEventListener('click', event => { if (tapTwice(renameKey, event)) startRename(renameKey); });
+    }
     if (writable && bound(`${source}:${item.id}`)) {
       node.classList.add('is-bound');
       const mark = el('i', 'fa-solid fa-link qm-regex-bound-mark'); mark.setAttribute('aria-hidden', 'true');
@@ -133,11 +181,9 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       check.append(tick);
       check.addEventListener('click', () => { try { actions.setSelected?.(key, !on); } catch (error) { notify(error?.message || '选择失败', 'warning'); } });
       // 行尾图标：编辑 / 复制 / 删除；移动图标已挪到行首。拖拽与拾取走同一落定路径。
+      // C-18：名字双击 = 就地改名（原先单击名字开编辑页，改由行尾的编辑图标负责）。
       const act = el('div', 'qm-regex-rowact');
       const openEdit = () => actions.openEditor?.({ source, id: item.id, name: item.name });
-      name.classList.add('is-editable'); name.setAttribute('role', 'button'); name.setAttribute('tabindex', '0');
-      name.dataset.key = `edit:${key}`;
-      name.addEventListener('click', () => { try { openEdit(); } catch (error) { notify(error?.message || '打开编辑失败', 'warning'); } });
       act.append(
         iconBtn('', 'rowedit', '编辑', 'fa-pen', openEdit),
         iconBtn('', 'rowcopy', '复制', 'fa-copy', () => actions.copyMany?.({ items: [{ source, id: item.id, name: item.name }] })),
@@ -206,53 +252,83 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       return box;
     }
     // 拾取态：每条前插「插入到此前」落点（拖拽也 drop 到这里），列表尾再补一个末尾落点。
-    const rowOf = (item, group) => {
+    // C-18：组内的落点（成员之间、组内末尾）带上组名——落定的条目同时归入该组；组头之前的落点 = 组外。
+    const rowOf = (item, group, inside = false) => {
       const node = row(item, source, { ...options, group });
-      return dropHere ? [dropTarget(source, item, across), node] : [node];
+      return dropHere ? [dropTarget(source, item, across, inside ? group : ''), node] : [node];
     };
     // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」——mode 参数不再区分；段按原顺序排列，散条段不加组头。
     const runs = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
-    for (const group of runs) {
-      if (!group.label) { for (const item of group.items) box.append(...rowOf(item, '')); continue; }
+    runs.forEach((group, runIndex) => {
+      if (!group.label) { for (const item of group.items) box.append(...rowOf(item, '')); return; }
       const key = `group:${source}:${group.key || group.label}`;
       const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}`);
-      // 管理态：折叠箭头 + 可双击改名的组名 + 整组拾取/拖拽；落点放在组头前（折叠时也能插到组前）。
+      // 落点放在组头前（折叠时也能插到组前）；组内首条之前不再另放落点。
+      if (dropHere) box.append(dropTarget(source, group.items[0], across));
+      const members = () => {
+        if (isFolded(key)) return;
+        group.items.forEach((item, i) => box.append(...(i ? rowOf(item, group.label, true) : [row(item, source, { ...options, group: group.label })])));
+        if (!dropHere) return;
+        // 组内末尾落点：位置 = 下一段第一条之前（没有下一段 = 列表末尾），并归入本组。
+        const after = runs[runIndex + 1]?.items?.[0] || null;
+        box.append(dropTarget(source, after, across, group.label, true));
+      };
+      // 管理态：折叠箭头 + 本组全选 + 可双击改名的组名 + 整组拾取/拖拽。
       if (options.managing && options.writable) {
-        if (dropHere) box.append(dropTarget(source, group.items[0], across));
         head.classList.add('is-managing');
         head.append(foldButton(key, group.label, 'qm-regex-group-label', ''),
           groupCheck(source, group.items, options.selectedKeys || [], group.key || group.label, group.label), groupName(group, source),
           el('span', 'qm-regex-group-count', `（${group.items.length}）`), groupGrip(group, source, picking));
         box.append(head);
-        if (!isFolded(key)) group.items.forEach((item, i) => box.append(...(i ? rowOf(item, group.label) : [row(item, source, { ...options, group: group.label })])));
-        continue;
+        members();
+        return;
+      }
+      // C-18：非管理态组名也能双击改名（单击仍是折叠）。
+      const renameKey = `g:${key}`;
+      const canRename = options.writable && typeof actions.retag === 'function';
+      if (canRename && renaming === renameKey) {
+        head.append(foldButton(key, group.label, 'qm-regex-group-label', ''),
+          renameField(key, group.label, `分组「${group.label}」改名`,
+            to => actions.retag({ items: group.items.map(it => ({ source, id: it.id, name: it.name })), tag: to }), group.mode === 'tag'));
+        box.append(head);
+        members();
+        return;
       }
       head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
       if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
       // C-16 s5：组头空白区（标题文字、计数间距）整体可折叠，不再只认小箭头。点到总开关/落点等交互件则放行。
+      // 双击改名：第二下到来时折叠态已被前一下（及箭头自己的监听）拨动过，按情况拨回原状并进入改名。
+      const setFold = on => { try { actions.setFolded?.(key, on); } catch (error) { notify(error?.message || '折叠失败', 'warning'); } };
       head.addEventListener('click', event => {
-        const t = event?.target;
-        if (t && typeof t.closest === 'function' && t.closest('.qm-regex-pill, .qm-regex-fold, button')) return;
-        try { actions.setFolded?.(key, !isFolded(key)); } catch (error) { notify(error?.message || '折叠失败', 'warning'); }
+        const t = event?.target, hit = sel => !!(t && typeof t.closest === 'function' && t.closest(sel));
+        if (hit('.qm-regex-pill')) return;
+        const twice = canRename && tapTwice(renameKey, event);
+        if (twice) renaming = renameKey;
+        // 点在箭头/组名上：折叠由 foldButton 自己的监听完成，这里只在双击时带着改名态重绘一次。
+        if (hit('.qm-regex-fold')) { if (twice) setFold(isFolded(key)); return; }
+        if (hit('button')) return;
+        setFold(!isFolded(key));
       });
       box.append(head);
-      if (!isFolded(key)) for (const item of group.items) box.append(...rowOf(item, group.label));
-    }
+      members();
+    });
     if (dropHere) box.append(dropTarget(source, null, across));
     return box;
   }
 
   // C-15 s7：拾取态落点。dropTarget 是独立「插入到此」节点：before 省略＝末尾落点；点按或 drop 都走 dropMove。
   // C-16 s3：across＝异源落点（把拾取条目移入另一来源），加 is-across 标记与「移入预设/全局」文案。
-  function dropTarget(source, before, across = false) {
-    const spot = el('button', `qm-regex-drop${across ? ' is-across' : ''}`); spot.type = 'button';
-    spot.dataset.key = before ? `drop:${source}:${before.id}` : `drop:${source}:end`;
+  // C-18：group 非空 = 组内落点（落定即归入该组）；tail = 组内末尾那一个。
+  function dropTarget(source, before, across = false, group = '', tail = false) {
+    const spot = el('button', `qm-regex-drop${across ? ' is-across' : ''}${tail ? ' is-group-end' : ''}`); spot.type = 'button';
+    spot.dataset.key = tail ? `drop:${source}:groupend:${group}` : before ? `drop:${source}:${before.id}` : `drop:${source}:end`;
     const dest = source === 'preset' ? '预设' : '全局';
-    const label = across
+    const label = tail ? `移到分组「${group}」末尾`
+      : across
       ? (before ? `移入${dest}「${before.name}」之前` : `移入${dest}末尾`)
       : (before ? `移动到「${before.name}」之前` : '移动到末尾');
     spot.setAttribute('aria-label', label); spot.title = label;
-    const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null });
+    const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null, ...(group ? { group } : {}) });
     const go = () => { Promise.resolve().then(run).catch(error => notify(error?.message || '移动失败', 'warning')); };
     spot.addEventListener('click', go);
     spot.addEventListener('dragover', event => { event?.preventDefault?.(); });
@@ -412,8 +488,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     trigger.dataset.key = 'preset';
     trigger.setAttribute('aria-expanded', String(dirOpen));
     trigger.setAttribute('aria-label', `预设目录，当前：${presets.current || '无预设'}${boundName ? `，本聊天绑定：${boundName}` : ''}`);
-    const caret = el('i', 'fa-solid fa-chevron-right qm-regex-preset-caret'); caret.setAttribute('aria-hidden', 'true');
-    trigger.append(caret, el('span', 'qm-regex-preset-title', '预设目录'),
+    trigger.append(el('span', 'qm-regex-preset-title', '预设目录'),
       el('span', 'qm-regex-preset-current', presets.current || '（无预设）'));
     if (disabled) { trigger.disabled = true; if (presets.busy) trigger.setAttribute('aria-busy', 'true'); }
     triggerRow.append(trigger);
@@ -427,8 +502,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const dir = el('div', 'qm-regex-preset-dir');
     dir.setAttribute('role', 'radiogroup');
     dir.setAttribute('aria-label', '预设列表');
-    // 单选行：圆点 + 文字（组内为版本号标签，组外为预设全名）；本聊天绑定的那条带链环。
-    const option = (name, tagText) => {
+    // 单选行：圆点 + 预设名（+ 版本号标签，仅版本系列的成员有）；本聊天绑定的那条带链环。
+    const option = (name, tagText, shownName = name) => {
       const on = name === presets.current;
       const node = el('button', `qm-regex-preset-option${on ? ' is-current' : ''}`);
       node.type = 'button';
@@ -436,7 +511,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(on));
       node.setAttribute('aria-label', `${name}${name === boundName ? '（本聊天绑定）' : ''}`); node.title = name;
       const dot = el('span', 'qm-regex-preset-radio'); dot.setAttribute('aria-hidden', 'true');
-      node.append(dot, tagText === undefined ? el('span', 'qm-regex-preset-name', name) : el('span', 'qm-regex-preset-ver', tagText));
+      node.append(dot, el('span', 'qm-regex-preset-name', shownName));
+      if (tagText !== undefined) node.append(el('span', 'qm-regex-preset-ver', tagText));
       if (name === boundName) { const link = el('i', 'fa-solid fa-link qm-regex-preset-optbound'); link.setAttribute('aria-hidden', 'true'); node.append(link); }
       node.addEventListener('click', () => {
         if (!name || name === presets.current) return;
@@ -464,7 +540,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         if (next) group.classList?.add('is-open'); else group.classList?.remove('is-open');
       });
       const body = el('div', 'qm-regex-preset-group-body');
-      for (const item of row.items) body.append(option(item.name, item.versionText ? `v${item.versionText}` : '原版'));
+      for (const item of row.items) body.append(option(item.name, item.versionText ? `v${item.versionText}` : '原版', row.base));
       group.append(head, body);
       dir.append(group);
     }
@@ -518,6 +594,11 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (on) for (const other of root.querySelectorAll?.('.is-full') || []) if (other !== target) other.classList?.remove('is-full');
     target.classList?.toggle('is-full', on);
     panel?.classList?.toggle('qm-regex-field-full', on);
+    // C-18：全屏层盖住整个面板，四角跟面板（= 当前主题）的圆角走；它不是面板的直接子节点，inherit 取不到。
+    try {
+      const radius = on && panel ? root.ownerDocument?.defaultView?.getComputedStyle?.(panel)?.borderRadius : '';
+      if (radius) target.style?.setProperty?.('--qm-regex-full-radius', radius); else target.style?.removeProperty?.('--qm-regex-full-radius');
+    } catch (_) {}
     button.setAttribute('aria-pressed', String(on));
     button.title = on ? '退出全屏' : '全屏';
     const icon = button.querySelector?.('i');
@@ -616,9 +697,19 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const groupLabel = el('label', 'qm-regex-field-label', '分组'); groupLabel.setAttribute('for', 'qm-regex-group');
       const groupWrap = el('div', 'qm-regex-field'); groupWrap.append(groupLabel, groupField);
       if (known.length) {
-        const list = el('datalist'); list.id = 'qm-regex-group-list';
-        for (const name of known) { const o = el('option'); o.value = name; list.append(o); }
-        groupField.setAttribute('list', list.id); groupWrap.append(list);
+        // C-18：已有组做成一排可点的小标签（原生 datalist 的下拉带系统滚动条，样式改不了）。
+        const chips = el('div', 'qm-regex-group-chips');
+        chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', '已有分组');
+        for (const name of known) {
+          const chip = el('button', `qm-regex-group-chip${name === origTag ? ' is-on' : ''}`, name); chip.type = 'button';
+          chip.dataset.key = `group-chip:${name}`;
+          chip.addEventListener('click', () => {
+            groupField.value = groupField.value.trim() === name ? '' : name;
+            for (const other of chips.children) { if (other.textContent === groupField.value) other.classList?.add('is-on'); else other.classList?.remove('is-on'); }
+          });
+          chips.append(chip);
+        }
+        groupWrap.append(chips);
       }
       form.append(groupWrap);
     }
@@ -786,8 +877,14 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const run = isNew
         ? actions.insert({ source, script })
         : actions.saveScript({ source, id: editing.id, name: editing.name, script });
-      Promise.resolve().then(() => run).then(result => { if (result !== null) actions.closeEditor?.(); })
-        .catch(error => notify(error?.message || '保存失败', 'warning'));
+      // C-18：分组有变动时，保存后把条目真正放进该组（挪到组内末尾）；否则只是名字多了个前缀。
+      const tag = groupField ? groupField.value.trim() : '';
+      Promise.resolve().then(() => run).then(async result => {
+        if (result === null) return;
+        const id = typeof result === 'string' && result ? result : editing.id;
+        if (groupField && tag && tag !== origTag && id && typeof actions.retag === 'function') await actions.retag({ items: [{ source, id, name: script.scriptName }], tag });
+        actions.closeEditor?.();
+      }).catch(error => notify(error?.message || '保存失败', 'warning'));
     });
     foot.append(cancel, save);
 
@@ -797,6 +894,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
 
   function render(state) {
     if (disposed || !state) return;
+    lastState = state;
     clearPresetCleanups();
     if (state.editing && typeof actions.saveScript === 'function') { lockPanel(true); renderEditor(state); return; }
     lockPanel(false);
@@ -889,6 +987,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (dock) dock.append(selectionBar([...selectedSet], sources));
     root.replaceChildren(...head, toolsCard, ...(dock ? [dock] : []), globalCard, presetCard);
     if (typeof scroll === 'number') root.scrollTop = scroll;
+    // 改名输入框出现时直接聚焦并全选。
+    if (renaming) { const field = [...(root.querySelectorAll?.('.qm-regex-rename') || [])][0]; try { field?.focus?.(); field?.select?.(); } catch (_) {} if (!field) renaming = ''; return; }
     if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
   }
 
@@ -902,23 +1002,24 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }).filter(Boolean);
     const count = items.length;
     bar.append(el('span', 'qm-regex-selbar-count', `已选 ${count} 条`));
-    const act = (label, className, key, run) => {
-      const b = el('button', `qm-regex-selact ${className}`); b.type = 'button';
+    // C-18：操作按钮改纯图标（名称留在 aria-label / title）。
+    const act = (label, className, key, glyph, run) => {
+      const b = el('button', `qm-regex-selact is-icon ${className}`); b.type = 'button';
       b.dataset.key = `sel-act:${key}`;
       b.setAttribute('aria-label', label); b.title = label;
-      b.append(el('span', 'qm-regex-selact-text', label));
+      const ic = el('i', `fa-solid ${glyph}`); ic.setAttribute('aria-hidden', 'true'); b.append(ic);
       if (!count && key !== 'cancel') { b.disabled = true; }
       b.addEventListener('click', () => { if (b.disabled) return; Promise.resolve().then(() => run(items)).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
       return b;
     };
     bar.append(
       // C-17 s5：导出选中条目（导入在各卡头，按钮在哪张卡就导入到哪里）。
-      act('导出', '', 'export', its => actions.exportMany({ items: its })),
-      act('删除', 'is-danger', 'del', its => { if (!confirmDelete(its.length)) return; return actions.removeMany({ items: its }); }),
-      act('复制', '', 'copy', its => actions.copyMany({ items: its })),
-      // C-15 s9：移入分组 = 写【标签】（与双击改名同一模型）；留空 = 去掉标签回到自动归类。
-      act('移入分组', '', 'group', its => { const to = askGroup(); if (to === null) return; return typeof actions.retag === 'function' ? actions.retag({ items: its, tag: to }) : actions.regroup({ items: its, to }); }),
-      act('取消', 'is-quiet', 'cancel', () => actions.setManaging(false)),
+      act('导出', '', 'export', 'fa-file-export', its => actions.exportMany({ items: its })),
+      act('删除', 'is-danger', 'del', 'fa-trash-can', its => { if (!confirmDelete(its.length)) return; return actions.removeMany({ items: its }); }),
+      act('复制', '', 'copy', 'fa-copy', its => actions.copyMany({ items: its })),
+      // C-15 s9 / C-18：移入分组 = 真正归入该组（必要时写【标签】并挪到该组末尾）；留空 = 去掉标签回到自动归类。
+      act('移入分组', '', 'group', 'fa-folder-plus', its => { const to = askGroup(); if (to === null) return; return typeof actions.retag === 'function' ? actions.retag({ items: its, tag: to }) : actions.regroup({ items: its, to }); }),
+      act('取消', 'is-quiet', 'cancel', 'fa-xmark', () => actions.setManaging(false)),
     );
     return bar;
   }

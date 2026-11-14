@@ -18,13 +18,13 @@ const fontUiVersion = '1.59.500';
 const fontMatchVersion = '1.59.503';
 // 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
 // 1.59.504 (节点 C-16): 快切/备份页只改 chat-regex/view、chat-recovery-view，字体链与 appearance-session 不动。
-const manifestVersion = '1.59.505';
+const manifestVersion = '1.59.506';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
 ]);
 const retained = new Map([
-  ...['qianmu-font-library-view.js', 'qianmu-font-library.js'].map(file => [file, fontMatchVersion]),
+  ['qianmu-font-library-view.js', fontMatchVersion], ['qianmu-font-library.js', '1.59.506'],
   ...['qianmu-font-runtime.js', 'qianmu-font-library-state.js'].map(file => [file, fontScopeVersion]),
   ['qianmu-font-sources.js', fontFixVersion],
   ['qianmu-creative-social.js', '1.59.460'],
