@@ -376,14 +376,18 @@ export async function editRegexList(context, source, mutate) {
 }
 const locateIndices = (list, items) => [...locateAll(list, items.map(item => ({ ...item, enabled: true }))).keys()];
 
-// 编辑子页的「测试」：与 ST 引擎同一套替换语义的纯函数预览——"/pat/flags" 或纯文本模式，
-// {{match}} 即 $0，$1 / $<名> 取捕获组且先按「修剪掉」逐条剔除。不展开宏（预览只看正则本身）。
+// 编辑子页的「测试」：与 ST 引擎同一套替换语义的纯函数预览。查找串按 ST utils.regexFromString 解析——
+// "/pat/flags" 取 flags；不带斜杠的串直接当正则源（不是纯文本！C-17 修：旧实现把它转义成字面量，导致预览永远原样输出）。
+// {{match}} 即 $0，$1 / $<名> 取捕获组且先按「修剪掉」逐条剔除，缺组替换为空。不展开宏（预览只看正则本身）。
 export function parseRegexLiteral(source) {
   const raw = typeof source === 'string' ? source : '';
   if (!raw) return null;
-  const literal = /^\/([\s\S]+)\/([dgimsuvy]*)$/.exec(raw);
-  try { return literal ? new RegExp(literal[1], literal[2]) : new RegExp(raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); }
-  catch (_) { return null; }
+  try {
+    const m = raw.match(/(\/?)(.+)\1([a-z]*)/i);
+    if (!m) return null;
+    if (m[3] && !/^(?!.*?(.).*?\1)[gmixXsuUAJ]+$/.test(m[3])) return new RegExp(raw);
+    return new RegExp(m[2], m[3]);
+  } catch (_) { return null; }
 }
 export function previewRegexScript({ findRegex = '', replaceString = '', trimStrings = [] } = {}, input = '') {
   const pattern = parseRegexLiteral(findRegex);
@@ -395,7 +399,10 @@ export function previewRegexScript({ findRegex = '', replaceString = '', trimStr
     const hasGroups = typeof args.at(-1) === 'object' && args.at(-1) !== null;
     const groups = hasGroups ? args.at(-1) : {};
     const captures = args.slice(0, hasGroups ? -3 : -2);
-    return template.replace(/\$(\d+)|\$<([^>]+)>/g, (_, num, name) => trim(num !== undefined ? captures[Number(num)] : groups?.[name]));
+    return template.replace(/\$(\d+)|\$<([^>]+)>/g, (_, num, name) => {
+      const hit = num !== undefined ? captures[Number(num)] : groups?.[name];
+      return hit ? trim(hit) : '';
+    });
   });
   return { ok: true, output, error: '' };
 }

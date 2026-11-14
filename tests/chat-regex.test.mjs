@@ -991,10 +991,12 @@ test('assignRegexGroup rewrites the name prefix and clears it when moving out', 
   assert.equal(assignRegexGroup('【标签】甲', { from: '标签', to: '乙' }), '【乙】甲', '方括号标签改写');
 });
 
-test('parseRegexLiteral reads /pat/flags and falls back to escaped literal text', () => {
+test('parseRegexLiteral mirrors ST regexFromString: /pat/flags, unslashed = raw pattern', () => {
   assert.equal(parseRegexLiteral('/a.c/i').flags, 'i');
   assert.equal(parseRegexLiteral('/a.c/i').source, 'a.c');
-  assert.equal(parseRegexLiteral('a.c').source, 'a\\.c', '纯文本转义');
+  assert.equal(parseRegexLiteral('a.c').source, 'a.c', 'C-17：不带斜杠按原始正则源（同 ST），不再转义');
+  assert.equal(parseRegexLiteral('a.c').flags, '', '无斜杠无 flags');
+  assert.ok(parseRegexLiteral('/a/zz').test('/a/zz'), '非法 flags → 整串当正则（同 ST）');
   assert.equal(parseRegexLiteral('/(/'), null, '非法正则 → null');
   assert.equal(parseRegexLiteral(''), null);
 });
@@ -1452,8 +1454,14 @@ test('item6: 测试区标题仅「测试」、预览默认隐藏触发后显示�
   const input = walkAll(host).find(n => n.dataset?.key === 'field:testInput');
   input.value = 'aaa';
   walkAll(host).find(n => n.dataset?.key === 'editor-test').listeners.click();
-  assert.ok(!out.classList.contains('is-empty'), '运行后预览显示');
+  const frame = walkAll(host).find(n => n.classList?.contains('qm-regex-testframe'));
+  assert.ok(frame && frame.hidden === false, 'C-17：美化模式运行后用沙箱 iframe 渲染');
+  assert.equal(frame.attrs.sandbox, 'allow-same-origin', '沙箱不给 allow-scripts');
+  assert.ok(String(frame.srcdoc).endsWith('bbb'), '渲染的是替换后的结果');
+  beautify.listeners.click();
+  assert.ok(!out.classList.contains('is-empty'), '切回代码模式后文本预览显示');
   assert.equal(out.textContent, 'bbb');
+  assert.equal(frame.hidden, true, '代码模式隐藏 iframe');
   view.dispose();
 });
 
