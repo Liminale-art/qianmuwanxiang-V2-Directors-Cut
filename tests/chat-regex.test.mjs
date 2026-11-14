@@ -867,7 +867,7 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false, value: '', selected: false,
       classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on === undefined ? this.set.has(c) : !on) this.set.delete(c); else this.set.add(c); } },
       append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
-      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
     Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
     return node;
   };
@@ -879,23 +879,21 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: name => { picks.push(name); } } });
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '乙' } }));
   assert.equal(host.children[0].className.includes('qm-regex-preset'), true, '预设快切在页顶');
-  // C-16 item2：原生 <select> 换成自定义下拉（触发钮 + 浮层列表），避免移动端整页弹窗、风格对齐幕外
+  // C-16 item2 → C-17 s6：原生 <select> 换成触发钮 + 内联可折叠目录（不再浮层），避免移动端整页弹窗
   const trigger = walk(host).find(n => n.dataset.key === 'preset');
   assert.ok(trigger && trigger.tagName === 'button', '触发器是按钮不是 select');
-  assert.equal(trigger.attrs['aria-haspopup'], 'listbox');
   assert.ok(walk(trigger).some(n => n.textContent === '甲'), '触发器显示当前预设');
-  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-menu'));
-  assert.ok(menu, '有浮层列表');
-  assert.equal(menu.attrs.role, 'listbox');
-  assert.ok(!menu.classList.contains('is-open'), '默认收起');
+  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-dir'));
+  assert.ok(menu, '有内联目录');
+  assert.equal(trigger.attrs['aria-expanded'], 'false', '默认收起');
   const options = walk(host).filter(n => n.classList?.contains('qm-regex-preset-option'));
   assert.deepEqual(options.map(o => o.textContent), ['甲', '乙（本聊天）']);
   assert.ok(walk(host).some(n => n.classList?.contains('qm-regex-preset-bound') && n.classList.contains('is-off')), '当前不是绑定预设 → 链环转灰');
   trigger.listeners.click();
-  assert.ok(menu.classList.contains('is-open'), '点触发器展开');
+  assert.equal(trigger.attrs['aria-expanded'], 'true', '点触发器展开');
   options.find(o => o.dataset.value === '乙').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙']);
-  assert.ok(!menu.classList.contains('is-open'), '选中后收起');
+  assert.equal(trigger.attrs['aria-expanded'], 'false', '选中后收起');
   trigger.listeners.click();
   options.find(o => o.dataset.value === '甲').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙'], '选回当前预设不触发');
@@ -921,7 +919,7 @@ test('the preset dropdown folds version series into groups and keeps lone preset
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: () => {} } });
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '写作 v2' } }));
-  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-menu'));
+  const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-dir'));
   const group = menu.children.find(n => n.classList?.contains('qm-regex-preset-group'));
   assert.ok(group, '同系列预设进分组');
   const groupLabel = walk(group).find(n => n.classList?.contains('qm-regex-preset-group-label'));
@@ -944,7 +942,7 @@ test('preset quick switch is wired natively and never writes presets itself', as
   assert.match(index, /preset: typeof b\?\.preset === 'string' \? b\.preset : ''/, '读路径带出 preset');
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('.qm-regex-preset-trigger'), '自定义触发钮样式');
-  assert.ok(css.includes('.qm-regex-preset-menu'), '自定义浮层样式');
+  assert.ok(css.includes('.qm-regex-preset-dir'), '内联目录样式（C-17 s6 取代浮层）');
 });
 
 // —— C-14f 条目管理：纯函数 ——

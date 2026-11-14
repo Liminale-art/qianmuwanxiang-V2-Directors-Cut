@@ -241,7 +241,7 @@ test('s5: selbar includes import and export buttons', async () => {
   assert.ok(dock);
   const bar = dock.children[0];
   assert.ok(bar.classList.contains('qm-regex-selbar'));
-  const buttons = walkAll(bar).filter(n => n.tagName === 'BUTTON' && n.dataset?.key?.startsWith('sel-act:'));
+  const buttons = [...bar.children].filter(n => n.tagName === 'button' && n.dataset?.key?.startsWith('sel-act:'));
   const importBtn = buttons.find(b => b.dataset.key === 'sel-act:import');
   const exportBtn = buttons.find(b => b.dataset.key === 'sel-act:export');
   assert.ok(importBtn, 'import button exists');
@@ -254,7 +254,9 @@ test('s6: preset directory is inline collapsible (not floating overlay)', async 
   assert.ok(!css.match(/\.qm-regex-preset-menu.*position: absolute/), 'no absolute positioning');
   assert.match(css, /\.qm-regex-preset-dir/, 'uses dir class');
   assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\] ~ \.qm-regex-preset-dir \{ display: flex;/, 'sibling selector for expansion');
-  const { host, view } = await mountList();
+  const presetState = { presets: { available: true, names: ['preset-a', 'preset-b'], current: 'preset-a' } };
+  const presetActions = { selectPreset: () => {} };
+  const { host, view } = await mountList(presetState, presetActions);
   const box = walkAll(host).find(n => n.classList?.contains('qm-regex-preset-box'));
   assert.ok(box, 'box exists');
   const trigger = walkAll(box).find(n => n.classList?.contains('qm-regex-preset-trigger'));
@@ -268,5 +270,4 @@ test('s6: preset directory is inline collapsible (not floating overlay)', async 
 test('s6: caret rotates right when expanded (not down)', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\].*\.qm-regex-preset-caret.*rotate\(90deg\)/, 'right rotation on expand');
-  view.dispose();
 });
