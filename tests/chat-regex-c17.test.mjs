@@ -235,25 +235,80 @@ test('s5: groupCheck has all/some/none states', async () => {
   view.dispose();
 });
 
-test('s5: selbar includes import and export buttons', async () => {
-  const { host, view } = await mountList({ managing: true });
+test('s5: selbar exports the selection; import sits in each card head and targets that source', async () => {
+  const calls = [];
+  const { host, view } = await mountList({ managing: true, selected: ['global:g1'] },
+    { importMany: a => calls.push(['import', a]), exportMany: a => calls.push(['export', a]) });
   const dock = walkAll(host).find(n => n.classList?.contains('qm-regex-seldock'));
   assert.ok(dock);
   const bar = dock.children[0];
   assert.ok(bar.classList.contains('qm-regex-selbar'));
-  const buttons = [...bar.children].filter(n => n.tagName === 'button' && n.dataset?.key?.startsWith('sel-act:'));
-  const importBtn = buttons.find(b => b.dataset.key === 'sel-act:import');
-  const exportBtn = buttons.find(b => b.dataset.key === 'sel-act:export');
-  assert.ok(importBtn, 'import button exists');
-  assert.ok(exportBtn, 'export button exists');
+  assert.ok(!byKey(host, 'sel-act:import'), '导入不在多选栏（没选中时也要能用）');
+  byKey(host, 'sel-act:export').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['export', { items: [{ source: 'global', id: 'g1', name: 'A' }] }]);
+  const importBtn = byKey(host, 'import:global');
+  assert.ok(importBtn && !importBtn.disabled, '卡头导入按钮');
+  importBtn.listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['import', { source: 'global' }]);
   view.dispose();
 });
 
-test('s6: preset directory is inline collapsible (not floating overlay)', async () => {
+test('s5: managing group head carries its own tri-state checkbox that selects just that group', async () => {
+  const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
+  const host = fakeDom();
+  const st = fakeST({ global: [{ id: 'a', scriptName: '群聊-外框' }, { id: 'b', scriptName: '群聊-正文' }, { id: 'c', scriptName: '独立' }] });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
+  const picked = [];
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setSelected: (keys, on) => picked.push([keys, on]) } });
+  view.render(Object.freeze({ ...ctrl.state(), managing: true, selected: ['global:a'] }));
+  const check = byKey(host, 'groupcheck:global:群聊');
+  assert.ok(check, '组头有全选框');
+  assert.equal(check.attrs['aria-checked'], 'mixed', '选了一半 = 半选');
+  check.listeners.click({ stopPropagation() {} });
+  assert.deepEqual(picked.at(-1), [['global:a', 'global:b'], true], '只选本组');
+  assert.equal(byKey(host, 'groupcheck:global').attrs['aria-checked'], 'mixed', '卡头全选框管整个来源');
+  view.dispose();
+});
+
+test('s5: import appends parsed scripts through the normal write path; export hands a native-format file', async () => {
+  const { parseRegexImport, buildRegexExport } = await import('../features/chat/qianmu-chat-regex.js');
+  const parsed = parseRegexImport(['{"id":"g1","scriptName":"新","findRegex":"a"}', '[{"scriptName":"二","findRegex":"/b/g","disabled":true}, 3]', 'not json'], { taken: ['g1'], makeId: () => 'fresh' });
+  assert.deepEqual(parsed.scripts.map(s => s.scriptName), ['新', '二']);
+  assert.equal(parsed.scripts[0].id, 'fresh', '与已有 id 撞车时换新 id，不覆盖已有条目');
+  assert.deepEqual(parsed.scripts[1].placement, [2], '缺省字段补齐');
+  assert.equal(parsed.scripts[1].disabled, true);
+  assert.equal(parsed.skipped, 2);
+  assert.equal(buildRegexExport([]), null);
+  assert.deepEqual(JSON.parse(buildRegexExport([{ id: 'x', scriptName: 'a/b' }]).json), { id: 'x', scriptName: 'a/b' }, '单条 = 脚本对象（ST 原生格式）');
+  assert.equal(buildRegexExport([{ scriptName: 'a/b' }]).name, 'regex-a_b.json');
+  assert.equal(JSON.parse(buildRegexExport([{ id: 'x' }, { id: 'y' }]).json).length, 2, '多条 = 数组');
+
+  const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', findRegex: 'a' }, { id: 'g2', scriptName: 'B', findRegex: 'b' }] });
+  const notes = [], files = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, t) => notes.push([m, t]),
+    pickFiles: async () => ['{"id":"g1","scriptName":"导入的","findRegex":"x"}'], saveFile: file => files.push(file) });
+  assert.equal(await ctrl.actions.importMany({ source: 'global' }), 1);
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['A', 'B', '导入的'], '追加到末尾');
+  assert.notEqual(st.ctx.extensionSettings.regex[2].id, 'g1');
+  assert.equal(st.log.saves, 1, '一次保存');
+  assert.equal(notes.at(-1)[1], 'success');
+  assert.equal(await ctrl.actions.exportMany({ items: [{ source: 'global', id: 'g2', name: 'B' }] }), 1);
+  assert.equal(JSON.parse(files[0].json).scriptName, 'B');
+  // 取消选文件 = 什么都不做；文件里没有正则 = 提示、不写盘。
+  const idle = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, t) => notes.push([m, t]), pickFiles: async () => [] });
+  assert.equal(await idle.actions.importMany({ source: 'global' }), 0);
+  const junk = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (m, t) => notes.push([m, t]), pickFiles: async () => ['{}'] });
+  assert.equal(await junk.actions.importMany({ source: 'global' }), 0);
+  assert.equal(notes.at(-1)[1], 'warning');
+  assert.equal(st.log.saves, 1, '无效文件不写盘');
+});
+
+test('s6: preset directory is an inline directory control (not a floating overlay)', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(!css.match(/\.qm-regex-preset-menu.*position: absolute/), 'no absolute positioning');
-  assert.match(css, /\.qm-regex-preset-dir/, 'uses dir class');
-  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\] ~ \.qm-regex-preset-dir \{ display: flex;/, 'sibling selector for expansion');
+  assert.ok(!/\.qm-regex-preset-dir \{[^}]*position: (absolute|fixed)/.test(css), '目录不是浮层');
+  assert.match(css, /\.qm-regex-preset-box\.is-open > \.qm-regex-preset-dir \{ display: flex; \}/, '顶行展开整个目录');
+  assert.match(css, /\.qm-regex-preset-group\.is-open > \.qm-regex-preset-group-body \{ display: flex; \}/, '组可单独展开');
   const presetState = { presets: { available: true, names: ['preset-a', 'preset-b'], current: 'preset-a' } };
   const presetActions = { selectPreset: () => {} };
   const { host, view } = await mountList(presetState, presetActions);
@@ -264,10 +319,41 @@ test('s6: preset directory is inline collapsible (not floating overlay)', async 
   assert.ok(trigger, 'trigger exists');
   assert.ok(dir, 'dir exists');
   assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false', 'initially collapsed');
+  assert.ok(box.children.includes(dir), '目录是盒子的直接子节点，is-open 选择器才匹配得到');
   view.dispose();
 });
 
-test('s6: caret rotates right when expanded (not down)', async () => {
+test('s6: carets rotate right when expanded (not down)', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\].*\.qm-regex-preset-caret.*rotate\(90deg\)/, 'right rotation on expand');
+  assert.match(css, /\.qm-regex-preset-trigger\[aria-expanded="true"\] \.qm-regex-preset-caret,[^{]*\.qm-regex-preset-group-caret \{ transform: rotate\(90deg\); \}/, 'right rotation on expand');
+});
+
+test('s8: a group interrupted by 1-2 foreign rows is bridged back into one run (user case: 群聊 / 不发送群聊 / 群聊-功能)', async () => {
+  const { groupAdjacentRegex } = await import('../features/chat/qianmu-chat-regex.js');
+  const list = ['群聊-外框（日间）', '群聊-外框（夜间）', '群聊-正文（简约头像）', '（10）不发送群聊', '群聊-功能（系统）', '群聊-功能（内部）', '(A选一)电报状态栏', '(A选一)月台状态栏']
+    .map((name, i) => ({ id: `r${i}`, name }));
+  const runs = groupAdjacentRegex(list);
+  assert.deepEqual(runs.map(r => [r.label, r.items.length]), [['群聊', 6], ['状态栏', 2]], '群聊不再被拆成两段');
+  assert.deepEqual(runs.flatMap(r => r.items), list, '不重排、不丢不重');
+  const tagged = groupAdjacentRegex(['群聊-甲', '群聊-乙', '【其他】丙', '群聊-丁', '群聊-戊'].map((name, i) => ({ id: `t${i}`, name })));
+  assert.deepEqual(tagged.map(r => r.items.length), [2, 1, 2], '手动【标签】的条目不被吞并');
+  const paired = groupAdjacentRegex(['群聊-甲', '群聊-乙', '状态栏-a', '状态栏-b', '群聊-丁', '群聊-戊'].map((name, i) => ({ id: `p${i}`, name })));
+  assert.deepEqual(paired.map(r => r.label), ['群聊', '状态栏', '群聊'], '夹着的两条自成一类时不吞并');
+});
+
+test('s9: writes are mirrored onto ST\'s already-rendered native regex list (checkbox, removal, order) without events', async () => {
+  const { syncNativeRegexList } = await import('../features/chat/qianmu-chat-regex.js');
+  const nativeRow = id => { const check = { checked: false }; const node = { id, check, getAttribute: k => (k === 'id' ? id : null), querySelector: sel => (sel === '.disable_regex' ? check : null), remove() { box.children = box.children.filter(n => n !== node); } }; return node; };
+  const box = { children: [], appendChild(node) { this.children = this.children.filter(n => n !== node); this.children.push(node); } };
+  box.children = [nativeRow('g1'), nativeRow('g2'), nativeRow('gone')];
+  const doc = { getElementById: id => (id === 'saved_regex_scripts' ? box : null) };
+  const st = fakeST({ global: [{ id: 'g2', scriptName: 'B', disabled: true }, { id: 'g1', scriptName: 'A' }, { id: 'new', scriptName: 'N' }] });
+  assert.equal(syncNativeRegexList(st.ctx, { root: doc }), 2);
+  assert.deepEqual(box.children.map(n => n.id), ['g2', 'g1'], '已删条目移除、顺序对齐；新条目留给 ST 自己重画');
+  assert.deepEqual(box.children.map(n => n.check.checked), [true, false], '勾选态 = disabled');
+  // 认不出的列表（没有任何 id 对得上）一律不动。
+  const alien = { children: [nativeRow('zzz')], appendChild() { throw new Error('不应改动'); } };
+  assert.equal(syncNativeRegexList(st.ctx, { root: { getElementById: () => alien } }), 0);
+  assert.equal(alien.children.length, 1);
+  assert.equal(syncNativeRegexList(st.ctx, { root: { getElementById: () => null } }), 0, '原生面板不在：跳过');
 });

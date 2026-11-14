@@ -18,7 +18,7 @@ const fontUiVersion = '1.59.500';
 const fontMatchVersion = '1.59.503';
 // 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
 // 1.59.504 (节点 C-16): 快切/备份页只改 chat-regex/view、chat-recovery-view，字体链与 appearance-session 不动。
-const manifestVersion = '1.59.504';
+const manifestVersion = '1.59.505';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',

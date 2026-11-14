@@ -88,9 +88,12 @@ test('groupAdjacentRegex folds adjacent same-family runs without reordering', ()
 
 test('groupAdjacentRegex: explicit 【tag】 wins, separators and repeats', () => {
   const runs = groupAdjacentRegex(items('【排版】标题', '【排版】段落', '【美化】标题', '状态栏-隐藏', '状态栏-美化', 'xxx-1', 'xxx-2', 'yy', 'xxx-3', 'xxx-4'));
+  // C-17 s8：xxx-1 xxx-2 [yy] xxx-3 xxx-4 —— 被一条异类打断的同组接回一段（yy 一并纳入，顺序不变）。
   assert.deepEqual(runs.map(r => [r.label, r.mode, r.items.length]),
-    [['排版', 'tag', 2], ['', '', 1], ['状态栏', 'prefix', 2], ['xxx', 'prefix', 2], ['', '', 1], ['xxx', 'prefix', 2]]);
-  assert.deepEqual(runs.map(r => r.key), ['排版', '', '状态栏', 'xxx', '', 'xxx#2'], '同名段 key 带序号区分折叠');
+    [['排版', 'tag', 2], ['', '', 1], ['状态栏', 'prefix', 2], ['xxx', 'prefix', 5]]);
+  // 间隔 3 条以上不桥接：同名段各自成段，key 带序号区分折叠。
+  const far = groupAdjacentRegex(items('xxx-1', 'xxx-2', 'a', 'b', 'c', 'xxx-3', 'xxx-4'));
+  assert.deepEqual(far.map(r => r.key), ['xxx', '', 'xxx#2'], '同名段 key 带序号区分折叠');
   // 共同前缀需 ≥2 字：单字「去」不成组；拉丁词不在词中截断。
   assert.deepEqual(groupAdjacentRegex(items('去括号', '去空行')).map(r => r.label), ['']);
   assert.deepEqual(groupAdjacentRegex(items('Status bar', 'Statistics')).map(r => r.label), ['']);
@@ -879,24 +882,33 @@ test('view heads the page with a preset quick switch that calls actions.selectPr
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, selectPreset: name => { picks.push(name); } } });
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '乙' } }));
   assert.equal(host.children[0].className.includes('qm-regex-preset'), true, '预设快切在页顶');
-  // C-16 item2 → C-17 s6：原生 <select> 换成触发钮 + 内联可折叠目录（不再浮层），避免移动端整页弹窗
+  // C-17 s6：内联目录组控件——顶部一行「预设目录 [当前所选]」折叠/展开整个目录；选项是单选行。
+  const box = host.children[0];
   const trigger = walk(host).find(n => n.dataset.key === 'preset');
   assert.ok(trigger && trigger.tagName === 'button', '触发器是按钮不是 select');
-  assert.ok(walk(trigger).some(n => n.textContent === '甲'), '触发器显示当前预设');
+  assert.deepEqual(trigger.children.filter(n => n.tagName === 'span').map(n => n.textContent), ['预设目录', '甲'], '顶行 = 预设目录 + 当前所选');
   const menu = walk(host).find(n => n.classList?.contains('qm-regex-preset-dir'));
   assert.ok(menu, '有内联目录');
+  assert.equal(menu.attrs.role, 'radiogroup');
   assert.equal(trigger.attrs['aria-expanded'], 'false', '默认收起');
-  const options = walk(host).filter(n => n.classList?.contains('qm-regex-preset-option'));
-  assert.deepEqual(options.map(o => o.textContent), ['甲', '乙（本聊天）']);
+  assert.equal(box.classList.contains('is-open'), false);
+  const options = () => walk(host).filter(n => n.classList?.contains('qm-regex-preset-option'));
+  assert.deepEqual(options().map(o => [o.dataset.value, o.attrs.role, o.attrs['aria-checked']]), [['甲', 'radio', 'true'], ['乙', 'radio', 'false']]);
+  assert.ok(walk(options()[1]).some(n => n.classList?.contains('qm-regex-preset-optbound')), '本聊天绑定的那条带链环');
   assert.ok(walk(host).some(n => n.classList?.contains('qm-regex-preset-bound') && n.classList.contains('is-off')), '当前不是绑定预设 → 链环转灰');
   trigger.listeners.click();
-  assert.equal(trigger.attrs['aria-expanded'], 'true', '点触发器展开');
-  options.find(o => o.dataset.value === '乙').listeners.click(); await settle();
+  assert.equal(trigger.attrs['aria-expanded'], 'true', '点顶行展开');
+  assert.equal(box.classList.contains('is-open'), true);
+  options().find(o => o.dataset.value === '乙').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙']);
-  assert.equal(trigger.attrs['aria-expanded'], 'false', '选中后收起');
-  trigger.listeners.click();
-  options.find(o => o.dataset.value === '甲').listeners.click(); await settle();
+  // 重绘后目录保持展开（展开态记在视图里），再点顶行才折叠。
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {}, preset: '乙' } }));
+  const again = walk(host).find(n => n.dataset.key === 'preset');
+  assert.equal(again.attrs['aria-expanded'], 'true', '重绘后仍展开');
+  options().find(o => o.dataset.value === '甲').listeners.click(); await settle();
   assert.deepEqual(picks, ['乙'], '选回当前预设不触发');
+  again.listeners.click();
+  assert.equal(again.attrs['aria-expanded'], 'false', '点顶行折叠整个目录');
   // 不支持快切的 ST：不渲染
   view.render(Object.freeze({ ...ctrl.state(), presets: { available: false, names: [] } }));
   assert.equal(walk(host).some(n => n.dataset.key === 'preset'), false);
@@ -909,7 +921,7 @@ test('the preset dropdown folds version series into groups and keeps lone preset
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', label: '', disabled: false, value: '', selected: false,
       classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on === undefined ? this.set.has(c) : !on) this.set.delete(c); else this.set.add(c); } },
       append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
-      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; } };
     Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
     return node;
   };
@@ -924,11 +936,21 @@ test('the preset dropdown folds version series into groups and keeps lone preset
   assert.ok(group, '同系列预设进分组');
   const groupLabel = walk(group).find(n => n.classList?.contains('qm-regex-preset-group-label'));
   assert.equal(groupLabel.textContent, '写作');
+  // C-17 s6：组 = 可折叠行（组名 + 版本数 + 箭头）；组内各版本 = 单选 + 版本号标签。
+  const head = group.children[0];
+  assert.ok(head.classList.contains('qm-regex-preset-group-head') && head.tagName === 'button', '组头是可点的折叠行');
+  assert.deepEqual(head.children.map(n => n.textContent), ['写作', '2 个版本', ''], '组名 + 版本数 + 箭头');
+  assert.equal(head.attrs['aria-expanded'], 'true', '含当前预设的组默认展开');
+  head.listeners.click();
+  assert.equal(head.attrs['aria-expanded'], 'false');
+  assert.equal(group.classList.contains('is-open'), false, '点组头折叠本组');
   const groupOptions = walk(group).filter(n => n.classList?.contains('qm-regex-preset-option'));
-  assert.deepEqual(groupOptions.map(o => o.textContent), ['写作 v2（本聊天）', '写作 v1']);
+  assert.deepEqual(groupOptions.map(o => o.dataset.value), ['写作 v2', '写作 v1']);
+  assert.deepEqual(groupOptions.map(o => walk(o).find(n => n.classList?.contains('qm-regex-preset-ver'))?.textContent), ['v2', 'v1'], '版本号标签');
+  assert.deepEqual(groupOptions.map(o => o.attrs['aria-checked']), ['false', 'true'], '单选：当前版本选中');
   const flat = menu.children.filter(n => n.classList?.contains('qm-regex-preset-option'));
-  assert.ok(flat.some(o => o.textContent === '独立预设'), '孤立预设保持平铺');
-  assert.equal(flat.some(o => o.textContent === '写作 v1'), false, '系列成员不再平铺');
+  assert.ok(flat.some(o => o.dataset.value === '独立预设'), '孤立预设保持平铺');
+  assert.equal(flat.some(o => o.dataset.value === '写作 v1'), false, '系列成员不再平铺');
   view.dispose();
 });
 

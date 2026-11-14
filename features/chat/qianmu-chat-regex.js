@@ -155,6 +155,18 @@ export function groupAdjacentRegex(items) {
     const run = { ...pair };
     let j = i + 2;
     for (; j < list.length; j += 1) { const next = extendFamily(run, fams[j]); if (!next) break; run.label = next; }
+    // C-17 s8：成段后向后桥接——同一组被 1~2 条异类打断（群聊-外框… /（10）不发送群聊 / 群聊-功能…）时接回一段，
+    // 夹在中间的条目一并纳入，顺序不变。保守条件：后续条目必须落在同一标签上（不收窄标签）；
+    // 被夹的条目不能带手动【标签】，两条被夹条目若自成一类也不吞并。
+    for (;;) {
+      let f = j;
+      while (f < list.length && f - j < 3 && extendFamily(run, fams[f]) !== run.label) f += 1;
+      const gap = f - j;
+      if (gap < 1 || gap > 2 || f >= list.length) break;
+      if (fams.slice(j, f).some(fam => fam.tag)) break;
+      if (gap === 2 && pairFamily(fams[j], fams[j + 1])) break;
+      for (j = f + 1; j < list.length; j += 1) { if (extendFamily(run, fams[j]) !== run.label) break; }
+    }
     push({ label: run.label, mode: run.mode, from: i, to: j });
     i = j;
   }
@@ -407,6 +419,72 @@ export function previewRegexScript({ findRegex = '', replaceString = '', trimStr
   return { ok: true, output, error: '' };
 }
 
+// ── C-17 s5：导入 / 导出 ─────────────────────────────────────────────────────
+// 与 ST 原生正则文件同一格式：一个文件 = 一条脚本对象；也接受数组（多条一起导出时的格式）。
+// 只收带名字或查找串的对象；补齐缺省字段；id 缺失或与已占用的 id 撞车时换新 id（不覆盖已有条目）。
+export function parseRegexImport(texts, { taken = [], makeId = newRegexId } = {}) {
+  const used = new Set((Array.isArray(taken) ? taken : []).map(text).filter(Boolean));
+  const scripts = []; let skipped = 0;
+  for (const raw of Array.isArray(texts) ? texts : [texts]) {
+    let parsed;
+    try { parsed = JSON.parse(String(raw ?? '')); } catch (_) { skipped += 1; continue; }
+    for (const entry of Array.isArray(parsed) ? parsed : [parsed]) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !(text(entry.scriptName) || text(entry.findRegex))) { skipped += 1; continue; }
+      const script = blankRegexScript(structuredClone(entry));
+      script.scriptName = text(script.scriptName) || '（未命名）';
+      const id = text(script.id);
+      if (!id || /^#\d+$/.test(id) || used.has(id)) script.id = makeId();
+      used.add(text(script.id));
+      scripts.push(script);
+    }
+  }
+  return { scripts, skipped };
+}
+// 导出内容：单条 = 脚本对象本身（ST 原生导入可直接读）；多条 = 数组。
+export function buildRegexExport(scripts) {
+  const list = (Array.isArray(scripts) ? scripts : []).filter(script => script && typeof script === 'object');
+  if (!list.length) return null;
+  const safe = value => text(value).replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60) || 'regex';
+  return { name: list.length === 1 ? `regex-${safe(list[0].scriptName)}.json` : `regex-${list.length}条.json`,
+    json: JSON.stringify(list.length === 1 ? list[0] : list, null, 4) };
+}
+
+// ── C-17 s9：把千幕的写回同步到 ST 原生正则面板 ──────────────────────────────────
+// 千幕写的是 ST 的真数据（全局设置 / 预设字段），导出预设时带出的就是当前状态；但 ST 原生面板的列表是
+// 它自己上次渲染的 DOM，只在它自己的时机重画，所以看上去「没同步」。这里只改已渲染节点的外观：
+// 勾选态对齐 disabled、已删除的条目移除、顺序对齐；不派发事件、不调用 ST 内部函数、缺节点即跳过。
+// 新增条目没有现成节点，留给 ST 下次自己重画。返回对齐过的节点数。
+const NATIVE_REGEX_LISTS = Object.freeze({ global: 'saved_regex_scripts', preset: 'saved_preset_scripts' });
+export function syncNativeRegexList(context, { root } = {}) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const doc = root || attempt(() => globalThis.document, null);
+  if (!doc || typeof doc.getElementById !== 'function') return 0;
+  const idOf = node => text(attempt(() => node.getAttribute('id'), ''));
+  let synced = 0;
+  for (const source of ['global', 'preset']) {
+    const box = attempt(() => doc.getElementById(NATIVE_REGEX_LISTS[source]), null);
+    if (!box) continue;
+    const list = attempt(() => (source === 'global' ? ctx.extensionSettings?.regex : presetManager(ctx)?.readPresetExtensionField?.({ path: 'regex_scripts' })), null);
+    if (!Array.isArray(list)) continue;
+    const byId = new Map(attempt(() => [...box.children], []).filter(node => node && idOf(node)).map(node => [idOf(node), node]));
+    const live = list.filter(script => text(script?.id) && byId.has(text(script.id)));
+    if (!live.length) continue;                               // 认不出这份列表：不动
+    const keep = new Set(list.map(script => text(script?.id)).filter(Boolean));
+    for (const [id, node] of byId) if (!keep.has(id)) attempt(() => { node.remove(); return true; }, false);
+    const shown = attempt(() => [...box.children], []).filter(node => keep.has(idOf(node)));
+    const ordered = live.map(script => byId.get(text(script.id)));
+    if (shown.length === ordered.length && shown.some((node, i) => node !== ordered[i])) attempt(() => { for (const node of ordered) box.appendChild(node); return true; }, false);
+    for (const script of live) {
+      const check = attempt(() => byId.get(text(script.id)).querySelector('.disable_regex'), null);
+      if (!check) continue;
+      const disabled = script.disabled === true;
+      if (check.checked !== disabled) check.checked = disabled;
+      synced += 1;
+    }
+  }
+  return synced;
+}
+
 // ── C-11d：正则绑定聊天 ──────────────────────────────────────────────────────
 // ST 的正则 disabled 是全局/预设级、写盘的，直接按聊天改会泄漏到别的聊天。于是用「全局默认 + 每聊天覆盖」：
 // 进聊天时把 默认 ⊕ 本聊天 overrides 解析成每条脚本的目标态，与 live flags 逐条比较，只写差异，
@@ -532,14 +610,42 @@ export async function rerenderRenderedMessages(context, { root } = {}) {
   return count;
 }
 
+// C-17 s5：默认的选文件 / 存文件走浏览器自带能力；控制器把它们当依赖注入，测试里换成桩。
+function defaultPickFiles() {
+  const doc = attempt(() => globalThis.document, null);
+  if (!doc?.body || typeof doc.createElement !== 'function') return Promise.reject(new Error('当前环境无法选择文件'));
+  return new Promise(resolve => {
+    const picker = doc.createElement('input');
+    picker.type = 'file'; picker.accept = '.json,application/json'; picker.multiple = true; picker.hidden = true;
+    let settled = false;
+    const finish = files => { if (settled) return; settled = true; picker.remove(); resolve(files); };
+    picker.addEventListener('change', async () => {
+      try { finish(await Promise.all([...(picker.files || [])].map(file => file.text()))); } catch (_) { finish([]); }
+    }, { once: true });
+    picker.addEventListener('cancel', () => finish([]), { once: true });
+    doc.body.append(picker);
+    picker.click();
+  });
+}
+function defaultSaveFile({ name, json }) {
+  const doc = attempt(() => globalThis.document, null);
+  if (!doc?.body || typeof Blob !== 'function' || typeof URL?.createObjectURL !== 'function') throw new Error('当前环境无法保存文件');
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const link = doc.createElement('a');
+  link.href = url; link.download = name; link.hidden = true;
+  doc.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function createChatRegex({ getContext = () => ({}), notify = () => {},
+  pickFiles = defaultPickFiles, saveFile = defaultSaveFile,
   canReload = () => true, timers = { set: (fn, ms) => setTimeout(fn, ms), clear: id => clearTimeout(id) },
   // C-11d 绑定存取（默认空操作 → 未接线时整套绑定完全惰性，不写 ST）：
   // readBinding 读本聊天覆盖（只读，无副作用）；writeBinding 持久化本聊天覆盖；
   // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
   readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.504') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.505') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -584,6 +690,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
       sources: readRegexSources(context()) });
   };
+  // 每次写回后对齐 ST 原生面板里已渲染的列表（见 syncNativeRegexList）；失败不影响千幕自己的面板。
+  const syncNative = () => { try { syncNativeRegexList(context()); } catch (_) { /* 原生面板不在或结构不同：跳过 */ } };
   const refresh = () => mounted?.view?.render(state());
 
   // ST re-applies display regexes only when messages are rendered again, exactly like its own panel does
@@ -654,6 +762,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
         notify(error?.message || '正则绑定套用失败', 'warning');
       }
       changed += regexChanged;
+      if (regexChanged) syncNative();
       if (regexChanged && plan.affectsDisplay) reload = true;
     } finally {
       applying = false;
@@ -695,6 +804,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       const next = await writeRegexToggle(context(), { source, id, name, enabled });
       // 「懒人」绑定：开着绑定时，用户在本聊天随手拨动开关 = 记住这条。基线抓拨动前的态，其它聊天据此复位。
       if (bindingEnabled() && isRealId(id)) setBindingOverride({ key, enabled: enabled === true, liveEnabled: enabled !== true });
+      syncNative();
       scheduleReload();
       return next;
     } catch (error) {
@@ -715,7 +825,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     try {
       const changed = await writeRegexStates(context(), { source, changes });
       if (bindingEnabled()) for (const change of changes) if (isRealId(change.id)) setBindingOverride({ key: `${source}:${change.id}`, enabled: change.enabled, liveEnabled: !change.enabled });
-      if (changed) scheduleReload();
+      if (changed) { syncNative(); scheduleReload(); }
       return changed;
     } catch (error) {
       notify(error?.message || '正则批量开关写回失败', 'warning');
@@ -796,7 +906,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       notify(error?.message || `${label}失败`, 'warning');
       return null;
     } finally {
-      writing = false; busy.clear();
+      writing = false; busy.clear(); syncNative();
       const live = readRegexSources(context());
       const keys = new Set(BINDING_SOURCES.flatMap(source => live[source].items.map(item => `${source}:${item.id}`)));
       for (const key of [...selected]) if (!keys.has(key)) selected.delete(key);
@@ -1030,56 +1140,49 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     refresh();
   }
   function closeEditor() { editing = null; refresh(); }
-  function importMany() {
-    return new Promise((resolve, reject) => {
-      const picker = document.createElement('input');
-      picker.type = 'file'; picker.accept = '.json';
-      picker.style.display = 'none';
-      picker.addEventListener('change', async () => {
-        try {
-          if (!picker.files?.length) return resolve();
-          const file = picker.files[0];
-          const raw = await file.text();
-          const parsed = JSON.parse(raw);
-          const arr = Array.isArray(parsed) ? parsed : [parsed];
-          const valid = arr.filter(item => item && typeof item === 'object' && item.findRegex);
-          if (!valid.length) return reject(new Error('未找到有效的regex定义'));
-          const imported = valid.map(script => {
-            const clone = cloneRegexScript(script, { makeId: newRegexId, suffix: '' });
-            return clone;
-          });
-          window.SillyTavern?.core?.chat?.regexes?.unshift(...imported);
-          loadRegexScripts(); refresh();
-          notify(`已导入 ${imported.length} 条regex`, 'success');
-          resolve();
-        } catch (err) {
-          reject(err);
-        } finally {
-          picker.remove();
-        }
-      }, { once: true });
-      document.body.append(picker);
-      picker.click();
+  // C-17 s5：导入到指定来源末尾（可一次选多个文件）。先选文件、再走与其它管理操作相同的写回路径：一次保存、不半写。
+  async function importMany({ source = 'global' } = {}) {
+    if (writing || disposed) return null;
+    let texts;
+    try {
+      if (!BINDING_SOURCES.includes(source)) throw new Error('未知的正则来源');
+      readRawList(context(), source);                           // 来源不可写时先报错，不让用户白选文件
+      texts = await pickFiles();
+    } catch (error) { notify(error?.message || '导入正则失败', 'warning'); return null; }
+    if (!Array.isArray(texts) || !texts.length) return 0;
+    let skipped = 0;
+    const count = await structural('导入正则', async ctx => {
+      const out = await editRegexList(ctx, source, raw => {
+        const taken = BINDING_SOURCES.flatMap(key => attempt(() => readRawList(ctx, key), [])).map(script => script?.id);
+        const parsed = parseRegexImport(texts, { taken });
+        skipped = parsed.skipped;
+        if (!parsed.scripts.length) return { next: null, result: 0 };
+        return { next: [...raw, ...parsed.scripts], touched: parsed.scripts, result: parsed.scripts.length };
+      });
+      return { reload: out.reload, result: out.result || 0 };
     });
+    if (count === null) return null;
+    if (count) notify(`已导入 ${count} 条正则到${source === 'preset' ? '预设' : '全局'}${skipped ? `，跳过 ${skipped} 项无效内容` : ''}`, 'success');
+    else notify('没有找到可导入的正则', 'warning');
+    return count;
   }
-  function exportMany({ items }) {
-    if (!items?.length) return;
-    const keys = items.map(it => `${it.source}:${it.id}`);
-    const rows = keys.map(key => {
-      const [source, ...rest] = String(key).split(':'); const id = rest.join(':');
-      const arr = source === 'chat' ? chatRegexScripts() : getRegexScripts();
-      return arr.find(item => String(item.id) === id);
-    }).filter(Boolean);
-    if (!rows.length) return;
-    const json = JSON.stringify(rows, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `regex-export-${Date.now()}.json`;
-    a.style.display = 'none';
-    document.body.append(a); a.click();
-    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 100);
-    notify(`已导出 ${rows.length} 条regex`, 'success');
+  // 导出选中的条目（只读，不经写回锁）：单条 = ST 原生单文件格式，多条 = 一个数组文件。
+  async function exportMany({ items } = {}) {
+    try {
+      const scripts = [];
+      for (const [source, list] of bySource(items)) {
+        const raw = readRawList(context(), source);
+        for (const index of locateIndices(raw, list).sort((x, y) => x - y)) scripts.push(structuredClone(raw[index]));
+      }
+      const file = buildRegexExport(scripts);
+      if (!file) return 0;
+      await saveFile(file);
+      notify(`已导出 ${scripts.length} 条正则`, 'success');
+      return scripts.length;
+    } catch (error) {
+      notify(error?.message || '导出正则失败', 'warning');
+      return null;
+    }
   }
 
   const actions = Object.freeze({

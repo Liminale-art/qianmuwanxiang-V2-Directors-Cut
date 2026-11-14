@@ -236,24 +236,38 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         // C-16 item1: the dropdown was clamped to whatever room was left below the anchor, so a low
         // anchor squeezed it down to the 120px floor. Measure both gaps and open toward the roomier
         // side; when flipping up, anchor the bottom to just above the control and cap by the space above.
-        const below = at.top - oy + at.height + 6, roomBelow = panelH - below - 8;
-        const roomAbove = (at.top - oy) - 6 - 8;
-        const wanted = node.offsetHeight || cap;
-        const flipUp = roomBelow < Math.min(cap, wanted) && roomAbove > roomBelow;
-        const maxHeight = Math.max(120, Math.min(cap, flipUp ? roomAbove : roomBelow));
-        const top = flipUp ? Math.max(8, (at.top - oy) - 6 - maxHeight) : below;
-        node.style.top = `${Math.round(top)}px`; node.style.left = `${Math.round(left)}px`;
+        // C-17 s7: always open below the anchor (opening upward covered the tab bar). Instead of squeezing
+        // the list into whatever room is left, the panel itself is given enough height while a list is
+        // open (min-height, still bounded by the panel's own max-height), so ≥8 rows stay visible.
+        const below = at.top - oy + at.height + 6;
+        const wanted = Math.min(cap, node.scrollHeight || cap);
+        const need = Math.ceil(below + wanted + 8 + (box.height - panelH));
+        if (need > reserved) { reserved = need; panel.style.minHeight = `${reserved}px`; }
+        const roomBelow = (panel.clientHeight || panelH) - below - 8;
+        const maxHeight = Math.max(120, Math.min(cap, roomBelow));
+        node.style.top = `${Math.round(below)}px`; node.style.left = `${Math.round(left)}px`;
         node.style.maxHeight = `${Math.round(maxHeight)}px`;
     };
-    const placeOverlays = () => { if (disposed || !layer) return; placeOverlay(rolePicker, characterControl, false, 420); placeOverlay(suggestions, tools, true, 220); };
+    // 8 rows × 36px + 7 gaps × 3px + 10px padding ≈ 320px; a little slack shows the 9th row peeking as a scroll hint.
+    const OVERLAY_CAP = 332;
+    let reserved = 0;
+    const releasePanel = () => { if (!reserved) return; reserved = 0; panel?.style?.removeProperty?.('min-height'); };
+    const placeOverlays = () => {
+        if (disposed || !layer) return;
+        if (rolePicker.hidden && suggestions.hidden) { releasePanel(); return; }
+        placeOverlay(rolePicker, characterControl, false, OVERLAY_CAP); placeOverlay(suggestions, tools, true, OVERLAY_CAP);
+    };
     const win = document.defaultView;
     if (layer) { root.addEventListener('scroll', placeOverlays, { passive: true }); win?.addEventListener?.('resize', placeOverlays); }
     // C-17 s7: click outside the picker or control closes the picker
     const closePickerOnClickOutside = event => {
-        if (disposed || !pickerOpen) return;
-        if (!event.target) return;
-        if (characterControl.contains?.(event.target) || (layer && rolePicker.contains?.(event.target))) return;
-        pickerOpen = false; render();
+        if (disposed || !event.target) return;
+        const t = event.target;
+        let changed = false;
+        if (pickerOpen && !(characterControl.contains?.(t) || (layer && rolePicker.contains?.(t)))) { pickerOpen = false; changed = true; }
+        // The typed suggestions close the same way; typing again brings them back.
+        if (!suggestions.hidden && !suggestionDismissed && !(suggestions.contains?.(t) || input.contains?.(t) || t === input)) { suggestionDismissed = true; changed = true; }
+        if (changed) render();
     };
     document.addEventListener?.('click', closePickerOnClickOutside, { capture: true });
     root.replaceChildren(status, tools, nativePolicy, ...(layer ? [] : [suggestions]), loadedCount, list, previewActions);
@@ -478,5 +492,6 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
         document.removeEventListener?.('click', closePickerOnClickOutside, { capture: true });
+        releasePanel();
         if (layer) { root.removeEventListener?.('scroll', placeOverlays); win?.removeEventListener?.('resize', placeOverlays); layer.remove?.(); } } });
 }
