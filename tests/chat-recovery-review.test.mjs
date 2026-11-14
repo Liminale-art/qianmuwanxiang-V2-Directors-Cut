@@ -180,6 +180,30 @@ test('C-15: inside the toolkit panel the role picker floats on a panel-level lay
   assert.equal(layer.removed, true, 'dispose removes the panel-level layer'); assert.equal(listeners.scroll, undefined);
 });
 
+test('C-16 item1: the backup role picker flips above its anchor when the space below is cramped, using the roomier side', async () => {
+  const f = fixture(); await f.controller.load();
+  const ui = dom(); const panel = ui.root.ownerDocument.createElement('div'); panel.className = 'sd-floor-panel';
+  const rect = (top, left, width, height) => ({ top, left, width, height, bottom: top + height, right: left + width });
+  ui.root.addEventListener = () => {}; ui.root.removeEventListener = () => {};
+  ui.root.closest = selector => selector === '.sd-floor-panel' ? panel : null;
+  ui.root.getBoundingClientRect = () => rect(0, 0, 500, 700);
+  panel.getBoundingClientRect = () => rect(0, 0, 540, 700); panel.clientWidth = 540; panel.clientHeight = 700;
+  const view = mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const layer = panel.children.find(node => node.className === 'qm-recovery-layer');
+  const picker = layer.children.find(node => node.className === 'qm-recovery-role-picker');
+  picker.offsetWidth = 320; picker.offsetHeight = 400;
+  const control = ui.find(node => node.className === 'qm-recovery-character-control');
+  // Anchor near the bottom: below has ~34px, above has ~640px. Must open upward and keep its full height.
+  control.getBoundingClientRect = () => rect(650, 34, 40, 36);
+  const icon = ui.find(node => node.className === 'qm-recovery-icon-button'); await icon.handlers.click();
+  assert.equal(picker.hidden, false);
+  const top = parseInt(picker.style.top, 10), maxH = parseInt(picker.style.maxHeight, 10);
+  assert.ok(top < 650, `picker opens above the low anchor (top=${top})`);
+  assert.ok(maxH > 120, `flipped picker is not squeezed to the floor (maxHeight=${maxH})`);
+  assert.ok(top + maxH <= 650, 'the upward picker stays above the anchor');
+  view.dispose();
+});
+
 test('native ST Assistant is omitted from the recovery role picker and suggestions', async () => {
   const f = fixture();
   f.characters.unshift({ avatar: 'default_Assistant.png', name: 'Assistant' });

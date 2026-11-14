@@ -231,10 +231,19 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         // The anchor scrolled out of the visible page: hide instead of floating over the header.
         node.style.visibility = at.bottom < view.top || at.top > view.bottom ? 'hidden' : '';
         if (matchWidth) node.style.width = `${Math.round(at.width)}px`;
-        const width = node.offsetWidth || at.width, inner = panel.clientWidth || box.width;
-        const top = at.bottom - oy + 6, left = Math.max(8, Math.min(at.left - ox, inner - width - 8));
+        const width = node.offsetWidth || at.width, inner = panel.clientWidth || box.width, panelH = panel.clientHeight || box.height;
+        const left = Math.max(8, Math.min(at.left - ox, inner - width - 8));
+        // C-16 item1: the dropdown was clamped to whatever room was left below the anchor, so a low
+        // anchor squeezed it down to the 120px floor. Measure both gaps and open toward the roomier
+        // side; when flipping up, anchor the bottom to just above the control and cap by the space above.
+        const below = at.top - oy + at.height + 6, roomBelow = panelH - below - 8;
+        const roomAbove = (at.top - oy) - 6 - 8;
+        const wanted = node.offsetHeight || cap;
+        const flipUp = roomBelow < Math.min(cap, wanted) && roomAbove > roomBelow;
+        const maxHeight = Math.max(120, Math.min(cap, flipUp ? roomAbove : roomBelow));
+        const top = flipUp ? Math.max(8, (at.top - oy) - 6 - maxHeight) : below;
         node.style.top = `${Math.round(top)}px`; node.style.left = `${Math.round(left)}px`;
-        node.style.maxHeight = `${Math.round(Math.max(120, Math.min(cap, (panel.clientHeight || box.height) - top - 8)))}px`;
+        node.style.maxHeight = `${Math.round(maxHeight)}px`;
     };
     const placeOverlays = () => { if (disposed || !layer) return; placeOverlay(rolePicker, characterControl, false, 420); placeOverlay(suggestions, tools, true, 220); };
     const win = document.defaultView;
