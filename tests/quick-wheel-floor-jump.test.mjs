@@ -57,7 +57,9 @@ assert.match(source, /function quickDockOnPointerMove[\s\S]*sd-dock-ready/);
 assert.match(source, /function quickDockSanitizeSvg[\s\S]*foreignObject[\s\S]*javascript:/, '内联 SVG 必须清理脚本、外部对象和危险属性');
 assert.match(source, /maskImage[\s\S]*webkitMaskImage/, '第三方图标识别必须覆盖 CSS mask');
 assert.match(source, /quickDockBindIconFallback[\s\S]*addEventListener\('error'/, '第三方图片失败时必须显示占位图标而非破图');
-assert.match(source, /function quickDockCleanLabel[\s\S]*第三方[\s\S]*function quickDockNextFallbackLabel[\s\S]*插件收纳\$\{index\}/, '第三方通用名称必须替换为稳定编号占位');
+// quickDockCleanLabel 已迁到 qianmu-storyboard-utils.js，编号占位仍在入口；旧断言匹配的是入口里被注释掉的旧实现。
+assert.match(utilsSource, /export function quickDockCleanLabel[\s\S]*第三方/, '第三方通用名称由工具模块清洗');
+assert.match(source, /function quickDockNextFallbackLabel[\s\S]*quickDockCleanLabel\([\s\S]*插件收纳\$\{index\}/, '第三方通用名称必须替换为稳定编号占位');
 assert.match(source, /function quickDockExtensionApi[\s\S]*import\('\.\.\/\.\.\/\.\.\/extensions\.js'\)[\s\S]*getExtensionManifest/, '蜂巢应优先从 ST 扩展清单读取真实插件名称');
 assert.match(source, /function quickDockResolvePluginLabel[\s\S]*manifest\?\.display_name[\s\S]*function quickDockApplyResolvedLabel/, '识别到扩展归属后必须用 manifest 名称替换编号占位');
 assert.match(source, /document\.addEventListener\('pointerdown', quickDockOnPointerDown, true\)/);

@@ -1908,34 +1908,12 @@ function getChatStore() {
 }
 
 // htmlEscape - 已迁移到 qianmu-storyboard-utils.js
-// function htmlEscape(input) {
-//   return String(input ?? '').replace(/[&<>"']/g, (m) => ({
-//     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-//   }[m]));
-// }
 
 // normalizeUrl - 已迁移到 qianmu-storyboard-utils.js
-// function normalizeUrl(url) {
-//   let value = String(url || '').trim().replace(/\/+$/, '');
-//   if (value.endsWith('/v1')) value = value.slice(0, -3);
-//   return value;
-// }
 
 // uid - 已迁移到 qianmu-storyboard-utils.js
-// let uidCounter = 0;
-// function uid(prefix = 'id') {
-//   uidCounter = (uidCounter + 1) % 1000000;
-//   const rand = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 9);
-//   return `${prefix}-${Date.now().toString(36)}-${uidCounter.toString(36)}-${rand}`;
-// }
 
 // fileStamp - 已迁移到 qianmu-storyboard-utils.js
-// 导出文件名时间戳：本地时区 YYYY-MM-DD_HH-MM-SS
-// function fileStamp() {
-//   const d = new Date();
-//   const p = (n) => String(n).padStart(2, '0');
-//   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
-// }
 
 function toast(message, type = 'info') {
   const t = globalThis.toastr;
@@ -1992,9 +1970,6 @@ function getPersonaName() {
 // }
 
 // infoTag - 已迁移到 qianmu-storyboard-utils.js
-// function infoTag(text) {
-//   return `<span class="sd-info-tag">${htmlEscape(text)}</span>`;
-// }
 
 function getTagRules() {
   const rules = Array.isArray(settings.contextOptions.tagRules) ? settings.contextOptions.tagRules : [];
@@ -2029,9 +2004,6 @@ function cleanContextText(text) {
 }
 
 // escapeRegExp - 已迁移到 qianmu-storyboard-utils.js
-// function escapeRegExp(text) {
-//   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// }
 
 function getChatHistoryText() {
   const context = ctx();
@@ -2073,12 +2045,6 @@ function getTheaterChatHistoryText() {
 }
 
 // processRandomMacros - 已迁移到 qianmu-storyboard-utils.js
-// function processRandomMacros(text) {
-//   return String(text || '').replace(/\{\{random:(.*?)\}\}/gi, (_, raw) => {
-//     const options = raw.split(',').map((x) => x.trim()).filter(Boolean);
-//     return options.length ? options[Math.floor(Math.random() * options.length)] : '';
-//   });
-// }
 
 async function resolveMacro(text) {
   try {
@@ -2100,23 +2066,10 @@ async function resolveMacro(text) {
 }
 
 // parseAnyString - 已迁移到 qianmu-storyboard-utils.js
-// function parseAnyString(value) {
-//   if (!value) return [];
-//   if (typeof value === 'string') return [value];
-//   if (Array.isArray(value)) return value.flatMap(parseAnyString);
-//   if (typeof value === 'object') return Object.values(value).flatMap(parseAnyString);
-//   return [];
-// }
 
 // uniqueClean - 已迁移到 qianmu-storyboard-utils.js
-// function uniqueClean(list) {
-//   return [...new Set((list || []).map((x) => String(x || '').trim()).filter(Boolean))];
-// }
 
 // normalizeSourceName - 已迁移到 qianmu-storyboard-utils.js
-// function normalizeSourceName(name) {
-//   return String(name || '').trim();
-// }
 
 /* ============================================================
    通用资料库前端（剧本库 / 剧札共用）：文件夹分组 + 紧凑行 + 滚动 + 搜索 + 多选导入导出
@@ -2124,33 +2077,8 @@ async function resolveMacro(text) {
           emptyText, searchPlaceholder }
    ============================================================ */
 // sanitizeFolder - 已迁移到 qianmu-storyboard-utils.js
-// function sanitizeFolder(name) {
-//   return String(name || '').trim().slice(0, 16);
-// }
 
 // groupByFolder - 已迁移到 qianmu-storyboard-utils.js
-// function groupByFolder(items, getFolder, getName, sortAlpha) {
-//   const folders = new Map();
-//   const loose = [];
-//   for (const it of items) {
-//     const f = sanitizeFolder(getFolder(it));
-//     if (f) {
-//       if (!folders.has(f)) folders.set(f, []);
-//       folders.get(f).push(it);
-//     } else {
-//       loose.push(it);
-//     }
-//   }
-//   if (sortAlpha && typeof getName === 'function') {
-//     const byName = (a, b) => String(getName(a) || '').localeCompare(String(getName(b) || ''), 'zh');
-//     for (const list of folders.values()) list.sort(byName);
-//     loose.sort(byName);
-//   }
-//   const folderList = [...folders.entries()]
-//     .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
-//     .map(([name, list]) => ({ name, list }));
-//   return { folderList, loose };
-// }
 
 function renderLibraryRow(cfg, item) {
   const pick = cfg.exportMode
@@ -2451,10 +2379,6 @@ async function promptVoiceLibEntry({ dialogTitle, name = '', voiceId = '', voice
 
 
 // isNoisePresetName - 已迁移到 qianmu-storyboard-utils.js
-// function isNoisePresetName(name) {
-//   const value = normalizeSourceName(name);
-//   return !value || ['in_use', 'settings', 'prompts', 'prompt_order', 'preset_settings', '当前预设'].includes(value);
-// }
 
 function getCurrentPresetName() {
   return stCurrentPresetName(ctx(), globalThis);
@@ -2465,25 +2389,8 @@ function getCurrentPresetEntries() {
 }
 
 // normalizePresetEntries - 已迁移到 qianmu-storyboard-utils.js
-// function normalizePresetEntries(entries) {
-//   return (Array.isArray(entries) ? entries : Object.values(entries || {}))
-//     .filter((item) => item && typeof item === 'object')
-//     .filter((item) => String(item.identifier || item.name || '').trim() !== 'in_use')
-//     .filter((item) => item.content || item.prompt || item.message || item.text || item.name || item.identifier);
-// }
 
 // parseNameSource - 已迁移到 qianmu-storyboard-utils.js
-// function parseNameSource(source) {
-//   if (!source) return [];
-//   if (typeof source === 'string') return [source];
-//   if (Array.isArray(source)) return source.flatMap((item) => {
-//     if (typeof item === 'string') return [item];
-//     if (item && typeof item === 'object') return [item.name, item.id, item.filename].filter(Boolean);
-//     return [];
-//   });
-//   if (typeof source === 'object') return Object.keys(source);
-//   return [];
-// }
 
 function listPresetNames() {
   return stPresetNames(ctx(), globalThis);
@@ -2566,16 +2473,10 @@ async function coreadTargetBook() {
 
 // 斜杠命令值转义：管道符 | 会终止命令，需转义；换行折叠为空格（伴读总结本就精炼，避免破坏单条命令解析）。
 // escapeSlashValue - 已迁移到 qianmu-storyboard-utils.js
-// function escapeSlashValue(s) {
-//   return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
-// }
 
 // STscript 未命名尾参（如 /setentryfield 的值）遇空格会被截断，只取首个 token → 带空格的 comment/content 落字为空。
 // 故字符串值须用双引号包裹成单个 token（内部双引号转义）。数值字段（order/constant 等）不加引号。
 // quoteSlashValue - 已迁移到 qianmu-storyboard-utils.js
-// function quoteSlashValue(s) {
-//   return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
-// }
 
 // 向指定世界书写入/更新一条目。opts: { book, uid?, tag?, comment?, content?, keys?:[], order?, position?, vectorized?, group? }
 // uid 必须是 ST 世界书条目的「整数 UID」——传整数 uid＝更新该条；uid 为空或非整数＝新建（/createentry 由 ST 分配整数 UID）。
@@ -2625,13 +2526,6 @@ async function deleteWorldEntry(book, uid) {
 // 从世界书条目里解出伴读逻辑标识 coread::bookId::sliceId。
 // 兼容两代：新条目＝逻辑标识写在 comment 的 ⟨…⟩ 机器标记里（UID 为整数）；旧条目＝uid 本身就是逻辑串。
 // coreadEntryLogicalId - 已迁移到 qianmu-storyboard-utils.js
-// function coreadEntryLogicalId(entry) {
-//   const u = String(entry?.uid ?? '');
-//   if (u.startsWith('coread::')) return u;
-//   const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
-//   const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
-//   return mm ? mm[1] : '';
-// }
 
 // 临时验证钩子（1A-1）：在 ST 控制台执行 await qmTestWorldWrite() 应能往当前聊天 Chat Lore 写入一条「千幕伴读·测试」。
 // 验证通过后将移除。
@@ -3096,10 +2990,6 @@ async function buildWorldContextText() {
    ============================================================ */
 
 // snip - 已迁移到 qianmu-storyboard-utils.js
-// function snip(text, n = 64) {
-//   const value = String(text || '').replace(/\s+/g, ' ').trim();
-//   return value.length > n ? `${value.slice(0, n)}...` : value;
-// }
 
 // 注入预览/注入段的字数弹性档：按各字段要求生成字数的约 2 倍设上限，留足溢出余地。
 // 生成那点字数本就 OK，截断纯属显示问题——统一抬到弹性档，根除「人物暗流/关系暗涌/世界大势」等显示不全。
@@ -3118,14 +3008,6 @@ const INJ_LEN = {
    状态跨幕续命，「你不看也在变」靠推演时世界时钟往前演——零后台循环、零 tick。
    ============================================================ */
 // sanitizeEventStage - 已迁移到 qianmu-storyboard-utils.js
-// function sanitizeEventStage(stage) {
-//   return EVENT_STAGE_LADDER.includes(stage) ? stage : '酝酿';
-// }
-// advanceEventStage - 已迁移到 qianmu-storyboard-utils.js
-// function advanceEventStage(stage) {
-//   const idx = EVENT_STAGE_LADDER.indexOf(sanitizeEventStage(stage));
-//   return EVENT_STAGE_LADDER[Math.min(idx + 1, EVENT_STAGE_LADDER.length - 1)];
-// }
 const FACTION_TRENDS = ['rising', 'stable', 'declining', 'turbulent'];
 const FACTION_SCALES = ['城邦内', '区域性', '跨区域', '全局性'];
 
@@ -3692,89 +3574,11 @@ async function callSillyTavernModel(userPrompt, systemPrompt = '', onDelta = nul
 }
 // 字符串感知的缺逗号补全（仅在字符串外操作，{{user}} 等内容不受影响）
 // insertMissingCommas - 已迁移到 qianmu-storyboard-utils.js
-// function insertMissingCommas(text) {
-//   let result = '';
-//   let inString = false;
-//   let escape = false;
-//   for (let i = 0; i < text.length; i++) {
-//     const ch = text[i];
-//     result += ch;
-//     if (inString) {
-//       if (escape) { escape = false; continue; }
-//       if (ch === '\\') { escape = true; continue; }
-//       if (ch === '"') {
-//         inString = false;
-//         if (/^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
-//       }
-//       continue;
-//     }
-//     if (ch === '"') { inString = true; continue; }
-//     if ((ch === '}' || ch === ']') && /^\s*[{\["]/.test(text.slice(i + 1))) result += ',';
-//   }
-//   return result;
-// }
 
 // 截断自愈——裁剪到最后一个完整值，再按括号栈补齐闭合
 // repairTruncatedJson - 已迁移到 qianmu-storyboard-utils.js
-// function repairTruncatedJson(text) {
-//   const tryCut = (includeStrings) => {
-//     let inString = false;
-//     let escape = false;
-//     let cutIndex = -1;
-//     for (let i = 0; i < text.length; i++) {
-//       const ch = text[i];
-//       if (inString) {
-//         if (escape) escape = false;
-//         else if (ch === '\\') escape = true;
-//         else if (ch === '"') { inString = false; if (includeStrings) cutIndex = i + 1; }
-//         continue;
-//       }
-//       if (ch === '"') { inString = true; continue; }
-//       if (ch === '}' || ch === ']') cutIndex = i + 1;
-//     }
-//     if (cutIndex <= 0) return null;
-//     let candidate = text.slice(0, cutIndex).replace(/,\s*$/, '');
-//     inString = false;
-//     escape = false;
-//     const stack = [];
-//     for (const ch of candidate) {
-//       if (inString) {
-//         if (escape) escape = false;
-//         else if (ch === '\\') escape = true;
-//         else if (ch === '"') inString = false;
-//         continue;
-//       }
-//       if (ch === '"') inString = true;
-//       else if (ch === '{') stack.push('}');
-//       else if (ch === '[') stack.push(']');
-//       else if (ch === '}' || ch === ']') stack.pop();
-//     }
-//     candidate += stack.reverse().join('');
-//     candidate = candidate.replace(/,\s*([}\]])/g, '$1');
-//     try { return JSON.parse(candidate); } catch (_) { return null; }
-//   };
-//   return tryCut(false) ?? tryCut(true);
-// }
 
 // extractJson - 已迁移到 qianmu-storyboard-utils.js
-// function extractJson(text) {
-//   let content = String(text || '').trim();
-//   content = content.replace(/^```(?:json)?/i, '').replace(/```$/g, '').trim();
-//   const start = content.indexOf('{');
-//   const end = content.lastIndexOf('}');
-//   if (start !== -1 && end !== -1 && end > start) content = content.slice(start, end + 1);
-//   const base = content.replace(/,\s*([}\]])/g, '\$1');
-//   let lastError = null;
-//   try { return JSON.parse(base); } catch (e) { lastError = e; }
-//   const commaFixed = insertMissingCommas(base).replace(/,\s*([}\]])/g, '\$1');
-//   try { return JSON.parse(commaFixed); } catch (e) { lastError = e; }
-//   const repaired = repairTruncatedJson(commaFixed);
-//   if (repaired !== null) {
-//     console.warn(`[${MODULE_NAME}] JSON 已自动修复（若为截断，末尾少量条目可能缺失）`);
-//     return repaired;
-//   }
-//   throw new Error(`JSON_PARSE_FAILED::${lastError?.message || 'unknown'}`);
-// }
 
 function normalizePlan(plan, options = {}) {
   const base = {
@@ -3801,30 +3605,8 @@ function normalizePlan(plan, options = {}) {
 }
 
 // directorItemText - 已迁移到 qianmu-storyboard-utils.js
-// function directorItemText(field, item) {
-//   if (!item || typeof item !== 'object') return String(item || '');
-//   const keys = {
-//     quests: ['title', 'objective', 'description', 'trigger', 'reward'],
-//     npc_updates: ['name', 'role', 'current_goal', 'emotional_state', 'next_action', 'hidden_agenda', 'relations'],
-//     world_updates: ['type', 'title', 'content', 'scope', 'timing'],
-//     chain_reactions: ['spark', 'chain'],
-//     relation_undercurrents: ['parties', 'tone', 'tension', 'drift', 'user_awareness'],
-//   }[field] || Object.keys(item);
-//   return keys.map((key) => {
-//     const value = item[key];
-//     return Array.isArray(value) ? value.join(' ') : String(value || '');
-//   }).join(' ');
-// }
 
 // directorSimilarity - 已迁移到 qianmu-storyboard-utils.js
-// function directorSimilarity(left, right) {
-//   const a = directorBigrams(left);
-//   const b = directorBigrams(right);
-//   if (!a.size || !b.size) return 0;
-//   let common = 0;
-//   for (const token of a) if (b.has(token)) common += 1;
-//   return common / Math.min(a.size, b.size);
-// }
 
 function directorDedupePlan(plan, options = {}) {
   const cleaned = pruneInvalidCreativeItems(plan, options);
@@ -4580,65 +4362,18 @@ const QUICK_HEX_BORDER_SVG = '<svg class="sd-hive-hex-outline" viewBox="0 0 86.6
 // 蜂巢不设置面向用户的入口上限；24 仅用于拦截损坏配置或异常第三方注入造成的无限增长。
 const QUICK_HIVE_SAFETY_LIMIT = 24;
 // QUICK_HEX_WIDTH_RATIO - 已迁移到 qianmu-storyboard-utils.js
-// const QUICK_HEX_WIDTH_RATIO = Math.sqrt(3) / 2;
-// QUICK_HIVE_AXIAL_DIRECTIONS - 已迁移到 qianmu-storyboard-utils.js
-// const QUICK_HIVE_AXIAL_DIRECTIONS = Object.freeze([
-//   [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1],
-// ]);
 
 // 使用标准轴向六角坐标生成完整蜂巢环：第一圈恰好六格，第七格起进入第二圈。
 // 坐标顺序恒定，用户排序只映射到格位；随机性只属于展开时的图标微光。
 // quickHiveAxialRing - 已迁移到 qianmu-storyboard-utils.js
-// function quickHiveAxialRing(radius) {
-//   if (!Number.isInteger(radius) || radius < 1) return [];
-//   const cells = [];
-//   let q = 0;
-//   let r = -radius;
-//   for (const [dq, dr] of QUICK_HIVE_AXIAL_DIRECTIONS) {
-//     for (let step = 0; step < radius; step++) {
-//       cells.push({ q, r });
-//       q += dq;
-//       r += dr;
-//     }
-//   }
-//   return cells;
-// }
 
 // quickHiveCells - 已迁移到 qianmu-storyboard-utils.js
-// function quickHiveCells(count, maxRing = 6) {
-//   const cells = [];
-//   for (let ring = 1; ring <= maxRing && cells.length < count; ring++) cells.push(...quickHiveAxialRing(ring));
-//   return cells.slice(0, count);
-// }
 
 // quickHiveCellRing - 已迁移到 qianmu-storyboard-utils.js
-// function quickHiveCellRing(cell) {
-//   return Math.max(Math.abs(cell.q), Math.abs(cell.r), Math.abs(cell.q + cell.r));
-// }
 
 // quickHivePixelOffset - 已迁移到 qianmu-storyboard-utils.js
-// function quickHivePixelOffset(cell, itemSize, gap) {
-//   const renderedRadius = itemSize / QUICK_HEX_WIDTH_RATIO / 2;
-//   // 竖向六边形：水平相邻中心距 = 六边形宽度 + gap。
-//   const latticeRadius = renderedRadius + gap / Math.sqrt(3);
-//   return {
-//     x: Math.sqrt(3) * latticeRadius * (cell.q + cell.r / 2),
-//     y: 1.5 * latticeRadius * cell.r,
-//   };
-// }
 
 // quickHiveCellFits - 已迁移到 qianmu-storyboard-utils.js
-// function quickHiveCellFits(cell, geometry) {
-//   const offset = quickHivePixelOffset(cell, geometry.itemSize, geometry.gap);
-//   const halfW = geometry.itemSize / 2;
-//   const halfH = geometry.itemHeight / 2;
-//   const x = geometry.centerX + offset.x;
-//   const y = geometry.centerY + offset.y;
-//   return x - halfW >= geometry.margin
-//     && x + halfW <= geometry.viewportWidth - geometry.margin
-//     && y - halfH >= geometry.margin
-//     && y + halfH <= geometry.viewportHeight - geometry.margin;
-// }
 
 function quickHiveDirectionalCells(count, geometry) {
   const left = geometry.centerX - geometry.margin;
@@ -4700,13 +4435,6 @@ let quickDockExtensionApiPromise = null;
 const quickDockShadowObservers = new Map();
 
 // quickDockCleanLabel - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockCleanLabel(value) {
-//   const label = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-//   if (!label) return '';
-//   if (/^(?:第三方)?(?:插件|工具|入口|悬浮窗|悬浮球)(?:按钮)?$/i.test(label)) return '';
-//   if (/^(?:打开|关闭|菜单|设置|工具|入口)$/i.test(label)) return '';
-//   return label;
-// }
 
 function quickDockNextFallbackLabel(extraLabels = []) {
   const used = new Set([
@@ -4877,9 +4605,6 @@ function closeQuickWheel() {
 }
 
 // quickDockAttrEscape - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockAttrEscape(value) {
-//   return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]/g, ' ');
-// }
 
 const QUICK_DOCK_ICON_DATA_LIMIT = 64 * 1024;
 
@@ -4960,16 +4685,8 @@ function quickDockBindIconFallback(root, item) {
 }
 
 // quickDockNormalizePath - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockNormalizePath(value) {
-//   if (!Array.isArray(value)) return [];
-//   return value.map((part) => String(part || '').trim().slice(0, 500)).filter(Boolean).slice(0, 12);
-// }
 
 // quickDockSelectorEscape - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockSelectorEscape(value) {
-//   if (globalThis.CSS?.escape) return CSS.escape(String(value || ''));
-//   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char.codePointAt(0).toString(16)} `);
-// }
 
 function quickDockStableSelector(element, scope = element?.getRootNode?.()) {
   if (!(element instanceof Element)) return '';
@@ -5022,15 +4739,8 @@ function quickDockResolvePath(value) {
 }
 
 // quickDockPathKey - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockPathKey(value) {
-//   const path = quickDockNormalizePath(value);
-//   return path.length ? path.join('\n>>>shadow>>>\n') : '';
-// }
 
 // quickDockLocatorKey - 已迁移到 qianmu-storyboard-utils.js
-// function quickDockLocatorKey(item) {
-//   return quickDockPathKey(item?.shadowPath) || String(item?.selector || '').trim();
-// }
 
 function quickDockActivatorForHost(host, preferred = null) {
   if (preferred instanceof Element && (preferred === host || host.contains(preferred))) return preferred;
@@ -7446,29 +7156,10 @@ function geoRelationKindMarkup(kind) {
 
 // 世界温度：由关系张力 + 事件烈度合成 0-100，映射四档态势
 // computeWorldHeat - 已迁移到 qianmu-storyboard-utils.js
-// function computeWorldHeat(rels, events) {
-//   const relWeight = { 冲突: 26, 张力: 13, 依附: 5, 中立: 0, 同盟: -8 };
-//   let heat = 0;
-//   for (const r of rels) heat += relWeight[r.kind] || 0;
-//   for (const e of events) {
-//     if (e.status === 'closed') continue;
-//     heat += e.stage === '爆发' ? 18 : e.stage === '蔓延' ? 14 : e.stage === '酝酿' ? 7 : 2;
-//   }
-//   return Math.max(0, Math.min(100, Math.round(heat)));
-// }
-// heatTier - 已迁移到 qianmu-storyboard-utils.js
 
 // geoStableHash - 已迁移到 qianmu-storyboard-utils.js
-// function geoStableHash(value) {
-//   let hash = 2166136261;
-//   for (const ch of String(value || '')) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
-//   return hash >>> 0;
-// }
 
 // geoRelationClass - 已迁移到 qianmu-storyboard-utils.js
-// function geoRelationClass(kind) {
-//   return { 冲突: 'conflict', 同盟: 'ally', 张力: 'tension', 中立: 'neutral', 依附: 'vassal' }[kind] || 'neutral';
-// }
 
 
 function geoRelationKindsSelected() {
@@ -8115,10 +7806,6 @@ function renderHistorySection() {
 }
 
 // formatDateTime - 已迁移到 qianmu-storyboard-utils.js
-// function formatDateTime(date) {
-//   if (!date) return '';
-//   try { return new Date(date).toLocaleString(); } catch (_) { return String(date); }
-// }
 
 function storageJsonBytes(value) {
   try {
@@ -26021,28 +25708,6 @@ function coreadEnsurePresetEntries(name) {
 // 读位与可见窗：把 chapters 线性拼成全文，按 chapterIndex+scrollRatio 求当前绝对读位，
 // 再往前取 visiblePercent% 正文（占全书·硬上限 visibleCharsBefore 字），起点对齐句界。
 // computeVisibleWindow - 已迁移到 qianmu-storyboard-utils.js
-// function computeVisibleWindow(chapters, chapterIndex, scrollRatio, percent, charCap) {
-//   const list = Array.isArray(chapters) ? chapters : [];
-//   const bodies = list.map((ch) => String(ch?.content || ''));
-//   const offsets = [];
-//   let acc = 0;
-//   for (const b of bodies) { offsets.push(acc); acc += b.length; }
-//   const totalLen = acc || 1;
-//   const full = bodies.join('');
-//   const ci = Math.max(0, Math.min(Number(chapterIndex) || 0, Math.max(0, bodies.length - 1)));
-//   const curLen = bodies[ci] ? bodies[ci].length : 0;
-//   const ratio = Math.max(0, Math.min(1, Number(scrollRatio) || 0));
-//   const readPos = Math.max(0, Math.min(full.length, (offsets[ci] || 0) + Math.round(curLen * ratio)));
-//   const pct = Math.max(1, Math.min(100, Number(percent) || 15));
-//   const cap = Math.max(200, Number(charCap) || 6000);
-//   const windowChars = Math.min(Math.ceil((pct / 100) * totalLen), cap);
-//   let start = Math.max(0, readPos - windowChars);
-//   if (start > 0) {
-//     const m = full.slice(start, Math.min(readPos, start + 200)).search(/[。！？…\n」』】）\)]/);
-//     if (m >= 0) start = Math.min(readPos, start + m + 1);
-//   }
-//   return { visibleText: full.slice(start, readPos), readPos, totalLen: full.length, windowChars, start };
-// }
 
 function coreadComicVisibleText(descriptions, chapterIndex) {
   return Object.values(isPlainObject(descriptions) ? descriptions : {})
@@ -31071,27 +30736,13 @@ function buildReaderParagraphs(text, hiList) {
 
 // 颜色白名单：只接受 #rgb / #rrggbb，挡注入。空/非法 → ''（回落主题色）。
 // sanitizeHexColor - 已迁移到 qianmu-storyboard-utils.js
-// function sanitizeHexColor(c) {
-//   const s = String(c || '').trim();
-//   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s) ? s : '';
-// }
 
 // 阅读时长格式化（ms → 「Xh Ym」/「Y 分钟」/「不足 1 分钟」）
 // formatReadDuration - 已迁移到 qianmu-storyboard-utils.js
-// function formatReadDuration(ms) {
-//   const m = Math.floor((ms || 0) / 60000);
-//   if (m < 1) return '不足 1 分钟';
-//   if (m < 60) return `${m} 分钟`;
-//   return `${Math.floor(m / 60)} 时 ${m % 60} 分`;
-// }
 
 // 页宽(rem) → 正文左右内边距(%)。窄屏/移动端 max-width 顶不到时，靠内边距给出可见的「页宽」效果。
 // 宽设置→小边距(更宽列)；窄设置→大边距(更窄列)。28→14% … 66→0%。
 // widthToPad - 已迁移到 qianmu-storyboard-utils.js
-// function widthToPad(widthRem) {
-//   const w = Math.max(28, Math.min(66, widthRem || 42));
-//   return ((66 - w) / 38 * 14).toFixed(1);
-// }
 
 // 构建阅读器舞台 HTML（始终在 body portal 内）。手机阅读 APP 式：点正文切换上下操作栏。
 function buildReaderStage() {

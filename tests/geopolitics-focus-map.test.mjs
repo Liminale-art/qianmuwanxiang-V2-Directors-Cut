@@ -5,7 +5,10 @@ const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
 
 // 星图必须确定性聚簇、避让标签，并只在总览保留有限关键关系。
-assert.match(source, /function geoStableHash[\s\S]*function geoFactionClusters[\s\S]*同盟.*依附/);
+// geoStableHash 已迁到 qianmu-storyboard-utils.js（入口只保留导入与调用）；旧断言匹配的是入口里被注释掉的旧实现。
+const utils = await readFile(new URL('../qianmu-storyboard-utils.js', import.meta.url), 'utf8');
+assert.match(utils, /export function geoStableHash\(/);
+assert.match(source, /function geoFactionClusters[\s\S]*geoStableHash\([\s\S]*同盟.*依附/);
 assert.match(source, /function geoClusteredNodeLayout[\s\S]*相同数据始终落在相同位置/);
 assert.match(source, /function geoLabelLayout[\s\S]*candidates[\s\S]*overlap/);
 assert.match(source, /function geoPrimaryRelationKeys[\s\S]*Math\.min\(8/);
