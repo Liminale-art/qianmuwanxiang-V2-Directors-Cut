@@ -957,7 +957,15 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     lockPanel(false);
     const { view, sources } = state;
     const binding = state.binding && typeof state.binding === 'object' ? state.binding : { enabled: false, overrides: {} };
-    const bound = key => binding.enabled && binding.overrides && Object.prototype.hasOwnProperty.call(binding.overrides, key);
+    // C-23：「已绑定」标记用与控制器相同的绑定键（预设正则带当前预设名），旧版缺预设名的键也认。
+    const presetName = state.sources?.preset?.name || '';
+    const bound = key => {
+      if (!binding.enabled || !binding.overrides) return false;
+      const has = k => Object.prototype.hasOwnProperty.call(binding.overrides, k);
+      const [src, ...rest] = String(key).split(':');
+      const real = typeof actions.bindingKey === 'function' ? actions.bindingKey(src, presetName, rest.join(':')) : key;
+      return has(real) || has(key);
+    };
     const pending = Array.isArray(state.pending) ? state.pending : [];
     const keep = focusedKey(), scroll = root.scrollTop;
     const tools = el('div', 'qm-regex-tools');

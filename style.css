@@ -1067,20 +1067,30 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-grip { cursor: grab; }
 #story-director-floor-nav .qm-regex-grip.is-picking { color: var(--sd-primary); background: color-mix(in srgb, var(--sd-primary) 16%, transparent); }
 #story-director-floor-nav .qm-regex-row.is-picking { background: color-mix(in srgb, var(--sd-primary) 8%, transparent); border-radius: 8px; }
-#story-director-floor-nav .qm-regex-drop { display: block; width: 100%; height: 10px; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
-#story-director-floor-nav .qm-regex-drop::before { content: ""; display: block; height: 2px; margin: 4px 0; border-radius: 999px; background: color-mix(in srgb, var(--sd-primary) 55%, transparent); opacity: .6; transition: opacity .15s ease, height .15s ease, box-shadow .15s ease; }
-/* C-17 s3：落点线不再呼吸——静止细线；选中插入位置（悬停/聚焦）时加粗 + 发光 */
-#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; box-shadow: 0 0 6px color-mix(in srgb, var(--sd-primary) 60%, transparent); }
+/* C-23：拖动落点不再占行高（原来每条前插 10px 落点，进入拾取态整张列表被撑开、目标位置随之下移，造成定位偏差）。
+   落点是零高度节点，线条叠在行分割线上；命中区向上下各延伸 8px。线条左实右渐隐；悬停/聚焦时加粗 + 光晕。
+   组首、组尾落点与普通落点同样式；组尾与紧随其后的组外落点在同一高度，命中区各取上半、下半区分。 */
+#story-director-floor-nav .qm-regex-drop { position: relative; z-index: 2; display: block; box-sizing: border-box; width: 100%; min-width: 0; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; overflow: visible; cursor: pointer; }
+#story-director-floor-nav .qm-regex-drop::after { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 16px; }
+#story-director-floor-nav .qm-regex-drop::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 2px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--sd-primary) 80%, transparent), transparent); opacity: .5; pointer-events: none; transition: opacity .15s ease, height .15s ease, top .15s ease, filter .15s ease; }
+#story-director-floor-nav .qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; top: -2px; height: 4px; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--sd-primary) 70%, transparent)); }
 #story-director-floor-nav .qm-regex-drop:focus-visible { outline: none; }
+#story-director-floor-nav .qm-regex-drop.is-group-end::after { top: -8px; height: 8px; }
+#story-director-floor-nav .qm-regex-drop.is-group-end + .qm-regex-drop::after { top: 0; height: 8px; }
+#story-director-floor-nav .qm-regex-list > .qm-regex-drop:last-child { height: 12px !important; }
+#story-director-floor-nav .qm-regex-list > .qm-regex-drop:last-child::after { top: 0; height: 12px; }
+#story-director-floor-nav .qm-regex-drop.is-across::before { background: linear-gradient(90deg, color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 85%, transparent), transparent); }
+#story-director-floor-nav .qm-regex-drop.is-across:hover::before, #story-director-floor-nav .qm-regex-drop.is-across:focus-visible::before { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 75%, transparent)); }
+#story-director-floor-nav .qm-regex-list > .qm-regex-drop:first-child + .qm-regex-row, #story-director-floor-nav .qm-regex-group + .qm-regex-drop + .qm-regex-row { border-top: 0; }
+@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-drop::before { transition: none; } }
+/* C-17 s3：落点线不再呼吸——静止细线；选中插入位置（悬停/聚焦）时加粗 + 发光 */
 /* C-16 s1：操作可视化——落点线呼吸、写回中的行转圈 + 整卡锁定、工具行状态提示 */
 #story-director-floor-nav .qm-regex-row.is-busy { background: color-mix(in srgb, var(--sd-primary) 7%, transparent); border-radius: 8px; }
 #story-director-floor-nav .qm-regex-busy-mark { color: var(--sd-primary); font-size: .8em; }
 #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { pointer-events: none; opacity: .72; transition: opacity .15s ease; }
 #story-director-floor-nav .qm-regex-status { display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 6px; color: var(--sd-primary); font-size: var(--qm-type-caption); white-space: nowrap; }
 /* C-16 s3：异源落点（预设↔全局移入）用强调色区分，与同源排序落点一眼可辨 */
-#story-director-floor-nav .qm-regex-drop.is-across::before { height: 3px; background: color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
-#story-director-floor-nav .qm-regex-drop.is-across:hover::before, #story-director-floor-nav .qm-regex-drop.is-across:focus-visible::before { height: 4px; box-shadow: 0 0 8px color-mix(in srgb, var(--sd-accent, var(--sd-primary)) 70%, transparent); }
-@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-drop::before { transition: none; } #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { transition: none; } }
+@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-card.is-locked .qm-regex-list { transition: none; } }
 /* C-16 s5：非管理态单条操作常驻——行尾「拨杆 + ⋯菜单」，菜单浮层默认收起，点开浮出编辑/复制/删除 */
 #story-director-floor-nav .qm-regex-rowtail { display: inline-flex; flex: none; align-items: center; gap: 2px; }
 #story-director-floor-nav .qm-regex-rowmenu { color: var(--sd-muted); }
@@ -1099,7 +1109,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-group-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: text; border-radius: 4px; padding: 0 2px; user-select: none; }
 #story-director-floor-nav .qm-regex-group-title:hover { background: var(--sd-glass-weak); color: var(--sd-text); }
 #story-director-floor-nav .qm-regex-group-title:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
-#story-director-floor-nav .qm-regex-group.is-custom > .qm-regex-group-label::after { content: ""; display: inline-block; width: 12px; height: 12px; margin-left: 4px; vertical-align: -1px; background: currentColor; opacity: .45; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath d='M32 32C32 14.3 46.3 0 64 0H320c17.7 0 32 14.3 32 32s-14.3 32-32 32H290.5l11.4 148.2c36.7 19.9 65.7 53.2 79.5 94.7l1 3c3.3 9.8 4.8 20.4 4.4 31.2c-.3 11.2-3.7 22.2-9.6 32.7c-11.9 21-29.7 39.2-50.8 51.4L298 488c0 13.3-10.7 24-24 24s-24-10.7-24-24V432H134v56c0 13.3-10.7 24-24 24s-24-10.7-24-24V423.9L58.9 405.5c-21.1-12.2-38.9-30.4-50.8-51.4c-5.9-10.5-9.3-21.5-9.6-32.7c-.4-10.8 1.1-21.4 4.4-31.2l1-3c13.8-41.5 42.8-74.8 79.5-94.7L94.5 64H64C46.3 64 32 49.7 32 32z'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 512'%3E%3Cpath d='M32 32C32 14.3 46.3 0 64 0H320c17.7 0 32 14.3 32 32s-14.3 32-32 32H290.5l11.4 148.2c36.7 19.9 65.7 53.2 79.5 94.7l1 3c3.3 9.8 4.8 20.4 4.4 31.2c-.3 11.2-3.7 22.2-9.6 32.7c-11.9 21-29.7 39.2-50.8 51.4L298 488c0 13.3-10.7 24-24 24s-24-10.7-24-24V432H134v56c0 13.3-10.7 24-24 24s-24-10.7-24-24V423.9L58.9 405.5c-21.1-12.2-38.9-30.4-50.8-51.4c-5.9-10.5-9.3-21.5-9.6-32.7c-.4-10.8 1.1-21.4 4.4-31.2l1-3c13.8-41.5 42.8-74.8 79.5-94.7L94.5 64H64C46.3 64 32 49.7 32 32z'/%3E%3C/svg%3E") center / contain no-repeat; }
 #story-director-floor-nav .qm-regex-unfix { flex: none; color: var(--sd-muted); font-size: .8em; }
 #story-director-floor-nav .qm-regex-unfix:hover { color: var(--sd-text); }
 #story-director-floor-nav .qm-regex-group-input { width: 9em; min-width: 0; min-height: 22px; margin: 0; padding: 0 6px; border: 1px solid var(--sd-hairline); border-radius: 6px; background: var(--sd-card); color: var(--sd-text); font-size: var(--qm-type-caption); font-weight: 600; }
@@ -1235,9 +1244,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-name.is-renamable { cursor: text; }
 #story-director-floor-nav input.qm-regex-rename { width: 100%; min-width: 0; min-height: 24px; box-sizing: border-box; font-size: var(--qm-type-body); font-weight: 400; border-radius: var(--qm-button-radius, 6px); }
 #story-director-floor-nav .qm-regex-group input.qm-regex-rename { flex: 1 1 auto; width: auto; font-size: var(--qm-type-caption); font-weight: 600; }
-#story-director-floor-nav .qm-regex-drop.is-group-start { height: 14px; margin-left: 14px; width: calc(100% - 14px); }
-#story-director-floor-nav .qm-regex-drop.is-group-start::before { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--sd-primary) 55%, transparent) 0 6px, transparent 6px 10px); }
-#story-director-floor-nav .qm-regex-drop.is-group-end::before { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--sd-primary) 55%, transparent) 0 6px, transparent 6px 10px); }
 /* C-17 s1：美化模式预览 = 沙箱 iframe 渲染替换后的 HTML，高度按内容自适应（上限 360px） */
 #story-director-floor-nav .qm-regex-testframe { display: block; width: 100%; height: var(--qm-frame-h, 140px); max-height: 360px; box-sizing: border-box; border: 1px solid var(--sd-hairline); background: color-mix(in srgb, var(--sd-primary) 4%, var(--sd-glass-weak)); }
 #story-director-floor-nav .qm-regex-testframe[hidden], #story-director-floor-nav .qm-regex-testout[hidden] { display: none; }

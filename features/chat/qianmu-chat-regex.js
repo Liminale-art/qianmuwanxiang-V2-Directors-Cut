@@ -667,8 +667,12 @@ export function resolveRegexTarget({ defaults = {}, overrides = {}, sources = {}
   const changes = { global: [], preset: [] };
   let affectsDisplay = false;
   for (const row of flattenBindableScripts(sources)) {
-    const pick = Object.prototype.hasOwnProperty.call(over, row.key) ? over[row.key]
-      : Object.prototype.hasOwnProperty.call(base, row.key) ? base[row.key] : null;
+    // C-23：1.59.501～510 的开关写入用的是 `preset:<id>`（缺预设名），与这里的 `preset:<预设名>:<id>` 对不上，
+    // 预设正则的绑定因此从未生效。新写入已统一；旧键仍按「当前预设」兼容读取。
+    const legacy = `${row.source}:${row.id}`;
+    const has = (map, key) => Object.prototype.hasOwnProperty.call(map, key);
+    const pick = has(over, row.key) ? over[row.key] : has(over, legacy) ? over[legacy]
+      : has(base, row.key) ? base[row.key] : has(base, legacy) ? base[legacy] : null;
     if (!pick || typeof pick !== 'object') continue;        // 两处都没有 → 维持现状
     const target = pick.enabled === true;
     if (target === row.enabled) continue;                   // 已是目标态 → 不写
@@ -790,7 +794,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.510') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.511') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -893,15 +897,18 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // reloadCurrentChat 会再触发 chatChanged→applyBinding，但第二次比较已无差异即停，天然幂等不成环。
   async function applyBinding() {
     if (disposed || applying) return 0;
-    if (!bindingEnabled()) return 0;
     const chatId = currentChatId();
     if (!chatId) return 0;                                   // 欢迎屏/无聊天：不动
+    // C-23：未开绑定的聊天也要复位到全局默认基线，否则会沿用上一个已绑定聊天改出来的开关（泄漏）。
+    // 只套正则默认，不切预设、不读本聊天覆盖。没有任何基线时整条空转。
+    const bindOn = bindingEnabled();
+    if (!bindOn && !Object.keys(attempt(() => readDefaults(), {}) || {}).length) return 0;
     applying = true;
     let changed = 0, reload = false;
     try {
-      const bound = currentBinding().preset;
+      const bound = bindOn ? currentBinding().preset : '';
       try {
-        const moved = await moveToPreset(bound);
+        const moved = bindOn ? await moveToPreset(bound) : { switched: false, reload: false };
         // C-19：绑定预设真的被切换时提示一次（已是目标预设则不动，也不提示）。
         if (moved.switched) {
           changed += 1; reload = moved.reload;
@@ -912,7 +919,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
         const notice = `${chatId}\n${bound}`;
         if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
       }
-      const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: readOverrides(), sources: readRegexSources(context()) });
+      const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: bindOn ? readOverrides() : {}, sources: readRegexSources(context()) });
       let regexChanged = 0;
       try {
         for (const source of BINDING_SOURCES) {
@@ -957,6 +964,19 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     }
   }
 
+  // C-23：绑定键必须与 resolveRegexTarget 一致——预设正则带当前预设名（`preset:<预设名>:<id>`）。
+  const bindKey = (source, id) => regexBindingKey(source, source === 'preset' ? readRegexSources(context()).preset.name : '', id);
+  // C-23：开关被拨动后记账。开着绑定 = 记入本聊天覆盖；没开绑定 = 若该条已有全局默认基线，同步更新基线
+  // （未绑定聊天的开关就是「全局态」，进其它未绑定聊天时据此复位）。
+  function recordToggle(source, id, enabled) {
+    if (!isRealId(id)) return;
+    const key = bindKey(source, id);
+    if (bindingEnabled()) { setBindingOverride({ key, enabled: enabled === true, liveEnabled: enabled !== true }); return; }
+    const defaults = attempt(() => readDefaults(), {}) || {};
+    if (!Object.prototype.hasOwnProperty.call(defaults, key)) return;
+    writeDefaults({ ...defaults, [key]: { enabled: enabled === true } });
+  }
+
   async function toggle({ source, id, name, enabled } = {}) {
     const key = `${source}:${id}`;
     if (pending.has(key) || writing) return null;
@@ -964,7 +984,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     try {
       const next = await writeRegexToggle(context(), { source, id, name, enabled });
       // 「懒人」绑定：开着绑定时，用户在本聊天随手拨动开关 = 记住这条。基线抓拨动前的态，其它聊天据此复位。
-      if (bindingEnabled() && isRealId(id)) setBindingOverride({ key, enabled: enabled === true, liveEnabled: enabled !== true });
+      recordToggle(source, id, enabled === true);
       syncNative();
       scheduleReload();
       return next;
@@ -985,7 +1005,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     keys.forEach(key => pending.add(key)); refresh();
     try {
       const changed = await writeRegexStates(context(), { source, changes });
-      if (bindingEnabled()) for (const change of changes) if (isRealId(change.id)) setBindingOverride({ key: `${source}:${change.id}`, enabled: change.enabled, liveEnabled: !change.enabled });
+      if (changed) for (const change of changes) recordToggle(source, change.id, change.enabled);
       if (changed) { syncNative(); scheduleReload(); }
       return changed;
     } catch (error) {
@@ -1043,10 +1063,15 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     };
     let overrides = currentBinding().overrides, overChanged = false;
     let defaults = attempt(() => readDefaults(), {}) || {}, defChanged = false;
+    const presetName = readRegexSources(context()).preset.name;
     for (const id of ids) {
-      const prev = `${fromSource}:${id}`, next = `${toSource}:${id}`;
-      const o = remap(overrides, prev, next); if (o) { overrides = o; overChanged = true; }
-      const d = remap(defaults, prev, next); if (d) { defaults = d; defChanged = true; }
+      // C-23：键与 resolveRegexTarget 一致（预设带预设名）；旧版缺预设名的键一并迁走。
+      const next = regexBindingKey(toSource, presetName, id);
+      for (const prev of [regexBindingKey(fromSource, presetName, id), `${fromSource}:${id}`]) {
+        if (prev === next) continue;
+        const o = remap(overrides, prev, next); if (o) { overrides = o; overChanged = true; }
+        const d = remap(defaults, prev, next); if (d) { defaults = d; defChanged = true; }
+      }
     }
     if (overChanged) saveBinding({ overrides });
     if (defChanged) writeDefaults(defaults);

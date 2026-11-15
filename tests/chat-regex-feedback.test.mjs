@@ -96,7 +96,10 @@ test('CSS contains busy row, locked card, status indicator; drop line is static 
   assert.ok(css.includes('.qm-regex-status'), '状态提示');
   assert.ok(!css.includes('qm-regex-drop-breathe'), 'C-17 s3：去掉呼吸动画');
   assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'reduced-motion');
-  assert.match(css, /.qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; height: 3px; box-shadow:/, '选中插入位置时加粗 + 发光');
+  assert.ok(css.includes('.qm-regex-drop:hover::before, #story-director-floor-nav .qm-regex-drop:focus-visible::before { opacity: 1; top: -2px; height: 4px; filter: drop-shadow('), '选中插入位置时加粗 + 发光');
+  // C-23：落点不占行高（零高度叠在分割线上），线条左实右渐隐
+  assert.ok(css.includes('.qm-regex-drop { position: relative; z-index: 2; display: block; box-sizing: border-box; width: 100%; min-width: 0; height: 0 !important;'), '落点不撑开列表');
+  assert.ok(css.includes('background: linear-gradient(90deg, color-mix(in srgb, var(--sd-primary) 80%, transparent), transparent)'), '左至右渐隐');
 });
 
 test('view renders busy rows with spinner and is-busy class, buttons disabled', async () => {
@@ -232,7 +235,7 @@ test('dropMove across sources inserts into the target (keeping id) before the an
   assert.deepEqual(st.preset().map(s => s.id), ['p1', 'g1', 'p2']);
 });
 
-test('cross-source move migrates binding override and default keys from src:id to dst:id', async () => {
+test('cross-source move migrates binding override and default keys to the destination key (preset keys carry the preset name, C-23)', async () => {
   const st = fakeST({ global: [{ id: 'g1', scriptName: 'A', disabled: false }], preset: [{ id: 'p1', scriptName: 'P1' }] });
   let binding = { enabled: true, overrides: { 'global:g1': { enabled: false }, 'preset:p1': { enabled: true } } };
   let defaults = { 'global:g1': { enabled: true } };
@@ -240,8 +243,8 @@ test('cross-source move migrates binding override and default keys from src:id t
     readBinding: () => binding, writeBinding: v => { binding = v; }, readDefaults: () => defaults, writeDefaults: v => { defaults = v; } });
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 'g1', name: 'A' }] });
   await ctrl.actions.dropMove({ source: 'preset', before: null });
-  assert.deepEqual(binding.overrides, { 'preset:p1': { enabled: true }, 'preset:g1': { enabled: false } });
-  assert.deepEqual(defaults, { 'preset:g1': { enabled: true } });
+  assert.deepEqual(binding.overrides, { 'preset:p1': { enabled: true }, 'preset:预设A:g1': { enabled: false } });
+  assert.deepEqual(defaults, { 'preset:预设A:g1': { enabled: true } });
 });
 
 test('cross-source move never loses entries: when the source delete fails the copy stays in the target', async () => {
