@@ -9,7 +9,7 @@ const PRESET_ROWS = [
   ['消息提示短音', 'short-level-complete', 'level complete', 'mp3'],
   ['果壳铃', 'shell-bell-water', '水铃桐', 'mp3'], ['果壳铃', 'shell-bell-ethereal', '略带空灵的水铃', 'mp3'],
   ['塞尔达', 'zelda-yahaha', '呀哈哈', 'mp3'], ['塞尔达', 'zelda-complete', '完成', 'mp3'], ['塞尔达', 'zelda-sheikah', '希卡', 'mp3'],
-  ['塞尔达', 'zelda-sheikah-update', '希卡更新', 'mp3'], ['塞尔达', 'zelda-get', '获取', 'mp3'], ['塞尔达', 'short-notification-14', '获取新物品', 'flac'],
+  ['塞尔达', 'zelda-sheikah-update', '希卡更新', 'mp3'], ['塞尔达', 'short-notification-14', '获取新物品', 'flac'],
   ['宝可梦', 'pokemon-item-found', '物品发现', 'mp3'], ['宝可梦', 'pokemon-pick-berry', '摘果子', 'mp3'], ['宝可梦', 'pokemon-heal', '治疗', 'mp3'],
   ['宝可梦', 'pokemon-forget-move', '技能遗忘', 'mp3'],
   ['星露谷', 'stardew-fish-bite', '钓鱼上钩', 'mp3'], ['星露谷', 'stardew-chicken', '鸡', 'mp3'], ['星露谷', 'stardew-cow', '牛', 'mp3'],
@@ -75,6 +75,8 @@ export function normalizeRingtone(owner) {
   const next = { ...RINGTONE_DEFAULTS, ...raw };
   next.soundEnabled = next.soundEnabled === true; next.flashEnabled = next.flashEnabled === true; next.soundOnlyHidden = next.soundOnlyHidden === true;
   if (!SOURCES.includes(next.soundSource)) next.soundSource = 'builtin';
+  // C-19：'zelda-get'（“获取”）与 short-notification-14（“获取新物品”）是同一段音，已撤下前者；旧存档回落不再指向已移除项。
+  if (next.soundPreset === 'zelda-get') next.soundPreset = 'short-notification-14';
   if (!RINGTONE_PRESETS.some(item => item.id === next.soundPreset)) next.soundPreset = RINGTONE_DEFAULTS.soundPreset;
   next.soundUrl = typeof next.soundUrl === 'string' ? next.soundUrl.trim().slice(0, RINGTONE_LIMITS.url) : '';
   // Multi-record local library: each entry is { id, name, size }. Migrate the legacy single local sound (keyed 'message').

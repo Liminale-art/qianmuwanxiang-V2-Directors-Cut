@@ -226,6 +226,121 @@ export function joinRegexGroup(list, indices, group) {
   return next.every((script, i) => script === list[i]) ? null : next;
 }
 
+// ── C-19：固定分组 ───────────────────────────────────────────────────────────
+// 用户手动建的分组要「稳住」：组内条目换位置、序号顺序被改、甚至被拆开，组都不解散，也不给条目硬加【前缀】。
+// 做法：把「组名 → 成员 id」记在千幕自己的设置里（settings.regexFixedGroups，与 ST 脚本数组分开）——
+// 脚本对象上的额外字段会在 ST 原生编辑器保存时被丢掉，不能依赖。解析时先取固定组的成员，
+// 这些成员在列表里按原顺序就地物化成一整段（跨过间隙，间隙里的条目移到段后），再对不属于任何固定组的
+// 剩余条目跑一次相邻同类折叠。固定组永远排在「剩余部分」之前或紧跟其首位成员的位置，顺序稳定可预期。
+export function emptyRegexGroups() { return Object.freeze({ order: Object.freeze([]), members: Object.freeze({}) }); }
+
+export function normalizeRegexGroups(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const members = {};
+  const order = [];
+  const seenName = new Set();
+  for (const name of [...(Array.isArray(src.order) ? src.order : []), ...Object.keys(src.members && typeof src.members === 'object' ? src.members : {})]) {
+    const label = text(name);
+    if (!label || seenName.has(label)) continue;
+    seenName.add(label);
+    const ids = [...new Set((Array.isArray(src.members?.[name] ?? src.members?.[label]) ? (src.members[name] ?? src.members[label]) : []).map(text).filter(Boolean))];
+    members[label] = Object.freeze(ids);
+    order.push(label);
+  }
+  return Object.freeze({ order: Object.freeze(order), members: Object.freeze(members) });
+}
+
+// 纯函数：把一批 id 记入组 groups[name]（保留原有顺序追加），新组排到最后。返回新对象。
+export function addRegexGroupMembers(groups, name, ids) {
+  const next = normalizeRegexGroups(groups);
+  const label = text(name).replace(/[【】[\]]/gu, '').trim();
+  if (!label) return next;
+  const add = [...new Set((Array.isArray(ids) ? ids : []).map(text).filter(Boolean))];
+  const order = next.order.includes(label) ? [...next.order] : [...next.order, label];
+  const members = { ...next.members };
+  for (const key of Object.keys(members)) members[key] = members[key].filter(id => !add.includes(id));   // 一条只属于一个固定组
+  members[label] = Object.freeze([...(members[label] || []), ...add]);
+  return Object.freeze({ order: Object.freeze(order), members: Object.freeze(members) });
+}
+
+export function removeRegexGroupMembers(groups, ids) {
+  const next = normalizeRegexGroups(groups);
+  const drop = new Set((Array.isArray(ids) ? ids : []).map(text).filter(Boolean));
+  const members = {};
+  const order = [];
+  for (const name of next.order) {
+    const kept = next.members[name].filter(id => !drop.has(id));
+    if (!kept.length) continue;                               // 组空了即消失
+    order.push(name); members[name] = Object.freeze(kept);
+  }
+  return Object.freeze({ order: Object.freeze(order), members: Object.freeze(members) });
+}
+
+export function renameRegexGroup(groups, from, to) {
+  const next = normalizeRegexGroups(groups);
+  const src = text(from), dest = text(to).replace(/[【】[\]]/gu, '').trim();
+  if (!src || !dest || src === dest || !next.members[src]) return next;
+  const members = {};
+  const order = [];
+  for (const name of next.order) {
+    const label = name === src ? dest : name;
+    order.push(label);
+    members[label] = Object.freeze([...new Set([...(members[label] || []), ...next.members[name]])]);
+  }
+  return Object.freeze({ order: Object.freeze(order), members: Object.freeze(members) });
+}
+
+export function removeRegexGroup(groups, name) {
+  const next = normalizeRegexGroups(groups);
+  const label = text(name);
+  const members = {};
+  const order = next.order.filter(item => item !== label);
+  for (const key of order) members[key] = next.members[key];
+  return Object.freeze({ order: Object.freeze(order), members: Object.freeze(members) });
+}
+
+// 纯函数：固定组 + 相邻同类折叠 → 显示用的段。规则：
+// 1) 每个固定组把它的成员按列表顺序物化成一整段（间隙里的异类挪到段后，不丢）；成员不在当前来源里就跳过该组。
+// 2) 固定组按「首位成员在列表中的位置」排序，然后整体替换掉这些成员在原序列中的位置。
+// 3) 其余条目照旧跑相邻同类折叠；散条段不带组头。
+export function groupRegexWithFixed(items, groups) {
+  const list = Array.isArray(items) ? items : [];
+  const fixed = normalizeRegexGroups(groups);
+  const idAt = new Map();
+  list.forEach((item, index) => { if (item && text(item.id)) idAt.set(text(item.id), index); });
+  const claimed = new Set();
+  const runs = [];   // { kind:'fixed'|'loose', label, key, items, at }
+  for (const label of fixed.order) {
+    const hits = fixed.members[label].filter(id => idAt.has(id) && !claimed.has(id)).sort((a, b) => idAt.get(a) - idAt.get(b));
+    if (hits.length < 2) continue;                            // 固定组至少要两条，单独一条退回普通折叠
+    for (const id of hits) claimed.add(id);
+    runs.push({ kind: 'fixed', label, key: `fixed:${label}`, items: hits.map(id => list[idAt.get(id)]), at: idAt.get(hits[0]) });
+  }
+  const loose = list.filter((item, index) => !claimed.has(text(item?.id ?? `#${index}`)));
+  const fixedLabels = new Set(runs.map(run => run.label));
+  const autoRuns = groupAdjacentRegex(loose).map(run => ({ kind: run.label ? 'loose-group' : 'loose', label: run.label, key: run.key, mode: run.mode, items: run.items,
+    at: list.indexOf(run.items[0]) }));
+  // C-19：与固定组同名的自动段并进固定组（否则会看到两个「群聊」）；成员按列表顺序排进同一条。
+  for (const run of autoRuns) {
+    if (!run.label || !fixedLabels.has(run.label)) continue;
+    const target = runs.find(item => item.label === run.label);
+    run.consumed = true;
+    target.items = [...target.items, ...run.items].sort((a, b) => list.indexOf(a) - list.indexOf(b));
+  }
+  const looseRuns = autoRuns.filter(run => !run.consumed);
+  // 合并并按「首位成员下标」排序；相邻的 loose 散条段合回一个，避免固定组把散条切成多个无头段。
+  const merged = [...looseRuns];
+  for (const run of runs.sort((a, b) => a.at - b.at)) merged.push(run);
+  merged.sort((a, b) => a.at - b.at);
+  const out = [];
+  for (const run of merged) {
+    const prev = out[out.length - 1];
+    if (run.kind === 'loose' && prev && prev.kind === 'loose') { out[out.length - 1] = { ...prev, items: [...prev.items, ...run.items] }; continue; }
+    out.push(run);
+  }
+  return out.map((run, i) => ({ key: run.kind === 'loose' ? '' : run.key || `${run.key}#${i}`, label: run.label || '', mode: run.kind === 'fixed' ? 'fixed' : run.mode, items: run.items, fixed: run.kind === 'fixed' }));
+}
+
 export function summarizeRegexScript(raw, index = 0) {
   const script = raw && typeof raw === 'object' ? raw : {};
   const placement = (Array.isArray(script.placement) ? script.placement : [])
@@ -689,7 +804,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // readDefaults 读全局默认基线；writeDefaults 持久化全局默认（首次为某条建覆盖时抓当前 live 态作基线，保证离开聊天能复位不泄漏）。
   readBinding = () => ({ enabled: false, overrides: {} }), writeBinding = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.506') } = {}) {
+  // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
+  readGroups = () => emptyRegexGroups(), writeGroups = () => {},
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.507') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -718,6 +835,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   };
   const readOverrides = () => currentBinding().overrides;
   const bindingEnabled = () => currentBinding().enabled;
+  // C-19：固定分组（组名 → 成员 id）。读是纯只读；写走宿主持久化。
+  const currentGroups = () => normalizeRegexGroups(attempt(() => readGroups(), emptyRegexGroups()));
+  const saveGroups = next => { try { writeGroups(normalizeRegexGroups(next)); } catch (_) { /* 存不下去也不能让面板崩 */ } };
   const currentChatId = () => attempt(() => { const ctx = context(); return typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId; }, null);
   const state = () => {
     const b = currentBinding();
@@ -732,6 +852,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
           name: text(entry.script?.scriptName) || '（未命名）' }))) }),
       binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
+      groups: currentGroups(),
       sources: readRegexSources(context()) });
   };
   // 每次写回后对齐 ST 原生面板里已渲染的列表（见 syncNativeRegexList）；失败不影响千幕自己的面板。
@@ -789,7 +910,11 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       const bound = currentBinding().preset;
       try {
         const moved = await moveToPreset(bound);
-        if (moved.switched) { changed += 1; reload = moved.reload; }
+        // C-19：绑定预设真的被切换时提示一次（已是目标预设则不动，也不提示）。
+        if (moved.switched) {
+          changed += 1; reload = moved.reload;
+          notify(`已切换到本聊天绑定的预设「${bound}」`, 'info');
+        }
       } catch (error) {
         // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
         const notice = `${chatId}\n${bound}`;
@@ -990,6 +1115,14 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       for (const entry of out.result) staged.push({ key: `trash-${++removedSeq}`, source, preset, index: entry.index, script: entry.script });
       count += out.result.length; reload ||= out.reload;
     }
+    // C-19：删掉的行从固定分组里摘掉；还原时按记录放回去。
+    if (staged.length) {
+      const gone = staged.map(entry => entry.script?.id);
+      const groups = currentGroups();
+      staged.forEach(entry => { entry.group = Object.keys(groups.members).find(name => groups.members[name].includes(text(entry.script?.id))) || ''; });
+      saveGroups(removeRegexGroupMembers(groups, gone));
+      refresh();
+    }
     if (count) { removed.push(...staged); notify(`已删除 ${count} 条正则，可在回收站还原`, 'success'); }
     return { reload, result: count };
   }, keysOf(items));
@@ -1010,11 +1143,19 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       reload ||= out.reload; count += entries.length;
       for (const entry of entries) done.add(entry.key);
     }
+    // C-19：还原的条目回到它原来的固定分组。
+    let groups = currentGroups(), groupsTouched = false;
+    for (const entry of chosen) {
+      if (!done.has(entry.key) || !text(entry.group) || !text(entry.script?.id)) continue;
+      groups = addRegexGroupMembers(groups, entry.group, [text(entry.script.id)]); groupsTouched = true;
+    }
+    if (groupsTouched) { saveGroups(groups); }
     for (let i = removed.length - 1; i >= 0; i -= 1) if (done.has(removed[i].key)) removed.splice(i, 1);
     if (!removed.length) recycleOpen = false;
+    refresh();
     return { reload, result: count };
   });
-  function setRecycle(on) { recycleOpen = on === true && removed.length > 0; refresh(); }
+  function setRecycle(on) { recycleOpen = on === true && removed.length > 0; if (recycleOpen) { managing = false; selected.clear(); picking = []; } refresh(); }
   // 复制：to 省略或同源 = 原地复制（紧跟原条目、名字加「副本」）；to 为另一来源 = 原名复制到那一来源末尾。
   const copyMany = ({ items, to = '' } = {}) => structural('复制正则', async ctx => {
     let reload = false, count = 0;
@@ -1069,11 +1210,14 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // 目标位按 id 在原始数组里定位（跨「原始顺序 / 自动分组」两种视图都正确），拖拽与点插入走同一路径。
   // C-18：group 非空 = 落点在某个组内（含组内末尾）——落定的条目同时改成属于该组的名字，否则只是位置挨着、进不了组。
   const dropMove = ({ source, items, before = null, group = '' } = {}) => {
-    const inGroup = script => {
-      if (!text(group)) return script;
-      const to = fitRegexGroupName(text(script?.scriptName), group);
-      return to && to !== text(script?.scriptName) ? { ...script, scriptName: to } : script;
+    // C-19：落到某个组内 = 把条目记进该固定分组；组还不存在时，用它现有成员＋这批条目建一个。
+    const fixInto = (ids, members = []) => {
+      const label = text(group).replace(/[【】[\]]/gu, '').trim();
+      if (!label || !ids.length) return;
+      saveGroups(addRegexGroupMembers(currentGroups(), label, [...members, ...ids]));
     };
+    // 同一来源内的成员（用来把自动组「固定下来」）：落点所属组当前已物化出来的行。
+    const groupMembers = () => (group && Array.isArray(items) && items.length ? [] : []);
     const chosen = (Array.isArray(items) && items.length ? items : picking).filter(item => item && text(item.id));
     picking = [];
     if (!chosen.length) { refresh(); return null; }
@@ -1087,13 +1231,16 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       return structural('调整顺序', async ctx => {
         const out = await editRegexList(ctx, source, raw => {
           const indices = locateIndices(raw, moving);
-          const hit = new Set(indices);
-          const named = raw.map((script, i) => (hit.has(i) ? inGroup(script) : script));
-          const next = moveRegexEntries(named, indices, anchorIndex(raw, before));
+          const next = moveRegexEntries(raw, indices, anchorIndex(raw, before));
           if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
           return { next, touched: indices.map(i => raw[i]), result: true };
         });
-        if (out.result) notify(`${moving.length} 项已移至指定位置`, 'success');
+        // C-19：落到组内就算归入该组——即使原位置就在组末尾、列表顺序没变也要记下来。
+        if (out.result || text(group)) {
+          fixInto(moving.map(item => item.id));
+          if (out.result) syncNative();
+          notify(`${moving.length} 项已移至指定位置`, 'success');
+        }
         return out;
       }, keysOf(moving, source));
     }
@@ -1103,7 +1250,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       const fromList = readRawList(ctx, origin);
       const pickIdx = locateIndices(fromList, moving);
       if (pickIdx.length !== moving.length) throw stale();
-      const scripts = pickIdx.map(i => inGroup(structuredClone(fromList[i])));
+      const scripts = pickIdx.map(i => structuredClone(fromList[i]));
       const destOut = await editRegexList(ctx, source, raw => {
         const next = [...raw]; next.splice(anchorIndex(raw, before), 0, ...scripts);
         return { next, touched: scripts, result: scripts.length };
@@ -1114,6 +1261,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
         return { next, touched: idx.map(i => raw[i]), result: idx.length };
       });
       migrateBindingKeys(origin, source, moving);
+      fixInto(moving.map(item => item.id));
       notify(`${moving.length} 项已移至${source === 'preset' ? '预设' : '全局'}`, 'success');
       return { reload: destOut.reload || srcOut.reload, result: moving.length };
     }, keysOf(moving, origin));
@@ -1169,21 +1317,54 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   }, keysOf(items));
   // C-15 s9 / C-18：移入分组、组改名 = 让条目真正属于该组（joinRegexGroup：必要时写【标签】，并挪到该组末尾）。
   // tag 空 = 去掉标签回到自动归类。挪动改变了执行顺序，涉及显示类脚本时重载一次。
-  const retag = ({ items, tag = '' } = {}) => structural('调整分组', async ctx => {
-    let count = 0, reload = false;
-    for (const [source, list] of bySource(items)) {
-      const out = await editRegexList(ctx, source, raw => {
-        const indices = locateIndices(raw, list);
-        const next = joinRegexGroup(raw, indices, tag);
-        if (!next) return { next: null, result: 0 };
-        const moved = next.some((script, i) => text(script?.id) !== text(raw[i]?.id));
-        return { next, touched: moved ? indices.map(i => raw[i]) : [], result: indices.length };
-      });
-      count += out.result || 0; reload ||= out.reload;
-    }
-    return { reload, result: count };
-  }, keysOf(items));
-  function setManaging(on) { managing = on === true; if (!managing) { selected.clear(); picking = []; } refresh(); }
+  // C-19：移入分组 / 组改名 = 建立或调整「固定分组」，不再给名字加【前缀】。
+  // tag 空 = 把条目从所有固定组里移出（回到相邻同类自动折叠）。groupItems = 目标组现有成员（把自动组「固定下来」用）。
+  const retag = ({ items, tag = '', groupItems = [], renameFrom = '' } = {}) => {
+    const targets = (Array.isArray(items) ? items : []).filter(item => item && text(item.id));
+    return structural('调整分组', async ctx => {
+      const label = text(tag).replace(/[【】[\]]/gu, '').trim();
+      if (!targets.length) return { reload: false, result: 0 };
+      const ids = targets.map(item => text(item.id));
+      let groups = currentGroups();
+      // 改名：固定组换名（保留成员）；自动组改名 = 用整组成员建一个同名固定组。
+      if (text(renameFrom) && label && text(renameFrom) !== label) {
+        groups = groups.members[text(renameFrom)] ? renameRegexGroup(groups, text(renameFrom), label) : addRegexGroupMembers(groups, label, (Array.isArray(groupItems) ? groupItems : []).map(item => text(item?.id)));
+      }
+      if (label) groups = addRegexGroupMembers(groups, label, [...(Array.isArray(groupItems) ? groupItems : []).map(item => text(item?.id)), ...ids]);
+      else groups = removeRegexGroupMembers(groups, ids);
+      saveGroups(groups);
+      // 名字上的旧【标签】顺手清掉：固定分组不再靠前缀表达，留着反而重复。
+      let changed = 0;
+      for (const [source, list] of bySource(targets)) {
+        const out = await editRegexList(ctx, source, raw => {
+          const hit = new Set(locateIndices(raw, list));
+          let hits = 0;
+          const next = raw.map((script, i) => {
+            if (!hit.has(i)) return script;
+            const bare = tagRegexName(text(script?.scriptName), '');
+            if (!bare || bare === text(script?.scriptName)) return script;
+            hits += 1; return { ...script, scriptName: bare };
+          });
+          return hits ? { next, touched: [] } : { next: null, result: 0 };
+        });
+        changed += out.result || 0;
+      }
+      refresh();
+      return { reload: false, result: targets.length };
+    }, keysOf(targets));
+  };
+  // C-19：固定组改名（组名双击）。自动组也能改成固定组。
+  const renameGroup = ({ from, to, members = [] } = {}) => retag({ items: (Array.isArray(members) ? members : []), tag: to, groupItems: members, renameFrom: from });
+  // C-19：解除固定（组回到相邻同类自动折叠）。
+  const unfixGroup = ({ name } = {}) => {
+    const label = text(name);
+    if (!label) return false;
+    saveGroups(removeRegexGroup(currentGroups(), label));
+    refresh();
+    return true;
+  };
+  // C-19：管理态与回收站互斥——打开一个就关掉另一个，避免两套状态同时挂着互相打架。
+  function setManaging(on) { managing = on === true; if (managing) recycleOpen = false; if (!managing) { selected.clear(); picking = []; } refresh(); }
   function setSelected(keys, on = true) {
     for (const key of Array.isArray(keys) ? keys : [keys]) { if (!text(key)) continue; if (on) selected.add(String(key)); else selected.delete(String(key)); }
     refresh();
@@ -1243,7 +1424,9 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const actions = Object.freeze({
     views: REGEX_VIEWS,
     placements: REGEX_PLACEMENTS,
-    group: groupAdjacentRegex,   // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；groupRegexScripts 保留导出便于回退
+    group: (items, groups) => groupRegexWithFixed(items, groups ?? currentGroups()),
+    fixedGroups: () => currentGroups(),
+    groupNames: () => currentGroups().order,
     familyKey: regexFamilyKey,
     tagName: tagRegexName,
     preview: previewRegexScript,
@@ -1261,6 +1444,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     selectPreset,
     readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, rename, regroup, retag,
     setManaging, setSelected, openEditor, closeEditor, importMany, exportMany,
+    renameGroup, unfixGroup,
   });
   async function mount(host) {
     if (!host) return;

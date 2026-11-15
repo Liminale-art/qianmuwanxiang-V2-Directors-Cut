@@ -1,7 +1,7 @@
 import {qianmuIconMarkup} from './qianmu-icon-renderer.js?v=1.59.478';
 import {QIANMU_HIVE_COMMANDS} from './qianmu-hive-commands.js?v=1.59.477';
 // A detachable entry, not another assistant session. Geometry stays on this device.
-export function createProseHive({open,geometry,clamp,palette,theme,outline,applyIcons,mount,canDock,closeWheel,commandId='assistant',storageKey='qianmu-prose-hive-device-v1',title='场外特助（拖回千幕归巢）',ariaLabel='打开场外特助',document=globalThis.document,window=globalThis.window}={}) {
+export function createProseHive({open,geometry,clamp,palette,theme,outline,applyIcons,mount,canDock,closeWheel,commandId='assistant',storageKey='qianmu-prose-hive-device-v1',title='场外特助（拖回千幕归巢）',ariaLabel='打开场外特助',isHostPage=null,document=globalThis.document,window=globalThis.window}={}) {
   const key=storageKey;let state={detached:false,position:null,tone:'dark',edge:0},layer=null,unmount=null,disposed=false;
   try { const saved=JSON.parse(window.localStorage.getItem(key));if(saved&&typeof saved.detached==='boolean')state={...state,...saved}; } catch {}
   const save=()=>{try{window.localStorage.setItem(key,JSON.stringify(state));}catch{/* Geometry failure must not prevent opening the assistant. */}};
@@ -18,8 +18,26 @@ export function createProseHive({open,geometry,clamp,palette,theme,outline,apply
     entry.innerHTML=qianmuIconMarkup(command.glyph)+(outline||'');
     for(const [name,value] of Object.entries({'left':`${position.x}px`,'top':`${position.y}px`,'--sd-notes-entry-width':`${size.width}px`,'--sd-notes-entry-height':`${size.height}px`,'--sd-wheel-glass-fill':colors[tone+'Fill'],'--sd-wheel-icon':colors[tone+'Icon'],'--sd-wheel-edge':colors.edges[Math.max(0,Math.trunc(Number(state.edge)||0))%colors.edges.length]}))entry.style.setProperty(name,value);
     layer.append(entry);document.body.append(layer);applyIcons?.(layer);unmount=mount?.(layer);
+    // C-19：聊天工具包这类入口只在聊天页出现——ST 打开任一全屏抽屉（角色、世界书、设置…）时先收起来。
+    if(typeof isHostPage==='function')syncHostPage();
     for(const type of ['mousedown','touchstart','click'])entry.addEventListener(type,isolate);
     bindDrag(entry,false);
+  }
+  // isHostPage 为 null 时（便笺、场外特助）不做任何额外判定，行为与原来一致。
+  let hostObserver=null;
+  function hostPageVisible(){
+    if(typeof isHostPage!=='function')return true;
+    try{return isHostPage()!==false;}catch{return true;}
+  }
+  function syncHostPage(){
+    if(!layer)return;
+    const visible=hostPageVisible();
+    layer.hidden=!visible;
+    if(!visible){layer.style.display='none';}else{layer.style.removeProperty('display');}
+    if(hostObserver||typeof isHostPage!=='function')return;
+    // ST 用 .drawer-content 的 openDrawer/closedDrawer 切换页面；只监听 class 变化，开销很小。
+    hostObserver=typeof window.MutationObserver==='function'?new window.MutationObserver(syncHostPage):null;
+    hostObserver?.observe(document.body,{attributes:true,attributeFilter:['class'],subtree:true});
   }
   function bindDrag(button,fromHive,layout={}){
     button.style.touchAction='none';
@@ -55,5 +73,5 @@ export function createProseHive({open,geometry,clamp,palette,theme,outline,apply
     button.style.left=`${position.x}px`;button.style.top=`${position.y}px`;
     button.style.setProperty('--sd-notes-entry-width',`${size.width}px`);button.style.setProperty('--sd-notes-entry-height',`${size.height}px`);
   };window.addEventListener('resize',resized);window.visualViewport?.addEventListener('resize',resized);
-  return Object.freeze({render,bind(button,item,layout){if(item?.id===commandId)bindDrag(button,true,layout);},get detached(){return state.detached;},dispose(){disposed=true;remove();window.removeEventListener('resize',resized);window.visualViewport?.removeEventListener('resize',resized);}});
+  return Object.freeze({render,bind(button,item,layout){if(item?.id===commandId)bindDrag(button,true,layout);},get detached(){return state.detached;},syncHostPage,dispose(){disposed=true;remove();hostObserver?.disconnect();hostObserver=null;window.removeEventListener('resize',resized);window.visualViewport?.removeEventListener('resize',resized);}});
 }

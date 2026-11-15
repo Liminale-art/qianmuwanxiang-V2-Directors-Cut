@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { groupAdjacentRegex, fitRegexGroupName, joinRegexGroup, createChatRegex } = await import('../features/chat/qianmu-chat-regex.js');
+const { groupAdjacentRegex, fitRegexGroupName, joinRegexGroup, groupRegexWithFixed, createChatRegex } = await import('../features/chat/qianmu-chat-regex.js');
 const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
 
 const scripts = (...names) => names.map((scriptName, i) => ({ id: `s${i}`, scriptName }));
@@ -48,18 +48,24 @@ const timers = () => ({ set: () => 1, clear() {} });
 
 test('controller: retag joins the group, dropMove with a group lands at the group end, rename only changes the name', async () => {
   const st = fakeST(scripts('独立', '群聊-外框', '群聊-正文', '尾巴'));
-  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: timers() });
+  // C-19：固定分组存宿主设置（这里用内存桩），不再靠改名字。
+  let groups = { order: [], members: {} };
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: timers(),
+    readGroups: () => groups, writeGroups: value => { groups = { order: [...value.order], members: { ...value.members } }; } });
   assert.equal(await ctrl.actions.retag({ items: [{ source: 'global', id: 's0', name: '独立' }], tag: '群聊' }), 1);
-  assert.deepEqual(st.names(), ['群聊-外框', '群聊-正文', '【群聊】独立', '尾巴']);
-  // 把「尾巴」拖到组内末尾：位置在组最后一条之后，并归入该组
+  assert.deepEqual(groups, { order: ['群聊'], members: { 群聊: ['s0'] } }, '记成固定分组');
+  assert.deepEqual(st.names(), ['独立', '群聊-外框', '群聊-正文', '尾巴'], '不改名字、不动执行顺序');
+  // 把「尾巴」拖到组内末尾：位置在组最后一条之后，并记入该组
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 's3', name: '尾巴' }] });
   await ctrl.actions.dropMove({ source: 'global', before: null, group: '群聊' });
-  assert.deepEqual(st.names(), ['群聊-外框', '群聊-正文', '【群聊】独立', '【群聊】尾巴']);
-  assert.deepEqual(groupAdjacentRegex(rows(st.ctx.extensionSettings.regex)).map(r => r.items.length), [4]);
-  // 不带 group 的落点 = 只移动，不改名
+  assert.deepEqual([...groups.members['群聊']].sort(), ['s0', 's3']);
+  assert.deepEqual(groupRegexWithFixed(rows(st.ctx.extensionSettings.regex), groups).map(r => [r.label, r.items.length]), [['群聊', 4]], '组成立且不散');
+  // 不带 group 的落点 = 只移动，不进组
+  const keep = groups.members['群聊'].length;
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 's1', name: '群聊-外框' }] });
   await ctrl.actions.dropMove({ source: 'global', before: null });
   assert.equal(st.names().at(-1), '群聊-外框');
+  assert.equal(groups.members['群聊'].length, keep, '组外落点不改分组');
   const before = structuredClone(st.ctx.extensionSettings.regex.find(s => s.id === 's2'));
   await ctrl.actions.rename({ source: 'global', id: 's2', name: '群聊-正文', to: '群聊-主体' });
   assert.deepEqual(st.ctx.extensionSettings.regex.find(s => s.id === 's2'), { ...before, scriptName: '群聊-主体' });
@@ -98,6 +104,7 @@ function mount(global, state = {}, extra = {}) {
   const full = Object.freeze({ ...ctrl.state(), ...state });
   let view = null;
   const stub = { ...ctrl.actions, rename: a => { calls.push(['rename', a]); return true; }, retag: a => { calls.push(['retag', a]); return 1; },
+    renameGroup: a => { calls.push(['renameGroup', a]); return 1; },
     setFolded: (...a) => { calls.push(['fold', a]); view.render(full); }, ...extra };
   view = mountChatRegexView({ root: host, actions: stub });
   view.render(full);
@@ -129,16 +136,17 @@ test('inside its group a row hides the redundant 【tag】 and keeps it when ren
   nameOf(host, 's2').listeners.dblclick();
   const field = byKey(host, 'rename:global:s2');
   field.value = '不发送群聊'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
-  assert.equal(calls.at(-1)[1].to, '【群聊】不发送群聊', '改名后仍在本组');
+  // C-19：组内改名只换名字；组名改名走 renameGroup（自动组改名即固定下来），不再写【前缀】。
+  assert.equal(calls.at(-1)[1].to, '不发送群聊', '组内改名不加前缀');
   const head = walkAll(host).find(n => n.classList?.contains('qm-regex-group'));
   head.listeners.click({ timeStamp: 5000, target: null });
   head.listeners.click({ timeStamp: 5200, target: null });
   const gf = byKey(host, 'rename:group:global:群聊');
   assert.ok(gf, '非管理态组名双击进入改名');
   gf.value = '群组'; gf.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
-  assert.equal(calls.at(-1)[0], 'retag');
-  assert.equal(calls.at(-1)[1].tag, '群组');
-  assert.deepEqual(calls.at(-1)[1].items.map(i => i.id), ['s0', 's1', 's2']);
+  assert.equal(calls.at(-1)[0], 'renameGroup');
+  assert.equal(calls.at(-1)[1].to, '群组');
+  assert.deepEqual(calls.at(-1)[1].members.map(i => i.id), ['s0', 's1', 's2']);
   view.dispose();
 });
 

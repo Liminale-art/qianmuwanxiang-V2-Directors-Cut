@@ -877,9 +877,9 @@ test('field actions have matching frames and disabled opacity; reveal fades out 
 test('entry, font controller, view and styles use the same refreshed UI cache stamp', async () => {
     // 1.59.500 (节点 C-11): 字体卡「应用/更多」双控件改了 library.js/view 与 css；runtime/account-sync/state/sources/package 不动。
     // 1.59.503 (节点 C-15e): 跨端重复导入自动匹配只改 library.js/view；css/runtime/account-sync/state/sources/package 不动仍是旧址。
-    const stamp = '1.59.503', lib = '1.59.506', css = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+    const stamp = '1.59.503', lib = '1.59.507', css = '1.59.500', scope = '1.59.499', fix = '1.59.498', read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
     const manifest = JSON.parse(await read('manifest.json'));
-    assert.equal(manifest.js, `index.js?v=1.59.506-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.506-toast-14`);
+    assert.equal(manifest.js, `index.js?v=1.59.507-toast-14`); assert.equal(manifest.css, `style.css?v=1.59.507-toast-14`);
     assert.ok((await read('index.js')).includes(`'./qianmu-font-library.js?v=${lib}'`));
     assert.ok((await read('qianmu-font-library.js')).includes(`'./qianmu-font-library-view.js?v=${stamp}'`));
     const controller = await read('qianmu-font-library.js');

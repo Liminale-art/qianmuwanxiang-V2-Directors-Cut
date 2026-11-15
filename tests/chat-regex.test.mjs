@@ -496,7 +496,7 @@ test('chat toolkit has a lazily mounted 5th 快切 tab', async () => {
   const index = await readFile(new URL('index.js', root), 'utf8');
   assert.ok(index.includes('data-floor-tab="regex">快切</button>') && index.includes('data-floor-view="regex"></section>'));
   assert.equal(index.split("['layout', 'recovery', 'ring', 'regex'].includes(").length - 1, 2, '初始视图与 setView 都认 regex');
-  assert.ok(index.includes(`if (floorNavigatorView === 'regex') void chatRegex.mount(`), '切到正则才挂载');
+  assert.ok(index.includes(`if (floorNavigatorView === 'regex') { const done = pending(`), '切到正则才挂载（并带加载占位）');
   assert.ok(index.includes('chatRegex.unmount();') && index.includes('chatRegex.dispose();'), '关闭工具包卸载，运行时销毁');
   const css = await readFile(new URL('style.css', root), 'utf8');
   assert.ok(css.includes('.sd-floor-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));'), '五个页签等分');
@@ -1045,7 +1045,8 @@ const mgr = (overrides = {}) => {
   const st = fakeST(overrides);
   const timers = manualTimers();
   const notes = [];
-  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, notify: (m, t) => notes.push([t, m]) });
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers, notify: (m, t) => notes.push([t, m]),
+    ...(overrides.readGroups ? { readGroups: overrides.readGroups, writeGroups: overrides.writeGroups } : {}) });
   return { st, timers, notes, ctrl };
 };
 
@@ -1338,25 +1339,29 @@ test('editor new mode inserts a blank script and refuses an empty name', async (
 });
 
 // C-15 s9c：手动命名组 = 写【标签】；双击组名就地改名；整组拾取；编辑页分组栏。
-test('retag writes a leading 【tag】 per entry without a reload, and empty tag clears it', async () => {
-  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '[旧]不发送片尾' }, { id: 'g3', scriptName: '独立' }] });
+// C-19：移入分组不再写【前缀】，而是记成一个「固定分组」（存千幕设置）；名字上的旧标签顺手清掉。
+test('retag fixes a group in settings instead of prefixing names, and empty tag releases the entries', async () => {
+  const held = { order: [], members: {} };
+  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '[旧]不发送片尾' }, { id: 'g3', scriptName: '独立' }],
+    readGroups: () => held, writeGroups: value => { held.order = [...value.order]; held.members = { ...value.members }; } });
   const items = [{ source: 'global', id: 'g1', name: '不发送剧场' }, { source: 'global', id: 'g2', name: '[旧]不发送片尾' }];
   assert.equal(await ctrl.actions.retag({ items, tag: '屏蔽' }), 2);
-  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['【屏蔽】不发送剧场', '【屏蔽】不发送片尾', '独立']);
-  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], 'id 不变（绑定不受影响）');
-  assert.equal(timers.size, 0, '改名不触发重载');
+  assert.deepEqual(held, { order: ['屏蔽'], members: { 屏蔽: ['g1', 'g2'] } }, '记成固定分组');
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['不发送剧场', '不发送片尾', '独立'], '不再加前缀，只清掉旧前缀');
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], 'id 不变、顺序不变（绑定与执行顺序不受影响）');
+  assert.equal(timers.size, 0, '分组不改正文，不触发重载');
   assert.equal(await ctrl.actions.retag({ items, tag: '' }), 2);
-  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['不发送剧场', '不发送片尾', '独立']);
+  assert.deepEqual(held, { order: [], members: {} }, '留空 = 移出固定分组');
 });
 
-test('managing group header: double-click renames via retag, grip picks the whole group, drop lands before the header', async () => {
+test('managing group header: double-click renames via renameGroup, grip picks the whole group, drop lands before the header', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const host = fakeDom();
   const calls = [];
   const st = fakeST({ global: [{ id: 'g0', scriptName: '独立' }, { id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '不发送片尾' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const stub = { ...ctrl.actions };
-  for (const name of ['retag', 'pickMove', 'dropMove']) stub[name] = (...args) => { calls.push([name, args]); return null; };
+  for (const name of ['retag', 'renameGroup', 'pickMove', 'dropMove']) stub[name] = (...args) => { calls.push([name, args]); return null; };
   const view = mountChatRegexView({ root: host, actions: stub });
   view.render(Object.freeze({ ...ctrl.state(), managing: true }));
   assert.equal(byKey(host, 'view'), undefined, '无视图切换按钮');
@@ -1367,11 +1372,13 @@ test('managing group header: double-click renames via retag, grip picks the whol
   const field = byKey(host, 'grename:global:不发送');
   assert.equal(field.value, '不发送');
   field.value = '屏蔽'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
-  assert.equal(calls[0][0], 'retag');
-  assert.equal(calls[0][1][0].tag, '屏蔽');
-  assert.deepEqual(calls[0][1][0].items.map(i => i.id), ['g1', 'g2'], '整组成员');
+  // C-19：改名 = 调整固定分组（自动组改名即把它固定下来），不再写【前缀】。
+  assert.equal(calls[0][0], 'renameGroup');
+  assert.equal(calls[0][1][0].to, '屏蔽');
+  assert.equal(calls[0][1][0].from, '', '自动组改名：没有旧固定组可改名，凭成员新建');
+  assert.deepEqual(calls[0][1][0].members.map(i => i.id), ['g1', 'g2'], '整组成员');
   field.listeners.blur(); await settle();
-  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, 'Enter 后失焦不重复提交');
+  assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, 'Enter 后失焦不重复提交');
   // 触屏双点：两次 click 间隔 <400ms 也进入改名；Esc 取消不写
   view.render(Object.freeze({ ...ctrl.state(), managing: true }));
   const t2 = byKey(host, 'gname:global:不发送');
@@ -1379,12 +1386,12 @@ test('managing group header: double-click renames via retag, grip picks the whol
   const f2 = byKey(host, 'grename:global:不发送');
   assert.ok(f2, '双点进入改名');
   f2.value = '别的'; f2.listeners.keydown({ key: 'Escape', preventDefault() {} }); await settle();
-  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, 'Esc 不提交');
+  assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, 'Esc 不提交');
   // 自动组清空名字 = 不改
   view.render(Object.freeze({ ...ctrl.state(), managing: true }));
   byKey(host, 'gname:global:不发送').listeners.dblclick();
   const f3 = byKey(host, 'grename:global:不发送'); f3.value = ''; f3.listeners.blur(); await settle();
-  assert.equal(calls.filter(c => c[0] === 'retag').length, 1, '自动组留空不写');
+  assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, '自动组留空不写');
   // 整组拾取
   byKey(host, 'gpick:global:不发送').listeners.click(); await settle();
   const pick = calls.find(c => c[0] === 'pickMove');
@@ -1393,8 +1400,10 @@ test('managing group header: double-click renames via retag, grip picks the whol
   view.render(Object.freeze({ ...ctrl.state(), managing: true, picking: [{ source: 'global', id: 'g0', name: '独立' }] }));
   const list = walkAll(host).find(n => n.classList?.contains('qm-regex-list'));
   const seq = list.children.map(n => n.dataset?.key || (n.classList?.contains('qm-regex-group') ? 'HEAD' : n.dataset?.id));
-  // C-18：组内最后一条之后多一个「组内末尾」落点，落定即归入该组
-  assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'g1', 'drop:global:g2', 'g2', 'drop:global:groupend:不发送', 'drop:global:end']);
+  // C-18：组内最后一条之后多一个「组内末尾」落点，落定即归入该组；C-19：首条之前还有一个「组内首位」落点。
+  assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'drop:global:groupstart:不发送', 'g1', 'drop:global:g2', 'g2', 'drop:global:groupend:不发送', 'drop:global:end']);
+  byKey(host, 'drop:global:groupstart:不发送').listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送剧场' }, group: '不发送' }]], '组内首位落点也归入该组');
   byKey(host, 'drop:global:groupend:不发送').listeners.click(); await settle();
   assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: null, group: '不发送' }]]);
   byKey(host, 'drop:global:g2').listeners.click(); await settle();

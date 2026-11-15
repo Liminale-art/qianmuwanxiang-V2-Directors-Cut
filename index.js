@@ -9,8 +9,8 @@ import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
-import {createProseHive} from './qianmu-prose-hive.js?v=1.59.494';
-import {createFontLibrary} from './qianmu-font-library.js?v=1.59.506';
+import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
+import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
@@ -42,7 +42,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.503';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.506';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.507';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -319,7 +319,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.506';
+const VERSION = '1.59.507';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -349,7 +349,16 @@ function regexBindingDefaultsWrite(value) {
   getSettings().regexBindingDefaults = isPlainObject(value) ? value : {};
   saveSettings();
 }
-const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings
+// C-19：固定分组（组名 → 成员 id）存千幕自己的设置。脚本对象上的附加字段会被 ST 原生编辑器保存时丢掉，所以不放那里。
+function regexGroupsRead() {
+  const g = getSettings().regexFixedGroups;
+  return isPlainObject(g) ? g : { order: [], members: {} };
+}
+function regexGroupsWrite(value) {
+  getSettings().regexFixedGroups = isPlainObject(value) ? value : { order: [], members: {} };
+  saveSettings();
+}
+const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；固定分组存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -393,7 +402,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.506')]);
+    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.507')]);
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
@@ -1053,6 +1062,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: true,
   regexBindingDefaults: {},   // C-11d：正则绑定的全局默认基线 { 'global:<id>'|'preset:<预设名>:<id>': { enabled } }，每聊天覆盖存 chat_metadata
+  regexFixedGroups: { order: [], members: {} },   // C-19：固定分组 { order:[组名], members:{组名:[脚本 id]} }——组内换位置/被拆开也不解散
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -5873,6 +5883,12 @@ function persistProseLayout() {
 let floorViewportCleanup = null;
 let floorNavigatorView = 'jump';
 
+// C-19：聊天页是否在前台——工具包的拖出入口只属于聊天页，ST 打开任一全屏抽屉时收起来。
+const isChatSurfaceVisible = () => {
+  const chat = document.getElementById('chat');
+  return !!chat && !document.querySelector('.drawer-content.openDrawer') && chat.getClientRects().length > 0;
+};
+
 function closeFloorNavigator() {
   const floor = document.getElementById(FLOOR_NAV_ID);
   const outside = floor?.__qianmuOutsideHandler;
@@ -6113,9 +6129,16 @@ function openFloorNavigator(initialView = floorNavigatorView) {
       button.setAttribute('aria-selected', String(active));
     });
     root.querySelectorAll('[data-floor-view]').forEach((section) => { section.hidden = section.dataset.floorView !== floorNavigatorView; });
-    if (floorNavigatorView === 'recovery') void mountFloorChatRecovery(root);
-    if (floorNavigatorView === 'ring') void chatRingtone.mount(root.querySelector('[data-floor-view="ring"]')).catch(error => toast(error?.message || '铃声面板加载失败', 'warning'));
-    if (floorNavigatorView === 'regex') void chatRegex.mount(root.querySelector('[data-floor-view="regex"]')).catch(error => toast(error?.message || '正则面板加载失败', 'warning'));
+    // C-19：切到还没数据的页时先给个加载态，避免导航栏下面是空白面板、看起来像卡住。
+    const pending = (section, label) => {
+      if (!section || section.querySelector('.sd-floor-loading')) return () => {};
+      section.innerHTML = '<div class="sd-floor-loading" role="status"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span></span></div>';
+      section.querySelector('.sd-floor-loading span').textContent = label;
+      return () => section.querySelector('.sd-floor-loading')?.remove();
+    };
+    if (floorNavigatorView === 'recovery') { const done = pending(root.querySelector('[data-floor-view="recovery"]'), '正在准备备份列表…'); void mountFloorChatRecovery(root).finally(done); }
+    if (floorNavigatorView === 'ring') { const done = pending(root.querySelector('[data-floor-view="ring"]'), '正在加载铃声…'); void chatRingtone.mount(root.querySelector('[data-floor-view="ring"]')).catch(error => toast(error?.message || '铃声面板加载失败', 'warning')).finally(done); }
+    if (floorNavigatorView === 'regex') { const done = pending(root.querySelector('[data-floor-view="regex"]'), '正在读取正则…'); void chatRegex.mount(root.querySelector('[data-floor-view="regex"]')).catch(error => toast(error?.message || '正则面板加载失败', 'warning')).finally(done); }
   };
   root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
   setView(floorNavigatorView);
@@ -35805,7 +35828,7 @@ function init() {
     renderSettingsPanel();
     proseFloorTools.configureHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,mount:root=>appearanceSession.mountHive(root),canDock:entry=>!proseFloorTools.assistantBusy&&detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel});
     floorHive?.dispose();
-    floorHive=createProseHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,applyIcons:applyQianmuIcons,mount:root=>appearanceSession.mountHive(root),canDock:entry=>detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel,open:openFloorNavigator,commandId:'floor',storageKey:'qianmu-floor-hive-device-v1',title:'聊天工具包（拖回千幕归巢）',ariaLabel:'打开聊天工具包'});
+    floorHive=createProseHive({geometry:detachedNotesGeometry,clamp:clampDetachedNotesEntry,palette:currentHivePalette,theme:currentHiveThemeKey,outline:QUICK_HEX_BORDER_SVG,applyIcons:applyQianmuIcons,mount:root=>appearanceSession.mountHive(root),canDock:entry=>detachedNoteCanReturnHome(entry),closeWheel:closeQuickWheel,open:openFloorNavigator,commandId:'floor',storageKey:'qianmu-floor-hive-device-v1',title:'聊天工具包（拖回千幕归巢）',ariaLabel:'打开聊天工具包',isHostPage:isChatSurfaceVisible});   // C-19：拖出的工具包只在聊天页显示（便笺/特助不受影响）
     renderFloatButton();
     proseFloorTools.renderHive();
     floorHive.render();

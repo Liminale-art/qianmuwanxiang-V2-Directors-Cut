@@ -7,7 +7,7 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
 // The installed entry/style follow the current release.
-const CURRENT_RELEASE = '1.59.506';
+const CURRENT_RELEASE = '1.59.507';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
@@ -18,7 +18,7 @@ const unifiedRelease = new Map([
   ['qianmu-storyboard-capture-view.js', '1.59.484'], ['qianmu-idle-preload.js', '1.59.484'],
   ['qianmu-prose-floor-tools.js', '1.59.484'], ['qianmu-text-collection-host.js', '1.59.484'],
   ['features/tts/qianmu-tts-floor-ui.js', '1.59.484'], ['qianmu-prose-assistant-floor.js', '1.59.452'],
-  ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.494'],
+  ['qianmu-prose-assistant-panel.js', '1.59.452'], ['qianmu-prose-hive.js', '1.59.507'],
   ['qianmu-prose-floor-entries.js', '1.59.440'], ['qianmu-main-tabs.js', '1.59.421'],
 ]);
 const moduleRelease = file => unifiedRelease.get(file) || (localLoaderClosure.has(file) ? '1.59.425' : ICONSAX_RELEASE);
