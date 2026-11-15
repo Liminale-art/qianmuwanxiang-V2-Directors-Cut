@@ -45,7 +45,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.516';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.517';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -322,7 +322,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.516';
+const VERSION = '1.59.517';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -6416,7 +6416,7 @@ async function hydrateNotesRuntime(force = false) {
     const kept = notesRuntime.filter(note => notesSaveTimers.has(note.id) || note.id === notesActiveId && editor === document.activeElement);
     const keepIds = new Set(kept.map(note => note.id));
     const displayFields = ['id', 'title', 'body', 'pinned', 'updatedAt', 'syncConflictOf'];
-    const previousDisplay = notesRuntime.map(note => displayFields.map(key => note[key])), previousActive = notesActiveId, previouslyLoaded = notesLoaded;
+    const previousDisplay = notesRuntime.map(note => displayFields.map(key => note[key])), previousActive = notesActiveId;
     notesRuntime = mergeNotesRefresh(notesRuntime, notes, baseline, keepIds);
     notesSortRuntime();
     notesZCounter = Math.max(1, ...notesRuntime.map((note) => Number(note.zOrder) || 0)) + 1;
@@ -6425,7 +6425,7 @@ async function hydrateNotesRuntime(force = false) {
     if (notesPanelOpen && editor && notesFind(notesActiveId)) {
       if (editor !== document.activeElement) editor.value = notesFind(notesActiveId).body;
       notesSyncPanel?.paint();
-    } else if (notesPanelOpen && (!previouslyLoaded || previousActive !== notesActiveId || previousDisplay.length !== notesRuntime.length || notesRuntime.some((note, index) => displayFields.some((key, field) => note[key] !== previousDisplay[index]?.[field])))) renderNotesPanelPortal();
+    } else if (notesPanelOpen && (previousActive !== notesActiveId || previousDisplay.length !== notesRuntime.length || notesRuntime.some((note, index) => displayFields.some((key, field) => note[key] !== previousDisplay[index]?.[field])))) renderNotesPanelPortal();
     return notesRuntime;
   }).catch((error) => {
     console.warn(`[${MODULE_NAME}] notes load failed`, error);
@@ -6468,7 +6468,7 @@ function openNotesPanel() {
   notesPanelOpen = true;
   const timed = globalThis.qianmuPerf?.start('便笺');
   renderNotesPanelPortal();
-  renderFloatingNotes();
+  renderFloatingNotes({ hives: false });
   timed?.frame('显示');
   void hydrateNotesRuntime().then(() => { timed?.('数据就绪'); return notesSyncControls().sync(); }).then(() => timed?.('同步完成'));
 }
@@ -6478,7 +6478,7 @@ function closeNotesPanel() {
   notesSyncPanel?.hide();
   stopNotesPanelResizeTracking();
   document.getElementById(NOTES_PANEL_LAYER_ID)?.remove();
-  renderFloatingNotes();
+  renderFloatingNotes({ hives: false });
 }
 
 function noteExcerpt(note) {
@@ -6602,7 +6602,10 @@ function renderNotesPanelPortal() {
     layer.id = NOTES_PANEL_LAYER_ID;
     document.body.appendChild(layer);
   }
-  syncNotesTheme();
+  // C-28 L3：层内重渲染只换内容；主题变量写在层节点上、不随内容重建丢失，所以只在新建层或主题确实变了时同步。
+  // 主题切换自身另走主题同步入口（外观回调与 renderFloatButton），这里的签名只是防漏的兜底。
+  const themeSig = JSON.stringify([settings.theme, currentHiveThemeKey(), readAppearancePreferences(settings), notesFeatureSettings().appearance, appearanceSession.status]);
+  if (layer.qmNotesThemeSig !== themeSig) { syncNotesTheme(); layer.qmNotesThemeSig = themeSig; }
   layer.style.setProperty('--sd-font', getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif');
   layer.style.setProperty('--sd-note-editor-font-size', `${notesFeatureSettings().editorFontSize}px`);
   stopNotesPanelResizeTracking();
@@ -6638,9 +6641,9 @@ function clampDetachedNotesEntry(position = {}) {
   };
 }
 
-function renderFloatingNotes() {
-  proseFloorTools.renderHive();
-  floorHive?.render();
+function renderFloatingNotes({ hives = true } = {}) {
+  // hives:false —— 只切换拖出的便笺入口（开合便笺面板时用），不重画与此无关的两个蜂巢。
+  if (hives) { proseFloorTools.renderHive(); floorHive?.render(); }
   document.getElementById(NOTES_FLOAT_LAYER_ID)?.remove();
   const noteSettings = notesFeatureSettings();
   if (settings.enabled === false || !notesFeatureEnabled() || !noteSettings.detached || notesPanelOpen) return;

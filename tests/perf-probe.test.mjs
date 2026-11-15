@@ -54,3 +54,31 @@ test('the entry reaches the probe only through an optional global, and warms fir
   assert.match(entry, /stopExtraPreload\?\.\(\); stopExtraPreload = null;/);
   for (const file of ['features/chat/qianmu-chat-regex.js', 'features/chat/qianmu-chat-ringtone.js']) assert.match(await readFile(new URL('../' + file, import.meta.url), 'utf8'), /const preload = \(\) => loadView\(\)\.then\(\(\) => true, \(\) => false\);/);
 });
+
+// C-28 L3：便笺打开链路——重渲染不重复做主题同步；首读无变化不重渲染；开合面板不重画蜂巢。
+test('notes panel re-renders skip the theme sync, and opening or closing leaves the hives alone', async () => {
+  const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+  const cut = (from, to) => entry.slice(entry.indexOf(from), entry.indexOf(to, entry.indexOf(from) + 1));
+  const portal = cut('function renderNotesPanelPortal()', 'function detachedNotesGeometry()');
+  assert.match(portal, /if \(layer\.qmNotesThemeSig !== themeSig\) \{ syncNotesTheme\(\); layer\.qmNotesThemeSig = themeSig; \}/);
+  assert.equal(portal.match(/syncNotesTheme\(\)/g).length, 1, 'the only theme sync in the portal is the guarded one');
+  for (const input of ['settings.theme', 'currentHiveThemeKey()', 'readAppearancePreferences(settings)', 'notesFeatureSettings().appearance', 'appearanceSession.status']) assert.ok(portal.includes(input), input);
+
+  // Behaviour: same signature → one sync across two renders; a changed theme → a second sync.
+  const calls = { sync: 0 }, layer = { style: { setProperty() {} }, innerHTML: '', querySelector: () => null };
+  const state = { theme: 'light' };
+  const sandbox = { notesPanelOpen: true, notesFeatureEnabled: () => true, NOTES_PANEL_LAYER_ID: 'layer', document: { getElementById: () => layer, body: {} },
+    settings: state, currentHiveThemeKey: () => state.theme, readAppearancePreferences: () => ({ family: 'classic' }), notesFeatureSettings: () => ({ appearance: { tone: 'dark' }, editorFontSize: 14 }),
+    appearanceSession: { status: 'idle' }, syncNotesTheme: () => { calls.sync++; }, getComputedStyle: () => ({ fontFamily: 'x' }), stopNotesPanelResizeTracking() {}, renderNotesPanel: () => '',
+    applyQianmuIcons() {}, bindNotesPanelEvents() {}, bindNotesPanelResize() {}, notesSyncControls: () => ({ mount() {} }), JSON };
+  const { default: vm } = await import('node:vm');
+  vm.runInNewContext(portal, sandbox);
+  sandbox.renderNotesPanelPortal(); sandbox.renderNotesPanelPortal(); assert.equal(calls.sync, 1);
+  state.theme = 'night'; sandbox.renderNotesPanelPortal(); assert.equal(calls.sync, 2);
+
+  const hydrate = cut('async function hydrateNotesRuntime(', 'async function persistNoteRuntime(');
+  assert.doesNotMatch(hydrate, /previouslyLoaded/, 'a first read that changes nothing on screen must not redraw the panel');
+  assert.match(cut('function openNotesPanel()', 'function closeNotesPanel()'), /renderFloatingNotes\(\{ hives: false \}\);/);
+  assert.match(cut('function closeNotesPanel()', 'function noteExcerpt('), /renderFloatingNotes\(\{ hives: false \}\);/);
+  assert.match(entry, /function renderFloatingNotes\(\{ hives = true \} = \{\}\) \{[\s\S]{0,200}?if \(hives\) \{ proseFloorTools\.renderHive\(\); floorHive\?\.render\(\); \}/);
+});
