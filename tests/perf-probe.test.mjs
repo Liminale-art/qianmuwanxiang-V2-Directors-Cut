@@ -46,8 +46,11 @@ test('the entry reaches the probe only through an optional global, and warms fir
   const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(entry, /globalThis\.qianmuPerf \|\|= createPerfProbe\(\);/);
   const uses = entry.match(/qianmuPerf\b[^\n]{0,12}/g).filter(use => !use.startsWith('qianmuPerf ||='));
-  assert.ok(uses.length >= 5); for (const use of uses) assert.match(use, /^qianmuPerf\?\./, use);
+  assert.ok(uses.length >= 5); // Direct access is only allowed inside the "if (laps)" block, which exists only when the probe is on.
+  for (const use of uses) assert.match(use, /^qianmuPerf(\?\.|\.record\(surf)/, use);
+  assert.match(entry, /const laps = globalThis\.qianmuPerf\?\.enabled \? \[\] : null;/);
   const extra = entry.slice(entry.indexOf('function scheduleExtraPreload()'), entry.indexOf('function closeFloorNavigator()'));
+  assert.match(extra, /loadLocalChunk\('\.\/qianmu-text-collection-view\.js\?v=1\.59\.419'\)[\s\S]*warmStyle\(panel\.TEXT_COLLECTION_STYLESHEET\.href\)/);
   for (const piece of ['chatRegex.preload()', 'chatRingtone.preload()', 'loadChatRecoveryCode()', "loadLocalChunk('./qianmu-prose-assistant-conversations.js')", "import('./qianmu-notes-sync-runtime.js?v=1.59.419')"]) assert.ok(extra.includes(piece), piece);
   const notes = await readFile(new URL('../qianmu-notes.js', import.meta.url), 'utf8');
   for (const url of ["import('./qianmu-notes-sync-runtime.js?v=1.59.419')", "import('./qianmu-st-account-storage.js')"]) assert.ok(notes.includes(url) && extra.includes(url), url + ' must stay identical in both places');
@@ -81,4 +84,25 @@ test('notes panel re-renders skip the theme sync, and opening or closing leaves 
   assert.match(cut('function openNotesPanel()', 'function closeNotesPanel()'), /renderFloatingNotes\(\{ hives: false \}\);/);
   assert.match(cut('function closeNotesPanel()', 'function noteExcerpt('), /renderFloatingNotes\(\{ hives: false \}\);/);
   assert.match(entry, /function renderFloatingNotes\(\{ hives = true \} = \{\}\) \{[\s\S]{0,200}?if \(hives\) \{ proseFloorTools\.renderHive\(\); floorHive\?\.render\(\); \}/);
+});
+
+// C-28：图标按「符号」只解析一次，之后克隆；克隆彼此独立，且与逐个构建的结果一致。
+test('icon elements are built once per symbol and cloned afterwards', async () => {
+  const { qianmuIconElement } = await import('../qianmu-icon-renderer.js');
+  let built = 0;
+  const make = (source = null) => {
+    const node = { attrs: new Map(source ? source.attrs : []), html: source ? source.html : '', classes: new Set(source ? source.classes : []),
+      classList: { add: name => node.classes.add(name) }, setAttribute: (key, value) => node.attrs.set(key, String(value)), getAttribute: key => node.attrs.get(key) ?? null,
+      get innerHTML() { return node.html; }, set innerHTML(value) { node.html = String(value); }, get firstElementChild() { return node.html ? {} : null; },
+      cloneNode: () => make(node) };
+    return node;
+  };
+  const doc = { createElementNS: () => { built++; return make(); } };
+  const first = qianmuIconElement('qm-regular-star', { document: doc }), second = qianmuIconElement('qm-regular-star', { document: doc }), other = qianmuIconElement('qm-fill-star', { document: doc });
+  assert.equal(built, 2, 'one build per distinct symbol');
+  assert.notEqual(first, second); assert.equal(second.innerHTML, first.innerHTML); assert.ok(first.innerHTML.length > 0);
+  assert.deepEqual([...second.attrs], [...first.attrs]); assert.notEqual(other.innerHTML, first.innerHTML);
+  second.setAttribute('data-x', '1'); assert.equal(qianmuIconElement('qm-regular-star', { document: doc }).getAttribute('data-x'), null, 'a caller cannot mutate the template');
+  assert.equal(qianmuIconElement('qm-regular-star', { document: { createElementNS: () => { built++; return make(); } } }).innerHTML, first.innerHTML);
+  assert.equal(built, 3, 'templates are per document');
 });

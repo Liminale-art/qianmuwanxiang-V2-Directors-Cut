@@ -689,6 +689,8 @@ export function isLegacyBlueprint(text) {
  * @param {boolean} sortAlpha - 是否按字母排序
  * @returns {Object} 分组结果
  */
+// One shared collator: same ordering as localeCompare(x, 'zh'), without re-resolving the locale on every comparison.
+const ZH_COLLATOR = new Intl.Collator('zh');
 export function groupByFolder(items, getFolder, getName, sortAlpha) {
   const folders = new Map();
   const loose = [];
@@ -702,12 +704,12 @@ export function groupByFolder(items, getFolder, getName, sortAlpha) {
     }
   }
   if (sortAlpha && typeof getName === 'function') {
-    const byName = (a, b) => String(getName(a) || '').localeCompare(String(getName(b) || ''), 'zh');
+    const byName = (a, b) => ZH_COLLATOR.compare(String(getName(a) || ''), String(getName(b) || ''));
     for (const list of folders.values()) list.sort(byName);
     loose.sort(byName);
   }
   const folderList = [...folders.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0], 'zh'))
+    .sort((a, b) => ZH_COLLATOR.compare(a[0], b[0]))
     .map(([name, list]) => ({ name, list }));
   return { folderList, loose };
 }

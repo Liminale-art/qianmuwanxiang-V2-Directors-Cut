@@ -45,7 +45,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.517';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.518';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -322,7 +322,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.517';
+const VERSION = '1.59.518';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -5603,12 +5603,24 @@ const isChatSurfaceVisible = () => {
 function loadChatRecoveryCode() {
   return chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.507')]);
 }
+// 分镜各子面板首开要现场下载的模块（角色库 12 个文件、Vibe 库 22 个、工作流库 8 个、候选方案 15 个…）。
+// 进分镜的那一下就全部开始下载，不等空闲；空闲预加载里也排一遍，两处共用 featureRuntime 的同一份在途加载。
+const STORYBOARD_WARM_FEATURES = Object.freeze(['characterArchive', 'vibeLibrary', 'vibeAssets', 'ensembleLibrary', 'comfyLibrary', 'comfyPools', 'tagComplete', 'modelPicker']);
+function warmStoryboardFeatures() {
+  return Promise.all(STORYBOARD_WARM_FEATURES.map(name => featureRuntime.load(name).catch(() => null)));
+}
 // C-28 L5：空闲时补暖「首次点开要现场下载」的模块——聊天工具包三页、特助会话、便笺同步链。
 // 与 qianmu-idle-preload 的默认名单并行、同一套空闲条件（5 秒无操作、不在生成中、非省流量）。
 let stopExtraPreload = null;
 function scheduleExtraPreload() {
   stopExtraPreload?.();
   const quiet = load => () => Promise.resolve().then(load).catch(() => { /* 用户点开时会照常加载并报错 */ });
+  // 样式预取：以不生效的 print 媒体挂一份，浏览器照常下载（含其 @import），点开时视图自己的 <link> 直接命中缓存。
+  const warmStyle = url => {
+    if (document.head.querySelector(`link[data-qm-warm-style="${CSS.escape(url)}"]`)) return;
+    const link = document.createElement('link'); link.rel = 'stylesheet'; link.media = 'print'; link.href = url; link.dataset.qmWarmStyle = url;
+    document.head.append(link);
+  };
   stopExtraPreload = scheduleQianmuIdlePreload({
     isCurrent: () => initialized && isRuntimeOwner(),
     isBusy: () => { const stream = ctx().streamingProcessor; return Boolean(stream && !stream.isStopped && !stream.isFinished); },
@@ -5617,6 +5629,13 @@ function scheduleExtraPreload() {
       quiet(() => chatRingtone.preload()),
       quiet(() => loadChatRecoveryCode().catch(error => { chatRecoveryLoading = null; throw error; })),
       quiet(() => loadLocalChunk('./qianmu-prose-assistant-conversations.js')),
+      quiet(() => warmStoryboardFeatures()),
+      // 正文收藏：首开要现场下载 7 个脚本（3 层）＋4 个样式（2 层），全部到齐才出面板——这里提前暖好。
+      quiet(async () => {
+        await loadLocalChunk('./qianmu-text-collection-view.js?v=1.59.419');
+        const [panel, capture] = await Promise.all([import('./qianmu-text-collection-panel.js?v=1.59.419'), import('./qianmu-text-collection-capture.js?v=1.59.419')]);
+        warmStyle(panel.TEXT_COLLECTION_STYLESHEET.href); warmStyle(capture.TEXT_COLLECTION_CAPTURE_STYLESHEET.href);
+      }),
       // 与 qianmu-notes.js 里按需加载的地址逐字一致，命中同一份模块缓存。
       quiet(() => Promise.all([import('./qianmu-notes-sync-runtime.js?v=1.59.419'), import('./qianmu-st-account-storage.js')])),
     ],
@@ -5867,7 +5886,9 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     // C-19：切到还没数据的页时先给个加载态，避免导航栏下面是空白面板、看起来像卡住。
     const pending = (section, label) => {
       const ready = globalThis.qianmuPerf?.start(`聊天工具包·${floorNavigatorView}`);
-      if (!section || section.querySelector('.sd-floor-loading')) return () => ready?.('就绪');
+      // 只给「还没有内容」的页放占位。已挂载的页切回来时原样保留——占位会整块覆盖页面内容，
+      // 而备份／铃声页认为自己仍挂在原处、不会重画，结果就是切回来一片空白（1.59.517 实测反馈）。
+      if (!section || section.childElementCount) return () => ready?.('就绪');
       section.innerHTML = '<div class="sd-floor-loading" role="status"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span></span></div>';
       section.querySelector('.sd-floor-loading span').textContent = label;
       return () => { section.querySelector('.sd-floor-loading')?.remove(); ready?.('就绪'); };
@@ -6979,6 +7000,11 @@ function renderModal() {
   storyboardEnsembleController?.detach();
   prepareDirectorWorldEntryLinks();
   const renderStartedAt = globalThis.performance?.now?.() ?? Date.now();
+  // 分段计时只在探针开启时取数；关闭时 lap 为空操作。
+  const laps = globalThis.qianmuPerf?.enabled ? [] : null;
+  const lap = name => { laps?.push([name, globalThis.performance?.now?.() ?? Date.now()]); };
+  let tabMs = 0;
+  const tabHtml = () => { if (!laps) return renderActiveTab(); const from = globalThis.performance.now(), html = renderActiveTab(); tabMs = globalThis.performance.now() - from; return html; };
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
   // theater 的阅读/收藏子视图（theaterView）是临时态，仍记 tab='theater' 无妨；editorView 是行内编辑、不改 activeTab。
   if (activeTab && !['imagegen', 'geopolitics'].includes(activeTab) && settings.lastTab !== activeTab) {
@@ -7014,7 +7040,7 @@ function renderModal() {
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
     <section class="sd-window" role="dialog" aria-label="${EXTENSION_NAME}">
-      ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${renderActiveTab()}</main>` : `
+      ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${tabHtml()}</main>` : `
       <header class="sd-header">
         <div class="sd-titlebox">
           <h2>${EXTENSION_NAME}</h2>
@@ -7030,15 +7056,18 @@ function renderModal() {
       </header>
       ${renderQianmuMainTabs(tabs,activeTab)}
       ${activeTab === 'castworld' && !editorLayout ? '<div class="sd-world-viewport">' : ''}
-      <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${renderActiveTab()}</div>` : renderActiveTab()) : renderActiveTab()}</main>
+      <main class="sd-body${editorLayout ? ' sd-editor-body' : ''}">${['tasksnodes', 'context'].includes(activeTab) || (activeTab === 'castworld' && worldPage === 'front') ? (!editorView ? `<div class="sd-cols-inner">${tabHtml()}</div>` : tabHtml()) : tabHtml()}</main>
       ${activeTab === 'castworld' && !editorLayout ? `${renderWorldPageEdges()}</div>` : ''}
       ${renderInjectDock()}
       `}
     </section>`;
+  lap('写入');
   restoreStoryboardNav();
   restoreMainTabs();
   appearanceSession.mount(modal);
+  lap('外观');
   applyQianmuIcons(modal); featureRuntime.bindIntent(modal);
+  lap('图标');
   // 以整个视口层判断点外关闭；比只绑 backdrop 更能抵抗 ST 美化重排或透明覆盖层抢占点击。
   modal.onclick = (event) => {
     if (event.target === modal || event.target.closest?.('.sd-backdrop')) closeModal();
@@ -7051,6 +7080,7 @@ function renderModal() {
     storyboardReturnTab = activeTab === 'imagegen' ? 'dashboard' : activeTab;
     if (activeTab !== 'imagegen') storyboardBeginSession();
     activeTab = 'imagegen';
+    void warmStoryboardFeatures();
     renderModal();
   });
   modal.querySelector('.sd-coread-shortcut')?.addEventListener('click', () => {
@@ -7079,7 +7109,9 @@ function renderModal() {
     if (activeTab === 'context') requestContextRefreshIfStale(0);
     renderModal();
   });
+  lap('框架绑定');
   bindActiveTabEvents(modal);
+  lap('页签绑定');
   refreshDirectorLiveUI();
   focusClockLockGuard?.sync();
   bindNotesPanelEvents(modal);
@@ -7116,6 +7148,11 @@ function renderModal() {
   performanceRuntime.modalRenderTotalMs += renderMs;
   performanceRuntime.modalRenderLastMs = renderMs;
   globalThis.qianmuPerf?.record(`主面板·${activeTab || 'dashboard'}`, '渲染', renderMs);
+  if (laps) {
+    const surface = `主面板·${activeTab || 'dashboard'}`; let from = renderStartedAt;
+    globalThis.qianmuPerf.record(surface, '┗生成内容', tabMs);
+    for (const [name, at] of [...laps, ['收尾', renderFinishedAt]]) { globalThis.qianmuPerf.record(surface, `┗${name}`, at - from - (name === '写入' ? tabMs : 0)); from = at; }
+  }
   performanceRuntime.modalRenderMaxMs = Math.max(performanceRuntime.modalRenderMaxMs, renderMs);
   if (renderMs >= 50) performanceRuntime.slowModalRenderCount += 1;
   performanceRuntime.lastNodeCount = modal.querySelectorAll('*').length;
@@ -35606,6 +35643,7 @@ function cleanupRuntime(resetSettings = false) {
   proseFloorTools.dispose();
   floorHive?.dispose(); floorHive=null;
   stopExtraPreload?.(); stopExtraPreload = null;
+  document.head.querySelectorAll('link[data-qm-warm-style]').forEach(link => link.remove());
   directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }

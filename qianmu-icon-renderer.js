@@ -1138,10 +1138,22 @@ function paintGlyph(svg, symbol) {
   return true;
 }
 
+// One parsed SVG per symbol per document; later icons are clones (no string building, no HTML parsing).
+// A panel re-render recreates every icon host, so this runs hundreds of times per render.
+const ICON_TEMPLATES = new WeakMap();
 export function qianmuIconElement(value, options = {}) {
   const symbol = resolveQianmuIcon(value, options.weight);
   const doc = options.document || globalThis.document;
   if (!symbol || !doc?.createElementNS) return null;
+  let templates = ICON_TEMPLATES.get(doc);
+  if (!templates) ICON_TEMPLATES.set(doc, templates = new Map());
+  const ready = templates.get(symbol);
+  if (ready) return ready.cloneNode(true);
+  const svg = buildIconElement(doc, symbol);
+  if (typeof svg.cloneNode === 'function' && svg.firstElementChild) templates.set(symbol, svg.cloneNode(true));
+  return svg;
+}
+function buildIconElement(doc, symbol) {
   const svg = doc.createElementNS(SVG_NS, 'svg');
   svg.classList.add('qm-glyph-svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -1176,6 +1188,11 @@ function belongsToQianmu(icon) {
     && !icon.closest(THIRD_PARTY_BOUNDARY_SELECTOR)
     && !!icon.closest(QIANMU_ICON_ROOT_SELECTOR);
 }
+// Inside an already-owned scope with no third-party boundary anywhere around or within it, every icon
+// host belongs to Qianmu; the per-icon ancestor walks (two closest() calls each) are then redundant.
+function scopeIsUniform(scope) {
+  return typeof scope.querySelector === 'function' && !scope.closest(THIRD_PARTY_BOUNDARY_SELECTOR) && !scope.querySelector(THIRD_PARTY_BOUNDARY_SELECTOR);
+}
 
 function requestedSymbol(icon, explicitValue = '') {
   const faName = fontAwesomeIconName(icon.className);
@@ -1187,8 +1204,8 @@ function requestedSymbol(icon, explicitValue = '') {
   return resolveQianmuIcon(explicitValue || icon.getAttribute('data-qm-icon')) || resolveQianmuIcon(icon.className);
 }
 
-function renderIcon(icon, explicitValue = '') {
-  if (!belongsToQianmu(icon)) return false;
+function renderIcon(icon, explicitValue = '', trusted = false) {
+  if (!trusted && !belongsToQianmu(icon)) return false;
   const symbol = requestedSymbol(icon, explicitValue);
   if (!symbol) return false;
   let svg = Array.from(icon.children || []).find((child) => child.matches?.('svg.qm-glyph-svg, svg.qm-phosphor-svg')) || null;
@@ -1224,6 +1241,7 @@ export function applyQianmuIcons(root) {
   if (!scope) return 0;
   let count = 0;
   if (isElement(scope) && scope.matches(ICON_HOST_SELECTOR)) count += Number(renderIcon(scope));
-  scope.querySelectorAll(ICON_HOST_SELECTOR).forEach((icon) => { count += Number(renderIcon(icon)); });
+  const trusted = scopeIsUniform(scope);
+  scope.querySelectorAll(ICON_HOST_SELECTOR).forEach((icon) => { count += Number(renderIcon(icon, '', trusted)); });
   return count;
 }

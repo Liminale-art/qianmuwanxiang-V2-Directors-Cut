@@ -985,10 +985,12 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
 #story-director-floor-nav :is(.qm-regex-bind-toggle, .qm-regex-manage-toggle, .qm-regex-recycle-toggle).is-on { color: var(--sd-primary); background: transparent; }
 #story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
+/* C-28：分镜子面板的模块还在下载时，空宿主先显示一行占位（纯样式，控制器一挂载内容即消失）。 */
+#story-director-modal :is(.sd-character-archive-host, .sd-comfy-library-host, .sd-comfy-pool-host, .sd-vibe-library-host, .sd-ensemble-library-host):empty::before { content: '正在载入…'; display: block; padding: 28px 12px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 /* C-26：搜索框（工具条下一行）、重复正则标记、预设未允许运行的提示＋允许按钮、出厂开关按钮、本聊天已记开关条数 */
-#story-director-floor-nav .qm-regex-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); color: var(--sd-muted); }
+#story-director-floor-nav .qm-regex-search { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 2px 14px; font-size: var(--qm-type-caption); border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); color: var(--sd-muted); }
 #story-director-floor-nav[data-qm-theme] .qm-regex-search { background: var(--qm-skin-material, var(--sd-card)); border-color: var(--qm-line, var(--sd-hairline)); }
-#story-director-floor-nav .qm-regex-search-input { flex: 1 1 auto; min-width: 0; min-height: 32px; margin: 0; padding: 0; border: 0 !important; outline: none; background: transparent !important; box-shadow: none !important; color: var(--sd-text); font-size: var(--qm-type-body); }
+#story-director-floor-nav .qm-regex-search-input { flex: 1 1 auto; min-width: 0; height: 26px; min-height: 26px; margin: 0; padding: 0; border: 0 !important; outline: none; background: transparent !important; box-shadow: none !important; color: var(--sd-text); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-regex-dup-mark { color: var(--sd-warning, #c98a2b); font-size: .72em; opacity: .85; cursor: help; }
 #story-director-floor-nav .qm-regex-allow { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding: 1px 2px 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--sd-warning, #c98a2b) 14%, transparent); color: var(--sd-warning, #c98a2b); font-size: var(--qm-type-caption); font-weight: 600; }
 #story-director-floor-nav .qm-regex-allow-btn { min-height: 22px; margin: 0; padding: 0 10px; border: 0; border-radius: 999px; background: var(--sd-warning, #c98a2b); color: #fff; font-size: var(--qm-type-caption); font-weight: 600; cursor: pointer; }
