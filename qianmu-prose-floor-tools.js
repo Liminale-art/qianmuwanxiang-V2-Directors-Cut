@@ -15,7 +15,7 @@ export function createProseFloorTools(options){
   let hive=null,disposed=false,stopPreload=null,collection=null;
   const collectionHost=()=>collection??=createTextCollectionHost(options);
   return Object.freeze({openAssistant:()=>assistant.openAssistant(),
-    openCollection:()=>collectionHost().open(),
+    openCollection:()=>{const opening=collectionHost().open();options.pending?.('正文收藏','正在读取收藏…',opening);return opening;},
     exportCollection:button=>collectionHost().exportBackup(button),
     importCollection:(file,input)=>collectionHost().importBackup(file,input),
     clearCollection:config=>collectionHost().clear(config),

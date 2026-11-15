@@ -34,7 +34,10 @@ export function preserveQianmuMainTabs(root,enabled=true){
    if(current===null)before[i].removeAttribute('aria-current');else before[i].setAttribute('aria-current',current);
    before[i].disabled=after[i].disabled;
   }
-  next.replaceWith(previous);previousBar.scrollLeft=scroll;
+  // The scroll offset is restored by the renderer once, after all of its DOM writes. Writing it here
+  // forced a full layout of the freshly inserted page before icons and fold states were applied,
+  // and that layout was then thrown away and redone.
+  next.replaceWith(previous);
   if(focus&&document.activeElement===document.body)focus.focus({preventScroll:true});
   return true;
  };

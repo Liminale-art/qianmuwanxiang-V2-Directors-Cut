@@ -985,6 +985,18 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
 #story-director-floor-nav :is(.qm-regex-bind-toggle, .qm-regex-manage-toggle, .qm-regex-recycle-toggle).is-on { color: var(--sd-primary); background: transparent; }
 #story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
+/* C-28：便笺面板先出、数据后到时列表位置的读取状态。 */
+#qianmu-notes-panel-layer .sd-notes-waiting { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 96px; color: var(--sd-muted); font-size: var(--qm-type-caption, 12px); }
+#qianmu-notes-panel-layer .sd-notes-waiting-dot { flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: qm-pending-spin .8s linear infinite; }
+/* C-28：点开即出的等待面板（正文收藏等）。真正的面板到齐后由脚本移除。 */
+#qianmu-pending-panel { position: fixed; inset: 0; z-index: 10030; display: grid; place-items: center; padding: 18px; pointer-events: none; }
+#qianmu-pending-panel .qm-pending-card { display: flex; flex-direction: column; gap: 10px; width: min(360px, 100%); padding: 16px 18px; border: 1px solid var(--qm-line, var(--sd-hairline, rgba(128,128,128,.28))); border-radius: var(--qm-card-radius, 13px); background: var(--qm-skin-window, var(--sd-card, #fff)); color: var(--sd-text, #222); box-shadow: 0 12px 36px rgba(0, 0, 0, .22); pointer-events: auto; animation: qm-pending-in .16s ease-out; }
+#qianmu-pending-panel .qm-pending-title { font-size: var(--qm-type-body, 14px); font-weight: 600; }
+#qianmu-pending-panel .qm-pending-line { display: flex; align-items: center; gap: 8px; color: var(--sd-muted, #777); font-size: var(--qm-type-caption, 12px); }
+#qianmu-pending-panel .qm-pending-dot { flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: qm-pending-spin .8s linear infinite; }
+@keyframes qm-pending-spin { to { transform: rotate(360deg); } }
+@keyframes qm-pending-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { #qianmu-pending-panel .qm-pending-card, #qianmu-pending-panel .qm-pending-dot { animation: none; } }
 /* C-28：分镜子面板的模块还在下载时，空宿主先显示一行占位（纯样式，控制器一挂载内容即消失）。 */
 #story-director-modal :is(.sd-character-archive-host, .sd-comfy-library-host, .sd-comfy-pool-host, .sd-vibe-library-host, .sd-ensemble-library-host):empty::before { content: '正在载入…'; display: block; padding: 28px 12px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 /* C-26：搜索框（工具条下一行）、重复正则标记、预设未允许运行的提示＋允许按钮、出厂开关按钮、本聊天已记开关条数 */

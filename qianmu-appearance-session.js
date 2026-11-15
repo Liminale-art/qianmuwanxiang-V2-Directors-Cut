@@ -135,6 +135,11 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         get status() { return !runtime.supported ? 'unsupported' : ready ? 'ready' : failed ? 'error' : loading ? 'loading' : 'idle'; },
         get size() { return runtime.size; },
         sync, mount, mountNotes,
+        // For callers that only need "is the skin in?" (the theme menu asks on every panel render).
+        // A full sync() re-applies the theme to every registered root, captures and restores every
+        // scroll container and suppresses transitions page-wide; none of that is needed once nothing
+        // is left to load, because mount() already themed the root being rendered.
+        settle() { return settled() ? Promise.resolve(ready) : sync(); },
         repaintClassic(options) {
             if (!runtime.supported) return;
             const key = readSettings()?.theme;

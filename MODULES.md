@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 423 个，其中 `qianmu-*` 模块 406 个。
+根目录文件 424 个，其中 `qianmu-*` 模块 407 个。
 
 ## 入口、宿主与安装
 
@@ -36,7 +36,7 @@
 | `features/` | 189 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 977 |
+| `tests/` | 978 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -521,8 +521,9 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（1）
+## 其他模块（2）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
+| `qianmu-pending-panel.js` | 是 | A small stand-in window shown the moment an entry is clicked, while the real panel's code, styles or |
 | `qianmu-perf-probe.js` | 是 | Opt-in timing probe for "click → shown → ready" on a few surfaces (main tabs, notes, assistant, chat toolkit). |

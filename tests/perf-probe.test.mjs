@@ -34,6 +34,27 @@ test('on() persists the switch, spans record several phases, frame() waits for t
   assert.equal(createPerfProbe({ storage: memory({ 'qianmu.perf': '1' }) }).enabled, true);
 });
 
+test('watch() records when a host last changed before going quiet, and only while enabled', () => {
+  let clock = 0; const timers = new Map(); let seq = 0, observer = null;
+  const schedule = (fn, ms) => { const id = ++seq; timers.set(id, { fn, at: clock + ms }); return id; }, cancel = id => timers.delete(id);
+  const advance = ms => { clock += ms; for (const [id, t] of [...timers]) if (t.at <= clock && timers.has(id)) { timers.delete(id); t.fn(); } };
+  class Observer { constructor(fn) { this.fn = fn; observer = this; } observe() {} disconnect() { this.off = true; } }
+  const node = { addEventListener() {}, removeEventListener() {} };
+  const off = createPerfProbe({ storage: memory(), now: () => clock });
+  off.watch('分镜·gallery', node, { Observer, schedule, cancel }); assert.equal(observer, null);
+  const probe = createPerfProbe({ storage: memory({ 'qianmu.perf': '1' }), now: () => clock });
+  probe.watch('分镜·gallery', node, { Observer, schedule, cancel });
+  advance(300); observer.fn(); advance(400); observer.fn(); advance(599); assert.deepEqual(probe.summary(), []);
+  advance(1); assert.deepEqual(probe.summary(), [{ 位置: '分镜·gallery', 阶段: '内容到齐', 次数: 1, 平均ms: 700, 最大ms: 700, 最近ms: 700 }]);
+  assert.equal(observer.off, true);
+  probe.watch('分镜·logs', node, { Observer, schedule, cancel }); advance(700);
+  assert.equal(probe.summary().length, 1, 'a host that never changed records nothing');
+  // Same surface re-rendered (new host node): the measurement continues from the first call.
+  probe.watch('分镜·characters', node, { Observer, schedule, cancel }); advance(200);
+  probe.watch('分镜·characters', { addEventListener() {}, removeEventListener() {} }, { Observer, schedule, cancel }); advance(300); observer.fn(); advance(600);
+  assert.deepEqual(probe.summary()[1], { 位置: '分镜·characters', 阶段: '内容到齐', 次数: 1, 平均ms: 500, 最大ms: 500, 最近ms: 500 });
+});
+
 test('rows are bounded and a blocked storage only loses persistence', () => {
   const blocked = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }, removeItem() {} };
   const probe = createPerfProbe({ storage: blocked, limit: 3 });
@@ -80,7 +101,9 @@ test('notes panel re-renders skip the theme sync, and opening or closing leaves 
   state.theme = 'night'; sandbox.renderNotesPanelPortal(); assert.equal(calls.sync, 2);
 
   const hydrate = cut('async function hydrateNotesRuntime(', 'async function persistNoteRuntime(');
-  assert.doesNotMatch(hydrate, /previouslyLoaded/, 'a first read that changes nothing on screen must not redraw the panel');
+  // The first read always redraws once: the list shows a "正在读取便笺…" row until then.
+  assert.match(hydrate, /!previouslyLoaded ||/); assert.match(hydrate, /hydrateNotesRuntime.failed = true;/);
+  assert.match(cut('function renderNotesPanel()', 'const NOTES_THEME_VARIABLES'), /const waiting = notesLoaded ? '' :[sS]*正在读取便笺…[sS]*${list || waiting}/);
   assert.match(cut('function openNotesPanel()', 'function closeNotesPanel()'), /renderFloatingNotes\(\{ hives: false \}\);/);
   assert.match(cut('function closeNotesPanel()', 'function noteExcerpt('), /renderFloatingNotes\(\{ hives: false \}\);/);
   assert.match(entry, /function renderFloatingNotes\(\{ hives = true \} = \{\}\) \{[\s\S]{0,200}?if \(hives\) \{ proseFloorTools\.renderHive\(\); floorHive\?\.render\(\); \}/);

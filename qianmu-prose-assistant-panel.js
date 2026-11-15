@@ -141,14 +141,16 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     await catalogueAction(()=>catalogue.refresh(),async()=>{const entry=catalogue.view().entries.find(item=>item.key===currentConversation?.key);if(entry?.deleted)await openConversation(defaultConversation());else if(entry){currentConversation=entry;updateReference();}conversationList.resetSelection();});
   }
   function historyFailure(cause){historyNotice.textContent=/^prose_assistant_history_/.test(cause?.code||'')?String(cause.message).slice(0,240):'对话保存未确认，请保留本页内容并重试';}
+  // The window is on screen before its conversation is read; say so instead of showing an empty transcript.
+  const READING_HISTORY='正在读取对话…';
   async function loadHistory(){
-    historyWorking=true;retry.hidden=true;controls();
+    historyWorking=true;retry.hidden=true;if(!historyNotice.textContent)historyNotice.textContent=READING_HISTORY;controls();
     try{
       if(!seed){const captured=await captureProseAssistantChatSource(source);if(!alive()){captured.close();return;}seed=captured;disposeWindow.setStorageKey('qianmu-assistant-window:'+seed.scope.namespace);}
       if(conversationFactory&&!catalogue){const loaded=await conversationFactory({source:seed,isCurrent:alive});if(!alive()){loaded.close();return;}catalogue=loaded;}
       await openConversation(defaultConversation());}
     catch(cause){if(alive()){historyFailure(cause);icon(retry,'重新读取','retry');retry.hidden=false;}}
-    finally{historyWorking=false;if(alive())controls();}
+    finally{historyWorking=false;if(alive()){if(historyNotice.textContent===READING_HISTORY)historyNotice.textContent='';controls();}}
   }
   function persistHistory(snapshot,title=null){
     if(historyTask)return historyTask;if(!alive()||!history)return Promise.resolve(false);if(!pendingSnapshot){pendingSnapshot=snapshot;pendingTitle=title;}

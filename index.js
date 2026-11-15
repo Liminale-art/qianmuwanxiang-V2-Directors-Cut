@@ -10,7 +10,8 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
-import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.516';
+import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.519';
+import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.519';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
@@ -45,7 +46,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.518';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.519';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -322,14 +323,18 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.518';
+const VERSION = '1.59.519';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
 let feedbackOpenScope = null;
-const proseFloorTools=createProseFloorTools({getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+// 点开即出的等待面板：真正的面板（代码、样式、账户数据）到齐前先占位，到齐或失败后自行消失。
+function pendingPanel(title, label, until) {
+  return showPendingPanel({ title, label, until, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
+}
+const proseFloorTools=createProseFloorTools({pending:pendingPanel,getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 // 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
 let floorHive=null;
 // 正则绑定存取（C-11d）：本聊天覆盖存 chat_metadata.story_director_liminale.regexBinding（随分支/千幕备份跟随），
@@ -6437,20 +6442,22 @@ async function hydrateNotesRuntime(force = false) {
     const kept = notesRuntime.filter(note => notesSaveTimers.has(note.id) || note.id === notesActiveId && editor === document.activeElement);
     const keepIds = new Set(kept.map(note => note.id));
     const displayFields = ['id', 'title', 'body', 'pinned', 'updatedAt', 'syncConflictOf'];
-    const previousDisplay = notesRuntime.map(note => displayFields.map(key => note[key])), previousActive = notesActiveId;
+    const previousDisplay = notesRuntime.map(note => displayFields.map(key => note[key])), previousActive = notesActiveId, previouslyLoaded = notesLoaded;
     notesRuntime = mergeNotesRefresh(notesRuntime, notes, baseline, keepIds);
     notesSortRuntime();
     notesZCounter = Math.max(1, ...notesRuntime.map((note) => Number(note.zOrder) || 0)) + 1;
-    notesLoaded = true;
+    notesLoaded = true; hydrateNotesRuntime.failed = false;
     if (!notesFind(notesActiveId)) notesActiveId = '';
     if (notesPanelOpen && editor && notesFind(notesActiveId)) {
       if (editor !== document.activeElement) editor.value = notesFind(notesActiveId).body;
       notesSyncPanel?.paint();
-    } else if (notesPanelOpen && (previousActive !== notesActiveId || previousDisplay.length !== notesRuntime.length || notesRuntime.some((note, index) => displayFields.some((key, field) => note[key] !== previousDisplay[index]?.[field])))) renderNotesPanelPortal();
+    } else if (notesPanelOpen && (!previouslyLoaded || previousActive !== notesActiveId || previousDisplay.length !== notesRuntime.length || notesRuntime.some((note, index) => displayFields.some((key, field) => note[key] !== previousDisplay[index]?.[field])))) renderNotesPanelPortal();
     return notesRuntime;
   }).catch((error) => {
     console.warn(`[${MODULE_NAME}] notes load failed`, error);
     notesSyncControls().fail(error);
+    // 首次读取失败：把「正在读取」换成明确的未完成提示（同步条上另有重试入口）。
+    if (!notesLoaded) { hydrateNotesRuntime.failed = true; if (notesPanelOpen && !notesActiveId) renderNotesPanelPortal(); }
     return notesRuntime;
   }).finally(() => { notesLoading = null; });
   return notesLoading;
@@ -6527,6 +6534,8 @@ function renderNotesPanel() {
       <div class="sd-note-item-tools" hidden><button type="button" class="sd-note-copy" title="复制" aria-label="复制"><i class="fa-solid fa-copy"></i></button><button type="button" class="sd-note-pin ${note.pinned ? 'active' : ''}" title="${note.pinned ? '取消常驻' : '常驻'}" aria-label="常驻便笺"><i class="fa-solid fa-thumbtack"></i></button><button type="button" class="sd-note-delete" title="删除" aria-label="删除"><i class="fa-solid fa-trash-can"></i></button></div>
     </div>
   </article>`).join('');
+  // 面板先出、数据后到：读取期间列表位置给一行状态，而不是空白。
+  const waiting = notesLoaded ? '' : `<div class="sd-notes-waiting" role="status">${hydrateNotesRuntime.failed ? '便笺读取未完成，请稍后重新打开。' : '<span class="sd-notes-waiting-dot" aria-hidden="true"></span>正在读取便笺…'}</div>`;
   const resizeHandle = '<span class="sd-notes-resize" data-notes-resize tabindex="0" role="separator" aria-label="调整便笺窗口大小"></span>';
   if (active) return `<div class="sd-notes-stage"><section class="sd-notes-panel is-editor" role="dialog" aria-modal="false" aria-label="编辑便笺">
     <header><b>便笺</b><div><label class="sd-icon-btn sd-note-font-size-control" title="字号：${editorFontSize}px"><i class="fa-solid fa-font" aria-hidden="true"></i><select class="sd-note-font-size" aria-label="便笺字号">${editorFontOptions}</select></label><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-icon-btn sd-notes-list" title="便笺列表" aria-label="便笺列表"><i class="fa-solid fa-list"></i></button><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></div></header>
@@ -6534,7 +6543,7 @@ function renderNotesPanel() {
   </section></div>`;
   return `<div class="sd-notes-stage"><section class="sd-notes-panel" role="dialog" aria-modal="false" aria-label="便笺">
     <header><b>便笺</b><button type="button" class="sd-icon-btn sd-notes-close" title="关闭" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-    <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list}</div></div>${resizeHandle}
+    <div class="sd-notes-list-view"><div class="sd-notes-search-row"><input class="text_pole sd-notes-search" value="${htmlEscape(notesSearch)}" placeholder="搜索" aria-label="搜索便笺"><button type="button" class="sd-icon-btn sd-note-new" title="新建便笺" aria-label="新建便笺"><i class="fa-solid fa-plus"></i></button></div><div class="sd-note-list">${list || waiting}</div></div>${resizeHandle}
   </section></div>`;
 }
 
@@ -7099,7 +7108,7 @@ function renderModal() {
     renderFloatButton();
     renderModal();   // 不支持弱引用的旧浏览器维持原经典行为
     syncNotesTheme();
-  }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.sync(),retry:()=>appearanceSession.retry(),change:patch=>{try{return changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings});}finally{chatRingtone.refreshLook();}}} : null);
+  }, appearanceSession.supported ? {read:()=>({...readAppearancePreferences(settings),classic:currentHiveThemeKey()}),status:()=>appearanceSession.status,sync:()=>appearanceSession.settle(),retry:()=>appearanceSession.retry(),change:patch=>{try{return changeQianmuAppearance({settings,patch,session:appearanceSession,save:saveSettings});}finally{chatRingtone.refreshLook();}}} : null);
   bindQianmuMainTabNavigation(modal, (el) => {
     focusClockCloseVoiceDrawer();
     if (el.dataset.tab !== 'theater') theaterView = null;
@@ -7148,6 +7157,7 @@ function renderModal() {
   performanceRuntime.modalRenderTotalMs += renderMs;
   performanceRuntime.modalRenderLastMs = renderMs;
   globalThis.qianmuPerf?.record(`主面板·${activeTab || 'dashboard'}`, '渲染', renderMs);
+  if (storyboardLayout) globalThis.qianmuPerf?.watch(`分镜·${storyboardPageKey()}`, modal.querySelector('.sd-storyboard-scroll'));
   if (laps) {
     const surface = `主面板·${activeTab || 'dashboard'}`; let from = renderStartedAt;
     globalThis.qianmuPerf.record(surface, '┗生成内容', tabMs);
