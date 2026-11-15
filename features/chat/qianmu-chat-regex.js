@@ -267,15 +267,18 @@ export function diffRegexDefaults(items, defaults) {
     .map(item => ({ id: item.id, name: item.name, enabled: base[text(item.id)] }));
 }
 
-// C-26：重复正则——查找表达式（去首尾空白后）完全相同的条目。返回 { id: 同组其它条目名[] }，只含有重复的条目。
+// C-26：重复正则——查找表达式与替换内容都相同（各自去首尾空白）的条目。返回 { id: 同组其它条目名[] }，只含有重复的条目。
+// C-27：只比查找表达式会把「同一匹配、不同处理」的正常写法误标为重复，收紧为两者都相同。
 export function findDuplicateRegex(scripts) {
   const byFind = new Map();
   (Array.isArray(scripts) ? scripts : []).forEach((script, index) => {
     const find = typeof script?.findRegex === 'string' ? script.findRegex.trim() : '';
     if (!find) return;
+    const replace = typeof script?.replaceString === 'string' ? script.replaceString.trim() : '';
+    const sig = JSON.stringify([find, replace]);
     const row = { id: text(script.id) || `#${index}`, name: text(script.scriptName) || '（未命名）' };
-    if (!byFind.has(find)) byFind.set(find, []);
-    byFind.get(find).push(row);
+    if (!byFind.has(sig)) byFind.set(sig, []);
+    byFind.get(sig).push(row);
   });
   const out = {};
   for (const rows of byFind.values()) {
@@ -877,7 +880,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.514') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.515') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -1192,15 +1195,34 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   }
   // 开/关「绑定此聊天」总开关。打开时若本聊天还没记预设，就记下当前预设（懒人：开绑定 = 记住此刻的预设+正则），
   // 随后立即套用一次。关闭只停用，不清掉已记的预设与覆盖，再打开即恢复。
+  // C-27：开「绑定此聊天」= 把此刻看到的一切记为本聊天的样子——当前预设＋全部正则（全局与当前预设）的开关，
+  // 覆盖本聊天之前的记录；不再反向套用旧记录（避免一开绑定开关就被翻动）。之后再拨开关即静默覆盖该条记录。
+  // 关闭只停用，不清记录；再打开时以「此刻」重新记一次。
   async function setBindingEnabled(on) {
-    const patch = { enabled: on === true };
-    if (on === true && !currentBinding().preset) {
-      const choices = readPresetChoices(context());
-      if (choices.available && choices.current) patch.preset = choices.current;
+    bumpSession();
+    if (on !== true) { saveBinding({ enabled: false }); refresh(); return; }
+    const choices = readPresetChoices(context());
+    const sources = readRegexSources(context());
+    const overrides = {};
+    const defaults = { ...(attempt(() => readDefaults(), {}) || {}) };
+    let defaultsTouched = false;
+    for (const source of BINDING_SOURCES) {
+      const bucket = sources[source];
+      if (!bucket?.writable) continue;
+      for (const item of bucket.items) {
+        if (!isRealId(item.id)) continue;
+        const key = regexBindingKey(source, source === 'preset' ? bucket.name : '', item.id);
+        overrides[key] = { enabled: item.enabled === true };
+        // 基线（全局默认）缺失的条目以此刻状态补上，保证离开本聊天时别的聊天能复位，不泄漏。
+        if (!Object.prototype.hasOwnProperty.call(defaults, key)) { defaults[key] = { enabled: item.enabled === true }; defaultsTouched = true; }
+      }
     }
+    if (defaultsTouched) writeDefaults(defaults);
+    const patch = { enabled: true, overrides };
+    if (choices.available && choices.current) patch.preset = choices.current;
     saveBinding(patch);
+    lastAppliedChat = text(currentChatId());   // 刚记下的就是当前状态，同一聊天无需再套用
     refresh();
-    if (on === true) await applyBinding(); else refresh();
   }
   // 把某条脚本纳入/移出本聊天覆盖；纳入时同时确保它在全局默认里有基线。
   function setBindingOverride({ key, enabled, liveEnabled } = {}) {
@@ -1231,28 +1253,41 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   }
   // C-26：出厂开关。保存＝把当前预设正则的开关组合写进预设（随原生导出）；恢复＝把预设正则拨回出厂值，
   // 一次写回、一次轻量重绘；开着绑定时同时记入本聊天，保证下次进来仍是出厂值。
-  const saveFactoryDefaults = () => structural('保存出厂开关', async ctx => {
+  // C-27：保存/恢复默认设置期间，等待态显示在预设正则各自的开关上（pending → 开关转灰禁用），而不是按钮转圈。
+  // 不走 structural（它要求 pending 为空），用自己的互斥：同一时刻只跑一次，期间开关不可拨。
+  let factoryBusy = false;
+  async function withPresetSwitchesBusy(run) {
+    if (factoryBusy || writing || disposed) return null;
+    factoryBusy = true;
+    const keys = (readRegexSources(context()).preset.items || []).filter(item => text(item.id)).map(item => `preset:${item.id}`);
+    keys.forEach(key => pending.add(key)); refresh();
+    try { return await run(); }
+    catch (error) { notify(error?.message || '操作失败', 'warning'); return null; }
+    finally { keys.forEach(key => pending.delete(key)); factoryBusy = false; refresh(); }
+  }
+  const saveFactoryDefaults = () => withPresetSwitchesBusy(async () => {
+    const ctx = context();
     const manager = presetManager(ctx);
-    if (typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此保存出厂开关');
+    if (typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此保存默认设置');
     const snap = snapshotRegexDefaults(readRegexSources(ctx).preset.items);
     if (!Object.keys(snap).length) throw new Error('当前预设没有可记录的正则');
     await manager.writePresetExtensionField({ name: text(manager.getSelectedPresetName?.()), path: PRESET_DEFAULTS_PATH, value: snap });
-    notify(`已把 ${Object.keys(snap).length} 条预设正则的开关存为出厂开关（随预设导出）`, 'success');
-    return { reload: false, result: Object.keys(snap).length };
+    notify(`已把 ${Object.keys(snap).length} 条预设正则的开关存为默认设置（随预设导出）`, 'success');
+    return Object.keys(snap).length;
   });
   async function restoreFactoryDefaults() {
     const preset = readRegexSources(context()).preset;
     const changes = diffRegexDefaults(preset.items, preset.factory);
-    if (!preset.hasFactory) { notify('当前预设还没有出厂开关', 'info'); return 0; }
-    if (!changes.length) { notify('已是出厂开关', 'info'); return 0; }
+    if (!preset.hasFactory) { notify('当前预设还没有默认设置', 'info'); return 0; }
+    if (!changes.length) { notify('已是默认设置', 'info'); return 0; }
     bumpSession();
-    const changed = await structural('恢复出厂开关', async ctx => {
-      const out = await writeRegexStates(ctx, { source: 'preset', changes, expectPreset: preset.name });
+    const changed = await withPresetSwitchesBusy(async () => {
+      const out = await writeRegexStates(context(), { source: 'preset', changes, expectPreset: preset.name });
       for (const change of changes) recordToggle('preset', change.id, change.enabled);
-      return { reload: false, result: out };
+      return out;
     });
-    if (changed) { syncNative(); scheduleReload(REGEX_RELOAD_DELAY, { lightOnly: true }); notify(`已恢复 ${changed} 条正则的出厂开关`, 'success'); }
-    return changed;
+    if (changed) { syncNative(); scheduleReload(REGEX_RELOAD_DELAY, { lightOnly: true }); notify(`已恢复 ${changed} 条正则的默认设置`, 'success'); }
+    return changed || 0;
   }
   // C-26：一键允许当前预设的正则运行（ST 原生同一份允许名单）。
   function allowPreset() {

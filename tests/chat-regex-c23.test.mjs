@@ -31,7 +31,9 @@ test('two bound chats keep their own preset-regex and global-regex switches', as
   await w.enter('A');
   await w.ctrl.actions.setBindingEnabled(true);
   await w.ctrl.actions.toggle({ source: 'preset', id: 'p1', name: '预设甲', enabled: false });
-  assert.deepEqual(Object.keys(w.bindings.A.overrides), ['preset:写作预设:p1'], '预设正则的绑定键带预设名');
+  // C-27：开绑定即记下此刻全部开关；预设正则的绑定键带预设名，拨动后静默覆盖该条
+  assert.deepEqual(Object.keys(w.bindings.A.overrides).sort(), ['global:g1', 'preset:写作预设:p1', 'preset:写作预设:p2']);
+  assert.deepEqual(w.bindings.A.overrides['preset:写作预设:p1'], { enabled: false }, '拨动覆盖记录');
   await w.enter('B');
   await w.ctrl.actions.setBindingEnabled(true);
   assert.deepEqual(w.live(), { p1: true, g1: true }, '进 B：没覆盖的条目复位到基线');
@@ -51,7 +53,7 @@ test('an unbound chat returns to the global baseline instead of inheriting the l
   assert.deepEqual(w.live(), { p1: true, g1: true }, '未绑定聊天复位到基线');
   // 在未绑定聊天里拨开关 = 更新全局基线，A 不受影响
   await w.ctrl.actions.toggle({ source: 'global', id: 'g1', name: '全局甲', enabled: false });
-  assert.equal(w.defaults['global:g1'], undefined, '没有基线的条目不新建');
+  assert.deepEqual(w.defaults['global:g1'], { enabled: false }, '开绑定时已为全部条目建基线，未绑定聊天里拨动即更新基线');
   await w.ctrl.actions.toggle({ source: 'preset', id: 'p1', name: '预设甲', enabled: false });
   assert.deepEqual(w.defaults['preset:写作预设:p1'], { enabled: false }, '已有基线的条目同步更新');
   await w.enter('A');

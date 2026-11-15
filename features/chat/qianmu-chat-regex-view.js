@@ -151,12 +151,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
     // C-26：条目上不再显示「已绑定」小图标（开关开/关都显示反而混淆）——绑定静默生效，
     // 本聊天记了几条、清空入口放在「绑定此聊天」旁。
-    // C-26：重复正则（查找表达式相同）——名字后加一个小标记，悬停看与哪几条重复。
+    // C-26：重复正则（查找表达式与替换内容都相同）——名字后加一个小标记，悬停看与哪几条重复。
     const dupes = duplicates?.[String(item.id)];
     if (Array.isArray(dupes) && dupes.length) {
       node.classList.add('is-duplicate');
       const dup = el('i', 'fa-solid fa-clone qm-regex-dup-mark');
-      dup.setAttribute('aria-label', `与「${dupes.join('」「')}」查找表达式相同`); dup.title = `与「${dupes.join('」「')}」查找表达式相同`;
+      dup.setAttribute('aria-label', `与「${dupes.join('」「')}」查找与替换都相同`); dup.title = `与「${dupes.join('」「')}」查找与替换都相同`;
       name.append(document.createTextNode(' '), dup);
     }
     const key = `${source}:${item.id}`;
@@ -950,7 +950,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       bindBtn.dataset.key = 'bind';
       bindBtn.setAttribute('aria-pressed', String(binding.enabled === true));
       bindBtn.setAttribute('aria-label', `绑定此聊天：${binding.enabled ? '已开启，进聊天自动套用预设与正则' : '未开启'}`);
-      bindBtn.title = binding.enabled ? '绑定此聊天（已开启：预设与正则改动会记入本聊天，进聊天自动套用）' : '绑定此聊天（开启后记住当前预设，预设与正则改动记入本聊天，进聊天自动套用）';
+      bindBtn.title = binding.enabled ? '绑定此聊天（已开启：之后的正则开关改动自动记入本聊天）' : '绑定此聊天（开启时记住此刻的预设与全部正则开关，进聊天自动恢复）';
       const bg = el('i', 'fa-solid fa-link'); bg.setAttribute('aria-hidden', 'true');
       bindBtn.append(bg, el('span', 'qm-regex-tool-label', '绑定此聊天'));
       bindBtn.addEventListener('click', () => {
@@ -959,16 +959,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
           .catch(error => notify(error?.message || '绑定切换失败', 'warning'));
       });
       tools.append(bindBtn);
-      // C-26：绑定的可见性与取消入口——条目上不再挂图标；开着绑定且本聊天记了开关时，按钮旁显示条数，点按清空。
-      const recorded = binding.enabled ? Object.keys(binding.overrides || {}).length : 0;
-      if (recorded && typeof actions.clearBindingOverrides === 'function') {
-        const clear = el('button', 'qm-regex-tool qm-regex-bind-clear'); clear.type = 'button'; clear.dataset.key = 'bind-clear';
-        clear.setAttribute('aria-label', `本聊天已记 ${recorded} 条正则开关，点按清空`); clear.title = `本聊天已记 ${recorded} 条正则开关（点按清空，之后按出厂开关/全局状态）`;
-        const ci = el('i', 'fa-solid fa-xmark'); ci.setAttribute('aria-hidden', 'true');
-        clear.append(el('span', 'qm-regex-tool-label', `${recorded}`), ci);
-        clear.addEventListener('click', () => { if (!confirmClear(recorded)) return; try { actions.clearBindingOverrides(); } catch (error) { notify(error?.message || '清空失败', 'warning'); } });
-        tools.append(clear);
-      }
+      // C-27：绑定极简化——不显示已记条数、不提供逐条清空；开绑定即记下此刻的预设与全部开关，之后拨动静默覆盖。
     }
     // C-26：搜索——工具条下方一行输入框；按名字或组名过滤，搜索中组自动展开、不显示移动落点。
     let searchBox = null;
@@ -1056,20 +1047,25 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       warn.append(el('span', 'qm-regex-allow-text', '未允许运行'), allow);
       presetHead.push(warn);
     }
-    if (p.available && p.writable && p.items.length && !managing && typeof actions.restoreFactoryDefaults === 'function') {
-      const factoryBtn = el('button', `qm-regex-rowbtn qm-regex-factory${p.hasFactory ? ' has-factory' : ''}`); factoryBtn.type = 'button';
-      factoryBtn.dataset.key = 'factory';
-      const label = p.hasFactory ? '恢复出厂开关' : '把当前开关存为出厂开关（随预设导出）';
-      factoryBtn.setAttribute('aria-label', label); factoryBtn.title = p.hasFactory ? '恢复出厂开关（长按或右键：把当前开关重新存为出厂开关）' : label;
-      const fi = el('i', `fa-solid ${p.hasFactory ? 'fa-arrow-rotate-left' : 'fa-box-archive'}`); fi.setAttribute('aria-hidden', 'true'); factoryBtn.append(fi);
-      const save = () => Promise.resolve().then(() => actions.saveFactoryDefaults()).catch(error => notify(error?.message || '保存失败', 'warning'));
-      factoryBtn.addEventListener('click', event => {
-        event?.stopPropagation?.();
-        if (!p.hasFactory) { void save(); return; }
-        Promise.resolve().then(() => actions.restoreFactoryDefaults()).catch(error => notify(error?.message || '恢复失败', 'warning'));
-      });
-      factoryBtn.addEventListener('contextmenu', event => { if (!p.hasFactory) return; event?.preventDefault?.(); event?.stopPropagation?.(); if (confirmFactory()) void save(); });
-      presetHead.push(factoryBtn);
+    if (p.available && p.writable && p.items.length && !managing && typeof actions.saveFactoryDefaults === 'function') {
+      // C-27：出厂开关改为两个带小字的按钮——「存为默认设置」常驻；有默认值时再给「恢复默认」。
+      // 保存中的等待态显示在各条开关上（控制器把预设正则标为 pending），按钮本身不转圈。
+      const textBtn = (key, label, title, glyph, run) => {
+        const b = el('button', `qm-regex-tool qm-regex-factory`); b.type = 'button'; b.dataset.key = key;
+        b.setAttribute('aria-label', title); b.title = title;
+        const i = el('i', `fa-solid ${glyph}`); i.setAttribute('aria-hidden', 'true');
+        b.append(i, el('span', 'qm-regex-tool-label', label));
+        if (state.writing === true) b.disabled = true;
+        b.addEventListener('click', event => { event?.stopPropagation?.(); if (b.disabled) return; Promise.resolve().then(run).catch(error => notify(error?.message || `${label}失败`, 'warning')); });
+        return b;
+      };
+      const tools = el('span', 'qm-regex-factory-group');
+      tools.append(textBtn('factory-save', '存为默认设置', p.hasFactory ? '把当前开关重新存为本预设的默认设置（随预设导出）' : '把当前开关存为本预设的默认设置（随预设导出）', 'fa-floppy-disk',
+        () => { if (p.hasFactory && !confirmFactory()) return null; return actions.saveFactoryDefaults(); }));
+      if (p.hasFactory && typeof actions.restoreFactoryDefaults === 'function') {
+        tools.append(textBtn('factory-restore', '恢复默认', '把本预设正则的开关恢复为默认设置', 'fa-arrow-rotate-left', () => actions.restoreFactoryDefaults()));
+      }
+      presetHead.push(tools);
     }
     const presetNote = p.available ? `${p.items.length} 条` : '';
     const presetCard = section('预设正则', presetNote, p.items, view,
@@ -1130,13 +1126,9 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const confirm = root.ownerDocument?.defaultView?.confirm;
     return typeof confirm === 'function' ? confirm(`确定删除选中的 ${n} 条正则？可在回收站还原。`) : true;
   }
-  function confirmClear(n) {
-    const confirm = root.ownerDocument?.defaultView?.confirm;
-    return typeof confirm === 'function' ? confirm(`清空本聊天记下的 ${n} 条正则开关？预设绑定不变。`) : true;
-  }
   function confirmFactory() {
     const confirm = root.ownerDocument?.defaultView?.confirm;
-    return typeof confirm === 'function' ? confirm('把当前开关重新存为本预设的出厂开关？') : true;
+    return typeof confirm === 'function' ? confirm('把当前开关重新存为本预设的默认设置？') : true;
   }
   function askGroup() {
     const prompt = root.ownerDocument?.defaultView?.prompt;

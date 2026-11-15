@@ -684,17 +684,22 @@ test('setBindingOverride captures the live baseline into defaults so other chats
   assert.equal('global:g1' in bind.binding.overrides, false, '移出覆盖');
 });
 
-test('setBindingEnabled off then on toggles enable and applies immediately', async () => {
+// C-27：开绑定 = 以此刻状态覆盖本聊天记录（不反向套用旧记录，开关不会被翻动）；关闭只停用。
+test('setBindingEnabled captures the current switches instead of re-applying an old record', async () => {
   const st = fakeST({ global: [{ id: 'g1', scriptName: '显示A', disabled: true }] });
   const timers = manualTimers();
   const bind = fakeBinding({ enabled: false, overrides: { 'global:g1': { enabled: true } } });
   const ctrl = createChatRegex({ getContext: () => st.ctx, timers, ...bind });
   await ctrl.actions.setBindingEnabled(true);
   assert.equal(bind.binding.enabled, true);
-  assert.equal(st.ctx.extensionSettings.regex[0].disabled, false, '开启后立即套用');
+  assert.equal(st.ctx.extensionSettings.regex[0].disabled, true, '开关不被翻动');
+  assert.deepEqual(bind.binding.overrides, { 'global:g1': { enabled: false } }, '记录 = 此刻状态');
+  await ctrl.actions.setBindingEnabled(false);
+  assert.equal(bind.binding.enabled, false);
+  assert.deepEqual(bind.binding.overrides, { 'global:g1': { enabled: false } }, '关闭不清记录');
 });
 
-test('view shows a 绑定 toggle; rows stay silent and a count + clear button replaces per-row marks (C-26)', async () => {
+test('view shows a 绑定 toggle; rows and the toolbar stay silent about recorded switches (C-27)', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const make = tag => {
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
@@ -724,13 +729,7 @@ test('view shows a 绑定 toggle; rows stay silent and a count + clear button re
   assert.equal(bind.attrs['aria-pressed'], 'true');
   assert.ok(bind.classList.contains('is-on'));
   assert.equal(walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark')).length, 0, '条目不挂绑定图标（静默）');
-  const clear = walk(host).find(n => n.dataset.key === 'bind-clear');
-  assert.ok(clear, '绑定旁显示已记条数＋清空');
-  assert.ok(walk(clear).some(n => n.textContent === '1'), '条数 = 1');
-  clear.listeners.click(); await settle();
-  assert.deepEqual(calls.at(-1), 'clear');
-  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {} } }));
-  assert.equal(walk(host).find(n => n.dataset.key === 'bind-clear'), undefined, '没记任何条目时不显示');
+  assert.equal(walk(host).find(n => n.dataset.key === 'bind-clear'), undefined, '不显示已记条数/清空（极简：静默无痕）');
   view.dispose();
 });
 

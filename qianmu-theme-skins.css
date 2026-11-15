@@ -111,6 +111,16 @@
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+/* C-27：聊天工具包面板与千幕主窗体同一窗体底色（其中的卡片用卡片材质），单独成条，不改动上面两个窗体。 */
+#story-director-floor-nav[data-qm-theme] .sd-floor-panel {
+  background: var(--qm-skin-window) !important;
+  border-color: var(--qm-line) !important;
+  color: var(--qm-ink);
+  border-radius: var(--qm-card-radius) !important;
+  box-shadow: var(--qm-skin-shadow);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 #story-director-modal[data-qm-theme="glass"] .sd-window,
 #story-director-floor-nav[data-qm-theme="glass"] .qm-font-window { border-radius: 30px !important; }
 #story-director-modal[data-qm-theme="editorial"] .sd-window,
@@ -352,7 +362,8 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
   border-color: color-mix(in srgb, var(--qm-accent) 25%, var(--qm-line));
   background: color-mix(in srgb, var(--qm-accent) 7%, var(--qm-raised));
 }
-:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-storage-cleanup-dialog, .sd-floor-panel, .sd-reader-refill-card),
+/* C-27：聊天工具包面板是一个窗体（与千幕主窗体、字库同级），用窗体底色；其中的卡片才用卡片材质。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] :is(.sd-storage-cleanup-dialog, .sd-reader-refill-card),
 .sd-tts-popup[data-qm-theme] {
   background: var(--qm-skin-material) !important;
   color: var(--qm-ink);

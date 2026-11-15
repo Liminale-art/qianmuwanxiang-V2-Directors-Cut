@@ -85,6 +85,9 @@ test('allow: writes ST\'s own allow list once', () => {
 test('pure helpers: duplicates, search, snapshots', () => {
   assert.deepEqual(findDuplicateRegex([{ id: 'a', scriptName: '一', findRegex: ' x ' }, { id: 'b', scriptName: '二', findRegex: 'x' }, { id: 'c', scriptName: '三', findRegex: 'y' }, { id: 'd', findRegex: '' }]),
     { a: ['二'], b: ['一'] }, '查找表达式相同（去首尾空白）');
+  // C-27：查找相同但替换不同 = 同一匹配的不同处理，不算重复；两者都相同（去首尾空白）才算
+  assert.deepEqual(findDuplicateRegex([{ id: 'a', findRegex: 'x', replaceString: '1' }, { id: 'b', findRegex: 'x', replaceString: '2' }, { id: 'c', findRegex: 'x', replaceString: ' 1 ' }]),
+    { a: ['（未命名）'], c: ['（未命名）'] });
   assert.equal(regexMatchesQuery({ name: '开场白' }, '', '开场'), true);
   assert.equal(regexMatchesQuery({ name: '开场白' }, '收尾', '收尾'), true, '组名也能搜');
   assert.equal(regexMatchesQuery({ name: '开场白' }, '', '开场 结尾'), false, '多个词需全部命中');
@@ -121,4 +124,30 @@ test('search state is held by the controller and filters the view without regrou
   const dupRows = walkAll(host).filter(n => n.classList?.contains('qm-regex-row') && n.classList.contains('is-duplicate')).map(n => n.dataset.id);
   assert.deepEqual(dupRows, ['p1', 'p3'], '查找表达式相同的两条带重复标记');
   view.dispose();
+});
+
+test('C-27: themed toolkit panel uses the window background; the manage bar uses the same card material as other cards', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const skins = await readFile(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  assert.match(skins, /#story-director-floor-nav\[data-qm-theme\] \.sd-floor-panel \{\s*background: var\(--qm-skin-window\) !important;/, '工具包面板 = 窗体底色（与千幕主窗体一致）');
+  assert.ok(!skins.includes(':is(.sd-storage-cleanup-dialog, .sd-floor-panel,'), '面板不再按卡片材质着色');
+  assert.ok(css.includes('#story-director-floor-nav[data-qm-theme] .qm-regex-selbar { background: var(--qm-skin-material, var(--sd-card)) !important;'), '管理展开条 = 卡片材质');
+  assert.ok(!/\.qm-regex-selbar \{[^}]*--qm-skin-window/.test(css), '管理展开条不再用窗体渐变');
+});
+
+test('C-27: saving defaults shows the waiting state on the preset switches, not on the button', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const presets = { 甲: { extensions: { regex_scripts: [{ id: 'p1', scriptName: '一' }, { id: 'p2', scriptName: '二' }] } } };
+  const manager = { apiId: 'openai', getAllPresets: () => ['甲'], getSelectedPresetName: () => '甲', findPreset: n => n, selectPreset: async () => {},
+    readPresetExtensionField: ({ path }) => (path === 'regex_scripts' ? presets.甲.extensions.regex_scripts : null),
+    writePresetExtensionField: async () => { await gate; } };
+  const ctx = { extensionSettings: { regex: [] }, getPresetManager: () => manager, getCurrentChatId: () => 'c', saveSettingsDebounced() {} };
+  const ctrl = createChatRegex({ getContext: () => ctx, timers: { set: () => 1, clear() {} } });
+  const run = ctrl.actions.saveFactoryDefaults();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual([...ctrl.state().pending].sort(), ['preset:p1', 'preset:p2'], '保存期间预设正则的开关处于等待态');
+  release(); await run;
+  assert.deepEqual([...ctrl.state().pending], [], '完成后恢复');
 });

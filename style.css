@@ -993,12 +993,6 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-allow { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding: 1px 2px 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--sd-warning, #c98a2b) 14%, transparent); color: var(--sd-warning, #c98a2b); font-size: var(--qm-type-caption); font-weight: 600; }
 #story-director-floor-nav .qm-regex-allow-btn { min-height: 22px; margin: 0; padding: 0 10px; border: 0; border-radius: 999px; background: var(--sd-warning, #c98a2b); color: #fff; font-size: var(--qm-type-caption); font-weight: 600; cursor: pointer; }
 #story-director-floor-nav .qm-regex-card.is-not-allowed .qm-regex-list { opacity: .55; }
-#story-director-floor-nav .qm-regex-factory { flex: none; color: var(--sd-muted); }
-#story-director-floor-nav .qm-regex-factory.has-factory { color: var(--sd-primary); }
-#story-director-floor-nav .qm-regex-card-head > .qm-regex-allow + .qm-regex-factory, #story-director-floor-nav .qm-regex-card-head > .qm-regex-factory { margin-left: auto; }
-#story-director-floor-nav .qm-regex-card-head > .qm-regex-allow + .qm-regex-factory { margin-left: 0; }
-#story-director-floor-nav .qm-regex-bind-clear { gap: 3px; color: var(--sd-primary); font-variant-numeric: tabular-nums; }
-#story-director-floor-nav .qm-regex-card-head > :is(.qm-regex-allow, .qm-regex-factory) ~ .qm-regex-pill { margin-left: 0; }
 /* C-17 s6：预设快切 = 内联目录组控件（不是浮层）。顶部一行「预设目录 [当前所选]」折叠/展开整个目录；
    展开后版本系列各占一个可折叠行（组名 + 版本数 + 箭头），组内是各版本的单选行（圆点 + 版本号标签）。 */
 #story-director-floor-nav .qm-regex-card.qm-regex-preset-box { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: 6px 10px; }
@@ -1051,6 +1045,13 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-knob { position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; background: var(--sd-card, #fff); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sd-muted) 70%, transparent); transition: transform .18s cubic-bezier(.22, 1, .36, 1), background-color .18s ease, box-shadow .18s ease; }
 #story-director-floor-nav .qm-regex-switch.is-on .qm-regex-knob { transform: translateX(14px); background: var(--sd-primary); box-shadow: inset 0 0 0 2px var(--sd-primary), 0 0 0 3px color-mix(in srgb, var(--sd-primary) 16%, transparent); }
 #story-director-floor-nav .qm-regex-switch:disabled { opacity: .55; cursor: progress; }
+/* C-27：写回中的开关——圆点变成一个转动的小圈（保存/恢复默认设置、单条写回时都显示在开关本身上） */
+#story-director-floor-nav .qm-regex-switch[aria-busy="true"] .qm-regex-knob { background: transparent !important; box-shadow: none !important; border: 2px solid color-mix(in srgb, var(--sd-primary) 70%, transparent); border-right-color: transparent; animation: qm-regex-knob-spin .7s linear infinite; }
+@keyframes qm-regex-knob-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-switch[aria-busy="true"] .qm-regex-knob { animation: none; } }
+#story-director-floor-nav .qm-regex-factory-group { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+#story-director-floor-nav .qm-regex-card-head > .qm-regex-allow + .qm-regex-factory-group { margin-left: 0; }
+#story-director-floor-nav .qm-regex-card-head > :is(.qm-regex-allow, .qm-regex-factory-group) ~ .qm-regex-pill { margin-left: 0; }
 #story-director-floor-nav .qm-regex-switch:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav :is(.qm-regex-switch, .qm-regex-knob) { transition: none; } }
 #story-director-floor-nav .qm-regex-empty { margin: 0; padding: 8px 0; text-align: center; font-size: var(--qm-type-caption); color: var(--sd-muted); }
@@ -1133,8 +1134,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-manage-toggle.is-on { color: var(--sd-primary); background: transparent; }
 #story-director-floor-nav .qm-regex-new-icon { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; color: var(--sd-primary); }
 #story-director-floor-nav .qm-regex-seldock { position: sticky; top: 0; z-index: 3; padding: 0 0 var(--qm-floor-gap); margin-bottom: calc(-1 * var(--qm-floor-gap)); border: 0; border-radius: 0; background: transparent; }
-#story-director-floor-nav .qm-regex-selbar { display: flex; align-items: center; gap: 4px; min-width: 0; flex-wrap: wrap; padding: 4px 6px 4px 10px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--qm-skin-window, var(--sd-window-bg, var(--sd-card))); backdrop-filter: blur(8px) saturate(1.2); -webkit-backdrop-filter: blur(8px) saturate(1.2); }
-#story-director-floor-nav[data-qm-theme] .qm-regex-selbar { border-color: var(--qm-line, var(--sd-hairline)); }
+#story-director-floor-nav .qm-regex-selbar { display: flex; align-items: center; gap: 4px; min-width: 0; flex-wrap: wrap; padding: 4px 6px 4px 10px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); backdrop-filter: blur(8px) saturate(1.2); -webkit-backdrop-filter: blur(8px) saturate(1.2); }
+/* C-27：管理展开条与其它卡片同一材质（原先用了窗体背景 --qm-skin-window，极简主题下变成彩色渐变，与面板颠倒） */
+#story-director-floor-nav[data-qm-theme] .qm-regex-selbar { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
 #story-director-floor-nav .qm-regex-selact.is-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-width: 30px; padding: 0; border-color: transparent; border-radius: var(--qm-button-radius, 8px); background: transparent; }
 #story-director-floor-nav .qm-regex-selbar-count { flex: 1 1 auto; min-width: 0; font-size: var(--qm-type-caption); color: var(--sd-muted); }
 /* C-15 s5 回收站：顶部开关 + 已删除列表 + 内存态小字 */
