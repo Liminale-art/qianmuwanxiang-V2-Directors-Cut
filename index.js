@@ -10,6 +10,9 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
+import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.516';
+import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
+globalThis.qianmuPerf ||= createPerfProbe();
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
@@ -41,8 +44,8 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.503';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.515';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.516';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -319,7 +322,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.515';
+const VERSION = '1.59.516';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -404,7 +407,7 @@ async function mountFloorChatRecovery(root) {
   // while the recovery modules and account namespace resolve in the background.
   host.innerHTML = '<div class="qm-recovery-loading-shell" role="status" aria-live="polite"><div class="qm-recovery-loading-line"><span class="qm-recovery-loading-dot"></span><span>正在准备聊天备份…</span></div></div>';
   try {
-    chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.507')]);
+    loadChatRecoveryCode();
     const namespacePromise = resolveImageAccountNamespace();
     const [runtime, view] = await chatRecoveryLoading;
     if (!root.isConnected || !initialized || !isRuntimeOwner()) return;
@@ -5596,6 +5599,30 @@ const isChatSurfaceVisible = () => {
   return !!chat && !document.querySelector('.drawer-content.openDrawer') && chat.getClientRects().length > 0;
 };
 
+// 聊天备份页的两个模块：页面挂载与空闲预加载共用同一个在途 Promise（失败由挂载处清空后可重试）。
+function loadChatRecoveryCode() {
+  return chatRecoveryLoading ||= Promise.all([import('./features/chat/qianmu-chat-recovery.js?v=1.59.484'), import('./features/chat/qianmu-chat-recovery-view.js?v=1.59.507')]);
+}
+// C-28 L5：空闲时补暖「首次点开要现场下载」的模块——聊天工具包三页、特助会话、便笺同步链。
+// 与 qianmu-idle-preload 的默认名单并行、同一套空闲条件（5 秒无操作、不在生成中、非省流量）。
+let stopExtraPreload = null;
+function scheduleExtraPreload() {
+  stopExtraPreload?.();
+  const quiet = load => () => Promise.resolve().then(load).catch(() => { /* 用户点开时会照常加载并报错 */ });
+  stopExtraPreload = scheduleQianmuIdlePreload({
+    isCurrent: () => initialized && isRuntimeOwner(),
+    isBusy: () => { const stream = ctx().streamingProcessor; return Boolean(stream && !stream.isStopped && !stream.isFinished); },
+    loaders: [
+      quiet(() => chatRegex.preload()),
+      quiet(() => chatRingtone.preload()),
+      quiet(() => loadChatRecoveryCode().catch(error => { chatRecoveryLoading = null; throw error; })),
+      quiet(() => loadLocalChunk('./qianmu-prose-assistant-conversations.js')),
+      // 与 qianmu-notes.js 里按需加载的地址逐字一致，命中同一份模块缓存。
+      quiet(() => Promise.all([import('./qianmu-notes-sync-runtime.js?v=1.59.419'), import('./qianmu-st-account-storage.js')])),
+    ],
+  });
+}
+
 function closeFloorNavigator() {
   const floor = document.getElementById(FLOOR_NAV_ID);
   const outside = floor?.__qianmuOutsideHandler;
@@ -5773,6 +5800,7 @@ function bindFloorProseNumberControls(root) {
 }
 
 function openFloorNavigator(initialView = floorNavigatorView) {
+  const timed = globalThis.qianmuPerf?.start('聊天工具包');
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
@@ -5838,10 +5866,11 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     root.querySelectorAll('[data-floor-view]').forEach((section) => { section.hidden = section.dataset.floorView !== floorNavigatorView; });
     // C-19：切到还没数据的页时先给个加载态，避免导航栏下面是空白面板、看起来像卡住。
     const pending = (section, label) => {
-      if (!section || section.querySelector('.sd-floor-loading')) return () => {};
+      const ready = globalThis.qianmuPerf?.start(`聊天工具包·${floorNavigatorView}`);
+      if (!section || section.querySelector('.sd-floor-loading')) return () => ready?.('就绪');
       section.innerHTML = '<div class="sd-floor-loading" role="status"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span></span></div>';
       section.querySelector('.sd-floor-loading span').textContent = label;
-      return () => section.querySelector('.sd-floor-loading')?.remove();
+      return () => { section.querySelector('.sd-floor-loading')?.remove(); ready?.('就绪'); };
     };
     if (floorNavigatorView === 'recovery') { const done = pending(root.querySelector('[data-floor-view="recovery"]'), '正在准备备份列表…'); void mountFloorChatRecovery(root).finally(done); }
     if (floorNavigatorView === 'ring') { const done = pending(root.querySelector('[data-floor-view="ring"]'), '正在加载铃声…'); void chatRingtone.mount(root.querySelector('[data-floor-view="ring"]')).catch(error => toast(error?.message || '铃声面板加载失败', 'warning')).finally(done); }
@@ -5849,6 +5878,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   };
   root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
   setView(floorNavigatorView);
+  timed?.frame('显示');
   const input = root.querySelector('.sd-floor-input');
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') jumpToChatFloor(input.value);
@@ -5877,7 +5907,11 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
-  if (id === 'assistant') return proseFloorTools.openAssistant();
+  if (id === 'assistant') {
+    const timed = globalThis.qianmuPerf?.start('场外特助'), opening = proseFloorTools.openAssistant();
+    void Promise.resolve(opening).then(() => timed?.('面板就绪'), () => {});
+    return opening;
+  }
   if (id === 'text-collection') return proseFloorTools.openCollection();
   if (id === 'geopolitics') return openModal('geopolitics');
   if (QUICK_COMMAND_IDS.includes(id)) return openModal(id);
@@ -6432,9 +6466,11 @@ function openNotesPanel() {
   closeQuickWheel();
   notesActiveId = '';
   notesPanelOpen = true;
+  const timed = globalThis.qianmuPerf?.start('便笺');
   renderNotesPanelPortal();
   renderFloatingNotes();
-  void hydrateNotesRuntime().then(() => notesSyncControls().sync());
+  timed?.frame('显示');
+  void hydrateNotesRuntime().then(() => { timed?.('数据就绪'); return notesSyncControls().sync(); }).then(() => timed?.('同步完成'));
 }
 
 function closeNotesPanel() {
@@ -7076,6 +7112,7 @@ function renderModal() {
   performanceRuntime.modalRenderCount += 1;
   performanceRuntime.modalRenderTotalMs += renderMs;
   performanceRuntime.modalRenderLastMs = renderMs;
+  globalThis.qianmuPerf?.record(`主面板·${activeTab || 'dashboard'}`, '渲染', renderMs);
   performanceRuntime.modalRenderMaxMs = Math.max(performanceRuntime.modalRenderMaxMs, renderMs);
   if (renderMs >= 50) performanceRuntime.slowModalRenderCount += 1;
   performanceRuntime.lastNodeCount = modal.querySelectorAll('*').length;
@@ -35480,6 +35517,7 @@ function init() {
     renderFloatButton();
     proseFloorTools.renderHive();
     floorHive.render();
+    scheduleExtraPreload();
     renderFloatingNotes();   // 便笺入口与两个 hive 一样启动即无条件挂载，避免窄屏刷新需最大化触发 resize 才复位
     bindQuickDockCapture();
     restoreQuickDockedPlugins();
@@ -35564,6 +35602,7 @@ function cleanupRuntime(resetSettings = false) {
   resetCreativeSocialState();
   proseFloorTools.dispose();
   floorHive?.dispose(); floorHive=null;
+  stopExtraPreload?.(); stopExtraPreload = null;
   directorRun?.controller.abort(); directorLiveLog = null;
   const clean = (label, callback) => {
     try { callback(); } catch (error) { console.warn(`[${MODULE_NAME}] cleanup ${label} failed`, error); }

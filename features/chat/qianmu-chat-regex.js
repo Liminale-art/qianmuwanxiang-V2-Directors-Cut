@@ -880,7 +880,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.515') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.516') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -1797,5 +1797,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     },
     presetChanged: () => { refresh(); },
   });
-  return Object.freeze({ mount, unmount, dispose, actions, state, applyBinding, events });
+  // Warms the view module only (no mount, no data read) so the first open does not wait on a download.
+  const preload = () => loadView().then(() => true, () => false);
+  return Object.freeze({ mount, unmount, dispose, actions, state, applyBinding, events, preload });
 }

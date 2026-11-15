@@ -448,5 +448,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
   function refreshLook() { syncToast(); }
   function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
-  return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state });
+  // Warms the view module only (no mount, no audio, no data read).
+  const preload = () => loadView().then(() => true, () => false);
+  return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state, preload });
 }
