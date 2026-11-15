@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { groupAdjacentRegex, fitRegexGroupName, joinRegexGroup, groupRegexWithFixed, createChatRegex } = await import('../features/chat/qianmu-chat-regex.js');
+const { groupAdjacentRegex, fitRegexGroupName, joinRegexGroup, groupRegexRuns, createChatRegex } = await import('../features/chat/qianmu-chat-regex.js');
 const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
 
 const scripts = (...names) => names.map((scriptName, i) => ({ id: `s${i}`, scriptName }));
@@ -11,24 +11,24 @@ const rows = list => list.map(s => ({ id: s.id, name: s.scriptName }));
 const shape = list => groupAdjacentRegex(rows(list)).map(r => [r.label, r.items.map(i => i.name)]);
 
 test('a 【tag】 row joins the auto group of the same name instead of standing apart', () => {
-  assert.deepEqual(shape(scripts('群聊-外框', '群聊-正文', '【群聊】不发送')), [['群聊', ['群聊-外框', '群聊-正文', '【群聊】不发送']]]);
-  assert.deepEqual(shape(scripts('【群聊】不发送', '群聊-外框', '群聊-正文')), [['群聊', ['【群聊】不发送', '群聊-外框', '群聊-正文']]]);
+  assert.deepEqual(shape(scripts('会话-外框', '会话-正文', '【会话】不发送')), [['会话', ['会话-外框', '会话-正文', '【会话】不发送']]]);
+  assert.deepEqual(shape(scripts('【会话】不发送', '会话-外框', '会话-正文')), [['会话', ['【会话】不发送', '会话-外框', '会话-正文']]]);
   assert.deepEqual(shape(scripts('【排版】甲', '【排版】乙', '排版-丙')).map(r => r[1].length), [3], '手动标签组也收同名自动成员');
-  assert.deepEqual(shape(scripts('群聊-外框', '群聊-正文', '【其他】丙')).map(r => r[0]), ['群聊', ''], '别的标签仍不混入');
+  assert.deepEqual(shape(scripts('会话-外框', '会话-正文', '【其他】丙')).map(r => r[0]), ['会话', ''], '别的标签仍不混入');
 });
 
 test('fitRegexGroupName tags only when the name does not already belong to the group', () => {
-  assert.equal(fitRegexGroupName('不发送', '群聊'), '【群聊】不发送');
-  assert.equal(fitRegexGroupName('群聊-外框', '群聊'), '群聊-外框', '本来就属于该组：不加标签');
-  assert.equal(fitRegexGroupName('【旧】群聊-外框', '群聊'), '群聊-外框', '并去掉旧标签');
+  assert.equal(fitRegexGroupName('不发送', '会话'), '【会话】不发送');
+  assert.equal(fitRegexGroupName('会话-外框', '会话'), '会话-外框', '本来就属于该组：不加标签');
+  assert.equal(fitRegexGroupName('【旧】会话-外框', '会话'), '会话-外框', '并去掉旧标签');
   assert.equal(fitRegexGroupName('【旧】甲', ''), '甲');
 });
 
 test('joinRegexGroup really puts the rows into the group: renamed and moved to the end of its members', () => {
-  const list = scripts('独立', '群聊-外框', '群聊-正文', '状态栏-a', '状态栏-b', '不发送');
-  const next = joinRegexGroup(list, [5, 0], '群聊');
-  assert.deepEqual(next.map(s => s.scriptName), ['群聊-外框', '群聊-正文', '【群聊】独立', '【群聊】不发送', '状态栏-a', '状态栏-b']);
-  assert.deepEqual(shape(next).map(r => [r[0], r[1].length]), [['群聊', 4], ['状态栏', 2]], '不再只是多了个前缀');
+  const list = scripts('独立', '会话-外框', '会话-正文', '信息栏-a', '信息栏-b', '不发送');
+  const next = joinRegexGroup(list, [5, 0], '会话');
+  assert.deepEqual(next.map(s => s.scriptName), ['会话-外框', '会话-正文', '【会话】独立', '【会话】不发送', '信息栏-a', '信息栏-b']);
+  assert.deepEqual(shape(next).map(r => [r[0], r[1].length]), [['会话', 4], ['信息栏', 2]], '不再只是多了个前缀');
   assert.deepEqual(next.map(s => s.id).sort(), list.map(s => s.id).sort(), '不丢不重');
   // 组还不存在：把这批收拢到第一条的位置，成为新组
   const fresh = joinRegexGroup(scripts('甲', '隔', '乙'), [0, 2], '新组');
@@ -36,7 +36,7 @@ test('joinRegexGroup really puts the rows into the group: renamed and moved to t
   assert.deepEqual(shape(fresh)[0], ['新组', ['【新组】甲', '【新组】乙']]);
   // 留空 = 去掉标签、不挪位置；已在组内 = 无变化
   assert.deepEqual(joinRegexGroup(scripts('【组】甲', '乙'), [0], '').map(s => s.scriptName), ['甲', '乙']);
-  assert.equal(joinRegexGroup(scripts('群聊-外框', '群聊-正文'), [1], '群聊'), null);
+  assert.equal(joinRegexGroup(scripts('会话-外框', '会话-正文'), [1], '会话'), null);
 });
 
 function fakeST(global) {
@@ -47,32 +47,30 @@ function fakeST(global) {
 const timers = () => ({ set: () => 1, clear() {} });
 
 test('controller: retag joins the group, dropMove with a group lands at the group end, rename only changes the name', async () => {
-  const st = fakeST(scripts('独立', '群聊-外框', '群聊-正文', '尾巴'));
-  // C-19：固定分组存宿主设置（这里用内存桩），不再靠改名字。
-  let groups = { order: [], members: {} };
+  const st = fakeST(scripts('独立', '会话-外框', '会话-正文', '尾巴'));
+  // C-22：手动分组归属存宿主设置（这里用内存桩）：{ 脚本 id: 组名 | null }，名字不改。
+  let assign = {};
   const ctrl = createChatRegex({ getContext: () => st.ctx, timers: timers(),
-    readGroups: () => groups, writeGroups: value => { groups = { order: [...value.order], members: { ...value.members } }; } });
-  assert.equal(await ctrl.actions.retag({ items: [{ source: 'global', id: 's0', name: '独立' }], tag: '群聊' }), 1);
-  // C-21：加入同名自动组时连同它现有成员一起固定，不只记新来的那一条（否则原组会被拆散）。
-  assert.deepEqual(groups, { order: ['群聊'], members: { 群聊: ['s1', 's2', 's0'] } }, '记成固定分组（含原组成员）');
-  assert.deepEqual(st.names(), ['独立', '群聊-外框', '群聊-正文', '尾巴'], '不改名字、不动执行顺序');
-  // 把「尾巴」拖到组内末尾：位置在组最后一条之后，并记入该组
+    readGroups: () => assign, writeGroups: value => { assign = { ...value }; } });
+  const shape = () => groupRegexRuns(rows(st.ctx.extensionSettings.regex), assign).map(r => [r.label, r.items.map(i => i.id).join('')]);
+  assert.equal(await ctrl.actions.retag({ items: [{ source: 'global', id: 's0', name: '独立' }], tag: '会话' }), 1);
+  assert.deepEqual(assign, { s0: '会话' }, '记成自定义归属');
+  assert.deepEqual(st.names(), ['独立', '会话-外框', '会话-正文', '尾巴'], '名字不改；它本来就紧挨着该组，不必挪');
+  assert.deepEqual(shape(), [['会话', 's0s1s2'], ['', 's3']], '与相邻同名自动段合成一组');
+  // 把「尾巴」拖到组内末尾：位置在组最后一条之后，并归入该组
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 's3', name: '尾巴' }] });
-  await ctrl.actions.dropMove({ source: 'global', before: null, group: '群聊' });
-  assert.deepEqual([...groups.members['群聊']].sort(), ['s0', 's1', 's2', 's3']);
-  assert.deepEqual(groupRegexWithFixed(rows(st.ctx.extensionSettings.regex), groups).map(r => [r.label, r.items.length]), [['群聊', 4]], '组成立且不散');
-  // C-21：不带 group 的落点 = 组外 → 离开固定组（聚拢显示下若不离开，会被拉回原组，看起来像没移动）
-  const keep = groups.members['群聊'].length;
-  ctrl.actions.pickMove({ source: 'global', items: [{ id: 's1', name: '群聊-外框' }] });
+  await ctrl.actions.dropMove({ source: 'global', before: null, group: '会话', members: ['s0', 's1', 's2'] });
+  assert.deepEqual(shape(), [['会话', 's0s1s2s3']], '组成立且不散');
+  // 不带 group 的落点 = 组外 → 离开分组
+  ctrl.actions.pickMove({ source: 'global', items: [{ id: 's1', name: '会话-外框' }] });
   await ctrl.actions.dropMove({ source: 'global', before: null });
-  assert.equal(st.names().at(-1), '群聊-外框');
-  assert.equal(groups.members['群聊'].length, keep - 1, '组外落点 = 离开分组');
-  assert.ok(!groups.members['群聊'].includes('s1'));
+  assert.equal(st.names().at(-1), '会话-外框');
+  assert.deepEqual(shape(), [['会话', 's0s2s3'], ['', 's1']], '组外落点 = 离开分组，显示在落点');
   const before = structuredClone(st.ctx.extensionSettings.regex.find(s => s.id === 's2'));
-  await ctrl.actions.rename({ source: 'global', id: 's2', name: '群聊-正文', to: '群聊-主体' });
-  assert.deepEqual(st.ctx.extensionSettings.regex.find(s => s.id === 's2'), { ...before, scriptName: '群聊-主体' });
+  await ctrl.actions.rename({ source: 'global', id: 's2', name: '会话-正文', to: '会话-主体' });
+  assert.deepEqual(st.ctx.extensionSettings.regex.find(s => s.id === 's2'), { ...before, scriptName: '会话-主体' });
   const saves = st.log.saves;
-  assert.equal(await ctrl.actions.rename({ source: 'global', id: 's2', name: '群聊-主体', to: ' 群聊-主体 ' }), false);
+  assert.equal(await ctrl.actions.rename({ source: 'global', id: 's2', name: '会话-主体', to: ' 会话-主体 ' }), false);
   assert.equal(st.log.saves, saves, '名字没变不写盘');
 });
 
@@ -133,17 +131,17 @@ test('double-clicking a row name renames it in place (Enter commits, Esc cancels
 });
 
 test('inside its group a row hides the redundant 【tag】 and keeps it when renamed; group names rename by double-click too', async () => {
-  const { host, view, calls } = mount(scripts('群聊-外框', '群聊-正文', '【群聊】不发送'));
-  assert.equal(nameOf(host, 's2').textContent, '不发送', '组内不重复显示【群聊】');
+  const { host, view, calls } = mount(scripts('会话-外框', '会话-正文', '【会话】不发送'));
+  assert.equal(nameOf(host, 's2').textContent, '不发送', '组内不重复显示【会话】');
   nameOf(host, 's2').listeners.dblclick();
   const field = byKey(host, 'rename:global:s2');
-  field.value = '不发送群聊'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
+  field.value = '不发送消息'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
   // C-19：组内改名只换名字；组名改名走 renameGroup（自动组改名即固定下来），不再写【前缀】。
-  assert.equal(calls.at(-1)[1].to, '不发送群聊', '组内改名不加前缀');
+  assert.equal(calls.at(-1)[1].to, '不发送消息', '组内改名不加前缀');
   const head = walkAll(host).find(n => n.classList?.contains('qm-regex-group'));
   head.listeners.click({ timeStamp: 5000, target: null });
   head.listeners.click({ timeStamp: 5200, target: null });
-  const gf = byKey(host, 'rename:group:global:群聊');
+  const gf = byKey(host, 'rename:group:global:会话');
   assert.ok(gf, '非管理态组名双击进入改名');
   gf.value = '群组'; gf.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
   assert.equal(calls.at(-1)[0], 'renameGroup');

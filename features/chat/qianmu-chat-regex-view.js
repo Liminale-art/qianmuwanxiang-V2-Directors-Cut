@@ -260,17 +260,21 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     }
     // 拾取态：每条前插「插入到此前」落点（拖拽也 drop 到这里），列表尾再补一个末尾落点。
     // C-18：组内的落点（成员之间、组内末尾）带上组名——落定的条目同时归入该组；组头之前的落点 = 组外。
+    // C-22：组内落点带上该组移动前的成员 id——落进自动组时整组转成自定义，避免插入把它拆散。
+    let memberIds = [];
     const rowOf = (item, group, inside = false) => {
       const node = row(item, source, { ...options, group });
-      return dropHere ? [dropTarget(source, item, across, inside ? group : ''), node] : [node];
+      return dropHere ? [dropTarget(source, item, across, inside ? group : '', false, false, inside ? memberIds : []), node] : [node];
     };
     // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；C-19：固定组优先，成员换位置/被拆开也不解散。
     const runs = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
     runs.forEach((group, runIndex) => {
       if (!group.label) { for (const item of group.items) box.append(...rowOf(item, '')); return; }
-      const fixed = group.fixed === true;
-      const key = fixed ? `group:${source}:${group.key}` : `group:${source}:${group.key || group.label}`;
-      const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}${fixed ? ' is-fixed' : ''}`);
+      const custom = group.custom === true;
+      memberIds = group.items.map(it => it.id);
+      const ids = memberIds;
+      const key = `group:${source}:${group.key || group.label}`;
+      const head = el('div', `qm-regex-group${isFolded(key) ? ' is-folded' : ''}${custom ? ' is-custom' : ''}`);
       // 落点放在组头前（折叠时也能插到组前）＝组外；组内首位另有一个归入本组的落点。
       if (dropHere) box.append(dropTarget(source, group.items[0], across));
       const members = () => {
@@ -278,13 +282,13 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         group.items.forEach((item, i) => {
           if (i) { box.append(...rowOf(item, group.label, true)); return; }
           // C-19：组内首位落点——落在组头之后、首条之前，落定即归入本组并排到最前。
-          if (dropHere) box.append(dropTarget(source, item, across, group.label, false, true));
+          if (dropHere) box.append(dropTarget(source, item, across, group.label, false, true, ids));
           box.append(row(item, source, { ...options, group: group.label }));
         });
         if (!dropHere) return;
         // 组内末尾落点：位置 = 下一段第一条之前（没有下一段 = 列表末尾），并归入本组。
         const after = runs[runIndex + 1]?.items?.[0] || null;
-        box.append(dropTarget(source, after, across, group.label, true));
+        box.append(dropTarget(source, after, across, group.label, true, false, ids));
       };
       // 管理态：折叠箭头 + 本组全选 + 可双击改名的组名 + 整组拾取/拖拽。
       if (options.managing && options.writable) {
@@ -303,20 +307,20 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         head.append(foldButton(key, group.label, 'qm-regex-group-label', ''),
           renameField(key, group.label, `分组「${group.label}」改名`,
             to => (typeof actions.renameGroup === 'function'
-              ? actions.renameGroup({ from: fixed ? group.label : '', to, members: group.items.map(it => ({ source, id: it.id, name: it.name })) })
+              ? actions.renameGroup({ from: custom ? group.label : '', to, members: group.items.map(it => ({ source, id: it.id, name: it.name })) })
               : actions.retag({ items: group.items.map(it => ({ source, id: it.id, name: it.name })), tag: to })), true));
         box.append(head);
         members();
         return;
       }
       head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
-      if (fixed && typeof actions.unfixGroup === 'function') {
+      if (custom && typeof actions.unfixGroup === 'function') {
         // C-19：固定组可解除固定（回到按名字自动折叠）。
         const unfix = el('button', 'qm-regex-rowbtn qm-regex-unfix'); unfix.type = 'button';
         unfix.dataset.key = `unfix:${source}:${group.label}`;
-        unfix.setAttribute('aria-label', `取消固定分组「${group.label}」`); unfix.title = '取消固定分组';
-        const ui = el('i', 'fa-solid fa-thumbtack-slash'); ui.setAttribute('aria-hidden', 'true'); unfix.append(ui);
-        unfix.addEventListener('click', event => { event?.stopPropagation?.(); try { actions.unfixGroup({ name: group.label }); } catch (error) { notify(error?.message || '取消失败', 'warning'); } });
+        unfix.setAttribute('aria-label', `取消自定义分组「${group.label}」（回到自动分组）`); unfix.title = '取消自定义分组（回到自动分组）';
+        const ui = el('i', 'fa-solid fa-rotate-left'); ui.setAttribute('aria-hidden', 'true'); unfix.append(ui);
+        unfix.addEventListener('click', event => { event?.stopPropagation?.(); try { actions.unfixGroup({ name: group.label, members: ids }); } catch (error) { notify(error?.message || '取消失败', 'warning'); } });
         head.append(unfix);
       }
       if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
@@ -343,7 +347,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // C-15 s7：拾取态落点。dropTarget 是独立「插入到此」节点：before 省略＝末尾落点；点按或 drop 都走 dropMove。
   // C-16 s3：across＝异源落点（把拾取条目移入另一来源），加 is-across 标记与「移入预设/全局」文案。
   // C-18：group 非空 = 组内落点（落定即归入该组）；tail = 组内末尾那一个，head 落点 = 组内首位。
-  function dropTarget(source, before, across = false, group = '', tail = false, start = false) {
+  function dropTarget(source, before, across = false, group = '', tail = false, start = false, members = []) {
     const spot = el('button', `qm-regex-drop${across ? ' is-across' : ''}${tail ? ' is-group-end' : ''}${start ? ' is-group-start' : ''}`); spot.type = 'button';
     spot.dataset.key = tail ? `drop:${source}:groupend:${group}` : start ? `drop:${source}:groupstart:${group}` : before ? `drop:${source}:${before.id}` : `drop:${source}:end`;
     const dest = source === 'preset' ? '预设' : '全局';
@@ -353,7 +357,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       ? (before ? `移入${dest}「${before.name}」之前` : `移入${dest}末尾`)
       : (before ? `移动到「${before.name}」之前` : '移动到末尾');
     spot.setAttribute('aria-label', label); spot.title = label;
-    const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null, ...(group ? { group } : {}) });
+    const run = () => actions.dropMove?.({ source, before: before ? { id: before.id, name: before.name } : null, ...(group ? { group, members } : {}) });
     const go = () => { Promise.resolve().then(run).catch(error => notify(error?.message || '移动失败', 'warning')); };
     spot.addEventListener('click', go);
     spot.addEventListener('dragover', event => { event?.preventDefault?.(); });
@@ -397,7 +401,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       if (open) return;
       open = true;
       const field = el('input', 'qm-regex-group-input');
-      field.type = 'text'; field.value = group.label; field.placeholder = group.fixed ? '留空＝取消本组名' : '分组名';
+      field.type = 'text'; field.value = group.label; field.placeholder = group.custom ? '留空＝取消自定义分组' : '分组名';
       field.dataset.key = `grename:${source}:${group.key || group.label}`;
       field.setAttribute('aria-label', `分组「${group.label}」改名`);
       let done = false;
@@ -405,12 +409,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         if (done) return;
         done = true; open = false;
         const to = String(field.value || '').trim();
-        const changed = commit && to !== group.label && (to || group.fixed);
+        const changed = commit && to !== group.label && (to || group.custom);
         if (!changed) { wrap.replaceChildren(label); return; }
         const payload = group.items.map(it => ({ source, id: it.id, name: it.name }));
         // C-19：改名 = 调整固定分组（自动组改名即把它固定下来），不再靠写【前缀】。
         Promise.resolve().then(() => (typeof actions.renameGroup === 'function'
-          ? actions.renameGroup({ from: group.fixed ? group.label : '', to, members: payload })
+          ? actions.renameGroup({ from: group.custom ? group.label : '', to, members: payload })
           : actions.retag?.({ items: payload, tag: to })))
           .catch(error => notify(error?.message || '分组改名失败', 'warning'));
       };
@@ -683,6 +687,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const out = new Set();
     for (const item of items) { const tag = actions.familyKey(item?.name).tag; if (tag) out.add(tag); }
     if (typeof actions.group === 'function') for (const run of actions.group(items)) if (run.label) out.add(run.label);
+    if (typeof actions.customGroupNames === 'function') for (const name of actions.customGroupNames()) out.add(name);
     return [...out];
   }
 
@@ -707,15 +712,20 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const nameField = el('input', 'qm-regex-input'); nameField.type = 'text';
     nameField.id = 'qm-regex-name'; nameField.dataset.key = 'field:scriptName';
     const origName = data.scriptName == null ? '' : String(data.scriptName);
-    const fam = typeof actions.familyKey === 'function' && typeof actions.tagName === 'function' ? actions.familyKey(origName) : null;
-    const origTag = fam?.tag || '';
-    const origBody = origTag ? actions.tagName(origName, '') : origName;
-    nameField.value = origBody;
+    // C-22：分组不再写进名字。分组栏显示这条正则当前所在的组（手动归属优先，否则自动折叠出的组名），名字原样编辑。
+    const fam = typeof actions.group === 'function';
+    const origTag = (() => {
+      if (isNew || !fam) return '';
+      const items = state?.sources?.[source]?.items;
+      const run = Array.isArray(items) ? actions.group(items).find(r => r.items.some(item => String(item.id) === String(editing.id))) : null;
+      return run?.label || '';
+    })();
+    nameField.value = origName;
     nameField.placeholder = '脚本名称';
     const nameLabel = el('label', 'qm-regex-field-label', '脚本名称'); nameLabel.setAttribute('for', 'qm-regex-name');
     const nameWrap = el('div', 'qm-regex-field'); nameWrap.append(nameLabel, nameField);
     form.append(nameWrap);
-    // C-15 s9：分组 = 名字开头的【标签】；可选已有组（datalist）或填新组名，留空 = 交给相邻同类自动归类。
+    // C-22：分组栏 = 当前所在组；改成别的组名 = 设为自定义分组并挪到该组末尾；留空 = 回到自动分组。
     let groupField = null;
     if (fam) {
       groupField = el('input', 'qm-regex-input qm-regex-group-field'); groupField.type = 'text';
@@ -803,7 +813,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const testIn = growTextarea('testInput', '测试输入', '', 2, { bare: true });
     testIn.area.placeholder = '粘贴要测试的原文';
     const testOut = el('pre', 'qm-regex-testout', '');
-    // C-17 s1：美化模式 = 把替换结果当 HTML 渲染（与 ST「仅影响显示」的状态栏类正则同感）。沙箱 iframe：
+    // C-17 s1：美化模式 = 把替换结果当 HTML 渲染（与 ST「仅影响显示」的信息栏类正则同感）。沙箱 iframe：
     // 不给 allow-scripts，脚本一律不跑；allow-same-origin 仅用于读内容高度自适应。
     const testFrame = el('iframe', 'qm-regex-testframe');
     testFrame.setAttribute('sandbox', 'allow-same-origin'); testFrame.setAttribute('title', '美化预览');
@@ -817,13 +827,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     });
     const testBtn = el('button', 'qm-regex-selact', '运行测试'); testBtn.type = 'button'; testBtn.dataset.key = 'editor-test';
     testBtn.setAttribute('aria-label', '用当前字段测试替换效果');
-    const composeName = (body, tag) => {
-      if (!fam || !body) return body;
-      if (body === origBody && tag === origTag) return origName;
-      return tag ? actions.tagName(body, tag) : body;
-    };
     const collect = () => ({
-      scriptName: composeName(nameField.value.trim(), groupField ? groupField.value.trim() : origTag),
+      scriptName: nameField.value.trim(),
       findRegex: find.area.value,
       replaceString: replace.area.value,
       trimStrings: trim.area.value.split('\n').map(s => s.trim()).filter(Boolean),
@@ -917,12 +922,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const run = isNew
         ? actions.insert({ source, script })
         : actions.saveScript({ source, id: editing.id, name: editing.name, script });
-      // C-18 / C-20：分组有变动时，保存后把条目真正放进该组；两步都完成才关页面，期间保持等待态。
+      // C-18 / C-20 / C-22：分组有变动时，保存后再设手动归属（留空＝回到自动分组）；两步都完成才关页面，期间保持等待态。
       const tag = groupField ? groupField.value.trim() : '';
       Promise.resolve().then(() => run).then(async result => {
         if (result === null) { setBusy(false); return; }
         const id = typeof result === 'string' && result ? result : editing.id;
-        if (groupField && tag && tag !== origTag && id && typeof actions.retag === 'function') await actions.retag({ items: [{ source, id, name: script.scriptName }], tag });
+        if (groupField && tag !== origTag && id && typeof actions.retag === 'function') await actions.retag({ items: [{ source, id, name: script.scriptName }], tag });
         setBusy(false);
         actions.closeEditor?.();
       }).catch(error => { setBusy(false); notify(error?.message || '保存失败', 'warning'); });

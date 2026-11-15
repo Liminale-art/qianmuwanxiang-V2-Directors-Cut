@@ -42,7 +42,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.503';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.509';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.510';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -319,7 +319,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.509';
+const VERSION = '1.59.510';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -349,16 +349,18 @@ function regexBindingDefaultsWrite(value) {
   getSettings().regexBindingDefaults = isPlainObject(value) ? value : {};
   saveSettings();
 }
-// C-19：固定分组（组名 → 成员 id）存千幕自己的设置。脚本对象上的附加字段会被 ST 原生编辑器保存时丢掉，所以不放那里。
+// C-22：正则手动分组 { 脚本 id: 组名 | null }；旧 regexFixedGroups 不迁移，首次写入时删除。
 function regexGroupsRead() {
-  const g = getSettings().regexFixedGroups;
-  return isPlainObject(g) ? g : { order: [], members: {} };
+  const g = getSettings().regexGroupAssign;
+  return isPlainObject(g) ? g : {};
 }
 function regexGroupsWrite(value) {
-  getSettings().regexFixedGroups = isPlainObject(value) ? value : { order: [], members: {} };
+  const s = getSettings();
+  s.regexGroupAssign = isPlainObject(value) ? { ...value } : {};
+  delete s.regexFixedGroups;
   saveSettings();
 }
-const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；固定分组存 settings
+const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -1062,7 +1064,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: true,
   regexBindingDefaults: {},   // C-11d：正则绑定的全局默认基线 { 'global:<id>'|'preset:<预设名>:<id>': { enabled } }，每聊天覆盖存 chat_metadata
-  regexFixedGroups: { order: [], members: {} },   // C-19：固定分组 { order:[组名], members:{组名:[脚本 id]} }——组内换位置/被拆开也不解散
+  regexGroupAssign: {},   // C-22：正则手动分组，见 regexGroupsRead
   theme: 'light',
   lastTab: 'dashboard',   // 面板上次停留的标签，二次打开恢复到此（校验回退 dashboard）
   systemPrompt: DEFAULT_SYSTEM_PROMPT,

@@ -37,14 +37,14 @@ const timers = () => ({ set: () => 1, clear() {} });
 async function setup(global, options = {}) {
   const host = fakeDom();
   const notes = [];
-  const groups = { order: [], members: {} };
+  let groups = {};
   const ctx = { extensionSettings: { regex: structuredClone(global) }, getCurrentChatId: () => 'c', reloadCurrentChat: async () => {}, saveSettingsDebounced() {} };
   const ctrl = createChatRegex({ getContext: () => ctx, timers: timers(), notify: (m, t) => notes.push([t, m]),
     readGroups: options.readGroups || (() => groups),
-    writeGroups: options.writeGroups || (value => { groups.order = [...value.order]; groups.members = { ...value.members }; }) });
+    writeGroups: options.writeGroups || (value => { groups = { ...value }; }) });
   // 用控制器自己的 mount，让 refresh() 真的驱动视图（否则拾取后的重绘不会发生）。
   await ctrl.mount(host);
-  return { host, ctrl, ctx, notes, groups, names: () => ctx.extensionSettings.regex.map(s => s.scriptName) };
+  return { host, ctrl, ctx, notes, get groups() { return groups; }, names: () => ctx.extensionSettings.regex.map(s => s.scriptName) };
 }
 const rowOrder = host => walkAll(host).filter(n => n.classList?.contains('qm-regex-row')).map(n => n.dataset.id);
 
@@ -73,15 +73,16 @@ test('C-20: a rapid second tap on the same grip does not cancel the pick (the ol
 
 test('C-20: moving inside a group lands at that place and keeps the group intact', async () => {
   const f = await setup([
-    { id: 'g1', scriptName: '群聊-外框' }, { id: 'g2', scriptName: '群聊-正文' },
-    { id: 'x', scriptName: '独立' }, { id: 'g3', scriptName: '群聊-功能' },
+    { id: 'g1', scriptName: '会话-外框' }, { id: 'g2', scriptName: '会话-正文' },
+    { id: 'x', scriptName: '独立' }, { id: 'g3', scriptName: '会话-功能' },
   ]);
   byKey(f.host, 'pick:global:x').listeners.click(); await settle();
-  const end = byKey(f.host, 'drop:global:groupend:群聊');
+  const end = byKey(f.host, 'drop:global:groupend:会话');
   assert.ok(end, '组内末尾落点存在');
   end.listeners.click(); await settle(); await settle();
-  assert.deepEqual(f.names(), ['群聊-外框', '群聊-正文', '群聊-功能', '独立'], '挪到组末尾');
-  assert.deepEqual([...f.groups.members['群聊']], ['g1', 'g2', 'x', 'g3'], '连同原组成员一起记进固定分组（C-21）');
+  assert.deepEqual(f.names(), ['会话-外框', '会话-正文', '会话-功能', '独立'], '挪到组末尾');
+  assert.deepEqual(f.groups, { g1: '会话', g2: '会话', x: '会话', g3: '会话' }, '自动组被插入：整组连同新条目转成自定义（C-22）');
+  assert.deepEqual(rowOrder(f.host), ['g1', 'g2', 'g3', 'x'], '显示即真实顺序');
   assert.equal(f.notes.at(-1)[0], 'success');
   f.ctrl.dispose();
 });

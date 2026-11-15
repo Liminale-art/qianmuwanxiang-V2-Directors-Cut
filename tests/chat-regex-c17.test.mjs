@@ -7,21 +7,19 @@ import { readFile } from 'node:fs/promises';
 const root = new URL('..', import.meta.url);
 const { previewRegexScript, parseRegexLiteral, createChatRegex } = await import('../features/chat/qianmu-chat-regex.js');
 
-// 用户附件「（A选一）电报状态栏」的查找/替换（节选关键结构，查找串原样：不带斜杠）。
-const TELEGRAM_FIND = ':::newspaper\\s*([^|｜#\\/\\n]+?)\\s*[|｜]\\s*([^|｜#\\/\\n]+?)\\s*[|｜]\\s*([^#\\/\\n]+?)\\s*\\/\\s*([^#\\n]+?)\\s*#\\s*([^#\\n]+?)\\s*#\\s*([^#]+?)\\s*#\\s*([^#✦✧\\n]+?)\\s*[✦✧]\\s*([\\s\\S]*?)\\s*:::';
-const TELEGRAM_REPLACE = '<div class="np-weather-log"><b>$5</b><span>$1</span><span>$2</span><span>$3</span><span>$4</span><b>$7</b><b>$8</b><i>“ $6 ”</i>$9</div>';
-const SAMPLE = ':::newspaper 1年-1月-1日|星期日|第214年又7个月 / A & B # 晨雾与铁轨的岔路 # 隔夜的茶汤凉透于旧书页，远行者踏碎第一缕晨霜 # 伊斯坦布尔·欧洲岸 ✦ 海雾弥漫的破晓 :::';
+// 合成样例（结构仿常见「信息栏」类正则：查找串不带斜杠、多捕获组、替换里引用不存在的 $n）。
+const CARD_FIND = ':::card\\s*([^|｜\\n]+?)\\s*[|｜]\\s*([^|｜\\n]+?)\\s*[|｜]\\s*([^#\\n]+?)\\s*#\\s*([^#\\n]+?)\\s*:::';
+const CARD_REPLACE = '<div class="qm-sample-card"><b>$4</b><span>$1</span><span>$2</span><span>$3</span>$5</div>';
+const SAMPLE = ':::card 第一项 | 第二项 | 第三项 A & B # 卡片标题 :::';
 
-test('s1: unslashed findRegex is a raw pattern like ST, so the status-bar sample actually transforms', () => {
-  const out = previewRegexScript({ findRegex: TELEGRAM_FIND, replaceString: TELEGRAM_REPLACE, trimStrings: [] }, SAMPLE);
+test('s1: unslashed findRegex is a raw pattern like ST, so a card-style sample actually transforms', () => {
+  const out = previewRegexScript({ findRegex: CARD_FIND, replaceString: CARD_REPLACE, trimStrings: [] }, SAMPLE);
   assert.equal(out.ok, true);
   assert.notEqual(out.output, SAMPLE, '不再原样输出');
-  assert.ok(out.output.startsWith('<div class="np-weather-log">'), '替换为状态栏 HTML');
-  assert.ok(out.output.includes('<b>晨雾与铁轨的岔路</b>'), '$5 = 标题');
-  assert.ok(out.output.includes('<span>1年-1月-1日</span><span>星期日</span><span>第214年又7个月</span><span>A & B</span>'), '$1-$4');
-  assert.ok(out.output.includes('<b>伊斯坦布尔·欧洲岸</b><b>海雾弥漫的破晓</b>'), '$7 / $8');
-  assert.ok(out.output.includes('“ 隔夜的茶汤凉透于旧书页，远行者踏碎第一缕晨霜 ”'), '$6');
-  assert.ok(out.output.endsWith('</i></div>'), '不存在的 $9 替换为空（同 ST）');
+  assert.ok(out.output.startsWith('<div class="qm-sample-card">'), '替换为卡片 HTML');
+  assert.ok(out.output.includes('<b>卡片标题</b>'), '$4 = 标题');
+  assert.ok(out.output.includes('<span>第一项</span><span>第二项</span><span>第三项 A & B</span>'), '$1-$3');
+  assert.ok(out.output.endsWith('</span></div>'), '不存在的 $5 替换为空（同 ST）');
 });
 
 test('s1: slashed literals keep flags; duplicate/unknown flags fall back like ST regexFromString', () => {
@@ -257,12 +255,12 @@ test('s5: selbar exports the selection; import sits in each card head and target
 test('s5: managing group head carries its own tri-state checkbox that selects just that group', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const host = fakeDom();
-  const st = fakeST({ global: [{ id: 'a', scriptName: '群聊-外框' }, { id: 'b', scriptName: '群聊-正文' }, { id: 'c', scriptName: '独立' }] });
+  const st = fakeST({ global: [{ id: 'a', scriptName: '会话-外框' }, { id: 'b', scriptName: '会话-正文' }, { id: 'c', scriptName: '独立' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers() });
   const picked = [];
   const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setSelected: (keys, on) => picked.push([keys, on]) } });
   view.render(Object.freeze({ ...ctrl.state(), managing: true, selected: ['global:a'] }));
-  const check = byKey(host, 'groupcheck:global:群聊');
+  const check = byKey(host, 'groupcheck:global:会话');
   assert.ok(check, '组头有全选框');
   assert.equal(check.attrs['aria-checked'], 'mixed', '选了一半 = 半选');
   check.listeners.click({ stopPropagation() {} });
@@ -331,17 +329,17 @@ test('s6: carets rotate right when expanded (not down)', async () => {
   assert.ok(!/\.qm-regex-preset-group-body \{[^}]*border-left/.test(css), 'C-18：组内列表左侧无竖线');
 });
 
-test('s8: a group interrupted by 1-2 foreign rows is bridged back into one run (user case: 群聊 / 不发送群聊 / 群聊-功能)', async () => {
+test('s8: a group interrupted by 1-2 foreign rows is bridged back into one run (user case: 会话 / 不发送消息 / 会话-功能)', async () => {
   const { groupAdjacentRegex } = await import('../features/chat/qianmu-chat-regex.js');
-  const list = ['群聊-外框（日间）', '群聊-外框（夜间）', '群聊-正文（简约头像）', '（10）不发送群聊', '群聊-功能（系统）', '群聊-功能（内部）', '(A选一)电报状态栏', '(A选一)月台状态栏']
+  const list = ['会话-外框（日间）', '会话-外框（夜间）', '会话-正文（样式一）', '（10）不发送消息', '会话-功能（系统）', '会话-功能（内部）', '(A选一)报头信息栏', '(A选一)站台信息栏']
     .map((name, i) => ({ id: `r${i}`, name }));
   const runs = groupAdjacentRegex(list);
-  assert.deepEqual(runs.map(r => [r.label, r.items.length]), [['群聊', 6], ['状态栏', 2]], '群聊不再被拆成两段');
+  assert.deepEqual(runs.map(r => [r.label, r.items.length]), [['会话', 6], ['信息栏', 2]], '会话不再被拆成两段');
   assert.deepEqual(runs.flatMap(r => r.items), list, '不重排、不丢不重');
-  const tagged = groupAdjacentRegex(['群聊-甲', '群聊-乙', '【其他】丙', '群聊-丁', '群聊-戊'].map((name, i) => ({ id: `t${i}`, name })));
+  const tagged = groupAdjacentRegex(['会话-甲', '会话-乙', '【其他】丙', '会话-丁', '会话-戊'].map((name, i) => ({ id: `t${i}`, name })));
   assert.deepEqual(tagged.map(r => r.items.length), [2, 1, 2], '手动【标签】的条目不被吞并');
-  const paired = groupAdjacentRegex(['群聊-甲', '群聊-乙', '状态栏-a', '状态栏-b', '群聊-丁', '群聊-戊'].map((name, i) => ({ id: `p${i}`, name })));
-  assert.deepEqual(paired.map(r => r.label), ['群聊', '状态栏', '群聊'], '夹着的两条自成一类时不吞并');
+  const paired = groupAdjacentRegex(['会话-甲', '会话-乙', '信息栏-a', '信息栏-b', '会话-丁', '会话-戊'].map((name, i) => ({ id: `p${i}`, name })));
+  assert.deepEqual(paired.map(r => r.label), ['会话', '信息栏', '会话'], '夹着的两条自成一类时不吞并');
 });
 
 test('s9: writes are mirrored onto ST\'s already-rendered native regex list (checkbox, removal, order) without events', async () => {

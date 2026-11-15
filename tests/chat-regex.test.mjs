@@ -26,8 +26,8 @@ test('stripOrdinal drops only trailing sibling numbers', () => {
 });
 
 test('regexGroupKey clusters by bracket tag, first separator, or ordinal-stripped name', () => {
-  assert.equal(regexGroupKey('状态栏-隐藏'), '状态栏');
-  assert.equal(regexGroupKey('状态栏_美化'), '状态栏');
+  assert.equal(regexGroupKey('信息栏-隐藏'), '信息栏');
+  assert.equal(regexGroupKey('信息栏_美化'), '信息栏');
   assert.equal(regexGroupKey('【小剧场】折叠'), '小剧场');
   assert.equal(regexGroupKey('思维链-去除思考'), '思维链');
   assert.equal(regexGroupKey('xxx-1'), 'xxx');
@@ -36,11 +36,11 @@ test('regexGroupKey clusters by bracket tag, first separator, or ordinal-strippe
 });
 
 test('groupRegexScripts needs two members per group and keeps the rest under 未分组 in original order', () => {
-  const list = items('xxx-1', '独立A', '状态栏-隐藏', 'xxx-2', '独立B', '状态栏-美化', 'xxx-去除yyy');
+  const list = items('xxx-1', '独立A', '信息栏-隐藏', 'xxx-2', '独立B', '信息栏-美化', 'xxx-去除yyy');
   const groups = groupRegexScripts(list);
-  assert.deepEqual(groups.map(g => g.label), ['xxx', '状态栏', UNGROUPED_LABEL]);
+  assert.deepEqual(groups.map(g => g.label), ['xxx', '信息栏', UNGROUPED_LABEL]);
   assert.deepEqual(names(groups[0].items), ['xxx-1', 'xxx-2', 'xxx-去除yyy']);
-  assert.deepEqual(names(groups[1].items), ['状态栏-隐藏', '状态栏-美化']);
+  assert.deepEqual(names(groups[1].items), ['信息栏-隐藏', '信息栏-美化']);
   assert.deepEqual(names(groups[2].items), ['独立A', '独立B']);
   assert.deepEqual(groupRegexScripts([]), []);
   assert.deepEqual(groupRegexScripts(null), []);
@@ -50,47 +50,47 @@ test('groupRegexScripts needs two members per group and keeps the rest under 未
 
 // C-15 s9：用户举的例子写死。
 test('regexFamilyKey strips exclusive marks, bracket tags and ordinals', () => {
-  assert.deepEqual({ ...regexFamilyKey('(A选一)角色状态栏') }, { tag: '', core: '角色状态栏', head: '', seq: false });
-  assert.equal(regexFamilyKey('（B选一）简洁状态栏').core, '简洁状态栏');
-  assert.equal(regexFamilyKey('A选一-状态栏').core, '状态栏', '无括号互斥标记也剥掉');
-  assert.equal(regexFamilyKey('状态栏(二选一)').core, '状态栏', '尾部互斥标记');
-  assert.equal(regexFamilyKey('去自检注释①').core, '去自检注释');
-  assert.equal(regexFamilyKey('去自检注释 ②').core, '去自检注释');
+  assert.deepEqual({ ...regexFamilyKey('(A选一)人物信息栏') }, { tag: '', core: '人物信息栏', head: '', seq: false });
+  assert.equal(regexFamilyKey('（B选一）简洁信息栏').core, '简洁信息栏');
+  assert.equal(regexFamilyKey('A选一-信息栏').core, '信息栏', '无括号互斥标记也剥掉');
+  assert.equal(regexFamilyKey('信息栏(二选一)').core, '信息栏', '尾部互斥标记');
+  assert.equal(regexFamilyKey('去冗余注释①').core, '去冗余注释');
+  assert.equal(regexFamilyKey('去冗余注释 ②').core, '去冗余注释');
   assert.equal(regexFamilyKey('美化-3').core, '美化');
   assert.deepEqual({ ...regexFamilyKey('【小剧场】折叠') }, { tag: '小剧场', core: '折叠', head: '', seq: false });
-  assert.equal(regexFamilyKey('状态栏-隐藏').head, '状态栏');
+  assert.equal(regexFamilyKey('信息栏-隐藏').head, '信息栏');
   assert.equal(regexFamilyKey('A选一').core, 'A选一', '只剩标记时保留原名');
 });
 
-// C-16 s4：剥掉开头序号 (N)/（N）/N. ——让「(1)群聊」「(2)群聊」按核心词「群聊」归类。
+// C-16 s4：剥掉开头序号 (N)/（N）/N. ——让「(1)会话」「(2)会话」按核心词「会话」归类。
 test('regexFamilyKey strips leading ordinal prefixes', () => {
-  assert.equal(regexFamilyKey('(1)群聊').core, '群聊');
-  assert.equal(regexFamilyKey('（2）群聊').core, '群聊');
-  assert.equal(regexFamilyKey('3.群聊').core, '群聊');
-  assert.equal(regexFamilyKey('4、群聊').core, '群聊');
-  assert.equal(regexFamilyKey('(10) 群聊').core, '群聊', '多位数 + 空格');
+  assert.equal(regexFamilyKey('(1)会话').core, '会话');
+  assert.equal(regexFamilyKey('（2）会话').core, '会话');
+  assert.equal(regexFamilyKey('3.会话').core, '会话');
+  assert.equal(regexFamilyKey('4、会话').core, '会话');
+  assert.equal(regexFamilyKey('(10) 会话').core, '会话', '多位数 + 空格');
   assert.equal(regexFamilyKey('(1)').core, '(1)', '只剩序号时保留原名');
 });
 
 test('groupAdjacentRegex folds adjacent same-family runs without reordering', () => {
-  const list = items('不发送剧场', '不发送片尾', '不发送剧情走向', '去自检注释①', '去自检注释②',
-    '(A选一)角色状态栏', '(A选一)简洁状态栏', '(B选一)详细状态栏', '独立', '美化', '不发送日志');
+  const list = items('不发送开场', '不发送结尾', '不发送走向', '去冗余注释①', '去冗余注释②',
+    '(A选一)人物信息栏', '(A选一)简洁信息栏', '(B选一)详细信息栏', '独立', '美化', '不发送记录');
   const runs = groupAdjacentRegex(list);
-  assert.deepEqual(runs.map(r => r.label), ['不发送', '去自检注释', '状态栏', '']);
-  assert.deepEqual(names(runs[0].items), ['不发送剧场', '不发送片尾', '不发送剧情走向']);
-  assert.deepEqual(names(runs[1].items), ['去自检注释①', '去自检注释②']);
-  assert.deepEqual(names(runs[2].items), ['(A选一)角色状态栏', '(A选一)简洁状态栏', '(B选一)详细状态栏'], 'A选一/B选一 不单独成类');
-  assert.deepEqual(names(runs[3].items), ['独立', '美化', '不发送日志'], '不相邻的同类不并入前面的组');
+  assert.deepEqual(runs.map(r => r.label), ['不发送', '去冗余注释', '信息栏', '']);
+  assert.deepEqual(names(runs[0].items), ['不发送开场', '不发送结尾', '不发送走向']);
+  assert.deepEqual(names(runs[1].items), ['去冗余注释①', '去冗余注释②']);
+  assert.deepEqual(names(runs[2].items), ['(A选一)人物信息栏', '(A选一)简洁信息栏', '(B选一)详细信息栏'], 'A选一/B选一 不单独成类');
+  assert.deepEqual(names(runs[3].items), ['独立', '美化', '不发送记录'], '不相邻的同类不并入前面的组');
   assert.deepEqual(runs.flatMap(r => r.items), list, '拼回恰为原列表（不重排、不丢不重）');
   assert.deepEqual(groupAdjacentRegex([]), []);
   assert.deepEqual(groupAdjacentRegex(null), []);
 });
 
 test('groupAdjacentRegex: explicit 【tag】 wins, separators and repeats', () => {
-  const runs = groupAdjacentRegex(items('【排版】标题', '【排版】段落', '【美化】标题', '状态栏-隐藏', '状态栏-美化', 'xxx-1', 'xxx-2', 'yy', 'xxx-3', 'xxx-4'));
+  const runs = groupAdjacentRegex(items('【排版】标题', '【排版】段落', '【美化】标题', '信息栏-隐藏', '信息栏-美化', 'xxx-1', 'xxx-2', 'yy', 'xxx-3', 'xxx-4'));
   // C-17 s8：xxx-1 xxx-2 [yy] xxx-3 xxx-4 —— 被一条异类打断的同组接回一段（yy 一并纳入，顺序不变）。
   assert.deepEqual(runs.map(r => [r.label, r.mode, r.items.length]),
-    [['排版', 'tag', 2], ['', '', 1], ['状态栏', 'prefix', 2], ['xxx', 'prefix', 5]]);
+    [['排版', 'tag', 2], ['', '', 1], ['信息栏', 'prefix', 2], ['xxx', 'prefix', 5]]);
   // 间隔 3 条以上不桥接：同名段各自成段，key 带序号区分折叠。
   const far = groupAdjacentRegex(items('xxx-1', 'xxx-2', 'a', 'b', 'c', 'xxx-3', 'xxx-4'));
   assert.deepEqual(far.map(r => r.key), ['xxx', '', 'xxx#2'], '同名段 key 带序号区分折叠');
@@ -99,32 +99,32 @@ test('groupAdjacentRegex: explicit 【tag】 wins, separators and repeats', () =
   assert.deepEqual(groupAdjacentRegex(items('Status bar', 'Statistics')).map(r => r.label), ['']);
   assert.deepEqual(groupAdjacentRegex(items('think-hide', 'think-fold')).map(r => r.label), ['think']);
   // 手动标签与自动规则不混：有标签的不与无标签的成段。
-  assert.deepEqual(groupAdjacentRegex(items('【组】状态栏', '状态栏-美化')).map(r => r.label), ['']);
+  assert.deepEqual(groupAdjacentRegex(items('【组】信息栏', '信息栏-美化')).map(r => r.label), ['']);
 });
 
-// C-16 s4：同核心的分片被中间 1~2 条异类打断时，桥接回一个连续组（用户举例：(1)群聊…中间夹几条…(4)群聊）。
+// C-16 s4：同核心的分片被中间 1~2 条异类打断时，桥接回一个连续组（用户举例：(1)会话…中间夹几条…(4)会话）。
 test('groupAdjacentRegex bridges a same-core run interrupted by 1-2 foreign entries', () => {
-  // (1)群聊 (2)群聊 [夹一条] (3)群聊 (4)群聊 → 全部并入「群聊」，中间异类也被纳入这一连续段
-  const runs = groupAdjacentRegex(items('(1)群聊', '(2)群聊', '世界书注入', '(3)群聊', '(4)群聊'));
-  assert.deepEqual(runs.map(r => r.label), ['群聊']);
-  assert.deepEqual(names(runs[0].items), ['(1)群聊', '(2)群聊', '世界书注入', '(3)群聊', '(4)群聊'], '中间条目被桥接纳入，顺序不变');
+  // (1)会话 (2)会话 [夹一条] (3)会话 (4)会话 → 全部并入「会话」，中间异类也被纳入这一连续段
+  const runs = groupAdjacentRegex(items('(1)会话', '(2)会话', '世界书注入', '(3)会话', '(4)会话'));
+  assert.deepEqual(runs.map(r => r.label), ['会话']);
+  assert.deepEqual(names(runs[0].items), ['(1)会话', '(2)会话', '世界书注入', '(3)会话', '(4)会话'], '中间条目被桥接纳入，顺序不变');
 
   // 夹两条也桥接
-  const two = groupAdjacentRegex(items('(1)群聊', '杂项A', '杂项B', '(2)群聊'));
-  assert.deepEqual(two.map(r => r.label), ['群聊']);
+  const two = groupAdjacentRegex(items('(1)会话', '杂项A', '杂项B', '(2)会话'));
+  assert.deepEqual(two.map(r => r.label), ['会话']);
   assert.equal(two[0].items.length, 4);
 
   // 夹三条则不桥接（间隔过大，各自回到散条/后段）
-  const three = groupAdjacentRegex(items('(1)群聊', 'x1', 'x2', 'x3', '(2)群聊'));
-  assert.notDeepEqual(three.map(r => r.label), ['群聊']);
+  const three = groupAdjacentRegex(items('(1)会话', 'x1', 'x2', 'x3', '(2)会话'));
+  assert.notDeepEqual(three.map(r => r.label), ['会话']);
 
   // 桥接后仍能继续扩展，不丢不重
-  const list = items('(1)群聊', '分隔', '(2)群聊', '(3)群聊');
+  const list = items('(1)会话', '分隔', '(2)会话', '(3)会话');
   assert.deepEqual(groupAdjacentRegex(list).flatMap(r => r.items), list, '拼回恰为原列表');
 });
 
 test('tagRegexName writes, replaces or clears the leading 【tag】', () => {
-  assert.equal(tagRegexName('不发送剧场', '屏蔽'), '【屏蔽】不发送剧场');
+  assert.equal(tagRegexName('不发送开场', '屏蔽'), '【屏蔽】不发送开场');
   assert.equal(tagRegexName('【旧】甲', '新'), '【新】甲');
   assert.equal(tagRegexName('[旧] 甲', ''), '甲');
   assert.equal(tagRegexName('甲', ' 【乙】 '), '【乙】甲', '组名里的括号被剥掉');
@@ -1340,25 +1340,25 @@ test('editor new mode inserts a blank script and refuses an empty name', async (
 
 // C-15 s9c：手动命名组 = 写【标签】；双击组名就地改名；整组拾取；编辑页分组栏。
 // C-19：移入分组不再写【前缀】，而是记成一个「固定分组」（存千幕设置）；名字上的旧标签顺手清掉。
-test('retag fixes a group in settings instead of prefixing names, and empty tag releases the entries', async () => {
-  const held = { order: [], members: {} };
-  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '[旧]不发送片尾' }, { id: 'g3', scriptName: '独立' }],
-    readGroups: () => held, writeGroups: value => { held.order = [...value.order]; held.members = { ...value.members }; } });
-  const items = [{ source: 'global', id: 'g1', name: '不发送剧场' }, { source: 'global', id: 'g2', name: '[旧]不发送片尾' }];
+// C-22：移入分组 = 设自定义归属（存千幕设置）并挪到该组末尾；不改名字。留空 = 清除，回到自动折叠。
+test('retag sets a custom group without renaming, gathers rows, and empty tag releases them', async () => {
+  let held = {};
+  const { st, timers, ctrl } = mgr({ global: [{ id: 'g1', scriptName: '不发送开场' }, { id: 'g3', scriptName: '独立' }, { id: 'g2', scriptName: '[旧]不发送结尾' }],
+    readGroups: () => held, writeGroups: value => { held = { ...value }; } });
+  const items = [{ source: 'global', id: 'g1', name: '不发送开场' }, { source: 'global', id: 'g2', name: '[旧]不发送结尾' }];
   assert.equal(await ctrl.actions.retag({ items, tag: '屏蔽' }), 2);
-  assert.deepEqual(held, { order: ['屏蔽'], members: { 屏蔽: ['g1', 'g2'] } }, '记成固定分组');
-  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['不发送剧场', '不发送片尾', '独立'], '不再加前缀，只清掉旧前缀');
-  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.id), ['g1', 'g2', 'g3'], 'id 不变、顺序不变（绑定与执行顺序不受影响）');
-  assert.equal(timers.size, 0, '分组不改正文，不触发重载');
+  assert.deepEqual(held, { g1: '屏蔽', g2: '屏蔽' }, '记成自定义归属');
+  assert.deepEqual(st.ctx.extensionSettings.regex.map(s => s.scriptName), ['不发送开场', '[旧]不发送结尾', '独立'], '名字原样；收拢成连续一段');
   assert.equal(await ctrl.actions.retag({ items, tag: '' }), 2);
-  assert.deepEqual(held, { order: [], members: {} }, '留空 = 移出固定分组');
+  assert.deepEqual(held, {}, '留空 = 回到自动折叠');
+  assert.ok(timers.size <= 1, '至多排一次重载');
 });
 
 test('managing group header: double-click renames via renameGroup, grip picks the whole group, drop lands before the header', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const host = fakeDom();
   const calls = [];
-  const st = fakeST({ global: [{ id: 'g0', scriptName: '独立' }, { id: 'g1', scriptName: '不发送剧场' }, { id: 'g2', scriptName: '不发送片尾' }] });
+  const st = fakeST({ global: [{ id: 'g0', scriptName: '独立' }, { id: 'g1', scriptName: '不发送开场' }, { id: 'g2', scriptName: '不发送结尾' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
   const stub = { ...ctrl.actions };
   for (const name of ['retag', 'renameGroup', 'pickMove', 'dropMove']) stub[name] = (...args) => { calls.push([name, args]); return null; };
@@ -1372,10 +1372,10 @@ test('managing group header: double-click renames via renameGroup, grip picks th
   const field = byKey(host, 'grename:global:不发送');
   assert.equal(field.value, '不发送');
   field.value = '屏蔽'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
-  // C-19：改名 = 调整固定分组（自动组改名即把它固定下来），不再写【前缀】。
+  // C-22：改名 = 设自定义分组（自动组改名即转成自定义），不写【前缀】。
   assert.equal(calls[0][0], 'renameGroup');
   assert.equal(calls[0][1][0].to, '屏蔽');
-  assert.equal(calls[0][1][0].from, '', '自动组改名：没有旧固定组可改名，凭成员新建');
+  assert.equal(calls[0][1][0].from, '', '自动组改名：凭成员转成自定义组');
   assert.deepEqual(calls[0][1][0].members.map(i => i.id), ['g1', 'g2'], '整组成员');
   field.listeners.blur(); await settle();
   assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, 'Enter 后失焦不重复提交');
@@ -1403,56 +1403,42 @@ test('managing group header: double-click renames via renameGroup, grip picks th
   // C-18：组内最后一条之后多一个「组内末尾」落点，落定即归入该组；C-19：首条之前还有一个「组内首位」落点。
   assert.deepEqual(seq, ['drop:global:g0', 'g0', 'drop:global:g1', 'HEAD', 'drop:global:groupstart:不发送', 'g1', 'drop:global:g2', 'g2', 'drop:global:groupend:不发送', 'drop:global:end']);
   byKey(host, 'drop:global:groupstart:不发送').listeners.click(); await settle();
-  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送剧场' }, group: '不发送' }]], '组内首位落点也归入该组');
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送开场' }, group: '不发送', members: ['g1', 'g2'] }]], '组内首位落点也归入该组（带上组成员）');
   byKey(host, 'drop:global:groupend:不发送').listeners.click(); await settle();
-  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: null, group: '不发送' }]]);
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: null, group: '不发送', members: ['g1', 'g2'] }]]);
   byKey(host, 'drop:global:g2').listeners.click(); await settle();
-  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g2', name: '不发送片尾' }, group: '不发送' }]], '组内成员之间的落点也归入该组');
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g2', name: '不发送结尾' }, group: '不发送', members: ['g1', 'g2'] }]], '组内成员之间的落点也归入该组');
   byKey(host, 'drop:global:g1').listeners.click(); await settle();
-  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送剧场' } }]], '组头之前 = 组外');
+  assert.deepEqual(calls.at(-1), ['dropMove', [{ source: 'global', before: { id: 'g1', name: '不发送开场' } }]], '组头之前 = 组外');
   view.dispose();
 });
 
-test('editor 分组 field edits the 【tag】 separately and keeps an untouched name verbatim', async () => {
+// C-22：编辑页分组栏 = 这条正则当前所在的组；名字原样编辑，不再拆/拼【标签】；分组有变才设归属。
+test('editor 分组 field shows the current group, never rewrites the name, and only retags on change', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const host = fakeDom();
-  const saved = [];
-  const st = fakeST({ global: [{ id: 'g1', scriptName: '[排版]标题' }, { id: 'g2', scriptName: '【排版】段落' }] });
+  const saved = [], joined = [];
+  const st = fakeST({ global: [{ id: 'g1', scriptName: '排版-标题' }, { id: 'g2', scriptName: '排版-段落' }, { id: 'g3', scriptName: '甲' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
-  let raw = '[排版]标题';
-  const stub = { ...ctrl.actions, readScript: () => ({ scriptName: raw, placement: [2] }),
+  let target = { id: 'g1', name: '排版-标题' };
+  const stub = { ...ctrl.actions, readScript: () => ({ scriptName: target.name, placement: [2] }),
     saveScript: args => { saved.push(args); return true; }, retag: args => { joined.push(args); return 1; }, closeEditor: () => {} };
-  const joined = [];
   const view = mountChatRegexView({ root: host, actions: stub });
-  const open = () => view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: 'g1', name: raw } }));
+  const open = () => view.render(Object.freeze({ ...ctrl.state(), editing: { isNew: false, source: 'global', id: target.id, name: target.name } }));
   open();
-  assert.equal(byKey(host, 'field:scriptName').value, '标题', '名字栏只显示正文');
-  assert.equal(byKey(host, 'field:group').value, '排版', '分组栏显示标签');
-  // C-18：已有组是一排可点的小标签（不再用带系统滚动条的 datalist）
+  assert.equal(byKey(host, 'field:scriptName').value, '排版-标题', '名字原样');
+  assert.equal(byKey(host, 'field:group').value, '排版', '分组栏显示当前所在组');
   assert.equal(walkAll(host).some(n => n.tagName === 'datalist'), false);
-  const chip = byKey(host, 'group-chip:排版');
-  assert.ok(chip && chip.classList.contains('is-on'), '已有组可选，当前组高亮');
+  assert.ok(byKey(host, 'group-chip:排版')?.classList.contains('is-on'), '已有组可选，当前组高亮');
   byKey(host, 'editor-save').listeners.click(); await settle();
-  assert.equal(saved.at(-1).script.scriptName, '[排版]标题', '未改动时原样保留（不把 [X] 改写成【X】）');
-  assert.equal(joined.length, 0, '分组没变不挪位置');
-  open();
+  assert.equal(saved.at(-1).script.scriptName, '排版-标题');
+  assert.equal(joined.length, 0, '分组没变不设归属');
+  target = { id: 'g3', name: '甲' }; open();
+  assert.equal(byKey(host, 'field:group').value, '');
   byKey(host, 'field:group').value = '美化';
   byKey(host, 'editor-save').listeners.click(); await settle();
-  assert.equal(saved.at(-1).script.scriptName, '【美化】标题');
-  assert.deepEqual(joined.at(-1), { items: [{ source: 'global', id: 'g1', name: '【美化】标题' }], tag: '美化' }, 'C-18：保存后真正归入该组');
-  open();
-  byKey(host, 'field:group').value = '';
-  byKey(host, 'editor-save').listeners.click(); await settle();
-  assert.equal(saved.at(-1).script.scriptName, '标题', '留空 = 去掉标签');
-  raw = '不发送剧场'; open();
-  assert.equal(byKey(host, 'field:group').value, '');
-  byKey(host, 'field:group').value = '屏蔽';
-  byKey(host, 'editor-save').listeners.click(); await settle();
-  assert.equal(saved.at(-1).script.scriptName, '【屏蔽】不发送剧场');
-  raw = '甲'; open();
-  byKey(host, 'field:scriptName').value = '【手写】甲';
-  byKey(host, 'editor-save').listeners.click(); await settle();
-  assert.equal(saved.at(-1).script.scriptName, '【手写】甲', '分组栏留空时名字栏里手写的标签原样保留');
+  assert.equal(saved.at(-1).script.scriptName, '甲', '不往名字里写【美化】');
+  assert.deepEqual(joined.at(-1), { items: [{ source: 'global', id: 'g3', name: '甲' }], tag: '美化' }, '保存后设自定义归属');
   view.dispose();
 });
 
