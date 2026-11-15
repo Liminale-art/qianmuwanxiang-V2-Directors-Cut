@@ -2573,6 +2573,11 @@ async function refreshPresets(showToast = true) {
   }
   contextScanCache.presetScannedAt = new Date().toISOString();
   initializeSelectedContextState(contextScanCache);
+  // C-28 L1：静默刷新（切到幕外/取材页时每次都会触发）读到的目录与上次完全一样时，不保存、不整面板重渲染。
+  const sig = JSON.stringify([currentPresetName, presetNames, contextScanCache.presets]);
+  const same = sig === contextScanCache.presetSig;   // 签名记在缓存对象上，随缓存一起失效
+  contextScanCache.presetSig = sig;
+  if (same && !showToast) return;
   saveSettings();
   if (showToast) toast('预设已读取。', 'success');
   rerenderIfOpen();

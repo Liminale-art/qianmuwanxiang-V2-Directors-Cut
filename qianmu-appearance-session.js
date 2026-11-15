@@ -55,6 +55,12 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         if (view?.requestAnimationFrame) switchFrame = view.requestAnimationFrame(() => { switchFrame = view.requestAnimationFrame(clear); });
         else switchTimer = setTimeout(clear, 48);
     }
+    // C-28 L2: "nothing left to load" — the skin stylesheet is in, failed for good, unsupported, or the
+    // family is classic (which never loads one). runtime.register() already applies the current theme to a
+    // new root, so a full sync() on every mount (scroll capture over every registered root + transition
+    // suppression) is only needed while a non-classic skin is still loading. Before this, classic took the
+    // full sync on every mount because `ready` never becomes true for it.
+    const settled = () => ready || failed || !runtime.supported || readAppearancePreferences(readSettings()).family === 'classic';
     function syncFont() {
         const family = readAppearancePreferences(readSettings()).family;
         if (!ready || !runtime.supported || !Object.hasOwn(THEME_FONT_URLS, family)) {
@@ -101,7 +107,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         // C-15: hive entries repaint their own classic inline fill on every re-render; re-apply the theme
         // to that one root, otherwise night mode shows the light tile until the next full sync.
         if (prior?.signature === signature && runtime.has(root)) {
-            if (!ready) void sync();
+            if (!settled()) void sync();
             else { if (REPAINTED_ROLES.has(role)) runtime.refresh(root); syncFont(); }
             return prior.off;
         }
@@ -113,7 +119,7 @@ export function createQianmuAppearanceSession({ readSettings, styleUrl, document
         roots.add(reference);
         let active = true;
         const entry = { signature, off() { if (!active) return; active = false; releaseInput(); release(); roots.delete(reference); if (mounted.get(root) === entry) mounted.delete(root); } };
-        mounted.set(root, entry); if (!ready) void sync(); else syncFont(); return entry.off;
+        mounted.set(root, entry); if (!settled()) void sync(); else syncFont(); return entry.off;
     }
     function mountNotes(ownerDocument) {
         const panel = ownerDocument.getElementById('qianmu-notes-panel-layer'), floating = ownerDocument.getElementById('qianmu-notes-float-layer');

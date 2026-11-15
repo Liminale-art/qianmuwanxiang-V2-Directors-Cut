@@ -263,3 +263,22 @@ test('a late refresh of the same book cannot overwrite a newer clicked preview',
   releases[0]([{ content: 'older refresh response' }]); await refresh;
   assert.equal(f.cache.worldBooks.Book[0].content, 'newer clicked preview');
 });
+
+// C-28 L1：每次切到幕外都会强制重读预设目录（maxAge 0）。目录没变时不应再整面板重渲染、也不应保存设置。
+test('C-28: re-entering the theater tab with an unchanged preset directory neither re-renders nor saves', async () => {
+  const f = fixture();
+  f.sandbox.activeTab = 'theater';
+  f.sandbox.requestPresetRefreshIfStale(0); await f.settle();
+  assert.equal(f.calls.renders, 1, '第一次读到目录：渲染一次');
+  assert.equal(f.calls.saves, 1);
+  f.sandbox.requestPresetRefreshIfStale(0); await f.settle();
+  f.sandbox.requestPresetRefreshIfStale(0); await f.settle();
+  assert.equal(f.calls.presets, 3, '仍然每次重读（保证能看到 ST 里的变化）');
+  assert.equal(f.calls.renders, 1, '目录没变：不再重渲染');
+  assert.equal(f.calls.saves, 1, '目录没变：不再保存设置');
+  // 目录变了（当前预设改名）→ 照常保存并重渲染
+  f.sandbox.getCurrentPresetName = () => 'Renamed';
+  f.sandbox.requestPresetRefreshIfStale(0); await f.settle();
+  assert.equal(f.calls.renders, 2);
+  assert.equal(f.calls.saves, 2);
+});

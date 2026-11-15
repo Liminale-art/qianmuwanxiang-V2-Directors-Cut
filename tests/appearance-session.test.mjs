@@ -409,3 +409,23 @@ test('film source grids retain their scroll while an editor changes appearance',
     f.set({ appearance: { ...preference, family: 'editorial', mode: 'dark' } }); await f.session.sync();
     assert.equal(scroll.scrollTop, 137); off(); f.session.reset();
 });
+
+// C-28 L2: classic never loads a skin stylesheet, so `ready` stays false. Before this fix every mount
+// (new root or same-signature remount) ran a full sync: scroll capture over every registered root plus the
+// two-frame transition suppression on <html>. A full sync is observable here by that <html> flag.
+test('C-28: with the classic family, mounting a root does not run a full appearance sync', () => {
+    const html = element();
+    const view = { requestAnimationFrame: () => 1, cancelAnimationFrame() {} };
+    const document = { documentElement: html, defaultView: view, createElement: () => element(), head: { appendChild() {} } };
+    const f = fixture(document), first = element(), second = element();
+    f.set({ theme: 'light' });   // no appearance preference → classic family
+    f.session.mount(first);
+    assert.equal(html.getAttribute('data-qm-theme-switching'), null, 'registering a root: no full sync');
+    f.session.mount(second); f.session.mount(first);
+    assert.equal(html.getAttribute('data-qm-theme-switching'), null, 'another root / a same-signature remount: no full sync');
+    assert.equal(f.loads.length, 0, 'classic loads no stylesheet');
+    // An explicit sync (theme switch) still does the full pass.
+    f.session.sync();
+    assert.equal(html.getAttribute('data-qm-theme-switching'), '');
+    f.session.reset();
+});
