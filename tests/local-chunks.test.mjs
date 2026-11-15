@@ -72,19 +72,16 @@ test('reader gate keeps Retry only until the eighth actual import failure, inclu
   await assert.rejects(runtime.load('readerCore'),error=>error.code==='qianmu_chunk_exhausted');
   assert.equal(imports,8);assert.doesNotMatch(c.renderCoreadRuntimeGate(),/sd-coread-runtime-retry/);
 });
-test('theater catalog keeps its retry only while both bounded local imports can still run',async()=>{
-  const imports=[];const load=createLocalChunkLoader({pause:async()=>{},importer:async url=>{imports.push(url);throw new TypeError('Failed to fetch dynamically imported module');}});
-  const runtime=createFeatureRuntime({theaterCatalog:()=>Promise.all([load('./builtin-theaters.js?v=test'),load('./qianmu-theaters.js?v=test')])});
-  const c=vm.createContext({featureRuntime:runtime,theaterCatalogReady:false,theaterCatalogLoading:null,theaterCatalogError:'',theaterCatalogExhausted:false,
-    activeTab:'theater',MODAL_ID:'m',htmlEscape:String,document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){},requestPresetRefreshIfStale(){}});
-  vm.runInContext(section('ensureTheaterCatalog').split('const SETTINGS_PANEL_ID')[0]+'\n'+section('renderTheaterTab'),c);
-  for(let attempt=1;attempt<=4;attempt++){
-    assert.equal(await c.ensureTheaterCatalog(),false);assert.equal(imports.length,attempt*4);
-    const html=c.renderTheaterTab();
-    if(attempt<4)assert.match(html,/sd-theater-catalog-retry/);
-    else{assert.match(html,/刷新 ST 页面/);assert.doesNotMatch(html,/sd-theater-catalog-retry/);}
-  }
-  c.renderTheaterTab();assert.equal(imports.length,16,'rerender does not import or reinstate Retry');
+// C-28：两组内置剧札已撤下，目录恒为空且恒就绪——幕外页不再有「载入内置剧札」占位、重试或懒加载。
+test('theater catalog is always ready and empty: no chunk load, no placeholder',async()=>{
+  const index=await readFile(new URL('../index.js',import.meta.url),'utf8');
+  assert.doesNotMatch(index,/builtin-theaters\.js|qianmu-theaters\.js|theaterCatalog:\s*\{/,'入口不再引用内置剧札文件或其按需加载项');
+  assert.match(index,/const BUILTIN_THEATERS = \[\];\nconst QIANMU_THEATERS = \[\];\nlet theaterCatalogReady = true;/);
+  let renders=0;
+  const c=vm.createContext({theaterCatalogReady:true,theaterCatalogLoading:null,theaterCatalogError:'',theaterCatalogExhausted:false,seedBuiltinTheaters(){},
+    activeTab:'theater',MODAL_ID:'m',htmlEscape:String,document:{getElementById:()=>({classList:{contains:()=>true}})},renderModal(){renders++;},requestPresetRefreshIfStale(){}});
+  vm.runInContext(section('ensureTheaterCatalog').split('const SETTINGS_PANEL_ID')[0],c);
+  assert.equal(await c.ensureTheaterCatalog(),true);assert.equal(renders,0);
 });
 test('ordinary startup and warmup do not migrate dialogue data, seed theaters or generate audio',async()=>{
   const source=await readFile(new URL('../qianmu-focus-library-runtime.js',import.meta.url),'utf8');

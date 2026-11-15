@@ -722,16 +722,6 @@ const featureRuntime = createFeatureRuntime({
     load: () => import('./qianmu-storyboard-contract.js?v=1.59.439'),
   },
   storyboardFloorCapture:{label:'正文整层取景',load:()=>import('./qianmu-storyboard-floor-capture.js?v=1.59.414')},
-  theaterCatalog: {
-    label: '内置剧札', intent: '[data-tab="theater"]',
-    load: async () => {
-      const [zizi, qianmu] = await Promise.all([
-        loadLocalChunk('./builtin-theaters.js?v=1.59.202'),
-        loadLocalChunk('./qianmu-theaters.js?v=1.59.202'),
-      ]);
-      return { builtinTheaters: zizi.BUILTIN_THEATERS, qianmuTheaters: qianmu.QIANMU_THEATERS };
-    },
-  },
 });
 function directImageRuntime() {
   return featureRuntime.load('imageDirect');
@@ -892,19 +882,19 @@ const COREAD_MEMORY_ENABLED = true;
 const COREAD_TEASER = '伴读 · 小火慢炖中……';   // 正式版点击图标时的预告文案
 const BUILTIN_THEATER_FOLDER = '吱吱小剧场';
 const QIANMU_THEATER_FOLDER = '千幕小剧场';
-let BUILTIN_THEATERS = [];
-let QIANMU_THEATERS = [];
-let theaterCatalogReady = false;
+// C-28：两组内置剧札（吱吱小剧场 / 千幕小剧场）已整组撤下，不再随包分发、不再懒加载目录。
+// 幕外只保留用户自建与导入的剧札；导入导出格式不变。目录恒为空且恒就绪，
+// seedBuiltinTheaters 在修订号变化时把旧版种进设置里的内置项清掉一次（用户项不动）。
+const BUILTIN_THEATERS = [];
+const QIANMU_THEATERS = [];
+let theaterCatalogReady = true;
 let theaterCatalogLoading = null;
 let theaterCatalogError = '';
 let theaterCatalogExhausted = false;
 async function ensureTheaterCatalog() {
   if (theaterCatalogReady) return true;
   if (theaterCatalogLoading) return theaterCatalogLoading;
-  theaterCatalogLoading = featureRuntime.load('theaterCatalog').then((catalog) => {
-    if (!Array.isArray(catalog?.builtinTheaters) || !Array.isArray(catalog?.qianmuTheaters)) throw new Error('内置剧札目录格式无效');
-    BUILTIN_THEATERS = catalog.builtinTheaters;
-    QIANMU_THEATERS = catalog.qianmuTheaters;
+  theaterCatalogLoading = Promise.resolve().then(() => {
     theaterCatalogReady = true;
     theaterCatalogError = '';
     theaterCatalogExhausted = false;
@@ -945,8 +935,8 @@ const DOUBAO_APIKEY_GUIDE_URL = 'https://github.com/Liminale-art/qianmuwanxiang-
 
 const PROMPT_REVISION = 28;
 const BLUEPRINT_REVISION = 7;          // 仅更新可确认未改动的内置默认；DIY 与已有备份保留。
-const BUILTIN_THEATER_REVISION = 6;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
-const QIANMU_THEATER_REVISION = 5;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
+const BUILTIN_THEATER_REVISION = 7;   // 内置剧场组版本，升一档即重置内置项（保留用户自建剧札）。
+const QIANMU_THEATER_REVISION = 6;   // 千幕剧场组版本，与吱吱组各自独立；升一档即重置千幕内置项（保留用户自建）。
 const LOG_LIMIT = 5;
 const FOCUS_CLOCK_WEEK_ENTRY_LIMIT = 160; // 仅保留本自然周明细；容量只作异常保护，不再暗存不可见的旧记录
 const FOCUS_CLOCK_SOUND_PRESETS = Object.freeze({

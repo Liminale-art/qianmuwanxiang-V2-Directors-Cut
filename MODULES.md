@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 424 个，其中 `qianmu-*` 模块 406 个。
+根目录文件 422 个，其中 `qianmu-*` 模块 405 个。
 
 ## 入口、宿主与安装
 
@@ -11,7 +11,6 @@
 | --- | --- | --- |
 | `LICENSE` | 是 |  |
 | `_tmp_f.mjs` | 否 |  |
-| `builtin-theaters.js` | 是 | 千幕 (Qianmu) 内置剧场组「吱吱小剧场」 |
 | `index.js` | 是 | 千幕 (Qianmu) - SillyTavern third-party UI extension |
 | `install-server-plugin.ps1` | 是 |  |
 | `install-server-plugin.sh` | 是 |  |
@@ -475,7 +474,7 @@
 | `qianmu-storage-gallery-check.js` | 是 |  |
 | `qianmu-yimu-companion.js` | 是 | Optional, explicit companion sharing. This bridge never owns or migrates a reader archive. |
 
-## 提示词、美术方向与剧场（14）
+## 提示词、美术方向与剧场（13）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -492,7 +491,6 @@
 | `qianmu-still-frame-instructions.js` | 是 |  |
 | `qianmu-tag-complete.js` | 是 |  |
 | `qianmu-tags.js` | 是 | Local writing aids. These functions never choose a generation target or invoke a model. |
-| `qianmu-theaters.js` | 是 | 千幕 (Qianmu) 内置剧场组「千幕小剧场」——与「吱吱小剧场」平行、独立版本管理 |
 
 ## 基础设施（存储、日志、迁移、加载）（24）
 

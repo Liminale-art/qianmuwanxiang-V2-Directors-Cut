@@ -14,10 +14,10 @@ assert.match(source, /\['专注时钟', focusClockRuntime\?\.active\]/, 'health 
 assert.doesNotMatch(source, /^import[^\n]*qianmu-image-direct/m, 'image provider transports must stay outside the startup module graph');
 assert.match(source, /createFeatureRuntime\(\{[\s\S]*imageDirect:[\s\S]*import\('\.\/features\/gallery\/qianmu-image-direct\.js\?v=1\.59\.440'\)[\s\S]*featureRuntime\.load\('imageDirect'\)/, 'the direct image runtime must enter the shared on-demand feature boundary');
 assert.match(source, /optionalService:[\s\S]*import\('\.\/qianmu-service-capabilities\.js\?v=1\.59\.440'\)/, 'optional backend capability checks must stay outside the startup graph');
-assert.doesNotMatch(source, /^import .*\.\/builtin-theaters\.js/m, 'large built-in theater catalogs must stay outside the startup graph');
-assert.doesNotMatch(source, /^import .*\.\/qianmu-theaters\.js/m, 'large Qianmu theater catalogs must stay outside the startup graph');
-assert.match(source, /theaterCatalog:[\s\S]*Promise\.all\([\s\S]*loadLocalChunk\('\.\/builtin-theaters\.js\?v=1\.59\.202'\)[\s\S]*loadLocalChunk\('\.\/qianmu-theaters\.js\?v=1\.59\.202'\)/, 'both managed theater catalogs must share one recoverable on-demand feature boundary');
-assert.match(source, /function renderTheaterTab\(\)[\s\S]*ensureTheaterCatalog\(\)[\s\S]*sd-theater-catalog-retry/, 'the theater page must load its catalog on first entry and expose retry after a failed chunk');
+// C-28：两组内置剧札已整组撤下——既不在启动图里，也不再按需加载；幕外页打开即是用户自己的剧札。
+assert.doesNotMatch(source, /builtin-theaters\.js|qianmu-theaters\.js/, 'the removed built-in theater catalogs must not be referenced by the entry');
+assert.doesNotMatch(source, /theaterCatalog:\s*\{/, 'no on-demand theater catalog feature remains');
+assert.match(source, /let theaterCatalogReady = true;/, 'the (empty) theater catalog is ready from the start, so the tab never waits on a chunk');
 const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
 assert.doesNotMatch(initSource, /seedBuiltinTheaters\(\)/, 'startup must not parse or seed theater catalogs before the feature is opened');
 assert.doesNotMatch(initSource, /hydrateNotesRuntime\(/, 'startup must not scan account notes before the notes workspace is opened');
