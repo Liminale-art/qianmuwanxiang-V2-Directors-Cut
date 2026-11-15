@@ -424,7 +424,7 @@ test('dispose cancels a pending reload', async () => {
 test('regex view never writes to ST directly: only the controller owns the write path', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-regex-view.js', root), 'utf8');
   assert.ok(!/saveSettings|writePresetExtensionField|extensionSettings|reloadCurrentChat|(?:script|item|\])\.disabled\s*=[^=]/.test(view), '视图只调 actions.toggle');
-  assert.ok(view.includes('actions.toggle({ source, id: item.id, name: item.name, enabled: !item.enabled })'));
+  assert.ok(view.includes('actions.toggle({ source, id: item.id, name: item.name, enabled: next })'), 'C-25：先乐观翻转，再交给控制器写回');
   const index = await readFile(new URL('index.js', root), 'utf8');
   assert.match(index, /createChatRegex\(\{getContext:ctx,notify:toast,canReload:\(\)=>\{const host=directorHostRuntime\(\)/, '重载前查询宿主是否空闲');
 });
@@ -644,9 +644,10 @@ test('applyBinding writes only the diff and reloads once for display-type change
   assert.equal(st.ctx.extensionSettings.regex[0].disabled, false);
   assert.equal(st.ctx.extensionSettings.regex[1].disabled, true);
   assert.equal(st.log.saves, 1, '整批一次保存');
-  assert.equal(timers.size, 1, '有显示类改动 → 安排一次重载');
+  assert.equal(timers.size, 1, '有显示类改动 → 安排一次重绘');
   timers.flush(); await settle();
-  assert.equal(st.log.reloads, 1);
+  // C-25：绑定套用后只做已渲染楼层的轻量重绘，绝不整聊重载（整聊重载会再发 CHAT_CHANGED，与宿主互相触发）
+  assert.equal(st.log.reloads, 0, '不整聊重载');
 });
 
 test('applyBinding does not reload when only prompt-only scripts change', async () => {
@@ -827,9 +828,12 @@ test('selectPreset quick-switches natively and records the preset only while bin
   assert.equal(st.current(), '乙');
   assert.equal(bind.binding.preset, undefined, '绑定关着 → 只切不记');
   await ctrl.actions.setBindingEnabled(true);
+  assert.equal(bind.binding.preset, '乙', '开绑定 = 记住此刻的预设');
   await ctrl.actions.selectPreset('甲');
-  assert.equal(bind.binding.preset, '甲', '绑定开着 → 记入本聊天');
-  assert.equal(bind.binding.enabled, true);
+  // C-25：手动换到别的预设 = 本聊天绑定暂停（不把新预设记成绑定，也不自动套回旧预设），需用户重新开启
+  assert.equal(st.current(), '甲');
+  assert.equal(bind.binding.preset, '乙', '不改记录的绑定预设');
+  assert.equal(bind.binding.enabled, false, '绑定暂停');
   const notes = [];
   const c2 = createChatRegex({ getContext: () => st.ctx, notify: m => notes.push(m), timers: manualTimers(), ...bind });
   assert.equal(await c2.actions.selectPreset('丙'), false);

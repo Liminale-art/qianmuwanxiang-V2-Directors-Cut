@@ -74,7 +74,13 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     button.append(el('span', 'qm-regex-knob'));
     button.addEventListener('click', () => {
       if (button.disabled) return;
-      Promise.resolve().then(() => actions.toggle({ source, id: item.id, name: item.name, enabled: !item.enabled }))
+      // C-25：先在本按钮上立即翻转（乐观显示），写回完成后的重绘以 ST 真实状态为准；失败时重绘会翻回。
+      // 预设正则的写回经过 ST 异步保存，旧版要等写完重绘才看到变化，有时还需折叠再展开才更新。
+      const next = !item.enabled;
+      button.classList?.toggle?.('is-on', next);
+      button.setAttribute('aria-checked', String(next));
+      button.closest?.('.qm-regex-row')?.classList?.toggle?.('is-off', !next);
+      Promise.resolve().then(() => actions.toggle({ source, id: item.id, name: item.name, enabled: next }))
         .catch(error => notify(error?.message || '正则开关写回失败', 'warning'));
     });
     return button;

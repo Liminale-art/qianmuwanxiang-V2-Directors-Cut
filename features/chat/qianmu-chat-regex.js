@@ -388,7 +388,7 @@ function locateAll(list, changes) {
 
 // Writes the on/off state of one or more scripts of one source back to ST in a single save.
 // Resolves to the number of scripts whose state actually changed.
-export async function writeRegexStates(context, { source, changes } = {}) {
+export async function writeRegexStates(context, { source, changes, expectPreset = '' } = {}) {
   const ctx = context && typeof context === 'object' ? context : {};
   const batch = (Array.isArray(changes) ? changes : []).filter(change => change && text(change.id));
   if (source === 'global') {
@@ -403,6 +403,10 @@ export async function writeRegexStates(context, { source, changes } = {}) {
   if (source === 'preset') {
     const manager = presetManager(ctx);
     if (typeof manager?.readPresetExtensionField !== 'function' || typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此修改预设正则');
+    // C-25：写入前核对「当前选中的预设」仍是计划时那一个；中途被切走就整批放弃，绝不写进别的预设。
+    if (text(expectPreset) && text(attempt(() => manager.getSelectedPresetName?.(), '')) !== text(expectPreset)) {
+      throw new Error(`预设已切换（不再是「${text(expectPreset)}」），本次正则写入已取消`);
+    }
     const list = manager.readPresetExtensionField({ path: 'regex_scripts' });
     const slots = locateAll(list, batch);
     let changed = 0;
@@ -794,7 +798,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.512') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.513') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -857,7 +861,13 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
 
   // ST re-applies display regexes only when messages are rendered again, exactly like its own panel does
   // after a toggle. Never reload mid-generation: wait until the host is idle.
-  function scheduleReload(delay = REGEX_RELOAD_DELAY) {
+  // C-25：lightOnly＝只做已渲染楼层的轻量重绘，绝不退回整聊重载（绑定套用、聊天切换中用）；
+  // chatId＝排队时所在聊天，到点若聊天已换就不动。
+  let reloadLightOnly = false, reloadChat = '';
+  function scheduleReload(delay = REGEX_RELOAD_DELAY, { lightOnly = false, chatId = '' } = {}) {
+    // 多次排队合并：任一次要求「只轻量」都保持轻量；聊天以最近一次为准。
+    reloadLightOnly = reloadPending ? (reloadLightOnly || lightOnly) : lightOnly;
+    reloadChat = text(chatId) || text(currentChatId());
     reloadPending = true;
     if (reloadTimer !== null) timers.clear(reloadTimer);
     reloadTimer = timers.set(() => { reloadTimer = null; void flushReload(); }, delay);
@@ -865,17 +875,21 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   async function flushReload() {
     if (!reloadPending || disposed) return;
     if (reloadTimer !== null) { timers.clear(reloadTimer); reloadTimer = null; }
-    if (attempt(() => canReload(), true) === false) { scheduleReload(REGEX_RELOAD_DELAY * 2); return; }
+    if (attempt(() => canReload(), true) === false) { scheduleReload(REGEX_RELOAD_DELAY * 2, { lightOnly: reloadLightOnly, chatId: reloadChat }); return; }
     reloadPending = false;
     const ctx = context();
+    const lightOnly = reloadLightOnly, forChat = reloadChat;
+    reloadLightOnly = false; reloadChat = '';
+    if (forChat && text(currentChatId()) !== forChat) return;   // 排队后聊天已换：旧聊天的重绘作废
+    if (applying) { scheduleReload(REGEX_RELOAD_DELAY, { lightOnly, chatId: forChat }); return; }   // 套用中不重绘
     reloading = true; refresh();
     try {
       // C-16 s2：先走轻量重绘（只重画已渲染楼层），只有它不可用/抛错时才退回整聊重载。
       let painted = -1;
       try { painted = await rerenderRenderedMessages(ctx); } catch (_) { painted = -1; }
-      if (painted < 0) {
+      if (painted < 0 && !lightOnly) {
         const chatId = attempt(() => (typeof ctx.getCurrentChatId === 'function' ? ctx.getCurrentChatId() : ctx.chatId), null);
-        if (chatId && typeof ctx.reloadCurrentChat === 'function') await ctx.reloadCurrentChat();
+        if (chatId && (!forChat || text(chatId) === forChat) && typeof ctx.reloadCurrentChat === 'function') await ctx.reloadCurrentChat();
       }
     } catch (error) { notify(error?.message || '聊天重载失败，正则改动将在下次进入聊天时生效', 'warning'); }
     finally { reloading = false; if (!disposed) refresh(); }
@@ -892,66 +906,108 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     return { switched: true, reload: before !== presetDisplaySignature(readRegexSources(context())) };
   }
 
+  // ── C-25：绑定套用的稳定性防护 ─────────────────────────────────────────────────
+  // 实测：进一个已绑定聊天、预设加载中又手动换预设时，突然切回绑定预设、正则短时间内反复加载，偶发丢聊天。
+  // 对照 ST 源码定位到的竞态链：
+  //   ①千幕在 CHAT_CHANGED 里切预设（selectPreset 是异步的），ST 自己的 autoSelectPreset 也挂在 CHAT_CHANGED；
+  //   ②切预设触发 ST 正则扩展的 PRESET_CHANGED 检查（可能弹「允许运行」确认并 reloadCurrentChat）；
+  //   ③千幕写完开关后排一次重载，reloadCurrentChat 内部会再发 CHAT_CHANGED → 千幕再次套用；
+  //   ④套用中途用户又换了预设/聊天，旧一轮的「切回绑定预设」照样执行——表现为突然切回、反复加载。
+  // 防护：
+  //   - 套用串行化：同一时刻只跑一轮，期间再来的请求只记「需要再跑一次」，结束后用最新状态跑最后一轮。
+  //   - 会话令牌：每次聊天变化／用户手动操作都使令牌失效；进行中的一轮在每个 await 之后核对，失效即放弃，
+  //     绝不在聊天已经换掉之后去切预设或写开关。
+  //   - 预设只在「真正进入一个新聊天」时按绑定切一次；同一聊天里后续的 CHAT_CHANGED（重载引发）不再切预设。
+  //   - 用户手动换了预设 = 该聊天的预设绑定立即停用（不自动套回，需用户重新开启），本次会话内不再抢回。
+  //   - 熔断：同一聊天 10 秒内套用写入超过 3 轮即停止自动套用并提示，避免与宿主互相触发成环。
+  //   - 套用期间、聊天切换中不排整聊重载（只做已渲染楼层的轻量重绘），重载前再次核对聊天未变。
+  let applySession = 0, applyQueued = false, lastAppliedChat = '';
+  const applyHistory = [];
+  const bumpSession = () => { applySession += 1; return applySession; };
+  const stillCurrent = (token, chatId) => token === applySession && !disposed && currentChatId() === chatId;
+  function tripped(chatId) {
+    const now = attempt(() => Date.now(), 0);
+    while (applyHistory.length && now - applyHistory[0].at > 10000) applyHistory.shift();
+    return applyHistory.filter(entry => entry.chat === chatId).length >= 3;
+  }
+
   // 进聊天时先切到本聊天绑定的预设（预设正则的覆盖 key 带预设名，必须先切再算），
   // 再把 全局默认 ⊕ 本聊天覆盖 套用到 live 正则：逐条比较只写差异，仅显示类改动才重载。
-  // reloadCurrentChat 会再触发 chatChanged→applyBinding，但第二次比较已无差异即停，天然幂等不成环。
-  async function applyBinding() {
-    if (disposed || applying) return 0;
+  async function applyBinding({ entering = false } = {}) {
+    if (disposed) return 0;
+    if (applying) { applyQueued = true; return 0; }
     const chatId = currentChatId();
     if (!chatId) return 0;                                   // 欢迎屏/无聊天：不动
     // C-23：未开绑定的聊天也要复位到全局默认基线，否则会沿用上一个已绑定聊天改出来的开关（泄漏）。
-    // 只套正则默认，不切预设、不读本聊天覆盖。没有任何基线时整条空转。
     const bindOn = bindingEnabled();
     if (!bindOn && !Object.keys(attempt(() => readDefaults(), {}) || {}).length) return 0;
+    if (tripped(chatId)) {
+      if (missingNoticed !== `loop\n${chatId}`) { missingNoticed = `loop\n${chatId}`; notify('检测到绑定套用与宿主反复触发，已暂停本聊天的自动套用。可在快切里关闭再开启绑定恢复。', 'warning'); }
+      return 0;
+    }
+    const token = applySession;
     applying = true;
     let changed = 0, reload = false;
     try {
-      const bound = bindOn ? currentBinding().preset : '';
-      try {
-        const moved = bindOn ? await moveToPreset(bound) : { switched: false, reload: false };
-        // C-19：绑定预设真的被切换时提示一次（已是目标预设则不动，也不提示）。
-        if (moved.switched) {
-          changed += 1; reload = moved.reload;
-          notify(`已切换到本聊天绑定的预设「${bound}」`, 'info');
+      // 预设只在「真正进入新聊天」时切一次；同一聊天里后续触发（重载回声、手动开关）不再动预设。
+      const freshEntry = entering || lastAppliedChat !== chatId;
+      lastAppliedChat = chatId;
+      const bound = bindOn && freshEntry ? currentBinding().preset : '';
+      if (bound) {
+        try {
+          const moved = await moveToPreset(bound);
+          if (!stillCurrent(token, chatId)) return 0;        // 切预设期间聊天已换／用户已手动操作：放弃本轮
+          if (moved.switched) {
+            changed += 1; reload = moved.reload;
+            notify(`已切换到本聊天绑定的预设「${bound}」`, 'info');
+          }
+        } catch (error) {
+          if (!stillCurrent(token, chatId)) return 0;
+          // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
+          const notice = `${chatId}\n${bound}`;
+          if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
         }
-      } catch (error) {
-        // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
-        const notice = `${chatId}\n${bound}`;
-        if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
       }
-      const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: bindOn ? readOverrides() : {}, sources: readRegexSources(context()) });
+      if (!stillCurrent(token, chatId)) return 0;
+      const sources = readRegexSources(context());
+      const plan = resolveRegexTarget({ defaults: attempt(() => readDefaults(), {}), overrides: bindOn ? readOverrides() : {}, sources });
       let regexChanged = 0;
       try {
         for (const source of BINDING_SOURCES) {
           if (!plan.changes[source].length) continue;
-          regexChanged += await writeRegexStates(context(), { source, changes: plan.changes[source] }) || 0;
+          if (!stillCurrent(token, chatId)) break;
+          regexChanged += await writeRegexStates(context(), { source, changes: plan.changes[source], expectPreset: source === 'preset' ? sources.preset.name : '' }) || 0;
         }
       } catch (error) {
-        notify(error?.message || '正则绑定套用失败', 'warning');
+        if (stillCurrent(token, chatId)) notify(error?.message || '正则绑定套用失败', 'warning');
       }
       changed += regexChanged;
       if (regexChanged) syncNative();
       if (regexChanged && plan.affectsDisplay) reload = true;
+      if (changed) applyHistory.push({ chat: chatId, at: attempt(() => Date.now(), 0) });
     } finally {
       applying = false;
     }
-    if (reload) scheduleReload();
+    if (reload && stillCurrent(token, chatId)) scheduleReload(REGEX_RELOAD_DELAY, { lightOnly: true, chatId });
     refresh();
+    if (applyQueued) { applyQueued = false; if (!disposed) void applyBinding(); }
     return changed;
   }
 
-  // 聊天内预设快切：走原生切换；绑定开着时顺手记入本聊天，并补一次正则绑定（预设正则的覆盖随预设名走）。
+  // 聊天内预设快切：走原生切换。C-25：用户手动换预设 = 本聊天的预设绑定停用（不自动套回，也不把新预设记成绑定），
+  // 正则覆盖保留；需要绑定新预设时由用户重新开启「绑定此聊天」。
   async function selectPreset(name) {
     const target = text(name);
     if (!target || presetBusy || disposed) return false;
+    bumpSession();                                             // 进行中的套用作废，不会再切回旧预设
     presetBusy = true; refresh();
     let reload = false;
     try {
       reload = (await moveToPreset(target)).reload;
-      if (bindingEnabled()) {
-        saveBinding({ preset: target });
-        presetBusy = false;
-        await applyBinding();
+      const binding = currentBinding();
+      if (binding.enabled && binding.preset && binding.preset !== target) {
+        saveBinding({ enabled: false });
+        notify(`已切换到预设「${target}」，本聊天的绑定已暂停（需要时重新开启绑定）`, 'info');
       }
       return true;
     } catch (error) {
@@ -980,6 +1036,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   async function toggle({ source, id, name, enabled } = {}) {
     const key = `${source}:${id}`;
     if (pending.has(key) || writing) return null;
+    bumpSession();                                             // C-25：手动开关作废进行中的套用，避免旧一轮覆盖刚拨的状态
     pending.add(key); refresh();
     try {
       const next = await writeRegexToggle(context(), { source, id, name, enabled });
@@ -1002,6 +1059,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       .map(item => ({ id: item.id, name: item.name, enabled: enabled === true }));
     const keys = changes.map(change => `${source}:${change.id}`);
     if (!changes.length || writing || keys.some(key => pending.has(key))) return 0;
+    bumpSession();
     keys.forEach(key => pending.add(key)); refresh();
     try {
       const changed = await writeRegexStates(context(), { source, changes });
@@ -1534,6 +1592,18 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   }
   // 进聊天钩子：index.js 把 CHAT_CHANGED / appReady 接到这里，自动套用本聊天绑定。
   // presetChanged 只刷新面板：ST 的自动选预设也会发这个事件，拿它记绑定会把用户的选择冲掉。
-  const events = Object.freeze({ chatChanged: () => { void applyBinding(); }, presetChanged: () => { refresh(); } });
+  // C-25：只有聊天真的换了才作废进行中的一轮并按「进入新聊天」处理（会切一次绑定预设）；
+  // 同一聊天的 CHAT_CHANGED（reloadCurrentChat 的回声）只做正则对齐，不再切预设。
+  let seenChat = '';
+  const events = Object.freeze({
+    chatChanged: () => {
+      const now = text(currentChatId());
+      const entering = now !== seenChat;
+      seenChat = now;
+      if (entering) { bumpSession(); lastAppliedChat = ''; }
+      void applyBinding({ entering });
+    },
+    presetChanged: () => { refresh(); },
+  });
   return Object.freeze({ mount, unmount, dispose, actions, state, applyBinding, events });
 }
