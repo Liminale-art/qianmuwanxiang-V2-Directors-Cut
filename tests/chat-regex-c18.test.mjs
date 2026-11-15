@@ -53,19 +53,21 @@ test('controller: retag joins the group, dropMove with a group lands at the grou
   const ctrl = createChatRegex({ getContext: () => st.ctx, timers: timers(),
     readGroups: () => groups, writeGroups: value => { groups = { order: [...value.order], members: { ...value.members } }; } });
   assert.equal(await ctrl.actions.retag({ items: [{ source: 'global', id: 's0', name: '独立' }], tag: '群聊' }), 1);
-  assert.deepEqual(groups, { order: ['群聊'], members: { 群聊: ['s0'] } }, '记成固定分组');
+  // C-21：加入同名自动组时连同它现有成员一起固定，不只记新来的那一条（否则原组会被拆散）。
+  assert.deepEqual(groups, { order: ['群聊'], members: { 群聊: ['s1', 's2', 's0'] } }, '记成固定分组（含原组成员）');
   assert.deepEqual(st.names(), ['独立', '群聊-外框', '群聊-正文', '尾巴'], '不改名字、不动执行顺序');
   // 把「尾巴」拖到组内末尾：位置在组最后一条之后，并记入该组
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 's3', name: '尾巴' }] });
   await ctrl.actions.dropMove({ source: 'global', before: null, group: '群聊' });
-  assert.deepEqual([...groups.members['群聊']].sort(), ['s0', 's3']);
+  assert.deepEqual([...groups.members['群聊']].sort(), ['s0', 's1', 's2', 's3']);
   assert.deepEqual(groupRegexWithFixed(rows(st.ctx.extensionSettings.regex), groups).map(r => [r.label, r.items.length]), [['群聊', 4]], '组成立且不散');
-  // 不带 group 的落点 = 只移动，不进组
+  // C-21：不带 group 的落点 = 组外 → 离开固定组（聚拢显示下若不离开，会被拉回原组，看起来像没移动）
   const keep = groups.members['群聊'].length;
   ctrl.actions.pickMove({ source: 'global', items: [{ id: 's1', name: '群聊-外框' }] });
   await ctrl.actions.dropMove({ source: 'global', before: null });
   assert.equal(st.names().at(-1), '群聊-外框');
-  assert.equal(groups.members['群聊'].length, keep, '组外落点不改分组');
+  assert.equal(groups.members['群聊'].length, keep - 1, '组外落点 = 离开分组');
+  assert.ok(!groups.members['群聊'].includes('s1'));
   const before = structuredClone(st.ctx.extensionSettings.regex.find(s => s.id === 's2'));
   await ctrl.actions.rename({ source: 'global', id: 's2', name: '群聊-正文', to: '群聊-主体' });
   assert.deepEqual(st.ctx.extensionSettings.regex.find(s => s.id === 's2'), { ...before, scriptName: '群聊-主体' });

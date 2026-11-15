@@ -81,7 +81,7 @@ test('C-20: moving inside a group lands at that place and keeps the group intact
   assert.ok(end, '组内末尾落点存在');
   end.listeners.click(); await settle(); await settle();
   assert.deepEqual(f.names(), ['群聊-外框', '群聊-正文', '群聊-功能', '独立'], '挪到组末尾');
-  assert.deepEqual([...f.groups.members['群聊']], ['x'], '并记进固定分组');
+  assert.deepEqual([...f.groups.members['群聊']], ['g1', 'g2', 'x', 'g3'], '连同原组成员一起记进固定分组（C-21）');
   assert.equal(f.notes.at(-1)[0], 'success');
   f.ctrl.dispose();
 });
