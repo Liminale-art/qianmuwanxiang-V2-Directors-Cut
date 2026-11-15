@@ -19,6 +19,12 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // C-18：双击就地改名（条目名、组名）。重绘会换掉所有节点，所以「正在改哪一个」「上一次点的是谁」都记在视图上。
   // 双击判定只认真实事件的 timeStamp（两次点同一目标且间隔 < 400ms），不用定时器。
   let lastState = null, renaming = '', lastTap = { key: '', at: 0 };
+  // C-20：页面位置记忆。root 是被换掉内容的滚动容器：进编辑页、切页签再回来都会把 scrollTop 清 0，
+  // 于是从编辑页返回列表时总是跳回顶部。这里自己记住列表的滚动位置（只在列表态、可见时记录），重绘后还原。
+  let listScroll = 0, editorKey = '';
+  const visible = () => !root.hidden;
+  const rememberScroll = () => { if (!editorKey && visible()) listScroll = root.scrollTop || listScroll; };
+  root.addEventListener?.('scroll', rememberScroll, { passive: true });
   const tapTwice = (key, event) => {
     const at = Number(event?.timeStamp);
     if (!Number.isFinite(at) || at <= 0) return false;
@@ -894,19 +900,32 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     save.setAttribute('aria-label', '保存'); save.title = '保存';
     const si = el('i', 'fa-solid fa-check'); si.setAttribute('aria-hidden', 'true'); save.append(si);
     save.addEventListener('click', () => {
+      if (save.disabled) return;
       const script = collect();
       if (!script.scriptName) { notify('请先填写正则名称', 'warning'); return; }
+      // C-20：保存与移动一样有等待态——按钮转圈、暂时锁住，避免用户以为没生效而反复点。
+      const setBusy = on => {
+        save.disabled = on; cancel.disabled = on;
+        save.classList?.toggle('is-busy', on);
+        save.setAttribute('aria-busy', String(on));
+        save.title = on ? '保存中' : '保存';
+        const glyph = el('i', on ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check');
+        glyph.setAttribute('aria-hidden', 'true');
+        save.replaceChildren(glyph);
+      };
+      setBusy(true);
       const run = isNew
         ? actions.insert({ source, script })
         : actions.saveScript({ source, id: editing.id, name: editing.name, script });
-      // C-18：分组有变动时，保存后把条目真正放进该组（挪到组内末尾）；否则只是名字多了个前缀。
+      // C-18 / C-20：分组有变动时，保存后把条目真正放进该组；两步都完成才关页面，期间保持等待态。
       const tag = groupField ? groupField.value.trim() : '';
       Promise.resolve().then(() => run).then(async result => {
-        if (result === null) return;
+        if (result === null) { setBusy(false); return; }
         const id = typeof result === 'string' && result ? result : editing.id;
         if (groupField && tag && tag !== origTag && id && typeof actions.retag === 'function') await actions.retag({ items: [{ source, id, name: script.scriptName }], tag });
+        setBusy(false);
         actions.closeEditor?.();
-      }).catch(error => notify(error?.message || '保存失败', 'warning'));
+      }).catch(error => { setBusy(false); notify(error?.message || '保存失败', 'warning'); });
     });
     foot.append(cancel, save);
 
@@ -918,7 +937,18 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     if (disposed || !state) return;
     lastState = state;
     clearPresetCleanups();
-    if (state.editing && typeof actions.saveScript === 'function') { lockPanel(true); renderEditor(state); return; }
+    if (state.editing && typeof actions.saveScript === 'function') {
+      // C-20：编辑页由它自己持有用户正在输入的内容。保存过程中的状态刷新（写回开始/结束）不再重建编辑页，
+      // 否则会「闪一下」把用户刚填的内容和滚动位置抹掉，看着像保存失效。目标（来源/条目/名字）变了才重建。
+      const key = `${state.editing.source}:${state.editing.isNew ? `new:${state.editing.source}` : `${state.editing.id}:${state.editing.name || ''}`}`;
+      lockPanel(true);
+      if (editorKey === key) return;
+      if (!editorKey) rememberScroll();          // 进编辑页前记下列表位置
+      editorKey = key;
+      renderEditor(state);
+      return;
+    }
+    if (editorKey) { editorKey = ''; }           // 离开编辑页：列表位置沿用进编辑前记下的
     lockPanel(false);
     const { view, sources } = state;
     const binding = state.binding && typeof state.binding === 'object' ? state.binding : { enabled: false, overrides: {} };
@@ -993,7 +1023,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const toolsCard = el('section', 'qm-regex-card qm-regex-card-tools');
     toolsCard.append(tools);
     // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
-    if (recycle.open) { root.replaceChildren(toolsCard, recycleList(recycle)); if (typeof scroll === 'number') root.scrollTop = scroll; return; }
+    if (recycle.open) { root.replaceChildren(toolsCard, recycleList(recycle)); if (listScroll > 0) root.scrollTop = listScroll; return; }
     const busy = Array.isArray(state.busy) ? state.busy : [];
     const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking, busy, writing: state.writing === true };
     // C-17 s4：多选工具条套在置顶毛玻璃固钉层内（selbar 本身仍 sticky 0，方形毛玻璃撑着背景）。
@@ -1009,7 +1039,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const dock = managing ? el('div', 'qm-regex-seldock') : null;
     if (dock) dock.append(selectionBar([...selectedSet], sources));
     root.replaceChildren(...head, toolsCard, ...(dock ? [dock] : []), globalCard, presetCard);
-    if (typeof scroll === 'number') root.scrollTop = scroll;
+    // C-20：回到列表时还原进编辑页前的位置（重绘时 root 可见，scrollTop 已归 0）。
+    if (typeof listScroll === 'number' && listScroll > 0) root.scrollTop = listScroll;
     // 改名输入框出现时直接聚焦并全选。
     if (renaming) { const field = [...(root.querySelectorAll?.('.qm-regex-rename') || [])][0]; try { field?.focus?.(); field?.select?.(); } catch (_) {} if (!field) renaming = ''; return; }
     if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();

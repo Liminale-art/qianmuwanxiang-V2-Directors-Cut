@@ -303,6 +303,10 @@ export function removeRegexGroup(groups, name) {
 // 1) 每个固定组把它的成员按列表顺序物化成一整段（间隙里的异类挪到段后，不丢）；成员不在当前来源里就跳过该组。
 // 2) 固定组按「首位成员在列表中的位置」排序，然后整体替换掉这些成员在原序列中的位置。
 // 3) 其余条目照旧跑相邻同类折叠；散条段不带组头。
+// DEV-MARK(C-20 聚拢策略)：固定组目前「聚拢」显示——成员即便在真实顺序里被别的条目隔开，也会收成一段。
+// 这是有意的取舍（组看起来才像一个组），但会改动这些条目的相对执行顺序。用户可以随时「取消固定分组」回到
+// 自动折叠。若实际使用中发现聚拢造成的顺序变化不可接受，改为「原地保持、允许成员散开」只需换掉本函数里
+// 固定段的位置计算，不需要动存取模型。观察期：C-19 之后的使用中，暂不调整。
 export function groupRegexWithFixed(items, groups) {
   const list = Array.isArray(items) ? items : [];
   const fixed = normalizeRegexGroups(groups);
@@ -806,7 +810,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   readDefaults = () => ({}), writeDefaults = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   readGroups = () => emptyRegexGroups(), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.507') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.508') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -1193,12 +1197,20 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     return { next, touched: [raw[index], raw[swap]], result: true };
   }));
   // C-15 s7：拾取移动。拾起同源的一条或整批（当前多选），视图据此显示插入位；再次拾取同一组＝取消。
+  // C-20：快速连点会两次打到同一个把手上——第二次若当成「再次拾取」就会把刚拾起的状态取消，落点随之消失，
+  // 用户接着点原位置就会感觉「移不动」。同一组在 350ms 内的重复拾取视为误触，直接忽略。
+  let lastPick = { key: '', at: 0 };
   function pickMove({ source, items } = {}) {
     if (writing || disposed) return;
     const list = (Array.isArray(items) ? items : [])
       .filter(item => item && BINDING_SOURCES.includes(source) && text(item.id))
       .map(item => ({ source, id: text(item.id), name: text(item.name) }));
-    const same = picking.length === list.length && list.length > 0
+    if (!list.length) return;
+    const sig = `${source}|${list.map(item => item.id).join(',')}`;
+    const now = attempt(() => performance.now(), 0) || Date.now();
+    if (sig === lastPick.key && now - lastPick.at < 350) return;
+    lastPick = { key: sig, at: now };
+    const same = picking.length === list.length
       && picking.every((p, i) => p.source === list[i].source && p.id === list[i].id);
     picking = same ? [] : list;
     if (picking.length) notify('请选择移动位置', 'info');
@@ -1229,17 +1241,22 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       : raw.length;
     if (origin === source) {
       return structural('调整顺序', async ctx => {
+        let moved = false;
         const out = await editRegexList(ctx, source, raw => {
           const indices = locateIndices(raw, moving);
           const next = moveRegexEntries(raw, indices, anchorIndex(raw, before));
           if (next.every((script, i) => script === raw[i])) return { next: null, result: false };
+          moved = true;
           return { next, touched: indices.map(i => raw[i]), result: true };
         });
         // C-19：落到组内就算归入该组——即使原位置就在组末尾、列表顺序没变也要记下来。
-        if (out.result || text(group)) {
+        // C-20：只有真的换了位置或真的改了分组归属才提示成功，避免「提示已移动、列表却没动」的迷惑。
+        if (moved || text(group)) {
+          const before = currentGroups();
           fixInto(moving.map(item => item.id));
-          if (out.result) syncNative();
-          notify(`${moving.length} 项已移至指定位置`, 'success');
+          const grouped = JSON.stringify(before.members) !== JSON.stringify(currentGroups().members);
+          if (moved) syncNative();
+          if (moved || grouped) notify(moved ? `${moving.length} 项已移至指定位置` : `${moving.length} 项已加入分组「${text(group)}」`, 'success');
         }
         return out;
       }, keysOf(moving, source));

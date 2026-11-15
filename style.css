@@ -1128,6 +1128,9 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-selact.is-danger:hover { background: color-mix(in srgb, var(--sd-danger, #d9534f) 12%, transparent); }
 #story-director-floor-nav .qm-regex-selact.is-primary { color: #fff; background: var(--sd-primary); border-color: var(--sd-primary); }
 #story-director-floor-nav .qm-regex-selact.is-primary:hover { background: color-mix(in srgb, var(--sd-primary) 86%, #000); }
+/* C-20：保存按钮的等待态（转圈时整枚按钮暂时变淡，和移动写回同样的观感） */
+#story-director-floor-nav .qm-regex-footbtn.is-busy { opacity: .72; cursor: progress; }
+#story-director-floor-nav .qm-regex-footbtn:disabled { cursor: default; }
 #story-director-floor-nav .qm-regex-selact.is-quiet { color: var(--sd-muted); background: transparent; border-color: transparent; }
 /* C-14g 正则编辑子页：接管面板高度，长表单内部滚动，仿铃声 lockPanel */
 #story-director-floor-nav .sd-floor-panel.qm-regex-subpage-open { height: var(--qm-regex-lock-h, auto); }
