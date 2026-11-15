@@ -1102,11 +1102,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 @media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-regex-rowstrip { transition: none; } }
 #story-director-floor-nav .qm-regex-group { cursor: pointer; }
 /* C-15 s9：管理态组头——折叠箭头+数量 / 双击改名的组名 / 整组拾取。组名就地变输入框。 */
-#story-director-floor-nav .qm-regex-group.is-managing { justify-content: flex-start; gap: 4px; }
+#story-director-floor-nav .qm-regex-group.is-managing { justify-content: flex-start; gap: 6px; }
+/* C-24：管理态组头左侧 [整组移动][本组全选] 与条目行的 [移动 24px][勾选 22px] 两列对齐 */
+#story-director-floor-nav .qm-regex-group.is-managing > .qm-regex-group-grip { flex: 0 0 24px; width: 24px; margin: 0; }
+#story-director-floor-nav .qm-regex-group.is-managing > .qm-regex-groupcheck { margin: 0 2px; }
 #story-director-floor-nav .qm-regex-group.is-managing .qm-regex-group-label { flex: none; }
 #story-director-floor-nav .qm-regex-group-name { flex: 0 1 auto; display: inline-flex; min-width: 0; }
 #story-director-floor-nav .qm-regex-group-count { flex: none; }
-#story-director-floor-nav .qm-regex-group-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: text; border-radius: 4px; padding: 0 2px; user-select: none; }
+#story-director-floor-nav .qm-regex-group-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; border-radius: 4px; padding: 0 2px; user-select: none; }
 #story-director-floor-nav .qm-regex-group-title:hover { background: var(--sd-glass-weak); color: var(--sd-text); }
 #story-director-floor-nav .qm-regex-group-title:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
 #story-director-floor-nav .qm-regex-unfix { flex: none; color: var(--sd-muted); font-size: .8em; }

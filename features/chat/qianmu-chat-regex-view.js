@@ -290,49 +290,54 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
         const after = runs[runIndex + 1]?.items?.[0] || null;
         box.append(dropTarget(source, after, across, group.label, true, false, ids));
       };
-      // 管理态：折叠箭头 + 本组全选 + 可双击改名的组名 + 整组拾取/拖拽。
-      if (options.managing && options.writable) {
-        head.classList.add('is-managing');
-        head.append(foldButton(key, group.label, 'qm-regex-group-label', ''),
-          groupCheck(source, group.items, options.selectedKeys || [], group.key || group.label, group.label), groupName(group, source),
-          el('span', 'qm-regex-group-count', `（${group.items.length}）`), groupGrip(group, source, picking));
-        box.append(head);
-        members();
-        return;
-      }
-      // C-18：非管理态组名也能双击改名（单击仍是折叠）。
+      // C-24：管理态与非管理态共用一套组头——整行可点折叠、双击组名改名；管理态额外在左侧放
+      // [整组移动][本组全选]（与条目行的 [移动][勾选] 对齐），非管理态右侧是 [取消自定义][批量开关]。
+      const managingHead = options.managing && options.writable;
       const renameKey = `g:${key}`;
-      const canRename = options.writable && typeof actions.retag === 'function';
-      if (canRename && renaming === renameKey) {
-        head.append(foldButton(key, group.label, 'qm-regex-group-label', ''),
-          renameField(key, group.label, `分组「${group.label}」改名`,
-            to => (typeof actions.renameGroup === 'function'
-              ? actions.renameGroup({ from: custom ? group.label : '', to, members: group.items.map(it => ({ source, id: it.id, name: it.name })) })
-              : actions.retag({ items: group.items.map(it => ({ source, id: it.id, name: it.name })), tag: to })), true));
+      const canRename = options.writable && (typeof actions.renameGroup === 'function' || typeof actions.retag === 'function');
+      const payload = group.items.map(it => ({ source, id: it.id, name: it.name }));
+      const commitRename = to => (typeof actions.renameGroup === 'function'
+        ? actions.renameGroup({ from: custom ? group.label : '', to, members: payload })
+        : actions.retag({ items: payload, tag: to }));
+      const editingName = canRename && renaming === renameKey;
+      if (managingHead) {
+        head.classList.add('is-managing');
+        head.append(groupGrip(group, source, picking), groupCheck(source, group.items, options.selectedKeys || [], group.key || group.label, group.label));
+      }
+      if (editingName) {
+        head.append(foldButton(key, group.label, 'qm-regex-group-label', ''), renameField(key, group.label, `分组「${group.label}」改名`, commitRename, custom));
         box.append(head);
         members();
         return;
       }
-      head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
-      if (custom && typeof actions.unfixGroup === 'function') {
-        // C-19：固定组可解除固定（回到按名字自动折叠）。
-        const unfix = el('button', 'qm-regex-rowbtn qm-regex-unfix'); unfix.type = 'button';
-        unfix.dataset.key = `unfix:${source}:${group.label}`;
-        unfix.setAttribute('aria-label', `取消自定义分组「${group.label}」（回到自动分组）`); unfix.title = '取消自定义分组（回到自动分组）';
-        const ui = el('i', 'fa-solid fa-rotate-left'); ui.setAttribute('aria-hidden', 'true'); unfix.append(ui);
-        unfix.addEventListener('click', event => { event?.stopPropagation?.(); try { actions.unfixGroup({ name: group.label, members: ids }); } catch (error) { notify(error?.message || '取消失败', 'warning'); } });
-        head.append(unfix);
+      if (managingHead) {
+        const title = el('span', 'qm-regex-group-title', group.label);
+        title.dataset.key = `gname:${source}:${group.key || group.label}`;
+        title.title = '双击改名'; title.setAttribute('tabindex', '0');
+        title.setAttribute('aria-label', `分组「${group.label}」：双击改名`);
+        title.addEventListener('keydown', event => { if (event?.key === 'Enter' || event?.key === 'F2') { event.preventDefault?.(); startRename(renameKey); } });
+        head.append(foldButton(key, group.label, 'qm-regex-group-label', ''), title, el('span', 'qm-regex-group-count', `（${group.items.length}）`));
+      } else {
+        head.append(foldButton(key, group.label, 'qm-regex-group-label', `${group.label}（${group.items.length}）`));
+        if (custom && typeof actions.unfixGroup === 'function') {
+          // C-22：自定义组可取消（回到按名字自动折叠）；组头只保留这一个状态控件。
+          const unfix = el('button', 'qm-regex-rowbtn qm-regex-unfix'); unfix.type = 'button';
+          unfix.dataset.key = `unfix:${source}:${group.label}`;
+          unfix.setAttribute('aria-label', `取消自定义分组「${group.label}」（回到自动分组）`); unfix.title = '取消自定义分组（回到自动分组）';
+          const ui = el('i', 'fa-solid fa-rotate-left'); ui.setAttribute('aria-hidden', 'true'); unfix.append(ui);
+          unfix.addEventListener('click', event => { event?.stopPropagation?.(); try { actions.unfixGroup({ name: group.label, members: ids }); } catch (error) { notify(error?.message || '取消失败', 'warning'); } });
+          head.append(unfix);
+        }
+        if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
       }
-      if (options.writable) head.append(batchSwitch(group.items, source, group.label, options.pending));
-      // C-16 s5：组头空白区（标题文字、计数间距）整体可折叠，不再只认小箭头。点到总开关/落点等交互件则放行。
+      // C-16 s5：组头空白区（标题文字、计数间距）整体可折叠，不再只认小箭头。点到开关/移动/勾选等按钮则放行。
       // 双击改名：第二下到来时折叠态已被前一下（及箭头自己的监听）拨动过，按情况拨回原状并进入改名。
       const setFold = on => { try { actions.setFolded?.(key, on); } catch (error) { notify(error?.message || '折叠失败', 'warning'); } };
       head.addEventListener('click', event => {
         const t = event?.target, hit = sel => !!(t && typeof t.closest === 'function' && t.closest(sel));
-        if (hit('.qm-regex-pill')) return;
+        if (hit('.qm-regex-pill, input')) return;
         const twice = canRename && tapTwice(renameKey, event);
         if (twice) renaming = renameKey;
-        // 点在箭头/组名上：折叠由 foldButton 自己的监听完成，这里只在双击时带着改名态重绘一次。
         if (hit('.qm-regex-fold')) { if (twice) setFold(isFolded(key)); return; }
         if (hit('button')) return;
         setFold(!isFolded(key));
@@ -386,54 +391,6 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       try { actions.setSelected?.(allKeys, !isAll); } catch (error) { notify(error?.message || '全选失败', 'warning'); }
     });
     return b;
-  }
-
-  // C-15 s9：组名双击（触屏双点同样生效，按时间戳判定、不用定时器）就地改名。改名 = 给整组写【标签】（不改名字正文），
-  // 手动标签优先于自动归类；手动组清空名字 = 去掉标签回到自动归类；自动组清空 = 不改。Enter 提交、Esc 取消、失焦提交。
-  function groupName(group, source) {
-    const wrap = el('span', 'qm-regex-group-name');
-    const label = el('span', 'qm-regex-group-title', group.label);
-    label.dataset.key = `gname:${source}:${group.key || group.label}`;
-    label.setAttribute('role', 'button'); label.setAttribute('tabindex', '0');
-    label.setAttribute('aria-label', `分组「${group.label}」：双击改名`); label.title = '双击改名';
-    let lastTap = 0, open = false;
-    const start = () => {
-      if (open) return;
-      open = true;
-      const field = el('input', 'qm-regex-group-input');
-      field.type = 'text'; field.value = group.label; field.placeholder = group.custom ? '留空＝取消自定义分组' : '分组名';
-      field.dataset.key = `grename:${source}:${group.key || group.label}`;
-      field.setAttribute('aria-label', `分组「${group.label}」改名`);
-      let done = false;
-      const finish = commit => {
-        if (done) return;
-        done = true; open = false;
-        const to = String(field.value || '').trim();
-        const changed = commit && to !== group.label && (to || group.custom);
-        if (!changed) { wrap.replaceChildren(label); return; }
-        const payload = group.items.map(it => ({ source, id: it.id, name: it.name }));
-        // C-19：改名 = 调整固定分组（自动组改名即把它固定下来），不再靠写【前缀】。
-        Promise.resolve().then(() => (typeof actions.renameGroup === 'function'
-          ? actions.renameGroup({ from: group.custom ? group.label : '', to, members: payload })
-          : actions.retag?.({ items: payload, tag: to })))
-          .catch(error => notify(error?.message || '分组改名失败', 'warning'));
-      };
-      field.addEventListener('keydown', event => {
-        if (event?.key === 'Enter') { event.preventDefault?.(); finish(true); }
-        else if (event?.key === 'Escape') { event.preventDefault?.(); finish(false); }
-      });
-      field.addEventListener('blur', () => finish(true));
-      wrap.replaceChildren(field);
-      try { field.focus?.(); field.select?.(); } catch (_) {}
-    };
-    label.addEventListener('dblclick', start);
-    label.addEventListener('click', event => {
-      const now = Number(event?.timeStamp) || Date.now();
-      if (now - lastTap < 400) { lastTap = 0; start(); } else lastTap = now;
-    });
-    label.addEventListener('keydown', event => { if (event?.key === 'Enter' || event?.key === 'F2') { event.preventDefault?.(); start(); } });
-    wrap.append(label);
-    return wrap;
   }
 
   // C-15 s9：整组拾取/拖拽——载荷为全部成员（按显示顺序），落定沿用 dropMove（成员相对顺序不变）。

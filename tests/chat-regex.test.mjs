@@ -1365,12 +1365,24 @@ test('managing group header: double-click renames via renameGroup, grip picks th
   const view = mountChatRegexView({ root: host, actions: stub });
   view.render(Object.freeze({ ...ctrl.state(), managing: true }));
   assert.equal(byKey(host, 'view'), undefined, '无视图切换按钮');
-  const title = byKey(host, 'gname:global:不发送');
-  assert.ok(title, '组名可双击改名');
-  assert.equal(byKey(host, 'grename:global:不发送'), undefined, '平时不显示输入框');
-  title.listeners.dblclick();
-  const field = byKey(host, 'grename:global:不发送');
-  assert.equal(field.value, '不发送');
+  // C-24：管理态组头与非管理态共用一套交互——左侧 [整组移动][本组全选]，整行点按折叠，双击组名改名（共用改名框）。
+  const headNode = () => walkAll(host).find(n => n.classList?.contains('qm-regex-group'));
+  const rerender = () => view.render(Object.freeze({ ...ctrl.state(), managing: true }));
+  const doubleTap = t0 => { headNode().listeners.click({ timeStamp: t0, target: null }); headNode().listeners.click({ timeStamp: t0 + 200, target: null }); rerender(); };
+  assert.equal(headNode().children[0].dataset.key, 'gpick:global:不发送', '整组移动在最左，与条目行一致');
+  assert.equal(headNode().children[1].dataset.key, 'groupcheck:global:不发送', '其后是本组全选');
+  assert.ok(byKey(host, 'gname:global:不发送'), '组名');
+  assert.equal(byKey(host, 'rename:group:global:不发送'), undefined, '平时不显示输入框');
+  // 整行单击 = 折叠/展开（与非管理态相同）
+  const folded = ctrl.state().folded.length;
+  headNode().listeners.click({ timeStamp: 50, target: null });
+  assert.notEqual(ctrl.state().folded.length, folded, '点组头空白处即可折叠');
+  headNode().listeners.click({ timeStamp: 5000, target: null });   // 复原（间隔远，不算双击）
+  rerender();
+  doubleTap(10000);
+  const field = byKey(host, 'rename:group:global:不发送');
+  assert.equal(field.value, '不发送', '双击进入改名');
+  assert.equal(ctrl.state().folded.length, folded, '双击不改变折叠态');
   field.value = '屏蔽'; field.listeners.keydown({ key: 'Enter', preventDefault() {} }); await settle();
   // C-22：改名 = 设自定义分组（自动组改名即转成自定义），不写【前缀】。
   assert.equal(calls[0][0], 'renameGroup');
@@ -1379,19 +1391,16 @@ test('managing group header: double-click renames via renameGroup, grip picks th
   assert.deepEqual(calls[0][1][0].members.map(i => i.id), ['g1', 'g2'], '整组成员');
   field.listeners.blur(); await settle();
   assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, 'Enter 后失焦不重复提交');
-  // 触屏双点：两次 click 间隔 <400ms 也进入改名；Esc 取消不写
-  view.render(Object.freeze({ ...ctrl.state(), managing: true }));
-  const t2 = byKey(host, 'gname:global:不发送');
-  t2.listeners.click({ timeStamp: 1000 }); t2.listeners.click({ timeStamp: 1200 });
-  const f2 = byKey(host, 'grename:global:不发送');
-  assert.ok(f2, '双点进入改名');
+  // Esc 取消不写
+  rerender(); doubleTap(20000);
+  const f2 = byKey(host, 'rename:group:global:不发送');
   f2.value = '别的'; f2.listeners.keydown({ key: 'Escape', preventDefault() {} }); await settle();
   assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, 'Esc 不提交');
-  // 自动组清空名字 = 不改
-  view.render(Object.freeze({ ...ctrl.state(), managing: true }));
-  byKey(host, 'gname:global:不发送').listeners.dblclick();
-  const f3 = byKey(host, 'grename:global:不发送'); f3.value = ''; f3.listeners.blur(); await settle();
+  // 自动组清空名字 = 不改（只有自定义组留空才表示取消自定义）
+  rerender(); doubleTap(30000);
+  const f3 = byKey(host, 'rename:group:global:不发送'); f3.value = ''; f3.listeners.blur(); await settle();
   assert.equal(calls.filter(c => c[0] === 'renameGroup').length, 1, '自动组留空不写');
+  rerender();
   // 整组拾取
   byKey(host, 'gpick:global:不发送').listeners.click(); await settle();
   const pick = calls.find(c => c[0] === 'pickMove');
