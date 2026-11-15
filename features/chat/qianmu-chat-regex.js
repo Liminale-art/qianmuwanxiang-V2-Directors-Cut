@@ -236,6 +236,62 @@ export function joinRegexGroup(list, indices, group) {
 // 自定义组成员若被别处调整顺序拆开，会如实显示为两段同名组，拖一下即可并回——不做任何隐式重排。
 const NO_GROUP = null;
 export const REGEX_NO_GROUP = NO_GROUP;
+// C-26：预设内的千幕字段（ST 原生导出预设时随 extensions 一起导出；没装千幕的人只会多一个被忽略的字段）。
+export const PRESET_GROUPS_PATH = 'qianmu.regexGroups';
+export const PRESET_DEFAULTS_PATH = 'qianmu.regexDefaults';
+
+// C-26：出厂开关——{ 脚本 id: 是否启用 }。只收真实 id。
+export function normalizeRegexDefaults(raw) {
+  const out = {};
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const [key, value] of Object.entries(raw)) {
+      const id = text(key);
+      if (id && !/^#\d+$/.test(id) && typeof value === 'boolean') out[id] = value;
+    }
+  }
+  return Object.freeze(out);
+}
+export function snapshotRegexDefaults(items) {
+  const out = {};
+  for (const item of Array.isArray(items) ? items : []) {
+    const id = text(item?.id);
+    if (id && !/^#\d+$/.test(id)) out[id] = item.enabled === true;
+  }
+  return Object.freeze(out);
+}
+// 与出厂开关不同的条目（只比较两边都有的条目；预设新增的条目没有出厂值，不算差异）。
+export function diffRegexDefaults(items, defaults) {
+  const base = normalizeRegexDefaults(defaults);
+  return (Array.isArray(items) ? items : [])
+    .filter(item => Object.prototype.hasOwnProperty.call(base, text(item?.id)) && base[text(item.id)] !== (item.enabled === true))
+    .map(item => ({ id: item.id, name: item.name, enabled: base[text(item.id)] }));
+}
+
+// C-26：重复正则——查找表达式（去首尾空白后）完全相同的条目。返回 { id: 同组其它条目名[] }，只含有重复的条目。
+export function findDuplicateRegex(scripts) {
+  const byFind = new Map();
+  (Array.isArray(scripts) ? scripts : []).forEach((script, index) => {
+    const find = typeof script?.findRegex === 'string' ? script.findRegex.trim() : '';
+    if (!find) return;
+    const row = { id: text(script.id) || `#${index}`, name: text(script.scriptName) || '（未命名）' };
+    if (!byFind.has(find)) byFind.set(find, []);
+    byFind.get(find).push(row);
+  });
+  const out = {};
+  for (const rows of byFind.values()) {
+    if (rows.length < 2) continue;
+    for (const row of rows) out[row.id] = rows.filter(other => other !== row).map(other => other.name);
+  }
+  return Object.freeze(out);
+}
+
+// C-26：搜索——名字或组名包含关键词（不区分大小写，空白分词需全部命中）。
+export function regexMatchesQuery(item, groupLabel, query) {
+  const words = text(query).toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+  if (!words.length) return true;
+  const hay = `${text(item?.name)} ${text(groupLabel)}`.toLocaleLowerCase();
+  return words.every(word => hay.includes(word));
+}
 
 export function normalizeRegexAssign(raw) {
   const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw.assign && typeof raw.assign === 'object' ? raw.assign : raw) : {};
@@ -351,14 +407,37 @@ export function readRegexSources(context) {
     items: Object.freeze(summarizeList(globalRaw)) });
   const manager = presetManager(ctx);
   const canRead = typeof manager?.readPresetExtensionField === 'function';
-  if (!canRead) return Object.freeze({ global, preset: Object.freeze({ available: false, writable: false, name: '', allowed: false, items: Object.freeze([]) }) });
+  if (!canRead) return Object.freeze({ global: Object.freeze({ ...global, duplicates: findDuplicateRegex(globalRaw) }),
+    preset: Object.freeze({ available: false, writable: false, name: '', apiId: '', allowed: false, items: Object.freeze([]), factory: Object.freeze({}), hasFactory: false, duplicates: Object.freeze({}) }) });
   const presetRaw = attempt(() => manager.readPresetExtensionField({ path: 'regex_scripts' }), []);
   const name = text(attempt(() => manager.getSelectedPresetName?.(), ''));
   const apiId = text(attempt(() => manager.apiId, '')) || 'openai';
   const allowList = attempt(() => ctx.extensionSettings?.preset_allowed_regex?.[apiId], null);
   const allowed = Array.isArray(allowList) && !!name && allowList.includes(name);
   const writable = Array.isArray(presetRaw) && typeof manager.writePresetExtensionField === 'function';
-  return Object.freeze({ global, preset: Object.freeze({ available: true, writable, name, allowed, items: Object.freeze(summarizeList(presetRaw)) }) });
+  // C-26：预设内的出厂开关、两个来源的重复正则（查找表达式相同）。
+  const factory = normalizeRegexDefaults(attempt(() => manager.readPresetExtensionField({ path: PRESET_DEFAULTS_PATH }), null));
+  return Object.freeze({
+    global: Object.freeze({ ...global, duplicates: findDuplicateRegex(globalRaw) }),
+    preset: Object.freeze({ available: true, writable, name, apiId, allowed, items: Object.freeze(summarizeList(presetRaw)),
+      factory, hasFactory: Object.keys(factory).length > 0, duplicates: findDuplicateRegex(presetRaw) }) });
+}
+
+// C-26：一键允许当前预设的正则运行——写进 ST 原生同一份允许名单（extension_settings.preset_allowed_regex[apiId]），
+// 与 ST 正则面板里的开关是同一处数据。返回是否真的新加入。
+export function allowPresetRegex(context) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const manager = presetManager(ctx);
+  const name = text(attempt(() => manager?.getSelectedPresetName?.(), ''));
+  const apiId = text(attempt(() => manager?.apiId, '')) || 'openai';
+  if (!name || !ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 不支持在此允许预设正则');
+  const table = ctx.extensionSettings.preset_allowed_regex && typeof ctx.extensionSettings.preset_allowed_regex === 'object'
+    ? ctx.extensionSettings.preset_allowed_regex : (ctx.extensionSettings.preset_allowed_regex = {});
+  if (!Array.isArray(table[apiId])) table[apiId] = [];
+  if (table[apiId].includes(name)) return false;
+  table[apiId].push(name);
+  ctx.saveSettingsDebounced();
+  return true;
 }
 
 // Finds the script a list row stands for. Real ids win; a synthetic "#index" id (script saved without an id)
@@ -798,7 +877,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.513') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.514') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -828,8 +907,38 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   const readOverrides = () => currentBinding().overrides;
   const bindingEnabled = () => currentBinding().enabled;
   // C-22：手动分组归属（id → 组名 / null=明确不分组）。读是纯只读；写走宿主持久化。
-  const currentAssign = () => normalizeRegexAssign(attempt(() => readGroups(), {}));
-  const saveAssign = next => { try { writeGroups(normalizeRegexAssign(next)); } catch (_) { /* 存不下去也不能让面板崩 */ } };
+  // C-26：分组按来源分开存——预设正则的分组写进预设自身 `extensions.qianmu.regexGroups`（随 ST 原生导出走），
+  // 全局正则的分组仍存千幕设置。currentAssign 返回两者合并后的视图；saveAssign 按 id 所在来源拆开写回。
+  // 预设里还没有分组字段时，千幕设置里该预设条目的旧分组仍可读，并在第一次写入时搬进预设。
+  const presetIds = () => new Set((readRegexSources(context()).preset.items || []).map(item => text(item.id)).filter(Boolean));
+  const presetAssignRaw = () => {
+    const manager = presetManager(context());
+    const value = attempt(() => manager?.readPresetExtensionField?.({ path: PRESET_GROUPS_PATH }), null);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  };
+  const currentAssign = () => {
+    const local = normalizeRegexAssign(attempt(() => readGroups(), {}));
+    const embedded = presetAssignRaw();
+    if (!embedded) return local;
+    const inPreset = presetIds();
+    const merged = {};
+    for (const [id, value] of Object.entries(local)) if (!inPreset.has(id)) merged[id] = value;
+    return normalizeRegexAssign({ ...merged, ...normalizeRegexAssign(embedded) });
+  };
+  let presetGroupWrite = Promise.resolve();
+  const saveAssign = next => {
+    const all = normalizeRegexAssign(next);
+    const inPreset = presetIds();
+    const local = {}, preset = {};
+    for (const [id, value] of Object.entries(all)) (inPreset.has(id) ? preset : local)[id] = value;
+    try { writeGroups(local); } catch (_) { /* 存不下去也不能让面板崩 */ }
+    const manager = presetManager(context());
+    if (typeof manager?.writePresetExtensionField !== 'function') return;
+    // 预设没有任何分组且原本也没有字段：不写，避免给未用分组的预设凭空加字段。
+    if (!Object.keys(preset).length && !presetAssignRaw()) return;
+    const name = text(attempt(() => manager.getSelectedPresetName?.(), ''));
+    presetGroupWrite = presetGroupWrite.then(() => manager.writePresetExtensionField({ name, path: PRESET_GROUPS_PATH, value: preset })).catch(() => {});
+  };
   const sameAssign = (a, b) => {
     const x = normalizeRegexAssign(a), y = normalizeRegexAssign(b);
     const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
@@ -853,6 +962,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
       binding: Object.freeze({ enabled: b.enabled, overrides: Object.freeze({ ...b.overrides }), preset: b.preset }),
       presets: Object.freeze({ ...readPresetChoices(context()), busy: presetBusy }),
       groups: currentAssign(),
+      query,
       sources: readRegexSources(context()) });
   };
   // 每次写回后对齐 ST 原生面板里已渲染的列表（见 syncNativeRegexList）；失败不影响千幕自己的面板。
@@ -1109,6 +1219,51 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     saveBinding({ overrides });
     refresh();
   }
+  // C-26：清空本聊天记下的正则开关（预设绑定与「绑定此聊天」开关保持不变）。之后进本聊天按出厂开关/全局状态走。
+  function clearBindingOverrides() {
+    const count = Object.keys(currentBinding().overrides).length;
+    if (!count) return 0;
+    bumpSession();
+    saveBinding({ overrides: {} });
+    notify(`已清空本聊天记下的 ${count} 条正则开关`, 'success');
+    refresh();
+    return count;
+  }
+  // C-26：出厂开关。保存＝把当前预设正则的开关组合写进预设（随原生导出）；恢复＝把预设正则拨回出厂值，
+  // 一次写回、一次轻量重绘；开着绑定时同时记入本聊天，保证下次进来仍是出厂值。
+  const saveFactoryDefaults = () => structural('保存出厂开关', async ctx => {
+    const manager = presetManager(ctx);
+    if (typeof manager?.writePresetExtensionField !== 'function') throw new Error('当前 ST 不支持在此保存出厂开关');
+    const snap = snapshotRegexDefaults(readRegexSources(ctx).preset.items);
+    if (!Object.keys(snap).length) throw new Error('当前预设没有可记录的正则');
+    await manager.writePresetExtensionField({ name: text(manager.getSelectedPresetName?.()), path: PRESET_DEFAULTS_PATH, value: snap });
+    notify(`已把 ${Object.keys(snap).length} 条预设正则的开关存为出厂开关（随预设导出）`, 'success');
+    return { reload: false, result: Object.keys(snap).length };
+  });
+  async function restoreFactoryDefaults() {
+    const preset = readRegexSources(context()).preset;
+    const changes = diffRegexDefaults(preset.items, preset.factory);
+    if (!preset.hasFactory) { notify('当前预设还没有出厂开关', 'info'); return 0; }
+    if (!changes.length) { notify('已是出厂开关', 'info'); return 0; }
+    bumpSession();
+    const changed = await structural('恢复出厂开关', async ctx => {
+      const out = await writeRegexStates(ctx, { source: 'preset', changes, expectPreset: preset.name });
+      for (const change of changes) recordToggle('preset', change.id, change.enabled);
+      return { reload: false, result: out };
+    });
+    if (changed) { syncNative(); scheduleReload(REGEX_RELOAD_DELAY, { lightOnly: true }); notify(`已恢复 ${changed} 条正则的出厂开关`, 'success'); }
+    return changed;
+  }
+  // C-26：一键允许当前预设的正则运行（ST 原生同一份允许名单）。
+  function allowPreset() {
+    try {
+      if (allowPresetRegex(context())) { scheduleReload(REGEX_RELOAD_DELAY, { lightOnly: true }); notify('已允许当前预设的正则运行', 'success'); }
+    } catch (error) { notify(error?.message || '允许失败', 'warning'); }
+    refresh();
+  }
+  // C-26：搜索关键词只活在本次会话（视图据此过滤）。
+  let query = '';
+  function setQuery(value) { query = String(value ?? '').slice(0, 80); refresh(); }
   // C-16 s3：跨源移动后，把本聊天覆盖与全局默认里属于这些条目的绑定键从 旧源:id 迁到 新源:id，
   // 否则移走后旧键永久失配、新源下又没有记录，等于悄悄丢了用户的绑定。只迁移存在的键，不新建。
   function migrateBindingKeys(fromSource, toSource, moving) {
@@ -1567,6 +1722,8 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, rename, regroup, retag,
     setManaging, setSelected, openEditor, closeEditor, importMany, exportMany,
     renameGroup, unfixGroup,
+    clearBindingOverrides, saveFactoryDefaults, restoreFactoryDefaults, allowPreset, setQuery,
+    matches: regexMatchesQuery,
   });
   async function mount(host) {
     if (!host) return;

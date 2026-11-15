@@ -121,7 +121,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return button;
   }
 
-  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '', siblings = [], selectedKeys = [], picking = [], busy = [] } = {}) {
+  function row(item, source, { writable = false, pending = [], bound = () => false, managing = false, selected = () => false, group = '', siblings = [], selectedKeys = [], picking = [], busy = [], duplicates = {} } = {}) {
     const node = el('div', 'qm-regex-row');
     node.dataset.id = item.id;
     // C-16 s1：结构性写回涉及本行 → 名前转圈、行内按钮全禁用，直到写回结束。
@@ -149,11 +149,15 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       name.addEventListener('dblclick', () => startRename(renameKey));
       name.addEventListener('click', event => { if (tapTwice(renameKey, event)) startRename(renameKey); });
     }
-    if (writable && bound(`${source}:${item.id}`)) {
-      node.classList.add('is-bound');
-      const mark = el('i', 'fa-solid fa-link qm-regex-bound-mark'); mark.setAttribute('aria-hidden', 'true');
-      name.append(document.createTextNode(' '), mark);
-      name.title = `${item.name}（已记入本聊天绑定）`;
+    // C-26：条目上不再显示「已绑定」小图标（开关开/关都显示反而混淆）——绑定静默生效，
+    // 本聊天记了几条、清空入口放在「绑定此聊天」旁。
+    // C-26：重复正则（查找表达式相同）——名字后加一个小标记，悬停看与哪几条重复。
+    const dupes = duplicates?.[String(item.id)];
+    if (Array.isArray(dupes) && dupes.length) {
+      node.classList.add('is-duplicate');
+      const dup = el('i', 'fa-solid fa-clone qm-regex-dup-mark');
+      dup.setAttribute('aria-label', `与「${dupes.join('」「')}」查找表达式相同`); dup.title = `与「${dupes.join('」「')}」查找表达式相同`;
+      name.append(document.createTextNode(' '), dup);
     }
     const key = `${source}:${item.id}`;
     const picked = writable && picking.some(p => p.source === source && String(p.id) === String(item.id));
@@ -256,7 +260,8 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     const picking = Array.isArray(options.picking) ? options.picking : [];
     // C-16 s3：拾取态时每张可写卡都显示落点——同源＝排序，异源（预设↔全局）＝移入。
     const pickingFrom = picking.length ? (picking[0]?.source || source) : '';
-    const dropHere = picking.length > 0 && options.writable;
+    // C-26：搜索中不显示落点（过滤后的列表不是真实相邻关系，落点位置会误导）。
+    const dropHere = picking.length > 0 && options.writable && !(typeof options.query === 'string' && options.query.trim());
     const across = dropHere && pickingFrom !== source;
     if (!items.length) {
       // 空列表：异源拾取时仍给一个末尾落点（可把条目移入空的预设/全局），否则显示占位文案。
@@ -272,8 +277,13 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       const node = row(item, source, { ...options, group });
       return dropHere ? [dropTarget(source, item, across, inside ? group : '', false, false, inside ? memberIds : []), node] : [node];
     };
-    // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；C-19：固定组优先，成员换位置/被拆开也不解散。
-    const runs = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
+    // C-15 s9：单一模式「原始顺序 + 相邻同类折叠」；C-22：自定义分组优先。
+    // C-26：搜索——分组照常按完整列表计算（保证组头/归属不变），只过滤显示；有关键词时不显示落点、组强制展开。
+    const q = typeof options.query === 'string' ? options.query.trim() : '';
+    const hit = (item, label) => !q || typeof actions.matches !== 'function' || actions.matches(item, label, q);
+    const allRuns = typeof actions.group === 'function' ? actions.group(items) : [{ key: '', label: '', items }];
+    const runs = q ? allRuns.map(run => ({ ...run, items: run.items.filter(item => hit(item, run.label)) })).filter(run => run.items.length) : allRuns;
+    if (q && !runs.length) { box.append(el('p', 'qm-regex-empty', '没有匹配的正则')); return box; }
     runs.forEach((group, runIndex) => {
       if (!group.label) { for (const item of group.items) box.append(...rowOf(item, '')); return; }
       const custom = group.custom === true;
@@ -284,7 +294,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       // 落点放在组头前（折叠时也能插到组前）＝组外；组内首位另有一个归入本组的落点。
       if (dropHere) box.append(dropTarget(source, group.items[0], across));
       const members = () => {
-        if (isFolded(key)) return;
+        if (isFolded(key) && !q) return;
         group.items.forEach((item, i) => {
           if (i) { box.append(...rowOf(item, group.label, true)); return; }
           // C-19：组内首位落点——落在组头之后、首条之前，落定即归入本组并排到最前。
@@ -414,7 +424,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     return b;
   }
 
-  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false, siblings = [], selectedKeys = [], picking = [], busy = [], writing = false } = {}) {
+  function section(title, note, items, mode, { unavailable = '', source = '', writable = false, pending = [], bound = () => false, managing = false, selected = () => false, siblings = [], selectedKeys = [], picking = [], busy = [], writing = false, query = '', duplicates = {}, extraHead = [] } = {}) {
     const key = `card:${source}`, folded = isFolded(key);
     const card = el('section', `qm-regex-card${folded ? ' is-folded' : ''}${managing && writable ? ' is-managing' : ''}`);
     // C-16 s1：结构性写回进行中整卡锁定（防重复点击），读屏也知道在忙。
@@ -424,6 +434,7 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     heading.append(foldButton(key, title, 'qm-regex-card-fold', title));
     head.append(heading);
     if (note) head.append(el('span', 'qm-regex-note', note));
+    for (const node of extraHead) head.append(node);
     if (!unavailable && writable && !managing && items.length) head.append(batchSwitch(items, source, title, pending));
     if (!unavailable && writable && managing) {
       head.append(groupCheck(source, siblings, selectedKeys));
@@ -431,9 +442,9 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       head.append(newButton(source));
     }
     card.append(head);
-    if (folded) return card;
+    if (folded && !(query && query.trim())) return card;
     if (unavailable) card.append(el('p', 'qm-regex-empty', unavailable));
-    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected, siblings, selectedKeys, picking, busy }));
+    else card.append(list(items, mode, source, { writable, pending, bound, managing, selected, siblings, selectedKeys, picking, busy, query, duplicates }));
     return card;
   }
 
@@ -948,6 +959,33 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
           .catch(error => notify(error?.message || '绑定切换失败', 'warning'));
       });
       tools.append(bindBtn);
+      // C-26：绑定的可见性与取消入口——条目上不再挂图标；开着绑定且本聊天记了开关时，按钮旁显示条数，点按清空。
+      const recorded = binding.enabled ? Object.keys(binding.overrides || {}).length : 0;
+      if (recorded && typeof actions.clearBindingOverrides === 'function') {
+        const clear = el('button', 'qm-regex-tool qm-regex-bind-clear'); clear.type = 'button'; clear.dataset.key = 'bind-clear';
+        clear.setAttribute('aria-label', `本聊天已记 ${recorded} 条正则开关，点按清空`); clear.title = `本聊天已记 ${recorded} 条正则开关（点按清空，之后按出厂开关/全局状态）`;
+        const ci = el('i', 'fa-solid fa-xmark'); ci.setAttribute('aria-hidden', 'true');
+        clear.append(el('span', 'qm-regex-tool-label', `${recorded}`), ci);
+        clear.addEventListener('click', () => { if (!confirmClear(recorded)) return; try { actions.clearBindingOverrides(); } catch (error) { notify(error?.message || '清空失败', 'warning'); } });
+        tools.append(clear);
+      }
+    }
+    // C-26：搜索——工具条下方一行输入框；按名字或组名过滤，搜索中组自动展开、不显示移动落点。
+    let searchBox = null;
+    if (typeof actions.setQuery === 'function') {
+      searchBox = el('div', 'qm-regex-search');
+      const input = el('input', 'qm-regex-search-input'); input.type = 'search';
+      input.value = typeof state.query === 'string' ? state.query : '';
+      input.placeholder = '搜索正则或组名'; input.dataset.key = 'search';
+      input.setAttribute('aria-label', '搜索正则或组名');
+      const si = el('i', 'fa-solid fa-magnifying-glass'); si.setAttribute('aria-hidden', 'true');
+      // 输入法组字期间不刷新，避免中文输入被打断。
+      let composing = false;
+      input.addEventListener('compositionstart', () => { composing = true; });
+      input.addEventListener('compositionend', () => { composing = false; actions.setQuery(input.value); });
+      input.addEventListener('input', () => { if (!composing) actions.setQuery(input.value); });
+      input.addEventListener('keydown', event => { if (event?.key === 'Escape' && input.value) { event.preventDefault?.(); actions.setQuery(''); } });
+      searchBox.append(si, input);
     }
     const managing = state.managing === true;
     // C-19：管理栏三个开关只靠文字变色表示选中，不再给底色块（避免和卡片底色打架、也在三种主题下表现一致）。
@@ -1001,25 +1039,58 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
     // 回收站视图：替换正则卡，显示「已删除」列表 + 还原；底部小字说明内存态。
     if (recycle.open) { root.replaceChildren(toolsCard, recycleList(recycle)); if (listScroll > 0) root.scrollTop = listScroll; return; }
     const busy = Array.isArray(state.busy) ? state.busy : [];
-    const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking, busy, writing: state.writing === true };
+    const query = typeof state.query === 'string' ? state.query : '';
+    const common = { pending, bound, managing, selected, selectedKeys: [...selectedSet], picking, busy, writing: state.writing === true, query };
     // C-17 s4：多选工具条套在置顶毛玻璃固钉层内（selbar 本身仍 sticky 0，方形毛玻璃撑着背景）。
     const globalCard = section('全局正则', g.available ? `${g.items.length} 条` : '', g.items, view,
-      { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, siblings: g.items, ...common });
-    let presetNote = '';
-    if (p.available) presetNote = `${p.items.length} 条${p.items.length && !p.allowed ? ' · 未被允许运行' : ''}`;   // C-14e：预设名已在页顶快切里，卡内不再重复
+      { unavailable: g.available ? '' : '未读取到全局正则（正则扩展可能未加载）', source: 'global', writable: g.writable === true, siblings: g.items, duplicates: g.duplicates || {}, ...common });
+    // C-14e：预设名已在页顶快切里，卡内不再重复。C-26：未被允许运行时给醒目标记＋「允许」；出厂开关（保存/恢复）。
+    const presetHead = [];
+    if (p.available && p.items.length && !p.allowed && typeof actions.allowPreset === 'function') {
+      const warn = el('span', 'qm-regex-allow');
+      warn.setAttribute('role', 'status');
+      warn.title = 'ST 对每个预设自带的正则有单独的「允许运行」开关；未允许时这些正则不会执行（开关显示不代表在运行）。';
+      const allow = el('button', 'qm-regex-allow-btn', '允许'); allow.type = 'button'; allow.dataset.key = 'allow-preset';
+      allow.setAttribute('aria-label', '允许当前预设的正则运行');
+      allow.addEventListener('click', event => { event?.stopPropagation?.(); try { actions.allowPreset(); } catch (error) { notify(error?.message || '允许失败', 'warning'); } });
+      warn.append(el('span', 'qm-regex-allow-text', '未允许运行'), allow);
+      presetHead.push(warn);
+    }
+    if (p.available && p.writable && p.items.length && !managing && typeof actions.restoreFactoryDefaults === 'function') {
+      const factoryBtn = el('button', `qm-regex-rowbtn qm-regex-factory${p.hasFactory ? ' has-factory' : ''}`); factoryBtn.type = 'button';
+      factoryBtn.dataset.key = 'factory';
+      const label = p.hasFactory ? '恢复出厂开关' : '把当前开关存为出厂开关（随预设导出）';
+      factoryBtn.setAttribute('aria-label', label); factoryBtn.title = p.hasFactory ? '恢复出厂开关（长按或右键：把当前开关重新存为出厂开关）' : label;
+      const fi = el('i', `fa-solid ${p.hasFactory ? 'fa-arrow-rotate-left' : 'fa-box-archive'}`); fi.setAttribute('aria-hidden', 'true'); factoryBtn.append(fi);
+      const save = () => Promise.resolve().then(() => actions.saveFactoryDefaults()).catch(error => notify(error?.message || '保存失败', 'warning'));
+      factoryBtn.addEventListener('click', event => {
+        event?.stopPropagation?.();
+        if (!p.hasFactory) { void save(); return; }
+        Promise.resolve().then(() => actions.restoreFactoryDefaults()).catch(error => notify(error?.message || '恢复失败', 'warning'));
+      });
+      factoryBtn.addEventListener('contextmenu', event => { if (!p.hasFactory) return; event?.preventDefault?.(); event?.stopPropagation?.(); if (confirmFactory()) void save(); });
+      presetHead.push(factoryBtn);
+    }
+    const presetNote = p.available ? `${p.items.length} 条` : '';
     const presetCard = section('预设正则', presetNote, p.items, view,
-      { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, siblings: p.items, ...common });
+      { unavailable: p.available ? '' : '当前 ST 版本不支持预设正则', source: 'preset', writable: p.writable === true, siblings: p.items, duplicates: p.duplicates || {}, extraHead: presetHead, ...common });
+    if (p.available && p.items.length && !p.allowed) presetCard.classList.add('is-not-allowed');
     const presets = state.presets && typeof state.presets === 'object' ? state.presets : { available: false, names: [] };
     const head = presets.available && typeof actions.selectPreset === 'function' ? [presetDirectory(presets, binding)] : [];
     // 管理态选择工具条随状态条件渲染（撤销已并入回收站）。
     const dock = managing ? el('div', 'qm-regex-seldock') : null;
     if (dock) dock.append(selectionBar([...selectedSet], sources));
-    root.replaceChildren(...head, toolsCard, ...(dock ? [dock] : []), globalCard, presetCard);
+    root.replaceChildren(...head, toolsCard, ...(searchBox ? [searchBox] : []), ...(dock ? [dock] : []), globalCard, presetCard);
     // C-20：回到列表时还原进编辑页前的位置（重绘时 root 可见，scrollTop 已归 0）。
     if (typeof listScroll === 'number' && listScroll > 0) root.scrollTop = listScroll;
     // 改名输入框出现时直接聚焦并全选。
     if (renaming) { const field = [...(root.querySelectorAll?.('.qm-regex-rename') || [])][0]; try { field?.focus?.(); field?.select?.(); } catch (_) {} if (!field) renaming = ''; return; }
-    if (keep) [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep)?.focus?.();
+    if (keep) {
+      const back = [...(root.querySelectorAll?.('[data-key]') || [])].find(node => node.dataset.key === keep);
+      back?.focus?.();
+      // C-26：搜索框重绘后光标放回末尾，连续输入不被打断。
+      if (keep === 'search' && back && typeof back.setSelectionRange === 'function') { const n = String(back.value || '').length; try { back.setSelectionRange(n, n); } catch (_) {} }
+    }
   }
 
   // 多选工具条：全选/清空、删除（二次确认）、复制、复制到另一来源、移入分组、取消管理。
@@ -1058,6 +1129,14 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   function confirmDelete(n) {
     const confirm = root.ownerDocument?.defaultView?.confirm;
     return typeof confirm === 'function' ? confirm(`确定删除选中的 ${n} 条正则？可在回收站还原。`) : true;
+  }
+  function confirmClear(n) {
+    const confirm = root.ownerDocument?.defaultView?.confirm;
+    return typeof confirm === 'function' ? confirm(`清空本聊天记下的 ${n} 条正则开关？预设绑定不变。`) : true;
+  }
+  function confirmFactory() {
+    const confirm = root.ownerDocument?.defaultView?.confirm;
+    return typeof confirm === 'function' ? confirm('把当前开关重新存为本预设的出厂开关？') : true;
   }
   function askGroup() {
     const prompt = root.ownerDocument?.defaultView?.prompt;

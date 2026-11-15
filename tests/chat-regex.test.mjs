@@ -694,7 +694,7 @@ test('setBindingEnabled off then on toggles enable and applies immediately', asy
   assert.equal(st.ctx.extensionSettings.regex[0].disabled, false, '开启后立即套用');
 });
 
-test('view shows a 绑定 toggle and marks bound rows when binding is on', async () => {
+test('view shows a 绑定 toggle; rows stay silent and a count + clear button replaces per-row marks (C-26)', async () => {
   const { mountChatRegexView } = await import('../features/chat/qianmu-chat-regex-view.js');
   const make = tag => {
     const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', disabled: false,
@@ -709,7 +709,7 @@ test('view shows a 绑定 toggle and marks bound rows when binding is on', async
   const calls = [];
   const st = fakeST({ global: [{ id: 'g1', scriptName: 'A' }, { id: 'g2', scriptName: 'B' }] });
   const ctrl = createChatRegex({ getContext: () => st.ctx });
-  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setBindingEnabled: on => { calls.push(on); } } });
+  const view = mountChatRegexView({ root: host, actions: { ...ctrl.actions, setBindingEnabled: on => { calls.push(on); }, clearBindingOverrides: () => { calls.push('clear'); } } });
   // off: 绑定按钮在、未按下、无 bound 标记
   view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: false, overrides: {} } }));
   let bind = walk(host).find(n => n.dataset.key === 'bind');
@@ -723,8 +723,14 @@ test('view shows a 绑定 toggle and marks bound rows when binding is on', async
   bind = walk(host).find(n => n.dataset.key === 'bind');
   assert.equal(bind.attrs['aria-pressed'], 'true');
   assert.ok(bind.classList.contains('is-on'));
-  const marks = walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark'));
-  assert.equal(marks.length, 1, '仅被覆盖的 g1 带标记');
+  assert.equal(walk(host).filter(n => n.classList?.contains('qm-regex-bound-mark')).length, 0, '条目不挂绑定图标（静默）');
+  const clear = walk(host).find(n => n.dataset.key === 'bind-clear');
+  assert.ok(clear, '绑定旁显示已记条数＋清空');
+  assert.ok(walk(clear).some(n => n.textContent === '1'), '条数 = 1');
+  clear.listeners.click(); await settle();
+  assert.deepEqual(calls.at(-1), 'clear');
+  view.render(Object.freeze({ ...ctrl.state(), binding: { enabled: true, overrides: {} } }));
+  assert.equal(walk(host).find(n => n.dataset.key === 'bind-clear'), undefined, '没记任何条目时不显示');
   view.dispose();
 });
 

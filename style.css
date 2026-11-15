@@ -985,6 +985,20 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-tool:disabled { opacity: .38; cursor: default; }
 #story-director-floor-nav :is(.qm-regex-bind-toggle, .qm-regex-manage-toggle, .qm-regex-recycle-toggle).is-on { color: var(--sd-primary); background: transparent; }
 #story-director-floor-nav .qm-regex-bound-mark { color: var(--sd-primary); font-size: .72em; opacity: .8; }
+/* C-26：搜索框（工具条下一行）、重复正则标记、预设未允许运行的提示＋允许按钮、出厂开关按钮、本聊天已记开关条数 */
+#story-director-floor-nav .qm-regex-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); color: var(--sd-muted); }
+#story-director-floor-nav[data-qm-theme] .qm-regex-search { background: var(--qm-skin-material, var(--sd-card)); border-color: var(--qm-line, var(--sd-hairline)); }
+#story-director-floor-nav .qm-regex-search-input { flex: 1 1 auto; min-width: 0; min-height: 32px; margin: 0; padding: 0; border: 0 !important; outline: none; background: transparent !important; box-shadow: none !important; color: var(--sd-text); font-size: var(--qm-type-body); }
+#story-director-floor-nav .qm-regex-dup-mark { color: var(--sd-warning, #c98a2b); font-size: .72em; opacity: .85; cursor: help; }
+#story-director-floor-nav .qm-regex-allow { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding: 1px 2px 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--sd-warning, #c98a2b) 14%, transparent); color: var(--sd-warning, #c98a2b); font-size: var(--qm-type-caption); font-weight: 600; }
+#story-director-floor-nav .qm-regex-allow-btn { min-height: 22px; margin: 0; padding: 0 10px; border: 0; border-radius: 999px; background: var(--sd-warning, #c98a2b); color: #fff; font-size: var(--qm-type-caption); font-weight: 600; cursor: pointer; }
+#story-director-floor-nav .qm-regex-card.is-not-allowed .qm-regex-list { opacity: .55; }
+#story-director-floor-nav .qm-regex-factory { flex: none; color: var(--sd-muted); }
+#story-director-floor-nav .qm-regex-factory.has-factory { color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-card-head > .qm-regex-allow + .qm-regex-factory, #story-director-floor-nav .qm-regex-card-head > .qm-regex-factory { margin-left: auto; }
+#story-director-floor-nav .qm-regex-card-head > .qm-regex-allow + .qm-regex-factory { margin-left: 0; }
+#story-director-floor-nav .qm-regex-bind-clear { gap: 3px; color: var(--sd-primary); font-variant-numeric: tabular-nums; }
+#story-director-floor-nav .qm-regex-card-head > :is(.qm-regex-allow, .qm-regex-factory) ~ .qm-regex-pill { margin-left: 0; }
 /* C-17 s6：预设快切 = 内联目录组控件（不是浮层）。顶部一行「预设目录 [当前所选]」折叠/展开整个目录；
    展开后版本系列各占一个可折叠行（组名 + 版本数 + 箭头），组内是各版本的单选行（圆点 + 版本号标签）。 */
 #story-director-floor-nav .qm-regex-card.qm-regex-preset-box { display: flex; flex-direction: column; gap: 0; min-width: 0; padding: 6px 10px; }
