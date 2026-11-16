@@ -13,7 +13,7 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.30';
+export const FRONTEND_VERSION = '0.8.31';
 export const SERVICE_VERSION = '0.8.10';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
@@ -458,12 +458,21 @@ export function applyDefaultsOperation(current, op) {
     const values = validateSettings({ ...current.values, ...Object.fromEntries(Object.entries(changes).map(([key, value]) => [key, value === null ? DEFAULTS[key] : value])) }, false);
     return { defaults: { schema: SCHEMA, revision: current.revision + 1, values, operations: [...current.operations, id], receipts: { ...current.receipts, [id]: receipt(op) } }, outcome: 'applied' };
 }
+// Every floor is fingerprinted again on each refresh, each generation and each summary batch, while almost
+// all floors are unchanged between calls. The digest of one floor depends only on its five identity fields,
+// so it is remembered by those fields (bounded; a changed floor simply misses and is hashed afresh).
+const FINGERPRINT_MEMO = new Map(), FINGERPRINT_MEMO_LIMIT = 6000;
 export async function fingerprintMessages(messages) {
     const subtle = globalThis.crypto?.subtle ?? (typeof process !== 'undefined' && process.versions?.node ? (await import('node:crypto')).webcrypto.subtle : null);
     requireThat(subtle, '当前页面缺少安全指纹能力，请使用 HTTPS 或本机地址');
     return Promise.all(messages.map(async message => {
-        const bytes = new TextEncoder().encode(JSON.stringify([String(message.name || ''), Boolean(message.is_user), Boolean(message.is_system), String(message.mes || ''), String(message.send_date ?? '')]));
-        return Array.from(new Uint8Array(await subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('');
+        const key = JSON.stringify([String(message.name || ''), Boolean(message.is_user), Boolean(message.is_system), String(message.mes || ''), String(message.send_date ?? '')]);
+        const known = FINGERPRINT_MEMO.get(key);
+        if (known) return known;
+        const hash = Array.from(new Uint8Array(await subtle.digest('SHA-256', new TextEncoder().encode(key))), x => x.toString(16).padStart(2, '0')).join('');
+        if (FINGERPRINT_MEMO.size >= FINGERPRINT_MEMO_LIMIT) FINGERPRINT_MEMO.clear();
+        FINGERPRINT_MEMO.set(key, hash);
+        return hash;
     }));
 }
 export function sourceMatches(source, hashes) {

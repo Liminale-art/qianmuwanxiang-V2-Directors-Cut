@@ -324,10 +324,24 @@ export function createHost({
         if (generationType(payload?.type) !== session.type) return fallback('different-generation');
         const unsupported = payloadSupport(payload);
         if (unsupported) return fallback(unsupported);
+        // The budget planner asks "is this still the chat I prepared for?" once per candidate entry, in a loop
+        // with no await in it. Comparing the whole chat is by far the costliest part of the answer (it
+        // serialises every floor), and nothing can change the chat inside one synchronous stretch, so that
+        // part is answered once per stretch and forgotten at the next microtask. The prepared snapshot never
+        // changes, so its serialised form is kept. Cheap flags are still read on every call.
+        let sourceJson = null, chatSame = null;
+        const chatUnchanged = ctx => {
+            if (chatSame === null) {
+                sourceJson ??= JSON.stringify(record.source.messages);
+                chatSame = JSON.stringify(ctx.chat) === sourceJson;
+                queueMicrotask(() => { chatSame = null; });
+            }
+            return chatSame;
+        };
         const current = () => {
             if (record.used || record.generation !== generation || isCurrent() !== true) return false;
             const ctx = context();
-            return sameBinding(bindingOf(ctx), record.source.binding) && sameMessages(ctx.chat, record.source.messages)
+            return sameBinding(bindingOf(ctx), record.source.binding) && chatUnchanged(ctx)
                 && sameMessages(routeOf(ctx), record.route);
         };
         record.running = true;

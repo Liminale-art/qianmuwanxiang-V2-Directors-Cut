@@ -62,10 +62,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     const emit = () => { if (!disposed) onChange(snapshotState()); };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
+    // A streamed summary reports every chunk. Each report used to repaint the whole panel (every memory card
+    // included); the preview text is kept current on every chunk, and the panel is told at most ~8 times a second.
+    let streamTimer = null;
     const streamChunk = binding => (_chunk, accumulated) => {
         if (disposed || !isCurrent(binding) || typeof accumulated !== 'string') return;
         state.streamPreview = accumulated.slice(-12000);
-        emit();
+        if (streamTimer === null) streamTimer = setTimeout(() => { streamTimer = null; emit(); }, 120);
     };
     const notice = (message, tone = 'success') => {
         if (disposed || typeof onNotice !== 'function' || typeof message !== 'string' || !message) return;
