@@ -1,11 +1,15 @@
-// 快捷圆盘：贴着千幕 logo 展开的半圆拨盘。
-// logo 靠右时弧线向左凸，靠左时向右凸；入口沿弧线排布、向两端淡出；指针固定在弧线正中，
-// 拨到指针处的入口放大并在弧外显示名称。按住 logo 直接滑动即可拨动，松手打开指针处的入口。
-// 本模块只管圆盘自身的绘制与手势，不保存任何设置；入口、配色、打开动作都由调用方传入。
+// 快捷轮盘：贴着千幕 logo 展开的半椭圆拨盘。
+// logo 靠右时弧线向左凸，靠左时向右凸；弧线纵向拉长，内侧留出更多空间。入口沿弧线内侧排布、向两端淡出；
+// 指针是一枚固定在弧线正中内侧的圆点，拨到圆点处的入口放大并在弧外显示名称。
+// 与蜂巢格一样由长按 logo 展开；展开后不抬手直接上下滑即可拨动，松手打开指针处的入口。
+// 本模块只管轮盘自身的绘制与手势，不保存任何设置；入口、配色、打开动作都由调用方传入。
 
-const STEP = 23 * Math.PI / 180;      // 相邻入口的夹角
-const EDGE = 88 * Math.PI / 180;      // 超过这个角度的入口不显示
-const FADE = 40 * Math.PI / 180;      // 淡出带宽度
+const EDGE = 80 * Math.PI / 180;      // 超过这个角度的入口不显示
+const FADE = 34 * Math.PI / 180;      // 淡出带宽度
+const MORE = 88 * Math.PI / 180;      // 两端「···」占位所在的角度（在最后一个可见入口之外）
+const GROW = 0.5;                     // 指针处入口放大的比例
+const DOT = 3.5;                      // 指针圆点半径
+const GAP = 9;                        // 弧线—圆点、圆点—入口之间的间距（两段相同）
 const HOME = '__home';
 const DETACHABLE = new Set(['notes', 'assistant', 'floor']);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -24,45 +28,76 @@ export function quickDialTone(from, to, ratio) {
   return '#' + a.map((value, at) => Math.round(value + (b[at] - value) * clamp(ratio, 0, 1)).toString(16).padStart(2, '0')).join('');
 }
 
-// 圆盘的几何：圆心取 logo 中心（上下留出至少两格入口的余地），半径随悬浮入口大小与视口收放。
+// 轮盘的几何。弧线是半个椭圆：横向半径 rx 随悬浮入口大小与视口收放，纵向半径 ry 更长。
+// 入口排在内侧的同心椭圆（ringX／ringY）上：指针处放大的入口与圆点、圆点与弧线之间各留 GAP。
 export function quickDialGeometry({ centerX, centerY, width, height, size = 48 }) {
   const side = centerX > width / 2 ? 'right' : 'left';
   const reach = side === 'right' ? centerX : width - centerX;
-  const radius = Math.round(clamp(Math.min(132 + (size - 32) * 0.9, reach - 96, height * 0.46), 104, 176));
-  const lift = radius * 0.62 + 8;
-  const y = height >= lift * 2 ? clamp(centerY, lift, height - lift) : height / 2;
   const chip = Math.round(clamp(size * 0.74, 30, 44));
-  return { side, sign: side === 'right' ? -1 : 1, x: centerX, y, radius, ring: radius * 0.79, focus: radius * 0.6, chip };
+  const rx = Math.round(clamp(Math.min(126 + (size - 32) * 0.8, reach - 96, height * 0.34), 100, 164));
+  const ry = Math.round(Math.min(rx * 1.42, Math.max(rx, height * 0.47)));
+  const inset = GAP * 2 + DOT * 2 + chip * (1 + GROW) / 2;
+  const pitch = chip + 13;
+  const lift = pitch * 2 + chip;
+  const y = height >= lift * 2 ? clamp(centerY, lift, height - lift) : height / 2;
+  const ringX = rx - inset, ringY = ry - inset;
+  return { side, sign: side === 'right' ? -1 : 1, x: centerX, y, rx, ry, ringX, ringY, chip, pitch, dot: rx - GAP - DOT, arc: arcTable(ringX, ringY) };
 }
 
-// 入口数足够铺满半圆时首尾相接循环；较少时两端到头（越界部分带阻尼）。
-export function quickDialCyclic(count) { return count * STEP >= Math.PI * 1.05; }
+// 椭圆上「走过的弧长 → 参数角」对照表（四分之一圈）。入口按弧长等距排布，才不会越往两端越挤。
+const ARC_STEPS = 120;
+function arcTable(a, b) {
+  const table = [0], step = Math.PI / 2 / ARC_STEPS;
+  for (let i = 1; i <= ARC_STEPS; i++) {
+    const mid = (i - 0.5) * step;
+    table.push(table[i - 1] + Math.hypot(a * Math.sin(mid), b * Math.cos(mid)) * step);
+  }
+  return table;
+}
+// 沿入口所在的椭圆走 offset 像素（带符号）对应的参数角；超出四分之一圈时返回略大于直角的值（即不可见）。
+export function quickDialAngle(offset, geo) {
+  const table = geo.arc, distance = Math.abs(offset), sign = offset < 0 ? -1 : 1;
+  if (distance >= table[ARC_STEPS]) return sign * Math.PI * 0.6;
+  let low = 0, high = ARC_STEPS;
+  while (high - low > 1) { const mid = (low + high) >> 1; if (table[mid] <= distance) low = mid; else high = mid; }
+  return sign * (low + (distance - table[low]) / (table[high] - table[low])) * (Math.PI / 2 / ARC_STEPS);
+}
 
-// 第 index 个入口在「当前停在 position」时相对指针的角度。
-export function quickDialAngle(index, position, count) {
+// 半边可见弧上能排下多少个入口间距。
+function quickDialSpan(geo) { const at = EDGE / (Math.PI / 2) * ARC_STEPS, low = Math.floor(at); return (geo.arc[low] + (geo.arc[low + 1] - geo.arc[low]) * (at - low)) / geo.pitch; }
+
+// 入口数足够铺满可见弧时首尾相接循环；较少时两端到头（越界部分带阻尼）。
+export function quickDialCyclic(count, geo) { return count >= Math.ceil(quickDialSpan(geo) * 2) + 2; }
+
+// 第 index 个入口在「当前停在 position」时相对指针隔了几格（带符号，循环时取近的一边）。
+export function quickDialDelta(index, position, count, cyclic) {
   let delta = index - position;
-  if (quickDialCyclic(count)) {
+  if (cyclic) {
     delta = ((delta % count) + count) % count;
     if (delta > count / 2) delta -= count;
   }
-  return delta * STEP;
+  return delta;
 }
 
-export function quickDialSelected(position, count) {
+// 相隔 delta 格的入口沿弧线离指针多远（像素）。指针处的入口会放大，两侧的入口整体让开放大出来的那一半，
+// 所以相邻入口边到边的间隙在拨动过程中始终不变。
+export function quickDialOffset(delta, geo) {
+  return delta * geo.pitch + clamp(delta, -1, 1) * geo.chip * GROW / 2;
+}
+
+export function quickDialSelected(position, count, cyclic) {
   const index = Math.round(position);
-  return quickDialCyclic(count) ? ((index % count) + count) % count : clamp(index, 0, count - 1);
+  return cyclic ? ((index % count) + count) % count : clamp(index, 0, count - 1);
 }
 
-function arcMarkup({ sign, radius }, uid) {
-  const box = radius + 30, sweep = sign < 0 ? 0 : 1, half = 21, edge = Math.sqrt(radius * radius - half * half), tip = radius - 15;
-  const drop = `M ${sign * edge} ${-half} C ${sign * (edge - 1)} ${-half * 0.42} ${sign * tip} ${-half * 0.36} ${sign * tip} 0 C ${sign * tip} ${half * 0.36} ${sign * (edge - 1)} ${half * 0.42} ${sign * edge} ${half} A ${radius} ${radius} 0 0 ${sign < 0 ? 1 : 0} ${sign * edge} ${-half} Z`;
-  const arc = `M 0 ${-radius} A ${radius} ${radius} 0 0 ${sweep} 0 ${radius}`;
-  return `<svg class="qm-dial-arc" viewBox="${-box} ${-box} ${box * 2} ${box * 2}" width="${box * 2}" height="${box * 2}" style="left:${-box}px;top:${-box}px" aria-hidden="true">
-    <defs><linearGradient id="${uid}" gradientUnits="userSpaceOnUse" x1="0" y1="${-radius}" x2="0" y2="${radius}">
-      <stop offset="0" style="stop-color:var(--qd-c1);stop-opacity:0"/><stop offset=".2" style="stop-color:var(--qd-c1)"/><stop offset=".5" style="stop-color:var(--qd-mid)"/><stop offset=".8" style="stop-color:var(--qd-c2)"/><stop offset="1" style="stop-color:var(--qd-c2);stop-opacity:0"/>
+function arcMarkup({ sign, rx, ry, dot }, uid) {
+  const boxX = rx + 30, boxY = ry + 30, arc = `M 0 ${-ry} A ${rx} ${ry} 0 0 ${sign < 0 ? 0 : 1} 0 ${ry}`;
+  return `<svg class="qm-dial-arc" viewBox="${-boxX} ${-boxY} ${boxX * 2} ${boxY * 2}" width="${boxX * 2}" height="${boxY * 2}" style="left:${-boxX}px;top:${-boxY}px" aria-hidden="true">
+    <defs><linearGradient id="${uid}" gradientUnits="userSpaceOnUse" x1="0" y1="${-ry}" x2="0" y2="${ry}">
+      <stop offset="0" style="stop-color:var(--qd-c1);stop-opacity:0"/><stop offset=".22" style="stop-color:var(--qd-c1)"/><stop offset=".5" style="stop-color:var(--qd-mid)"/><stop offset=".78" style="stop-color:var(--qd-c2)"/><stop offset="1" style="stop-color:var(--qd-c2);stop-opacity:0"/>
     </linearGradient></defs>
-    <path class="qm-dial-glow" d="${arc}" stroke="url(#${uid})"/><path class="qm-dial-line" d="${arc}" stroke="url(#${uid})"/>
-    <path class="qm-dial-drop" d="${drop}" style="transform-origin:${sign * radius}px 0"/><circle class="qm-dial-dot" cx="${sign * (radius - 27)}" cy="0" r="3.4"/>
+    <path class="qm-dial-glow qm-dial-glow-wide" d="${arc}" stroke="url(#${uid})"/><path class="qm-dial-glow" d="${arc}" stroke="url(#${uid})"/><path class="qm-dial-line" d="${arc}" stroke="url(#${uid})"/>
+    <circle class="qm-dial-dot" cx="${sign * dot}" cy="0" r="${DOT}" style="transform-origin:${sign * dot}px 0"/>
   </svg>`;
 }
 
@@ -80,20 +115,19 @@ export function createQuickDial({
 
   function layout() {
     if (!view) return;
-    const { geo, list, nodes, cyclic } = view, count = list.length, selected = quickDialSelected(view.position, count);
+    const { geo, list, nodes, cyclic } = view, count = list.length, selected = quickDialSelected(view.position, count, cyclic);
     for (let index = 0; index < count; index++) {
-      const node = nodes[index], angle = quickDialAngle(index, view.position, count), away = Math.abs(angle);
+      const node = nodes[index], delta = quickDialDelta(index, view.position, count, cyclic);
+      const angle = quickDialAngle(quickDialOffset(delta, geo), geo), away = Math.abs(angle);
       if (away >= EDGE) { if (!node.hidden) node.hidden = true; continue; }
       if (node.hidden) node.hidden = false;
-      const near = Math.max(0, 1 - away / STEP), radius = geo.ring - (geo.ring - geo.focus) * near;
-      node.style.translate = `${(geo.sign * radius * Math.cos(angle)).toFixed(1)}px ${(radius * Math.sin(angle)).toFixed(1)}px`;
+      node.style.translate = `${(geo.sign * geo.ringX * Math.cos(angle)).toFixed(1)}px ${(geo.ringY * Math.sin(angle)).toFixed(1)}px`;
       node.style.opacity = Math.min(1, (EDGE - away) / FADE).toFixed(3);
-      node.style.setProperty('--qd-grow', (1 + 0.5 * near).toFixed(3));
-      // 入口底色沿弧线由上到下在两枚主题色之间过渡；按 5% 一档取色，拨动时不必每帧改写。
+      node.style.setProperty('--qd-grow', (1 + GROW * Math.max(0, 1 - Math.abs(delta))).toFixed(3));
+      // 入口外框沿弧线由上到下在两枚主题色之间过渡；按 5% 一档取色，拨动时不必每帧改写。
       const shade = Math.round((Math.sin(angle) + 1) * 10);
       if (node._qdShade !== shade) { node._qdShade = shade; const tone = quickDialTone(view.tones[0], view.tones[1], shade / 20); if (tone) node.style.setProperty('--qd-tone', tone); }
     }
-    view.root.classList.toggle('is-open-ended', !cyclic);
     if (selected === view.selected) return;
     const first = view.selected < 0;
     nodes[view.selected]?.classList.remove('is-current');
@@ -101,8 +135,8 @@ export function createQuickDial({
     view.selected = selected;
     view.label.textContent = list[selected].label;
     if (first || reduced()) return;
-    // 入口拨到指针处：液滴轻弹一下。
-    view.drop?.animate?.([{ transform: 'scale(1, 1)' }, { transform: 'scale(1.5, .86)' }, { transform: 'scale(.9, 1.05)' }, { transform: 'scale(1, 1)' }], { duration: 300, easing: 'cubic-bezier(.3, 1.5, .5, 1)' });
+    // 入口拨到指针处：圆点轻弹一下。
+    view.dot?.animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.9)' }, { transform: 'scale(.85)' }, { transform: 'scale(1)' }], { duration: 280, easing: 'cubic-bezier(.3, 1.5, .5, 1)' });
   }
 
   function limit(position) {
@@ -130,12 +164,21 @@ export function createQuickDial({
     return view.cyclic ? Math.round(view.position) : clamp(Math.round(view.position), 0, view.list.length - 1);
   }
 
+  // 打开入口：先让它回缩再弹回，随后收起轮盘、打开对应面板。
   function activate(index) {
-    if (!view) return;
-    const item = view.list[quickDialSelected(index, view.list.length)];
-    remember?.(item.id === HOME ? '' : item.id);
-    close();
-    run?.(item.id === HOME ? null : item.id);
+    if (!view || view.leaving) return;
+    const current = view, at = quickDialSelected(index, view.list.length, view.cyclic), item = view.list[at];
+    const finish = () => {
+      if (view !== current) return;
+      remember?.(item.id === HOME ? '' : item.id);
+      close();
+      run?.(item.id === HOME ? null : item.id);
+    };
+    const chip = current.nodes[at]?.firstElementChild;
+    if (reduced() || typeof chip?.animate !== 'function') return finish();
+    current.leaving = true;
+    const motion = chip.animate([{ transform: 'scale(1)' }, { transform: 'scale(.8)', offset: .42 }, { transform: 'scale(1.08)', offset: .8 }, { transform: 'scale(1)' }], { duration: 240, easing: 'ease-out' });
+    motion.onfinish = motion.oncancel = finish;
   }
 
   function close() {
@@ -148,16 +191,16 @@ export function createQuickDial({
     onClosed?.(current.origin);
   }
 
-  // 一次拨动：从 from 位置起，按手指的纵向位移转动。松手时停到最近一格；停在别的入口上就打开它。
+  // 一次拨动：从当前位置起，按手指的纵向位移转动。松手时停到最近一格；停在别的入口上就打开它。
   function beginSlide(startY) {
-    return { startY, from: view.position, origin: quickDialSelected(view.position, view.list.length), slid: false };
+    return { startY, from: view.position, origin: quickDialSelected(view.position, view.list.length, view.cyclic), slid: false };
   }
   function slideTo(slide, y, slop) {
-    if (!view) return;
+    if (!view || view.leaving) return;
     const dy = y - slide.startY;
     if (!slide.slid && Math.abs(dy) <= slop) return;
     if (!slide.slid) { slide.slid = true; cancelAnimationFrame(view.frame); view.root.classList.add('is-sliding'); }
-    view.position = limit(slide.from - dy / view.geo.ring / STEP);
+    view.position = limit(slide.from - dy / view.geo.pitch);
     layout();
   }
   function endSlide(slide, cancelled) {
@@ -165,7 +208,7 @@ export function createQuickDial({
     view.root.classList.remove('is-sliding');
     if (!slide.slid) return;
     const target = cancelled ? slide.from : nearest();
-    const picked = quickDialSelected(target, view.list.length);
+    const picked = quickDialSelected(target, view.list.length, view.cyclic);
     settle(target, () => { if (!cancelled && picked !== slide.origin) activate(target); });
   }
 
@@ -175,18 +218,19 @@ export function createQuickDial({
     const box = viewportBox(), rect = origin.getBoundingClientRect();
     const geo = quickDialGeometry({ centerX: rect.left + rect.width / 2 - box.left, centerY: rect.top + rect.height / 2 - box.top, width: box.width, height: box.height, size: Number(floatSize?.()) || 48 });
     const colors = palette?.() || {}, edges = colors.edges?.length ? colors.edges : ['#c99b51', '#77736d'];
+    const cyclic = quickDialCyclic(list.length, geo);
     const root = document.createElement('div');
     root.id = id;
-    root.className = `qm-dial qm-dial-${geo.side}${isDark?.() ? ' is-dark' : ''}`;
+    root.className = `qm-dial qm-dial-${geo.side}${isDark?.() ? ' is-dark' : ''}${cyclic ? '' : ' is-open-ended'}`;
     root.dataset.qianmuTransient = '';
     Object.assign(root.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
     root.style.setProperty('--qd-c1', edges[0]);
     root.style.setProperty('--qd-c2', edges[1] || colors.mainEdge || edges[0]);
     root.style.setProperty('--qd-accent', colors.mainEdge || edges[0]);
-    root.style.setProperty('--qd-r', `${geo.radius}px`);
+    root.style.setProperty('--qd-r', `${geo.rx}px`);
     root.style.setProperty('--qd-chip', `${geo.chip}px`);
-    const dots = [-1, 1].map(end => `<span class="qm-dial-more" style="translate:${(geo.sign * geo.ring * Math.cos(EDGE)).toFixed(1)}px ${(end * geo.ring * Math.sin(EDGE)).toFixed(1)}px" aria-hidden="true">···</span>`).join('');
-    root.innerHTML = `<div class="qm-dial-backdrop"></div><div class="qm-dial-stage" style="left:${geo.x}px;top:${geo.y}px"><div class="qm-dial-scrim"></div>${arcMarkup(geo, `qm-dial-g${++serial}`)}${dots}<div class="qm-dial-items" role="menu" aria-label="千幕快捷圆盘"></div><div class="qm-dial-label" aria-live="polite"></div></div>`;
+    const dots = [-1, 1].map(end => `<span class="qm-dial-more" style="translate:${(geo.sign * geo.ringX * Math.cos(MORE)).toFixed(1)}px ${(end * geo.ringY * Math.sin(MORE)).toFixed(1)}px" aria-hidden="true">···</span>`).join('');
+    root.innerHTML = `<div class="qm-dial-backdrop"></div><div class="qm-dial-stage" style="left:${geo.x}px;top:${geo.y}px">${arcMarkup(geo, `qm-dial-g${++serial}`)}${dots}<div class="qm-dial-items" role="menu" aria-label="千幕快捷轮盘"></div><div class="qm-dial-label" aria-live="polite"></div></div>`;
     const holder = root.querySelector('.qm-dial-items');
     const nodes = list.map((item, index) => {
       const node = document.createElement('button');
@@ -202,7 +246,7 @@ export function createQuickDial({
       node.innerHTML = `<span class="qm-dial-chip">${item.home ? `<img src="${escapeHtml(logoUrl?.() || '')}" alt="" draggable="false">` : iconMarkup(item)}</span>`;
       holder.appendChild(node);
       if (!item.home) {
-        // 收纳图标的兜底、三个可拖出入口的拖出逻辑都由调用方绑定；它们写的提示语按圆盘的说法改回。
+        // 收纳图标的兜底、三个可拖出入口的拖出逻辑都由调用方绑定；它们写的提示语按轮盘的说法改回。
         bindItem?.(node, item, { itemSize: geo.chip, itemHeight: geo.chip });
         node.removeAttribute('title');
         node.setAttribute('aria-label', item.label);
@@ -212,8 +256,8 @@ export function createQuickDial({
     const remembered = recall?.(), start = Math.max(0, list.findIndex(item => item.id === remembered));
     document.body.appendChild(root);
     applyIcons?.(root);
-    view = { root, origin, geo, list, nodes, tones: [edges[0], edges[1] || colors.mainEdge || edges[0]], cyclic: quickDialCyclic(list.length), position: start, selected: -1, frame: 0, stop: () => {},
-      label: root.querySelector('.qm-dial-label'), drop: root.querySelector('.qm-dial-drop') };
+    view = { root, origin, geo, list, nodes, cyclic, tones: [edges[0], edges[1] || colors.mainEdge || edges[0]], position: start, selected: -1, frame: 0, leaving: false, stop: () => {},
+      label: root.querySelector('.qm-dial-label'), dot: root.querySelector('.qm-dial-dot') };
     root._qmCleanup = close;
     origin.classList?.add('sd-wheel-active');
     layout();
@@ -221,13 +265,13 @@ export function createQuickDial({
     return root;
   }
 
-  // 圆盘留在屏上时的手势：在盘面任意处上下拖动＝拨动；点入口＝打开；点空白＝收起。
-  // 便笺／场外特助／聊天工具包停在指针处时，横向把它拖出圆盘可成为独立悬浮入口（沿用蜂巢的拖出逻辑）。
+  // 轮盘留在屏上时的手势：在盘面任意处上下拖动＝拨动；点入口＝打开；点空白＝收起。
+  // 便笺／场外特助／聊天工具包停在指针处时，横向把它拖出轮盘可成为独立悬浮入口（沿用蜂巢的拖出逻辑）。
   function bindStage(root) {
     const backdrop = root.querySelector('.qm-dial-backdrop');
     let gesture = null;
     const down = event => {
-      if (gesture || event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      if (gesture || !view || event.isPrimary === false || (event.button != null && event.button !== 0)) return;
       const node = event.target.closest?.('.qm-dial-item'), index = node ? Number(node.dataset.index) : -1;
       const detach = node && DETACHABLE.has(node.dataset.command) && index === view.selected;
       gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, index, detach, mode: '', slide: beginSlide(event.clientY) };
@@ -258,18 +302,18 @@ export function createQuickDial({
       else close();
     };
     const cancel = event => up(event, true);
+    const step = by => { const next = nearest() + by; settle(view.cyclic ? next : clamp(next, 0, view.list.length - 1)); };
     const wheel = event => {
-      if (!view) return;
+      if (!view || view.leaving) return;
       event.preventDefault();
-      view.position = nearest();
-      const next = view.position + Math.sign(event.deltaY);
-      settle(view.cyclic ? next : clamp(next, 0, view.list.length - 1));
+      step(Math.sign(event.deltaY));
     };
     const key = event => {
       if (!view) return;
       if (event.key === 'Escape') return close();
-      const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-      if (step) { event.preventDefault(); const next = nearest() + step; return settle(view.cyclic ? next : clamp(next, 0, view.list.length - 1)); }
+      if (view.leaving) return;
+      const by = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+      if (by) { event.preventDefault(); return step(by); }
       if (event.key === 'Enter') { event.preventDefault(); activate(nearest()); }
     };
     // 键盘或读屏触发的点击没有指针事件，单独处理。
@@ -302,31 +346,18 @@ export function createQuickDial({
     };
   }
 
-  // logo 上的一次按压。按下圆盘立刻展开；随手上下滑＝拨动，松手打开指针处的入口；
-  // 不滑就松手＝圆盘留在屏上；按住不动满 liftAfter 毫秒＝收起圆盘、改为拖动 logo（由 onLift 接手）。
-  function press(origin, event, { onLift, liftAfter = 480 } = {}) {
-    if (view) { close(); return { move() {}, release: () => 'closed' }; }
-    open(origin);
-    const slide = beginSlide(event.clientY), slop = event.pointerType === 'touch' ? 7 : 4, startX = event.clientX;
-    let lifted = false;
-    const timer = setTimeout(() => { if (!view || slide.slid) return; lifted = true; close(); onLift?.(); }, liftAfter);
+  // 长按 logo 展开轮盘时调用：轮盘展开，并把这次按压接成一次拨动。
+  // 不抬手上下滑＝拨动，松手打开指针处的入口；不滑就松手＝轮盘留在屏上。
+  function grab(origin, event) {
+    if (!view || view.origin !== origin) open(origin);
+    const slide = beginSlide(event.clientY), slop = event.pointerType === 'touch' ? 7 : 4;
     return {
-      move(next) {
-        if (lifted) return;
-        if (!slide.slid && Math.hypot(next.clientX - startX, next.clientY - slide.startY) > slop) clearTimeout(timer);
-        slideTo(slide, next.clientY, slop);
-      },
-      release(cancelled = false) {
-        clearTimeout(timer);
-        if (lifted) return 'lifted';
-        if (cancelled) { close(); return 'cancelled'; }
-        endSlide(slide, false);
-        return slide.slid ? 'slid' : 'opened';
-      },
+      move(next) { slideTo(slide, next.clientY, slop); },
+      release(cancelled = false) { if (cancelled) close(); else endSlide(slide, false); },
     };
   }
 
-  return Object.freeze({ open, close, press, get isOpen() { return !!view; } });
+  return Object.freeze({ open, close, grab, get isOpen() { return !!view; } });
 }
 
 // 设置页里的入口排序：按住入口拖到新位置。拖动只改顺序，不改选中状态；松手后回报新的顺序。

@@ -34,7 +34,7 @@ assert.doesNotMatch(apiCard, /sd-api-stream-action/);
 assert.doesNotMatch(apiCard, /仅支持自定义|sd-source-pick|<h3>API<\/h3>/);
 assert.match(apiCard, /sd-provider-select/);
 assert.doesNotMatch(apiCard, /兼容选项|不会提高模型能力|启用 JSON Schema 约束/, '连接兼容处理不应由用户承担或显示工程说明');
-assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>快捷盘<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="wheel"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '快捷盘卡只保留圆盘与蜂巢格两个标签开关');
+assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>快捷盘<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="wheel"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '快捷盘卡只保留轮盘与蜂巢格两个标签开关');
 assert.doesNotMatch(source, /data-widget-toggle="(?:notes|dock)"/, '便笺仅由蜂巢入口选择控制，收纳不再另设开关');
 assert.match(css, /\.sd-api-generation-row\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '三个生成参数必须三列同排');
 assert.match(css, /\.sd-api-action-row\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*nowrap/, '三项操作固定一排');

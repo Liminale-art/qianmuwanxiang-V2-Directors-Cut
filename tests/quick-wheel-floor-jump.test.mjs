@@ -20,7 +20,7 @@ const quickCommands = await readFile(new URL('../qianmu-hive-commands.js', impor
 assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
-assert.match(source, /<h3>快捷盘<\/h3>[\s\S]*>圆盘<\/span>[\s\S]*>蜂巢格<\/span>/, '快捷盘只保留圆盘与蜂巢格两种形态');
+assert.match(source, /<h3>快捷盘<\/h3>[\s\S]*>轮盘<\/span>[\s\S]*>蜂巢格<\/span>/, '快捷盘只保留轮盘与蜂巢格两种形态');
 assert.doesNotMatch(source, /data-widget-toggle="(?:notes|dock)"/);
 for (const id of ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(quickCommands, new RegExp(`id: '${id}'`));

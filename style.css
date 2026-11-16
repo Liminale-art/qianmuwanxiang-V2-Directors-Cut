@@ -1305,6 +1305,7 @@ html[data-qm-toast-theme="editorial"] body #toast-container > div { --qm-toast-b
 html[data-qm-toast-theme="editorial"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-bg: #1f1c18; --qm-toast-ink: #ece5d8; --qm-toast-tint: #c2a477; }
 html[data-qm-toast-theme="glass"] body #toast-container > div { --qm-toast-bg: #eef1f7; --qm-toast-ink: #232a3a; --qm-toast-tint: #5c79d3; }
 html[data-qm-toast-theme="glass"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-bg: #161a22; --qm-toast-ink: #e3e7f0; --qm-toast-tint: #8ea5ea; }
+html[data-qm-toast-size="xs"] body #toast-container > div { --qm-toast-fs: 10.5px; }
 html[data-qm-toast-size="sm"] body #toast-container > div { --qm-toast-fs: 11.5px; }
 html[data-qm-toast-size="lg"] body #toast-container > div { --qm-toast-fs: 14.5px; }
 html[data-qm-toast] body #toast-container > .toast-success { --qm-toast-status: var(--qm-toast-ok); }
@@ -1325,6 +1326,7 @@ html[data-qm-toast="default"][data-qm-toast-mode="dark"] body #toast-container >
 html[data-qm-toast="default"] body #toast-container > .toast-success { --mn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8.2 12.3l2.6 2.6 5-5.4'/%3E%3C/svg%3E"); }
 html[data-qm-toast="default"] body #toast-container > .toast-warning { --mn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4.2l8.6 14.9H3.4z'/%3E%3Cpath d='M12 10v4'/%3E%3Cpath d='M12 16.9v.1'/%3E%3C/svg%3E"); }
 html[data-qm-toast="default"] body #toast-container > .toast-error { --mn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5'/%3E%3Cpath d='M12 16.3v.1'/%3E%3C/svg%3E"); }
+html[data-qm-toast="default"] body #toast-container > div { background-origin: border-box !important; background-repeat: no-repeat !important; }
 html[data-qm-toast="default"] body #toast-container > div::before { left: 14px !important; top: 50% !important; width: 30px !important; height: 30px !important; border-radius: 9px !important; background: var(--mn-tile) !important; box-shadow: 0 0 0 1px var(--mn-tile-line), 0 2px 6px rgba(24, 32, 48, .08) !important; transform: translateY(-50%) !important; }
 html[data-qm-toast="default"] body #toast-container > div::after { content: "" !important; position: absolute !important; inset: auto !important; left: 21px !important; top: 50% !important; width: 16px !important; height: 16px !important; display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: var(--qm-toast-accent) !important; -webkit-mask: var(--mn-icon) center / contain no-repeat !important; mask: var(--mn-icon) center / contain no-repeat !important; opacity: 1 !important; transform: translateY(-50%) !important; pointer-events: none !important; }
 html[data-qm-toast="default"] body #toast-container > div .toast-title { margin-bottom: 1px !important; font-size: calc(var(--qm-toast-fs) + 1px) !important; font-weight: 650 !important; }
@@ -1332,10 +1334,10 @@ html[data-qm-toast="default"] body #toast-container > div .toast-title + .toast-
 html[data-qm-toast="default"][data-qm-toast-mode="dark"] body #toast-container > .toast-error .toast-title { color: var(--qm-toast-accent) !important; }
 html[data-qm-toast="default"][data-qm-toast-theme="editorial"] body #toast-container > div { border-radius: 0 !important; }
 /* 辉光（C-13 重做）：侧边辉光卡。炭灰半透圆角卡，外圈一道极细亮边；最左侧贴边嵌一条较宽的纯色竖条（随圆角裁切）；
-   卡内由色条向右发出柔和的线性渐变光；卡片左后方叠一层大范围高模糊的同色低透明光晕，像屏幕背光。
+   卡内由色条向右发出柔和的线性渐变光；卡片左后方叠一层高模糊的同色低透明光晕，只在左侧透出（阴影纵向收窄，不沿整条底边铺开），像色条自己发出的光。
    只按提示状态取色，不读主题；日夜间仅基底透明度略有差别。只用 CSS，不改动提示库。 */
-html[data-qm-toast="glow"] body #toast-container > div { --gw-edge: color-mix(in srgb, var(--qm-toast-status) 92%, white); --gw-base: rgba(30, 32, 37, .58); overflow: hidden !important; padding: 11px 16px 11px 30px !important; border: 1px solid rgba(255, 255, 255, .15) !important; border-radius: 14px !important; color: #f2f4f7 !important; background: linear-gradient(90deg, color-mix(in srgb, var(--gw-edge) 34%, transparent) 0, color-mix(in srgb, var(--gw-edge) 10%, transparent) 34%, transparent 62%), var(--gw-base) !important; backdrop-filter: blur(16px) saturate(1.3) !important; -webkit-backdrop-filter: blur(16px) saturate(1.3) !important; box-shadow: -18px 0 58px -2px color-mix(in srgb, var(--gw-edge) 54%, transparent), -5px 0 18px -2px color-mix(in srgb, var(--gw-edge) 40%, transparent), 0 10px 28px rgba(0, 0, 0, .34) !important; }
-html[data-qm-toast="glow"][data-qm-toast-mode="dark"] body #toast-container > div { --gw-base: rgba(22, 24, 28, .52); }
+html[data-qm-toast="glow"] body #toast-container > div { --gw-edge: color-mix(in srgb, var(--qm-toast-status) 92%, white); --gw-base: rgba(30, 32, 37, .44); overflow: hidden !important; padding: 11px 16px 11px 30px !important; border: 1px solid rgba(255, 255, 255, .15) !important; border-left-color: var(--gw-edge) !important; border-radius: 14px !important; color: #f2f4f7 !important; background: linear-gradient(90deg, color-mix(in srgb, var(--gw-edge) 36%, transparent) 0, color-mix(in srgb, var(--gw-edge) 17%, transparent) 9%, color-mix(in srgb, var(--gw-edge) 6%, transparent) 22%, transparent 38%), var(--gw-base) !important; background-origin: border-box !important; background-repeat: no-repeat !important; backdrop-filter: blur(16px) saturate(1.3) !important; -webkit-backdrop-filter: blur(16px) saturate(1.3) !important; box-shadow: -40px 0 42px -17px color-mix(in srgb, var(--gw-edge) 62%, transparent), -22px 0 20px -15px color-mix(in srgb, var(--gw-edge) 46%, transparent), 0 10px 28px rgba(0, 0, 0, .26) !important; }
+html[data-qm-toast="glow"][data-qm-toast-mode="dark"] body #toast-container > div { --gw-base: rgba(22, 24, 28, .38); }
 html[data-qm-toast="glow"] body #toast-container > div::before { inset: -1px auto -1px -1px !important; left: -1px !important; top: -1px !important; width: 12px !important; height: auto !important; border-radius: 0 !important; background: var(--gw-edge) !important; box-shadow: 0 0 14px 1px color-mix(in srgb, var(--gw-edge) 70%, transparent) !important; transform: none !important; }
 html[data-qm-toast="glow"] body #toast-container > div .toast-title { margin-bottom: 1px !important; font-size: calc(var(--qm-toast-fs) + 1px) !important; font-weight: 650 !important; }
 html[data-qm-toast="glow"] body #toast-container > div .toast-title + .toast-message { color: rgba(242, 244, 247, .74) !important; }
@@ -3344,6 +3346,9 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 #story-director-modal .sd-model-config { position: relative; }
 #story-director-modal .sd-model-config > .sd-stream-toggle { position: absolute; top: 10px; right: 12px; display: inline-flex; align-items: center; gap: 7px; min-height: 26px; margin: 0; padding: 0 2px; border: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--sd-muted); font: inherit; font-size: 12px; cursor: pointer; }
 #story-director-modal .sd-model-config > .sd-stream-toggle[aria-pressed="true"] { color: var(--sd-text); }
+/* 玻璃／纸间等外观会给 .sd-primary 整块上色；流式开关只借用该类名表示「已开」，自身始终是「文字＋小滑轨」，不要底色。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-model-config > .sd-stream-toggle.sd-primary:not(.sd-option-chip) { padding: 0 2px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; color: var(--qm-ink, var(--sd-text)) !important; filter: none !important; }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: var(--qm-accent, color-mix(in srgb, var(--sd-primary) 78%, transparent)); }
 #story-director-modal .sd-stream-toggle-track { position: relative; flex: none; width: 34px; height: 19px; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 30%, transparent); transition: background-color .18s ease; }
 #story-director-modal .sd-stream-toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--sd-card, #fff); box-shadow: 0 1px 2px rgba(0, 0, 0, .22); transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
 #story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: color-mix(in srgb, var(--sd-primary) 78%, transparent); }
@@ -9780,9 +9785,10 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 /* 便笺完全脱离千幕主窗口：只让不透明工作板拦截输入，周围区域可继续操作 ST 或其他插件。 */
 #qianmu-notes-panel-layer {
   position: fixed; inset: 0; z-index: 2147483004; pointer-events: none; color: var(--sd-text);
-  font-family: var(--sd-font, var(--mainFontFamily, system-ui, sans-serif)); font-size: 12px; box-sizing: border-box;
+  font-family: var(--qm-interface-font, var(--sd-font, var(--mainFontFamily, system-ui, sans-serif))); font-size: 12px; box-sizing: border-box;
 }
 #qianmu-notes-panel-layer * { box-sizing: border-box; }
+#qianmu-notes-panel-layer :is(textarea, input, select, button) { font-family: inherit; }
 #qianmu-notes-panel-layer .sd-notes-stage { position: fixed; inset: 0; display: block; padding: 18px; pointer-events: none; }
 #qianmu-notes-panel-layer .sd-notes-panel {
   --sd-notes-surface: #f2ede5; --sd-notes-card: #e7e0d6;
@@ -13049,44 +13055,46 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
   max-width: 100%;
 }
 
-/* ── 快捷圆盘（C-13③）：贴着千幕 logo 展开的半圆拨盘。配色取当前千幕主题的两枚描边色，沿弧线由上到下渐变、两端淡出。 ── */
-#story-director-quick-wheel.qm-dial { --qd-mid: color-mix(in srgb, var(--qd-c1) 50%, var(--qd-c2)); --qd-ink: #33353c; --qd-chip-bg: rgba(255, 255, 255, .82); --qd-veil: rgba(250, 249, 246, .84); pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-#story-director-quick-wheel.qm-dial.is-dark { --qd-ink: #f1f2f6; --qd-chip-bg: rgba(44, 46, 58, .78); --qd-veil: rgba(16, 17, 24, .88); }
+/* ── 快捷轮盘（C-13③）：贴着千幕 logo 展开的半椭圆拨盘。配色取当前千幕主题的两枚描边色，沿弧线由上到下渐变、两端淡出。
+   盘面没有底色，只有弧线自身的柔光；指针是弧线内侧的一枚圆点。 ── */
+#story-director-quick-wheel.qm-dial { --qd-mid: color-mix(in srgb, var(--qd-c1) 50%, var(--qd-c2)); --qd-ink: #33353c; --qd-chip-bg: rgba(255, 255, 255, .9); --qd-veil: rgba(250, 249, 246, .92); pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+#story-director-quick-wheel.qm-dial.is-dark { --qd-ink: #f1f2f6; --qd-chip-bg: rgba(38, 40, 50, .88); --qd-veil: rgba(16, 17, 24, .9); }
 #story-director-quick-wheel.qm-dial .qm-dial-backdrop { position: absolute; inset: 0; pointer-events: auto; background: transparent; touch-action: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-stage { position: absolute; width: 0; height: 0; pointer-events: none; animation: qm-dial-in .16s cubic-bezier(.2, .9, .3, 1) both; }
-@keyframes qm-dial-in { from { opacity: 0; transform: scale(.84); } }
-/* 盘面底：一片向外淡出的圆形薄幕，保证图标在任何聊天背景上都看得清；弧线外侧再带一圈同色柔光。只铺凸出的那半边。 */
-#story-director-quick-wheel.qm-dial .qm-dial-scrim { position: absolute; left: calc(var(--qd-r) * -1 - 52px); top: calc(var(--qd-r) * -1 - 52px); width: calc(var(--qd-r) * 2 + 104px); height: calc(var(--qd-r) * 2 + 104px); border-radius: 50%; background: radial-gradient(circle closest-side, transparent 66%, color-mix(in srgb, var(--qd-mid) 26%, transparent) 76%, transparent 96%), radial-gradient(circle closest-side, var(--qd-veil) 0, var(--qd-veil) 66%, transparent 86%); }
-#story-director-quick-wheel.qm-dial.qm-dial-right .qm-dial-scrim { -webkit-mask-image: linear-gradient(to left, transparent calc(50% - 46px), #000 calc(50% - 6px)); mask-image: linear-gradient(to left, transparent calc(50% - 46px), #000 calc(50% - 6px)); }
-#story-director-quick-wheel.qm-dial.qm-dial-left .qm-dial-scrim { -webkit-mask-image: linear-gradient(to right, transparent calc(50% - 46px), #000 calc(50% - 6px)); mask-image: linear-gradient(to right, transparent calc(50% - 46px), #000 calc(50% - 6px)); }
+@keyframes qm-dial-in { from { opacity: 0; transform: scale(.86); } }
 #story-director-quick-wheel.qm-dial .qm-dial-arc { position: absolute; overflow: visible; pointer-events: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-line { fill: none; stroke-width: 1.6; stroke-linecap: round; }
-#story-director-quick-wheel.qm-dial .qm-dial-glow { fill: none; stroke-width: 8; opacity: .42; filter: blur(6px); }
-#story-director-quick-wheel.qm-dial .qm-dial-drop { fill: color-mix(in srgb, var(--qd-mid) 58%, transparent); stroke: var(--qd-mid); stroke-width: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--qd-mid) 60%, transparent)); }
+#story-director-quick-wheel.qm-dial .qm-dial-glow { fill: none; stroke-width: 7; opacity: .5; filter: blur(5px); }
+#story-director-quick-wheel.qm-dial .qm-dial-glow-wide { stroke-width: 22; opacity: .26; filter: blur(16px); }
 #story-director-quick-wheel.qm-dial .qm-dial-dot { fill: var(--qd-accent); filter: drop-shadow(0 0 4px var(--qd-mid)); }
 #story-director-quick-wheel.qm-dial.is-dark .qm-dial-dot { fill: color-mix(in srgb, var(--qd-accent) 45%, #ffffff); }
 #story-director-quick-wheel.qm-dial .qm-dial-items { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 #story-director-quick-wheel.qm-dial .qm-dial-item { position: absolute; left: calc(var(--qd-chip) / -2); top: calc(var(--qd-chip) / -2); width: var(--qd-chip) !important; height: var(--qd-chip) !important; min-width: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 50% !important; background: none !important; box-shadow: none !important; color: var(--qd-ink) !important; pointer-events: auto; touch-action: none; cursor: pointer; will-change: translate, opacity; }
 #story-director-quick-wheel.qm-dial .qm-dial-item[hidden] { display: none !important; }
 #story-director-quick-wheel.qm-dial .qm-dial-item.is-current { z-index: 2; }
-#story-director-quick-wheel.qm-dial .qm-dial-chip { display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; scale: var(--qd-grow, 1); background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 30%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 50%, transparent), 0 2px 8px rgba(0, 0, 0, .16); font-size: calc(var(--qd-chip) * .46); line-height: 1; }
-#story-director-quick-wheel.qm-dial .qm-dial-item.is-current .qm-dial-chip { background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 58%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 1.5px var(--qd-tone, var(--qd-mid)), 0 0 18px color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 55%, transparent), 0 3px 10px rgba(0, 0, 0, .2); }
+/* 入口一律圆框，外框取主题色、线宽与蜂巢格外框一致（1.2px，放大时不随之变粗）；千幕 logo 完整放进圆框内，不裁切。 */
+#story-director-quick-wheel.qm-dial .qm-dial-chip { box-sizing: border-box; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; scale: var(--qd-grow, 1); background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 22%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 calc(1.2px / var(--qd-grow, 1)) color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 78%, transparent), 0 2px 8px rgba(0, 0, 0, .18); font-size: calc(var(--qd-chip) * .46); line-height: 1; }
+#story-director-quick-wheel.qm-dial .qm-dial-item.is-current .qm-dial-chip { background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 46%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 calc(1.2px / var(--qd-grow, 1)) var(--qd-tone, var(--qd-mid)), 0 0 14px color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 55%, transparent), 0 3px 10px rgba(0, 0, 0, .2); }
 #story-director-quick-wheel.qm-dial .qm-dial-chip > i, #story-director-quick-wheel.qm-dial .qm-dial-chip > svg, #story-director-quick-wheel.qm-dial .qm-dial-chip > .qm-glyph-icon { width: 1em; height: 1em; font-size: inherit; color: inherit; pointer-events: none; }
-#story-director-quick-wheel.qm-dial .qm-dial-chip > img, #story-director-quick-wheel.qm-dial .qm-dial-chip .sd-wheel-external-logo { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; pointer-events: none; }
+#story-director-quick-wheel.qm-dial .qm-dial-chip > img { width: 74%; height: 74%; object-fit: contain; pointer-events: none; }
+#story-director-quick-wheel.qm-dial .qm-dial-chip .sd-wheel-external-logo { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; pointer-events: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-item.is-undock-ready { opacity: .58 !important; }
 #story-director-quick-wheel.qm-dial .qm-dial-more { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--qd-mid) 16%, var(--qd-chip-bg)); color: var(--qd-ink); font-size: 10px; letter-spacing: 1px; opacity: .3; }
 #story-director-quick-wheel.qm-dial.is-open-ended .qm-dial-more { display: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-label { position: absolute; top: 0; transform: translateY(-50%); padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--qd-mid) 72%, transparent); border-radius: 6px; background: var(--qd-veil); color: color-mix(in srgb, var(--qd-mid) 34%, var(--qd-ink)); font-size: 13px; line-height: 1.35; white-space: nowrap; box-shadow: 0 0 14px color-mix(in srgb, var(--qd-mid) 28%, transparent); }
 #story-director-quick-wheel.qm-dial.qm-dial-right .qm-dial-label { right: calc(var(--qd-r) + 12px); }
 #story-director-quick-wheel.qm-dial.qm-dial-left .qm-dial-label { left: calc(var(--qd-r) + 12px); }
-#story-director-float.sd-float-lifted { transition: none; filter: brightness(1.14) drop-shadow(0 10px 18px rgba(0, 0, 0, .3)); scale: 1.1; }
 @media (prefers-reduced-motion: reduce) { #story-director-quick-wheel.qm-dial .qm-dial-stage { animation: none; } }
+/* 轮盘形态下，拖出的便笺／场外特助／聊天工具包入口也用圆框，外框取主题色。 */
+html[data-qm-launcher="dial"] .sd-detached-notes-entry { width: var(--sd-notes-entry-height, 48px); clip-path: circle(50%); border-radius: 50% !important; box-shadow: inset 0 0 0 1.2px var(--sd-wheel-edge) !important; }
+html[data-qm-launcher="dial"] .sd-detached-notes-entry > .sd-hive-hex-outline { display: none; }
 
-/* 快捷盘设置卡（C-13③）：「大小」与滑轨同排；入口列表不再折叠；圆盘形态下入口可拖动排序。 */
-#story-director-modal .sd-widget-card .sd-float-size-control { grid-template-columns: auto minmax(0, 1fr); gap: 12px; margin: 6px 0 4px; padding: 6px 12px; }
-#story-director-modal .sd-widget-card .sd-float-size-control label { gap: 8px; white-space: nowrap; }
+/* 快捷盘设置卡（C-13③）：大小只留滑杆与数值（数值在右），在卡内垂直居中；入口列表不再折叠；轮盘形态下入口可拖动排序。 */
+#story-director-modal .sd-widget-card .sd-float-size-control { display: flex; align-items: center; gap: 12px; margin: 6px 0 4px; padding: 0 12px; min-height: 40px; }
+#story-director-modal .sd-widget-card .sd-float-size-control > .sd-float-size { flex: 1 1 auto; min-width: 0; margin: 0; }
+#story-director-modal .sd-widget-card .sd-float-size-control > .sd-float-size-value { flex: none; min-width: 44px; text-align: right; font-size: var(--qm-type-body); font-weight: 600; line-height: 1; }
 #story-director-modal .sd-wheel-settings > .sd-wheel-custom-list { margin-top: 0; padding-top: 0; }
 #story-director-modal .sd-wheel-custom-list.is-sortable > .sd-wheel-command-toggle { cursor: grab; touch-action: pan-y; }
 #story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle.is-reordering { cursor: grabbing; opacity: .72; outline: 1px dashed var(--sd-accent); outline-offset: -2px; touch-action: none; }
-#story-director-modal .sd-wheel-order-hint { margin: 8px 0 0; color: var(--sd-muted); font-size: 12px; line-height: 1.4; }
+#story-director-modal .sd-wheel-order-hint { margin: 8px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.4; }
 #story-director-modal .sd-wheel-settings > .sd-wheel-custom-list > .sd-wheel-command-toggle { max-height: 72px; }

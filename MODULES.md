@@ -283,7 +283,7 @@
 | `qianmu-prose-floor-tools.js` | 是 |  |
 | `qianmu-prose-hive.js` | 是 |  |
 | `qianmu-prose-rich-compat.js` | 是 | A decorated message may contain ordinary prose before and after a rich card. |
-| `qianmu-quick-dial.js` | 是 | 快捷圆盘：贴着千幕 logo 展开的半圆拨盘。 |
+| `qianmu-quick-dial.js` | 是 | 快捷轮盘：贴着千幕 logo 展开的半椭圆拨盘。 |
 
 ## 角色、世界与设定（2）
 

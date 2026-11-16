@@ -143,12 +143,12 @@ test('production widget card renders precisely two text-only toggles', () => {
         const row = mounted.html.match(/<div class="sd-widget-toggle-row"[^>]*>([\s\S]*?)<\/div>/)[1];
         assert.match(mounted.html, /<section class="sd-card sd-widget-card">\s*<h3>快捷盘<\/h3>/);
         assert.deepEqual(mounted.widgets.map(button => button.dataset.widgetToggle), ['floating', 'wheel']);
-        assert.match(row, /<span>圆盘<\/span>/); assert.match(row, /<span>蜂巢格<\/span>/);
+        assert.match(row, /<span>轮盘<\/span>/); assert.match(row, /<span>蜂巢格<\/span>/);
         assert.doesNotMatch(row, /<i\b|<svg\b|data-qm-icon|悬浮球|蜂巢收纳|便笺/);
         assert.equal(mounted.widget('floating').classList.contains('active'), launcher === 'dial');
         assert.equal(mounted.widget('wheel').classList.contains('active'), launcher === 'hive', 'the two forms are mutually exclusive');
-        assert.match(mounted.html, /<label for="sd-float-size">大小 <b class="sd-float-size-value">/);
-        assert.doesNotMatch(mounted.html, /悬浮球大小|编辑蜂巢入口|sd-wheel-custom-details|<b>\d+ 项<\/b>/, 'no fold title and no selection count');
+        assert.match(mounted.html, /<input id="sd-float-size" class="sd-float-size"[^>]*aria-label="快捷盘大小">\s*<b class="sd-float-size-value">48 px<\/b>/, "slider first, value on the right, no text label");
+        assert.doesNotMatch(mounted.html, /悬浮球大小|>大小 |<label for="sd-float-size"|编辑蜂巢入口|sd-wheel-custom-details|<b>\d+ 项<\/b>/, 'no fold title and no selection count');
         assert.equal(mounted.commands.length > 0, launcher !== 'off', 'the entry list shows whenever the launcher is on');
         assert.equal(/sd-wheel-order-hint/.test(mounted.html), launcher === 'dial', 'only the dial can be reordered');
         assert.equal(/sd-float-size-control" hidden/.test(mounted.html), launcher === 'off');

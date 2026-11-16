@@ -44,6 +44,14 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   for(const control of [profile,range,url,model,key,persona])control.classList.add('text_pole');
   const referenceField=field('参考楼层（含USER，0为不发送）',range),referenceHint=node('small','当前无可用参考');referenceHint.dataset.paReferenceHint='';referenceHint.hidden=true;referenceField.append(referenceHint);
   grid.append(field('API 预设',profile),custom,referenceField);config.append(grid);
+  // 字号只影响对话正文与输入框，记在本机（不同设备屏幕不同）。
+  const fontSize=node('input'),fontLabel=node('span','字号'),fontField=node('label'),FONT_KEY='qianmu-prose-assistant-font-size';
+  fontSize.type='range';fontSize.min='11';fontSize.max='20';fontSize.step='1';fontSize.setAttribute('aria-label','特助字号');fontField.className='qm-pa-font-field';fontField.append(fontLabel,fontSize);
+  const applyFontSize=value=>{const size=Math.min(20,Math.max(11,Math.round(Number(value))||12));fontSize.value=String(size);fontLabel.textContent=`字号 ${size}px`;dialog.style?.setProperty?.('--qm-pa-body-size',`${size}px`);return size;};
+  let savedFontSize=12;try{savedFontSize=Number(document.defaultView?.localStorage?.getItem(FONT_KEY))||12;}catch{}
+  applyFontSize(savedFontSize);
+  fontSize.addEventListener('input',()=>{const size=applyFontSize(fontSize.value);try{document.defaultView?.localStorage?.setItem(FONT_KEY,String(size));}catch{}});
+  grid.append(fontField);
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
   if(selection?.mode==='custom'){profile.value='custom';url.value=selection.connection?.apiUrl||'';model.value=selection.connection?.model||'';key.value=selection.connection?.apiKey||'';}custom.hidden=profile.value!=='custom';
   const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),retryCatalogue=button('重试对话操作','retry-conversations','retry'),send=button('发送','send'),composer=node('div');

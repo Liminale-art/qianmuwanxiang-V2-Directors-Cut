@@ -29,11 +29,13 @@
 .qm-collection-panel button:hover { background: var(--sd-input-bg, #8882); }
 .qm-collection-panel button:disabled { opacity: .4; cursor: default; }
 .qm-collection-panel button:focus-visible { outline: 2px solid var(--sd-accent, #8aafcf); outline-offset: -2px; }
-.qm-collection-panel button svg { width: 20px; height: 20px; }
+.qm-collection-panel button svg { width: 17px; height: 17px; }
 .qm-collection-panel :is(input, select) { margin: 0; color: inherit; background: var(--sd-input-bg, #8881); font: inherit; border: 0; border-radius: 8px; box-shadow: none; outline: none; }
 .qm-collection-panel :is(input, select):focus { outline: none; box-shadow: none; }
 .qm-collection-panel .qm-collection-list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.qm-collection-panel .qm-collection-toolbar input { flex: 1; width: 0; padding: 10px; }
+.qm-collection-panel .qm-collection-toolbar input { flex: 1; width: 0; padding: 8px 10px; font-size: 13px; }
+.qm-collection-panel .qm-collection-toolbar input::placeholder { font-size: 12px; }
+.qm-collection-panel .qm-collection-toolbar :is(button, select) { min-width: 32px; min-height: 32px; padding: 6px; font-size: 13px; }
 .qm-collection-panel .qm-collection-resume { align-self: flex-start; gap: 8px; }
 .qm-collection-panel .qm-collection-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .qm-collection-panel .qm-collection-row { display: flex; align-items: center; gap: 8px; }
@@ -44,7 +46,7 @@
 .qm-collection-panel .qm-collection-tags { font-size: .85em; color: var(--sd-accent, #8aafcf); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qm-collection-panel .qm-collection-more { width: 100%; gap: 8px; }
 .qm-collection-panel .qm-collection-empty { margin: 20px 12px; }
-.qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; text-align: justify; }
+.qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))); font-size: var(--sd-prose-font-size, var(--qm-prose-size, 1em)); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; text-align: justify; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div) { margin: 0 0 .75em; padding: 0; font: inherit; line-height: inherit; white-space: pre-wrap; text-align: justify; text-indent: 2em; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div):last-child { margin-bottom: 0; }
 .qm-collection-panel .qm-collection-editor { display: block; border: 0; border-radius: 8px; background: var(--sd-input-bg, #8881); outline: none; box-shadow: none; }
@@ -54,5 +56,5 @@
 .qm-collection-panel .qm-collection-status { display: flex; flex: none; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 @media (max-width: 620px) {
     .qm-collection-panel { padding: 10px; gap: 8px; }
-    .qm-collection-panel :is(input, select) { font-size: 16px; }
+    .qm-collection-panel :is(input, select), .qm-collection-panel .qm-collection-toolbar :is(input, select) { font-size: 16px; }   /* 低于 16px 时 iOS 聚焦会放大页面；占位符不受此限 */
 }

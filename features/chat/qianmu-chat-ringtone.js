@@ -25,14 +25,15 @@ export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024,
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
   volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [],
-  toastSkin: false, toastStyle: 'default', toastFontSize: 'md', toastDuration: 4, toastStack: 3,
+  toastSkin: false, toastStyle: 'default', toastFontSize: 'sm', toastDuration: 4, toastStack: 3,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
 // 'default' follows the Qianmu theme and day/night; 辉光 is a narrow glow-edge chamfered block that only
 // follows day/night (edge tinted by status), with a left→right light sweep; 玻璃 is a soft iridescent liquid glass.
 // 'default' keeps its stored id; since C-13 it is the redesigned 极简 card.
 export const TOAST_STYLES = Object.freeze([['default', '极简'], ['glow', '辉光'], ['iris', '玻璃']]);
-export const TOAST_FONT_SIZES = Object.freeze([['sm', '小'], ['md', '中'], ['lg', '大']]);
+// 'sm' keeps its stored id and is now the default size; 'xs' is the smaller step below it.
+export const TOAST_FONT_SIZES = Object.freeze([['xs', '小'], ['sm', '默认'], ['md', '中'], ['lg', '大']]);
 // 停留时间 1–10 s and 堆叠数量 1–8 are both picked on a horizontal wheel.
 export const TOAST_DURATIONS = Object.freeze(Array.from({ length: 10 }, (_, i) => Object.freeze([i + 1, `${i + 1}s`])));
 // How many notifications stay visible at once (newest first); default 3 keeps bursts from flooding the screen.
