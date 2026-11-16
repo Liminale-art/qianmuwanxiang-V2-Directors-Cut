@@ -4,7 +4,8 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {collectProseAssistantLocalStorage as collect} from '../qianmu-prose-assistant-storage.js';
-import {renderStorageBackupSection,storageCleanupOptions,storageDiagnosticSnapshot,storageSettingsSnapshotWithoutDiagnostics,runStorageInventoryJobs,STORAGE_CATEGORY_LABELS} from '../qianmu-storage-backup-view.js';
+import {storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, STORAGE_CATEGORY_LABELS} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:alice',account='st-user:'+createHash('sha256').update('alice').digest('hex');
 const measured=()=>({namespace:account,status:'ready',scope:'current-account-local',estimated:true,bytes:1000,count:3,records:2,chats:1,markers:1,complete:1,failed:1,cancelled:1});
@@ -42,5 +43,5 @@ test('actual global inventory counts assistant once and never as recoverable or 
  assert.deepEqual(progress[0],[0,20]);assert.deepEqual(progress.at(-1),[20,20]);assert.equal(progress.length,21);
  assistant={namespace,status:'unavailable',bytes:null,count:null};assert.equal((await context.collectStorageInventory()).trackedBytes,100);
  assistant={...measured(),namespace:'st-user:bob'};await assert.rejects(context.collectStorageInventory(),/账户已变化/);
- assert.match(entry,/data\.assistantStorage/,'assistant state is included in inventory accounting');
+ assert.match(await readFile(new URL('../qianmu-storage-card.js',import.meta.url),'utf8'),/data\.assistantStorage/,'assistant state is included in inventory accounting');
 });

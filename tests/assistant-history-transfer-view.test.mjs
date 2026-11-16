@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {openAssistantHistoryManager as open} from '../qianmu-assistant-history-view.js';
 import {ASSISTANT_BACKUP_LIMIT} from '../qianmu-assistant-history-transfer.js';
-import {renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import {createProseAssistantFloorTools} from '../qianmu-prose-assistant-floor.js';
 import {comfySceneJournalFixture} from './helpers/comfy-scene-idb-fixture.mjs';
 import {assistantManagerFixture,account,namespace,sha} from './helpers/assistant-history-manager-fixture.mjs';

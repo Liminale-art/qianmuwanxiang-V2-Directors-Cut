@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {bindStoragePackageActions, renderStorageBackupSection, storageCleanupOptions, storageOverviewSegments, runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {bindStoragePackageActions, storageCleanupOptions, runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import {createTextCollectionOwner} from '../qianmu-text-collection-owner.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -17,7 +18,7 @@ test('central backup has one collection export/import row before any scan, witho
     assert.equal((html.match(/data-storage-export="collection"/g) || []).length, 1);
     assert.equal((html.match(/data-storage-pick="collection"/g) || []).length, 1);
     assert.match(html, /data-storage-import="collection" accept="application\/json,\.json" hidden/);
-    assert.doesNotMatch(html, /sd-storage-clean"|查看资料占用/);
+    assert.doesNotMatch(html, /sd-storage-clean"|各资料库占用/);
 });
 
 test('unknown or unread collection inventory never creates a deletion choice or a fake zero', () => {
@@ -56,12 +57,11 @@ test('empty confirmed collection cannot be selected for deletion, and scan disab
 
 test('collection estimates never change the browser quota bar or turn into claimed VPS disk space', () => {
     const base = {origin: {usage: 1234, quota: 10000, available: true}, categories: []};
-    const renderOverview = data => storageOverviewSegments(data, value => `${value} B`, String);
-    const original = renderOverview(base);
-    assert.deepEqual(renderOverview({...base, collectionStorage: ready({bytes: 999999999})}), original);
-    assert.equal(original.originText, '1234 B / 10000 B');
-    assert.match(original.storageBar, /本机浏览器站点已用/);
-    assert.doesNotMatch(original.storageBar, /VPS|服务器|999999999/);
+    const site = data => renderStorageBackupSection(null, value => `${value} B`, {data}).match(/<p class="sd-dm-site">[\s\S]*?<\/p>/)?.[0];
+    const original = site(base);
+    assert.equal(site({...base, collectionStorage: ready({bytes: 999999999})}), original);
+    assert.match(original, /本设备 ST 站点已用 \/ 配额<b>1234 B \/ 10000 B<\/b>/);
+    assert.doesNotMatch(original, /VPS|服务器|999999999/);
 });
 
 test('summary passes UTF-8 document bytes to the resource row without scanning unrelated data', async t => {
@@ -109,7 +109,7 @@ test('shipped entry names the owner actions at the central backup and cleanup se
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     // Only public integration hooks are checked here; behavior is exercised above
     // and by the owner transfer tests, not duplicated as source-shape assertions.
-    assert.match(entry, /exports:\{collection:proseFloorTools\.exportCollection/);
+    assert.match(entry, /exports=\{collection:proseFloorTools\.exportCollection/);
     assert.match(entry, /imports:\{collection:proseFloorTools\.importCollection/);
     assert.match(entry, /proseFloorTools\.clearCollection\(\{confirmed:true,expectedFingerprint:inventory\.collectionStorage\.fingerprint,check:\(\)=>cleanup\.check\(\)\}\)/);
 });

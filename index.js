@@ -26,7 +26,8 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.537';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.538';
+import { renderStorageCard, chooseStorageExports, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.538';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -56,7 +57,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.537';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.538';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -86,7 +87,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { renderStorageBackupSection, replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs, storageOverviewSegments, STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.440';
+import { replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.538';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -333,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.537';
+const VERSION = '1.59.538';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -8266,38 +8267,31 @@ async function refreshStorageInventory(force = false) {
 }
 
 function renderStorageManagementCard() {
-  const { status, data, error } = storageInventoryState;
-  const backupSection = renderStorageBackupSection(data?.notesStorage, formatStorageBytes, { data, ready: status === 'ready', scanning:status==='loading' });
-  const serviceStatus = renderStorageServiceStatus();
-  const progress=storageInventoryState.progress||{done:0,total:0};
-  const scanText=progress.total?`已检查 ${progress.done}/${progress.total} 项 · ${Math.floor(progress.done/progress.total*100)}%`:'准备扫描…';
-  if (!data) {
-    const message = status === 'error' ? `扫描未完成：${htmlEscape(error || '当前环境不可用')}` : status==='loading'?scanText:'备份可直接使用；扫描后查看资料占用与清理项目。';
-    const scanButton=status==='loading'?'<button type="button" class="sd-btn sd-storage-refresh" disabled>扫描中</button>':'<button type="button" class="sd-btn sd-storage-refresh">扫描资料</button>';
-    return `<section class="sd-card sd-storage-card"><div class="sd-card-title-row"><h3>数据管理</h3>${scanButton}</div><p class="sd-muted" role="status">${message}</p>${status==='loading'?`<progress max="${Math.max(1,progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress>`:''}${backupSection}${serviceStatus}</section>`;
-  }
-  const {storageBar,legend,originText}=storageOverviewSegments(data,formatStorageBytes,htmlEscape);
-  const pressure = data.origin.pressure || blobStore.classifyStoragePressure(data.origin);
-  const pressurePercent = Math.min(999, Math.max(0, Math.round(Number(pressure.ratio || 0) * 100)));
-  const pressureNotice = pressure.level === 'critical'
-    ? `<p class="sd-storage-pressure is-critical" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。建议先备份再按模块整理；千幕不会自动清理。</p>`
-    : pressure.level === 'warning'
-      ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${pressurePercent}% · 剩余约 ${htmlEscape(formatStorageBytes(pressure.freeBytes))}。可按需整理，千幕不会自动清理。</p>`
-      : '';
-  const incomplete = [data.vibeStorage,data.restoreStorage,data.characterStorage,data.comfyStorage,data.mappingStorage,data.carrierStorage,data.focusLibrary,data.notesStorage,data.galleryCatalogStorage,data.assistantStorage,data.collectionStorage].some(row=>['unavailable','partial'].includes(row?.status))
-    || [data.imageAttempts,data.imageChannels,data.serviceReceipts,data.comfyReceipts].some(row=>row?.error);
-  return `<section class="sd-card sd-storage-card">
-    <div class="sd-card-title-row"><div><h3>数据管理</h3><p class="sd-summary-note">${htmlEscape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="重新扫描" aria-label="重新扫描" ${status==='loading'?'disabled':''}><i class="fa-solid fa-rotate${status === 'loading' ? ' fa-spin' : ''}"></i></button></div>
-    ${status==='loading'?`<p class="sd-muted" role="status">${scanText}</p><progress max="${Math.max(1,progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress>`:''}
-    <div class="sd-storage-totals sd-storage-overview"><span class="sd-storage-hero">千幕资料已盘点<b>${htmlEscape(formatStorageBytes(data.trackedBytes))}</b></span></div>
-    <div class="sd-storage-legend">${legend || '<p class="sd-muted">暂未发现千幕本地数据。</p>'}</div>
-    <details class="sd-storage-disclosure sd-storage-browser-space" data-storage-section="browser-space"><summary>浏览器暂存空间</summary><div class="sd-storage-disclosure-body"><div class="sd-storage-totals"><span>本设备 ST 站点已用 / 配额<b>${htmlEscape(originText)}</b></span></div><div class="sd-storage-ios-bar" role="img" aria-label="浏览器站点空间">${storageBar}</div></div></details>
-    ${pressureNotice}
-    ${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，请稍后刷新；未读取的部分不会按零占用处理。</p>' : ''}
-    <p class="sd-storage-scope">浏览器额度不含 ST 服务器上的聊天和资料；千幕盘点包含不同存储位置的已知项目，不代表 VPS 总容量，两者不可相加。</p>
-    ${backupSection}
-    ${serviceStatus}
-  </section>`;
+  return renderStorageCard({ state: storageInventoryState, format: formatStorageBytes, escape: htmlEscape, service: renderStorageServiceStatus(),
+    pressure: (data) => data.origin.pressure || blobStore.classifyStoragePressure(data.origin) });
+}
+
+// 台词指导方案：整库导出／导入（同名覆盖，其余追加）。
+const TTS_SCHEME_FILE = 'qianmu-tts-guidance-schemes';
+function exportTtsGuidanceSchemes(ids = null) {
+  const all = settings.tts?.guidanceSchemes || [], items = ids?.length ? all.filter((item) => ids.includes(item.id)) : all;
+  if (!items.length) return toast('还没有可导出的台词指导方案。', 'warning');
+  exportItemsFile(document, { type: TTS_SCHEME_FILE, items, name: `qianmu-guidance-schemes-${fileStamp()}.json` });
+  toast(`已导出 ${items.length} 个台词指导方案。`, 'success');
+}
+async function importTtsGuidanceSchemes(file) {
+  try {
+    const incoming = (await readItemsFile(file, TTS_SCHEME_FILE)).filter((item) => String(item.name || '').trim() && typeof item.content === 'string');
+    if (!incoming.length) throw new Error('文件里没有可导入的方案');
+    const t = settings.tts ||= {}, list = Array.isArray(t.guidanceSchemes) ? [...t.guidanceSchemes] : [];
+    for (const item of incoming) {
+      const name = String(item.name).trim().slice(0, 120), at = list.findIndex((row) => row.name === name);
+      const scheme = { id: at >= 0 ? list[at].id : uid('ttssch'), name, folder: String(item.folder || '').slice(0, 120), content: item.content, createdAt: String(item.createdAt || new Date().toISOString()) };
+      if (at >= 0) list[at] = scheme; else list.push(scheme);
+    }
+    t.guidanceSchemes = list; saveSettings(); renderModal();
+    toast(`已导入 ${incoming.length} 个台词指导方案（同名的已覆盖）。`, 'success');
+  } catch (error) { toast(`导入失败：${error?.message || error}`, 'error'); }
 }
 
 const STORAGE_ITEM_RISK = Object.freeze({
@@ -8759,47 +8753,53 @@ function bindStorageManagementEvents(root) {
       }
       catch(error){toast(`来源核对暂不可用：${error?.message||error}`,'warning');}
     });
-    backup.querySelector('.sd-storage-focus-library')?.addEventListener('click',()=>void focusClockLibrary().open({management:true}));
     backup.querySelector('.sd-export-config')?.addEventListener('click', () => void exportConfig());
     undoButton?.addEventListener('click', () => void undoConfigRestore());
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
     backup.querySelector('.sd-storage-storyboard-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
-    bindStoragePackageActions(backup,{exports:{collection:proseFloorTools.exportCollection,storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup},
-      imports:{collection:proseFloorTools.importCollection,storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e)}});
+    const exports={collection:proseFloorTools.exportCollection,storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup,
+      templates:()=>exportTemplates(),theater:()=>exportTheaterScripts(),schemes:()=>exportTtsGuidanceSchemes(),summary:coreadExportSummaryItems};
+    bindStoragePackageActions(backup,{exports,
+      imports:{collection:proseFloorTools.importCollection,storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),
+        templates:(_f,_i,e)=>importTemplates(e),theater:(_f,_i,e)=>importTheaterScripts(e),schemes:importTtsGuidanceSchemes}});
+    backup.querySelector('.sd-storage-summary-import')?.addEventListener('click',()=>coreadImportSummaryItems());
+    // 全部导出：勾选后逐项调用各自的导出（每项一个文件）。
+    backup.querySelector('.sd-storage-export-all')?.addEventListener('click',async()=>{
+      for(const key of await chooseStorageExports(document,{styleFrom:root,variables:NOTES_THEME_VARIABLES,themeClass:`sd-theme-${settings.theme}`})){
+        try{await (key==='config'?exportConfig():exports[key]?.());}catch(error){toast(`导出未完成：${error?.message||error}`,'warning');}
+        await new Promise(resolve=>setTimeout(resolve,400));
+      }
+    });
   }
   const bound = bindStorageManagementEvents.controls ||= new WeakSet();
   const onClick = (button, handler) => { if (button && !bound.has(button)) { bound.add(button); button.addEventListener('click', handler); } };
-  onClick(root.querySelector('.sd-storage-gallery-catalog'),async event=>{
-    const button=event.currentTarget,epoch=storyboardAdmissionEpoch;if(button.disabled)return;button.disabled=true;
-    try{
-      const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-catalog-management-view.js?v=1.59.202'),featureRuntime.load('imageAdmission')]);
-      if(!button.isConnected||epoch!==storyboardAdmissionEpoch)return;
-      await module.openGalleryCatalogManagement({anchor:button,getContext:ctx,resolveNamespace:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch,save:ttsDownloadBlob}).finished;
-      if(button.isConnected&&epoch===storyboardAdmissionEpoch)void refreshStorageInventory(true);
-    }catch(error){toast(`图库目录管理暂不可用：${error?.message||error}`,'warning');}finally{button.disabled=false;}
-  });
-  onClick(root.querySelector('button.sd-storage-characters'),()=>{
-    storageInventoryState={...storageInventoryState,sampledAt:0};
-    if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'characters'});
-  });
-  onClick(root.querySelector('button.sd-storage-restores'),()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.restoreStorage?.namespace));
-  onClick(root.querySelector('button.sd-storage-mappings'),()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.mappingStorage?.namespace,{mappings:true}));
-  onClick(root.querySelector('button.sd-storage-vibes'),()=>{
-    storageInventoryState={...storageInventoryState,sampledAt:0};
-    if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,{view:'assets',assetView:'vibes'});
-    const modal=document.getElementById(MODAL_ID);if(modal)void storyboardMountVibeLibrary(modal,{manager:'storage'});
-  });
+  const toStoryboard=(target)=>{ if(activeTab!=='imagegen')storyboardBeginSession();activeTab='imagegen';storyboardNavigate(root,target); };
+  const openers={
+    characters:()=>{storageInventoryState={...storageInventoryState,sampledAt:0};toStoryboard({view:'characters'});},
+    vibes:()=>{storageInventoryState={...storageInventoryState,sampledAt:0};toStoryboard({view:'assets',assetView:'vibes'});const modal=document.getElementById(MODAL_ID);if(modal)void storyboardMountVibeLibrary(modal,{manager:'storage'});},
+    fonts:()=>openFloorNavigator('layout'),recovery:()=>openFloorNavigator('recovery'),regex:()=>openFloorNavigator('regex'),
+    focus:()=>void focusClockLibrary().open({management:true}),
+    yimu:()=>toast('忆幕的记忆在忆幕面板的「记忆备份」页导出与导入。','info'),
+    restores:()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.restoreStorage?.namespace),
+    mappings:()=>void storyboardOpenRestoreStorage(root,storageInventoryState.data?.mappingStorage?.namespace,{mappings:true}),
+    receipts:()=>toStoryboard({view:'logs'}),
+    catalog:async(button)=>{
+      const epoch=storyboardAdmissionEpoch;if(button.disabled)return;button.disabled=true;
+      try{
+        const [module,identity]=await Promise.all([loadLocalChunk('./qianmu-gallery-catalog-management-view.js?v=1.59.202'),featureRuntime.load('imageAdmission')]);
+        if(!button.isConnected||epoch!==storyboardAdmissionEpoch)return;
+        await module.openGalleryCatalogManagement({anchor:button,getContext:ctx,resolveNamespace:()=>identity.resolveImageAccountNamespace(),isCurrent:()=>epoch===storyboardAdmissionEpoch,save:ttsDownloadBlob}).finished;
+        if(button.isConnected&&epoch===storyboardAdmissionEpoch)void refreshStorageInventory(true);
+      }catch(error){toast(`图库目录管理暂不可用：${error?.message||error}`,'warning');}finally{button.disabled=false;}
+    },
+  };
+  root.querySelectorAll('[data-storage-open]').forEach(button=>onClick(button,()=>openers[button.dataset.storageOpen]?.(button)));
   root.querySelectorAll('[data-storage-comfy-library]').forEach(button=>onClick(button,()=>{
-    const state=storyboardState(),view=button.dataset.storageComfyLibrary==='pools'?'comfy-pools':'workflows';
-    if(activeTab!=='imagegen')storyboardBeginSession();
+    const state=storyboardState();
     if(state.source!=='comfy')state.lastModelSource=state.source;
-    state.source='comfy';activeTab='imagegen';storyboardNavigate(root,{view});
+    state.source='comfy';toStoryboard({view:button.dataset.storageComfyLibrary==='pools'?'comfy-pools':'workflows'});
   }));
-  onClick(root.querySelector('.sd-storage-comfy-receipts'), () => {
-    if (activeTab !== 'imagegen') storyboardBeginSession();
-    activeTab = 'imagegen'; storyboardNavigate(root, { view: 'logs' });
-  });
   onClick(root.querySelector('.sd-storage-refresh'), () => void refreshStorageInventory(true));
   onClick(root.querySelector('.sd-storage-assistant-library'),async()=>{const task=storageCleanupSession.begin(root);if(!task)return;try{await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>task.check(),undefined,0,true);task.check();await refreshStorageInventory(true);}catch{toast('助手管理未完成，请核对账户后重新打开。','warning');}finally{task.release();}});
   onClick(root.querySelector('.sd-storage-clean'), async () => {
@@ -10167,7 +10167,21 @@ function bindTtsTabEvents(root) {
   });
 
   // 台词指导方案库：复用通用库（载入=写入提示词框，编辑=行内编辑，删除）
+  const endSchemeExport = () => { ttsSchemeExportMode = false; ttsSchemeExportSelection.clear(); renderModal(); };
   bindLibraryEvents(root, ttsSchemeLibraryCfg, {
+    onImport: (event) => { const file = event.target.files?.[0]; if (file) void importTtsGuidanceSchemes(file); },
+    onToggleExport: () => { ttsSchemeExportMode = !ttsSchemeExportMode; if (!ttsSchemeExportMode) ttsSchemeExportSelection.clear(); renderModal(); },
+    onCancelExport: endSchemeExport,
+    onConfirmExport: () => {
+      if (!ttsSchemeExportSelection.size) return toast('请先勾选要导出的方案。', 'warning');
+      exportTtsGuidanceSchemes([...ttsSchemeExportSelection]); endSchemeExport();
+    },
+    onBatchDelete: async () => {
+      if (!ttsSchemeExportSelection.size) return toast('请先勾选要删除的方案。', 'warning');
+      if (!await confirmDialog('批量删除', `确认删除选中的 ${ttsSchemeExportSelection.size} 个方案？`)) return;
+      t.guidanceSchemes = (t.guidanceSchemes || []).filter((x) => !ttsSchemeExportSelection.has(x.id));
+      saveSettings(); endSchemeExport();
+    },
     onLoad: (id) => {
       const sch = (t.guidanceSchemes || []).find((x) => x.id === id);
       if (!sch) return;

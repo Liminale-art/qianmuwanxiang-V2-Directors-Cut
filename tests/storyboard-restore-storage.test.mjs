@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
-import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments} from '../qianmu-storage-backup-view.js';
+import {runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {renderStorageCard} from '../qianmu-storage-card.js';
 import { collectRestoreStorage, clearRestoreStorage, validateRestoreStorageSummary } from '../qianmu-storyboard-restore-storage.js';
 import { runRestoreStorage, collectStoryboardRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { renderRestoreStorageReview } from '../qianmu-storyboard-restore-storage-view.js';
@@ -113,7 +114,7 @@ test('the record manager is unchecked by default, names destructive consequences
 });
 
 function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'not sampled'}){
-  return vm.createContext({renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,VERSION:'1.59.392',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
+  return vm.createContext({renderStorageCard,runStorageInventoryJobs,VERSION:'1.59.392',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:9999,quota:99999})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),collectionStorageSummary:async()=>({status:'ready',namespace,bytes:0,count:0,fingerprint:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -122,16 +123,16 @@ function globalFixture(restore,mappings={status:'unavailable',bytes:null,error:'
     storageJsonBytes:()=>0,storageSettingsSnapshotWithoutDiagnostics:()=>({}),getChatStore:()=>({}),storageDiagnosticSnapshot:()=>({}),htmlEscape:value=>String(value??'').replaceAll('<','&lt;'),formatStorageBytes:value=>`${value} B`,storageInventoryState:{status:'ready'},STORAGE_CATEGORY_LABELS:{logs:'记录'},STORAGE_CATEGORY_COLORS:{logs:'#777',other:'#555'},
   });
 }
-test('actual space card adds journal bytes exactly once without calling them recoverable or server disk capacity',async()=>{
+test('actual space card adds journal bytes exactly once without calling them recoverable or server disk capacity, with one advanced entry',async()=>{
   const {options}=fixture(),summary=await collectRestoreStorage(options),context=globalFixture(summary);
   vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.origin.quota,99999);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/分镜恢复记录 ·|<button[^>]+sd-storage-restores/);assert.match(html,/不代表 VPS 总容量/);assert.match(html,/选择清理项目/);
+  const html=context.renderStorageManagementCard();assert.equal((html.match(/data-storage-open="restores"/g)||[]).length,1);assert.doesNotMatch(html,/分镜恢复记录 ·/);assert.match(html,/不代表 VPS 总容量/);assert.match(html,/选择清理项目/);
 });
 
-test('actual space card keeps unavailable recovery accounting unknown without surfacing a second manager',async()=>{
+test('actual space card keeps unavailable recovery accounting unknown and still offers the manager entry',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'bad <record>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10);
   assert.equal(data.restoreStorage.bytes,null);const html=context.renderStorageManagementCard();assert.match(html,/部分数据暂不可读取/);assert.match(html,/未读取的部分不会按零占用处理/);assert.doesNotMatch(html,/bad <record>|分镜恢复记录 · 0 条|<button[^>]+sd-storage-restores/);
@@ -143,13 +144,13 @@ test('actual space card counts mapping bodies plus heads once, without advertisi
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
   assert.equal(data.trackedBytes,10+summary.bytes+1400);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='logs').bytes,summary.bytes+1400);
-  const html=context.renderStorageManagementCard();assert.doesNotMatch(html,/迁移映射凭据|凭据管理|<button[^>]+sd-storage-mappings/);assert.match(html,/选择清理项目/);
+  const html=context.renderStorageManagementCard();assert.equal((html.match(/data-storage-open="mappings"/g)||[]).length,1);assert.doesNotMatch(html,/迁移映射凭据 ·|可清理/);assert.match(html,/选择清理项目/);
 });
 
 test('actual mapping entry is available when accounting fails and never routes to clearing',async()=>{
   let click,args;
-  const root={isConnected:true,querySelector:selector=>selector==='button.sd-storage-mappings'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({renderStorageBackupSection,storageInventoryState:{data:{mappingStorage:{status:'unavailable',namespace}}},storyboardOpenRestoreStorage:(...input)=>args=input});
+  const root={isConnected:true,querySelector:()=>null,querySelectorAll:selector=>selector==='[data-storage-open]'?[{dataset:{storageOpen:'mappings'},addEventListener:(_event,fn)=>click=fn}]:[]};
+  const context=vm.createContext({storageInventoryState:{data:{mappingStorage:{status:'unavailable',namespace}}},storyboardOpenRestoreStorage:(...input)=>args=input});
   vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
   assert.equal(args[0],root);assert.equal(args[1],namespace);assert.equal(args[2].mappings,true);
 });
@@ -158,7 +159,7 @@ test('actual module cleanup opens per-record choices and does not clear a whole 
   let click,opened=0;
   const root={isConnected:true,querySelector:selector=>selector==='.sd-storage-clean'?{addEventListener:(_event,fn)=>click=fn}:null,querySelectorAll:()=>[]};
   const scope=JSON.stringify([1,namespace]);
-  const context=vm.createContext({renderStorageBackupSection,storyboardAdmissionEpoch:1,storageInventoryState:{status:'ready',scope,data:{restoreStorage:{namespace}}},storageInventoryScope:async()=>scope,openStorageCleanupDialog:async()=>['__storyboard_restores__'],
+  const context=vm.createContext({storyboardAdmissionEpoch:1,storageInventoryState:{status:'ready',scope,data:{restoreStorage:{namespace}}},storageInventoryScope:async()=>scope,openStorageCleanupDialog:async()=>['__storyboard_restores__'],
     storyboardOpenRestoreStorage:async(target,scope)=>{assert.equal(target,root);assert.equal(scope,namespace);opened++;},
     blobStore:{clearStorageItems:()=>assert.fail('no whole-module deletion')},saveSettings:()=>assert.fail('no unrelated save'),toast:()=>assert.fail('do not claim cancelled selection was cleared')});
   context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});

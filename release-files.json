@@ -701,7 +701,8 @@
     "assets/logos/qianmulogo.png",
     "server-plugin.js",
     "style.css",
-    "qianmu-quick-dial.js"
+    "qianmu-quick-dial.js",
+    "qianmu-storage-card.js"
   ],
   "directories": [
     "assets",

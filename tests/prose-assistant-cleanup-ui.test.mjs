@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {cleanupProseAssistantStorage as cleanup} from '../qianmu-prose-assistant-storage.js';
-import {storageCleanupOptions,renderStorageBackupSection} from '../qianmu-storage-backup-view.js';
+import {storageCleanupOptions} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 const namespace='st-user:alice',account='st-user:'+createHash('sha256').update('alice').digest('hex');
 function fixture(){

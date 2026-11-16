@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { collectAssistantNativeStorage as collect, collectAssistantHistoryPage } from '../qianmu-assistant-storage-client.js';
 import { collectProseAssistantStorage } from '../qianmu-prose-assistant-storage.js';
-import { renderStorageBackupSection, storageCleanupOptions } from '../qianmu-storage-backup-view.js';
+import {storageCleanupOptions} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 const namespace = 'st-user:alice', account = 'st-user:' + createHash('sha256').update('alice').digest('hex');
 const value = () => ({ ok: true, version: 1, expectedAccount: account, scope: 'st-account-assistant-files', observation: 'file-sizes-not-disk-allocation', contentVerified: false,
     heads: { count: 2, bytes: 400 }, current: { count: 2, bytes: 1200 }, retained: { count: 3, bytes: 2000 }, total: { count: 7, bytes: 3600 } });

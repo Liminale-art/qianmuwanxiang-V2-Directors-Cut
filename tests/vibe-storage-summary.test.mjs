@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {runStorageInventoryJobs,STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS} from '../qianmu-storage-backup-view.js';
+import {renderStorageCard} from '../qianmu-storage-card.js';
 import {collectVibeStorage,validateVibeStorageSummary} from '../features/vibe/qianmu-vibe-storage-summary.js';
 import {createVibeAssetOperations} from '../features/vibe/qianmu-vibe-assets-worker.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -32,7 +33,7 @@ test('account or page changes during success and error paths reject the old summ
   await assert.rejects(()=>collectVibeStorage({...options,call:async()=>{live=false;throw Error('read error');}}),{code:'vibe_storage_stale'});
 });
 function globalContext(value=summary()){
-  return vm.createContext({renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,VERSION:'1.59.392',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
+  return vm.createContext({renderStorageCard,runStorageInventoryJobs,VERSION:'1.59.392',STORAGE_CATEGORY_LABELS,STORAGE_CATEGORY_COLORS,optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:2000,quota:10000})}},
     notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),collectionStorageSummary:async()=>({status:'ready',namespace,bytes:0,count:0,fingerprint:null})},
     blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[{category:'images',bytes:10,count:1}]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
@@ -64,15 +65,15 @@ test('registered fee originals remain accounted without exposing internal receip
   for(const patch of [{version:3},{feeOriginals:{...feeOriginals,selectedVersions:2}},{feeOriginals:{...feeOriginals,receipt:'private body'}}])assert.throws(()=>validateVibeStorageSummary({...value,...patch},namespace));
 });
 
-test('actual global card reports unknown Vibe content without duplicate navigation or implying zero',async()=>{
+test('actual global card reports unknown Vibe content with one library entry and without implying zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/浏览器暂存空间/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
-  assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B|<button[^>]+sd-storage-vibes/);
+  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/本设备 ST 站点已用/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
+  assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B/);assert.equal((html.match(/data-storage-open="vibes"/g)||[]).length,1);
 });
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const settled=()=>new Promise(resolve=>setImmediate(resolve));
-function refreshContext(){let scope='A',count=0;const requests=[],context=vm.createContext({renderStorageBackupSection,storageInventoryResolveSerial:0,storageInventoryState:{status:'idle',data:null},
+function refreshContext(){let scope='A',count=0;const requests=[],context=vm.createContext({storageInventoryResolveSerial:0,storageInventoryState:{status:'idle',data:null},
   storageInventoryScope:async()=>scope,collectStorageInventory:()=>{count++;const request=deferred();requests.push(request);return request.promise;},paintStorageManagementCard:()=>{},
 });vm.runInContext(section('refreshStorageInventory'),context);return {context,requests,setScope:value=>scope=value,count:()=>count};}
 test('actual refresh caches only within the same account scope and discards older completion after a new account refresh',async()=>{
@@ -89,8 +90,8 @@ test('actual refresh never publishes results after an unrefreshed account switch
 });
 test('actual Vibe storage shortcut preserves provider, prompts and selection and routes directly into the existing manager',()=>{
   const state={source:'comfy',view:'create',selectedVibeIds:['keep'],profiles:{novel:{model:'same'},comfy:{workflow:'same'}},positive:'keep'},before=JSON.stringify(state);let click;
-  const root={querySelector:selector=>selector==='button.sd-storage-vibes'?{addEventListener:(_name,fn)=>click=fn}:null,querySelectorAll:()=>[]},modal={id:'panel'},routes=[],mounts=[];
-  const context=vm.createContext({renderStorageBackupSection,activeTab:'plug',storageInventoryState:{data:{},sampledAt:123},storyboardState:()=>state,storyboardBeginSession:()=>{},MODAL_ID:'panel',document:{getElementById:()=>modal},
+  const root={querySelector:()=>null,querySelectorAll:selector=>selector==='[data-storage-open]'?[{dataset:{storageOpen:'vibes'},addEventListener:(_name,fn)=>click=fn}]:[]},modal={id:'panel'},routes=[],mounts=[];
+  const context=vm.createContext({activeTab:'plug',storageInventoryState:{data:{},sampledAt:123},storyboardState:()=>state,storyboardBeginSession:()=>{},MODAL_ID:'panel',document:{getElementById:()=>modal},
     storyboardMountVibeLibrary:(node,options)=>mounts.push([node,{...options}])});
   vm.runInContext([section('storyboardApplyRoute'),section('bindStorageManagementEvents')].join('\n'),context);
   context.storyboardNavigate=(_root,patch)=>{routes.push({...patch});context.storyboardApplyRoute(patch);};context.bindStorageManagementEvents(root);click();

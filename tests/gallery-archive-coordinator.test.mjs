@@ -22,7 +22,7 @@ test('retired gallery archive route is absent and actual storage backup remains 
     storyboardExportPackage:async options=>{calls.push(['export',options]);},storyboardImportAnyPackage:importAny,
     bindStoragePackageActions:(node,options)=>{assert.equal(node,backup);actions=options;bindings++;},
     proseFloorTools:{exportCollection:noop,importCollection:noop},coreadExportData:noop,coreadImportDataFile:noop,
-    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop});
+    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop,coreadExportSummaryItems:noop,importTtsGuidanceSchemes:noop});
   const bind=()=>vm.runInContext('(()=>{'+source.slice(start,end)+'})()',context);
   bind();bind();assert.equal(bindings,1);assert.deepEqual(calls,[]);assert.equal(actions.imports.storyboard,importAny);
   recover();await flush();await actions.exports.storyboard();await actions.imports.storyboard('file');
@@ -30,11 +30,11 @@ test('retired gallery archive route is absent and actual storage backup remains 
   assert.equal(calls[1][0],'export');assert.equal(calls[1][1].bundle,true);assert.deepEqual(calls[2],['import','file']);
 });
 test('actual storage catalog loads only on click, binds current identity and never refreshes a replaced or detached page',async()=>{
-  const source=section('bindStorageManagementEvents'),start=source.indexOf("  onClick(root.querySelector('.sd-storage-gallery-catalog')"),end=source.indexOf("  onClick(root.querySelector('button.sd-storage-characters')",start);
+  const source=section('bindStorageManagementEvents'),start=source.indexOf("  const toStoryboard="),end=source.indexOf("  onClick(root.querySelector('.sd-storage-refresh')",start);
   assert.ok(start>0&&end>start);
   for(const mode of ['current','stale-load','stale-close','detached-load','detached-close']){
-    const loaded=gate(),finished=gate(),button={isConnected:true,disabled:false},host={};let click,options,loads=0,refreshes=0;
-    const context=vm.createContext({root:{querySelector:()=>button},onClick:(_button,fn)=>{assert.equal(_button,button);click=fn;},storyboardAdmissionEpoch:1,
+    const loaded=gate(),finished=gate(),button={isConnected:true,disabled:false,dataset:{storageOpen:'catalog'}},host={};let click,options,loads=0,refreshes=0;
+    const context=vm.createContext({root:{querySelector:()=>button,querySelectorAll:selector=>selector==='[data-storage-open]'?[button]:[]},onClick:(_button,fn)=>{assert.equal(_button,button);click=fn;},storyboardAdmissionEpoch:1,
       loadLocalChunk:async path=>{assert.match(path,/gallery-catalog-management-view/);loads++;return loaded.promise;},
       featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:fixture'})},ctx:()=>host,ttsDownloadBlob:()=>{},
       refreshStorageInventory:force=>{assert.equal(force,true);refreshes++;},toast:()=>assert.fail('no failure expected')});

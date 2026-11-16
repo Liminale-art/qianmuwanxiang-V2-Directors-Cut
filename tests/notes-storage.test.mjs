@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { createNotesSyncRuntime } from '../qianmu-notes-sync-runtime.js';
 import { emptyNotesLocalState, summarizeNotesLocalState, validateNotesLocalState } from '../qianmu-notes-sync-store.js';
-import { renderStorageBackupSection, runStorageInventoryJobs } from '../qianmu-storage-backup-view.js';
+import {runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
 const namespace='st-user:inventory';
 function memory(){const states=new Map();let writes=0;return {states,get writes(){return writes;},

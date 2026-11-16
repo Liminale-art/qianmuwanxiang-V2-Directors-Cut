@@ -17,18 +17,6 @@ export async function runStorageInventoryJobs(jobs,onProgress,isCurrent){
   return values;
 }
 
-export function storageOverviewSegments(data,format,escape){
-  const used=Math.max(0,Number(data.origin.usage)||0),free=data.origin.quota>0?Math.max(0,data.origin.quota-used):0;
-  const scale=Math.max(1,data.origin.quota,used);
-  const parts=[...(used?[{key:'origin-used',label:'本机浏览器站点已用',bytes:used,color:'var(--sd-accent)'}]:[]),...(free?[{key:'free',label:'可用空间',bytes:free,color:'rgba(127, 127, 127, .18)'}]:[])];
-  return {
-    storageBar:parts.map(item=>`<i class="sd-storage-segment sd-storage-${item.key}" style="--sd-storage-weight:${item.bytes/scale};--sd-storage-color:${item.color}" title="${item.label} ${escape(format(item.bytes))}"></i>`).join(''),
-    legend:(data.categories||[]).filter(item=>Number(item.bytes)>0).map(item=>`<span><i style="--sd-storage-color:${STORAGE_CATEGORY_COLORS[item.category]||STORAGE_CATEGORY_COLORS.other}"></i><em>${escape(STORAGE_CATEGORY_LABELS[item.category]||item.category)}</em><b>${escape(format(item.bytes))}</b></span>`).join(''),
-    originText:data.origin.available?`${format(data.origin.usage)} / ${format(data.origin.quota)}`:'浏览器未提供配额信息',
-  };
-}
-
-// Pure accounting snapshots extracted from the entry without changing contents.
 export function storageDiagnosticSnapshot(settings){
   const storyboard=settings?.imagegen||{};
   return {apiLogs:Array.isArray(settings?.logHistory)?settings.logHistory:[],storyboardLogs:Array.isArray(storyboard.logs)?storyboard.logs:[],storyboardPipelineLogs:Array.isArray(storyboard.pipelineLogs)?storyboard.pipelineLogs:[]};
@@ -96,7 +84,7 @@ export function replaceStorageManagementCard(current, html, {icons, bind}) {
     const summary = next.querySelector('.sd-storage-notes-summary');
     if (summary) backup.querySelector('.sd-storage-notes-summary')?.replaceWith(summary);
     // Replace inventory-dependent rows, not live package inputs or their listeners.
-    for (const selector of ['.sd-storage-resource-list', '.sd-storage-manage-actions']) {
+    for (const selector of ['.sd-dm-cleanup']) {
       const fresh = next.querySelector(selector), previous = backup.querySelector(selector);
       if (fresh && previous) previous.replaceWith(fresh);
     }
@@ -120,42 +108,4 @@ export function bindStoragePackageActions(root, {exports, imports}) {
     const file=input.files?.[0];if(!file)return;
     try{if(Object.hasOwn(imports,input.dataset.storageImport))await imports[input.dataset.storageImport](file,input,event);}finally{input.value='';}
   }));
-}
-
-// Existing module packages only; this is not an all-device snapshot or sync protocol.
-export function renderStorageBackupSection(notesStorage, formatBytes = value => `${value} B`, {data, ready = false, scanning = false} = {}) {
-  return `<details class="sd-storage-disclosure sd-storage-backup-section" data-storage-section="backups">
-    <summary>备份与清理<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></summary>
-    <div class="sd-storage-disclosure-body">
-      <div class="sd-storage-backup-row"><span>配置</span><button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden></div>
-      <button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>
-      ${[['notes','便笺','application/json,.json'],['collection','正文收藏','application/json,.json'],['favorites','语音收藏','application/json,.json'],['audio','音频缓存','application/json,.json'],['storyboard','分镜资源','.qmb,application/json,.json'],['reader','伴读资料','application/json,.json']].map(([key,label,accept])=>storagePackageRow(key,label,accept)).join('')}
-      <div class="sd-storage-backup-row"><span>场外特助会话</span><button type="button" class="sd-btn sd-storage-assistant-library">备份 / 恢复</button></div>
-      <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" hidden></p>
-      <div class="sd-storage-resource-list">${data ? renderStorageResourceRows(data,formatBytes) : ''}</div>
-      <div class="sd-storage-actions sd-storage-manage-actions">${data||scanning ? `<button type="button" class="sd-btn sd-primary sd-storage-clean" ${ready && (data.manageableBytes > 0 || storageCleanupOptions(data).some(row=>row.bytes>0)) ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button>` : ''}</div>
-    </div>
-  </details>`;
-}
-
-function storagePackageRow(key,label,accept) {
-  return `<div class="sd-storage-backup-row${key === 'storyboard' ? ' sd-storage-backup-storyboard' : ''}"><span>${label}</span><button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button>${key === 'storyboard' ? '<button type="button" class="sd-icon-btn sd-storage-storyboard-recover" title="核对导入" aria-label="核对分镜导入"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></button>' : ''}<input type="file" data-storage-import="${key}" accept="${accept}" hidden></div>`;
-}
-
-function renderStorageResourceRows(data,formatBytes) {
-  const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-  const known=(record,value)=>record?.status==='ready'&&Number.isFinite(value)?escape(formatBytes(value)):'暂未读取';
-  const rows=[
-    ['角色资料',known(data.characterStorage,data.characterStorage?.documents?.bytes)],
-    ['Vibe 素材',known(data.vibeStorage,(data.vibeStorage?.assets?.bytes??NaN)+(data.vibeStorage?.previews?.bytes??NaN))],
-    ['工作流',known(data.comfyStorage?.workflows,data.comfyStorage?.workflows?.bytes)],
-    ['工作流方案',known(data.comfyStorage?.pools,data.comfyStorage?.pools?.bytes)],
-    ['场外特助',known(data.assistantStorage?.native,data.assistantStorage?.native?.total?.bytes)],
-    ['正文收藏',known(data.collectionStorage,data.collectionStorage?.bytes)],
-    ['图片配置',known(data.recipeStorage,data.recipeStorage?.bytes)],
-  ];
-  // Internal receipts and retained files remain protected by the cleanup
-  // controller. Routine inventory is not a second navigation menu.
-  const recipe=data.recipeStorage,full=recipe?.status==='ready'&&(recipe.bytes>=recipe.limitBytes||recipe.files>=recipe.limitFiles);
-  return `<details class="sd-storage-disclosure" data-storage-section="sizes"><summary>查看资料占用</summary><div class="sd-storage-disclosure-body">${rows.map(([label,value])=>`<div class="sd-storage-backup-row"><span>${label}</span><span>${value}</span></div>`).join('')}${full?'<p role="status">图片配置存储已满，请先备份再清理。</p>':''}</div></details>`;
 }

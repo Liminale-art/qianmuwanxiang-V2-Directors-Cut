@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 431 个，其中 `qianmu-*` 模块 414 个。
+根目录文件 432 个，其中 `qianmu-*` 模块 415 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 987 |
+| `tests/` | 988 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -451,7 +451,7 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（29）
+## 模型、配置与账户（30）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -481,6 +481,7 @@
 | `qianmu-st-menu-entry.js` | 是 |  |
 | `qianmu-st-model-proxy.js` | 是 | 千幕 · 经 ST 后端 custom 渠道调用外部 OpenAI 兼容接口（伴读总结／对话／小助手／识图、台词提取、千幕主 API 目录与测试）。 |
 | `qianmu-storage-backup-view.js` | 是 |  |
+| `qianmu-storage-card.js` | 是 | 数据管理卡（C-13①）：占用总览（按类别分色块）＋分组的备份／恢复入口＋清理。 |
 | `qianmu-storage-cleanup-session.js` | 是 | One local cleanup at a time. Invalidating a session stops future work, not |
 | `qianmu-storage-gallery-check.js` | 是 |  |
 | `qianmu-yimu-companion.js` | 是 | Optional, explicit companion sharing. This bridge never owns or migrates a reader archive. |

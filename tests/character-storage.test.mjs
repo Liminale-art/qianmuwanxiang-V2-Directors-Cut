@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments} from '../qianmu-storage-backup-view.js';
+import {runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {renderStorageCard} from '../qianmu-storage-card.js';
 import { summarizeCharacterStorage, validateCharacterStorageSummary, collectCharacterStorage } from '../features/character/qianmu-character-storage.js';
 import { runRestoreStorage } from '../qianmu-storyboard-restore-storage-runtime.js';
 import { storyboardFunctionSource as section } from './helpers/storyboard-form-fixture.mjs';
@@ -48,7 +49,7 @@ test('short-lived worker character operation returns only the validated summary 
   class Worker{addEventListener(type,fn){if(type==='message')this.receive=fn;}postMessage(value){sent=value;queueMicrotask(()=>this.receive({data:{id:value.id,result:summary}}));}terminate(){closed++;}}
   assert.deepEqual(await runRestoreStorage('characters',{namespace,guard:async()=>{},WorkerClass:Worker}),summary);assert.equal(closed,1);assert.deepEqual(Object.keys(sent).sort(),['action','id','namespace']);
 });
-function globalFixture(summary){return vm.createContext({renderStorageBackupSection,runStorageInventoryJobs,storageOverviewSegments,VERSION:'1.59.392',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
+function globalFixture(summary){return vm.createContext({renderStorageCard,runStorageInventoryJobs,VERSION:'1.59.392',optionalServiceState:{status:'idle',services:[]},focusClockLibrary:()=>({summary:async()=>({status:"ready",bytes:0,count:0})}),storyboardAdmissionEpoch:1,navigator:{storage:{estimate:async()=>({usage:99999,quota:999999})}},blobStore:{estimateBlobStoreUsage:async()=>({totalBytes:10,categories:[]}),auditOrphanedReaderBlobs:async()=>({}),classifyStoragePressure:()=>({})},
   notesSyncControls(){},getQianmuNotesStorage:async()=>({status:'ready',bytes:0,count:0,pinned:0}),
     settings:{},proseFloorTools:{assistantStorageSummary:async()=>({status:'unavailable',bytes:null,count:null}),collectionStorageSummary:async()=>({status:'ready',namespace,bytes:0,count:0,fingerprint:null})},
   featureRuntime:{load:async key=>key==='characterStorage'?{collectCharacterStorage:async()=>summary}:key==='comfyStorage'?{collectComfyStorage:async()=>({bytes:0,errors:[]})}:key==='vibeStorageSummary'?{collectVibeStorage:async()=>({status:'unavailable',bytes:null})}:key==='storyboardRestoreStorage'?{collectStoryboardRestoreStorage:async()=>({status:'unavailable',bytes:null})}:{resolveImageAccountNamespace:async()=>namespace,manageImageAdmissionStorage:async()=>({bytes:0})}},
@@ -60,10 +61,10 @@ test('focus originals join the space meter exactly once and are not recoverable 
   assert.equal(data.trackedBytes,1244);assert.equal(data.manageableBytes,1244);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='audio').bytes,1234);assert.equal(data.origin.quota,999999);
 });
-test('actual global card includes role metadata once without exposing a duplicate management shortcut',async()=>{
+test('actual global card includes role metadata once and a single library entry',async()=>{
   const {rows}=fixture(),summary=summarizeCharacterStorage(namespace,rows),context=globalFixture(summary);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.categories.find(row=>row.category==='characters').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.match(html,new RegExp(`<span>角色资料</span><span>${summary.documents.bytes} B</span>`));assert.doesNotMatch(html,/<button[^>]+sd-storage-characters|绑定 1 项|不含服务器参考图/);
+  const html=context.renderStorageManagementCard();assert.match(html,new RegExp(`<span>角色资料</span><span>${summary.documents.bytes} B</span>`));assert.equal((html.match(/data-storage-open="characters"/g)||[]).length,1);assert.doesNotMatch(html,/绑定 1 项|不含服务器参考图/);
 });
 test('unavailable role summary stays unknown rather than zero and does not print internal errors',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'broken <index>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
@@ -71,7 +72,7 @@ test('unavailable role summary stays unknown rather than zero and does not print
 });
 test('actual role management shortcut changes only the view and never rewrites engine, prompts or bindings',()=>{
   let click;const routes=[],state={source:'comfy',prompt:'unchanged',bindings:['bound']},before=clone(state);
-  const root={querySelector:selector=>selector==='button.sd-storage-characters'?{addEventListener:(_name,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-  const context=vm.createContext({renderStorageBackupSection,activeTab:'plug',storageInventoryState:{sampledAt:1},storyboardBeginSession:()=>{},storyboardNavigate:(_root,route)=>routes.push(route)});vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
+  const root={querySelector:()=>null,querySelectorAll:selector=>selector==='[data-storage-open]'?[{dataset:{storageOpen:'characters'},addEventListener:(_name,fn)=>click=fn}]:[]};
+  const context=vm.createContext({activeTab:'plug',storageInventoryState:{sampledAt:1},storyboardBeginSession:()=>{},storyboardNavigate:(_root,route)=>routes.push(route)});vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
   assert.deepEqual(JSON.parse(JSON.stringify(routes)),[{view:'characters'}]);assert.equal(context.activeTab,'imagegen');assert.equal(context.storageInventoryState.sampledAt,0);assert.deepEqual(state,before);
 });

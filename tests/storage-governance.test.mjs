@@ -5,6 +5,7 @@ import {NOTES_BACKUP_LIMITS,FAVORITES_BACKUP_LIMITS} from '../qianmu-library-bac
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+const card = await readFile(new URL('../qianmu-storage-card.js', import.meta.url), 'utf8');
 const storeSource = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
 const notesSource = await readFile(new URL('../qianmu-notes.js', import.meta.url), 'utf8');
 
@@ -69,13 +70,14 @@ assert.match(plugTab, /renderStorageManagementCard\(\)/, 'storage management mus
 assert.doesNotMatch(plugTab, /renderRuntimeHealthCard|运行与性能/, 'runtime diagnostics must not compete with data management');
 assert.doesNotMatch(plugTab, /sd-export-config|<h3>配置备份/, 'configuration backup must live inside storage management, not a competing card');
 assert.doesNotMatch(tasksTab, /renderStorageManagementCard|storageCard/, 'the task page must remain focused on task data');
-assert.match(source, /class="sd-storage-legend"[\s\S]*class="sd-storage-ios-bar"/, 'Qianmu categories must be separate from the browser quota bar');
-assert.match(styles, /\.sd-storage-ios-bar[\s\S]*\.sd-storage-segment[\s\S]*--sd-storage-color/, 'the browser quota bar retains distinct used and free segments');
-assert.match(source, /千幕资料已盘点[\s\S]*浏览器暂存空间[\s\S]*本设备 ST 站点已用 \/ 配额/, 'browser quota is a separate collapsed section, not the Qianmu total');
+assert.match(card, /class="sd-dm-bar"[\s\S]*class="sd-dm-legend"[\s\S]*\$\{site\}/, 'Qianmu categories are drawn as their own colour blocks, apart from the browser quota line');
+assert.match(styles, /\.sd-dm-bar > i \{[^}]*--sd-dm-color[\s\S]*\.sd-dm-legend-item::before \{[^}]*--sd-dm-color/, 'each category keeps one colour across its block and its legend mark');
+assert.match(card, /千幕资料已盘点[\s\S]*本设备 ST 站点已用 \/ 配额/, 'browser quota is a separate line, not the Qianmu total');
 assert.match(source,/const manageableBytes[\s\S]*manageableBytes,/,'cleanup eligibility still uses the independently calculated manageable total');
-assert.match(source, /浏览器额度不含 ST 服务器上的聊天和资料[\s\S]*两者不可相加/, 'origin use must never be mislabeled as Qianmu or VPS storage');
-assert.match(source, /不代表 VPS 总容量/, 'browser quota must not be confused with server disk capacity');
-assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)[\s\S]*pressureNotice[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
+assert.match(card, /浏览器额度不含 ST 服务器上的聊天和资料[\s\S]*两者不可相加/, 'origin use must never be mislabeled as Qianmu or VPS storage');
+assert.match(card, /不代表 VPS 总容量/, 'browser quota must not be confused with server disk capacity');
+assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)/);
+assert.match(card, /sd-storage-pressure is-critical[\s\S]*千幕不会自动清理[\s\S]*sd-storage-pressure is-warning[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
 assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-critical/, 'warning and critical storage pressure need distinct restrained styles');
 assert.doesNotMatch(source.slice(source.indexOf("if (activeTab === 'plug')")),/^\s*void refreshStorageInventory\(false\);/m,'opening API and logs must not auto-start a full inventory');
 assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*item\.name !== 'storyboard_inbox'[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must show registered stores except account-owned pending originals');
@@ -104,7 +106,7 @@ assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorit
 assert.equal(FAVORITES_BACKUP_LIMITS.bytes,256*1024*1024);assert.equal(FAVORITES_BACKUP_LIMITS.entries,2000);
 assert.match(source, /function importTtsFavoritesBackup[\s\S]*readLibraryBackupFile\(file,'qianmu-tts-favorites',\{check\}\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must preflight before destination lookup and preserve ID collisions as copies; limits are behavior-tested');
 assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');
-assert.match(source, /bindStoragePackageActions\(backup,[\s\S]*reader:coreadExportData[\s\S]*imports:[\s\S]*reader:coreadImportDataFile/, 'the unified storage backup home retains both initiating control identities through the shared bindings');
+assert.match(source, /reader:coreadExportData[\s\S]*bindStoragePackageActions\(backup,\{exports,[\s\S]*imports:[\s\S]*reader:coreadImportDataFile/, 'the unified storage backup home retains both initiating control identities through the shared bindings');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('function renderStorageManagementCard'));

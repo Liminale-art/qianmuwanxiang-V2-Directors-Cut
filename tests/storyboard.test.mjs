@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 import { prepareConfigRestore } from '../qianmu-config-connections.js';
-import { renderStorageBackupSection, bindStoragePackageActions } from '../qianmu-storage-backup-view.js';
+import {bindStoragePackageActions} from '../qianmu-storage-backup-view.js';
+import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import { clone, mergeDefaults } from '../qianmu-storyboard-utils.js';
 import {
   STORYBOARD_CAPABILITIES,
