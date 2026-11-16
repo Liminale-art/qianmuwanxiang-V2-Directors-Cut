@@ -3,6 +3,7 @@
   "bundleName": "qianmuwanxiang-V2-Directors-Cut",
   "outputDirectory": "dist",
   "files": [
+    "qianmu-browser-credentials.js",
     "qianmu-pending-panel.js",
     "qianmu-perf-probe.js",
     "qianmu-yimu-companion.js",

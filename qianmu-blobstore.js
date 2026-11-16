@@ -56,14 +56,44 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VIDEO_POSTPRODUCTION]: { label: '影片后期分层', category: 'video', recoverable: false },
 });
 
-let dbPromise = null;
+// ── 按 ST 账户隔离 ───────────────────────────────────────────────────────────────────────────────
+// 这个库原先不带账户：同一浏览器换 ST 账户登录，读到的是同一份书、对话、成片与日志。
+// 现在由入口注入「当前账户」的解析器；不搬任何数据：
+//   · 升级后第一个打开千幕的账户认领现有库（库名不变），单账户用户完全无感；
+//   · 其他账户各用以账户为后缀的独立新库；
+//   · 账户暂时无法确认时，操作直接失败而不回落到别人的库。
+// 没有注入解析器的环境（单元测试、独立脚本）沿用原库名，行为不变。认领记录放在本浏览器的 localStorage，
+// 与 IndexedDB 同属一个浏览器配置；若它被单独清掉，下一个打开的账户会重新认领。
+const OWNER_KEY = 'qianmu.blobstore.owner.v1';
+let accountResolver = null, ownerStorage = null;
+export function configureBlobStoreAccount({ resolveNamespace, storage } = {}) {
+  accountResolver = typeof resolveNamespace === 'function' ? resolveNamespace : null;
+  ownerStorage = storage || null;
+  dbPromises.clear();
+}
+export function blobStoreDatabaseName(namespace, storage = ownerStorage ?? globalThis.localStorage) {
+  const account = String(namespace || '');
+  if (!account) throw new Error('当前 ST 账户未确认，本机资料暂不可用');
+  let owner = null;
+  try { owner = storage?.getItem(OWNER_KEY) || null; } catch { owner = null; }
+  if (!owner) {
+    try { storage?.setItem(OWNER_KEY, account); owner = storage?.getItem(OWNER_KEY) || null; } catch { owner = null; }
+    // 认领写不进去（存储被禁用）时不能假装认领成功，否则每个账户都会各自「认领」同一个库。
+    if (owner !== account) return `${DB_NAME}::${account}`;
+  }
+  return owner === account ? DB_NAME : `${DB_NAME}::${account}`;
+}
 
-function openDB() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
+const dbPromises = new Map();
+
+async function openDB() {
+  const name = accountResolver ? blobStoreDatabaseName(await accountResolver()) : DB_NAME;
+  const opened = dbPromises.get(name);
+  if (opened) return opened;
+  const dbPromise = new Promise((resolve, reject) => {
     let req;
-    try { req = indexedDB.open(DB_NAME, DB_VERSION); }
-    catch (e) { dbPromise = null; reject(e); return; }
+    try { req = indexedDB.open(name, DB_VERSION); }
+    catch (e) { dbPromises.delete(name); reject(e); return; }
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_AUDIO)) db.createObjectStore(STORE_AUDIO);
@@ -88,8 +118,9 @@ function openDB() {
       if (!db.objectStoreNames.contains(STORE_VIDEO_POSTPRODUCTION)) db.createObjectStore(STORE_VIDEO_POSTPRODUCTION);
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => { dbPromise = null; reject(req.error); };
+    req.onerror = () => { dbPromises.delete(name); reject(req.error); };
   });
+  dbPromises.set(name, dbPromise);
   return dbPromise;
 }
 

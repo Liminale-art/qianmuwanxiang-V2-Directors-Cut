@@ -11,9 +11,12 @@ import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
 import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.520';
+import {createBrowserCredentialStore} from './qianmu-browser-credentials.js?v=1.59.526';
 import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.520';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
+// 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
+blobStore.configureBlobStoreAccount({ resolveNamespace: resolveImageAccountNamespace });
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
@@ -47,7 +50,7 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.525';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.526';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -324,7 +327,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.525';
+const VERSION = '1.59.526';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -18089,29 +18092,29 @@ async function storyboardUtilsModule() {
   return storyboardUtilsModulePromise;
 }
 
+// 浏览器里的密钥副本按 ST 账户分开存（规则见 qianmu-browser-credentials.js）。账户确认前读不到任何密钥；
+// 需要密钥的异步路径先等 storyboardCredentialAccount()。
+let storyboardCredentialStore = null, storyboardCredentialAccountPromise = null;
+function storyboardBrowserCredentialStore() {
+  return storyboardCredentialStore ||= createBrowserCredentialStore({ legacyKey: STORYBOARD_BROWSER_CREDENTIALS_KEY,
+    prefix: 'qianmu.storyboard.credentials.v2::', ownerKey: 'qianmu.storyboard.credentials.owner.v1' });
+}
+function storyboardCredentialAccount() {
+  return storyboardCredentialAccountPromise ||= resolveImageAccountNamespace()
+    .then(namespace => storyboardBrowserCredentialStore().setAccount(namespace))
+    .catch(() => { storyboardCredentialAccountPromise = null; return ''; });
+}
+
 function storyboardBrowserCredentials() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORYBOARD_BROWSER_CREDENTIALS_KEY) || '{}');
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) { return {}; }
+  return storyboardBrowserCredentialStore().all();
 }
 
 function storyboardReadBrowserCredential(credentialId) {
-  const id = String(credentialId || '').trim();
-  if (!id) return '';
-  return String(storyboardBrowserCredentials()[id] || '').trim();
+  return storyboardBrowserCredentialStore().read(credentialId);
 }
 
 function storyboardWriteBrowserCredential(credentialId, value) {
-  const id = String(credentialId || '').trim();
-  if (!id) return false;
-  try {
-    const stored = storyboardBrowserCredentials();
-    if (String(value || '').trim()) stored[id] = String(value).trim();
-    else delete stored[id];
-    localStorage.setItem(STORYBOARD_BROWSER_CREDENTIALS_KEY, JSON.stringify(stored));
-    return true;
-  } catch (_) { return false; }
+  return storyboardBrowserCredentialStore().write(credentialId, value);
 }
 
 function storyboardSourceSecretConfigured(source) {
@@ -18132,6 +18135,7 @@ function storyboardCredentialId(providerId, presetId = '') {
 const STORYBOARD_VIDEO_H3_CREDENTIAL_ID = 'qianmu_video_minimax_h3';
 
 async function storyboardVideoCredentialConfigured() {
+  await storyboardCredentialAccount();
   if (storyboardApiKeys.has(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
   if (storyboardReadBrowserCredential(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) return true;
   try {
@@ -18145,6 +18149,7 @@ async function storyboardVideoCredentialConfigured() {
 }
 
 async function storyboardResolveVideoCredential() {
+  await storyboardCredentialAccount();
   if (storyboardApiKeys.has(STORYBOARD_VIDEO_H3_CREDENTIAL_ID)) {
     return String(storyboardApiKeys.get(STORYBOARD_VIDEO_H3_CREDENTIAL_ID) || '').trim();
   }
@@ -18176,6 +18181,7 @@ async function storyboardResolveApiKey(providerId, requestedCredentialId = '', {
   const credentialId = requestedCredentialId || draft?.credentialId || active?.credentialId || storyboardCredentialId(providerId, 'draft');
   if (storyboardApiKeys.has(credentialId)) return storyboardApiKeys.get(credentialId);
   if (!exact && storyboardApiKeys.has(providerId)) return storyboardApiKeys.get(providerId);
+  await storyboardCredentialAccount();
   const browserValue = storyboardReadBrowserCredential(credentialId);
   if (browserValue) { storyboardApiKeys.set(credentialId, browserValue); return browserValue; }
   try {
@@ -18197,6 +18203,7 @@ async function storyboardRememberApiKey(providerId, key, credentialId) {
   storyboardCredentialRevision++;
   const id = credentialId || storyboardCredentialId(providerId, 'draft');
   storyboardApiKeys.set(id, value);
+  await storyboardCredentialAccount();
   storyboardWriteBrowserCredential(id, value);
   try {
     const secrets = await storyboardSecretModule();
@@ -18213,6 +18220,7 @@ async function storyboardForgetApiKey(providerId, credentialId) {
   const id = credentialId || storyboardCredentialId(providerId, 'draft');
   storyboardApiKeys.delete(id);
   storyboardDraftApiKeys.delete(providerId);
+  await storyboardCredentialAccount();
   storyboardWriteBrowserCredential(id, '');
   try {
     const secrets = await storyboardSecretModule();
@@ -18222,6 +18230,7 @@ async function storyboardForgetApiKey(providerId, credentialId) {
 
 async function storyboardRefreshSecretState(root = document.getElementById(MODAL_ID)) {
   try {
+    await storyboardCredentialAccount();
     const secrets = await storyboardSecretModule();
     storyboardSecrets = secrets.secret_state || {};
     const source = STORYBOARD_SOURCES[storyboardState().source];
@@ -18229,6 +18238,7 @@ async function storyboardRefreshSecretState(root = document.getElementById(MODAL
     const badge = root?.querySelector('.sd-storyboard-secret-state');
     if (badge) {
       badge.textContent = configured ? '已保存' : '未配置';
+      badge.title = configured ? '密钥保存在本浏览器（仅当前 ST 账户可读），并同步写入 ST 密钥库；换浏览器或设备需重新填写。' : '';
       badge.classList.toggle('saved', configured);
     }
   } catch (error) {
@@ -35591,6 +35601,7 @@ function init() {
     const initStartedAt = globalThis.performance?.now?.() ?? Date.now();
     settings = getSettings();
     installChatWriteGuard();
+    void storyboardCredentialAccount();   // 先确认账户，分镜页同步读取密钥状态时才有值
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
     focusClockState();
     startFocusClockRuntime();
