@@ -61,7 +61,10 @@ export async function collectReleaseFiles(root = PROJECT_ROOT, config = null) {
 function localReferences(file, text) {
   const references = [];
   if (file.endsWith('.js')) {
-    const matcher = /(?:\bfrom\s*|\b(?:import|loadLocalChunk)\s*\()\s*['"](\.\/[^'"]+)['"]/g;
+    // Inside bundle/ the on-demand names passed to loadLocalChunk are lookup keys for the build's literal
+    // import table, not files next to the chunk; only real import forms are file references there.
+    const matcher = file.startsWith('bundle/') ? /(?:\bfrom\s*|\bimport\s*\()\s*['"](\.\/[^'"]+)['"]/g
+      : /(?:\bfrom\s*|\b(?:import|loadLocalChunk)\s*\()\s*['"](\.\/[^'"]+)['"]/g;
     for (const match of text.matchAll(matcher)) references.push(match[1]);
     const assetMatcher = /\bnew\s+URL\(\s*['"](\.\/[^'"]+)['"]\s*,\s*import\.meta\.url\s*\)/g;
     for (const match of text.matchAll(assetMatcher)) references.push(match[1]);

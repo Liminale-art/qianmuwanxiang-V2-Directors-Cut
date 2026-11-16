@@ -7,7 +7,7 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
 // The installed entry/style follow the current release.
-const CURRENT_RELEASE = '1.59.521';
+const CURRENT_RELEASE = '1.59.522';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
@@ -120,7 +120,7 @@ test('installed entry and styles use their actual release addresses while unchan
   assert.equal(manifest.version, CURRENT_RELEASE);
   assert.equal(packageJson.version, manifest.version);
   // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
-  assert.match(manifest.js, new RegExp(`^index\\.js\\?v=${CURRENT_RELEASE.replace(/\./g, '\\.')}(?:-[a-z0-9-]+)?$`));
+  assert.match(manifest.js, new RegExp(`^bundle/index\\.js\\?v=${CURRENT_RELEASE.replace(/\./g, '\\.')}(?:-[a-z0-9-]+)?$`));
   assert.match(manifest.css, new RegExp(`^style\\.css\\?v=${CURRENT_RELEASE.replace(/\./g, '\\.')}(?:-[a-z0-9-]+)?$`));
   assert.ok(sources.get('index.js').includes(`const VERSION = '${CURRENT_RELEASE}';`));
   assert.ok(sources.get('index.js').includes('qianmu-theme-skins.css?v=${VERSION}'));

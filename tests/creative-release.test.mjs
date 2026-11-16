@@ -18,7 +18,7 @@ const fontUiVersion = '1.59.500';
 const fontMatchVersion = '1.59.503';
 // 1.59.501 (节点 C-12): 预设快切只改 chat-regex/view/index/style，字体链不动。
 // 1.59.504 (节点 C-16): 快切/备份页只改 chat-regex/view、chat-recovery-view，字体链与 appearance-session 不动。
-const manifestVersion = '1.59.521';
+const manifestVersion = '1.59.522';
 const refreshed = new Set([
   'qianmu-creative-prompts.js', 'qianmu-creative-contract.js',
   'qianmu-creative-runtime.js',
@@ -83,7 +83,7 @@ test('creative publication ships runtime only and retains unrelated shared modul
   assert.equal(pkg.version, manifestVersion);
   assert.equal(manifest.version, manifestVersion);
   // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
-  assert.ok(manifest.js.startsWith(`index.js?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.js.slice(`index.js?v=${manifestVersion}`.length)));
+  assert.ok(manifest.js.startsWith(`bundle/index.js?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.js.slice(`bundle/index.js?v=${manifestVersion}`.length)));
   assert.ok(manifest.css.startsWith(`style.css?v=${manifestVersion}`) && /^(?:-[a-z0-9-]+)?$/.test(manifest.css.slice(`style.css?v=${manifestVersion}`.length)));
   assert.ok(files.includes('qianmu-creative-social.css'));
   assert.ok(files.includes('qianmu-font-library.css'));

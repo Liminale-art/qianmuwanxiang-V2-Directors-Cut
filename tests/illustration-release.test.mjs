@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {collectReleaseFiles,buildRelease} from '../scripts/build-release.mjs';
 
-const root=new URL('../',import.meta.url),version='1.59.521',viewVersion='1.59.441';
+const root=new URL('../',import.meta.url),version='1.59.522',viewVersion='1.59.441';
 const edge=(parent,...children)=>children.map(child=>[parent,`features/gallery/qianmu-${child}.js`]);
 const affectedEdges=[
   ...edge('index.js','image-info-view','gallery-collections-view','gallery-taxonomy','gallery-summary'),
@@ -16,7 +16,7 @@ test('illustration entry, stylesheet and host package advertise one local versio
   assert.equal(result.dryRun,true);
   assert.equal(result.manifest.version,version);assert.equal(result.packageJson.version,version);
   // Same-release hotfixes append a cache suffix (e.g. -tts-font-1) after the release stamp.
-  for(const [field,entry] of [['js','index.js'],['css','style.css']]){
+  for(const [field,entry] of [['js','bundle/index.js'],['css','style.css']]){
     const address=result.manifest[field],prefix=`${entry}?v=${version}`;
     assert.ok(address.startsWith(prefix)&&/^(?:-[a-z0-9-]+)?$/.test(address.slice(prefix.length)),`${field}: ${address}`);
   }

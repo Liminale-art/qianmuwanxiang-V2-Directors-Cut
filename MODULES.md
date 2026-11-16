@@ -32,9 +32,10 @@
 | `assets/logos/` | 5 |
 | `assets/ringtones/` | 49 |
 | `assets/tab-icons/` | 2 |
+| `bundle/` | 200 |
 | `evaluation/` | 2 |
 | `features/` | 190 |
-| `scripts/` | 158 |
+| `scripts/` | 159 |
 | `server/` | 65 |
 | `tests/` | 980 |
 | `vendor/noble-hashes-2.4.0/` | 9 |

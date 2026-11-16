@@ -104,13 +104,16 @@ export function createLocalChunkLoader({importer=url=>import(url),pause=ms=>new 
   return function load(relative){
     const url=new URL(relative,import.meta.url),name=url.pathname.split('/').at(-1);
     if(!localChunkNames.has(name)||url.href.split('?')[0]!==new URL('./'+name,import.meta.url).href||url.hash)return Promise.reject(Error('无效的本地组件地址'));
+    // In the shipped bundle each allowlisted chunk has a literal import (table injected by the build); importing
+    // by computed URL there would load the unbundled source file and create a second copy of every module it uses.
+    const direct=typeof __QIANMU_LOCAL_CHUNKS__==='object'?__QIANMU_LOCAL_CHUNKS__[name]:null;
     const key=url.href;let entry=entries.get(key);if(!entry){entry={attempt:0,promise:null,value:null};entries.set(key,entry);}
     if(entry.value)return Promise.resolve(entry.value);if(entry.promise)return entry.promise;
     entry.promise=(async()=>{
       for(let retry=0;retry<2;retry++){
         if(entry.attempt>=8)throw exhausted();
         const attempt=entry.attempt++,target=new URL(key);if(attempt)target.searchParams.set('qm_retry',String(attempt));
-        try{return entry.value=await importer(target.href);}
+        try{return entry.value=await (direct?direct():importer(target.href));}
         catch(error){
           if(entry.attempt>=8)throw exhausted(error);
           const network=error?.name==='TypeError'&&/(fetch.*dynamically imported|importing a module script failed|error loading dynamically imported)/i.test(error.message);

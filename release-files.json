@@ -696,7 +696,8 @@
     "style.css"
   ],
   "directories": [
-    "assets"
+    "assets",
+    "bundle"
   ],
   "forbiddenSegments": [
     ".claude",
