@@ -1,4 +1,4 @@
-// Builds the shipped bundle: `bundle/index.js` plus `bundle/chunks/*`.
+// Builds the shipped bundles: `bundle/index.js` plus `bundle/chunks/*` (千幕) and `yimu/index.bundle.mjs` (忆幕).
 //
 // Why: ST loads an extension's entry module and the browser then fetches every statically imported file
 // one by one (and re-validates each on every start). The source tree is ~400 small modules; a start-up
@@ -145,6 +145,40 @@ async function compile() {
   return { files, startup: reach.size, modules: startup.size };
 }
 
+// ── 忆幕 ─────────────────────────────────────────────────────────────────────────────────────────────
+// A separate extension living in yimu/. Its front end is ~40 flat modules with no on-demand chunks and no
+// file-relative URLs, so it ships as one file next to its sources: yimu/index.bundle.mjs.
+const yimuOut = path.join(root, 'yimu', 'index.bundle.mjs');
+async function compileYimu() {
+  const warnings = [];
+  const bundle = await rollup({
+    input: path.join(root, 'yimu', 'index.mjs'), treeshake: false, preserveEntrySignatures: 'strict',
+    external: id => id.startsWith('node:') || EXTERNAL(id),
+    plugins: [{
+      name: 'yimu-source',
+      resolveId(source, importer) {
+        if (source.startsWith('node:') || EXTERNAL(source)) return { id: source, external: true };
+        if (!importer) return path.resolve(root, source);
+        if (!source.startsWith('./')) fail(`yimu/${path.basename(strip(importer))} imports outside its own folder: ${source}`);
+        const at = source.indexOf('?'), target = path.resolve(path.dirname(strip(importer)), at < 0 ? source : source.slice(0, at));
+        if (!existsSync(target)) fail(`yimu/${path.basename(strip(importer))} imports a missing file: ${source}`);
+        return target + (at < 0 ? '' : source.slice(at));
+      },
+      async load(id) { return readFile(strip(id), 'utf8'); },
+      resolveImportMeta(property, { moduleId }) { fail(`${rel(strip(moduleId))} uses import.meta.${property}; register how the bundle should resolve it`); },
+      async renderChunk(code) { return (await transform(code, { minifyWhitespace: true, legalComments: 'none', charset: 'utf8', target: 'es2022' })).code; },
+    }],
+    onwarn: warning => { if (!['CIRCULAR_DEPENDENCY', 'EVAL'].includes(warning.code)) warnings.push(warning); },
+  });
+  const output = await bundle.generate({ format: 'es', generatedCode: 'es2015', inlineDynamicImports: true });
+  await bundle.close();
+  if (warnings.length) fail(`yimu warnings: ${warnings.map(w => `[${w.code}] ${w.message}`).slice(0, 12).join('; ')}`);
+  const chunks = output.output.filter(item => item.type === 'chunk');
+  if (chunks.length !== 1) fail(`yimu produced ${chunks.length} chunks; expected one file`);
+  if (/from\s*["']\.\.?\//.test(chunks[0].code)) fail('yimu bundle still imports a local file');
+  return { name: 'yimu/index.bundle.mjs', text: chunks[0].code, modules: Object.keys(chunks[0].modules).length };
+}
+
 const digest = files => createHash('sha256').update(files.map(file => `${file.name}\0${file.text}`).join('\0')).digest('hex');
 async function committed() {
   if (!existsSync(outDir)) return [];
@@ -155,12 +189,17 @@ async function committed() {
 }
 
 const { files, startup, modules } = await compile();
-const summary = { files: files.length, startupRequests: startup, startupModules: modules, bytes: files.reduce((total, file) => total + Buffer.byteLength(file.text), 0), digest: digest(files) };
+const yimu = await compileYimu();
+const summary = { files: files.length, startupRequests: startup, startupModules: modules, bytes: files.reduce((total, file) => total + Buffer.byteLength(file.text), 0), digest: digest(files),
+  yimu: { modules: yimu.modules, bytes: Buffer.byteLength(yimu.text), digest: digest([yimu]) } };
 if (check) {
-  if (digest(await committed()) !== summary.digest) { console.error('bundle/ is stale; run node scripts/build-bundle.mjs'); process.exit(1); }
+  const yimuNow = existsSync(yimuOut) ? await readFile(yimuOut, 'utf8') : '';
+  const stale = [digest(await committed()) !== summary.digest && 'bundle/', digest([{ name: yimu.name, text: yimuNow }]) !== summary.yimu.digest && 'yimu/index.bundle.mjs'].filter(Boolean);
+  if (stale.length) { console.error(`${stale.join(' and ')} stale; run node scripts/build-bundle.mjs`); process.exit(1); }
   console.log(JSON.stringify({ ...summary, current: true }));
 } else {
   await rm(outDir, { recursive: true, force: true });
   for (const file of files) { const target = path.join(outDir, file.name); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, file.text); }
+  await writeFile(yimuOut, yimu.text);
   console.log(JSON.stringify(summary));
 }

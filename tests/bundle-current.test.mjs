@@ -55,3 +55,15 @@ test('the committed bundle matches the sources', { skip: !existsSync(fileURLToPa
   const output = execFileSync(process.execPath, [fileURLToPath(new URL('scripts/build-bundle.mjs', root)), '--check'], { encoding: 'utf8' });
   assert.match(output, /"current":true/);
 });
+
+test('忆幕 loads its single-file bundle, which is self-contained and listed for installation', async () => {
+  const manifest = JSON.parse(await read('yimu/manifest.json'));
+  assert.equal(manifest.js, 'index.bundle.mjs?v=' + manifest.version);
+  const bundle = await read('yimu/index.bundle.mjs');
+  assert.ok(!/from\s*["']\.\.?\//.test(bundle), 'no local imports remain');
+  assert.ok(!bundle.includes('import.meta.url'));
+  assert.ok(bundle.includes('FRONTEND_VERSION="' + manifest.version + '"') || bundle.includes("FRONTEND_VERSION='" + manifest.version + "'"), 'built from this version of the sources');
+  assert.ok(bundle.includes('yimuGenerationInterceptor'), 'the generation interceptor named in the manifest is in the bundle');
+  const { FRONTEND } = await import('../scripts/build-yimu.mjs');
+  assert.ok(FRONTEND.includes('index.bundle.mjs') && FRONTEND.includes('index.mjs'), 'the installer ships the bundle; sources stay alongside it');
+});
