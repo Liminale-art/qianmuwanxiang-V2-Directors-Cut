@@ -2352,6 +2352,25 @@ export function storyboardMessageIdentityInputs(message = {}) {
   return {role,name,baseSendDate,baseGenerationId,activeSwipe,activeSendDate,activeGenerationId,baseText,revisionText:String(message.mes||'')};
 }
 
+// Identity hashes for one message, remembered per message object. Resolving a stored reference walks
+// the whole chat and used to re-hash every message's full text on each walk, for every gallery record
+// and plan, on every chat event — work that grew with (records × floors × text length). The entry is
+// reused only while every identity input is unchanged, so an edit, swipe or regenerate recomputes it.
+const IDENTITY_FIELDS = ['role','name','baseSendDate','baseGenerationId','activeSwipe','activeSendDate','activeGenerationId','baseText','revisionText'];
+const identityMemo = new WeakMap();
+function storyboardMessageIdentity(message) {
+  const inputs = storyboardMessageIdentityInputs(message);
+  const known = identityMemo.get(message);
+  if (known && IDENTITY_FIELDS.every(field => known[field] === inputs[field])) return known;
+  const revisionHash = hash(inputs.revisionText);
+  const fallbackIdentity = !inputs.baseSendDate && !inputs.baseGenerationId ? hash(inputs.baseText) : '';
+  const messageKey = hash([inputs.role, inputs.name, inputs.baseSendDate, inputs.baseGenerationId, fallbackIdentity].join('\u241f'));
+  const revisionId = hash([messageKey, inputs.activeSwipe, inputs.activeSendDate, inputs.activeGenerationId, revisionHash].join('\u241f'));
+  const identity = { ...inputs, revisionHash, messageKey, revisionId };
+  identityMemo.set(message, identity);
+  return identity;
+}
+
 /**
  * Build a non-invasive identity for a SillyTavern message. It deliberately does
  * not write an id into chat[].extra: the first swipe's timestamp/generation id
@@ -2360,11 +2379,7 @@ export function storyboardMessageIdentityInputs(message = {}) {
  */
 export function createStoryboardMessageReference(input = {}) {
   const message = obj(input.message) ? input.message : input;
-  const {role,name,baseSendDate,baseGenerationId,activeSwipe,activeSendDate,activeGenerationId,baseText,revisionText} = storyboardMessageIdentityInputs(message);
-  const revisionHash = hash(revisionText);
-  const fallbackIdentity = !baseSendDate && !baseGenerationId ? hash(baseText) : '';
-  const messageKey = hash([role, name, baseSendDate, baseGenerationId, fallbackIdentity].join('\u241f'));
-  const revisionId = hash([messageKey, activeSwipe, activeSendDate, activeGenerationId, revisionHash].join('\u241f'));
+  const {role,name,baseSendDate,baseGenerationId,activeSwipe,revisionHash,messageKey,revisionId} = storyboardMessageIdentity(message);
   const now = pos(input.now) || Date.now();
   return normalizeStoryboardMessageReference({
     version: 1, chatKey: input.chatKey, messageKey, role, name,

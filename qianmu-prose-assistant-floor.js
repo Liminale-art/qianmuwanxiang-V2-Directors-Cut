@@ -3,7 +3,7 @@ import {captureProseAssistantChatSource} from './qianmu-prose-assistant-source.j
 import {loadLocalChunk,localChunkFailure} from './qianmu-feature-runtime.js?v=1.59.425';
 
 // No model/UI imports or document observers until an explicit hive action.
-export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,download,assistantSettings,saveAssistantSettings,assistantHistoryFactory,assistantConversationFactory}={}){
+export function createProseAssistantFloorTools({getContext,resolveNamespace,headers,applyIcons,mountPortal,notify,isCurrent,assistantConfig,confirm,download,assistantSettings,saveAssistantSettings,assistantHistoryFactory,assistantConversationFactory,pending}={}){
   let root=null,entry=null,cleaning=null,management=null,epoch=0;
   const current=()=>isCurrent()===true;
   function close(record){
@@ -17,7 +17,9 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     const style=document.defaultView.getComputedStyle?.(prose||document.body);if(!style)return;
     for(const [name,value] of [['--qm-pa-prose-font',style.fontFamily],['--qm-pa-prose-size',style.fontSize]])if(value)portal.style.setProperty(name,value);
   }
-  async function openAssistant(){
+  // The click answers at once: a stand-in window covers the time the panel's code and account guard take.
+  function openAssistant(){const opening=openPanel();pending?.('场外特助','正在打开场外特助…',opening);return opening;}
+  async function openPanel(){
     if(!current())return null;if(cleaning){notify?.('请先结束助手记录清理。','warning');return null;}
     if(entry&&!entry.valid())close(entry);
     if(entry){

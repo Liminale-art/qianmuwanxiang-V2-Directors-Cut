@@ -10,8 +10,8 @@ import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardI
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
 import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
-import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.519';
-import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.519';
+import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.520';
+import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.520';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
@@ -46,7 +46,7 @@ import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.519';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.520';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -323,7 +323,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.519';
+const VERSION = '1.59.520';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -5635,6 +5635,7 @@ function scheduleExtraPreload() {
       quiet(() => loadChatRecoveryCode().catch(error => { chatRecoveryLoading = null; throw error; })),
       quiet(() => loadLocalChunk('./qianmu-prose-assistant-conversations.js')),
       quiet(() => warmStoryboardFeatures()),
+      quiet(() => COREAD_ENABLED ? featureRuntime.load('readerCore') : null),
       // 正文收藏：首开要现场下载 7 个脚本（3 层）＋4 个样式（2 层），全部到齐才出面板——这里提前暖好。
       quiet(async () => {
         await loadLocalChunk('./qianmu-text-collection-view.js?v=1.59.419');
@@ -7157,7 +7158,7 @@ function renderModal() {
   performanceRuntime.modalRenderTotalMs += renderMs;
   performanceRuntime.modalRenderLastMs = renderMs;
   globalThis.qianmuPerf?.record(`主面板·${activeTab || 'dashboard'}`, '渲染', renderMs);
-  if (storyboardLayout) globalThis.qianmuPerf?.watch(`分镜·${storyboardPageKey()}`, modal.querySelector('.sd-storyboard-scroll'));
+  globalThis.qianmuPerf?.watch(storyboardLayout ? `分镜·${storyboardPageKey()}` : `主面板·${activeTab || 'dashboard'}`, modal.querySelector(storyboardLayout ? '.sd-storyboard-scroll' : '.sd-body'));
   if (laps) {
     const surface = `主面板·${activeTab || 'dashboard'}`; let from = renderStartedAt;
     globalThis.qianmuPerf.record(surface, '┗生成内容', tabMs);

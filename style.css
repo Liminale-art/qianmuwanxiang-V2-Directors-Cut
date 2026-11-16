@@ -989,14 +989,16 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #qianmu-notes-panel-layer .sd-notes-waiting { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 96px; color: var(--sd-muted); font-size: var(--qm-type-caption, 12px); }
 #qianmu-notes-panel-layer .sd-notes-waiting-dot { flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: qm-pending-spin .8s linear infinite; }
 /* C-28：点开即出的等待面板（正文收藏等）。真正的面板到齐后由脚本移除。 */
-#qianmu-pending-panel { position: fixed; inset: 0; z-index: 10030; display: grid; place-items: center; padding: 18px; pointer-events: none; }
-#qianmu-pending-panel .qm-pending-card { display: flex; flex-direction: column; gap: 10px; width: min(360px, 100%); padding: 16px 18px; border: 1px solid var(--qm-line, var(--sd-hairline, rgba(128,128,128,.28))); border-radius: var(--qm-card-radius, 13px); background: var(--qm-skin-window, var(--sd-card, #fff)); color: var(--sd-text, #222); box-shadow: 0 12px 36px rgba(0, 0, 0, .22); pointer-events: auto; animation: qm-pending-in .16s ease-out; }
-#qianmu-pending-panel .qm-pending-title { font-size: var(--qm-type-body, 14px); font-weight: 600; }
-#qianmu-pending-panel .qm-pending-line { display: flex; align-items: center; gap: 8px; color: var(--sd-muted, #777); font-size: var(--qm-type-caption, 12px); }
+/* 观感与聊天工具包一致：压暗的底、居中的窗体、标题在上、状态在窗体中部。 */
+#qianmu-pending-panel { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 2147483004; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(8, 8, 10, .5); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); animation: qm-pending-in .14s ease-out; }
+#qianmu-pending-panel .qm-pending-card { display: flex; flex-direction: column; gap: 10px; width: min(540px, 100%); min-height: 220px; margin: auto; box-sizing: border-box; padding: 14px; border: 1px solid var(--sd-border, rgba(128, 128, 128, .28)); border-radius: 22px; background: var(--sd-window-glow, none), var(--sd-window-bg, var(--sd-card, #f7f3eb)); color: var(--sd-text, #3c352e); box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 28px 80px rgba(0, 0, 0, .40); }
+#qianmu-pending-panel[data-qm-theme] .qm-pending-card { background: var(--qm-skin-window, var(--sd-window-bg)); border-color: var(--qm-line, var(--sd-border)); border-radius: var(--qm-card-radius, 22px); }
+#qianmu-pending-panel .qm-pending-title { font-size: var(--qm-type-feature-title, 16px); font-weight: 600; line-height: 1.2; letter-spacing: .025em; }
+#qianmu-pending-panel .qm-pending-line { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--sd-muted, #777); font-size: var(--qm-type-caption, 12px); }
 #qianmu-pending-panel .qm-pending-dot { flex: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: qm-pending-spin .8s linear infinite; }
 @keyframes qm-pending-spin { to { transform: rotate(360deg); } }
-@keyframes qm-pending-in { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: reduce) { #qianmu-pending-panel .qm-pending-card, #qianmu-pending-panel .qm-pending-dot { animation: none; } }
+@keyframes qm-pending-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #qianmu-pending-panel, #qianmu-pending-panel .qm-pending-dot { animation: none; } }
 /* C-28：分镜子面板的模块还在下载时，空宿主先显示一行占位（纯样式，控制器一挂载内容即消失）。 */
 #story-director-modal :is(.sd-character-archive-host, .sd-comfy-library-host, .sd-comfy-pool-host, .sd-vibe-library-host, .sd-ensemble-library-host):empty::before { content: '正在载入…'; display: block; padding: 28px 12px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 /* C-26：搜索框（工具条下一行）、重复正则标记、预设未允许运行的提示＋允许按钮、出厂开关按钮、本聊天已记开关条数 */

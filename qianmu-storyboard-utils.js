@@ -27,9 +27,22 @@ export function isPlainObject(value) {
  * @param {string} text - 要计算哈希的文本
  * @returns {string} 十六进制哈希字符串
  */
+// Message bodies are hashed again and again (once per floor, per record, per chat event) while the
+// strings themselves rarely change. Long inputs are remembered by value; the engine caches a string's
+// own hash, so a repeat lookup does not re-read the text. Bounded so it cannot grow with chat history.
+const HASH_MEMO = new Map();
 export function hashText(text) {
-  let hash = 0;
   const str = String(text || '');
+  if (str.length < 512) return hashTextNow(str);
+  const known = HASH_MEMO.get(str);
+  if (known !== undefined) return known;
+  if (HASH_MEMO.size >= 4000) HASH_MEMO.clear();
+  const value = hashTextNow(str);
+  HASH_MEMO.set(str, value);
+  return value;
+}
+function hashTextNow(str) {
+  let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
