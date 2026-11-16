@@ -125,6 +125,25 @@ export function toastCallOptions(s) {
   return { timeOut: ms, extendedTimeOut: Math.max(ms, 1000) };
 }
 
+/**
+ * While the skin is on, the chosen stay time is also the toast library's default, so cards raised by
+ * ST itself, other extensions and Yimu stay as long as Qianmu's own. A call that passes its own time
+ * (a sticky progress card, say) keeps it. Turning the skin off puts back exactly what was there.
+ */
+const savedToastTiming = new WeakMap();
+export function applyToastTiming(toastr, s) {
+  const options = toastr?.options;
+  if (!options || typeof options !== 'object') return;
+  const next = toastCallOptions(s), saved = savedToastTiming.get(options);
+  if (next) {
+    if (!saved) savedToastTiming.set(options, { timeOut: options.timeOut, extendedTimeOut: options.extendedTimeOut });
+    Object.assign(options, next);
+  } else if (saved) {
+    for (const key of ['timeOut', 'extendedTimeOut']) { if (saved[key] === undefined) delete options[key]; else options[key] = saved[key]; }
+    savedToastTiming.delete(options);
+  }
+}
+
 export const safeSoundUrl = value => /^https?:\/\/[^\s]+$/i.test(String(value || '').trim()) ? String(value).trim() : '';
 
 /** Alternates the tab title and favicon until the page is visible again; restores exactly what it replaced. */
@@ -306,7 +325,8 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const state = () => normalizeRingtone(getOwner());
   const hidden = () => Boolean(document.hidden) || (typeof document.hasFocus === 'function' && !document.hasFocus());
   const refresh = () => mounted?.view.render(state());
-  const syncToast = () => { if (skinActive) applyToastSkin(document, state(), getLook()); };
+  const toastLibrary = () => window?.toastr || globalThis.toastr;
+  const syncToast = () => { if (skinActive) { applyToastSkin(document, state(), getLook()); applyToastTiming(toastLibrary(), state()); } };
   // { quiet: true }: the view already shows the change (wheel pick), so skip the full panel re-render.
   function update(patch, { quiet = false } = {}) {
     Object.assign(state(), patch);
@@ -449,7 +469,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   function activate() { skinActive = true; syncToast(); }
   // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
   function refreshLook() { syncToast(); }
-  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
+  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); applyToastTiming(toastLibrary(), null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
   // Warms the view module only (no mount, no audio, no data read).
   const preload = () => loadView().then(() => true, () => false);
   return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state, preload });

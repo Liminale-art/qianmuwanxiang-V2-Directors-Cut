@@ -130,9 +130,11 @@ test('leaving the page during dependency checks never starts a storage write', a
   await assert.rejects(() => resources.restoreComfyResourcesBackup(namespace, packet, { ...options, prepared, confirmed: true, isCurrent: () => false }), /页面已变化/);
   assert.equal(options.poolStore.writes + options.workflowStore.writes, 0);
 });
-test('pool list exposes separate whole-resource backup controls; draft import and current selection remain separate', async () => {
-  const html = renderComfyPools({ rows: [] }); for (const action of ['backup-resources', 'restore-resources', 'import']) assert.match(html, new RegExp(`data-pool-action="${action}"`));
-  assert.match(html, /data-pool-backup-file/);
+test('whole-resource backup lives in data management; the pool page keeps single-pool import', async () => {
+  const html = renderComfyPools({ rows: [] }); assert.match(html, /data-pool-action="import"/);
+  assert.doesNotMatch(html, /data-pool-action="(?:backup|restore)-resources"|data-pool-backup-file/);
+  const transfer = await readFile(new URL('../qianmu-storage-library-transfer.js', import.meta.url), 'utf8');
+  assert.match(transfer, /captureComfyResourcesBackup[\s\S]*restoreComfyResourcesBackup\(namespace, packet, \{ \.\.\.options, prepared, confirmed: true \}\)/);
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   for (const file of ['qianmu-comfy-pool-backup.js', 'qianmu-comfy-resource-backup.js']) assert.ok(release.files.includes(file));
 });

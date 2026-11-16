@@ -199,7 +199,7 @@ test('every preset maps to a file that exists in assets/ringtones', async () => 
 
 test('index.js wires the ringtone tab, whitelist and events', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
-  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.516'"));
+  assert.ok(entry.includes("from './features/chat/qianmu-chat-ringtone.js?v=1.59.540'"));
   assert.ok(entry.includes('createChatRingtone({'));
   // Toolkit navigation includes the ring tab (5 tabs since the regex tab).
   assert.ok(entry.includes('data-floor-tab="ring"'));
@@ -718,4 +718,22 @@ test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven 
   assert.ok(/\.qm-ring-wheel, \.qm-ring-eq,/.test(await readFile(new URL('qianmu-theme-skins.css', root), 'utf8')), '编辑风皮肤条卡同样直角');
   assert.ok(css.includes('.qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142'), '播放时淡绿');
   assert.ok(/\.qm-ring-eq \{ --qm-eq-dot: rgba\(150, 150, 150, \.3\)/.test(css), '空闲浅灰');
+});
+
+import { applyToastTiming } from '../features/chat/qianmu-chat-ringtone.js';
+test('the chosen stay time becomes the library default while the skin is on and is put back exactly when it goes off', () => {
+  const toastr = { options: { timeOut: 4000, positionClass: 'toast-top-center' } };
+  applyToastTiming(toastr, { toastSkin: true, toastDuration: 8 });
+  assert.deepEqual(toastr.options, { timeOut: 8000, extendedTimeOut: 8000, positionClass: 'toast-top-center' });
+  applyToastTiming(toastr, { toastSkin: true, toastDuration: 2 });
+  assert.equal(toastr.options.timeOut, 2000); assert.equal(toastr.options.extendedTimeOut, 2000);
+  applyToastTiming(toastr, { toastSkin: false, toastDuration: 2 });
+  assert.deepEqual(toastr.options, { timeOut: 4000, positionClass: 'toast-top-center' }, 'the original default returns and the key that was absent is absent again');
+  applyToastTiming(toastr, null); assert.deepEqual(toastr.options, { timeOut: 4000, positionClass: 'toast-top-center' });
+  for (const missing of [null, undefined, {}, { options: null }]) assert.doesNotThrow(() => applyToastTiming(missing, { toastSkin: true, toastDuration: 6 }));
+});
+test('the smallest toast size scales the whole card instead of only shrinking the text', async () => {
+  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  const rule = css.match(/html\[data-qm-toast-size="xs"\] body #toast-container > div \{([^}]*)\}/)?.[1] || '';
+  assert.match(rule, /zoom: \.88/); assert.match(rule, /--qm-toast-fs: 11\.8px/);
 });

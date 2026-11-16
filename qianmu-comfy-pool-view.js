@@ -56,11 +56,11 @@ export function renderComfyPools(view) {
     </div></section>
     <div class="sd-comfy-pool-members">${draft.pool.candidates.map(candidate => renderMember(candidate, view)).join('')}</div>`
     : `<div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="library">工作流库</button><input class="text_pole" type="search" data-pool-search aria-label="搜索候选方案" value="${escape(view.search || '')}">${icon('import','导入候选方案','upload')}${icon('new','新建候选方案','plus')}</div>
-    <details class="sd-comfy-library-management" ${view.archived?'open':''}><summary>管理</summary><div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">${view.archived?'返回全部':'已归档'}</button>${icon('backup-resources','备份方案与工作流','download')}${icon('restore-resources','恢复方案与工作流','folder')}${icon('refresh','刷新列表','rotate')}</div>${native?renderPoolRecovery(view.recovery):''}</details>
+    <details class="sd-comfy-library-management" ${view.archived?'open':''}><summary>管理</summary><div class="sd-comfy-pool-tools"><button type="button" class="sd-btn" data-pool-action="archived" aria-pressed="${Boolean(view.archived)}">${view.archived?'返回全部':'已归档'}</button>${icon('refresh','刷新列表','rotate')}</div>${native?renderPoolRecovery(view.recovery):''}</details>
     <div class="sd-comfy-pool-rows">${(view.rows || []).map(row => `<section class="sd-card" data-pool-id="${escape(row.id)}" data-pool-search-name="${escape(row.name.toLocaleLowerCase())}" ${view.search && !row.name.toLocaleLowerCase().includes(view.search.toLocaleLowerCase()) ? 'hidden' : ''}><div class="sd-comfy-pool-tools"><button type="button" class="sd-comfy-library-name" data-pool-action="${view.archived ? 'export' : 'edit'}">${escape(row.name)}</button><small>${row.candidateCount} 个工作流</small></div><div class="sd-comfy-pool-tools sd-comfy-pool-row-actions">${view.archived ? `${icon('restore','恢复方案','rotate-left')}${icon('export','导出方案','download')}${icon('purge',native?'移出目录（原件保留）':'永久清理全部版本','trash-can')}` : `${choose(row)}${icon('edit','编辑方案','pen')}${icon('copy','复制为新方案','copy')}${icon('export','导出方案','download')}${icon('archive','归档方案','box-archive')}`}</div></section>`).join('')}</div>`;
   const selection=view.canSelect&&view.selection?`<div class="sd-comfy-pool-tools"><small>已选：${escape(view.selection.invalid?'方案待核对':view.selection.name)}</small>${icon('clear-selection','清除所选方案','xmark')}</div>`:'';
   const message=view.error||(!draft&&!view.busy&&!view.rows?.length?(view.archived?'归档中还没有候选方案。':'还没有保存的候选方案，可新建或导入。'):'');
-  return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${message ? `<p role="${view.error?'alert':'status'}" class="sd-comfy-library-note">${escape(message)}</p>` : ''}<fieldset ${disabled}>${selection}${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden><input type="file" data-pool-backup-file accept=".json,application/json" hidden></div>`;
+  return `<div class="sd-comfy-library sd-comfy-pools" aria-busy="${Boolean(view.busy)}">${message ? `<p role="${view.error?'alert':'status'}" class="sd-comfy-library-note">${escape(message)}</p>` : ''}<fieldset ${disabled}>${selection}${body}</fieldset><input type="file" data-pool-file accept=".json,application/json" hidden></div>`;
 }
 
 function renderPoolRecovery(value){
@@ -73,7 +73,7 @@ function renderPoolRecovery(value){
 export function createComfyPoolController({ resolveNamespace, getScopeKey = () => '', getConnections = () => [], pickWorkflow,
   getSelection=()=>null,onSelect=null,
   onLibrary = () => {}, isCurrent = () => true, notify = () => {}, confirm = async () => false, onIcons = () => {}, download,
-  store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow, openWorkflowStore = null, now = () => Date.now() } = {}) {
+  store = createComfyPoolStore(), readRecipe = readPinnedComfyRouteWorkflow, now = () => Date.now() } = {}) {
   const view = { rows: [], usage: null, recovery:null, search: '', archived: false, draft: null, busy: false, error: '', connections: [], openMembers: new Set(), checks: new Map() };
   let host = null, entry = 0, namespace = '', verifiedEntry = -1, disposed = false, loaded = false, loadedAt = 0;
   const scrolls = { list: 0, draft: 0 };
@@ -146,18 +146,9 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     }
     await guard();
   };
-  const withResourceStores = async (guard, work) => {
-    const account = namespace, token = entry, scope = getScopeKey();
-    const isSame = () => Boolean(visible() && token === entry && account === namespace && scope === getScopeKey());
-    const codec = await import('./qianmu-comfy-resource-backup.js'); await guard();
-    const workflowStore = openWorkflowStore ? await openWorkflowStore() : (await import('./qianmu-comfy-library.js')).createComfyWorkflowStore();
-    try { await guard(); return await work(codec, { workflowStore, poolStore: store, guard, isCurrent: isSame }, account); }
-    finally { workflowStore.close(); }
-  };
-  const backupScope = '包含两库全部活动、归档方案及历史版本，仅供同一 ST 账户换设备或重装恢复。不含模型/LoRA 文件、参考图原件、API 连接与服务授权；这些依赖须在目标环境另行核对。';
   async function action(name, id, memberId) {
     if (name === 'import') { if (!view.busy && visible()) host.querySelector('[data-pool-file]')?.click(); return; }
-    if (name === 'restore-resources') { if (!view.busy && visible() && !view.draft) host.querySelector('[data-pool-backup-file]')?.click(); return; }
+
     await run(async guard => {
       const row = view.rows.find(row => row.id === id), draft = view.draft, member = draft?.pool.candidates.find(item => item.id === memberId);
       if(name==='export-legacy'){
@@ -171,13 +162,6 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
       if(name==='restore-retired'){
         const expectedRevision=view.recovery?.revision;if(!await confirm('将此候选方案的全部版本恢复到归档？不会自动选用或启动任务。'))return;
         await guard();await store.restoreRetired(namespace,id,{expectedRevision,confirmed:true,guard});await loadList(guard);return;
-      }
-      if (name === 'backup-resources' && !draft) {
-        await withResourceStores(guard, async (codec, options, account) => {
-          const packet = await codec.captureComfyResourcesBackup(account, options), summary = await codec.validateComfyResourcesBackup(packet, options); await guard();
-          if (!await confirm(`备份 ${summary.pools.count} 个候选方案（${summary.pools.versions} 个历史版本）及 ${summary.workflows.count} 个工作流（${summary.workflows.versions} 个历史版本）？${backupScope}`)) return;
-          await guard(); await download(new Blob([JSON.stringify(packet)], { type: 'application/json' }), 'qianmu-comfy-resources.json');
-        }); return;
       }
       if (name === 'library') { await guard(); onLibrary(); return; }
       if (name === 'refresh') { await loadList(guard); return; }
@@ -219,19 +203,6 @@ export function createComfyPoolController({ resolveNamespace, getScopeKey = () =
     });
   }
   function bind() {
-    host.querySelector('[data-pool-backup-file]')?.addEventListener('change', event => {
-      const file = event.target.files?.[0]; event.target.value = ''; if (!file || view.draft) return;
-      void run(async guard => withResourceStores(guard, async (codec, options, account) => {
-        const packet = await codec.readComfyResourcesBackup(file, options); await guard();
-        const prepared = await codec.previewComfyResourcesRestore(account, packet, options); await guard();
-        const pool = prepared.pools, workflow = prepared.workflows;
-        if (!await confirm(`恢复候选方案：新增 ${pool.added}、补齐 ${pool.extended}、保留本机 ${pool.kept}；工作流：新增 ${workflow.added}、补齐 ${workflow.extended}、保留本机 ${workflow.kept}。${backupScope}不会启动任务或改变镜头台的选择与开关，原有自动设置仍有效。两库分步保存；中断请重新选择同一备份核对续接。`)) return;
-        await guard();
-        try { await codec.restoreComfyResourcesBackup(account, packet, { ...options, prepared, confirmed: true }); }
-        catch (error) { await guard(); await loadList(guard); throw error; }
-        await guard(); await loadList(guard); notify('候选方案与工作流版本已恢复；连接、参考图及模型文件请另行核对', 'success');
-      }));
-    });
     host.querySelectorAll('[data-pool-action]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); void action(button.dataset.poolAction, button.closest('[data-pool-id]')?.dataset.poolId, button.closest('[data-pool-member]')?.dataset.poolMember); }));
     host.querySelector('[data-pool-search]')?.addEventListener('input', event => { view.search = event.target.value; host.querySelectorAll('[data-pool-search-name]').forEach(row => { row.hidden = !row.dataset.poolSearchName.includes(view.search.toLocaleLowerCase()); }); });
     host.querySelector('[data-pool-name]')?.addEventListener('input', event => { if (view.busy || !view.draft) return; view.draft.name = event.target.value; view.draft.dirty = true; });

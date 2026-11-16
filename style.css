@@ -1305,7 +1305,8 @@ html[data-qm-toast-theme="editorial"] body #toast-container > div { --qm-toast-b
 html[data-qm-toast-theme="editorial"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-bg: #1f1c18; --qm-toast-ink: #ece5d8; --qm-toast-tint: #c2a477; }
 html[data-qm-toast-theme="glass"] body #toast-container > div { --qm-toast-bg: #eef1f7; --qm-toast-ink: #232a3a; --qm-toast-tint: #5c79d3; }
 html[data-qm-toast-theme="glass"][data-qm-toast-mode="dark"] body #toast-container > div { --qm-toast-bg: #161a22; --qm-toast-ink: #e3e7f0; --qm-toast-tint: #8ea5ea; }
-html[data-qm-toast-size="xs"] body #toast-container > div { --qm-toast-fs: 10.5px; }
+/* 最小档：整张卡等比缩小（宽度、留白、图标一起），字号由缩放得出（11.8px × .88 ≈ 10.4px）。 */
+html[data-qm-toast-size="xs"] body #toast-container > div { --qm-toast-fs: 11.8px; zoom: .88; }
 html[data-qm-toast-size="sm"] body #toast-container > div { --qm-toast-fs: 11.5px; }
 html[data-qm-toast-size="lg"] body #toast-container > div { --qm-toast-fs: 14.5px; }
 html[data-qm-toast] body #toast-container > .toast-success { --qm-toast-status: var(--qm-toast-ok); }

@@ -59,8 +59,8 @@ test('restore requires explicit approval before opening storage; no backup work 
   let opens=0;const store=createComfyWorkflowStore({indexedDB:{open(){opens++;throw Error('offline');}}});assert.equal(opens,0);
   await assert.rejects(()=>store.restoreBackup(target,packet(),{expectedDigest:'a'.repeat(64)}),/确认/);assert.equal(opens,0);store.close();assert.equal(opens,0);
 });
-test('actual library UI exposes whole-library backup separately from one-version export and apply',async()=>{
-  const html=renderComfyLibrary({rows:[]});for(const action of ['backup-library','restore-library'])assert.match(html,new RegExp(`data-comfy-action="${action}"`));assert.match(html,/data-comfy-backup-file/);
-  const source=await readFile(new URL('../qianmu-comfy-library-view.js',import.meta.url),'utf8');assert.match(source,/store\.restoreBackup[\s\S]*expectedDigest,confirmed:true,isCurrent:isSame/);
+test('whole-library backup lives in data management; the library page keeps only per-workflow actions',async()=>{
+  const html=renderComfyLibrary({rows:[]});assert.doesNotMatch(html,/data-comfy-action="(?:backup|restore)-library"|data-comfy-backup-file/);assert.match(html,/data-comfy-file/);
+  const source=await readFile(new URL('../qianmu-storage-library-transfer.js',import.meta.url),'utf8');assert.match(source,/planComfyLibraryRestore[\s\S]*workflowStore\.restoreBackup\(namespace, packet, \{ expectedDigest, confirmed: true, isCurrent \}\)/);
   const release=JSON.parse(await readFile(new URL('../release-files.json',import.meta.url),'utf8'));assert.ok(release.files.includes('qianmu-comfy-library-backup.js'));
 });

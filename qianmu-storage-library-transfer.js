@@ -152,8 +152,23 @@ export function createStorageLibraryTransfer({ resolveNamespace, confirm, downlo
     await scope.guard(); await save(packet, 'qianmu-comfy-resources.json');
     notify('Comfy 工作流与候选方案已备份。', 'success');
   }));
+  // 旧版「仅工作流库」备份（工作流页以前单独导出的那种）走工作流库自己的恢复。
+  const restoreWorkflowsOnly = async (scope, codec, packet, { workflowStore, isCurrent }, namespace) => {
+    const local = await workflowStore.backup(namespace, { isCurrent }), usage = await workflowStore.usage(namespace);
+    const { summary } = codec.planComfyLibraryRestore(local, packet, { maxBytes: usage?.limit }), expectedDigest = await codec.comfyLibraryBackupDigest(local); await scope.guard();
+    if (await confirm('恢复工作流库', `新增 ${summary.added} 个工作流，补齐 ${summary.extended} 个的后续版本，保留 ${summary.kept} 个本机方案。不会切换当前工作流，也不启用自动选择。`) !== true) return;
+    await scope.guard(); await workflowStore.restoreBackup(namespace, packet, { expectedDigest, confirmed: true, isCurrent });
+    notify('工作流库已恢复；候选方案、连接与模型文件未变。', 'success');
+  };
   const comfyImport = run('Comfy 恢复', (scope, file) => withComfy(scope, async (codec, options, namespace) => {
-    const packet = await codec.readComfyResourcesBackup(file, options); await scope.guard();
+    let packet;
+    try { packet = await codec.readComfyResourcesBackup(file, options); }
+    catch (error) {
+      const legacy = await import('./qianmu-comfy-library-backup.js'), old = await legacy.readComfyLibraryBackup(file).catch(() => null);
+      if (!old) throw error;
+      await scope.guard(); return restoreWorkflowsOnly(scope, legacy, old, options, namespace);
+    }
+    await scope.guard();
     const prepared = await codec.previewComfyResourcesRestore(namespace, packet, options); await scope.guard();
     const pool = prepared.pools, workflow = prepared.workflows;
     if (await confirm('恢复 Comfy 资源', `工作流：新增 ${workflow.added}、补齐 ${workflow.extended}、保留本机 ${workflow.kept}；候选方案：新增 ${pool.added}、补齐 ${pool.extended}、保留本机 ${pool.kept}。${comfyScope}不会启动任务，也不改变镜头台的选择与开关。`) !== true) return;
