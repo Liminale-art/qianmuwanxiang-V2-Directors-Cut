@@ -19,7 +19,16 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500 }) {
+    // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
+    // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
+    // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
+    async function readSource(binding) {
+        const first = await api.read(binding);
+        if (first?.sourceAvailable !== false || first.document?.movedTo || (first.document?.creation && first.document.creation.status !== 'complete')) return first;
+        await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
+        return api.read(binding);
+    }
     const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
@@ -155,7 +164,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         catch (error) {
             // One read can confirm an acknowledged-lost write; never blindly repeat a mutation.
             try {
-                const fresh = await api.read(binding); adopt(binding, fresh);
+                const fresh = await readSource(binding); adopt(binding, fresh);
                 if (fresh.document.operations.includes(operation.id)) return { ...fresh, outcome: 'confirmed' };
             } catch { /* The original error remains the factual result. */ }
             throw error;
@@ -222,7 +231,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
                 if (serviceError) throw serviceError;
                 if (quiet) await checkService();
-                const data = await api.read(snapshot.binding);
+                const data = await readSource(snapshot.binding);
                 if (ticket !== sequence || disposed) return;
                 const live = await host.snapshot();
                 if (!equalBinding(live.binding, snapshot.binding)) return;
@@ -238,7 +247,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     try { await change(snapshot.binding, { id: id(), type: 'invalidate', entries: inspection.invalid }); }
                     catch (error) { state.error = error.message; }
                 }
-                if (!data.sourceAvailable) { host.clear(); state.error = '当前聊天原件尚未通过核对；请保存聊天后重新打开忆幕。'; }
+                if (!data.sourceAvailable) { host.clear(); offered = false; state.error = '当前聊天原件尚未通过核对；请保存聊天后重新打开忆幕。'; }
                 state.loading = false; emit();
                 if (auto && !disposed) deferFor(snapshot.binding, () => start().catch(() => {}), refreshGeneration);
             } catch (error) {
@@ -305,7 +314,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const live = await host.snapshot().catch(() => null);
                 if (live && equalBinding(live.binding, binding)) snapshot = live;
-                const fresh = await api.read(binding);
+                const fresh = await readSource(binding);
                 jobDocument = fresh.document; adopt(binding, fresh);
                 if (!fresh.sourceAvailable || !jobDocument.enabled || jobDocument.epoch !== doc.epoch || fresh.defaults.revision !== defaults.revision) break;
                 if (!force && !processed && Number.isSafeInteger(fresh.sourceFloorCount) && fresh.sourceFloorCount < snapshot.messages.length) { awaitingSave = true; break; }
@@ -425,7 +434,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     { binding, label: '切片总结', start: batch.start, end: batch.end, retryState });
                 if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
-                const beforeSave = await api.read(binding); adopt(binding, beforeSave);
+                const beforeSave = await readSource(binding); adopt(binding, beforeSave);
                 if (beforeSave.defaults.revision !== defaults.revision || !beforeSave.document.enabled || beforeSave.document.epoch !== doc.epoch) throw new Error('整理期间设置已变化，本次结果未采用');
                 const after = await host.snapshot().catch(() => null);
                 if (after && equalBinding(after.binding, binding)) {
@@ -506,7 +515,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             && effectiveSettings(state.document, state.defaults).recall !== false;
         if (!active() || typeof api.recallSource !== 'function') return;
         try {
-            const fresh = await api.read(binding); adopt(binding, fresh);
+            const fresh = await readSource(binding); adopt(binding, fresh);
             const parent = fresh.document.entries.find(entry => entry.id === request.parentId);
             if (!active() || !fresh.sourceAvailable || recallBlockReason(fresh.document, parent)) return;
             const source = await api.recallSource(binding, { parentId: request.parentId, parentRevision: request.parentRevision,
@@ -526,7 +535,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (!sourceMatches(triggerSource, hashes) || !sourceMatches(source.source, hashes) || !active()) return;
             await change(binding, { id: id(), type: 'recall', entryId: id(), expectedRevision: source.documentRevision,
                 expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision, parent: source.parent, triggerSource, quote });
-            if (active()) adopt(binding, await api.read(binding)); // Excerpts materialize from ST originals only on read.
+            if (active()) adopt(binding, await readSource(binding)); // Excerpts materialize from ST originals only on read.
         } catch {
             // Optional recall never rolls back good summaries, retries a model in a
             // loop, or turns a failed/unknown write into a success notification.
@@ -560,7 +569,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (disposed || controller.signal.aborted || generating || localStops.has(key)) break;
                 const snapshot = await host.snapshot();
                 if (!equalBinding(snapshot.binding, binding)) break;
-                const fresh = await api.read(binding); adopt(binding, fresh);
+                const fresh = await readSource(binding); adopt(binding, fresh);
                 const document = clone(fresh.document);
                 for (const entry of document.entries) if (fresh.invalidSourceIds?.includes(entry.id) && entry.status === 'active') entry.status = 'invalid';
                 if (!fresh.sourceAvailable || !document.enabled || document.epoch !== initial.epoch || fresh.defaults.revision !== defaults.revision) break;
@@ -599,7 +608,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     { binding, label: '阶段总结', start: startFloor, end: endFloor, retryState });
                 if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
-                const latest = await api.read(binding); adopt(binding, latest);
+                const latest = await readSource(binding); adopt(binding, latest);
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 if (!latest.document.enabled || latest.document.epoch !== initial.epoch || latest.defaults.revision !== defaults.revision) throw new Error('整理期间设置已改变，阶段结果未采用');
                 stageSourceFromParents(latest.document, refs, { automatic: !force, stageRecent: settings.stageRecent, includeCustom: useCustom });
@@ -815,11 +824,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         host.clear(); prepared = null; offered = false;
         if (generationRefresh) {
             let timer;
-            const ready = await Promise.race([generationRefresh.then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), 500); })]);
+            const ready = await Promise.race([generationRefresh.then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), interceptWaitMs); })]);
             clearTimeout(timer);
-            if (!ready) return; // A slow storage read never holds normal generation hostage.
+            // A slow storage read never holds normal generation hostage — but the round says why it carried no memory.
+            if (!ready) { if (!disposed && state.document?.enabled) { state.lastSkip = { stage: 'refresh', reason: 'refresh-timeout', at: ++skipSeq }; emit(); } return; }
         }
-        if (disposed || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || localStops.has(bindingKey(state.snapshot.binding))) return;
+        if (disposed || !state.document?.enabled || !state.snapshot || localStops.has(bindingKey(state.snapshot.binding))) return;
+        if (!state.sourceAvailable) { state.lastSkip = { stage: 'refresh', reason: 'source-unverified', at: ++skipSeq }; emit(); return; }
         const ticket = generation;
         const doc = clone(state.document), defaults = clone(state.defaults);
         // Keep disabled/invalid authoritative stages in the document so their
@@ -886,7 +897,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
             }
             const result = await host.applyPrepared(args[0], pending.session, { isCurrent: isCurrentRequest });
-            if (!isCurrentRequest()) return;
+            if (!isCurrentRequest()) {
+                // 准备好之后状态又变了（文档修订、来源核对、停用…）：本轮不改写。同一轮内如实记下原因。
+                if (!disposed && pending === prepared && pending.generation === generation && isCurrent(pending.binding)) { state.lastSkip = { stage: 'apply', reason: 'source-or-route-changed', at: ++skipSeq, offered }; emit(); }
+                return;
+            }
             if (result.applied) {
                 state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared',
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,

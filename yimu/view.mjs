@@ -1059,6 +1059,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             'unsupported-system-role': ['o1 系列模型的 system 处理方式特殊，忆幕本轮不介入。', '换用普通 Chat Completion 模型即可。'],
             'origin-reverify-failed': ['引用的上游原文在最终核对时不可用或已变化。', '稍后重试；忆幕宁可回退也不注入未经核对的原文。'],
             'source-or-route-changed': ['生成前聊天或连接发生了变化，本轮放弃改写。', '通常下一轮即恢复，无需处理。'],
+            'source-unverified': ['生成前，当前聊天原件未能通过核对，本轮没有使用记忆。', '多为聊天正在保存，通常下一轮即恢复；若持续出现，请保存聊天后重新打开忆幕。'],
+            'refresh-timeout': ['生成前读取记忆超时，本轮没有使用记忆。', '多为网络或服务器繁忙，通常下一轮即恢复。'],
             'different-route': ['最终请求的模型/渠道与准备时不一致。', '通常下一轮即恢复。'],
         };
         return map[reason] || ['本轮因一次安全守卫回退，未改写请求。', `原因代码：${reason}。如持续出现请反馈。`];
