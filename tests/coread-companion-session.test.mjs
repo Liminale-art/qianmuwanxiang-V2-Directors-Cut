@@ -28,6 +28,8 @@ function fixture(){
   const names=['coreadPersonaChoices','coreadHostPersona','coreadPersona','coreadUserName','coreadApplyIdentityChoice','renderCoreadIdentityChoices',
     'coreadCompanionChoices','coreadCompanionCharacter','coreadCompanionSession','coreadEnsureCompanionSession','coreadSelectCompanion',
     'coreadCompanionMatchesChat','coreadResolveCompanionMacro','companionCharName','coreadDialogBucket','coreadOpenBook','coreadSaveProgress','coreadSaveDialog'];
+  // The reader reaches its conversations through the sync layer; here it passes straight to whatever the test put on blobStore.
+  context.readerChatSync={get:key=>context.blobStore.getReaderChat(key),put:(key,record)=>context.blobStore.putReaderChat(key,record)};
   vm.runInContext(names.map(section).join('\n'),context);
   return {context,host,state,books,legacy,notices,writes,dialog:()=>vm.runInContext('readerDialog',context)};
 }

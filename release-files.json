@@ -9,6 +9,7 @@
     "qianmu-font-faces-sidecar.js",
     "qianmu-log-bodies-sidecar.js",
     "qianmu-settings-sidecars.js",
+    "qianmu-reader-chat-sync.js",
     "qianmu-settings-persistence.js",
     "qianmu-yimu-companion.js",
     "features/chat/qianmu-chat-scoped-settings.js",
