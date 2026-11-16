@@ -15,7 +15,8 @@ import {createBrowserCredentialStore} from './qianmu-browser-credentials.js?v=1.
 import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.520';
 import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59.528';
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
-import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.530';
+import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
+import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -54,7 +55,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.530';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.531';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -331,7 +332,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.530';
+const VERSION = '1.59.531';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -379,6 +380,7 @@ function regexGroupsWrite(value) {
 const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
 const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record)},resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
+const ttsFavoritesSync=createTtsFavoritesSync({blobStore,resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const sidecars=createSettingsSidecars({resolveNamespace:resolveImageAccountNamespace,requestSave:()=>saveSettings(),notify:message=>toast(message,'info'),onRestored:()=>rerenderIfOpen()}),fontFaces=sidecars.fontFaces;
 const fontLibrary=fontFaces.gate(createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}}),()=>settings);
 const yimuCompanionBridge = createYimuCompanionBridge({
@@ -5683,6 +5685,7 @@ function scheduleExtraPreload() {
       quiet(() => warmStoryboardFeatures()),
       quiet(() => COREAD_ENABLED ? featureRuntime.load('readerCore') : null),
       quiet(() => COREAD_ENABLED ? readerChatSync.run() : null),
+      quiet(() => ttsFavoritesSync.run()),
       // 正文收藏：首开要现场下载 7 个脚本（3 层）＋4 个样式（2 层），全部到齐才出面板——这里提前暖好。
       quiet(async () => {
         await loadLocalChunk('./qianmu-text-collection-view.js?v=1.59.419');
@@ -10368,6 +10371,7 @@ async function ttsRefreshFavorites(root) {
           folder: fav.meta?.folder || '',
         });
         if (!edited) return;
+        ttsFavoritesSync.request(id);
         await blobStore.updateFavorite(id, {
           label: edited.name || fav.meta?.text || '未命名配音',
           meta: { ...(fav.meta || {}), folder: edited.folder },
@@ -12254,6 +12258,7 @@ async function ttsFavoriteLine(line, btn, location = {}) {
     // 豆包「自动识别」可能在首次合成后落定资源；收藏 ID 必须用落定后的 params，避免下一次无法识别为同一收藏。
     const resolvedId = `fav:${cacheKeyForTts(params.providerId, params)}`;
     const source = ttsLineSourceMeta(location.mesEl, location.idx);
+    ttsFavoritesSync.request(resolvedId);   // 几秒后对账这一条（届时已写入）
     await blobStore.addFavorite(resolvedId, blob, {
       speaker: line.speaker, text: line.text,
       format: params.fileExtension || 'mp3', provider: params.providerId,

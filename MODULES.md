@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 430 个，其中 `qianmu-*` 模块 413 个。
+根目录文件 432 个，其中 `qianmu-*` 模块 415 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 159 |
 | `server/` | 65 |
-| `tests/` | 989 |
+| `tests/` | 990 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -417,6 +417,12 @@
 | `qianmu-recipe-restore-contract.js` | 是 |  |
 | `qianmu-recipe-storage.js` | 是 |  |
 
+## 语音（TTS）（1）
+
+| 文件 | 发行 | 首行说明 |
+| --- | --- | --- |
+| `qianmu-tts-favorites-sync.js` | 是 | 配音收藏（用户主动留存的音频）跟随 ST 账户走。 |
+
 ## 外观、主题、字体与图标（22）
 
 | 文件 | 发行 | 首行说明 |
@@ -444,12 +450,13 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（28）
+## 模型、配置与账户（29）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-account-identity.js` | 是 | Account identity is shared by ordinary tools as well as image generation. |
 | `qianmu-account-local-store.js` | 是 | Shared lazy IndexedDB account-document transactions. Callers own schema, namespace and database. |
+| `qianmu-account-mirror.js` | 是 | Mirrors a set of records kept in this browser to ST account files, so they follow the ST account to other |
 | `qianmu-config-apply.js` | 是 | Synchronous configuration handoff only; independent originals are never read/deleted. |
 | `qianmu-config-connections.js` | 是 | Configuration-package policy only. Never scan/rewrite user prose, prompt text or media. |
 | `qianmu-config-export.js` | 是 |  |

@@ -272,6 +272,13 @@ export async function importFavorite(favId, blob, meta, label, {check = () => {}
   return favId;
 }
 
+// Writes a favourite exactly as given, keeping its original time (used when a favourite arrives from the account mirror).
+export async function restoreFavorite(favId, record) {
+  const s = await store(STORE_FAVORITES, 'readwrite');
+  await reqP(s.put({ blob: record.blob, meta: record.meta || {}, label: record.label || '', createdAt: Number(record.createdAt) || Date.now() }, favId));
+  return favId;
+}
+
 export async function getFavorite(favId) {
   const s = await store(STORE_FAVORITES, 'readonly');
   return reqP(s.get(favId));

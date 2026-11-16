@@ -96,7 +96,7 @@ test('when both sides changed, the newer write wins and the other is kept on the
   const round = await b.sync.run();
   assert.equal(round.conflicts, 1); assert.equal(round.uploaded, 1);
   const kept = [...b.idb.databases.get('qianmu-reader-chat-sync::st-user:test').get('conflicts').values()];
-  assert.equal(kept.length, 1); assert.equal(kept[0].side, 'account'); assert.equal(kept[0].record.messages[1].text, 'A 的续写');
+  assert.equal(kept.length, 1); assert.equal(kept[0].side, 'account'); assert.equal(JSON.parse(kept[0].text).messages[1].text, 'A 的续写');
   assert.equal((await a.sync.run()).downloaded, 1);
   assert.equal((await a.store.get('chat::book1')).messages[1].text, 'B 的续写');
 
@@ -107,7 +107,7 @@ test('when both sides changed, the newer write wins and the other is kept on the
   assert.equal(second.conflicts, 1); assert.equal(second.downloaded, 1);
   assert.equal((await b.store.get('chat::book1')).messages[1].text, 'A 更晚');
   const local = [...b.idb.databases.get('qianmu-reader-chat-sync::st-user:test').get('conflicts').values()].find(row => row.side === 'local');
-  assert.equal(local.record.messages[1].text, 'B 再写', 'the overwritten local version is recoverable');
+  assert.equal(JSON.parse(local.text).messages[1].text, 'B 再写', 'the overwritten local version is recoverable');
 });
 
 test('a local deletion is not propagated and not undone; a wiped browser gets everything back', async () => {

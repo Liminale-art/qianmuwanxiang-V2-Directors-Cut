@@ -9,6 +9,8 @@
     "qianmu-font-faces-sidecar.js",
     "qianmu-log-bodies-sidecar.js",
     "qianmu-settings-sidecars.js",
+    "qianmu-account-mirror.js",
+    "qianmu-tts-favorites-sync.js",
     "qianmu-reader-chat-sync.js",
     "qianmu-settings-persistence.js",
     "qianmu-yimu-companion.js",
