@@ -47,7 +47,7 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.524';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.525';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -324,7 +324,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.524';
+const VERSION = '1.59.525';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -4207,33 +4207,67 @@ function getFloatSize() {
     : responsiveDefault;
 }
 
+// 视口尺寸与顶栏位置都要向浏览器读布局，而读布局会逼它立刻把整页排完。换聊天后那一刻页面刚塞进全部
+// 楼层（可达数百层），这一读就是几百毫秒，随后千幕再往各层注入内容又得重排一遍。所以整份结果记住，
+// 只在窗口尺寸变化时作废；顶栏下沿在下一帧（浏览器本来就要排版时）复量，量出不同值供下一次使用。
 function floatViewportBounds() {
+  // 没有「下一帧」可用的环境无法复量，就不记忆、每次现量（行为与原先一致）。
+  const canDefer = typeof globalThis.requestAnimationFrame === 'function';
+  const known = canDefer ? floatViewportBounds.known : null;
+  if (known) {
+    if (!known.pending) {
+      known.pending = true;
+      globalThis.requestAnimationFrame(() => {
+        known.pending = false;
+        if (floatViewportBounds.known !== known) return;
+        const safeTop = known.measure();
+        if (safeTop === known.bounds.safeTop) return;
+        known.bounds.safeTop = safeTop;
+        // 顶栏确实变了（例如开机时顶栏晚于千幕出现）：按新值把悬浮格夹回安全区。
+        if (typeof renderFloatButton === 'function') { try { renderFloatButton(); } catch (_) { /* 下次夹取仍会用到新值 */ } }
+      });
+    }
+    return { ...known.bounds };
+  }
+  if (!floatViewportBounds.bound && typeof window?.addEventListener === 'function') {
+    floatViewportBounds.bound = true;
+    const forget = () => { floatViewportBounds.known = null; };
+    window.addEventListener('resize', forget, { passive: true });
+    window.addEventListener('orientationchange', forget, { passive: true });
+    window.visualViewport?.addEventListener?.('resize', forget, { passive: true });
+    window.visualViewport?.addEventListener?.('scroll', forget, { passive: true });
+  }
   const viewport = window.visualViewport;
   const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const left = finite(viewport?.offsetLeft, 0);
   const top = finite(viewport?.offsetTop, 0);
   const width = Math.max(1, finite(viewport?.width, finite(window.innerWidth, 1)));
   const height = Math.max(1, finite(viewport?.height, finite(window.innerHeight, 1)));
-  let safeTop = top + 4;
-  // ST 顶栏层级高于千幕悬浮格。只识别横向、贴顶且高度有限的栏，避免把侧栏主题误判成整页安全区。
-  if (typeof document?.querySelectorAll === 'function' && typeof globalThis.getComputedStyle === 'function') {
-    const selectors = ['#top-settings-holder', '#top-bar', '.top-settings-holder', '.top-bar'];
-    const seen = new Set();
-    for (const element of document.querySelectorAll(selectors.join(','))) {
-      if (!(element instanceof Element) || seen.has(element)) continue;
-      seen.add(element);
-      const style = globalThis.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      const overlap = Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left));
-      const shallow = rect.height > 0 && rect.height <= Math.min(140, height * .28);
-      const touchesTop = rect.top <= top + 12 && rect.bottom > top;
-      const spansHeader = overlap >= Math.min(width * .42, 280);
-      if (style.display !== 'none' && style.visibility !== 'hidden' && shallow && touchesTop && spansHeader) {
-        safeTop = Math.max(safeTop, Math.min(top + height, rect.bottom + 4));
+  const measureSafeTop = () => {
+    let safeTop = top + 4;
+    // ST 顶栏层级高于千幕悬浮格。只识别横向、贴顶且高度有限的栏，避免把侧栏主题误判成整页安全区。
+    if (typeof document?.querySelectorAll === 'function' && typeof globalThis.getComputedStyle === 'function') {
+      const selectors = ['#top-settings-holder', '#top-bar', '.top-settings-holder', '.top-bar'];
+      const seen = new Set();
+      for (const element of document.querySelectorAll(selectors.join(','))) {
+        if (!(element instanceof Element) || seen.has(element)) continue;
+        seen.add(element);
+        const style = globalThis.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        const overlap = Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left));
+        const shallow = rect.height > 0 && rect.height <= Math.min(140, height * .28);
+        const touchesTop = rect.top <= top + 12 && rect.bottom > top;
+        const spansHeader = overlap >= Math.min(width * .42, 280);
+        if (style.display !== 'none' && style.visibility !== 'hidden' && shallow && touchesTop && spansHeader) {
+          safeTop = Math.max(safeTop, Math.min(top + height, rect.bottom + 4));
+        }
       }
     }
-  }
-  return { left, top, width, height, right: left + width, bottom: top + height, safeTop };
+    return safeTop;
+  };
+  const bounds = { left, top, width, height, right: left + width, bottom: top + height, safeTop: measureSafeTop() };
+  if (canDefer) floatViewportBounds.known = { bounds, measure: measureSafeTop, pending: false };
+  return { ...bounds };
 }
 
 function clampFloatPosition() {

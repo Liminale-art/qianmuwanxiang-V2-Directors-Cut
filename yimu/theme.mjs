@@ -67,10 +67,21 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
         if (root.getAttribute(name) !== value) root.setAttribute(name, value);
         writtenAttributes.set(name, value);
     }
+    // Observer- and font-driven syncs read computed style, which makes the browser finish styling the whole
+    // page on the spot. They fire in the middle of other work (e.g. right after a chat with hundreds of floors
+    // was inserted), so they wait for the next frame, where that styling happens anyway; several triggers in
+    // one frame become one sync. An explicit sync() (opening the panel) stays immediate.
+    let scheduled = false;
+    const later = () => {
+        if (typeof window.requestAnimationFrame !== 'function') { sync(); return; }
+        if (scheduled) return;
+        scheduled = true;
+        window.requestAnimationFrame(() => { scheduled = false; sync(); });
+    };
     const Observer = window.MutationObserver;
-    const sourceObserver = Observer ? new Observer(() => sync()) : null;
+    const sourceObserver = Observer ? new Observer(() => later()) : null;
     const bodyObserver = Observer ? new Observer(() => {
-        if (!disposed && findSource() !== source) sync();
+        if (!disposed && findSource() !== source) later();
     }) : null;
     function sync() {
         if (disposed) return;
@@ -106,7 +117,7 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
             || String(style.fontFamily || '').trim() : '');
     }
     if (document.body) bodyObserver?.observe(document.body, { childList: true });
-    document.fonts?.addEventListener?.('loadingdone', sync);
+    document.fonts?.addEventListener?.('loadingdone', later);
     sync();
     return {
         sync,
@@ -115,7 +126,7 @@ export function mountTheme(root, { document = root?.ownerDocument || globalThis.
             disposed = true;
             sourceObserver?.disconnect();
             bodyObserver?.disconnect();
-            document.fonts?.removeEventListener?.('loadingdone', sync);
+            document.fonts?.removeEventListener?.('loadingdone', later);
             for (const [name, value] of written) {
                 if (read(root.style, name) !== value) continue;
                 const before = originals.get(name);
