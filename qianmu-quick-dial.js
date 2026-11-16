@@ -1,17 +1,17 @@
 // 快捷轮盘：贴着千幕 logo 展开的半椭圆拨盘。
 // logo 靠右时弧线向左凸，靠左时向右凸；弧线纵向拉长，内侧留出更多空间。入口沿弧线内侧排布、向两端淡出；
 // 指针是一枚固定在弧线正中内侧的圆点，拨到圆点处的入口放大并在弧外显示名称。
-// 与蜂巢格一样由长按 logo 展开；展开后不抬手直接上下滑即可拨动，松手打开指针处的入口。
+// 与蜂巢格一样由长按 logo 展开并留在屏上；长按后不抬手继续移动则是挪动 logo（轮盘随即收起），与蜂巢格一致。
 // 展开时圆形 logo 自己滑进弧线、排在最后一格（即主面板入口）；收起时滑回原位，盘里不再另放一枚 logo。
 // 本模块只管轮盘自身的绘制与手势，不保存任何设置；入口、配色、打开动作都由调用方传入。
 
 const EDGE = 80 * Math.PI / 180;      // 可见弧的边界角
 const SLOTS = 2;                      // 指针上下各显示几格（共 5 格）
-const MORE = 88 * Math.PI / 180;      // 两端「···」占位所在的角度（在最后一个可见入口之外）
-const GROW = 0.5;                     // 指针处入口放大的比例
+const GROW = 0.3;                     // 指针处入口放大的比例
 const DOT = 3.5;                      // 指针圆点半径
 const GAP = 9;                        // 弧线—圆点、圆点—入口之间的间距（两段相同）
 const HOME = '__home';
+const LEAVING_ID = 'qm-dial-leaving';   // 收起动画期间的 id：样式照常生效，但不再占用快捷盘图层的 id
 const DETACHABLE = new Set(['notes', 'assistant', 'floor']);
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 const escapeHtml = value => String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -204,7 +204,7 @@ export function createQuickDial({
     current.stop();
     const done = () => { current.root.remove(); current.origin.classList?.remove('sd-wheel-away'); };
     // 立即让出快捷盘图层的身份与指针，盘面淡出、logo 滑回原位后再移除。
-    current.root.removeAttribute('id');
+    current.root.id = LEAVING_ID;
     current.root.classList.add('is-leaving');
     const motion = flyHome(current, true);
     if (motion) { motion.onfinish = motion.oncancel = done; setTimeout(done, 400); } else done();
@@ -238,7 +238,8 @@ export function createQuickDial({
     const list = [...(items?.() || []), { id: HOME, label: '千幕', home: true }];
     const box = viewportBox(), rect = origin.getBoundingClientRect();
     const geo = quickDialGeometry({ centerX: rect.left + rect.width / 2 - box.left, centerY: rect.top + rect.height / 2 - box.top, width: box.width, height: box.height, size: Number(floatSize?.()) || 48 });
-    const colors = palette?.() || {}, edges = colors.edges?.length ? colors.edges : ['#c99b51', '#77736d'];
+    // 弧线、圆点、入口外框统一用当前主题的强调色（与悬浮入口的外框同色）。
+    const colors = palette?.() || {}, accent = colors.mainEdge || colors.edges?.[0] || '#c99b51', edges = [accent, accent];
     const cyclic = quickDialCyclic(list.length);
     const root = document.createElement('div');
     root.id = id;
@@ -250,8 +251,7 @@ export function createQuickDial({
     root.style.setProperty('--qd-accent', colors.mainEdge || edges[0]);
     root.style.setProperty('--qd-r', `${geo.rx}px`);
     root.style.setProperty('--qd-chip', `${geo.chip}px`);
-    const dots = [-1, 1].map(end => `<span class="qm-dial-more" style="translate:${(geo.sign * geo.ringX * Math.cos(MORE)).toFixed(1)}px ${(end * geo.ringY * Math.sin(MORE)).toFixed(1)}px" aria-hidden="true">···</span>`).join('');
-    root.innerHTML = `<div class="qm-dial-backdrop"></div><div class="qm-dial-stage" style="left:${geo.x}px;top:${geo.y}px">${arcMarkup(geo, `qm-dial-g${++serial}`)}${dots}<div class="qm-dial-items" role="menu" aria-label="千幕快捷轮盘"></div><div class="qm-dial-label" aria-live="polite"></div></div>`;
+    root.innerHTML = `<div class="qm-dial-backdrop"></div><div class="qm-dial-stage" style="left:${geo.x}px;top:${geo.y}px">${arcMarkup(geo, `qm-dial-g${++serial}`)}<div class="qm-dial-items" role="menu" aria-label="千幕快捷轮盘"></div><div class="qm-dial-label" aria-live="polite"></div></div>`;
     const holder = root.querySelector('.qm-dial-items');
     const nodes = list.map((item, index) => {
       const node = document.createElement('button');
@@ -372,18 +372,7 @@ export function createQuickDial({
     };
   }
 
-  // 长按 logo 展开轮盘时调用：轮盘展开，并把这次按压接成一次拨动。
-  // 不抬手上下滑＝拨动，松手打开指针处的入口；不滑就松手＝轮盘留在屏上。
-  function grab(origin, event) {
-    if (!view || view.origin !== origin) open(origin);
-    const slide = beginSlide(event.clientY), slop = event.pointerType === 'touch' ? 7 : 4;
-    return {
-      move(next) { slideTo(slide, next.clientY, slop); },
-      release(cancelled = false) { if (cancelled) close(); else endSlide(slide, false); },
-    };
-  }
-
-  return Object.freeze({ open, close, grab, get isOpen() { return !!view; } });
+  return Object.freeze({ open, close, get isOpen() { return !!view; } });
 }
 
 // 设置页里的入口排序：按住入口拖到新位置。拖动只改顺序，不改选中状态；松手后回报新的顺序。

@@ -23,14 +23,14 @@ test('the arc is a tall half ellipse bulging away from the edge the logo sits on
 });
 
 test('the pointer dot sits between the arc and the pointed entry with the same gap on both sides', () => {
-  const geo = phone('right'), grownHalf = geo.chip * 1.5 / 2, dotRadius = 3.5;
+  const geo = phone('right'), grownHalf = geo.chip * 1.3 / 2, dotRadius = 3.5;
   const arcToDot = geo.rx - (geo.dot + dotRadius), dotToEntry = (geo.dot - dotRadius) - (geo.ringX + grownHalf);
   assert.ok(Math.abs(arcToDot - dotToEntry) < 1e-9, 'equal spacing: arc — dot — entry');
   assert.ok(arcToDot >= 7 && arcToDot <= 12);
 });
 
 test('neighbouring entries keep the same edge-to-edge gap while the pointed one grows, all the way round the arc', () => {
-  const geo = phone('right'), size = delta => geo.chip * (1 + 0.5 * Math.max(0, 1 - Math.abs(delta)));
+  const geo = phone('right'), size = delta => geo.chip * (1 + 0.3 * Math.max(0, 1 - Math.abs(delta)));
   for (const position of [0, 0.25, 0.5, 0.8]) {
     const gaps = [];
     for (let index = -2; index < 2; index++) {   // the entries nearest the pointer, all inside the visible arc
@@ -90,14 +90,20 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(source, /const quickDial = createQuickDial\(\{\s*id: QUICK_WHEEL_ID,/, 'one launcher layer: closing the hive closes the dial too');
   assert.match(source, /if \(open\?\._qmCleanup\) open\._qmCleanup\(\); else open\?\.remove\(\);/);
   assert.match(source, /function openQuickWheel\(btn\) \{\s*closeQuickWheel\(\);\s*closeFloorNavigator\(\);\s*if \(settings\.quickLauncher === 'dial'\) return void quickDial\.open\(btn\);/, 'the long press that opens the hive opens the dial instead');
-  assert.match(source, /openQuickWheelFromLongPress\(btn\);[\s\S]{0,160}if \(settings\.quickLauncher === 'dial'\) dial = quickDial\.grab\(btn,/, 'the same press continues as a slide');
+  assert.doesNotMatch(source + module, /quickDial\.grab|function grab\(/, 'after the long press, moving the finger moves the logo exactly as with the hive; the dial is turned by a separate gesture');
+  assert.match(source, /if \(wheelOpened\) \{[\s\S]{0,260}closeQuickWheel\(\);\s*wheelOpened = false;\s*\}\s*moved = true;/, 'dragging after the long press closes the launcher and moves the logo');
+  assert.match(css, /#story-director-float\.sd-float-dragging\.sd-wheel-away \{ filter: none !important; \}/, 'the logo is visible again the moment it is dragged');
+  assert.match(module, /current\.root\.id = LEAVING_ID;/, 'while closing, the layer keeps a styled id so the logo never paints at its natural size');
+  assert.doesNotMatch(module + css, /qm-dial-more|···/, 'no ellipsis markers at the ends of the arc');
+  assert.match(module, /accent = colors\.mainEdge \|\| colors\.edges\?\.\[0\] \|\| '#c99b51', edges = \[accent, accent\];/, 'arc, dot and frames all use the theme accent, like the floating logo outline');
+  assert.match(css, /html\[data-qm-launcher="dial"\] #story-director-float \{[^}]*justify-content: center !important; align-items: center !important;/, 'the logo is centred in the round floating entry');
   assert.doesNotMatch(source, /quickDial\.press|sd-float-lifted/, 'no press-to-open gesture: a tap opens the main panel as with the hive');
   assert.match(source, /run: \(id\) => id \? runQuickWheelCommand\(id\) : openModal\(\)/, 'the first entry opens the main panel');
   assert.match(module, /prefers-reduced-motion: reduce/);
   assert.match(module, /chip\.animate\(\[\{ transform: 'scale\(1\)' \}, \{ transform: 'scale\(\.8\)'/, 'the entry dips and springs back before its panel opens');
   assert.doesNotMatch(module + css, /qm-dial-drop|qm-dial-scrim/, 'no bump on the arc and no backing disc');
   assert.match(css, /\.qm-dial-chip \{[^}]*border-radius: 50%;[^}]*inset 0 0 0 calc\(1\.2px \/ var\(--qd-grow, 1\)\)/, 'round frames with the same 1.2px line as the hive outline');
-  assert.match(css, /\.qm-dial-chip > img \{ width: 74%; height: 74%; object-fit: contain; translate: 0 5%;/, 'the logo fits inside its round frame uncropped, nudged slightly down');
+  assert.match(css, /\.qm-dial-chip > img \{ width: 74%; height: 74%; object-fit: contain; pointer-events: none; \}/, 'the logo fits inside its round frame uncropped and centred');
   assert.match(module, /const list = \[\.\.\.\(items\?\.\(\) \|\| \[\]\), \{ id: HOME, label: '千幕', home: true \}\];/, 'the main-panel entry is the last slot, not a second logo at the front');
   assert.match(module, /origin\.classList\?\.add\('sd-wheel-away'\);\s*flyHome\(view, false\);/, 'the round logo itself slides into the arc when the dial opens');
   assert.match(module, /const motion = flyHome\(current, true\);/, 'and slides back when it closes');
@@ -107,7 +113,7 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(css, /\.qm-prose-hive-layer\.qm-prose-hive-floor \{ z-index: 2147483000; \}/, 'the dragged-out chat toolkit entry sits below the main panel');
   assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry \{[^}]*clip-path: circle\(50%\)/, 'dragged-out entries are round in dial mode');
   assert.match(source, /setAttribute\('data-qm-launcher', settings\.quickLauncher === 'dial' \? 'dial' : 'hive'\)/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ #story-director-quick-wheel\.qm-dial \.qm-dial-stage \{ animation: none; \} \}/);
-  assert.match(css, /#story-director-quick-wheel\.qm-dial\.qm-dial-right \.qm-dial-label \{ right: calc\(var\(--qd-r\) \+ 12px\); \}/, 'the name box sits outside the arc');
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ :is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial \.qm-dial-stage \{ animation: none; \} \}/);
+  assert.match(css, /:is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial\.qm-dial-right \.qm-dial-label \{ right: calc\(var\(--qd-r\) \+ 12px\); \}/, 'the name box sits outside the arc');
   assert.ok(JSON.parse(readFileSync(new URL('../release-files.json', import.meta.url), 'utf8')).files.includes('qianmu-quick-dial.js'));
 });
