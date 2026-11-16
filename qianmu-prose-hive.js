@@ -10,7 +10,7 @@ export function createProseHive({open,geometry,clamp,palette,theme,outline,apply
   function render(){
     if(disposed)return;remove();if(!state.detached)return;
     const size=geometry(),position=clamp(state.position||{}),colors=palette(),tone=state.tone==='light'?'light':'dark';
-    layer=document.createElement('div');layer.className=`qm-prose-hive-layer sd-hive-theme-${theme()}`;layer.dataset.qianmuTransient='';
+    layer=document.createElement('div');layer.className=`qm-prose-hive-layer qm-prose-hive-${commandId} sd-hive-theme-${theme()}`;layer.dataset.qianmuTransient='';
     const entry=document.createElement('button');entry.type='button';entry.className=`sd-detached-notes-entry is-glass-${tone}`;
     entry.dataset.hiveTone=tone;entry.dataset.hiveEdgeIndex=String(Math.max(0,Math.trunc(Number(state.edge)||0)));
     entry.title=title;entry.setAttribute('aria-label',ariaLabel);

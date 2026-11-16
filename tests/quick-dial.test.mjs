@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialTone } from '../qianmu-quick-dial.js';
+import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialOpacity, quickDialTone } from '../qianmu-quick-dial.js';
 
 const phone = side => quickDialGeometry({ centerX: side === 'right' ? 340 : 20, centerY: 400, width: 360, height: 780, size: 44 });
 const point = (geo, offset) => { const angle = quickDialAngle(offset, geo); return [geo.sign * geo.ringX * Math.cos(angle), geo.ringY * Math.sin(angle)]; };
@@ -48,13 +48,25 @@ test('positions along the ellipse: symmetric, monotonic, and hidden once past th
   assert.equal(quickDialAngle(0, geo), 0);
   assert.ok(Math.abs(quickDialAngle(60, geo) + quickDialAngle(-60, geo)) < 1e-12);
   let last = -1;
-  for (let offset = 0; offset <= 200; offset += 20) { const angle = quickDialAngle(offset, geo); assert.ok(angle > last); last = angle; }
+  for (let offset = 0; offset <= 140; offset += 20) { const angle = quickDialAngle(offset, geo); assert.ok(angle > last); last = angle; }
   assert.ok(quickDialAngle(5000, geo) > Math.PI / 2, 'far entries resolve beyond the visible range');
 });
 
-test('entries wrap around only when there are enough to fill the visible arc', () => {
+test('five slots: two entries on each side of the pointer fill the visible arc, the next one is out of sight', () => {
+  for (const geo of [phone('right'), quickDialGeometry({ centerX: 1880, centerY: 500, width: 1920, height: 1000, size: 48 })]) {
+    const quarter = Math.PI / 2;
+    assert.ok(Math.abs(quickDialAngle(quickDialOffset(2, geo), geo)) < 80 * Math.PI / 180, 'the second neighbour is inside the visible arc');
+    assert.ok(Math.abs(quickDialAngle(quickDialOffset(3, geo), geo)) > 78 * Math.PI / 180 || Math.abs(quickDialAngle(quickDialOffset(3, geo), geo)) > quarter, 'the third neighbour falls at or beyond its edge');
+    assert.ok(geo.pitch >= geo.chip + 8, 'entries never touch');
+  }
+  assert.equal(quickDialOpacity(0), 1); assert.equal(quickDialOpacity(1), 1);
+  assert.ok(quickDialOpacity(2) > 0.55 && quickDialOpacity(2) < 1, 'the outer slot is slightly faded');
+  assert.equal(quickDialOpacity(2.9), 0); assert.equal(quickDialOpacity(-2.9), 0);
+});
+
+test('entries wrap around only when there are more than the five slots can show', () => {
   const geo = phone('right');
-  assert.equal(quickDialCyclic(4, geo), false); assert.equal(quickDialCyclic(17, geo), true);
+  assert.equal(quickDialCyclic(4), false); assert.equal(quickDialCyclic(6), false); assert.equal(quickDialCyclic(7), true); assert.equal(quickDialCyclic(17), true);
   assert.equal(quickDialDelta(3, 1, 4, false), 2); assert.equal(quickDialDelta(0, 3, 4, false), -3);
   assert.equal(quickDialDelta(16, 0, 17, true), -1, 'the last entry sits just before the first');
   assert.equal(quickDialDelta(0, 16, 17, true), 1);
@@ -85,7 +97,14 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(module, /chip\.animate\(\[\{ transform: 'scale\(1\)' \}, \{ transform: 'scale\(\.8\)'/, 'the entry dips and springs back before its panel opens');
   assert.doesNotMatch(module + css, /qm-dial-drop|qm-dial-scrim/, 'no bump on the arc and no backing disc');
   assert.match(css, /\.qm-dial-chip \{[^}]*border-radius: 50%;[^}]*inset 0 0 0 calc\(1\.2px \/ var\(--qd-grow, 1\)\)/, 'round frames with the same 1.2px line as the hive outline');
-  assert.match(css, /\.qm-dial-chip > img \{ width: 74%; height: 74%; object-fit: contain;/, 'the logo fits inside its round frame uncropped');
+  assert.match(css, /\.qm-dial-chip > img \{ width: 74%; height: 74%; object-fit: contain; translate: 0 5%;/, 'the logo fits inside its round frame uncropped, nudged slightly down');
+  assert.match(module, /const list = \[\.\.\.\(items\?\.\(\) \|\| \[\]\), \{ id: HOME, label: '千幕', home: true \}\];/, 'the main-panel entry is the last slot, not a second logo at the front');
+  assert.match(module, /origin\.classList\?\.add\('sd-wheel-away'\);\s*flyHome\(view, false\);/, 'the round logo itself slides into the arc when the dial opens');
+  assert.match(module, /const motion = flyHome\(current, true\);/, 'and slides back when it closes');
+  assert.match(css, /#story-director-float\.sd-wheel-away \{ filter: opacity\(0\) !important;/);
+  assert.match(source, /settings\.quickLauncher === 'dial' \? 'circle\(50%\)' : 'polygon\(/, 'the floating logo is a circle in dial mode');
+  assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry > :is\(i, \.qm-glyph-icon\) \{[^}]*\* \.46\)/, 'dragged-out entries use the dial icon proportion');
+  assert.match(css, /\.qm-prose-hive-layer\.qm-prose-hive-floor \{ z-index: 2147483000; \}/, 'the dragged-out chat toolkit entry sits below the main panel');
   assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry \{[^}]*clip-path: circle\(50%\)/, 'dragged-out entries are round in dial mode');
   assert.match(source, /setAttribute\('data-qm-launcher', settings\.quickLauncher === 'dial' \? 'dial' : 'hive'\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ #story-director-quick-wheel\.qm-dial \.qm-dial-stage \{ animation: none; \} \}/);

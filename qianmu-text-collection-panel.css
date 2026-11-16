@@ -58,3 +58,6 @@
     .qm-collection-panel { padding: 10px; gap: 8px; }
     .qm-collection-panel :is(input, select), .qm-collection-panel .qm-collection-toolbar :is(input, select) { font-size: 16px; }   /* 低于 16px 时 iOS 聚焦会放大页面；占位符不受此限 */
 }
+/* 极简／纸间外观会给面板内所有文字指定外观自带字体；阅读页与编辑页的正文必须仍跟随字体库的正文字体。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))) !important; }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) :not(:is(i, svg, svg *, code, pre)) { font-family: inherit !important; }

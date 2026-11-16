@@ -57,7 +57,7 @@ test('assistant uses API-card 14px titles and 12px conversation text independent
  assert.match(rule(`${scope} .qm-pa-user`),/align-self:flex-end/);
  assert.match(rule(`${scope} .qm-pa-user`),/max-width:88%/);
  assert.match(rule(`${scope} .qm-pa-composer [data-pa-question]`),/height:var\(--qm-pa-icon-control\);min-height:var\(--qm-pa-icon-control\)/);
- assert.match(rule(`${scope} :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit)`),/font-size:var\(--qm-pa-body-size\)/);
+ assert.match(rule(`${scope} :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit)`),/font-size:var\(--qm-pa-chat-size,var\(--qm-pa-body-size\)\)/,'conversation text follows the assistant font-size control; settings controls keep the fixed 12px');
  assert.doesNotMatch(css,/var\(--(?:mainFontSize|sd-prose-font-size|qm-pa-prose-size)\b/);
  const mobile=css.split('\n').filter(line=>line.startsWith('@media (max-width:620px)'));
  assert.equal(mobile.length,1);assert.doesNotMatch(mobile[0],/font-size:/);

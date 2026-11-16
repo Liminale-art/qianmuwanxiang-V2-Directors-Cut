@@ -86,9 +86,15 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog :is(.qm-pa-message-actions,.qm-pa-edit) button :is(i,svg) { width:16px;height:16px;font-size:16px; }
 .qm-prose-assistant-dialog .qm-pa-edit[data-pa-edit-kind="question"] [data-pa-action="save-reply"] { background:var(--sd-accent,#a7c4b5);color:var(--sd-primary-text,#17251e); }
 /* 字体跟随字体库的「界面」字体（未设置时沿用聊天正文字体）；字号由特助设置里的字号控件决定。 */
-.qm-prose-assistant-dialog :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit) { font-family:var(--qm-interface-font,var(--qm-pa-prose-font,inherit));font-size:var(--qm-pa-body-size); }
+.qm-prose-assistant-dialog :is(.qm-pa-user,.qm-pa-reply,.qm-pa-composer,.qm-pa-edit) { font-family:var(--qm-interface-font,var(--qm-pa-prose-font,inherit));font-size:var(--qm-pa-chat-size,var(--qm-pa-body-size)); }
 .qm-prose-assistant-dialog .qm-pa-composer :is(textarea,input) { font-family:inherit;font-size:inherit; }
-.qm-prose-assistant-dialog .qm-pa-config .qm-pa-font-field > input { display:block;width:100%;margin:0;padding:0; }
+/* 字号滑轨：自绘，无边框、两端圆弧；悬停与拖动时不改轨道颜色（浅色主题下原生高亮会看不见）。 */
+.qm-prose-assistant-dialog .qm-pa-config .qm-pa-font-field > input[type="range"] { -webkit-appearance:none;appearance:none;display:block;width:100%;height:18px;min-height:0;margin:0;padding:0;border:0 !important;outline:none;background:transparent !important;box-shadow:none !important; }
+.qm-prose-assistant-dialog .qm-pa-font-field > input[type="range"]::-webkit-slider-runnable-track { height:4px;border:0;border-radius:999px;background:color-mix(in srgb,var(--sd-text,#888) 26%,transparent); }
+.qm-prose-assistant-dialog .qm-pa-font-field > input[type="range"]::-moz-range-track { height:4px;border:0;border-radius:999px;background:color-mix(in srgb,var(--sd-text,#888) 26%,transparent); }
+.qm-prose-assistant-dialog .qm-pa-font-field > input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border:0;border-radius:50%;background:var(--sd-accent,#8aafcf);box-shadow:0 1px 3px rgba(0,0,0,.28); }
+.qm-prose-assistant-dialog .qm-pa-font-field > input[type="range"]::-moz-range-thumb { width:14px;height:14px;border:0;border-radius:50%;background:var(--sd-accent,#8aafcf);box-shadow:0 1px 3px rgba(0,0,0,.28); }
+.qm-prose-assistant-dialog .qm-pa-font-field > input[type="range"]:focus-visible::-webkit-slider-thumb { outline:2px solid var(--sd-accent,#8aafcf);outline-offset:2px; }
 .qm-prose-assistant-dialog [data-pa-resize] { position:absolute;bottom:0;right:0;width:28px;height:28px;clip-path:polygon(100% 0,100% 100%,0 100%);border-radius:0 0 var(--qm-card-radius,14px) 0;cursor:nwse-resize;touch-action:none; }
 .qm-prose-assistant-dialog [data-pa-resize]::after { content:"";position:absolute;right:3px;bottom:3px;width:21px;height:21px;border:0 solid var(--sd-accent,#a7c4b5);border-right-width:2.5px;border-bottom-width:2.5px;border-bottom-right-radius:max(12px,var(--qm-card-radius,14px));pointer-events:none;opacity:.8; }
 .qm-prose-assistant-dialog [data-pa-resize]:hover::after,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible::after { opacity:1; }

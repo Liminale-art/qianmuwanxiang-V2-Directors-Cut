@@ -2,10 +2,11 @@
 // logo 靠右时弧线向左凸，靠左时向右凸；弧线纵向拉长，内侧留出更多空间。入口沿弧线内侧排布、向两端淡出；
 // 指针是一枚固定在弧线正中内侧的圆点，拨到圆点处的入口放大并在弧外显示名称。
 // 与蜂巢格一样由长按 logo 展开；展开后不抬手直接上下滑即可拨动，松手打开指针处的入口。
+// 展开时圆形 logo 自己滑进弧线、排在最后一格（即主面板入口）；收起时滑回原位，盘里不再另放一枚 logo。
 // 本模块只管轮盘自身的绘制与手势，不保存任何设置；入口、配色、打开动作都由调用方传入。
 
-const EDGE = 80 * Math.PI / 180;      // 超过这个角度的入口不显示
-const FADE = 34 * Math.PI / 180;      // 淡出带宽度
+const EDGE = 80 * Math.PI / 180;      // 可见弧的边界角
+const SLOTS = 2;                      // 指针上下各显示几格（共 5 格）
 const MORE = 88 * Math.PI / 180;      // 两端「···」占位所在的角度（在最后一个可见入口之外）
 const GROW = 0.5;                     // 指针处入口放大的比例
 const DOT = 3.5;                      // 指针圆点半径
@@ -33,15 +34,17 @@ export function quickDialTone(from, to, ratio) {
 export function quickDialGeometry({ centerX, centerY, width, height, size = 48 }) {
   const side = centerX > width / 2 ? 'right' : 'left';
   const reach = side === 'right' ? centerX : width - centerX;
-  const chip = Math.round(clamp(size * 0.74, 30, 44));
+  const chip = Math.round(clamp(size * 0.84, 34, 50));
   const rx = Math.round(clamp(Math.min(126 + (size - 32) * 0.8, reach - 96, height * 0.34), 100, 164));
   const ry = Math.round(Math.min(rx * 1.42, Math.max(rx, height * 0.47)));
   const inset = GAP * 2 + DOT * 2 + chip * (1 + GROW) / 2;
-  const pitch = chip + 13;
-  const lift = pitch * 2 + chip;
+  const ringX = rx - inset, ringY = ry - inset, arc = arcTable(ringX, ringY);
+  // 一格的间距：让上下各 SLOTS 格正好铺满可见弧，第 SLOTS+1 格落在边界之外。
+  const reachable = arcLengthAt(arc, EDGE);
+  const pitch = Math.max(chip + 8, (reachable - chip * GROW / 2) / (SLOTS + 0.9));
+  const lift = pitch * SLOTS + chip;
   const y = height >= lift * 2 ? clamp(centerY, lift, height - lift) : height / 2;
-  const ringX = rx - inset, ringY = ry - inset;
-  return { side, sign: side === 'right' ? -1 : 1, x: centerX, y, rx, ry, ringX, ringY, chip, pitch, dot: rx - GAP - DOT, arc: arcTable(ringX, ringY) };
+  return { side, sign: side === 'right' ? -1 : 1, x: centerX, y, rx, ry, ringX, ringY, chip, pitch, dot: rx - GAP - DOT, arc };
 }
 
 // 椭圆上「走过的弧长 → 参数角」对照表（四分之一圈）。入口按弧长等距排布，才不会越往两端越挤。
@@ -54,6 +57,7 @@ function arcTable(a, b) {
   }
   return table;
 }
+function arcLengthAt(table, angle) { const at = angle / (Math.PI / 2) * ARC_STEPS, low = Math.min(ARC_STEPS - 1, Math.floor(at)); return table[low] + (table[low + 1] - table[low]) * (at - low); }
 // 沿入口所在的椭圆走 offset 像素（带符号）对应的参数角；超出四分之一圈时返回略大于直角的值（即不可见）。
 export function quickDialAngle(offset, geo) {
   const table = geo.arc, distance = Math.abs(offset), sign = offset < 0 ? -1 : 1;
@@ -64,10 +68,8 @@ export function quickDialAngle(offset, geo) {
 }
 
 // 半边可见弧上能排下多少个入口间距。
-function quickDialSpan(geo) { const at = EDGE / (Math.PI / 2) * ARC_STEPS, low = Math.floor(at); return (geo.arc[low] + (geo.arc[low + 1] - geo.arc[low]) * (at - low)) / geo.pitch; }
-
 // 入口数足够铺满可见弧时首尾相接循环；较少时两端到头（越界部分带阻尼）。
-export function quickDialCyclic(count, geo) { return count >= Math.ceil(quickDialSpan(geo) * 2) + 2; }
+export function quickDialCyclic(count) { return count >= SLOTS * 2 + 3; }
 
 // 第 index 个入口在「当前停在 position」时相对指针隔了几格（带符号，循环时取近的一边）。
 export function quickDialDelta(index, position, count, cyclic) {
@@ -84,6 +86,9 @@ export function quickDialDelta(index, position, count, cyclic) {
 export function quickDialOffset(delta, geo) {
   return delta * geo.pitch + clamp(delta, -1, 1) * geo.chip * GROW / 2;
 }
+
+// 指针上下各 SLOTS 格清晰可见，最外一格略淡，再往外淡出。
+export function quickDialOpacity(delta) { return 1 - clamp((Math.abs(delta) - (SLOTS - 0.6)) / 1.5, 0, 1); }
 
 export function quickDialSelected(position, count, cyclic) {
   const index = Math.round(position);
@@ -118,11 +123,12 @@ export function createQuickDial({
     const { geo, list, nodes, cyclic } = view, count = list.length, selected = quickDialSelected(view.position, count, cyclic);
     for (let index = 0; index < count; index++) {
       const node = nodes[index], delta = quickDialDelta(index, view.position, count, cyclic);
-      const angle = quickDialAngle(quickDialOffset(delta, geo), geo), away = Math.abs(angle);
-      if (away >= EDGE) { if (!node.hidden) node.hidden = true; continue; }
+      const away = Math.abs(delta);
+      if (away >= SLOTS + 0.9) { if (!node.hidden) node.hidden = true; continue; }
       if (node.hidden) node.hidden = false;
+      const angle = quickDialAngle(quickDialOffset(delta, geo), geo);
       node.style.translate = `${(geo.sign * geo.ringX * Math.cos(angle)).toFixed(1)}px ${(geo.ringY * Math.sin(angle)).toFixed(1)}px`;
-      node.style.opacity = Math.min(1, (EDGE - away) / FADE).toFixed(3);
+      node.style.opacity = quickDialOpacity(delta).toFixed(3);
       node.style.setProperty('--qd-grow', (1 + GROW * Math.max(0, 1 - Math.abs(delta))).toFixed(3));
       // 入口外框沿弧线由上到下在两枚主题色之间过渡；按 5% 一档取色，拨动时不必每帧改写。
       const shade = Math.round((Math.sin(angle) + 1) * 10);
@@ -181,12 +187,27 @@ export function createQuickDial({
     motion.onfinish = motion.oncancel = finish;
   }
 
+  // 主面板入口在「logo 原位」与「盘上的格子」之间滑动。back=true 为收起时滑回。返回动画（没有可滑的则为 null）。
+  function flyHome(current, back) {
+    const node = current.home, from = current.homeFrom;
+    if (!node || !from || reduced() || typeof node.animate !== 'function') return null;
+    const [tx, ty] = node.hidden ? [current.geo.sign * current.geo.ringX, 0] : String(node.style.translate || '0px 0px').split(' ').map(parseFloat);
+    const away = { transform: `translate(${(from.x - tx).toFixed(1)}px, ${(from.y - (ty || 0)).toFixed(1)}px) scale(${from.scale.toFixed(3)})`, opacity: 1 }, home = { transform: 'none' };
+    if (node.hidden) { if (!back) return null; node.hidden = false; node.style.translate = `${tx}px 0px`; node.style.opacity = '1'; }
+    return node.animate(back ? [home, away] : [away, home], { duration: back ? 190 : 260, easing: 'cubic-bezier(.25, .9, .3, 1)', fill: back ? 'forwards' : 'none' });
+  }
+
   function close() {
     if (!view) return;
     const current = view; view = null;
     cancelAnimationFrame(current.frame);
     current.stop();
-    current.root.remove();
+    const done = () => { current.root.remove(); current.origin.classList?.remove('sd-wheel-away'); };
+    // 立即让出快捷盘图层的身份与指针，盘面淡出、logo 滑回原位后再移除。
+    current.root.removeAttribute('id');
+    current.root.classList.add('is-leaving');
+    const motion = flyHome(current, true);
+    if (motion) { motion.onfinish = motion.oncancel = done; setTimeout(done, 400); } else done();
     current.origin.classList?.remove('sd-wheel-active');
     onClosed?.(current.origin);
   }
@@ -214,11 +235,11 @@ export function createQuickDial({
 
   function open(origin) {
     close();
-    const list = [{ id: HOME, label: '千幕', home: true }, ...(items?.() || [])];
+    const list = [...(items?.() || []), { id: HOME, label: '千幕', home: true }];
     const box = viewportBox(), rect = origin.getBoundingClientRect();
     const geo = quickDialGeometry({ centerX: rect.left + rect.width / 2 - box.left, centerY: rect.top + rect.height / 2 - box.top, width: box.width, height: box.height, size: Number(floatSize?.()) || 48 });
     const colors = palette?.() || {}, edges = colors.edges?.length ? colors.edges : ['#c99b51', '#77736d'];
-    const cyclic = quickDialCyclic(list.length, geo);
+    const cyclic = quickDialCyclic(list.length);
     const root = document.createElement('div');
     root.id = id;
     root.className = `qm-dial qm-dial-${geo.side}${isDark?.() ? ' is-dark' : ''}${cyclic ? '' : ' is-open-ended'}`;
@@ -262,6 +283,11 @@ export function createQuickDial({
     origin.classList?.add('sd-wheel-active');
     layout();
     view.stop = bindStage(root);
+    // logo 滑进弧线：悬浮入口自身隐去，由盘里的主面板入口从它的位置滑到自己的格子上。
+    view.home = nodes[list.length - 1];
+    view.homeFrom = { x: rect.left + rect.width / 2 - box.left - geo.x, y: rect.top + rect.height / 2 - box.top - geo.y, scale: rect.height / geo.chip };
+    origin.classList?.add('sd-wheel-away');
+    flyHome(view, false);
     return root;
   }
 

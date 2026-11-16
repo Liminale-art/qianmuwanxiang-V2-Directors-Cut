@@ -3348,11 +3348,13 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 #story-director-modal .sd-model-config > .sd-stream-toggle[aria-pressed="true"] { color: var(--sd-text); }
 /* 玻璃／纸间等外观会给 .sd-primary 整块上色；流式开关只借用该类名表示「已开」，自身始终是「文字＋小滑轨」，不要底色。 */
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-model-config > .sd-stream-toggle.sd-primary:not(.sd-option-chip) { padding: 0 2px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; background-image: none !important; box-shadow: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; color: var(--qm-ink, var(--sd-text)) !important; filter: none !important; }
-:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: var(--qm-accent, color-mix(in srgb, var(--sd-primary) 78%, transparent)); }
-#story-director-modal .sd-stream-toggle-track { position: relative; flex: none; width: 34px; height: 19px; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 30%, transparent); transition: background-color .18s ease; }
-#story-director-modal .sd-stream-toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--sd-card, #fff); box-shadow: 0 1px 2px rgba(0, 0, 0, .22); transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
-#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: color-mix(in srgb, var(--sd-primary) 78%, transparent); }
-#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track::after { transform: translateX(15px); }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: var(--qm-accent, var(--sd-accent)); }
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track::after { background: var(--qm-on-accent, var(--sd-primary-text)); }
+/* 与各页的胶囊开关（.checkbox_label）同一套尺寸与配色 */
+#story-director-modal .sd-stream-toggle-track { position: relative; flex: none; box-sizing: border-box; width: 38px; height: 22px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); transition: background .18s ease, border-color .18s ease; }
+#story-director-modal .sd-stream-toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--sd-muted); transition: transform .18s ease, background .18s ease; }
+#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: var(--sd-accent); border-color: transparent; }
+#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track::after { background: var(--sd-primary-text); transform: translateX(16px); }
 #story-director-modal .sd-model-config > .sd-stream-toggle:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce) { #story-director-modal .sd-stream-toggle-track, #story-director-modal .sd-stream-toggle-track::after { transition: none; } }
 #story-director-modal .sd-stream-scope-hint { margin: 0; text-align: center; font-size: 11px; line-height: 1.25; }
@@ -13076,7 +13078,7 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 #story-director-quick-wheel.qm-dial .qm-dial-chip { box-sizing: border-box; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border-radius: 50%; scale: var(--qd-grow, 1); background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 22%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 calc(1.2px / var(--qd-grow, 1)) color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 78%, transparent), 0 2px 8px rgba(0, 0, 0, .18); font-size: calc(var(--qd-chip) * .46); line-height: 1; }
 #story-director-quick-wheel.qm-dial .qm-dial-item.is-current .qm-dial-chip { background: color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 46%, var(--qd-chip-bg)); box-shadow: inset 0 0 0 calc(1.2px / var(--qd-grow, 1)) var(--qd-tone, var(--qd-mid)), 0 0 14px color-mix(in srgb, var(--qd-tone, var(--qd-mid)) 55%, transparent), 0 3px 10px rgba(0, 0, 0, .2); }
 #story-director-quick-wheel.qm-dial .qm-dial-chip > i, #story-director-quick-wheel.qm-dial .qm-dial-chip > svg, #story-director-quick-wheel.qm-dial .qm-dial-chip > .qm-glyph-icon { width: 1em; height: 1em; font-size: inherit; color: inherit; pointer-events: none; }
-#story-director-quick-wheel.qm-dial .qm-dial-chip > img { width: 74%; height: 74%; object-fit: contain; pointer-events: none; }
+#story-director-quick-wheel.qm-dial .qm-dial-chip > img { width: 74%; height: 74%; object-fit: contain; translate: 0 5%; pointer-events: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-chip .sd-wheel-external-logo { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; pointer-events: none; }
 #story-director-quick-wheel.qm-dial .qm-dial-item.is-undock-ready { opacity: .58 !important; }
 #story-director-quick-wheel.qm-dial .qm-dial-more { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--qd-mid) 16%, var(--qd-chip-bg)); color: var(--qd-ink); font-size: 10px; letter-spacing: 1px; opacity: .3; }
@@ -13084,10 +13086,26 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 #story-director-quick-wheel.qm-dial .qm-dial-label { position: absolute; top: 0; transform: translateY(-50%); padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--qd-mid) 72%, transparent); border-radius: 6px; background: var(--qd-veil); color: color-mix(in srgb, var(--qd-mid) 34%, var(--qd-ink)); font-size: 13px; line-height: 1.35; white-space: nowrap; box-shadow: 0 0 14px color-mix(in srgb, var(--qd-mid) 28%, transparent); }
 #story-director-quick-wheel.qm-dial.qm-dial-right .qm-dial-label { right: calc(var(--qd-r) + 12px); }
 #story-director-quick-wheel.qm-dial.qm-dial-left .qm-dial-label { left: calc(var(--qd-r) + 12px); }
+/* 收起：盘面淡出，主面板入口滑回 logo 原位（由脚本驱动）。此时图层已让出身份（无 id），所以单独按类名写。 */
+.qm-dial.is-leaving { position: fixed; z-index: 2147483002; pointer-events: none !important; }
+.qm-dial.is-leaving * { pointer-events: none !important; }
+.qm-dial.is-leaving :is(.qm-dial-arc, .qm-dial-label, .qm-dial-more, .qm-dial-item:not(.is-home)) { opacity: 0 !important; transition: opacity .16s ease; }
+/* 轮盘展开期间悬浮 logo 隐去（它已滑进弧线）。 */
+#story-director-float.sd-wheel-away { filter: opacity(0) !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { #story-director-quick-wheel.qm-dial .qm-dial-stage { animation: none; } }
-/* 轮盘形态下，拖出的便笺／场外特助／聊天工具包入口也用圆框，外框取主题色。 */
-html[data-qm-launcher="dial"] .sd-detached-notes-entry { width: var(--sd-notes-entry-height, 48px); clip-path: circle(50%); border-radius: 50% !important; box-shadow: inset 0 0 0 1.2px var(--sd-wheel-edge) !important; }
+/* 轮盘形态下，悬浮 logo 与拖出的便笺／场外特助／聊天工具包入口都用轮盘自己的圆形样式（与蜂巢格各自独立）：
+   正圆、1.2px 主题色外框、与轮盘指针处入口相同的底色与图标比例。 */
+html[data-qm-launcher="dial"] #story-director-float { padding: 0 !important; border-radius: 50% !important; box-shadow: inset 0 0 0 1.2px var(--sd-float-edge, #c99b51) !important; }
+html[data-qm-launcher="dial"] #story-director-float::before { inset: 0; border-radius: 50%; clip-path: none; }
+html[data-qm-launcher="dial"] #story-director-float > .sd-hive-hex-outline { display: none !important; }
+html[data-qm-launcher="dial"] #story-director-float > img, html[data-qm-launcher="dial"] #story-director-float > svg:not(.sd-hive-hex-outline) { width: 74% !important; height: 74% !important; object-fit: contain !important; translate: 0 5%; }
+html[data-qm-launcher="dial"] .sd-detached-notes-entry { width: var(--sd-notes-entry-height, 48px); padding: 0 !important; clip-path: circle(50%); border-radius: 50% !important; background: color-mix(in srgb, var(--sd-wheel-edge) 46%, rgba(255, 255, 255, .9)) !important; color: #33353c !important; box-shadow: inset 0 0 0 1.2px var(--sd-wheel-edge) !important; backdrop-filter: none; -webkit-backdrop-filter: none; }
+html[data-qm-launcher="dial"] .sd-detached-notes-entry.is-glass-dark { background: color-mix(in srgb, var(--sd-wheel-edge) 46%, rgba(38, 40, 50, .88)) !important; color: #f1f2f6 !important; }
+html[data-qm-launcher="dial"] .sd-detached-notes-entry::before { content: none; }
 html[data-qm-launcher="dial"] .sd-detached-notes-entry > .sd-hive-hex-outline { display: none; }
+html[data-qm-launcher="dial"] .sd-detached-notes-entry > :is(i, .qm-glyph-icon) { width: calc(var(--sd-notes-entry-height, 48px) * .46) !important; height: calc(var(--sd-notes-entry-height, 48px) * .46) !important; font-size: calc(var(--sd-notes-entry-height, 48px) * .46) !important; }
+/* 拖出的聊天工具包入口只属于聊天页，位于千幕主面板之下。 */
+.qm-prose-hive-layer.qm-prose-hive-floor { z-index: 2147483000; }
 
 /* 快捷盘设置卡（C-13③）：大小只留滑杆与数值（数值在右），在卡内垂直居中；入口列表不再折叠；轮盘形态下入口可拖动排序。 */
 #story-director-modal .sd-widget-card .sd-float-size-control { display: flex; align-items: center; gap: 12px; margin: 6px 0 4px; padding: 0 12px; min-height: 40px; }
