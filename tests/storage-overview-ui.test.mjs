@@ -77,6 +77,9 @@ test('backup, libraries and cleanup are grouped once, with rarely used entries f
   for (const key of ['templates', 'theater', 'schemes']) { assert.match(html, new RegExp(`data-storage-export="${key}"`)); assert.match(html, new RegExp(`data-storage-import="${key}"`)); }
   assert.match(html, /data-storage-export="summary"/); assert.match(html, /sd-storage-summary-import/);
   assert.equal((html.match(/sd-storage-export-all/g) || []).length, 1);
+  for (const key of ['characters', 'vibes', 'comfy', 'fonts', 'focus']) for (const kind of ['export', 'pick', 'import']) assert.equal((html.match(new RegExp(`data-storage-${kind}="${key}"`, 'g')) || []).length, 1, `${kind} ${key}`);
+  assert.match(html, /data-storage-import="fonts" accept="\.zip,application\/zip,\.json,application\/json"/);
+  assert.match(html, /data-storage-import="vibes" accept="\.naiv4vibe,\.naiv4vibeBundle,\.json"/);
   assert.match(html, /<em>参考素材<\/em>/);
   assert.match(html, /千幕资料已盘点<\/span><b>1000 B/);
   assert.match(html, /不代表 VPS 总容量/);
@@ -196,7 +199,7 @@ test('central backup entry binds once and reuses the existing export and restore
     || imports.find(input => selector === `input[data-storage-import="${input.dataset.storageImport}"]`)),
     querySelectorAll: selector => ({ '[data-storage-export]': exports, '[data-storage-pick]': picks, 'input[data-storage-import]': imports }[selector] || []) };
   const root = { querySelector: selector => selector === '.sd-storage-backup-section' ? backup : null, querySelectorAll: () => [] };
-  const context = vm.createContext({bindStoragePackageActions, coreadExportSummaryItems: () => calls.push('summary-export'), importTtsGuidanceSchemes: () => calls.push('schemes-import'), exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
+  const context = vm.createContext({bindStoragePackageActions, createStorageLibraryTransfer:()=>({exports:{},imports:{}}),resolveImageAccountNamespace:()=>'',ttsDownloadBlob:()=>{},toast:()=>{},storyboardRequestHeaders:()=>({}),fontLibrary:{}, coreadExportSummaryItems: () => calls.push('summary-export'), importTtsGuidanceSchemes: () => calls.push('schemes-import'), exportConfig: () => calls.push('config-export'), importConfig: () => calls.push('config-import'),
     proseFloorTools: {exportCollection: button => { assert.equal(button, exports[5]); calls.push('collection-export'); },
       importCollection: (file, input) => { assert.equal(file.name, 'fixture'); assert.equal(input, imports[5]); calls.push('collection-import'); }},
     storyboardExportPackage: options => { assert.equal(options.bundle, true); calls.push('storyboard-export'); },

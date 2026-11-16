@@ -27,7 +27,8 @@ import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.j
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
 import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.538';
-import { renderStorageCard, chooseStorageExports, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.538';
+import { renderStorageCard, chooseStorageExports, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.539';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.539';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -57,7 +58,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.538';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.539';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -87,7 +88,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives, releasePlanReferencesForChats } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.538';
+import { replaceStorageManagementCard, bindStorageCleanupLifetime, bindStoragePackageActions, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.539';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +335,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.538';
+const VERSION = '1.59.539';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -8758,11 +8759,14 @@ function bindStorageManagementEvents(root) {
     backup.querySelector('.sd-import-config')?.addEventListener('click', () => backup.querySelector('.sd-import-config-file')?.click());
     backup.querySelector('.sd-import-config-file')?.addEventListener('change', event => void importConfig(event));
     backup.querySelector('.sd-storage-storyboard-recover')?.addEventListener('click', () => void storyboardImportPackage(null, { recoverOnly: true }));
-    const exports={collection:proseFloorTools.exportCollection,storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup,
+    const lib=createStorageLibraryTransfer({resolveNamespace:resolveImageAccountNamespace,confirm:(t,m)=>confirmDialog(t,htmlEscape(m)),download:ttsDownloadBlob,notify:toast,headers:storyboardRequestHeaders,fonts:fontLibrary,
+      vibe:async()=>({call:(await featureRuntime.load('vibeAssets')).callVibeAsset,storage:await featureRuntime.load('vibeStorage'),items:()=>storyboardState().vibeLibrary||[]}),
+      focusFree:()=>!focusClockLibrary().busy&&!Object.values(configRestoreActivity(true,focusLibraryRuntime)).some(Boolean),open:key=>root.querySelector(`[data-storage-open="${key}"]`)?.click()});
+    const exports={...lib.exports,collection:proseFloorTools.exportCollection,storyboard:()=>storyboardExportPackage({bundle:true}),reader:coreadExportData,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,notes:exportPinnedNotesBackup,
       templates:()=>exportTemplates(),theater:()=>exportTheaterScripts(),schemes:()=>exportTtsGuidanceSchemes(),summary:coreadExportSummaryItems};
     bindStoragePackageActions(backup,{exports,
       imports:{collection:proseFloorTools.importCollection,storyboard:storyboardImportAnyPackage,reader:coreadImportDataFile,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),
-        templates:(_f,_i,e)=>importTemplates(e),theater:(_f,_i,e)=>importTheaterScripts(e),schemes:importTtsGuidanceSchemes}});
+        templates:(_f,_i,e)=>importTemplates(e),theater:(_f,_i,e)=>importTheaterScripts(e),schemes:importTtsGuidanceSchemes,...lib.imports}});
     backup.querySelector('.sd-storage-summary-import')?.addEventListener('click',()=>coreadImportSummaryItems());
     // 全部导出：勾选后逐项调用各自的导出（每项一个文件）。
     backup.querySelector('.sd-storage-export-all')?.addEventListener('click',async()=>{

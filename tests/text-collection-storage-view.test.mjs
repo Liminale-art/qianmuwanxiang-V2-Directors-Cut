@@ -109,7 +109,7 @@ test('shipped entry names the owner actions at the central backup and cleanup se
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     // Only public integration hooks are checked here; behavior is exercised above
     // and by the owner transfer tests, not duplicated as source-shape assertions.
-    assert.match(entry, /exports=\{collection:proseFloorTools\.exportCollection/);
+    assert.match(entry, /exports=\{\.\.\.lib\.exports,collection:proseFloorTools\.exportCollection/);
     assert.match(entry, /imports:\{collection:proseFloorTools\.importCollection/);
     assert.match(entry, /proseFloorTools\.clearCollection\(\{confirmed:true,expectedFingerprint:inventory\.collectionStorage\.fingerprint,check:\(\)=>cleanup\.check\(\)\}\)/);
 });

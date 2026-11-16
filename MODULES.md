@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 432 个，其中 `qianmu-*` 模块 415 个。
+根目录文件 433 个，其中 `qianmu-*` 模块 416 个。
 
 ## 入口、宿主与安装
 
@@ -32,12 +32,12 @@
 | `assets/logos/` | 5 |
 | `assets/ringtones/` | 49 |
 | `assets/tab-icons/` | 2 |
-| `bundle/` | 199 |
+| `bundle/` | 200 |
 | `evaluation/` | 2 |
 | `features/` | 191 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 988 |
+| `tests/` | 989 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -451,7 +451,7 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（30）
+## 模型、配置与账户（31）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -484,6 +484,7 @@
 | `qianmu-storage-card.js` | 是 | 数据管理卡（C-13①）：占用总览（按类别分色块）＋分组的备份／恢复入口＋清理。 |
 | `qianmu-storage-cleanup-session.js` | 是 | One local cleanup at a time. Invalidating a session stops future work, not |
 | `qianmu-storage-gallery-check.js` | 是 |  |
+| `qianmu-storage-library-transfer.js` | 是 | 数据管理卡里「资料库」各行的整库导出／恢复。 |
 | `qianmu-yimu-companion.js` | 是 | Optional, explicit companion sharing. This bridge never owns or migrates a reader archive. |
 
 ## 提示词、美术方向与剧场（13）

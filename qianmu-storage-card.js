@@ -1,6 +1,6 @@
 // 数据管理卡（C-13①）：占用总览（按类别分色块）＋分组的备份／恢复入口＋清理。
 // 只负责生成标记；各按钮沿用原有类名与 data 属性，由入口文件里既有的处理函数绑定。
-import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageCleanupOptions } from './qianmu-storage-backup-view.js?v=1.59.538';
+import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageCleanupOptions } from './qianmu-storage-backup-view.js?v=1.59.539';
 
 // 类别占用：按字节降序；占比不足 1.5% 的并入「其他」，免得色条碎成一排细线。
 export function storageCategoryBlocks(categories = []) {
@@ -82,11 +82,15 @@ export function renderStorageCard({ state, format, escape, service = '', pressur
   const presets = group('预设与提示词',
     transfer('templates', '剧本库') + transfer('theater', '剧札') + transfer('schemes', '台词指导方案') + row('伴读总结提示词', '<button type="button" class="sd-btn" data-storage-export="summary" aria-label="导出伴读总结提示词">导出</button><button type="button" class="sd-btn sd-storage-summary-import" aria-label="导入伴读总结提示词">导入</button>'),
     '这些也包含在「配置」导出里；这里可单独导出、导入某一类。取景预设随「分镜资源」一起备份。');
+  const manage = attrs => `<button type="button" class="sd-btn" ${attrs}>管理</button>`, json = '.json,application/json';
   const libraries = group('资料库',
-    jump('角色库', 'data-storage-open="characters"') + jump('Vibe 库', 'data-storage-open="vibes"')
-    + jump('Comfy 工作流', 'data-storage-comfy-library="workflows"') + jump('Comfy 候选方案', 'data-storage-comfy-library="pools"')
-    + jump('字体库', 'data-storage-open="fonts"') + jump('专注语音库', 'data-storage-open="focus"'),
-    '各库自带整库备份与恢复，点「管理」直达。');
+    transfer('characters', '角色库', json, manage('data-storage-open="characters"'))
+    + transfer('vibes', 'Vibe 原件', '.naiv4vibe,.naiv4vibeBundle,.json', manage('data-storage-open="vibes"'))
+    + transfer('comfy', 'Comfy 工作流与候选方案', json, manage('data-storage-comfy-library="workflows"'))
+    + jump('Comfy 候选方案', 'data-storage-comfy-library="pools"')
+    + transfer('fonts', '字体库', '.zip,application/zip,.json,application/json', manage('data-storage-open="fonts"'))
+    + transfer('focus', '专注语音库', json, manage('data-storage-open="focus"')),
+    '整库导出与恢复。库大时会分成几个文件；逐条整理请点「管理」。');
   const elsewhere = group('其他位置',
     jump('聊天备份与找回', 'data-storage-open="recovery"', '打开') + jump('正则导入导出', 'data-storage-open="regex"', '打开') + jump('忆幕记忆备份', 'data-storage-open="yimu"', '说明'),
     '酒馆与忆幕自己的数据，在各自的面板里管理。');

@@ -22,7 +22,7 @@ test('retired gallery archive route is absent and actual storage backup remains 
     storyboardExportPackage:async options=>{calls.push(['export',options]);},storyboardImportAnyPackage:importAny,
     bindStoragePackageActions:(node,options)=>{assert.equal(node,backup);actions=options;bindings++;},
     proseFloorTools:{exportCollection:noop,importCollection:noop},coreadExportData:noop,coreadImportDataFile:noop,
-    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop,coreadExportSummaryItems:noop,importTtsGuidanceSchemes:noop});
+    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop,coreadExportSummaryItems:noop,importTtsGuidanceSchemes:noop,createStorageLibraryTransfer:()=>({exports:{},imports:{}}),resolveImageAccountNamespace:()=>'',ttsDownloadBlob:()=>{},toast:()=>{},storyboardRequestHeaders:()=>({}),fontLibrary:{},});
   const bind=()=>vm.runInContext('(()=>{'+source.slice(start,end)+'})()',context);
   bind();bind();assert.equal(bindings,1);assert.deepEqual(calls,[]);assert.equal(actions.imports.storyboard,importAny);
   recover();await flush();await actions.exports.storyboard();await actions.imports.storyboard('file');
