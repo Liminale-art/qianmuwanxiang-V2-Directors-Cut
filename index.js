@@ -58,7 +58,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.540';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.541';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.542';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -335,7 +335,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.541';
+const VERSION = '1.59.542';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;

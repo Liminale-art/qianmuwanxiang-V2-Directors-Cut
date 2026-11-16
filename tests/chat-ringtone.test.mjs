@@ -614,7 +614,7 @@ test('辉光 style: side-glow card — charcoal translucent base, fine bright ri
   const card = glow.match(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^\n]*/)[0];
   assert.ok(!glow.includes('data-qm-toast-theme'), '只按日夜与状态取色，不读主题');
   assert.ok(card.includes('border-radius: 14px') && card.includes('border: 1px solid rgba(255, 255, 255, .15)'), '圆角矩形＋极细亮边');
-  assert.ok(card.includes('--gw-base: rgba(30, 32, 37, .44)') && /backdrop-filter: blur\(16px\)/.test(card), '炭灰半透基底（透底度较高）');
+  assert.ok(card.includes('--gw-base: rgba(22, 24, 28, .38)') && /backdrop-filter: blur\(16px\)/.test(card), '炭灰半透基底（透底度较高）');
   assert.ok(card.includes('--gw-edge: color-mix(in srgb, var(--qm-toast-status) 92%, white)'), '强调色跟随提示状态');
   assert.ok(/background: linear-gradient\(90deg, color-mix\(in srgb, var\(--gw-edge\) 36%, transparent\) 0,[^;]*transparent 38%\), var\(--gw-base\)/.test(card) && card.includes('background-origin: border-box'), '卡内的光只在左侧一段、柔和淡出；渐变从边框起铺，左缘不露底色细线');
   assert.ok(card.includes('border-left-color: var(--gw-edge)'), '左边框与色条同色');
@@ -623,7 +623,7 @@ test('辉光 style: side-glow card — charcoal translucent base, fine bright ri
   const bar = glow.match(/div::before \{[^\n]*/)[0];
   assert.ok(bar.includes('width: 12px') && bar.includes('background: var(--gw-edge)') && bar.includes('left: -1px') && bar.includes('border-radius: 0'), '最左侧贴边的较宽纯色竖条');
   assert.ok(!bar.includes('linear-gradient'), '色条为纯色');
-  assert.ok(/html\[data-qm-toast="glow"\]\[data-qm-toast-mode="dark"\][^{]*\{ --gw-base: rgba\(22, 24, 28, \.38\); \}/.test(glow), '夜间仅基底更透');
+  assert.ok(!/html\[data-qm-toast="glow"\]\[data-qm-toast-mode=/.test(css) && /--qm-toast-ok: hsl\(148 70% 58%\)/.test(card), '辉光不分日夜，统一用夜间的状态色与基底');
   assert.ok(!glow.includes('::after'), '不再有第三层装饰');
   for (const retired of ['clip-path: polygon', 'qm-toast-glow-expand', 'qm-toast-glow-edge', '--gw-flash', 'qm-toast-glow-sweep', 'qm-toast-glow-glitch']) assert.ok(!css.includes(retired) || retired === 'clip-path: polygon' && !glow.includes(retired), retired + ' 已随旧样式移除');
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
