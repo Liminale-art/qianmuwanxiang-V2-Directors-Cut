@@ -45,8 +45,9 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
+import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.520';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.521';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -323,7 +324,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.520';
+const VERSION = '1.59.521';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -381,13 +382,15 @@ const yimuCompanionBridge = createYimuCompanionBridge({
     return rec ? {bookId:rec.bookId, slices:rec.slices, companionOwner:rec.companionOwner} : null;
   },
 });
-let chatWriteGuard = null, chatWriteFetchBefore = null;
+let chatWriteGuard = null, chatWriteFetchBefore = null, chatSaveFollowup = null;
 let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
 
 function installChatWriteGuard() {
   if (chatWriteGuard || typeof globalThis.fetch !== 'function') return;
   chatWriteFetchBefore = globalThis.fetch;
-  chatWriteGuard = createChatWriteGuard({ fetchImpl: chatWriteFetchBefore.bind(globalThis), getContext: ctx,
+  // 聊天保存若被页面里别的脚本「代答而未落盘」，稍后补存一次（见 qianmu-chat-save-followup.js）。套在写保护里层，只旁观。
+  chatSaveFollowup = createChatSaveFollowup({ fetchImpl: chatWriteFetchBefore.bind(globalThis), getContext: ctx, isEnabled: () => initialized && isRuntimeOwner() });
+  chatWriteGuard = createChatWriteGuard({ fetchImpl: chatSaveFollowup.fetch, getContext: ctx,
     resolveAccount: resolveImageAccountNamespace, baseUrl: globalThis.location?.origin,
     isEnabled: () => initialized && isRuntimeOwner() });
   globalThis.fetch = chatWriteGuard.fetch;
@@ -402,7 +405,7 @@ function disposeChatWriteGuard() {
   const guard = chatWriteGuard;
   guard.dispose();
   if (globalThis.fetch === guard.fetch) globalThis.fetch = chatWriteFetchBefore;
-  chatWriteGuard = null; chatWriteFetchBefore = null;
+  chatWriteGuard = null; chatWriteFetchBefore = null; chatSaveFollowup?.dispose(); chatSaveFollowup = null;
 }
 
 async function mountFloorChatRecovery(root) {

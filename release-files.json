@@ -6,6 +6,7 @@
     "qianmu-pending-panel.js",
     "qianmu-perf-probe.js",
     "qianmu-yimu-companion.js",
+    "features/chat/qianmu-chat-save-followup.js",
     "features/chat/qianmu-chat-write-guard.js",
     "features/chat/qianmu-chat-recovery.js",
     "features/chat/qianmu-chat-recovery-view.js",

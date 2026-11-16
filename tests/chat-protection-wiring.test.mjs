@@ -6,20 +6,21 @@ import { storyboardFunctionSource } from './helpers/storyboard-form-fixture.mjs'
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 
 function fixture() {
-    const original = () => 'native', guards = [], calls = { log: 0, notice: 0, observe: 0 };
+    const original = () => 'native', guards = [], followups = [], calls = { log: 0, notice: 0, observe: 0 };
     const context = vm.createContext({ fetch: original, location: { origin: 'https://synthetic.invalid' },
         initialized: true, isRuntimeOwner: () => true, ctx: () => ({}), resolveImageAccountNamespace: async () => 'st-user:synthetic',
         toast: () => { calls.notice++; }, pushLog: () => { calls.log++; },
         uid: () => 'synthetic-guard',
+        createChatSaveFollowup: options => { const followup = { options, fetch: () => 'followed', disposed: false, dispose() { this.disposed = true; } }; followups.push(followup); return followup; },
         createChatWriteGuard: options => {
             const guard = { options, fetch: () => 'guarded', observeCurrent: async () => { calls.observe++; }, disposed: false,
                 dispose() { this.disposed = true; } };
             guards.push(guard); return guard;
         },
     });
-    vm.runInContext('let chatWriteGuard = null, chatWriteFetchBefore = null;\n' +
+    vm.runInContext('let chatWriteGuard = null, chatWriteFetchBefore = null, chatSaveFollowup = null;\n' +
         ['installChatWriteGuard', 'observeChatWriteBaseline', 'disposeChatWriteGuard'].map(storyboardFunctionSource).join('\n'), context);
-    return { context, original, guards, calls };
+    return { context, original, guards, followups, calls };
 }
 
 test('lifecycle owns one fetch wrapper, restores it on disable, and can reinstall', async () => {
@@ -28,7 +29,8 @@ test('lifecycle owns one fetch wrapper, restores it on disable, and can reinstal
     f.context.observeChatWriteBaseline(); await Promise.resolve(); assert.equal(f.calls.observe, 1);
     assert.equal(f.guards[0].options.onBlock, undefined, 'use the guard default silent observer');
     assert.equal(f.calls.notice, 0); assert.equal(f.calls.log, 0);
-    f.context.disposeChatWriteGuard(); assert.equal(f.guards[0].disposed, true); assert.equal(f.context.fetch, f.original);
+    assert.equal(f.followups.length, 1); assert.equal(f.guards[0].options.fetchImpl, f.followups[0].fetch, 'the guard forwards through the save follow-up');
+    f.context.disposeChatWriteGuard(); assert.equal(f.guards[0].disposed, true); assert.equal(f.context.fetch, f.original); assert.equal(f.followups[0].disposed, true);
     f.context.installChatWriteGuard(); assert.equal(f.guards.length, 2);
 });
 
