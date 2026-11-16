@@ -44,7 +44,8 @@ test('both model sources omit only the redundant ST sentence and retain controls
     assert.doesNotMatch(html, /继承 ST 当前连接|聊天补全支持独立流式|不影响正文生成/);
     assert.match(html, /sd-provider-select/);
     assert.match(html, /sd-test-api">测试连接/);
-    assert.match(html, /sd-stream-toggle sd-primary" aria-pressed="true">流式传输/);
+    assert.match(html, /<h3>模型配置<\/h3>\s*<button type="button" class="sd-stream-toggle sd-primary" aria-pressed="true" title="流式传输"><span>流式<\/span><span class="sd-stream-toggle-track" aria-hidden="true"><\/span><\/button>/, '流式开关是卡片右上角的胶囊');
+    assert.doesNotMatch(html, /sd-api-stream-action/);
     assert.match(html, mode === 'external' ? /sd-api-external-fields" >/ : /sd-api-external-fields" hidden>/);
     assert.equal(JSON.stringify(settings), before);
   }

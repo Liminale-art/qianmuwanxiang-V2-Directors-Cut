@@ -28,15 +28,19 @@ assert.match(css, /\.sd-float-size-control\[hidden\][^}]*display: none !importan
 const apiCard = source.slice(source.indexOf('<h3>模型配置</h3>'), source.indexOf('<h3>小组件</h3>'));
 assert.match(apiCard, /sd-api-generation-row[\s\S]*温度[\s\S]*最大输出[\s\S]*上下文长度/, '三个简化标题的生成参数必须收进同一排');
 assert.doesNotMatch(apiCard, /Temperature|最大输出 token/);
-assert.match(apiCard, /sd-api-action-row[\s\S]*sd-save-api[\s\S]*sd-save-api-profile[\s\S]*sd-test-api[\s\S]*sd-stream-toggle[\s\S]*>流式传输<\/button>/, '保存操作与测试、流式仍使用原有操作组');
+assert.match(apiCard, /sd-api-action-row">\s*<button class="sd-btn sd-save-api"[^>]*>保存API<\/button>\s*<button class="sd-btn sd-save-api-profile"[^>]*>保存为预设<\/button>\s*<button class="sd-btn sd-test-api">测试连接<\/button>\s*<\/div>/, '保存 API、保存为预设、测试连接并为一排');
+assert.match(apiCard, /^<h3>模型配置<\/h3>\s*<button type="button" class="sd-stream-toggle /, '流式开关紧随标题，由样式固定到卡片右上角');
+assert.doesNotMatch(apiCard, /sd-api-stream-action/);
 assert.doesNotMatch(apiCard, /仅支持自定义|sd-source-pick|<h3>API<\/h3>/);
 assert.match(apiCard, /sd-provider-select/);
 assert.doesNotMatch(apiCard, /兼容选项|不会提高模型能力|启用 JSON Schema 约束/, '连接兼容处理不应由用户承担或显示工程说明');
 assert.match(source, /<section class="sd-card sd-widget-card">\s*<h3>小组件<\/h3>[\s\S]*data-widget-toggle="floating"[\s\S]*data-widget-toggle="wheel"[\s\S]*sd-float-size-control[\s\S]*renderQuickWheelSettings/, '小组件卡只保留悬浮球与蜂巢格两个标签开关');
 assert.doesNotMatch(source, /data-widget-toggle="(?:notes|dock)"/, '便笺仅由蜂巢入口选择控制，收纳不再另设开关');
 assert.match(css, /\.sd-api-generation-row\s*\{[^}]*grid-template-columns:\s*repeat\(3/, '三个生成参数必须三列同排');
-assert.match(css, /\.sd-api-action-row\s*\{[^}]*grid-template-columns:\s*repeat\(2/, 'API四项操作必须两列等宽、固定两排');
-assert.match(css, /\.sd-api-stream-action\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px/, '流式说明必须稳定显示在按钮下方');
+assert.match(css, /\.sd-api-action-row\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*nowrap/, '三项操作固定一排');
+assert.match(css, /\.sd-api-action-row > \.sd-btn\s*\{[^}]*flex:\s*1 1 0/, '可见的按钮等分宽度，隐藏时其余自动占满');
+assert.match(css, /\.sd-model-config > \.sd-stream-toggle\s*\{[^}]*position:\s*absolute[^}]*top:[^}]*right:/, '流式胶囊固定在卡片右上角');
+assert.match(css, /\.sd-stream-toggle\[aria-pressed="true"\] \.sd-stream-toggle-track::after\s*\{[^}]*translateX/, '开启时滑块移到右侧');
 
 const floatStart = source.indexOf('function getFloatSize()');
 const floatEnd = source.indexOf('const QUICK_COMMANDS');

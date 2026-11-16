@@ -55,7 +55,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.531';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.532';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -332,13 +332,12 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.531';
+const VERSION = '1.59.532';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
 let storyboardLinkReview = null;
 let reader = null;
-let feedbackOpenScope = null;
 // 点开即出的等待面板：真正的面板（代码、样式、账户数据）到齐前先占位，到齐或失败后自行消失。
 function pendingPanel(title, label, until) {
   return showPendingPanel({ title, label, until, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
@@ -467,7 +466,6 @@ async function mountFloorChatRecovery(root) {
 }
 const featureRuntime = createFeatureRuntime({
   imageZoom: { label: '全屏看图', load: () => import('./features/gallery/qianmu-image-zoom.js?v=1.59.440') },
-  feedback: { label: '问题反馈', load: () => import('./qianmu-feedback-view.js?v=1.59.414') },
   galleryPreserver: { label: '图库空闲保全', load: () => import('./features/gallery/qianmu-gallery-archive-coordinator.js?v=1.59.414') },
   recipeArchive: { label: '原配方保存与读取', load: () => import('./qianmu-recipe-archive-client.js?v=1.59.414') },
   vibeLibrary: { label: 'Vibe 库', load: () => loadLocalChunk('./qianmu-vibe-library-view.js?v=1.59.414') },
@@ -4123,7 +4121,6 @@ function closeModal() {
   if (focusClockBlockExit()) return;
   document.getElementById(MODAL_ID)?._sdGalleryToolbarCleanup?.();
   document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
-  document.getElementById(MODAL_ID)?._sdFeedbackCleanup?.(); feedbackOpenScope = null;
   focusClockCancelEntry();
   coreadOpenRequestId++;
   storyboardWorldbookController?.cancel();
@@ -7052,7 +7049,6 @@ function renderModal() {
   modal._sdGalleryToolbarCleanup?.();
   modal._sdThemeMenuCleanup?.();
   storyboardCaptureTagDraft(modal);
-  modal._sdFeedbackCleanup?.();
   modal._sdTagCompleteCleanup?.();
   modal._sdVibePreviewsCleanup?.();
   modal._sdTagLibraryCleanup?.();
@@ -7973,20 +7969,23 @@ function optionalServiceLabel(kind = 'status') {
       ? `v${value.replace(/^v/, '')}` : '未获取';
   }
   if (optionalServiceState.status === 'checking') return '检测中';
-  if (optionalServiceState.status === 'ready') return '正常';
+  if (optionalServiceState.status === 'ready') return optionalServiceLatestDisplay().update ? '正常 · 有可用更新' : '正常';
   if (optionalServiceState.status === 'missing') return '未安装';
   if (optionalServiceState.status === 'unsupported') return '当前环境不支持';
   if (optionalServiceState.status === 'error') return '未启动 / 出错';
   return '未检测';
 }
 
+// 配套版本（取不到远端版本时即本前端版本）与正在运行的服务版本不同，才算有可用更新（update）。
 function optionalServiceLatestDisplay() {
-  const latest = optionalServiceLabel('latest');
-  if (latest === '未获取') return { label: '配套', version: `v${VERSION}` };
-  return { label: optionalServiceLabel('current') === latest ? '最新' : '配套', version: latest };
+  const latest = optionalServiceLabel('latest'), current = optionalServiceLabel('current');
+  const version = latest === '未获取' ? `v${VERSION}` : latest;
+  return { label: latest !== '未获取' && current === latest ? '最新' : '配套', version,
+    update: optionalServiceState.status === 'ready' && current !== '未获取' && current !== version };
 }
 
 function optionalServiceDetail() {
+  if (optionalServiceLatestDisplay().update) return `服务端 ${optionalServiceLabel('current')} → ${optionalServiceLatestDisplay().version}，可按安装说明更新`;
   if (optionalServiceState.status === 'ready') {
     const labels = { 'doubao-tts': '豆包语音网关', 'storyboard-image': '分镜跨域网关', 'minimax-h3': 'MiniMax H3 动态网关' };
     return optionalServiceState.services.map((service) => labels[service] || service).join(' · ') || '服务已连接';
@@ -8003,19 +8002,8 @@ function paintOptionalServiceState() {
     label.dataset.status = optionalServiceState.status;
     label.title = optionalServiceDetail();
   }
-  const latest = optionalServiceLatestDisplay();
-  const latestLabel = modal.querySelector('.sd-storage-service-latest-label');
-  if (latestLabel) latestLabel.textContent = latest.label;
-  for (const kind of ['current', 'latest']) {
-    const version = modal.querySelector(`.sd-storage-service-${kind}`);
-    if (version) version.textContent = kind === 'latest' ? latest.version : optionalServiceLabel(kind);
-  }
-  const refresh = modal.querySelector('.sd-storage-service-refresh');
-  if (refresh) {
-    const checking = optionalServiceState.status === 'checking';
-    refresh.setAttribute('aria-busy', String(checking));
-    refresh.setAttribute('aria-disabled', String(checking));
-  }
+  const guide = modal.querySelector('.sd-storage-service-guide');
+  if (guide) guide.hidden = !optionalServiceLatestDisplay().update;
 }
 
 async function refreshOptionalServiceState(force = false) {
@@ -8078,12 +8066,9 @@ function runtimeHealthSnapshot() {
 }
 
 function renderStorageServiceStatus() {
-  const checking = optionalServiceState.status === 'checking';
-  const latest = optionalServiceLatestDisplay();
   return `<div class="sd-storage-service" role="group" aria-label="后端服务">
     <span class="sd-storage-service-status" role="status" aria-live="polite"><span>后端服务</span><b class="sd-optional-service-label" data-status="${htmlEscape(optionalServiceState.status)}" title="${htmlEscape(optionalServiceDetail())}">${htmlEscape(optionalServiceLabel())}</b></span>
-    <button type="button" class="sd-icon-btn sd-storage-service-refresh" title="重新检测后端服务与配套版本" aria-label="重新检测后端服务与配套版本" aria-busy="${checking}" aria-disabled="${checking}"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
-    <span class="sd-storage-service-versions"><span>当前 <b class="sd-storage-service-current">${htmlEscape(optionalServiceLabel('current'))}</b></span><span><span class="sd-storage-service-latest-label">${latest.label}</span> <b class="sd-storage-service-latest">${htmlEscape(latest.version)}</b></span></span>
+    <button type="button" class="sd-icon-btn sd-storage-service-guide" title="安装说明" aria-label="后端服务安装说明" ${optionalServiceLatestDisplay().update ? '' : 'hidden'}><i class="fa-solid fa-circle-question" aria-hidden="true"></i></button>
   </div>`;
 }
 
@@ -8725,13 +8710,8 @@ async function storyboardOpenRestoreStorage(root,expectedNamespace,{mappings=fal
 }
 
 function bindStorageManagementEvents(root) {
-  const serviceRefresh = root.querySelector('.sd-storage-service-refresh');
-  if (serviceRefresh) serviceRefresh.onclick = () => {
-    const modal = document.getElementById(MODAL_ID);
-    if (!serviceRefresh.isConnected || !modal?.classList.contains('open') || !modal.contains(serviceRefresh) || optionalServiceState.status === 'checking') return;
-    void refreshOptionalServiceState(true);
-    void refreshQianmuUpdateStatus(true);
-  };
+  const serviceGuide = root.querySelector('.sd-storage-service-guide');
+  if (serviceGuide) serviceGuide.onclick = () => showQianmuUpdateGuidance();
   const backup = root.querySelector('.sd-storage-backup-section');
   const undoButton = backup?.querySelector('.sd-undo-config');
   if (undoButton) undoButton.hidden = !configUndo.available(settings);
@@ -12491,6 +12471,7 @@ function renderPlugTab() {
   return `
     <section class="sd-card sd-model-config">
       <h3>模型配置</h3>
+      <button type="button" class="sd-stream-toggle ${settings.streamEnabled ? 'sd-primary' : ''}" aria-pressed="${settings.streamEnabled ? 'true' : 'false'}" title="流式传输"><span>流式</span><span class="sd-stream-toggle-track" aria-hidden="true"></span></button>
       <label>模型来源</label><select class="text_pole sd-provider-select" aria-label="模型来源"><option value="sillytavern" ${!isExternal ? 'selected' : ''}>使用 SillyTavern 当前 API 设置</option><option value="external" ${isExternal ? 'selected' : ''}>自定义（兼容 OpenAI）</option></select>
       <div class="sd-api-external-fields" ${isExternal ? '' : 'hidden'}>
       <label>API预设</label>
@@ -12513,9 +12494,6 @@ function renderPlugTab() {
         <button class="sd-btn sd-save-api" ${isExternal ? '' : 'hidden'}>保存API</button>
         <button class="sd-btn sd-save-api-profile" ${isExternal ? '' : 'hidden'}>保存为预设</button>
         <button class="sd-btn sd-test-api">测试连接</button>
-        <div class="sd-api-stream-action">
-          <button type="button" class="sd-btn sd-stream-toggle ${settings.streamEnabled ? 'sd-primary' : ''}" aria-pressed="${settings.streamEnabled ? 'true' : 'false'}">流式传输</button>
-        </div>
       </div>
     </section>
     <section class="sd-card sd-widget-card">
@@ -12534,31 +12512,7 @@ function renderPlugTab() {
       <div class="sd-card-title-row"><h3>日志</h3><span class="sd-log-retention">最近 ${LOG_LIMIT} 次</span></div>
       <div class="sd-log-list">${logs.length ? logs.map((log, i) => renderLogEntry(log, i)).join('') : '<p class="sd-muted sd-log-empty">暂无日志。</p>'}</div>
     </section>
-    ${renderStorageManagementCard()}
-    <details class="sd-card sd-feedback-card" ${feedbackOpenScope === settings ? 'open' : ''}><summary>问题反馈</summary><div class="sd-feedback-host"></div></details>`;
-}
-
-function bindFeedbackEvents(root) {
-  const card = root.querySelector('.sd-feedback-card'), host = card?.querySelector('.sd-feedback-host');
-  if (!host) return;
-  const scope = settings; let live = true, ticket = 0, dispose;
-  const current = () => live && initialized && isRuntimeOwner() && settings === scope && ctx().extensionSettings?.[MODULE_NAME] === scope && host.isConnected && card.open && root.classList.contains('open');
-  const toggle = async () => {
-    const request = ++ticket; dispose?.(); dispose = null;
-    if (!live || settings !== scope) return;
-    feedbackOpenScope = card.open ? scope : null;
-    if (!current()) return;
-    host.textContent = '正在准备反馈表…';
-    try {
-      const view = await featureRuntime.load('feedback');
-      if (!current() || ticket !== request) return;
-      dispose = view.mountFeedback(host, { scope, isCurrent: current, applyIcons: applyQianmuIcons, download: ttsDownloadBlob,
-        environment: { qianmuVersion: VERSION, stVersion: ctx()?.version, backendVersion: optionalServiceState.version, backendStatus: optionalServiceState.status } });
-    } catch { if (current() && ticket === request) host.textContent = '反馈表暂未载入，请收起后重新展开。'; }
-  };
-  const cleanup = (discard = false) => { live = false; ticket++; card.removeEventListener('toggle', toggle); dispose?.(discard); if (root._sdFeedbackCleanup === cleanup) root._sdFeedbackCleanup = null; };
-  root._sdFeedbackCleanup = cleanup; card.addEventListener('toggle', toggle);
-  if (card.open) void toggle();
+    ${renderStorageManagementCard()}`;
 }
 
 /* ============================================================
@@ -24646,7 +24600,6 @@ function bindActiveTabEvents(root) {
     });
   });
   if (activeTab === 'plug') {
-    bindFeedbackEvents(root);
     bindStorageManagementEvents(root);
     void refreshOptionalServiceState(false);
   }
@@ -35738,7 +35691,6 @@ function cleanupRuntime(resetSettings = false) {
     clean('panels', () => {
       document.getElementById(MODAL_ID)?._sdGalleryToolbarCleanup?.();
       document.getElementById(MODAL_ID)?._sdThemeMenuCleanup?.();
-      document.getElementById(MODAL_ID)?._sdFeedbackCleanup?.(true); feedbackOpenScope = null;
       storyboardEnsembleController?.dispose();storyboardEnsembleController=null;storyboardEnsembleContext=null;storyboardEnsembleRevision++;
       storyboardVibeLibraryController?.dispose();storyboardVibeLibraryController=null;storyboardVibeControllerContext=null;storyboardVibeSelection=null;
       document.getElementById(MODAL_ID)?._sdVibePreviewsCleanup?.();

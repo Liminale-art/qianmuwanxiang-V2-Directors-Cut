@@ -47,7 +47,7 @@ test('storage backup remains accessible before inventory and after inventory fai
     const html = fixture(null, status).renderStorageManagementCard();
     assert.match(html, /sd-storage-backup-section/);
     assert.match(html, /sd-import-config-file/);
-    assert.match(html, /sd-storage-service[\s\S]*后端服务[\s\S]*重新检测/);
+    assert.match(html, /sd-storage-service[\s\S]*后端服务[\s\S]*sd-storage-service-guide/);
     for (const name of ['storyboard', 'reader', 'favorites', 'notes']) assert.match(html, new RegExp(`data-storage-import="${name}"`));
     if(status==='loading'){
       assert.match(html,/准备扫描/);

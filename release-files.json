@@ -77,8 +77,6 @@
     "qianmu-assistant-storage-contract.js",
     "server/qianmu-assistant-storage-service.js",
     "qianmu-assistant-storage-client.js",
-    "qianmu-feedback-report.js",
-    "qianmu-feedback-view.js",
     "features/vibe/qianmu-vibe-receipt-lineage.js",
     "features/vibe/qianmu-vibe-receipt-accounting.js",
     "features/vibe/qianmu-vibe-encoding-contract.js",

@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 432 个，其中 `qianmu-*` 模块 415 个。
+根目录文件 430 个，其中 `qianmu-*` 模块 413 个。
 
 ## 入口、宿主与安装
 
@@ -32,12 +32,12 @@
 | `assets/logos/` | 5 |
 | `assets/ringtones/` | 49 |
 | `assets/tab-icons/` | 2 |
-| `bundle/` | 200 |
+| `bundle/` | 199 |
 | `evaluation/` | 2 |
 | `features/` | 191 |
-| `scripts/` | 159 |
+| `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 990 |
+| `tests/` | 986 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -502,7 +502,7 @@
 | `qianmu-tag-complete.js` | 是 |  |
 | `qianmu-tags.js` | 是 | Local writing aids. These functions never choose a generation target or invoke a model. |
 
-## 基础设施（存储、日志、迁移、加载）（24）
+## 基础设施（存储、日志、迁移、加载）（22）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -512,8 +512,6 @@
 | `qianmu-data-migrations.js` | 是 | 千幕 V2 兼容门面。 |
 | `qianmu-document-session.js` | 是 | A page/account-owned view of one ST document. Panels subscribe/unsubscribe; |
 | `qianmu-feature-runtime.js` | 是 |  |
-| `qianmu-feedback-report.js` | 是 | Public feedback is a separate, deliberately small contract. Never pass logs, |
-| `qianmu-feedback-view.js` | 是 |  |
 | `qianmu-idle-migration-scheduler.js` | 是 | Shared scheduling only: importing a library's idle policy must not load a |
 | `qianmu-idle-preload.js` | 是 | Code-only warming: no text reads, DOM construction, database access or model calls. |
 | `qianmu-input-boundary.js` | 是 |  |

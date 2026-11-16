@@ -3328,14 +3328,19 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 #story-director-modal .sd-api-generation-row label { display: grid; align-content: end; gap: 5px; min-width: 0; margin: 0 !important; }
 #story-director-modal .sd-api-generation-row label > span { min-height: 1.35em; font-size: 12px; line-height: 1.35; }
 #story-director-modal .sd-api-generation-row .text_pole { width: 100% !important; min-width: 0; margin: 0 !important; }
-#story-director-modal .sd-api-action-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-}
-#story-director-modal .sd-api-action-row > .sd-btn,
-#story-director-modal .sd-api-stream-action .sd-btn { width: 100%; min-width: 0; }
-#story-director-modal .sd-api-stream-action { display: grid; gap: 4px; min-width: 0; }
+/* C-13⑤：保存 API／保存为预设／测试连接并为一排；隐藏其中两项时剩下的自动占满 */
+#story-director-modal .sd-api-action-row { display: flex; flex-wrap: nowrap; align-items: stretch; }
+#story-director-modal .sd-api-action-row > .sd-btn { flex: 1 1 0; width: auto; min-width: 0; padding-inline: 6px; white-space: nowrap; }
+/* C-13⑤：流式开关为胶囊，固定在模型配置卡右上角 */
+#story-director-modal .sd-model-config { position: relative; }
+#story-director-modal .sd-model-config > .sd-stream-toggle { position: absolute; top: 10px; right: 12px; display: inline-flex; align-items: center; gap: 7px; min-height: 26px; margin: 0; padding: 0 2px; border: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--sd-muted); font: inherit; font-size: 12px; cursor: pointer; }
+#story-director-modal .sd-model-config > .sd-stream-toggle[aria-pressed="true"] { color: var(--sd-text); }
+#story-director-modal .sd-stream-toggle-track { position: relative; flex: none; width: 34px; height: 19px; border-radius: 999px; background: color-mix(in srgb, var(--sd-muted) 30%, transparent); transition: background-color .18s ease; }
+#story-director-modal .sd-stream-toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--sd-card, #fff); box-shadow: 0 1px 2px rgba(0, 0, 0, .22); transition: transform .18s cubic-bezier(.22, 1, .36, 1); }
+#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track { background: color-mix(in srgb, var(--sd-primary) 78%, transparent); }
+#story-director-modal .sd-stream-toggle[aria-pressed="true"] .sd-stream-toggle-track::after { transform: translateX(15px); }
+#story-director-modal .sd-model-config > .sd-stream-toggle:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) { #story-director-modal .sd-stream-toggle-track, #story-director-modal .sd-stream-toggle-track::after { transition: none; } }
 #story-director-modal .sd-stream-scope-hint { margin: 0; text-align: center; font-size: 11px; line-height: 1.25; }
 #story-director-modal .sd-float-toggle-row { display: inline-flex !important; align-items: center; margin: 6px 0 10px !important; }
 
@@ -11925,16 +11930,6 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 .sd-comfy-scene-review .sd-comfy-scene-task>button { grid-column:2;grid-row:1 / span 2;align-self:center; }
 
 /* Feedback stays inside the API page; no viewport overlay or background upload. */
-#story-director-modal .sd-feedback-card { min-width:0; }
-#story-director-modal .sd-feedback-card>summary { cursor:pointer;text-align:left; }
-#story-director-modal .sd-feedback-form { display:grid;gap:10px;min-width:0;margin-top:10px; }
-#story-director-modal .sd-feedback-field { display:grid;gap:5px;min-width:0;margin:0;text-align:left; }
-#story-director-modal .sd-feedback-field :is(select,textarea) { width:100%;min-width:0;max-width:100%;box-sizing:border-box;margin:0;font:inherit;text-align:left; }
-#story-director-modal .sd-feedback-field textarea { min-height:76px;resize:vertical; }
-#story-director-modal .sd-feedback-actions { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
-#story-director-modal .sd-feedback-actions>.sd-btn { min-width:0;justify-content:center; }
-#story-director-modal .sd-feedback-form p { margin:0;overflow-wrap:anywhere; }
-#story-director-modal .sd-feedback-status:empty { display:none; }
 
 /* Illustration logs: collapsed rows expose only name/number, date and status. */
 #story-director-modal .sd-storyboard-root details.sd-storyboard-log > summary {
