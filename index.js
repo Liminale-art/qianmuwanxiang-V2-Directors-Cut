@@ -48,9 +48,10 @@ import { createDirectorHostState } from './qianmu-director-host-state.js';
 import { createDirectorAutoRefresh } from './qianmu-director-auto-refresh.js';
 import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-director-save-confirmation.js';
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
+import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.526';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.527';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -327,7 +328,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.526';
+const VERSION = '1.59.527';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -35570,6 +35571,9 @@ function bindEvents() {
   // Rendered user messages need their star immediately, without triggering any
   // model extraction, generation, or unrelated host refresh work.
   const collectionRenderedHandler = () => proseFloorTools.refreshCollection(document.getElementById('chat'));
+  // 按聊天记在设置里的勾选／配音／NPC 表：聊天删除时清掉、改名时跟着走（原先永不清理，设置文件越存越大）。
+  const chatDeletedHandler = name => { if (forgetChatSettings(settings, name)) saveSettings(); };
+  const chatRenamedHandler = data => { if (renameChatSettings(settings, data?.oldFileName, data?.newFileName)) saveSettings(); };
   const pairs = [
     [types.GENERATION_STARTED || 'generation_started', directorMainlineStarted],
     [types.USER_MESSAGE_RENDERED || 'user_message_rendered', collectionRenderedHandler],
@@ -35583,6 +35587,9 @@ function bindEvents() {
     [types.MESSAGE_SWIPE_DELETED || 'message_swipe_deleted', storyboardMessageVersionHandler],
     [types.MORE_MESSAGES_LOADED || 'more_messages_loaded', storyboardMoreMessagesLoadedHandler],
     [types.CHAT_CHANGED || 'chat_changed', rerenderHandler],
+    [types.CHAT_DELETED || 'chat_deleted', chatDeletedHandler],
+    [types.GROUP_CHAT_DELETED || 'group_chat_deleted', chatDeletedHandler],
+    [types.CHAT_RENAMED || 'chat_renamed', chatRenamedHandler],
     [types.GROUP_UPDATED || 'group_updated', rerenderHandler],
     [types.CHARACTER_SELECTED || 'character_selected', rerenderHandler],
     ...[['GENERATION_STARTED', 'generation_started', 'generationStarted'], ['GENERATION_STOPPED', 'generation_stopped', 'generationStopped'], ['MESSAGE_RECEIVED', 'message_received', 'messageReceived'], ['CHAT_CHANGED', 'chat_id_changed', 'chatChanged']].map(([key, fallback, name]) => [types[key] || fallback, chatRingtone.events[name]]),   // 聊天工具包·铃声：仅成功回复响铃／后台闪烁
