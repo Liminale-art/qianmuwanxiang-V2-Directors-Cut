@@ -32,7 +32,7 @@ assert.match(styles, /\.sd-version-tag\.is-update-available[\s\S]*animation: sd-
 assert.match(styles, /\.sd-header-actions :is\(\.sd-coread-shortcut,[\s\S]*width: 20px !important;/, 'all top-row glyphs must match the storyboard icon optical size');
 assert.match(styles, /#qianmu-storage-cleanup-layer \{[\s\S]*height: 100dvh !important;[\s\S]*transform: none !important;/, 'the cleanup chooser must remain centered in the mobile viewport');
 
-assert.match(source, /<h3>小组件<\/h3>\s*<div class="sd-widget-toggle-row"[^>]*>[\s\S]*>悬浮球<\/span>[\s\S]*>蜂巢格<\/span>/, 'widget controls must use one active-label row');
+assert.match(source, /<h3>快捷盘<\/h3>\s*<div class="sd-widget-toggle-row"[^>]*>[\s\S]*>圆盘<\/span>[\s\S]*>蜂巢格<\/span>/, 'widget controls must use one active-label row');
 assert.match(focusView, /sd-focus-reset"[^>]*><i class="fa-solid fa-arrow-rotate-left"><\/i>/, 'focus reset must carry the local reset icon, including when strong lock disables the button');
 assert.match(styles, /\.sd-focus-sound-preview \{[^}]*border-radius: 9px !important/, 'focus sound preview must use a square control');
 assert.match(source, /dialogTipSeen: false[\s\S]*sd-reader-send-tip[\s\S]*长按邀请 AI 回应/, 'Coread must provide a one-time send gesture tip');

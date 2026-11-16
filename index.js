@@ -26,6 +26,7 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.534';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -55,7 +56,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.533';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.534';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -332,7 +333,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.533';
+const VERSION = '1.59.534';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1770,6 +1771,9 @@ function migrateWidgetSettings(s) {
     }
     delete s.notes.enabled;
   }
+  // 快捷盘两种形态互斥：圆盘或蜂巢格；都不开＝整体停用，logo 一并隐藏。旧的「只开悬浮球」＝圆盘。
+  if (s.quickLauncher !== 'dial' && s.quickLauncher !== 'hive') s.quickLauncher = s.floatingButton !== false && s.quickWheelEnabled === false ? 'dial' : 'hive';
+  s.quickWheelEnabled = s.floatingButton !== false;
 }
 
 function migrateSettings(s) {
@@ -4649,8 +4653,30 @@ function closeQuickWheel() {
   quickWheelOriginButton?.classList.remove('sd-wheel-active');
   if (quickWheelOriginButton) concealFloatButton(quickWheelOriginButton, 180);
   quickWheelOriginButton = null;
-  document.getElementById(QUICK_WHEEL_ID)?.remove();
+  const open = document.getElementById(QUICK_WHEEL_ID);
+  if (open?._qmCleanup) open._qmCleanup(); else open?.remove();
 }
+
+// 快捷圆盘（与蜂巢格互斥）。入口沿用快捷盘的选择与收纳，顺序取圆盘自己的排序。
+const quickDial = createQuickDial({
+  id: QUICK_WHEEL_ID,
+  items: () => {
+    const order = settings.quickDialOrder || [], rank = (item) => { const at = order.indexOf(item.id); return at < 0 ? order.length : at; };
+    return quickWheelItems().sort((a, b) => rank(a) - rank(b));
+  },
+  iconMarkup: (item) => item.external ? quickDockIconMarkup(item) : `<i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i>`,
+  run: (id) => id ? runQuickWheelCommand(id) : openModal(),
+  palette: currentHivePalette, isDark: () => qianmuToastLook().mode === 'dark', floatSize: getFloatSize,
+  logoUrl: () => FLOAT_LOGO_URLS[currentHiveThemeKey()] || FLOAT_LOGO_URL,
+  recall: () => settings.quickDialLast,
+  remember: (id) => { if (settings.quickDialLast !== id) { settings.quickDialLast = id; saveSettings(); } },
+  applyIcons: (root) => applyQianmuIcons(root),
+  bindItem: (button, item, layout) => {
+    if (item.external) return quickDockBindIconFallback(button, item);
+    bindNotesHiveDetachDrag(button, item, layout); proseFloorTools.bindHive(button, item, layout); floorHive?.bind(button, item, layout);
+  },
+  onClosed: (btn) => concealFloatButton(btn, 180),
+});
 
 // quickDockAttrEscape - 已迁移到 qianmu-storyboard-utils.js
 
@@ -6118,6 +6144,7 @@ function bindFloatDrag(btn) {
   let pointerId = null;
   let lastX = 0;
   let lastY = 0;
+  let dial = null;
   const suppressClick = (key, delay) => {
     btn.dataset[key] = '1';
     setTimeout(() => { delete btn.dataset[key]; }, delay);
@@ -6155,6 +6182,23 @@ function bindFloatDrag(btn) {
     btn.dataset.activePointer = String(event.pointerId);
     try { btn.setPointerCapture?.(event.pointerId); } catch (_) {}
     clearTimeout(holdTimer);
+    if (settings.quickLauncher === 'dial') {
+      // 圆盘：按下即展开，随手上下滑动拨盘；按住不动片刻则改为拖动 logo。
+      if (floatPositionIsHidden()) {
+        btn.classList.add('sd-float-wheel-opening');
+        revealFloatButton(btn, { temporary: false });
+        void btn.getBoundingClientRect().left;
+        requestAnimationFrame(() => btn.classList.remove('sd-float-wheel-opening'));
+      }
+      dial = quickDial.press(btn, event, { onLift: () => {
+        const rect = btn.getBoundingClientRect();
+        originX = rect.left - (lastX - startX);
+        originY = rect.top - (lastY - startY);
+        dial = null;
+        btn.classList.add('sd-float-lifted');
+      } });
+      return;
+    }
     holdTimer = setTimeout(() => {
       if (pointerId == null || moved || !btn.isConnected || settings.quickWheelEnabled === false) return;
       wheelOpened = true;
@@ -6164,6 +6208,7 @@ function bindFloatDrag(btn) {
 
   btn.addEventListener('pointermove', (event) => {
     if (pointerId == null || event.pointerId !== pointerId) return;
+    if (dial) { lastX = event.clientX; lastY = event.clientY; return dial.move(event); }
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     const scale = Math.max(1, Number(window.visualViewport?.scale) || 1);
@@ -6200,6 +6245,8 @@ function bindFloatDrag(btn) {
     try { btn.releasePointerCapture?.(event.pointerId); } catch (_) {}
     delete btn.dataset.activePointer;
     btn.classList.remove('sd-float-dragging');
+    if (dial) { const gesture = dial; dial = null; gesture.release(cancelled); return suppressClick('justOpenedWheel', 160); }
+    if (btn.classList.contains('sd-float-lifted')) { btn.classList.remove('sd-float-lifted'); suppressClick('justDragged', 120); }
     Object.assign(settings.floatPosition, clampFloatPosition());
     applyFloatPosition(btn);
     if (moved) saveSettings();
@@ -6217,6 +6264,7 @@ function bindFloatDrag(btn) {
       event.stopPropagation();
       return;
     }
+    if (settings.quickLauncher === 'dial') return void quickDial.open(btn);   // 键盘触发：直接展开圆盘
     if (!btn.classList.contains('sd-float-revealed') && revealFloatButton(btn)) {
       event.preventDefault();
       event.stopPropagation();
@@ -12330,11 +12378,12 @@ function refreshWidgetRuntime() {
 
 function bindWidgetSettings(root) {
   root.querySelectorAll('[data-widget-toggle]').forEach(button => button.addEventListener('click', () => {
-    if (button.dataset.widgetToggle === 'floating') settings.floatingButton = !settings.floatingButton;
-    else if (button.dataset.widgetToggle === 'wheel') {
-      settings.quickWheelEnabled = settings.quickWheelEnabled === false;
-      if (settings.quickWheelEnabled) settings.quickWheelCustomExpanded = true;
-    } else return;
+    // 圆盘与蜂巢格二选一；再点一次已选中的那个＝都关掉（快捷盘停用，logo 隐藏）。
+    const style = button.dataset.widgetToggle === 'floating' ? 'dial' : button.dataset.widgetToggle === 'wheel' ? 'hive' : '';
+    if (!style) return;
+    const on = !!settings.floatingButton && (settings.quickLauncher === 'dial' ? 'dial' : 'hive') === style;
+    settings.floatingButton = settings.quickWheelEnabled = !on;
+    if (!on) settings.quickLauncher = style;
     refreshWidgetRuntime();
     saveSettings();
     renderModal();
@@ -12347,21 +12396,21 @@ function bindWidgetSettings(root) {
     renderFloatingNotes();
   });
   root.querySelector('.sd-float-size')?.addEventListener('change', () => saveSettings());
-  root.querySelector('.sd-wheel-custom-details')?.addEventListener('toggle', e => {
-    settings.quickWheelCustomExpanded = !!e.currentTarget.open;
+  if (settings.quickLauncher === 'dial') bindQuickDialReorder(root.querySelector('.sd-wheel-custom-list'), { onReorder: (ids) => {
+    settings.quickDialOrder = ids.filter((id) => QUICK_COMMAND_IDS.includes(id));
+    closeQuickWheel();
     saveSettings();
-  });
+  } });
   root.querySelectorAll('.sd-wheel-command-toggle').forEach(button => button.addEventListener('click', () => {
     const id = button.dataset.command;
     if (!QUICK_COMMAND_IDS.includes(id)) return;
     const selected = !settings.quickWheelCustomEnabled.includes(id);
     const next = settings.quickWheelCustomEnabled.filter(item => item !== id);
     if (selected) next.push(id);
-    if (!next.length) return toast('蜂巢格至少保留一个入口。', 'warning');
+    if (!next.length) return toast('快捷盘至少保留一个入口。', 'warning');
     settings.quickWheelCustomEnabled = settings.quickWheelCustomOrder.filter(item => next.includes(item));
     button.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', String(selected));
-    root.querySelector('.sd-wheel-custom-details > summary > b').textContent = `${next.length} 项`;
     if (id === 'notes') {
       if (!selected) closeNotesPanel();
       renderFloatingNotes();
@@ -12372,14 +12421,15 @@ function bindWidgetSettings(root) {
 }
 
 function renderQuickWheelSettings() {
-  if (settings.quickWheelEnabled === false) return '';
+  if (!settings.floatingButton) return '';
   normalizeQuickWheelSettings();
-  const ordered = settings.quickWheelCustomOrder.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
-  const occupied = settings.quickWheelCustomEnabled.length;
+  // 蜂巢格沿用原顺序；圆盘按自己的排序（可在此拖动调整）。
+  const dial = settings.quickLauncher === 'dial', saved = dial && Array.isArray(settings.quickDialOrder) ? settings.quickDialOrder : [];
+  const ids = [...saved.filter((id) => QUICK_COMMAND_IDS.includes(id)), ...settings.quickWheelCustomOrder.filter((id) => !saved.includes(id))];
+  const ordered = ids.map((id) => QUICK_COMMANDS.find((item) => item.id === id)).filter(Boolean);
   return `<div class="sd-wheel-settings">
-    <details class="sd-wheel-custom-details" ${settings.quickWheelCustomExpanded ? 'open' : ''}><summary><span>编辑蜂巢入口</span><b>${occupied} 项</b></summary><div class="sd-wheel-custom-list" role="group" aria-label="蜂巢入口">${ordered.map(item => `
-      <button type="button" class="sd-widget-toggle sd-wheel-command-toggle ${settings.quickWheelCustomEnabled.includes(item.id) ? 'active' : ''}" data-command="${item.id}" aria-pressed="${settings.quickWheelCustomEnabled.includes(item.id)}"><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.id === 'floor' ? '聊天工具' : item.id === 'plug' ? '设置' : item.label)}</span></button>`).join('')}</div>
-    </details>
+    <div class="sd-wheel-custom-list${dial ? ' is-sortable' : ''}" role="group" aria-label="快捷盘入口">${ordered.map(item => `
+      <button type="button" class="sd-widget-toggle sd-wheel-command-toggle ${settings.quickWheelCustomEnabled.includes(item.id) ? 'active' : ''}" data-command="${item.id}" aria-pressed="${settings.quickWheelCustomEnabled.includes(item.id)}"><i class="fa-solid ${item.icon}"${item.glyph ? ` data-qm-icon="${item.glyph}"` : ''}></i><span>${htmlEscape(item.id === 'floor' ? '聊天工具' : item.id === 'plug' ? '设置' : item.label)}</span></button>`).join('')}</div>${dial ? '\n    <p class="sd-wheel-order-hint">按住入口拖动，可调整它在圆盘上的顺序。</p>' : ''}
   </div>`;
 }
 
@@ -12468,6 +12518,7 @@ function renderPlugTab() {
   const models = uniqueClean([settings.model, ...(settings.availableModels || [])]);
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   const floatSize = getFloatSize();
+  const launcher = !settings.floatingButton ? '' : settings.quickLauncher === 'dial' ? 'dial' : 'hive';
   return `
     <section class="sd-card sd-model-config">
       <h3>模型配置</h3>
@@ -12497,13 +12548,13 @@ function renderPlugTab() {
       </div>
     </section>
     <section class="sd-card sd-widget-card">
-      <h3>小组件</h3>
-      <div class="sd-widget-toggle-row" role="group" aria-label="小组件开关">
-        <button type="button" class="sd-btn sd-widget-toggle ${settings.floatingButton ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${settings.floatingButton ? 'true' : 'false'}"><span>悬浮球</span></button>
-        <button type="button" class="sd-btn sd-widget-toggle ${settings.quickWheelEnabled !== false ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${settings.quickWheelEnabled !== false ? 'true' : 'false'}"><span>蜂巢格</span></button>
+      <h3>快捷盘</h3>
+      <div class="sd-widget-toggle-row" role="group" aria-label="快捷盘形态">
+        <button type="button" class="sd-btn sd-widget-toggle ${launcher === 'dial' ? 'active' : ''}" data-widget-toggle="floating" aria-pressed="${launcher === 'dial'}"><span>圆盘</span></button>
+        <button type="button" class="sd-btn sd-widget-toggle ${launcher === 'hive' ? 'active' : ''}" data-widget-toggle="wheel" aria-pressed="${launcher === 'hive'}"><span>蜂巢格</span></button>
       </div>
       <div class="sd-float-size-control" ${settings.floatingButton ? '' : 'hidden'}>
-        <label for="sd-float-size">悬浮球大小 <b class="sd-float-size-value">${floatSize} px</b></label>
+        <label for="sd-float-size">大小 <b class="sd-float-size-value">${floatSize} px</b></label>
         <input id="sd-float-size" class="sd-float-size" type="range" min="${FLOAT_SIZE_MIN}" max="${FLOAT_SIZE_MAX}" step="2" value="${floatSize}">
       </div>
       ${renderQuickWheelSettings()}

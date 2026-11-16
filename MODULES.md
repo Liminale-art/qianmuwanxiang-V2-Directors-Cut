@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 430 个，其中 `qianmu-*` 模块 413 个。
+根目录文件 431 个，其中 `qianmu-*` 模块 414 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 158 |
 | `server/` | 65 |
-| `tests/` | 986 |
+| `tests/` | 987 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -246,7 +246,7 @@
 | --- | --- | --- |
 | `qianmu-vibe-library-view.js` | 是 |  |
 
-## 正文辅助（prose）与蜂巢（33）
+## 正文辅助（prose）与蜂巢（34）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -283,6 +283,7 @@
 | `qianmu-prose-floor-tools.js` | 是 |  |
 | `qianmu-prose-hive.js` | 是 |  |
 | `qianmu-prose-rich-compat.js` | 是 | A decorated message may contain ordinary prose before and after a rich card. |
+| `qianmu-quick-dial.js` | 是 | 快捷圆盘：贴着千幕 logo 展开的半圆拨盘。 |
 
 ## 角色、世界与设定（2）
 

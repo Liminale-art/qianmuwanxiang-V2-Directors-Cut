@@ -20,7 +20,7 @@ const quickCommands = await readFile(new URL('../qianmu-hive-commands.js', impor
 assert.match(source, /quickWheelCustomOrder/);
 assert.match(source, /quickWheelCustomEnabled/);
 assert.match(source, /quickWheelScheme: 'custom'/);
-assert.match(source, /<h3>小组件<\/h3>[\s\S]*>悬浮球<\/span>[\s\S]*>蜂巢格<\/span>/, '小组件只保留悬浮球与合并后的蜂巢格开关');
+assert.match(source, /<h3>快捷盘<\/h3>[\s\S]*>圆盘<\/span>[\s\S]*>蜂巢格<\/span>/, '快捷盘只保留圆盘与蜂巢格两种形态');
 assert.doesNotMatch(source, /data-widget-toggle="(?:notes|dock)"/);
 for (const id of ['dashboard', 'focus', 'tasksnodes', 'castworld', 'context', 'settings', 'theater', 'tts', 'coread', 'geopolitics', 'plug', 'imagegen', 'floor']) {
   assert.match(quickCommands, new RegExp(`id: '${id}'`));
@@ -44,7 +44,7 @@ assert.match(renderFloat, /FLOAT_LOGO_URLS\[themeKey\][\s\S]*sd-hive-theme-\$\{t
 assert.match(source, /quickHiveDirectionalCells[\s\S]*edgeDirected/, '贴边展开必须从页面可用空间选择蜂巢格，不能移动主锚点');
 assert.match(source, /originCenterX[\s\S]*quickHiveLayout[\s\S]*originCenterX \+ slot\.x/, '所有入口必须以真实悬浮窗中心定位');
 assert.match(source, /classList\.add\('sd-wheel-active'\)/);
-assert.match(source, /sd-wheel-custom-details/, '蜂巢入口列表必须可折叠');
+assert.doesNotMatch(source, /sd-wheel-custom-details|编辑蜂巢入口/, '入口列表不再折叠，也没有标题与计数（C-13③）');
 assert.match(source, /document\.addEventListener\('pointerdown', dismiss, true\)/, '轮盘必须在文档捕获阶段监听外部点击');
 assert.match(source, /document\.removeEventListener\('pointerdown', dismiss, true\)/, '轮盘关闭时必须解除外部点击监听');
 assert.match(source, /bindQuickWheelOutsideDismiss\(root\)/);

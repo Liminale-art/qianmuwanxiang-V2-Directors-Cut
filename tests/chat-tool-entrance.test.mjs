@@ -7,7 +7,7 @@ import { QIANMU_HIVE_COMMANDS } from '../qianmu-hive-commands.js';
 
 test('only the hive editor shortens chat-tool and settings labels; IDs, order and enabled actions remain intact', () => {
     const before = structuredClone(QIANMU_HIVE_COMMANDS);
-    const c = vm.createContext({ settings: { quickWheelEnabled: true, quickWheelCustomOrder: QIANMU_HIVE_COMMANDS.map(item => item.id), quickWheelCustomEnabled: ['floor', 'plug'] },
+    const c = vm.createContext({ settings: { floatingButton: true, quickWheelEnabled: true, quickWheelCustomOrder: QIANMU_HIVE_COMMANDS.map(item => item.id), quickWheelCustomEnabled: ['floor', 'plug'] },
         normalizeQuickWheelSettings() {}, QUICK_COMMANDS: QIANMU_HIVE_COMMANDS, htmlEscape: value => String(value) });
     vm.runInContext(storyboardFunctionSource('renderQuickWheelSettings'), c);
     const html = c.renderQuickWheelSettings();
@@ -16,7 +16,7 @@ test('only the hive editor shortens chat-tool and settings labels; IDs, order an
     assert.doesNotMatch(html, /聊天工具包|API与日志/);
     assert.deepEqual(QIANMU_HIVE_COMMANDS, before);
     assert.deepEqual([...html.matchAll(/data-command="([^"]+)"/g)].map(match => match[1]), before.map(item => item.id));
-    c.settings.quickWheelEnabled = false; assert.equal(c.renderQuickWheelSettings(), '');
+    c.settings.floatingButton = false; assert.equal(c.renderQuickWheelSettings(), '', 'no entry list while the quick launcher is off');
 });
 
 test('shared hive labels, panel titles and the ST menu logo are not globally renamed or replaced', async () => {

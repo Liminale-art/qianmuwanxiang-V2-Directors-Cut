@@ -700,7 +700,8 @@
     "assets/logos/qianmulogo-summer.png",
     "assets/logos/qianmulogo.png",
     "server-plugin.js",
-    "style.css"
+    "style.css",
+    "qianmu-quick-dial.js"
   ],
   "directories": [
     "assets",

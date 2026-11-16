@@ -29,7 +29,7 @@ function eventNode({ dataset = {}, active = false, open = false } = {}) {
 
 // Executes production renderers/bindings; only the host DOM, storage and icon painter are doubles.
 function fixture(overrides = {}) {
-    const calls = [], layers = new Map();
+    const calls = [], layers = new Map(); let reorder = null;
     const settings = {
         floatingButton: true, quickWheelEnabled: true, quickWheelCustomExpanded: false,
         quickWheelCustomOrder: [...commandIds], quickWheelCustomEnabled: ['dashboard', 'notes'],
@@ -64,11 +64,13 @@ function fixture(overrides = {}) {
         currentHivePalette: () => ({ edges: ['#123'], lightFill: '#fff', darkFill: '#000', lightIcon: '#111', darkIcon: '#eee' }),
         currentHiveThemeKey: () => 'light', THEME_KEYS: ['light'], QUICK_HEX_BORDER_SVG: '<svg></svg>',
         applyQianmuIcons() {}, bindFloatingNoteEvents() {}, appearanceSession: { mountNotes() {} },
+        bindQuickDialReorder: (_list, options) => { reorder = options; },
     });
     const names = ['migrateWidgetSettings', 'normalizeQuickWheelSettings', 'notesFeatureEnabled', 'closeNotesPanel',
         'renderFloatingNotes', 'refreshWidgetRuntime', 'bindWidgetSettings', 'renderQuickWheelSettings', 'renderPlugTab'];
     vm.runInContext(names.map(storyboardFunctionSource).join('\n'), context);
     function mount() {
+        reorder = null;
         const html = context.renderPlugTab();
         const widgets = [...html.matchAll(/<button\b[^>]*data-widget-toggle="([^"]+)"[^>]*>/g)].map(match =>
             eventNode({ dataset: { widgetToggle: match[1] }, active: /aria-pressed="true"/.test(match[0]) }));
@@ -92,20 +94,27 @@ function fixture(overrides = {}) {
             widget: id => widgets.find(button => button.dataset.widgetToggle === id),
             command: id => commands.find(button => button.dataset.command === id) };
     }
-    return { context, settings, calls, layers, document, mount };
+    return { context, settings, calls, layers, document, mount, reorder: () => reorder };
 }
 
 test('old wheel/dock switch combinations merge once, preserving any explicit off choice', () => {
-    for (const wheel of [true, false, undefined]) for (const dock of [true, false, undefined]) {
-        const f = fixture({ quickWheelEnabled: wheel, quickDockEnabled: dock });
+    // 快捷盘两种形态互斥：旧的「悬浮球开、蜂巢关」＝圆盘；悬浮球关＝整体停用；其余＝蜂巢格。
+    for (const floating of [true, false]) for (const wheel of [true, false, undefined]) for (const dock of [true, false, undefined]) {
+        const f = fixture({ floatingButton: floating, quickWheelEnabled: wheel, quickDockEnabled: dock });
         const originalOrder = plain(f.settings.quickWheelCustomOrder);
         f.context.migrateWidgetSettings(f.settings);
-        assert.equal(f.settings.quickWheelEnabled !== false, wheel !== false && dock !== false);
+        assert.equal(f.settings.quickLauncher, floating && (wheel === false || dock === false) ? 'dial' : 'hive');
+        assert.equal(f.settings.quickWheelEnabled, floating, 'entries are available whenever the launcher is on');
+        assert.equal(f.settings.floatingButton, floating);
         assert.equal(Object.hasOwn(f.settings, 'quickDockEnabled'), false);
         assert.deepEqual(plain(f.settings.quickWheelCustomOrder), originalOrder);
-        f.settings.quickWheelEnabled = true;
+        const once = plain(f.settings);
         f.context.migrateWidgetSettings(f.settings);
-        assert.equal(f.settings.quickWheelEnabled, true, 'the retired flag cannot undo a subsequent user choice');
+        assert.deepEqual(plain(f.settings), once, 'migration is idempotent');
+        f.settings.quickLauncher = f.settings.quickLauncher === 'dial' ? 'hive' : 'dial';
+        const chosen = f.settings.quickLauncher;
+        f.context.migrateWidgetSettings(f.settings);
+        assert.equal(f.settings.quickLauncher, chosen, 'a later user choice is never migrated again');
     }
 });
 
@@ -129,13 +138,20 @@ test('retired notes toggle migrates into selection without losing position, size
 });
 
 test('production widget card renders precisely two text-only toggles', () => {
-    for (const enabled of [true, false]) {
-        const f = fixture({ quickWheelEnabled: enabled }), mounted = f.mount();
+    for (const launcher of ['dial', 'hive', 'off']) {
+        const f = fixture({ floatingButton: launcher !== 'off', quickWheelEnabled: launcher !== 'off', quickLauncher: launcher === 'dial' ? 'dial' : 'hive' }), mounted = f.mount();
         const row = mounted.html.match(/<div class="sd-widget-toggle-row"[^>]*>([\s\S]*?)<\/div>/)[1];
+        assert.match(mounted.html, /<section class="sd-card sd-widget-card">\s*<h3>快捷盘<\/h3>/);
         assert.deepEqual(mounted.widgets.map(button => button.dataset.widgetToggle), ['floating', 'wheel']);
-        assert.match(row, /<span>悬浮球<\/span>/); assert.match(row, /<span>蜂巢格<\/span>/);
-        assert.doesNotMatch(row, /<i\b|<svg\b|data-qm-icon|快捷盘|蜂巢收纳|便笺/);
-        assert.equal(mounted.details !== null, enabled);
+        assert.match(row, /<span>圆盘<\/span>/); assert.match(row, /<span>蜂巢格<\/span>/);
+        assert.doesNotMatch(row, /<i\b|<svg\b|data-qm-icon|悬浮球|蜂巢收纳|便笺/);
+        assert.equal(mounted.widget('floating').classList.contains('active'), launcher === 'dial');
+        assert.equal(mounted.widget('wheel').classList.contains('active'), launcher === 'hive', 'the two forms are mutually exclusive');
+        assert.match(mounted.html, /<label for="sd-float-size">大小 <b class="sd-float-size-value">/);
+        assert.doesNotMatch(mounted.html, /悬浮球大小|编辑蜂巢入口|sd-wheel-custom-details|<b>\d+ 项<\/b>/, 'no fold title and no selection count');
+        assert.equal(mounted.commands.length > 0, launcher !== 'off', 'the entry list shows whenever the launcher is on');
+        assert.equal(/sd-wheel-order-hint/.test(mounted.html), launcher === 'dial', 'only the dial can be reordered');
+        assert.equal(/sd-float-size-control" hidden/.test(mounted.html), launcher === 'off');
     }
 });
 
@@ -143,8 +159,12 @@ test('entry renderer retains saved order, local icons, pressed states and exact 
     const order = ['tts', 'notes', 'floor', ...commandIds.filter(id => !['tts', 'notes', 'floor'].includes(id))];
     const f = fixture({ quickWheelCustomOrder: order, quickWheelCustomEnabled: ['floor', 'notes'] }), mounted = f.mount();
     assert.deepEqual(mounted.commands.map(button => button.dataset.command), order);
-    assert.equal(mounted.count.textContent, '2 项');
-    assert.match(mounted.html, /sd-wheel-custom-list" role="group" aria-label="蜂巢入口"/);
+    assert.match(mounted.html, /sd-wheel-custom-list" role="group" aria-label="快捷盘入口"/);
+    // 圆盘按自己的排序列出入口（未排过的接在后面），蜂巢格的顺序不受影响。
+    const dial = fixture({ quickLauncher: 'dial', quickWheelCustomOrder: order, quickDialOrder: ['floor', 'bogus', 'dashboard'], quickWheelCustomEnabled: ['floor', 'notes'] }), dialMounted = dial.mount();
+    assert.deepEqual(dialMounted.commands.map(button => button.dataset.command), ['floor', 'dashboard', ...order.filter(id => !['floor', 'dashboard'].includes(id))]);
+    assert.match(dialMounted.html, /sd-wheel-custom-list is-sortable" role="group"/);
+    assert.deepEqual(plain(dial.settings.quickWheelCustomOrder), order);
     const entries = [...mounted.html.matchAll(/<button\b[^>]*data-command="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g)];
     assert.equal(entries.length, commandIds.length);
     for (const [, id, markup] of entries) {
@@ -160,37 +180,45 @@ test('clicking labels updates count and pressed state while keeping legacy order
     mounted.command('dashboard').click();
     assert.deepEqual(plain(f.settings.quickWheelCustomEnabled), ['dashboard']);
     assert.equal(mounted.command('dashboard').getAttribute('aria-pressed'), 'true');
-    assert.equal(mounted.count.textContent, '1 项');
-    assert.deepEqual(f.calls.at(-1), { message: '蜂巢格至少保留一个入口。', level: 'warning' });
+    assert.deepEqual(f.calls.at(-1), { message: '快捷盘至少保留一个入口。', level: 'warning' });
     assert.equal(f.calls.includes('save'), false);
     mounted.command('tts').click(); mounted.command('notes').click();
     assert.deepEqual(plain(f.settings.quickWheelCustomEnabled), order.filter(id => ['dashboard', 'tts', 'notes'].includes(id)));
-    assert.equal(mounted.count.textContent, '3 项');
     assert.equal(mounted.command('notes').classList.contains('active'), true);
     assert.equal(mounted.command('notes').getAttribute('aria-pressed'), 'true');
     mounted.command('tts').click();
-    assert.equal(mounted.count.textContent, '2 项');
     assert.equal(mounted.command('tts').classList.contains('active'), false);
     assert.equal(mounted.command('tts').getAttribute('aria-pressed'), 'false');
     assert.deepEqual(plain(f.settings.quickWheelCustomOrder), order);
     assert.equal(f.calls.filter(value => value === 'save').length, 3);
 });
 
-test('turning hive on opens its entry list, off removes it, and existing fold choice remains until the next enable', () => {
-    const f = fixture({ quickWheelEnabled: false, quickWheelCustomExpanded: false });
-    let mounted = f.mount(); assert.equal(mounted.details, null);
-    mounted.widget('wheel').click();
-    assert.equal(f.settings.quickWheelEnabled, true); assert.equal(f.settings.quickWheelCustomExpanded, true);
-    mounted = f.mount(); assert.equal(mounted.details.open, true);
-    mounted.details.open = false; mounted.details.fire('toggle');
-    assert.equal(f.settings.quickWheelCustomExpanded, false);
-    mounted = f.mount(); assert.equal(mounted.details.open, false);
-    mounted.widget('wheel').click();
+test('dial and hive are mutually exclusive; pressing the active one turns the launcher off and hides the entry list', () => {
+    const f = fixture({ quickLauncher: 'hive' });
+    const launcher = () => [f.settings.quickLauncher, f.settings.floatingButton, f.settings.quickWheelEnabled];
+    f.mount().widget('floating').click();
+    assert.deepEqual(launcher(), ['dial', true, true], 'choosing the dial replaces the hive');
+    f.mount().widget('floating').click();
+    assert.deepEqual(launcher(), ['dial', false, false], 'pressing the active form again turns the launcher off (logo hidden)');
     assert.equal(f.context.renderQuickWheelSettings(), '');
-    mounted = f.mount(); assert.equal(mounted.commands.length, 0);
-    mounted.widget('wheel').click(); assert.equal(f.mount().details.open, true);
-    assert.equal(f.calls.filter(value => value === 'render-modal').length, 3);
-    assert.equal(f.calls.filter(value => value === 'restore-dock').length, 3);
+    assert.equal(f.mount().commands.length, 0);
+    f.mount().widget('wheel').click();
+    assert.deepEqual(launcher(), ['hive', true, true]);
+    f.mount().widget('floating').click();
+    assert.deepEqual(launcher(), ['dial', true, true], 'switching straight from hive to dial keeps the launcher on');
+    assert.equal(f.calls.filter(value => value === 'render-modal').length, 4);
+    assert.equal(f.calls.filter(value => value === 'restore-dock').length, 4);
+});
+
+test('dial order: dragging entries stores a dial-only order, ignores unknown ids and leaves the hive order alone', () => {
+    const hive = fixture({ quickLauncher: 'hive' }); hive.mount();
+    assert.equal(hive.reorder(), null, 'the hive list is not sortable');
+    const f = fixture({ quickLauncher: 'dial' }), order = plain(f.settings.quickWheelCustomOrder); f.mount();
+    const before = f.calls.length;
+    f.reorder().onReorder(['tts', 'bogus', 'dashboard']);
+    assert.deepEqual(plain(f.settings.quickDialOrder), ['tts', 'dashboard']);
+    assert.deepEqual(plain(f.settings.quickWheelCustomOrder), order);
+    assert.deepEqual(f.calls.slice(before), ['close-wheel', 'save']);
 });
 
 test('notes label alone hides and restores the detached entry, preserving placement and never reopening its panel', () => {
@@ -214,11 +242,11 @@ test('global widget refresh clears active gestures and resynchronizes existing c
     const f = fixture(); f.context.refreshWidgetRuntime();
     assert.deepEqual(f.calls, ['close-wheel', 'clear-drag', 'render-float', 'render-notes', 'render-floor', 'restore-dock', 'sync-origin']);
     const before = plain(f.settings.quickWheelCustomEnabled);
-    const mounted = f.mount(); mounted.widget('floating').click();
+    f.mount().widget('wheel').click();
     assert.equal(f.settings.floatingButton, false);
-    assert.equal(f.settings.quickWheelEnabled, true);
-    assert.deepEqual(plain(f.settings.quickWheelCustomEnabled), before);
-    mounted.widget('floating').click(); assert.equal(f.settings.floatingButton, true);
+    assert.equal(f.settings.quickWheelEnabled, false);
+    assert.deepEqual(plain(f.settings.quickWheelCustomEnabled), before, 'turning the launcher off keeps the entry choices');
+    f.mount().widget('wheel').click(); assert.equal(f.settings.floatingButton, true);
     const rendered = f.mount(); rendered.range.value = '100'; rendered.range.fire('input');
     assert.equal(f.settings.floatSize, 80); assert.equal(rendered.size.textContent, '80 px');
     rendered.range.value = '12'; rendered.range.fire('input'); assert.equal(f.settings.floatSize, 32);
