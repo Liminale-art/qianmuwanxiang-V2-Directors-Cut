@@ -9,7 +9,7 @@ const galleryView = await readFile(new URL('features/gallery/qianmu-gallery-coll
 const gallery = source.slice(source.indexOf('function renderStoryboardGallery(state)'), source.indexOf('function renderStoryboardGalleryKindSwitch'));
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-assert.equal(manifest.js, `bundle/index.js?v=${manifest.version}-toast-14`);
+assert.equal(manifest.js, `bundle/index.js?v=${manifest.version}-toast-15`);
 assert.match(source, /function storyboardGalleryCollections\(\)[\s\S]*storyboardCollections/, 'collections must persist with chat metadata');
 assert.match(source, /function storyboardGalleryGroupId[\s\S]*variantRootId[\s\S]*planShotId[\s\S]*groupId/, 'old and new image records need stable variant grouping');
 assert.match(source, /function storyboardCreateRecord[\s\S]*variantRootId: job\.variantRootId \|\| job\.planShotId \|\| job\.id/, 'new images must record their variant root');

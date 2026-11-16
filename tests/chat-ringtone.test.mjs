@@ -231,7 +231,7 @@ test('the deprecated presets are gone and the two new ringtones are present', ()
 });
 
 test('toast skin: styles/font size/duration are normalized; position is retired', () => {
-  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '默认'], ['glow', '辉光'], ['iris', '玻璃']]);
+  assert.deepEqual(TOAST_STYLES.map(([id, label]) => [id, label]), [['default', '极简'], ['glow', '辉光'], ['iris', '玻璃']]);
   assert.deepEqual(TOAST_DURATIONS.map(([, label]) => label), ['1s', '2s', '3s', '4s', '5s', '6s', '7s', '8s', '9s', '10s']);
   assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'arc' } }).toastStyle, 'glow', '旧样式1迁移为辉光');
   assert.equal(normalizeRingtone({ ringtone: { toastStyle: 'splat' } }).toastStyle, 'glow', '涂鸦弃用后迁移为辉光');
@@ -608,35 +608,45 @@ test('wheel picker with too few values keeps a plain strip (no copies)', async (
   v.dispose();
 });
 
-test('辉光 style: day/night only, status-tinted diagonal edges, flash-twice then smooth expand once', async () => {
+test('辉光 style: side-glow card — charcoal translucent base, fine bright rim, wide solid bar, inner wash, outer backlight', async () => {
   const css = await readFile(new URL('style.css', root), 'utf8');
   const glow = css.split('\n').filter(line => line.includes('data-qm-toast="glow"')).join('\n');
-  assert.ok(!glow.includes('data-qm-toast-theme'), '只按日夜，不额外读主题');
-  assert.ok(/html\[data-qm-toast="glow"\]\[data-qm-toast-mode="dark"\]/.test(glow), '夜间半透深色块');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div::before \{[^}]*clip-path: polygon\(10px 0, 100% 0, calc\(100% - 10px\) 100%, 0 100%\)/.test(glow), '左倾平行四边形底板（卡片本身不裁，外发光不被切）');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*overflow: visible[^}]*clip-path: none/.test(glow), 'C-14: 卡片不裁切，粗线外发光可见');
-  assert.ok(/::before \{[^}]*backdrop-filter: blur/.test(glow), '底板半透毛玻璃');
-  assert.ok(glow.includes('--gw-edge: var(--qm-toast-status)'), '边沿辉光跟随提示状态色');
-  assert.ok(glow.includes('--gw-soft: color-mix(in srgb, var(--gw-edge), white 45%)'), '柔光色比边线更亮');
-  assert.ok(glow.includes('--gw-body: color-mix(in srgb, #ffffff 90%, transparent)'), 'C-14: 日间内容区为白底，不再铺状态色');
-  assert.ok(/::before \{[^}]*linear-gradient\(90deg, var\(--gw-tint\) 0, transparent 34%\)/.test(glow) && glow.includes('--gw-tint: color-mix(in srgb, var(--gw-edge) 12%, transparent)'), 'C-14: 状态色只在左侧一段渐隐到透明，克制');
-  assert.ok(!/inset 0 0 1[68]px/.test(glow), 'C-14: 去掉上下内发光');
-  const after = glow.match(/div::after \{[^\n]*/)[0];
-  assert.ok(!after.includes('linear-gradient(180deg'), 'C-14: 粗线为纯色，不再竖向渐变');
-  assert.equal((after.match(/var\(--gw-line\)/g) || []).length, 6, '左右粗线各两块对角分块，均为同一纯色');
-  assert.ok(after.includes('0 0 / 10px 100%') && after.includes('10px 0 / 10px 100%') && after.includes('right 0 top 0 / 10px 100%') && after.includes('right 10px top 0 / 10px 100%'), '粗线分块与卡片共用 10px 斜率，任意高度贴合');
-  assert.ok(after.includes('22px calc(9px + var(--qm-toast-fs) * .7 - 4px) / 8px 8px') && glow.includes(':is(.toast-title, .toast-message) { padding-left: 24px'), '小方块离左粗线保持间距，文字同步右移');
-  assert.ok(/filter: drop-shadow\(0 0 1\.5px [^;]*drop-shadow\(0 0 5px/.test(after), 'C-14: 两条粗线克制高亮的霓虹外发光');
-  assert.ok(!glow.includes('linear-gradient(90deg, var(--gw-edge) 0 3px'), '弃用被斜切裁成三角的竖直色条');
-  assert.ok(!glow.includes('inset 3px 0 0 0 var(--gw-edge)'), '弃用被裁的 inset 边线');
-  assert.ok(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^}]*transform-origin: left center/.test(glow), '从左向右展开');
-  assert.ok(/animation: qm-toast-glow-expand 540ms cubic-bezier\(\.22, 1, \.36, 1\)[^!]*both !important/.test(glow) && /@keyframes qm-toast-glow-expand \{ 0% \{[^}]*scaleX\(\.04\)[^}]*\}[^@]*100% \{ transform: scaleX\(1\)/.test(css), '面板由左向右单段丝滑展开，仅进场一次');
-  assert.ok(!css.includes('qm-toast-glow-glitch') && !/@keyframes qm-toast-glow-expand[^@]*translateX/.test(css), '去掉 glitch 抖动');
-  assert.ok(/::after \{[^}]*animation: qm-toast-glow-edge 540ms/.test(glow) && /@keyframes qm-toast-glow-edge \{[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1[^@]*opacity: \.15[^@]*opacity: 1/.test(css) && !css.includes('qm-toast-glow-flash'), '边线进场先快闪两下再常亮');
-  assert.ok(glow.includes('--gw-flash: #cfe6ff') && glow.includes('--gw-flash: #a9bccf'), '闪色日间白蓝、夜间灰蓝');
-  assert.ok(glow.includes('--gw-core: color-mix(in srgb, var(--gw-edge) 88%, white)'), '荧光粗线与小方块更纯更亮（少掺白）');
-  assert.ok(!css.includes('qm-toast-glow-sweep'), '弃用旧光带动画');
+  const card = glow.match(/html\[data-qm-toast="glow"\] body #toast-container > div \{[^\n]*/)[0];
+  assert.ok(!glow.includes('data-qm-toast-theme'), '只按日夜与状态取色，不读主题');
+  assert.ok(card.includes('border-radius: 14px') && card.includes('border: 1px solid rgba(255, 255, 255, .15)'), '圆角矩形＋极细亮边');
+  assert.ok(card.includes('--gw-base: rgba(30, 32, 37, .58)') && /backdrop-filter: blur\(16px\)/.test(card), '炭灰半透基底');
+  assert.ok(card.includes('--gw-edge: color-mix(in srgb, var(--qm-toast-status) 92%, white)'), '强调色跟随提示状态');
+  assert.ok(/background: linear-gradient\(90deg, color-mix\(in srgb, var\(--gw-edge\) 34%, transparent\) 0,[^;]*transparent 62%\), var\(--gw-base\)/.test(card), '卡内由色条向右的线性渐变光');
+  assert.ok(/box-shadow: -18px 0 58px -2px color-mix\(in srgb, var\(--gw-edge\) 54%, transparent\)/.test(card), '卡片左后方大范围高模糊的同色背光');
+  assert.ok(card.includes('overflow: hidden'), '色条随卡片圆角裁切');
+  const bar = glow.match(/div::before \{[^\n]*/)[0];
+  assert.ok(bar.includes('width: 12px') && bar.includes('background: var(--gw-edge)') && bar.includes('left: -1px') && bar.includes('border-radius: 0'), '最左侧贴边的较宽纯色竖条');
+  assert.ok(!bar.includes('linear-gradient'), '色条为纯色');
+  assert.ok(/html\[data-qm-toast="glow"\]\[data-qm-toast-mode="dark"\][^{]*\{ --gw-base: rgba\(22, 24, 28, \.52\); \}/.test(glow), '夜间仅基底更透');
+  assert.ok(!glow.includes('::after'), '不再有第三层装饰');
+  for (const retired of ['clip-path: polygon', 'qm-toast-glow-expand', 'qm-toast-glow-edge', '--gw-flash', 'qm-toast-glow-sweep', 'qm-toast-glow-glitch']) assert.ok(!css.includes(retired) || retired === 'clip-path: polygon' && !glow.includes(retired), retired + ' 已随旧样式移除');
   assert.ok(!css.includes('data-qm-toast="splat"') && !css.includes('qm-toast-splat'), '涂鸦样式已弃用');
+});
+
+test('极简 style (stored as default): soft status wash from the left, icon tile with a line icon per status, day and night', async () => {
+  const css = await readFile(new URL('style.css', root), 'utf8');
+  const rules = css.split('\n').filter(line => line.includes('data-qm-toast="default"'));
+  const card = rules.find(line => line.startsWith('html[data-qm-toast="default"] body #toast-container > div {'));
+  const night = rules.find(line => line.startsWith('html[data-qm-toast="default"][data-qm-toast-mode="dark"] body #toast-container > div {'));
+  assert.ok(card.includes('border-radius: 14px') && card.includes('padding: 13px 16px 13px 58px'), '圆角卡片，左侧留出图标座');
+  assert.ok(/background: linear-gradient\(100deg, color-mix\(in srgb, var\(--qm-toast-accent\) var\(--mn-wash\), transparent\) 0, transparent 48%\), color-mix\(in srgb, var\(--qm-toast-bg\) 30%, #ffffff\)/.test(card), '日间近白底＋左侧状态色柔光');
+  assert.ok(card.includes('--mn-wash: 16%') && night.includes('--mn-wash: 30%'), '夜间柔光更明显');
+  assert.ok(night.includes('--mn-tile: color-mix(in srgb, var(--qm-toast-accent) 22%, #1b1e24)') && card.includes('--mn-tile: #ffffff'), '图标座：日间白、夜间染状态色');
+  assert.ok(!card.includes('display:') && !night.includes('display:'), '不改卡片的 display（提示库用它收起卡片）');
+  const tile = rules.find(line => line.includes('div::before {')), glyph = rules.find(line => line.includes('div::after {'));
+  assert.ok(tile.includes('width: 30px') && tile.includes('border-radius: 9px') && tile.includes('top: 50%') && tile.includes('translateY(-50%)'), '圆角方形图标座，随卡片高度垂直居中');
+  assert.ok(glyph.includes('mask: var(--mn-icon) center / contain no-repeat') && glyph.includes('background: var(--qm-toast-accent)'), '线形图标按状态色着色');
+  for (const type of ['success', 'warning', 'error']) assert.ok(rules.some(line => line.startsWith('html[data-qm-toast="default"] body #toast-container > .toast-' + type + ' { --mn-icon: url("data:image/svg+xml')), type + ' 有自己的图标');
+  assert.ok(card.includes('--mn-icon: url("data:image/svg+xml'), '默认（信息）图标');
+  assert.ok(rules.some(line => line.includes('.toast-title + .toast-message { color: color-mix(in srgb, var(--qm-toast-ink) 68%, transparent)')), '有标题时正文减淡；只有正文时保持正常墨色');
+  assert.ok(rules.some(line => line.includes('[data-qm-toast-mode="dark"] body #toast-container > .toast-error .toast-title { color: var(--qm-toast-accent)')), '夜间错误提示的标题用状态色');
+  const editorial = css.indexOf('html[data-qm-toast="default"][data-qm-toast-theme="editorial"] body #toast-container > div { border-radius: 0 !important; }');
+  assert.ok(editorial > css.indexOf(card), '纸间主题的直角规则排在后面，仍然生效');
 });
 
 test('玻璃 style: glass pill, fluorescent bell icon with glow behind it, scale-wiggle-shrink bell animation', async () => {
