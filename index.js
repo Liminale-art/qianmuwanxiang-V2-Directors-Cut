@@ -13,6 +13,8 @@ import {createProseHive} from './qianmu-prose-hive.js?v=1.59.507';
 import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.520';
 import {createBrowserCredentialStore} from './qianmu-browser-credentials.js?v=1.59.526';
 import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.520';
+import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59.528';
+import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.528';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -51,7 +53,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.527';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.528';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -328,7 +330,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.527';
+const VERSION = '1.59.528';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -375,7 +377,8 @@ function regexGroupsWrite(value) {
 }
 const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
-const fontLibrary=createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}});
+const sidecars=createSettingsSidecars({resolveNamespace:resolveImageAccountNamespace,requestSave:()=>saveSettings(),notify:message=>toast(message,'info'),onRestored:()=>rerenderIfOpen()}),fontFaces=sidecars.fontFaces;
+const fontLibrary=fontFaces.gate(createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}}),()=>settings);
 const yimuCompanionBridge = createYimuCompanionBridge({
   getState: coreadYimuState, resolveAccount: resolveImageAccountNamespace,
   listKeys: () => blobStore.createReaderPackageReader().listReaderChatKeys(),
@@ -1737,7 +1740,7 @@ function getSettings() {
     extensionSettings[MODULE_NAME].proseLayout = clone(cachedProse);
   }
   migrateSettings(extensionSettings[MODULE_NAME]);
-  return extensionSettings[MODULE_NAME];
+  return attachSettingsPersistence(extensionSettings[MODULE_NAME], sidecars);
 }
 
 function acceptMigrationResult(scope, result) {

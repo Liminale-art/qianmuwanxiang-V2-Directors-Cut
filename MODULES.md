@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 425 个，其中 `qianmu-*` 模块 408 个。
+根目录文件 429 个，其中 `qianmu-*` 模块 412 个。
 
 ## 入口、宿主与安装
 
@@ -34,10 +34,10 @@
 | `assets/tab-icons/` | 2 |
 | `bundle/` | 200 |
 | `evaluation/` | 2 |
-| `features/` | 190 |
+| `features/` | 191 |
 | `scripts/` | 159 |
 | `server/` | 65 |
-| `tests/` | 984 |
+| `tests/` | 988 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -416,7 +416,7 @@
 | `qianmu-recipe-restore-contract.js` | 是 |  |
 | `qianmu-recipe-storage.js` | 是 |  |
 
-## 外观、主题、字体与图标（21）
+## 外观、主题、字体与图标（22）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -427,6 +427,7 @@
 | `qianmu-appearance-settings.js` | 是 | Additive preferences: settings.theme remains the user's last classic choice. |
 | `qianmu-font-account-sync.js` | 是 |  |
 | `qianmu-font-builtins.js` | 是 | Reserved registry for fonts shipped by a future Qianmu release.  Built-ins |
+| `qianmu-font-faces-sidecar.js` | 是 | Where the heavy part of the font catalogue lives, so that it is not rewritten with every ST settings save. |
 | `qianmu-font-library-state.js` | 是 |  |
 | `qianmu-font-library-view.js` | 是 |  |
 | `qianmu-font-library.css` | 是 | Layout only: window, header, button and card materials share the main panel. |
@@ -522,10 +523,13 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（3）
+## 其他模块（6）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-browser-credentials.js` | 是 | API keys that must stay readable in the browser. |
+| `qianmu-log-bodies-sidecar.js` | 是 | Full request/response text of Qianmu's recent API logs, kept out of ST's settings file. |
 | `qianmu-pending-panel.js` | 是 | A small stand-in window shown the moment an entry is clicked, while the real panel's code, styles or |
 | `qianmu-perf-probe.js` | 是 | Opt-in timing probe for "click → shown → ready" on a few surfaces (main tabs, notes, assistant, chat toolkit). |
+| `qianmu-settings-persistence.js` | 是 | What Qianmu writes into ST's settings file, as opposed to what it keeps in memory. |
+| `qianmu-settings-sidecars.js` | 是 | One place that assembles the side stores behind Qianmu's settings (see qianmu-settings-persistence.js). |
