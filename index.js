@@ -14,7 +14,7 @@ import {createPerfProbe} from './qianmu-perf-probe.js?v=1.59.520';
 import {createBrowserCredentialStore} from './qianmu-browser-credentials.js?v=1.59.526';
 import {showPendingPanel} from './qianmu-pending-panel.js?v=1.59.520';
 import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59.528';
-import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.528';
+import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -53,7 +53,7 @@ import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
 import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.516';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.528';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.529';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -330,7 +330,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.528';
+const VERSION = '1.59.529';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;

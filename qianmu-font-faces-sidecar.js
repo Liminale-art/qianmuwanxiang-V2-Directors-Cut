@@ -25,6 +25,23 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
 const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 export const fontFacesRef = json => hex(sha256(new TextEncoder().encode(json)));
 const isRef = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+// The account copy is text that compresses very well (long unicode-range lists). It is uploaded gzip-compressed
+// where the browser can do that, so a few megabytes of faces become a few hundred kilobytes on the wire.
+const canCompress = () => typeof globalThis.CompressionStream === 'function' && typeof globalThis.DecompressionStream === 'function';
+const toBase64 = bytes => { let binary = ''; for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768)); return btoa(binary); };
+const fromBase64 = text => Uint8Array.from(atob(text), char => char.charCodeAt(0));
+async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+const gzip = async text => toBase64(await pipe(new TextEncoder().encode(text), new CompressionStream('gzip')));
+const gunzip = async text => new TextDecoder().decode(await pipe(fromBase64(text), new DecompressionStream('gzip')));
+/** One stored entry → its faces JSON, or null. Accepts both the compressed and the plain form. */
+async function entryJson(entry) {
+  if (!plain(entry)) return null;
+  try {
+    if (typeof entry.gz === 'string' && entry.gz) return canCompress() ? await gunzip(entry.gz) : null;
+    if (Array.isArray(entry.faces) && entry.faces.length) return JSON.stringify(entry.faces);
+  } catch { /* unreadable entry: treated as missing, verified by digest anyway */ }
+  return null;
+}
 const slimmed = font => plain(font) && isRef(font.facesRef) && Array.isArray(font.faces) && font.faces.length === 0;
 
 export function createFontFacesSidecar({
@@ -69,7 +86,7 @@ export function createFontFacesSidecar({
   // ── durable account copy ─────────────────────────────────────────────────────────────────────────
   async function storage() {
     if (!isConfigured()) return null;
-    storagePromise ||= Promise.resolve().then(() => storageFactory({ maxBytes: MAX_BYTES, documentLayout: 'snapshot' }))
+    storagePromise ||= Promise.resolve().then(() => storageFactory({ maxBytes: MAX_BYTES, documentLayout: 'snapshot', timeoutMs: 60000 }))
       .then(value => (value && typeof value.read === 'function' && typeof value.write === 'function' ? value : null))
       .catch(() => null);
     const value = await storagePromise;
@@ -98,7 +115,7 @@ export function createFontFacesSidecar({
         for (const [json, ref] of batch) await cachePut(ref, json);
         const document = await readDocument(target), faces = { ...document.faces }, moment = now();
         const live = new Set([...stored.values(), ...batch.map(([, ref]) => ref)]);
-        for (const [json, ref] of batch) faces[ref] = { faces: JSON.parse(json), seen: moment };
+        for (const [json, ref] of batch) faces[ref] = canCompress() ? { gz: await gzip(json), seen: moment } : { faces: JSON.parse(json), seen: moment };
         // Unreferenced lists are kept for a while: a settings file restored from an older backup may
         // still point at them.
         for (const [ref, entry] of Object.entries(faces)) {
@@ -109,6 +126,7 @@ export function createFontFacesSidecar({
         if (disposed) return false;
         for (const [json, ref] of batch) { stored.set(json, ref); queued.delete(json); }
         failures = 0;
+        console.info(`[千幕] 字体分片已移出设置文件：${batch.length} 个字体，约 ${Math.round(batch.reduce((total, [json]) => total + json.length, 0) / 1024)}KB`);
         requestSave();   // the next save can now write these fonts slim
         return true;
       } catch (error) {
@@ -149,8 +167,7 @@ export function createFontFacesSidecar({
       if (json === null || fontFacesRef(json) !== ref) {
         fromCache = false; json = null;
         if (remote === null) { const target = await storage(); remote = target ? (await readDocument(target)).faces : {}; }
-        const entry = remote[ref];
-        if (plain(entry) && Array.isArray(entry.faces) && entry.faces.length) json = JSON.stringify(entry.faces);
+        json = await entryJson(remote[ref]);
       }
       if (json === null || fontFacesRef(json) !== ref) return false;
       found.set(ref, json);

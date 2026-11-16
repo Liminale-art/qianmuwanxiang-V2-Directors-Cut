@@ -4,6 +4,9 @@ import { createFontFacesSidecar, fontFacesRef, FONT_FACES_SLOT } from '../qianmu
 import { attachSettingsPersistence } from '../qianmu-settings-persistence.js';
 import { normalizeFontLibrary } from '../qianmu-font-library-state.js';
 
+// The module reports a successful move on console.info; raw stdout from a test file can confuse the runner.
+console.info = () => {};
+
 // Minimal in-memory IndexedDB: one object store per database name, callbacks fired asynchronously.
 function fakeIndexedDB() {
   const databases = new Map();
@@ -134,11 +137,12 @@ test('a damaged copy is rejected, a failed upload keeps fonts in full, and the g
   assert.deepEqual(normalizeFontLibrary(target.fontLibrary), original);
   // Corrupt both: nothing is filled in.
   for (const row of rows.values()) row.json = '[]';
-  for (const entry of Object.values(f.storage.state.doc.faces)) entry.faces[0].weight = '900';
+  const good = structuredClone(f.storage.state.doc.faces);
+  for (const entry of Object.values(f.storage.state.doc.faces)) entry.gz = entry.gz.slice(0, -8) + 'AAAAAAAA';
   const broken = fixture({ indexedDB: f.idb, storage: f.storage }), untouched = structuredClone(persisted);
   assert.equal(await broken.sidecar.hydrate(untouched), false);
   assert.deepEqual(untouched, persisted);
-  for (const entry of Object.values(f.storage.state.doc.faces)) entry.faces[0].weight = '400';
+  f.storage.state.doc.faces = good;
 
   const flaky = fixture({ failWrites: 1 }), other = attachSettingsPersistence({ fontLibrary: library([webFont('w9', 9)]) }, flaky.sidecar);
   const warn = console.warn; console.warn = () => {};
@@ -160,4 +164,20 @@ test('a damaged copy is rejected, a failed upload keeps fonts in full, and the g
   assert.deepEqual([...calls].sort(), ['activate', 'attach:b', 'detach', 'sync'].sort(), 'the cancelled attach never happens');
   assert.equal(gated.extra, 'kept');
   gated.dispose(); assert.ok(calls.includes('dispose'));
+});
+
+test('the account copy is compressed, and an older uncompressed copy is still read', async () => {
+  const f = fixture(), original = library([webFont('w1', 1), webFont('w2', 2)]);
+  const settings = attachSettingsPersistence({ fontLibrary: structuredClone(original) }, f.sidecar);
+  const info = console.info; console.info = () => {};
+  try { save(settings); await f.runTimers(); } finally { console.info = info; }
+  const persisted = save(settings), entries = Object.values(f.storage.state.doc.faces);
+  assert.ok(entries.every(entry => typeof entry.gz === 'string' && !('faces' in entry)));
+  const plainBytes = JSON.stringify(original.fonts.map(font => font.faces)).length;
+  assert.ok(JSON.stringify(f.storage.state.doc).length < plainBytes / 2, 'the upload is well under half the plain size');
+  // An account file written without compression (other browser) restores the same way.
+  for (const font of original.fonts) f.storage.state.doc.faces[fontFacesRef(JSON.stringify(font.faces))] = { faces: font.faces, seen: 1 };
+  const fresh = fixture({ storage: f.storage }), target = structuredClone(persisted);
+  assert.equal(await fresh.sidecar.hydrate(target), true);
+  assert.deepEqual(normalizeFontLibrary(target.fontLibrary), original);
 });
