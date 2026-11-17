@@ -440,6 +440,42 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       const remaining = s.localSounds.filter(item => item.id !== target);
       update({ localSounds: remaining, localId: remaining[0]?.id || '' });
     },
+    // 数据管理用：本地铃声整库导出／导入／清空。导入只补缺，不覆盖已有的同名铃声。
+    localSummary() { const list = state().localSounds; return { count: list.length, bytes: list.reduce((sum, item) => sum + (Number(item.size) || 0), 0) }; },
+    async exportLocal() {
+      const sounds = [];
+      for (const item of state().localSounds) {
+        const blob = await store.get(item.id);
+        if (!blob) continue;
+        const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onerror = () => reject(new Error('本地铃声读取失败')); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.readAsDataURL(blob); });
+        sounds.push({ name: item.name, mime: blob.type || 'audio/mpeg', data });
+      }
+      return sounds.length ? new Blob([JSON.stringify({ type: 'qianmu-ringtones', version: 1, exportedAt: new Date().toISOString(), sounds })], { type: 'application/json' }) : null;
+    },
+    async importLocal(file) {
+      if (!file || file.size > RINGTONE_LIMITS.localSoundBytes * RINGTONE_LIMITS.localSoundCount * 1.4) throw new Error('铃声备份过大');
+      const data = JSON.parse(await file.text());
+      if (data?.type !== 'qianmu-ringtones' || !Array.isArray(data.sounds)) throw new Error('不是千幕铃声备份');
+      let added = 0, skipped = 0;
+      for (const item of data.sounds) {
+        const list = state().localSounds, name = String(item?.name || '本地铃声').slice(0, 120);
+        if (typeof item?.data !== 'string' || !/^audio\/[a-z0-9.+-]+$/i.test(String(item.mime || '')) || list.some(row => row.name === name) || list.length >= RINGTONE_LIMITS.localSoundCount) { skipped++; continue; }
+        const bytes = Uint8Array.from(atob(item.data), ch => ch.charCodeAt(0));
+        if (!bytes.length || bytes.length > RINGTONE_LIMITS.localSoundBytes) { skipped++; continue; }
+        const id = newLocalId();
+        await store.put(id, new Blob([bytes], { type: item.mime }));
+        update({ localSounds: [...list, { id, name, size: bytes.length }], localId: state().localId || id });
+        added++;
+      }
+      return { added, skipped };
+    },
+    async clearAllLocal() {
+      const s = state(), count = s.localSounds.length;
+      await store.clear();
+      for (const item of s.localSounds) dropLocalUrl(item.id);
+      update({ localSounds: [], localId: '', ...(s.soundSource === 'local' ? { soundSource: 'builtin' } : {}) });
+      return count;
+    },
     async pickIcon(slot, file) {
       const data = await imageToFavicon(file, { document, URL: URLClass });
       const icons = [...state().customIcons]; icons[slot === 1 ? 1 : 0] = data;

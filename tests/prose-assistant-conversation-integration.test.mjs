@@ -172,7 +172,7 @@ test('multi-select deletion is one directory tombstone update and does not delet
  await f.dom.wait(()=>f.catalogue().entries.every(entry=>entry.deleted));await f.idle();assert.equal(f.rows().length,0);assert.equal(f.listRows().length,0);assert.equal(f.listAction('delete').hidden,true);
  assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,beforePosts+1,'batch deletion writes only one catalog');
  assert.deepEqual(new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),histories);
- assert.match(f.confirmations.at(-1),/历史版本仍保留/);assert.ok(f.catalogue().entries.some(entry=>entry.key===thread&&entry.deleted));
+ assert.match(f.confirmations.at(-1),/删除后不可找回/);assert.ok(f.catalogue().entries.some(entry=>entry.key===thread&&entry.deleted));
  await f.cold();assert.equal(f.rows().length,0);assert.equal(f.models.length,2);f.showList();assert.equal(f.listRows().length,0,'deleted legacy default must not reappear on cold open');
  assert.deepEqual(new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),histories);
 });
@@ -441,4 +441,27 @@ test('capacity guidance warns near the limit and a full conversation can create 
   f.confirmApproval=true;f.action('capacity-new').click();await f.dom.wait(()=>f.rows().length===0);await f.idle();assert.equal(f.models.length,0);assert.deepEqual(f.remote(f.base),original);assert.equal(f.catalogue().entries.length,2);
   assert.equal(notice.hidden,true);await f.send('新对话第一问');assert.equal(f.models.length,1);assert.deepEqual(f.remote(f.base),original);
  });
+});
+
+test('archiving the open conversation switches away without confirmation or file changes, and settings lead to restoring it',async t=>{
+ const f=await fixture(t);await f.send('归档前原会话');const thread=await f.create();await f.send('归档前新会话');
+ const histories=()=>new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),before=histories(),posts=()=>f.transport.calls.filter(call=>call.options.method==='POST').length,beforePosts=posts();
+ const heading=()=>f.dom.all().find(node=>node.tagName==='STRONG').textContent,store=key=>f.dom.all().find(node=>node.dataset.paStoreKey===key),confirmations=f.confirmations.length;
+ f.showList();assert.equal(f.listRows().length,2);assert.equal(store(thread).dataset.paListAction,'archive-one');store(thread).click();
+ await f.dom.wait(()=>f.catalogue().entries.find(entry=>entry.key===thread)?.archived===true);await f.idle();
+ assert.equal(f.confirmations.length,confirmations,'archiving is reversible and asks nothing');assert.equal(posts(),beforePosts+1,'one directory write');assert.deepEqual(histories(),before);
+ assert.equal(f.catalogue().version,3);assert.equal(f.catalogue().entries.find(entry=>entry.key===thread).deleted,false);assert.ok(!f.catalogue().defaults.some(entry=>entry.key===thread));
+ assert.deepEqual(f.listRows().map(node=>node.dataset.paConversationKey),[f.base]);assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'归档前原会话','the window moved to the remaining conversation');
+ await f.cold();assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'归档前原会话','an archived conversation is never reopened as the default');
+ f.action('settings').click();const entry=f.action('archived-conversations');assert.equal(entry.textContent,'已归档对话');assert.equal(entry.hidden,false);assert.equal(entry.disabled,false);entry.click();
+ assert.equal(f.dom.get('最近特助对话').hidden,false);assert.equal(heading(),'已归档对话');assert.deepEqual(f.listRows().map(node=>node.dataset.paConversationKey),[thread]);
+ const calls=f.transport.calls.length;f.listRows()[0].click();await f.idle();assert.equal(f.transport.calls.length,calls,'archived rows are restored, not opened');assert.equal(f.dom.get('最近特助对话').hidden,false);
+ assert.equal(store(thread).dataset.paListAction,'restore-one');store(thread).click();await f.dom.wait(()=>!Object.hasOwn(f.catalogue().entries.find(entry=>entry.key===thread),'archived'));await f.idle();
+ assert.equal(f.listRows().length,0);assert.equal(f.dom.all().find(node=>node.className==='qm-pa-conversation-empty').textContent,'暂无归档对话');assert.deepEqual(histories(),before);
+ f.action('back').click();f.showList();assert.equal(heading(),'最近对话');assert.equal(f.listRows().length,2);
+ await f.choose(thread);assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'归档前新会话');assert.equal(f.models.length,2);
+ f.showList();f.listAction('select').click();f.listAction('select').click();f.listAction('archive').click();await f.dom.wait(()=>f.catalogue().entries.every(entry=>entry.archived===true));await f.idle();
+ assert.equal(f.listRows().length,0);assert.equal(f.rows().length,0,'with everything archived the chat starts a fresh conversation');assert.deepEqual(histories(),before);
+ await f.send('全部归档后的新问题');const keys=f.catalogue().entries.map(entry=>entry.key);assert.equal(keys.length,3);assert.ok(f.catalogue().entries.slice(0,2).every(entry=>entry.archived===true));
+ assert.equal(f.remote(keys[2]).rows[0].user,'全部归档后的新问题');assert.equal(f.remote(f.base).rows.length,1,'the archived default conversation was not written into');
 });

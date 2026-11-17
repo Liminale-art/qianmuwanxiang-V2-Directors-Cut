@@ -29,7 +29,7 @@ export function storageSettingsSnapshotWithoutDiagnostics(settings){
 export function storageCleanupOptions(data){
   const assistant=data?.assistantStorage;
   const collection=data?.collectionStorage;
-  return [...(collection?.status==='ready'&&collection.count>0?[{id:'__text_collection__',label:'正文收藏',bytes:collection.bytes,count:collection.count,risk:['删除全部收藏正文 · 请先备份',true]}]:[]),...(assistant?.native?.status==='ready'&&assistant.native.heads?.count>0?[{id:'__assistant_native__',label:'场外特助会话（当前账户 · ST）',bytes:assistant.native.heads.bytes+assistant.native.current.bytes,count:assistant.native.heads.count,risk:['逐项查阅/备份/清空会话；保留旧版本，不回收磁盘空间',true]}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本（当前账户 · 本机）',bytes:assistant.bytes,count:assistant.count,risk:['不可恢复 · 请先复制留存；不删除ST记录，版本标记保留',true]}]:[])];
+  return [...(collection?.status==='ready'&&collection.count>0?[{id:'__text_collection__',label:'正文收藏',bytes:collection.bytes,count:collection.count}]:[]),...(assistant?.native?.status==='ready'&&assistant.native.heads?.count>0?[{id:'__assistant_native__',label:'场外特助会话',bytes:assistant.native.heads.bytes+assistant.native.current.bytes,count:assistant.native.heads.count}]:[]),...(assistant?.status==='ready'&&assistant.count>0?[{id:'__assistant__',label:'场外特助旧副本',bytes:assistant.bytes,count:assistant.count}]:[])];
 }
 
 export function renderAssistantStorageSummary(assistant,formatStorageBytes,htmlEscape){
@@ -65,47 +65,4 @@ export function bindStorageCleanupLifetime(layer, modal, resolve) {
   view.addEventListener('pagehide', onPageHide);
   if (!layer.isConnected || !modal?.isConnected || !modal.classList.contains('open')) finish(null);
   return finish;
-}
-
-// Keep view replacement independent of application state and storage mutations.
-export function replaceStorageManagementCard(current, html, {icons, bind}) {
-  const document = current.ownerDocument;
-  const template = document.createElement('template');
-  template.innerHTML = html.trim();
-  const next = template.content.firstElementChild;
-  if (!next) return false;
-  for (const section of current.querySelectorAll('details[data-storage-section]')) {
-    const target = [...next.querySelectorAll('details[data-storage-section]')].find(item=>item.dataset.storageSection===section.dataset.storageSection);
-    if (target) target.open = section.open;
-  }
-  // Retain live file inputs and their listeners across quota refreshes.
-  const backup = current.querySelector('.sd-storage-backup-section');
-  if (backup) {
-    const summary = next.querySelector('.sd-storage-notes-summary');
-    if (summary) backup.querySelector('.sd-storage-notes-summary')?.replaceWith(summary);
-    // Replace inventory-dependent rows, not live package inputs or their listeners.
-    for (const selector of ['.sd-dm-cleanup']) {
-      const fresh = next.querySelector(selector), previous = backup.querySelector(selector);
-      if (fresh && previous) previous.replaceWith(fresh);
-    }
-    next.querySelector('.sd-storage-backup-section')?.replaceWith(backup);
-  }
-  const refreshFocused = document.activeElement === current.querySelector('.sd-storage-refresh');
-  current.replaceWith(next);
-  icons(next);
-  bind(next);
-  if (refreshFocused) next.querySelector('.sd-storage-refresh')?.focus({ preventScroll: true });
-  return true;
-}
-
-// Bind existing package actions; rendering and quota refresh never start a transfer.
-export function bindStoragePackageActions(root, {exports, imports}) {
-  root.querySelectorAll('[data-storage-export]').forEach(button=>button.addEventListener('click',()=>{if(Object.hasOwn(exports,button.dataset.storageExport))void exports[button.dataset.storageExport](button);}));
-  root.querySelectorAll('[data-storage-pick]').forEach(button=>button.addEventListener('click',()=>{
-    root.querySelector(`input[data-storage-import="${button.dataset.storagePick}"]`)?.click();
-  }));
-  root.querySelectorAll('input[data-storage-import]').forEach(input=>input.addEventListener('change',async event=>{
-    const file=input.files?.[0];if(!file)return;
-    try{if(Object.hasOwn(imports,input.dataset.storageImport))await imports[input.dataset.storageImport](file,input,event);}finally{input.value='';}
-  }));
 }

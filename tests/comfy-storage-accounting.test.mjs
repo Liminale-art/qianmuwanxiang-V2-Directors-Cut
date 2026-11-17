@@ -57,9 +57,9 @@ test('Comfy Worker results are compact, schema checked, bound to the operation a
   assert.deepEqual(await runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker}),result);assert.equal(closed,1);assert.deepEqual(Object.keys(payload).sort(),['action','id','namespace']);
   result={...result,workflow:'must not cross'};await assert.rejects(runRestoreStorage('comfy',{namespace,guard:async()=>{},WorkerClass:Worker}));assert.equal(closed,2);
 });
-test('actual storage card shows compact Comfy totals, unknown status and one entry per Comfy library',()=>{
+test('actual storage card counts Comfy bytes in the total and prints no Comfy row, library entry or internal error',()=>{
   const comfy=complete();comfy.workflows={status:'unavailable',bytes:null,count:null,error:'unreadable <data>'};comfy.status='partial';comfy.errors=[comfy.workflows.error];
   const context=vm.createContext({renderStorageCard,VERSION:'1.59.392',optionalServiceState:{status:'idle',services:[]},storageInventoryState:{status:'ready',data:{sampledAt:1,origin:{available:true,usage:99999,quota:999999},trackedBytes:comfy.bytes,categories:[],idb:{stores:[]},comfyStorage:comfy}},STORAGE_CATEGORY_LABELS:{},STORAGE_CATEGORY_COLORS:{},htmlEscape:x=>String(x??'').replaceAll('<','&lt;'),formatStorageBytes:x=>`${x} B`});
   context.storageInventoryState.data.origin.pressure={};vm.runInContext(['optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const html=context.renderStorageManagementCard();
-  assert.match(html,/<span>工作流<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/<span>工作流<\/span><span>0 B|含 2 个版本|unreadable <data>/);assert.match(html,new RegExp(`<span>工作流方案</span><span>${comfy.pools.bytes} B</span>`));assert.match(html,/本设备 ST 站点已用/);assert.equal((html.match(/data-storage-comfy-library="(?:workflows|pools)"/g)||[]).length,2);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/部分数据暂不可读取/);
+  assert.match(html,new RegExp(`千幕资料已盘点</span><b>${comfy.bytes} B</b>`));assert.doesNotMatch(html,/工作流|含 2 个版本|unreadable <data>|unreadable &lt;data>|data-storage-comfy-library/);assert.match(html,/本设备 ST 站点已用/);assert.doesNotMatch(html,/未盘点站点数据/);
 });

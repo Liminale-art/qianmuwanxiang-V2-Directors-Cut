@@ -18,10 +18,10 @@ test('unavailable or invalid observations never turn into zero, while account/pa
  for(const bad of [null,{...measured(),namespace:'foreign'},{...measured(),count:99}]){const result=await collect({resolveNamespace:async()=>namespace,isCurrent:()=>true,store:{usage:async()=>{if(bad===null)throw Error('PRIVATE');return bad;}}});assert.equal(result.status,'unavailable');assert.equal(result.bytes,null);assert.doesNotMatch(result.error,/PRIVATE/);}
  for(const mode of ['account','page']){let owner=namespace,live=true;await assert.rejects(collect({resolveNamespace:async()=>owner,isCurrent:()=>live,store:{usage:async()=>{if(mode==='account')owner='st-user:bob';else live=false;return measured();}}}),{code:'prose_assistant_storage_stale'});}
 });
-test('routine assistant row hides storage internals while explicit cleanup keeps the original risks and known bytes',()=>{
- const data={assistantStorage:measured()},html=renderStorageBackupSection(null,n=>`${n} B`,{data});assert.match(html,/<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/逻辑估算|清空版本标记|不含未保存回复/);assert.equal(STORAGE_CATEGORY_LABELS.assistant,'场外特助');
- const choices=storageCleanupOptions(data);assert.equal(choices.length,1);assert.equal(choices[0].bytes,1000);assert.match(choices[0].risk[0],/不可恢复.*不删除ST记录/);
- const failed=renderStorageBackupSection(null,String,{data:{assistantStorage:{status:'unavailable',error:'<bad>'}}});assert.match(failed,/<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(failed,/<bad>|<span>场外特助<\/span><span>0/);
+test('the card prints no assistant row or storage internals while explicit cleanup keeps the known bytes',()=>{
+ const data={assistantStorage:measured()},html=renderStorageBackupSection(null,n=>`${n} B`,{data});assert.doesNotMatch(html,/<span>场外特助<\/span>|暂未读取|逻辑估算|清空版本标记|不含未保存回复/);assert.equal(STORAGE_CATEGORY_LABELS.assistant,'场外特助');
+ const choices=storageCleanupOptions(data);assert.equal(choices.length,1);assert.equal(choices[0].bytes,1000);assert.equal(choices[0].id,'__assistant__');assert.equal(choices[0].label,'场外特助旧副本');assert.equal('risk' in choices[0],false);
+ const failed=renderStorageBackupSection(null,String,{data:{assistantStorage:{status:'unavailable',error:'<bad>'}}});assert.doesNotMatch(failed,/<bad>|&lt;bad&gt;|<span>场外特助<\/span>/);assert.deepEqual(storageCleanupOptions({assistantStorage:{status:'unavailable',error:'<bad>'}}),[]);
 });
 test('extracted settings/diagnostic accounting snapshots preserve the original partition without mutating settings',()=>{
  const settings={value:1,logHistory:['API'],logOpenState:{a:true},imagegen:{model:'model',logs:['image'],pipelineLogs:['pipe']}},original=structuredClone(settings);
@@ -43,5 +43,5 @@ test('actual global inventory counts assistant once and never as recoverable or 
  assert.deepEqual(progress[0],[0,20]);assert.deepEqual(progress.at(-1),[20,20]);assert.equal(progress.length,21);
  assistant={namespace,status:'unavailable',bytes:null,count:null};assert.equal((await context.collectStorageInventory()).trackedBytes,100);
  assistant={...measured(),namespace:'st-user:bob'};await assert.rejects(context.collectStorageInventory(),/账户已变化/);
- assert.match(await readFile(new URL('../qianmu-storage-card.js',import.meta.url),'utf8'),/data\.assistantStorage/,'assistant state is included in inventory accounting');
+ assert.match(code,/assistantStorage/,'assistant state is included in inventory accounting');assert.equal(result.assistantStorage.bytes,1000);
 });

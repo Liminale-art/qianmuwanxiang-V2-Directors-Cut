@@ -173,6 +173,7 @@
     "qianmu-prose-assistant-panel.js",
     "qianmu-prose-assistant-conversations.js",
     "qianmu-prose-assistant-conversation-list.js",
+    "qianmu-prose-assistant-library-transfer.js",
     "qianmu-prose-assistant-title.js",
     "qianmu-prose-assistant-markdown.js",
     "qianmu-prose-assistant.css",
@@ -703,7 +704,8 @@
     "style.css",
     "qianmu-quick-dial.js",
     "qianmu-storage-card.js",
-    "qianmu-storage-library-transfer.js"
+    "qianmu-storage-library-transfer.js",
+    "qianmu-storage-transfer.js"
   ],
   "directories": [
     "assets",

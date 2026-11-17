@@ -1,9 +1,11 @@
 import {qianmuIconElement} from './qianmu-icon-renderer.js?v=1.59.478';
 
 // A metadata-only view. The owner performs all history reads and mutations.
-export function createProseAssistantConversationList({document,onOpen,onNew,onDelete,onRefresh,onRename}={}){
+export function createProseAssistantConversationList({document,onOpen,onNew,onDelete,onRefresh,onRename,onArchive,onUnarchive,onArchivedView}={}){
  if(!document||![onOpen,onNew,onDelete,onRefresh].every(callback=>typeof callback==='function'))throw TypeError('特助对话列表环境不可用');
  if(onRename!==undefined&&typeof onRename!=='function')throw TypeError('特助对话改名不可用');
+ if([onArchive,onUnarchive].some(callback=>typeof callback!=='function')&&(onArchive!==undefined||onUnarchive!==undefined))throw TypeError('特助对话归档不可用');
+ if(onArchivedView!==undefined&&typeof onArchivedView!=='function')throw TypeError('特助对话归档不可用');
  const make=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
  const element=make('section'),toolbar=make('div'),search=make('input'),list=make('div'),empty=make('p');
  element.className='qm-pa-conversation-list';element.setAttribute('aria-label','最近特助对话');toolbar.className='qm-pa-conversation-toolbar';
@@ -11,13 +13,16 @@ export function createProseAssistantConversationList({document,onOpen,onNew,onDe
  list.className='qm-pa-conversation-rows';list.setAttribute('aria-label','特助对话条目');empty.className='qm-pa-conversation-empty';
  const action=(label,name,glyph)=>{const button=make('button');button.type='button';button.dataset.paListAction=name;button.title=label;button.setAttribute('aria-label',label);button.append(qianmuIconElement(glyph,{document}));return button;};
  const refresh=action('刷新对话','refresh','fa-rotate-right'),create=action('新聊天','new','fa-plus'),multiple=action('多选对话','select','fa-list-check'),remove=action('删除所选对话','delete','fa-trash-can');
- toolbar.append(search,refresh,create,multiple,remove);element.append(toolbar,list,empty);
- let disposed=false,busy=false,refreshable=false,entries=[],currentKey='',limit=30,selecting=false,query='',editing=null;
+ // Archived conversations are a second view of the same list: restored, not opened, from there.
+ const shelf=action('已归档','archived','fa-box-open'),archive=action('归档所选','archive','fa-box-archive'),restore=action('恢复所选','restore','fa-rotate-left');
+ shelf.hidden=!onArchive;archive.hidden=true;restore.hidden=true;
+ toolbar.append(search,refresh,create,shelf,multiple,archive,restore,remove);element.append(toolbar,list,empty);
+ let disposed=false,busy=false,refreshable=false,entries=[],currentKey='',limit=30,selecting=false,query='',editing=null,archived=false;
  const selected=new Set(),rows=new Map(),listeners=[];
  const listen=(target,type,callback)=>{target.addEventListener(type,callback);listeners.push(()=>target.removeEventListener(type,callback));};
  const date=value=>{const at=new Date(value);return Number.isFinite(at.getTime())?at.toLocaleDateString('zh-CN'):'';};
  const title=entry=>String(entry.title||entry.charName||'场外对话');
- const filtered=()=>{const words=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return entries.filter(entry=>{
+ const filtered=()=>{const words=query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);return entries.filter(entry=>!!entry.archived===archived).filter(entry=>{
   const at=new Date(entry.createdAt),iso=Number.isFinite(at.getTime())?at.toISOString().slice(0,10):'';
   const label=[title(entry),entry.charName||'',date(entry.createdAt),iso].join(' ').toLocaleLowerCase();return entry.key===editing?.key||words.every(word=>label.includes(word));
  });};
@@ -27,28 +32,30 @@ export function createProseAssistantConversationList({document,onOpen,onNew,onDe
   const found=filtered(),visible=found.slice(0,limit),draftEntry=found.find(entry=>entry.key===editing?.key);
   if(draftEntry&&!visible.includes(draftEntry))visible.push(draftEntry);
   const shown=new Set(visible.map(entry=>entry.key));
-  for(const button of [refresh,create,multiple,remove])button.disabled=busy||!!editing;
+  for(const button of [refresh,create,multiple,remove,shelf,archive,restore])button.disabled=busy||!!editing;
   refresh.disabled=(busy&&!refreshable)||!!editing?.saving;
   multiple.disabled=busy||!!editing||!found.length;multiple.setAttribute('aria-pressed',String(selecting));multiple.title=selecting?'全选已加载对话':'多选对话';multiple.setAttribute('aria-label',multiple.title);
   remove.hidden=!selecting||selected.size===0;remove.disabled=busy||!!editing||selected.size===0;search.disabled=!!editing;
+  archive.hidden=!onArchive||archived||remove.hidden;restore.hidden=!onArchive||!archived||remove.hidden;create.hidden=archived;shelf.setAttribute('aria-pressed',String(archived));
   element.setAttribute('aria-busy',String(busy||editing?.saving===true));
   for(const [key,row] of rows)if(!shown.has(key)){if(editing?.key===key)editing=null;row.element.remove();rows.delete(key);}
   for(const [index,entry] of visible.entries()){
    let row=rows.get(entry.key);
-   if(!row){const shell=make('div'),button=make('button'),name=make('span'),meta=make('span'),time=make('time'),badge=make('span','当前'),rename=action('改名','rename','fa-pen');
-    shell.className='qm-pa-conversation-item';button.type='button';button.className='qm-pa-conversation-row';button.dataset.paConversationKey=entry.key;name.className='qm-pa-conversation-title';meta.className='qm-pa-conversation-meta';badge.className='qm-pa-conversation-current';rename.dataset.paRenameKey=entry.key;meta.append(time,badge);button.append(name,meta);shell.append(button,rename);row={element:shell,button,name,time,badge,rename};rows.set(entry.key,row);
+   if(!row){const shell=make('div'),button=make('button'),name=make('span'),meta=make('span'),time=make('time'),badge=make('span','当前'),rename=action('改名','rename','fa-pen'),store=archived?action('恢复','restore-one','fa-rotate-left'):action('归档','archive-one','fa-box-archive');
+    shell.className='qm-pa-conversation-item';button.type='button';button.className='qm-pa-conversation-row';button.dataset.paConversationKey=entry.key;name.className='qm-pa-conversation-title';meta.className='qm-pa-conversation-meta';badge.className='qm-pa-conversation-current';rename.dataset.paRenameKey=entry.key;store.dataset.paStoreKey=entry.key;meta.append(time,badge);button.append(name,meta);shell.append(button,rename,store);row={element:shell,button,name,time,badge,rename,store};rows.set(entry.key,row);
    }
    const active=entry.key===currentKey,checked=selected.has(entry.key),label=title(entry),when=date(entry.createdAt);
    if(row.name.textContent!==label)row.name.textContent=label;if(row.time.textContent!==when)row.time.textContent=when;
    row.button.disabled=busy||!!editing;row.element.classList.toggle('is-selected',checked);row.badge.hidden=!active;
-   row.button.hidden=editing?.key===entry.key;row.rename.hidden=!onRename||selecting||editing?.key===entry.key;row.rename.disabled=busy||!!editing;
+   row.button.hidden=editing?.key===entry.key;row.rename.hidden=!onRename||archived||selecting||editing?.key===entry.key;row.rename.disabled=busy||!!editing;
+   row.store.hidden=!onArchive||selecting||editing?.key===entry.key;row.store.disabled=busy||!!editing;
    if(selecting)row.button.setAttribute('aria-pressed',String(checked));else row.button.removeAttribute('aria-pressed');
    if(active)row.button.setAttribute('aria-current','true');else row.button.removeAttribute('aria-current');
    row.button.setAttribute('aria-label',[label,when,active?'当前对话':''].filter(Boolean).join(' · '));
    if(list.children[index]!==row.element)list.insertBefore(row.element,list.children[index]||null);
   }
   if(editing){editing.input.disabled=busy||editing.saving;editing.save.disabled=busy||editing.saving;editing.cancel.disabled=editing.saving;}
-  empty.hidden=found.length>0;empty.textContent=query.trim()?'没有匹配的对话':busy?'正在读取…':'暂无对话';
+  empty.hidden=found.length>0;empty.textContent=query.trim()?'没有匹配的对话':busy?'正在读取…':archived?'暂无归档对话':'暂无对话';
  }
  function finishRename(key){
   if(disposed||editing?.key!==key)return;const previous=editing;editing=null;previous.box.remove();paint();if(previous.row.rename.isConnected&&!previous.row.rename.hidden)previous.row.rename.focus({preventScroll:true});
@@ -71,19 +78,24 @@ export function createProseAssistantConversationList({document,onOpen,onNew,onDe
   finally{if(!disposed&&editing===draft){draft.saving=false;paint();}}
  }
  function resetSelection(){if(disposed)return;selecting=false;selected.clear();paint();}
+ function showArchived(next=true){
+  next=next===true&&!!onArchive;if(disposed||editing||archived===next)return;archived=next;limit=30;list.scrollTop=0;
+  for(const row of rows.values())row.element.remove();rows.clear();resetSelection();onArchivedView?.(archived);
+ }
  listen(search,'input',()=>{if(disposed)return;query=search.value;limit=30;list.scrollTop=0;resetSelection();});
  listen(toolbar,'click',event=>{
   const button=event.target.closest?.('[data-pa-list-action]');if(!button||disposed||button.disabled)return;event.stopPropagation();
   const name=button.dataset.paListAction;
   if(name==='new')onNew();else if(name==='refresh')onRefresh();else if(name==='delete'){if(selected.size)onDelete([...selected]);}
+  else if(name==='archived')showArchived(!archived);else if(name==='archive'){if(selected.size&&!archived)onArchive([...selected]);}else if(name==='restore'){if(selected.size&&archived)onUnarchive([...selected]);}
   else if(name==='select'){if(selecting)for(const entry of filtered().slice(0,limit))selected.add(entry.key);else selecting=true;paint();}
  });
  listen(list,'click',event=>{
   const control=event.target.closest?.('[data-pa-list-action]'),editor=event.target.closest?.('[data-pa-conversation-editor]');
-  if(control||editor){event.stopPropagation();if(disposed||control?.disabled)return;if(control?.dataset.paListAction==='rename')startRename(control.dataset.paRenameKey);else if(control?.dataset.paListAction==='save-name')void saveRename();else if(control?.dataset.paListAction==='cancel-name'&&editing&&!editing.saving)finishRename(editing.key);return;}
+  if(control||editor){event.stopPropagation();if(disposed||control?.disabled)return;if(control?.dataset.paListAction==='rename')startRename(control.dataset.paRenameKey);else if(['archive-one','restore-one'].includes(control?.dataset.paListAction)){if(onArchive&&!busy&&!selecting&&!editing&&rows.has(control.dataset.paStoreKey))(archived?onUnarchive:onArchive)([control.dataset.paStoreKey]);}else if(control?.dataset.paListAction==='save-name')void saveRename();else if(control?.dataset.paListAction==='cancel-name'&&editing&&!editing.saving)finishRename(editing.key);return;}
   const row=event.target.closest?.('[data-pa-conversation-key]');if(!row||disposed||busy||editing||row.disabled)return;event.stopPropagation();const key=row.dataset.paConversationKey;
   if(!rows.has(key))return;
-  if(selecting){if(selected.has(key))selected.delete(key);else selected.add(key);if(!selected.size)selecting=false;paint();}else onOpen(key);
+  if(selecting){if(selected.has(key))selected.delete(key);else selected.add(key);if(!selected.size)selecting=false;paint();}else if(!archived)onOpen(key);
  });
  listen(list,'keydown',event=>{if(!event.target.closest?.('[data-pa-conversation-editor]'))return;event.stopPropagation();if(event.isComposing)return;
   if(event.key==='Escape'){event.preventDefault();if(editing&&!editing.saving)finishRename(editing.key);}
@@ -93,7 +105,7 @@ export function createProseAssistantConversationList({document,onOpen,onNew,onDe
  return Object.freeze({element,render({entries:next,currentKey:key='',busy:pending=false,refreshable:allowRefresh=false}={}){
   if(disposed)return;if(!Array.isArray(next))throw TypeError('特助对话目录不可用');
   entries=next.filter(entry=>entry&&typeof entry.key==='string'&&!entry.deleted).slice().sort((a,b)=>(b.lastUsedAt||b.updatedAt||b.createdAt||0)-(a.lastUsedAt||a.updatedAt||a.createdAt||0)||(b.updatedAt||0)-(a.updatedAt||0)||a.key.localeCompare(b.key));
-  const keys=new Set(entries.map(entry=>entry.key)),hadSelection=selected.size>0;for(const key of selected)if(!keys.has(key))selected.delete(key);if(hadSelection&&!selected.size)selecting=false;
+  const keys=new Set(entries.filter(entry=>!!entry.archived===archived).map(entry=>entry.key)),hadSelection=selected.size>0;for(const key of selected)if(!keys.has(key))selected.delete(key);if(hadSelection&&!selected.size)selecting=false;
   currentKey=key;busy=pending===true;refreshable=allowRefresh===true;paint();
- },resetSelection,finishRename,dispose(){if(disposed)return;disposed=true;listeners.splice(0).forEach(remove=>remove());editing=null;rows.clear();selected.clear();element.remove();}});
+ },resetSelection,showArchived,finishRename,dispose(){if(disposed)return;disposed=true;listeners.splice(0).forEach(remove=>remove());editing=null;rows.clear();selected.clear();element.remove();}});
 }

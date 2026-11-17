@@ -33,14 +33,14 @@ test('conflict is explicit and unknown failures never leak storage content or cl
  const f=fixture();f.options.store.clearPlan=async()=>{f.live=false;return {status:'complete'};};await assert.rejects(cleanup(f.options),{code:'prose_assistant_storage_stale'});
 });
 test('chooser exposes originals only when verified nonempty, does not offer markers as clearable content, and enables the sole assistant item',()=>{
- const data={assistantStorage:{status:'ready',count:2,bytes:100}};const items=storageCleanupOptions(data);assert.equal(items.length,1);assert.equal(items[0].id,'__assistant__');assert.equal(items[0].risk[1],true);assert.match(items[0].label,/当前账户 · 本机/);
+ const data={assistantStorage:{status:'ready',count:2,bytes:100}};const items=storageCleanupOptions(data);assert.equal(items.length,1);assert.equal(items[0].id,'__assistant__');assert.equal(items[0].label,'场外特助旧副本');assert.equal(items[0].bytes,100);assert.equal(items[0].count,2);
  for(const state of [{status:'unavailable',count:2,bytes:100},{status:'ready',count:0,bytes:100}])assert.equal(storageCleanupOptions({assistantStorage:state}).length,0);
- const html=renderStorageBackupSection(null,String,{data,ready:true});assert.match(html,/class="sd-btn sd-primary sd-storage-clean" >/);
+ const html=renderStorageBackupSection(null,String,{data,ready:true});assert.match(html,/class="sd-btn sd-storage-clean">扫描&amp;清理<\/button>/);
 });
 test('shared cleanup lock excludes opening or active assistant and invalidates later activity; actual entry routes assistant before any generic deletion',async()=>{
  let assistant=true;const owner={},root={isConnected:true},session=createStorageCleanupSession({owner:()=>owner,scope:()=>1,epoch:()=>1,activity:()=>({proseAssistant:assistant})});assert.equal(session.begin(root),null);
  assistant=false;const token=session.begin(root);assert.ok(token);assistant=true;assert.throws(()=>token.check());assistant=false;assert.throws(()=>token.check());token.release();assert.equal(session.busy,false);
- const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("onClick(root.querySelector('.sd-storage-clean'), async () => {");const handler=source.slice(start,source.indexOf("onClick(root.querySelector('.sd-storage-chat-clean')",start));
+ const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("onClick('.sd-storage-clean', async () => {");assert.ok(start>0);const handler=source.slice(start,source.indexOf("onClick('.sd-storage-chat-clean'",start));
  assert.ok(handler.indexOf("selected.includes('__assistant__')")<handler.indexOf('blobStore.clearStorageItems'));assert.match(handler,/cleanupAssistant\(root,confirmDialog,\(\)=>cleanup.check\(\),inventory\?\.assistantStorage\?\.namespace,selected.length-1\);cleanup.check\(\);await refreshStorageInventory\(true\);return;/);
  assert.match(source,/proseAssistant: proseFloorTools.assistantBusy===true/);
 });

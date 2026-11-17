@@ -6,8 +6,7 @@ test('actual defaults are visible independent copies and legacy preferences rema
     assert.equal(value.groups.summary.at(-1).text,'保留约定'); assert.equal(value.groups.stage.at(-1).text,'保留约定');
     assert.equal(value.groups.recall.some(item=>item.id==='legacy-preference'),false);
     assert.equal(value.groups.identity[0].id,'persona');
-    assert.match(value.groups.summary.find(item => item.id === 'facts').text, /日后能直接帮助续写/);
-    assert.match(value.groups.summary.find(item => item.id === 'facts').text, /例：/);
+    assert.match(value.groups.summary.find(item => item.id === 'facts').text, /可直接支撑续写/);
     assert.match(value.groups.recall.find(item => item.id === 'recall-purpose').text, /最后放在哪里/);
     value.groups.summary[0].text='自定义'; assert.notEqual(DEFAULT_PROMPTS.groups.summary[0].text,'自定义');
 });
@@ -22,7 +21,7 @@ test('the editable default persona is shared by every request-specific prompt gr
     const persona=config.groups.identity[0].text;
     assert.match(persona,/我是忆幕/);
     assert.doesNotMatch(persona,/人工修订/);
-    assert.match(persona,/故事记忆的梳理者与封存者/);
+    assert.match(persona,/故事记忆博物馆的馆长与封存者/);
     assert.match(composePrompt({prompts:config},'summary',{data:'数据'}),new RegExp(persona.slice(0,18)));
     config.groups.identity[0].text='用户自定义的人格';
     assert.match(composePrompt({prompts:config},'stage',{data:'数据'}),/用户自定义的人格/);

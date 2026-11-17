@@ -112,7 +112,8 @@ assert.match(source, /querySelectorAll\('\.sd-storyboard-prompt, \.sd-storyboard
   'manual prompt edits must persist without triggering either automatic stage');
 
 // Image data is server-backed for one ST instance; the explicit package remains a migration tool.
-assert.match(source, /function bindStorageManagementEvents[\s\S]*storyboard:\(\)=>storyboardExportPackage\(\{bundle:true\}\)/);
+assert.match(source, /^async function storyboardExportPackage\(\{ originals = true, bundle = false \} = \{\}\)/m);
+assert.doesNotMatch(source.slice(source.indexOf('function bindStorageManagementEvents('),source.indexOf('function renderTasksNodesTab(')), /storyboardExportPackage|storyboardImportAnyPackage/, 'the data-management card no longer carries the storyboard package');
 assert.doesNotMatch(source.slice(source.indexOf('function renderStoryboardGallery('),source.indexOf('function renderStoryboardLogs(')), /sd-storyboard-gallery-resources/);
 assert.doesNotMatch(source.slice(source.indexOf('function renderStoryboardLogs('),source.indexOf('function renderStoryboardTab(')), /sd-storyboard-pack-/);
 assert.match(source, /ctx\(\)\.saveSettingsDebounced\?\.\(\)/);

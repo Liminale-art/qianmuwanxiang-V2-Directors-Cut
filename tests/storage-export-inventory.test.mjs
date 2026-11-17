@@ -62,7 +62,7 @@ for(const name of ['exportPinnedNotesBackup','exportTtsFavoritesBackup'])test(na
   c.URL={createObjectURL:()=> 'blob:synthetic',revokeObjectURL:()=>revoked++};
   c.document={...c.document,createElement:()=>({click(){throw Error('download failed');},remove(){removed++;}}),body:{appendChild(){}}};
   c.setTimeout=fn=>release=fn;
-  vm.runInContext(source('ttsDownloadBlob'),c);
+  c.storageDownloadSink=null;vm.runInContext(source('ttsDownloadBlob'),c);
   await c[name](f.button);assert.equal(removed,1);assert.equal(typeof release,'function');release();assert.equal(revoked,1);
   assert.equal(f.notices.at(-1)[1],'error');assert.equal(f.notices.some(n=>n[1]==='success'),false);
   assert.equal(f.button.disabled,false);assert.equal(f.icon.className,'original-icon');

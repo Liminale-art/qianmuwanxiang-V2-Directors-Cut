@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
-function fixture(failure=''){
+function fixture(failure='',sink=null){
   const calls=[],timers=[];const fail=name=>{calls.push(name);if(failure===name)throw Error(name);};
   const link={click(){fail('click');},remove(){fail('remove');}};
-  const c=vm.createContext({document:{createElement(){fail('create');return link;},body:{appendChild(){fail('append');}}},
+  const c=vm.createContext({storageDownloadSink:sink,document:{createElement(){fail('create');return link;},body:{appendChild(){fail('append');}}},
     URL:{createObjectURL(){fail('url');return 'blob:synthetic';},revokeObjectURL(value){calls.push('revoke:'+value);}},setTimeout:(fn,ms)=>timers.push({fn,ms})});
-  vm.runInContext(source('ttsDownloadBlob'),c);return {calls,timers,link,run:()=>c.ttsDownloadBlob({},'千幕 备份.json')};
+  vm.runInContext(source('ttsDownloadBlob'),c);return {calls,timers,link,run:(blob={})=>c.ttsDownloadBlob(blob,'千幕 备份.json')};
 }
 test('the shared downloader keeps the original filename and delays revocation until after handing off the click',()=>{
   const e=fixture();e.run();assert.equal(e.link.download,'千幕 备份.json');assert.equal(e.link.href,'blob:synthetic');
@@ -20,4 +20,8 @@ for(const failure of ['create','append','click','remove'])test('download '+failu
 });
 test('a failed URL allocation creates no link and attempts no nonexistent-resource cleanup',()=>{
   const e=fixture('url');assert.throws(e.run,/url/);assert.deepEqual(e.calls,['url']);assert.deepEqual(e.timers,[]);
+});
+test('while a multi-item export is collecting, the file goes to the collector and nothing is downloaded',()=>{
+  const sink=[],e=fixture('',sink),blob={};e.run(blob);
+  assert.equal(sink.length,1);assert.equal(sink[0].blob,blob);assert.equal(sink[0].name,'千幕 备份.json');assert.deepEqual(e.calls,[]);assert.deepEqual(e.timers,[]);
 });

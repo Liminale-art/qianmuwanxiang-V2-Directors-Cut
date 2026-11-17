@@ -126,7 +126,7 @@ test('package guard detects account/chat/store/epoch changes before and after as
 
 function indexFixture(){
   const state=board.createStoryboardDefaults(),store={},notices=[];let currentState=state,currentStore=store,chat='chat-a',owner=namespace,exported=null,images=[];
-  const noop=()=>{},context=vm.createContext({...board,Blob,clone:structuredClone,storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?pack:{resolveImageAccountNamespace:async()=>owner}},
+  const noop=()=>{},context=vm.createContext({storageDownloadSink:null,...board,Blob,clone:structuredClone,storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?pack:{resolveImageAccountNamespace:async()=>owner}},
     storyboardState:()=>currentState,getChatStore:()=>currentStore,getChatKey:()=>chat,storyboardHydratePipelineArchive:async()=>{},
     storyboardPipelineForLog:log=>state.pipelineLogs.find(p=>p.id===log.pipelineId)||null,storyboardGalleryRecords:()=>images,storyboardGalleryCollections:()=>[{id:'c',name:'Captured collection'}],
     storyboardSnapshotForRecord:record=>record.snapshot||null,storyboardReadSnapshotForRecord:async record=>record.snapshot||null,storyboardPlansForPortableExport:async p=>p,storyboardSafeUrl:value=>value,fetch:async()=>({ok:true,blob:async()=>new Blob(['image'],{type:'image/png'})}),blobToBase64:async()=> 'aW1hZ2U=',

@@ -95,7 +95,9 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(css, /#story-director-float\.sd-float-dragging\.sd-wheel-away \{ filter: none !important; \}/, 'the logo is visible again the moment it is dragged');
   assert.match(module, /current\.root\.id = LEAVING_ID;/, 'while closing, the layer keeps a styled id so the logo never paints at its natural size');
   assert.doesNotMatch(module + css, /qm-dial-more|···/, 'no ellipsis markers at the ends of the arc');
-  assert.match(module, /accent = colors\.mainEdge \|\| colors\.edges\?\.\[0\] \|\| '#c99b51', edges = \[accent, accent\];/, 'arc, dot and frames all use the theme accent, like the floating logo outline');
+  assert.match(module, /accent = look\?\.getPropertyValue\('--sd-float-edge'\)\.trim\(\) \|\| colors\.mainEdge \|\| colors\.edges\?\.\[0\] \|\| '#c99b51';/, 'arc, dot and frames read the accent the floating logo itself shows, so every theme and day/night follows');
+  assert.match(module, /setProperty\('--qd-chip-bg', look\.backgroundColor\)/, 'dial entries are drawn with the floating logo fill');
+  assert.match(module, /current\.home\?\.style\.setProperty\('--qd-grow', '1'\)/, 'the logo returns at its resting size and style');
   assert.match(css, /html\[data-qm-launcher="dial"\] #story-director-float \{[^}]*justify-content: center !important; align-items: center !important;/, 'the logo is centred in the round floating entry');
   assert.doesNotMatch(source, /quickDial\.press|sd-float-lifted/, 'no press-to-open gesture: a tap opens the main panel as with the hive');
   assert.match(source, /run: \(id\) => id \? runQuickWheelCommand\(id\) : openModal\(\)/, 'the first entry opens the main panel');
@@ -103,7 +105,7 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(module, /chip\.animate\(\[\{ transform: 'scale\(1\)' \}, \{ transform: 'scale\(\.8\)'/, 'the entry dips and springs back before its panel opens');
   assert.doesNotMatch(module + css, /qm-dial-drop|qm-dial-scrim/, 'no bump on the arc and no backing disc');
   assert.match(css, /\.qm-dial-chip \{[^}]*border-radius: 50%;[^}]*inset 0 0 0 calc\(1\.2px \/ var\(--qd-grow, 1\)\)/, 'round frames with the same 1.2px line as the hive outline');
-  assert.match(css, /\.qm-dial-chip > img \{ width: 74%; height: 74%; object-fit: contain; pointer-events: none; \}/, 'the logo fits inside its round frame uncropped and centred');
+  assert.match(css, /\.qm-dial-chip > img \{ width: 80%; height: 80%; object-fit: contain; translate: 1px 1px; pointer-events: none; \}/, 'the logo fits inside its round frame uncropped, slightly enlarged and nudged 1px down-right');
   assert.match(module, /const list = \[\.\.\.\(items\?\.\(\) \|\| \[\]\), \{ id: HOME, label: '千幕', home: true \}\];/, 'the main-panel entry is the last slot, not a second logo at the front');
   assert.match(module, /origin\.classList\?\.add\('sd-wheel-away'\);\s*flyHome\(view, false\);/, 'the round logo itself slides into the arc when the dial opens');
   assert.match(module, /const motion = flyHome\(current, true\);/, 'and slides back when it closes');

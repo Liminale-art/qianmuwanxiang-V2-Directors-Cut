@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 import {runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
 import {collectComfyStorage,clearComfySceneStorage} from '../qianmu-comfy-storage.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
@@ -52,37 +51,4 @@ test('actual global inventory attributes all Comfy databases without double coun
   vm.runInContext(section('collectStorageInventory'),context);const result=await context.collectStorageInventory();
   assert.equal(collects,1);assert.equal(result.trackedBytes,620);assert.equal(result.manageableBytes,620);assert.equal(result.origin.quota,10000);
   assert.equal(result.categories.find(row=>row.category==='settings').bytes,300);assert.equal(result.categories.find(row=>row.category==='logs').bytes,310);assert.equal(result.comfyStorage.scenes.generation,2);
-});
-
-test('actual cleanup handler requires explicit scene selection and refuses a switched account before any other deletion',async()=>{
-  for(const mode of ['cancel','unselected','selected','switched','busy']){
-    let account=namespace,clears=0,generic=0,closes=0;const events={},notices=[],root={isConnected:true,
-      querySelectorAll:()=>[],querySelector:selector=>selector==='.sd-storage-backup-section'?null:({addEventListener:(_name,fn)=>events[selector]=fn})};
-    const module={clearComfySceneStorage:options=>clearComfySceneStorage({...options,createStore:async()=>({
-      clearAccount:async(ns,request)=>{assert.equal(ns,namespace);assert.equal(request.expectedGeneration,2);assert.equal(request.valid(),true);if(mode==='busy')throw Error('在途或结果未明');clears++;return {removed:2};},close:()=>closes++,
-    })})};
-    const context=vm.createContext({storyboardAdmissionEpoch:1,storageInventoryState:{status:'ready',scope:JSON.stringify([1,namespace]),data:{comfyStorage:{namespace,scenes:{bytes:100,count:2,generation:2}}}},
-      openStorageCleanupDialog:async()=>{if(mode==='switched')account='st-user:other';return mode==='cancel'?null:mode==='unselected'?['__diagnostics__']:['__comfy_scenes__'];},
-      featureRuntime:{load:async key=>key==='comfyStorage'?module:{resolveImageAccountNamespace:async()=>account}},
-      blobStore:{clearStorageItems:async rows=>{generic++;assert.equal(rows.length,0);return {cleared:[],failed:[]};}},
-      reconcileClearedStorageItems:()=>({}),saveSettings:()=>{},refreshStorageInventory:async()=>{},toast:message=>notices.push(message),settings:{},storyboardState:()=>({}),
-    });
-    context.storageCleanupSession=createStorageCleanupSession({owner:()=>context.settings,scope:()=>'',epoch:()=>context.storyboardAdmissionEpoch});
-    vm.runInContext(['storageInventoryScope','ensureStorageScanCurrent','bindStorageManagementEvents'].map(section).join('\n'),context);context.bindStorageManagementEvents(root);await events['.sd-storage-clean']();
-    assert.equal(clears,mode==='selected'?1:0);assert.equal(generic,['selected','unselected'].includes(mode)?1:0);
-    if(mode==='busy')assert.ok(notices.some(text=>text.includes('结果未明')));if(mode==='switched')assert.ok(notices.some(text=>text.includes('账户')));
-    assert.equal(closes,['selected','busy'].includes(mode)?1:0);
-  }
-});
-
-test('storage library shortcuts open the independent Comfy library without overwriting model configuration',()=>{
-  for(const target of ['workflows','pools']){
-    const state={source:'novel',view:'create',profiles:{novel:{model:'unchanged'},comfy:{workflow:'unchanged'}}},before=JSON.stringify(state.profiles);
-    let click,opened=0;const root={querySelectorAll:()=>[{dataset:{storageComfyLibrary:target},addEventListener:(_name,fn)=>click=fn}],querySelector:()=>null};
-    const context=vm.createContext({activeTab:'plug',storyboardState:()=>state,storyboardBeginSession:()=>opened++});
-    vm.runInContext([section('storyboardApplyRoute'),section('bindStorageManagementEvents')].join('\n'),context);
-    context.storyboardNavigate=(_root,patch)=>context.storyboardApplyRoute(patch);
-    context.bindStorageManagementEvents(root);click();assert.equal(opened,1);assert.equal(state.source,'comfy');assert.equal(state.lastModelSource,'novel');
-    assert.equal(state.view,target==='pools'?'comfy-pools':'workflows');assert.equal(JSON.stringify(state.profiles),before);assert.equal(context.activeTab,'imagegen');
-  }
 });

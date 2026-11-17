@@ -176,7 +176,7 @@ test('all production local-loader calls, injected history loaders and idle chunk
 });
 
 test('new gallery targets retain bounded retry and never execute external or error-supplied URLs',async()=>{
-  const names=['qianmu-storage-gallery-check.js','qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js',
+  const names=['qianmu-gallery-recipe-review-view.js','qianmu-gallery-local-recipe-current.js',
     'qianmu-storyboard-export-scope-view.js',
     'qianmu-gallery-directory-view.js','qianmu-historical-gallery-consumer.js'];
   for(const name of names){
@@ -188,5 +188,10 @@ test('new gallery targets retain bounded retry and never execute external or err
     assert.ok(urls.every(url=>url.split('?')[0]===new URL('../'+name,import.meta.url).href));
     for(const invalid of ['https://untrusted.invalid/'+name,'../'+name,'./not-owned.js','./'+name+'#other'])await assert.rejects(load(invalid),/无效/);
     assert.equal(urls.length,2,'Invalid input cannot reach the importer');
+  }
+  // Their entry points were removed from the data-management card, so they are no longer loadable on demand.
+  for(const name of ['qianmu-storage-gallery-check.js','qianmu-gallery-catalog-management-view.js']){
+    let reached=0;const load=createLocalChunkLoader({pause:async()=>{},importer:async()=>{reached++;return {};}});
+    await assert.rejects(load('./'+name+'?v=contract'),/无效/);assert.equal(reached,0);
   }
 });

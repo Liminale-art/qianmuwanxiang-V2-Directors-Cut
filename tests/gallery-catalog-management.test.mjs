@@ -72,12 +72,12 @@ test('busy inspection prevents overlapping deletion and second inspection', asyn
     await assert.rejects(session.inspect(), /正在处理/); await assert.rejects(session.clear({}, { confirmed: true }));
     release({ count: 2, bytes: 20, revision: 1, nextCursor: null }); await pending; session.close();
 });
-test('ordinary data manager keeps one advanced catalog entry and hides internal catalog accounting', () => {
+test('the data-management card offers no catalog entry and prints no internal catalog accounting', () => {
     const data={galleryCatalogStorage: { status: 'ready', count: 3, bytes: 90 }},before=structuredClone(data);
     const html = renderStorageBackupSection(null, n => `${n} B`, { data });
-    assert.equal((html.match(/data-storage-open="catalog"/g)||[]).length,1);assert.doesNotMatch(html,/3 条引用|不含图片、影片原件/);assert.deepEqual(data,before);
+    assert.doesNotMatch(html,/data-storage-open|图库目录|3 条引用|90 B|不含图片、影片原件/);assert.deepEqual(data,before);
     const unknown={galleryCatalogStorage:{status:'unavailable',bytes:null,error:'<script>unavailable</script>'}},missing=renderStorageBackupSection(null,String,{data:unknown});
-    assert.equal(unknown.galleryCatalogStorage.bytes,null);assert.doesNotMatch(missing,/<script>|0 条引用/);
+    assert.equal(unknown.galleryCatalogStorage.bytes,null);assert.doesNotMatch(missing,/<script>|&lt;script&gt;|0 条引用/);
 });
 test('actual inventory counts catalog once, preserves unavailable status and rechecks account', async () => {
     const code = section('collectStorageInventory');
@@ -100,18 +100,4 @@ test('actual inventory counts catalog once, preserves unavailable status and rec
         assert.equal(inventory.recipeStorage.bytes,12345678);assert.equal(inventory.recoverableBytes,0,'server files never become local cleanup candidates');
         assert.ok(inventory.categories.every(row=>row.bytes<12345678),'server bytes are not browser categories');
     }
-});
-test('actual manager entry binds once, locks duplicate opens and rejects a lazy-load context switch', async () => {
-    const button = { isConnected: true, disabled: false, dataset: { storageOpen: 'catalog' }, listeners: [], addEventListener(_type, fn) { this.listeners.push(fn); } };
-    const root = { querySelector: () => null, querySelectorAll: selector => selector === '[data-storage-open]' ? [button] : [] };
-    let release, opens = 0, refreshes = 0;
-    const download=()=>{};
-    const module = { openGalleryCatalogManagement(options) { opens++; assert.equal(options.anchor, button); assert.equal(options.save,download); return { finished: Promise.resolve() }; } };
-    const context = vm.createContext({ storyboardAdmissionEpoch: 1, ctx: () => ({}), featureRuntime: { load: async () => ({ resolveImageAccountNamespace: async () => ns }) },
-        loadLocalChunk: () => new Promise(resolve => release = resolve), refreshStorageInventory: () => refreshes++, ttsDownloadBlob:download, toast: () => assert.fail('unexpected toast') });
-    vm.runInContext(section('bindStorageManagementEvents'), context); context.bindStorageManagementEvents(root); context.bindStorageManagementEvents(root);
-    assert.equal(button.listeners.length, 1);
-    const pending = button.listeners[0]({ currentTarget: button }); await button.listeners[0]({ currentTarget: button }); assert.equal(button.disabled, true);
-    context.storyboardAdmissionEpoch++; release(module); await pending; assert.equal(opens, 0); assert.equal(button.disabled, false);
-    context.loadLocalChunk = async () => module; await button.listeners[0]({ currentTarget: button }); assert.equal(opens, 1); assert.equal(refreshes, 1);
 });

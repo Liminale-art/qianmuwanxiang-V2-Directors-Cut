@@ -27,6 +27,7 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog button:focus-visible,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible { outline:1px solid var(--sd-accent,#a7c4b5);outline-offset:-2px; }
 .qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"],[data-pa-action="capacity-new"]) { width:auto;height:auto;min-height:var(--qm-pa-control-height);max-width:100%;padding:7px 13px;font-size:var(--qm-pa-body-size);line-height:1.2;color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"]) { display:flex;max-width:max-content;margin:0 auto 6px; }
+.qm-prose-assistant-dialog [data-pa-action="archived-conversations"] { align-self:flex-start;width:auto;height:auto;min-height:var(--qm-pa-control-height);max-width:100%;padding:7px 13px;font-size:var(--qm-pa-body-size);line-height:1.2;color:var(--sd-muted,#aaa);background:var(--sd-input-bg,#8882); }
 .qm-prose-assistant-dialog [data-pa-capacity] { display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0 0 6px; }
 .qm-prose-assistant-dialog [data-pa-capacity] > small { flex:1 1 160px;margin:0;overflow-wrap:anywhere; }
 .qm-prose-assistant-dialog [data-pa-action="capacity-new"] { color:var(--sd-accent,#a7c4b5); }
@@ -112,6 +113,7 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog .qm-pa-conversation-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .qm-prose-assistant-dialog .qm-pa-conversation-meta { display:flex;flex:none;align-items:center;gap:8px;white-space:nowrap;font-size:var(--qm-pa-label-size);color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog .qm-pa-conversation-current { color:var(--sd-accent,#a7c4b5); }
+.qm-prose-assistant-dialog .qm-pa-conversation-item > button:is([data-pa-list-action="archive-one"],[data-pa-list-action="restore-one"]) svg { width:16px;height:16px; }
 .qm-prose-assistant-dialog .qm-pa-conversation-item > button[data-pa-list-action="rename"] svg,.qm-prose-assistant-dialog .qm-pa-conversation-edit button svg { width:16px;height:16px; }
 .qm-prose-assistant-dialog .qm-pa-conversation-edit { display:flex;flex:1;flex-wrap:wrap;align-items:center;gap:3px;padding:3px 0; }
 .qm-prose-assistant-dialog .qm-pa-conversation-edit input { flex:1;width:0;height:var(--qm-pa-control-height);min-height:var(--qm-pa-control-height);padding:4px 11px; }

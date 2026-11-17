@@ -31,12 +31,10 @@ test('log rendering stays read only and does not trigger original recovery',()=>
   assert.doesNotMatch(section('renderStoryboardLogs'),/storyboardRecoverOriginalTasks|storyboardReceiveComfyImage\(|storyboardReceiveServiceImage\(/);
   assert.match(section('storyboardHandleChatChanged'),/storyboardRecoverOriginalTasks\(\)/);
 });
-test('resource packages live only in Data Management, never mixed into gallery or logs',()=>{
+test('resource packages are not mixed into the gallery, the logs or the data-management card',()=>{
   const gallery=section('renderStoryboardGallery'),logs=section('renderStoryboardLogs');
   assert.doesNotMatch(gallery,/sd-storyboard-pack-|sd-storyboard-gallery-resources/);
   assert.doesNotMatch(logs,/sd-storyboard-pack-|资源联包|不包含 API Key/);
   const bindings=section('bindStorageManagementEvents');
-  assert.match(bindings,/storyboard:\(\)=>storyboardExportPackage\(\{bundle:true\}\)/);
-  assert.match(bindings,/storyboard:storyboardImportAnyPackage/);
-  assert.match(bindings,/sd-storage-storyboard-recover[\s\S]*storyboardImportPackage\(null, \{ recoverOnly: true \}\)/);
+  assert.doesNotMatch(bindings,/storyboardExportPackage|storyboardImportAnyPackage|storyboardImportPackage|sd-storage-storyboard-recover/);
 });

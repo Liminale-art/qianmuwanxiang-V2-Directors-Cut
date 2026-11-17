@@ -36,7 +36,8 @@ assert.match(source, /<h3>快捷盘<\/h3>\s*<div class="sd-widget-toggle-row"[^>
 assert.match(focusView, /sd-focus-reset"[^>]*><i class="fa-solid fa-arrow-rotate-left"><\/i>/, 'focus reset must carry the local reset icon, including when strong lock disables the button');
 assert.match(styles, /\.sd-focus-sound-preview \{[^}]*border-radius: 9px !important/, 'focus sound preview must use a square control');
 assert.match(source, /dialogTipSeen: false[\s\S]*sd-reader-send-tip[\s\S]*长按邀请 AI 回应/, 'Coread must provide a one-time send gesture tip');
-assert.match(styles, /#story-director-modal \.sd-storage-ios-bar \{ height: 36px; \}/, 'the storage visualization must use the taller readable bar');
+assert.match(styles, /#story-director-modal \.sd-dm \.sd-dm-bar \{[^}]*height: 34px;/, 'the storage visualization must use the taller readable bar');
+assert.doesNotMatch(styles, /\.sd-storage-ios-bar/, 'the retired storage bar leaves no styles behind');
 
 const scopeStart = source.indexOf('async function qianmuInstalledExtensionScope');
 const scopeEnd = source.indexOf('function qianmuVersionBadgeMarkup');

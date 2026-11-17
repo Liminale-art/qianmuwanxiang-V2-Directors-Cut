@@ -122,7 +122,7 @@ test('Comfy origin ordering is credential-independent and cannot be bypassed by 
 for(const policy of [{version:1,minImages:2,maxImages:4,concurrency:3},{version:2,minImages:3,maxImages:6,concurrency:2}])test(`actual portable export/import preserves explicit policy v${policy.version} and absent policy never transfers old routing counts`,async()=>{
   const state=board.createStoryboardDefaults(),store={};state.generationPolicy={...policy};
   let exported=null;const noop=()=>{};
-  const context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
+  const context=vm.createContext({storageDownloadSink:null,...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
     storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?packageAssets:{resolveImageAccountNamespace:async()=> 'st-user:fixture'}},
     isPlainObject:v=>Boolean(v&&typeof v==='object'&&!Array.isArray(v)),confirmDialog:async()=>true,getChatKey:()=> 'chat-a',getChatStore:()=>store,
     storyboardHydratePipelineArchive:noop,storyboardPlansForPortableExport:async x=>x,

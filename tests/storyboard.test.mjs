@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createStoryboardFormFixture } from './helpers/storyboard-form-fixture.mjs';
 import { prepareConfigRestore } from '../qianmu-config-connections.js';
-import {bindStoragePackageActions} from '../qianmu-storage-backup-view.js';
-import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import { clone, mergeDefaults } from '../qianmu-storyboard-utils.js';
 import {
   STORYBOARD_CAPABILITIES,
@@ -124,13 +122,6 @@ assert.match(source, /storyboardImportPackage[\s\S]*saveBase64AsFile[\s\S]*messa
 assert.doesNotMatch(source, /pruneStoryboardRetakeGallery\(/, '新收片不得按总数删除历史画面与配方');
 assert.doesNotMatch(source, /plan\?\.floorTake&&storyboardGalleryRecords\(\)\.length\+generationDemand\.imageCount>400/, '图库总数不应阻止另一个正常楼层重拍');
 assert.doesNotMatch(source, /sd-storyboard-pack-file/, '阅片室和日志不得保留重复的备份导入控件');
-assert.match(renderStorageBackupSection({}), /<input type="file" data-storage-import="storyboard"[^>]*accept="\.qmb,application\/json,\.json"/, '分镜导入在数据管理保留真实文件控件及支持格式');
-let pickClick,withinUserGesture=false,picked=false;
-const storagePick={dataset:{storagePick:'storyboard'},addEventListener:(type,callback)=>{assert.equal(type,'click');pickClick=callback;}};
-const storageFile={click:()=>{assert.equal(withinUserGesture,true,'必须在原始点击调用栈内打开文件选择，不能先等待异步工作');picked=true;}};
-bindStoragePackageActions({querySelectorAll:selector=>selector==='[data-storage-pick]'?[storagePick]:[],querySelector:selector=>{assert.equal(selector,'input[data-storage-import="storyboard"]');return storageFile;}},{exports:{},imports:{}});
-withinUserGesture=true;pickClick();withinUserGesture=false;
-assert.equal(picked,true,'数据管理导入按钮须同步打开原生文件选择');
 assert.match(source, /const saveDraft[\s\S]*setTimeout[\s\S]*storyboardCaptureWorkbench\(root, sourceAtBind\)/, '镜头台长文与参数草稿必须延迟自动保存');
 assert.match(source, /function closeModal\(\)[\s\S]*storyboardCaptureWorkbench\(storyboardRoot\)[\s\S]*storyboardCloseLightbox\(\)/, '关闭面板必须先保存草稿并收掉独立看图层');
 assert.match(source, /role="dialog"[\s\S]*aria-modal[\s\S]*event\.key === 'Escape'/, '成片看图层必须支持屏幕阅读语义和 Escape 关闭');

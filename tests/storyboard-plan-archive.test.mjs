@@ -96,10 +96,9 @@ test('portable exports hydrate full plans while imports discard local references
 });
 
 test('storage cleanup invalidates references and lifecycle performs idle migration only', () => {
-  assert.match(source, /storyboard_plan_archives: \['不可恢复 · 分镜历史计划', true\]/);
-  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*storyboard_plan_archives/);
+  assert.match(source, /const storageStoreHidden = \(name\) => [^\n]*\/\^\(storyboard\|video\)_\/\.test\(name\)/, 'data management does not offer storyboard plan archives for cleanup; they stay with their own module');
+  assert.doesNotMatch(source.match(/const STORAGE_CHAT_CLEARABLE = [^\n]*/)[0], /video_|storyboard_/);
   assert.match(source, /cleared\.has\('storyboard_plan_archives'\)[\s\S]*delete plan\.archiveRef/);
-  assert.match(source, /reconcileClearedStoryboardPlanChats[\s\S]*releasePlanReferencesForChats\(storyboardState\(\)\.shotPlans \|\| \[\], keys\)/);
   assert.match(source, /const appReadyHandler[\s\S]*storyboardSchedulePlanArchive\(1200\)/);
   const appReady = source.slice(source.indexOf('const appReadyHandler'), source.indexOf('const personaChangedHandler'));
   assert.doesNotMatch(appReady, /getStoryboardPlanArchives/, 'startup migration must not scan archived plan details');

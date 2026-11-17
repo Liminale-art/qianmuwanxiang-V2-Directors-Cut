@@ -23,14 +23,14 @@ test('native observation uses only the fixed same-origin route, hashed account a
 test('native server files stay separate from browser quota and legacy cleanup authorization', async () => {
     const result = await collectProseAssistantStorage(options({ store: { usage: async () => local() } }));
     assert.equal(result.bytes, 100); assert.equal(result.native.total.bytes, 3600); assert.equal(result.count, 2); assert.equal(result.native.heads.count, 2);
-    const choices = storageCleanupOptions({ assistantStorage: result }); assert.equal(choices.length, 2);const legacy=choices.find(row=>row.id==='__assistant__'),native=choices.find(row=>row.id==='__assistant_native__');assert.equal(legacy.bytes,100);assert.match(legacy.label,/旧副本.*本机/);assert.match(legacy.risk[0],/不删除ST记录/);assert.equal(native.bytes,1600);assert.match(native.risk[0],/不回收磁盘空间/);
+    const choices = storageCleanupOptions({ assistantStorage: result }); assert.equal(choices.length, 2);const legacy=choices.find(row=>row.id==='__assistant__'),native=choices.find(row=>row.id==='__assistant_native__');assert.equal(legacy.bytes,100);assert.equal(legacy.label,'场外特助旧副本');assert.equal(native.bytes,1600);assert.equal(native.label,'场外特助会话');for(const row of choices)assert.equal('risk' in row,false,'choices carry no separate risk caption');
     const html = renderStorageBackupSection(null, number => number + ' B', { data: { assistantStorage: result } });
-    assert.match(html, /<span>场外特助<\/span><span>3600 B<\/span>/);assert.doesNotMatch(html,/当前账户旧本机副本|逻辑估算|不读取问答或核验历史正文|<span>场外特助<\/span><span>3700 B/);
+    assert.doesNotMatch(html,/<span>场外特助<\/span>|当前账户旧本机副本|逻辑估算|不读取问答或核验历史正文|3600 B|3700 B/);
 });
 test('unavailable native service never hides a known legacy estimate or turns ST usage into zero', async () => {
     const result = await collectProseAssistantStorage(options({ store: { usage: async () => local() }, fetchImpl: async () => new Response('Not found', { status: 404 }) }));
     assert.equal(result.status, 'ready'); assert.equal(result.bytes, 100); assert.equal(result.native.status, 'unavailable'); assert.equal(result.native.bytes, null);
-    const html = renderStorageBackupSection(null, String, { data: { assistantStorage: result } }); assert.match(html, /<span>场外特助<\/span><span>暂未读取<\/span>/);assert.doesNotMatch(html,/<span>场外特助<\/span><span>0/);
+    const html = renderStorageBackupSection(null, String, { data: { assistantStorage: result } }); assert.doesNotMatch(html,/<span>场外特助<\/span>|暂未读取|Not found/);
     const choices=storageCleanupOptions({assistantStorage:result});assert.deepEqual(choices.map(row=>row.id),['__assistant__']);assert.equal(choices[0].bytes,100);
 });
 test('unavailable local database does not hide known ST observations', async () => {

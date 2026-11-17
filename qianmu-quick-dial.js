@@ -130,9 +130,6 @@ export function createQuickDial({
       node.style.translate = `${(geo.sign * geo.ringX * Math.cos(angle)).toFixed(1)}px ${(geo.ringY * Math.sin(angle)).toFixed(1)}px`;
       node.style.opacity = quickDialOpacity(delta).toFixed(3);
       node.style.setProperty('--qd-grow', (1 + GROW * Math.max(0, 1 - Math.abs(delta))).toFixed(3));
-      // 入口外框沿弧线由上到下在两枚主题色之间过渡；按 5% 一档取色，拨动时不必每帧改写。
-      const shade = Math.round((Math.sin(angle) + 1) * 10);
-      if (node._qdShade !== shade) { node._qdShade = shade; const tone = quickDialTone(view.tones[0], view.tones[1], shade / 20); if (tone) node.style.setProperty('--qd-tone', tone); }
     }
     if (selected === view.selected) return;
     const first = view.selected < 0;
@@ -206,6 +203,9 @@ export function createQuickDial({
     // 立即让出快捷盘图层的身份与指针，盘面淡出、logo 滑回原位后再移除。
     current.root.id = LEAVING_ID;
     current.root.classList.add('is-leaving');
+    // logo 滑回时恢复成和悬浮入口一样的大小与样式（它此刻可能正停在指针处、处于放大染色状态）。
+    current.home?.classList.remove('is-current');
+    current.home?.style.setProperty('--qd-grow', '1');
     const motion = flyHome(current, true);
     if (motion) { motion.onfinish = motion.oncancel = done; setTimeout(done, 400); } else done();
     current.origin.classList?.remove('sd-wheel-active');
@@ -238,17 +238,22 @@ export function createQuickDial({
     const list = [...(items?.() || []), { id: HOME, label: '千幕', home: true }];
     const box = viewportBox(), rect = origin.getBoundingClientRect();
     const geo = quickDialGeometry({ centerX: rect.left + rect.width / 2 - box.left, centerY: rect.top + rect.height / 2 - box.top, width: box.width, height: box.height, size: Number(floatSize?.()) || 48 });
-    // 弧线、圆点、入口外框统一用当前主题的强调色（与悬浮入口的外框同色）。
-    const colors = palette?.() || {}, accent = colors.mainEdge || colors.edges?.[0] || '#c99b51', edges = [accent, accent];
+    // 配色与入口样式都从悬浮入口本身读取：它在各主题、日夜间下已经是对的，盘上的入口照它的样子画，滑入滑出不变样。
+    const colors = palette?.() || {}, look = window.getComputedStyle?.(origin), sheen = window.getComputedStyle?.(origin, '::before');
+    const accent = look?.getPropertyValue('--sd-float-edge').trim() || colors.mainEdge || colors.edges?.[0] || '#c99b51';
     const cyclic = quickDialCyclic(list.length);
     const root = document.createElement('div');
     root.id = id;
     root.className = `qm-dial qm-dial-${geo.side}${isDark?.() ? ' is-dark' : ''}${cyclic ? '' : ' is-open-ended'}`;
     root.dataset.qianmuTransient = '';
     Object.assign(root.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
-    root.style.setProperty('--qd-c1', edges[0]);
-    root.style.setProperty('--qd-c2', edges[1] || colors.mainEdge || edges[0]);
-    root.style.setProperty('--qd-accent', colors.mainEdge || edges[0]);
+    root.style.setProperty('--qd-c1', accent);
+    root.style.setProperty('--qd-c2', accent);
+    root.style.setProperty('--qd-accent', accent);
+    if (look?.backgroundColor && look.backgroundColor !== 'rgba(0, 0, 0, 0)') root.style.setProperty('--qd-chip-bg', look.backgroundColor);
+    if (sheen?.backgroundImage && sheen.backgroundImage !== 'none') root.style.setProperty('--qd-chip-sheen', sheen.backgroundImage);
+    const blur = look?.backdropFilter || look?.webkitBackdropFilter;
+    if (blur && blur !== 'none') root.style.setProperty('--qd-chip-blur', blur);
     root.style.setProperty('--qd-r', `${geo.rx}px`);
     root.style.setProperty('--qd-chip', `${geo.chip}px`);
     root.innerHTML = `<div class="qm-dial-backdrop"></div><div class="qm-dial-stage" style="left:${geo.x}px;top:${geo.y}px">${arcMarkup(geo, `qm-dial-g${++serial}`)}<div class="qm-dial-items" role="menu" aria-label="千幕快捷轮盘"></div><div class="qm-dial-label" aria-live="polite"></div></div>`;
@@ -277,7 +282,7 @@ export function createQuickDial({
     const remembered = recall?.(), start = Math.max(0, list.findIndex(item => item.id === remembered));
     document.body.appendChild(root);
     applyIcons?.(root);
-    view = { root, origin, geo, list, nodes, cyclic, tones: [edges[0], edges[1] || colors.mainEdge || edges[0]], position: start, selected: -1, frame: 0, leaving: false, stop: () => {},
+    view = { root, origin, geo, list, nodes, cyclic, position: start, selected: -1, frame: 0, leaving: false, stop: () => {},
       label: root.querySelector('.qm-dial-label'), dot: root.querySelector('.qm-dial-dot') };
     root._qmCleanup = close;
     origin.classList?.add('sd-wheel-active');

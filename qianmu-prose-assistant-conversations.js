@@ -23,12 +23,13 @@ export function canAutoNameProseAssistantConversation(entry){
  try{return JSON.parse(proseAssistantOwnerKey(entry.ownerKey))[0]==='qianmu-prose-assistant-offstage-v1';}catch{return false;}
 }
 function validate(value,account){
- if(!exact(value,['version','account','revision','entries','defaults'])||![1,2].includes(value.version)||value.account!==account||!Number.isSafeInteger(value.revision)||value.revision<0
+ if(!exact(value,['version','account','revision','entries','defaults'])||![1,2,3].includes(value.version)||value.account!==account||!Number.isSafeInteger(value.revision)||value.revision<0
   ||!Array.isArray(value.entries)||value.entries.length>LIMIT.entries||!Array.isArray(value.defaults)||value.defaults.length>LIMIT.entries)invalid();
  const entries=new Map();
  for(const entry of value.entries){
   const fields=['key','ownerKey','title','createdAt','updatedAt','lastUsedAt','deleted'],named=Object.hasOwn(entry||{},'titleSource');
-  if(named){if(value.version!==2||!['manual','auto'].includes(entry.titleSource)||namedTitle(entry.title)!==entry.title)invalid();fields.push('titleSource');}
+  if(named){if(value.version<2||!['manual','auto'].includes(entry.titleSource)||namedTitle(entry.title)!==entry.title)invalid();fields.push('titleSource');}
+  if(Object.hasOwn(entry||{},'archived')){if(value.version!==3||entry.archived!==true||entry.deleted!==false)invalid();fields.push('archived');}
   if(!exact(entry,fields)||!validText(entry.title)
    ||![entry.createdAt,entry.updatedAt,entry.lastUsedAt].every(time)||typeof entry.deleted!=='boolean')invalid();
   historyKey(entry.key,account);ownerKey(entry.ownerKey,account);if(entries.has(entry.key))invalid();entries.set(entry.key,entry);
@@ -36,16 +37,20 @@ function validate(value,account){
  const owners=new Set();
  for(const entry of value.defaults){
   if(!exact(entry,['ownerKey','key']))invalid();ownerKey(entry.ownerKey,account);historyKey(entry.key,account);
-  const target=entries.get(entry.key);if(owners.has(entry.ownerKey)||!target||target.deleted||target.ownerKey!==entry.ownerKey)invalid();owners.add(entry.ownerKey);
+  const target=entries.get(entry.key);if(owners.has(entry.ownerKey)||!target||target.deleted||target.archived||target.ownerKey!==entry.ownerKey)invalid();owners.add(entry.ownerKey);
  }
  if(value.revision===0&&(value.entries.length||value.defaults.length))invalid();
  if(new TextEncoder().encode(JSON.stringify(value)).byteLength>LIMIT.bytes)fail('capacity','最近对话目录已满，请先保留所需记录');
  return value;
 }
+// Shared with the whole-library backup: the same contract, never a looser one.
+export {validate as validateProseAssistantConversationIndex};
 
 // This is only an account-scoped list of known conversation keys. Opening or
 // searching it never enumerates ST files or reads any conversation's messages.
 // Removed entries remain tombstones: a later legacy read must not restore them.
+// Archived entries stay complete and restorable; they only leave the ordinary
+// list and the per-chat default until they are restored.
 export async function openProseAssistantConversations({source,isCurrent,storageFactory=createConfiguredStAccountStorage,now=Date.now,cryptoImpl=globalThis.crypto}={}){
  let account;try{account=proseAssistantHistoryAccount(source?.scope?.namespace);historyKey(source?.key,account);}catch{invalid();}
  if(typeof source?.guard!=='function'||typeof source?.assertCurrent!=='function'||typeof isCurrent!=='function'||typeof storageFactory!=='function'||typeof now!=='function')invalid();
@@ -99,6 +104,10 @@ export async function openProseAssistantConversations({source,isCurrent,storageF
   if(state.entries.length>=LIMIT.entries)fail('capacity','最近对话目录已满，未丢弃已有记录');
   const entry={key,ownerKey:owner,title,createdAt,updatedAt,lastUsedAt:currentTime(),deleted:false};state.entries.push(entry);return entry;
  }
+ function pick(state,keys){
+  if(!Array.isArray(keys)||!keys.length||keys.length>LIMIT.entries||new Set(keys).size!==keys.length)invalid();
+  return keys.map(key=>{historyKey(key,account);const entry=find(state,key);if(!entry)fail('deleted','所选对话已变化，请刷新');return entry;});
+ }
  function register(state,{key,ownerKey:owner,title,createdAt,updatedAt}={}){
   historyKey(key,account);owner??=proseAssistantOwnerKey(key);ownerKey(owner,account);const prior=find(state,key);if(prior)return prior.deleted?null:prior;
   const at=currentTime(),entry=add(state,{key,ownerKey:owner,title,createdAt:createdAt??updatedAt??at,updatedAt:updatedAt??at});
@@ -116,23 +125,50 @@ export async function openProseAssistantConversations({source,isCurrent,storageF
   });},
   activate(key,{defaultForCurrent,remember}={}){return mutate(state=>{
    if(remember)register(state,remember);
-   const entry=live(state,key);if(defaultForCurrent!==undefined){ownerKey(defaultForCurrent,account);if(entry.ownerKey!==defaultForCurrent)fail('scope','此对话不属于当前聊天');setDefault(state,defaultForCurrent,key);}
+   const entry=live(state,key);if(entry.archived)fail('archived','此对话已归档，请先恢复');if(defaultForCurrent!==undefined){ownerKey(defaultForCurrent,account);if(entry.ownerKey!==defaultForCurrent)fail('scope','此对话不属于当前聊天');setDefault(state,defaultForCurrent,key);}
    entry.lastUsedAt=currentTime();return entry;
   });},
   saved(key,updatedAt,{title}={}){return mutate(state=>{
    const entry=live(state,key);if(!time(updatedAt))invalid();entry.updatedAt=updatedAt;entry.lastUsedAt=currentTime();
-   const name=namedTitle(title);if(name&&canAutoNameProseAssistantConversation(entry)){state.version=2;entry.title=name;entry.titleSource='auto';}return entry;
+   const name=namedTitle(title);if(name&&canAutoNameProseAssistantConversation(entry)){state.version=Math.max(state.version,2);entry.title=name;entry.titleSource='auto';}return entry;
   });},
   rename(key,title,{remember}={}){return mutate(state=>{
    const name=namedTitle(title);if(!name)fail('title','名称请使用 1–40 个字，不含换行或标签');
-   if(remember)register(state,remember);const entry=live(state,key);state.version=2;entry.title=name;entry.titleSource='manual';return entry;
+   if(remember)register(state,remember);const entry=live(state,key);state.version=Math.max(state.version,2);entry.title=name;entry.titleSource='manual';return entry;
   });},
   delete(keys,{remember}={}){return mutate(state=>{
    if(remember)register(state,remember);
-   if(!Array.isArray(keys)||!keys.length||keys.length>LIMIT.entries||new Set(keys).size!==keys.length)invalid();
-   const entries=keys.map(key=>{historyKey(key,account);const entry=find(state,key);if(!entry)fail('deleted','所选对话已变化，请刷新');return entry;});
-   const at=currentTime(),removed=[];for(const entry of entries)if(!entry.deleted){entry.deleted=true;entry.updatedAt=at;removed.push(entry.key);}
+   const entries=pick(state,keys),at=currentTime(),removed=[];for(const entry of entries)if(!entry.deleted){entry.deleted=true;delete entry.archived;entry.updatedAt=at;removed.push(entry.key);}
    const selected=new Set(keys);state.defaults=state.defaults.filter(entry=>!selected.has(entry.key));return {deleted:removed};
+  });},
+  // Archiving keeps the entry and its history; only delete leaves a tombstone.
+  archive(keys,{remember}={}){return mutate(state=>{
+   if(remember)register(state,remember);const archived=[];
+   for(const entry of pick(state,keys))if(!entry.deleted&&!entry.archived){state.version=3;entry.archived=true;archived.push(entry.key);}
+   const selected=new Set(archived);state.defaults=state.defaults.filter(entry=>!selected.has(entry.key));return {archived};
+  });},
+  unarchive(keys){return mutate(state=>{
+   const restored=[];for(const entry of pick(state,keys))if(entry.archived){delete entry.archived;restored.push(entry.key);}return {restored};
+  });},
+  // Whole-library restore: only keys this account has never listed are added.
+  // Existing entries, tombstones included, are never replaced or revived.
+  adopt(entries,{defaults=[]}={}){return mutate(state=>{
+   if(!Array.isArray(entries)||entries.length>LIMIT.entries||!Array.isArray(defaults)||defaults.length>LIMIT.entries)invalid();
+   const adopted=[],skipped=[],at=currentTime();
+   for(const item of entries){
+    if(item===null||typeof item!=='object'||Array.isArray(item))invalid();historyKey(item.key,account);ownerKey(item.ownerKey,account);
+    if(find(state,item.key)||adopted.includes(item.key)){skipped.push(item.key);continue;}
+    if(state.entries.length>=LIMIT.entries)fail('capacity','最近对话目录已满，未丢弃已有记录');
+    const entry={key:item.key,ownerKey:item.ownerKey,title:item.title,createdAt:item.createdAt,updatedAt:item.updatedAt,lastUsedAt:time(item.lastUsedAt)?item.lastUsedAt:at,deleted:false};
+    if(item.titleSource!==undefined){state.version=Math.max(state.version,2);entry.titleSource=item.titleSource;}
+    if(item.archived!==undefined){state.version=3;entry.archived=item.archived;}
+    state.entries.push(entry);adopted.push(entry.key);
+   }
+   for(const item of defaults){
+    const entry=adopted.includes(item?.key)?find(state,item.key):null;
+    if(entry&&!entry.archived&&entry.ownerKey===item.ownerKey&&!state.defaults.some(row=>row.ownerKey===item.ownerKey))setDefault(state,item.ownerKey,item.key);
+   }
+   return {adopted,skipped};
   });},
   renameOwner(oldOwner,newOwner){return mutate(state=>{
    ownerKey(oldOwner,account);ownerKey(newOwner,account);if(oldOwner===newOwner)return {renamed:0};

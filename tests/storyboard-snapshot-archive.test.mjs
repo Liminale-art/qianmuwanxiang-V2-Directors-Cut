@@ -70,8 +70,8 @@ test('gallery lifecycle archives, prunes, clears and invalidates snapshots safel
   assert.match(galleryArchive, /await opened\.preserveAll\(\)/);
   assert.match(galleryRecord, /galleryArchiveRecordEnvelope\(source,raw\)[\s\S]*?record:checked/);
   assert.match(galleryRecord, /if\(record\.snapshot!=null\)[\s\S]*?return 'inline'/);
-  assert.match(source, /storyboard_snapshots: \['不可恢复 · 阅片精确重绘设置', true\]/);
-  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*storyboard_snapshots/);
+  assert.match(source, /const storageStoreHidden = \(name\) => [^\n]*\/\^\(storyboard\|video\)_\/\.test\(name\)/, 'data management does not offer storyboard snapshots for cleanup; they stay with their own module');
+  assert.doesNotMatch(source.match(/const STORAGE_CHAT_CLEARABLE = [^\n]*/)[0], /video_|storyboard_/);
   assert.match(source, /cleared\.has\('storyboard_snapshots'\)[\s\S]*?delete record\.snapshotRef/);
   assert.match(source, /storyboardDeleteRecordSnapshots\(removedRecords\)/);
 });

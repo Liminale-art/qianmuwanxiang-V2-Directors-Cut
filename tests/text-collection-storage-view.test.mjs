@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {bindStoragePackageActions, storageCleanupOptions, runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {storageCleanupOptions, runStorageInventoryJobs} from '../qianmu-storage-backup-view.js';
+import {STORAGE_TRANSFER_ITEMS, detectStorageFile} from '../qianmu-storage-transfer.js';
+import {createTextCollectionBackup} from '../qianmu-text-collection-backup.js';
 import {renderStorageBackupSection} from './helpers/storage-card.mjs';
 import {createTextCollectionOwner} from '../qianmu-text-collection-owner.js';
-import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 const ready = (extra = {}) => ({status: 'ready', count: 2, bytes: 1200, fingerprint: '1'.repeat(64), ...extra});
@@ -13,46 +14,35 @@ const render = (collectionStorage, options = {}) => renderStorageBackupSection(n
     data: {collectionStorage, manageableBytes: 0, idb: {chatScopes: []}}, ready: true, ...options,
 });
 
-test('central backup has one collection export/import row before any scan, without starting a transfer', () => {
-    const html = renderStorageBackupSection(null);
-    assert.equal((html.match(/data-storage-export="collection"/g) || []).length, 1);
-    assert.equal((html.match(/data-storage-pick="collection"/g) || []).length, 1);
-    assert.match(html, /data-storage-import="collection" accept="application\/json,\.json" hidden/);
-    assert.doesNotMatch(html, /sd-storage-clean"|各资料库占用/);
+test('the collection is one item of the single export/import, recognised from its own backup file, with no row of its own', async () => {
+    assert.deepEqual(STORAGE_TRANSFER_ITEMS.filter(([key]) => key === 'collection'), [['collection', '正文收藏']]);
+    const stamp = '2026-09-28T00:00:00.000Z';
+    const backup = createTextCollectionBackup({version: 1, items: [{id: 'one', text: '原文', charName: '角色', userName: '用户', createdAt: stamp, updatedAt: stamp, source: null}]},
+        {origin: 'https://example.invalid', scope: 'a'.repeat(64), now: () => stamp});
+    assert.equal(await detectStorageFile(new Blob([JSON.stringify(backup)])), 'collection');
+    const html = render(ready());
+    assert.doesNotMatch(html, /data-storage-|正文收藏<\/span>/);
+    assert.equal((html.match(/class="sd-btn sd-storage-export"/g) || []).length, 1);
+    assert.equal((html.match(/class="sd-btn sd-storage-import"/g) || []).length, 1);
 });
 
 test('unknown or unread collection inventory never creates a deletion choice or a fake zero', () => {
     for (const collection of [undefined, null, {status: 'unavailable'}, {status: 'loading', count: 3, bytes: 2000}]) {
         assert.deepEqual(storageCleanupOptions({collectionStorage: collection}), []);
-        const html = render(collection);
-        assert.match(html, /<span>正文收藏<\/span><span>暂未读取<\/span>/);
-        assert.doesNotMatch(html, /<span>正文收藏<\/span><span>0 B<\/span>/);
-        assert.match(html, /sd-storage-clean" disabled/);
     }
 });
 
-test('known collection count and logical bytes produce a single protected cleanup choice', () => {
+test('known collection count and logical bytes produce a single cleanup choice', () => {
     const data = {collectionStorage: ready()};
     const [choice] = storageCleanupOptions(data);
     assert.equal(storageCleanupOptions(data).length, 1);
     assert.equal(choice.id, '__text_collection__'); assert.equal(choice.label, '正文收藏');
-    assert.equal(choice.count, 2); assert.equal(choice.bytes, 1200); assert.equal(choice.risk[1], true);
-    assert.match(choice.risk[0], /删除全部收藏正文.*先备份/);
-    const html = render(ready());
-    assert.match(html, /<span>正文收藏<\/span><span>1200 B<\/span>/);
-    assert.match(html, /sd-storage-clean" >/);
-    assert.match(html, /sd-storage-chat-clean" disabled/);
+    assert.equal(choice.count, 2); assert.equal(choice.bytes, 1200);
+    assert.deepEqual(Object.keys(choice).sort(), ['bytes', 'count', 'id', 'label'], 'the choice carries no separate risk caption');
 });
 
-test('empty confirmed collection cannot be selected for deletion, and scan disables cleanup only', () => {
+test('empty confirmed collection cannot be selected for deletion', () => {
     assert.deepEqual(storageCleanupOptions({collectionStorage: ready({count: 0, bytes: 24})}), []);
-    const empty = render(ready({count: 0, bytes: 24}));
-    assert.match(empty, /<span>正文收藏<\/span><span>24 B<\/span>/);
-    assert.match(empty, /sd-storage-clean" disabled/);
-    const scanning = render(ready(), {ready: false, scanning: true});
-    assert.match(scanning, /sd-storage-clean" disabled/);
-    assert.match(scanning, /data-storage-export="collection" aria-label="导出正文收藏"/);
-    assert.match(scanning, /data-storage-pick="collection" aria-label="导入正文收藏"/);
 });
 
 test('collection estimates never change the browser quota bar or turn into claimed VPS disk space', () => {
@@ -64,7 +54,7 @@ test('collection estimates never change the browser quota bar or turn into claim
     assert.doesNotMatch(original, /VPS|服务器|999999999/);
 });
 
-test('summary passes UTF-8 document bytes to the resource row without scanning unrelated data', async t => {
+test('summary reports UTF-8 document bytes to the cleanup choice without scanning unrelated data', async t => {
     const stamp = '2026-09-28T00:00:00.000Z';
     const value = {version: 1, items: [{id: 'one', text: '完整中文🧭\r\n原文', charName: '角色', userName: '用户', createdAt: stamp, updatedAt: stamp, source: null}]};
     let reads = 0;
@@ -79,38 +69,16 @@ test('summary passes UTF-8 document bytes to the resource row without scanning u
     const bytes = new TextEncoder().encode(JSON.stringify(value)).length;
     assert.equal(summary.bytes, bytes); assert.equal(summary.count, 1); assert.equal(reads, 1);
     assert.ok(bytes > JSON.stringify(value).length);
-    assert.ok(render(summary).includes(`<span>正文收藏</span><span>${bytes} B</span>`));
+    assert.equal(storageCleanupOptions({collectionStorage: summary})[0].bytes, bytes);
     assert.deepEqual(owner.state().items, value.items);
-});
-
-test('package binding dispatches explicit collection export/import only and clears the file picker', async () => {
-    const dom = textCollectionDom(), calls = [];
-    const node = (tag, key, value) => {
-        const result = dom.doc.createElement(tag); result.setAttribute(`data-storage-${key}`, value);
-        result.dataset[`storage${key[0].toUpperCase()}${key.slice(1)}`] = value; dom.parent.append(result); return result;
-    };
-    const exporting = node('button', 'export', 'collection'), picking = node('button', 'pick', 'collection');
-    const input = node('input', 'import', 'collection'); input.type = 'file'; input.value = 'selected';
-    const file = new Blob(['{}'], {type: 'application/json'}); input.files = [file];
-    let pickerClicks = 0; input.addEventListener('click', () => { pickerClicks++; });
-    bindStoragePackageActions(dom.parent, {
-        exports: {collection: button => calls.push(['export', button])},
-        imports: {collection: async (selected, node) => { calls.push(['import', selected, node]); }},
-    });
-    assert.deepEqual(calls, []);
-    exporting.click(); assert.deepEqual(calls, [['export', exporting]]);
-    picking.click(); assert.equal(pickerClicks, 1); assert.equal(calls.length, 1);
-    input.emit('change'); await dom.wait(() => input.value === '');
-    assert.deepEqual(calls[1], ['import', file, input]);
-    input.files = []; input.emit('change'); assert.equal(calls.length, 2);
 });
 
 test('shipped entry names the owner actions at the central backup and cleanup seam', async () => {
     const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
     // Only public integration hooks are checked here; behavior is exercised above
     // and by the owner transfer tests, not duplicated as source-shape assertions.
-    assert.match(entry, /exports=\{\.\.\.lib\.exports,collection:proseFloorTools\.exportCollection/);
-    assert.match(entry, /imports:\{collection:proseFloorTools\.importCollection/);
+    assert.match(entry, /const exports=\{[^\n]*collection:proseFloorTools\.exportCollection/);
+    assert.match(entry, /const imports=\{[^\n]*collection:proseFloorTools\.importCollection/);
     assert.match(entry, /proseFloorTools\.clearCollection\(\{confirmed:true,expectedFingerprint:inventory\.collectionStorage\.fingerprint,check:\(\)=>cleanup\.check\(\)\}\)/);
 });
 
@@ -156,7 +124,6 @@ test('actual global inventory preserves unread collection status instead of clai
     assert.equal(f.calls, 1); assert.equal(data.collectionStorage.bytes, null); assert.equal(data.collectionStorage.status, 'unavailable');
     assert.equal(data.trackedBytes, 10); assert.equal(data.categories.some(row => row.category === 'collections'), false);
     assert.deepEqual(storageCleanupOptions(data), []);
-    assert.match(renderStorageBackupSection(null, value => `${value} B`, {data}), /<span>正文收藏<\/span><span>暂未读取<\/span>/);
 });
 
 test('actual inventory rejects a foreign collection account or invalidated scan rather than mixing totals', async () => {

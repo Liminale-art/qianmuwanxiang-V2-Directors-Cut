@@ -1,6 +1,10 @@
-// 数据管理卡（C-13①）：占用总览（按类别分色块）＋分组的备份／恢复入口＋清理。
-// 只负责生成标记；各按钮沿用原有类名与 data 属性，由入口文件里既有的处理函数绑定。
-import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS, storageCleanupOptions } from './qianmu-storage-backup-view.js?v=1.59.539';
+// 数据管理卡：占用总览（按类别分色块）＋「备份：导出／导入」＋「清理：扫描&清理／按聊天清理」。
+// 只负责生成标记与就地更新；按钮由入口文件绑定。卡片主体是静态的，扫描进度与占用只改写顶部两块，不整卡重画。
+import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.543';
+
+// 扫描各步的名称，顺序与入口文件 collectStorageInventory 的任务表一致；只用于进度文字。
+export const STORAGE_SCAN_LABELS = Object.freeze(['浏览器空间', '本机资料', '伴读插图', '生图记录', '连接记录', '领取记录', 'Comfy 记录', 'Comfy 资料', 'Vibe 素材', '恢复记录',
+  '角色资料', '迁移凭据', '来源记录', '专注语音', '便笺', '图库目录', '图片配置', '场外特助', '正文收藏', '汇总']);
 
 // 类别占用：按字节降序；占比不足 1.5% 的并入「其他」，免得色条碎成一排细线。
 export function storageCategoryBlocks(categories = []) {
@@ -16,7 +20,7 @@ export function storageCategoryBlocks(categories = []) {
 const percent = share => `${(share * 100).toFixed(share < 0.1 ? 2 : 1)} %`;
 
 function overview(data, format, escape) {
-  const { total, blocks } = storageCategoryBlocks(data.categories);
+  const { blocks } = storageCategoryBlocks(data.categories);
   const origin = data.origin?.available ? `${format(data.origin.usage)} / ${format(data.origin.quota)}` : '浏览器未提供配额信息';
   const head = `<div class="sd-dm-total"><span>千幕资料已盘点</span><b>${escape(format(data.trackedBytes))}</b></div>`;
   const site = `<p class="sd-dm-site">本设备 ST 站点已用 / 配额<b>${escape(origin)}</b></p>`;
@@ -27,113 +31,60 @@ function overview(data, format, escape) {
     ${site}`;
 }
 
-const row = (label, actions, extra = '') => `<div class="sd-dm-row${extra}"><span>${label}</span><div class="sd-dm-actions">${actions}</div></div>`;
-const transfer = (key, label, accept = 'application/json,.json', more = '') => row(label,
-  `<button type="button" class="sd-btn" data-storage-export="${key}" aria-label="导出${label}">导出</button><button type="button" class="sd-btn" data-storage-pick="${key}" aria-label="导入${label}">导入</button>${more}<input type="file" data-storage-import="${key}" accept="${accept}" hidden>`,
-  key === 'storyboard' ? ' sd-storage-backup-storyboard' : '');
-const jump = (label, attrs, text = '管理') => row(label, `<button type="button" class="sd-btn" ${attrs}>${text}</button>`);
-const group = (title, body, note = '', extra = '') => `<div class="sd-dm-group${extra}"><h4>${title}</h4>${note ? `<p class="sd-dm-note">${note}</p>` : ''}${body}</div>`;
-
-function sizes(data, format, escape) {
-  const known = (record, value) => record?.status === 'ready' && Number.isFinite(value) ? escape(format(value)) : '暂未读取';
-  const rows = [
-    ['角色资料', known(data.characterStorage, data.characterStorage?.documents?.bytes)],
-    ['Vibe 素材', known(data.vibeStorage, (data.vibeStorage?.assets?.bytes ?? NaN) + (data.vibeStorage?.previews?.bytes ?? NaN))],
-    ['工作流', known(data.comfyStorage?.workflows, data.comfyStorage?.workflows?.bytes)],
-    ['工作流方案', known(data.comfyStorage?.pools, data.comfyStorage?.pools?.bytes)],
-    ['场外特助', known(data.assistantStorage?.native, data.assistantStorage?.native?.total?.bytes)],
-    ['正文收藏', known(data.collectionStorage, data.collectionStorage?.bytes)],
-    ['图片配置', known(data.recipeStorage, data.recipeStorage?.bytes)],
-  ];
-  const recipe = data.recipeStorage, full = recipe?.status === 'ready' && (recipe.bytes >= recipe.limitBytes || recipe.files >= recipe.limitFiles);
-  return `<details class="sd-dm-fold" data-storage-section="sizes"><summary>各资料库占用</summary>${rows.map(([label, value]) => `<div class="sd-dm-row"><span>${label}</span><span>${value}</span></div>`).join('')}${full ? '<p class="sd-dm-note" role="status">图片配置存储已满，请先备份再清理。</p>' : ''}</details>`;
+// 扫描进度：「3/20项 角色资料 15%」。
+export function storageScanText(progress = {}) {
+  const total = Number(progress.total) || 0, done = Math.min(total, Number(progress.done) || 0);
+  if (!total) return '准备扫描…';
+  return `${done}/${total}项 ${STORAGE_SCAN_LABELS[Math.min(done, STORAGE_SCAN_LABELS.length - 1)]} ${Math.floor(done / total * 100)}%`;
 }
 
 // state: { status, data, error, progress }。service: 后端服务状态的现成标记。pressure(data) 返回浏览器空间压力。
 export function renderStorageCard({ state, format, escape, service = '', pressure = () => ({ level: 'normal' }) }) {
-  const { status, data, error } = state, scanning = status === 'loading', ready = status === 'ready';
+  const { status, data, error } = state, scanning = status === 'loading';
   const progress = state.progress || { done: 0, total: 0 };
-  const scanText = progress.total ? `已检查 ${progress.done}/${progress.total} 项 · ${Math.floor(progress.done / progress.total * 100)}%` : '准备扫描…';
-  const bar = scanning ? `<p class="sd-muted" role="status">${scanText}</p><progress max="${Math.max(1, progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress>` : '';
-  let head, top;
-  if (!data) {
-    head = `<h3>数据管理</h3><button type="button" class="sd-btn sd-storage-refresh" ${scanning ? 'disabled' : ''}>${scanning ? '扫描中' : '扫描资料'}</button>`;
-    top = scanning ? bar : `<p class="sd-muted" role="status">${status === 'error' ? `扫描未完成：${escape(error || '当前环境不可用')}` : '备份可直接使用；扫描后查看资料占用与清理项目。'}</p>`;
-  } else {
+  const bar = scanning ? `<div class="sd-dm-scan"><p role="status">${escape(storageScanText(progress))}</p><progress max="${Math.max(1, progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress></div>` : '';
+  let top = bar;
+  if (data) {
     const level = pressure(data), used = Math.min(999, Math.max(0, Math.round(Number(level.ratio || 0) * 100)));
-    const warn = level.level === 'critical'
-      ? `<p class="sd-storage-pressure is-critical" role="status">浏览器来源空间已使用 ${used}% · 剩余约 ${escape(format(level.freeBytes))}。建议先备份再按模块整理；千幕不会自动清理。</p>`
-      : level.level === 'warning' ? `<p class="sd-storage-pressure is-warning" role="status">浏览器来源空间已使用 ${used}% · 剩余约 ${escape(format(level.freeBytes))}。可按需整理，千幕不会自动清理。</p>` : '';
-    const incomplete = [data.vibeStorage, data.restoreStorage, data.characterStorage, data.comfyStorage, data.mappingStorage, data.carrierStorage, data.focusLibrary, data.notesStorage, data.galleryCatalogStorage, data.assistantStorage, data.collectionStorage].some(item => ['unavailable', 'partial'].includes(item?.status))
-      || [data.imageAttempts, data.imageChannels, data.serviceReceipts, data.comfyReceipts].some(item => item?.error);
-    head = `<div><h3>数据管理</h3><p class="sd-summary-note">${escape(new Date(data.sampledAt).toLocaleTimeString())}</p></div><button type="button" class="sd-icon-btn sd-storage-refresh" title="重新扫描" aria-label="重新扫描" ${scanning ? 'disabled' : ''}><i class="fa-solid fa-rotate${scanning ? ' fa-spin' : ''}"></i></button>`;
-    top = `${bar}<div class="sd-dm-overview">${overview(data, format, escape)}</div>${warn}${incomplete ? '<p class="sd-storage-pressure is-warning" role="status">部分数据暂不可读取，请稍后刷新；未读取的部分不会按零占用处理。</p>' : ''}
-      <p class="sd-dm-note">浏览器额度不含 ST 服务器上的聊天和资料；千幕盘点包含不同存储位置的已知项目，不代表 VPS 总容量，两者不可相加。</p>${sizes(data, format, escape)}`;
-  }
-  const canClean = ready && data && (data.manageableBytes > 0 || storageCleanupOptions(data).some(item => item.bytes > 0));
-  const backups = group('备份与恢复',
-    row('配置', '<button type="button" class="sd-btn sd-export-config">导出</button><button type="button" class="sd-btn sd-import-config">导入</button><input type="file" class="sd-import-config-file" accept="application/json,.json" hidden>')
-    + '<button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>'
-    + transfer('notes', '便笺') + transfer('collection', '正文收藏') + transfer('favorites', '语音收藏') + transfer('audio', '音频缓存')
-    + transfer('storyboard', '分镜资源', '.qmb,application/json,.json', '<button type="button" class="sd-icon-btn sd-storage-storyboard-recover" title="核对导入" aria-label="核对分镜导入"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></button>')
-    + transfer('reader', '伴读资料')
-    + row('场外特助会话', '<button type="button" class="sd-btn sd-storage-assistant-library">备份 / 恢复</button>')
-    + row('全部导出', '<button type="button" class="sd-btn sd-storage-export-all">选择并导出</button>'));
-  const presets = group('预设与提示词',
-    transfer('templates', '剧本库') + transfer('theater', '剧札') + transfer('schemes', '台词指导方案') + row('伴读总结提示词', '<button type="button" class="sd-btn" data-storage-export="summary" aria-label="导出伴读总结提示词">导出</button><button type="button" class="sd-btn sd-storage-summary-import" aria-label="导入伴读总结提示词">导入</button>'),
-    '这些也包含在「配置」导出里；这里可单独导出、导入某一类。取景预设随「分镜资源」一起备份。');
-  const manage = attrs => `<button type="button" class="sd-btn" ${attrs}>管理</button>`, json = '.json,application/json';
-  const libraries = group('资料库',
-    transfer('characters', '角色库', json, manage('data-storage-open="characters"'))
-    + transfer('vibes', 'Vibe 原件', '.naiv4vibe,.naiv4vibeBundle,.json', manage('data-storage-open="vibes"'))
-    + transfer('comfy', 'Comfy 工作流与候选方案', json, manage('data-storage-comfy-library="workflows"'))
-    + jump('Comfy 候选方案', 'data-storage-comfy-library="pools"')
-    + transfer('fonts', '字体库', '.zip,application/zip,.json,application/json', manage('data-storage-open="fonts"'))
-    + transfer('focus', '专注语音库', json, manage('data-storage-open="focus"')),
-    '整库导出与恢复。库大时会分成几个文件；逐条整理请点「管理」。');
-  const elsewhere = group('其他位置',
-    jump('聊天备份与找回', 'data-storage-open="recovery"', '打开') + jump('正则导入导出', 'data-storage-open="regex"', '打开') + jump('忆幕记忆备份', 'data-storage-open="yimu"', '说明'),
-    '酒馆与忆幕自己的数据，在各自的面板里管理。');
-  const advanced = `<details class="sd-dm-fold sd-dm-advanced" data-storage-section="advanced"><summary>高级</summary><p class="sd-dm-note">排查与迁移用，平时不需要。</p>
-    ${jump('分镜恢复记录', 'data-storage-open="restores"')}${jump('迁移凭据', 'data-storage-open="mappings"')}${jump('图库目录保全', 'data-storage-open="catalog"')}${jump('Comfy 领取记录', 'data-storage-open="receipts"', '查看')}${row('图库来源核对', '<button type="button" class="sd-btn sd-storage-gallery-check">核对</button>')}
-    <p class="sd-storage-scope sd-storage-gallery-check-status" role="status" hidden></p></details>`;
-  const cleanup = group('清理', data || scanning
-    ? `<div class="sd-dm-clean"><button type="button" class="sd-btn sd-primary sd-storage-clean" ${canClean ? '' : 'disabled'}>选择清理项目</button><button type="button" class="sd-btn sd-storage-chat-clean" ${ready && data?.idb?.chatScopes?.length ? '' : 'disabled'}>按聊天清理缓存</button></div>`
-    : '<p class="sd-dm-note">扫描资料后可选择清理项目。</p>', '', ' sd-dm-cleanup');
+    const warn = ['critical', 'warning'].includes(level.level)
+      ? `<p class="sd-storage-pressure is-${level.level}" role="status">浏览器空间已用 ${used}% · 剩余约 ${escape(format(level.freeBytes))}，建议先导出备份再清理。</p>` : '';
+    top += `<div class="sd-dm-overview">${overview(data, format, escape)}</div>${warn}`;
+  } else if (status === 'error') top += `<p class="sd-muted" role="status">扫描未完成：${escape(error || '当前环境不可用')}</p>`;
+  const head = `<h3>数据管理</h3>${scanning ? '' : '<button type="button" class="sd-icon-btn sd-storage-refresh" title="重新扫描" aria-label="重新扫描"><i class="fa-solid fa-rotate"></i></button>'}`;
+  const row = (label, actions) => `<div class="sd-dm-row"><span>${label}</span><div class="sd-dm-actions">${actions}</div></div>`;
   return `<section class="sd-card sd-storage-card sd-dm">
-    <div class="sd-card-title-row">${head}</div>
-    ${top}
-    <div class="sd-storage-backup-section sd-dm-body">${backups}${presets}${libraries}${elsewhere}${advanced}${cleanup}</div>
+    <div class="sd-card-title-row sd-dm-head">${head}</div>
+    <div class="sd-dm-top">${top}</div>
+    <div class="sd-storage-backup-section sd-dm-body">
+      ${row('备份', '<button type="button" class="sd-btn sd-storage-export">导出</button><button type="button" class="sd-btn sd-storage-import">导入</button><input type="file" class="sd-storage-import-file" multiple accept=".zip,application/zip,.json,application/json" hidden><input type="file" class="sd-storage-import-slot" hidden>')}
+      <button type="button" class="sd-btn sd-undo-config" hidden>撤回本次恢复</button>
+      ${row('清理', '<button type="button" class="sd-btn sd-storage-clean">扫描&amp;清理</button><button type="button" class="sd-btn sd-storage-chat-clean">按聊天清理</button>')}
+    </div>
     ${service}
   </section>`;
 }
 
-// 「全部导出」的可选项：只列能直接导出成文件的那些；各库的整库备份仍在各库的管理页。
-export const STORAGE_EXPORT_ALL = Object.freeze([
-  ['config', '配置'], ['templates', '剧本库'], ['theater', '剧札'], ['schemes', '台词指导方案'], ['summary', '伴读总结提示词'],
-  ['notes', '便笺'], ['collection', '正文收藏'], ['favorites', '语音收藏'], ['audio', '音频缓存'], ['storyboard', '分镜资源'], ['reader', '伴读资料'],
-]);
-
-// 勾选要导出的项目。返回选中的键（取消则为空数组）。
-// styleFrom／variables：把面板当前主题的变量抄到浮层上（浮层挂在 body 下，继承不到面板的变量）。
-export function chooseStorageExports(document, { labels = STORAGE_EXPORT_ALL, themeClass = '', styleFrom = null, variables = [] } = {}) {
-  return new Promise(resolve => {
-    const layer = document.createElement('div');
-    layer.className = `sd-dm-export-layer ${themeClass}`.trim();
-    const source = styleFrom ? document.defaultView?.getComputedStyle?.(styleFrom) : null;
-    for (const name of source ? variables : []) { const value = source.getPropertyValue(name); if (value) layer.style.setProperty(name, value); }
-    layer.innerHTML = `<div class="sd-dm-export-dialog" role="dialog" aria-modal="true" aria-label="选择要导出的项目"><h4>选择要导出的项目</h4><p class="sd-dm-note">每一项各生成一个文件，浏览器可能会询问是否允许连续下载。体积大的项目（分镜资源、音频缓存）默认不选。</p>
-      <div class="sd-dm-export-list">${labels.map(([key, label]) => `<label><input type="checkbox" value="${key}" ${['storyboard', 'audio'].includes(key) ? '' : 'checked'}><span>${label}</span></label>`).join('')}</div>
-      <div class="sd-dm-export-actions"><button type="button" class="sd-btn" data-act="cancel">取消</button><button type="button" class="sd-btn sd-primary" data-act="go">导出所选</button></div></div>`;
-    const finish = keys => { layer.remove(); resolve(keys); };
-    layer.addEventListener('click', event => {
-      if (event.target === layer || event.target.closest?.('[data-act="cancel"]')) return finish([]);
-      if (event.target.closest?.('[data-act="go"]')) finish([...layer.querySelectorAll('input:checked')].map(input => input.value));
-    });
-    layer.addEventListener('keydown', event => { if (event.key === 'Escape') finish([]); });
-    document.body.appendChild(layer);
-    layer.querySelector('[data-act="go"]')?.focus();
-  });
+// 就地更新：只改写内容变了的标题行、顶部总览、后端服务三块；主体（按钮与文件输入）始终不动，所以扫描过程不闪。
+const LIVE_PARTS = ['.sd-dm-head', '.sd-dm-top', '.sd-storage-service'];
+export function paintStorageCard(current, html, { icons = () => {}, bind = () => {} } = {}) {
+  const template = current.ownerDocument.createElement('template');
+  template.innerHTML = html.trim();
+  const next = template.content.firstElementChild;
+  if (!next) return false;
+  for (const selector of LIVE_PARTS) {
+    const live = current.querySelector(`:scope > ${selector}`), fresh = next.querySelector(`:scope > ${selector}`);
+    if (!live || !fresh) continue;
+    const raw = fresh.innerHTML;
+    if (live._qmRaw === raw) continue;
+    const refocus = live.contains(current.ownerDocument.activeElement) && current.ownerDocument.activeElement.className;
+    live.replaceChildren(...fresh.childNodes);
+    live._qmRaw = raw;
+    for (const name of ['data-status', 'hidden']) fresh.hasAttribute(name) ? live.setAttribute(name, fresh.getAttribute(name)) : live.removeAttribute(name);
+    icons(live);
+    if (refocus) [...live.querySelectorAll('button')].find(button => button.className === refocus)?.focus({ preventScroll: true });
+  }
+  bind(current);
+  return true;
 }
 
 // 通用的「一组带 id 的条目」导出／导入（台词指导方案等没有专用格式的库）。

@@ -26,6 +26,8 @@ export function createProseFloorTools(options){
     get assistantBusy(){return assistant.busy;},
     assistantStorageSummary:valid=>assistant.storageSummary(valid),
     cleanupAssistant:(...args)=>assistant.cleanupStorage(...args),
+    exportAssistantLibrary:button=>assistant.exportAssistantLibrary(button),
+    importAssistantLibrary:(file,input)=>assistant.importAssistantLibrary(file,input),
     get assistantDetached(){return hive?.detached===true;},
     configureHive(config){disposed=false;bindRenames();hive?.dispose();hive=createProseHive({...config,open:()=>assistant.openAssistant(),applyIcons:options.applyIcons});stopPreload?.();stopPreload=scheduleQianmuIdlePreload({...options,isBusy:()=>{const stream=options.getContext?.().streamingProcessor;return stream&&!stream.isStopped&&!stream.isFinished;}});},
     renderHive(){hive?.render();},bindHive(...args){hive?.bind(...args);},

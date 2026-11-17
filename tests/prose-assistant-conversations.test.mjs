@@ -112,7 +112,7 @@ test('manual names reject malformed text before registering a ghost and cannot r
 
 test('named snapshots require explicit v2 with a valid title source and canonical safe title',async()=>{
  const entry={key:offstage,ownerKey:offstage,title:'目录名称',createdAt:1,updatedAt:1,lastUsedAt:1,deleted:false,titleSource:'manual'};
- for(const patch of [{version:1},{version:3},{entry:{titleSource:'unknown'}},{entry:{title:'<i>名称</i>'}},{entry:{title:' 名称 '}},{entry:{title:'x'.repeat(41)}},{entry:{extra:true}}]){
+ for(const patch of [{version:1},{version:4},{entry:{titleSource:'unknown'}},{entry:{title:'<i>名称</i>'}},{entry:{title:' 名称 '}},{entry:{title:'x'.repeat(41)}},{entry:{extra:true}}]){
   const value={...state(),version:patch.version??2,revision:1,entries:[{...entry,...patch.entry}]},f=fixture(value);await assert.rejects(open(f.options),code('invalid'));assert.equal(f.writes.length,0);
  }
 });
@@ -241,4 +241,53 @@ test('real native snapshot saves an automatic name in the existing metadata uplo
  const entry=await catalog.saved(offstage,190,{title:'配色研究'});assert.equal(entry.titleSource,'auto');assert.equal(transport.calls.filter(call=>call.options.method==='POST').length,before+1);
  assert.equal(transport.files.size,1);const stored=JSON.parse([...transport.files.values()][0]).value;assert.equal(stored.version,2);assert.equal(stored.entries[0].title,'配色研究');assert.equal(stored.entries[0].updatedAt,190);catalog.close();
  const calls=transport.calls.length,reopened=await open(options);assert.equal(transport.calls.length,calls+1);assert.equal(transport.calls.at(-1).options.method,'GET');assert.deepEqual(reopened.view(),stored);assert.equal(reopened.canAutoName(offstage),false);reopened.close();
+});
+
+test('archive keeps the entry restorable under version 3, leaves the default and never becomes a tombstone',async()=>{
+ const f=fixture(),catalog=await open(f.options),a=await catalog.create({ownerKey:base(),title:'A',id:id(1)}),b=await catalog.create({ownerKey:base(),title:'B',id:id(2)});
+ await catalog.rename(a.key,'已命名');assert.equal(catalog.view().version,2);assert.deepEqual(catalog.view().defaults,[{ownerKey:base(),key:b.key}]);
+ const before=f.writes.length,stamp=catalog.view().entries.find(row=>row.key===b.key).updatedAt;f.now=500;
+ assert.deepEqual(await catalog.archive([b.key]),{archived:[b.key]});assert.equal(f.writes.length,before+1);
+ const archived=catalog.view().entries.find(row=>row.key===b.key);assert.equal(catalog.view().version,3);assert.equal(archived.archived,true);assert.equal(archived.deleted,false);assert.equal(archived.updatedAt,stamp);
+ assert.deepEqual(catalog.view().defaults,[],'an archived conversation is no longer the chat default');assert.equal(Object.hasOwn(catalog.view().entries.find(row=>row.key===a.key),'archived'),false);
+ assert.deepEqual(await catalog.archive([b.key]),{archived:[]});assert.equal(f.writes.length,before+1,'archiving twice writes nothing');
+ await assert.rejects(catalog.activate(b.key),code('archived'));assert.equal(catalog.status().dirty,false);
+ await catalog.saved(b.key,510);assert.equal(catalog.view().entries.find(row=>row.key===b.key).archived,true,'a late save keeps the archived record');
+ await catalog.rename(a.key,'再次改名');assert.equal(catalog.view().version,3,'later edits never downgrade the archive version');const persisted=catalog.view();catalog.close();
+ const reopened=await open(f.options),writes=f.writes.length;assert.deepEqual(reopened.view(),persisted);assert.equal(f.writes.length,writes);
+ assert.deepEqual(await reopened.unarchive([b.key,a.key]),{restored:[b.key]});const restored=reopened.view().entries.find(row=>row.key===b.key);
+ assert.equal(Object.hasOwn(restored,'archived'),false);assert.equal(restored.deleted,false);assert.equal(reopened.view().version,3);
+ assert.equal((await reopened.activate(b.key,{defaultForCurrent:base()})).key,b.key);assert.deepEqual(reopened.view().defaults,[{ownerKey:base(),key:b.key}]);
+ await reopened.archive([a.key]);await reopened.delete([a.key]);const removed=reopened.view().entries.find(row=>row.key===a.key);assert.equal(removed.deleted,true);assert.equal(Object.hasOwn(removed,'archived'),false);
+ assert.deepEqual(await reopened.archive([a.key]),{archived:[]},'a tombstone cannot be archived');assert.deepEqual(await reopened.unarchive([a.key]),{restored:[]});
+ for(const keys of [[],[b.key,b.key],'x',[base('missing')]])for(const name of ['archive','unarchive'])await assert.rejects(reopened[name](keys));
+ reopened.close();
+});
+
+test('archived snapshots require version 3, a literal true flag, a live entry and no default pointing at them',async()=>{
+ const entry={key:offstage,ownerKey:offstage,title:'独立对话',createdAt:1,updatedAt:1,lastUsedAt:1,deleted:false,archived:true};
+ const good={...state(),version:3,revision:1,entries:[entry]},ok=fixture(good),catalog=await open(ok.options);assert.deepEqual(catalog.view(),good);assert.equal(ok.writes.length,0);catalog.close();
+ for(const patch of [{version:1},{version:2},{entry:{archived:false}},{entry:{archived:1}},{entry:{deleted:true}},{defaults:[{ownerKey:offstage,key:offstage}]}]){
+  const value={...good,version:patch.version??3,entries:[{...entry,...patch.entry}],defaults:patch.defaults??[]},f=fixture(value);await assert.rejects(open(f.options),code('invalid'));assert.equal(f.writes.length,0);
+ }
+ const {archived:_,...bare}=entry,plain=fixture({...good,entries:[bare]}),unflagged=await open(plain.options);assert.equal(unflagged.view().version,3);unflagged.close();
+});
+
+test('adopt registers only unknown keys with their saved metadata and never touches existing entries or tombstones',async()=>{
+ const f=fixture(),catalog=await open(f.options),kept=await catalog.ensure({key:base(),title:'本地 A'}),gone=await catalog.create({ownerKey:base('B'),title:'B',id:id(1)});await catalog.delete([gone.key]);
+ const thread=createProseAssistantThreadKey(base('C'),id(2)),before=catalog.view(),writes=f.writes.length;f.now=900;
+ const incoming=[{key:base(),ownerKey:base(),title:'备份里的 A',createdAt:1,updatedAt:2,lastUsedAt:3,deleted:false},{key:gone.key,ownerKey:base('B'),title:'复活',createdAt:1,updatedAt:2,lastUsedAt:3,deleted:false},
+  {key:thread,ownerKey:base('C'),title:'归档的',titleSource:'manual',archived:true,createdAt:11,updatedAt:12,lastUsedAt:13,deleted:false},{key:offstage,ownerKey:offstage,title:'独立对话',createdAt:21,updatedAt:22,deleted:false}];
+ const result=await catalog.adopt(incoming,{defaults:[{ownerKey:base('C'),key:thread},{ownerKey:offstage,key:offstage},{ownerKey:base(),key:base()}]});
+ assert.deepEqual(result,{adopted:[thread,offstage],skipped:[base(),gone.key]});assert.equal(f.writes.length,writes+1);const after=catalog.view();
+ assert.deepEqual(after.entries.slice(0,2),before.entries);assert.equal(after.version,3);
+ assert.deepEqual(after.entries[2],{key:thread,ownerKey:base('C'),title:'归档的',createdAt:11,updatedAt:12,lastUsedAt:13,deleted:false,titleSource:'manual',archived:true});
+ assert.deepEqual(after.entries[3],{key:offstage,ownerKey:offstage,title:'独立对话',createdAt:21,updatedAt:22,lastUsedAt:900,deleted:false});
+ assert.deepEqual(after.defaults,[...before.defaults,{ownerKey:offstage,key:offstage}],'only an adopted live entry may become a missing default');assert.equal(kept.title,'本地 A');
+ assert.deepEqual(await catalog.adopt(incoming),{adopted:[],skipped:incoming.map(row=>row.key)});assert.equal(f.writes.length,writes+1);
+ const fresh={...incoming[3],key:base('D'),ownerKey:base('D')};
+ for(const bad of [[{...fresh,title:''}],[{...fresh,titleSource:'robot'}],[{...fresh,archived:false}],[{...fresh,createdAt:-1}],[{...fresh,key:base('D',account.replace(/.$/,'0'))}],[null],'x']){
+  await assert.rejects(catalog.adopt(bad),code('invalid'));assert.equal(catalog.status().dirty,false);assert.equal(f.writes.length,writes+1);
+ }
+ catalog.close();
 });

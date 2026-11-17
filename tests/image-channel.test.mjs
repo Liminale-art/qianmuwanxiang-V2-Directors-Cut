@@ -131,5 +131,6 @@ test('actual runtime wires the same channel ticket around direct and gateway wor
   const start = source.slice(source.indexOf('function storyboardStartLog('), source.indexOf('function storyboardMarkLogGenerating('));
   assert.doesNotMatch(start, /confirmedImageAttempts/);
   assert.match(source, /storyboardImageChannel\?\.close\(\)/);
-  assert.match(source, /__image_channels__/);
+  assert.match(source, /storyboardManageImageChannels\(\)\.catch\(/, 'the inventory still measures the coordination records');
+  assert.doesNotMatch(source, /__image_channels__/, 'data management offers no cleanup choice for them');
 });

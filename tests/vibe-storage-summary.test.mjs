@@ -61,15 +61,15 @@ test('registered fee originals remain accounted without exposing internal receip
   const value={...summary(),version:4,persistence:'st-account-file',retained:{count:1,bytes:100},bytes:630,feeOriginals};
   const context=globalContext(value);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,1250);assert.equal(data.origin.quota,10000);assert.deepEqual(data.vibeStorage.feeOriginals,feeOriginals);assert.match(html,/<span>Vibe 素材<\/span><span>440 B<\/span>/);assert.doesNotMatch(html,/已登记费用原件|当前版本文件|历史独有文件|<span>Vibe 素材<\/span><span>8440 B/);
+  assert.equal(data.trackedBytes,1250);assert.equal(data.origin.quota,10000);assert.deepEqual(data.vibeStorage.feeOriginals,feeOriginals);assert.match(html,/千幕资料已盘点<\/span><b>1250 B<\/b>/);assert.doesNotMatch(html,/已登记费用原件|当前版本文件|历史独有文件|8440 B|8000 B|6000 B/);
   for(const patch of [{version:3},{feeOriginals:{...feeOriginals,selectedVersions:2}},{feeOriginals:{...feeOriginals,receipt:'private body'}}])assert.throws(()=>validateVibeStorageSummary({...value,...patch},namespace));
 });
 
-test('actual global card reports unknown Vibe content with one library entry and without implying zero',async()=>{
+test('actual global inventory keeps unreadable Vibe content unknown and the card prints neither the error nor a zero',async()=>{
   const context=globalContext(Error('bad <metadata>'));vm.runInContext(['collectStorageInventory','refreshStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;const html=context.renderStorageManagementCard();
-  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/本设备 ST 站点已用/);assert.match(html,/<span>Vibe 素材<\/span><span>暂未读取<\/span>/);
-  assert.doesNotMatch(html,/bad <metadata>|<span>Vibe 素材<\/span><span>0 B/);assert.equal((html.match(/data-storage-open="vibes"/g)||[]).length,1);
+  assert.equal(data.trackedBytes,620);assert.equal(data.vibeStorage.bytes,null);assert.equal(data.vibeStorage.status,'unavailable');assert.equal(data.categories.some(row=>row.category==='vibes'),false);assert.doesNotMatch(html,/未盘点站点数据/);assert.match(html,/本设备 ST 站点已用/);assert.match(html,/千幕资料已盘点<\/span><b>620 B<\/b>/);
+  assert.doesNotMatch(html,/bad <metadata>|bad &lt;metadata>|Vibe 素材|data-storage-open/);
 });
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 const settled=()=>new Promise(resolve=>setImmediate(resolve));
@@ -87,14 +87,4 @@ test('actual refresh never publishes results after an unrefreshed account switch
   const old=deferred(),next=deferred();let call=0;e.context.storageInventoryScope=()=>++call===1?old.promise:next.promise;
   const a=e.context.refreshStorageInventory(),b=e.context.refreshStorageInventory();next.resolve('C');await settled();e.requests[1].resolve({sampledAt:Date.now(),owner:'C'});await b;
   old.reject(Error('old account unavailable'));assert.equal(await a,null);assert.equal(e.context.storageInventoryState.data.owner,'C');
-});
-test('actual Vibe storage shortcut preserves provider, prompts and selection and routes directly into the existing manager',()=>{
-  const state={source:'comfy',view:'create',selectedVibeIds:['keep'],profiles:{novel:{model:'same'},comfy:{workflow:'same'}},positive:'keep'},before=JSON.stringify(state);let click;
-  const root={querySelector:()=>null,querySelectorAll:selector=>selector==='[data-storage-open]'?[{dataset:{storageOpen:'vibes'},addEventListener:(_name,fn)=>click=fn}]:[]},modal={id:'panel'},routes=[],mounts=[];
-  const context=vm.createContext({activeTab:'plug',storageInventoryState:{data:{},sampledAt:123},storyboardState:()=>state,storyboardBeginSession:()=>{},MODAL_ID:'panel',document:{getElementById:()=>modal},
-    storyboardMountVibeLibrary:(node,options)=>mounts.push([node,{...options}])});
-  vm.runInContext([section('storyboardApplyRoute'),section('bindStorageManagementEvents')].join('\n'),context);
-  context.storyboardNavigate=(_root,patch)=>{routes.push({...patch});context.storyboardApplyRoute(patch);};context.bindStorageManagementEvents(root);click();
-  assert.equal(context.activeTab,'imagegen');assert.deepEqual(routes,[{view:'assets',assetView:'vibes'}]);assert.deepEqual(mounts,[[modal,{manager:'storage'}]]);
-  assert.deepEqual(state,{...JSON.parse(before),view:'assets',assetView:'vibes'});assert.equal(context.storageInventoryState.sampledAt,0);
 });

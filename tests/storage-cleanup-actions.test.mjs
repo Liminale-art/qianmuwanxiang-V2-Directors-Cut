@@ -1,32 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import {releasePlanReferencesForChats} from '../qianmu-plan-archive-write.js';
 import {createStorageCleanupSession} from '../qianmu-storage-cleanup-session.js';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
+import {storageEventsShell,storageCardRoot} from './helpers/storage-card.mjs';
 
-// Execute the real button callback and reference reconciliation. Only database IO
+// Execute the real button callbacks and the real scan gate. Only database IO
 // and the surrounding ST shell are substitutes: no real originals are deleted.
 function fixture(result, kind = 'chat') {
-  const notices=[],handlers=new Map(),state={shotPlans:['a','b','unselected'].map(chatKey=>({
-    id:'plan-'+chatKey,chatKey,archiveRef:'original-'+chatKey,archiveVersion:1,archivedAt:7,
-  }))};
-  const selected=['a','b'].map(chatKey=>({name:'storyboard_plan_archives',chatKey}));
-  const calls={save:0,clear:0};
+  const notices=[],state={logs:['original'],pipelineLogs:['original']},reconciled=[];
+  const selected=['a','b'].map(chatKey=>({name:'audio',chatKey}));
+  const calls={save:0,clear:0,metadata:0,refresh:0};
   let currentScanScope=JSON.stringify([1,'st-user:fixture']);
-  const c=vm.createContext({settings:{logHistory:['original']},storyboardAdmissionEpoch:1,releasePlanReferencesForChats,storyboardPlanArchiveEpoch:0,storyboardPlanArchiveTimer:null,storyboardPlanArchiveCache:new Map(),
-    storyboardQueuePendingCount:()=>0,storyboardQueueSettling:0,
+  const card=storageCardRoot();
+  const c=vm.createContext(storageEventsShell({settings:{logHistory:['original']},storyboardAdmissionEpoch:1,setTimeout,
     storageInventoryState:{status:'ready',scope:currentScanScope,data:{idb:{stores:[]}}},storageInventoryScope:async()=>currentScanScope,storyboardState:()=>state,
     openStorageChatCleanupDialog:async()=>selected,openStorageCleanupDialog:async()=>['__diagnostics__'],blobStore:{clearChatScopedStorage:async entries=>{calls.clear++;assert.equal(entries,selected);return result;},clearStorageItems:async()=>{calls.clear++;return result;}},
-    getChatKey:()=> 'a',reconcileClearedStorageItems:()=>({chatMetadataChanged:false}),saveSettings(){calls.save++;},
-    refreshStorageInventory:async()=>{},toast:(...args)=>notices.push(args),formatStorageBytes:()=> '0 B'});
-  vm.runInContext([source('reconcileClearedStoryboardPlanChats'),source('ensureStorageScanCurrent'),source('bindStorageManagementEvents')].join('\n'),c);
+    getChatKey:()=> 'a',reconcileClearedStorageItems:names=>{reconciled.push([...names]);return {chatMetadataChanged:false};},saveSettings(){calls.save++;},saveMetadata:async()=>{calls.metadata++;},
+    refreshStorageInventory:async()=>{calls.refresh++;},toast:(...args)=>notices.push(args),formatStorageBytes:()=> '0 B'}));
+  vm.runInContext([source('ensureStorageScanCurrent'),source('storageScanForCleanup'),source('bindStorageManagementEvents')].join('\n'),c);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>c.getChatKey(),epoch:()=>c.storyboardAdmissionEpoch});
-  const root={isConnected:true,querySelector:selector=>selector===(kind==='chat'?'.sd-storage-chat-clean':'.sd-storage-clean')?{addEventListener:(name,callback)=>handlers.set(name,callback)}:null,querySelectorAll:()=>[]};
+  const root=card.root;
   c.bindStorageManagementEvents(root);
-  return {c,root,state,notices,calls,selected:kind==='chat'?selected:['__diagnostics__'],setScanScope:value=>{currentScanScope=value;},run:()=>handlers.get('click')()};
+  return {c,root,card,state,notices,calls,reconciled,selected:kind==='chat'?selected:['__diagnostics__'],setScanScope:value=>{currentScanScope=value;},run:()=>card.click(kind==='chat'?'.sd-storage-chat-clean':'.sd-storage-clean')};
 }
-const row=(chatKey,count=1)=>({name:'storyboard_plan_archives',chatKey,count,bytes:10});
+const row=(chatKey,count=1,name='audio')=>({name,chatKey,count,bytes:10});
+
+test('the card wires exactly one export, one import and the two cleanup entries, once',()=>{
+  const e=fixture({cleared:[],failed:[],count:0,bytes:0});
+  for(const selector of ['.sd-storage-export','.sd-storage-import','.sd-storage-clean','.sd-storage-chat-clean'])assert.equal(e.card.bound(selector),true,selector);
+  const before=['.sd-storage-clean','.sd-storage-chat-clean'].map(selector=>e.card.node(selector).handlers.get('click'));
+  e.c.bindStorageManagementEvents(e.root);
+  assert.deepEqual(['.sd-storage-clean','.sd-storage-chat-clean'].map(selector=>e.card.node(selector).handlers.get('click')),before);
+  assert.equal(e.card.backup.dataset.storageBound,'true');
+});
+
+test('cleanup without a current scan scans first, and waits for a scan already running',async()=>{
+  for(const kind of ['chat','module']){
+    const e=fixture({cleared:[],failed:[],count:0,bytes:0},kind);let opened=null;
+    const ready=e.c.storageInventoryState;e.c.storageInventoryState={status:'idle',data:null};
+    e.c.refreshStorageInventory=async force=>{e.calls.refresh++;assert.equal(force,true);e.c.storageInventoryState=ready;};
+    e.c[kind==='chat'?'openStorageChatCleanupDialog':'openStorageCleanupDialog']=async data=>{opened=data;return null;};
+    await e.run();assert.equal(e.calls.refresh,1,kind);assert.equal(opened,ready.data,kind);assert.equal(e.calls.clear,0);
+
+    const waiting=fixture({cleared:[],failed:[],count:0,bytes:0},kind),done=waiting.c.storageInventoryState;let seen=null;
+    waiting.c.storageInventoryState={status:'loading',data:null,scope:done.scope};
+    waiting.c[kind==='chat'?'openStorageChatCleanupDialog':'openStorageCleanupDialog']=async data=>{seen=data;return null;};
+    const pending=waiting.run();await new Promise(resolve=>setImmediate(resolve));assert.equal(seen,null,kind);
+    waiting.c.storageInventoryState=done;await pending;
+    assert.equal(seen,done.data,kind);assert.equal(waiting.calls.refresh,0,kind);assert.equal(waiting.c.storageCleanupSession.busy,false);
+  }
+});
+
+test('a scan that fails leaves cleanup unopened and releases the session',async()=>{
+  for(const kind of ['chat','module']){
+    const e=fixture({cleared:[],failed:[],count:0,bytes:0},kind);let opened=0;
+    e.c.storageInventoryState={status:'idle',data:null};
+    e.c.refreshStorageInventory=async()=>{e.calls.refresh++;e.c.storageInventoryState={status:'error',data:null,error:'unavailable'};};
+    e.c[kind==='chat'?'openStorageChatCleanupDialog':'openStorageCleanupDialog']=async()=>{opened++;return e.selected;};
+    await e.run();assert.equal(opened,0,kind);assert.equal(e.calls.clear,0,kind);assert.equal(e.calls.save,0,kind);
+    assert.match(e.notices.at(-1)[0],/重新扫描/);assert.equal(e.notices.at(-1)[1],'error');assert.equal(e.c.storageCleanupSession.busy,false);
+  }
+});
 
 test('collection-only cleanup uses its scanned fingerprint and never opens generic cache cleanup or saves ST settings',async()=>{
   const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=0;
@@ -58,7 +93,7 @@ test('a stale scan scope after selection blocks both cleanup entry points before
     };
     await e.run();
     assert.equal(opened,1,kind);assert.equal(e.calls.clear,0,kind);assert.equal(e.calls.save,0,kind);
-    assert.equal(e.state.shotPlans[0].archiveRef,'original-a');
+    assert.deepEqual(e.reconciled,[]);assert.deepEqual(e.state.logs,['original']);
     assert.match(e.notices.at(-1)[0],/重新扫描/);assert.equal(e.c.storageCleanupSession.busy,false);
   }
 });
@@ -103,39 +138,6 @@ test('orphan cleanup receives the initiating session, not an unguarded backgroun
   await e.run();assert.equal(checked,true);assert.equal(e.calls.save,0);
 });
 
-test('NAI cleanup forwards the account from the chosen inventory and a live page guard to the manager',async()=>{
-  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
-  e.c.storageInventoryState.data.imageChannels={namespace:'selected-account'};
-  e.c.openStorageCleanupDialog=async()=>['__image_channels__'];
-  e.c.storyboardManageImageChannels=async options=>{
-    assert.equal(options.remove,true);assert.equal(options.expectedNamespace,'selected-account');options.check();
-    e.root.isConnected=false;assert.throws(()=>options.check(),/后续操作已停止/);called=true;
-  };
-  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
-});
-
-test('attempt cleanup forwards selected account and live scope rather than clearing a newly resolved account',async()=>{
-  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
-  e.c.storyboardQueue=[];e.c.storyboardActiveJobs=new Map();e.c.storyboardGenerationPreparing=new Set();
-  e.c.storageInventoryState.data.imageAttempts={namespace:'selected-account'};e.c.openStorageCleanupDialog=async()=>['__image_attempts__'];
-  e.c.featureRuntime={load:async()=>({manageImageAdmissionStorage:async options=>{
-    assert.equal(options.remove,true);assert.equal(options.expectedNamespace,'selected-account');options.check();
-    e.root.isConnected=false;assert.throws(()=>options.check(),/后续操作已停止/);called=true;
-  }})};
-  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);assert.equal(e.c.storageCleanupSession.busy,false);
-});
-
-test('receipt cleanup forwards selected account and live scope and surfaces partial cleanup without saving stale UI',async()=>{
-  const e=fixture({cleared:[],failed:[],count:0,bytes:0},'module');let called=false;
-  e.c.storageInventoryState.data.serviceReceipts={namespace:'selected-account'};e.c.openStorageCleanupDialog=async()=>['__image_service_receipts__'];
-  e.c.storyboardImageServiceRuntime=async()=>({manage:async options=>{
-    assert.equal(options.expectedNamespace,'selected-account');options.check();e.root.isConnected=false;
-    assert.throws(()=>options.check(),/后续操作已停止/);called=true;throw Error('已清理 1 条本机领取记录');
-  }});
-  await e.run();assert.equal(called,true);assert.equal(e.calls.clear,0);assert.equal(e.calls.save,0);
-  assert.match(e.notices.at(-1)[0],/已清理 1 条/);assert.equal(e.c.storageCleanupSession.busy,false);
-});
-
 test('both real cleanup entry points pass their live scope check into the database loop',async()=>{
   for(const kind of ['chat','module']){
     const result={cleared:[],failed:[],count:0,bytes:0},e=fixture(result,kind);let checked=false;
@@ -159,7 +161,7 @@ for(const phase of ['selection','storage'])test('both cleanup paths stop stale '
     if(change==='root')e.root.isConnected=false;
     release(phase==='selection'?e.selected:result);await pending;
     assert.equal(e.calls.save,0,kind+'/'+change);assert.ok(e.c.settings.logHistory.length);
-    assert.equal(e.state.shotPlans[0].archiveRef,'original-a');assert.equal(e.c.storageCleanupSession.busy,false);
+    assert.deepEqual(e.state.logs,['original']);assert.equal(e.c.storageCleanupSession.busy,false);
     assert.match(e.notices.at(-1)[0],/后续操作已停止/);
   }
 });
@@ -172,24 +174,41 @@ test('duplicate cleanup does not open a second selector and cancellation release
   e.c.openStorageChatCleanupDialog=async()=>null;await e.run();assert.equal(e.c.storageCleanupSession.busy,false);
 });
 
-test('failed chat cleanup preserves original archive references, so failure remains genuinely recoverable',async()=>{
-  const e=fixture({cleared:[],failed:[row('a'),row('b')],count:0,bytes:0});
+test('failed chat cleanup reconciles nothing and reports what was kept',async()=>{
+  const e=fixture({cleared:[],failed:[{...row('a'),error:'locked'},{...row('b'),error:'locked'}],count:0,bytes:0});
   await e.run();
-  assert.deepEqual(e.state.shotPlans.map(plan=>plan.archiveRef),['original-a','original-b','original-unselected']);
-  assert.equal(e.notices.at(-1)[1],'warning');
+  assert.deepEqual(e.reconciled,[]);assert.equal(e.calls.metadata,0);assert.equal(e.calls.save,1);assert.equal(e.calls.refresh,1);
+  assert.equal(e.notices.at(-1)[1],'warning');assert.match(e.notices.at(-1)[0],/2 个分组失败已保留/);assert.match(e.notices.at(-1)[0],/locked/);
 });
 
-test('partial cleanup removes only confirmed successful references, not failed or unselected chats',async()=>{
-  const e=fixture({cleared:[row('b')],failed:[row('a')],count:1,bytes:10});
+test('chat cleanup resets live state only for stores actually emptied in the open chat',async()=>{
+  const e=fixture({cleared:[row('a'),row('a',0,'tts_lines'),row('b',3,'reader_chats'),row('a',2,'reader_vectors'),row('a',1,'audio')],failed:[],count:7,bytes:70});
   await e.run();
-  assert.equal(e.state.shotPlans[0].archiveRef,'original-a');
-  assert.deepEqual(e.state.shotPlans[1],{id:'plan-b',chatKey:'b'});
-  assert.equal(e.state.shotPlans[2].archiveRef,'original-unselected');assert.equal(e.notices.at(-1)[1],'warning');
+  assert.deepEqual(e.reconciled,[['audio','reader_vectors']]);
+  assert.equal(e.calls.save,1);assert.equal(e.calls.metadata,0);assert.equal(e.notices.at(-1)[1],'success');assert.match(e.notices.at(-1)[0],/已按聊天清理 7 项/);
+
+  const other=fixture({cleared:[row('b',4)],failed:[],count:4,bytes:40});
+  await other.run();assert.deepEqual(other.reconciled,[]);assert.equal(other.notices.at(-1)[1],'success');
+
+  const changed=fixture({cleared:[row('a')],failed:[],count:1,bytes:10});
+  changed.c.reconcileClearedStorageItems=()=>({chatMetadataChanged:true});
+  await changed.run();assert.equal(changed.calls.metadata,1);
 });
 
-test('confirmed successful groups, including already-empty ones, release only their stale references',async()=>{
-  const e=fixture({cleared:[row('a'),row('b',0)],failed:[],count:1,bytes:10});
+test('module cleanup clears only real stores, then diagnostics, and reports partial failure',async()=>{
+  const e=fixture({cleared:['audio'],failed:[],count:0,bytes:0},'module');let stores=null,rings=0;
+  e.c.openStorageCleanupDialog=async()=>['audio','__diagnostics__','__ringtones__'];
+  e.c.chatRingtone={actions:{clearAllLocal:async()=>{rings++;}}};
+  e.c.blobStore.clearStorageItems=async names=>{stores=[...names];return {cleared:['audio'],failed:[]};};
   await e.run();
-  assert.deepEqual(e.state.shotPlans.slice(0,2),[{id:'plan-a',chatKey:'a'},{id:'plan-b',chatKey:'b'}]);
-  assert.equal(e.state.shotPlans[2].archiveRef,'original-unselected');assert.equal(e.notices.at(-1)[1],'success');
+  assert.deepEqual(stores,['audio']);assert.equal(rings,1);assert.deepEqual(e.reconciled,[['audio']]);
+  assert.deepEqual(Array.from(e.c.settings.logHistory),[]);assert.deepEqual(Array.from(e.state.logs),[]);assert.deepEqual(Array.from(e.state.pipelineLogs),[]);
+  assert.equal(e.calls.save,1);assert.deepEqual(e.notices.at(-1),['所选项目已清理。','success']);
+
+  const partial=fixture({cleared:[],failed:[],count:0,bytes:0},'module');
+  partial.c.openStorageCleanupDialog=async()=>['audio','favorites'];
+  partial.c.blobStore.clearStorageItems=async()=>({cleared:['audio'],failed:[{name:'favorites',error:'locked'}]});
+  await partial.run();
+  assert.deepEqual(Array.from(partial.c.settings.logHistory),['original']);
+  assert.equal(partial.notices.at(-1)[1],'warning');assert.match(partial.notices.at(-1)[0],/已清理 1 个项目，1 个项目失败并保留。 favorites：locked/);
 });

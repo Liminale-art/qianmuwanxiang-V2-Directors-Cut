@@ -19,7 +19,7 @@ const fixture = () => {
     featureRuntime: {load: async () => {counters.load++; return {probeQianmuOptionalService: async () => {
       counters.probe++; return new Promise((resolve, fail) => {release = resolve; reject = fail;});
     }};}},
-    showQianmuUpdateGuidance: () => {counters.guidance++;},
+    showQianmuUpdateGuidance: () => {counters.guidance++;}, scheduleStorageScan: () => {},
     renderModal: () => assert.fail('backend check must not redraw the modal'),
     paintStorageManagementCard: () => assert.fail('backend check must not replace the storage card'),
   });

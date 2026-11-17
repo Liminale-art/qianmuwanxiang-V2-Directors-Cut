@@ -9,45 +9,12 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 const gate=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-test('retired gallery archive route is absent and actual storage backup remains the single explicit package/recovery entry',async()=>{
+test('retired gallery archive route is absent and data management carries no storyboard package or recovery entry',async()=>{
   const text=await readFile(new URL('../index.js',import.meta.url),'utf8');
   assert.doesNotMatch(text,/sd-open-gallery-archive|sd-open-gallery-directory|openGalleryArchive/);
   assert.doesNotMatch(section('renderStoryboardGallery'),/sd-storyboard-gallery-resources|sd-storyboard-pack-/);
-  const source=section('bindStorageManagementEvents'),start=source.indexOf("  const backup ="),end=source.indexOf('  const bound =',start);
-  assert.ok(start>0&&end>start);
-  const calls=[];let recover,actions,bindings=0;
-  const backup={dataset:{},querySelector:selector=>selector==='.sd-storage-storyboard-recover'?{addEventListener:(_type,fn)=>{recover=fn;}}:null};
-  const importAny=async(...args)=>{calls.push(['import',...args]);},noop=()=>{};
-  const context=vm.createContext({root:{querySelector:()=>backup},storyboardImportPackage:async(...args)=>{calls.push(['recover',...args]);},
-    storyboardExportPackage:async options=>{calls.push(['export',options]);},storyboardImportAnyPackage:importAny,
-    bindStoragePackageActions:(node,options)=>{assert.equal(node,backup);actions=options;bindings++;},
-    proseFloorTools:{exportCollection:noop,importCollection:noop},coreadExportData:noop,coreadImportDataFile:noop,
-    exportTtsFavoritesBackup:noop,ttsExportAudioCache:noop,exportPinnedNotesBackup:noop,coreadExportSummaryItems:noop,importTtsGuidanceSchemes:noop,createStorageLibraryTransfer:()=>({exports:{},imports:{}}),resolveImageAccountNamespace:()=>'',ttsDownloadBlob:()=>{},toast:()=>{},storyboardRequestHeaders:()=>({}),fontLibrary:{},});
-  const bind=()=>vm.runInContext('(()=>{'+source.slice(start,end)+'})()',context);
-  bind();bind();assert.equal(bindings,1);assert.deepEqual(calls,[]);assert.equal(actions.imports.storyboard,importAny);
-  recover();await flush();await actions.exports.storyboard();await actions.imports.storyboard('file');
-  assert.equal(calls.length,3);assert.equal(calls[0][0],'recover');assert.equal(calls[0][1],null);assert.equal(calls[0][2].recoverOnly,true);
-  assert.equal(calls[1][0],'export');assert.equal(calls[1][1].bundle,true);assert.deepEqual(calls[2],['import','file']);
-});
-test('actual storage catalog loads only on click, binds current identity and never refreshes a replaced or detached page',async()=>{
-  const source=section('bindStorageManagementEvents'),start=source.indexOf("  const toStoryboard="),end=source.indexOf("  onClick(root.querySelector('.sd-storage-refresh')",start);
-  assert.ok(start>0&&end>start);
-  for(const mode of ['current','stale-load','stale-close','detached-load','detached-close']){
-    const loaded=gate(),finished=gate(),button={isConnected:true,disabled:false,dataset:{storageOpen:'catalog'}},host={};let click,options,loads=0,refreshes=0;
-    const context=vm.createContext({root:{querySelector:()=>button,querySelectorAll:selector=>selector==='[data-storage-open]'?[button]:[]},onClick:(_button,fn)=>{assert.equal(_button,button);click=fn;},storyboardAdmissionEpoch:1,
-      loadLocalChunk:async path=>{assert.match(path,/gallery-catalog-management-view/);loads++;return loaded.promise;},
-      featureRuntime:{load:async()=>({resolveImageAccountNamespace:async()=> 'st-user:fixture'})},ctx:()=>host,ttsDownloadBlob:()=>{},
-      refreshStorageInventory:force=>{assert.equal(force,true);refreshes++;},toast:()=>assert.fail('no failure expected')});
-    vm.runInContext(source.slice(start,end),context);assert.equal(loads,0);
-    const work=click({currentTarget:button});await click({currentTarget:button});assert.equal(loads,1);
-    if(mode==='stale-load')context.storyboardAdmissionEpoch++;if(mode==='detached-load')button.isConnected=false;
-    loaded.resolve({openGalleryCatalogManagement:input=>{options=input;return {finished:finished.promise};}});await flush();
-    if(['stale-load','detached-load'].includes(mode))assert.equal(options,undefined);
-    else{assert.equal(options.anchor,button);assert.equal(options.getContext(),host);assert.equal(await options.resolveNamespace(),'st-user:fixture');assert.equal(options.isCurrent(),true);
-      if(mode==='stale-close'){context.storyboardAdmissionEpoch++;assert.equal(options.isCurrent(),false);}if(mode==='detached-close')button.isConnected=false;
-    }
-    finished.resolve();await work;assert.equal(refreshes,mode==='current'?1:0);assert.equal(button.disabled,false);
-  }
+  const source=section('bindStorageManagementEvents');
+  assert.doesNotMatch(source,/storyboardExportPackage|storyboardImportAnyPackage|storyboardImportPackage|sd-storage-storyboard-recover|gallery-catalog-management-view|data-storage-open/);
 });
 function fixture(t,extra={}){
   const window=new EventTarget(),document=new EventTarget(),timers=new Map(),opened=[],errors=[];

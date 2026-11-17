@@ -89,7 +89,7 @@ test('timeline removal is bounded and deduplicated', async () => {
   assert.deepEqual(captured, ['timeline-a', 'timeline-b']);
 });
 
-test('the additive timeline store is idle, chat-cleanable and included in the release', async () => {
+test('the additive timeline store is idle, left out of data-management cleanup and included in the release', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
@@ -99,8 +99,8 @@ test('the additive timeline store is idle, chat-cleanable and included in the re
   assert.match(persistence, /schema: 'qianmu\.video-timeline\.v1'/);
   assert.doesNotMatch(persistence, /apiKey|authorization|remoteUrl|base64|Blob/);
 assert.match(source, /videoTimelineStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-timeline-store\.js\?v=1\.59\.202'\)/);
-  assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
-  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_timelines/);
+  assert.match(source, /const storageStoreHidden = \(name\) => [^\n]*\/\^\(storyboard\|video\)_\/\.test\(name\)/, 'data management does not offer video records for cleanup; they stay with their own module');
+  assert.doesNotMatch(source.match(/const STORAGE_CHAT_CLEARABLE = [^\n]*/)[0], /video_|storyboard_/);
   assert.ok(release.files.includes('features/video/qianmu-video-timeline-store.js'));
   const initSource = source.slice(source.indexOf('function init()'), source.indexOf('function destroy()'));
   assert.doesNotMatch(initSource, /featureRuntime\.load\('videoTimelineStore'\)/);

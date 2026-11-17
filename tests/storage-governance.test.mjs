@@ -74,13 +74,16 @@ assert.match(card, /class="sd-dm-bar"[\s\S]*class="sd-dm-legend"[\s\S]*\$\{site\
 assert.match(styles, /\.sd-dm-bar > i \{[^}]*--sd-dm-color[\s\S]*\.sd-dm-legend-item::before \{[^}]*--sd-dm-color/, 'each category keeps one colour across its block and its legend mark');
 assert.match(card, /千幕资料已盘点[\s\S]*本设备 ST 站点已用 \/ 配额/, 'browser quota is a separate line, not the Qianmu total');
 assert.match(source,/const manageableBytes[\s\S]*manageableBytes,/,'cleanup eligibility still uses the independently calculated manageable total');
-assert.match(card, /浏览器额度不含 ST 服务器上的聊天和资料[\s\S]*两者不可相加/, 'origin use must never be mislabeled as Qianmu or VPS storage');
-assert.match(card, /不代表 VPS 总容量/, 'browser quota must not be confused with server disk capacity');
+assert.match(card, /本设备 ST 站点已用 \/ 配额<b>\$\{escape\(origin\)\}<\/b>/, 'the quota line names the browser site, so it cannot be read as Qianmu or server storage');
+assert.doesNotMatch(card, /<small>|sd-dm-note|sd-storage-scope/, 'the card carries no explanatory small print');
 assert.match(source, /classifyStoragePressure\(originEstimate \|\| \{\}\)/);
-assert.match(card, /sd-storage-pressure is-critical[\s\S]*千幕不会自动清理[\s\S]*sd-storage-pressure is-warning[\s\S]*千幕不会自动清理/, 'high origin usage must produce a visible warning without automatic cleanup');
+assert.match(card, /\['critical', 'warning'\]\.includes\(level\.level\)[\s\S]*sd-storage-pressure is-\$\{level\.level\}[\s\S]*建议先导出备份再清理/, 'high origin usage must produce a visible warning that asks for a backup first, without automatic cleanup');
 assert.match(styles, /\.sd-storage-pressure[\s\S]*\.sd-storage-pressure\.is-critical/, 'warning and critical storage pressure need distinct restrained styles');
-assert.doesNotMatch(source.slice(source.indexOf("if (activeTab === 'plug')")),/^\s*void refreshStorageInventory\(false\);/m,'opening API and logs must not auto-start a full inventory');
-assert.match(source, /openStorageCleanupDialog[\s\S]*data\?\.idb\?\.stores[\s\S]*item\.name !== 'storyboard_inbox'[\s\S]*不可恢复[\s\S]*input type="checkbox"/, 'cleanup must show registered stores except account-owned pending originals');
+assert.doesNotMatch(source.slice(source.indexOf("if (activeTab === 'plug')")),/^\s*void refreshStorageInventory\(false\);/m,'opening API and logs must not start a full inventory synchronously');
+assert.match(source, /function scheduleStorageScan\(\) \{\s*if \(storageInventoryState\.status !== 'idle' \|\| scheduleStorageScan\.pending\) return;[\s\S]*?requestIdleCallback\(run, \{ timeout: 3000 \}\)/, 'the overview scan runs once, when the page is idle, and a failed scan is not retried');
+assert.match(source, /async function storageScanForCleanup\(\) \{[\s\S]*?await refreshStorageInventory\(true\);[\s\S]*?await ensureStorageScanCurrent\(\);/, 'cleanup always works from a scan that is current for this account');
+assert.match(source, /const storageStoreHidden = \(name\) => name === 'notes' \|\| name === 'storyboard_inbox' \|\| \/\^\(storyboard\|video\)_\/\.test\(name\);/, 'account-owned pending originals, storyboard and video stores are not offered for cleanup here');
+assert.match(source, /function openStorageCleanupDialog[\s\S]*?data\?\.idb\?\.stores \|\| \[\]\)\.filter\(item => !storageStoreHidden\(item\.name\)\)[\s\S]*?danger: '删除不可恢复'/, 'cleanup shows the remaining registered stores under one plain warning');
 assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*selected\.includes\('__diagnostics__'\)[\s\S]*storyboard\.pipelineLogs = \[\]/, 'selected stores and diagnostics must be cleared independently under the initiating session');
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
@@ -106,12 +109,12 @@ assert.match(source, /function exportTtsFavoritesBackup[\s\S]*qianmu-tts-favorit
 assert.equal(FAVORITES_BACKUP_LIMITS.bytes,256*1024*1024);assert.equal(FAVORITES_BACKUP_LIMITS.entries,2000);
 assert.match(source, /function importTtsFavoritesBackup[\s\S]*readLibraryBackupFile\(file,'qianmu-tts-favorites',\{check\}\)[\s\S]*hasFavorite\(id\)[\s\S]*uid\('fav-import'\)/, 'favorite restore must preflight before destination lookup and preserve ID collisions as copies; limits are behavior-tested');
 assert.match(source, /storageSafeFavoriteMeta[\s\S]*const allowed = \['speaker'[\s\S]*credentialsIncluded: false/, 'favorite packages must use an explicit metadata allow-list');
-assert.match(source, /reader:coreadExportData[\s\S]*bindStoragePackageActions\(backup,\{exports,[\s\S]*imports:[\s\S]*reader:coreadImportDataFile/, 'the unified storage backup home retains both initiating control identities through the shared bindings');
+assert.match(source, /const exports=\{[^\n]*reader:coreadExportData[\s\S]*?const imports=\{[^\n]*\n?[^\n]*reader:coreadImportDataFile[\s\S]*?runStorageExport\(\{dialogs:storageDialogs\(\),exports,[\s\S]*?runStorageImport\(\{dialogs:storageDialogs\(\),imports,files,slot,/, 'the single export and import entries reuse the existing reader backup functions');
 assert.match(source, /STORAGE_CHAT_CLEARABLE[\s\S]*reader_chats[\s\S]*reader_vectors/, 'the UI must expose only the same chat-scoped store subset');
 assert.doesNotMatch(source, /navigator\.storage\.persist|申请持久保存/, 'persistent-storage prompts must be removed');
 const refreshInventory = source.slice(source.indexOf('async function refreshStorageInventory'), source.indexOf('function renderStorageManagementCard'));
 assert.match(refreshInventory, /paintStorageManagementCard\(\)/, 'inventory completion must patch only its own card');
 assert.doesNotMatch(refreshInventory, /renderModal\(\)/, 'inventory completion must not rebuild the full Qianmu window');
-assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*replaceStorageManagementCard\(current, renderStorageManagementCard\(\), \{[\s\S]*bind:bindStorageManagementEvents/, 'a replaced storage card must restore its own controls through the existing view module');
+assert.match(source, /function paintStorageManagementCard\(\)[\s\S]*?paintStorageCard\(current, renderStorageManagementCard\(\), \{ icons: applyQianmuIcons, bind: bindStorageManagementEvents \}\)/, 'a repainted storage card keeps its action rows and rebinds its refreshed controls');
 
 console.log('Storage governance contract OK');

@@ -19,7 +19,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   if(!parent.isConnected||isCurrent()!==true)throw Error('场外特助页面已变化');
   let previousFocus=document.activeElement;const dialog=document.createElement('section');dialog.className='qm-prose-assistant-dialog';dialog.tabIndex=-1;dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-label','场外特助');
   let closed=false,busy=false,saving=false,closing=false,sequence=0,resolve,session,observer,observerCheckTimer=0,history,historyTask=null,historyWorking=true,pendingSnapshot=null,disposeWindow,autosave;
-  let catalogue=null,currentConversation=null,catalogueWorking=false,catalogueRecovery=null,page='chat',closeTask=null,reopenTask=null,pendingTitle=null;
+  let catalogue=null,currentConversation=null,catalogueWorking=false,catalogueRecovery=null,page='chat',closeTask=null,reopenTask=null,pendingTitle=null,archivedView=false;
   // Only the rendered window is paged; the session and saved original stay intact.
   const messageBatch=10;let messageStart=0,messageCount=0,messageCharacters=0,latestPending=true,followLatest=true,lastScrollTop=0,replacementPosition=null,restoredPosition=null;
   const listeners=[],rows=new Map(),finished=new Promise(done=>{resolve=done;});let activeQuestion=null,inputRevision=0,editing=null;
@@ -55,12 +55,14 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
   if(selection?.mode==='custom'){profile.value='custom';url.value=selection.connection?.apiUrl||'';model.value=selection.connection?.model||'';key.value=selection.connection?.apiKey||'';}custom.hidden=profile.value!=='custom';
   const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),retryCatalogue=button('重试对话操作','retry-conversations','retry'),send=button('发送','send'),composer=node('div');
+  const archivedButton=textButton('已归档对话','archived-conversations');archivedButton.hidden=!conversationFactory;grid.append(archivedButton);
   const promptField=field('助手提示词',persona);promptField.className='qm-pa-prompt-field';grid.append(promptField);retryCatalogue.hidden=true;
   question.rows=1;question.maxLength=20000;question.setAttribute('aria-label','向场外特助提问');question.dataset.paQuestion='';
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
   const latest=textButton('回到最新','latest-messages'),capacity=node('div'),capacityText=node('small'),capacityNew=textButton('新建对话','capacity-new');latest.hidden=true;capacity.dataset.paCapacity='';capacity.hidden=true;capacity.append(capacityText,capacityNew);
   composer.className='qm-pa-composer';composer.append(question,send);footer.append(historyNotice,retry,status,retryCatalogue,latest,capacity,composer);
-  const conversationList=createProseAssistantConversationList({document,onOpen:key=>{void chooseConversation(key);},onNew:()=>{void newConversation();},onDelete:keys=>{void deleteConversations(keys);},onRefresh:()=>{void refreshConversations();},onRename:renameConversation});conversationList.element.hidden=true;
+  const conversationList=createProseAssistantConversationList({document,onOpen:key=>{void chooseConversation(key);},onNew:()=>{void newConversation();},onDelete:keys=>{void deleteConversations(keys);},onRefresh:()=>{void refreshConversations();},onRename:renameConversation,
+    onArchive:keys=>{void archiveConversations(keys);},onUnarchive:keys=>{void unarchiveConversations(keys);},onArchivedView:value=>{archivedView=value;if(page==='list')title.textContent=listTitle();}});conversationList.element.hidden=true;
   const resize=node('span');resize.dataset.paResize='';resize.tabIndex=0;resize.setAttribute('role','separator');resize.setAttribute('aria-label','调整窗口大小');dialog.append(header,main,config,conversationList.element,footer,resize);
   function dispose(){if(closed)return;const restoreFocus=dialog.contains(document.activeElement);closed=true;sequence++;if(observerCheckTimer)view.clearTimeout(observerCheckTimer);observerCheckTimer=0;autosave?.close();session?.close();history?.close();catalogue?.close();conversationList.dispose();seed?.close();disposeWindow?.();observer?.disconnect();listeners.splice(0).forEach(remove=>remove());key.value='';question.value='';rows.clear();dialog.remove();if(restoreFocus&&previousFocus?.isConnected)previousFocus.focus({preventScroll:true});resolve(null);}
   function alive(){if(closed)return false;try{seed?.assertCurrent();if(source?.signal?.aborted||isCurrent()!==true||!parent.isConnected||!dialog.isConnected)throw Error();return true;}catch(_){dispose();return false;}}
@@ -73,7 +75,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     capacityText.textContent=full?'此对话已达容量上限。原记录会保留，可新建对话继续。':'此对话接近容量上限。原记录会保留，可随时新建对话继续。';
     capacityNew.hidden=!catalogue;capacityNew.disabled=busy||saving||closing||blocked||!!editing||!catalogue;
     const action=busy?'stop':'send';if(send.dataset.paAction!==action){send.dataset.paAction=action;icon(send,busy?'停止':'发送',action);}
-    listButton.disabled=busy||saving||closing||historyWorking||catalogueWorking||!!pendingSnapshot||!!editing||!catalogue;retry.disabled=historyWorking||closing;retryCatalogue.disabled=catalogueWorking||closing;closeButton.disabled=closing||catalogueWorking;question.disabled=catalogueWorking;
+    listButton.disabled=busy||saving||closing||historyWorking||catalogueWorking||!!pendingSnapshot||!!editing||!catalogue;archivedButton.disabled=listButton.disabled;retry.disabled=historyWorking||closing;retryCatalogue.disabled=catalogueWorking||closing;closeButton.disabled=closing||catalogueWorking;question.disabled=catalogueWorking;
     for(const element of [profile,range,url,model,key,eye,persona,stream])element.disabled=!seed||busy||closing||(element===range&&!canReference());
     for(const entry of rows.values()){
       const locked=busy||saving||closing||blocked||!!editing;
@@ -89,8 +91,8 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   function updateReference(){range.value=String(canReference()?preferredReferenceFloors:0);referenceHint.hidden=canReference();referenceHint.textContent=seed?.scope.offstage?'当前无可用参考':'当前对话不引用此聊天';}
   function conversationTitle(){const context=source.getContext();return String(seed.scope.offstage?'独立对话':context.characters?.[context.characterId]?.name||context.name2||seed.scope.target?.avatar?.replace(/\.png$/i,'')||'群组对话').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,200)||'特助对话';}
   function defaultConversation(){
-    const data=catalogue?.view(),active=data?.defaults.find(item=>item.ownerKey===seed.key),found=data?.entries.find(item=>item.key===active?.key&&!item.deleted);
-    if(found)return found;const known=data?.entries.filter(item=>item.ownerKey===seed.key)||[],remaining=known.filter(item=>!item.deleted).sort((a,b)=>b.lastUsedAt-a.lastUsedAt);
+    const data=catalogue?.view(),active=data?.defaults.find(item=>item.ownerKey===seed.key),found=data?.entries.find(item=>item.key===active?.key&&!item.deleted&&!item.archived);
+    if(found)return found;const known=data?.entries.filter(item=>item.ownerKey===seed.key)||[],remaining=known.filter(item=>!item.deleted&&!item.archived).sort((a,b)=>b.lastUsedAt-a.lastUsedAt);
     if(remaining.length)return remaining[0];
     const key=known.length?createProseAssistantThreadKey(seed.key,globalThis.crypto.randomUUID()):seed.key;
     return {key,ownerKey:seed.key,title:conversationTitle(),createdAt:Date.now(),updatedAt:0,lastUsedAt:0,deleted:false};
@@ -125,17 +127,27 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   async function chooseConversation(key){
     if(!canManage())return;if(key===currentConversation?.key){showPage('chat');return;}
     if(!await permitSwitch()||!canManage())return;
-    const selected=catalogue.view().entries.find(item=>item.key===key&&!item.deleted);if(!selected)return;
-    await catalogueAction(()=>catalogue.activate(key,{defaultForCurrent:selected.ownerKey===seed.key?seed.key:undefined,remember:rememberConversation()}),async()=>{const selected=catalogue.view().entries.find(item=>item.key===key&&!item.deleted);if(!selected)throw Error();await openConversation(selected);showPage('chat');});
+    const selected=catalogue.view().entries.find(item=>item.key===key&&!item.deleted&&!item.archived);if(!selected)return;
+    await catalogueAction(()=>catalogue.activate(key,{defaultForCurrent:selected.ownerKey===seed.key?seed.key:undefined,remember:rememberConversation()}),async()=>{const selected=catalogue.view().entries.find(item=>item.key===key&&!item.deleted&&!item.archived);if(!selected)throw Error();await openConversation(selected);showPage('chat');});
   }
   async function newConversation(){
     if(!await permitSwitch()||!canManage())return;const id=globalThis.crypto.randomUUID(),key=createProseAssistantThreadKey(seed.key,id);
     await catalogueAction(()=>catalogue.create({ownerKey:seed.key,title:conversationTitle(),id,remember:rememberConversation()}),async()=>{const entry=catalogue.view().entries.find(item=>item.key===key&&!item.deleted);if(!entry)throw Error();await openConversation(entry);conversationList.resetSelection();showPage('chat');});
   }
   async function deleteConversations(keys){
-    if(!canManage()||!keys.length||!await confirm(`删除选中的 ${keys.length} 条特助对话？不会删除 ST 原聊天；已保存的历史版本仍保留。`)||!canManage())return;
+    if(!canManage()||!keys.length||!await confirm(`删除选中的 ${keys.length} 条特助对话？删除后不可找回；想留着请改用归档。`)||!canManage())return;
     if(keys.includes(currentConversation?.key)&&!await permitSwitch())return;
     await catalogueAction(()=>catalogue.delete(keys,{remember:rememberConversation()}),async()=>{if(keys.includes(currentConversation?.key))await openConversation(defaultConversation());conversationList.resetSelection();});
+  }
+  // Archiving is reversible, so it asks nothing; leaving the open conversation still protects an unsent draft.
+  async function archiveConversations(keys){
+    if(!canManage()||!keys.length)return;
+    if(keys.includes(currentConversation?.key)&&!await permitSwitch())return;
+    await catalogueAction(()=>catalogue.archive(keys,{remember:rememberConversation()}),async()=>{if(keys.includes(currentConversation?.key))await openConversation(defaultConversation());conversationList.resetSelection();});
+  }
+  async function unarchiveConversations(keys){
+    if(!canManage()||!keys.length)return;
+    await catalogueAction(()=>catalogue.unarchive(keys),async()=>{conversationList.resetSelection();});
   }
   async function renameConversation(key,title){
     if(!canManage())return false;
@@ -146,7 +158,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   }
   async function refreshConversations(){
     if(!catalogue||busy||saving||closing||historyWorking||catalogueWorking||pendingSnapshot||editing)return;
-    await catalogueAction(()=>catalogue.refresh(),async()=>{const entry=catalogue.view().entries.find(item=>item.key===currentConversation?.key);if(entry?.deleted)await openConversation(defaultConversation());else if(entry){currentConversation=entry;updateReference();}conversationList.resetSelection();});
+    await catalogueAction(()=>catalogue.refresh(),async()=>{const entry=catalogue.view().entries.find(item=>item.key===currentConversation?.key);if(entry?.deleted||entry?.archived)await openConversation(defaultConversation());else if(entry){currentConversation=entry;updateReference();}conversationList.resetSelection();});
   }
   function historyFailure(cause){historyNotice.textContent=/^prose_assistant_history_/.test(cause?.code||'')?String(cause.message).slice(0,240):'对话保存未确认，请保留本页内容并重试';}
   // The window is on screen before its conversation is read; say so instead of showing an empty transcript.
@@ -275,11 +287,13 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     const result=await submit({id,question:questionText});
     if(result===false&&value!==undefined&&alive()&&rows.has(id)&&!editing){editReply(rows.get(id),id,'question');if(editing)editing.input.value=questionText;}
   }
-  function showPage(next){page=next;config.hidden=page!=='settings';main.hidden=page!=='chat';conversationList.element.hidden=page!=='list';composer.hidden=page!=='chat';settingsButton.hidden=page!=='chat';listButton.hidden=!conversationFactory||page!=='chat';back.hidden=page==='chat';title.textContent=page==='settings'?'特助设置':page==='list'?'最近对话':'场外特助';controls();messageNavigation();restoreMessagePosition();}
+  const listTitle=()=>archivedView?'已归档对话':'最近对话';
+  function showPage(next){page=next;config.hidden=page!=='settings';main.hidden=page!=='chat';conversationList.element.hidden=page!=='list';composer.hidden=page!=='chat';settingsButton.hidden=page!=='chat';listButton.hidden=!conversationFactory||page!=='chat';back.hidden=page==='chat';title.textContent=page==='settings'?'特助设置':page==='list'?listTitle():'场外特助';controls();messageNavigation();restoreMessagePosition();}
   listen(dialog,'click',event=>{
     event.stopPropagation(); // Closing may remove the later isolation listeners synchronously.
     const action=event.target.closest?.('[data-pa-action]')?.dataset.paAction;if(action==='close'){void requestClose();return;}if(!alive())return;
-    if(action==='settings')showPage('settings');else if(action==='back')showPage('chat');else if(action==='conversations'&&!listButton.disabled)showPage('list');
+    if(action==='settings')showPage('settings');else if(action==='back')showPage('chat');else if(action==='conversations'&&!listButton.disabled){conversationList.showArchived(false);showPage('list');}
+    else if(action==='archived-conversations'&&!archivedButton.disabled){conversationList.showArchived(true);showPage('list');}
     else if(action==='older-messages')loadOlder();else if(action==='latest-messages')toLatest();else if(action==='capacity-new'&&!capacityNew.disabled)void newConversation();
     else if(action==='retry-conversations'&&catalogueRecovery&&!retryCatalogue.hidden){const recovery=catalogueRecovery;void catalogueAction(()=>catalogue.retry(),recovery.after,recovery.failure);}
     else if(action==='retry-history'){if(!historyWorking&&!closing)void(history?persistHistory(pendingSnapshot):loadHistory());}

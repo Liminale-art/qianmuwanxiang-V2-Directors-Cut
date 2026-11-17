@@ -176,7 +176,7 @@ test('summary schema requires complete ordered source coverage, never trusts fab
     }
     assert.throws(() => parseSummary('不是 JSON', batch, hashes));
     const prompt = summaryPrompt(messages, batch, DEFAULTS);
-    assert.ok(prompt.includes('故事事实与各角色实际知情'));
+    assert.ok(prompt.includes('区分公开事实与各角色的个体知情范围'));
     assert.ok(!prompt.includes('合成第5层'));
 });
 
@@ -218,8 +218,8 @@ test('summary prompt balances source-grounded narrative texture with factual and
         {name: '甲', mes: '范围外内容不能带入。'},
     ], before = structuredClone(source);
     const prompt = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS);
-    for (const rule of ['精炼连贯、自足的叙事回望', '情绪过程', '不凑字段', '不统一抒情',
-        '不拼接伪引语', '隐藏动机', '故事事实与各角色实际知情', 'scenes']) assert.ok(prompt.includes(rule), rule);
+    for (const rule of ['精炼连贯、表意自足的叙事单元', '情绪流转', '缺乏原文支撑的字段保持空缺', '贴合原文情绪浓度',
+        '不推演角色深层动机', '区分公开事实与各角色的个体知情范围', 'scenes']) assert.ok(prompt.includes(rule), rule);
     assert.deepEqual(JSON.parse(prompt.split('原文：')[1]), source.slice(0, 2).map((m, i) => ({floor: i + 1, speaker: m.name, role: 'character', text: m.mes})));
     assert.deepEqual(source, before);
     const withRecall = summaryPrompt(source, {start: 1, end: 2}, DEFAULTS, {recallCandidates: [{id: 'past', text: '往事'}]});

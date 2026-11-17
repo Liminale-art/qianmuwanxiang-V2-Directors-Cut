@@ -61,18 +61,12 @@ test('focus originals join the space meter exactly once and are not recoverable 
   assert.equal(data.trackedBytes,1244);assert.equal(data.manageableBytes,1244);assert.equal(data.recoverableBytes,0);
   assert.equal(data.categories.find(row=>row.category==='audio').bytes,1234);assert.equal(data.origin.quota,999999);
 });
-test('actual global card includes role metadata once and a single library entry',async()=>{
+test('actual global inventory includes role metadata once; the card shows it as one category block and no row or entry of its own',async()=>{
   const {rows}=fixture(),summary=summarizeCharacterStorage(namespace,rows),context=globalFixture(summary);vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);
   const data=await context.collectStorageInventory();context.storageInventoryState.data=data;assert.equal(data.trackedBytes,10+summary.bytes);assert.equal(data.manageableBytes,10+summary.bytes);assert.equal(data.recoverableBytes,0);assert.equal(data.categories.find(row=>row.category==='characters').bytes,summary.bytes);
-  const html=context.renderStorageManagementCard();assert.match(html,new RegExp(`<span>角色资料</span><span>${summary.documents.bytes} B</span>`));assert.equal((html.match(/data-storage-open="characters"/g)||[]).length,1);assert.doesNotMatch(html,/绑定 1 项|不含服务器参考图/);
+  const html=context.renderStorageManagementCard();assert.equal((html.match(new RegExp(`<em>角色资料</em><b>${summary.bytes} B</b>`,'g'))||[]).length,1);assert.match(html,new RegExp(`千幕资料已盘点</span><b>${10+summary.bytes} B</b>`));assert.doesNotMatch(html,/data-storage-open|<span>角色资料<\/span>|绑定 1 项|不含服务器参考图/);
 });
 test('unavailable role summary stays unknown rather than zero and does not print internal errors',async()=>{
   const context=globalFixture({status:'unavailable',namespace,bytes:null,error:'broken <index>'});vm.runInContext(['collectStorageInventory','optionalServiceLabel','optionalServiceLatestDisplay','optionalServiceDetail','renderStorageServiceStatus','renderStorageManagementCard'].map(section).join('\n'),context);const data=await context.collectStorageInventory();context.storageInventoryState.data=data;
-  assert.equal(data.trackedBytes,10);assert.equal(data.characterStorage.bytes,null);const html=context.renderStorageManagementCard();assert.match(html,/<span>角色资料<\/span><span>暂未读取<\/span>/);assert.match(html,/部分数据暂不可读取/);assert.doesNotMatch(html,/broken <index>|<span>角色资料<\/span><span>0 B/);
-});
-test('actual role management shortcut changes only the view and never rewrites engine, prompts or bindings',()=>{
-  let click;const routes=[],state={source:'comfy',prompt:'unchanged',bindings:['bound']},before=clone(state);
-  const root={querySelector:()=>null,querySelectorAll:selector=>selector==='[data-storage-open]'?[{dataset:{storageOpen:'characters'},addEventListener:(_name,fn)=>click=fn}]:[]};
-  const context=vm.createContext({activeTab:'plug',storageInventoryState:{sampledAt:1},storyboardBeginSession:()=>{},storyboardNavigate:(_root,route)=>routes.push(route)});vm.runInContext(section('bindStorageManagementEvents'),context);context.bindStorageManagementEvents(root);click();
-  assert.deepEqual(JSON.parse(JSON.stringify(routes)),[{view:'characters'}]);assert.equal(context.activeTab,'imagegen');assert.equal(context.storageInventoryState.sampledAt,0);assert.deepEqual(state,before);
+  assert.equal(data.trackedBytes,10);assert.equal(data.characterStorage.bytes,null);assert.equal(data.categories.some(row=>row.category==='characters'),false);const html=context.renderStorageManagementCard();assert.match(html,/千幕资料已盘点<\/span><b>10 B<\/b>/);assert.doesNotMatch(html,/broken <index>|broken &lt;index>|<em>角色资料<\/em>/);
 });

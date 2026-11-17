@@ -133,16 +133,12 @@ test('IndexedDB adds task, budget, local media, draft and timeline stores withou
   assert.match(source, /CHAT_SCOPED_CLEARABLE_STORES[\s\S]*STORE_VIDEO_TASKS[\s\S]*STORE_VIDEO_BUDGET[\s\S]*STORE_VIDEO_MEDIA[\s\S]*STORE_VIDEO_DRAFTS[\s\S]*STORE_VIDEO_TIMELINES/);
 });
 
-test('storage UI identifies video records as destructive and the adapter stays idle at startup', async () => {
+test('data management leaves video records out of cleanup and the adapter stays idle at startup', async () => {
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
   assert.equal(STORAGE_CATEGORY_LABELS.video,'影片');
-  assert.match(source, /video_tasks: \['可能含进行中任务 · 清理后无法恢复追踪', true\]/);
-  assert.match(source, /video_budget: \['费用与预算流水 · 清理后无法对账', true\]/);
-  assert.match(source, /video_media: \['不可恢复 · H3 动态成片', true\]/);
-  assert.match(source, /video_drafts: \['不可恢复 · 动态镜头编辑草稿', true\]/);
-  assert.match(source, /video_timelines: \['不可恢复 · 完整影片时间线', true\]/);
-  assert.match(source, /STORAGE_CHAT_CLEARABLE[^\n]*video_tasks[^\n]*video_budget[^\n]*video_media[^\n]*video_drafts[^\n]*video_timelines/);
+  assert.match(source, /const storageStoreHidden = \(name\) => [^\n]*\/\^\(storyboard\|video\)_\/\.test\(name\)/, 'data management does not offer video records for cleanup; they stay with their own module');
+  assert.doesNotMatch(source.match(/const STORAGE_CHAT_CLEARABLE = [^\n]*/)[0], /video_|storyboard_/);
   assert.doesNotMatch(source, /^import[^\n]*qianmu-video-store\.js/m);
 assert.match(source, /videoStore:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-store\.js\?v=1\.59\.202'\)/);
 assert.match(source, /videoResult:\s*\{[\s\S]*import\('\.\/features\/video\/qianmu-video-result\.js\?v=1\.59\.202'\)/);

@@ -260,7 +260,7 @@ test('twenty-one requested shots do not expand four-way workers or allow two sim
 
 async function exportState(state){
   const store={},notices=[];
-  let exported;const noop=()=>{},context=vm.createContext({...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
+  let exported;const noop=()=>{},context=vm.createContext({storageDownloadSink:null,...board,Blob,clone:structuredClone,storyboardState:()=>state,STORYBOARD_SOURCES:board.STORYBOARD_PROVIDER_REGISTRY,
     storyboardAdmissionEpoch:1,featureRuntime:{load:async name=>name==='storyboardPackageAssets'?packageAssets:{resolveImageAccountNamespace:async()=> 'st-user:fixture'}},
     isPlainObject:value=>Boolean(value&&typeof value==='object'&&!Array.isArray(value)),confirmDialog:async()=>true,getChatKey:()=> 'chat-a',getChatStore:()=>store,
     storyboardHydratePipelineArchive:noop,storyboardPlansForPortableExport:async value=>value,storyboardGalleryRecords:()=>[],storyboardGalleryCollections:()=>[],storyboardUtilsModule:async()=>({}),

@@ -73,7 +73,7 @@ test('media surfaces keep a dark inspection palette without changing the image b
 
 test('every known body portal is explicitly mounted with reader/media roles at its own owner boundary', async () => {
     const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-    const names = ['openFloorNavigator', 'openStorageCleanupDialog', 'openStorageChatCleanupDialog', 'ttsOpenQuickPopup', 'storyboardOpenVideoDraftEditor', 'storyboardOpenFilmViewer', 'storyboardOpenVideoViewer', 'storyboardOpenLightbox', 'coreadTopNotice', 'coreadOpenVoicePopup', 'coreadShowRefillChooser', 'mountReaderPortal', 'openTheaterFullscreen'];
+    const names = ['openFloorNavigator', 'ttsOpenQuickPopup', 'storyboardOpenVideoDraftEditor', 'storyboardOpenFilmViewer', 'storyboardOpenVideoViewer', 'storyboardOpenLightbox', 'coreadTopNotice', 'coreadOpenVoicePopup', 'coreadShowRefillChooser', 'mountReaderPortal', 'openTheaterFullscreen'];
     for (const name of names) {
         const start = source.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm')); assert.ok(start >= 0, name);
         const tail = source.slice(start), end = tail.slice(1).search(/^(?:async )?function /m), body = end < 0 ? tail : tail.slice(0, end + 1);
@@ -82,4 +82,12 @@ test('every known body portal is explicitly mounted with reader/media roles at i
         if (['storyboardOpenFilmViewer','storyboardOpenVideoViewer','storyboardOpenLightbox'].includes(name)) assert.match(body, /role:'media'/);
         if (name==='storyboardOpenVideoDraftEditor') assert.match(body, /inheritTheme:true/);
     }
+    // The data-management choosers (export, import, cleanup, per-chat cleanup) share one layer, mounted by the dialog module through the owner's session.
+    assert.match(source, /const storageDialogs = \(\) => storageDialogs\.cache \|\|= createStorageDialogs\(\{[\s\S]*?mountPortal: \(layer\) => appearanceSession\.mountPortal\(layer\)/);
+    for (const name of ['openStorageCleanupDialog', 'openStorageChatCleanupDialog']) {
+        const start = source.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm')); assert.ok(start >= 0, name);
+        assert.match(source.slice(start, start + 2600), /storageDialogs\(\)\.choose(?:Grouped)?\(/, name);
+    }
+    const dialogs = await readFile(new URL('../qianmu-storage-transfer.js', import.meta.url), 'utf8');
+    assert.match(dialogs, /document\.body\.appendChild\(layer\);[\s\S]*?mountPortal\(layer\);/);
 });

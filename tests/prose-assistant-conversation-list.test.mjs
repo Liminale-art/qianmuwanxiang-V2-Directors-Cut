@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {createProseAssistantConversationList} from '../qianmu-prose-assistant-conversation-list.js';
 import {proseAssistantPanelDom} from './helpers/prose-assistant-panel-dom.mjs';
 
-function fixture({onRename}={}){
+function fixture({onRename,archive=false}={}){
  const dom=proseAssistantPanelDom(),calls=[];
- const view=createProseAssistantConversationList({document:dom.doc,onOpen:key=>calls.push(['open',key]),onNew:()=>calls.push(['new']),onDelete:keys=>calls.push(['delete',keys]),onRefresh:()=>calls.push(['refresh']),onRename});
+ const view=createProseAssistantConversationList({document:dom.doc,onOpen:key=>calls.push(['open',key]),onNew:()=>calls.push(['new']),onDelete:keys=>calls.push(['delete',keys]),onRefresh:()=>calls.push(['refresh']),onRename,
+  ...(archive?{onArchive:keys=>calls.push(['archive',keys]),onUnarchive:keys=>calls.push(['unarchive',keys]),onArchivedView:value=>calls.push(['view',value])}:{})});
  dom.parent.append(view.element);
  return {dom,view,calls,search:dom.get('搜索特助对话'),rows:()=>view.element.querySelectorAll('[data-pa-conversation-key]'),action:name=>view.element.querySelector(`[data-pa-list-action="${name}"]`),list:view.element.querySelector('.qm-pa-conversation-rows')};
 }
@@ -128,4 +129,32 @@ test('opening an old long default name never truncates it or rewrites it when un
  const data=entries(1),renames=[];data[0].title='原有角色名😀'.repeat(25);const f=fixture({onRename:(...args)=>{renames.push(args);return true;}});f.view.render({entries:data});f.action('rename').click();const input=f.dom.get('对话名称');
  assert.equal(input.value,data[0].title);assert.equal(Object.hasOwn(input,'maxLength'),false);assert.equal(input.getAttribute('maxlength'),null);
  f.action('save-name').click();assert.equal(f.view.element.querySelector('[data-pa-conversation-editor]'),null);assert.deepEqual(renames,[]);assert.equal(f.rows()[0].querySelector('.qm-pa-conversation-title').textContent,data[0].title);f.view.dispose();
+});
+
+test('archived entries leave the ordinary list and appear only in the archived view, where they are restored rather than opened',()=>{
+ const f=fixture({archive:true,onRename:()=>true}),data=entries(4);data[1].archived=true;data[3].archived=true;f.view.render({entries:data,currentKey:'key-0'});
+ assert.deepEqual(f.rows().map(row=>row.dataset.paConversationKey),['key-2','key-0']);assert.equal(f.action('archived').hidden,false);assert.equal(f.action('archived').getAttribute('aria-pressed'),'false');
+ for(const name of ['archived','archive','restore','archive-one'])assert.ok(f.action(name).querySelector('svg')?.innerHTML.length>0,`${name} must have a rendered glyph`);
+ const one=f.action('archive-one');assert.equal(one.parentElement,f.rows()[0].parentElement);assert.equal(one.title,'归档');one.click();assert.deepEqual(f.calls,[['archive',['key-2']]]);
+ f.action('select').click();assert.equal(f.action('archive').hidden,true);assert.equal(one.hidden,true);f.rows()[1].click();assert.equal(f.action('archive').hidden,false);assert.equal(f.action('archive').title,'归档所选');assert.equal(f.action('restore').hidden,true);
+ f.action('archive').click();assert.deepEqual(f.calls.at(-1),['archive',['key-0']]);
+ f.action('archived').click();assert.deepEqual(f.calls.at(-1),['view',true]);assert.equal(f.action('archived').getAttribute('aria-pressed'),'true');assert.equal(f.action('select').getAttribute('aria-pressed'),'false','switching views drops the selection');
+ assert.deepEqual(f.rows().map(row=>row.dataset.paConversationKey),['key-3','key-1']);assert.equal(f.action('new').hidden,true);assert.equal(f.action('rename').hidden,true);assert.equal(f.action('archive-one'),null);
+ const calls=f.calls.length;f.rows()[0].click();assert.equal(f.calls.length,calls,'an archived conversation is not opened before it is restored');
+ assert.equal(f.action('restore-one').title,'恢复');f.action('restore-one').click();assert.deepEqual(f.calls.at(-1),['unarchive',['key-3']]);
+ f.action('select').click();f.rows()[0].click();f.rows()[1].click();assert.equal(f.action('restore').hidden,false);assert.equal(f.action('restore').title,'恢复所选');assert.equal(f.action('archive').hidden,true);assert.equal(f.action('delete').hidden,false);
+ f.action('restore').click();assert.deepEqual(f.calls.at(-1),['unarchive',['key-3','key-1']]);f.action('delete').click();assert.deepEqual(f.calls.at(-1),['delete',['key-3','key-1']]);
+ const {archived:_,...restored}=data[3];data[3]=restored;f.view.render({entries:data,currentKey:'key-0'});assert.deepEqual(f.rows().map(row=>row.dataset.paConversationKey),['key-1']);assert.equal(f.rows()[0].getAttribute('aria-pressed'),'true','the remaining selection survives');
+ f.search.value='角色 3';f.search.emit('input');assert.equal(f.rows().length,0);assert.equal(f.view.element.querySelector('.qm-pa-conversation-empty').textContent,'没有匹配的对话');
+ f.search.value='';f.search.emit('input');data[1]={...data[1],archived:false};f.view.render({entries:data});assert.equal(f.rows().length,0);
+ assert.equal(f.view.element.querySelector('.qm-pa-conversation-empty').textContent,'暂无归档对话');assert.equal(f.view.element.querySelector('.qm-pa-conversation-empty').hidden,false);
+ f.view.showArchived(false);assert.deepEqual(f.calls.at(-1),['view',false]);assert.equal(f.rows().length,4);assert.equal(f.action('new').hidden,false);const views=f.calls.length;f.view.showArchived(false);assert.equal(f.calls.length,views);
+ f.view.render({entries:data,busy:true});for(const name of ['archived','archive-one'])assert.equal(f.action(name).disabled,true);f.action('archived').click();f.action('archive-one').click();assert.equal(f.calls.length,views);f.view.dispose();
+});
+
+test('without archive callbacks the list keeps its original controls and still hides archived metadata',()=>{
+ const f=fixture(),data=entries(2);data[0].archived=true;f.view.render({entries:data});assert.equal(f.rows().length,1);
+ assert.equal(f.action('archived').hidden,true);assert.equal(f.action('archive-one').hidden,true);f.action('archive-one').click();f.view.showArchived(true);assert.equal(f.rows().length,1);
+ f.action('select').click();f.rows()[0].click();assert.equal(f.action('archive').hidden,true);assert.equal(f.action('restore').hidden,true);assert.deepEqual(f.calls,[]);f.view.dispose();
+ assert.throws(()=>createProseAssistantConversationList({document:f.dom.doc,onOpen(){},onNew(){},onDelete(){},onRefresh(){},onArchive(){}}),TypeError);
 });
