@@ -23,7 +23,7 @@ export async function inspectAccountFiles({ resolveNamespace, ...transport } = {
     const expectedAccount = await proseAssistantAccountForNamespace(await resolveNamespace());
     const result = await post(BASE, { version: 1, expectedAccount }, transport), value = result.value;
     if (!value || value.expectedAccount !== expectedAccount || !count(value.cleanable) || !count(value.total) || !Array.isArray(value.families)) return null;
-    return { expectedAccount, cleanable: value.cleanable, total: value.total, other: value.other, families: value.families.filter(row => row && typeof row.family === 'string' && count(row.retained)) };
+    return { expectedAccount, cleanable: value.cleanable, total: value.total, other: value.other, snapshots: value.snapshots, unrecognized: value.unrecognized, families: value.families.filter(row => row && typeof row.family === 'string' && count(row.retained)) };
   } catch (_) { return null; }
 }
 

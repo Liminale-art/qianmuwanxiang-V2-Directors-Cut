@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { imageServiceAccount, imageServiceAccountStillMatches } from './qianmu-image-service-access.js';
 
 export const ACCOUNT_FILE_LIMITS = Object.freeze({ scan: 200000, files: 60000, heads: 6000, timeoutMs: 25000, freshMs: 10 * 60 * 1000, keep: 1 });
-// 只有这些槽位的旧正文确认没有任何地方按指纹引用：场外特助的对话历史与目录、正文收藏。
-// 其余槽位只统计，待逐类核对引用关系后再加入。
-export const ACCOUNT_FILE_CLEANABLE = Object.freeze(['assistant-*', 'assistant-conversations', 'text-collection']);
+// 只有这些槽位的旧正文确认没有任何地方按指纹引用：场外特助的对话历史与目录、正文收藏、便笺（只读写当前版本）、
+// 字体库目录（现已改用同名覆盖的快照文件，带版本的那几份是改用前留下的）。其余槽位只统计，待逐类核对引用关系后再加入。
+export const ACCOUNT_FILE_CLEANABLE = Object.freeze(['assistant-*', 'assistant-conversations', 'text-collection', 'notes', 'font-library']);
 
 const sha = text => createHash('sha256').update(text).digest('hex');
 const error = (code, message, status = 409) => Object.assign(new Error(message), { code: `account_files_${code}`, status });

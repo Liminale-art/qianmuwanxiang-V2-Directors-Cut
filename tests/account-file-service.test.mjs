@@ -38,7 +38,7 @@ test('slots are grouped into families and the cleanable list is narrow', () => {
   assert.equal(accountFileFamily('assistant-' + 'a'.repeat(64)), 'assistant-*');
   assert.equal(accountFileFamily('assistant-conversations'), 'assistant-conversations');
   assert.equal(accountFileFamily('reader-chat-' + 'b'.repeat(32)), 'reader-chat-*');
-  assert.deepEqual([...ACCOUNT_FILE_CLEANABLE], ['assistant-*', 'assistant-conversations', 'text-collection']);
+  assert.deepEqual([...ACCOUNT_FILE_CLEANABLE], ['assistant-*', 'assistant-conversations', 'text-collection', 'notes', 'font-library']);
 });
 
 test('the inventory separates current versions, old versions, head-less originals and other accounts, without changing a file', async t => {
