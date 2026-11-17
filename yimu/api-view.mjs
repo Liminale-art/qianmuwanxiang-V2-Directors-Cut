@@ -69,7 +69,8 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     const save = button('保存预设', 'save', () => { nameRow.hidden = false; name.value = api.read().model || ''; name.focus(); });
     actions.append(test, fetch, save);
     external.append(presetRow, field('API URL', url), field('API Key', keyControl), field('模型', model), params, actions, nameRow);
-    card.append(header, field('连接', mode), profileArea, external); container.append(card);
+    const cache = el('p', 'ym-api-cache'); cache.hidden = true;
+    card.append(header, field('连接', mode), profileArea, external, cache); container.append(card);
     const editable = [mode, profile, stream, preset, url, key, model, temperature, maxTokens, contextTokens, name];
     const buttons = [remove, keyVisibility, test, fetch, save, saveConfirm, saveCancel];
     async function run(action, kind = 'account') {
@@ -98,6 +99,7 @@ export function mountApiView(container, { api, document = container?.ownerDocume
     }));
     change(stream, value => api.update({ stream: value }));
     function render(state) {
+        const hit = api.lastCache?.() || ''; cache.textContent = hit ? `上次整理 · ${hit}` : ''; cache.hidden = !hit;
         if (disposed) return;
         if (state) supplied = state;
         const nextScope = supplied?.scope ?? JSON.stringify([supplied?.snapshot?.binding || null, supplied?.isGlobal === true]);

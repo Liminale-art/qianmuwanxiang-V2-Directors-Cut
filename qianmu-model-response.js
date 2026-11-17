@@ -29,7 +29,9 @@ export function createModelResponseAccumulator({ onDelta, onReasoning, onRespons
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw failure('MODEL_PROTOCOL_ERROR', '模型返回的事件不是有效对象');
     if (data.error || data.type === 'error') throw failure('MODEL_REMOTE_ERROR', `模型服务返回错误：${String(data.error?.message || data.message || data.error || '未知错误').slice(0, 600)}`);
     if (terminal) return;
-    if (data.usage || data.usageMetadata) state.usage = structuredClone(data.usage || data.usageMetadata);
+    // 用量可能分几段到（Claude 流式：开头报输入与缓存、结尾报输出），逐段合并，后到的不冲掉先到的。
+    const usage = data.usage || data.usageMetadata || data.message?.usage;
+    if (usage && typeof usage === 'object') state.usage = { ...(state.usage || {}), ...structuredClone(usage) };
     const choice = first(data.choices), candidate = first(data.candidates);
     if (candidate) {
       const parts = candidate.content?.parts || [];
@@ -141,4 +143,30 @@ export async function readModelResponse(response, { stream = false, signal, guar
     try { await reader?.cancel(); } catch (_) {}
     try { reader?.releaseLock(); } catch (_) {}
   }
+}
+
+// 缓存命中读数：各协议在用量里报的字段不同，这里统一读出「输入多少、其中多少来自缓存、多少是新写入缓存」。
+// 渠道没有报缓存字段时返回 null（不等于命中 0）。只读返回值，不改请求。
+export function modelCacheUsage(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  const number = value => (typeof value === 'number' || typeof value === 'string') && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+  const pick = (...values) => { for (const value of values) { const found = number(value); if (found !== null) return found; } return null; };
+  const details = usage.prompt_tokens_details || usage.input_tokens_details || {};
+  const cached = pick(usage.cache_read_input_tokens, details.cached_tokens, usage.prompt_cache_hit_tokens, usage.cachedContentTokenCount, usage.cached_tokens);
+  const written = pick(usage.cache_creation_input_tokens, details.cache_write_tokens, details.cache_creation_tokens);
+  if (cached === null && written === null) return null;
+  // Claude 原生协议的 input_tokens 不含缓存部分，要把读、写两段加回去才是整段输入。
+  const native = number(usage.input_tokens) !== null && (number(usage.cache_read_input_tokens) !== null || number(usage.cache_creation_input_tokens) !== null);
+  const hitMiss = number(usage.prompt_cache_hit_tokens) !== null && number(usage.prompt_cache_miss_tokens) !== null ? number(usage.prompt_cache_hit_tokens) + number(usage.prompt_cache_miss_tokens) : null;
+  const input = native ? number(usage.input_tokens) + (cached || 0) + (written || 0) : pick(usage.prompt_tokens, usage.promptTokenCount, usage.input_tokens, hitMiss);
+  const hit = cached || 0;
+  return { input, cached: hit, written: written || 0, ratio: input ? Math.min(1, hit / input) : null };
+}
+// 一句话读数，如「缓存命中 73%（7.3k / 10k）」；没有可报的内容时为空串。
+export function modelCacheText(usage) {
+  const cache = modelCacheUsage(usage);
+  if (!cache) return '';
+  const short = value => value >= 10000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
+  const head = cache.ratio === null ? `缓存命中 ${short(cache.cached)} token` : `缓存命中 ${Math.round(cache.ratio * 100)}%（${short(cache.cached)} / ${short(cache.input)}）`;
+  return cache.written ? `${head} · 新写入 ${short(cache.written)}` : head;
 }

@@ -1,3 +1,4 @@
+import { modelCacheText } from '../qianmu-model-response.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -13,7 +14,7 @@ assert.ok(start > 0 && end > start, 'production log renderer is available');
 const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const settings = { logOpenState: {} };
 const render = vm.runInNewContext(`${entry.slice(start, end)}\nrenderLogEntry`, {
-  settings, renderModelDiagnostics, modelFailureText, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length,
+  settings, renderModelDiagnostics, modelFailureText, htmlEscape: escape, infoTag: value => `<small>${escape(value)}</small>`, estimateTokens: value => String(value).length, modelCacheText,
 });
 
 test('collapsed logs never read, tokenize or escape heavyweight request and response bodies', () => {

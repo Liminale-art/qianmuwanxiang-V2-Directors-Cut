@@ -3,7 +3,7 @@ import { summaryRequestBudget } from './budget.mjs';
 import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
 import { resolveApiRoot, sendWithAuthFallback, stProxyBody, proxyPayloadError, describeHttpFailure, redactSecrets, parseModelList, probeConnection,
     chatPayload, probePayload } from './model-compat.mjs';
-import { readModelResponse } from './model-response.mjs';
+import { readModelResponse, modelCacheText } from './model-response.mjs';
 
 const DEFAULTS = Object.freeze({ mode: 'inherit', apiUrl: '', apiKey: '', model: '', models: [], profileId: '', profileModel: '', profileConfigured: false, qianmuPresetId: '',
     temperature: 1, maxTokens: 32000, contextTokens: 1000000, stream: false, presets: [], selectedPreset: '', revision: 0 });
@@ -359,6 +359,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             return { ok: true, scope };
         } catch (error) { aborted(signal); throw new Error(errorText(error, config)); }
     }
+    let lastCache = ''; // 最近一次整理请求的缓存命中读数（渠道没报则为空）
     async function generate(prompt, { connection, signal, systemPrompt = '', maxTokens, onChunk } = {}) {
         await saving.catch(() => {}); let config = read();
         connection ||= config.mode === 'qianmu' ? effectiveConnection() : { revision: config.revision };
@@ -380,7 +381,8 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
                 chatPayload({ model: config.model, messages, temperature: config.temperature, maxTokens: outputTokens, stream: config.stream }), signal);
             let shown = '';
             const onDelta = full => { const delta = full.slice(shown.length); shown = full; if (delta) onChunk?.(delta, full); };
-            const result = (await readModelResponse(response, { stream: config.stream, signal, onDelta })).text;
+            const reply = await readModelResponse(response, { stream: config.stream, signal, onDelta }), result = reply.text;
+            lastCache = modelCacheText(reply.usage);
             aborted(signal); assertCurrent(connection || { revision: config.revision });
             if (!result.trim()) fail('忆幕没有收到可用的整理结果');
             return result;
@@ -566,7 +568,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             throw new Error(errorText(error, config));
         } finally { scope.dispose(); }
     }
-    return { read, update, effectiveConnection, assertCurrent, generate, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
+    return { read, update, effectiveConnection, assertCurrent, generate, lastCache: () => lastCache, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
         vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates,
         fetchVectorModels, testVectorConnection,
         rerankRead, updateRerank, saveRerankPreset, loadRerankPreset, deleteRerankPreset, rerankCandidates,
