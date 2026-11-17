@@ -112,3 +112,19 @@ test('routes answer in JSON, and the browser side turns a missing backend into "
   assert.equal(await inspectAccountFiles({ ...transport, fetchImpl: async () => { throw new Error('offline'); } }), null);
   assert.deepEqual((await cleanAccountFiles({ expectedAccount, families: [] }, transport)).removed, { count: 0, bytes: 0 });
 });
+
+test('slots left behind by a retired feature are removed whole: head, every version and its originals', async t => {
+  const f = await fixture(t);
+  const index = await f.slot('collections', 3), records = await f.slot('collection-record', 4, { head: false }), fonts = await f.slot('fontasset-local-' + 'd'.repeat(32), 2, { head: false });
+  const live = await f.slot('text-collection', 2);
+  const before = await f.service.inspect(f.req, f.input()), row = family => before.families.find(item => item.family === family);
+  assert.equal(row('collections').retired, true); assert.equal(row('collections').removable.count, 4, 'head plus three versions');
+  assert.equal(row('collection-record').removable.count, 4); assert.equal(row('fontasset-local-*').cleanable, false);
+  assert.equal(before.cleanable.count, 4 + 4 + 1);
+  const done = await f.service.clean(f.req, f.input({ families: ['collections', 'collection-record'] }));
+  assert.equal(done.removed.count, 8); assert.equal(done.failed.count, 0);
+  const left = await f.names();
+  assert.equal(left.some(name => /-collections|-collection-record/.test(name)), false);
+  assert.ok(fonts.every(body => left.includes(body.file)), 'font originals stay'); assert.ok(live.every(body => left.includes(body.file)), 'the current collection feature is not the retired one');
+  assert.ok(index.length && records.length);
+});

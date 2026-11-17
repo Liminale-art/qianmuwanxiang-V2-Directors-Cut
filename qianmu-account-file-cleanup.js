@@ -23,13 +23,13 @@ export async function inspectAccountFiles({ resolveNamespace, ...transport } = {
     const expectedAccount = await proseAssistantAccountForNamespace(await resolveNamespace());
     const result = await post(BASE, { version: 1, expectedAccount }, transport), value = result.value;
     if (!value || value.expectedAccount !== expectedAccount || !count(value.cleanable) || !count(value.total) || !Array.isArray(value.families)) return null;
-    return { expectedAccount, cleanable: value.cleanable, total: value.total, other: value.other, snapshots: value.snapshots, unrecognized: value.unrecognized, families: value.families.filter(row => row && typeof row.family === 'string' && count(row.retained)) };
+    return { expectedAccount, cleanable: value.cleanable, total: value.total, other: value.other, snapshots: value.snapshots, unrecognized: value.unrecognized, families: value.families.filter(row => row && typeof row.family === 'string' && count(row.retained) && count(row.removable)) };
   } catch (_) { return null; }
 }
 
 // 清理白名单内各类的旧版本。返回 { removed:{count,bytes}, kept, failed }；失败时抛出可直接展示的中文原因。
 export async function cleanAccountFiles(inventory, transport = {}) {
-  const families = (inventory?.families || []).filter(row => row.cleanable === true && row.retained.count > 0).map(row => row.family);
+  const families = (inventory?.families || []).filter(row => row.cleanable === true && row.removable.count > 0).map(row => row.family);
   if (!families.length) return { removed: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 }, failed: { count: 0 } };
   const result = await post(`${BASE}/clean`, { version: 1, expectedAccount: inventory.expectedAccount, families }, transport);
   if (!result.value || !count(result.value.removed)) throw new Error(result.error || '配套后端暂不支持清理账户文件，请更新后端。');

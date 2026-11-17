@@ -14,6 +14,9 @@ export const ACCOUNT_FILE_LIMITS = Object.freeze({ scan: 200000, files: 60000, h
 // 字体库目录（现已改用同名覆盖的快照文件，带版本的那几份是改用前留下的）。其余槽位只统计，待逐类核对引用关系后再加入。
 export const ACCOUNT_FILE_CLEANABLE = Object.freeze(['assistant-*', 'assistant-conversations', 'text-collection', 'notes', 'font-library']);
 
+// 已退役功能留下的槽位：现在没有任何代码读它们，入口、各版正文和原件整类删除。
+export const ACCOUNT_FILE_RETIRED = Object.freeze(['collections', 'collection-record']);
+
 const sha = text => createHash('sha256').update(text).digest('hex');
 const error = (code, message, status = 409) => Object.assign(new Error(message), { code: `account_files_${code}`, status });
 const fail = (code, message, status) => { throw error(code, message, status); };
@@ -121,17 +124,18 @@ export function createAccountFileService({ dataRoot, io = fs, now = () => Date.n
         const total = { count: found.other.count + found.snapshots.count + found.loose.count, bytes: found.other.bytes + found.snapshots.bytes + found.loose.bytes };
         for (const [name, slot] of found.slots) {
             const family = accountFileFamily(name);
-            if (!families.has(family)) families.set(family, { family, cleanable: ACCOUNT_FILE_CLEANABLE.includes(family), slots: 0, current: { count: 0, bytes: 0 }, retained: { count: 0, bytes: 0 }, originals: { count: 0, bytes: 0 } });
+            if (!families.has(family)) families.set(family, { family, cleanable: ACCOUNT_FILE_CLEANABLE.includes(family) || ACCOUNT_FILE_RETIRED.includes(family), retired: ACCOUNT_FILE_RETIRED.includes(family), removable: { count: 0, bytes: 0 }, slots: 0, current: { count: 0, bytes: 0 }, retained: { count: 0, bytes: 0 }, originals: { count: 0, bytes: 0 } });
             const row = families.get(family); row.slots++;
-            if (slot.head) { add(row.current, slot.head.file.stat); add(total, slot.head.file.stat); }
+            if (slot.head) { add(row.current, slot.head.file.stat); add(total, slot.head.file.stat); if (row.retired) add(row.removable, slot.head.file.stat); }
             for (const body of slot.bodies) {
                 add(total, body.file.stat);
+                if (row.retired || row.cleanable && slot.head && body.fingerprint !== slot.head.fingerprint) add(row.removable, body.file.stat);
                 // 没有入口的槽位：正文是按指纹被引用的不可变原件，不算旧版本。
                 add(!slot.head ? row.originals : body.fingerprint === slot.head.fingerprint ? row.current : row.retained, body.file.stat);
             }
         }
         const rows = [...families.values()].sort((a, b) => b.retained.bytes - a.retained.bytes || (a.family < b.family ? -1 : 1));
-        const cleanable = rows.filter(row => row.cleanable).reduce((sum, row) => ({ count: sum.count + row.retained.count, bytes: sum.bytes + row.retained.bytes }), { count: 0, bytes: 0 });
+        const cleanable = rows.reduce((sum, row) => ({ count: sum.count + row.removable.count, bytes: sum.bytes + row.removable.bytes }), { count: 0, bytes: 0 });
         return { families: rows, cleanable, total, other: found.other, snapshots: found.snapshots, unrecognized: found.loose };
     }
 
@@ -142,12 +146,25 @@ export function createAccountFileService({ dataRoot, io = fs, now = () => Date.n
 
     async function clean(req, raw) {
         const context = capture(req, raw), requested = raw.families;
-        if (!Array.isArray(requested) || !requested.length || requested.length > ACCOUNT_FILE_CLEANABLE.length
-            || requested.some(family => typeof family !== 'string' || !ACCOUNT_FILE_CLEANABLE.includes(family)) || new Set(requested).size !== requested.length) fail('contract', '清理范围无效', 400);
+        const allowed = [...ACCOUNT_FILE_CLEANABLE, ...ACCOUNT_FILE_RETIRED];
+        if (!Array.isArray(requested) || !requested.length || requested.length > allowed.length
+            || requested.some(family => typeof family !== 'string' || !allowed.includes(family)) || new Set(requested).size !== requested.length) fail('contract', '清理范围无效', 400);
         const found = await scan(context), removed = { count: 0, bytes: 0 }, kept = { count: 0, bytes: 0 }, failed = { count: 0 };
         const cutoff = BigInt(now() - freshMs) * 1000000n;
+        const remove = async (file, recheck = null) => {
+            const size = Number(file.stat.size), filename = path.join(context.folder, file.name);
+            context.guard();
+            try {
+                const live = await lstat(filename);
+                if (!regular(live) || !sameVersion(live, file.stat) || recheck && !await recheck()) { kept.count++; kept.bytes += size; return; }
+                await io.unlink(filename); removed.count++; removed.bytes += size;
+            } catch (cause) { if (/^account_files_/.test(cause?.code || '')) throw cause; failed.count++; }
+        };
         for (const [name, slot] of found.slots) {
-            if (!slot.head || !requested.includes(accountFileFamily(name))) continue;
+            if (!requested.includes(accountFileFamily(name))) continue;
+            // 退役槽位：先删入口，再删各版正文与原件。
+            if (ACCOUNT_FILE_RETIRED.includes(accountFileFamily(name))) { if (slot.head) await remove(slot.head.file); for (const body of slot.bodies) await remove(body.file); continue; }
+            if (!slot.head) continue;
             // 入口指向的那份必须在场，否则这个槽位状态不明，整槽不动。
             if (!slot.bodies.some(body => body.fingerprint === slot.head.fingerprint)) { for (const body of slot.bodies) { kept.count++; kept.bytes += Number(body.file.stat.size); } continue; }
             const old = slot.bodies.filter(body => body.fingerprint !== slot.head.fingerprint).sort((a, b) => a.file.stat.mtimeNs < b.file.stat.mtimeNs ? 1 : -1);
@@ -155,16 +172,8 @@ export function createAccountFileService({ dataRoot, io = fs, now = () => Date.n
                 const size = Number(body.file.stat.size);
                 // 保留最近一份旧版本；刚写入不久的也保留（可能是另一处正在保存、入口还没切过去）。
                 if (index < ACCOUNT_FILE_LIMITS.keep || body.file.stat.mtimeNs > cutoff) { kept.count++; kept.bytes += size; continue; }
-                context.guard();
-                const filename = path.join(context.folder, body.file.name);
-                try {
-                    const live = await lstat(filename);
-                    if (!regular(live) || !sameVersion(live, body.file.stat)) { kept.count++; kept.bytes += size; continue; }
-                    // 删除前再读一次入口：期间入口若改指这份正文，就不删。
-                    const head = await readSmall(context, slot.head.file.name, await lstat(path.join(context.folder, slot.head.file.name)));
-                    if (!head || head.fingerprint !== slot.head.fingerprint) { kept.count++; kept.bytes += size; continue; }
-                    await io.unlink(filename); removed.count++; removed.bytes += size;
-                } catch (cause) { if (/^account_files_/.test(cause?.code || '')) throw cause; failed.count++; }
+                // 删除前再读一次入口：期间入口若改指这份正文，就不删。
+                await remove(body.file, async () => { const head = await readSmall(context, slot.head.file.name, await lstat(path.join(context.folder, slot.head.file.name))); return head && head.fingerprint === slot.head.fingerprint; });
             }
         }
         return { ok: true, version: 1, expectedAccount: context.account, removed, kept, failed };
