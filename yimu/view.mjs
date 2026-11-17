@@ -1177,7 +1177,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         }
     });
     return {
-        render, open, close,
+        render, open, close, isOpen: () => opened,
         destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }

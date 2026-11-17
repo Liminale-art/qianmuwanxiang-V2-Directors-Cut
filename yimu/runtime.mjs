@@ -19,7 +19,7 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200 }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000 }) {
     // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
     // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
     // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
@@ -171,6 +171,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
     }
 
+    // 后台静默刷新（一轮生成至少三次）不必每次都先探一遍服务：刚确认过正常就直接读数据，读失败自会报出来。
+    let serviceOkAt = 0;
+    const serviceFresh = () => state.service?.status === 'ok' && Date.now() - serviceOkAt < serviceFreshMs;
     async function checkService() {
         const ticket = ++serviceSequence;
         state.service = { status: 'checking', version: '', requiredVersion: SERVICE_VERSION }; emit();
@@ -178,7 +181,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             const value = await api.health();
             if (!disposed && ticket === serviceSequence) {
                 const version = typeof value?.version === 'string' ? value.version : '';
-                state.service = { status: 'ok', version, requiredVersion: SERVICE_VERSION }; emit();
+                state.service = { status: 'ok', version, requiredVersion: SERVICE_VERSION }; serviceOkAt = Date.now(); emit();
                 // A published service newer than the running one is a soft notice, never a block.
                 if (typeof latestService === 'function') Promise.resolve().then(() => latestService()).then(latest => {
                     if (disposed || ticket !== serviceSequence || state.service.status !== 'ok' || !isNewerYimuVersion(version, latest)) return;
@@ -230,7 +233,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
                 if (serviceError) throw serviceError;
-                if (quiet) await checkService();
+                if (quiet && !serviceFresh()) await checkService();
                 const data = await readSource(snapshot.binding);
                 if (ticket !== sequence || disposed) return;
                 const live = await host.snapshot();

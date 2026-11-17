@@ -83,7 +83,8 @@ test('snapshot returns detached chat and true chat-completion window without any
     const source = await f.host.snapshot();
     assert.deepEqual(source.binding, { avatar: 'actor.png', file: 'chapter-one', integrity: 'stable-chat-id' });
     assert.equal(source.name, '角色甲'); assert.equal(source.maxContext, 32768);
-    source.messages[0].extra.nested.original = false;
+    assert.throws(() => { source.messages[0].extra.nested.original = false; }, TypeError, 'the snapshot is read-only all the way down');
+    assert.notEqual(source.messages[0], f.ctx.chat[0], 'and never the live message object');
     assert.equal(f.ctx.chat[0].extra.nested.original, true);
     f.ctx.chatId = 'chapter-two';
     assert.equal((await f.host.snapshot()).binding.file, 'chapter-two'); assert.equal(f.writes.length, 0);
@@ -106,7 +107,7 @@ test('prepare freezes source, plan and core without early prompt writes or sourc
     assert.deepEqual(f.ctx.chat, original); assert.deepEqual(target, beforeCore);
     assert.ok(f.writes.every(write => write[1] === ''));
     assert.equal(f.host.inject, undefined, 'no parallel additive implementation');
-    candidate.entries[0].text = 'externally changed'; source.messages[0].mes = 'externally changed';
+    candidate.entries[0].text = 'externally changed'; assert.throws(() => { source.messages[0].mes = 'externally changed'; }, TypeError);
     const payload = request(target), result = await f.host.applyPrepared(payload, prepared.session);
     assert.equal(result.applied, true); assert.deepEqual(result.removedFloors, [1, 2, 3]);
     assert.equal(payload.messages[0].content, '角色设定，保持不变');
@@ -299,4 +300,20 @@ test('unblocked input settles a round even when a theme suppresses GENERATION_EN
     assert.equal(host.busyGenerating(), false);
     off();
     assert.equal(observers[0].off, true);
+});
+
+test('snapshots reuse the copy of every unchanged message and regenerate only what the host rewrote in place', async () => {
+    const f = fixture(), first = await f.host.snapshot(), again = await f.host.snapshot();
+    assert.notEqual(first.messages, again.messages, 'each snapshot owns its array');
+    assert.ok(first.messages.every((message, index) => message === again.messages[index]), 'unchanged messages are not copied again');
+    f.ctx.chat[1].mes += '（原地改写）';
+    f.ctx.chat[0].extra.nested.original = 'edited deep inside';
+    const changed = await f.host.snapshot();
+    assert.notEqual(changed.messages[0], first.messages[0]); assert.notEqual(changed.messages[1], first.messages[1]);
+    assert.equal(changed.messages[1].mes, f.ctx.chat[1].mes); assert.equal(changed.messages[0].extra.nested.original, 'edited deep inside');
+    assert.equal(first.messages[0].extra.nested.original, true, 'an earlier snapshot keeps what it saw');
+    assert.ok(changed.messages.slice(2).every((message, index) => message === first.messages[index + 2]));
+    assert.equal(JSON.stringify(changed.messages), JSON.stringify(f.ctx.chat), 'the snapshot is the chat as it would be saved');
+    f.ctx.chat.push({ name: '角色甲', is_user: false, mes: '新的一层', send_date: 'later' });
+    assert.equal((await f.host.snapshot()).messages.length, f.ctx.chat.length);
 });

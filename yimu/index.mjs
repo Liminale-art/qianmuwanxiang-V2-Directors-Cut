@@ -13,14 +13,17 @@ export function boot() {
         const saved = globalThis.SillyTavern.getContext().extensionSettings?.yimu;
         return { showShortcut: saved?.showShortcut === true, ...(Number.isSafeInteger(saved?.manualBatchFloors) ? { manualBatchFloors: saved.manualBatchFloors } : {}) };
     };
-    let removeEntries = null, settledService = null;
+    let removeEntries = null, settledService = null, pending = null;
     const host = createHost();
     // A background recheck keeps the last settled service status instead of flashing "checking".
     const render = state => {
         const ui = getUi(), status = state.service?.status;
         if (status && status !== 'checking') settledService = state.service;
         const shown = status === 'checking' && !state.loading && settledService ? { ...state, service: settledService } : state;
-        view.render({ ...shown, ui }); removeEntries?.update(ui, shown);
+        removeEntries?.update(ui, shown);
+        // 面板关着时不整页重画（一轮生成会报好几次状态，每次都要重排全部记忆卡片）：只记下最新状态，打开时画一次。
+        if (view.isOpen?.() === false) { pending = { ...shown, ui }; return; }
+        pending = null; view.render({ ...shown, ui });
     };
     const view = createView({ connectionApi: host.connectionApi, onNotice: notify, onAction: async (type, payload) => {
         if (type !== 'uiSettings') return controller.action(type, payload);
@@ -45,6 +48,7 @@ export function boot() {
     // Reopening a loaded chat re-reads quietly so controls never flash disabled.
     const open = () => {
         view.open();
+        if (pending) { const state = pending; pending = null; view.render(state); }
         const current = controller.state;
         const warm = Boolean(current.snapshot && current.document && !current.loading && !current.error);
         void controller.refresh(warm ? { quiet: true, auto: false } : {});

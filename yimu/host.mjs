@@ -67,6 +67,25 @@ function sameMetadata(a, b) {
     return orderedJson(comparable(a)) === orderedJson(comparable(b));
 }
 
+// 聊天快照按条复用。每次取快照仍把每条消息序列化一遍来核对它有没有变（ST 会原地改写消息），
+// 没变的直接复用上次那份只读副本，变了的才重新生成；一轮生成里十来次快照不再各自深拷贝整段聊天。
+// 副本是冻结的：快照只供读取，任何改写都会当场报错，而不是悄悄污染后续快照。
+const snapshotCopies = new WeakMap();
+const deepFreeze = value => {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) { Object.freeze(value); for (const key of Object.keys(value)) deepFreeze(value[key]); }
+    return value;
+};
+function snapshotMessages(chat) {
+    return Array.from(chat, message => {
+        if (message === null || typeof message !== 'object') return message;
+        const serialized = JSON.stringify(message), known = snapshotCopies.get(message);
+        if (known?.serialized === serialized) return known.copy;
+        const copy = deepFreeze(JSON.parse(serialized));
+        snapshotCopies.set(message, { serialized, copy });
+        return copy;
+    });
+}
+
 function hasToolMessage(message) {
     return message?.role === 'tool' || Array.isArray(message?.extra?.tool_invocations)
         || Array.isArray(message?.tool_calls) || message?.tool_call_id != null;
@@ -107,7 +126,7 @@ export function createHost({
         const binding = bindingOf(ctx);
         return {
             binding,
-            messages: clone(ctx.chat),
+            messages: snapshotMessages(ctx.chat),
             name: text(ctx.characters?.[ctx.characterId]?.name || ctx.name2),
             avatarUrl: typeof ctx.getThumbnailUrl === 'function' ? ctx.getThumbnailUrl('avatar', binding.avatar)
                 : `/thumbnail?type=avatar&file=${encodeURIComponent(binding.avatar)}`,

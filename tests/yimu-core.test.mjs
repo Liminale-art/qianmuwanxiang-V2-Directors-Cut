@@ -386,3 +386,21 @@ test('vector similarity only reorders selection when the chat enables it, and a 
         assert.equal(fallback.semantic, false); assert.deepEqual(fallback.memoryIds, plain.memoryIds);
     }
 });
+
+test('word lists are remembered per text and callers that extend one work on their own copy', async () => {
+    const { narrativeTerms } = await import('../yimu/core.mjs'), { recallCandidateScore } = await import('../yimu/recall.mjs');
+    const text = '她在雨夜的车站等那封迟到的信', first = narrativeTerms(text), size = first.size;
+    assert.equal(narrativeTerms(text), first, 'the same text is segmented once');
+    recallCandidateScore({ id: 'x', title: text, text, scenes: [] }, text, { recallSynonyms: '车站=站台=月台' });
+    assert.equal(narrativeTerms(text).size, size, 'synonym expansion elsewhere never leaks into the remembered list');
+});
+
+test('a closed panel is not repainted and a quiet refresh does not probe a service it has just confirmed', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const [entry, runtime, view] = await Promise.all(['index.mjs', 'runtime.mjs', 'view.mjs'].map(name => readFile(new URL(`../yimu/${name}`, import.meta.url), 'utf8')));
+    assert.match(entry, /if \(view\.isOpen\?\.\(\) === false\) \{ pending = \{ \.\.\.shown, ui \}; return; \}/);
+    assert.match(entry, /view\.open\(\);\s*if \(pending\) \{ const state = pending; pending = null; view\.render\(state\); \}/, 'the latest state is painted when the panel opens');
+    assert.match(view, /render, open, close, isOpen: \(\) => opened,/);
+    assert.match(runtime, /if \(quiet && !serviceFresh\(\)\) await checkService\(\);/);
+    assert.match(runtime, /state\.service\?\.status === 'ok' && Date\.now\(\) - serviceOkAt < serviceFreshMs/);
+});

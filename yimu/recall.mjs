@@ -51,7 +51,7 @@ function entryMetadataTerms(entry, groups) {
 
 function expandedTerms(text, groups) {
     const normalized = normalizeTerm(text);
-    const terms = narrativeTerms(text);
+    const terms = new Set(narrativeTerms(text));
     for (const group of groups) if (group.some(term => normalized.includes(term))) for (const term of group) terms.add(term);
     return terms;
 }

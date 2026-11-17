@@ -245,9 +245,21 @@ ${JSON.stringify(orderForInjection(entries, entryOrder).map(entry => ({ id: entr
 </yimu_memory>`;
 }
 
+// 分词器只建一次；同一段正文的词表记住（切片正文很少变，而每轮生成都要对全部切片取一遍词表）。
+// 返回的集合是共用的，调用方只读。
+let wordSegmenter;
+const termMemo = new Map(), TERM_MEMO_LIMIT = 3000;
 export function narrativeTerms(text) {
+    const source = String(text), known = termMemo.get(source);
+    if (known) return known;
+    const terms = computeNarrativeTerms(source);
+    if (termMemo.size >= TERM_MEMO_LIMIT) termMemo.clear();
+    termMemo.set(source, terms);
+    return terms;
+}
+function computeNarrativeTerms(text) {
     const normalized = String(text).normalize('NFKC').toLowerCase();
-    const words = typeof Intl.Segmenter === 'function' ? [...new Intl.Segmenter('zh', { granularity: 'word' }).segment(normalized)]
+    const words = typeof Intl.Segmenter === 'function' ? [...(wordSegmenter ||= new Intl.Segmenter('zh', { granularity: 'word' })).segment(normalized)]
         .filter(part => part.isWordLike).map(part => part.segment) : normalized.match(/[\p{L}\p{N}]+/gu) || [];
     return new Set(words.filter(word => word.length > 1).slice(-200));
 }
