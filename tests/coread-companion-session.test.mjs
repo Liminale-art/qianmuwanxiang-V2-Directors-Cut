@@ -14,12 +14,12 @@ function fixture(){
     clone:structuredClone,isPlainObject:x=>!!x&&typeof x==='object'&&!Array.isArray(x),coreadBookMeta:id=>books.find(b=>b.id===id),
     getPersonaName:()=>host.name1 || 'User',getPersonaDescription:()=>host.persona_description || 'User desc',coreadPersonaAvatarRaw:'',URL,
     htmlEscape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
-    coreadDistilling:false,coreadAutoTextInFlight:false,coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,readerView:null,readerContentCache:null,coreadOpenRequestId:0,activeTab:'coread',readerAssistant:{},readerDialog:{bucket:'',loaded:false},readerAssistantSessions:new Map(),
+    coreadDistilling:false,coreadAutoTextInFlight:false,coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,readerView:null,readerContentCache:null,coreadOpenRequestId:0,activeTab:'coread',readerAssistant:{},readerDialog:{bucket:'',loaded:false},readerAssistantSessions:new Map(),
     reader,coreadVectorStates:new Map(),coreadVecCache:null,MODULE_NAME:'fixture',coreadMaybeAutoDistillText:()=>{},
     focusClockActiveLock:()=>null,focusClockBlockExit:()=>false,focusClockRememberLockedReader:()=>{},focusClockResumeReading:()=>{},focusClockPauseForReadingExit:()=>{},
     toast:text=>notices.push(text),saveSettings:()=>{},coreadInvalidatePool:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},ttsStopPlayback:()=>{},coreadPendingChatImages:()=>[],coreadSaveProgress:()=>{},coreadShowRefillChooser:id=>notices.push('refill:'+id),
-    coreadLoadDialog:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},coreadSweepOrphanLore:()=>{},
+    coreadLoadDialog:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},
     coreadCurrentReadBoundarySync:bookId=>({bookId,readTo:100,chapterIndex:1,progress:10}),coreadAssistantConfig:()=>({historyMode:'session'}),repairLegacyCoreadDialogMessages:messages=>({messages,changed:false}),
     coreadNormalizeSlices:rows=>rows,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0,migrated:false}),
     blobStore:{getBook:async()=>({chapters:[{content:'one'},{content:'two'},{content:'three'}]}),getReaderChat:async()=>null,putReaderChat:async(...args)=>writes.push(args)},
@@ -228,13 +228,13 @@ test('failed archive save blocks identity switching without discarding the old d
 });
 
 test('every asynchronous memory mutation blocks identity changes while its owner is being saved',async()=>{
-  for(const flag of ['coreadMemoryWrites','coreadIdentitySwitchBusy','coreadWorldSyncBusy','coreadAutoTextInFlight']){
+  for(const flag of ['coreadMemoryWrites','coreadIdentitySwitchBusy','coreadAutoTextInFlight']){
     const e=fixture();vm.runInContext(`${flag}=1`,e.context);
     assert.equal(e.context.coreadSelectCompanion('b.png'),false,flag);
     assert.equal(await e.context.coreadApplyIdentityChoice('user',''),false,flag);
     await e.context.coreadOpenBook('book');assert.equal(e.context.readerView,null,flag);
   }
-  for(const name of ['coreadDistillMainline','coreadRegenSlice','coreadSaveSliceEdit','coreadDeleteSlice','coreadClearAllSlices','coreadMigrateFromChat']){
+  for(const name of ['coreadRegenSlice','coreadSaveSliceEdit','coreadDeleteSlice','coreadClearAllSlices','coreadMigrateFromChat']){
     assert.match(section(name),/coreadMemoryWrites\+\+;\s*try\s*\{/);
     assert.match(section(name),/finally\s*\{ coreadMemoryWrites--; \}/);
   }

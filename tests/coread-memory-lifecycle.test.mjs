@@ -49,13 +49,13 @@ assert.doesNotMatch(manual, /Math\.max\(to \+ 1, Number\(readerDialog\.cursor\)/
 assert.match(manual, /coreadReplaceDialogRange/, '手动总结必须使用统一的安全替换事务');
 const replace = source.slice(source.indexOf('async function coreadReplaceDialogRange'), source.indexOf('// ── 切片来源'));
 assert.ok(replace.indexOf('coreadDistillSegment') < replace.indexOf('coreadPersistSlice'), '应先取得有效模型结果再落地新切片');
-assert.ok(replace.indexOf('coreadPersistSlice') < replace.indexOf('coreadRemoveSliceMirrors'), '新切片落地前不得删除旧镜像');
+assert.ok(replace.indexOf('coreadPersistSlice') < replace.indexOf('coreadForgetSliceRuntime'), '新切片落地前不得清除旧切片');
 assert.match(replace, /coreadRecalculateDialogCursor/, '替换完成后必须按连续覆盖重新计算进度');
 const auto = source.slice(source.indexOf('async function coreadDistill(manual'), source.indexOf('// 手动总结'));
 assert.match(auto, /coreadReplaceDialogRange/, '自动总结也必须安全替换后段手动切片，不能生成重叠记忆');
 
 const compress = source.slice(source.indexOf('async function coreadCompressSlices'), source.indexOf('// 重新生成某条已有切片'));
-assert.ok(compress.indexOf('coreadPersistSlice') < compress.indexOf('coreadRemoveSliceMirrors'), '二次总结也必须先写新切片再清旧切片');
+assert.ok(compress.indexOf('coreadPersistSlice') < compress.indexOf('coreadForgetSliceRuntime'), '二次总结也必须先写新切片再清旧切片');
 assert.match(compress, /dialogFrom:[\s\S]*dialogTo:/, '融合切片必须保存对谈来源的独立覆盖范围');
 
 const vector = source.slice(source.indexOf('async function coreadEnsureVectors'), source.indexOf('// 向量召回'));

@@ -45,21 +45,6 @@ export function renderCoreadPackBarView(targetClass) {
   </section>`;
 }
 
-export function renderCoreadMemoryStorageView({syncLabel, syncMode, busy}) {
-  return `
-    <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-database"></i> 世界书同步 <span class="sd-reader-inj-tag">${syncLabel}</span></summary>
-      <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab" style="white-space:nowrap">同步方式</span>
-        <select class="sd-reader-minput sd-reader-storagemode"${busy ? ' disabled' : ''}>
-          <option value="none"${syncMode === 'none' ? ' selected' : ''}>仅存至千幕档案（本地存储）</option>
-          <option value="dedicated"${syncMode === 'dedicated' ? ' selected' : ''}>同步到千幕伴读世界书</option>
-          <option value="shared"${syncMode === 'shared' ? ' selected' : ''}>同步至正文记忆插件所用世界书</option>
-        </select>
-      </div>
-    </details>`;
-}
-
 export function renderCoreadSummaryItemsView(items, htmlEscape) {
   return items.map((it, i) => {
     return `

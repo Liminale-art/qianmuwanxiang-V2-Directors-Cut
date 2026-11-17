@@ -21,7 +21,7 @@ try{
     window.forms=forms;window.state={source:'novel',view:'create'};window.storyboardState=()=>state;window.storyboardPageScrolls=new Map([['create',420],['create:comfy',720]]);window.storyboardPendingRestoreScroll=null;
     window.STORYBOARD_PROVIDER_REGISTRY={novel:{}};window.storyboardCaptureWorkbench=()=>{};window.saveSettings=()=>{};
     window.readerView=null;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;window.dialogBusy=false;window.readerAssistantBusy=false;window.coreadComicVisionBusy=false;window.coreadOpenRequestId=0;window.c={};
-    window.coreadMemoryWrites=0;window.coreadIdentitySwitchBusy=false;window.coreadWorldSyncBusy=false;window.readerScrollSaveTimer=null;
+    window.coreadMemoryWrites=0;window.coreadIdentitySwitchBusy=false;window.readerScrollSaveTimer=null;
     window.host={characterId:0,chatId:'host-chat',characters:[{avatar:'a.png',name:'书友甲 · 很长的名称用于检查窄屏'},{avatar:'b.png',name:'书友乙'}]};
     window.ctx=()=>host;window.coread=()=>c;window.getChatKey=()=>host.chatId;window.getChatStore=()=>({});window.clone=structuredClone;window.coreadInvalidatePool=()=>{};
     host.powerUserSettings={personas:{'u1.png':'当前用户','u2.png':'独立 USER'},persona_descriptions:{'u2.png':{description:'独立人设'}}};host.user_avatar='u1.png';

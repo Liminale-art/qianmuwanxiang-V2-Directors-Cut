@@ -6,7 +6,7 @@ const overview=html=>html.slice(html.indexOf('<section class="sd-reader-memory-o
 test('summary tools suppress native collapse but allow delegated save and reorder clicks to reach the page',()=>{
   const {c,m}=createCoreadRecordsFixture();m.summaryItems=[{id:'custom',title:'Title',text:'text',order:1}];
   const html=c.renderMemRecordsTab(m),tools=[...html.matchAll(/<span class="sd-reader-promptblock-acts"[^>]*>/g)].map(x=>x[0]);
-  assert.equal(tools.length,3);
+  assert.equal(tools.length,2);
   for(const tool of tools){assert.match(tool,/onclick="event.preventDefault\(\)"/);assert.doesNotMatch(tool,/stopPropagation/);}
 });
 
@@ -14,7 +14,7 @@ test('records render preserves binding initialization and safety-read order with
   const {c,m,inputs,trace}=createCoreadRecordsFixture();delete inputs.store.coreadBound;
   const before=JSON.stringify(c.readerDialog),html=c.renderMemRecordsTab(m),card=overview(html);
   assert.deepEqual(Array.from(inputs.store.coreadBound),[]);
-  assert.deepEqual(trace.map(x=>x[0]),['store','meta','safe','guide','guide','guide']);
+  assert.deepEqual(trace.map(x=>x[0]),['store','meta','safe','guide','guide']);
   const safe=trace.find(x=>x[0]==='safe');assert.equal(safe[2],c.readerDialog.readBoundary);assert.equal(safe[3],m);
   assert.notEqual(safe[1],c.readerDialog.slices,'display sorting must use a copy');
   assert.equal(JSON.stringify(c.readerDialog),before);
@@ -22,7 +22,7 @@ test('records render preserves binding initialization and safety-read order with
   for(const [n,label]of [[3,'记忆切片'],[5,'待整理对话'],[0,'绑定档案'],[2,'进度外隔离']])assert.ok(card.includes(`<b>${n}</b><small>${label}</small>`));
   assert.match(card,/sd-reader-tour-target/);
   trace.length=0;c.readerDialog.readBoundary=null;c.renderMemRecordsTab(m);
-  assert.deepEqual(trace.map(x=>x[0]),['store','meta','boundary','safe','guide','guide','guide']);
+  assert.deepEqual(trace.map(x=>x[0]),['store','meta','boundary','safe','guide','guide']);
   assert.equal(trace.find(x=>x[0]==='safe')[2],inputs.fallback);
 });
 
@@ -40,13 +40,12 @@ test('summary item order, escaping and built-in deletion protection do not mutat
   assert.doesNotMatch(items[1],/<script>/);assert.match(items[1],/&lt;\/textarea>/);assert.equal(JSON.stringify(m),before);
 });
 
-test('worldbook synchronization shows its actual mode and remains unavailable while syncing',()=>{
+test('the storage-mode control is gone, including for settings saved with an old worldbook mode',()=>{
   const {c,m}=createCoreadRecordsFixture();
-  for(const [mode,label]of [['none','仅存千幕档案'],['dedicated','千幕伴读世界书'],['shared','正文记忆同书']])for(const busy of [false,true]){
-    m.worldSyncMode=mode;c.coreadWorldSyncBusy=busy;
-    const html=c.renderMemRecordsTab(m),select=html.match(/<select class="sd-reader-minput sd-reader-storagemode"[^>]*>[\s\S]*?<\/select>/)[0];
-    assert.ok(html.includes(`>${label}</span>`));assert.equal(select.startsWith('<select class="sd-reader-minput sd-reader-storagemode" disabled>'),busy);
-    assert.equal((select.match(/ selected/g)||[]).length,1);assert.ok(select.includes(`value="${mode}" selected`));
+  for(const mode of [undefined,'none','dedicated','shared']){
+    if(mode)m.worldSyncMode=mode;
+    const html=c.renderMemRecordsTab(m);
+    assert.doesNotMatch(html,/sd-reader-storagemode|世界书|从主线选择总结|sd-reader-distill-mainline|sd-reader-mainlineprompt/);
   }
 });
 

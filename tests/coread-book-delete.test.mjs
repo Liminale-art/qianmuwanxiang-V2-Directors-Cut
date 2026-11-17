@@ -9,9 +9,9 @@ function fixture() {
   let saveAnswer;
   const c=vm.createContext({settings:{enabled:true,coread:data},MODAL_ID:'modal',RUNTIME_LOCK_KEY:'runtime',runtime:{},coreadOpenRequestId:0,
     document:{getElementById:()=>modal},readerDialog:{bookId:'a',bucket:'chat::a',loaded:true,slices:['unsaved']},readerView:null,coreadEchoTtl:new Map(),
-    coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,dialogBusy:false,readerAssistantBusy:false,coreadComicVisionBusy:false,
+    coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,dialogBusy:false,readerAssistantBusy:false,coreadComicVisionBusy:false,
     coreadSaveDialog:()=>new Promise(resolve=>{calls.push('save-dialog');saveAnswer=resolve;}),unmountReaderPortal:()=>calls.push('unmount'),saveSettings:()=>calls.push('save-settings'),
-    coreadInvalidatePool:()=>{},coreadPurgeBookMemory:async()=>{calls.push('purge-memory');return {};},
+    coreadInvalidatePool:()=>{},
     reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
     focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,
     blobStore:{deleteReaderBookData:async()=>{calls.push('delete-body');return {status:'committed'};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
@@ -68,7 +68,7 @@ test('a batch stops before a changed next book and reports only the already remo
 
 test('cancel, unavailable targets and all busy writers cause zero deletion work',async()=>{
   const f=requestFixture(),pending=f.c.coreadRequestDeleteBooks(['a']);f.confirm(false);assert.equal(await pending,false);assert.deepEqual(f.calls,[]);assert.equal(f.prompts.length,1);
-  for(const flag of ['coreadMemoryWrites','coreadIdentitySwitchBusy','coreadWorldSyncBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy']){
+  for(const flag of ['coreadMemoryWrites','coreadIdentitySwitchBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy']){
     const b=requestFixture();b.c[flag]=true;assert.equal(await b.c.coreadRequestDeleteBooks(['a']),false,flag);assert.deepEqual(b.calls,[],flag);assert.equal(b.prompts.length,0,flag);
   }
   const missing=requestFixture();assert.equal(await missing.c.coreadRequestDeleteBooks(['a','missing']),false);assert.equal(missing.prompts.length,0);
@@ -103,10 +103,12 @@ test('preserving dialogue participates in the existing memory-write guard and ex
   assert.equal(await failed.c.coreadDeleteBook('a'),false);assert.equal(failed.c.coreadMemoryWrites,0,'a rejected save must release its own guard');
 });
 
-test('admitted deletion preserves other books and the existing memory choice',async()=>{
-  for(const deleteMemory of [false,true]){const f=fixture(),pending=f.c.coreadDeleteBook('a',{deleteMemory});f.answerSave(true);
+test('admitted deletion preserves other books and applies the memory choice to the local archive only',async()=>{
+  for(const deleteMemory of [false,true]){const f=fixture();let choice;
+    f.c.blobStore.deleteReaderBookData=async(id,options)=>{f.calls.push('delete-body');choice=options.deleteMemory;return {status:'committed'};};
+    const pending=f.c.coreadDeleteBook('a',{deleteMemory});f.answerSave(true);
     assert.equal(await pending,true);assert.equal(f.data.books.length,1);assert.equal(f.data.books[0].id,'b');
-    assert.equal(f.calls.includes('purge-memory'),deleteMemory);assert.equal(f.calls.includes('delete-body'),true);
+    assert.equal(choice,deleteMemory);assert.deepEqual(f.calls,['save-dialog','delete-body','save-settings'],'no world-book write happens');
     assert.equal(f.data.retainedMemoryBooks.length,deleteMemory?0:1);
   }
 });
@@ -124,11 +126,11 @@ test('cleanup keeps its writer guard until commit and detaches only the removed 
   assert.equal(f.c.readerView,null);assert.equal(f.c.readerContentCache,null);assert.equal(f.c.readerAssistant.bookId,'');
   assert.equal(f.c.readerAssistantSessions.has('char::a'),false);assert.equal(f.c.readerAssistantSessions.has('char::b'),true);
 });
-test('failed world cleanup leaves local resources and shelf available for retry',async()=>{
-  const f=fixture();f.c.coreadPurgeBookMemory=async()=>{throw Error('world failure');};
+test('failed memory deletion keeps the shelf for retry and no longer mentions a world book',async()=>{
+  const f=fixture();f.c.blobStore.deleteReaderBookData=async()=>{throw Error('local failure');};
   const pending=f.c.coreadDeleteBook('a',{deleteMemory:true});f.answerSave(true);
-  assert.equal(await pending,false);assert.equal(f.data.books.length,2);assert.ok(!f.calls.includes('delete-body'));assert.equal(f.c.coreadMemoryWrites,0);
-  assert.match(f.notices.at(-1)[0],/部分世界书记忆可能/);
+  assert.equal(await pending,false);assert.equal(f.data.books.length,2);assert.equal(f.c.coreadMemoryWrites,0);
+  assert.match(f.notices.at(-1)[0],/本机清理失败.*保留/);assert.doesNotMatch(f.notices.at(-1)[0],/世界书/);
 });
 
 test('collection-only deletion preserves all books and uses the existing confirmation without a memory prompt',async()=>{

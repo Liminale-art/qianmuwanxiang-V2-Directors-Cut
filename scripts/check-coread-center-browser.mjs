@@ -19,7 +19,6 @@ const fileChange=between("    const packInput = e.target.closest('.sd-reader-pac
 const guardChange=between("    if (e.target.closest('.sd-reader-spoiler-filter'))",'\n');
 const recordClick=between("    if (e.target.closest('.sd-reader-distillprompt-save'))", "    if (e.target.closest('.sd-reader-sumitem-export'))");
 const archiveClick=between("    if (e.target.closest('.sd-reader-slice-clear'))",'    // 词典册：新建词册');
-const syncChange=between("    if (e.target.closest('.sd-reader-storagemode'))",'\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
 const context=await browser.newContext({hasTouch:true}),errors=[];let external=0;
@@ -82,12 +81,12 @@ try{
   }
   await page.evaluate(({functions,normalize,handler})=>{
     coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')')};
-    window.getChatStore=()=>({coreadBound:[]});window.coreadWorldSyncBusy=false;
-    window.DEFAULT_DISTILL_TEXT_PROMPT='fixture';window.DEFAULT_MAINLINE_SUMMARY_PROMPT='fixture';
+    window.getChatStore=()=>({coreadBound:[]});
+    window.DEFAULT_DISTILL_TEXT_PROMPT='fixture';
     window.toast=()=>{};readerDialog.messages=[];readerDialog.cursor=0;
     window.eval(functions);
     window.rerenderMore=()=>{const root=document.getElementById('center');root.innerHTML=`<div class="sd-reader-mtab-body">${renderMemRecordsTab(memory)}</div>`;root.querySelectorAll('details').forEach(n=>n.open=true);applyQianmuIcons(document.getElementById('sd-reader-portal'));};
-    window.resetRecords=()=>{memory={worldSyncMode:'none',summaryItems:[{id:'fixed',title:'内置条目',text:'fixed',order:1,builtin:true},{id:'custom',title:'自定义<&',text:'custom',order:2}]};calls.save=0;rerenderMore();};
+    window.resetRecords=()=>{memory={summaryItems:[{id:'fixed',title:'内置条目',text:'fixed',order:1,builtin:true},{id:'custom',title:'自定义<&',text:'custom',order:2}]};calls.save=0;rerenderMore();};
     document.getElementById('center').addEventListener('click',new Function('e','const m=coreadMemory(),morePage=document.getElementById("center");'+handler));
     resetRecords();
   },{functions:coreadRecordsFunctions,normalize:normalizeCoreadSource.toString(),handler:recordClick});
@@ -100,7 +99,7 @@ try{
     assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[1,1]);
     await activate('.sd-reader-sumitem-down[data-id="custom"]');
     assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[2,2]);
-    for(const [selector,key,value]of [['distillprompt','distillTextPrompt','new distill'],['mainlineprompt','mainlineSummaryPrompt','new mainline']]){
+    for(const [selector,key,value]of [['distillprompt','distillTextPrompt','new distill']]){
       await page.locator(`.sd-reader-${selector}-text`).fill('  '+value+'  ');
       const saves=await page.evaluate(()=>calls.save);await activate(`.sd-reader-${selector}-save`);
       assert.equal(await page.evaluate(key=>memory[key],key),value);assert.equal(await page.evaluate(()=>calls.save),saves+1);
@@ -114,28 +113,22 @@ try{
     assert.deepEqual(await page.evaluate(()=>memory.summaryItems.map(x=>x.id)),['fixed']);assert.equal(await page.evaluate(()=>calls.save),idle+1);
     recordActions.push({width,action,once:true});
   }
-  await page.evaluate(({archiveClick,syncChange})=>{
+  await page.evaluate(({archiveClick})=>{
     window.confirmAnswer=false;
-    window.coreadSetWorldSyncMode=mode=>calls.modes.push(mode);
     window.coreadOpenSliceManagerDialog=()=>calls.managers.push('slices');
     window.coreadOpenArchivePage=()=>calls.managers.push('archives');
     window.confirmDialog=async(title,message)=>{calls.confirmations.push({title,message});return confirmAnswer;};
     window.coreadClearAllSlices=async()=>{calls.clears++;};
     const root=document.getElementById('center');
     root.addEventListener('click',new Function('e',archiveClick));
-    root.addEventListener('change',new Function('e',syncChange));
-  },{archiveClick,syncChange});
+  },{archiveClick});
   const recordLayouts=[];
   for(const width of [320,360,430,1100]){
     await page.setViewportSize({width,height:850});
-    await page.evaluate(()=>{coreadWorldSyncBusy=false;readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{modes:[],managers:[],confirmations:[],clears:0});resetRecords();});
-    const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-storagemode,.sd-reader-sumitem').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
+    await page.evaluate(()=>{readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{managers:[],confirmations:[],clears:0});resetRecords();});
+    const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-sumitem').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
     for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
-    for(const mode of ['shared','dedicated','none'])await page.locator('.sd-reader-storagemode').selectOption(mode);
-    assert.deepEqual(await page.evaluate(()=>calls.modes),['shared','dedicated','none']);
-    await page.evaluate(()=>{coreadWorldSyncBusy=true;rerenderMore();});
-    assert.equal(await page.locator('.sd-reader-storagemode').isDisabled(),true);
-    await page.evaluate(()=>{coreadWorldSyncBusy=false;rerenderMore();});
+    assert.equal(await page.locator('.sd-reader-storagemode').count(),0);
     await page.locator('.sd-reader-slice-manage').tap();await page.locator('.sd-reader-arch-manage').tap();
     assert.deepEqual(await page.evaluate(()=>calls.managers),['slices','archives']);
     await page.locator('.sd-reader-slice-clear').tap();
@@ -234,7 +227,7 @@ try{
     root.addEventListener('input',new Function('e','const m=coreadMemory();'+injectInput));
     resetInject();
   },{functions:coreadInjectFunctions+'\n'+storyboardFunctionSource('coreadNormalizeSynonyms')+'\n'+storyboardFunctionSource('coreadCaptureDictMutation'),unique:uniqueClean.toString(),plainObject:isPlainObject.toString(),
-    dictClick:between('    // 词典册：新建词册','    // 测试按钮：综合自检'),
+    dictClick:between('    // 词典册：新建词册',"  });\n  morePage?.addEventListener('change', (e) => {\n    const pick = e.target.closest('.sd-reader-arch-pick');"),
     injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉')+between("    if (e.target.closest('.sd-reader-mainline-toggle'))",'\n'),
     injectInput:between("    if (e.target.closest('.sd-reader-inj-recall'))",'    const map = [')});
   const injectLayouts=[];

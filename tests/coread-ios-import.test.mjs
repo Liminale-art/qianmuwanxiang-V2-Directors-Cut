@@ -15,7 +15,7 @@ assert.match(source, /application\/x-mobipocket-ebook/, 'iOS 文件提供器的 
 assert.match(css, /\.sd-reader-native-file\s*\{[\s\S]*opacity:\s*0[^}]*clip-path:\s*inset\(50%\)/, '文件控件必须视觉隐藏但不能使用 display:none');
 assert.match(css, /\.sd-reader-import-fab \.sd-reader-import-input,[\s\S]*\.sd-reader-refill-pick \.sd-reader-refill-input\s*\{[^}]*inset:\s*0[^}]*width:\s*100%[^}]*height:\s*100%/, 'iOS 上原生文件控件本身必须覆盖书架和补正文按钮');
 
-const refillChooser = source.slice(source.indexOf('function coreadShowRefillChooser'), source.indexOf('function coreadPurgeBookMemory'));
+const refillChooser = source.slice(source.indexOf('function coreadShowRefillChooser'), source.indexOf('async function coreadEditBookInfo'));
 const openBook = source.slice(source.indexOf('async function coreadOpenBook'), source.indexOf('function coreadCloseReader'));
 assert.match(refillChooser, /sd-reader-refill-pick[\s\S]*<input type="file" class="sd-reader-refill-input sd-reader-native-file"/, '跨设备补正文弹层必须内嵌原生文件控件');
 assert.match(refillChooser, /\.sd-reader-refill-input['"]\)\?\.addEventListener\(['"]change['"][\s\S]*coreadHandleImportFiles\(files, bookId\)/, '补正文文件必须进入统一电子书解析并写回原书');

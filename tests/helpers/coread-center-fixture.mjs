@@ -23,11 +23,11 @@ export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
   inputs.store={coreadBound:['one','two']};
   c.getChatStore=()=>{trace.push(['store']);return inputs.store;};
-  c.reader={normalizeCoreadSource};c.coreadWorldSyncBusy=false;
-  c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';c.DEFAULT_MAINLINE_SUMMARY_PROMPT='fixture mainline';
+  c.reader={normalizeCoreadSource};
+  c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';
   Object.assign(c.readerDialog,{messages:Array.from({length:8},()=>({text:'fixture'})),cursor:3});
   c.coreadGuideTargetClass=target=>{trace.push(['guide',target]);return target==='records'?' sd-reader-tour-target':'';};
-  const m={worldSyncMode:'none',summaryItems:[],summaryPresets:[],spoilerProtection:true};
+  const m={summaryItems:[],summaryPresets:[],spoilerProtection:true};
   vm.runInContext(coreadRecordsFunctions,c);return {...f,m};
 }
 

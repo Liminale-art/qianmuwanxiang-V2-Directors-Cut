@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {isPlainObject,uniqueClean,htmlEscape} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-const dictActions=source.slice(source.indexOf('    // 词典册：新建词册'),source.indexOf('    // 测试按钮：综合自检'));
+const dictActions=source.slice(source.indexOf('    // 词典册：新建词册'),source.indexOf("  });\n  morePage?.addEventListener('change', (e) => {\n    const pick = e.target.closest('.sd-reader-arch-pick');"));
 
 function fixture(){
   const m={dictBooks:[{id:'dict',name:'Dictionary',pairs:{old:['alias']}}]},calls=[],notices=[];

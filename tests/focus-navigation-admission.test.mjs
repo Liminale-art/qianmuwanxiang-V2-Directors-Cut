@@ -7,7 +7,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 function fixture(){
   const e=focusFixture({activity:'reading',bookId:'book'}),{c}=e;
   Object.assign(c,{MODAL_ID:'modal',coreadOpenRequestId:0,focusClockCloseVoiceDrawer:()=>{},unmountTheaterFullscreen:()=>{},
-    coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadWorldSyncBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,
+    coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},coreadClearPendingChatImages:()=>{},coreadComicVisionAbort:null,
     coreadComicVisionBusy:false,coreadAssistantConfig:()=>({historyMode:'session'}),coreadStoreAssistantHistory:()=>{},storyboardWorldbookController:null});
   c.document.getElementById=()=>({classList:{remove:()=>{}}});c.document.body={classList:{remove:()=>{}}};

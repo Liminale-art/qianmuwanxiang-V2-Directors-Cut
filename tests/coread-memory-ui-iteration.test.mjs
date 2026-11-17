@@ -14,18 +14,20 @@ assert.doesNotMatch(setup, /身份与正文联动|身份跟随 ST 当前角色�
 assert.match(css, /\.sd-reader-setup-compact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2/, '紧凑设置在窄屏也应保持二列基础布局');
 
 const records = source.slice(source.indexOf('function renderMemRecordsTab'), source.indexOf('function renderMemInjectTab'))
-  + centerView.slice(centerView.indexOf('export function renderCoreadMemoryStorageView'));
+  + centerView.slice(centerView.indexOf('export function renderCoreadSummaryItemsView'));
 assert.doesNotMatch(records, /开发测试|sd-reader-test-selftest|sd-reader-test-lore/, '记忆档案不得暴露开发测试卡');
-assert.match(records, /世界书同步[\s\S]*仅存至千幕档案（本地存储）[\s\S]*同步到千幕伴读世界书[\s\S]*同步至正文记忆插件所用世界书/, '千幕档案必须主存储，世界书只提供三档可选镜像');
+assert.doesNotMatch(records, /世界书|sd-reader-storagemode|renderCoreadMemoryStorageView/, '记忆档案不再提供世界书同步设置');
 assert.match(records, /默认方案/, '总结预设默认项必须命名为默认方案');
 assert.doesNotMatch(records, /\$\{items\.length\} 条规则/, '总结提示词标题不得再显示规则数量标签');
-assert.match(records, /DEFAULT_DISTILL_TEXT_PROMPT[\s\S]*DEFAULT_MAINLINE_SUMMARY_PROMPT/, '蒸馏和主线提示词必须显示各自内置默认');
-assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-mainlineprompt-restore|sd-reader-sumitem-badge/, '提示词只保留整体恢复且不再突出内置标签');
+assert.match(records, /DEFAULT_DISTILL_TEXT_PROMPT/, '蒸馏提示词必须显示内置默认');
+assert.doesNotMatch(records, /mainlineSummaryPrompt|sd-reader-mainlineprompt/, '主线选择总结提示词已移除');
+assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-sumitem-badge/, '提示词只保留整体恢复且不再突出内置标签');
 assert.match(records, /sd-reader-guide-replay/, '记忆档案末尾必须提供重看引导入口');
-assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:/, '三类提示词必须使用统一折叠卡');
+assert.match(css, /\.sd-reader-promptblock[^{]*\{[^}]*border:[^}]*border-radius:/, '提示词必须使用统一折叠卡');
 
 const guide = source.slice(source.indexOf('const COREAD_GUIDE_STEPS'), source.indexOf('function renderCompanionMoreBody'));
-assert.match(guide, /tab: 'api'[\s\S]*target: 'sources'[\s\S]*target: 'dialog-summary'[\s\S]*target: 'mainline-summary'[\s\S]*target: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须覆盖接口、取材、伴读总结、主线总结、档案、注入和迁移');
+assert.match(guide, /tab: 'api'[\s\S]*target: 'sources'[\s\S]*target: 'dialog-summary'[\s\S]*target: 'records'[\s\S]*tab: 'inject'[\s\S]*target: 'transfer'/, '首次教程必须覆盖接口、取材、伴读总结、档案、注入和迁移');
+assert.doesNotMatch(guide, /mainline-summary/, '首次教程不再包含主线选择总结');
 assert.match(centerView, /sd-reader-tour-prev[\s\S]*sd-reader-tour-next/, '逐步教程必须提供箭头式上一步和下一步');
 assert.match(source, /if \(!m\.guideSeen && coreadGuideStep === null\) coreadGuideStep = 0/, '首次进入伴读中心必须自动启动逐步引导');
 assert.match(css, /\.sd-reader-tour-target[^{]*\{[^}]*outline:[^}]*animation:/, '当前引导卡必须有明确高亮视觉');
@@ -55,15 +57,8 @@ assert.match(source, /coreadPipelineFailed\('rerank'[\s\S]*已使用未重排的
 assert.match(source, /sd-coread-notice-layer[\s\S]*document\.body\.appendChild/, '最终失败提示必须挂到 body 顶层通知层');
 assert.match(css, /#sd-coread-notice-layer[^}]*z-index:\s*2147483647/, '召回失败提示必须显示在伴读中心与 ST 弹层之上');
 
-const picker = source.slice(source.indexOf('function coreadMainlinePageData'), source.indexOf('async function coreadOpenSliceManagerDialog'));
-assert.match(picker, /sd-reader-mlrow-copy[\s\S]*sd-reader-mlrow-floor[\s\S]*楼层 \$\{it\.floor\}/, '主线消息必须以正文开头和楼层号组成折叠卡');
-assert.ok(picker.indexOf('${ruleField}') < picker.indexOf('sd-reader-mllist'), '文本清理规则必须放到正文楼层列表上方');
-assert.match(picker, /sd-reader-mlpick-all[\s\S]*sd-reader-mlselected-count/, '主线选择页必须提供全选和已选计数');
-assert.match(picker, /sd-reader-mljump-input[\s\S]*sd-reader-mljump-go/, '主线选择页必须支持输入楼层快速定位');
-assert.doesNotMatch(picker, /new Popup|POPUP_TYPE|<small>高级<\/small>/, '主线选择必须是中心子页面且移除高级小字');
-assert.match(css, /\.sd-reader-mlrow-sum\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:/, '正文楼层头必须使用防重叠网格布局');
-
-assert.ok(records.indexOf('从主线选择总结') < records.indexOf('书籍蒸馏'), '从主线选择总结必须独立成卡并放在书籍蒸馏上方');
+assert.doesNotMatch(source, /coreadMainlinePageData|sd-reader-mainline-page|sd-reader-distill-mainline|从主线选择总结/, '从主线选择总结入口与选择页已移除');
+assert.doesNotMatch(css, /\.sd-reader-ml(row|list|pick|jump|rule|toolbar)|\.sd-reader-mainline-page/, '主线选择页样式已随页面移除');
 
 const manual = source.slice(source.indexOf("if (e.target.closest('.sd-reader-manual-go'))"), source.indexOf("if (e.target.closest('.sd-reader-compress-go'))"));
 assert.match(manual, /effectiveFrom[\s\S]*effectiveTo[\s\S]*检测到重复总结/, '手动总结重叠时必须扩展完整旧区间并二次确认');

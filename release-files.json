@@ -346,7 +346,6 @@
     "qianmu-reader-center-view.js",
     "qianmu-reader-panel-view.js",
     "qianmu-reader-library-view.js",
-    "qianmu-reader-book-cleanup.js",
     "qianmu-reader-package.js",
     "features/character/qianmu-user-identity.js",
     "features/character/qianmu-user-alias.js",

@@ -183,24 +183,6 @@ export function snip(text, n = 64) {
 }
 
 /**
- * 转义 STscript 斜杠命令的值
- * @param {string} s - 要转义的字符串
- * @returns {string} 转义后的字符串
- */
-export function escapeSlashValue(s) {
-  return String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ').trim();
-}
-
-/**
- * 为 STscript 斜杠命令的值添加引号
- * @param {string} s - 要处理的字符串
- * @returns {string} 加引号后的字符串
- */
-export function quoteSlashValue(s) {
-  return `"${escapeSlashValue(s).replace(/"/g, '\\"')}"`;
-}
-
-/**
  * 在 JSON 文本中插入缺失的逗号
  * @param {string} text - JSON 文本
  * @returns {string} 修复后的文本
@@ -623,19 +605,6 @@ export function parseNameSource(source) {
   });
   if (typeof source === 'object') return Object.keys(source);
   return [];
-}
-
-/**
- * 从世界书条目提取伴读逻辑标识
- * @param {Object} entry - 世界书条目
- * @returns {string} 逻辑标识
- */
-export function coreadEntryLogicalId(entry) {
-  const u = String(entry?.uid ?? '');
-  if (u.startsWith('coread::')) return u;
-  const c = `${entry?.comment ?? ''}\n${entry?.name ?? ''}\n${entry?.title ?? ''}\n${entry?.memo ?? ''}`;
-  const mm = c.match(/⟨(coread::[^⟩]+)⟩/);
-  return mm ? mm[1] : '';
 }
 
 /**

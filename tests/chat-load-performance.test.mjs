@@ -22,8 +22,6 @@ assert.match(source, /TTS_LOCAL_LINE_LIMIT = 100[\s\S]*TTS_PORTABLE_LINE_LIMIT =
 assert.ok(source.includes('blobStore.getTtsLineCache') && source.includes('blobStore.putTtsLineCache'), '台词列表必须按聊天分桶存入 IndexedDB');
 assert.match(blob, /DB_VERSION = 15[\s\S]*STORE_TTS_LINES = 'tts_lines'[\s\S]*STORE_NOTES = 'notes'/, 'IndexedDB 必须包含台词缓存与固定便笺仓');
 
-assert.match(source, /worldSyncMode: 'none'/, '新用户必须默认使用千幕档案主存储且不占用世界书');
-assert.match(source, /if \(m\.worldSyncMode === 'none'\) return ''/, '关闭世界书同步时不得创建镜像目标');
-assert.match(source, /coreadSetWorldSyncMode[\s\S]*coreadRemoveSliceMirrors/, '切换世界书镜像目标时必须处理旧镜像，避免过期副本继续注入');
+assert.doesNotMatch(source, /worldSyncMode|coreadSetWorldSyncMode|coreadRemoveSliceMirrors|\/getchatbook|\/createentry|\/setentryfield/, '伴读记忆只存千幕档案，不得创建或写入世界书');
 
 console.log('Chat load performance contract OK');

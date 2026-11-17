@@ -244,7 +244,7 @@ test('actual import checks active work before file reading and again after confi
 test('actual activity adapter blocks each independent lane without normalizing or changing settings',()=>{
   const lanes={
     voice:['ttsRestoreTasks'],
-    reader:['readerView','coreadMemoryWrites','coreadIdentitySwitchBusy','coreadWorldSyncBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy'],
+    reader:['readerView','coreadMemoryWrites','coreadIdentitySwitchBusy','coreadDistilling','coreadAutoTextInFlight','dialogBusy','readerAssistantBusy','coreadComicVisionBusy'],
     focus:['focusClockEntryBusy'],director:['busy','theaterBusy'],image:['storyboardBusy','storyboardCompilerBusy','storyboardAutomaticCurrent'],
   };
   const base=Object.fromEntries(Object.values(lanes).flat().map(key=>[key,false]));
@@ -267,7 +267,7 @@ test('actual activity adapter blocks each independent lane without normalizing o
     const previous=c[key];c[key]=value;assert.ok(c.configRestoreActivity()[lane],key);c[key]=previous;idle();cases++;
   }
   for(const status of ['running','paused']){c.settings.focusClock.status=status;assert.ok(c.configRestoreActivity().focus,status);cases++;}
-  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,34);
+  c.settings.focusClock.status='idle';idle();assert.equal(JSON.stringify(c.settings),before);assert.equal(cases,33);
   for(const transfer of [c.ttsExportAudioCache,c.ttsImportAudioCache]) {
     transfer.busy=true;assert.equal(c.configRestoreActivity().audioCache,true);
     assert.equal(!!c.configRestoreActivity(true,transfer).audioCache,false,'a cache transfer excludes its own slot, not the other transfer');

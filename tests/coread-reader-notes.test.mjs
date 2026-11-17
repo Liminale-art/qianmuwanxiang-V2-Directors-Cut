@@ -56,6 +56,6 @@ assert.match(css, /\.sd-reader-excerpt-canvas-wrap\s*\{[^}]*overflow:\s*auto/, '
 assert.match(css, /\.sd-reader-excerpt-canvas-wrap\s*\{[^}]*scrollbar-width:\s*none[\s\S]*\.sd-reader-excerpt-canvas-wrap::-webkit-scrollbar/, '摘录预览必须隐藏滚动条但保留滚动能力');
 assert.match(css, /\.sd-reader-excerpt-canvas-wrap\.can-pan\s*\{[^}]*cursor:\s*grab/, '摘录预览放大后必须支持拖动查看');
 assert.match(css, /\.sd-reader-morepage, \.sd-reader-morepage \*\s*\{[^}]*scrollbar-width:\s*none/, '伴读中心必须隐藏滚动条但保留滚动能力');
-assert.match(css, /\.sd-reader-mainline-page > \.sd-reader-mllist\s*\{[^}]*overflow-y:\s*auto/, '主线选择页必须只让正文楼层列表滚动');
+assert.doesNotMatch(css, /\.sd-reader-mainline-page/, '主线选择页已移除，不再保留其样式');
 
 console.log('Coread reader notes contract OK');

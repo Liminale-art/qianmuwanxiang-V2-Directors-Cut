@@ -37,18 +37,17 @@ test('unchanged vectors are reused within their owner without unnecessary reques
   c.coreadEmbed=()=>{throw Error('must reuse');};assert.equal(await c.coreadEnsureVectors(m),cache);assert.equal(writes.length,1);
 });
 
-test('new mirror IDs include archive identity and explicit copies never reuse source worldbook pointers',async()=>{
+test('explicit copies keep their source provenance, tolerate old worldbook pointers and write no world book',async()=>{
   const source={messages:[{text:'source'}],slices:[{id:'shared',src:'dialog',summary:'Original',loreUid:42,loreBook:'source world',provenance:{bucket:'A::book',bookId:'book',readTo:100}}],readBoundary:{bookId:'book',readTo:100}};
-  const before=structuredClone(source),mirrors=[],c=vm.createContext({readerDialog:{bookId:'book',bucket:'B::book',readBoundary:{bookId:'book',readTo:800}},
+  const before=structuredClone(source),c=vm.createContext({readerDialog:{bookId:'book',bucket:'B::book',readBoundary:{bookId:'book',readTo:800}},
     coreadMemoryWrites:0,coreadBookMeta:()=>({}),clone:structuredClone,reader,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0}),
-    coreadEchoTtl:new Map(),coreadVecCache:null,coreadTargetBook:async()=>'shared world',coreadMirrorUidMap:async()=>new Map(),
+    coreadEchoTtl:new Map(),coreadVecCache:null,
     coreadSaveDialog:async()=>true,coreadRefreshContainer:async()=>{}});
-  vm.runInContext(['coreadNormalizeSlices','coreadSliceLogicalId','coreadMigrateFromChat'].map(section).join('\n'),c);
-  c.coreadSyncSliceMirror=async slice=>{assert.equal(slice.loreUid,undefined);assert.equal(slice.loreBook,undefined);mirrors.push(c.coreadSliceLogicalId(slice));return true;};
-  await c.coreadMigrateFromChat(source);
-  assert.deepEqual(source,before);assert.match(mirrors[0],/B%3A%3Abook/);assert.equal(c.readerDialog.slices[0].provenance.bucket,'A::book');
+  vm.runInContext(['coreadNormalizeSlices','coreadMigrateFromChat'].map(section).join('\n'),c);
+  const result=await c.coreadMigrateFromChat(source);
+  assert.deepEqual(source,before);assert.equal(result.ok,true);assert.equal('wrote' in result,false);
+  assert.equal(c.readerDialog.slices[0].ownerBucket,'B::book');assert.equal(c.readerDialog.slices[0].provenance.bucket,'A::book');
   assert.equal(c.readerDialog.slices[0].provenance.readTo,100);assert.equal(c.coreadMemoryWrites,0);
-  assert.notEqual(c.coreadSliceLogicalId(source.slices[0]),mirrors[0]);
 });
 
 test('memory write gate is released on failed mutation, never leaving selection permanently locked',async()=>{
@@ -57,13 +56,15 @@ test('memory write gate is released on failed mutation, never leaving selection 
   vm.runInContext(section('coreadSaveSliceEdit'),c);await assert.rejects(c.coreadSaveSliceEdit('x','new','tag'),/disk/);assert.equal(c.coreadMemoryWrites,0);
 });
 
-test('slice formation boundary is frozen before asynchronous mirror writing',async()=>{
-  let boundary={bookId:'book',readTo:100,chapterIndex:0,progress:10};const pending=defer();
+test('slice formation records the reading boundary at persist time and writes no world-book fields',async()=>{
+  let boundary={bookId:'book',readTo:100,chapterIndex:0,progress:10};
   const c=vm.createContext({reader,readerDialog:{bookId:'book',bucket:'A::book',slices:[]},coreadNextBatch:()=>1,uid:()=>'s',
-    coreadCurrentReadBoundarySync:()=>boundary,coreadTargetBook:()=>pending.promise,coreadMemory:()=>({vectorEnabled:false}),
+    coreadCurrentReadBoundarySync:()=>boundary,coreadMemory:()=>({vectorEnabled:false}),
     coreadVectorStates:new Map(),coreadSliceFingerprint:()=>'',console,MODULE_NAME:'fixture'});
-  vm.runInContext(['coreadSliceLogicalId','coreadPersistSlice'].map(section).join('\n'),c);
+  vm.runInContext(section('coreadPersistSlice'),c);
   const run=c.coreadPersistSlice({summary:'formed at 10%',keywords:[]},{},{src:'dialog'});
-  boundary={bookId:'book',readTo:800,chapterIndex:2,progress:80};pending.resolve('');await run;
+  boundary={bookId:'book',readTo:800,chapterIndex:2,progress:80};const result=await run;
+  assert.equal(result.ok,true);assert.equal('wrote' in result,false);assert.equal('writeErr' in result,false);
+  assert.equal('loreUid' in c.readerDialog.slices[0],false);assert.equal('loreBook' in c.readerDialog.slices[0],false);
   assert.equal(c.readerDialog.slices[0].provenance.readTo,100);assert.equal(c.readerDialog.slices[0].provenance.bucket,'A::book');
 });

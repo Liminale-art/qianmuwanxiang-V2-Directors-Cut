@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 436 个，其中 `qianmu-*` 模块 419 个。
+根目录文件 435 个，其中 `qianmu-*` 模块 418 个。
 
 ## 入口、宿主与安装
 
@@ -299,7 +299,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（63）
+## 专注／阅读／文本（62）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -339,7 +339,6 @@
 | `qianmu-notes-sync-store.js` | 是 | Account-scoped durable notes and outbox. Never opens or migrates the legacy notes database. |
 | `qianmu-notes-theme.js` | 是 | Notes live outside the main panel. Update only their theme-bearing attributes; |
 | `qianmu-notes.js` | 是 | 千幕 · 轻量便笺数据层 |
-| `qianmu-reader-book-cleanup.js` | 是 | Worldbook targets and IO belong to the caller. Never discover or create targets mid-cleanup. |
 | `qianmu-reader-center-view.js` | 是 | Display-only center components; callers own reading boundaries, filtering and guide state. |
 | `qianmu-reader-chat-sync.js` | 是 | 伴读对话（陪读会话：消息、总结、游标）跟随 ST 账户走。 |
 | `qianmu-reader-identity-view.js` | 是 | Display-only inputs. Identity ownership, ST access and persistence stay with the caller. |

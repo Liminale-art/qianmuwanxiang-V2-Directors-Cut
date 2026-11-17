@@ -9,13 +9,12 @@ export async function checkBookDeleteBrowser(page) {
     window.coreadRequestDeleteBooks=async(...args)=>{try{return await request(...args);}finally{deleteFinished=true;}};
     window.prepareBookDelete=async scenario=>{
       prepareCollectionMutation();window.deleteFinished=false;window.deleteCalls=[];window.saveEntered=false;
-      window.coreadMemoryWrites=0;window.coreadIdentitySwitchBusy=false;window.coreadWorldSyncBusy=false;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;
+      window.coreadMemoryWrites=0;window.coreadIdentitySwitchBusy=false;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;
       window.dialogBusy=false;window.readerAssistantBusy=false;window.coreadComicVisionBusy=false;window.readerView=null;window.coreadEchoTtl=new Map();
       window.readerDialog={bookId:'a',bucket:'fixture::a',loaded:true,slices:['unsaved fixture slice']};
       const gate=new Promise(resolve=>window.releasePreserve=resolve);
       window.coreadSaveDialog=async()=>{saveEntered=true;deleteCalls.push('preserve');return scenario.startsWith('save-')?await gate:true;};
       window.unmountReaderPortal=()=>deleteCalls.push('unmount');window.coreadInvalidatePool=()=>{};
-      window.coreadPurgeBookMemory=async()=>{deleteCalls.push('purge-memory');return {};};
       window.reader={COREAD_SLICE_SCHEMA_VERSION:3};window.coreadArchiveDialogSlices=s=>s;window.focusClockActiveLock=()=>null;
       window.readerContentCache=null;window.readerAssistant=null;window.readerAssistantSessions=new Map();window.dialogGenToken=0;window.dialogAbort=null;
       for(const id of ['a','b'])await nativeBooks.putBook(id,{meta:{title:id},fullText:'Synthetic body',chapters:[{}]});
@@ -59,7 +58,7 @@ export async function checkBookDeleteBrowser(page) {
     const label=width+':'+scenario,admitted=['single-keep','single-purge','batch','next-book'].includes(scenario);
     if(admitted){
       assert.equal(result.bodyA,false,label);assert.equal(result.bodyB,scenario!=='batch',label);assert.equal(result.ids.includes('a'),false,label);
-      assert.equal(result.calls.includes('purge-memory'),scenario==='single-purge',label);
+      assert.ok(result.calls.every(c=>c==='preserve'||c==='unmount'),label);
       assert.equal(result.saves,scenario==='batch'?2:1,label);assert.equal(result.renders,result.before.renders+1,label);
       if(scenario==='next-book')assert.match(result.notices.at(-1)[0],/1\/2.*停止/,label);
     }else{
