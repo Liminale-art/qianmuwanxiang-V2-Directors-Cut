@@ -450,6 +450,7 @@ export function createHost({
     return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         vectorCandidates: request => connectionApi.vectorCandidates(request),
+        vectorScores: request => connectionApi.vectorScores(request),
         rerankCandidates: request => connectionApi.rerankCandidates(request),
         summaryConnection: settings => connectionApi.effectiveConnection(settings) };
 }

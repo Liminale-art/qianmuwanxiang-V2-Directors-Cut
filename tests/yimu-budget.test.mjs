@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fingerprintMessages } from '../yimu/contract.mjs';
-import { buildBudgetedMessages, byteBudget, tokenEstimate, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
+import { buildBudgetedMessages, byteBudget, tokenEstimate, BUDGET_ELASTICITY, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
 
 async function fixture({ count = 12, length = 512, type = 'normal', namesBehavior = 0 } = {}) {
     const source = { messages: Array.from({ length: count }, (_, i) => ({
@@ -213,6 +213,20 @@ test('later oversized manual addition does not discard an earlier valid complete
     const result = await buildBudgetedMessages(f.payload, f.options);
     assert.equal(result.applied, true); assert.deepEqual(result.entries.map(entry => entry.id), ['slice-1']);
     assert.deepEqual(result.removedFloors, [1, 2, 3]);
+});
+
+test('the memory budget stretches by a quarter to carry one complete entry, and never cuts an entry to fit', async () => {
+    const f = await fixture();
+    const manual = { id: 'manual', kind: 'manual', source: null, text: '记'.repeat(400) };
+    const need = tokenEstimate([memoryMessage([manual])]);
+    f.options.entries = [manual];
+    f.options.budget = Math.ceil(need / BUDGET_ELASTICITY);
+    const stretched = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(stretched.applied, true, 'an entry just over the line is carried whole');
+    assert.ok(stretched.messages.some(message => message.content.includes('记'.repeat(400))), 'the text is complete');
+    f.options.budget = Math.floor(need / BUDGET_ELASTICITY) - 20;
+    const refused = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(refused.applied, false, 'beyond the stretch it is left out, not shortened');
 });
 
 test('memory cap admits complete entries only rather than cutting manual wording', async () => {

@@ -414,3 +414,26 @@ test('rerank settings validate bounded topN and preserve vector writes', async (
     assert.equal(f.api.rerankRead().model, 'rank-fixture'); assert.equal(f.api.vectorRead().model, 'embed-fixture');
     assert.equal(f.ctx.extensionSettings.yimu.rerank.model, 'rank-fixture'); assert.equal(f.ctx.extensionSettings.yimu.vector.model, 'embed-fixture');
 });
+
+test('generation-time similarity scores every slice, remembers slice vectors and only asks for what is new', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1', apiKey: 'vector-secret', model: 'embed-fixture' });
+    assert.equal((await f.api.vectorScores({ query: '', candidates: [{ id: 'a', text: '甲' }] })).size, 0);
+    const table = { '当前': [1, 0], '下一句': [0, 1], '甲': [1, 0], '乙': [0, 1], '丙': [0.6, 0.8] };
+    f.answer = (path, options) => Response.json({ data: JSON.parse(options.body).input.map((value, index) => ({ index, embedding: table[value] })) });
+    const before = f.calls.length;
+    const first = await f.api.vectorScores({ query: '当前', candidates: [{ id: 'a', text: '甲' }, { id: 'b', text: '乙' }] });
+    assert.deepEqual([...first].map(([id, score]) => [id, Math.round(score * 100) / 100]), [['a', 1], ['b', 0]]);
+    assert.deepEqual(f.calls.at(-1).body.input, ['当前', '甲', '乙']);
+    const second = await f.api.vectorScores({ query: '下一句', candidates: [{ id: 'a', text: '甲' }, { id: 'b', text: '乙' }, { id: 'c', text: '丙' }] });
+    assert.deepEqual(f.calls.at(-1).body.input, ['下一句', '丙'], 'known slices are not sent again');
+    assert.deepEqual([...second].map(([id, score]) => [id, Math.round(score * 100) / 100]), [['a', 0], ['b', 1], ['c', 0.8]]);
+    assert.equal(f.calls.length - before, 2);
+    // 超过单批上限时分批发送，查询只随第一批。
+    const many = Array.from({ length: 130 }, (_, index) => ({ id: `m${index}`, text: `片${index}` }));
+    f.answer = (path, options) => Response.json({ data: JSON.parse(options.body).input.map((value, index) => ({ index, embedding: [1, 0] })) });
+    const wide = await f.api.vectorScores({ query: '当前', candidates: many });
+    assert.equal(wide.size, 130); assert.deepEqual(f.calls.slice(-3).map(call => call.body.input.length), [64, 63, 4]);
+    f.answer = () => new Response('nope', { status: 500 });
+    await assert.rejects(f.api.vectorScores({ query: '又一句', candidates: [{ id: 'z', text: '新片' }] }), error => !error.message.includes('vector-secret'));
+});

@@ -523,6 +523,51 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             throw new Error(errorText(error, config));
         } finally { scope.dispose(); }
     }
+    // 生成时排序用：只算相似度、不取前几名。切片的向量按「接口＋模型＋正文」记在内存里，
+    // 每轮只需为最近几条消息（查询）和新出现的切片请求一次；分批发送，单批不超过 64 条。
+    const vectorCache = new Map();
+    const VECTOR_CACHE_MAX = 4000;
+    async function vectorScores({ query = '', candidates = [], signal } = {}) {
+        const config = vectorRead(), scores = new Map();
+        const safeQuery = text(query).slice(0, 20000);
+        const pool = (Array.isArray(candidates) ? candidates : []).filter(candidate => candidate?.id && text(candidate.text))
+            .map(candidate => ({ id: String(candidate.id), text: text(candidate.text).slice(0, 20000) }));
+        if (!safeQuery || !pool.length || !config.apiUrl || !config.model) return scores;
+        const keyOf = value => `${config.apiUrl}\n${config.model}\n${value}`;
+        const embed = async inputs => {
+            const scope = requestScope(signal, '向量请求超时，已回退关键词排序');
+            try {
+                const call = authorization => fetchImpl(vectorEndpoint(config), { method: 'POST', cache: 'no-store', signal: scope.signal,
+                    headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
+                    body: JSON.stringify({ model: config.model, input: inputs }) });
+                const response = await sendWithAuthFallback(config.apiKey, call);
+                aborted(signal);
+                if (!response.ok) fail(errorText(new Error(`向量接口请求失败：${describeHttpFailure(response.status)}`), config));
+                let json; try { json = await response.json(); } catch { fail('向量接口返回格式无效'); }
+                const vectors = new Array(inputs.length);
+                (Array.isArray(json?.data) ? json.data : []).forEach((item, index) => { vectors[Number.isSafeInteger(item?.index) ? item.index : index] = normalizeVector(item?.embedding); });
+                return vectors;
+            } catch (error) {
+                aborted(signal);
+                if (scope.timedOut()) throw new Error('向量请求超时，已回退关键词排序');
+                throw new Error(errorText(error, config));
+            } finally { scope.dispose(); }
+        };
+        const missing = [...new Set(pool.map(candidate => candidate.text).filter(value => !vectorCache.has(keyOf(value))))];
+        let queryVector = null;
+        for (let at = 0; at < missing.length || !queryVector; at += 63) {
+            const batch = missing.slice(at, at + 63), vectors = await embed([...(queryVector ? [] : [safeQuery]), ...batch]);
+            if (!queryVector) { queryVector = vectors.shift(); if (!queryVector) fail('向量接口未返回有效查询向量'); }
+            batch.forEach((value, index) => { if (vectors[index]) vectorCache.set(keyOf(value), vectors[index]); });
+            if (!batch.length) break;
+        }
+        while (vectorCache.size > VECTOR_CACHE_MAX) vectorCache.delete(vectorCache.keys().next().value);
+        for (const candidate of pool) {
+            const vector = vectorCache.get(keyOf(candidate.text));
+            if (vector && vector.length === queryVector.length) scores.set(candidate.id, vector.reduce((sum, value, index) => sum + value * queryVector[index], 0));
+        }
+        return scores;
+    }
     const rerankEndpoint = config => {
         return `${checkedRoot('重排', config.apiUrl)}/rerank`;
     };
@@ -569,7 +614,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         } finally { scope.dispose(); }
     }
     return { read, update, effectiveConnection, assertCurrent, generate, lastCache: () => lastCache, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
-        vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates,
+        vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates, vectorScores,
         fetchVectorModels, testVectorConnection,
         rerankRead, updateRerank, saveRerankPreset, loadRerankPreset, deleteRerankPreset, rerankCandidates,
         fetchRerankModels, testRerankConnection,

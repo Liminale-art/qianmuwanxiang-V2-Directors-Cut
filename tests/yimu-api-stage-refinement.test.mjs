@@ -27,7 +27,7 @@ test('new API defaults and algorithm defaults do not overwrite explicit saved va
     assert.equal(fresh.temperature, 1); assert.equal(fresh.maxTokens, 32000); assert.equal(fresh.contextTokens, 1000000);
     f.ctx.extensionSettings.yimu = { api: { temperature: 0.7, maxTokens: 2048, contextTokens: 32768 } };
     assert.equal(f.api.read().temperature, 0.7); assert.equal(f.api.read().maxTokens, 2048); assert.equal(f.api.read().contextTokens, 32768);
-    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.11');
+    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.12');
     assert.equal(DEFAULTS.trigger, 50000); assert.equal(DEFAULTS.stageThreshold, 65000); assert.equal(DEFAULTS.stageRecent, 10);
     const old = { ...createDefaults(), values: { ...DEFAULTS, trigger: 4000, stageThreshold: 6000 } };
     assert.equal(validateDefaults(old).values.trigger, 4000); assert.equal(validateDefaults(old).values.stageThreshold, 6000);
@@ -134,12 +134,15 @@ test('trigger remains reachable above actual capacity and approves bounded conti
 test('visible generated length counts Unicode characters without whitespace or JSON evidence and rejects whole oversized results', () => {
     const entry = { kind: 'summary', text: '甲 \n乙A1，😀', scenes: [{ place: '桥', event: '等', characters: ['甲'], nature: 'memory', evidence: { floors: [1] } }] };
     assert.equal(generatedTextLength(entry), 11);
-    assert.throws(() => validateGeneratedLength(entry, { sliceChars: 10 }), /超过 10 字/);
+    assert.equal(validateGeneratedLength(entry, { sliceChars: 10 }), entry, 'a result slightly over the cap is kept whole, never cut or discarded');
+    assert.equal(validateGeneratedLength(entry, { sliceChars: 8 }), entry, 'up to one and a half times the cap');
+    assert.throws(() => validateGeneratedLength(entry, { sliceChars: 7 }), /远超 7 字上限/);
     assert.equal(validateGeneratedLength(entry, { sliceChars: 11 }), entry);
     assert.equal(validateGeneratedLength({ kind: 'manual', text: '文'.repeat(5000) }, { sliceChars: 1 }).kind, 'manual');
     const hashes = ['a'.repeat(64)];
-    assert.throws(() => parseSummary(JSON.stringify({ slices: [{ start: 1, end: 1, text: '文'.repeat(2001) }] }), { start: 1, end: 1 }, hashes), /2000 字上限/);
-    assert.throws(() => parseStage(JSON.stringify({ text: '文'.repeat(3001) }), []), /3000 字上限/);
+    assert.throws(() => parseSummary(JSON.stringify({ slices: [{ start: 1, end: 1, text: '文'.repeat(3001) }] }), { start: 1, end: 1 }, hashes), /2000 字上限/);
+    assert.throws(() => parseStage(JSON.stringify({ text: '文'.repeat(4501) }), []), /3000 字上限/);
+    assert.equal(parseSummary(JSON.stringify({ slices: [{ start: 1, end: 1, text: '文'.repeat(2600) }] }), { start: 1, end: 1 }, hashes)[0].text.length, 2600, 'the complete text is saved');
     assert.deepEqual(validateSettings({ sliceChars: null, stageChars: null }), { sliceChars: null, stageChars: null });
     assert.throws(() => validateSettings({ sliceChars: 0 }), /超出范围/);
     let document = stageFixture(2);

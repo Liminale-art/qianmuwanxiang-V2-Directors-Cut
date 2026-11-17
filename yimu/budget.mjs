@@ -40,6 +40,9 @@ export function byteBudget(messages) {
     return new TextEncoder().encode(JSON.stringify(messages)).byteLength + messages.length * 24 + 96;
 }
 
+/** 注入预算可上浮的倍数：为了带上完整的一条，不为了多带几条。 */
+export const BUDGET_ELASTICITY = 1.25;
+
 /** 注入预算用的 token 估算：字节数的一半。中文一字 3 字节约合 1～1.5 token，英文约 4 字节 1 token，取一半对两者都偏保守；
  * 直接拿字节数当 token 会把中文聊天的预算压到三分之一，记忆放不下、旧楼也就隐藏不了。 */
 export const tokenEstimate = messages => Math.ceil(byteBudget(messages) / 2);
@@ -233,7 +236,8 @@ export async function buildBudgetedMessages(payload, {
         for (const floor of actualFloors) nextRemoved.add(map.found.get(floor));
         const nextInsertion = Math.min(insertion, ...actualFloors.map(floor => map.found.get(floor)));
         const nextEntries = [...selected, entry], memory = memoryMessage(nextEntries, entryOrder);
-        if (tokenEstimate([memory]) > memoryBudget) { fallback(); continue; }
+        // 预算是规则，但记忆只整条带、不截断：越线的那一条在上浮 25% 以内仍整条带上，超出才换用它的细分切片或不带。
+        if (tokenEstimate([memory]) > memoryBudget * BUDGET_ELASTICITY) { fallback(); continue; }
         const next = assemble(original, nextEntries, nextRemoved, nextInsertion, entryOrder);
         const { fallbackEntries, ...admittedEntry } = entry;
         selected.push(clone(admittedEntry)); selectedIds.add(entry.id);

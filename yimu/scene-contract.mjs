@@ -75,12 +75,14 @@ export function generatedTextLength(entry) {
     return Array.from(visible.join('').replace(/\s/gu, '')).length;
 }
 
+/** 字数上限是写给模型的规则；模型略超时保留完整结果，不作废也不截断。超出这个倍数才视为没按规则写、不保存。 */
+export const LENGTH_ELASTICITY = 1.5;
 export function validateGeneratedLength(entry, settings = {}) {
     if (!['summary', 'stage'].includes(entry?.kind)) return entry;
     const cap = entry.kind === 'stage' ? settings.stageChars ?? 3000 : settings.sliceChars ?? 2000;
     if (!Number.isSafeInteger(cap) || cap < 1) fail('生成切片字数上限无效');
     const length = generatedTextLength(entry);
-    if (length > cap) fail(`${entry.kind === 'stage' ? '阶段摘要' : '记忆切片'}共 ${length} 字，超过 ${cap} 字上限，本次结果未保存；原片保留，请调整范围或上限后重试`);
+    if (length > cap * LENGTH_ELASTICITY) fail(`${entry.kind === 'stage' ? '阶段摘要' : '记忆切片'}共 ${length} 字，远超 ${cap} 字上限，本次结果未保存；原片保留，请调整范围或上限后重试`);
     return entry;
 }
 

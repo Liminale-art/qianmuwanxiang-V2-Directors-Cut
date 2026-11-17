@@ -66,7 +66,7 @@ test('defaults GET creates no settings/chat file and generated char limits are e
     assert.deepEqual(await fs.readdir(path.join(f.account, '.yimu')), []);
     await f.enable(); const prior = (await f.store.read(f.request, binding)).document;
     await assert.rejects(f.store.change(f.request, binding, {id: 'oversized', type: 'append', expectedEpoch: prior.epoch,
-        entry: {id: 'oversized', kind: 'summary', text: '文'.repeat(2001), source: f.source}}), /2000 字上限/);
+        entry: {id: 'oversized', kind: 'summary', text: '文'.repeat(3001), source: f.source}}), /2000 字上限/);
     assert.deepEqual((await f.store.read(f.request, binding)).document, prior, 'failed generated writes leave the document untouched');
     const saved = await f.summary();
     const edited = await f.store.change(f.request, binding, {id: 'manual_long_edit', type: 'edit', entryId: 'slice_1', expectedRevision: 1, text: '修'.repeat(3100)});
@@ -74,7 +74,7 @@ test('defaults GET creates no settings/chat file and generated char limits are e
     const capped = await f.store.defaults(f.request, {id: 'lower_limit', expectedRevision: initial.defaults.revision, values: {sliceChars: 10}});
     await assert.rejects(f.store.change(f.request, binding, {id: 'redo_oversized', type: 'redo', expectedEpoch: edited.document.epoch,
         expectedDefaultsRevision: capped.defaults.revision, entryId: 'slice_1', expectedRevision: 2,
-        entry: {...saved.document.entries[0], text: '新'.repeat(11)}}), /10 字上限/);
+        entry: {...saved.document.entries[0], text: '新'.repeat(16)}}), /10 字上限/);
     const kept = (await f.store.read(f.request, binding)).document.entries[0];
     assert.equal(kept.text.length, 3100); assert.equal(kept.candidate, null);
     assert.equal((await f.append('unlimited_manual', '手'.repeat(4000))).document.entries.at(-1).text.length, 4000);

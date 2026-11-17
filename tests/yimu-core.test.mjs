@@ -366,3 +366,23 @@ test('floor numbers shown to the user follow ST #0 numbering while storage stays
     assert.throws(() => planManualRange(null, live, DEFAULTS, { start: floorValue(''), end: floorValue('2') }), /有效的起止楼层/);
     assert.throws(() => planManualRange(null, live, DEFAULTS, { start: floorValue('0'), end: floorValue('3') }), /有效的起止楼层/);
 });
+
+test('vector similarity only reorders selection when the chat enables it, and a failed lookup falls back quietly', async () => {
+    let doc = append(append(append(enable(), await entry('a', 1, 2)), await entry('c', 3, 4)), await entry('d', 5, 6));
+    const snapshot = { messages, maxContext: 8192 }, asked = [];
+    const semanticScores = async request => { asked.push(request); return new Map([['a', 0.1], ['c', 0.9], ['d', 0.2]]); };
+    const plain = await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
+    assert.equal(asked.length, 0, 'the provider is not called unless this chat turned vectors on');
+    assert.equal(plain.semantic, false);
+    doc.settings.vectorEnabled = true;
+    const ranked = await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
+    assert.equal(asked.length, 1); assert.equal(ranked.semantic, true);
+    assert.deepEqual(asked[0].candidates.map(item => item.id).sort(), ['a', 'c', 'd']);
+    assert.equal(asked[0].query, messages.slice(-DEFAULTS.recent).map(message => message.mes).join('\n'), 'the query is the recent raw text');
+    assert.equal(ranked.entries[0].id, 'c', 'the most similar slice is admitted first');
+    assert.deepEqual([...ranked.memoryIds].sort(), [...plain.memoryIds].sort(), 'similarity changes order, not which slices are eligible');
+    for (const broken of [async () => { throw new Error('offline'); }, async () => null, async () => new Map()]) {
+        const fallback = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: broken });
+        assert.equal(fallback.semantic, false); assert.deepEqual(fallback.memoryIds, plain.memoryIds);
+    }
+});

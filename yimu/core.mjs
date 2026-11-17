@@ -274,7 +274,7 @@ export function filterCompanionEntries(entries = [], document = {}, { includeCus
     return entries.filter(entry => !hasCustomParent(entry));
 }
 
-export function selectMemories(document, snapshot, settings, hashes, type = '') {
+export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null) {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
     const usable = document.entries.filter(entry => {
@@ -307,7 +307,12 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
     const terms = new Map(usable.map(entry => [entry.id, narrativeTerms(entry.text)]));
     const frequency = new Map();
     for (const values of terms.values()) for (const term of values) frequency.set(term, (frequency.get(term) || 0) + 1);
-    const relevance = entry => [...query].reduce((score, term) => score + (terms.get(entry.id)?.has(term) ? Math.log(1 + usable.length / (frequency.get(term) || 1)) : 0), 0);
+    const lexical = entry => [...query].reduce((score, term) => score + (terms.get(entry.id)?.has(term) ? Math.log(1 + usable.length / (frequency.get(term) || 1)) : 0), 0);
+    // 向量相似度（可选）只参与排序：把各条的相似度拉到 0～1，再按关键词得分的量级加进去。
+    // 它不能让失效、屏蔽或删除的条目回来，也不改变谁有权替换原文。
+    const similar = usable.map(entry => semantic?.get?.(entry.id)).filter(Number.isFinite);
+    const low = Math.min(...similar), span = Math.max(...similar) - low, scale = similar.length ? Math.max(1, ...usable.map(lexical)) : 0;
+    const relevance = entry => lexical(entry) + (similar.length && Number.isFinite(semantic.get(entry.id)) ? (span > 0 ? (semantic.get(entry.id) - low) / span : 1) * scale : 0);
     const chosenStages = [];
     const overlaps = (a, b) => a.source.parents.some(ref => b.source.parents.some(other => other.id === ref.id));
     // A stale automatic stage only stands in while no current reading exists. If
@@ -343,15 +348,25 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
         && (item.parent.id === entry.id || entry.kind === 'stage' && entry.source.parents.some(ref => ref.id === item.parent.id)))]), ...companionEntries(document.companion)];
 }
 
-export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '' } = {}) {
+export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '', semanticScores = null } = {}) {
     const empty = { prompt: '', coveredRanges: [], memoryIds: [], entries: [], tokens: 0, estimated: !countTokens };
     if (!document.enabled || document.movedTo) return empty;
     const settings = effectiveSettings(document, defaults);
     const hashes = await fingerprintMessages(snapshot.messages);
-    const selected = selectMemories(document, snapshot, settings, hashes, type);
+    // 当前聊天开了向量时，生成前用最近几条消息问一次相似度；拿不到（未配置、超时、出错）就按关键词排序。
+    let semantic = null;
+    if (settings.vectorEnabled === true && typeof semanticScores === 'function') {
+        const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
+        const query = snapshot.messages.slice(Math.max(0, visibleEnd - settings.recent), visibleEnd).map(message => message.mes || '').join('\n');
+        const candidates = document.entries.filter(entry => ['active', 'invalid'].includes(entry.status) && entry.kind !== 'excerpt' && typeof entry.text === 'string' && entry.text.trim())
+            .map(entry => ({ id: entry.id, text: entry.text }));
+        try { semantic = await semanticScores({ query, candidates }); } catch { semantic = null; }
+        if (!(semantic instanceof Map) || !semantic.size) semantic = null;
+    }
+    const selected = selectMemories(document, snapshot, settings, hashes, type, semantic);
     if (!selected.length) return empty;
     const prompt = renderMemoryPrompt(selected, { entryOrder: document.entryOrder });
     // This is selection, not admission. Only the final-payload adapter may remove raw text.
-    return { prompt, coveredRanges: selected.filter(entry => entry.kind !== 'excerpt' && !entry.origin).flatMap(sourceRanges), memoryIds: selected.map(e => e.id), entries: structuredClone(selected), entryOrder: [...(document.entryOrder || [])], settings,
+    return { prompt, coveredRanges: selected.filter(entry => entry.kind !== 'excerpt' && !entry.origin).flatMap(sourceRanges), memoryIds: selected.map(e => e.id), entries: structuredClone(selected), entryOrder: [...(document.entryOrder || [])], settings, semantic: Boolean(semantic),
         tokens: countTokens ? await countTokens(prompt) : estimateTokens(prompt), estimated: true };
 }

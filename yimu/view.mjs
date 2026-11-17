@@ -1094,7 +1094,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const injectedTitle = el('p', 'ym-muted', '最后一次注入的内容');
         injectedTitle.title = '记录已加入生成请求的内容，不代表模型已接收。'; usedBody.append(injectedTitle);
         if (Array.isArray(use.removedFloors) && Array.isArray(use.recentFloors)) usedBody.append(el('p', 'ym-muted',
-            `替换原文 ${use.removedFloors.length} 层 · 保留近期 ${use.recentFloors.length} 层`));
+            `替换原文 ${use.removedFloors.length} 层 · 保留近期 ${use.recentFloors.length} 层${use.semantic ? ' · 向量参与排序' : ''}`));
         if ([use.requestTokens, use.contextTokens, use.responseTokens].every(Number.isFinite)) usedBody.append(el('p', 'ym-muted',
             `请求保守估算 ${use.requestTokens} + 回复预留 ${use.responseTokens} / 上下文 ${use.contextTokens} token`));
         const usedEntries = use.entries || (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id)).filter(Boolean);

@@ -37,7 +37,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       const live=getContext();return live.chat===chat&&live.chatMetadata===metadata&&JSON.stringify([live.chatId,live.characterId,live.groupId])===owner;
     };
     try{
-      const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.545',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
+      const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.546',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
       if(!existingStyle){const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmProseAssistantStyle='';link.href=styleUrl;document.head.append(link);link.addEventListener('error',()=>link.remove(),{once:true});}else if(existingStyle.href!==styleUrl)existingStyle.href=styleUrl;
       const portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);record.portal=portal;record.detach=mountPortal?.(portal);inheritProseTypography(portal);
       const runtime=await loadLocalChunk('./qianmu-prose-assistant-panel.js?v=1.59.452');if(!record.valid()){close(record);return null;}
@@ -90,7 +90,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     if(entry||cleaning){notify?.('请先关闭场外特助或结束清理。','warning');return {status:'cancelled'};}
     const token={};cleaning=token;if(button)button.disabled=true;
     try{
-      const runtime=await import('./qianmu-prose-assistant-library-transfer.js?v=1.59.545');
+      const runtime=await import('./qianmu-prose-assistant-library-transfer.js?v=1.59.546');
       const transfer=runtime.createProseAssistantLibraryTransfer({resolveNamespace,isCurrent:()=>cleaning===token&&isCurrent()===true&&!entry,download,confirm,notify});
       return await work(transfer);
     }catch(error){

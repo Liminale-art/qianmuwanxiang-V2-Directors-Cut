@@ -286,7 +286,7 @@ test('new boundary summaries obey the selected character cap before any chat or 
     const f=await fixture(t),before=(await f.store.read(f.request,binding)).document;
     await f.change({type:'settings',expectedRevision:before.configRevision,values:{sliceChars:3}});
     const p=await f.plan(),op=f.operation(p,'overlong-boundary');
-    await assert.rejects(f.store.createStory(f.request,binding,op),/超过 3 字上限/);
+    await assert.rejects(f.store.createStory(f.request,binding,op),/远超 3 字上限/);
     assert.deepEqual((await fs.readdir(f.folder)).filter(name=>name.endsWith('.jsonl')),['Original.jsonl']);
     op.boundarySummaries[0].entries[0].text='短文';op.boundarySummaries[0].entries[0].title='边界短名';
     const result=await f.store.createStory(f.request,binding,op);

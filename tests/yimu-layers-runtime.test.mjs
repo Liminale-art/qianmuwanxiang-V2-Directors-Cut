@@ -206,7 +206,7 @@ test('manual stages are independent of the auto trigger and char limit rejects t
     const saved = await f.read(); assert.equal(saved.document.entries.length, 6);
     await assert.rejects(f.api.change(f.snapshot.binding, {id: 'over_stage', type: 'append', automaticStage: false,
         expectedEpoch: saved.document.epoch, expectedDefaultsRevision: saved.defaults.revision,
-        entry: {id: 'over_stage', kind: 'stage', text: '新'.repeat(11), source: {parents: saved.document.entries.map(entry => ({id: entry.id, revision: entry.revision}))}}}), /10 字上限/);
+        entry: {id: 'over_stage', kind: 'stage', text: '新'.repeat(16), source: {parents: saved.document.entries.map(entry => ({id: entry.id, revision: entry.revision}))}}}), /10 字上限/);
 });
 
 test('stopping a stage during its final source read prevents the returned result from being committed', async t => {

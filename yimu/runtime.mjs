@@ -19,7 +19,7 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500 }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200 }) {
     // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
     // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
     // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
@@ -847,10 +847,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         try {
             const snapshot = await host.snapshot();
             if (!equalBinding(snapshot.binding, doc.binding)) return;
-            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type });
+            // 向量相似度限时取：到点没回来本轮就按关键词排序，请求继续在后台跑完、把向量记下，下一轮即可用上。
+            const semanticScores = typeof host.vectorScores !== 'function' ? null : request => {
+                const pending = Promise.resolve().then(() => host.vectorScores(request)).catch(() => null);
+                let timer;
+                return Promise.race([pending, new Promise(resolve => { timer = setTimeout(() => resolve(null), semanticWaitMs); })]).finally(() => clearTimeout(timer));
+            };
+            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type, semanticScores });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
             const result = host.prepare(coreChat, plan, snapshot, type);
-            if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch,
+            if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true,
                 foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };
                 // 保底：把记忆写入持久注入槽，由 ST 烘焙进本轮 payload。若最终请求边界无法安全
                 // 改写（能力/路由受限等），这段记忆仍随原请求送达模型；成功改写时
@@ -919,7 +925,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 return;
             }
             if (result.applied) {
-                state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared',
+                state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared', semantic: pending.semantic === true,
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
                     requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
                 state.lastSkip = null;
