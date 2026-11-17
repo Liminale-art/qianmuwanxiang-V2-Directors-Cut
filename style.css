@@ -6011,6 +6011,16 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-assistant-settings .sd-reader-assistant-history-clear:hover { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 55%, var(--sd-border)); background: var(--sd-glass); }
 .sd-reader-comic-review { display: flex; flex-direction: column; gap: 10px; min-width: min(520px, 82vw); text-align: left; }
 .sd-reader-comic-review h3 { margin: 0; }
+/* 漫画识图：对话框「带上当前页」开关（样式同幕伴小助手开关）、记忆档案里的阅读方向与人物表 */
+.sd-reader-dialog-page { width: 36px; min-width: 36px; padding: 0; color: var(--sd-muted); }
+.sd-reader-dialog-page.active { color: var(--sd-accent); border-color: color-mix(in srgb, var(--sd-accent) 45%, var(--sd-border)); background: color-mix(in srgb, var(--sd-accent) 9%, var(--sd-glass-weak)); }
+.sd-reader-dialog-input.is-assistant .sd-reader-dialog-page { display: none; }
+.sd-reader-mrow .sd-reader-comic-direction { width: auto; margin-left: auto; }
+.sd-reader-comic-castrow { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.sd-reader-comic-castrow .sd-reader-comic-cast-name { flex: 0 0 32%; min-width: 0; }
+.sd-reader-comic-castrow .sd-reader-comic-cast-look { flex: 1 1 0; min-width: 0; }
+.sd-reader-comic-castrow .sd-reader-mbtn { flex: 0 0 auto; padding: 5px 9px; }
+.sd-reader-comic-cast-add { margin-top: 8px; }
 .sd-reader-comic-review textarea, .sd-reader-comic-review input { width: 100%; box-sizing: border-box; border: 1px solid var(--sd-border); border-radius: 10px; background: var(--sd-input-bg); color: var(--sd-text); padding: 9px 11px; font: inherit; }
 .sd-reader-comic-review textarea { min-height: 190px; resize: vertical; line-height: 1.6; }
 .sd-reader-comic-review label { display: flex; flex-direction: column; gap: 5px; color: var(--sd-muted); font-size: .8em; }

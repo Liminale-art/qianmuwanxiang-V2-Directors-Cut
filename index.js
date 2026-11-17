@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.556';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.557';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.556';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.556';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.556';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.557';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.557';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.557';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.556';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.557';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.556';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.556';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.557';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.557';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.556';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.557';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.556';
+const VERSION = '1.59.557';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1261,7 +1261,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     },
     comic: {
       visionApiProfileId: '',       // 漫画识图/对话图片共用的视觉模型预设
-      pagesPerBatch: 3,             // 当前页向前合并多少页形成一次连续画面总结
+      pagesPerBatch: 3,             // 每批识别几页
+      autoFollow: true,             // 跟读：读过的页自动识别
+      reviewEachBatch: false,       // 每批保存前先弹出来给用户看一眼
+      sendCurrentPage: false,       // 让书友回复时把当前页的图一并发过去
     },
     // 伴读设定层（1B·复用取材的拉取/呈现·选择独立·身份/人设默认跟随 ST 当前选择+千幕注入逻辑）
     companion: {
@@ -8392,6 +8395,7 @@ function reconcileClearedStorageItems(selected) {
     readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
     readerAssistantSessions.clear();
     coreadInvalidatePool();
+    if (readerContentCache) delete readerContentCache.comic;   // 漫画页稿同仓，一并清掉
   }
   if (cleared.has('reader_vectors')) {
     coreadVecCache = null;
@@ -25196,6 +25200,7 @@ function coreadComicConfig() {
   const comic = c.comic;
   if (typeof comic.visionApiProfileId !== 'string') comic.visionApiProfileId = '';
   comic.pagesPerBatch = Math.max(1, Math.min(8, Math.round(Number(comic.pagesPerBatch) || 3)));
+  comic.autoFollow = comic.autoFollow !== false;
   return comic;
 }
 
@@ -25514,12 +25519,16 @@ function coreadEnsurePresetEntries(name) {
 // 再往前取 visiblePercent% 正文（占全书·硬上限 visibleCharsBefore 字），起点对齐句界。
 // computeVisibleWindow - 已迁移到 qianmu-storyboard-utils.js
 
-function coreadComicVisibleText(descriptions, chapterIndex) {
-  return Object.values(isPlainObject(descriptions) ? descriptions : {})
-    .filter((item) => item && Number(item.toPage) <= Number(chapterIndex) + 1 && String(item.summary || '').trim())
-    .sort((a, b) => Number(a.fromPage) - Number(b.fromPage))
-    .map((item) => `【漫画第 ${item.fromPage}${item.toPage !== item.fromPage ? `–${item.toPage}` : ''} 页】\n${String(item.summary).trim()}`)
-    .join('\n\n');
+// 书友能看到的漫画文字：当前页及前几页用逐页画面稿，更早的用分段总结，只到当前页为止。
+// 书没开着时直接读本机那份页稿；旧版写在书籍记录上的文字稿（legacy）作兜底。
+async function coreadComicVisibleText(bookId, chapterIndex, legacy) {
+  let record = coreadComicRecord(bookId);
+  if (!record) {
+    let raw = null;
+    try { raw = await blobStore.getReaderChat(reader.comicRecordKey(bookId)); } catch (_) {}
+    record = reader.normalizeComicRecord(raw, bookId, legacy);
+  }
+  return reader.comicVisibleText(record, chapterIndex, coreadCompanion().visibleCharsBefore);
 }
 
 // 当前书的统一阅读水位。伴读对话、档案绑定、主线反哺都只认这一份绝对字符坐标，
@@ -25687,7 +25696,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
 
   const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, cp.visiblePercent, cp.visibleCharsBefore);
   const visibleText = meta.mode === 'comic'
-    ? (coreadComicVisibleText(comicDescriptions, chapterIndex) || '（当前已读漫画页尚未生成视觉文字稿）')
+    ? (await coreadComicVisibleText(id, chapterIndex, comicDescriptions) || '（当前已读漫画页尚未生成视觉文字稿）')
     : win.visibleText;
 
   // ── 取材：预设条目（伴读独立勾选）──
@@ -25977,12 +25986,13 @@ async function callCoreadVisionModel(systemPrompt, userPrompt, imageUrls, opts =
   const controller = opts.controller || new AbortController();
   const genUrl = String(conn.apiUrl || '').trim().replace(/\/+$/, '');
   try {
-    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, stream: !!settings.streamEnabled && !!opts.onDelta, signal: controller.signal, onDelta: opts.onDelta || null });
+    return await generateViaSTProxy(genUrl, conn.apiKey, conn.model, messages, { temperature: conn.temperature, stream: !!settings.streamEnabled && !!opts.onDelta, signal: controller.signal, onDelta: opts.onDelta || null, onUsage: opts.onUsage });
   } catch (proxyError) {
     if (!/ST backend proxy failed|Failed to fetch|NetworkError|HTTP\s*(404|501)/i.test(String(proxyError?.message || ''))) throw proxyError;
     return callExternalApi(messages, opts.onDelta || null, {
       apiUrl: conn.apiUrl, apiKey: conn.apiKey, model: conn.model,
       temperature: conn.temperature, stream: !!settings.streamEnabled,
+      onResponse: (state) => { if (state?.usage) opts.onUsage?.(state.usage); },
     }, controller);
   }
 }
@@ -26069,6 +26079,7 @@ function coreadMemorySnapshot() {
     slices: (readerDialog.slices || []).map((slice) => ({ ...slice })),
     cursor: readerDialog.cursor,
     summaryFloor: readerDialog.summaryFloor,
+    comicDismissed: readerDialog.comicDismissed,
   };
 }
 function coreadMemoryRestore(snapshot) {
@@ -26077,6 +26088,7 @@ function coreadMemoryRestore(snapshot) {
   readerDialog.slices = snapshot.slices;
   readerDialog.cursor = snapshot.cursor;
   readerDialog.summaryFloor = snapshot.summaryFloor;
+  readerDialog.comicDismissed = snapshot.comicDismissed;
 }
 
 async function coreadDistillSegment(segMsgs, m, meta, names) {
@@ -26383,7 +26395,7 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
     const id = readerView?.bookId || readerDialog.bookId;
     const meta = coreadBookMeta(id);
     if (!meta) return { ok: false, reason: '未打开书目' };
-    if (meta.mode === 'comic') return { ok: false, reason: '漫画请在阅读页使用识图按钮生成可校对文字稿；确认后会直接写入伴读档案。' };
+    if (meta.mode === 'comic') return { ok: false, reason: '漫画不走正文蒸馏' };
     // 取正文：当前打开走内存缓存，否则回落 IndexedDB
     let chapters = null, chapterIndex = 0, scrollRatio = 0;
     if (readerContentCache && readerContentCache.bookId === id) {
@@ -26455,7 +26467,7 @@ async function coreadDistillFullBook(m) {
     const id = readerView?.bookId || readerDialog.bookId;
     const meta = coreadBookMeta(id);
     if (!meta) return { ok: false, reason: '未打开书目' };
-    if (meta.mode === 'comic') return { ok: false, reason: '漫画不执行全文文字蒸馏，请按阅读进度分批识图，避免提前读取未读页面。' };
+    if (meta.mode === 'comic') return { ok: false, reason: '漫画不走正文蒸馏' };
     let chapters = null;
     if (readerContentCache && readerContentCache.bookId === id) {
       chapters = readerContentCache.chapters;
@@ -26718,26 +26730,14 @@ async function coreadRegenSlice(sliceId) {
   } finally { coreadMemoryWrites--; }
 }
 
-// 保存切片的手动编辑（summary/keywords）。
-async function coreadUpdateComicDescriptionForSlice(sliceId, values = null) {
-  const bookId = readerDialog.bookId;
-  if (!bookId || coreadBookMeta(bookId)?.mode !== 'comic') return;
-  try {
-    const record = await blobStore.getBook(bookId);
-    const descriptions = isPlainObject(record?.comicDescriptions) ? { ...record.comicDescriptions } : {};
-    let changed = false;
-    for (const [key, item] of Object.entries(descriptions)) {
-      if (item?.sliceId !== sliceId) continue;
-      if (values) descriptions[key] = { ...item, ...values, updatedAt: Date.now() };
-      else delete descriptions[key];
-      changed = true;
-    }
-    if (!changed) return;
-    await blobStore.putBook(bookId, { ...record, comicDescriptions: descriptions });
-    if (readerContentCache?.bookId === bookId) readerContentCache.comicDescriptions = descriptions;
-  } catch (_) {}
+// 用户改了一条漫画切片：页范围完全对上的分段总结跟着改，书友看到的文字稿保持一致。
+async function coreadUpdateComicDescriptionForSlice(sliceId, values) {
+  const provenance = (readerDialog.slices || []).find((slice) => slice.id === sliceId)?.provenance;
+  if (!values || !coreadComicRecord(readerDialog.bookId) || !Number.isFinite(provenance?.chapterFrom)) return;
+  await coreadComicCommit((record) => reader.comicRecordWithSummary(record, provenance.chapterFrom + 1, provenance.chapterTo + 1, values));
 }
 
+// 保存切片的手动编辑（summary/keywords）。
 async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) {
   if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };
   coreadMemoryWrites++;
@@ -26772,12 +26772,13 @@ async function coreadDeleteSlice(sliceId) {
     const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
     if (idx < 0) return { ok: false, reason: '找不到该切片' };
     const snapshot = coreadMemorySnapshot();
-    readerDialog.slices.splice(idx, 1);
+    const [removed] = readerDialog.slices.splice(idx, 1);
+    // 漫画切片删掉后不再从页稿自动补回。
+    if (coreadBookMeta(readerDialog.bookId)?.mode === 'comic') readerDialog.comicDismissed = reader.comicDismissRange(readerDialog.comicDismissed, removed);
     coreadRenumberSlices();
     coreadRecalculateDialogCursor();
     if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     await coreadForgetSliceRuntime([sliceId]);
-    await coreadUpdateComicDescriptionForSlice(sliceId, null);
     await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
     return { ok: true };
   } finally { coreadMemoryWrites--; }
@@ -27441,6 +27442,7 @@ async function coreadClearAllSlices() {
     readerDialog.slices = [];
     readerDialog.summaryFloor = (readerDialog.messages || []).length;
     readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
+    if (coreadComicRecord(readerDialog.bookId)) readerDialog.comicDismissed = reader.comicDismissAll(coreadComicRecord(readerDialog.bookId));   // 清空后不从漫画页稿补回
     if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     coreadEchoTtl.clear();   // 切片全清，回响池随之清空
     coreadVecCache = null;   // 向量缓存随之作废
@@ -27869,6 +27871,8 @@ let readerAssistantToken = 0;
 const COREAD_ASSISTANT_CONTEXT_MESSAGES = 12;   // 固定轻量窗口：约 6 轮问答，不再让用户管理无感参数。
 let coreadComicVisionBusy = false;
 let coreadComicVisionAbort = null;
+let coreadComicFill = null;                    // 「补齐」进行中：{ stop, batch }
+let coreadComicWrite = Promise.resolve();      // 漫画页稿的写入队列
 let dialogBusy = false;          // 伴读对话忙碌态（独立 lane）
 let dialogAbort = null;          // 伴读对话中止句柄
 let dialogGenToken = 0;          // 生成令牌：切书/关阅读使旧回调失效
@@ -27911,6 +27915,7 @@ async function coreadLoadDialog(bookId) {
       needsMigration = needsMigration || progress.migrated;
       readerDialog.lastInjected = rec.lastInjected && typeof rec.lastInjected === 'object' ? rec.lastInjected : null;
       readerDialog.pipelineStatus = rec.pipelineStatus && typeof rec.pipelineStatus === 'object' ? rec.pipelineStatus : null;
+      if (Array.isArray(rec.comicDismissed)) readerDialog.comicDismissed = rec.comicDismissed;
       persistentAssistantMessages = Array.isArray(rec.assistantMessages) ? rec.assistantMessages : [];
     }
   } catch (error) {
@@ -27957,6 +27962,7 @@ async function coreadSaveDialog() {
         : [],
       sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
       readBoundary: readerDialog.readBoundary,
+      ...(readerDialog.comicDismissed?.length ? { comicDismissed: readerDialog.comicDismissed } : {}),
       updatedAt: Date.now(),
       names: { char: companionCharName(), user: coreadUserName() },
     });
@@ -28267,7 +28273,7 @@ async function coreadAssistantReadingContext(bookId) {
   const chapterIndex = readerView?.bookId === bookId ? readerView.chapterIndex : (meta.lastChapterIndex || 0);
   const scrollRatio = readerView?.bookId === bookId ? (readerView.scrollRatio || 0) : (meta.lastScrollRatio || 0);
   const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, cp.visiblePercent, cp.visibleCharsBefore);
-  const visibleText = meta.mode === 'comic' ? coreadComicVisibleText(comicDescriptions, chapterIndex) : win.visibleText;
+  const visibleText = meta.mode === 'comic' ? await coreadComicVisibleText(bookId, chapterIndex, comicDescriptions) : win.visibleText;
   return { meta, visibleText: visibleText || '', chapterIndex, progress: Number(meta.progress) || 0 };
 }
 
@@ -28524,85 +28530,219 @@ async function coreadConfirmComicSummary(label, summary, keywords) {
   return text ? { summary: text, keywords: keywords || [] } : null;
 }
 
-async function coreadAnalyzeComicPages() {
-  if (!readerView || !readerContentCache || coreadComicVisionBusy) return;
-  const meta = coreadBookMeta(readerView.bookId);
-  if (meta?.mode !== 'comic') return;
-  if (!readerDialog.loaded || readerDialog.bookId !== readerView.bookId) { toast('伴读档案正在载入，请稍候。', 'info'); return; }
-  const cfg = coreadComicConfig();
-  const toIndex = Math.max(0, readerView.chapterIndex || 0);
-  const savedDescriptions = Object.values(readerContentCache.comicDescriptions || {});
-  const currentSaved = savedDescriptions
-    .filter((item) => Number(item?.fromPage) <= toIndex + 1 && Number(item?.toPage) >= toIndex + 1)
-    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))[0];
-  if (currentSaved && Number(currentSaved.toPage) > toIndex + 1) {
-    toast(`本页已收录在第 ${currentSaved.fromPage}–${currentSaved.toPage} 页文字稿中；请到该批末页重新识别。`, 'info');
-    return;
+// ── 漫画识图 ──
+// 逐页画面稿、分段总结、人物表按书存一份（键 comic::书，与伴读对话同仓、随账户同步）；记忆切片仍按书友×人设分桶。
+// 识图花钱：页稿先落盘，存住才算数；各书友的切片一律由存好的分段总结补建，不再调模型。
+function coreadComicRecord(bookId = readerView?.bookId) {
+  return (bookId && readerContentCache?.bookId === bookId && readerContentCache.comic) || null;
+}
+
+function coreadComicPlanInput() {
+  const chapters = readerContentCache?.chapters || [];
+  return {
+    record: coreadComicRecord(), current: readerView?.chapterIndex || 0, total: chapters.length,
+    pagesPerBatch: coreadComicConfig().pagesPerBatch, hasImage: (index) => !!coreadComicPageImageNumber(chapters[index]),
+  };
+}
+
+// 打开漫画后读入这本书的页稿（先取账户里更新的那份）。读不出来就不启用识图，免得用空稿盖掉已有内容。
+async function coreadComicLoad(bookId) {
+  const cache = readerContentCache;
+  if (cache?.bookId !== bookId || coreadBookMeta(bookId)?.mode !== 'comic') return;
+  try {
+    const record = reader.normalizeComicRecord(await readerChatSync.get(reader.comicRecordKey(bookId)), bookId, cache.comicDescriptions);
+    if (readerContentCache !== cache) return;
+    cache.comic = record;
+  } catch (error) { console.warn(`[${MODULE_NAME}] load comic record failed`, error); return; }
+  coreadComicSyncStatus();
+  rerenderMoreIfOpen();
+  void coreadComicAuto();
+}
+
+// 页稿的改动逐个排队：每次都基于最新一份改，存住了才替换内存里的那份。
+async function coreadComicCommit(mutate) {
+  const cache = readerContentCache;
+  const run = async () => {
+    if (!cache?.comic) return false;
+    const next = mutate(cache.comic);
+    if (next === cache.comic) return true;
+    try { await readerChatSync.put(reader.comicRecordKey(cache.bookId), next); }
+    catch (error) { console.warn(`[${MODULE_NAME}] save comic record failed`, error); return false; }
+    cache.comic = next;
+    return true;
+  };
+  return (coreadComicWrite = coreadComicWrite.then(run, run));
+}
+
+// 识图忙闲、已建稿页数、补齐按钮：直接改现有节点，不重画阅读页，免得打断正在输入的对话。
+function coreadComicSyncStatus() {
+  const record = coreadComicRecord();
+  const status = record ? reader.comicStatus(record, readerView.chapterIndex, coreadComicPlanInput().hasImage) : null;
+  const scan = document.querySelector('#sd-reader-portal .sd-reader-comic-scan');
+  if (scan) {
+    scan.disabled = coreadComicVisionBusy;
+    scan.title = coreadComicVisionBusy ? '正在识图' : '识别到当前页';
+    scan.classList.toggle('active', !!status?.currentDescribed);
+    scan.innerHTML = `<i class="fa-solid ${coreadComicVisionBusy ? 'fa-spinner fa-spin' : 'fa-eye'}"></i>`;
+    applyQianmuIcons(scan);
   }
-  let fromIndex = toIndex;
-  if (currentSaved) {
-    fromIndex = Math.max(0, Number(currentSaved.fromPage) - 1);
-  } else {
-    // 只把尚未建稿、且与当前页连续的过去页面并入本批；碰到已保存页即停止，避免记忆范围重叠。
-    while (fromIndex > 0 && toIndex - fromIndex + 1 < cfg.pagesPerBatch) {
-      const previousPage = fromIndex;
-      const covered = savedDescriptions.some((item) => Number(item?.fromPage) <= previousPage && Number(item?.toPage) >= previousPage);
-      if (covered) break;
-      fromIndex--;
+  if (!status) return;
+  for (const node of document.querySelectorAll('.sd-reader-comic-stat')) {
+    node.innerHTML = reader.renderComicStat(status, { lastBatch: record.lastBatch, busy: coreadComicFill?.batch, withUsage: node.dataset.usage === '1' });
+  }
+  const fill = document.querySelector('.sd-reader-comic-fill');
+  if (fill) {
+    fill.textContent = reader.comicFillLabel(status, coreadComicFill);
+    fill.classList.toggle('sd-btn-danger', !!coreadComicFill);
+    fill.disabled = !coreadComicFill && !status.missing;
+  }
+}
+
+// 当前书友对「已建稿、已读到」的分段还没有切片时，用存好的分段总结补建，不调模型。
+// 返回补建条数；伴读档案存不进去时还原并返回 -1。
+async function coreadComicBackfill() {
+  const bookId = readerView?.bookId, record = coreadComicRecord(bookId), chapters = readerContentCache?.chapters || [];
+  if (!record || coreadDistilling || coreadMemoryWrites || !readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(bookId)) return 0;
+  const missing = reader.comicSegmentsNeedingSlices(record, readerDialog.slices, readerView.chapterIndex, readerDialog.comicDismissed);
+  if (!missing.length) return 0;
+  coreadMemoryWrites++;
+  try {
+    const snapshot = coreadMemorySnapshot(), meta = coreadBookMeta(bookId) || {};
+    const size = (list) => list.reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
+    for (const segment of missing) {
+      const from = segment.fromPage - 1, to = segment.toPage - 1, coveredFrom = size(chapters.slice(0, from));
+      await coreadPersistSlice({ summary: segment.summary, keywords: segment.keywords.length ? segment.keywords : [meta.title || '漫画'], synonyms: {} }, meta, {
+        src: 'text', coveredFrom, coveredTo: coveredFrom + size(chapters.slice(from, to + 1)), chapterFrom: from, chapterTo: to,
+        comicPages: chapters.slice(from, to + 1).map(coreadComicPageImageNumber).filter(Boolean), createdAt: segment.updatedAt || Date.now(),
+      });
     }
-  }
-  const chapters = readerContentCache.chapters || [];
-  const pageNums = chapters.slice(fromIndex, toIndex + 1).map(coreadComicPageImageNumber).filter(Boolean);
-  if (!pageNums.length) { toast('当前漫画页没有可识别的图片。', 'warning'); return; }
-  const rangeKey = `${fromIndex + 1}-${toIndex + 1}`;
-  const old = currentSaved || readerContentCache.comicDescriptions?.[rangeKey];
-  if (old && !await confirmDialog('重新识别漫画页', `第 ${fromIndex + 1}–${toIndex + 1} 页已有文字稿，重新识别后将覆盖它。是否继续？`)) return;
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return -1; }
+    await coreadRefreshContainer();
+    refreshMoreIfRecords();
+    return missing.length;
+  } finally { coreadMemoryWrites--; }
+}
+
+// 识别一批（from–to 为页下标，闭区间，调用方保证不越过当前页）。
+// redo＝覆盖已有的那一段：页稿整段替换，本书友原有的那条切片跟着改写。
+async function coreadComicDescribe(batch, { review = coreadComicConfig().reviewEachBatch, redo = false } = {}) {
+  const view = readerView, cache = readerContentCache, bookId = view?.bookId, meta = coreadBookMeta(bookId) || {};
+  if (!cache?.comic || coreadComicVisionBusy) return { ok: false, reason: COREAD_MEMORY_BUSY };
+  const stale = () => readerView?.bookId !== bookId || readerContentCache !== cache;
   coreadComicVisionBusy = true;
-  coreadComicVisionAbort = new AbortController();
-  refreshReaderPortal();
+  const controller = coreadComicVisionAbort = new AbortController();
+  if (coreadComicFill) coreadComicFill.batch = batch;
+  coreadComicSyncStatus();
   try {
     const imageUrls = [];
-    for (const n of pageNums) {
-      const blob = await blobStore.getReaderImage(readerView.bookId, n);
-      if (blob) imageUrls.push(await coreadVisionDataUrl(blob));
+    for (let index = batch.from; index <= batch.to; index++) {
+      const blob = await blobStore.getReaderImage(bookId, coreadComicPageImageNumber(cache.chapters[index]));
+      if (!blob) return { ok: false, reason: `第 ${index + 1} 页的图片读不出来` };
+      imageUrls.push(await coreadVisionDataUrl(blob));
     }
-    const systemPrompt = `你是千幕的漫画视觉整理器。按图片顺序理解连续分镜，只描述画面中确实可见的内容。准确记录人物、动作、场景变化、关键物件、表情关系及可辨认的对白；不猜测未出现的后续。输出纯 JSON：{"summary":"可直接作为长期记忆的连续画面文字稿","keywords":["3至8个角色/地点/事件关键词"]}。不输出代码块或额外说明。`;
-    const reply = await callCoreadVisionModel(systemPrompt, `请整理《${meta.title || '未命名漫画'}》第 ${fromIndex + 1} 至 ${toIndex + 1} 页。`, imageUrls, { controller: coreadComicVisionAbort });
+    const prompt = reader.buildComicVisionPrompt({ title: meta.title, record: cache.comic, from: batch.from, to: batch.to });
+    let usage = null;
+    const reply = await callCoreadVisionModel(prompt.system, prompt.user, imageUrls, { controller, onUsage: (value) => { usage = value; } });
+    if (stale() || controller.signal.aborted) return { ok: false, aborted: true };
     let parsed = null;
     try { parsed = extractJson(reply); } catch (_) {}
-    const draft = String(parsed?.summary || parsed?.description || coreadSalvageSummary(reply) || '').trim();
-    if (!draft) throw new Error('视觉模型没有返回有效文字稿');
-    const keywords = uniqueClean(Array.isArray(parsed?.keywords) ? parsed.keywords : [meta.title, '漫画']).slice(0, 8);
-    const reviewed = await coreadConfirmComicSummary(`第 ${fromIndex + 1}–${toIndex + 1} 页视觉文字稿`, draft, keywords);
-    if (!reviewed) return;
-    const fullBefore = chapters.slice(0, fromIndex).reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
-    const coveredTo = fullBefore + chapters.slice(fromIndex, toIndex + 1).reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
-    let sliceId = old?.sliceId || '';
-    if (sliceId && (readerDialog.slices || []).some((slice) => slice.id === sliceId)) {
-      const saved = await coreadSaveSliceEdit(sliceId, reviewed.summary, reviewed.keywords.join('、'));
-      if (!saved.ok) throw new Error(saved.reason || '文字稿保存失败');
-    } else {
-      const snapshot = coreadMemorySnapshot();
-      const result = await coreadPersistSlice({ summary: reviewed.summary, keywords: reviewed.keywords.length ? reviewed.keywords : [meta.title || '漫画'], synonyms: {} }, meta, {
-        src: 'text', coveredFrom: fullBefore, coveredTo, chapterFrom: fromIndex, chapterTo: toIndex, comicPages: pageNums,
-      });
-      // 先存伴读档案，存住了才登记文字稿，避免文字稿指向一条没落盘的切片。
-      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); toast(`${COREAD_SAVE_FAILED}。`, 'error'); return; }
-      sliceId = result.sliceId || '';
+    let result = reader.parseComicVisionReply(parsed, { from: batch.from, to: batch.to, title: meta.title, salvaged: parsed ? '' : coreadSalvageSummary(reply) });
+    if (!result) return { ok: false, reason: '识图模型没有返回有效内容' };
+    if (review) {
+      const reviewed = await coreadConfirmComicSummary(`第 ${batch.from + 1}${batch.to > batch.from ? `–${batch.to + 1}` : ''} 页`, result.summary, result.keywords);
+      if (!reviewed || stale()) return { ok: false, aborted: true };
+      result = { ...result, ...reviewed };
     }
-    const record = await blobStore.getBook(readerView.bookId);
-    const descriptions = isPlainObject(record?.comicDescriptions) ? record.comicDescriptions : {};
-    descriptions[rangeKey] = { fromPage: fromIndex + 1, toPage: toIndex + 1, summary: reviewed.summary, keywords: reviewed.keywords, sliceId, updatedAt: Date.now() };
-    await blobStore.putBook(readerView.bookId, { ...record, comicDescriptions: descriptions });
-    readerContentCache.comicDescriptions = descriptions;
-    toast(`已保存第 ${fromIndex + 1}–${toIndex + 1} 页视觉文字稿，并写入伴读档案。`, 'success');
+    const now = Date.now();
+    if (!await coreadComicCommit((record) => reader.applyComicBatch(record, batch, result, { now, images: imageUrls.length, usage }))) return { ok: false, reason: COREAD_SAVE_FAILED };
+    if (stale()) return { ok: false, aborted: true };
+    if (redo && readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(bookId)) {
+      readerDialog.comicDismissed = reader.comicUndismiss(readerDialog.comicDismissed, batch.from, batch.to);
+      const old = (readerDialog.slices || []).find((slice) => !slice.compressed && slice.provenance?.chapterFrom === batch.from && slice.provenance?.chapterTo === batch.to);
+      if (old) {
+        const saved = await coreadSaveSliceEdit(old.id, result.summary, result.keywords.join('、'));
+        return saved.ok ? { ok: true } : { ok: false, reason: saved.reason };
+      }
+    }
+    return await coreadComicBackfill() < 0 ? { ok: false, reason: COREAD_SAVE_FAILED } : { ok: true };
   } catch (error) {
-    if (error?.name !== 'AbortError') toast(`漫画识图失败：${coreadExplainError(error)}`, 'error');
+    return error?.name === 'AbortError' || controller.signal.aborted ? { ok: false, aborted: true } : { ok: false, reason: coreadExplainError(error) };
   } finally {
-    coreadComicVisionBusy = false;
-    coreadComicVisionAbort = null;
-    if (readerView) refreshReaderPortal();
+    if (coreadComicVisionAbort === controller) { coreadComicVisionBusy = false; coreadComicVisionAbort = null; }
+    coreadComicSyncStatus();
   }
+}
+
+// 跟读：每次存阅读进度时触发，最多识别一批已读而未建稿的页，绝不看当前页之后。
+// 没选识图模型只提示一次；自动识别失败一次后，本次打开不再自动重试（避免反复花钱），手动按钮照常可用。
+async function coreadComicAuto() {
+  const view = readerView;
+  if (!view || !coreadComicRecord() || coreadDistilling || coreadMemoryWrites || coreadComicVisionBusy || coreadComicFill) return;
+  if (await coreadComicBackfill() < 0 || readerView !== view || view.comicAutoOff || !coreadComicConfig().autoFollow) return;
+  const batch = reader.nextComicAutoBatch(coreadComicPlanInput());
+  if (!batch || coreadDistilling || coreadMemoryWrites || coreadComicVisionBusy) return;
+  if (!coreadVisionApiConn()) { if (!view.comicHinted) { view.comicHinted = true; toast('漫画跟读需要先选识图模型。', 'info'); } return; }
+  const result = await coreadComicDescribe(batch);
+  if (!result.ok && !result.aborted) { view.comicAutoOff = true; toast(`漫画识图失败：${result.reason}`, 'warning'); }
+}
+
+// 把读到当前页为止还没建稿的页逐批补齐：遇到第一批失败就停，已成功的保留；可随时停止。
+async function coreadComicFillMissing() {
+  const view = readerView;
+  if (!view || !coreadComicRecord() || coreadComicFill || coreadComicVisionBusy) return;
+  if (coreadDistilling || coreadMemoryWrites) { toast(`${COREAD_MEMORY_BUSY}。`, 'info'); return; }
+  if (!coreadVisionApiConn()) { toast('请先选识图模型。', 'warning'); return; }
+  const fill = coreadComicFill = { stop: false, batch: null };
+  let made = 0, result = { ok: true };
+  try {
+    while (!fill.stop && readerView === view) {
+      const batch = reader.planComicBatches(coreadComicPlanInput())[0];
+      if (!batch) break;
+      result = await coreadComicDescribe(batch);
+      if (!result.ok) break;
+      made++;
+    }
+  } finally { coreadComicFill = null; coreadComicSyncStatus(); }
+  const done = made ? `已识别 ${made} 批` : '';
+  if (result.ok && !fill.stop) toast(done ? `${done}，已读的页都识别好了。` : '已读的页都识别过了。', made ? 'success' : 'info');
+  else if (result.ok || result.aborted) toast(done ? `已停止，${done}。` : '已停止。', 'info');
+  else toast(`${done ? `${done}，之后` : ''}识图失败：${result.reason}`, 'warning');
+}
+
+function coreadComicStop() {
+  if (coreadComicFill) coreadComicFill.stop = true;
+  try { coreadComicVisionAbort?.abort(); } catch (_) {}
+}
+
+// 阅读页的识图钮：当前页没建稿→立刻补齐到当前页；已建稿→确认后重新识别它所在的那一段。
+async function coreadAnalyzeComicPages() {
+  const record = coreadComicRecord();
+  if (!readerView || coreadComicVisionBusy || coreadComicFill) return;
+  if (!record || !readerDialog.loaded || readerDialog.bookId !== readerView.bookId) { toast('伴读档案正在载入，请稍候。', 'info'); return; }
+  const page = readerView.chapterIndex + 1;
+  const segment = record.segments.find((item) => item.fromPage <= page && item.toPage >= page);
+  if (!segment) return coreadComicFillMissing();
+  if (segment.toPage > page) { toast(`本页在第 ${segment.fromPage}–${segment.toPage} 页那一段里，读到第 ${segment.toPage} 页再重新识别。`, 'info'); return; }
+  if (coreadDistilling || coreadMemoryWrites) { toast(`${COREAD_MEMORY_BUSY}。`, 'info'); return; }
+  if (!await confirmDialog('重新识别', `第 ${segment.fromPage}–${segment.toPage} 页已有文字稿，重新识别会覆盖它。继续？`)) return;
+  const result = await coreadComicDescribe({ from: segment.fromPage - 1, to: segment.toPage - 1 }, { redo: true });
+  if (result.ok) toast(`已重新识别第 ${segment.fromPage}–${segment.toPage} 页。`, 'success');
+  else if (!result.aborted) toast(`识图失败：${result.reason}`, 'warning');
+  refreshMoreIfRecords();
+}
+
+// 人物表与阅读方向：按卡片现值整份写回这本书的页稿。
+async function coreadComicSaveSheet(card) {
+  const root = card?.closest('.sd-reader-mtab-body');
+  if (!root || !coreadComicRecord()) return;
+  const sheet = {
+    direction: root.querySelector('.sd-reader-comic-direction')?.value,
+    cast: [...root.querySelectorAll('.sd-reader-comic-castrow')].map((row) => ({
+      name: row.querySelector('.sd-reader-comic-cast-name')?.value, look: row.querySelector('.sd-reader-comic-cast-look')?.value,
+      note: row.dataset.note, edited: row.dataset.edited === '1',
+    })),
+  };
+  if (!await coreadComicCommit((record) => reader.comicRecordWithSheet(record, sheet))) toast(`${COREAD_SAVE_FAILED}。`, 'error');
 }
 
 // 发送/生成分离：发送只把 user 输入追加进消息流（可连发多句攒着），不触发模型；
@@ -28719,8 +28859,18 @@ async function coreadGenerateReply(isReroll = false) {
       const blob = await blobStore.getReaderImage(bookId, n);
       if (blob) imageUrls.push(await coreadVisionDataUrl(blob));
     }
+    // 「带上当前页」：把正在看的这页图一并发给书友，并说明最后一张图就是当前页；没有识图模型时说一次，照常只发文字。
+    let pageAttached = false;
+    if (coreadBookMeta(bookId)?.mode === 'comic' && coreadComicConfig().sendCurrentPage && imageUrls.length < 8) {
+      if (coreadVisionApiConn()) {
+        const page = await blobStore.getReaderImage(bookId, coreadComicPageImageNumber(readerContentCache?.chapters?.[preparingView.chapterIndex]));
+        if (page) { imageUrls.push(await coreadVisionDataUrl(page)); pageAttached = true; }
+      } else if (!preparingView.comicPageHinted) { preparingView.comicPageHinted = true; toast('没有可用的识图模型，这次只发文字。', 'info'); }
+    }
     const reply = imageUrls.length
-      ? await callCoreadVisionModel(dialogSystemPrompt, userPrompt, imageUrls, { onDelta, controller: dialogAbort })
+      ? await callCoreadVisionModel(dialogSystemPrompt, pageAttached ? `${userPrompt}
+
+（最后一张图是你们正在看的这一页。）` : userPrompt, imageUrls, { onDelta, controller: dialogAbort })
       : await callCoreadDialogModel(dialogSystemPrompt, userPrompt, { onDelta, onReasoning, controller: dialogAbort });
     if (token !== dialogGenToken) return;   // 已切书/关阅读/停止 → 丢弃
     const parsed = parseCoreadDialogOutput(reply, false);
@@ -29670,9 +29820,10 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
     return;
   }
   meta.lastReadAt = Date.now();
-  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadSaveProgress({ summarize: false }); }
+  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadComicStop(); coreadSaveProgress({ summarize: false }); }
   saveSettings();
   readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '', comicDescriptions: isPlainObject(rec.comicDescriptions) ? rec.comicDescriptions : {} };
+  void coreadComicLoad(bookId);
   const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
   readerView = {
     bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
@@ -29702,7 +29853,7 @@ function coreadCloseReader() {
   coreadStopDialog();     // 中止在途生成，弃旧回调
   coreadStopAssistant(false);
   coreadClearPendingChatImages();
-  try { coreadComicVisionAbort?.abort(); } catch (_) {}
+  coreadComicStop();
   coreadComicVisionAbort = null; coreadComicVisionBusy = false;
   if (coreadAssistantConfig().historyMode === 'clear') {
     if (readerAssistant.bucket) readerAssistantSessions.delete(readerAssistant.bucket);
@@ -29745,7 +29896,7 @@ function coreadSaveProgress({ summarize = true } = {}) {
     readerView.sessionStart = nowMs();
   }
   saveSettings();
-  if (summarize) coreadMaybeAutoDistillText();
+  if (summarize) { coreadMaybeAutoDistillText(); void coreadComicAuto(); }
 }
 
 // 阅读进度前进到阈值时自动蒸一条正文切片（非阻塞·失败静默·不打断阅读）。
@@ -30160,7 +30311,7 @@ function buildReaderStage() {
   const dTab = readerView.dialogTab === 'voice' ? 'voice' : 'chat';
   const assistantMode = !!readerView.assistantOpen;
   const comicMode = meta.mode === 'comic';
-  const comicPageAnalyzed = comicMode && Object.values(cache.comicDescriptions || {}).some((item) => Number(item?.fromPage) <= ci + 1 && Number(item?.toPage) >= ci + 1);
+  const comicPageAnalyzed = comicMode && !!cache.comic && reader.comicStatus(cache.comic, ci).currentDescribed;
   const excerptCfg = coreadExcerptConfig();
   const excerptPresetOptions = (excerptCfg.savedPresets || []).map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('');
   const excerptFontOptions = coreadExcerptFontOptions(excerptCfg);
@@ -30176,7 +30327,7 @@ function buildReaderStage() {
         <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark" data-qm-icon="${bookmarked ? 'bookmarks' : 'qm-regular-bookmark'}"></i></button>
         <div class="sd-reader-chtitle">${htmlEscape(chapter.title || meta.title)}</div>
         <button class="sd-reader-focus-btn${focusLinkedHere ? ' active' : ''}" title="${focusLinkedHere && focusState.status !== 'idle' ? '查看专注计时' : '设为专注阅读'}"><i class="fa-solid fa-hourglass-half"></i><span class="sd-reader-focus-mini">${focusMiniText}</span></button>
-        ${comicMode ? `<button class="sd-reader-comic-scan${comicPageAnalyzed ? ' active' : ''}" title="${coreadComicVisionBusy ? '正在生成视觉文字稿' : '识别当前及前几页'}" ${coreadComicVisionBusy ? 'disabled' : ''}><i class="fa-solid ${coreadComicVisionBusy ? 'fa-spinner fa-spin' : 'fa-eye'}"></i></button>` : ''}
+        ${comicMode ? `<button class="sd-reader-comic-scan${comicPageAnalyzed ? ' active' : ''}" title="${coreadComicVisionBusy ? '正在识图' : '识别到当前页'}" ${coreadComicVisionBusy ? 'disabled' : ''}><i class="fa-solid ${coreadComicVisionBusy ? 'fa-spinner fa-spin' : 'fa-eye'}"></i></button>` : ''}
         <button class="sd-reader-back" title="返回书架"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
@@ -30264,6 +30415,7 @@ function buildReaderStage() {
           <div class="sd-reader-assistant-quote"${assistantMode && readerAssistant.quote ? '' : ' hidden'}><i class="fa-solid fa-quote-left"></i><span>${htmlEscape(readerAssistant.quote || '')}</span><button class="sd-reader-assistant-quote-remove" title="移除引用"><i class="fa-solid fa-xmark"></i></button></div>
           ${coreadPendingImagesHtml()}
           <button class="sd-reader-inbtn sd-reader-assistant-switch${assistantMode ? ' active' : ''}" title="${assistantMode ? '返回书友对话' : '切换至幕伴小助手'}"><i class="fa-solid ${assistantMode ? 'fa-user' : 'fa-lightbulb'}"></i></button>
+          ${comicMode ? `<button class="sd-reader-inbtn sd-reader-dialog-page${coreadComicConfig().sendCurrentPage ? ' active' : ''}" title="带上当前页"><i class="fa-solid fa-image"></i></button>` : ''}
           <textarea class="sd-reader-dialog-ta" placeholder="${assistantMode ? '问当前选文，或聊一个衍生问题……' : '但愿你能不期而然地同我一起'}" rows="1"></textarea>
           <button class="sd-reader-inbtn sd-reader-dialog-send${(assistantMode ? readerAssistantBusy : dialogBusy) ? ' is-stop' : ''}" title="${(assistantMode ? readerAssistantBusy : dialogBusy) ? '停止回答' : '单击发送；长按让 AI 回复；桌面双击或触屏上滑添加图片'}"><i class="fa-solid ${(assistantMode ? readerAssistantBusy : dialogBusy) ? 'fa-stop' : 'fa-arrow-up'}"></i></button>
           <input type="file" class="sd-reader-dialog-image-input sd-reader-native-file" accept="image/*" multiple aria-label="选择并发送图片">
@@ -30437,7 +30589,7 @@ function renderCoreadSpoilerGuard(m) {
 const COREAD_GUIDE_STEPS = [
   { tab: 'api', target: 'api', icon: 'fa-plug-circle-check', title: '连接模型接口', text: '先确认对话 API。可直接跟随 SillyTavern 当前连接，也可选择千幕自定义预设；总结、向量与重排按需配置。' },
   { tab: 'api', target: 'assistant', icon: 'fa-lightbulb', title: '配置幕伴小助手', text: '幕伴小助手与角色书友分开。可从千幕 API 预设中单独选模型，并决定历史只留本次页面、随书保存，或关闭阅读即清空；阅读时可从对话输入框左侧切换，也可选中文字直接提问。' },
-  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的识图模型。漫画阅读页可把当前及此前尚未整理的连续页面生成文字稿；确认或修改后才写入伴读档案。桌面双击发送键、触屏从发送键上滑即可发图片。' },
+  { tab: 'api', target: 'comic', icon: 'fa-images', title: '启用漫画与图片', text: '选择支持看图的识图模型。读漫画时，读过的页会自动识别并记入伴读档案。桌面双击发送键、触屏从发送键上滑即可发图片。' },
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
@@ -30504,7 +30656,7 @@ function renderCompanionMoreBody() {
     const ext = m.dialogProvider === 'external';
     const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
     const assistantCfg = coreadAssistantConfig();
-    const comicCfg = coreadComicConfig();
+    const comicCfg = coreadComicConfig(), comicRecord = coreadComicRecord();
     panel = `
       <div class="sd-reader-mcard${coreadGuideTargetClass('api')}">
         <div class="sd-reader-mcard-head"><i class="fa-solid fa-comments"></i> 对话 API</div>
@@ -30546,6 +30698,9 @@ function renderCompanionMoreBody() {
         </select>
         <label class="sd-reader-mlab">每批连续识别页数</label>
         <input type="number" class="sd-reader-minput sd-reader-comic-pages" min="1" max="8" step="1" value="${comicCfg.pagesPerBatch}">
+        <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">跟读时自动识图</span>${renderMemSwitch('sd-reader-comic-auto', comicCfg.autoFollow)}</div>
+        <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每批先让我看一眼</span>${renderMemSwitch('sd-reader-comic-review-en', comicCfg.reviewEachBatch)}</div>
+        ${comicRecord ? `<div class="sd-reader-mstate sd-reader-comic-stat" data-usage="1">${reader.renderComicStat(reader.comicStatus(comicRecord, readerView.chapterIndex, coreadComicPlanInput().hasImage), { lastBatch: comicRecord.lastBatch, withUsage: true })}</div>` : ''}
       </details>
       ${renderSummaryApiCard(m)}
       <div class="sd-reader-mcard">
@@ -30576,7 +30731,7 @@ function renderCompanionMoreBody() {
 function renderMemRecordsTab(m) {
   const boundN = coreadBoundBuckets().length;
   // 当前书用于档案总览标题。
-  const curBook = coreadBookMeta(readerDialog.bookId);
+  const curBook = coreadBookMeta(readerDialog.bookId), comicRecord = coreadComicRecord(readerDialog.bookId);
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
   const promptItems = renderCoreadSummaryItemsView(items, htmlEscape);
 
@@ -30659,6 +30814,8 @@ function renderMemRecordsTab(m) {
       </div>
       ${batchRows ? `<div class="sd-reader-batchtable">${batchRows}</div>` : ''}
     </div>
+    ${curBook?.mode === 'comic' ? (comicRecord ? reader.renderComicMemoryCards({ record: comicRecord, filling: coreadComicFill,
+      status: reader.comicStatus(comicRecord, readerView.chapterIndex, coreadComicPlanInput().hasImage) }, htmlEscape) : '') : `
     <div class="sd-reader-mcard">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-flask-vial"></i> 书籍蒸馏</div>
       <div class="sd-reader-mactions">
@@ -30670,7 +30827,7 @@ function renderMemRecordsTab(m) {
         ${renderMemSwitch('sd-reader-autotext-en', m.autoDistillText)}
       </div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每往后读多少字自动总结</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-distill-textevery" min="1000" step="500" value="${m.distillTextEvery}"${m.autoDistillText ? '' : ' disabled'}></div>
-    </div>
+    </div>`}
     <details class="sd-reader-mcard">
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-compress"></i> 对切片进行二次总结</summary>
       <div class="sd-reader-mrow sd-reader-mrow-resum">
@@ -31701,6 +31858,11 @@ function bindReaderStageEvents(stageRoot) {
   };
   q('.sd-reader-back')?.addEventListener('click', () => coreadCloseReader());
   q('.sd-reader-comic-scan')?.addEventListener('click', () => void coreadAnalyzeComicPages());
+  q('.sd-reader-dialog-page')?.addEventListener('click', (event) => {
+    const cfg = coreadComicConfig();
+    cfg.sendCurrentPage = !cfg.sendCurrentPage; saveSettings();
+    event.currentTarget.classList.toggle('active', cfg.sendCurrentPage);
+  });
 
   // 底栏四抽屉互斥开合（语音条并入对话抽屉做 tab）
   q('.sd-reader-toc-btn')?.addEventListener('click', () => togglePanel('.sd-reader-toc'));
@@ -32586,6 +32748,16 @@ function bindReaderStageEvents(stageRoot) {
     // 书籍蒸馏两按钮共用「生成中」状态：活跃按钮变红「停止」，兄弟按钮灰色禁用；完成/停止后共同复原。
     // — 检查「停止」点击 —
     if (e.target.closest('.sd-reader-distill-stop')) { coreadStopDistill(); return; }
+    // 漫画：补齐未识别的页（进行中再点即停止）、人物表增删
+    if (e.target.closest('.sd-reader-comic-fill')) { if (coreadComicFill) coreadComicStop(); else void coreadComicFillMissing().then(() => rerenderMore()); return; }
+    if (e.target.closest('.sd-reader-comic-cast-add')) {
+      const list = e.target.closest('.sd-reader-comic-cast')?.querySelector('.sd-reader-comic-castlist');
+      list?.insertAdjacentHTML('beforeend', reader.renderComicCastRow({ edited: true }, htmlEscape));
+      applyQianmuIcons(list); list?.lastElementChild?.querySelector('input')?.focus();
+      return;
+    }
+    const castDel = e.target.closest('.sd-reader-comic-cast-del');
+    if (castDel) { const card = castDel.closest('.sd-reader-comic-cast'); castDel.closest('.sd-reader-comic-castrow').remove(); void coreadComicSaveSheet(card); return; }
     // — 蒸馏已读内容 —
     if (e.target.closest('.sd-reader-distill-text')) {
       if (coreadDistilling) return;   // 另一按钮正在运行时点击无效（按钮应已被禁用，双保险）
@@ -32843,6 +33015,10 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-assistant-profile')) { coreadAssistantConfig().apiProfileId = e.target.value || ''; saveSettings(); return; }
     if (e.target.closest('.sd-reader-comic-profile')) { coreadComicConfig().visionApiProfileId = e.target.value || ''; saveSettings(); return; }
     if (e.target.closest('.sd-reader-comic-pages')) { coreadComicConfig().pagesPerBatch = Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 3))); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-comic-auto')) { coreadComicConfig().autoFollow = e.target.checked; saveSettings(); return; }
+    if (e.target.closest('.sd-reader-comic-review-en')) { coreadComicConfig().reviewEachBatch = e.target.checked; saveSettings(); return; }
+    const comicSheet = e.target.closest('.sd-reader-comic-direction, .sd-reader-comic-castrow');
+    if (comicSheet) { if (comicSheet.dataset.note !== undefined) comicSheet.dataset.edited = '1'; void coreadComicSaveSheet(comicSheet); return; }
     if (e.target.closest('.sd-reader-assistant-history-mode')) {
       const cfg = coreadAssistantConfig();
       cfg.historyMode = ['session', 'persistent', 'clear'].includes(e.target.value) ? e.target.value : 'session';

@@ -15,7 +15,7 @@ function fixture(){
     getPersonaName:()=>host.name1 || 'User',getPersonaDescription:()=>host.persona_description || 'User desc',coreadPersonaAvatarRaw:'',URL,
     htmlEscape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     coreadDistilling:false,coreadAutoTextInFlight:false,coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,readerView:null,readerContentCache:null,coreadOpenRequestId:0,activeTab:'coread',readerAssistant:{},readerDialog:{bucket:'',loaded:false},readerAssistantSessions:new Map(),
-    reader,coreadVectorStates:new Map(),coreadVecCache:null,MODULE_NAME:'fixture',coreadMaybeAutoDistillText:()=>{},
+    reader,coreadVectorStates:new Map(),coreadVecCache:null,MODULE_NAME:'fixture',coreadMaybeAutoDistillText:()=>{},coreadComicLoad:()=>{},coreadComicStop:()=>{},coreadComicAuto:()=>{},
     focusClockActiveLock:()=>null,focusClockBlockExit:()=>false,focusClockRememberLockedReader:()=>{},focusClockResumeReading:()=>{},focusClockPauseForReadingExit:()=>{},
     toast:text=>notices.push(text),saveSettings:()=>{},coreadInvalidatePool:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},ttsStopPlayback:()=>{},coreadPendingChatImages:()=>[],coreadSaveProgress:()=>{},coreadShowRefillChooser:id=>notices.push('refill:'+id),

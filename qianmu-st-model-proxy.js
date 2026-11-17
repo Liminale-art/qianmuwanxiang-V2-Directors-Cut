@@ -42,18 +42,19 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
 
   // 非流式：只借解析器收敛多家回复形态（OpenAI／reasoning／Anthropic／Gemini／Cohere）；
   // 结束原因不在此拦截，保持伴读既有行为（截断的总结由上层 JSON 校验与重试处理）。
-  function decodeJson(json, onReasoning) {
+  function decodeJson(json, onReasoning, onUsage) {
     if (!json || typeof json !== 'object') throw new Error('上游模型未返回可用正文');
     const accumulator = createModelResponseAccumulator({ onReasoning });
     accumulator.consume(json, { streaming: false });
     const parsed = accumulator.snapshot().text;
+    if (accumulator.snapshot().usage) onUsage?.(accumulator.snapshot().usage);   // 上游报了用量才转交，不估算
     // 强制函数调用等形态把正文放在 tool_calls.arguments 里，解析器不收，沿用旧的取文规则兜底。
     return String(parsed || '').trim() ? parsed : qianmuChatCompletionText(json);
   }
 
   // 流式：与非流式同一口径——模型给出了任何结束原因（含截断）都交还正文；连接中断、没有结束标记才算失败。
-  async function decodeStream(response, { signal, onDelta, onReasoning }) {
-    try { return (await readModelResponse(response, { stream: true, signal, onDelta, onReasoning })).text; }
+  async function decodeStream(response, { signal, onDelta, onReasoning, onUsage }) {
+    try { const result = await readModelResponse(response, { stream: true, signal, onDelta, onReasoning }); if (result.usage) onUsage?.(result.usage); return result.text; }
     catch (error) {
       const partial = error?.modelResponse;
       if (error?.code === 'MODEL_OUTPUT_INCOMPLETE' && partial?.finishReason && String(partial.text || '').trim()) return partial.text;
@@ -61,12 +62,12 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
     }
   }
 
-  const generate = guarded(async ({ apiUrl, apiKey, model, messages, temperature, maxTokens = 0, stream = false, signal, onDelta, onReasoning }) => {
+  const generate = guarded(async ({ apiUrl, apiKey, model, messages, temperature, maxTokens = 0, stream = false, signal, onDelta, onReasoning, onUsage }) => {
     const response = await post(GENERATE, apiUrl, apiKey,
       chatPayload({ model, messages, temperature: temperature ?? 0.75, maxTokens, stream: Boolean(stream) }), signal, '上游模型请求失败');
     const text = stream && !isJson(response)
-      ? await decodeStream(response, { signal, onDelta, onReasoning })
-      : decodeJson(await response.json().catch(() => null), onReasoning);
+      ? await decodeStream(response, { signal, onDelta, onReasoning, onUsage })
+      : decodeJson(await response.json().catch(() => null), onReasoning, onUsage);
     if (!String(text || '').trim()) throw new Error('上游模型未返回可用正文');
     if (stream && isJson(response)) onDelta?.(text);
     return text;

@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 435 个，其中 `qianmu-*` 模块 418 个。
+根目录文件 436 个，其中 `qianmu-*` 模块 419 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 158 |
 | `server/` | 66 |
-| `tests/` | 994 |
+| `tests/` | 995 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -299,7 +299,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（62）
+## 专注／阅读／文本（63）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -341,6 +341,7 @@
 | `qianmu-notes.js` | 是 | 千幕 · 轻量便笺数据层 |
 | `qianmu-reader-center-view.js` | 是 | Display-only center components; callers own reading boundaries, filtering and guide state. |
 | `qianmu-reader-chat-sync.js` | 是 | 伴读对话（陪读会话：消息、总结、游标）跟随 ST 账户走。 |
+| `qianmu-reader-comic.js` | 是 | 伴读·漫画识图的纯逻辑：每本漫画一份记录（逐页画面稿、分段总结、人物表、阅读方向）， |
 | `qianmu-reader-identity-view.js` | 是 | Display-only inputs. Identity ownership, ST access and persistence stay with the caller. |
 | `qianmu-reader-library-view.js` | 是 | Shelf cards only. Collection ownership, current metadata resolution, sorting and cover loading stay with the caller. |
 | `qianmu-reader-package.js` | 是 | Reader packs contain original media, unlike the smaller configuration-only package. |

@@ -118,7 +118,7 @@ function dialogFixture({messages = 12, cap = 100, slices = []} = {}) {
     coreadCurrentReadBoundarySync: () => ({bookId: 'book', readTo: 500, chapterIndex: 0, progress: 10}),
     coreadNormalizeSlices: (rows, bookId, bucket, boundary) => rows.map((slice) => reader.normalizeCoreadSlice(slice, {bookId, bucket, boundary})),
     coreadSliceFingerprint: () => 'fp', coreadSyncSliceVector: async () => ({ok: false, skipped: true}),
-    coreadForgetSliceRuntime: async () => {}, coreadRefreshContainer: async () => {}, coreadUpdateComicDescriptionForSlice: async () => {},
+    coreadForgetSliceRuntime: async () => {}, coreadRefreshContainer: async () => {}, coreadUpdateComicDescriptionForSlice: async () => {}, coreadComicRecord: () => null,
     blobStore: {deleteReaderVectors: async () => {}}, rerenderMoreIfOpen: () => {},
     uid: (prefix) => `${prefix}-${++id}`, uniqueClean: (list) => [...new Set(list)], isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
     extractJson: JSON.parse, coreadSalvageSummary: () => '', callCoreadModel: async () => JSON.stringify({summary: '合并', keywords: ['k']}),

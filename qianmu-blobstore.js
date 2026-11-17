@@ -11,6 +11,7 @@ const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, lab
 const STORE_BOOKS = 'reader_books';        // key: bookId   value: { meta:{title,author,...}, fullText, chapters:[], createdAt }（重正文，懒取）
 const STORE_COVERS = 'reader_covers';      // key: bookId   value: Blob（封面图）
 const STORE_CHATS = 'reader_chats';        // key: bucketKey value: { messages:[], summaries:[], cursor, names, updatedAt }（陪读会话）
+const READER_BOOK_RECORD_PREFIX = 'comic::';   // 同仓里按书存的漫画页稿（键 comic::书，见 qianmu-reader-comic.js），不属于任何聊天
 const STORE_RETLOG = 'reader_retlog';      // key: 自增id    value: { bookId, query, candidates:[], injected:[], at }（检索日志·环形）
 // ── 伴读模块（v3 新增）──
 const STORE_IMAGES = 'reader_images';      // key: `${bookId}::${n}` value: Blob（书内插图·正文占位符 ⟦img:n⟧ 引用）
@@ -611,7 +612,10 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
           const cursor = request.result;
           if (!cursor) return;
           if (typeof cursor.key === 'string' && matches(cursor.key)) {
-            if (storeName === STORE_CHATS && !deleteMemory) {
+            // 漫画页稿（comic::书）不是对话档案：保留记忆时原样留下，删除记忆时一并删掉但不计入档案数。
+            const bookRecord = storeName === STORE_CHATS && cursor.key.startsWith(READER_BOOK_RECORD_PREFIX);
+            if (bookRecord) { if (deleteMemory) watch(target.delete(cursor.key)); }
+            else if (storeName === STORE_CHATS && !deleteMemory) {
               const key = cursor.key, read = target.get(key);
               read.onsuccess = () => {
                 try {
@@ -1936,7 +1940,7 @@ function exactStorageChatKey(value) {
 
 function readerBucketScope(key, value = {}) {
   const rawKey = exactStorageChatKey(key);
-  if (!rawKey) return '';
+  if (!rawKey || rawKey.startsWith(READER_BOOK_RECORD_PREFIX)) return '';   // 按书存的漫画页稿不归任何聊天，不进「按聊天清理」
   if (value && Object.hasOwn(value, 'bookId')) {
     const bookId = exactStorageChatKey(value.bookId);
     const suffix = bookId ? `::${bookId}` : '';

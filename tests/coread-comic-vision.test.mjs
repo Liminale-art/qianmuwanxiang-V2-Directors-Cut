@@ -64,13 +64,14 @@ assert.match(source, /mode:\s*'comic'[\s\S]*pageCount/, '漫画必须保存独�
 assert.match(source, /sd-reader-comic-mode/, '漫画阅读页必须有独立布局');
 assert.match(css, /\.sd-reader-comic-mode \.sd-reader-inline-img/, '漫画图片必须使用独立阅读样式');
 
-// 视觉识别严格止于当前页，并在写记忆前让用户校对。
-const analyze = source.slice(source.indexOf('async function coreadAnalyzeComicPages'), source.indexOf('// 发送/生成分离'));
-assert.match(analyze, /const toIndex = Math\.max\(0, readerView\.chapterIndex/, '漫画识图终点必须是当前页');
-assert.doesNotMatch(analyze, /toIndex\s*\+\s*cfg\.pagesPerBatch/, '漫画识图不得向未来页面扩展');
-assert.match(analyze, /尚未建稿、且与当前页连续的过去页面/, '识图批次必须避开已保存范围，防止重复记忆');
-assert.match(analyze, /coreadConfirmComicSummary[\s\S]*coreadPersistSlice/, '视觉文字稿必须先校对再写入记忆切片');
-assert.match(source, /if \(meta\.mode === 'comic'\) return \{ ok: false, reason: '漫画请在阅读页使用识图按钮/, '漫画不得误走正文占位符蒸馏');
+// 视觉识别严格止于当前页；默认直接保存，开了「每批先让我看一眼」才弹校对。行为测试见 coread-comic-memory.test.mjs。
+const analyze = source.slice(source.indexOf('// ── 漫画识图 ──'), source.indexOf('// 发送/生成分离'));
+assert.match(analyze, /current: readerView\?\.chapterIndex \|\| 0/, '漫画识图终点必须是当前页');
+assert.match(analyze, /reader\.nextComicAutoBatch\(coreadComicPlanInput\(\)\)/, '跟读批次必须由只看已读页的规划函数给出');
+assert.doesNotMatch(analyze, /chapterIndex\s*\+\s*(?:cfg\.|coreadComicConfig\(\)\.)pagesPerBatch/, '漫画识图不得向未来页面扩展');
+assert.match(analyze, /review = coreadComicConfig\(\)\.reviewEachBatch/, '校对弹窗由设置决定，默认关闭');
+assert.match(analyze, /coreadConfirmComicSummary[\s\S]*coreadComicCommit[\s\S]*coreadComicBackfill/, '开启校对时必须先校对再保存页稿与记忆切片');
+assert.match(source, /if \(meta\.mode === 'comic'\) return \{ ok: false, reason: '漫画不走正文蒸馏' \};/, '漫画不得误走正文占位符蒸馏');
 assert.match(source, /if \(coreadBookMeta\(id\)\?\.mode === 'comic'\) return;/, '漫画不得触发自动正文蒸馏');
 
 // 图片对话：本地存储、可移除预览，书友与幕伴助手共用视觉模型但消息池仍隔离。

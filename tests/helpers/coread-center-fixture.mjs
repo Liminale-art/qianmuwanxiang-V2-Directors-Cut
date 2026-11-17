@@ -23,7 +23,7 @@ export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
   inputs.store={coreadBound:['one','two']};
   c.getChatStore=()=>{trace.push(['store']);return inputs.store;};
-  c.reader={normalizeCoreadSource};
+  c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;
   c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';
   Object.assign(c.readerDialog,{messages:Array.from({length:8},()=>({text:'fixture'})),cursor:3});
   c.coreadGuideTargetClass=target=>{trace.push(['guide',target]);return target==='records'?' sd-reader-tour-target':'';};
@@ -39,7 +39,7 @@ export function createCoreadApiFixture(){
 export const coreadInjectFunctions=['coreadSliceSourceLabel','coreadSliceSourceClass','renderMemInjectTab'].map(section).join('\n');
 export function createCoreadInjectFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
-  c.reader={normalizeCoreadSource};c.uniqueClean=uniqueClean;c.COREAD_DEFAULT_DICT='default';c.coreadCurrentDictId='';
+  c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;c.uniqueClean=uniqueClean;c.COREAD_DEFAULT_DICT='default';c.coreadCurrentDictId='';
   Object.assign(inputs,{recent:[],recall:[],dict:{},bound:[]});
   c.coreadRecentSlices=(n,pool)=>{trace.push(['recent',n,pool]);return inputs.recent;};
   c.coreadRecallSlices=(query,n,exclude,pool)=>{trace.push(['recall',query,n,exclude,pool]);return inputs.recall;};

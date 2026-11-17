@@ -191,7 +191,8 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
     for (const c of data.chats) {
       check();
       if (!c?.key || !isPlainObject(c.rec)) { progress.invalid++; continue; }
-      try { await blobStore.putReaderChat(c.key, c.rec); progress.chatOk++; check(); } catch (e) { check(); progress.failed++; warn(`import chat failed`, e); }
+      // 键为 comic::书 的是漫画页稿，照常恢复，但不算作一段对话。
+      try { await blobStore.putReaderChat(c.key, c.rec); if (!String(c.key).startsWith('comic::')) progress.chatOk++; check(); } catch (e) { check(); progress.failed++; warn(`import chat failed`, e); }
     }
   }
   if (Array.isArray(data.images)) {

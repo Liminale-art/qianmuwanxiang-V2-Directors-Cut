@@ -631,6 +631,7 @@
     "qianmu-openai-image-compat.js",
     "qianmu-production-packet.js",
     "qianmu-reader.js",
+    "qianmu-reader-comic.js",
     "qianmu-service-capabilities.js",
     "qianmu-release-version.js",
     "qianmu-storyboard-contract.js",
