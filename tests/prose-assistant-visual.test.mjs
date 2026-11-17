@@ -157,3 +157,14 @@ test('capacity hint wraps above the composer without changing the input or send 
  assert.match(rule(`${scope} .qm-pa-composer [data-pa-question]`),/min-height:var\(--qm-pa-icon-control\)/);
  assert.match(rule(`${scope} .qm-pa-composer :is([data-pa-action="send"],[data-pa-action="stop"])`),/min-height:var\(--qm-pa-icon-control\)/);
 });
+
+test('conversation rows have no pointer-hover change, keep keyboard focus and selection, and settings carry no archive entry style',()=>{
+ // The shared button hover is the only one that could reach a row; it excludes rows without gaining priority.
+ assert.match(rule(`${scope} button:where(:not(.qm-pa-conversation-row)):hover:not(:disabled)`),/background:var\(--sd-input-bg,/);
+ assert.ok(!rules.some(item=>item.selector===`${scope} button:hover:not(:disabled)`),'the unrestricted button hover would colour rows again');
+ for(const {selector} of rules)if(selector.includes(':hover'))assert.doesNotMatch(selector.replace(':where(:not(.qm-pa-conversation-row))',''),/qm-pa-conversation-(item|row)/,`row hover rule: ${selector}`);
+ assert.doesNotMatch(skins,/qm-pa-conversation[^{]*:hover/);
+ assert.match(rule(`${scope} button:focus-visible,${scope} [data-pa-resize]:focus-visible`),/outline:1px solid var\(--sd-accent,/);
+ assert.match(rule(`${scope} .qm-pa-conversation-item.is-selected`),/border-color:var\(--sd-accent,/);
+ assert.doesNotMatch(css,/archived-conversations/);
+});

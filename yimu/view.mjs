@@ -1047,7 +1047,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const map = {
             'text-completion-boundary-unavailable': ['当前连接不是 Chat Completion（对话补全）模式，忆幕无法安全替换原文。', '请在 ST 把 API 切到“Chat Completion”类连接（OpenAI 兼容），文本补全/Text Completion 下忆幕不改写。'],
             'unsupported-tools-or-schema': ['本轮请求带了工具调用 / 函数 / 结构化输出等字段，忆幕不介入以免冲突。', '如非必要，关闭当前预设里的工具调用、函数、Web 搜索或 JSON Schema 后重试。'],
-            'custom-prompt-rewrite': ['当前预设启用了提示词后处理 / 前缀补全 / 自定义正文插入，与忆幕的原文替换冲突。', '关闭“Prompt Post-Processing”“Assistant Prefill”等自定义改写后，忆幕即可接管。'],
+            'custom-prompt-rewrite': ['当前预设启用了前缀补全 / 自定义正文插入，与忆幕的原文替换冲突。', '关闭“Assistant Prefill”或清空附加请求体后，忆幕即可接管。'],
+            'unsupported-generation': ['续写、代写这类生成不做原文替换。', ''],
+            'source-changed': ['准备记忆时聊天内容正在变化，本轮不做原文替换。', '通常下一轮即恢复。'],
+            'plan-error': ['生成前整理记忆时出错，本轮没有使用记忆。', '如持续出现请反馈。'],
             'unsupported-message-shape': ['本轮消息结构不被忆幕支持（含非文本内容或额外字段）。', '多为多模态/图片消息，纯文本对话不受影响。'],
             'unsupported-tools': ['本轮上下文含工具消息（tool 角色），忆幕不介入。', '关闭工具调用相关功能后重试。'],
             'memory-does-not-fit': ['可注入的记忆在当前上下文预算内放不下。', '可在忆幕设置里收紧记忆预算，或先做阶段总结压缩体量。'],

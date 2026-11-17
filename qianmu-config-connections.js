@@ -137,17 +137,7 @@ export function configRestoreGate(owner, activity, notify) {
 
 // Only fixed copy and array length enter the confirmation, never imported names/HTML/keys.
 export function configRestoreSummary(incoming, preserveConnections) {
-  const books = incoming?.coread?.books;
-  return [
-    '将以文件中的配置替换当前设置，不会自动合并。缺失的设置会补为默认值。',
-    '范围包含书目索引与读位、专注设置与台词、音色选择、分镜配置，以及外观、排版与小组件位置。',
-    Array.isArray(books) ? `文件中有 ${books.length} 项书目索引；这不表示书籍正文已备份或可读取。` : '文件未提供书目索引；恢复后当前书架索引可能被重置。',
-    '书籍正文、图片、录音等独立原件不会随此配置包恢复或清空。原件请使用对应模块的备份。',
-    '专注任务、周期及完成记录保留；导入后计时待启动，不恢复旧锁屏、待播语音或临时重听/清理队列。',
-    preserveConnections ? '当前连接与密钥保留。' : '连接与密钥也将以文件中的配置替换。',
-    '正文助手专用 Key 不随配置导出，恢复该连接后需重新填写；不含 API 的恢复仍保留当前连接。',
-    '请先保留当前配置的备份。确认恢复？',
-  ].join('\n\n');
+  return `将用文件中的配置替换当前设置，${preserveConnections ? '连接与密钥保留' : '连接与密钥一并替换'}。`;
 }
 
 // Prepare a detached configuration before host/cache writes. Missing nested fields use

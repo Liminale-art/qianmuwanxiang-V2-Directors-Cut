@@ -1,6 +1,6 @@
 import {createConfiguredStAccountStorage} from './qianmu-st-account-storage.js';
 import {proseAssistantAccountForNamespace} from './qianmu-prose-assistant-source.js';
-import {proseAssistantHistoryKey,proseAssistantHistoryAccount,proseAssistantOwnerKey,createProseAssistantThreadKey} from './qianmu-prose-assistant-history-contract.js';
+import {proseAssistantHistoryKey,proseAssistantHistoryAccount,proseAssistantOwnerKey,createProseAssistantThreadKey,validateProseAssistantHistory,PROSE_ASSISTANT_HISTORY_LIMITS} from './qianmu-prose-assistant-history-contract.js';
 
 export const PROSE_ASSISTANT_CONVERSATIONS_LIMITS=Object.freeze({entries:2048,bytes:2*1024*1024,title:240,namedTitle:40});
 const SLOT='assistant-conversations',LIMIT=PROSE_ASSISTANT_CONVERSATIONS_LIMITS;
@@ -49,6 +49,7 @@ export {validate as validateProseAssistantConversationIndex};
 // This is only an account-scoped list of known conversation keys. Opening or
 // searching it never enumerates ST files or reads any conversation's messages.
 // Removed entries remain tombstones: a later legacy read must not restore them.
+// Only the explicit clearHistories step after a delete touches history documents.
 // Archived entries stay complete and restorable; they only leave the ordinary
 // list and the per-chat default until they are restored.
 export async function openProseAssistantConversations({source,isCurrent,storageFactory=createConfiguredStAccountStorage,now=Date.now,cryptoImpl=globalThis.crypto}={}){
@@ -140,6 +141,43 @@ export async function openProseAssistantConversations({source,isCurrent,storageF
    if(remember)register(state,remember);
    const entries=pick(state,keys),at=currentTime(),removed=[];for(const entry of entries)if(!entry.deleted){entry.deleted=true;delete entry.archived;entry.updatedAt=at;removed.push(entry.key);}
    const selected=new Set(keys);state.defaults=state.defaults.filter(entry=>!selected.has(entry.key));return {deleted:removed};
+  });},
+  // Second half of a delete: overwrite each removed conversation's saved history with an
+  // empty one. The account store has no file delete, so only the current version is
+  // emptied; earlier immutable versions stay on disk. Only tombstoned entries are
+  // touched, so a listed or archived conversation can never be emptied from here.
+  // A conversation that was never saved has nothing to empty. Failures are returned,
+  // not thrown: the tombstone stays and the caller reports what is left.
+  clearHistories(keys){return run(async()=>{
+   await guard();if(pending)fail('pending','上次对话操作尚未确认，请重试或刷新');
+   if(!Array.isArray(keys)||!keys.length||keys.length>LIMIT.entries||new Set(keys).size!==keys.length)invalid();
+   for(const key of keys)historyKey(key,account);
+   const outcome=new Map();let documents=null,next=0;
+   async function empty(key){
+    if(!find(committed,key)?.deleted)throw Error();
+    const slot='assistant-'+Array.from(new Uint8Array(await cryptoImpl.subtle.digest('SHA-256',new TextEncoder().encode(key))),byte=>byte.toString(16).padStart(2,'0')).join('');
+    const options={guard:transportGuard},found=await documents.read(slot,options);await guard();
+    if(!found.exists)return 'missing';
+    let prior=null;try{prior=validateProseAssistantHistory(found.value,key);}catch{/* An unreadable document is replaced as well. */}
+    if(prior&&!prior.rows.length)return 'cleared';
+    const revision=Number.isSafeInteger(found.value?.revision)&&found.value.revision>=0&&found.value.revision<Number.MAX_SAFE_INTEGER?found.value.revision+1:1;
+    const blank=validateProseAssistantHistory({version:1,namespace:key,revision,updatedAt:currentTime(),rows:[]},key);
+    try{const saved=await documents.write(slot,blank,{expectedFingerprint:found.fingerprint,...options});await guard();if(!same(saved?.value,blank))throw Error();}
+    catch(cause){
+     // The write may have landed before its acknowledgement was lost; accept only that exact result.
+     const actual=await documents.read(slot,options);await guard();if(!actual.exists||!same(actual.value,blank))throw cause;
+    }
+    return 'cleared';
+   }
+   try{
+    documents=await storageFactory({maxBytes:PROSE_ASSISTANT_HISTORY_LIMITS.bytes+2048,isCurrent:()=>!closed&&isCurrent()===true});await guard();
+    if(await proseAssistantAccountForNamespace(documents.namespace,{cryptoImpl})!==account)throw Error();
+    const worker=async()=>{while(next<keys.length){const key=keys[next++];try{outcome.set(key,await empty(key));}catch{outcome.set(key,'failed');}}};
+    await Promise.all(Array.from({length:Math.min(4,keys.length)},worker));
+   }catch{/* Counted below: every key without an outcome failed. */}
+   finally{documents?.close();}
+   const named=name=>keys.filter(key=>(outcome.get(key)||'failed')===name);
+   return {cleared:named('cleared'),missing:named('missing'),failed:named('failed')};
   });},
   // Archiving keeps the entry and its history; only delete leaves a tombstone.
   archive(keys,{remember}={}){return mutate(state=>{

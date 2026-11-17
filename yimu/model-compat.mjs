@@ -64,6 +64,32 @@ export async function sendWithAuthFallback(key, send, { rejected = response => r
   return result;
 }
 
+// 流式请求附带「末尾报用量」，缓存命中读数才有来源。只有渠道明确说不认这个字段时，才去掉它重发一次；
+// 重发成功就在本次会话里记住该地址，以后不再带。其余失败（鉴权、限流、模型不存在、取消…）一律原样交还，不重发。
+// send(usage) 发出请求：usage 为真时带上该字段。
+const streamUsageRejected = new Set();
+const STREAM_USAGE_REFUSAL = /stream_options|include_usage|unknown (parameter|field|argument)|unrecognized (request )?(argument|parameter|field)|extra (fields|inputs)|additional propert/i;
+export async function sendWithStreamUsage(root, stream, send) {
+  if (!stream || streamUsageRejected.has(root)) return send(false);
+  let result;
+  try { result = await send(true); }
+  catch (error) {
+    if (error?.name === 'AbortError' || !STREAM_USAGE_REFUSAL.test(String(error?.message || ''))) throw error;
+    result = await send(false);
+    streamUsageRejected.add(root);
+    return result;
+  }
+  if (!result || result.ok !== false || ![400, 404, 415, 422, 501].includes(Number(result.status))) return result;
+  let detail = '';
+  try { detail = String(await result.clone().text()).slice(0, 2000); } catch (_) {}
+  if (!STREAM_USAGE_REFUSAL.test(detail)) return result;
+  try { await result.body?.cancel?.(); } catch (_) {}
+  const retry = await send(false);
+  if (retry?.ok !== false) streamUsageRejected.add(root);
+  return retry;
+}
+export const STREAM_USAGE_OPTIONS = Object.freeze({ include_usage: true });
+
 // OpenAI 兼容生成体：可选字段只在有效时发送。
 export function chatPayload({ model, messages, temperature, maxTokens = 0, stream = false, responseFormat = null } = {}) {
   const body = { model: String(model ?? '').trim(), messages, stream: Boolean(stream) };
@@ -78,9 +104,11 @@ export const probePayload = model => ({ model: String(model ?? '').trim(), messa
 
 // ST 后端 custom 渠道请求体。路由字段放在最后，业务字段不能覆盖它们。
 // 头部统一用 JSON（ST 以 YAML 解析，JSON 是其子集），避免 Key 中的特殊字符被 YAML 误读。
-export function stProxyBody(root, authorization, payload = {}) {
+// streamUsage：ST 只转发它认识的字段，「末尾报用量」要走附加请求体（同样以 JSON 书写）。
+export function stProxyBody(root, authorization, payload = {}, { streamUsage = false } = {}) {
   return { ...payload, chat_completion_source: 'custom', custom_url: root, reverse_proxy: '', proxy_password: '',
-    custom_include_headers: JSON.stringify({ Authorization: authorization || '' }), custom_include_body: '', custom_exclude_body: '' };
+    custom_include_headers: JSON.stringify({ Authorization: authorization || '' }),
+    custom_include_body: streamUsage ? JSON.stringify({ stream_options: STREAM_USAGE_OPTIONS }) : '', custom_exclude_body: '' };
 }
 
 // ST 代理对上游失败常回 HTTP 200：/status 回 {error:true}，非流式 /generate 回 {error:{message}}。

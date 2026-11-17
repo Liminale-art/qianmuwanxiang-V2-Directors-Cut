@@ -1,7 +1,7 @@
 // Account-scoped ST settings only. Never put connection secrets in a memory document or backup.
 import { summaryRequestBudget } from './budget.mjs';
 import { normalizeVector, rankVectorCandidates } from './vector-contract.mjs';
-import { resolveApiRoot, sendWithAuthFallback, stProxyBody, proxyPayloadError, describeHttpFailure, redactSecrets, parseModelList, probeConnection,
+import { resolveApiRoot, sendWithAuthFallback, sendWithStreamUsage, stProxyBody, proxyPayloadError, describeHttpFailure, redactSecrets, parseModelList, probeConnection,
     chatPayload, probePayload } from './model-compat.mjs';
 import { readModelResponse, modelCacheText } from './model-response.mjs';
 
@@ -289,10 +289,10 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
     async function request(path, config, body, signal) {
         aborted(signal);
         const root = apiRoot(config.apiUrl);
-        const send = async authorization => {
+        const send = streamUsage => async authorization => {
             const response = await fetchImpl(path, { method: 'POST', cache: 'no-store', signal,
                 headers: { ...context().getRequestHeaders?.(), 'Content-Type': 'application/json' },
-                body: JSON.stringify(stProxyBody(root, authorization, body)) });
+                body: JSON.stringify(stProxyBody(root, authorization, body, { streamUsage })) });
             aborted(signal);
             if (!response.ok) {
                 const detail = String(await response.text().catch(() => '')).trim().slice(0, 200);
@@ -304,7 +304,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             }
             return response;
         };
-        return sendWithAuthFallback(config.apiKey, send);
+        return sendWithStreamUsage(root, body?.stream === true, streamUsage => sendWithAuthFallback(config.apiKey, send(streamUsage)));
     }
     async function models(config, signal) {
         aborted(signal);

@@ -44,7 +44,9 @@ export function quickDialGeometry({ centerX, centerY, width, height, size = 48 }
   const pitch = Math.max(chip + 8, (reachable - chip * GROW / 2) / (SLOTS + 0.9));
   const lift = pitch * SLOTS + chip;
   const y = height >= lift * 2 ? clamp(centerY, lift, height - lift) : height / 2;
-  return { side, sign: side === 'right' ? -1 : 1, x: centerX, y, rx, ry, ringX, ringY, chip, pitch, dot: rx - GAP - DOT, arc };
+  // 整盘向 logo 所靠的那条边收一些（最多 50px，圆心至多越过屏幕边 20px），弧线内侧不留一大片空。
+  const near = side === 'right' ? width - centerX : centerX, shift = Math.round(clamp(near + 20, 0, 50));
+  return { side, sign: side === 'right' ? -1 : 1, x: centerX + (side === 'right' ? shift : -shift), y, rx, ry, ringX, ringY, chip, pitch, dot: rx - GAP - DOT, arc };
 }
 
 // 椭圆上「走过的弧长 → 参数角」对照表（四分之一圈）。入口按弧长等距排布，才不会越往两端越挤。
@@ -189,7 +191,9 @@ export function createQuickDial({
     const node = current.home, from = current.homeFrom;
     if (!node || !from || reduced() || typeof node.animate !== 'function') return null;
     const [tx, ty] = node.hidden ? [current.geo.sign * current.geo.ringX, 0] : String(node.style.translate || '0px 0px').split(' ').map(parseFloat);
-    const away = { transform: `translate(${(from.x - tx).toFixed(1)}px, ${(from.y - (ty || 0)).toFixed(1)}px) scale(${from.scale.toFixed(3)})`, opacity: 1 }, home = { transform: 'none' };
+    // 格子停在指针处时自身已放大，起止帧按它折算，滑动全程 logo 与圆框都是悬浮入口的大小比例。
+    const grow = parseFloat(node.style.getPropertyValue('--qd-grow')) || 1;
+    const away = { transform: `translate(${(from.x - tx).toFixed(1)}px, ${(from.y - (ty || 0)).toFixed(1)}px) scale(${(from.scale / grow).toFixed(3)})`, opacity: 1 }, home = { transform: 'none' };
     if (node.hidden) { if (!back) return null; node.hidden = false; node.style.translate = `${tx}px 0px`; node.style.opacity = '1'; }
     return node.animate(back ? [home, away] : [away, home], { duration: back ? 190 : 260, easing: 'cubic-bezier(.25, .9, .3, 1)', fill: back ? 'forwards' : 'none' });
   }
@@ -292,6 +296,9 @@ export function createQuickDial({
     view.home = nodes[list.length - 1];
     view.homeFrom = { x: rect.left + rect.width / 2 - box.left - geo.x, y: rect.top + rect.height / 2 - box.top - geo.y, scale: rect.height / geo.chip };
     origin.classList?.add('sd-wheel-away');
+    // 格子若正停在指针处，它的放大不走过渡、直接到位，滑入的起点才正好是悬浮入口的大小。
+    const homeChip = view.home.firstElementChild;
+    if (homeChip?.style) { homeChip.style.transition = 'none'; void homeChip.offsetWidth; requestAnimationFrame(() => { homeChip.style.transition = ''; }); }
     flyHome(view, false);
     return root;
   }

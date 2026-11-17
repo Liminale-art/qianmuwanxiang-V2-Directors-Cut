@@ -162,11 +162,11 @@ export function modelCacheUsage(usage) {
   const hit = cached || 0;
   return { input, cached: hit, written: written || 0, ratio: input ? Math.min(1, hit / input) : null };
 }
-// 一句话读数，如「缓存命中 73%（7.3k / 10k）」；没有可报的内容时为空串。
+// 一句话读数，只用箭头不用字：↓ 为命中（从缓存读到的），↑ 为新写入缓存的，如「↓ 73%（7.3k / 10k） ↑ 800」；没有可报的内容时为空串。
 export function modelCacheText(usage) {
   const cache = modelCacheUsage(usage);
   if (!cache) return '';
   const short = value => value >= 10000 ? `${Math.round(value / 1000)}k` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
-  const head = cache.ratio === null ? `缓存命中 ${short(cache.cached)} token` : `缓存命中 ${Math.round(cache.ratio * 100)}%（${short(cache.cached)} / ${short(cache.input)}）`;
-  return cache.written ? `${head} · 新写入 ${short(cache.written)}` : head;
+  const head = cache.ratio === null ? `↓ ${short(cache.cached)}` : `↓ ${Math.round(cache.ratio * 100)}%（${short(cache.cached)} / ${short(cache.input)}）`;
+  return cache.written ? `${head} ↑ ${short(cache.written)}` : head;
 }

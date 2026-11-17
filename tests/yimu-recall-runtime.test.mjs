@@ -10,7 +10,7 @@ import {createController} from '../yimu/runtime.mjs';
 import {createHost} from '../yimu/host.mjs';
 import {VERSION, SCHEMA, fingerprintMessages} from '../yimu/contract.mjs';
 import {buildPlan} from '../yimu/core.mjs';
-import {buildBudgetedMessages, captureCore, byteBudget, memoryMessage} from '../yimu/budget.mjs';
+import {buildBudgetedMessages, captureCore, tokenEstimate, memoryMessage} from '../yimu/budget.mjs';
 import {recallCandidates} from '../yimu/recall.mjs';
 import {excerptRecords, recallBlockReason} from '../yimu/recall-contract.mjs';
 import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
@@ -331,7 +331,7 @@ test('final admission requires the excerpt parent, gives the excerpt no raw-remo
     const together = await buildBudgetedMessages(payload, {...options, entries: [parent, excerpt]});
     assert.deepEqual(together.entries.map(entry => entry.id), [parent.id, excerpt.id]);
     assert.deepEqual(together.removedFloors, [1, 2]);
-    const small = await buildBudgetedMessages(payload, {...options, budget: byteBudget([memoryMessage([parent])]), entries: [parent, excerpt]});
+    const small = await buildBudgetedMessages(payload, {...options, budget: tokenEstimate([memoryMessage([parent])]), entries: [parent, excerpt]});
     assert.deepEqual(small.entries.map(entry => entry.id), [parent.id]); assert.deepEqual(small.removedFloors, [1, 2]);
     const plan = await buildPlan(data.document, data.defaults, snapshot);
     assert.deepEqual(plan.coveredRanges, plan.entries.filter(entry => entry.kind !== 'excerpt').map(entry => entry.source));

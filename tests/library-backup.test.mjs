@@ -93,8 +93,7 @@ test('restore scope is counted and credential-neutral, never renders names or ar
     const payload=pack(favorites),row=favorites?payload.entries[0]:payload.notes[0];row.id='<img src=x onerror=alert(1)>';
     row.body='<unsafe>';row.label='<unsafe>';let asked=0;
     const accepted=await confirmLibraryRestore(payload,{check(){},confirm:async(title,message)=>{
-      asked++;assert.match(message,/1 条/);assert.match(message,/副本保留，不覆盖/);assert.match(message,/API 连接沿用本机/);assert.doesNotMatch(title+message,/<|unsafe/);
-      assert.match(message,favorites?/不恢复音色设置、专注语音库/:/不自动浮贴/);return true;
+      asked++;assert.match(message,/1 条/);assert.equal(message,`将导入 1 条${favorites?'语音收藏':'便笺'}，同编号条目将作为副本保留。`);assert.doesNotMatch(title+message,/<|unsafe/);return true;
     }});assert.equal(asked,1);assert.equal(accepted,true);
   }
 });
@@ -121,7 +120,7 @@ test('shared media admission computes exact byte counts with both limits and can
 test('preservation requires consent and a still-current operation; cancellation and stale confirmation download nothing',async()=>{
   for(const favorites of [false,true])for(const mode of ['confirm','cancel','stale']){
     const payload=pack(favorites,favorites?2001:1001),downloads=[],notices=[];let current=true,asks=0;
-    const options={check(){if(!current)throw Error('stale');},confirm:async(title,message)=>{asks++;assert.match(title,/保全/);assert.match(message,/不能直接完整恢复/);if(mode==='stale')current=false;return mode!=='cancel';},download:(blob,name)=>downloads.push({blob,name}),stamp:()=> 'fixture',notify:(...args)=>notices.push(args)};
+    const options={check(){if(!current)throw Error('stale');},confirm:async(title,message)=>{asks++;assert.match(title,/保全/);assert.match(message,/暂不能直接恢复的保全副本/);if(mode==='stale')current=false;return mode!=='cancel';},download:(blob,name)=>downloads.push({blob,name}),stamp:()=> 'fixture',notify:(...args)=>notices.push(args)};
     if(mode==='stale')await assert.rejects(exportLibraryBackup(payload,options),/stale/);else await exportLibraryBackup(payload,options);
     assert.equal(asks,1);assert.equal(downloads.length,mode==='confirm'?1:0);
     if(mode==='confirm'){assert.match(downloads[0].name,/preservation/);assert.deepEqual(JSON.parse(await downloads[0].blob.text()),payload);assert.equal(notices[0][1],'warning');}

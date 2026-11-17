@@ -55,7 +55,7 @@ export async function exportAudioCacheBackup({reader,encode,check,confirm,downlo
   }
   const payload = {version:1,type:'qianmu-tts-audio-cache',credentialsIncluded:false,exportedAt:new Date().toISOString(),count:entries.length,entries};
   const result = prepareAudioCacheBackup(payload);
-  if (result.preservationOnly && await confirm('仅保存保全副本','缓存超过当前导入限制或含暂不能完整恢复的记录。可以保存全部音频和可迁移信息，不截断或删条，但当前不能直接完整恢复。是否下载保全副本？') !== true) return {status:'cancelled'};
+  if (result.preservationOnly && await confirm('仅保存保全副本','缓存超出导入限制，只能存为暂不能直接恢复的保全副本。是否下载？') !== true) return {status:'cancelled'};
   check(); download(result.blob,`qianmu-语音缓存-${result.preservationOnly?'preservation-':''}${stamp()}.json`);
   notify(result.preservationOnly ? '已导出音频缓存保全副本，当前不能直接完整恢复；请保留原文件和本机缓存。' : `已导出 ${entries.length} 条音频缓存。`, result.preservationOnly?'warning':'success');
   return {status:'exported',count:entries.length,preservationOnly:result.preservationOnly};
@@ -63,7 +63,7 @@ export async function exportAudioCacheBackup({reader,encode,check,confirm,downlo
 export async function importAudioCacheBackup(file, {writer,decode,check,confirm,progress}) {
   const payload = await readAudioCacheBackup(file,{check});
   if (!payload.entries.length) throw Error('缓存备份没有条目，未写入内容。');
-  if (await confirm('恢复音频缓存',`将向本浏览器的当前 ST 站点导入 ${payload.entries.length} 条音频缓存，可能包含多个聊天；不是按当前角色筛选。旧缓存没有可靠账户归属，不能视为当前账户专属。同编号保留现有音频，不覆盖；不恢复语音收藏、音色或 API 设置，不自动播放或重新合成。是否继续？`) !== true) return {status:'cancelled'};
+  if (await confirm('恢复音频缓存',`将导入 ${payload.entries.length} 条音频缓存，同编号保留现有音频。`) !== true) return {status:'cancelled'};
   check();
   for (const entry of payload.entries) {
     check(); const blob = await decode(entry.data,entry.type || 'audio/mpeg'); check();

@@ -2,7 +2,7 @@
 // 地址、鉴权回退、请求体与目录解析统一走 qianmu-model-compat.js；回复解析走 qianmu-model-response.js。
 // 流式与否完全由调用方传入的用户开关决定，本模块不做限制；渠道不支持流式时由上游自行回 JSON，解析器照常读取。
 // 失败文字保持 “HTTP <状态> · <详情>” 形式，调用方据此判断是否回落浏览器直连。
-import { resolveApiRoot, stProxyBody, chatPayload, probePayload, sendWithAuthFallback, proxyPayloadError,
+import { resolveApiRoot, stProxyBody, chatPayload, probePayload, sendWithAuthFallback, sendWithStreamUsage, proxyPayloadError,
   parseModelList, probeConnection, redactSecrets } from './qianmu-model-compat.js?v=1.59.484';
 import { createModelResponseAccumulator, readModelResponse } from './qianmu-model-response.js?v=1.59.452';
 import { qianmuChatCompletionText } from './qianmu-llm-output.js?v=1.59.202';
@@ -15,10 +15,10 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
   // 返回 Response。ST 把上游失败包成 200 + {error}（流式失败时同样回 JSON），在此抛出交鉴权回退判断（Unauthorized 换裸 Key 重试一次）。
   async function post(path, apiUrl, apiKey, payload, signal, label) {
     const root = resolveApiRoot(apiUrl);
-    return sendWithAuthFallback(apiKey, async authorization => {
+    return sendWithStreamUsage(root, payload?.stream === true, streamUsage => sendWithAuthFallback(apiKey, async authorization => {
       const response = await fetchImpl(path, { method: 'POST', signal,
         headers: { ...headers(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(stProxyBody(root, authorization, payload)) });
+        body: JSON.stringify(stProxyBody(root, authorization, payload, { streamUsage })) });
       if (!response.ok) {
         const detail = String(await response.text().catch(() => '')).trim().slice(0, 300);
         throw Object.assign(new Error(`HTTP ${response.status}${detail ? ` · ${detail}` : ''}`), { status: response.status });
@@ -28,7 +28,7 @@ export function createStModelProxy({ fetchImpl = (...args) => fetch(...args), he
         if (problem) { try { await response.body?.cancel(); } catch (_) {} throw new Error(`${label}：${problem}`); }
       }
       return response;
-    }, { rejected: () => false });
+    }, { rejected: () => false }));
   }
   const postJson = async (...args) => (await post(...args)).json().catch(() => null);
 

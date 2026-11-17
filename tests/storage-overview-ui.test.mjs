@@ -36,7 +36,7 @@ test('the card is a title, an overview and two rows: one export, one import, one
   const rows = [...html.matchAll(/<div class="sd-dm-row"><span>([^<]+)<\/span><div class="sd-dm-actions">([\s\S]*?)<\/div><\/div>/g)].map(match => [match[1], [...match[2].matchAll(/<button type="button" class="([^"]+)">([^<]+)<\/button>/g)].map(button => [button[1], button[2]])]);
   assert.deepEqual(rows, [
     ['备份', [['sd-btn sd-storage-export', '导出'], ['sd-btn sd-storage-import', '导入']]],
-    ['清理', [['sd-btn sd-storage-clean', '扫描&amp;清理'], ['sd-btn sd-storage-chat-clean', '按聊天清理']]],
+    ['清理', [['sd-btn sd-storage-clean', '扫描并清理'], ['sd-btn sd-storage-chat-clean', '按聊天清理']]],
   ]);
   assert.equal(count(html, /<input\b/g), 2);
   assert.match(html, /<input type="file" class="sd-storage-import-file" multiple accept="\.zip,application\/zip,\.json,application\/json" hidden>/);

@@ -40,6 +40,10 @@ export function byteBudget(messages) {
     return new TextEncoder().encode(JSON.stringify(messages)).byteLength + messages.length * 24 + 96;
 }
 
+/** 注入预算用的 token 估算：字节数的一半。中文一字 3 字节约合 1～1.5 token，英文约 4 字节 1 token，取一半对两者都偏保守；
+ * 直接拿字节数当 token 会把中文聊天的预算压到三分之一，记忆放不下、旧楼也就隐藏不了。 */
+export const tokenEstimate = messages => Math.ceil(byteBudget(messages) / 2);
+
 // Shared by batch admission and the final ST/custom-connection boundary.
 export function summaryRequestBudget(prompt, systemPrompt = '你是忆幕的整理助手。') {
     return byteBudget([{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }]);
@@ -65,7 +69,6 @@ export function payloadSupport(payload) {
         || payload.json_schema != null || payload.response_format != null || payload.enable_web_search || payload.request_images) return 'unsupported-tools-or-schema';
     if (['prompt', 'system', 'system_prompt', 'input', 'instructions'].some(key => payload[key] != null)) return 'custom-prompt-rewrite';
     if ([payload.custom_include_body, payload.custom_exclude_body, payload.assistant_prefill].some(value => value != null && String(value).trim())) return 'custom-prompt-rewrite';
-    if (payload.custom_prompt_post_processing && payload.custom_prompt_post_processing !== 'none') return 'custom-prompt-rewrite';
     for (const message of payload.messages) {
         if (!message || !roles.has(message.role) || typeof message.content !== 'string'
             || message.name !== undefined && typeof message.name !== 'string'
@@ -104,28 +107,25 @@ export function captureCore(coreChat, source, { type = 'normal', namesBehavior =
     return { processed, hiddenFloors };
 }
 
+// 楼层与请求消息按顺序对齐：从最新一层往回，逐层找「排在它之前、内容相同」的那条消息。
+// 重复的发言（多次「继续」之类）照样能一一对上，不再因为内容相同就整轮放弃隐藏。
+// ST 截掉的只能是最旧的一段：某层找不到时，更早的各层都算已被截掉；
+// 但若它们其实还留在请求里（中间缺层、顺序被改），就整体判为对不上。
 function mapping(messages, processed) {
-    const actual = new Map(), originals = new Map();
-    messages.forEach((message, index) => {
-        const key = messageKey(message);
-        if (!actual.has(key)) actual.set(key, []);
-        actual.get(key).push(index);
-    });
-    for (const item of processed) {
-        const key = messageKey(item.request);
-        originals.set(key, (originals.get(key) || 0) + 1);
+    const keys = messages.map(messageKey), found = new Map();
+    let pointer = messages.length - 1, index = processed.length - 1;
+    for (; index >= 0; index--) {
+        const key = messageKey(processed[index].request);
+        let at = pointer;
+        while (at >= 0 && keys[at] !== key) at--;
+        if (at < 0) break;
+        found.set(processed[index].floor, at); pointer = at - 1;
     }
-    const found = new Map(), ambiguous = new Set();
-    let previousIndex = -1;
-    for (const item of processed) {
-        const key = messageKey(item.request), indices = actual.get(key) || [];
-        if (indices.length > 1 || indices.length && originals.get(key) > 1) { ambiguous.add(item.floor); continue; }
-        if (indices.length === 1) {
-            if (indices[0] <= previousIndex) return null;
-            found.set(item.floor, indices[0]); previousIndex = indices[0];
-        }
+    if (index >= 0) {
+        const left = new Set(keys.slice(0, pointer + 1));
+        for (let earlier = 0; earlier <= index; earlier++) if (left.has(messageKey(processed[earlier].request))) return null;
     }
-    return { found, ambiguous };
+    return { found, ambiguous: new Set() };
 }
 
 function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
@@ -169,8 +169,8 @@ function assemble(original, selected, removed, insertion, entryOrder) {
 }
 
 async function measuredBudget(messages, countTokens, timeoutMs) {
-    const upper = byteBudget(messages);
-    if (typeof countTokens !== 'function') return { tokens: upper, measured: null, method: 'utf8-bound' };
+    const upper = tokenEstimate(messages);
+    if (typeof countTokens !== 'function') return { tokens: upper, measured: null, method: 'utf8-estimate' };
     let timer;
     try {
         const value = await Promise.race([
@@ -178,8 +178,9 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
             new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); }),
         ]);
         const measured = Number.isFinite(value) && value > 0 ? Math.ceil(value) : null;
-        return { tokens: Math.max(upper, measured || 0), measured, method: measured === null ? 'utf8-bound' : 'st-tokenizer+utf8-bound' };
-    } catch { return { tokens: upper, measured: null, method: 'utf8-bound' }; }
+        // ST 自己的分词结果可得时以它为准，估算只在取不到时兜底。
+        return { tokens: measured ?? upper, measured, method: measured === null ? 'utf8-estimate' : 'st-tokenizer' };
+    } catch { return { tokens: upper, measured: null, method: 'utf8-estimate' }; }
     finally { clearTimeout(timer); }
 }
 
@@ -232,7 +233,7 @@ export async function buildBudgetedMessages(payload, {
         for (const floor of actualFloors) nextRemoved.add(map.found.get(floor));
         const nextInsertion = Math.min(insertion, ...actualFloors.map(floor => map.found.get(floor)));
         const nextEntries = [...selected, entry], memory = memoryMessage(nextEntries, entryOrder);
-        if (byteBudget([memory]) > memoryBudget) { fallback(); continue; }
+        if (tokenEstimate([memory]) > memoryBudget) { fallback(); continue; }
         const next = assemble(original, nextEntries, nextRemoved, nextInsertion, entryOrder);
         const { fallbackEntries, ...admittedEntry } = entry;
         selected.push(clone(admittedEntry)); selectedIds.add(entry.id);
@@ -243,7 +244,7 @@ export async function buildBudgetedMessages(payload, {
         insertion = nextInsertion;
         // Several complete summaries may be needed before the full request fits.
         // Do not reject the first compression merely because it alone is insufficient.
-        if (byteBudget(next) <= promptBudget) bestFit = {
+        if (tokenEstimate(next) <= promptBudget) bestFit = {
             messages: next, entries: [...selected], removedFloors: [...removedFloors],
         };
     }
@@ -253,12 +254,12 @@ export async function buildBudgetedMessages(payload, {
     if (!isCurrent()) return failure('cancelled');
     if (counted.tokens > promptBudget) return failure('context-budget-exceeded');
     // All recent originals must be retained verbatim and in order, not reconstructed.
-    const retainedRecent = candidate.filter(message => recentItems.some(item => messageKey(item.request) === messageKey(message)));
-    if (retainedRecent.length !== recentItems.length
-        || retainedRecent.some((message, index) => messageKey(message) !== messageKey(recentItems[index].request))) return failure('recent-originals-missing');
+    // 按对齐到的那几条消息本身核对（不按内容找），近期原文里有重复发言也不会误判。
+    const retainedRecent = recentFloors.map(floor => candidate.indexOf(original[map.found.get(floor)]));
+    if (retainedRecent.some((at, index) => at < 0 || index && at <= retainedRecent[index - 1])) return failure('recent-originals-missing');
     return {
         applied: true, reason: actualRemovedFloors.length ? 'source-replaced' : 'memory-added', messages: candidate,
-        entries: admitted, tokens: byteBudget([memoryMessage(admitted, entryOrder)]), requestTokens: counted.tokens,
+        entries: admitted, tokens: tokenEstimate([memoryMessage(admitted, entryOrder)]), requestTokens: counted.tokens,
         nativeRequestTokens: counted.measured, countingMethod: counted.method, contextTokens, responseTokens,
         removedFloors: actualRemovedFloors.sort((a, b) => a - b), recentFloors, estimated: true,
         sourceReplacement: actualRemovedFloors.length > 0,

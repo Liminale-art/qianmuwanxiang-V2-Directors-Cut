@@ -35,5 +35,5 @@ test('reset uses selected phase duration while preserving cycle settings and doe
 test('legacy migration cannot refill runtime state after it is neutralized and preview describes the boundary',()=>{
   const out=prepareConfigRestore({}, {}, {},true,{...options,migrateSettings:s=>{s.focusClock=liveFocus();}});
   assert.equal(out.focusClock.status,'idle');assert.deepEqual(out.focusClock.voiceCleanupCues,[]);
-  assert.match(configRestoreSummary({},true),/不恢复旧锁屏/);
+  assert.match(configRestoreSummary({},true),/^将用文件中的配置替换当前设置，/);
 });

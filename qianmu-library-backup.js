@@ -54,8 +54,7 @@ export async function confirmLibraryRestore(payload,{confirm,check}){
   const notes=payload.type==='qianmu-notes',rows=notes?payload.notes:payload.entries;
   const label=notes?'便笺':'语音收藏';
   if(!rows.length)throw Error(`${label}备份没有条目；未写入内容。`);
-  const scope=notes?'导入后自动保存到当前账户的本机队列并等待同步；常驻状态沿用备份，不自动浮贴，不恢复其他设备的窗口位置。':'包含收藏音频和条目信息；不恢复音色设置、专注语音库或其他模块。';
-  const accepted=await confirm(`恢复${label}`,`将导入 ${rows.length} 条${label}。同编号条目作为副本保留，不覆盖已有内容。${scope}API 连接沿用本机设置。是否继续？`);
+  const accepted=await confirm(`恢复${label}`,`将导入 ${rows.length} 条${label}，同编号条目将作为副本保留。`);
   check();return accepted===true;
 }
 
@@ -72,7 +71,7 @@ export function prepareLibraryBackup(payload){
 export async function exportLibraryBackup(payload,{confirm,check,download,stamp,notify}){
   check();
   const result=prepareLibraryBackup(payload);
-  if(result.preservationOnly&&!await confirm('仅保存保全副本',`${result.label}备份超过当前导入限制或含不能完整恢复的条目，不能直接完整恢复。可保存全部原内容供后续整理，不会截断或删条。是否下载保全副本？`))return {status:'cancelled'};
+  if(result.preservationOnly&&!await confirm('仅保存保全副本',`${result.label}超出导入限制，只能存为暂不能直接恢复的保全副本。是否下载？`))return {status:'cancelled'};
   check();
   download(result.blob,`${result.prefix}-${result.preservationOnly?'preservation-':''}${stamp()}.json`);
   notify(result.preservationOnly?`${result.label}保全副本已导出，当前不能直接完整恢复；请保留原文件和本机资料。`:`已导出 ${result.count} 条${result.label}。`,result.preservationOnly?'warning':'success');

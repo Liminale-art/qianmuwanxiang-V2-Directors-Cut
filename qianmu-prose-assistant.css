@@ -12,7 +12,8 @@
 .qm-prose-assistant-dialog > [data-pa-settings] { display:flex;flex-direction:column; }
 .qm-prose-assistant-dialog > footer { flex:none;padding:10px 14px; }
 .qm-prose-assistant-dialog button { display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--qm-pa-icon-control);height:var(--qm-pa-icon-control);margin:0;padding:6px;border:0;border-radius:9px;background:transparent;color:inherit;font:inherit;cursor:pointer;transition:background .15s ease,color .15s ease; }
-.qm-prose-assistant-dialog button:hover:not(:disabled) { background:var(--sd-input-bg,#8882); }
+/* 对话列表的条目不做悬停变色；:where 不改变这条规则的优先级。 */
+.qm-prose-assistant-dialog button:where(:not(.qm-pa-conversation-row)):hover:not(:disabled) { background:var(--sd-input-bg,#8882); }
 .qm-prose-assistant-dialog button i,.qm-prose-assistant-dialog button svg { width:16px;height:16px;font-size:16px; }
 .qm-prose-assistant-dialog input:not([type="checkbox"]),.qm-prose-assistant-dialog select,.qm-prose-assistant-dialog textarea { width:100%;margin:0;border:1px solid var(--sd-border,#8886);border-radius:10px;background:var(--sd-input-bg,#8882);color:inherit;font:inherit;line-height:1.35;padding:4px 11px;box-shadow:none;text-shadow:none; }
 .qm-prose-assistant-dialog input:not([type="checkbox"]),.qm-prose-assistant-dialog select { height:var(--qm-pa-control-height);min-height:var(--qm-pa-control-height); }
@@ -27,7 +28,6 @@ html body :is(#story-director-modal,[data-qm-prose-assistant-portal]) .qm-prose-
 .qm-prose-assistant-dialog button:focus-visible,.qm-prose-assistant-dialog [data-pa-resize]:focus-visible { outline:1px solid var(--sd-accent,#a7c4b5);outline-offset:-2px; }
 .qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"],[data-pa-action="capacity-new"]) { width:auto;height:auto;min-height:var(--qm-pa-control-height);max-width:100%;padding:7px 13px;font-size:var(--qm-pa-body-size);line-height:1.2;color:var(--sd-muted,#aaa); }
 .qm-prose-assistant-dialog :is([data-pa-action="older-messages"],[data-pa-action="latest-messages"]) { display:flex;max-width:max-content;margin:0 auto 6px; }
-.qm-prose-assistant-dialog [data-pa-action="archived-conversations"] { align-self:flex-start;width:auto;height:auto;min-height:var(--qm-pa-control-height);max-width:100%;padding:7px 13px;font-size:var(--qm-pa-body-size);line-height:1.2;color:var(--sd-muted,#aaa);background:var(--sd-input-bg,#8882); }
 .qm-prose-assistant-dialog [data-pa-capacity] { display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0 0 6px; }
 .qm-prose-assistant-dialog [data-pa-capacity] > small { flex:1 1 160px;margin:0;overflow-wrap:anywhere; }
 .qm-prose-assistant-dialog [data-pa-action="capacity-new"] { color:var(--sd-accent,#a7c4b5); }

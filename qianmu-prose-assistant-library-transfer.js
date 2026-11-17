@@ -81,7 +81,7 @@ export function createProseAssistantLibraryTransfer({resolveNamespace,isCurrent,
    await opened.guard();const total=payload.index.entries.length,planned=write.length+adopt.length;
    if(!planned){notify?.(`已导入 0 个特助对话，${total} 个已存在。`,'info');return {status:'imported',imported:0,skipped:total};}
    if(local.size+planned>PROSE_ASSISTANT_CONVERSATIONS_LIMITS.entries)fail('最近对话目录已满，未导入。');
-   if(await confirm('导入场外特助',`将导入 ${planned} 个对话，已有的不覆盖。是否继续？`)!==true)return {status:'cancelled',imported:0,skipped:0};
+   if(await confirm('导入场外特助',`将导入 ${planned} 个对话，已有的不覆盖。`)!==true)return {status:'cancelled',imported:0,skipped:0};
    await opened.guard();
    await each(write,async entry=>{
     const history=histories.get(entry.key);

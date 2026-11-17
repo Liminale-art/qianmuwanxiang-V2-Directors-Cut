@@ -61,7 +61,7 @@ test('actual reader entry requires explicit approval of complete scope before cr
     const e=fixture();let asked=0,writers=0;
     e.c.readCoreadPackageFile=async()=>({books:[],audio:[{}],retrievalLogs:[{}],prefs:{fontSize:18}});
     e.c.confirmDialog=async(title,text)=>{
-      asked++;assert.equal(title,'恢复伴读数据');assert.match(text,/保留本机已有音频/);assert.match(text,/可能挤出本机已有记录/);
+      asked++;assert.equal(title,'恢复伴读数据');assert.match(text,/^将恢复 0 本书及其对话、插图、语音，同编号内容会被覆盖。$/);
       assert.equal(writers,0);assert.deepEqual(e.calls,[]);return answer;
     };
     e.c.blobStore.createReaderPackageWriter=()=>{writers++;return {};};

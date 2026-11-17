@@ -59,7 +59,7 @@ test('import writes absent conversations with their metadata, skips what the acc
  const {thread,blob,payload}=await library(),f=device(),catalogue=await f.catalogue();
  await catalogue.ensure({key:base(),title:'本机已有',updatedAt:5});catalogue.close();await f.put(base(),history(base(),'本机版本',3));
  const before=f.uploads(),result=await f.transfer.importLibrary(blob);
- assert.deepEqual(result,{status:'imported',imported:1,skipped:1});assert.deepEqual(f.confirmations,[['导入场外特助','将导入 1 个对话，已有的不覆盖。是否继续？']]);assert.deepEqual(f.notices,[['已导入 1 个特助对话，1 个已存在。','success']]);
+ assert.deepEqual(result,{status:'imported',imported:1,skipped:1});assert.deepEqual(f.confirmations,[['导入场外特助','将导入 1 个对话，已有的不覆盖。']]);assert.deepEqual(f.notices,[['已导入 1 个特助对话，1 个已存在。','success']]);
  assert.deepEqual(f.remote(base()),history(base(),'本机版本',3),'an existing conversation keeps its own messages');assert.deepEqual(f.remote(thread),history(thread,'归档'));
  const index=f.index(),own=index.entries.find(entry=>entry.key===base()),added=index.entries.find(entry=>entry.key===thread);assert.equal(index.entries.length,2);assert.equal(own.title,'本机已有');
  assert.deepEqual(added,payload.index.entries[1]);assert.equal(index.version,3);assert.deepEqual(index.defaults,[{ownerKey:base(),key:base()}]);
@@ -108,7 +108,7 @@ test('host entry points report their own failures, refuse while the assistant wi
  try{
   const input={disabled:false,isConnected:true};
   assert.deepEqual(await tools.importAssistantLibrary(new Blob(['{"type":"other"}']),input),{status:'failed'});assert.deepEqual(notices,[['场外特助导入未完成：这不是场外特助的整库备份，未导入。','warning']]);assert.equal(input.disabled,false);
-  assert.deepEqual(await tools.importAssistantLibrary(blob,input),{status:'imported',imported:2,skipped:0});assert.deepEqual(confirmations,[['导入场外特助','将导入 2 个对话，已有的不覆盖。是否继续？']]);assert.equal(f.index().entries.length,2);
+  assert.deepEqual(await tools.importAssistantLibrary(blob,input),{status:'imported',imported:2,skipped:0});assert.deepEqual(confirmations,[['导入场外特助','将导入 2 个对话，已有的不覆盖。']]);assert.equal(f.index().entries.length,2);
   const button={disabled:false,isConnected:true},pending=tools.exportAssistantLibrary(button);assert.equal(button.disabled,true);
   assert.deepEqual(await tools.exportAssistantLibrary(button),{status:'cancelled'},'a second press while running does nothing');
   assert.deepEqual(await tools.importAssistantLibrary(blob),{status:'cancelled'});assert.deepEqual(notices.at(-1),['请先关闭场外特助或结束清理。','warning']);
@@ -120,4 +120,14 @@ test('host entry points report their own failures, refuse while the assistant wi
  }finally{tools.disposeFloor();}
  const wrapper=createProseFloorTools({getContext:()=>host,resolveNamespace:async()=>raw,headers:()=>({}),isCurrent:()=>true,notify(){},download(){},confirm:async()=>true});
  assert.equal(typeof wrapper.exportAssistantLibrary,'function');assert.equal(typeof wrapper.importAssistantLibrary,'function');wrapper.dispose();
+});
+
+test('a deleted and emptied conversation is neither exported nor brought back by a backup that still holds it',async()=>{
+ const {f,thread,blob}=await library(),catalogue=await f.catalogue();
+ await catalogue.delete([base()]);assert.deepEqual(await catalogue.clearHistories([base()]),{cleared:[base()],missing:[],failed:[]});catalogue.close();
+ const emptied=f.remote(base());assert.deepEqual(emptied.rows,[]);assert.equal(emptied.revision,2);
+ const before=f.uploads();assert.deepEqual(await f.transfer.importLibrary(blob),{status:'imported',imported:0,skipped:2});assert.equal(f.uploads(),before,'the old backup writes nothing back');
+ assert.deepEqual(f.remote(base()),emptied);assert.equal(f.index().entries.find(entry=>entry.key===base()).deleted,true);
+ f.downloads.length=0;assert.deepEqual(await f.transfer.exportLibrary(),{status:'exported',exported:1});
+ const payload=JSON.parse(await f.downloads[0].blob.text());assert.deepEqual(payload.index.entries.map(entry=>entry.key),[thread]);assert.deepEqual(payload.histories.map(item=>item.key),[thread]);
 });

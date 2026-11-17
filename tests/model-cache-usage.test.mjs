@@ -16,9 +16,9 @@ test('cache usage is read from each protocol and absent fields are not reported 
 });
 
 test('readout text is short, and empty when there is nothing to report', () => {
-  assert.equal(modelCacheText({ prompt_tokens: 10000, prompt_tokens_details: { cached_tokens: 7300 } }), '缓存命中 73%（7.3k / 10k）');
-  assert.equal(modelCacheText({ input_tokens: 200, cache_read_input_tokens: 9000, cache_creation_input_tokens: 800 }), '缓存命中 90%（9.0k / 10k） · 新写入 800');
-  assert.equal(modelCacheText({ cached_tokens: 120 }), '缓存命中 120 token');
+  assert.equal(modelCacheText({ prompt_tokens: 10000, prompt_tokens_details: { cached_tokens: 7300 } }), '↓ 73%（7.3k / 10k）');
+  assert.equal(modelCacheText({ input_tokens: 200, cache_read_input_tokens: 9000, cache_creation_input_tokens: 800 }), '↓ 90%（9.0k / 10k） ↑ 800');
+  assert.equal(modelCacheText({ cached_tokens: 120 }), '↓ 120');
   assert.equal(modelCacheText({ prompt_tokens: 100 }), '');
 });
 
@@ -30,7 +30,7 @@ test('usage arriving in several stream events is merged, later parts do not eras
   stream.consume({ type: 'message_stop' });
   const done = stream.finish();
   assert.deepEqual(done.usage, { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 4 });
-  assert.equal(modelCacheText(done.usage), '缓存命中 90%（90 / 100）');
+  assert.equal(modelCacheText(done.usage), '↓ 90%（90 / 100）');
 });
 
 test('Yimu carries the same reader, and both surfaces show the readout', async () => {

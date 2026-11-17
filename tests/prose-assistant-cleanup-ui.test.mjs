@@ -35,7 +35,7 @@ test('conflict is explicit and unknown failures never leak storage content or cl
 test('chooser exposes originals only when verified nonempty, does not offer markers as clearable content, and enables the sole assistant item',()=>{
  const data={assistantStorage:{status:'ready',count:2,bytes:100}};const items=storageCleanupOptions(data);assert.equal(items.length,1);assert.equal(items[0].id,'__assistant__');assert.equal(items[0].label,'场外特助旧副本');assert.equal(items[0].bytes,100);assert.equal(items[0].count,2);
  for(const state of [{status:'unavailable',count:2,bytes:100},{status:'ready',count:0,bytes:100}])assert.equal(storageCleanupOptions({assistantStorage:state}).length,0);
- const html=renderStorageBackupSection(null,String,{data,ready:true});assert.match(html,/class="sd-btn sd-storage-clean">扫描&amp;清理<\/button>/);
+ const html=renderStorageBackupSection(null,String,{data,ready:true});assert.match(html,/class="sd-btn sd-storage-clean">扫描并清理<\/button>/);
 });
 test('shared cleanup lock excludes opening or active assistant and invalidates later activity; actual entry routes assistant before any generic deletion',async()=>{
  let assistant=true;const owner={},root={isConnected:true},session=createStorageCleanupSession({owner:()=>owner,scope:()=>1,epoch:()=>1,activity:()=>({proseAssistant:assistant})});assert.equal(session.begin(root),null);

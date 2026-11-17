@@ -159,11 +159,9 @@ test('real migration preserves legacy voice content and cannot refill excluded c
 test('restore confirmation explains replacement and original boundaries without exposing imported content',()=>{
   const incoming=settings();incoming.coread.books[0].title='<img src=x onerror=secret>';const before=structuredClone(incoming);
   const preview=policy.configRestoreSummary(incoming,true);
-  assert.match(preview,/不会自动合并/);assert.match(preview,/1 项书目索引/);assert.match(preview,/不表示书籍正文已备份/);
-  assert.match(preview,/不会随此配置包恢复或清空/);assert.match(preview,/当前连接与密钥保留/);
+  assert.equal(preview,'将用文件中的配置替换当前设置，连接与密钥保留。','one plain sentence');
+  assert.equal(policy.configRestoreSummary(incoming,false),'将用文件中的配置替换当前设置，连接与密钥一并替换。');
   assert.doesNotMatch(preview,/onerror|secret|source-credential/);assert.deepEqual(incoming,before);
-  assert.match(policy.configRestoreSummary({},false),/当前书架索引可能被重置/);
-  assert.match(policy.configRestoreSummary({},false),/连接与密钥也将/);
 });
 
 test('restore guard rejects replaced or mutated settings and fails closed on uninspectable data',()=>{

@@ -201,7 +201,7 @@ test('unrelated raw payload does not consume the main request session', async ()
 });
 
 test('final max_completion_tokens is reserved and an oversized reply leaves the request unchanged', async () => {
-    for (const response of [2048, 32000]) {
+    for (const response of [2048, 32700]) {
         const f = fixture(), source = await f.host.snapshot(), target = core(source);
         const { session } = f.host.prepare(target, await plan(source), source), payload = request(target);
         delete payload.max_tokens; payload.max_completion_tokens = response;

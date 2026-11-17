@@ -482,7 +482,7 @@
 | `qianmu-st-menu-entry.js` | 是 |  |
 | `qianmu-st-model-proxy.js` | 是 | 千幕 · 经 ST 后端 custom 渠道调用外部 OpenAI 兼容接口（伴读总结／对话／小助手／识图、台词提取、千幕主 API 目录与测试）。 |
 | `qianmu-storage-backup-view.js` | 是 |  |
-| `qianmu-storage-card.js` | 是 | 数据管理卡：占用总览（按类别分色块）＋「备份：导出／导入」＋「清理：扫描&清理／按聊天清理」。 |
+| `qianmu-storage-card.js` | 是 | 数据管理卡：占用总览（按类别分色块）＋「备份：导出／导入」＋「清理：扫描并清理／按聊天清理」。 |
 | `qianmu-storage-cleanup-session.js` | 是 | One local cleanup at a time. Invalidating a session stops future work, not |
 | `qianmu-storage-gallery-check.js` | 是 |  |
 | `qianmu-storage-library-transfer.js` | 是 | 数据管理卡里「资料库」各行的整库导出／恢复。 |

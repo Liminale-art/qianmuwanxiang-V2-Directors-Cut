@@ -204,7 +204,7 @@ export function createStorageLibraryTransfer({ resolveNamespace, confirm, downlo
   }));
   const focusImport = run('专注语音导入', (scope, file) => withFocus(scope, async (store, codec) => {
     const items = await codec.inspectFocusLibraryBackup(file, { guard: scope.guard });
-    if (await confirm('导入专注语音', `已校验 ${items.length} 条语音，将作为新条目加入当前账户的语音库，不覆盖已有语音。`) !== true) return;
+    if (await confirm('导入专注语音', `将导入 ${items.length} 条语音，不覆盖已有语音。`) !== true) return;
     await scope.guard();
     const result = await store.batch(scope.namespace, { add: items.map(({ clip, blob }) => ({ clip: { ...clip, namespace: scope.namespace, id: crypto.randomUUID() }, blob })) }, { isCurrent: scope.isCurrent });
     notify(`已导入 ${result?.added?.length ?? items.length} 条专注语音。`, 'success');

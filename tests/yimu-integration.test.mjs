@@ -347,6 +347,46 @@ test('skip diagnostics record why a round fell back and clear on the next succes
     assert.equal(f.controller.state.lastSkip, null, 'a later success clears the stale skip reason');
 });
 
+test('a round whose source replacement cannot be prepared still carries memory through the 保底 slot', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'baseline round injects inline');
+    const round = async type => {
+        await f.controller.event('GENERATION_STARTED', [type, {}, false]);
+        const coreChat = clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
+        await f.controller.intercept(coreChat, 65536, () => {}, type);
+        return f.prompts.get(MEMORY_PROMPT_KEY) || '';
+    };
+    // 续写：不做原文替换，但记忆仍附在请求里，并如实记下原因。
+    assert.ok((await round('continue')).includes('<yimu_memory>'), 'a continue round still carries the memory block');
+    assert.equal(f.controller.state.lastSkip.reason, 'unsupported-generation');
+    assert.equal(f.controller.state.lastSkip.offered, true);
+    // 后台静默生成不附加记忆。
+    assert.equal(await round('quiet'), '', 'a quiet generation gets no memory');
+    assert.equal(f.controller.state.lastSkip.offered, false);
+    await f.controller.event('GENERATION_ENDED', []);
+    await f.inject();
+    assert.ok(f.controller.state.lastUsed, 'the next normal round injects inline again');
+});
+
+test('the refresh queued by the just-sent user message runs before the round is prepared, not after it', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    await f.controller.event('MESSAGE_SENT', [f.context.chat.length - 1]);
+    const coreChat = clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
+    await f.controller.intercept(coreChat, 65536, () => {}, 'normal');
+    assert.ok((f.prompts.get(MEMORY_PROMPT_KEY) || '').includes('<yimu_memory>'), 'the round is prepared on the refreshed state');
+    // 等过原先的延迟：不应再有一次迟到的刷新把本轮准备好的记忆清掉。
+    await new Promise(resolve => setTimeout(resolve, 160));
+    const payload = {type: 'normal', model: 'fixture-model', chat_completion_source: 'custom', max_tokens: 1024,
+        messages: [{role: 'system', content: '合成角色设定'}, ...coreChat.map(message => ({role: message.is_user ? 'user' : 'assistant', content: message.mes}))]};
+    await f.controller.event('CHAT_COMPLETION_SETTINGS_READY', [payload]);
+    assert.ok(f.controller.state.lastUsed, 'the inline rewrite still applies');
+    assert.ok(payload.messages.some(message => message.content.includes('<yimu_memory>')));
+});
+
 test('保底 injection slot still delivers memory when the surgical rewrite cannot run', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();

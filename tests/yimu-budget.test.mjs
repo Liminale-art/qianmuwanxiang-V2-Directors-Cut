@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fingerprintMessages } from '../yimu/contract.mjs';
-import { buildBudgetedMessages, byteBudget, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
+import { buildBudgetedMessages, byteBudget, tokenEstimate, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
 
 async function fixture({ count = 12, length = 512, type = 'normal', namesBehavior = 0 } = {}) {
     const source = { messages: Array.from({ length: count }, (_, i) => ({
@@ -64,8 +64,8 @@ test('whole-request admission replaces only verified old source while preserving
     assert.deepEqual(result.messages.slice(-5), f.payload.messages.slice(-5));
     assert.deepEqual(f.payload, before.payload); assert.deepEqual(f.source, before.source); assert.deepEqual(f.core, before.core);
     assert.equal(counted.length, 1); assert.deepEqual(JSON.parse(counted[0]), result.messages);
-    assert.equal(result.requestTokens, Math.max(byteBudget(result.messages), 1200));
-    assert.equal(result.countingMethod, 'st-tokenizer+utf8-bound'); assert.equal(result.estimated, true);
+    assert.equal(result.requestTokens, 1200, 'the host tokenizer result is authoritative when available');
+    assert.equal(result.countingMethod, 'st-tokenizer'); assert.equal(result.estimated, true);
 });
 
 test('500-floor synthetic history uses complete sources while preserving the configured recent tail, not a hard-coded five', async () => {
@@ -137,10 +137,27 @@ test('already-truncated old prefix can contribute memory without falsely claimin
     assert.equal(result.sourceReplacement, false); assert.deepEqual(result.messages.slice(-5), f.payload.messages.slice(-5));
 });
 
-test('missing recent originals, ambiguous duplicates and reordered history all preserve original request', async () => {
+test('repeated messages no longer block hiding: floors align in order, and prompt post-processing is allowed', async () => {
+    // 多次「继续」：内容完全相同的楼层，按顺序一一对上。
+    const f = await fixture();
+    for (const index of [0, 2, 4, 8, 10]) f.source.messages[index].mes = '继续';
+    const core = structuredClone(f.source.messages); core.forEach((message, index) => { message.index = index; });
+    const { processed } = captureCore(core, f.source, { namesBehavior: 0, userName: 'User' });
+    const sourceHashes = await fingerprintMessages(f.source.messages);
+    const payload = { ...f.payload, custom_prompt_post_processing: 'strict', messages: [...f.payload.messages.slice(0, 2), ...processed.map(item => structuredClone(item.request))] };
+    const entries = [{ id: 'slice-1', kind: 'summary', status: 'active', text: 'A verified event summary.', source: { start: 1, end: 3, hashes: sourceHashes.slice(0, 3) } }];
+    const result = await buildBudgetedMessages(payload, { ...f.options, entries, sourceHashes, processed });
+    assert.equal(result.applied, true); assert.deepEqual(result.removedFloors, [1, 2, 3]);
+    assert.deepEqual(result.messages.slice(-5), processed.slice(-5).map(item => item.request), 'recent originals stay verbatim, duplicates included');
+    assert.equal(result.messages.filter(message => message.content === '继续').length, 3, 'only the two summarised duplicates were removed');
+    // 请求末尾多出一条与最新楼层相同的消息：照样对齐。
+    const extra = await fixture(); extra.payload.messages.push(structuredClone(extra.payload.messages.at(-1)));
+    assert.equal((await buildBudgetedMessages(extra.payload, extra.options)).applied, true);
+});
+
+test('missing recent originals, a replaced middle floor and reordered history all preserve original request', async () => {
     for (const mutate of [
         f => f.payload.messages.pop(),
-        f => f.payload.messages.push(structuredClone(f.payload.messages.at(-1))),
         f => { [f.payload.messages[4], f.payload.messages[5]] = [f.payload.messages[5], f.payload.messages[4]]; },
         f => { f.payload.messages[6].content = 'other plugin replaced a middle source'; },
     ]) {
@@ -151,7 +168,7 @@ test('missing recent originals, ambiguous duplicates and reordered history all p
 });
 
 test('all fixed prompts and reply reservation count toward admission, not merely the memory text', async () => {
-    const f = await fixture(); f.payload.messages[0].content = 'x'.repeat(50000);
+    const f = await fixture(); f.payload.messages[0].content = 'x'.repeat(80000);
     const before = JSON.stringify(f.payload);
     assert.equal((await buildBudgetedMessages(f.payload, f.options)).applied, false);
     assert.equal(JSON.stringify(f.payload), before);
@@ -171,16 +188,17 @@ test('counter errors and bounded timeout use explicit conservative estimated adm
         const f = await fixture();
         const result = await buildBudgetedMessages(f.payload, f.options, { countTokens, countTimeoutMs: 5 });
         assert.equal(result.applied, true); assert.equal(result.nativeRequestTokens, null);
-        assert.equal(result.countingMethod, 'utf8-bound'); assert.equal(result.estimated, true);
-        assert.equal(result.requestTokens, byteBudget(result.messages));
+        assert.equal(result.countingMethod, 'utf8-estimate'); assert.equal(result.estimated, true);
+        assert.equal(result.requestTokens, tokenEstimate(result.messages));
+        assert.equal(tokenEstimate(result.messages), Math.ceil(byteBudget(result.messages) / 2), 'the estimate is half the byte size, not the byte size itself');
     }
 });
 
 test('multiple full summaries may together compress an initially oversized request into budget', async () => {
     const f = await fixture({ length: 1000 });
-    f.options.contextTokens = 8500; f.options.responseTokens = 1000;
+    f.options.contextTokens = 5200; f.options.responseTokens = 1000;
     f.options.entries = [f.entry('first', 1, 3), f.entry('second', 4, 6)];
-    assert.ok(byteBudget(f.payload.messages) > 7500);
+    assert.ok(tokenEstimate(f.payload.messages) > 4200);
     const onlyFirst = await buildBudgetedMessages(f.payload, { ...f.options, entries: [f.options.entries[0]] });
     assert.equal(onlyFirst.applied, false);
     const result = await buildBudgetedMessages(f.payload, f.options);
@@ -191,7 +209,7 @@ test('multiple full summaries may together compress an initially oversized reque
 test('later oversized manual addition does not discard an earlier valid complete selection', async () => {
     const f = await fixture({ length: 200 });
     f.options.contextTokens = 6000; f.options.responseTokens = 1000;
-    f.options.entries.push({ id: 'large-manual', kind: 'manual', source: null, text: 'm'.repeat(3000) });
+    f.options.entries.push({ id: 'large-manual', kind: 'manual', source: null, text: 'm'.repeat(12000) });
     const result = await buildBudgetedMessages(f.payload, f.options);
     assert.equal(result.applied, true); assert.deepEqual(result.entries.map(entry => entry.id), ['slice-1']);
     assert.deepEqual(result.removedFloors, [1, 2, 3]);
@@ -216,7 +234,6 @@ test('tools, multimodal, provider rewrites and unknown message shapes keep origi
         f => { f.payload.messages[2].reasoning_content = 'reason'; },
         f => { f.payload.custom_include_body = 'messages: replaced'; },
         f => { f.payload.custom_exclude_body = 'messages'; },
-        f => { f.payload.custom_prompt_post_processing = 'strict'; },
         f => { f.payload.assistant_prefill = 'prefix'; },
     ]) {
         const f = await fixture(); mutate(f); const before = JSON.stringify(f.payload);

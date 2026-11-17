@@ -14,11 +14,28 @@ const fingerprint=value=>createHash('sha256').update(JSON.stringify(value)).dige
 const record=value=>({exists:true,value:structuredClone(value),fingerprint:fingerprint(value)});
 const absent=()=>({exists:false,value:null,fingerprint:null});
 const deferred=()=>{let resolve;return {promise:new Promise(done=>{resolve=done;}),resolve};};
+const slotOf=key=>'assistant-'+createHash('sha256').update(key).digest('hex');
+const saved=(key,revision=1,rows=[{id:1,user:'问',assistant:'答',status:'complete',reference:null}])=>({version:1,namespace:key,revision,updatedAt:20,rows});
+// The per-conversation history documents, opened only by clearHistories.
+function historyStore(f,options,check){
+ assert.equal(options.maxBytes,4*1024*1024+2048);assert.equal(options.isCurrent(),true);f.historyOpens++;if(f.historyOpenError)throw Error('private open failure');
+ const now=slot=>f.histories.has(slot)?record(f.histories.get(slot)):absent();
+ return {namespace:f.historyNamespace??f.namespace,
+  async read(slot,options){await check(options);f.historyReads.push(slot);return now(slot);},
+  async write(slot,value,{expectedFingerprint,...options}){
+   await check(options);f.historyWrites.push({slot,value:structuredClone(value),expectedFingerprint});
+   if(f.historyFail?.has(slot))throw Error('private history write rejected');
+   if(now(slot).fingerprint!==expectedFingerprint)throw Object.assign(Error('private storage race'),{code:'st_account_storage_conflict'});
+   f.histories.set(slot,structuredClone(value));if(f.historyLost?.has(slot))throw Error('private acknowledgement lost');return now(slot);
+  },close(){f.historyClosed++;},
+ };
+}
 function fixture(initial=null){
- const f={current:initial===null?absent():record(initial),reads:[],writes:[],live:true,closed:0,mode:'ok',now:100,namespace:raw};
+ const f={current:initial===null?absent():record(initial),reads:[],writes:[],live:true,closed:0,mode:'ok',now:100,namespace:raw,histories:new Map(),historyReads:[],historyWrites:[],historyOpens:0,historyClosed:0};
  const check=async options=>{if(await options.guard()!==true)throw Error('private scope');};
  f.options={source:{key:base(),scope:{namespace:account},assertCurrent:()=>f.live,guard:async()=>f.live},isCurrent:()=>f.live,now:()=>f.now,
   storageFactory:async options=>{
+   if(options.documentLayout===undefined)return historyStore(f,options,check);
    assert.equal(options.documentLayout,'snapshot');assert.equal(options.maxBytes,LIMIT.bytes);
    return {namespace:f.namespace,
     async read(slot,options){assert.equal(slot,'assistant-conversations');await check(options);f.reads.push(slot);if(f.readHold)await f.readHold.promise;await check(options);if(f.readError)throw Error('private-key storage error');return structuredClone(f.current);},
@@ -290,4 +307,35 @@ test('adopt registers only unknown keys with their saved metadata and never touc
   await assert.rejects(catalog.adopt(bad),code('invalid'));assert.equal(catalog.status().dirty,false);assert.equal(f.writes.length,writes+1);
  }
  catalog.close();
+});
+
+test('clearHistories empties only tombstoned conversations, skips unsaved ones and never touches the directory',async()=>{
+ const f=fixture(),catalog=await open(f.options),a=await catalog.ensure({key:base(),title:'A',updatedAt:40}),b=await catalog.create({ownerKey:base(),title:'B',id:id(1)}),
+  c=await catalog.create({ownerKey:base(),title:'C',id:id(2)}),kept=await catalog.create({ownerKey:base(),title:'留着',id:id(3)}),shelved=await catalog.create({ownerKey:base(),title:'归档',id:id(4)});
+ f.histories.set(slotOf(a.key),saved(a.key,3));f.histories.set(slotOf(c.key),saved(c.key,2,[]));f.histories.set(slotOf(kept.key),saved(kept.key));f.histories.set(slotOf(shelved.key),saved(shelved.key));
+ await catalog.archive([shelved.key]);await catalog.delete([a.key,b.key,c.key]);const writes=f.writes.length,index=catalog.view();f.now=900;
+ assert.deepEqual(await catalog.clearHistories([a.key,b.key,c.key,kept.key,shelved.key]),{cleared:[a.key,c.key],missing:[b.key],failed:[kept.key,shelved.key]});
+ assert.deepEqual(f.histories.get(slotOf(a.key)),{version:1,namespace:a.key,revision:4,updatedAt:900,rows:[]},'the same validated shape, one revision later, with no rows');
+ assert.deepEqual(f.histories.get(slotOf(c.key)),saved(c.key,2,[]),'an already empty history is not rewritten');assert.equal(f.histories.has(slotOf(b.key)),false,'a never-saved conversation gets no document');
+ assert.deepEqual(f.histories.get(slotOf(kept.key)),saved(kept.key),'a listed conversation is never emptied');assert.deepEqual(f.histories.get(slotOf(shelved.key)),saved(shelved.key),'an archived conversation is never emptied');
+ assert.deepEqual(f.historyWrites.map(write=>write.slot),[slotOf(a.key)]);assert.ok(!f.historyReads.includes(slotOf(kept.key))&&!f.historyReads.includes(slotOf(shelved.key)));
+ assert.equal(f.writes.length,writes);assert.deepEqual(catalog.view(),index);assert.equal(f.historyOpens,1);assert.equal(f.historyClosed,1);assert.equal(catalog.status().dirty,false);
+ assert.deepEqual(await catalog.clearHistories([a.key]),{cleared:[a.key],missing:[],failed:[]});assert.equal(f.historyWrites.length,1,'repeating it writes nothing');
+ for(const keys of [[],[a.key,a.key],'x',['not-a-key']])await assert.rejects(catalog.clearHistories(keys),code('invalid'));catalog.close();
+});
+
+test('clearHistories reports what it could not empty, keeps every tombstone and can be repeated',async()=>{
+ const f=fixture(),catalog=await open(f.options),a=await catalog.ensure({key:base(),title:'A',updatedAt:40}),b=await catalog.create({ownerKey:base(),title:'B',id:id(1)}),
+  c=await catalog.create({ownerKey:base(),title:'C',id:id(2)}),d=await catalog.create({ownerKey:base(),title:'D',id:id(3)});
+ for(const entry of [a,b,c])f.histories.set(slotOf(entry.key),saved(entry.key));f.histories.set(slotOf(d.key),{damaged:true});
+ await catalog.delete([a.key,b.key,c.key,d.key]);f.historyFail=new Set([slotOf(b.key)]);f.historyLost=new Set([slotOf(c.key)]);
+ assert.deepEqual(await catalog.clearHistories([a.key,b.key,c.key,d.key]),{cleared:[a.key,c.key,d.key],missing:[],failed:[b.key]});
+ assert.deepEqual(f.histories.get(slotOf(b.key)),saved(b.key),'the failed one still holds its messages');assert.deepEqual(f.histories.get(slotOf(c.key)).rows,[],'a lost acknowledgement is confirmed by reading back');
+ assert.deepEqual(f.histories.get(slotOf(d.key)),{version:1,namespace:d.key,revision:1,updatedAt:100,rows:[]},'an unreadable document is replaced by a valid empty one');
+ assert.ok(catalog.view().entries.every(entry=>entry.deleted),'a failed emptying never brings an entry back');assert.equal(catalog.status().dirty,false);assert.equal(f.historyClosed,1);
+ f.historyFail=null;assert.deepEqual(await catalog.clearHistories([b.key]),{cleared:[b.key],missing:[],failed:[]});assert.deepEqual(f.histories.get(slotOf(b.key)).rows,[]);
+ const e=await catalog.create({ownerKey:base(),title:'E',id:id(5)});f.histories.set(slotOf(e.key),saved(e.key));await catalog.delete([e.key]);
+ f.historyOpenError=true;assert.deepEqual(await catalog.clearHistories([e.key]),{cleared:[],missing:[],failed:[e.key]});f.historyOpenError=false;
+ f.historyNamespace='st-user:someone-else';assert.deepEqual(await catalog.clearHistories([e.key]),{cleared:[],missing:[],failed:[e.key]},'another account is never written');
+ assert.deepEqual(f.histories.get(slotOf(e.key)),saved(e.key));assert.equal(f.historyClosed,f.historyOpens-1,'every opened store is closed');catalog.close();
 });

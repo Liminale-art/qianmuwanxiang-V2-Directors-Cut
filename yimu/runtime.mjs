@@ -820,12 +820,20 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
     }
 
+    const OFFER_ON_SKIP = new Set(['unsupported-generation', 'unverified-mapping', 'unsupported-name-format', 'unknown-context-budget', 'unsupported-tools', 'live-chat-reference', 'source-changed']);
     async function intercept(coreChat, contextSize, abort, type = '') {
         host.clear(); prepared = null; offered = false;
+        // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
+        if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; generationRefresh = refresh({ quiet: true, auto: false }); }
         if (generationRefresh) {
-            let timer;
-            const ready = await Promise.race([generationRefresh.then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), interceptWaitMs); })]);
-            clearTimeout(timer);
+            const deadline = Date.now() + interceptWaitMs;
+            let ready = true, waited;
+            do {
+                waited = refreshing || generationRefresh;
+                let timer;
+                ready = await Promise.race([Promise.resolve(waited).then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now())); })]);
+                clearTimeout(timer);
+            } while (ready && refreshing && refreshing !== waited);
             // A slow storage read never holds normal generation hostage — but the round says why it carried no memory.
             if (!ready) { if (!disposed && state.document?.enabled) { state.lastSkip = { stage: 'refresh', reason: 'refresh-timeout', at: ++skipSeq }; emit(); } return; }
         }
@@ -850,8 +858,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 // 含继承（origin）记忆的方案改写需在最终边界重核，烘焙槽无法事后回核，故不走保底，
                 // 维持原有仅改写路径——这也让下方 verify 分支下 offered 恒为 false，语义一致。
                 offered = prepared.foreignIds.length ? false : host.offer(plan.prompt); }
-            else if (ticket === generation && isCurrent(doc.binding) && result.reason !== 'empty') { state.lastSkip = { stage: 'prepare', reason: result.reason || 'unknown', at: ++skipSeq }; emit(); }
-        } catch { host.clear(); /* Failure retains ST's unchanged original context. */ }
+            else if (ticket === generation && isCurrent(doc.binding) && result.reason !== 'empty') {
+                // 原文替换做不了（续写、楼层对不上、带工具消息等）时，不再整轮没有记忆：仍以保底方式把记忆附在本轮请求里。
+                // 后台静默生成、文本补全、群聊不附加；含继承记忆的方案同上不走保底。
+                offered = OFFER_ON_SKIP.has(result.reason) && type !== 'quiet' && !plan.entries.some(entry => entry.origin) ? host.offer(plan.prompt) : false;
+                state.lastSkip = { stage: 'prepare', reason: result.reason || 'unknown', at: ++skipSeq, offered }; emit();
+            }
+        } catch (error) {
+            host.clear(); // Failure retains ST's unchanged original context.
+            if (ticket === generation && !disposed) { state.lastSkip = { stage: 'plan', reason: 'plan-error', message: String(error?.message || error).slice(0, 200), at: ++skipSeq }; emit(); }
+        }
     }
 
     async function event(name, args = []) {
@@ -933,7 +949,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 catchUp = true; failedJobs.clear(); saveWaits = 0; clearTimeout(saveTimer); saveTimer = null;
             }
             clearTimeout(refreshTimer);
-            refreshTimer = setTimeout(() => refresh({ quiet: true, auto: !generating }), 80);
+            refreshTimer = setTimeout(() => { refreshTimer = null; refresh({ quiet: true, auto: !generating }); }, 80);
         }
     }
 

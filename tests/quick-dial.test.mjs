@@ -18,6 +18,9 @@ test('the arc is a tall half ellipse bulging away from the edge the logo sits on
   }
   const wide = quickDialGeometry({ centerX: 1880, centerY: 500, width: 1920, height: 1000, size: 80 });
   assert.equal(wide.rx, 164, 'the horizontal radius grows with the logo size up to its cap');
+  assert.equal(right.x, 340 + 40, 'the dial is pulled toward the edge the logo sits on: its centre may pass the edge by 20px');
+  assert.equal(left.x, 20 - 40);
+  assert.equal(wide.x, 1880 + 50, 'never by more than 50px');
   const short = quickDialGeometry({ centerX: 340, centerY: 30, width: 360, height: 300, size: 44 });
   assert.ok(short.ry <= 300 * 0.47 + 1 || short.ry === short.rx, 'a short viewport limits the vertical stretch');
 });
@@ -105,9 +108,10 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(module, /chip\.animate\(\[\{ transform: 'scale\(1\)' \}, \{ transform: 'scale\(\.8\)'/, 'the entry dips and springs back before its panel opens');
   assert.doesNotMatch(module + css, /qm-dial-drop|qm-dial-scrim/, 'no bump on the arc and no backing disc');
   assert.match(css, /\.qm-dial-chip \{[^}]*border-radius: 50%;[^}]*inset 0 0 0 calc\(1\.2px \/ var\(--qd-grow, 1\)\)/, 'round frames with the same 1.2px line as the hive outline');
-  assert.match(css, /\.qm-dial-chip > img \{ width: 80%; height: 80%; object-fit: contain; translate: 1px 1px; pointer-events: none; \}/, 'the logo fits inside its round frame uncropped, slightly enlarged and nudged 1px down-right');
+  assert.match(css, /\.qm-dial-chip > img \{ width: 82%; height: 82%; object-fit: contain; translate: 0 1px; pointer-events: none; \}/, 'the logo fits inside its round frame uncropped, slightly enlarged and nudged 1px down');
+  assert.match(css, /#story-director-float > img, [^{]*\{ width: 82% !important; height: 82% !important; [^}]*translate: 0 1px;/, 'the floating entry draws the logo at the same proportion and offset');
   assert.match(module, /const list = \[\.\.\.\(items\?\.\(\) \|\| \[\]\), \{ id: HOME, label: '千幕', home: true \}\];/, 'the main-panel entry is the last slot, not a second logo at the front');
-  assert.match(module, /origin\.classList\?\.add\('sd-wheel-away'\);\s*flyHome\(view, false\);/, 'the round logo itself slides into the arc when the dial opens');
+  assert.match(module, /origin\.classList\?\.add\('sd-wheel-away'\);[\s\S]{0,400}flyHome\(view, false\);/, 'the round logo itself slides into the arc when the dial opens');
   assert.match(module, /const motion = flyHome\(current, true\);/, 'and slides back when it closes');
   assert.match(css, /#story-director-float\.sd-wheel-away \{ filter: opacity\(0\) !important;/);
   assert.match(source, /settings\.quickLauncher === 'dial' \? 'circle\(50%\)' : 'polygon\(/, 'the floating logo is a circle in dial mode');
@@ -115,7 +119,10 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(css, /\.qm-prose-hive-layer\.qm-prose-hive-floor \{ z-index: 2147483000; \}/, 'the dragged-out chat toolkit entry sits below the main panel');
   assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry \{[^}]*clip-path: circle\(50%\)/, 'dragged-out entries are round in dial mode');
   assert.match(source, /setAttribute\('data-qm-launcher', settings\.quickLauncher === 'dial' \? 'dial' : 'hive'\)/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ :is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial \.qm-dial-stage \{ animation: none; \} \}/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ :is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial \.qm-dial-stage > :not\(\.qm-dial-items\), [^{]*\.qm-dial-item:not\(\.is-home\) \{ animation: none; \} \}/);
+  assert.match(css, /\.qm-dial-item:not\(\.is-home\) \{ animation: qm-dial-in [^}]*backwards; \}\s*@keyframes qm-dial-in \{ from \{ opacity: 0; \} \}/, 'the logo entry takes no part in the fade-in: it slides in from the floating entry unchanged');
+  assert.match(css, /\.qm-dial-item\.is-current:not\(\.is-home\) \.qm-dial-chip \{ background:/, 'the logo entry is never tinted at the pointer');
+  assert.match(module, /scale\(\$\{\(from\.scale \/ grow\)\.toFixed\(3\)\}\)/, 'the slide starts at the floating entry size even when the logo entry is enlarged at the pointer');
   assert.match(css, /:is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial\.qm-dial-right \.qm-dial-label \{ right: calc\(var\(--qd-r\) \+ 12px\); \}/, 'the name box sits outside the arc');
   assert.ok(JSON.parse(readFileSync(new URL('../release-files.json', import.meta.url), 'utf8')).files.includes('qianmu-quick-dial.js'));
 });

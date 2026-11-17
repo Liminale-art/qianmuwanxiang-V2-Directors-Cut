@@ -128,10 +128,12 @@ test('legacy history opens and lists without writes, then new conversation remem
  await f.choose(f.base);assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'旧问题');assert.equal(f.models.length,0);
 });
 
-test('deleting an unregistered visible legacy conversation creates its tombstone in the same write and never revives it',async t=>{
+test('deleting an unregistered visible legacy conversation creates its tombstone, empties its saved history and never revives it',async t=>{
  const f=await fixture(t,{initialRows:[row()]}),original=structuredClone(f.remote(f.base));f.showList();f.listAction('select').click();f.listAction('select').click();f.listAction('delete').click();
- await f.dom.wait(()=>f.catalogue()?.entries[0]?.deleted);await f.idle();assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,1);assert.equal(f.catalogue().entries[0].key,f.base);assert.equal(f.rows().length,0);
- await f.cold();f.showList();assert.equal(f.listRows().length,0);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,1);assert.deepEqual(f.remote(f.base),original);assert.equal(f.models.length,0);
+ await f.dom.wait(()=>f.catalogue()?.entries[0]?.deleted);await f.idle();assert.equal(f.catalogue().entries[0].key,f.base);assert.equal(f.rows().length,0);assert.equal(f.status(),'');
+ const emptied=f.remote(f.base);assert.deepEqual(emptied,{...original,revision:original.revision+1,updatedAt:emptied.updatedAt,rows:[]});assert.ok(emptied.updatedAt>original.updatedAt);
+ const posts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+ await f.cold();f.showList();assert.equal(f.listRows().length,0);assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,posts);assert.deepEqual(f.remote(f.base),emptied);assert.equal(f.rows().length,0);assert.equal(f.models.length,0);
 });
 
 test('a pre-write remember failure cannot continue a switch through a no-target retry',async t=>{
@@ -165,16 +167,40 @@ test('editing a legacy question retains its original editor until directory conf
  f.action('save-reply').click();await f.dom.wait(()=>f.models.length===1);await f.idle();assert.equal(f.remote(f.base).rows.length,1);assert.equal(f.remote(f.base).rows[0].user,'修改后的旧问题');assert.equal(f.remote(f.base).rows[0].assistant,'回答 1');
 });
 
-test('multi-select deletion is one directory tombstone update and does not delete ST files or rediscover legacy messages',async t=>{
+test('multi-select deletion tombstones the directory once, then empties every saved history without rediscovering legacy messages',async t=>{
  const f=await fixture(t);await f.send('删除前原会话');const thread=await f.create();await f.send('删除前新会话');
- const histories=new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),beforePosts=f.transport.calls.filter(call=>call.options.method==='POST').length;
+ const before=[structuredClone(f.remote(f.base)),structuredClone(f.remote(thread))],snapshots=()=>f.transport.calls.filter(call=>uploaded(call)?.slot==='assistant-conversations').length,beforeSnapshots=snapshots();
  f.showList();f.listAction('select').click();f.listAction('select').click();assert.equal(f.listAction('delete').hidden,false);f.listAction('delete').click();
  await f.dom.wait(()=>f.catalogue().entries.every(entry=>entry.deleted));await f.idle();assert.equal(f.rows().length,0);assert.equal(f.listRows().length,0);assert.equal(f.listAction('delete').hidden,true);
- assert.equal(f.transport.calls.filter(call=>call.options.method==='POST').length,beforePosts+1,'batch deletion writes only one catalog');
- assert.deepEqual(new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),histories);
- assert.match(f.confirmations.at(-1),/删除后不可找回/);assert.ok(f.catalogue().entries.some(entry=>entry.key===thread&&entry.deleted));
+ assert.equal(snapshots(),beforeSnapshots+1,'batch deletion writes only one catalog');assert.equal(f.status(),'');assert.equal(f.action('retry-conversations').hidden,true);
+ for(const [index,key] of [f.base,thread].entries())assert.deepEqual(f.remote(key),{...before[index],revision:before[index].revision+1,updatedAt:f.remote(key).updatedAt,rows:[]});
+ assert.ok([...f.transport.files.values()].some(text=>text.includes('删除前原会话')),'the store has no file delete: the earlier immutable version stays on disk');
+ assert.match(f.confirmations.at(-1),/^删除选中的 2 条特助对话？删除后不可找回；想留着请改用归档。$/);assert.ok(f.catalogue().entries.some(entry=>entry.key===thread&&entry.deleted));
  await f.cold();assert.equal(f.rows().length,0);assert.equal(f.models.length,2);f.showList();assert.equal(f.listRows().length,0,'deleted legacy default must not reappear on cold open');
- assert.deepEqual(new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),histories);
+ assert.deepEqual(f.remote(f.base).rows,[]);assert.deepEqual(f.remote(thread).rows,[]);f.action('back').click();
+ await f.send('删除之后的新问题');const fresh=f.catalogue().entries.filter(entry=>!entry.deleted).map(entry=>entry.key);assert.equal(fresh.length,1);assert.ok(![f.base,thread].includes(fresh[0]));
+ assert.deepEqual(f.remote(f.base).rows,[]);assert.deepEqual(f.remote(thread).rows,[],'a later conversation never writes back into an emptied one');
+});
+
+test('a history that cannot be emptied stays deleted, is reported once and is emptied on retry',async t=>{
+ const f=await fixture(t);await f.send('清空失败前原会话');const thread=await f.create();await f.send('清空失败前新会话');
+ const slot='assistant-'+hash(thread);let blocked=true;
+ f.transport.hook=({path,options,json})=>blocked&&path==='/api/files/upload'&&JSON.parse(options.body).name.includes(slot)?json({},500):null;
+ f.showList();f.listAction('select').click();f.listAction('select').click();f.listAction('delete').click();
+ await f.dom.wait(()=>f.status()!=='');await f.idle();assert.equal(f.status(),'已删除，1 个对话的历史未能清空');assert.equal(f.action('retry-conversations').hidden,false);
+ assert.ok(f.catalogue().entries.every(entry=>entry.deleted),'the entry is not brought back');assert.equal(f.listRows().length,0);assert.equal(f.rows().length,0);
+ assert.deepEqual(f.remote(f.base).rows,[]);assert.equal(f.remote(thread).rows[0].user,'清空失败前新会话');
+ blocked=false;f.action('retry-conversations').click();await f.dom.wait(()=>f.remote(thread).rows.length===0);await f.idle();
+ assert.equal(f.status(),'');assert.equal(f.action('retry-conversations').hidden,true);assert.ok(f.catalogue().entries.every(entry=>entry.deleted));assert.equal(f.models.length,2);
+});
+
+test('deleting from the archived view empties the history the same way',async t=>{
+ const f=await fixture(t);await f.send('归档后删除的原会话');const thread=await f.create();await f.send('归档后删除的新会话');const kept=structuredClone(f.remote(f.base));
+ f.showList();f.dom.all().find(node=>node.dataset.paStoreKey===thread).click();await f.dom.wait(()=>f.catalogue().entries.find(entry=>entry.key===thread)?.archived===true);await f.idle();
+ assert.equal(f.remote(thread).rows.length,1,'archiving keeps the messages');f.listAction('archived').click();assert.deepEqual(f.listRows().map(node=>node.dataset.paConversationKey),[thread]);
+ f.listAction('select').click();f.listAction('select').click();f.listAction('delete').click();await f.dom.wait(()=>f.catalogue().entries.find(entry=>entry.key===thread)?.deleted);await f.idle();
+ assert.match(f.confirmations.at(-1),/^删除选中的 1 条特助对话？删除后不可找回；想留着请改用归档。$/);assert.deepEqual(f.remote(thread).rows,[]);assert.equal(Object.hasOwn(f.catalogue().entries.find(entry=>entry.key===thread),'archived'),false);
+ assert.equal(f.status(),'');assert.equal(f.listRows().length,0);assert.deepEqual(f.remote(f.base),kept,'the conversation that was not selected is untouched');
 });
 
 test('catalog registration failure blocks model submission, keeps the question and retries only the directory',async t=>{
@@ -443,7 +469,7 @@ test('capacity guidance warns near the limit and a full conversation can create 
  });
 });
 
-test('archiving the open conversation switches away without confirmation or file changes, and settings lead to restoring it',async t=>{
+test('archiving the open conversation switches away without confirmation or file changes, and the list toggle is the only way to its archive',async t=>{
  const f=await fixture(t);await f.send('归档前原会话');const thread=await f.create();await f.send('归档前新会话');
  const histories=()=>new Map([...f.transport.files].filter(([name])=>!name.endsWith('-assistant-conversations.snapshot.json'))),before=histories(),posts=()=>f.transport.calls.filter(call=>call.options.method==='POST').length,beforePosts=posts();
  const heading=()=>f.dom.all().find(node=>node.tagName==='STRONG').textContent,store=key=>f.dom.all().find(node=>node.dataset.paStoreKey===key),confirmations=f.confirmations.length;
@@ -453,7 +479,8 @@ test('archiving the open conversation switches away without confirmation or file
  assert.equal(f.catalogue().version,3);assert.equal(f.catalogue().entries.find(entry=>entry.key===thread).deleted,false);assert.ok(!f.catalogue().defaults.some(entry=>entry.key===thread));
  assert.deepEqual(f.listRows().map(node=>node.dataset.paConversationKey),[f.base]);assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'归档前原会话','the window moved to the remaining conversation');
  await f.cold();assert.equal(f.rows()[0].querySelector('.qm-pa-user').textContent,'归档前原会话','an archived conversation is never reopened as the default');
- f.action('settings').click();const entry=f.action('archived-conversations');assert.equal(entry.textContent,'已归档对话');assert.equal(entry.hidden,false);assert.equal(entry.disabled,false);entry.click();
+ f.action('settings').click();assert.equal(f.action('archived-conversations'),undefined,'settings carry no archive entry');assert.ok(!f.dom.all().some(node=>node.tagName==='BUTTON'&&/归档/.test(node.textContent)));
+ f.action('back').click();f.showList();assert.equal(heading(),'最近对话');assert.equal(f.listAction('archived').getAttribute('aria-pressed'),'false');f.listAction('archived').click();assert.equal(f.listAction('archived').getAttribute('aria-pressed'),'true');
  assert.equal(f.dom.get('最近特助对话').hidden,false);assert.equal(heading(),'已归档对话');assert.deepEqual(f.listRows().map(node=>node.dataset.paConversationKey),[thread]);
  const calls=f.transport.calls.length;f.listRows()[0].click();await f.idle();assert.equal(f.transport.calls.length,calls,'archived rows are restored, not opened');assert.equal(f.dom.get('最近特助对话').hidden,false);
  assert.equal(store(thread).dataset.paListAction,'restore-one');store(thread).click();await f.dom.wait(()=>!Object.hasOwn(f.catalogue().entries.find(entry=>entry.key===thread),'archived'));await f.idle();

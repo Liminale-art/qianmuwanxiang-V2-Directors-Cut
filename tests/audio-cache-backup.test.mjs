@@ -22,7 +22,7 @@ test('cache export restores exact media and identifiers in the existing v1 forma
   const data=JSON.parse(await f.downloads[0].blob.text());assert.equal(data.credentialsIncluded,false);assert.equal(data.entries[0].data,'YQ==');assert.equal(data.entries[0].meta.apiKey,undefined);
   assert.equal(data.entries[0].meta.text,'对白');assert.equal(data.entries[0].key,'one');assert.equal(await f.records.get('one').blob.text(),original);
   const g=fixture();await importAudioCacheBackup(f.downloads[0].blob,g.options);assert.equal(await g.records.get('one').blob.text(),'a');assert.equal(g.records.get('one').blob.type,'audio/ogg; codecs=opus');assert.equal(g.records.get('one').createdAt,123);
-  assert.match(g.prompts[0].text,/多个聊天.*不是按当前角色/);assert.match(g.prompts[0].text,/不覆盖/);assert.equal(g.progress.added,1);
+  assert.equal(g.prompts[0].text,'将导入 1 条音频缓存，同编号保留现有音频。');assert.equal(g.progress.added,1);
 });
 test('same cache keys retain recipient originals and unknown metadata cannot transfer credentials',async()=>{
   const f=fixture();f.records.set('one',{blob:new Blob(['existing'])});

@@ -6,7 +6,7 @@ import { normalizeEntryOrder, orderedEntries, orderForInjection } from '../yimu/
 import { validateScenes, unknownScenes, sceneProjection } from '../yimu/scene-contract.mjs';
 import { parseSummary, buildPlan, summaryPrompt, summaryCoverage } from '../yimu/core.mjs';
 import { stageGroups, planStageRange, nextStage } from '../yimu/layers.mjs';
-import { buildBudgetedMessages, captureCore, byteBudget, memoryMessage } from '../yimu/budget.mjs';
+import { buildBudgetedMessages, captureCore, tokenEstimate, memoryMessage } from '../yimu/budget.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
 const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
@@ -277,7 +277,7 @@ test('protected custom originals are embedded once in stage admission and surviv
     const emitted = admitted.messages.find(message => message.content.startsWith('<yimu_memory>')).content;
     assert.ok(emitted.includes(JSON.stringify(stage.customSlices[0].text)));
     const oversized = { ...stage, text: '自动阶段过大'.repeat(10000) }, custom = stage.fallbackEntries.find(entry => entry.id === 'm1');
-    const cap = byteBudget([memoryMessage([custom], document.entryOrder)]) + 10;
+    const cap = tokenEstimate([memoryMessage([custom], document.entryOrder)]) + 10;
     const fallback = await buildBudgetedMessages(payload, { ...options, entries: [oversized], budget: cap });
     assert.equal(fallback.applied, true); assert.deepEqual(fallback.entries.map(entry => entry.id), ['m1']);
     assert.deepEqual(fallback.removedFloors, []); assert.equal(fallback.entries[0].text, custom.text);

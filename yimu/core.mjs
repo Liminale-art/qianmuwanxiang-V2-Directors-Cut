@@ -335,9 +335,9 @@ export function selectMemories(document, snapshot, settings, hashes, type = '') 
     // A saved excerpt accompanies its selected parent reading layer; it is never
     // allowed to stand in for a whole source floor on its own.
     return [...selected.flatMap(entry => [entry.kind === 'stage' && entry.source.parents.some(ref => document.entries.find(item => item.id === ref.id)?.kind === 'manual')
-        ? { ...entry, customSlices: entry.source.parents.map(ref => document.entries.find(item => item.id === ref.id)).filter(parent => parent.kind === 'manual')
+        ? { ...entry, customSlices: entry.source.parents.map(ref => document.entries.find(item => item.id === ref.id)).filter(parent => parent?.kind === 'manual')
             .map(parent => ({ id: parent.id, text: parent.text, scenes: parent.scenes })),
-            fallbackEntries: entry.source.parents.map(ref => document.entries.find(item => item.id === ref.id)).filter(parent => usable.some(item => item.id === parent.id))
+            fallbackEntries: entry.source.parents.map(ref => document.entries.find(item => item.id === ref.id)).filter(parent => parent && usable.some(item => item.id === parent.id))
                 .sort((a, b) => Number(b.kind === 'manual') - Number(a.kind === 'manual')) }
         : entry, ...usable.filter(item => item.kind === 'excerpt'
         && (item.parent.id === entry.id || entry.kind === 'stage' && entry.source.parents.some(ref => ref.id === item.parent.id)))]), ...companionEntries(document.companion)];

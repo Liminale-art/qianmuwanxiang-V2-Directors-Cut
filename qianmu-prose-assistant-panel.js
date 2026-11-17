@@ -55,7 +55,6 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   if(selection?.mode==='profile')profile.value='profile:'+selection.profileId;
   if(selection?.mode==='custom'){profile.value='custom';url.value=selection.connection?.apiUrl||'';model.value=selection.connection?.model||'';key.value=selection.connection?.apiKey||'';}custom.hidden=profile.value!=='custom';
   const footer=node('footer'),question=node('textarea'),status=node('p'),historyNotice=node('p'),retry=button('重试保存','retry-history','retry'),retryCatalogue=button('重试对话操作','retry-conversations','retry'),send=button('发送','send'),composer=node('div');
-  const archivedButton=textButton('已归档对话','archived-conversations');archivedButton.hidden=!conversationFactory;grid.append(archivedButton);
   const promptField=field('助手提示词',persona);promptField.className='qm-pa-prompt-field';grid.append(promptField);retryCatalogue.hidden=true;
   question.rows=1;question.maxLength=20000;question.setAttribute('aria-label','向场外特助提问');question.dataset.paQuestion='';
   status.dataset.paStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');historyNotice.dataset.paHistory='';historyNotice.setAttribute('role','status');retry.hidden=true;
@@ -75,7 +74,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     capacityText.textContent=full?'此对话已达容量上限。原记录会保留，可新建对话继续。':'此对话接近容量上限。原记录会保留，可随时新建对话继续。';
     capacityNew.hidden=!catalogue;capacityNew.disabled=busy||saving||closing||blocked||!!editing||!catalogue;
     const action=busy?'stop':'send';if(send.dataset.paAction!==action){send.dataset.paAction=action;icon(send,busy?'停止':'发送',action);}
-    listButton.disabled=busy||saving||closing||historyWorking||catalogueWorking||!!pendingSnapshot||!!editing||!catalogue;archivedButton.disabled=listButton.disabled;retry.disabled=historyWorking||closing;retryCatalogue.disabled=catalogueWorking||closing;closeButton.disabled=closing||catalogueWorking;question.disabled=catalogueWorking;
+    listButton.disabled=busy||saving||closing||historyWorking||catalogueWorking||!!pendingSnapshot||!!editing||!catalogue;retry.disabled=historyWorking||closing;retryCatalogue.disabled=catalogueWorking||closing;closeButton.disabled=closing||catalogueWorking;question.disabled=catalogueWorking;
     for(const element of [profile,range,url,model,key,eye,persona,stream])element.disabled=!seed||busy||closing||(element===range&&!canReference());
     for(const entry of rows.values()){
       const locked=busy||saving||closing||blocked||!!editing;
@@ -119,7 +118,7 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   async function catalogueAction(work,after=async()=>{},failure='对话操作未完成，请重试。'){
     if(!alive()||catalogueWorking)return false;catalogueWorking=true;retryCatalogue.hidden=true;controls();let completed=false;
     try{await work();completed=true;if(!alive())return false;await after();if(!alive())return false;catalogueRecovery=null;status.textContent='';return true;}
-    catch(cause){if(alive()){const recoverable=completed||catalogue.status().dirty;catalogueRecovery=recoverable?{after,failure}:null;retryCatalogue.hidden=!recoverable;status.textContent=recoverable?failure:/^prose_assistant_conversations_/.test(cause?.code||'')?String(cause.message).slice(0,240):'对话操作未完成，请刷新列表后再试。';}return false;}
+    catch(cause){if(alive()){const recoverable=completed||catalogue.status().dirty;catalogueRecovery=recoverable?{after,failure}:null;retryCatalogue.hidden=!recoverable;status.textContent=recoverable?cause?.notice||failure:/^prose_assistant_conversations_/.test(cause?.code||'')?String(cause.message).slice(0,240):'对话操作未完成，请刷新列表后再试。';}return false;}
     finally{catalogueWorking=false;if(alive())controls();}
   }
   const canManage=()=>alive()&&catalogue&&!busy&&!saving&&!closing&&!historyWorking&&!catalogueWorking&&!pendingSnapshot&&!catalogueRecovery&&!editing;
@@ -137,7 +136,13 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
   async function deleteConversations(keys){
     if(!canManage()||!keys.length||!await confirm(`删除选中的 ${keys.length} 条特助对话？删除后不可找回；想留着请改用归档。`)||!canManage())return;
     if(keys.includes(currentConversation?.key)&&!await permitSwitch())return;
-    await catalogueAction(()=>catalogue.delete(keys,{remember:rememberConversation()}),async()=>{if(keys.includes(currentConversation?.key))await openConversation(defaultConversation());conversationList.resetSelection();});
+    // The tombstone is confirmed first; only then are the saved histories emptied. One that
+    // cannot be emptied never brings its entry back: it is reported, and retry empties it again.
+    await catalogueAction(()=>catalogue.delete(keys,{remember:rememberConversation()}),async()=>{
+      const {failed}=await catalogue.clearHistories(keys);if(!alive())return;
+      if(keys.includes(currentConversation?.key))await openConversation(defaultConversation());conversationList.resetSelection();
+      if(failed.length)throw Object.assign(Error(),{notice:`已删除，${failed.length} 个对话的历史未能清空`});
+    });
   }
   // Archiving is reversible, so it asks nothing; leaving the open conversation still protects an unsent draft.
   async function archiveConversations(keys){
@@ -293,7 +298,6 @@ export async function openProseAssistantPanel({parent,source,sourceFactory,profi
     event.stopPropagation(); // Closing may remove the later isolation listeners synchronously.
     const action=event.target.closest?.('[data-pa-action]')?.dataset.paAction;if(action==='close'){void requestClose();return;}if(!alive())return;
     if(action==='settings')showPage('settings');else if(action==='back')showPage('chat');else if(action==='conversations'&&!listButton.disabled){conversationList.showArchived(false);showPage('list');}
-    else if(action==='archived-conversations'&&!archivedButton.disabled){conversationList.showArchived(true);showPage('list');}
     else if(action==='older-messages')loadOlder();else if(action==='latest-messages')toLatest();else if(action==='capacity-new'&&!capacityNew.disabled)void newConversation();
     else if(action==='retry-conversations'&&catalogueRecovery&&!retryCatalogue.hidden){const recovery=catalogueRecovery;void catalogueAction(()=>catalogue.retry(),recovery.after,recovery.failure);}
     else if(action==='retry-history'){if(!historyWorking&&!closing)void(history?persistHistory(pendingSnapshot):loadHistory());}
