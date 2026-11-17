@@ -290,3 +290,24 @@ test('zero factory values resolve only at the shared boundary while zero memory 
     assert.equal(settings.stageThreshold, 12); assert.equal(settings.budget, 0);
     assert.throws(() => normalizeEntryOrder({ entries: [{ id: 'a' }], entryOrder: ['a', 'a'] }), /排列无效/);
 });
+
+test('a reading memory ranks right after the slice covering its floor, waits at the end until that floor is summarised, and never joins the stored order', () => {
+    const fine = id => ({ id, kind: 'summary' });
+    const read = (id, afterId, seq = 1, readTo = 1) => ({ id, kind: 'manual', ...(afterId ? { afterId } : {}), companion: { layer: 'shared', seq, readTo } });
+    const ids = (entries, order) => orderForInjection(entries, order).map(entry => entry.id);
+    assert.deepEqual(ids([read('r', 'f1'), fine('f2'), fine('f1'), fine('f3')], ['f1', 'f2', 'f3']), ['f1', 'r', 'f2', 'f3']);
+    // Not yet summarised: after everything, including records the order does not list.
+    assert.deepEqual(ids([read('r'), { id: 'loose', kind: 'manual' }, fine('f2'), fine('f1')], ['f1', 'f2']), ['f1', 'f2', 'loose', 'r']);
+    // The floor gets summarised into f3: the same memory now settles between f3 and f4.
+    assert.deepEqual(ids([read('r', 'f3'), fine('f4'), fine('f3'), fine('f1')], ['f1', 'f2', 'f3', 'f4']), ['f1', 'f3', 'r', 'f4']);
+    // Several at one place: by the update they were shared in, then by how far the book was read.
+    assert.deepEqual(ids([read('b', 'f1', 2, 5), read('a', 'f1', 1, 9), read('c', 'f1', 2, 3), fine('f1'), fine('f2')], ['f1', 'f2']), ['f1', 'a', 'c', 'b', 'f2']);
+    assert.deepEqual(ids([read('late', undefined, 2), read('early', undefined, 1)], []), ['early', 'late']);
+    // A covering slice folded into a stage: still after the stage group, before the next slice.
+    const stage = { id: 'stage', kind: 'stage', source: { parents: [{ id: 'f1' }, { id: 'f2' }] } };
+    assert.deepEqual(ids([read('r', 'f2'), fine('f3'), stage], ['stage', 'f1', 'f2', 'f3']), ['stage', 'r', 'f3']);
+    // An anchor whose slice is unknown to the order behaves as unanchored.
+    assert.deepEqual(ids([read('r', 'gone'), fine('f1')], ['f1']), ['f1', 'r']);
+    const document = { entries: [fine('f1'), fine('f2')], entryOrder: ['f1', 'f2'] };
+    assert.deepEqual(normalizeEntryOrder(document), ['f1', 'f2']);
+});

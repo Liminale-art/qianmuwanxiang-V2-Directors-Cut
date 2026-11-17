@@ -49,12 +49,14 @@ test('reader and story meet only through the Yimu bridge, named 关联伴读', (
   assert.match(source, /const yimuCompanionBridge = createYimuCompanionBridge\(/);
   assert.match(source, /yimuCompanionBridge\.consume\(\{key:coreadDialogBucket\(id\)[\s\S]{0,260}?'companion', \{query:recallQuery\}\)/);
   assert.match(source, /linkAvailable: yimuCompanionBridge\.linkAvailable\(\)/);
-  assert.match(source, /closest\('\.sd-reader-yimu-link'\)\) \{ toast\('在忆幕的导览页点「关联伴读」。', 'info'\); return; \}/);
+  assert.match(source, /closest\('\.sd-reader-yimu-link'\)\) \{\s*const captured = coreadCaptureLink\(readerDialog\.bookId\);\s*if \(captured\) void coreadOfferLinkUpdate\(captured, \{ always: true \}\);/);
+  assert.doesNotMatch(source, /在忆幕的导览页点/);
   assert.match(centerView, /\$\{linkAvailable \? '<button type="button" class="sd-reader-mbtn sd-reader-yimu-link">[^']*关联伴读<\/button>' : ''\}/);
   assert.doesNotMatch(bridge, /filterMainline|mainline|companionOwner/);
-  assert.match(bridge, /linkAvailable: \(\) => !!consumer/);
+  assert.match(bridge, /linkAvailable: \(\) => !!link/);
   assert.doesNotMatch(yimuRuntime, /mainline/);
   assert.match(yimuRuntime, /context\?\.purpose !== 'companion'/);
-  assert.match(yimuView, /button\(linked \? '更新关联' : '关联伴读'/);
+  assert.match(yimuView, /button\('更新关联', \(\) => invoke\('companionList', \{key: book\.key\}\)\)/);
+  assert.match(yimuView, /button\('关联伴读', \(\) => invoke\('companionList'\)\)/);
   assert.doesNotMatch(yimuView, /选择伴读记忆/);
 });

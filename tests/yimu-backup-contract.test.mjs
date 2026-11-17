@@ -228,3 +228,17 @@ test('valid reordered header sources normalize to primary-first without changing
     const value=header(doc);value.sources.reverse();
     assert.deepEqual(validateBackupHeader(value).sources.map(source=>source.id),['source_0','source_1']);
 });
+
+test('a multi-book companion link is archived beside an old single snapshot and both restore unchanged',async()=>{
+    const books={version:2,account:'st-user:source',books:[{key:'scope::book',bookId:'book',scope:'scope',persona:'Persona.png',avatar:'Char.png',title:'书',charName:'角色',userName:'用户',
+        confirmedReadTo:10,readLabel:'第1章 · 10%',terms:['书名'],hash,seq:2,updatedAt:5,entries:[
+            {id:'book',kind:'book',layer:'book',text:'书中情节不是亲历。',readTo:10,keywords:['情节'],hash,anchor:{floor:1,hash},seq:1},
+            {id:'note:2',kind:'note',layer:'shared',text:'一起读完第一章。',readTo:10,keywords:[],hash,anchor:null,seq:2}]}]};
+    const doc=document();doc.companion=structuredClone(books);doc.archivedCompanion=[companion()];
+    const portable=portableDocument(doc);assert.equal(portable.companion,undefined);assert.deepEqual(portable.archivedCompanion,[companion(),books]);
+    const result=restoreBackupDocument(portable,{binding:binding('restored'),mappings:{source_0:binding('restored')}});
+    assert.equal(result.document.companion,undefined);assert.deepEqual(result.document.archivedCompanion,[companion(),books]);
+    const forged=structuredClone(books);forged.books[0].entries[0].layer='shared';doc.companion=forged;
+    assert.equal(portableDocument(doc).archivedCompanion[1].books[0].entries[0].layer,'book','an archive cannot relabel book content as lived experience');
+    doc.companion={...books,books:[]};assert.throws(()=>portableDocument(doc));
+});

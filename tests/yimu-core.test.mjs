@@ -4,6 +4,7 @@ import { DEFAULTS as FACTORY_DEFAULTS, SCHEMA, validateSettings as validateSetti
 import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
+import { mergeCompanionBook, companionEntries } from '../yimu/companion-contract.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
 const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
 
@@ -424,4 +425,111 @@ test('a closed panel is not repainted and a quiet refresh does not probe a servi
     assert.match(view, /render, open, close, isOpen: \(\) => opened,/);
     assert.match(runtime, /if \(quiet && !serviceFresh\(\)\) await checkService\(\);/);
     assert.match(runtime, /state\.service\?\.status === 'ok' && Date\.now\(\) - serviceOkAt < serviceFreshMs/);
+});
+
+// ---- linked reading memories (关联伴读) ----
+const H = char => char.repeat(64);
+let linkHash = 0;
+const linkBook = (value, id, title, entries, { terms = [title], floor = null, note = '' } = {}) => mergeCompanionBook(value, {
+    account: 'st-user:fixture', key: `scope::${id}`, bookId: id, scope: 'scope', persona: 'Persona.png', avatar: 'Char.png', title, charName: '角色', userName: '用户',
+    confirmedReadTo: 1000, readLabel: '第2章 · 30%', terms, hash: H('a'),
+    entries: entries.map(([entryId, kind, text, readTo = 10, keywords]) => ({ id: entryId, kind, text, readTo, ...(keywords ? { keywords } : {}), hash: (++linkHash).toString(16).padStart(16, '0').padEnd(64, '0') })),
+}, { anchor: floor ? { floor, hash: H('b') } : null, note: note ? { text: note, hash: H('c') } : null });
+const reading = plan => plan.entries.filter(item => item.companion).map(item => item.companion.sourceId);
+const saying = text => { const copy = structuredClone(messages); copy[11].mes = text; return { messages: copy, maxContext: 8192 }; };
+const hotel = () => linkBook(null, 'hotel', '海边旅馆', [
+    ['h1', 'book', '林晚登记入住。', 100, ['登记']], ['h2', 'book', '老板说起一场旧火灾。', 200, ['火灾', '老板']],
+    ['h3', 'book', '林晚发现地下室的钥匙。', 300, ['钥匙']], ['h4', 'book', '结尾前的暴风雨。', 400],
+    ['hd', 'dialog', '两人猜测老板隐瞒了什么。', 250]], { terms: ['海边旅馆', '林晚'] });
+const train = value => linkBook(value, 'train', '雪国日记', [
+    ['t1', 'book', '主角弄丢了车票。', 50, ['车票']], ['t2', 'book', '列车停在无人小站。', 90, ['小站']], ['td', 'dialog', '两人讨论主角为何不下车。', 60]]);
+
+test('linked reading memories are no longer force-selected: the story comes first and the shared layer is small', async () => {
+    let doc = append(enable(), await entry('s', 1, 3));
+    doc.companion = linkBook(null, 'hotel', '海边旅馆', [...Array.from({ length: 10 }, (_, i) => [`d${i}`, 'dialog', `无关的闲谈${i}`, i + 1]), ['b', 'book', '书里的情节。', 5]]);
+    let plan = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    assert.equal(plan.memoryIds[0], 's', 'story memories keep their place at the head of the queue');
+    assert.deepEqual(reading(plan), ['d9', 'd8'], 'only the two latest exchanges come along when nothing is relevant');
+    assert.deepEqual(plan.coveredRanges, [{ start: 1, end: 3, hashes: (await fingerprintMessages(messages)).slice(0, 3) }]);
+    doc.companion = train(doc.companion);
+    assert.deepEqual(reading(await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 })), ['td', 'd9', 'd8'], 'two latest per book');
+    // Relevant exchanges join, but never more than six across all books; the most relevant first.
+    doc.companion = linkBook(doc.companion, 'dates', '约会手册', Array.from({ length: 9 }, (_, i) => [`r${i}`, 'dialog', `他们聊起首次约会${i}`, i + 1]), { terms: [] });
+    plan = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    assert.equal(reading(plan).length, 6); assert.ok(reading(plan).every(id => id.startsWith('r')), 'what bears on the current wording outranks mere recency');
+    assert.ok(plan.entries.every(item => item.companion?.layer !== 'book'));
+    // Every note is wanted, still inside the cap.
+    let noted = linkBook(null, 'hotel', '海边旅馆', [['d0', 'dialog', '无关的闲谈', 1]], { note: '第一次记事' });
+    noted = linkBook(noted, 'hotel', '海边旅馆', [['d0', 'dialog', '无关的闲谈', 1]], { note: '第二次记事' });
+    doc.companion = noted;
+    plan = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    assert.deepEqual(reading(plan), ['note:2', 'note:1', 'd0']);
+    assert.match(plan.prompt, /共读记事 ·《海边旅馆》/); assert.match(plan.prompt, /共读交流 ·《海边旅馆》· 读到 第2章 · 30%/);
+    assert.doesNotMatch(plan.prompt, /标注「共读书中内容」/, 'the book notice appears only with book content');
+});
+
+test('book content is brought only when that book is mentioned: by title, by a bound term or by a slice keyword', async () => {
+    const doc = enable(); doc.companion = hotel();
+    const plan = text => buildPlan(doc, createDefaults(), text ? saying(text) : { messages, maxContext: 8192 });
+    assert.deepEqual(reading(await plan()), ['hd'], 'the gate is closed while the book is not mentioned');
+    assert.deepEqual(reading(await plan('今天去海边走走吧')), ['hd'], 'half a title does not open it');
+    assert.deepEqual(reading(await plan('你还记得《海边旅馆》吗')), ['hd', 'h4', 'h3', 'h2'], 'only the title: recall where the two had got to');
+    assert.deepEqual(reading(await plan('林晚后来怎么样了')), ['hd', 'h4', 'h3', 'h2'], 'a bound dictionary name opens the same book');
+    const fire = await plan('那场火灾你还记得吗');
+    assert.deepEqual(reading(fire), ['hd', 'h2'], 'a slice keyword brings the slices that match it');
+    assert.match(fire.prompt, /共读书中内容 ·《海边旅馆》· 只读到 第2章 · 30% · 这是角色和用户一起读过的书里的情节，不是亲身经历；只有他们两人读过/);
+    assert.match(fire.prompt, /标注「共读书中内容」的条目是两人一起读的书，谈到这本书时据此回忆，不超出所标已读位置，不当作亲历，也不推定他人知道。/);
+    assert.deepEqual(fire.coveredRanges, []); assert.ok(fire.entries.every(item => item.source === null));
+    assert.deepEqual(reading(await plan('ＦＩＲＥ 那场火灾 ＯＫ')), ['hd', 'h2'], 'full-width and case differences do not matter');
+    assert.deepEqual(reading(await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 }, { queryText: '钥匙放在哪里' })), ['hd', 'h3'], 'a caller query replaces the recent window');
+});
+
+test('each linked book has its own gate: mentioning one never pulls another', async () => {
+    const doc = enable(); doc.companion = train(hotel());
+    const plan = text => buildPlan(doc, createDefaults(), saying(text));
+    assert.deepEqual(reading(await plan('车票后来找到了吗')).filter(id => !id.endsWith('d')), ['t1']);
+    assert.deepEqual(reading(await plan('你还记得《雪国日记》吗')).filter(id => !id.endsWith('d')), ['t2', 't1']);
+    assert.deepEqual(reading(await plan('那场火灾你还记得吗')).filter(id => !id.endsWith('d')), ['h2']);
+    const both = reading(await plan('火灾和车票哪个更吓人')).filter(id => !id.endsWith('d'));
+    assert.deepEqual(both.sort(), ['h2', 't1']);
+    assert.deepEqual(reading(await plan('今天天气不错')).filter(id => !id.endsWith('d')), []);
+});
+
+test('at most three whole book slices and 2400 characters come along', async () => {
+    const doc = enable(), filler = size => `钥匙的故事。${'字'.repeat(size - 6)}`;
+    doc.companion = linkBook(null, 'keys', '钥匙之书', [['big1', 'book', filler(1000), 100, ['钥匙']], ['big2', 'book', filler(1000), 200, ['钥匙']],
+        ['big3', 'book', filler(1000), 300, ['钥匙']], ['small', 'book', filler(300), 50, ['钥匙']], ['tiny', 'book', filler(20), 40, ['钥匙']]], { terms: [] });
+    const plan = await buildPlan(doc, createDefaults(), saying('钥匙在哪'));
+    assert.deepEqual(reading(plan), ['big3', 'big2', 'small'], 'the slice that would cross the limit is skipped whole; a smaller one may still fit');
+    assert.ok(plan.entries.reduce((sum, item) => sum + item.text.length, 0) <= 2400);
+    assert.ok(plan.entries.every(item => [1000, 300].includes(item.text.length)), 'nothing is truncated');
+});
+
+test('a reading memory is placed after the slice covering the floor it was shared at, and an edited floor never withholds it', async () => {
+    let doc = append(append(enable(), await entry('s1', 1, 3)), await entry('s2', 4, 6));
+    doc.companion = linkBook(null, 'hotel', '海边旅馆', [['early', 'dialog', '两人猜测老板隐瞒了什么。', 10]], { floor: 2 });
+    doc.companion = linkBook(doc.companion, 'hotel', '海边旅馆', [['early', 'dialog', '两人猜测老板隐瞒了什么。', 10], ['late', 'dialog', '两人说到结尾。', 20]], { floor: 11 });
+    doc.companion = linkBook(doc.companion, 'gone', '消失的楼层', [['far', 'dialog', '锚在已不存在的楼层。', 5]], { floor: 99 });
+    const plan = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    const placed = Object.fromEntries(plan.entries.filter(item => item.companion).map(item => [item.companion.sourceId, item.afterId]));
+    assert.deepEqual(placed, { early: 's1', late: undefined, far: undefined }, 'the anchor hash (not this chat\'s) is not required to match');
+    assert.deepEqual(JSON.parse(plan.prompt.split('\n').at(-2)).map(item => item.id.startsWith('companion_') ? 'reading' : item.id).slice(0, 3), ['s1', 'reading', 's2']);
+    assert.ok(!doc.entryOrder.some(id => id.startsWith('companion_')), 'reading memories never enter the stored order');
+});
+
+test('similarity may open a book gate only against real competition, and book slices are offered for scoring', async () => {
+    let doc = append(append(append(enable(), await entry('a', 1, 2)), await entry('c', 3, 4)), await entry('d', 5, 6));
+    doc.companion = train(hotel()); doc.settings.vectorEnabled = true;
+    const bookId = sourceId => companionEntries(doc.companion).find(item => item.companion.sourceId === sourceId).id, asked = [];
+    const scores = values => async request => { asked.push(request); return new Map(values); };
+    const snapshot = { messages, maxContext: 8192 };
+    let plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([['a', 0.5], ['c', 0.4], ['d', 0.3], [bookId('h3'), 0.9], [bookId('t1'), 0.1]]) });
+    assert.deepEqual(asked[0].candidates.map(item => item.id).slice(3), ['h4', 'h3', 'h2', 'h1', 't2', 't1'].map(bookId), 'book slices follow the story candidates, furthest-read first');
+    assert.ok(!asked[0].candidates.some(item => [bookId('hd'), bookId('td')].includes(item.id)), 'exchanges are not sent for scoring');
+    assert.deepEqual(reading(plan).filter(id => !id.endsWith('d')), ['h3'], 'a leading book slice opens its own book only');
+    plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([['a', 0.9], ['c', 0.8], ['d', 0.7], [bookId('h3'), 0.2]]) });
+    assert.deepEqual(reading(plan).filter(id => !id.endsWith('d')), [], 'a book slice outside the top three opens nothing');
+    doc = enable(); doc.companion = hotel(); doc.settings.vectorEnabled = true;
+    plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([[bookId('h3'), 0.9], [bookId('h1'), 0.8]]) });
+    assert.deepEqual(reading(plan), ['hd'], 'with no scored story memory to beat, similarity alone does not open the gate');
 });

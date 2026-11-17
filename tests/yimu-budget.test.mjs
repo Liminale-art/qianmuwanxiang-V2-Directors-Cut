@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fingerprintMessages } from '../yimu/contract.mjs';
-import { buildBudgetedMessages, byteBudget, tokenEstimate, BUDGET_ELASTICITY, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
+import { buildBudgetedMessages, byteBudget, tokenEstimate, BUDGET_ELASTICITY, BOOK_LAYER_SHARE, captureCore, memoryMessage, payloadSupport, withdrawMemoryShadow } from '../yimu/budget.mjs';
 
 async function fixture({ count = 12, length = 512, type = 'normal', namesBehavior = 0 } = {}) {
     const source = { messages: Array.from({ length: count }, (_, i) => ({
@@ -319,4 +319,42 @@ test('unsupported core name format and malformed budget have explicit non-mutati
         assert.equal((await buildBudgetedMessages(f.payload, { ...f.options, responseTokens })).reason, 'unknown-context-budget');
     }
     assert.ok(byteBudget([memoryMessage(f.options.entries)]) > 0);
+});
+
+// ---- linked reading memories (关联伴读) ----
+const reading = (id, layer, text) => ({ id: `companion_${id}`, kind: 'manual', status: 'active', text, source: null, edited: true, revision: 1,
+    companion: { book: 'scope::book', layer, kind: layer === 'book' ? 'book' : 'dialog', title: '合成书', readTo: 10, readLabel: '第2章 · 30%', sourceId: id,
+        anchor: null, seq: 1, keywords: [], charName: '角色', userName: '用户' } });
+
+test('book content takes at most 30% of the memory budget, while exchanges and story memories are not held to that share', async () => {
+    const f = await fixture();
+    assert.equal(BOOK_LAYER_SHARE, 0.3);
+    f.options.entries = [f.entry('slice-1', 1, 3), reading('d', 'shared', 'd'.repeat(1500)), reading('b1', 'book', 'b'.repeat(1500)), reading('b2', 'book', 'c'.repeat(1500)), reading('b3', 'book', 'e'.repeat(1500))];
+    assert.ok(tokenEstimate([memoryMessage(f.options.entries)]) <= f.options.budget, 'everything together would fit the whole budget');
+    const result = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.entries.map(item => item.id).sort(), ['companion_b1', 'companion_b2', 'companion_d', 'slice-1'], 'the third book slice crosses the 30% share and is left out whole');
+    assert.deepEqual(result.removedFloors, [1, 2, 3], 'reading memories never change which story floors are replaced');
+    const memory = result.messages.find(message => message.content.includes('<yimu_memory>')).content;
+    assert.match(memory, /共读书中内容 ·《合成书》· 只读到 第2章 · 30%/); assert.match(memory, /标注「共读书中内容」的条目是两人一起读的书/);
+    f.options.entries = [f.entry('slice-1', 1, 3), ...['d1', 'd2', 'd3', 'd4'].map(id => reading(id, 'shared', id.repeat(750)))];
+    const shared = await buildBudgetedMessages(f.payload, f.options);
+    assert.equal(shared.entries.length, 5);
+    assert.doesNotMatch(shared.messages.find(message => message.content.includes('<yimu_memory>')).content, /标注「共读书中内容」/);
+});
+
+test('the 25% elasticity stays a property of the whole memory block, not of the book share', async () => {
+    const f = await fixture(), budget = 2000;
+    let text = 'x';
+    while (tokenEstimate([memoryMessage([f.entry('slice-1', 1, 3, text)])]) < budget * 1.2) text += 'x'.repeat(40);
+    const small = reading('b', 'book', '读'.repeat(40));
+    f.options.budget = budget; f.options.entries = [f.entry('slice-1', 1, 3, text), small];
+    const tight = await buildBudgetedMessages(f.payload, f.options);
+    assert.deepEqual(tight.entries.map(item => item.id), ['slice-1'], 'a book slice inside its own share is still refused when the whole block would exceed budget x 1.25');
+    assert.ok(tokenEstimate([memoryMessage([f.entry('slice-1', 1, 3, text), small])]) > budget * BUDGET_ELASTICITY);
+    f.options.entries = [f.entry('slice-1', 1, 3), small];
+    assert.deepEqual((await buildBudgetedMessages(f.payload, f.options)).entries.map(item => item.id).sort(), ['companion_b', 'slice-1']);
+    // Just over the share is refused although the whole block has plenty of room: the share itself is not elastic.
+    f.options.entries = [f.entry('slice-1', 1, 3), reading('big', 'book', 'y'.repeat(1300))];
+    assert.deepEqual((await buildBudgetedMessages(f.payload, f.options)).entries.map(item => item.id), ['slice-1']);
 });

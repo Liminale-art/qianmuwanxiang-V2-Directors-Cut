@@ -93,9 +93,17 @@ export function insertEntryOrder(document, entry, afterId) {
 export function orderForInjection(entries, entryOrder = []) {
     const positions = new Map(entryOrder.map((value, index) => [value, index]));
     const root = entries.filter(entry => entry.kind !== 'excerpt');
-    const rank = entry => positions.get(entry.id) ?? Math.min(Infinity,
-        ...(entry.kind === 'stage' ? (entry.source?.parents || []).map(ref => positions.get(ref.id) ?? Infinity) : []));
-    root.sort((a, b) => rank(a) - rank(b));
+    // A reading memory sits right after the slice that covers the floor it was
+    // shared at; until that floor is summarised it comes after everything else.
+    const rank = entry => entry.companion ? (positions.has(entry.afterId) ? positions.get(entry.afterId) + 0.5 : Infinity)
+        : positions.get(entry.id) ?? Math.min(Infinity,
+            ...(entry.kind === 'stage' ? (entry.source?.parents || []).map(ref => positions.get(ref.id) ?? Infinity) : []));
+    root.sort((a, b) => {
+        const first = rank(a), second = rank(b);
+        if (first !== second) return first < second ? -1 : 1;
+        if (!a.companion !== !b.companion) return a.companion ? 1 : -1;
+        return a.companion ? (a.companion.seq || 0) - (b.companion.seq || 0) || (a.companion.readTo || 0) - (b.companion.readTo || 0) : 0;
+    });
     const used = new Set(), result = [];
     for (const entry of root) {
         result.push(entry); used.add(entry.id);

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createYimuStore, chatStorageName} from '../yimu/server-store.mjs';
 import {registerYimuRoutes} from '../yimu/server-plugin.mjs';
+import {mergeCompanionBook} from '../yimu/companion-contract.mjs';
 import {fingerprintMessages, DEFAULTS, VERSION, SCHEMA, createDocument} from '../yimu/contract.mjs';
 
 const binding = {avatar: '角色.png', file: '聊天 - 2026-10-25', integrity: 'fixture_integrity'};
@@ -466,4 +467,30 @@ test('standalone routes retain ST authentication, route errors, and never return
     const failure = await call('POST /read', request);
     assert.equal(failure.status, 500);
     assert.ok(!JSON.stringify(failure).includes('private server path'));
+});
+
+test('a stored single-book companion snapshot still reads; the multi-book form round-trips and stays account-bound', async t => {
+    const f = await fixture(t), hex = char => char.repeat(64), owner = {key: 'scope::book', bookId: 'book', scope: 'scope', persona: 'Persona.png', avatar: '角色.png',
+        title: '合成书', charName: '角色', userName: '我', confirmedReadTo: 10};
+    const single = {version: 1, confirmed: true, account: 'st-user:alpha', ...owner, hash: hex('a'),
+        entries: [{id: 'old', kind: 'book', text: '书中情节不是亲历。', readTo: 10, hash: hex('b'), sourceLabel: '书中情节（阅读背景）'}]};
+    await f.enable();
+    const stored = await f.store.change(f.request, binding, {id: 'link_v1', type: 'companion', action: 'set', expectedRevision: 1, snapshot: single});
+    assert.deepEqual(stored.document.companion, single);
+    assert.deepEqual((await createYimuStore({hostCwd: f.root}).read(f.request, binding)).document.companion, single, 'an old stored value is read back unchanged');
+    const books = mergeCompanionBook(single, {account: 'st-user:alpha', ...owner, confirmedReadTo: 20, readLabel: '第2章 · 30%', terms: ['合成书'], hash: hex('c'),
+        entries: [{id: 'old', kind: 'book', text: '书中情节不是亲历。', readTo: 10, keywords: ['情节'], hash: hex('d')}, {id: 'talk', kind: 'dialog', text: '两人聊过这一段。', readTo: 20, hash: hex('e')}]},
+        {anchor: {floor: 2, hash: f.source.hashes[1]}, now: 1700000000000, note: {text: '一起读到第二章', hash: hex('f')}});
+    const saved = await f.store.change(f.request, binding, {id: 'link_v2', type: 'companion', action: 'set', expectedRevision: stored.document.revision, snapshot: books});
+    assert.deepEqual(saved.document.companion, books);
+    assert.deepEqual(saved.document.companion.books[0].entries.map(item => [item.id, item.layer, item.anchor?.floor ?? null, item.seq]), [['old', 'book', null, 1], ['talk', 'shared', 2, 2], ['note:2', 'shared', 2, 2]]);
+    assert.deepEqual((await createYimuStore({hostCwd: f.root}).read(f.request, binding)).document.companion, books);
+    const forged = structuredClone(books); forged.books[0].entries[1].layer = 'book';
+    const coerced = await f.store.change(f.request, binding, {id: 'link_forged', type: 'companion', action: 'set', expectedRevision: saved.document.revision, snapshot: forged});
+    assert.equal(coerced.document.companion.books[0].entries[1].layer, 'shared', 'the server derives the layer itself');
+    await assert.rejects(() => f.store.change(f.request, binding, {id: 'link_other', type: 'companion', action: 'set', expectedRevision: coerced.document.revision,
+        snapshot: {...books, account: 'st-user:beta'}}), /不属于当前账户/);
+    await assert.rejects(() => f.store.change(f.request, binding, {id: 'link_stale', type: 'companion', action: 'set', expectedRevision: 1, snapshot: books}), /已变化/);
+    const cleared = await f.store.change(f.request, binding, {id: 'unlink', type: 'companion', action: 'clear', expectedRevision: coerced.document.revision});
+    assert.equal(cleared.document.companion, null);
 });

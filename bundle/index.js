@@ -1,1 +1,1 @@
-export{ek as onActivate,eo as onDelete,em as onDisable,el as onEnable,en as onUpdate}from"./chunks/core-B_9C2a-J.js";
+export{ek as onActivate,eo as onDelete,em as onDisable,el as onEnable,en as onUpdate}from"./chunks/core-VnlQil5S.js";

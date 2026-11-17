@@ -5,8 +5,8 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.560';
-import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.561';
+import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
 import {createProseFloorTools,injectStoryboardMessageButtons,isCharacterFloor} from './qianmu-prose-floor-tools.js?v=1.59.484';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.560';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.560';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.560';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.561';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.561';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.561';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.560';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.561';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.560';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.560';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.561';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.561';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.560';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.561';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.560';
+const VERSION = '1.59.561';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -393,6 +393,7 @@ const yimuCompanionBridge = createYimuCompanionBridge({
     const rec = await blobStore.createReaderPackageReader().getReaderChat(key);
     return rec ? {bookId:rec.bookId, slices:rec.slices} : null;
   },
+  readDictionary: () => coreadActiveDict([]),
 });
 let chatWriteGuard = null, chatWriteFetchBefore = null, chatSaveFollowup = null;
 let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
@@ -24731,12 +24732,14 @@ async function promptInput(title, text, value = '') {
   return globalThis.prompt(`${title}\n${text}`, value);
 }
 
-async function confirmDialog(title, text) {
+async function confirmDialog(title, text, { okButton = '', cancelButton = '' } = {}) {
   const context = ctx();
   if (context.Popup?.show?.confirm) {
     // Popup 可用：以其结果为准。被取消时部分 ST 版本会 reject，视作「否」，不再兜底原生弹窗（否则会二次弹出）
     try {
-      const result = await context.Popup.show.confirm(title, text);
+      const result = okButton || cancelButton
+        ? await context.Popup.show.confirm(title, text, { ...(okButton ? { okButton } : {}), ...(cancelButton ? { cancelButton } : {}) })
+        : await context.Popup.show.confirm(title, text);
       if (result === true) return true;
       // Match explicit affirmative results, never substrings such as -1, unconfirmed or not ok.
       if (typeof result !== 'string' && typeof result !== 'number') return false;
@@ -24977,7 +24980,10 @@ function coreadYimuState() {
     // Lengths are enough to describe the already displayed position; no new book read.
     const chapters = readerContentCache.chapters || [], at = Math.max(0, Math.min(chapters.length - 1, readerView.chapterIndex || 0));
     const prefix = chapters.slice(0, at).reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
-    boundaries[readerView.bookId] = {readTo:prefix + Math.round(String(chapters[at]?.content || '').length * Math.max(0, Math.min(1, readerView.scrollRatio || 0)))};
+    const readTo = prefix + Math.round(String(chapters[at]?.content || '').length * Math.max(0, Math.min(1, readerView.scrollRatio || 0)));
+    const total = chapters.reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
+    boundaries[readerView.bookId] = {readTo, label:formatReadLabel({chapterIndex:at, progress:total ? readTo / total * 100 : NaN,
+      comic:(settings?.coread?.books || []).find(book => book?.id === readerView.bookId)?.mode === 'comic'})};
   }
   return {available:initialized && isRuntimeOwner() && !!settings?.enabled && context.extensionSettings?.[MODULE_NAME] === settings, owner:settings, coread:settings?.coread,
     characters:Object.values(context.characters || {}).map(ch => ({avatar:ch?.avatar || ch?.data?.avatar, name:ch?.name || ch?.data?.name})),
@@ -27217,7 +27223,7 @@ function coreadActiveDict(slices) {
 }
 
 // 通用文本输入弹窗：返回用户输入的字符串（取消返回 null）。用于词册命名/重命名。
-async function coreadPromptText(title, label, defaultValue = '') {
+async function coreadPromptText(title, label, defaultValue = '', { okButton = '确定', cancelButton = '取消', placeholder = '' } = {}) {
   const context = ctx();
   const Popup = context.Popup;
   if (!Popup || !context.POPUP_TYPE?.INPUT) {
@@ -27226,7 +27232,8 @@ async function coreadPromptText(title, label, defaultValue = '') {
   }
   try {
     const header = `<b>${htmlEscape(title)}</b><div style="font-size:.85em;color:var(--sd-muted,#888);margin-top:4px">${htmlEscape(label)}</div>`;
-    const popup = new Popup(header, context.POPUP_TYPE.INPUT, String(defaultValue || ''), { okButton: '确定', cancelButton: '取消' });
+    const popup = new Popup(header, context.POPUP_TYPE.INPUT, String(defaultValue || ''), { okButton, cancelButton });
+    if (placeholder && popup.mainInput) popup.mainInput.placeholder = placeholder;
     const res = await popup.show();
     if (res === false || res == null) return null;
     return String(res).trim();
@@ -29619,11 +29626,55 @@ function coreadCloseReader() {
     void coreadStoreAssistantHistory();
   }
   coreadSaveProgress({ summarize: false });   // 退出时只保存，不新启动记忆任务
+  let linkCapture = null;                     // 阅读状态清掉之前记下「谁、哪本书、读到哪」；取不到不影响退出
+  try { linkCapture = coreadCaptureLink(); } catch (_) {}
   unmountReaderPortal();
   readerView = null;
   readerContentCache = null;
   activeTab = returnTab;
   renderModal();
+  if (linkCapture) void coreadOfferLinkUpdate(linkCapture);   // 界面已关，不拖住退出
+}
+
+// 关联伴读：这本书是谁和谁读的、读到哪。书友或人设不明、位置未知时不给。
+function coreadCaptureLink(bookId = readerView?.bookId || readerDialog?.bookId) {
+  if (!bookId || !yimuCompanionBridge.linkAvailable()) return null;
+  const character = coreadCompanionCharacter(), persona = coreadPersona(), boundary = coreadCurrentReadBoundarySync(bookId);
+  const scope = readerView?.companionScope || coreadCompanionSession()?.scope || '';
+  if (!character || !persona || !scope || !Number.isSafeInteger(boundary?.readTo)) return null;
+  return { selection: { key: `${scope}::${bookId}`, bookId, scope, persona: persona.key || '', avatar: character.avatar || character.data?.avatar || '' },
+    confirmedReadTo: boundary.readTo,
+    readLabel: formatReadLabel({ chapterIndex: boundary.chapterIndex, progress: boundary.progress, comic: coreadBookMeta(bookId)?.mode === 'comic' }) };
+}
+
+// 读出了新的共读记忆就问一次要不要更新到已关联的故事；always：记忆页「关联伴读」按钮，未关联则走关联。
+let coreadLinkState = { key: '', linked: null, at: 0, pending: false };
+async function coreadOfferLinkUpdate(captured, { always = false } = {}) {
+  const ui = {
+    ask: ({ title, body, placeholder, okButton, cancelButton }) => coreadPromptText(title, body, '', { okButton, cancelButton, placeholder }),
+    confirm: ({ title, body, okButton, cancelButton }) => confirmDialog(title, body, { okButton, cancelButton }),
+    notify: (message, kind = 'info') => toast(message, kind),
+  };
+  try { return always ? await runLink(yimuCompanionBridge, captured, ui) : await offerLinkUpdate(yimuCompanionBridge, captured, ui); }
+  catch (_) { return 'failed'; }
+  finally { coreadLinkState.at = 0; if (always) rerenderMoreIfOpen(); }
+}
+
+// 记忆页上「已关联／未关联」：先用上次查到的，后台再核一次，变了才重画。
+function coreadLinkLinked() {
+  const captured = coreadCaptureLink(readerDialog?.bookId || readerView?.bookId), key = captured?.selection.key || '';
+  if (!key) return false;
+  if (coreadLinkState.key !== key) coreadLinkState = { key, linked: null, at: 0, pending: false };
+  const state = coreadLinkState;
+  if (!state.pending && nowMs() - state.at > 3000) {
+    state.pending = true;
+    void yimuCompanionBridge.linkStatus(captured.selection).catch(() => null).then((status) => {
+      const linked = status ? status.linked === true : null, changed = linked !== state.linked;
+      Object.assign(state, { linked, at: nowMs(), pending: false });
+      if (changed && coreadLinkState === state) rerenderMoreIfOpen();
+    });
+  }
+  return state.linked === true;
 }
 
 // 当前毫秒（Date.now 在某些受限上下文被禁用时降级到 performance.now 基准）
@@ -30506,7 +30557,7 @@ function renderMemRecordsTab(m) {
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
   const blockedN = slices.length - coreadSafeSlices(slices, boundary, m).length;
   const archiveOverview = renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount: slices.length,
-    pendingN, blockedN, linkAvailable: yimuCompanionBridge.linkAvailable(), targetClass: coreadGuideTargetClass('records')}, htmlEscape);
+    pendingN, blockedN, linkAvailable: yimuCompanionBridge.linkAvailable(), linked: coreadLinkLinked(), targetClass: coreadGuideTargetClass('records')}, htmlEscape);
 
   return `
     ${archiveOverview}
@@ -32638,7 +32689,12 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-slice-migrate')) { coreadOpenMigrateDialog(); return; }
     if (e.target.closest('.sd-reader-slice-manage')) { coreadOpenSliceManagerDialog(); return; }
-    if (e.target.closest('.sd-reader-yimu-link')) { toast('在忆幕的导览页点「关联伴读」。', 'info'); return; }
+    if (e.target.closest('.sd-reader-yimu-link')) {
+      const captured = coreadCaptureLink(readerDialog.bookId);
+      if (captured) void coreadOfferLinkUpdate(captured, { always: true });
+      else toast('请先选好书友，并打开要关联的书。', 'info');
+      return;
+    }
     // 词典册：新建词册（弹窗命名后创建并自动选中）
     if (e.target.closest('.sd-reader-dictbook-add')) {
       const mutation = coreadCaptureDictMutation(m, '', e.target.closest('.sd-reader-dictbook-add'));

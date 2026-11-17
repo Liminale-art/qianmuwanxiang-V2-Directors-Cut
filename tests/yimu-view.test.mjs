@@ -1331,7 +1331,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.39 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.40 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1451,7 +1451,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.39'); assert.equal(pkg.version, '0.8.12');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.40'); assert.equal(pkg.version, '0.8.13');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1462,4 +1462,22 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     assert.match(css, /data-ym-state="neutral"\] \{ color: #949494;/);
     assert.match(css, /@keyframes ym-shortcut-breathe/);
     assert.match(css, /\.ym-send-entry\[data-ym-busy="true"\] \{ animation: ym-shortcut-breathe/);
+});
+
+test('the 关联伴读 tool lists the linked books of this chat and unlinks one book at a time', async t => {
+    const hex = char => char.repeat(64), base = state();
+    const book = (id, title) => ({ key: `scope::${id}`, bookId: id, scope: 'scope', persona: 'User', avatar: 'Char.png', title, charName: '角色', userName: '用户',
+        confirmedReadTo: 50, readLabel: '第12章 · 37%', terms: [title], hash: hex('a'), seq: 1, updatedAt: 0,
+        entries: [{ id: 'talk', kind: 'dialog', layer: 'shared', text: '两人聊过这一段。', readTo: 20, keywords: [], hash: hex('b'), anchor: null, seq: 1 }] });
+    const f = fixture({ document: { ...base.document, companion: { version: 2, account: 'st-user:fixture', books: [book('one', '第一本书'), book('two', '第二本书')] } } });
+    t.after(() => f.view.destroy()); f.view.open();
+    const page = f.document.querySelector('.ym-companion');
+    assert.match(page.textContent, /《第一本书》 · 读到 第12章 · 37%共读经历 1 条 · 书中内容 0 条 · 记事 0 条尚未定位/);
+    assert.match(page.textContent, /《第二本书》 · 读到 第12章 · 37%/);
+    const buttons = text => f.all().filter(node => node.tagName === 'BUTTON' && node.textContent === text);
+    assert.equal(buttons('更新关联').length, 2); assert.equal(buttons('解除关联').length, 2); assert.ok(buttons('关联伴读').length >= 1);
+    buttons('解除关联')[1].click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'companionClear', payload: { key: 'scope::two' } });
+    buttons('更新关联')[0].click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'companionList', payload: { key: 'scope::one' } });
 });

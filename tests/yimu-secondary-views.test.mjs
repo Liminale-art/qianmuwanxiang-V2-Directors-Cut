@@ -174,3 +174,31 @@ test('companion preview preserves ownership through cloned refreshes and selecti
     view.render(preview);assert.equal(get('共同已读位置').value,'8');assert.equal(get('确认关联以上摘要').disabled,false);
     get('伴读记录').value='b';get('伴读记录').emit('change');assert.equal(get('共同已读位置').value,'30');assert.equal(get('确认关联以上摘要').disabled,true);assert.equal(get('读取并预览摘要').disabled,true);
 });
+
+test('companion page lists every linked book with its own actions, and one 关联伴读 button adds another', async () => {
+    const d = dom(), calls = [], hex = char => char.repeat(64);
+    const view = mountCompanionView({ ...d, pageMode: true, onAction: async (type, payload) => { calls.push([type, payload]); } });
+    const book = (id, title, patch = {}) => ({ key: `scope::${id}`, bookId: id, scope: 'scope', persona: 'User', avatar: 'Synthetic.png', title, charName: '合成角色', userName: '用户',
+        confirmedReadTo: 50, readLabel: '第12章 · 37%', terms: [title], hash: hex('a'), seq: 2, updatedAt: new Date(2026, 10, 3, 9).getTime(), entries: [
+            { id: 'talk', kind: 'dialog', layer: 'shared', text: '两人聊过这一段。', readTo: 20, keywords: [], hash: hex('b'), anchor: { floor: 4, hash: hex('c') }, seq: 1 },
+            { id: 'plot', kind: 'book', layer: 'book', text: '书里的情节。', readTo: 30, keywords: ['情节'], hash: hex('d'), anchor: { floor: 6, hash: hex('c') }, seq: 2 },
+            { id: 'note:2', kind: 'note', layer: 'shared', text: '一起读到第十二章。', readTo: 50, keywords: [], hash: hex('e'), anchor: { floor: 6, hash: hex('c') }, seq: 2 }], ...patch });
+    const s = state({ document: { enabled: true, entries: [], settings: {}, companion: { version: 2, account: 'st-user:fixture', books: [book('one', '第一本书'), book('two', '第二本书', { readLabel: '', updatedAt: 0 })] } } });
+    view.render(s);
+    const cards = d.all(view.element).filter(node => node.className === 'ym-card');
+    assert.equal(cards.length, 2);
+    assert.equal(cards[0].children[0].textContent, '《第一本书》 · 读到 第12章 · 37%');
+    assert.equal(cards[0].children[1].textContent, '共读经历 1 条 · 书中内容 1 条 · 记事 1 条');
+    assert.equal(cards[0].children[2].textContent, '上次更新 11月3日 · 记在第 #5 层之后');
+    assert.equal(cards[1].children[0].textContent, '《第二本书》'); assert.equal(cards[1].children[2].textContent, '记在第 #5 层之后');
+    assert.deepEqual(cards.map(card => card.children[3].children.map(node => node.textContent)), [['更新关联', '解除关联'], ['更新关联', '解除关联']]);
+    assert.equal(d.all(view.element).filter(node => node.tagName === 'BUTTON' && node.textContent === '关联伴读').length, 1);
+    assert.doesNotMatch(view.element.textContent, /后续阅读不会自动扩大范围|解除此聊天关联/);
+    cards[1].children[3].children[0].click(); cards[1].children[3].children[1].click(); d.get(view.element, '关联伴读').click(); await d.flush();
+    assert.deepEqual(calls, [['companionList', { key: 'scope::two' }], ['companionClear', { key: 'scope::two' }], ['companionList', undefined]]);
+    // The floor the latest update was recorded at reads differently now (the fixture hashes never matched): say so, keep the book.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.match(cards.length && view.element.textContent, /记在第 #5 层之后 · 锚点楼层已改动/);
+    view.render({ ...s, service: { status: 'error' } });
+    assert.ok(d.all(view.element).filter(node => node.tagName === 'BUTTON').every(node => node.disabled));
+});

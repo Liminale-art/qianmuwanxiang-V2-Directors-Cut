@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import {createYimuCompanionBridge, YIMU_COMPANION_KEY, YIMU_COMPANION_READY} from '../qianmu-yimu-companion.js';
+import {createYimuCompanionBridge, YIMU_COMPANION_KEY, YIMU_COMPANION_READY, formatReadLabel, offerLinkUpdate, runLink, LINK_TEXT} from '../qianmu-yimu-companion.js';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const clone = value => structuredClone(value);
@@ -29,7 +29,7 @@ function fixture() {
         boundaries:{book:{readTo:100}},story:{avatar:'Char.png',file:'story',integrity:'proof'},currentKey:key};
     let account = 'st-user:fixture', record = {bookId:'book',slices:[dialog(),book()]}, keys = [key], reads = 0, scans = 0, reader = null;
     Object.defineProperty(record, 'messages', {get() { throw Error('whole dialogue must never be traversed'); }});
-    const bridge = createYimuCompanionBridge({getState:()=>state,resolveAccount:async()=>account,hash,
+    const bridge = createYimuCompanionBridge({getState:()=>state,resolveAccount:async()=>account,hash,readDictionary:()=>typeof state.dictionary==='function'?state.dictionary():state.dictionary,
         listKeys:async()=>{scans++; return [...keys];},readRecord:async()=>{reads++; return reader ? reader() : record;}});
     return {bridge,state,coread,get record(){return record;},set record(value){record=value;},get reads(){return reads;},get scans(){return scans;},
         account(value){account=value;},keys(value){keys=value;},reader(value){reader=value;}};
@@ -67,15 +67,21 @@ test('an unknown archive is rejected without a read, and a stray owner field on 
     f.record.companionOwner={account:'st-user:another'};assert.equal((await f.bridge.api.readSnapshot(consent)).account,'st-user:fixture');
 });
 
-test('snapshot contains only saved allowed summaries, with separate fiction and shared-experience labels',async()=>{
-    const f=fixture(), result=await f.bridge.api.readSnapshot(consent);
-    assert.equal(result.evidence,'user-confirmed-snapshot');assert.equal(result.entries.length,2);
-    assert.equal(result.entries[0].sourceLabel,'伴读交流（共同经历）');assert.equal(result.entries[1].sourceLabel,'书中情节（阅读背景）');
+test('snapshot is the v2 book form: dialog and book kinds, retrieval words only on book slices, nothing else from the archive',async()=>{
+    const f=fixture();f.record.slices[1].keywords=['车站','  告别 ','车站',42,'x'.repeat(41)];f.record.slices[1].synonyms={'阿诚':['诚哥','小诚']};
+    const result=await f.bridge.api.readSnapshot(consent);
+    assert.equal(result.version,2);assert.equal(result.evidence,'user-confirmed-snapshot');assert.equal(result.entries.length,2);
+    assert.deepEqual(result.entries.map(e=>e.kind),['dialog','book']);
+    assert.deepEqual(result.entries[0].keywords,[],'a dialogue slice never carries its private keywords');
+    assert.deepEqual(result.entries[1].keywords,['车站','告别','阿诚','诚哥','小诚']);
     assert.match(result.hash,/^[a-f0-9]{64}$/);assert.ok(result.entries.every(e=>e.hash.length===64));
-    assert.doesNotMatch(JSON.stringify(result),/keywords|messages|summaryApiKey|ownership/);
+    assert.doesNotMatch(JSON.stringify(result),/private keyword|messages|summaryApiKey|ownership|sourceLabel/);
     assert.deepEqual(result.omitted,{future:0,unknown:0,mixed:0});assert.equal(f.reads,1);
+    assert.equal(result.readLabel,'');assert.deepEqual(result.terms,['合成书']);
+    const plain=fixture(), other=await plain.bridge.api.readSnapshot(consent);
+    assert.notEqual(other.entries[1].hash,result.entries[1].hash,'retrieval words are part of what the entry hash covers');
+    assert.equal(other.entries[0].hash,result.entries[0].hash);
 });
-
 test('raw missing provenance, mixed, future, wrong bucket and malformed coverage never acquire a fallback read boundary',async()=>{
     const f=fixture(), noIds=dialog('no-ids'), conflict=book('conflict');delete noIds.provenance.dialogMessageIds;conflict.coveredTo=150;
     f.record.slices=[dialog('okay'),book('future',101),{id:'legacy',summary:'must not normalize'},
@@ -122,15 +128,12 @@ for(const change of ['story','account','reader','consumer','identity']) test(`la
 
 test('the only purpose is the companion reply; the removed mainline purpose never reaches the consumer',async()=>{
     const f=fixture(), item=(await f.bridge.api.list()).items[0], calls=[];
-    assert.equal(f.bridge.linkAvailable(),false);
     const clear=f.bridge.api.setConsumer(async context=>{calls.push(context);return {active:true,text:'story',consumedSliceIds:['dialog']};});
-    assert.equal(f.bridge.linkAvailable(),true);
+    assert.equal(f.bridge.linkAvailable(),false,'the reader entry follows the link handlers, not the reply consumer');
     assert.equal((await f.bridge.consume(item,'mainline')).active,false);assert.equal(calls.length,0);
-    assert.equal(f.bridge.filterMainline,undefined);
-    clear();assert.equal(f.bridge.linkAvailable(),false);
-    f.bridge.api.setConsumer(async()=>({active:false}));f.bridge.unmount();assert.equal(f.bridge.linkAvailable(),false);
+    assert.equal(f.bridge.filterMainline,undefined);assert.equal(f.bridge.api.version,2);
+    clear();assert.equal((await f.bridge.consume(item)).active,false);
 });
-
 test('the reply query reaches the consumer as bounded text and is empty when the reader has none',async()=>{
     const f=fixture(), item=(await f.bridge.api.list()).items[0], calls=[];
     f.bridge.api.setConsumer(async context=>{calls.push(context);return {active:true,text:'story'};});
@@ -163,11 +166,11 @@ test('host metadata view uses the current settings owner and does not open books
     const body=source.slice(source.indexOf('function coreadYimuState()'),source.indexOf('function coreadAssistantConfig()'));
     const settings={enabled:true,coread:{books:[]}},host={characters:[{avatar:'A.png',name:'Same name'}],characterId:0,chatId:'A chat',chatMetadata:{integrity:'proof'},extensionSettings:{fixture:settings}};
     const c=vm.createContext({settings,initialized:true,MODULE_NAME:'fixture',ctx:()=>host,isRuntimeOwner:()=>true,
-        coreadPersonaChoices:()=>[{key:'user',name:'USER'}],coreadHostPersona:()=>({key:'user',name:'USER'}),
+        formatReadLabel,coreadPersonaChoices:()=>[{key:'user',name:'USER'}],coreadHostPersona:()=>({key:'user',name:'USER'}),
         readerView:{bookId:'book',companionScope:'scope',chapterIndex:1,scrollRatio:0.5},readerContentCache:{bookId:'book',chapters:[{content:'12345'},{content:'1234567890'}]},
         blobStore:{getBook(){throw Error('must not open a book');}}});
     vm.runInContext(body,c);
-    let state=c.coreadYimuState();assert.equal(state.boundaries.book.readTo,10);assert.equal(state.currentKey,'scope::book');assert.equal(state.available,true);
+    let state=c.coreadYimuState();assert.equal(state.boundaries.book.readTo,10);assert.equal(state.boundaries.book.label,'第2章 · 67%');assert.equal(state.currentKey,'scope::book');assert.equal(state.available,true);
     host.chatMetadata.integrity='';assert.equal(c.coreadYimuState().story,null);
     host.extensionSettings.fixture={enabled:true};assert.equal(c.coreadYimuState().available,false);
     c.readerContentCache=null;assert.equal(Object.keys(c.coreadYimuState().boundaries).length,0);
@@ -189,4 +192,83 @@ test('native companion generation consumes an optional link but never persists i
     assert.deepEqual(JSON.parse(JSON.stringify(extra)),[['companion',{query:''}]]);
     await c.buildCompanionContext('book','reader asks about the station');
     assert.deepEqual(JSON.parse(JSON.stringify(extra[1])),['companion',{query:'reader asks about the station'}],'the recall query used for the reader\'s own slices is the one handed to Yimu');
+});
+
+test('read label and book terms: explicit label, live label at the same position, percent fallback; dictionary names only when the shared memories use them',async()=>{
+    const f=fixture();
+    assert.equal((await f.bridge.api.readSnapshot({...consent,readLabel:'第12章 · 37%'})).readLabel,'第12章 · 37%');
+    f.state.boundaries.book.label='第3章 · 50%';assert.equal((await f.bridge.api.readSnapshot(consent)).readLabel,'第3章 · 50%');
+    assert.equal((await f.bridge.api.readSnapshot({...consent,confirmedReadTo:95})).readLabel,'','a label for another position is not reused');
+    f.coread.books[0].charCount=200;assert.equal((await f.bridge.api.readSnapshot({...consent,confirmedReadTo:95})).readLabel,'48%');
+    f.state.dictionary={'车站':['站台','驿'],'月球':['月亮'],'结局':[]};
+    assert.deepEqual((await f.bridge.api.readSnapshot(consent)).terms,['合成书','车站','站台','结局']);
+    f.state.dictionary=()=>{throw Error('no dictionary');};assert.deepEqual((await f.bridge.api.readSnapshot(consent)).terms,['合成书']);
+    assert.equal(formatReadLabel({chapterIndex:11,progress:37}),'第12章 · 37%');assert.equal(formatReadLabel({chapterIndex:4,progress:50.4,comic:true}),'第5页 · 50%');
+    assert.equal(formatReadLabel({chapterIndex:null,progress:NaN}),'');
+});
+
+test('a long book keeps what was read last when the shared memories exceed the link size',async()=>{
+    const f=fixture();f.record.slices=Array.from({length:205},(_,i)=>book(`b${i}`,i+1));
+    const result=await f.bridge.api.readSnapshot({...consent,confirmedReadTo:300});
+    assert.equal(result.entries.length,200);assert.equal(result.omitted.overflow,5);
+    assert.deepEqual([result.entries[0].id,result.entries.at(-1).id],['b5','b204']);
+    f.record.slices=[book('big',10),book('late',20)];f.record.slices[0].summary='长'.repeat(150000);f.record.slices[1].summary='新'.repeat(100000);
+    assert.deepEqual((await f.bridge.api.readSnapshot(consent)).entries.map(e=>e.id),['late']);
+});
+
+function linkFixture(){
+    const f=fixture(),calls=[];let stored=null,failing=false;
+    const handlers={status:context=>{calls.push(['status',context]);return stored?{linked:true,confirmedReadTo:stored.confirmedReadTo,readLabel:stored.readLabel,updatedAt:5,
+            entryHashes:Object.fromEntries(stored.entries.map(e=>[e.id,e.hash]))}:{linked:false};},
+        update:async(context,payload)=>{calls.push(['update',context,payload]);if(failing)throw Error('offline');stored=payload.snapshot;return {linked:true};},
+        unlink:async context=>{calls.push(['unlink',context]);stored=null;return {linked:false};}};
+    const selection={key,bookId:'book',scope:'companion-scope',persona:'Persona.png',avatar:'Char.png'};
+    return {f,calls,handlers,selection,attach:()=>f.bridge.api.setLink(handlers),fail(value){failing=value;},get stored(){return stored;}};
+}
+
+test('link handlers: status, update and unlink reach Yimu only for the exact archive and the open story',async()=>{
+    const l=linkFixture(),{f,selection,calls}=l;
+    assert.equal(f.bridge.linkAvailable(),false);assert.equal(await f.bridge.linkStatus(selection),null);
+    await assert.rejects(()=>f.bridge.linkUpdate(selection,{confirmedReadTo:100}),/不可用/);
+    assert.throws(()=>f.bridge.api.setLink({status(){}}),TypeError);
+    const clear=l.attach();assert.equal(f.bridge.linkAvailable(),true);
+    assert.deepEqual(await f.bridge.linkStatus(selection),{linked:false,confirmedReadTo:null,entryHashes:{},readLabel:'',updatedAt:0});
+    assert.deepEqual(calls[0][1],{version:2,account:'st-user:fixture',...selection,title:'合成书',charName:'书友',userName:'读者',story:f.state.story});
+    await assert.rejects(()=>f.bridge.linkUpdate(selection,{confirmedReadTo:null}),/确认/);
+    const result=await f.bridge.linkUpdate(selection,{confirmedReadTo:100,readLabel:'第2章 · 40%',note:'  一起读到分别  '});
+    assert.deepEqual(result,{linked:true,readLabel:'第2章 · 40%',entries:2});
+    const sent=calls.at(-1)[2];assert.equal(sent.note,'一起读到分别');assert.equal(sent.confirmed,true);assert.equal(sent.confirmedLocalOwnership,true);
+    assert.equal(sent.snapshot.version,2);assert.equal(sent.snapshot.confirmedReadTo,100);assert.deepEqual(sent.snapshot.entries.map(e=>e.id),['dialog','book']);
+    const status=await f.bridge.linkStatus(selection);assert.equal(status.linked,true);assert.equal(status.readLabel,'第2章 · 40%');assert.equal(status.updatedAt,5);
+    assert.deepEqual(Object.keys(status.entryHashes),['dialog','book']);
+    assert.equal(await f.bridge.linkStatus({...selection,persona:'other'}),null);
+    await assert.rejects(()=>f.bridge.linkUpdate({...selection,persona:'other'},{confirmedReadTo:100}),/范围/);
+    const story=f.state.story;f.state.story=null;
+    assert.equal(await f.bridge.linkStatus(selection),null);await assert.rejects(()=>f.bridge.linkUpdate(selection,{confirmedReadTo:100}),/故事/);
+    f.state.story=story;f.state.currentKey='';assert.equal((await f.bridge.linkStatus(selection)).linked,true,'a closed reader can still be asked');
+    l.fail(true);await assert.rejects(()=>f.bridge.linkUpdate(selection,{confirmedReadTo:100}),/offline/);l.fail(false);
+    assert.deepEqual(await f.bridge.unlink(selection),{linked:false});assert.equal((await f.bridge.linkStatus(selection)).linked,false);
+    clear();assert.equal(f.bridge.linkAvailable(),false);assert.equal(await f.bridge.linkStatus(selection),null);
+    l.attach();f.bridge.unmount();assert.equal(f.bridge.linkAvailable(),false);
+});
+
+test('a story switched while the reader builds the snapshot never receives the update',async()=>{
+    const l=linkFixture(),{f,selection,calls}=l,pending=deferred();l.attach();f.reader(()=>pending.promise);
+    const run=f.bridge.linkUpdate(selection,{confirmedReadTo:100});while(!f.reads)await new Promise(resolve=>setImmediate(resolve));
+    f.state.story={...f.state.story,file:'other'};pending.resolve(f.record);
+    await assert.rejects(()=>run,/切换/);assert.equal(calls.filter(call=>call[0]==='update').length,0);
+});
+
+test('the reader centre button links an unlinked book after one confirmation and updates a linked one',async()=>{
+    const l=linkFixture(),{f,selection}=l,asked=[],confirmed=[],notes=[];l.attach();
+    const ui={ask:async prompt=>{asked.push(prompt);return '';},confirm:async prompt=>{confirmed.push(prompt);return confirmed.length>1;},notify:(...args)=>notes.push(args)};
+    const captured={selection,confirmedReadTo:100,readLabel:'第2章 · 40%'};
+    assert.equal(await runLink(f.bridge,captured,ui),'declined');assert.equal(l.stored,null);
+    assert.deepEqual(confirmed[0],{title:'关联伴读',okButton:'关联',cancelButton:'取消',body:'把《合成书》读到 第2章 · 40% 的共读记忆关联到当前故事？'});
+    assert.equal(await runLink(f.bridge,captured,ui),'linked');assert.equal(l.stored.entries.length,2);
+    assert.deepEqual(notes.at(-1),[LINK_TEXT.linked,'success']);assert.equal(asked.length,0);
+    assert.equal(await runLink(f.bridge,captured,ui),'updated','a linked book may always be updated from the button');
+    assert.equal(asked[0].body,'这次读到 第2章 · 40%。要更新到当前故事吗？');assert.equal(confirmed.length,2);
+    f.state.story=null;assert.equal(await runLink(f.bridge,captured,ui),'unavailable');assert.deepEqual(notes.at(-1),[LINK_TEXT.noStory,'info']);
+    assert.equal(await runLink(f.bridge,{selection,confirmedReadTo:null},ui),'skipped');
 });

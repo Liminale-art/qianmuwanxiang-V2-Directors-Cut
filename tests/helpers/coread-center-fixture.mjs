@@ -21,7 +21,7 @@ export function createCoreadCenterFixture(){
 export const coreadRecordsFunctions=['renderMemRecordsTab'].map(section).join('\n');
 export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
-  inputs.linkAvailable=false;c.yimuCompanionBridge={linkAvailable:()=>inputs.linkAvailable};
+  inputs.linkAvailable=false;inputs.linked=false;c.yimuCompanionBridge={linkAvailable:()=>inputs.linkAvailable};c.coreadLinkLinked=()=>inputs.linked;
   c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;
   c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';
   Object.assign(c.readerDialog,{messages:Array.from({length:8},()=>({text:'fixture'})),cursor:3});

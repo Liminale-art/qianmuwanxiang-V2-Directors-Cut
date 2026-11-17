@@ -5938,6 +5938,7 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .98em; }
 .sd-reader-memory-title small { color: var(--sd-muted); font-size: .72em; }
 .sd-reader-memory-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+.sd-reader-memory-stats.is-linkable { grid-template-columns: repeat(4, minmax(0,1fr)); }
 .sd-reader-memory-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--sd-pre); text-align: center; }
 .sd-reader-memory-stats b { color: var(--sd-accent); font-size: 1em; font-variant-numeric: tabular-nums; }
 .sd-reader-memory-stats small { color: var(--sd-muted); font-size: .64em; white-space: nowrap; }

@@ -6,6 +6,7 @@ import {buildPlan, inspectSources, nextBatch} from '../yimu/core.mjs';
 import {captureCore, buildBudgetedMessages} from '../yimu/budget.mjs';
 import {stageGroups} from '../yimu/layers.mjs';
 import {recallCandidates} from '../yimu/recall.mjs';
+import {sourceLabel, hasCompanionBook, COMPANION_BOOK_NOTICE} from '../yimu/source-scope.mjs';
 import {createController} from '../yimu/runtime.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
 const DEFAULTS = legacySettings(FACTORY_DEFAULTS), createDefaults = legacyDefaults;
@@ -96,4 +97,16 @@ test('server-invalid human stage remains injectable without exposing its automat
     await controller.intercept([], 10000, () => {});
     assert.deepEqual(selected.map(entry => entry.id), ['stage']);
     controller.destroy();
+});
+
+test('reading-memory labels say what kind of memory it is, which book, and how far it was read', () => {
+    const linked = (kind, patch = {}) => ({ companion: { kind, layer: kind === 'book' ? 'book' : 'shared', title: '合成书', readLabel: '第12章 · 37%', charName: '甲', userName: '乙', readTo: 9, ...patch } });
+    assert.equal(sourceLabel(linked('dialog')), '共读交流 ·《合成书》· 读到 第12章 · 37%');
+    assert.equal(sourceLabel(linked('note')), '共读记事 ·《合成书》');
+    assert.equal(sourceLabel(linked('book')), '共读书中内容 ·《合成书》· 只读到 第12章 · 37% · 这是甲和乙一起读过的书里的情节，不是亲身经历；只有他们两人读过');
+    assert.equal(sourceLabel(linked('dialog', { readLabel: '' })), '共读交流 ·《合成书》· 已读部分');
+    assert.equal(sourceLabel(linked('book', { readLabel: '', charName: '', userName: '' })), '共读书中内容 ·《合成书》· 只限已读部分 · 这是角色和用户一起读过的书里的情节，不是亲身经历；只有他们两人读过');
+    assert.equal(hasCompanionBook([linked('dialog'), linked('note'), { id: 'story' }]), false);
+    assert.equal(hasCompanionBook([linked('dialog'), linked('book')]), true);
+    assert.equal(COMPANION_BOOK_NOTICE, '标注「共读书中内容」的条目是两人一起读的书，谈到这本书时据此回忆，不超出所标已读位置，不当作亲历，也不推定他人知道。');
 });

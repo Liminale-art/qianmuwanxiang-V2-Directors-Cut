@@ -79,4 +79,6 @@ test('the 关联伴读 entry appears only while Yimu is attached',()=>{
   inputs.linkAvailable=true;
   const card=overview(c.renderMemRecordsTab(m));
   assert.equal((card.match(/class="sd-reader-mbtn sd-reader-yimu-link"/g)||[]).length,1);assert.match(card,/关联伴读<\/button>/);
+  assert.match(card,/sd-reader-memory-stats is-linkable/);assert.match(card,/<b>未关联<\/b><small>关联伴读<\/small>/);
+  inputs.linked=true;assert.match(overview(c.renderMemRecordsTab(m)),/<b>已关联<\/b><small>关联伴读<\/small>/);
 });

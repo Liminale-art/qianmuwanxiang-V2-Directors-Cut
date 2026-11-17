@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {createYimuCompanionBridge} from '../qianmu-yimu-companion.js';
 import {createCompanionActions} from '../yimu/companion-runtime.mjs';
-import {validateCompanion, companionEntries, sameCompanionContext} from '../yimu/companion-contract.mjs';
+import {validateCompanion, validateBookSnapshot, upgradeCompanion, companionBooks, mergeCompanionBook, removeCompanionBook, companionEntries, sameCompanionContext, COMPANION_LIMITS} from '../yimu/companion-contract.mjs';
 import {mountCompanionView} from '../yimu/companion-view.mjs';
 import {createDocument, createDefaults, applyOperation, fingerprintMessages, stageSourceFromParents} from '../yimu/contract.mjs';
 import {buildPlan, filterCompanionEntries} from '../yimu/core.mjs';
@@ -26,16 +26,17 @@ async function fixture(t) {
         defaults,sourceAvailable:true,companion:{},service:{status:'ok'},loading:false};
     state.document.enabled=true;state.document.initialRange={start:1,end:8,total:8};
     const sourceState = {available:true,owner:{},coread:{books:[{id:'book',title:'合成书'}],companionSessions:[{scope:'scope',avatar:'Char.png',userAvatar:'Persona.png'}]},
-        characters:[{avatar:'Char.png',name:'书友'}],personas:[{key:'Persona.png',name:'读者'}],boundaries:{book:{readTo:100}},story:clone(binding),currentKey:key};
+        characters:[{avatar:'Char.png',name:'书友'}],personas:[{key:'Persona.png',name:'读者'}],boundaries:{book:{readTo:100,label:'第3章 · 40%'}},story:clone(binding),currentKey:key};
     const record = {bookId:'book',slices:[
         {id:'fiction',summary:'小说中的甲去了月球，读者与书友没有亲历。',coveredTo:80,provenance:{source:'book',sources:['book'],bookId:'book',bucket:key,readTo:80,charFrom:0,charTo:80}},
         {id:'discussion',summary:'用户与书友讨论了甲的离别。',provenance:{source:'dialog',sources:['dialog'],bookId:'book',bucket:key,readTo:90,dialogFrom:0,dialogTo:1,dialogMessageIds:['d0','d1']}}
     ]};
     Object.defineProperty(record,'messages',{get(){throw Error('must not read complete companion chat');}});
-    let account='st-user:fixture', scans=0, archiveReads=0, apiReads=0, writes=0, emits=0, sequence=0, invalid=[];
+    const records={[key]:record};
+    let account='st-user:fixture', scans=0, archiveReads=0, apiReads=0, writes=0, emits=0, sequence=0, invalid=[], clock=0;
     let archiveReader=null, serverReader=null, writer=null, lifecycle={disposed:false,paused:false};
     const bridge = createYimuCompanionBridge({getState:()=>sourceState,resolveAccount:async()=>account,hash,
-        listKeys:async()=>{scans++;return [key];},readRecord:async()=>{archiveReads++;return archiveReader?archiveReader():record;}});
+        listKeys:async()=>{scans++;return Object.keys(records);},readRecord:async wanted=>{archiveReads++;return archiveReader?archiveReader():records[wanted];}});
     let attached=bridge.api;
     const read = async () => {apiReads++;return serverReader?serverReader():{document:clone(state.document),defaults:clone(defaults),sourceAvailable:true,invalidSourceIds:invalid};};
     const change = async (actual,op) => {
@@ -43,13 +44,15 @@ async function fixture(t) {
         if(writer)return writer(actual,op);
         const result=applyOperation(state.document,op);state.document=result.document;return {...result,sourceAvailable:true};
     };
-    const controller=createCompanionActions({state,api:{read},change,emit:()=>emits++,lifecycle:()=>lifecycle,bridge:()=>attached,id:()=>`op_${++sequence}`});
+    const controller=createCompanionActions({state,api:{read},change,emit:()=>emits++,lifecycle:()=>lifecycle,bridge:()=>attached,id:()=>`op_${++sequence}`,now:()=>1700000000000+clock});
     controller.connect();t.after(()=>controller.destroy());
     const list = () => controller.action('companionList');
     const preview = async () => {if(!state.companion.list)await list();return controller.action('companionPreview',consent);};
     const link = async () => {await preview();return controller.action('companionSave');};
     const item=()=>({key,bookId:'book',scope:'scope',avatar:'Char.png',persona:'Persona.png'});
-    return {state,sourceState,record,hashes,defaults,bridge,controller,list,preview,link,item,
+    return {state,sourceState,record,hashes,defaults,bridge,controller,list,preview,link,item,binding,
+        clock(value){clock=value;},records,
+        addBook(id,title,slices){sourceState.coread.books.push({id,title});records[`scope::${id}`]={bookId:id,slices};return {key:`scope::${id}`,bookId:id,scope:'scope',avatar:'Char.png',persona:'Persona.png'};},
         get archiveReads(){return archiveReads;},get apiReads(){return apiReads;},get writes(){return writes;},get scans(){return scans;},get emits(){return emits;},
         account(value){account=value;},archiveReader(value){archiveReader=value;},serverReader(value){serverReader=value;},writer(value){writer=value;},
         lifecycle(value){lifecycle={...lifecycle,...value};},invalid(value){invalid=value;},attached(value){attached=value;controller.connect();}};
@@ -70,8 +73,12 @@ test('preview is read-only, save rereads the same source hash, and clear preserv
     const f=await fixture(t), original=clone(f.record.slices);await f.preview();
     assert.equal(f.archiveReads,1);assert.equal(f.writes,0);assert.equal(f.state.document.companion,undefined);
     const preview=clone(f.state.companion.preview);await f.controller.action('companionSave');
-    assert.equal(f.archiveReads,2);assert.equal(f.writes,1);assert.deepEqual(f.state.document.companion,preview);
-    assert.match(f.state.companion.status,/已关联/);assert.equal(f.state.companion.preview,null);
+    assert.equal(f.archiveReads,2);assert.equal(f.writes,1);
+    const stored=f.state.document.companion;assert.equal(stored.version,2);assert.equal(stored.account,'st-user:fixture');assert.equal(stored.books.length,1);
+    const {account,...readerFields}=preview, anchor={floor:8,hash:f.hashes[7]};
+    assert.deepEqual(stored.books[0],{...readerFields,seq:1,updatedAt:1700000000000,entries:preview.entries.map(item=>({...item,anchor,seq:1}))});
+    assert.deepEqual(stored.books[0].entries.map(item=>[item.id,item.kind,item.layer]),[['fiction','book','book'],['discussion','dialog','shared']]);
+    assert.match(f.state.companion.status,/已关联。之后读了新内容，关闭阅读器时会问你要不要更新。/);assert.equal(f.state.companion.preview,null);
     await f.controller.action('companionClear');assert.equal(f.state.document.companion,null);
     assert.deepEqual(f.record.slices,original);assert.match(f.state.companion.status,/已解除/);
 });
@@ -157,24 +164,106 @@ test('late confirmed save does not report success in another chat',async t=>{
     await run;assert.deepEqual(f.state.companion,{});
 });
 
-test('contract rejects ambiguous identities, empty data, future entries, and coerces nature labels',async t=>{
-    const f=await fixture(t);await f.preview();const value=clone(f.state.companion.preview);
+const H=char=>char.repeat(64);
+const v1=()=>({version:1,confirmed:true,account:'st-user:fixture',key,bookId:'book',scope:'scope',persona:'Persona.png',avatar:'Char.png',title:'合成书',charName:'书友',userName:'读者',confirmedReadTo:100,hash:H('a'),
+    entries:[{id:'fiction',kind:'book',text:'小说中的甲去了月球。',readTo:80,hash:H('b'),sourceLabel:'书中情节（阅读背景）'},
+        {id:'discussion',kind:'dialog',text:'用户与书友讨论了甲的离别。',readTo:90,hash:H('c'),sourceLabel:'伴读交流（共同经历）'}]});
+const snap=(patch={},entries=null)=>({account:'st-user:fixture',key,bookId:'book',scope:'scope',persona:'Persona.png',avatar:'Char.png',title:'合成书',charName:'书友',userName:'读者',
+    confirmedReadTo:100,readLabel:'第3章 · 40%',terms:['合成书'],hash:H('d'),
+    entries:entries||[{id:'fiction',kind:'book',text:'小说中的甲去了月球。',readTo:80,keywords:['月球'],hash:H('b')},{id:'discussion',kind:'dialog',text:'用户与书友讨论了甲的离别。',readTo:90,hash:H('c')}],...patch});
+
+test('a stored single-book snapshot still validates unchanged and reads as a one-book list',()=>{
+    const value=v1();assert.deepEqual(validateCompanion(clone(value)),value);
     for(const patch of [{account:'anonymous'},{key:'different::book'},{entries:[]},{confirmed:false},{entries:[{...value.entries[0],readTo:101}]}])assert.throws(()=>validateCompanion({...value,...patch}));
-    value.entries[0].sourceLabel='这是用户和书友的真实经历';
-    assert.equal(validateCompanion(value).entries[0].sourceLabel,'书中情节（阅读背景）');
+    const coerced=clone(value);coerced.entries[0].sourceLabel='这是用户和书友的真实经历';
+    assert.equal(validateCompanion(coerced).entries[0].sourceLabel,'书中情节（阅读背景）');
+    const upgraded=upgradeCompanion(value);
+    assert.deepEqual(upgraded,{version:2,account:'st-user:fixture',books:[{key,bookId:'book',scope:'scope',persona:'Persona.png',avatar:'Char.png',title:'合成书',charName:'书友',userName:'读者',
+        confirmedReadTo:100,readLabel:'',terms:['合成书'],hash:H('a'),seq:1,updatedAt:0,entries:[
+            {id:'fiction',kind:'book',layer:'book',text:'小说中的甲去了月球。',readTo:80,keywords:[],hash:H('b'),anchor:null,seq:1},
+            {id:'discussion',kind:'dialog',layer:'shared',text:'用户与书友讨论了甲的离别。',readTo:90,keywords:[],hash:H('c'),anchor:null,seq:1}]}]});
+    assert.deepEqual(validateCompanion(upgraded),upgraded,'the upgraded form is itself a valid stored value');
+    assert.deepEqual(value,v1(),'reading never rewrites the stored value');
+    assert.deepEqual(companionBooks(null),[]);assert.deepEqual(companionBooks({version:3}),[]);
     const entries=companionEntries(value), message=memoryMessage(entries).content;
-    assert.ok(entries.every(entry=>entry.source===null));
-    assert.match(message,/书中背景（不等于亲历或知情）/);assert.match(message,/共同交流记录/);
-    assert.match(message,/秘密|角色知情/);
+    assert.ok(entries.every(entry=>entry.source===null&&entry.kind==='manual'));
+    assert.match(message,/共读书中内容 ·《合成书》· 只限已读部分 · 这是书友和读者一起读过的书里的情节，不是亲身经历；只有他们两人读过/);
+    assert.match(message,/共读交流 ·《合成书》· 已读部分/);assert.match(message,/秘密|角色知情/);
+    assert.match(message,/标注「共读书中内容」的条目是两人一起读的书/);
 });
 
-test('associated book and dialog are background only and cannot cover or replace current raw floors',async t=>{
+test('multi-book contract: the layer is derived, identities are exact, and per-book and overall limits hold',()=>{
+    const one=mergeCompanionBook(null,snap(),{anchor:{floor:3,hash:H('e')},now:5});
+    assert.equal(one.version,2);assert.equal(one.books[0].seq,1);assert.equal(one.books[0].updatedAt,5);
+    const forged=clone(one);forged.books[0].entries[0].layer='shared';forged.books[0].entries[1].layer='book';forged.books[0].entries[1].keywords=['不该保留'];
+    assert.deepEqual(validateCompanion(forged).books[0].entries.map(e=>[e.kind,e.layer,e.keywords]),[['book','book',['月球']],['dialog','shared',[]]]);
+    const bad=patch=>{const value=clone(one);patch(value);return ()=>validateCompanion(value);};
+    assert.throws(bad(v=>{v.account='anonymous';}));assert.throws(bad(v=>{v.books[0].key='other::book';}));
+    assert.throws(bad(v=>{v.books=[];}));assert.throws(bad(v=>{v.books.push(clone(v.books[0]));}),/归属/);
+    assert.throws(bad(v=>{v.books[0].entries[0].readTo=101;}),/超过/);
+    assert.throws(bad(v=>{v.books[0].entries[0].anchor={floor:0,hash:H('e')};}));assert.throws(bad(v=>{v.books[0].entries[0].anchor={floor:1,hash:'x'};}));
+    assert.throws(bad(v=>{v.books[0].entries[0].seq=2;}));assert.throws(bad(v=>{v.books[0].seq=0;}));
+    assert.throws(bad(v=>{v.books[0].readLabel='长'.repeat(61);}));assert.throws(bad(v=>{v.books[0].terms=['一'];}));
+    assert.throws(bad(v=>{v.books[0].terms=Array.from({length:41},(_,i)=>`词条${i}`);}));
+    assert.throws(bad(v=>{v.books[0].entries[0].keywords=Array.from({length:13},(_,i)=>`k${i}`);}));
+    assert.throws(bad(v=>{v.books[0].entries[0].id='note:1';}));assert.throws(bad(v=>{v.books[0].entries[1].kind='note';}));
+    assert.throws(bad(v=>{v.books[0].entries.push({id:'note:1',kind:'note',text:'长'.repeat(201),readTo:1,hash:H('f'),anchor:null,seq:1});}));
+    const many=(count,size)=>Array.from({length:count},(_,i)=>({id:`s${i}`,kind:'dialog',text:'字'.repeat(size),readTo:1,hash:H('b')}));
+    assert.equal(mergeCompanionBook(null,snap({},many(200,10))).books[0].entries.length,200);
+    assert.throws(()=>mergeCompanionBook(null,snap({},many(201,10))),/过多/);
+    assert.throws(()=>mergeCompanionBook(null,snap({},many(3,70000))),/过多/);
+    assert.throws(()=>validateBookSnapshot(snap({},[])),/没有可关联/);
+    assert.throws(()=>validateBookSnapshot(snap({},[{id:'note:1',kind:'note',text:'读者自带的记事',readTo:1,hash:H('b')}])),'only Yimu writes notes');
+    let value=null;const other=(i,entries=null)=>snap({key:`scope::b${i}`,bookId:`b${i}`,title:`第${i}本书`,terms:[]},entries);
+    for(let i=0;i<12;i++)value=mergeCompanionBook(value,other(i));
+    assert.equal(value.books.length,12);assert.throws(()=>mergeCompanionBook(value,other(12)),/最多关联 12 本书/);
+    assert.equal(mergeCompanionBook(value,other(3)).books.length,12,'updating a linked book is not a thirteenth book');
+    let heavy=null;for(let i=0;i<3;i++)heavy=mergeCompanionBook(heavy,other(i,many(2,99000)));
+    assert.throws(()=>mergeCompanionBook(heavy,other(3,many(1,7000))),/过多/);
+    assert.throws(()=>mergeCompanionBook(one,snap({account:'st-user:other'})),/归属/);
+});
+
+test('updating a book keeps the floor and number of what was already shared, places new slices at the current floor and drops vanished ones',()=>{
+    const first=mergeCompanionBook(null,snap(),{anchor:{floor:3,hash:H('e')},now:5,note:{text:'  一起读到月球那段  ',hash:H('1')}});
+    assert.deepEqual(first.books[0].entries.map(e=>[e.id,e.anchor?.floor,e.seq]),[['fiction',3,1],['discussion',3,1],['note:1',3,1]]);
+    assert.equal(first.books[0].entries[2].text,'一起读到月球那段');assert.equal(first.books[0].entries[2].layer,'shared');
+    const next=snap({confirmedReadTo:150,readLabel:'第5章 · 60%',hash:H('9')},[
+        {id:'fiction',kind:'book',text:'修订后的月球情节。',readTo:80,keywords:['月球'],hash:H('7')},
+        {id:'later',kind:'dialog',text:'两人聊到结局。',readTo:140,hash:H('8')}]);
+    const second=mergeCompanionBook(first,next,{anchor:{floor:9,hash:H('6')},now:8}), book=second.books[0];
+    assert.equal(book.seq,2);assert.equal(book.updatedAt,8);assert.equal(book.readLabel,'第5章 · 60%');assert.equal(book.confirmedReadTo,150);
+    assert.deepEqual(book.entries.map(e=>[e.id,e.anchor?.floor,e.seq]),[['fiction',3,1],['later',9,2],['note:1',3,1]]);
+    assert.equal(book.entries[0].text,'修订后的月球情节。');assert.equal(book.entries[0].hash,H('7'));
+    const blank=mergeCompanionBook(null,snap()), again=mergeCompanionBook(blank,snap(),{anchor:{floor:4,hash:H('e')}});
+    assert.deepEqual(again.books[0].entries.map(e=>e.anchor),[null,null],'linked in an empty chat: unlocated, and an update does not invent a floor');
+    let value=null;for(let i=0;i<22;i++)value=mergeCompanionBook(value,snap(),{note:{text:`记事${i}`,hash:H('1')}});
+    const notes=value.books[0].entries.filter(e=>e.kind==='note');
+    assert.equal(notes.length,COMPANION_LIMITS.notes);assert.deepEqual([notes[0].id,notes.at(-1).id],['note:3','note:22']);
+    assert.ok(mergeCompanionBook(value,snap({confirmedReadTo:95})).books[0].entries.every(e=>e.readTo<=95));
+});
+
+test('unlinking one book leaves the others; removing the last one clears the link',()=>{
+    let value=mergeCompanionBook(null,snap(),{anchor:{floor:2,hash:H('e')}});
+    value=mergeCompanionBook(value,snap({key:'scope::other',bookId:'other',title:'另一本书',terms:['另一本书']}),{anchor:{floor:5,hash:H('e')}});
+    assert.deepEqual(value.books.map(b=>b.key),[key,'scope::other']);
+    const left=removeCompanionBook(value,key);assert.deepEqual(left.books,[value.books[1]]);
+    assert.equal(removeCompanionBook(left,'scope::other'),null);assert.deepEqual(removeCompanionBook(left,'unknown'),left);
+    assert.equal(removeCompanionBook(v1(),key),null);
+    const ids=companionEntries(value).map(e=>e.id);assert.equal(new Set(ids).size,4);assert.ok(ids.every(id=>/^companion_[a-f0-9]{8}_[a-f0-9]{16}$/.test(id)));
+    assert.deepEqual(companionEntries(clone(value)).map(e=>e.id),ids,'injected ids depend on the book and the entry, not on position');
+    assert.deepEqual(companionEntries(removeCompanionBook(value,key)).map(e=>e.id),ids.slice(2));
+});
+
+test('linked reading memories never cover or replace story floors, and book content stays out until the book is mentioned',async t=>{
     const f=await fixture(t);await f.link();
     const plan=await buildPlan(f.state.document,f.defaults,f.state.snapshot);
-    assert.equal(plan.entries.length,2);assert.deepEqual(plan.coveredRanges,[]);
+    assert.deepEqual(plan.entries.map(e=>e.companion.sourceId),['discussion']);assert.deepEqual(plan.coveredRanges,[]);
     assert.ok(plan.entries.every(entry=>entry.source===null&&entry.companion));
+    f.state.snapshot.messages.at(-1).mes='你还记得《合成书》里的事吗';
+    const asked=await buildPlan(f.state.document,f.defaults,f.state.snapshot);
+    assert.deepEqual(asked.entries.map(e=>e.companion.sourceId),['discussion','fiction']);assert.deepEqual(asked.coveredRanges,[]);
+    assert.match(asked.prompt,/共读书中内容 ·《合成书》/);
 });
-
 test('reverse reader is opt-in, exact account/persona/story, and exposes no unprocessed raw or companion echo',async t=>{
     const f=await fixture(t), item=f.item();
     assert.equal((await f.bridge.consume(item)).active,false);assert.equal(f.apiReads,0);
@@ -193,8 +282,8 @@ test('the removed mainline purpose is refused on both sides and reads nothing',a
     const f=await fixture(t);await f.link();f.state.document.entries=[entry('manual','不得反向暴露的故事原文')];
     const before=f.apiReads;
     assert.deepEqual(await f.bridge.consume(f.item(),'mainline'),{active:false,text:'',consumedSliceIds:[]});
-    let consumer;f.attached({version:1,list:async()=>({}),readSnapshot:async()=>({}),setConsumer:fn=>{consumer=fn;},clearConsumer(){}});
-    const context={version:1,account:'st-user:fixture',...f.item(),story:clone(f.state.snapshot.binding)};
+    let consumer;f.attached({version:2,list:async()=>({}),readSnapshot:async()=>({}),setConsumer:fn=>{consumer=fn;},clearConsumer(){},setLink(){},clearLink(){}});
+    const context={version:2,account:'st-user:fixture',...f.item(),story:clone(f.state.snapshot.binding)};
     assert.equal((await consumer({...context,purpose:'mainline'})).active,false);assert.equal(f.apiReads,before);
     assert.equal((await consumer({...context,purpose:'companion'})).active,true);
 });
@@ -320,14 +409,33 @@ async function viewFixture(t){
     return {...f,view,calls,render,nodes,button:text=>nodes('button').find(node=>node.textContent===text),input:type=>nodes('input').find(node=>node.type===type)};
 }
 
-test('the entry is named 关联伴读, and 更新关联 once a snapshot is linked',async t=>{
-    const f=await viewFixture(t);
+test('the entry is 关联伴读; each linked book lists its counts, position and its own 更新关联 and 解除关联',async t=>{
+    const f=await viewFixture(t), settle=()=>new Promise(resolve=>setTimeout(resolve,20));
     assert.ok(f.button('关联伴读'));assert.equal(f.button('更新关联'),undefined);assert.equal(f.button('选择伴读记忆'),undefined);
     f.button('关联伴读').click();await tick();assert.deepEqual(f.calls.at(-1),{type:'companionList',payload:undefined});
-    await f.link();f.render();
-    assert.ok(f.button('更新关联'));assert.equal(f.button('关联伴读'),undefined);assert.ok(f.button('解除此聊天关联'));
+    await f.link();f.render();await settle();
+    const text=()=>f.view.element.textContent;
+    assert.match(text(),/《合成书》 · 读到 第3章 · 40%/);assert.match(text(),/共读经历 1 条 · 书中内容 1 条 · 记事 0 条/);
+    assert.match(text(),/上次更新 \d+月\d+日 · 记在第 #7 层之后/);assert.doesNotMatch(text(),/锚点楼层已改动|后续阅读不会自动扩大范围|读取并预览摘要/);
+    assert.ok(f.button('更新关联'));assert.ok(f.button('解除关联'));assert.ok(f.button('关联伴读'));assert.equal(f.button('解除此聊天关联'),undefined);
+    f.button('更新关联').click();await tick();assert.deepEqual(f.calls.at(-1),{type:'companionList',payload:{key}});
+    f.button('解除关联').click();await tick();assert.deepEqual(f.calls.at(-1),{type:'companionClear',payload:{key}});
+    f.state.snapshot.messages[7]={...f.state.snapshot.messages[7],mes:'后来改过的第八层'};f.render();await settle();
+    assert.match(text(),/记在第 #7 层之后 · 锚点楼层已改动/);
+    f.state.snapshot.messages.length=3;f.render();await settle();assert.match(text(),/锚点楼层已改动/);
+    for(const item of f.state.document.companion.books[0].entries)item.anchor=null;f.render();
+    assert.match(text(),/尚未定位/);assert.doesNotMatch(text(),/锚点楼层已改动/);
+    f.state.document.companion=v1();f.render();
+    assert.match(text(),/《合成书》共读经历 1 条 · 书中内容 1 条 · 记事 0 条尚未定位/,'an old single snapshot shows as one book without a label or date');
 });
 
+test('更新关联 opens the picker on that book with its last confirmed position',async t=>{
+    const f=await viewFixture(t);const second=f.addBook('second','第二本书',[{id:'s-dialog',summary:'两人争论第二本书的开头。',provenance:{source:'dialog',sources:['dialog'],bookId:'second',bucket:'scope::second',readTo:10,dialogFrom:0,dialogTo:0,dialogMessageIds:['m0']}}]);
+    await f.bridge.linkUpdate(second,{confirmedReadTo:50});
+    await f.controller.action('companionList',{key:'scope::second'});f.render();
+    assert.equal(f.nodes('select')[0].value,'scope::second');assert.equal(f.input('number').value,'50','no live position for a closed book: start from what was confirmed');
+    await f.controller.action('companionList');f.render();assert.equal(f.nodes('select')[0].value,key);assert.equal(f.input('number').value,'100');
+});
 test('view requires one explicit ownership/cutoff confirmation and preserves the draft while busy',async t=>{
     const f=await viewFixture(t);await f.list();f.render();
     assert.equal(f.button('读取并预览摘要').disabled,true);assert.equal(f.input('number').value,'100');
@@ -340,7 +448,7 @@ test('view requires one explicit ownership/cutoff confirmation and preserves the
 test('preview shows bounded source nature and edited cutoff disables saving until reconfirmed',async t=>{
     const f=await viewFixture(t);await f.list();f.render();f.input('checkbox').checked=true;f.input('checkbox').emit('change');
     await f.preview();f.render();assert.equal(f.button('确认关联以上摘要').disabled,false);
-    assert.match(f.view.element.textContent,/书中背景（不等于亲历或知情）/);assert.match(f.view.element.textContent,/共同交流/);
+    assert.match(f.view.element.textContent,/书中内容（提到这本书时才带入）/);assert.match(f.view.element.textContent,/共读经历/);
     assert.doesNotMatch(f.view.element.textContent,/只关联本次预览的摘要/);
     f.input('number').value='90';f.input('number').emit('input');
     assert.equal(f.input('checkbox').checked,false);assert.equal(f.button('确认关联以上摘要').disabled,true);
@@ -378,4 +486,64 @@ test('late Qianmu readiness reconnects through quiet refresh and removes its lis
     assert.match(source,/addEventListener\(COMPANION_READY, focus\)/);
     assert.match(source,/removeEventListener\(COMPANION_READY, focus\)/);
     assert.match(source,/const focus = .*refresh\(\{ quiet: true, auto: false \}\)/);
+});
+
+test('the reader can ask, link and update through Yimu only for the story chat that is open',async t=>{
+    const f=await fixture(t), item=f.item();
+    assert.deepEqual(await f.bridge.linkStatus(item),{linked:false,confirmedReadTo:null,entryHashes:{},readLabel:'',updatedAt:0});
+    await f.bridge.linkUpdate(item,{confirmedReadTo:100,readLabel:'第3章 · 40%',note:'一起读到离别'});
+    const book=f.state.document.companion.books[0];
+    assert.deepEqual(book.entries.map(e=>[e.id,e.kind,e.anchor.floor,e.seq]),[['fiction','book',8,1],['discussion','dialog',8,1],['note:1','note',8,1]]);
+    assert.match(book.entries[2].hash,/^[a-f0-9]{64}$/);assert.equal(book.entries[2].text,'一起读到离别');assert.equal(book.readLabel,'第3章 · 40%');
+    const status=await f.bridge.linkStatus(item);
+    assert.equal(status.linked,true);assert.equal(status.confirmedReadTo,100);assert.equal(status.readLabel,'第3章 · 40%');assert.equal(status.updatedAt,1700000000000);
+    assert.deepEqual(Object.keys(status.entryHashes),['fiction','discussion'],'notes are Yimu\'s own and never compared with reader slices');
+    f.state.snapshot.messages.push({name:'甲',is_user:false,mes:'合成第9层。',send_date:'synthetic-8'});
+    f.record.slices.push({id:'later',summary:'两人聊到结局。',provenance:{source:'dialog',sources:['dialog'],bookId:'book',bucket:key,readTo:95,dialogFrom:2,dialogTo:3,dialogMessageIds:['d2','d3']}});
+    f.clock(60000);await f.bridge.linkUpdate(item,{confirmedReadTo:100});
+    const updated=f.state.document.companion.books[0];assert.equal(updated.seq,2);assert.equal(updated.updatedAt,1700000060000);
+    assert.deepEqual(updated.entries.map(e=>[e.id,e.anchor.floor,e.seq]),[['fiction',8,1],['discussion',8,1],['later',9,2],['note:1',8,1]]);
+    f.sourceState.story={...f.sourceState.story,file:'other'};
+    assert.equal(await f.bridge.linkStatus(item),null,'another story chat is open: neither linked nor offered');
+    const writes=f.writes;await assert.rejects(()=>f.bridge.linkUpdate(item,{confirmedReadTo:100}),/故事/);assert.equal(f.writes,writes);
+    f.sourceState.story=clone(f.binding);
+    f.writer(async()=>({document:clone(f.state.document)}));await assert.rejects(()=>f.bridge.linkUpdate(item,{confirmedReadTo:100}),/尚未确认/);f.writer(null);
+    assert.deepEqual(await f.bridge.unlink(item),{linked:false});assert.equal(f.state.document.companion,null);
+});
+
+test('several books link to one story; each answers only for itself and unlinking one leaves the other',async t=>{
+    const f=await fixture(t), first=f.item();
+    const second=f.addBook('second','第二本书',[{id:'s-dialog',summary:'两人争论第二本书的开头。',provenance:{source:'dialog',sources:['dialog'],bookId:'second',bucket:'scope::second',readTo:10,dialogFrom:0,dialogTo:0,dialogMessageIds:['m0']}}]);
+    await f.bridge.linkUpdate(first,{confirmedReadTo:100});await f.bridge.linkUpdate(second,{confirmedReadTo:50});
+    assert.deepEqual(f.state.document.companion.books.map(b=>[b.key,b.title]),[[key,'合成书'],['scope::second','第二本书']]);
+    f.state.document.settings={companionShareCustom:true};f.state.document.entries=[entry('manual','只属于故事的明确人工记忆')];
+    f.sourceState.currentKey='scope::second';
+    const reverse=await f.bridge.consume(second);assert.equal(reverse.active,true);assert.deepEqual(reverse.consumedSliceIds,['s-dialog']);
+    assert.match(reverse.text,/明确人工记忆/);assert.doesNotMatch(reverse.text,/争论第二本书|月球|离别/,'no reading memory is echoed back to the reader');
+    f.sourceState.currentKey=key;assert.deepEqual((await f.bridge.consume(first)).consumedSliceIds,['fiction','discussion']);
+    await f.controller.action('companionClear',{key});
+    assert.deepEqual(f.state.document.companion.books.map(b=>b.key),['scope::second']);assert.match(f.state.companion.status,/已解除这本书的关联/);
+    assert.equal((await f.bridge.consume(first)).active,false);assert.equal((await f.bridge.linkStatus(first)).linked,false);
+    assert.equal((await f.bridge.linkStatus(second)).linked,true);
+    await f.controller.action('companionClear',{key:'scope::second'});assert.equal(f.state.document.companion,null);
+});
+
+test('a story still holding the old single snapshot keeps working and becomes a book list on its next update',async t=>{
+    const f=await fixture(t);f.state.document.companion=v1();
+    const plan=await buildPlan(f.state.document,f.defaults,f.state.snapshot);assert.deepEqual(plan.entries.map(e=>e.companion.sourceId),['discussion']);
+    f.state.document.entries=[entry('manual','故事记忆')];f.state.document.settings={companionShareCustom:true};
+    assert.equal((await f.bridge.consume(f.item())).active,true);
+    const status=await f.bridge.linkStatus(f.item());assert.equal(status.linked,true);assert.deepEqual(status.entryHashes,{fiction:H('b'),discussion:H('c')});
+    await f.bridge.linkUpdate(f.item(),{confirmedReadTo:100});
+    const book=f.state.document.companion.books[0];assert.equal(f.state.document.companion.version,2);assert.equal(book.seq,2);
+    assert.deepEqual(book.entries.map(e=>[e.id,e.anchor,e.seq]),[['fiction',null,1],['discussion',null,1]]);
+});
+
+test('an older Qianmu bridge is not attached, so neither side offers a half-working link',async t=>{
+    const f=await fixture(t);let consumers=0;
+    f.attached({version:1,list:async()=>({}),readSnapshot:async()=>({}),setConsumer(){consumers++;},clearConsumer(){}});
+    assert.equal(consumers,0);await assert.rejects(()=>f.controller.action('companionList'),/请先启用/);
+    f.attached({version:2,list:async()=>({}),readSnapshot:async()=>({}),setConsumer(){consumers++;},clearConsumer(){}});
+    assert.equal(consumers,0,'a version-2 object without link support is not a usable bridge either');
+    assert.equal(f.bridge.linkAvailable(),false,'detaching withdrew the link handlers from the real bridge');
 });

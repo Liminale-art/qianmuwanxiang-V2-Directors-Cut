@@ -65,14 +65,15 @@ export function renderCoreadSummaryItemsView(items, htmlEscape) {
   }).join('');
 }
 
-export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, blockedN, linkAvailable, targetClass}, htmlEscape) {
+export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, blockedN, linkAvailable, linked, targetClass}, htmlEscape) {
   return `
     <section class="sd-reader-memory-overview${targetClass}">
       <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
-      <div class="sd-reader-memory-stats">
+      <div class="sd-reader-memory-stats${linkAvailable ? ' is-linkable' : ''}">
         <span><b>${sliceCount}</b><small>记忆切片</small></span>
         <span><b>${pendingN}</b><small>待整理对话</small></span>
         <span><b>${blockedN}</b><small>进度外隔离</small></span>
+        ${linkAvailable ? `<span class="sd-reader-yimu-linkstat"><b>${linked ? '已关联' : '未关联'}</b><small>关联伴读</small></span>` : ''}
       </div>
       <div class="sd-reader-memory-actions">
         <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>管理切片</button>
