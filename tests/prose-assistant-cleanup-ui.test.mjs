@@ -41,6 +41,6 @@ test('shared cleanup lock excludes opening or active assistant and invalidates l
  let assistant=true;const owner={},root={isConnected:true},session=createStorageCleanupSession({owner:()=>owner,scope:()=>1,epoch:()=>1,activity:()=>({proseAssistant:assistant})});assert.equal(session.begin(root),null);
  assistant=false;const token=session.begin(root);assert.ok(token);assistant=true;assert.throws(()=>token.check());assistant=false;assert.throws(()=>token.check());token.release();assert.equal(session.busy,false);
  const source=await readFile(new URL('../index.js',import.meta.url),'utf8'),start=source.indexOf("onClick('.sd-storage-clean', async () => {");assert.ok(start>0);const handler=source.slice(start,source.indexOf("onClick('.sd-storage-chat-clean'",start));
- assert.ok(handler.indexOf("selected.includes('__assistant__')")<handler.indexOf('blobStore.clearStorageItems'));assert.match(handler,/cleanupAssistant\(root,confirmDialog,\(\)=>cleanup.check\(\),inventory\?\.assistantStorage\?\.namespace,selected.length-1\);cleanup.check\(\);await refreshStorageInventory\(true\);return;/);
+ assert.ok(handler.indexOf("selected.includes('__assistant__')")<handler.indexOf('blobStore.clearStorageItems'));assert.match(handler,/cleanupAssistant\(root,confirmDialog,\(\)=>cleanup.check\(\),inventory\?\.assistantStorage\?\.namespace,selected.length-1\);cleanup.check\(\);\}/);
  assert.match(source,/proseAssistant: proseFloorTools.assistantBusy===true/);
 });

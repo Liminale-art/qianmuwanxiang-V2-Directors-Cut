@@ -45,13 +45,15 @@ test('unavailable row stays unselectable after controls update and changed scope
  const dom=assistantHistoryDom();let live=true,closed=0;const view=open({parent:dom.parent,isCurrent:()=>live,check(){},confirm:()=>true,download(){},createManager:async()=>({guard:async()=>true,close(){closed++;},progress:()=>null,page:async()=>({offset:0,total:1,nextOffset:null,rows:[{id:'one',status:'unavailable',title:'记录暂未读取',bytes:2}]})})});
  await dom.idle();assert.equal(dom.get('查看 记录暂未读取').disabled,true);assert.equal(dom.get('选择 记录暂未读取').disabled,true);live=false;dom.mutate();await view.finished;assert.equal(closed,1);assert.equal(dom.observers.size,0);
 });
-test('real floor host lazily opens native manager with passed download, excludes assistant, and disposes on shutdown',async t=>{
- const f=await assistantManagerFixture(t,1),dom=assistantHistoryDom(),original=globalThis.fetch;f.transport.configure();
+test('cleanup through the real floor host empties every assistant conversation directly: no panel, no second confirmation',async t=>{
+ const f=await assistantManagerFixture(t,2),dom=assistantHistoryDom(),original=globalThis.fetch;f.transport.configure();
  globalThis.fetch=async(url,init)=>{assert.equal(url,'/api/plugins/qianmu-tts/assistant/history-catalogue');const {namespace:raw,status,...wire}=await f.loadPage(JSON.parse(init.body));return new Response(JSON.stringify(wire),{headers:{'content-type':'application/json'}});};t.after(()=>globalThis.fetch=original);
- const downloads=[];let mounted=0,detached=0;const floor=createProseAssistantFloorTools({resolveNamespace:async()=>namespace,isCurrent:()=>true,download:(blob,name)=>downloads.push({blob,name}),headers:()=>({'X-CSRF-Token':'fixture'}),mountPortal:()=>{mounted++;return ()=>detached++;}});t.after(()=>floor.disposeFloor());
- const pending=floor.cleanupStorage(dom.parent,()=>true,()=>{},namespace,2,true);await dom.idle();assert.equal(mounted,1);assert.match(dom.all().find(node=>node.tagName==='DIALOG').textContent,/其他 2 个模块本次不处理/);assert.equal(await floor.openAssistant(),null);
- dom.get('选择本页全部记录').emit('click');dom.get('备份选中助手记录').emit('click');await dom.idle();assert.equal(downloads.length,1);assert.equal(JSON.parse(await downloads[0].blob.text()).items.length,1);
- floor.disposeFloor();await pending;assert.equal(detached,1);assert.equal(dom.observers.size,0);assert.equal(dom.all().filter(node=>node.tagName==='DIALOG').length,0);
+ const notices=[];let mounted=0;const floor=createProseAssistantFloorTools({resolveNamespace:async()=>namespace,isCurrent:()=>true,download:()=>assert.fail('no export'),headers:()=>({'X-CSRF-Token':'fixture'}),notify:(...args)=>notices.push(args),mountPortal:()=>{mounted++;return ()=>{};}});t.after(()=>floor.disposeFloor());
+ const done=await floor.cleanupStorage(dom.parent,()=>assert.fail('no confirmation dialog'),()=>{},namespace,2,true);
+ assert.equal(done.cleared,2);assert.equal(mounted,0);assert.equal(dom.all().some(node=>node.tagName==='DIALOG'),false);
+ for(const record of f.records)assert.equal((await f.store.read(record.slot)).value.rows.length,0);
+ assert.deepEqual(notices,[['已清空 2 个特助对话。','success']]);
+ assert.equal((await floor.cleanupStorage(dom.parent,()=>assert.fail('no confirmation dialog'),()=>{},namespace,0,true)).cleared,0,'a second run finds nothing left');
 });
 test('actual entry has a separate ST management branch ahead of generic deletion; release and responsive styles include all runtime files',async()=>{
  const root=new URL('../',import.meta.url),source=await readFile(new URL('index.js',root),'utf8'),release=JSON.parse(await readFile(new URL('release-files.json',root),'utf8'));
@@ -59,9 +61,9 @@ test('actual entry has a separate ST management branch ahead of generic deletion
  for(const file of ['qianmu-assistant-history-manager.js','qianmu-assistant-history-view.js','qianmu-assistant-history-view.css'])assert.ok(release.files.includes(file));
  const css=await readFile(new URL('qianmu-assistant-history-view.css',root),'utf8');assert.match(css,/@media\(max-width:620px\)/);assert.match(css,/overflow-wrap:anywhere/);assert.match(css,/100dvh/);assert.match(css,/background:var\(--sd-sticky-bg,/);
 });
-test('real floor rechecks the outer cleanup ownership inside writes, not only before and after the dialog',async t=>{
+test('real floor stops before any write once the outer cleanup scope is gone',async t=>{
  const f=await assistantManagerFixture(t,1),dom=assistantHistoryDom(),original=globalThis.fetch;f.transport.configure();globalThis.fetch=async()=>{const {namespace:raw,status,...wire}=await f.loadPage({});return new Response(JSON.stringify(wire),{headers:{'content-type':'application/json'}});};t.after(()=>globalThis.fetch=original);
- let valid=true;const before=new Map(f.transport.files),floor=createProseAssistantFloorTools({resolveNamespace:async()=>namespace,isCurrent:()=>true,download(){},headers:()=>({})});t.after(()=>floor.disposeFloor());
- const pending=floor.cleanupStorage(dom.parent,()=>{valid=false;return true;},()=>{if(!valid)throw Error('outer scope changed');},namespace,0,true);await dom.idle();dom.get('选择本页全部记录').emit('click');dom.get('清空选中助手会话').emit('click');await pending;
- assert.deepEqual(f.transport.files,before);assert.equal(dom.all().some(node=>node.tagName==='DIALOG'),false);assert.equal(dom.observers.size,0);
+ let checks=0;const before=new Map(f.transport.files),floor=createProseAssistantFloorTools({resolveNamespace:async()=>namespace,isCurrent:()=>true,download(){},headers:()=>({})});t.after(()=>floor.disposeFloor());
+ await assert.rejects(floor.cleanupStorage(dom.parent,()=>true,()=>{if(++checks>3)throw Error('outer scope changed');},namespace,0,true),/outer scope changed/);
+ assert.deepEqual(f.transport.files,before);assert.equal(dom.all().some(node=>node.tagName==='DIALOG'),false);
 });

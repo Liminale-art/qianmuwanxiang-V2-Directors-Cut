@@ -37,7 +37,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       const live=getContext();return live.chat===chat&&live.chatMetadata===metadata&&JSON.stringify([live.chatId,live.characterId,live.groupId])===owner;
     };
     try{
-      const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.550',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
+      const styleUrl=new URL('./qianmu-prose-assistant.css?v=1.59.551',import.meta.url).href,existingStyle=document.querySelector('link[data-qm-prose-assistant-style]');
       if(!existingStyle){const link=document.createElement('link');link.rel='stylesheet';link.dataset.qmProseAssistantStyle='';link.href=styleUrl;document.head.append(link);link.addEventListener('error',()=>link.remove(),{once:true});}else if(existingStyle.href!==styleUrl)existingStyle.href=styleUrl;
       const portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);record.portal=portal;record.detach=mountPortal?.(portal);inheritProseTypography(portal);
       const runtime=await loadLocalChunk('./qianmu-prose-assistant-panel.js?v=1.59.452');if(!record.valid()){close(record);return null;}
@@ -74,13 +74,16 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
       if(native){
         const runtime=await import('./qianmu-assistant-history-view.js?v=1.59.419');check();
         const actual=await resolveNamespace();if(expectedNamespace===undefined)expectedNamespace=actual;if(!valid()||actual!==expectedNamespace)throw Error('助手管理账户已变化');check();
-        const document=parent.ownerDocument,portal=document.createElement('section');portal.dataset.qmProseAssistantPortal='';document.body.append(portal);const detach=mountPortal?.(portal);let opened;
-        try{opened=runtime.openAssistantHistoryManager({parent:portal,resolveNamespace:async()=>{const actual=await resolveNamespace();if(actual!==expectedNamespace)throw Error('助手管理账户已变化');return actual;},isCurrent:valid,headers,check,confirm,download,otherModules,applyIcons,captureDestination:({signal})=>captureProseAssistantChatSource({getContext,epoch:()=>epoch,resolveNamespace,isCurrent:valid,signal})});management=opened;await opened.finished;}
-        finally{opened?.dispose();if(management===opened)management=null;detach?.();portal.remove();}return;
+        // 清理即整库清空：目录里的对话全部标为已删除，各份历史内容清空。不开管理面板，不再逐项确认。
+        const scoped=async()=>{const now=await resolveNamespace();if(now!==expectedNamespace)throw Error('助手管理账户已变化');return now;};
+        const library=await import('./qianmu-prose-assistant-library-transfer.js?v=1.59.551');check();
+        await library.createProseAssistantLibraryTransfer({resolveNamespace:scoped,isCurrent:valid,download,confirm:async()=>true,notify:()=>{}}).clearLibrary();check();
+        const done=await runtime.clearAllAssistantHistories({resolveNamespace:scoped,isCurrent:valid,headers});
+        if(valid())notify?.(`已清空 ${done.cleared} 个特助对话${done.skipped?`，${done.skipped} 个未能读取、已保留`:''}。`,done.skipped?'warning':'success');return done;
       }
       const runtime=await import('./qianmu-prose-assistant-storage.js?v=1.59.414');check();
-      const result=await runtime.cleanupProseAssistantStorage({resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm,otherModules});
-      check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'本机没有可清理的助手问答。':`已清空本机 ${result.clearedConversations} 个助手会话、${result.clearedTurns} 轮问答；ST记录未删除，版本标记保留。`,'success');return result;
+      const result=await runtime.cleanupProseAssistantStorage({resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm:async()=>true,otherModules});
+      check();if(valid()&&result.status!=='cancelled')notify?.(result.status==='empty'?'没有可清理的特助旧副本。':'已清理特助旧副本。','success');return result;
     }finally{if(cleaning===token)cleaning=null;}
   }
   // Whole-library backup: same exclusion as cleanup (no open window, one job at a time); failures are reported here, never thrown.
@@ -90,7 +93,7 @@ export function createProseAssistantFloorTools({getContext,resolveNamespace,head
     if(entry||cleaning){notify?.('请先关闭场外特助或结束清理。','warning');return {status:'cancelled'};}
     const token={};cleaning=token;if(button)button.disabled=true;
     try{
-      const runtime=await import('./qianmu-prose-assistant-library-transfer.js?v=1.59.550');
+      const runtime=await import('./qianmu-prose-assistant-library-transfer.js?v=1.59.551');
       const transfer=runtime.createProseAssistantLibraryTransfer({resolveNamespace,isCurrent:()=>cleaning===token&&isCurrent()===true&&!entry,download,confirm,notify});
       return await work(transfer);
     }catch(error){

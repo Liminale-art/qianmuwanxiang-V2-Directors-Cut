@@ -92,5 +92,5 @@ test('actual server and floor wiring expose the read-only observation without mu
     const server = await readFile(new URL('../server-plugin.js', import.meta.url), 'utf8'), floor = await readFile(new URL('../qianmu-prose-assistant-floor.js', import.meta.url), 'utf8');
     assert.match(server, /installAssistantStorageRoutes\(router,\{dataRoot:hostDataRoot,register:service=>imageTaskServices.add\(service\)/);
     assert.match(floor, /collectProseAssistantStorage\(\{resolveNamespace,isCurrent:live,headers\}\)/);
-    assert.match(floor, /cleanupProseAssistantStorage\(\{resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm,otherModules\}\)/);
+    assert.match(floor, /cleanupProseAssistantStorage\(\{resolveNamespace,isCurrent:valid,expectedNamespace,check,confirm:async\(\)=>true,otherModules\}\)/);
 });

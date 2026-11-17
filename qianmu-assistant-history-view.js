@@ -90,3 +90,18 @@ export function openAssistantHistoryManager({parent,isCurrent,check,confirm,down
  try{guard();options.applyIcons?.(dialog);dialog.showModal();void load();}catch(cause){stop();throw cause;}
  return {element:dialog,finished,dispose:stop};
 }
+
+// 不开面板的整库清空（数据管理「清理」用）：逐页读出各份会话，有内容的直接清空，不再逐项确认。
+// 返回清空的会话数。读不出的条目跳过并计入 skipped，不中断其余。
+export async function clearAllAssistantHistories(options){
+ const manager=await createAssistantHistoryManager(options);let cleared=0,skipped=0;
+ try{
+  for(let offset=0;offset!==null;){
+   const page=await manager.page(offset,null),ids=page.rows.filter(row=>row.status==='ready'&&row.count>0).map(row=>row.id);
+   skipped+=page.rows.filter(row=>row.status!=='ready').length;
+   if(ids.length){const done=await manager.clear(ids,async()=>true);cleared+=done.confirmed||0;}
+   offset=page.nextOffset;
+  }
+  return {cleared,skipped};
+ }finally{manager.close();}
+}

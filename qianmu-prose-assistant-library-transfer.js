@@ -37,6 +37,16 @@ export function createProseAssistantLibraryTransfer({resolveNamespace,isCurrent,
   }catch(cause){close();throw cause;}
  }
 
+ // 数据管理里的「清理」：把目录里所有对话（含已归档）标为已删除。历史内容由调用方随后逐份清空。
+ async function clearLibrary(){
+  const opened=await session();
+  try{
+   const keys=opened.catalogue.view().entries.filter(entry=>!entry.deleted).map(entry=>entry.key);
+   if(keys.length)await opened.catalogue.delete(keys);
+   await opened.guard();return {status:'cleared',deleted:keys.length};
+  }finally{opened.close();}
+ }
+
  async function exportLibrary(){
   const opened=await session();
   try{
@@ -94,5 +104,5 @@ export function createProseAssistantLibraryTransfer({resolveNamespace,isCurrent,
    notify?.(`已导入 ${imported} 个特助对话，${skipped} 个已存在。`,'success');return {status:'imported',imported,skipped};
   }finally{opened.close();}
  }
- return Object.freeze({exportLibrary,importLibrary});
+ return Object.freeze({exportLibrary,importLibrary,clearLibrary});
 }
