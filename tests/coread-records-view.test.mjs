@@ -10,19 +10,19 @@ test('summary tools suppress native collapse but allow delegated save and reorde
   for(const tool of tools){assert.match(tool,/onclick="event.preventDefault\(\)"/);assert.doesNotMatch(tool,/stopPropagation/);}
 });
 
-test('records render preserves binding initialization and safety-read order without altering reader history',()=>{
-  const {c,m,inputs,trace}=createCoreadRecordsFixture();delete inputs.store.coreadBound;
+test('records render keeps the safety-read order without altering reader history or reading archive bindings',()=>{
+  const {c,m,inputs,trace}=createCoreadRecordsFixture();
   const before=JSON.stringify(c.readerDialog),html=c.renderMemRecordsTab(m),card=overview(html);
-  assert.deepEqual(Array.from(inputs.store.coreadBound),[]);
-  assert.deepEqual(trace.map(x=>x[0]),['store','meta','safe','guide','guide']);
+  assert.deepEqual(trace.map(x=>x[0]),['meta','safe','guide','guide']);
   const safe=trace.find(x=>x[0]==='safe');assert.equal(safe[2],c.readerDialog.readBoundary);assert.equal(safe[3],m);
   assert.notEqual(safe[1],c.readerDialog.slices,'display sorting must use a copy');
   assert.equal(JSON.stringify(c.readerDialog),before);
   assert.match(card,/Book&lt;&amp;/);assert.match(card,/8 条对话 · 已整理 3 条/);
-  for(const [n,label]of [[3,'记忆切片'],[5,'待整理对话'],[0,'绑定档案'],[2,'进度外隔离']])assert.ok(card.includes(`<b>${n}</b><small>${label}</small>`));
+  for(const [n,label]of [[3,'记忆切片'],[5,'待整理对话'],[2,'进度外隔离']])assert.ok(card.includes(`<b>${n}</b><small>${label}</small>`));
+  assert.doesNotMatch(card,/绑定档案|管理档案|sd-reader-arch-/);
   assert.match(card,/sd-reader-tour-target/);
   trace.length=0;c.readerDialog.readBoundary=null;c.renderMemRecordsTab(m);
-  assert.deepEqual(trace.map(x=>x[0]),['store','meta','boundary','safe','guide','guide']);
+  assert.deepEqual(trace.map(x=>x[0]),['meta','boundary','safe','guide','guide']);
   assert.equal(trace.find(x=>x[0]==='safe')[2],inputs.fallback);
 });
 
@@ -67,8 +67,16 @@ test('empty archive keeps management entry points without enabling destructive o
   const {c,m,inputs}=createCoreadRecordsFixture();inputs.meta=null;inputs.safe=[];
   c.readerDialog.slices=[];c.readerDialog.messages=[];c.readerDialog.cursor=0;
   const html=c.renderMemRecordsTab(m),card=overview(html);
-  assert.match(card,/当前伴读档案/);assert.match(card,/sd-reader-slice-manage/);assert.match(card,/sd-reader-arch-manage/);
+  assert.match(card,/当前伴读档案/);assert.match(card,/sd-reader-slice-manage/);assert.doesNotMatch(card,/sd-reader-arch-manage/);
   assert.match(card,/sd-reader-slice-clear" disabled/);assert.match(html,/sd-reader-manual-go" disabled/);assert.match(html,/sd-reader-compress-go" disabled/);
   assert.doesNotMatch(html,/sd-reader-batchrow/);assert.doesNotMatch(html,/<b>-\d/);
   inputs.meta={title:''};assert.match(c.renderMemRecordsTab(m),/《未命名》/);
+});
+
+test('the 关联伴读 entry appears only while Yimu is attached',()=>{
+  const {c,m,inputs}=createCoreadRecordsFixture();
+  assert.doesNotMatch(overview(c.renderMemRecordsTab(m)),/sd-reader-yimu-link|关联伴读/);
+  inputs.linkAvailable=true;
+  const card=overview(c.renderMemRecordsTab(m));
+  assert.equal((card.match(/class="sd-reader-mbtn sd-reader-yimu-link"/g)||[]).length,1);assert.match(card,/关联伴读<\/button>/);
 });

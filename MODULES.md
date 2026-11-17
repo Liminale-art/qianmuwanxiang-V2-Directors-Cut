@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 158 |
 | `server/` | 66 |
-| `tests/` | 995 |
+| `tests/` | 997 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |

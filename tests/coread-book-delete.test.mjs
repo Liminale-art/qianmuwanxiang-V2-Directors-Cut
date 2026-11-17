@@ -11,7 +11,7 @@ function fixture() {
     document:{getElementById:()=>modal},readerDialog:{bookId:'a',bucket:'chat::a',loaded:true,slices:['unsaved']},readerView:null,coreadEchoTtl:new Map(),
     coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,dialogBusy:false,readerAssistantBusy:false,coreadComicVisionBusy:false,
     coreadSaveDialog:()=>new Promise(resolve=>{calls.push('save-dialog');saveAnswer=resolve;}),unmountReaderPortal:()=>calls.push('unmount'),saveSettings:()=>calls.push('save-settings'),
-    coreadInvalidatePool:()=>{},
+    
     reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
     focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,
     blobStore:{deleteReaderBookData:async()=>{calls.push('delete-body');return {status:'committed'};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});

@@ -22,7 +22,7 @@ export function mountCompanionView({ document, el, button, onAction, onNotice = 
             body.append(el('p', '', `已关联《${linked.title}》 · 共同已读位置 ${linked.confirmedReadTo}`));
             body.append(button('解除此聊天关联', () => invoke('companionClear')));
         }
-        body.append(button('选择伴读记忆', () => invoke('companionList')));
+        body.append(button(linked ? '更新关联' : '关联伴读', () => invoke('companionList')));
         if (value.busy) body.append(el('p', 'ym-muted', '正在读取伴读记忆…'));
         if (value.error) body.append(el('p', 'ym-error', value.error));
         if (value.status && value.status !== lastStatus) onNotice(value.status, 'success');

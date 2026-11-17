@@ -387,6 +387,27 @@ test('vector similarity only reorders selection when the chat enables it, and a 
     }
 });
 
+test('a caller query replaces the recent story window for relevance only; without one nothing changes', async () => {
+    const doc = append(append(append(enable(), await entry('a', 1, 2, 'lighthouse keeper storm')), await entry('c', 3, 4, 'orchard harvest cider')), await entry('d', 5, 6, 'library ledger shelf'));
+    const story = structuredClone(messages); story[11].mes = 'orchard harvest again';
+    const snapshot = { messages: story, maxContext: 8192 };
+    const plain = await buildPlan(doc, createDefaults(), snapshot);
+    assert.equal(plain.entries[0].id, 'c', 'the story\'s own recent floors favour the orchard slice');
+    for (const queryText of [undefined, '', '   ', 42]) {
+        const same = await buildPlan(doc, createDefaults(), snapshot, { queryText });
+        assert.deepEqual(same.memoryIds, plain.memoryIds); assert.equal(same.prompt, plain.prompt);
+    }
+    const asked = await buildPlan(doc, createDefaults(), snapshot, { queryText: 'who kept the lighthouse in the storm' });
+    assert.equal(asked.entries[0].id, 'a', 'the query, not the story window, ranks the slices');
+    assert.ok(asked.memoryIds.indexOf('a') < asked.memoryIds.indexOf('c'));
+    assert.deepEqual(asked.coveredRanges.length, asked.memoryIds.length, 'eligibility rules are untouched');
+    doc.settings.vectorEnabled = true; const requests = [];
+    const semanticScores = async request => { requests.push(request.query); return new Map([['a', 0.5]]); };
+    await buildPlan(doc, createDefaults(), snapshot, { semanticScores, queryText: '  lighthouse  ' });
+    await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
+    assert.deepEqual(requests, ['lighthouse', story.slice(-DEFAULTS.recent).map(message => message.mes).join('\n')]);
+});
+
 test('word lists are remembered per text and callers that extend one work on their own copy', async () => {
     const { narrativeTerms } = await import('../yimu/core.mjs'), { recallCandidateScore } = await import('../yimu/recall.mjs');
     const text = '她在雨夜的车站等那封迟到的信', first = narrativeTerms(text), size = first.size;

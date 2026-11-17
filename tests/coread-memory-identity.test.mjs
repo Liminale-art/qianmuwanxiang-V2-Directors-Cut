@@ -42,7 +42,7 @@ test('explicit copies keep their source provenance, tolerate old worldbook point
   const before=structuredClone(source),c=vm.createContext({readerDialog:{bookId:'book',bucket:'B::book',readBoundary:{bookId:'book',readTo:800}},
     coreadMemoryWrites:0,coreadBookMeta:()=>({}),clone:structuredClone,reader,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0}),
     coreadEchoTtl:new Map(),coreadVecCache:null,coreadVectorStates:new Map(),COREAD_SAVE_FAILED:'save failed',
-    coreadSaveDialog:async()=>true,coreadRefreshContainer:async()=>{}});
+    coreadSaveDialog:async()=>true});
   vm.runInContext(['coreadNormalizeSlices','coreadMemorySnapshot','coreadMemoryRestore','coreadMigrateFromChat'].map(section).join('\n'),c);
   const result=await c.coreadMigrateFromChat(source);
   assert.deepEqual(source,before);assert.equal(result.ok,true);assert.equal('wrote' in result,false);

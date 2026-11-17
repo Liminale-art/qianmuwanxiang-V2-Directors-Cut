@@ -62,9 +62,9 @@ for (const change of [{confirmed:false},{confirmedReadTo:null},{confirmedReadTo:
     });
 }
 
-test('unknown or cross-account archive is rejected without exposing summaries',async()=>{
+test('an unknown archive is rejected without a read, and a stray owner field on the record is not consulted',async()=>{
     const f=fixture();await assert.rejects(()=>f.bridge.api.readSnapshot({...consent,key:'other::book'}),/范围/);assert.equal(f.reads,0);
-    f.record.companionOwner={account:'st-user:another'};await assert.rejects(()=>f.bridge.api.readSnapshot(consent),/其他账户/);
+    f.record.companionOwner={account:'st-user:another'};assert.equal((await f.bridge.api.readSnapshot(consent)).account,'st-user:fixture');
 });
 
 test('snapshot contains only saved allowed summaries, with separate fiction and shared-experience labels',async()=>{
@@ -120,12 +120,25 @@ for(const change of ['story','account','reader','consumer','identity']) test(`la
     pending.resolve({active:true,text:'must not leak',consumedSliceIds:['dialog']});assert.equal((await run).active,false);
 });
 
-test('mainline suppression is limited to exact IDs from an active linked bucket and story',async()=>{
-    const f=fixture(), pool=[{id:'dialog',__src:key},{id:'book',__src:key},{id:'dialog',__src:'other::book'}];
-    const calls=[];f.bridge.api.setConsumer(async context=>{calls.push(context);return {active:true,text:'',consumedSliceIds:['dialog']};});
-    const result=await f.bridge.filterMainline(pool);assert.deepEqual(result,[pool[1],pool[2]]);assert.equal(pool.length,3);
-    assert.equal(calls[0].purpose,'mainline');assert.equal(f.reads,0);
-    f.state.story=null;assert.deepEqual(await f.bridge.filterMainline(pool),pool);
+test('the only purpose is the companion reply; the removed mainline purpose never reaches the consumer',async()=>{
+    const f=fixture(), item=(await f.bridge.api.list()).items[0], calls=[];
+    assert.equal(f.bridge.linkAvailable(),false);
+    const clear=f.bridge.api.setConsumer(async context=>{calls.push(context);return {active:true,text:'story',consumedSliceIds:['dialog']};});
+    assert.equal(f.bridge.linkAvailable(),true);
+    assert.equal((await f.bridge.consume(item,'mainline')).active,false);assert.equal(calls.length,0);
+    assert.equal(f.bridge.filterMainline,undefined);
+    clear();assert.equal(f.bridge.linkAvailable(),false);
+    f.bridge.api.setConsumer(async()=>({active:false}));f.bridge.unmount();assert.equal(f.bridge.linkAvailable(),false);
+});
+
+test('the reply query reaches the consumer as bounded text and is empty when the reader has none',async()=>{
+    const f=fixture(), item=(await f.bridge.api.list()).items[0], calls=[];
+    f.bridge.api.setConsumer(async context=>{calls.push(context);return {active:true,text:'story'};});
+    await f.bridge.consume(item);await f.bridge.consume(item,'companion',{query:'车站那次分别'});
+    await f.bridge.consume(item,'companion',{query:'长'.repeat(2500)});await f.bridge.consume(item,'companion',{query:null});
+    await f.bridge.consume(item,'companion',{query:42});
+    assert.deepEqual(calls.map(call=>call.query),['','车站那次分别','长'.repeat(2000),'','42']);
+    assert.equal(f.reads,0);
 });
 
 test('singleton mount, ready notification and cleanup preserve unrelated owners',()=>{
@@ -137,9 +150,10 @@ test('singleton mount, ready notification and cleanup preserve unrelated owners'
 
 test('production wiring only projects persisted slices and uses narrow optional consumption hooks',async()=>{
     const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-    assert.match(source,/readRecord: async key[\s\S]*?createReaderPackageReader\(\)\.getReaderChat\(key\)[\s\S]*?bookId:rec\.bookId, slices:rec\.slices, companionOwner:rec\.companionOwner/);
+    assert.match(source,/readRecord: async key[\s\S]*?createReaderPackageReader\(\)\.getReaderChat\(key\)[\s\S]*?bookId:rec\.bookId, slices:rec\.slices\} : null/);
     assert.match(source,/yimuCompanionBridge\.consume\(\{key:coreadDialogBucket\(id\)/);
-    assert.match(source,/filterMainline\(await coreadMainlinePool\(\)\)/);
+    assert.match(source,/yimuCompanionBridge\.consume\(\{key:coreadDialogBucket\(id\)[\s\S]{0,260}?\}, 'companion', \{query:recallQuery\}\)/);
+    assert.doesNotMatch(source,/filterMainline|companionOwner/);
     assert.match(source,/initialized = true;\s*yimuCompanionBridge\.mount\(\)/);
     assert.match(source,/clean\('yimu companion link', \(\) => yimuCompanionBridge\.unmount\(\)\)/);
 });
@@ -162,14 +176,17 @@ test('host metadata view uses the current settings owner and does not open books
 test('native companion generation consumes an optional link but never persists it as a companion slice',async()=>{
     const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
     const body=source.slice(source.indexOf('async function buildCompanionContext('),source.indexOf('// 临时验证钩子（1B-2'));
-    const calls=[], c=vm.createContext({coreadCompanion:()=>({chatCtxEnabled:false,presets:[],visiblePercent:15,visibleCharsBefore:6000}),
+    const calls=[], extra=[], c=vm.createContext({coreadCompanion:()=>({chatCtxEnabled:false,presets:[],visiblePercent:15,visibleCharsBefore:6000}),
         coreadCompanionCharacter:()=>({avatar:'A.png',name:'Alice'}),coreadPersona:()=>({key:'user',name:'Reader'}),
         coreadResolveCompanionMacro:async text=>text||'',coreadBookMeta:()=>({title:'Book'}),readerContentCache:{bookId:'book',chapters:[]},
         readerView:{bookId:'book',chapterIndex:0,scrollRatio:0,companionScope:'scope'},computeVisibleWindow:()=>({visibleText:'already visible'}),
         coreadChatCompanionWb:()=>({worldBooks:[]}),cleanContextText:text=>text,coreadMemory:()=>({}),coreadDialogBucket:()=> 'scope::book',
-        yimuCompanionBridge:{consume:async request=>{calls.push(request);return {active:true,text:'Bound story memory'};}},
+        yimuCompanionBridge:{consume:async(request,...rest)=>{calls.push(request);extra.push(rest);return {active:true,text:'Bound story memory'};}},
         blobStore:{putReaderChat(){throw Error('a consumed link cannot create companion memories');},getBook(){throw Error('unexpected book read');}}});
     vm.runInContext(body,c);const result=await c.buildCompanionContext('book');
     assert.match(result.systemPrompt,/主动关联的故事记忆/);assert.match(result.systemPrompt,/Bound story memory/);
     assert.deepEqual(JSON.parse(JSON.stringify(calls)),[{key:'scope::book',bookId:'book',scope:'scope',persona:'user',avatar:'A.png'}]);
+    assert.deepEqual(JSON.parse(JSON.stringify(extra)),[['companion',{query:''}]]);
+    await c.buildCompanionContext('book','reader asks about the station');
+    assert.deepEqual(JSON.parse(JSON.stringify(extra[1])),['companion',{query:'reader asks about the station'}],'the recall query used for the reader\'s own slices is the one handed to Yimu');
 });

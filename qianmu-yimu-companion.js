@@ -86,7 +86,6 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         const current = catalog(await context.check(), keys).find(entry => entry.key === item.key);
         if (!current || JSON.stringify(identity(current)) !== JSON.stringify(identity(item))) throw fail('changed', '伴读归属已变化，请重新选择');
         if (!record || record.bookId !== item.bookId || !Array.isArray(record.slices)) throw fail('missing', '本机伴读档案不存在或尚未保存');
-        if (record.companionOwner && record.companionOwner.account !== context.account) throw fail('account', '此本机档案属于其他账户，未读取关联内容');
         const entries = [], omitted = {future: 0, unknown: 0, mixed: 0}, ids = new Set();
         for (const slice of record.slices) {
             const p = slice?.provenance, kind = p?.source === 'book' || p?.source === 'dialog' ? p.source : null;
@@ -124,8 +123,8 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         consumer = fn; return () => clearConsumer(fn);
     }
     function clearConsumer(fn) { if (!fn || consumer === fn) consumer = null; }
-    async function consume(selection = {}, purpose = 'companion') {
-        if (!consumer) return emptyUse();
+    async function consume(selection = {}, purpose = 'companion', {query} = {}) {
+        if (!consumer || purpose !== 'companion') return emptyUse();
         const callback = consumer;
         let timer, expired = false;
         const read = async () => {
@@ -135,35 +134,22 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
             if (!story || !sameStory(story, story)) return emptyUse();
             const item = catalog(state, [selection.key]).find(row => row.key === selection.key);
             if (!item || identity(item).some((value, index) => value !== identity(selection)[index])) return emptyUse();
-            const result = await callback({version: 1, purpose, account: context.account, ...item, story: clone(story)});
+            const result = await callback({version: 1, purpose, account: context.account, ...item, story: clone(story), query: String(query || '').slice(0, 2000)});
             const latest = await context.check();
             if (expired || callback !== consumer || !sameStory(story, latest.story)) return emptyUse();
             const current = catalog(latest, [item.key]).find(row => row.key === item.key);
             if (!current || JSON.stringify(identity(current)) !== JSON.stringify(identity(item))) return emptyUse();
-            if (purpose === 'companion' && latest.currentKey !== item.key) return emptyUse();
+            if (latest.currentKey !== item.key) return emptyUse();
             if (result?.active !== true) return emptyUse();
             return {active: true, text: text(result.text), consumedSliceIds: [...new Set((result.consumedSliceIds || []).filter(id => text(id)))]};
         };
         // Account resolution is part of the optional lookup too. A slow account
-        // endpoint must not delay ordinary companion/mainline generation.
+        // endpoint must not delay ordinary companion generation.
         try { return await Promise.race([read().catch(emptyUse), new Promise(resolve => {timer = setTimeout(() => {expired = true;resolve(emptyUse());}, 500);})]); }
         finally { clearTimeout(timer); }
     }
-    async function filterMainline(pool) {
-        if (!consumer || !Array.isArray(pool) || !pool.length) return pool;
-        const groups = new Map();
-        for (const slice of pool) if (text(slice?.__src)) groups.set(slice.__src, true);
-        let state;
-        try { state = requireState(); } catch { return pool; }
-        const items = catalog(state, [...groups.keys()]), excluded = new Map();
-        await Promise.all(items.map(async item => {
-            const used = await consume(item, 'mainline');
-            if (used.active) excluded.set(item.key, new Set(used.consumedSliceIds));
-        }));
-        return pool.filter(slice => !excluded.get(slice.__src)?.has(slice.id));
-    }
     const api = Object.freeze({version: 1, list, readSnapshot, setConsumer, clearConsumer});
-    return Object.freeze({api, consume, filterMainline,
+    return Object.freeze({api, consume, linkAvailable: () => !!consumer,
         mount(target = globalThis) {
             if (target[YIMU_COMPANION_KEY] && target[YIMU_COMPANION_KEY] !== api) return false;
             mounted = target; target[YIMU_COMPANION_KEY] = api;

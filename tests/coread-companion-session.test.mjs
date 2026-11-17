@@ -17,7 +17,7 @@ function fixture(){
     coreadDistilling:false,coreadAutoTextInFlight:false,coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,readerView:null,readerContentCache:null,coreadOpenRequestId:0,activeTab:'coread',readerAssistant:{},readerDialog:{bucket:'',loaded:false},readerAssistantSessions:new Map(),
     reader,coreadVectorStates:new Map(),coreadVecCache:null,MODULE_NAME:'fixture',coreadMaybeAutoDistillText:()=>{},coreadComicLoad:()=>{},coreadComicStop:()=>{},coreadComicAuto:()=>{},
     focusClockActiveLock:()=>null,focusClockBlockExit:()=>false,focusClockRememberLockedReader:()=>{},focusClockResumeReading:()=>{},focusClockPauseForReadingExit:()=>{},
-    toast:text=>notices.push(text),saveSettings:()=>{},coreadInvalidatePool:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
+    toast:text=>notices.push(text),saveSettings:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},ttsStopPlayback:()=>{},coreadPendingChatImages:()=>[],coreadSaveProgress:()=>{},coreadShowRefillChooser:id=>notices.push('refill:'+id),
     coreadLoadDialog:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},
     coreadCurrentReadBoundarySync:bookId=>({bookId,readTo:100,chapterIndex:1,progress:10}),coreadAssistantConfig:()=>({historyMode:'session'}),repairLegacyCoreadDialogMessages:messages=>({messages,changed:false}),

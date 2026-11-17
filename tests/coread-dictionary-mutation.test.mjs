@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {isPlainObject,uniqueClean,htmlEscape} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-const dictActions=source.slice(source.indexOf('    // 词典册：新建词册'),source.indexOf("  });\n  morePage?.addEventListener('change', (e) => {\n    const pick = e.target.closest('.sd-reader-arch-pick');"));
+const dictActions=source.slice(source.indexOf('    // 词典册：新建词册'),source.indexOf("  });\n  morePage?.addEventListener('change', (e) => {\n    const packInput"));
 
 function fixture(){
   const m={dictBooks:[{id:'dict',name:'Dictionary',pairs:{old:['alias']}}]},calls=[],notices=[];
@@ -15,7 +15,7 @@ function fixture(){
   const host={POPUP_TYPE:{CONFIRM:1},Popup:class{show(){return new Promise(r=>resolve=r);}}};
   const c=vm.createContext({m,isPlainObject,uniqueClean,htmlEscape,ctx:()=>host,coreadMemory:()=>m,
     settings:{enabled:true,coread:{memory:m}},readerView:{bookId:'book'},coreadOpenRequestId:0,RUNTIME_LOCK_KEY:'runtimeFixture',runtimeFixture:{},chat:'A',
-    getChatKey:()=>c.chat,document:{createElement:()=>wrap,querySelector:()=>page},toast:(...args)=>notices.push(args),saveSettings:()=>calls.push('save'),coreadInvalidatePool:()=>calls.push('invalidate')});
+    getChatKey:()=>c.chat,document:{createElement:()=>wrap,querySelector:()=>page},toast:(...args)=>notices.push(args),saveSettings:()=>calls.push('save')});
   vm.runInContext(['coreadNormalizeSynonyms','coreadCaptureDictMutation','coreadOpenDictEntryDialog'].map(section).join('\n'),c);
   return {c,m,calls,notices,page,origin,fields,answer:value=>resolve(value)};
 }
@@ -27,11 +27,11 @@ test('current dictionary edit accepts host confirmations and writes the current 
     f.m.dictBooks=f.m.dictBooks.map(d=>({...d,pairs:f.c.coreadNormalizeSynonyms(d.pairs)}));
     f.answer(answer);assert.equal(JSON.stringify(await run),JSON.stringify({canon:'new',aliases:['one','two','new']}));
     assert.equal(JSON.stringify(f.m.dictBooks[0].pairs),JSON.stringify({new:['one','two']}));
-    assert.deepEqual(old.pairs,{old:['alias']});assert.deepEqual(f.calls,['save','invalidate']);assert.deepEqual(f.notices,[]);
+    assert.deepEqual(old.pairs,{old:['alias']});assert.deepEqual(f.calls,['save']);assert.deepEqual(f.notices,[]);
   }
 });
 
-test('late entry confirmation after ownership or page changes cannot write, invalidate or announce success',async()=>{
+test('late entry confirmation after ownership or page changes cannot write or announce success',async()=>{
   for(const change of ['chat','reader','navigation','disabled','settings','memory','runtime','stopped','hidden','detached','origin']){
     const f=fixture(),before=JSON.stringify(f.m),run=f.c.coreadOpenDictEntryDialog('dict','old',['alias'],f.origin);
     if(change==='chat')f.c.chat='B';if(change==='reader')f.c.readerView=null;if(change==='navigation')f.c.coreadOpenRequestId++;

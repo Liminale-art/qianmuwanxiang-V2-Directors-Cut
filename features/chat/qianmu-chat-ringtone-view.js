@@ -194,17 +194,17 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       const picker = filePicker('image/*,.ico,.cur', file => actions.pickFixedIcon(file));
       const cell = el('button', 'qm-ring-icon qm-ring-icon-fixed'); cell.type = 'button';
       cell.title = '点击更换标签页图标'; cell.setAttribute('aria-label', '更换标签页图标');
-      const image = el('img'); image.alt = '标签页图标'; image.width = 32; image.height = 32; image.src = actions.fixedIcon();
+      const image = el('img'); image.alt = '标签页图标'; image.width = 28; image.height = 28; image.src = actions.fixedIcon();
       cell.append(image);
       cell.addEventListener('click', () => picker.click());
       cell.appendChild(picker);
-      icons.append(cell);
+      icons.append(el('span', 'qm-ring-icon-label', '固定小图标'), cell);
     }
     for (const slot of [0, 1]) {
       const picker = filePicker('image/*,.ico,.cur', file => actions.pickIcon(slot, file));
       const cell = el('button', 'qm-ring-icon'); cell.type = 'button';
       cell.title = `点击更换图标 ${slot + 1}`; cell.setAttribute('aria-label', `更换闪烁图标 ${slot + 1}`);
-      const image = el('img'); image.alt = `闪烁图标 ${slot + 1}`; image.width = 32; image.height = 32;
+      const image = el('img'); image.alt = `闪烁图标 ${slot + 1}`; image.width = 28; image.height = 28;
       if (frames[slot]) image.src = frames[slot]; else cell.classList.add('is-empty');
       cell.append(image);
       cell.addEventListener('click', () => picker.click());
@@ -212,11 +212,6 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       icons.append(cell);
     }
     card.append(icons);
-    if (actions.hasCustomIcons()) {
-      const tools = el('div', 'qm-ring-tools');
-      tools.append(button('恢复默认图标', 'qm-ring-clear', () => actions.clearIcons()));
-      card.append(tools);
-    }
     const text = el('div', 'qm-ring-field');
     const input = el('input', 'qm-ring-flash-text'); input.maxLength = actions.limits.flashText * 2; input.value = s.flashText; input.placeholder = '新消息';
     input.addEventListener('change', () => run(() => actions.update({ flashText: input.value })));

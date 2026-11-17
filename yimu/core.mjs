@@ -286,7 +286,7 @@ export function filterCompanionEntries(entries = [], document = {}, { includeCus
     return entries.filter(entry => !hasCustomParent(entry));
 }
 
-export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null) {
+export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '') {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
     const usable = document.entries.filter(entry => {
@@ -314,7 +314,9 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     const authoritativeStages = document.entries.filter(entry => entry.kind === 'stage' && !entry.replacedBy && (entry.edited || ['excluded', 'deleted'].includes(entry.status)));
     const protectedParents = new Set(authoritativeStages
         .flatMap(entry => entry.source.parents.map(ref => ref.id)));
-    const recent = snapshot.messages.slice(Math.max(0, visibleEnd - settings.recent), visibleEnd).map(m => m.mes || '').join('\n');
+    // A caller-supplied query (the companion's own question) replaces the story's recent window for relevance only.
+    const asked = typeof queryText === 'string' ? queryText.trim() : '';
+    const recent = asked || snapshot.messages.slice(Math.max(0, visibleEnd - settings.recent), visibleEnd).map(m => m.mes || '').join('\n');
     const query = narrativeTerms(recent);
     const terms = new Map(usable.map(entry => [entry.id, narrativeTerms(entry.text)]));
     const frequency = new Map();
@@ -360,7 +362,7 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         && (item.parent.id === entry.id || entry.kind === 'stage' && entry.source.parents.some(ref => ref.id === item.parent.id)))]), ...companionEntries(document.companion)];
 }
 
-export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '', semanticScores = null } = {}) {
+export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '', semanticScores = null, queryText = '' } = {}) {
     const empty = { prompt: '', coveredRanges: [], memoryIds: [], entries: [], tokens: 0, estimated: !countTokens };
     if (!document.enabled || document.movedTo) return empty;
     const settings = effectiveSettings(document, defaults);
@@ -369,13 +371,14 @@ export async function buildPlan(document, defaults, snapshot, { countTokens = nu
     let semantic = null;
     if (settings.vectorEnabled === true && typeof semanticScores === 'function') {
         const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
-        const query = snapshot.messages.slice(Math.max(0, visibleEnd - settings.recent), visibleEnd).map(message => message.mes || '').join('\n');
+        const asked = typeof queryText === 'string' ? queryText.trim() : '';
+        const query = asked || snapshot.messages.slice(Math.max(0, visibleEnd - settings.recent), visibleEnd).map(message => message.mes || '').join('\n');
         const candidates = document.entries.filter(entry => ['active', 'invalid'].includes(entry.status) && entry.kind !== 'excerpt' && typeof entry.text === 'string' && entry.text.trim())
             .map(entry => ({ id: entry.id, text: entry.text }));
         try { semantic = await semanticScores({ query, candidates }); } catch { semantic = null; }
         if (!(semantic instanceof Map) || !semantic.size) semantic = null;
     }
-    const selected = selectMemories(document, snapshot, settings, hashes, type, semantic);
+    const selected = selectMemories(document, snapshot, settings, hashes, type, semantic, queryText);
     if (!selected.length) return empty;
     const prompt = renderMemoryPrompt(selected, { entryOrder: document.entryOrder });
     // This is selection, not admission. Only the final-payload adapter may remove raw text.

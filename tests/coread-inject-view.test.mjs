@@ -22,9 +22,9 @@ test('actual injection replays recorded IDs only, omits deleted or progress-bloc
   const keep={id:'keep',summary:'edited <safe>',batch:7,src:'book',keywords:['hit']};
   const candidate={id:'candidate',summary:'candidate-only-secret',batch:8,keywords:['other']};
   inputs.safe=[keep,candidate];inputs.recall=[{slice:candidate,hits:['other'],score:2}];
-  c.readerDialog.lastInjected={channel:'mainline',items:[{id:'keep',hits:['hit']},{id:'deleted'},{id:'blocked'}]};
+  c.readerDialog.lastInjected={channel:'mainline',items:[{id:'keep',hits:['hit']},{id:'deleted'},{id:'blocked'}]};   // an old stored channel value is ignored
   const before=JSON.stringify(c.readerDialog.lastInjected),html=c.renderMemInjectTab(m),card=actual(html);
-  assert.match(html,/最近一次·主线联动/);assert.match(card,/#7/);assert.match(card,/edited &lt;safe>/);assert.match(card,/书中内容/);
+  assert.match(html,/最近一次·伴读对话/);assert.doesNotMatch(html,/主线联动/);assert.match(card,/#7/);assert.match(card,/edited &lt;safe>/);assert.match(card,/书中内容/);
   assert.equal((card.match(/class="sd-reader-injslice inj"/g)||[]).length,1);
   assert.doesNotMatch(card,/candidate|deleted|blocked/);assert.doesNotMatch(html,/candidate-only-secret/);
   assert.match(html,/当前已隔离 1 条/);assert.equal(JSON.stringify(c.readerDialog.lastInjected),before);
@@ -52,16 +52,16 @@ test('keyword hits highlight retrieval but not unconditional recent rows, and pr
   c.readerDialog.lastInjected.items[0].recent=false;html=c.renderMemInjectTab(m);assert.match(actual(html),/slice-key on/);
 });
 
-test('dictionary selection fallback and default protection remain owned by the caller while mainline controls follow its switch',()=>{
+test('dictionary selection fallback and default protection remain owned by the caller and no mainline controls are rendered',()=>{
   const {c,m,inputs}=createCoreadInjectFixture();
   m.dictBooks.push({id:'custom"',name:'Custom<&',pairs:{'canon<&':['alias<&']}});inputs.bound=['custom"'];inputs.dict={a:[],b:[]};
   c.coreadCurrentDictId='missing';let html=c.renderMemInjectTab(m);
   assert.equal(c.coreadCurrentDictId,'default');assert.doesNotMatch(html,/sd-reader-dictbook-delbtn/);
-  for(const control of ['recall','recent','depth'])assert.match(html,new RegExp('sd-reader-mainline-'+control+'"[^>]*value="0" disabled'));
-  c.coreadCurrentDictId='custom"';m.mainlineFeedback=true;const before=JSON.stringify(m);html=c.renderMemInjectTab(m);
+  assert.doesNotMatch(html,/sd-reader-mainline-|主线联动/);
+  c.coreadCurrentDictId='custom"';m.mainlineFeedback=true;m.mainlineRecall=2;const before=JSON.stringify(m);html=c.renderMemInjectTab(m);
   assert.equal(c.coreadCurrentDictId,'custom"');assert.match(html,/value="custom&quot;" selected/);assert.match(html,/Custom&lt;&amp; ✓/);
   assert.match(html,/data-canon="canon&lt;&amp;"/);assert.match(html,/alias&lt;&amp;/);assert.match(html,/解除绑定/);assert.match(html,/sd-reader-dictbook-delbtn/);
   assert.match(html,/检索词典 <span class="sd-reader-inj-tag">2<\/span>/);
-  for(const control of ['recall','recent','depth'])assert.doesNotMatch(html,new RegExp('sd-reader-mainline-'+control+'"[^>]*disabled'));
+  assert.doesNotMatch(html,/sd-reader-mainline-|主线联动/,'old stored mainline values are ignored');
   assert.equal(JSON.stringify(m),before);
 });

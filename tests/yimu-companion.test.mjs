@@ -189,14 +189,27 @@ test('reverse reader is opt-in, exact account/persona/story, and exposes no unpr
     assert.equal(f.apiReads,before);
 });
 
-test('mainline purpose suppresses only source IDs and never sends story prose',async t=>{
+test('the removed mainline purpose is refused on both sides and reads nothing',async t=>{
     const f=await fixture(t);await f.link();f.state.document.entries=[entry('manual','不得反向暴露的故事原文')];
-    const result=await f.bridge.consume(f.item(),'mainline');
-    assert.deepEqual(result,{active:true,text:'',consumedSliceIds:['fiction','discussion']});
-    const pool=[{id:'fiction',__src:key},{id:'discussion',__src:key},{id:'new',__src:key},{id:'fiction',__src:'other::book'}];
-    assert.deepEqual(await f.bridge.filterMainline(pool),pool.slice(2));
-    f.sourceState.story={...f.sourceState.story,file:'branch'};
-    assert.deepEqual(await f.bridge.filterMainline(pool),pool);
+    const before=f.apiReads;
+    assert.deepEqual(await f.bridge.consume(f.item(),'mainline'),{active:false,text:'',consumedSliceIds:[]});
+    let consumer;f.attached({version:1,list:async()=>({}),readSnapshot:async()=>({}),setConsumer:fn=>{consumer=fn;},clearConsumer(){}});
+    const context={version:1,account:'st-user:fixture',...f.item(),story:clone(f.state.snapshot.binding)};
+    assert.equal((await consumer({...context,purpose:'mainline'})).active,false);assert.equal(f.apiReads,before);
+    assert.equal((await consumer({...context,purpose:'companion'})).active,true);
+});
+
+test('the companion\'s own question decides which story memory comes first; without one the order is unchanged',async t=>{
+    const f=await fixture(t);await f.link();f.state.document.settings={companionShareCustom:true};
+    f.state.document.entries=[entry('lighthouse','lighthouse keeper storm'),entry('orchard','orchard harvest cider')];
+    const order=text=>['lighthouse keeper','orchard harvest'].sort((a,b)=>text.indexOf(a)-text.indexOf(b));
+    const plain=(await f.bridge.consume(f.item())).text, base=order(plain);
+    assert.ok(base.every(word=>plain.includes(word)));
+    for(const query of ['',null,'   '])assert.equal((await f.bridge.consume(f.item(),'companion',{query})).text,plain);
+    const asked=(await f.bridge.consume(f.item(),'companion',{query:`tell me about the ${base[1]}`})).text;
+    assert.deepEqual(order(asked),[base[1],base[0]]);
+    assert.deepEqual(order((await f.bridge.consume(f.item(),'companion',{query:`tell me about the ${base[0]}`})).text),base);
+    assert.doesNotMatch(asked,/tell me about/,'the query steers selection and is never echoed back');
 });
 
 for(const condition of ['paused','disabled','source','removed','server-error','server-revision','server-disabled','server-source'])test(`reverse link fails closed for ${condition}`,async t=>{
@@ -248,11 +261,11 @@ test('reverse plan keeps invalid context while excluding deleted, excluded and r
     assert.match(result.text,/valid_detail|source_changed/);assert.doesNotMatch(result.text,/deleted_detail|excluded_detail|too_recent_detail/);
 });
 
-test('a mismatched server binding or moved document cannot activate reverse use or duplicate suppression',async t=>{
+test('a mismatched server binding or moved document cannot activate reverse use',async t=>{
     const f=await fixture(t);await f.link();
     for(const patch of [{binding:{...f.state.snapshot.binding,file:'different'}},{movedTo:{...f.state.snapshot.binding,file:'new-name'}}]) {
         f.serverReader(async()=>({document:{...clone(f.state.document),...patch},defaults:f.defaults,sourceAvailable:true}));
-        assert.equal((await f.bridge.consume(f.item(),'mainline')).active,false);
+        assert.equal((await f.bridge.consume(f.item())).active,false);
     }
 });
 
@@ -306,6 +319,14 @@ async function viewFixture(t){
     const nodes=tag=>d.all(view.element).filter(node=>node.tagName===tag);
     return {...f,view,calls,render,nodes,button:text=>nodes('button').find(node=>node.textContent===text),input:type=>nodes('input').find(node=>node.type===type)};
 }
+
+test('the entry is named 关联伴读, and 更新关联 once a snapshot is linked',async t=>{
+    const f=await viewFixture(t);
+    assert.ok(f.button('关联伴读'));assert.equal(f.button('更新关联'),undefined);assert.equal(f.button('选择伴读记忆'),undefined);
+    f.button('关联伴读').click();await tick();assert.deepEqual(f.calls.at(-1),{type:'companionList',payload:undefined});
+    await f.link();f.render();
+    assert.ok(f.button('更新关联'));assert.equal(f.button('关联伴读'),undefined);assert.ok(f.button('解除此聊天关联'));
+});
 
 test('view requires one explicit ownership/cutoff confirmation and preserves the draft while busy',async t=>{
     const f=await viewFixture(t);await f.list();f.render();

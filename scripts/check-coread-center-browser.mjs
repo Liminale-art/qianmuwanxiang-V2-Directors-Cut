@@ -38,8 +38,8 @@ try{
     window.coreadSafeSlices=rows=>rows.slice(0,1);
     window.htmlEscape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
     window.memory={spoilerProtection:true};window.coreadMemory=()=>memory;
-    window.calls={save:0,invalidate:0,prepare:0,imports:[]};
-    window.saveSettings=()=>calls.save++;window.coreadInvalidatePool=()=>calls.invalidate++;
+    window.calls={save:0,prepare:0,imports:[]};
+    window.saveSettings=()=>calls.save++;
     window.prepareCompanionSetup=()=>calls.prepare++;
     window.coreadImportDataFile=file=>calls.imports.push({name:file?.name,cleared:document.querySelector('.sd-reader-pack-import-input').value===''});
     window.eval(functions);
@@ -52,11 +52,11 @@ try{
   const layouts=[];
   for(const width of [320,360,430,1100]){
     await page.setViewportSize({width,height:850});
-    await page.evaluate(()=>{coreadGuideStep=null;memory.spoilerProtection=true;calls.save=0;calls.invalidate=0;calls.imports=[];rerenderMore();});
+    await page.evaluate(()=>{coreadGuideStep=null;memory.spoilerProtection=true;calls.save=0;calls.imports=[];rerenderMore();});
     assert.match(await page.locator('.sd-reader-center-book-copy small').textContent(),/12.5%.*3 条记忆.*2 条进度外隔离/);
     assert.equal(await page.locator('.sd-reader-center-book-copy b').count(),1);
     await page.locator('.sd-reader-setup-guard').tap();
-    assert.deepEqual(await page.evaluate(()=>[memory.spoilerProtection,calls.save,calls.invalidate]),[false,1,1]);
+    assert.deepEqual(await page.evaluate(()=>[memory.spoilerProtection,calls.save]),[false,1]);
     await page.locator('.sd-reader-setup-guard').tap();
     assert.equal(await page.locator('.sd-reader-spoiler-filter').isChecked(),true);
     const input=page.locator('.sd-reader-pack-import-input');
@@ -81,7 +81,7 @@ try{
   }
   await page.evaluate(({functions,normalize,handler})=>{
     coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')')};
-    window.getChatStore=()=>({coreadBound:[]});
+    window.yimuCompanionBridge={linkAvailable:()=>window.yimuAttached===true};
     window.DEFAULT_DISTILL_TEXT_PROMPT='fixture';
     window.toast=()=>{};readerDialog.messages=[];readerDialog.cursor=0;
     window.eval(functions);
@@ -116,7 +116,7 @@ try{
   await page.evaluate(({archiveClick})=>{
     window.confirmAnswer=false;
     window.coreadOpenSliceManagerDialog=()=>calls.managers.push('slices');
-    window.coreadOpenArchivePage=()=>calls.managers.push('archives');
+    window.toast=message=>calls.notices.push(message);
     window.confirmDialog=async(title,message)=>{calls.confirmations.push({title,message});return confirmAnswer;};
     window.coreadClearAllSlices=async()=>{calls.clears++;};
     const root=document.getElementById('center');
@@ -125,12 +125,18 @@ try{
   const recordLayouts=[];
   for(const width of [320,360,430,1100]){
     await page.setViewportSize({width,height:850});
-    await page.evaluate(()=>{readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{managers:[],confirmations:[],clears:0});resetRecords();});
+    await page.evaluate(()=>{readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{managers:[],confirmations:[],notices:[],clears:0});window.yimuAttached=false;resetRecords();});
     const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-sumitem').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
     for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
     assert.equal(await page.locator('.sd-reader-storagemode').count(),0);
-    await page.locator('.sd-reader-slice-manage').tap();await page.locator('.sd-reader-arch-manage').tap();
-    assert.deepEqual(await page.evaluate(()=>calls.managers),['slices','archives']);
+    assert.equal(await page.locator('.sd-reader-arch-manage,.sd-reader-yimu-link').count(),0,'without Yimu the link entry is absent');
+    await page.locator('.sd-reader-slice-manage').tap();
+    assert.deepEqual(await page.evaluate(()=>calls.managers),['slices']);
+    await page.evaluate(()=>{window.yimuAttached=true;rerenderMore();});
+    const actions=await page.locator('.sd-reader-memory-actions .sd-reader-mbtn').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,right:r.right,overflow:n.scrollWidth-n.clientWidth};}));
+    assert.equal(actions.length,3);for(const box of actions)assert.ok(box.x>=0&&box.right<=width+1&&box.overflow<=1,JSON.stringify({width,box}));
+    await page.locator('.sd-reader-yimu-link').tap();
+    assert.deepEqual(await page.evaluate(()=>calls.notices),['在忆幕的导览页点「关联伴读」。']);
     await page.locator('.sd-reader-slice-clear').tap();
     assert.deepEqual(await page.evaluate(()=>[calls.confirmations.length,calls.clears]),[1,0]);
     assert.match(await page.evaluate(()=>calls.confirmations[0].message),/本聊天里这本书.*不可恢复/);
@@ -213,11 +219,11 @@ try{
     window.coreadOpenDictEntryDialog=async(...args)=>{if(args[3]?.tagName!=='BUTTON')throw Error('Dictionary editor must retain its originating button');calls.entries.push(args.slice(0,3));return false;};
     window.uid=()=> 'new-fixture';window.eval(functions);
     window.resetInject=()=>{
-      memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,mainlineFeedback:false,mainlineRecall:0,mainlineRecent:0,mainlineDepth:0,
+      memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,
         dictBooks:[{id:'default',name:'默认词册',pairs:{}},{id:'custom"',name:'自定义<&',pairs:{'关键词<&':['同义词<&']}}]};
       settings.enabled=true;settings.coread={memory};
       window.store={coreadDictBound:[]};coreadCurrentDictId='custom"';window.promptAnswer=null;confirmAnswer=false;
-      Object.assign(calls,{metadata:0,prompts:[],entries:[],confirmations:[],notices:[],save:0,invalidate:0});
+      Object.assign(calls,{metadata:0,prompts:[],entries:[],confirmations:[],notices:[],save:0});
       readerDialog.slices=[{id:'a',batch:1,summary:'实际注入的安全摘要。'.repeat(8),keywords:['关键词'],src:'book'}];
       readerDialog.lastInjected={channel:'companion',items:[{id:'a',hits:['关键词']}]};readerDialog.messages=[{text:'当前语境'.repeat(30)}];rerenderMore();
     };
@@ -227,22 +233,20 @@ try{
     root.addEventListener('input',new Function('e','const m=coreadMemory();'+injectInput));
     resetInject();
   },{functions:coreadInjectFunctions+'\n'+storyboardFunctionSource('coreadNormalizeSynonyms')+'\n'+storyboardFunctionSource('coreadCaptureDictMutation'),unique:uniqueClean.toString(),plainObject:isPlainObject.toString(),
-    dictClick:between('    // 词典册：新建词册',"  });\n  morePage?.addEventListener('change', (e) => {\n    const pick = e.target.closest('.sd-reader-arch-pick');"),
-    injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉')+between("    if (e.target.closest('.sd-reader-mainline-toggle'))",'\n'),
+    dictClick:between('    // 词典册：新建词册',"  });\n  morePage?.addEventListener('change', (e) => {\n    const packInput"),
+    injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉'),
     injectInput:between("    if (e.target.closest('.sd-reader-inj-recall'))",'    const map = [')});
   const injectLayouts=[];
   for(const width of [320,360,430,1100]){
     await page.setViewportSize({width,height:850});await page.evaluate(()=>resetInject());
-    assert.equal(await page.locator('.sd-reader-mainline-recall').isDisabled(),true);
-    await page.locator('.sd-reader-mainline-toggle').locator('..').tap();assert.equal(await page.evaluate(()=>memory.mainlineFeedback),true);
-    const fields=[['inj-recall','recallCount',-1,0],['inj-recent','recentInject',5,5],['inj-scan','recallScanMessages',99,50],['inj-reranktop','rerankTopN',-1,1],['mainline-recall','mainlineRecall',3,3],['mainline-recent','mainlineRecent',2,2],['mainline-depth','mainlineDepth',99,20]];
+    assert.equal(await page.locator('[class*="sd-reader-mainline-"]').count(),0);
+    const fields=[['inj-recall','recallCount',-1,0],['inj-recent','recentInject',5,5],['inj-scan','recallScanMessages',99,50],['inj-reranktop','rerankTopN',-1,1]];
     for(const [sel,key,value,expected]of fields){
       const node=page.locator('.sd-reader-'+sel);await node.evaluate(n=>{window.originalNumericInput=n;});
       const saves=await page.evaluate(()=>calls.save);await node.fill(String(value));
       assert.equal(await page.evaluate(k=>memory[k],key),expected);assert.equal(await page.evaluate(()=>calls.save),saves+1);
       assert.equal(await node.evaluate(n=>n===originalNumericInput),true,'numeric typing must not replace the focused control');
     }
-    await page.locator('.sd-reader-mainline-toggle').locator('..').tap();assert.equal(await page.locator('.sd-reader-mainline-depth').isDisabled(),true);
     await page.locator('.sd-reader-injrow').evaluate(n=>{n.closest('details').open=true;});
     const boxes=await page.locator('.sd-reader-injslice,.sd-reader-dict-selector,.sd-reader-dict-row,.sd-reader-injrow,.sd-reader-scanbox').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
     for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));

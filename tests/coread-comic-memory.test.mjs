@@ -350,7 +350,7 @@ function comicFixture({ pages = 12, current = 0, pagesPerBatch = 3, stored = nul
     coreadCompanion: () => ({ visibleCharsBefore: 6000 }),
     coreadCurrentReadBoundarySync: () => ({ bookId: 'book', readTo: 9999, chapterIndex: c.readerView.chapterIndex, progress: 10 }),
     coreadSliceFingerprint: () => 'fp', coreadSyncSliceVector: async () => ({ ok: false, skipped: true }), coreadForgetSliceRuntime: async () => {},
-    coreadRefreshContainer: async () => {}, refreshMoreIfRecords: () => {}, rerenderMoreIfOpen: () => {}, applyQianmuIcons: () => {},
+    refreshMoreIfRecords: () => {}, rerenderMoreIfOpen: () => {}, applyQianmuIcons: () => {},
     document: { querySelector: () => null, querySelectorAll: () => [] },
     uid: (prefix) => `${prefix}-${++id}`, uniqueClean: (list) => [...new Set(list)], isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
     extractJson: JSON.parse, coreadSalvageSummary: () => '', coreadComicConfig: () => state.cfg, coreadVisionApiConn: () => state.conn,

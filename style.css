@@ -892,9 +892,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 /* 两个圆形可点图标 */
 #story-director-floor-nav .qm-ring-icons { display: flex; justify-content: center; align-items: center; gap: 8px; }
 /* 最左的固定图标与右边两枚闪烁图标之间留宽一点 */
-#story-director-floor-nav .qm-ring-icon-fixed { margin-right: 18px; border-style: solid; }
+#story-director-floor-nav .qm-ring-icon.qm-ring-icon-fixed { margin-right: 18px; border-style: solid; }
 #story-director-floor-nav .qm-ring-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; padding: 0; border: 1px dashed var(--sd-border); border-radius: 50%; background: var(--sd-glass-weak); cursor: pointer; overflow: hidden; }
-#story-director-floor-nav .qm-ring-icon img { width: 32px; height: 32px; object-fit: contain; image-rendering: auto; border-radius: 50%; }
+/* 方图完整放进圆里：边长取圆内接正方形以内，不加圆角、不裁切。 */
+#story-director-floor-nav .qm-ring-icon img { width: 28px; height: 28px; object-fit: contain; image-rendering: auto; border-radius: 0; }
+#story-director-floor-nav .qm-ring-icon-label { color: var(--sd-muted); font-size: 11px; line-height: 1.2; white-space: nowrap; }
 #story-director-floor-nav .qm-ring-icon.is-empty { border-style: dashed; color: var(--sd-muted); }
 #story-director-floor-nav .qm-ring-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 #story-director-floor-nav .qm-ring-tools button { min-height: 32px; padding: 0 12px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: var(--qm-type-caption); }
@@ -5935,11 +5937,11 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-title > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .98em; }
 .sd-reader-memory-title small { color: var(--sd-muted); font-size: .72em; }
-.sd-reader-memory-stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 6px; }
+.sd-reader-memory-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
 .sd-reader-memory-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--sd-pre); text-align: center; }
 .sd-reader-memory-stats b { color: var(--sd-accent); font-size: 1em; font-variant-numeric: tabular-nums; }
 .sd-reader-memory-stats small { color: var(--sd-muted); font-size: .64em; white-space: nowrap; }
-.sd-reader-memory-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+.sd-reader-memory-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px,1fr)); gap: 6px; }
 .sd-reader-memory-actions .sd-reader-mbtn { width: 100%; }
 /* 卡片 */
 .sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -6143,37 +6145,8 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-sm-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sd-reader-sm-heading b { color: var(--sd-text); font-size: 1em; }
 .sd-reader-sm-heading small { color: var(--sd-muted); font-size: .76em; }
-.sd-reader-archive-note { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: .78em; line-height: 1.55; }
-.sd-reader-archive-note i { color: var(--sd-accent); margin-top: 2px; }
-.sd-reader-archive-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.sd-reader-archive-card { min-width: 0; border: 1px solid var(--sd-hairline); border-radius: 12px; background: var(--sd-glass-weak); overflow: hidden; transition: border-color .16s, background .16s; }
-.sd-reader-archive-card:hover { border-color: color-mix(in srgb, var(--sd-accent) 58%, var(--sd-hairline)); }
-.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) { border-color: color-mix(in srgb, var(--sd-good, #3fae6b) 66%, var(--sd-hairline)); background: color-mix(in srgb, var(--sd-good, #3fae6b) 8%, var(--sd-glass-weak)); }
-.sd-reader-archive-summary { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 10px 11px; cursor: pointer; list-style: none; }
-.sd-reader-archive-summary::-webkit-details-marker { display: none; }
-.sd-reader-archive-mark { width: 34px; height: 40px; border-radius: 8px 8px 5px 5px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: #d0872e; background: color-mix(in srgb, #d0872e 16%, transparent); }
-.sd-reader-archive-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.sd-reader-archive-title { min-width: 0; display: flex; align-items: center; gap: 7px; }
-.sd-reader-archive-title b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .88em; }
-.sd-reader-archive-title em { padding: 1px 7px; border-radius: 999px; background: var(--sd-pre); color: var(--sd-muted); font-style: normal; font-size: .64em; }
-.sd-reader-archive-peek { color: var(--sd-muted); font-size: .7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sd-reader-archive-title em .on { display: none; }
-.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .off { display: none; }
-.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em .on { display: inline; }
-.sd-reader-archive-card:has(.sd-reader-arch-pick:checked) .sd-reader-archive-title em { background: color-mix(in srgb, var(--sd-good, #3fae6b) 20%, transparent); color: var(--sd-good, #3fae6b); }
-.sd-reader-archive-check { display: inline-flex; align-items: center; gap: 4px; color: var(--sd-muted); font-size: .7em; cursor: pointer; white-space: nowrap; }
-.sd-reader-archive-check input { accent-color: var(--sd-good, #3fae6b); }
-.sd-reader-archive-chevron { color: var(--sd-muted); font-size: .7em; transition: transform .16s; }
-.sd-reader-archive-card[open] .sd-reader-archive-chevron { transform: rotate(180deg); }
-.sd-reader-archive-detail { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; padding: 10px 12px; border-top: 1px solid var(--sd-hairline); background: var(--sd-input-bg); }
-.sd-reader-archive-detail > span { min-width: 0; color: var(--sd-muted); font-size: .72em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sd-reader-archive-detail i { margin-right: 5px; color: var(--sd-accent); }
-.sd-reader-arch-secondary { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
-.sd-reader-arch-secondary .sd-reader-textbtn { align-self: flex-start; }
-.sd-reader-archive-page { height: 100%; min-height: 0; overflow: hidden; }
-.sd-reader-archive-page > .sd-reader-subpage-head { position: relative; top: auto; flex: 0 0 auto; }
-.sd-reader-archive-page > .sd-reader-archive-list { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
-.sd-reader-arch-secondary { flex: 0 0 auto; }
+.sd-reader-slice-secondary { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--sd-hairline); }
+.sd-reader-slice-secondary .sd-reader-textbtn { align-self: flex-start; }
 /* 切片管理弹窗：滚动列表 + 可折叠行 */
 .sd-reader-sm-dialog { max-height: 76vh; display: flex; flex-direction: column; gap: 10px; }
 .sd-reader-sm-overview { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -6316,10 +6289,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-subpage { padding: 10px; }
   .sd-reader-subpage-head { grid-template-columns: auto auto minmax(0,1fr); padding: 8px; }
   .sd-reader-subpage-copy small { white-space: normal; line-height: 1.35; }
-  .sd-reader-archive-summary { grid-template-columns: auto minmax(0,1fr) auto; gap: 7px; padding: 9px; }
-  .sd-reader-archive-check span { display: none; }
-  .sd-reader-archive-chevron { display: none; }
-  .sd-reader-archive-detail { grid-template-columns: 1fr; }
   .sd-reader-center-status { grid-template-columns: 1fr; padding: 10px 10px 8px; gap: 7px; }
   .sd-reader-center-book, .sd-reader-center-guard { padding: 9px 10px; }
   .sd-reader-mtab { flex-direction: column; gap: 3px; padding: 8px 2px; font-size: .82em; }
@@ -6360,7 +6329,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
   .sd-reader-excerpt-controls > label:nth-child(2), .sd-reader-excerpt-controls > label:nth-child(3), .sd-reader-excerpt-controls > label:nth-child(n+5) { grid-column: span 1; }
   .sd-reader-excerpt-preview { height: 42vh; min-height: 225px; max-height: 42vh; padding: 0; }
   .sd-reader-excerpt-panel { padding: 9px; }
-  .sd-reader-memory-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .sd-reader-memory-actions { grid-template-columns: 1fr; }
   .sd-reader-sm-tags { flex-wrap: wrap; }
   .sd-reader-sm-peek { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

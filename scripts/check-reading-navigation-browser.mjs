@@ -23,7 +23,7 @@ try{
     window.readerView=null;window.coreadDistilling=false;window.coreadAutoTextInFlight=false;window.dialogBusy=false;window.readerAssistantBusy=false;window.coreadComicVisionBusy=false;window.coreadOpenRequestId=0;window.c={};
     window.coreadMemoryWrites=0;window.coreadIdentitySwitchBusy=false;window.readerScrollSaveTimer=null;
     window.host={characterId:0,chatId:'host-chat',characters:[{avatar:'a.png',name:'书友甲 · 很长的名称用于检查窄屏'},{avatar:'b.png',name:'书友乙'}]};
-    window.ctx=()=>host;window.coread=()=>c;window.getChatKey=()=>host.chatId;window.getChatStore=()=>({});window.clone=structuredClone;window.coreadInvalidatePool=()=>{};
+    window.ctx=()=>host;window.coread=()=>c;window.getChatKey=()=>host.chatId;window.getChatStore=()=>({});window.clone=structuredClone;
     host.powerUserSettings={personas:{'u1.png':'当前用户','u2.png':'独立 USER'},persona_descriptions:{'u2.png':{description:'独立人设'}}};host.user_avatar='u1.png';
     window.coreadPersonaAvatarRaw='';window.getPersonaName=()=> '当前用户';window.getPersonaDescription=()=> '原人设';
     host.POPUP_TYPE={CONFIRM:1};host.Popup=class{constructor(wrap){this.wrap=wrap;}show(){return new Promise(resolve=>{const modal=document.createElement('dialog');modal.style.cssText='position:fixed;margin:auto;width:min(520px,calc(100vw - 24px));box-sizing:border-box;background:#262a2e;color:#eee';modal.append(this.wrap);for(const [label,result]of [['取消',0],['选择',1]]){const button=document.createElement('button');button.textContent=label;button.onclick=()=>{modal.close();modal.remove();resolve(result);};modal.append(button);}modal.addEventListener('cancel',()=>{modal.remove();resolve(0);});document.body.append(modal);modal.showModal();});}};

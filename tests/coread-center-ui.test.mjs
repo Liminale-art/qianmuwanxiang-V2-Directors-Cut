@@ -20,19 +20,15 @@ assert.match(source, /#user_avatar_block[\s\S]*#chat \.mes\[is_user="true"\][\s\
 assert.match(css, /\.sd-reader-setup-guard\s*\{[^}]*min-height:\s*54px[^}]*padding:\s*13px 15px/, '防全知剧透卡必须为图标与开关保留稳定边距');
 assert.match(source, /tab === 'setup'[\s\S]*renderCompanionSetupBody/, '伴读设定必须并入统一中心');
 
-assert.ok(source.includes('sd-reader-archive-card'), '伴读档案必须使用卡片式绑定界面');
 assert.ok(centerView.includes('sd-reader-memory-overview'), '记忆档案页必须先提供状态总览与常用管理动作');
 assert.match(source, /const archiveOverview = renderCoreadMemoryOverviewView\(/, '记忆档案页必须接入总览模板');
 assert.ok(source.includes('sd-reader-sm-chevron'), '记忆切片卡必须有明确折叠指示');
-const archivePage = source.slice(source.indexOf('function renderCoreadArchivePage'), source.indexOf('async function coreadOpenArchivePage'));
-assert.match(archivePage, /<details class="sd-reader-archive-card[\s\S]*sd-reader-archive-detail/, '伴读档案必须使用矩形折叠卡片');
-assert.doesNotMatch(archivePage, /new Popup|POPUP_TYPE/, '伴读档案不得再叠加 ST 弹窗');
-assert.match(source, /coreadCenterPage === 'archives'[\s\S]*renderCoreadArchivePage/, '伴读档案必须作为中心内部子页面渲染');
-assert.doesNotMatch(archivePage, /sd-reader-archive-save|保存绑定|>取消</, '档案绑定必须即时保存，不再保留散落的底部取消与保存按钮');
 assert.doesNotMatch(source, /coreadArchivePreviewFixtures|coreadSlicePreviewFixtures|_preview/, '版面确认后必须移除全部虚拟档案和切片数据');
-assert.match(source, /sd-reader-arch-pick[\s\S]*coreadToggleBind\(item\.bucket, pick\.checked\)/, '档案勾选变化必须即时写入当前聊天绑定');
+assert.doesNotMatch(source + centerView + css, /sd-reader-archive-|sd-reader-arch-|renderCoreadArchivePage|coreadCenterPage === 'archives'/, '伴读档案绑定页已移除');
 const slicePage = source.slice(source.indexOf('function renderCoreadSlicePage'), source.indexOf('async function coreadOpenSliceManagerDialog'));
 assert.match(slicePage, /<details class="sd-reader-sm-row[\s\S]*sd-reader-sm-edit[\s\S]*保存并同步/, '切片管理必须使用中心内部可折叠编辑卡');
+assert.match(slicePage, /class="sd-reader-textbtn sd-reader-slice-migrate"[\s\S]*从其他聊天迁移这本书/, '跨聊天迁移入口必须留在切片管理页');
+assert.match(source, /closest\('\.sd-reader-slice-migrate'\)\) \{ coreadOpenMigrateDialog\(\)/, '迁移入口必须接到原有迁移对话');
 assert.match(source, /coreadCenterPage === 'slices'[\s\S]*renderCoreadSlicePage/, '切片管理必须作为中心内部子页面渲染');
 assert.match(centerView, /class="sd-reader-mbtn sd-reader-slice-manage"[\s\S]*管理切片/, '切片管理入口必须使用正式名称');
 assert.match(source, /coreadSyncSliceVector\(id[\s\S]*保存并同步/, '切片保存必须立即触发单条向量同步');

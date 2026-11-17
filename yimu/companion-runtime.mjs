@@ -11,7 +11,7 @@ export function createCompanionActions({ state, api, change, emit, lifecycle, br
     const linkedMessage = entries => ({role: 'system', content: `以下是用户明确关联的故事资料，不代表书中人物知道它，也不把书中事件当作亲历。\n${memoryMessage(entries).content}`});
     const consume = async context => {
         if (destroyed || lifecycle().disposed || lifecycle().paused || !state.document?.enabled || !state.sourceAvailable
-            || !['companion', 'mainline'].includes(context?.purpose)
+            || context?.purpose !== 'companion'
             || !sameCompanionContext(state.document.companion, context, state.snapshot?.binding)) return empty();
         const binding = structuredClone(state.snapshot.binding), expected = state.document.revision;
         if (state.document.movedTo || bindingKey(state.document.binding) !== bindingKey(binding)) return empty();
@@ -28,16 +28,14 @@ export function createCompanionActions({ state, api, change, emit, lifecycle, br
             || bindingKey(fresh.document.binding) !== bindingKey(binding)
             || !current() || !sameCompanionContext(fresh.document.companion, context, binding)) return empty();
         const consumedSliceIds = fresh.document.companion.entries.map(entry => entry.id);
-        // Mainline uses this callback only to avoid a second copy from the old
-        // companion injector. Do not send story text back for that purpose.
-        if (context.purpose === 'mainline') return {active: true, text: '', consumedSliceIds};
         const invalid = new Set(fresh.invalidSourceIds || []), entries = [];
         const sourceDocument = structuredClone(fresh.document);
         sourceDocument.companion = null;
         // Preserve authoritative stages even when invalid. Removing their records
         // here would expose automatic children whose meaning the user overrode.
         for (const entry of sourceDocument.entries) if (invalid.has(entry.id) && entry.status === 'active') entry.status = 'invalid';
-        const plan = await buildPlan(sourceDocument, fresh.defaults, snapshot);
+        // The companion's own question decides which story memories are relevant.
+        const plan = await buildPlan(sourceDocument, fresh.defaults, snapshot, { queryText: typeof context.query === 'string' ? context.query.slice(0, 2000) : '' });
         const shareCustom = Object.hasOwn(fresh.document.settings || {}, 'companionShareCustom')
             ? fresh.document.settings.companionShareCustom === true
             : fresh.defaults?.values?.companionShareCustom === true;

@@ -14,7 +14,7 @@ export async function checkBookDeleteBrowser(page) {
       window.readerDialog={bookId:'a',bucket:'fixture::a',loaded:true,slices:['unsaved fixture slice']};
       const gate=new Promise(resolve=>window.releasePreserve=resolve);
       window.coreadSaveDialog=async()=>{saveEntered=true;deleteCalls.push('preserve');return scenario.startsWith('save-')?await gate:true;};
-      window.unmountReaderPortal=()=>deleteCalls.push('unmount');window.coreadInvalidatePool=()=>{};
+      window.unmountReaderPortal=()=>deleteCalls.push('unmount');
       window.reader={COREAD_SLICE_SCHEMA_VERSION:3};window.coreadArchiveDialogSlices=s=>s;window.focusClockActiveLock=()=>null;
       window.readerContentCache=null;window.readerAssistant=null;window.readerAssistantSessions=new Map();window.dialogGenToken=0;window.dialogAbort=null;
       for(const id of ['a','b'])await nativeBooks.putBook(id,{meta:{title:id},fullText:'Synthetic body',chapters:[{}]});

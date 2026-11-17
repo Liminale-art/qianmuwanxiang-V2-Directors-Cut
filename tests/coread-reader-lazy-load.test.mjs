@@ -9,12 +9,8 @@ assert.match(source, /function renderCoreadRuntimeGate\(\)[\s\S]*\['idle','loadi
 assert.match(source, /case 'coread': return COREAD_ENABLED \? \(reader \? renderCoreadTab\(\) : renderCoreadRuntimeGate\(\)\)/, 'the companion page must not render reader-dependent content before its parser is ready');
 assert.match(source, /function bindCoreadTabEvents\(root\) \{[\s\S]*if \(!reader\) return;[\s\S]*bindLibraryViewEvents\(root\)/, 'the companion page must not bind reader-dependent actions before its parser is ready');
 
-const mainlineStart = source.indexOf('async function coreadBuildMainlineInjection()');
-const mainlineEnd = source.indexOf('\n}', mainlineStart);
-const mainlineSource = source.slice(mainlineStart, mainlineEnd);
-assert.ok(mainlineStart >= 0, 'mainline companion injection must exist');
-assert.ok(mainlineSource.indexOf('if (!m.mainlineFeedback) return') < mainlineSource.indexOf('await ensureCoreadReaderRuntime()'), 'disabled mainline feedback must not load the parser');
-assert.ok(mainlineSource.indexOf('await ensureCoreadReaderRuntime()') < mainlineSource.indexOf('await coreadMainlinePool()'), 'enabled mainline feedback must load the parser before reading slices');
+const interceptor = source.slice(source.indexOf('async function qianmuDirectorInterceptor(chat)'), source.indexOf('function directorMainlineStarted'));
+assert.doesNotMatch(interceptor, /ensureCoreadReaderRuntime|coread/i, 'story generation must not load or consult the companion reader');
 
 const initStart = source.indexOf('function init()');
 const initEnd = source.indexOf('function destroy()');

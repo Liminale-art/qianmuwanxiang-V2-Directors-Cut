@@ -62,7 +62,7 @@ assert.equal(chapterIndexAtOffset(chapters, 99), 2);
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
 assert.ok(source.includes('spoilerProtection: true'), '防剧透记忆过滤必须默认开启');
 assert.match(source, /buildCompanionContext[\s\S]*coreadSafeSlices\(readerDialog\.slices[\s\S]*coreadRetrieveHits\(recallQuery[\s\S]*recallPool/, '伴读召回入口必须使用已按阅读水位过滤的池');
-assert.match(source, /async function coreadMainlinePool[\s\S]*coreadResolveReadBoundary\(bookId\)[\s\S]*coreadSafeSlices/, '正文反哺的每个档案必须按对应书籍水位过滤');
+assert.doesNotMatch(source, /coreadMainlinePool|coreadBuildMainlineInjection/, '千幕自身不再向主线注入伴读记忆，故不存在绕过阅读水位的第二条注入路径');
 assert.ok(source.includes('sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION'), '持久化记录必须带切片模式版本');
 assert.ok(source.includes('正文楼层 ${provenance.mainlineFloors.map'), '正文来源只显示保存的楼层号');
 

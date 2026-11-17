@@ -65,19 +65,18 @@ export function renderCoreadSummaryItemsView(items, htmlEscape) {
   }).join('');
 }
 
-export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, boundN, blockedN, targetClass}, htmlEscape) {
+export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, blockedN, linkAvailable, targetClass}, htmlEscape) {
   return `
     <section class="sd-reader-memory-overview${targetClass}">
       <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
       <div class="sd-reader-memory-stats">
         <span><b>${sliceCount}</b><small>记忆切片</small></span>
         <span><b>${pendingN}</b><small>待整理对话</small></span>
-        <span><b>${boundN}</b><small>绑定档案</small></span>
         <span><b>${blockedN}</b><small>进度外隔离</small></span>
       </div>
       <div class="sd-reader-memory-actions">
         <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>管理切片</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-arch-manage"><i class="fa-solid fa-box-archive"></i>管理档案</button>
+        ${linkAvailable ? '<button type="button" class="sd-reader-mbtn sd-reader-yimu-link"><i class="fa-solid fa-link"></i>关联伴读</button>' : ''}
         <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${sliceCount ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
       </div>
     </section>`;
@@ -127,7 +126,7 @@ export function renderCoreadInjectionRowsView({injected, recall}, htmlEscape, co
   };
   // 切片来源徽标 HTML（三来源统一命名·同色系区分）
   const srcBadge = (s) => `<span class="sd-reader-src-badge ${coreadSliceSourceClass(s)}">${coreadSliceSourceLabel(s)}</span>`;
-  // ① 实际注入：显完整总结全文（书籍/对谈/主线来源徽标 + 近景/检索通道标）
+  // ① 实际注入：显完整总结全文（来源徽标 + 近景/检索通道标）
   const injCards = injected.length
     ? injected.map((h) => `
       <div class="sd-reader-injslice inj">
@@ -194,10 +193,10 @@ export function renderCoreadInjectionDictionaryView({curBook, curBound, isDefaul
   return dictBody;
 }
 
-export function renderCoreadInjectionPanelView({injectedCount, hasLastInjection, liChannelLabel, injCards, blockedCount, config, scanN, mainlineSwitch, dictPairCount, curBound, dictBody, scanText, anchorBar, candidateCount, candRows, targetClass}, htmlEscape) {
+export function renderCoreadInjectionPanelView({injectedCount, hasLastInjection, injCards, blockedCount, config, scanN, dictPairCount, curBound, dictBody, scanText, anchorBar, candidateCount, candRows, targetClass}, htmlEscape) {
   return `
     <details class="sd-reader-mcard${targetClass}" open>
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injectedCount} 条</span>${hasLastInjection ? `<span class="sd-reader-inj-tag">最近一次·${liChannelLabel}</span>` : ''}</summary>
+      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-syringe"></i> 实际注入 <span class="sd-reader-inj-tag">${injectedCount} 条</span>${hasLastInjection ? `<span class="sd-reader-inj-tag">最近一次·伴读对话</span>` : ''}</summary>
       <div class="sd-reader-injslices">${injCards}</div>
     </details>
     <div class="sd-reader-mcard">
@@ -207,17 +206,6 @@ export function renderCoreadInjectionPanelView({injectedCount, hasLastInjection,
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-recent" min="0" step="1" value="${config.recentInject}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">语境扫描对话条数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-scan" min="1" max="50" step="1" value="${scanN}"></div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">重排后保留数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-inj-reranktop" min="1" step="1" value="${config.rerankTopN}"></div>
-    </div>
-    <div class="sd-reader-mcard">
-      <div class="sd-reader-mcard-head"><i class="fa-solid fa-arrow-right-arrow-left"></i> 主线联动</div>
-      <div class="sd-reader-mhint">根据主线当下语境将伴读记忆切片召回注入。</div>
-      <div class="sd-reader-mrow">
-        <span class="sd-reader-mrow-lab">开启主线联动</span>
-        ${mainlineSwitch}
-      </div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">检索命中注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recall" min="0" step="1" value="${config.mainlineRecall}"${config.mainlineFeedback ? '' : ' disabled'}></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">近景切片注入数</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-recent" min="0" step="1" value="${config.mainlineRecent}"${config.mainlineFeedback ? '' : ' disabled'}></div>
-      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">注入深度</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-mainline-depth" min="0" step="1" value="${config.mainlineDepth}"${config.mainlineFeedback ? '' : ' disabled'}></div>
     </div>
     <details class="sd-reader-mcard" open>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-book-bookmark"></i> 检索词典 <span class="sd-reader-inj-tag">${dictPairCount}</span><span class="sd-reader-inj-tag${curBound ? ' on' : ''}">${curBound ? '已绑定' : '未绑定'}</span></summary>

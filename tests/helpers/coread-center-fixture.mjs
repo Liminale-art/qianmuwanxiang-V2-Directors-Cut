@@ -18,11 +18,10 @@ export function createCoreadCenterFixture(){
   vm.runInContext(coreadCenterFunctions,c);return {c,trace,inputs};
 }
 
-export const coreadRecordsFunctions=['coreadBoundBuckets','renderMemRecordsTab'].map(section).join('\n');
+export const coreadRecordsFunctions=['renderMemRecordsTab'].map(section).join('\n');
 export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
-  inputs.store={coreadBound:['one','two']};
-  c.getChatStore=()=>{trace.push(['store']);return inputs.store;};
+  inputs.linkAvailable=false;c.yimuCompanionBridge={linkAvailable:()=>inputs.linkAvailable};
   c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;
   c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';
   Object.assign(c.readerDialog,{messages:Array.from({length:8},()=>({text:'fixture'})),cursor:3});
@@ -46,6 +45,6 @@ export function createCoreadInjectFixture(){
   c.coreadActiveDict=pool=>{trace.push(['dict',pool]);return inputs.dict;};
   c.coreadBoundDicts=()=>{trace.push(['bound']);return inputs.bound;};
   c.readerDialog.messages=[];
-  const m={recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,mainlineFeedback:false,mainlineRecall:0,mainlineRecent:0,mainlineDepth:0,dictBooks:[{id:'default',name:'默认词册',pairs:{}}]};
+  const m={recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,dictBooks:[{id:'default',name:'默认词册',pairs:{}}]};
   vm.runInContext(coreadInjectFunctions,c);return {...f,m};
 }

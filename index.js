@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.559';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.560';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.559';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.559';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.559';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.560';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.560';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.560';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.559';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.560';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.559';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.559';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.560';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.560';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.559';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.560';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.559';
+const VERSION = '1.59.560';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -391,7 +391,7 @@ const yimuCompanionBridge = createYimuCompanionBridge({
     // IDB stores an archive as one value. Only persisted slice fields leave this adapter;
     // dialogue messages, assistants, books and connection settings are never consumed.
     const rec = await blobStore.createReaderPackageReader().getReaderChat(key);
-    return rec ? {bookId:rec.bookId, slices:rec.slices, companionOwner:rec.companionOwner} : null;
+    return rec ? {bookId:rec.bookId, slices:rec.slices} : null;
   },
 });
 let chatWriteGuard = null, chatWriteFetchBefore = null, chatSaveFollowup = null;
@@ -1325,21 +1325,14 @@ const DEFAULT_SETTINGS = Object.freeze({
       // 召回/注入（1C·用户已定：召回数与单切片字数留自定义·按切片数控不硬控 token）
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
-      recallScanMessages: 8,        // 召回查询扫描最近 N 条对话（伴读/主线共用·默认8）
+      recallScanMessages: 8,        // 召回查询扫描最近 N 条对话（默认8）
       sliceMaxChars: 300,           // 单条切片总结的字数上限（默认300·松紧刚好）
       spoilerProtection: true,      // 共读记忆防剧透：按每条切片形成时的阅读水位过滤后文章节（默认开）
-      // 反哺主线（走A·共享切片池）：主线生成时用与伴读对话「同一份切片池 + 同一套召回」，按主线当下语境
-      // 智能召回相关切片注入。理念＝两人共读的思想碰撞与智识贯穿反哺主线叙事，绝非「让角色知道 user 读了啥」的单元化状态汇报。
-      // 切片池来自「本聊天读过的书 + 用户在伴读档案里绑定的旧档案」（见 coreadMainlinePool）。默认关。
-      mainlineFeedback: false,      // 反哺主线总开关（默认关·开＝主线走共享切片池智能召回）
-      mainlineRecall: 2,            // 反哺主线·检索命中注入数（主线按当下语境召回的切片数·默认2）
-      mainlineRecent: 1,            // 反哺主线·近景切片注入数（最近 N 条无条件·默认1·0=关）
-      mainlineDepth: 2,             // 反哺主线注入深度（插入主线上下文的倒数第 N 层·默认2）
-      rerankTopN: 4,                // 开重排档时召回候选重排后保留数（用户可改）
+      rerankTopN: 4,               // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
       // 绑定到聊天(chatStore.coreadDictBound)后并入召回归一——主线与伴读对话走同一召回路径·天然共有。
       dictBooks: [],
-      // 书籍蒸馏提示词（正文伴读/主线联动共用「整理要求」段·空=用内置默认 DEFAULT_DISTILL_TEXT_PROMPT）。
+      // 书籍蒸馏提示词（「整理要求」段·空=用内置默认 DEFAULT_DISTILL_TEXT_PROMPT）。
       // 不同文体题材精炼方式不同·用户可按在读书籍调整（如议论文重观点、小说重情节转折）。
       distillTextPrompt: '',
       // 总结提示词预设：整套（伴读条目 + 蒸馏书籍）打包保存/切换。[{id,name,items,distillTextPrompt}]
@@ -3142,22 +3135,6 @@ function clearDirectorInjection() {
 }
 
 async function qianmuDirectorInterceptor(chat) {
-  // ── 反哺主线（走A）：与推演注入独立·主线生成前用共享切片池按当下语境智能召回并 splice 进上下文 ──
-  // 拦截器是主线生成的唯一确定入口·能拿到本轮真实上下文·避免 setExtensionPrompt 时序问题。
-  try {
-    if (initialized && settings?.enabled && Array.isArray(chat)) {
-      const inj = await coreadBuildMainlineInjection();
-      if (inj) {
-        const m = coreadMemory();
-        const d = Math.max(0, Math.min(chat.length, Number(m.mainlineDepth ?? 2)));
-        chat.splice(chat.length - d, 0, {
-          name: 'System', is_user: false, is_system: true, send_date: Date.now(),
-          mes: inj, extra: { type: 'narrator', qianmu_injected: true, coread: true },
-        });
-      }
-    }
-  } catch (e) { console.warn(`[${MODULE_NAME}] coread mainline inject failed`, e); }
-
   try {
     if (!initialized || !settings?.enabled || !settings.injectEnabled) return;
     if (getInjectApi().setter) return;
@@ -8394,7 +8371,6 @@ function reconcileClearedStorageItems(selected) {
     readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
     readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
     readerAssistantSessions.clear();
-    coreadInvalidatePool();
     if (readerContentCache) delete readerContentCache.comic;   // 漫画页稿同仓，一并清掉
   }
   if (cleared.has('reader_vectors')) {
@@ -24979,8 +24955,7 @@ let companionWorldView = '';     // 伴读设定浮层中：当前查看条目�
 let companionPresetView = '';    // 伴读设定浮层中：当前查看条目的预设名
 let coreadCurrentDictId = '';    // 注入状态tab：当前查看/编辑的词典册ID（空=默认整册视图）
 let coreadGuideStep = null;      // 首次引导仅是本次打开时的临时游标；完成态才持久化
-let coreadCenterPage = 'main';   // main | archives | slices：伴读中心内部导航，不再叠加大弹窗
-let coreadArchivePageItems = [];
+let coreadCenterPage = 'main';   // main | slices：伴读中心内部导航，不再叠加大弹窗
 const coreadVectorStates = new Map(); // sliceId → { state, attempt, error, fingerprint, updatedAt }
 
 function coread() {
@@ -25100,7 +25075,7 @@ function coreadSelectCompanion(avatar) {
   if (avatar && !coreadEnsureCompanionSession(avatar)) return false;
   coread().companionOverrideAvatar = avatar;
   coreadOpenRequestId++;
-  coreadInvalidatePool(); saveSettings(); renderModal(); return true;
+  saveSettings(); renderModal(); return true;
 }
 
 function coreadCompanionMatchesChat() {
@@ -25176,7 +25151,7 @@ async function coreadApplyIdentityChoice(kind, key) {
     const center = document.querySelector('#sd-reader-portal .sd-reader-morepage');
     if (center) center.hidden = false;
   } else renderModal();
-  coreadInvalidatePool(); saveSettings(); return true;
+  saveSettings(); return true;
 }
 
 async function coreadChooseIdentity(kind) {
@@ -25262,19 +25237,8 @@ function coreadMemory() {
   if (!Number.isFinite(m.recentInject)) m.recentInject = 1;
   m.recentInject = Math.max(0, Math.round(m.recentInject));
   if (typeof m.spoilerProtection !== 'boolean') m.spoilerProtection = true;
-  // 反哺主线（走A·共享切片池·取代旧「常驻容器」概念）。__memDefaultsRev<3：从旧 containerEnabled 迁移开关，去 containerCount。
-  if ((m.__memDefaultsRev || 0) < 3) {
-    if (m.mainlineFeedback == null && m.containerEnabled != null) m.mainlineFeedback = !!m.containerEnabled;
-    delete m.containerEnabled; delete m.containerCount;
-    m.__memDefaultsRev = 3;
-  }
-  m.mainlineFeedback = !!m.mainlineFeedback;
-  if (!Number.isFinite(m.mainlineRecall)) m.mainlineRecall = 2;
-  m.mainlineRecall = Math.max(0, Math.round(m.mainlineRecall));
-  if (!Number.isFinite(m.mainlineRecent)) m.mainlineRecent = 1;
-  m.mainlineRecent = Math.max(0, Math.round(m.mainlineRecent));
-  if (!Number.isFinite(m.mainlineDepth)) m.mainlineDepth = 2;
-  m.mainlineDepth = Math.max(0, Math.min(20, Math.round(m.mainlineDepth)));
+  // 已退役的旧键（常驻容器、旧主线注入）：只删不迁。
+  for (const k of ['containerEnabled', 'containerCount', 'mainlineFeedback', 'mainlineRecall', 'mainlineRecent', 'mainlineDepth']) delete m[k];
   // 词典册归一：数组·每册 {id,name,pairs}·pairs 值归一为数组
   if (!Array.isArray(m.dictBooks)) m.dictBooks = [];
   m.dictBooks = m.dictBooks.filter(isPlainObject).map((d) => ({
@@ -25332,7 +25296,7 @@ const DEFAULT_SUMMARY_ITEMS = [
   { id: 'sum-format', builtin: true, order: 0, title: '总结要求与输出格式', text: '将读者与书友的共读对话，蒸馏为可复用的客观记忆文本，全程以第三人称事实陈述呈现，不加入主观评判。\n\n【核心规则】\n1. 身份边界严格隔离：对话方为现实中的「读者」「书友」，书籍角色仅为讨论对象。严禁将读者/书友的评论、推测、感想等同于书中角色的实际言行；书中角色不视为对话参与者。\n2. 内容记录规范：① 专名保留，人名、地名、作品名、专有概念沿用原文完整表述，不缩写、不泛化、不意译；② 原话摘引，对话中的核心论断、关键观点、原文摘句以双引号直引，句数按需适配总篇幅；③ 变化标注，态度转向、认知更新、共识达成等关键转变统一以「原状态 变为 新状态」格式标注。\n3. 详略尺度控制：深度对谈（剧情分析、人物解读、观点交锋）完整记录核心逻辑与结论；闲聊寒暄、过渡性表述仅记核心意图与结论；不遗漏影响后续共读理解的关键信息。正文篇幅控制在 200 至 300 字。\n4. 行文禁用破折号（——），不以破折号补充说明或制造停顿；改用逗号、句号或直接陈述。\n\n【输出要求】\n输出为纯 JSON，不含额外说明：{"summary": "符合上述要求的第三人称客观记忆正文", "keywords": ["3 至 10 个高辨识度检索关键词，优先人名 / 核心事件 / 关键概念 / 核心情节点，保障召回精准"]}' },
 ];
 
-// 书籍蒸馏内置默认整理要求（正文伴读/主线联动共用）。
+// 书籍蒸馏内置默认整理要求。
 // 用户可在「书籍蒸馏·蒸馏提示词」卡片里覆盖此项，按在读书籍的文体/题材定制精炼方式，空则回落这里。
 const DEFAULT_DISTILL_TEXT_PROMPT = `只记正文中确实发生的情节、人物、场景、关键转折，全程第三人称客观陈述，不加评论、不作书评。
 专名（人名/地名/作品内概念）沿用原文完整表述，不缩写、不意译。
@@ -25531,7 +25495,7 @@ async function coreadComicVisibleText(bookId, chapterIndex, legacy) {
   return reader.comicVisibleText(record, chapterIndex, coreadCompanion().visibleCharsBefore);
 }
 
-// 当前书的统一阅读水位。伴读对话、档案绑定、主线反哺都只认这一份绝对字符坐标，
+// 当前书的统一阅读水位。伴读对话与记忆过滤都只认这一份绝对字符坐标，
 // 防止正文窗口安全、记忆召回却越过进度的“双重口径”。
 function coreadBoundaryFromChapters(bookId, chapters, chapterIndex, scrollRatio) {
   const list = Array.isArray(chapters) ? chapters : [];
@@ -25749,9 +25713,10 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     if (chatCtx) { chatCtxLen = chatCtx.length; seg.push(`【主线正文近况（「${charName}」在主线里刚说/做的·供你保持人设连贯）】\n${chatCtx}`); }
   }
   // Explicit 忆幕 links add only their checked, budgeted story context, never a full chat.
+  // The reader's own recall query also steers which story memories are worth bringing.
   const linked = await yimuCompanionBridge.consume({key:coreadDialogBucket(id), bookId:id,
     scope:readerView?.companionScope || coreadCompanionSession()?.scope || '', persona:persona.key || '',
-    avatar:character.avatar || character.data?.avatar || ''});
+    avatar:character.avatar || character.data?.avatar || ''}, 'companion', {query:recallQuery});
   if (linked.active && linked.text) seg.push(`【主动关联的故事记忆（来源与知情边界保持不变）】\n${linked.text}`);
   // 记忆召回（关键词档·零算力）：本轮查询命中的历史切片，让书友记得你们以前聊过的想法
   let recallCount = 0;
@@ -25808,7 +25773,7 @@ globalThis.qmTestReaderCtx = async (bookId) => {
 
 /* ============================================================
    1C 记忆蒸馏（关键词档）：把「你与书友的对话」蒸馏成记忆切片，
-   存入千幕伴读档案，供伴读对话与主线联动召回。
+   存入千幕伴读档案，供伴读对话召回。
    ============================================================ */
 
 // 蒸馏走哪套 API：总结卡自成一套连接（自定义 URL/Key/模型·与向量/重排同构）——
@@ -26270,7 +26235,6 @@ async function coreadReplaceDialogRange(fromIdx, toIdx, m, meta, names) {
     if (!saved) failure = { reason: COREAD_SAVE_FAILED };
     else { made = staged.length; last = saved; salvaged = staged.some((item) => item.res.salvaged); }
   }
-  if (made) await coreadRefreshContainer(meta);
   return {
     made,
     ...(failure ? { failed: true, ...failure } : {}),
@@ -26423,7 +26387,7 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
     const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
     const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》${anchor}中「读者刚读过」的一段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词·优先人名/事件/概念"],"synonyms":{"标准词":["别称/指代"]}}。没有可补的别称就给 {}。不要代码块标记、不要额外解释。`;
     let made = 0, salvaged = false;
-    const finish = async (result) => { if (made) await coreadRefreshContainer(); return { ...result, made, salvaged }; };
+    const finish = async (result) => ({ ...result, made, salvaged });
     for (const span of spans) {
       if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
       const body = full.slice(span.from, span.to);
@@ -26516,7 +26480,6 @@ async function coreadDistillFullBook(m) {
       ok++;
       if ((ci + 1) % 3 === 0 || ci === chunks.length - 1) toast(`蒸馏全书：${ci + 1}/${chunks.length} 段完成…`, 'info');
     }
-    await coreadRefreshContainer();
     if (saveFailed) return { ok: false, reason: COREAD_SAVE_FAILED, made: ok, failed: fail };
     return { ok: true, made: ok, failed: fail, aborted };
   } catch (err) {
@@ -26686,7 +26649,6 @@ async function coreadCompressSlices(lo, hi) {
       await coreadUpdateComicDescriptionForSlice(old.id, { sliceId: persisted.sliceId, summary, keywords });
     }
     await coreadForgetSliceRuntime(rangeIds);
-    await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: e?.message || '压缩失败' };
@@ -26721,7 +26683,6 @@ async function coreadRegenSlice(sliceId) {
         if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
       if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
       if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
-      await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
       const vector = await coreadSyncSliceVector(sliceId, { announce: false });
       return { ok: true, slice, vector };
     } catch (e) {
@@ -26756,7 +26717,6 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) 
     delete slice.salvaged;   // 用户手动编辑过即视为已修正
     if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     await coreadUpdateComicDescriptionForSlice(sliceId, { summary: slice.summary, keywords: slice.keywords });
-    await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
     const vector = options.syncVector === false
       ? { ok: false, skipped: true }
       : await coreadSyncSliceVector(sliceId, { announce: false });
@@ -26779,7 +26739,6 @@ async function coreadDeleteSlice(sliceId) {
     coreadRecalculateDialogCursor();
     if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     await coreadForgetSliceRuntime([sliceId]);
-    await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
     return { ok: true };
   } finally { coreadMemoryWrites--; }
 }
@@ -26843,7 +26802,7 @@ const COREAD_ECHO_BONUS = 0.6;   // 回响加分（相对 BM25 原始分的偏�
 
 // 取近景切片：按形成时间从新到旧取最近 n 条（同时刻按存放先后）。返回 [{slice}] 与检索结果同构。
 // 不按 coveredTo 排：它在对话切片里是消息下标、正文切片里是字符位、旧主线切片里是楼层号，混排时正文切片永远排在最前。
-// pool 省略＝当前伴读会话切片（readerDialog.slices）；反哺主线传入跨档案合并池（见 coreadMainlinePool）。
+// pool 省略＝当前伴读会话切片（readerDialog.slices）。
 function coreadRecentSlices(n, pool) {
   if (n <= 0) return [];
   const src = pool || readerDialog.slices || [];
@@ -26856,7 +26815,7 @@ function coreadRecentSlices(n, pool) {
 // 召回打分：BM25(k1=1.5,b=0.75) over 切片文档 + 同义词归一 + 回响加分。
 // 返回 [{ slice, hits, score }]，hits 保留「查询命中的原始关键词」供可视化高亮。n 为返回上限。
 // excludeIds：近景已固定注入的切片 id 集合，从检索候选剔除防重复。
-// pool 省略＝当前伴读会话切片；反哺主线传入跨档案合并池。
+// pool 省略＝当前伴读会话切片。
 function coreadRecallSlices(queryText, n, excludeIds, pool) {
   let slices = pool || readerDialog.slices || [];
   if (excludeIds && excludeIds.size) slices = slices.filter((s) => !excludeIds.has(s.id));
@@ -26923,7 +26882,7 @@ function coreadEchoTick(injectedSlices) {
 }
 
 // #7：登记「最近一次真实注入」——注入状态页只回放此记录，绝不做实时预览。
-// channel = 'companion'（伴读对话）| 'mainline'（主线联动）。空注入也如实记空（区别于「从未注入」）。
+// channel 恒为 'companion'（伴读对话）。空注入也如实记空（区别于「从未注入」）。
 // 只存切片 id/来源等轻快照，全文靠 id 回查——切片被编辑后回看到的是最新文本，不留陈旧副本。
 function coreadRecordInjection(channel, all, query) {
   readerDialog.lastInjected = {
@@ -27214,11 +27173,10 @@ async function coreadRerank(queryText, cands, m) {
 
 /* 检索编排：向量档关→纯 BM25（同步内核·零算力）；向量档开→BM25 + 向量 RRF 融合（→可选 rerank）。
    任一异步档失败（网络/未配置）都静默回退到 BM25，绝不让召回中断对话。返回前 n 条 [{slice,...}]。 */
-// pool 省略＝当前伴读会话切片（可走向量）；反哺主线传入跨档案合并池（向量按 bucket 存·跨档不适用·退纯 BM25）。
+// pool 省略＝当前伴读会话切片。
 async function coreadRetrieveHits(queryText, n, excludeIds, m, pool) {
   const bm25 = coreadRecallSlices(queryText, Math.max(n * 3, n), excludeIds, pool);   // 多取些作融合候选池
-  const isCrossArchivePool = Array.isArray(pool) && pool.some((slice) => slice?.__src && slice.__src !== readerDialog.bucket);
-  if (!m.vectorEnabled || isCrossArchivePool) return bm25.slice(0, n);   // 跨档案池不走向量（向量缓存绑单 bucket），纯 BM25
+  if (!m.vectorEnabled) return bm25.slice(0, n);
   let vec = [];
   try {
     vec = (await coreadWithRetry('vector', () => coreadVectorRecall(queryText, m, pool))).filter((h) => !excludeIds || !excludeIds.has(h.slice.id));
@@ -27242,19 +27200,7 @@ async function coreadRetrieveHits(queryText, n, excludeIds, m, pool) {
   return fused.slice(0, n).map((h) => ({ slice: h.slice, hits: h.slice.keywords || [], score: h.rrf ?? h.rerank ?? 0, ...h }));
 }
 
-/* ── 反哺主线（走A·共享切片池）──
-   主线生成时用与伴读对话「同一份切片池 + 同一套召回」，按主线当下语境（近期 char 发言）智能召回相关切片，
-   splice 进主线上下文。理念：两人共读的思想碰撞与智识贯穿反哺主线叙事，主线与伴读记忆接续、互为整体，
-   绝非「让角色知道 user 读了啥」的单元化状态汇报。切片池 = 本聊天读过的书 + 用户绑定的旧档案（见档案卡）。召回统一走 coreadRetrieveHits。 */
-
-// 本聊天绑定的旧档案 bucket 列表（存 chatStore·跨聊天引用其它「聊天×书」的切片进召回池）。
-function coreadBoundBuckets() {
-  const store = getChatStore();
-  if (!Array.isArray(store.coreadBound)) store.coreadBound = [];
-  return store.coreadBound;
-}
-
-// 本聊天绑定的词典册 id 列表（存 chatStore·主线与伴读对话共有）。
+// 本聊天绑定的词典册 id 列表（存 chatStore）。
 function coreadBoundDicts() {
   const store = getChatStore();
   if (!Array.isArray(store.coreadDictBound)) store.coreadDictBound = [];
@@ -27262,7 +27208,6 @@ function coreadBoundDicts() {
 }
 
 // 生效检索词典：本聊天绑定的词典册 pairs + 切片自带 synonyms 并集。召回归一与可视化统一走它。
-// companion 与 mainline 都经 coreadRecallSlices→此函数，故词典册天然被两条路径共享。
 function coreadActiveDict(slices) {
   const m = coreadMemory();
   const bound = new Set(coreadBoundDicts());
@@ -27353,85 +27298,10 @@ async function coreadOpenDictEntryDialog(bookId, canon, aliases, origin = null) 
     if (!isNew && canon !== newCanon) delete currentBook.pairs[canon];   // 词源改名→删旧
     currentBook.pairs[newCanon] = newAliases;
     currentBook.pairs = coreadNormalizeSynonyms(currentBook.pairs);
-    saveSettings(); coreadInvalidatePool();
+    saveSettings();
     return { canon: newCanon, aliases: newAliases };
   } catch (_) { return null; }
 }
-
-// 反哺主线切片池：合并「本聊天读过的所有书」+「绑定的旧档案」的切片（各带来源书名标签），按 bucket+id 去重。
-// 异步（读 IndexedDB）·带缓存（签名＝聊天+桶集合+本会话切片数变化即失效·蒸馏后自动重建）。
-let coreadPoolCache = null;   // { sig, pool:[{...slice, __src, __srcTitle}] }
-async function coreadMainlinePool() {
-  const chatKey = getChatKey();
-  const bound = coreadBoundBuckets();
-  let ownKeys = [];
-  try { ownKeys = (await blobStore.listReaderChatKeys()).filter((k) => String(k).startsWith(`${chatKey}::`)); } catch (_) {}
-  const allKeys = uniqueClean([...ownKeys, ...bound]);
-  const progressSig = (coread().books || []).map((book) => `${book.id}:${book.lastChapterIndex || 0}:${Number(book.lastScrollRatio || 0).toFixed(4)}`).join(',');
-  const sig = `${chatKey}|${allKeys.slice().sort().join(',')}|${(readerDialog.slices || []).length}|${readerDialog.bucket}|${coreadMemory().spoilerProtection !== false}|${progressSig}`;
-  if (coreadPoolCache && coreadPoolCache.sig === sig) return coreadPoolCache.pool;
-  const pool = [];
-  const seen = new Set();
-  for (const key of allKeys) {
-    // 当前会话的桶用内存镜像（最新·含未落盘的），其余读 IndexedDB
-    let slices = [], title = '';
-    const bookId = key === readerDialog.bucket ? readerDialog.bookId : (String(key).split('::').at(-1) || '');
-    const retained = (coread().retainedMemoryBooks || []).find((book) => book.id === bookId);
-    if (key === readerDialog.bucket) { slices = readerDialog.slices || []; title = coreadBookMeta(bookId)?.title || retained?.title || ''; }
-    else {
-      try { const rec = await blobStore.getReaderChat(key); if (rec && Array.isArray(rec.slices)) slices = rec.slices; } catch (_) {}
-      title = coreadBookMeta(bookId)?.title || retained?.title || '';
-    }
-    const boundary = await coreadResolveReadBoundary(bookId);
-    slices = coreadSafeSlices(coreadNormalizeSlices(slices, bookId, key, boundary), boundary);
-    for (const s of slices) {
-      const dk = `${key}::${s.id}`;
-      if (seen.has(dk)) continue;
-      seen.add(dk);
-      pool.push({ ...s, __src: key, __srcTitle: title });
-    }
-  }
-  coreadPoolCache = { sig, pool };
-  return pool;
-}
-function coreadInvalidatePool() { coreadPoolCache = null; }
-
-// 反哺主线注入文本：拦截器在主线生成前调用。用主线近期上下文做召回，返回注入文本（空＝不注入）。
-async function coreadBuildMainlineInjection() {
-  const m = coreadMemory();
-  if (!m.mainlineFeedback) return '';
-  if ((m.mainlineRecall || 0) <= 0 && (m.mainlineRecent || 0) <= 0) return '';
-  await ensureCoreadReaderRuntime();
-  const pool = await yimuCompanionBridge.filterMainline(await coreadMainlinePool());
-  if (!pool.length) return '';
-  // 查询语境＝主线近期双方发言（user + char 都要·召回按「当下在聊什么」而非单侧）。取末尾若干条清洗拼接。
-  const chatArr = Array.isArray(ctx().chat) ? ctx().chat : [];
-  const query = chatArr.slice(-Math.max(1, Number(m.recallScanMessages) || 8)).map((x) => cleanContextText(x?.mes || '')).filter(Boolean).join('\n') || '';
-  const recent = coreadRecentSlices(m.mainlineRecent || 0, pool);
-  const excludeIds = new Set(recent.map((h) => h.slice.id));
-  let hits = [];
-  if ((m.mainlineRecall || 0) > 0 && query) {
-    try { hits = await coreadRetrieveHits(query, m.mainlineRecall, excludeIds, m, pool); }
-    catch (error) {
-      coreadPipelineFailed('memory', error, '已回退本地关键词召回');
-      hits = coreadRecallSlices(query, m.mainlineRecall, excludeIds, pool);
-    }
-  }
-  const all = [...recent, ...hits];
-  // 记录本轮「主线联动」真实注入（供注入状态页回看·非预览）。空注入也如实记空。
-  coreadRecordInjection('mainline', all, query);
-  if (!all.length) return '';
-  // 跨多本书时标注书名，单书则省略（读起来干净）
-  const multi = new Set(all.map((h) => h.slice.__srcTitle || '')).size > 1;
-  const lines = all.map((h, i) => {
-    const tag = (multi && h.slice.__srcTitle) ? `《${h.slice.__srcTitle}》` : '';
-    return `${i + 1}. ${tag}${String(h.slice.summary || '').trim()}`;
-  }).join('\n');
-  return `【共读记忆·你与对方一起读过的书及当时的探讨（记忆接续·可自然引用·别照搬原话）】\n${lines}`;
-}
-
-// 兼容占位：旧调用点（切片增删改后）改为让反哺主线切片池失效，下轮主线注入自动用最新切片。
-async function coreadRefreshContainer() { coreadInvalidatePool(); }
 
 // 一键删除本「聊天×书」的全部伴读记忆（重置 cursor）。
 async function coreadClearAllSlices() {
@@ -27447,7 +27317,6 @@ async function coreadClearAllSlices() {
     coreadEchoTtl.clear();   // 切片全清，回响池随之清空
     coreadVecCache = null;   // 向量缓存随之作废
     try { if (readerDialog.bucket) await blobStore.deleteReaderVectors(readerDialog.bucket); } catch (_) {}
-    await coreadRefreshContainer();   // 无切片→容器随之禁用
     return { ok: true };
   } finally { coreadMemoryWrites--; }
 }
@@ -27476,47 +27345,6 @@ async function coreadListMigratableChats(bookId) {
   return out;
 }
 
-/* ── 伴读档案（数据管理）：列出全设备所有「聊天×书」的伴读档案，供用户把旧档案绑定到当前主线+对话 ──
-   绑定＝把该档案 bucket 记入 chatStore.coreadBound，其切片随之进入反哺主线切片池（各带来源书名标签·批次号各归各档·不物理合并·无拼接冲突）。
-   当前会话自身的档案自动在池内（见 coreadMainlinePool），无需手动绑；这里只列「其它聊天/其它书」的档案。 */
-async function coreadListAllArchives() {
-  const out = [];
-  const curBucket = readerDialog.bucket || '';
-  const bound = new Set(coreadBoundBuckets());
-  let keys = [];
-  try { keys = await blobStore.listReaderChatKeys(); } catch (_) {}
-  for (const k of keys) {
-    const key = String(k);
-    if (key === curBucket) continue;   // 当前会话档案已自动在池内
-    let rec = null;
-    try { rec = await blobStore.getReaderChat(key); } catch (_) {}
-    const sliceN = (rec && Array.isArray(rec.slices)) ? rec.slices.length : 0;
-    if (!sliceN) continue;   // 无切片的档案不列（绑了也没内容可召回）
-    const bookId = key.split('::').at(-1) || '';
-    const retained = (coread().retainedMemoryBooks || []).find((book) => book.id === bookId);
-    const title = coreadBookMeta(bookId)?.title || retained?.title || (rec?.names ? '' : '') || '（未知书目）';
-    out.push({
-      bucket: key, bookId, title,
-      chatName: (rec?.names && rec.names.char) ? rec.names.char : key.split('::')[0],
-      sliceN, updatedAt: Number(rec?.updatedAt) || 0, bound: bound.has(key),
-    });
-  }
-  out.sort((a, b) => (b.bound - a.bound) || (b.updatedAt - a.updatedAt));
-  return out;
-}
-
-// 绑定/解绑一个档案 bucket 到当前聊天（记入 chatStore·失效反哺主线切片池）。
-function coreadToggleBind(bucket, on) {
-  const store = getChatStore();
-  const list = coreadBoundBuckets();
-  const i = list.indexOf(bucket);
-  if (on && i < 0) list.push(bucket);
-  if (!on && i >= 0) list.splice(i, 1);
-  store.coreadBound = list;
-  saveMetadata();
-  coreadInvalidatePool();
-}
-
 // 执行迁移：把源桶的会话复制进当前 readerDialog，落盘 + 重建容器。
 async function coreadMigrateFromChat(sourceRec) {
   coreadMemoryWrites++;
@@ -27542,7 +27370,6 @@ async function coreadMigrateFromChat(sourceRec) {
       readerDialog.lastInjected = previous.lastInjected;
       return { ok: false, reason: COREAD_SAVE_FAILED };
     }
-    await coreadRefreshContainer(meta);
     return { ok: true, messages: readerDialog.messages.length, slices: readerDialog.slices.length };
   } finally { coreadMemoryWrites--; }
 }
@@ -27611,42 +27438,6 @@ function renderCoreadSubpageHead(icon, title, subtitle) {
   </header>`;
 }
 
-// 伴读档案是中心内部子页面：矩形折叠卡管理绑定，不再叠加 ST Popup。
-function renderCoreadArchivePage() {
-  const rows = coreadArchivePageItems.map((a, i) => {
-    const when = a.updatedAt ? new Date(a.updatedAt).toLocaleString() : '旧档案';
-    return `<details class="sd-reader-archive-card${a.bound ? ' is-bound' : ''}">
-      <summary class="sd-reader-archive-summary">
-        <span class="sd-reader-archive-mark"><i class="fa-solid fa-book-bookmark"></i></span>
-        <span class="sd-reader-archive-main">
-          <span class="sd-reader-archive-title"><b>《${htmlEscape(a.title || '未知书目')}》</b><em><span class="off">未绑定</span><span class="on">已选择</span></em></span>
-          <span class="sd-reader-archive-peek">${htmlEscape(a.chatName || '未知角色')} · ${a.sliceN} 条记忆</span>
-        </span>
-        <label class="sd-reader-archive-check" onclick="event.stopPropagation()"><input type="checkbox" class="sd-reader-arch-pick" value="${i}"${a.bound ? ' checked' : ''}><span>选用</span></label>
-        <i class="fa-solid fa-chevron-down sd-reader-archive-chevron"></i>
-      </summary>
-      <div class="sd-reader-archive-detail">
-        <span><i class="fa-solid fa-user"></i>角色：${htmlEscape(a.chatName || '未知角色')}</span>
-        <span><i class="fa-solid fa-layer-group"></i>记忆切片：${a.sliceN} 条</span>
-        <span><i class="fa-regular fa-clock"></i>更新：${htmlEscape(when)}</span>
-      </div>
-    </details>`;
-  }).join('');
-  return `<section class="sd-reader-subpage sd-reader-archive-page">
-    ${renderCoreadSubpageHead('fa-box-archive', '伴读档案', '选择需要与当前对话共同召回的档案')}
-    <div class="sd-reader-archive-note"><i class="fa-solid fa-circle-info"></i><span>绑定只共享召回，不会合并或改写旧档案；当前正在阅读的档案已自动生效。</span></div>
-    <div class="sd-reader-archive-list">${rows || '<div class="sd-reader-mempty">尚无可管理的伴读档案</div>'}</div>
-    <div class="sd-reader-arch-secondary"><button type="button" class="sd-reader-textbtn sd-reader-arch-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
-  </section>`;
-}
-
-async function coreadOpenArchivePage() {
-  try { coreadArchivePageItems = await coreadListAllArchives(); }
-  catch (_) { coreadArchivePageItems = []; }
-  coreadCenterPage = 'archives';
-  rerenderMoreIfOpen();
-}
-
 function coreadVectorState(slice, vectorEnabled) {
   if (!vectorEnabled) return { state: 'off', label: '未启用', icon: 'fa-circle-minus' };
   const cachedCandidate = coreadVecCache?.errors?.[slice.id];
@@ -27696,6 +27487,7 @@ function renderCoreadSlicePage() {
     ${renderCoreadSubpageHead('fa-layer-group', '记忆切片', `${htmlEscape(coreadBookMeta(readerDialog.bookId)?.title || '当前书籍')} · ${realSlices.length} 条`)}
     <div class="sd-reader-sm-overview"><span class="src-dialog">伴读对谈 ${counts.dialog || 0}</span><span class="src-text">书中内容 ${counts.book || 0}</span><span class="src-mainline">正文回响 ${counts.mainline || 0}</span>${blockedTotal ? `<span class="is-blocked"><i class="fa-solid fa-shield-halved"></i>隔离 ${blockedTotal}</span>` : ''}</div>
     <div class="sd-reader-sm-list">${rows || '<div class="sd-reader-mempty">还没有记忆切片。</div>'}</div>
+    <div class="sd-reader-slice-secondary"><button type="button" class="sd-reader-textbtn sd-reader-slice-migrate"><i class="fa-solid fa-arrow-right-arrow-left"></i>从其他聊天迁移这本书</button></div>
   </section>`;
 }
 
@@ -27714,42 +27506,6 @@ async function coreadOpenSliceManagerDialog() {
   coreadCenterPage = 'slices';
   rerenderMoreIfOpen();
 }
-
-// 综合自检：反哺主线切片池 + 召回内核 + 绑定档案。结果详见控制台（F12），不改动用户数据。
-async function coreadSelfTest() {
-  const pass = [], fail = [];
-  const log = (ok, label, extra = '') => { (ok ? pass : fail).push(label); console.log(`${ok ? '✓' : '✗'} ${label}${extra ? ` — ${extra}` : ''}`); };
-  console.log('=== 千幕伴读·综合自检 ===');
-  try {
-    // ① 反哺主线切片池：能构建、去重、带来源标签
-    coreadInvalidatePool();
-    const pool = await coreadMainlinePool();
-    log(Array.isArray(pool), '反哺主线切片池构建', `${pool.length} 条`);
-    const dupOk = new Set(pool.map((s) => `${s.__src}::${s.id}`)).size === pool.length;
-    log(dupOk, '切片池去重（bucket+id 唯一）');
-    if (pool.length) log('__srcTitle' in pool[0] || '__src' in pool[0], '切片带来源标签');
-
-    // ② 召回内核：对池跑一次 BM25（不依赖网络）
-    if (pool.length) {
-      const q = pool[0].summary?.slice(0, 20) || '测试';
-      const hits = coreadRecallSlices(q, 3, null, pool);
-      log(Array.isArray(hits), '召回内核（BM25 over 池）跑通', `命中 ${hits.length}`);
-    } else {
-      console.log('· 池为空（当前聊天无切片、也未绑定档案），跳过召回测试');
-    }
-
-    // ③ 绑定读写：chatStore.coreadBound 可读
-    log(Array.isArray(coreadBoundBuckets()), '绑定档案列表可读', `已绑 ${coreadBoundBuckets().length}`);
-  } catch (e) {
-    console.error('自检异常:', e);
-    fail.push('异常中断');
-  } finally {
-    coreadInvalidatePool();
-  }
-  console.log(`=== 自检完成：通过 ${pass.length} · 失败 ${fail.length} ===`);
-  toast(fail.length ? `自检：通过 ${pass.length}，失败 ${fail.length}（详见 F12）` : `自检全部通过（${pass.length} 项，详见 F12）`, fail.length ? 'warning' : 'success');
-}
-globalThis.qmCoreadSelfTest = coreadSelfTest;
 
 // 导出总结提示词为 JSON：含两块（伴读总结条目 + 蒸馏书籍提示词）·便于跨端还原。
 function coreadExportSummaryItems() {
@@ -28617,7 +28373,6 @@ async function coreadComicBackfill() {
       });
     }
     if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return -1; }
-    await coreadRefreshContainer();
     refreshMoreIfRecords();
     return missing.length;
   } finally { coreadMemoryWrites--; }
@@ -29774,7 +29529,6 @@ async function coreadDeleteBook(bookId, options = {}) {
       else retained.push(snapshot);
     }
     saveSettings();
-    coreadInvalidatePool();
     if (!silent && mutation.isCurrent()) toast(`已从书架移除《${meta.title}》。`, 'info');
     return true;
   } catch (error) {
@@ -29888,7 +29642,6 @@ function coreadSaveProgress({ summarize = true } = {}) {
   const total = readerContentCache.chapters.length || 1;
   meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
   if (readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(readerView.bookId)) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
-  coreadInvalidatePool();
   // 累计本书阅读总时长（毫秒）；分段结算，避免长时间挂着算一坨
   if (readerView.sessionStart) {
     const delta = nowMs() - readerView.sessionStart;
@@ -30593,8 +30346,8 @@ const COREAD_GUIDE_STEPS = [
   { tab: 'setup', target: 'context', icon: 'fa-link', title: '确认正文联动', text: '设置伴读参考最近多少层正文聊天。身份会自动跟随当前角色与用户，无需重复填写。' },
   { tab: 'setup', target: 'sources', icon: 'fa-layer-group', title: '选择伴读取材', text: '按需勾选世界书和预设条目。防全知剧透会继续按阅读水位隔离尚未读到的内容。' },
   { tab: 'records', target: 'dialog-summary', icon: 'fa-comments', title: '整理伴读对话', text: '自动总结会在短对话累积到设定条数后写入记忆；手动总结适合补整指定区间。两者都写入同一切片池，重叠时会先提醒再替换。' },
-  { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '管理伴读档案', text: '正文、伴读短对话和主线选段最终汇入同一份千幕档案；可在这里管理切片或选择其他档案参与共同召回。' },
-  { tab: 'inject', target: 'inject', icon: 'fa-wave-square', title: '检查实际注入', text: '这里回放最近一次真正带入模型的切片，并可调整近景、检索、语境扫描和主线联动数量。' },
+  { tab: 'records', target: 'records', icon: 'fa-box-archive', title: '管理伴读档案', text: '正文和伴读对话的记忆汇入同一份档案，可在这里管理切片。' },
+  { tab: 'inject', target: 'inject', icon: 'fa-wave-square', title: '检查实际注入', text: '这里回放最近一次真正带入模型的切片，并可调整近景、检索和语境扫描数量。' },
   { tab: 'setup', target: 'transfer', icon: 'fa-box-open', title: '备份与跨设备迁移', text: '用伴读数据打包一次带走书籍、封面、插图、对话、记忆切片、向量和伴读语音。为安全起见，API 密钥不会写入文件。' },
 ];
 
@@ -30624,7 +30377,6 @@ function renderCoreadPackBar() {
 }
 
 function renderCompanionMoreBody() {
-  if (coreadCenterPage === 'archives') return renderCoreadArchivePage();
   if (coreadCenterPage === 'slices') return renderCoreadSlicePage();
   const m = coreadMemory();
   if (!m.guideSeen && coreadGuideStep === null) coreadGuideStep = 0;
@@ -30729,7 +30481,6 @@ function renderCompanionMoreBody() {
 
 // 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
 function renderMemRecordsTab(m) {
-  const boundN = coreadBoundBuckets().length;
   // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId), comicRecord = coreadComicRecord(readerDialog.bookId);
   const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
@@ -30755,7 +30506,7 @@ function renderMemRecordsTab(m) {
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
   const blockedN = slices.length - coreadSafeSlices(slices, boundary, m).length;
   const archiveOverview = renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount: slices.length,
-    pendingN, boundN, blockedN, targetClass: coreadGuideTargetClass('records')}, htmlEscape);
+    pendingN, blockedN, linkAvailable: yimuCompanionBridge.linkAvailable(), targetClass: coreadGuideTargetClass('records')}, htmlEscape);
 
   return `
     ${archiveOverview}
@@ -30868,7 +30619,6 @@ function renderMemInjectTab(m) {
         return s ? { slice: s, recent: !!it.recent, hits: it.hits || [] } : null;
       }).filter(Boolean)
     : [];
-  const liChannelLabel = li ? (li.channel === 'mainline' ? '主线联动' : '伴读对话') : '';
 
   const {injCards, candRows} = renderCoreadInjectionRowsView({injected, recall}, htmlEscape, coreadSliceSourceClass, coreadSliceSourceLabel);
 
@@ -30876,7 +30626,7 @@ function renderMemInjectTab(m) {
   const roundAnchors = uniqueClean(recall.flatMap((h) => h.hits || []));
   const anchorBar = renderCoreadInjectionAnchorsView(roundAnchors, htmlEscape);
 
-  // 生效词典（绑定词册 + 切片 synonyms 并集·主线/伴读共用）
+  // 生效词典（绑定词册 + 切片 synonyms 并集）
   const globalDict = coreadActiveDict(slices);
   const dictPairs = Object.entries(globalDict);
 
@@ -30899,10 +30649,9 @@ function renderMemInjectTab(m) {
 
   return renderCoreadInjectionPanelView({
     targetClass: coreadGuideTargetClass('inject'), injectedCount: injected.length, hasLastInjection: !!li,
-    liChannelLabel, injCards, blockedCount, scanN, dictPairCount: dictPairs.length, curBound, dictBody,
+    injCards, blockedCount, scanN, dictPairCount: dictPairs.length, curBound, dictBody,
     scanText, anchorBar, candidateCount: recall.length, candRows,
-    config: {recallCount: m.recallCount, recentInject: m.recentInject, rerankTopN: m.rerankTopN, mainlineFeedback: m.mainlineFeedback, mainlineRecall: m.mainlineRecall, mainlineRecent: m.mainlineRecent, mainlineDepth: m.mainlineDepth, vectorEnabled: m.vectorEnabled, rerankEnabled: m.rerankEnabled},
-    mainlineSwitch: renderMemSwitch('sd-reader-mainline-toggle', m.mainlineFeedback),
+    config: {recallCount: m.recallCount, recentInject: m.recentInject, rerankTopN: m.rerankTopN, vectorEnabled: m.vectorEnabled, rerankEnabled: m.rerankEnabled},
   }, htmlEscape);
 }
 
@@ -32598,7 +32347,6 @@ function bindReaderStageEvents(stageRoot) {
       saveSettings(); rerenderMore();
       return;
     }
-    if (e.target.closest('.sd-reader-arch-migrate')) { void coreadOpenMigrateDialog(); return; }
     const sliceRow = e.target.closest('.sd-reader-sm-row');
     if (sliceRow && !sliceRow.classList.contains('is-preview')) {
       const id = sliceRow.dataset.id;
@@ -32890,7 +32638,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     if (e.target.closest('.sd-reader-slice-migrate')) { coreadOpenMigrateDialog(); return; }
     if (e.target.closest('.sd-reader-slice-manage')) { coreadOpenSliceManagerDialog(); return; }
-    if (e.target.closest('.sd-reader-arch-manage')) { void coreadOpenArchivePage(); return; }
+    if (e.target.closest('.sd-reader-yimu-link')) { toast('在忆幕的导览页点「关联伴读」。', 'info'); return; }
     // 词典册：新建词册（弹窗命名后创建并自动选中）
     if (e.target.closest('.sd-reader-dictbook-add')) {
       const mutation = coreadCaptureDictMutation(m, '', e.target.closest('.sd-reader-dictbook-add'));
@@ -32934,7 +32682,7 @@ function bindReaderStageEvents(stageRoot) {
         const store = getChatStore();
         store.coreadDictBound = coreadBoundDicts().filter((x) => x !== id);
         if (coreadCurrentDictId === id) coreadCurrentDictId = '';
-        saveSettings(); saveMetadata(); coreadInvalidatePool(); rerenderMore();
+        saveSettings(); saveMetadata(); rerenderMore();
         toast('已删除词册。', 'info');
       });
       return;
@@ -32954,7 +32702,7 @@ function bindReaderStageEvents(stageRoot) {
       const list = coreadBoundDicts();
       const i = list.indexOf(coreadCurrentDictId);
       if (i >= 0) list.splice(i, 1); else list.push(coreadCurrentDictId);
-      store.coreadDictBound = list; saveMetadata(); coreadInvalidatePool(); rerenderMore();
+      store.coreadDictBound = list; saveMetadata(); rerenderMore();
       toast(i >= 0 ? '已解除绑定。' : '已绑定至此聊天。', 'success');
       return;
     }
@@ -32982,21 +32730,11 @@ function bindReaderStageEvents(stageRoot) {
         const book = mutation.currentBook();
         if (!book) return;
         delete book.pairs[canon];
-        saveSettings(); coreadInvalidatePool(); rerenderMore();
+        saveSettings(); rerenderMore();
         toast('已删除。', 'info');
       });
       return;
     }
-  });
-  morePage?.addEventListener('change', (e) => {
-    const pick = e.target.closest('.sd-reader-arch-pick');
-    if (!pick) return;
-    const item = coreadArchivePageItems[Number(pick.value)];
-    if (!item) return;
-    coreadToggleBind(item.bucket, pick.checked);
-    item.bound = pick.checked;
-    toast(pick.checked ? `已启用《${item.title}》档案召回。` : `已停用《${item.title}》档案召回。`, 'success');
-    rerenderMore();
   });
   morePage?.addEventListener('change', (e) => {
     const packInput = e.target.closest('.sd-reader-pack-import-input');
@@ -33063,8 +32801,7 @@ function bindReaderStageEvents(stageRoot) {
       }
       return;
     }
-    if (e.target.closest('.sd-reader-spoiler-filter')) { m.spoilerProtection = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
-    if (e.target.closest('.sd-reader-mainline-toggle')) { m.mainlineFeedback = e.target.checked; saveSettings(); coreadInvalidatePool(); rerenderMore(); return; }
+    if (e.target.closest('.sd-reader-spoiler-filter')) { m.spoilerProtection = e.target.checked; saveSettings(); rerenderMore(); return; }
     // 模型下拉选中 → 直接落库（向量/重排/总结通用）
     const modelPick = e.target.closest('.sd-reader-mem-modelpick');
     if (modelPick) {
@@ -33100,9 +32837,6 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-scan')) { m.recallScanMessages = Math.max(1, Math.min(50, Number(e.target.value) || 8)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-reranktop')) { m.rerankTopN = Math.max(1, Number(e.target.value) || 4); saveSettings(); return; }
-    if (e.target.closest('.sd-reader-mainline-recall')) { m.mainlineRecall = Math.max(0, Number(e.target.value) || 0); saveSettings(); coreadInvalidatePool(); return; }
-    if (e.target.closest('.sd-reader-mainline-recent')) { m.mainlineRecent = Math.max(0, Number(e.target.value) || 0); saveSettings(); coreadInvalidatePool(); return; }
-    if (e.target.closest('.sd-reader-mainline-depth')) { m.mainlineDepth = Math.max(0, Math.min(20, Number(e.target.value) || 2)); saveSettings(); return; }
     const map = [
       ['.sd-reader-vector-apiurl', 'vectorApiUrl'], ['.sd-reader-vector-apikey', 'vectorApiKey'],
       ['.sd-reader-rerank-apiurl', 'rerankApiUrl'], ['.sd-reader-rerank-apikey', 'rerankApiKey'],
@@ -34863,7 +34597,6 @@ function bindEvents() {
     // 新角色/聊天可能绑定了不同世界书：作废世界书扫描态，下次推演或开取材页自动补扫（预设不随角色变，留存）
     invalidateContextWorldCache();
     ttsLineCache.clear();      // 切聊天：旧消息台词缓存失效
-    coreadInvalidatePool();    // 切聊天：反哺主线切片池随新聊天的绑定档案重算
     companionWorldView = '';   // 切聊天：世界书已按聊天分存，查看视图回到未选·避免跨聊天残留
     await refreshCoreadPersonaAvatar();
     void storyboardHandleChatChanged();
