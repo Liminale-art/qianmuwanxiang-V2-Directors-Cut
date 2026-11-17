@@ -427,3 +427,18 @@ test('automatic text distill handles at most two batches per trigger; a manual r
   assert.match(auto.slice(0, 1500), /coreadDistillReadText\(m, \{ maxBatches: 2 \}\)/);
   assert.match(source, /coreadDistillReadText\(m\)\.then\(/, 'the manual button distills everything that is pending');
 });
+
+test('running full-book distill twice makes no duplicate slices, and a later run only fills what is missing', async () => {
+  const e = textFixture({cap: 120, length: 400});
+  assert.equal((await e.c.coreadDistillFullBook(e.state.memory)).ok, true);
+  const first = e.dialog().slices.length, sentBefore = e.sent.length;
+  const again = await e.c.coreadDistillFullBook(e.state.memory);
+  assert.equal(again.ok, false); assert.equal(again.reason, '全书都已总结过了');
+  assert.equal(e.dialog().slices.length, first); assert.equal(e.sent.length, sentBefore, 'no request is sent the second time');
+  // 删掉中间一条后再点：只补这一段。
+  const removed = e.dialog().slices.splice(1, 1)[0];
+  const refill = await e.c.coreadDistillFullBook(e.state.memory);
+  assert.equal(refill.ok, true); assert.equal(refill.made, 1);
+  assert.equal(e.sent.at(-1), e.full.slice(removed.coveredFrom, removed.coveredTo));
+  assertTextTiles(e, 0, 400);
+});

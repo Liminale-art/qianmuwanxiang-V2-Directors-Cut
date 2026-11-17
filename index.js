@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.555';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.556';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.555';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.555';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.555';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.556';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.556';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.556';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.555';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.556';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.555';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.555';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.556';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.556';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.555';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.556';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.555';
+const VERSION = '1.59.556';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -26447,7 +26447,7 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
 // ── 蒸馏全书：把整本书正文切块逐段蒸馏·生成多条切片·解决长篇幅单次蒸馏不全问题 ──
 // 从头到尾逐段（每段 chunkSize 字），已有切片覆盖的段可选跳过（skipExisting=true·默认 false 全部重蒸）。
 // 进度逐条 toast·整体统计成功/失败。
-async function coreadDistillFullBook(m, skipExisting = false) {
+async function coreadDistillFullBook(m) {
   if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在处理中' };
   coreadDistilling = true;
   coreadDistillAbort = false;
@@ -26472,17 +26472,16 @@ async function coreadDistillFullBook(m, skipExisting = false) {
     const chunkSize = ctxCap > 0 ? Math.min(60000, ctxCap) : 30000;
     const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
     // 划分段落（每段至多 chunkSize 字·首尾相接不重叠·优先在换行处分段）
-    const chunks = reader.planCoreadTextSpans(full, 0, full.length, chunkSize);
+    // 只整理还没被正文切片覆盖的部分：连点两次、或中途停下后再点，都不会生成重复切片，只补缺口。
+    const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], full.length);
+    const chunks = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, chunkSize)).filter(({ from, to }) => full.slice(from, to).trim());
+    if (!chunks.length) return { ok: false, reason: '全书都已总结过了' };
     toast(`蒸馏全书：共 ${chunks.length} 段，开始逐段处理…`, 'info');
     let ok = 0, fail = 0, aborted = false, saveFailed = false;
     for (let ci = 0; ci < chunks.length; ci++) {
       // 用户中途按「停止」：保留已生成的切片，剩余段不再处理
       if (coreadDistillAbort) { aborted = true; break; }
       const { from, to } = chunks[ci];
-      // 跳过已有切片完整覆盖的段（skipExisting=true 时）
-      if (skipExisting && (readerDialog.slices || []).some((s) => s.src === 'text' && Number(s.coveredFrom) <= from && Number(s.coveredTo) >= to)) {
-        ok++; continue;
-      }
       const body = full.slice(from, to);
       if (!body.trim()) continue;
       const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》第 ${ci + 1}/${chunks.length} 段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
@@ -32620,7 +32619,7 @@ function bindReaderStageEvents(stageRoot) {
         // 进入生成态：蒸馏全书按钮变红「停止」，另一按钮禁用
         if (btnBook) { btnBook.textContent = '停止'; btnBook.classList.add('sd-reader-distill-stop', 'sd-btn-danger'); }
         if (btnText) btnText.disabled = true;
-        coreadDistillFullBook(m, false).then((r) => {
+        coreadDistillFullBook(m).then((r) => {
           if (r?.aborted) toast(`已停止蒸馏全书（已完成 ${r.made} 段）。`, 'info');
           else if (r?.ok) toast(`蒸馏全书完成：新增 ${r.made} 条切片${r.failed ? `（${r.failed} 段失败已跳过）` : ''}。`, 'success');
           else toast(r?.reason || '蒸馏全书失败。', 'warning');
