@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.554';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.555';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.554';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.554';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.554';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.555';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.555';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.555';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.554';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.555';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.554';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.554';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.555';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.555';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.554';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.555';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.554';
+const VERSION = '1.59.555';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1031,7 +1031,9 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
   updatedAt: 0,
 });
 const PROSE_LAYOUT_CONTROLS = Object.freeze([
-  { key: 'fontSize', label: '字号', min: 12, max: 32, step: 1, unit: 'px' },
+  { key: 'fontSize', label: '正文字号', min: 12, max: 32, step: 1, unit: 'px' },
+  // 引用（对白等引号内文字）单独的字号：各款字体的视觉大小没有统一标准，正文与引用用了不同字体时靠它对齐观感。
+  { key: 'quoteFontSize', label: '引用字号', min: 12, max: 32, step: 1, unit: 'px' },
   { key: 'letterSpacing', label: '字距', min: -2, max: 2, step: 0.01, unit: 'em' },
   { key: 'lineHeight', label: '行高', min: 1.2, max: 2.6, step: 0.05, unit: '倍' },
   { key: 'paragraphGap', label: '段距', min: 0, max: 2, step: 0.05, unit: 'em' },
@@ -5261,7 +5263,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
 }
 
 const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
-const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-letter-spacing', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width', '--sd-prose-horizontal-offset', '--sd-prose-side-padding'];
+const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-quote-font-size', '--sd-prose-letter-spacing', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width', '--sd-prose-horizontal-offset', '--sd-prose-side-padding'];
 let proseLayoutObserver = null;
 let proseLayoutWidthObserver = null;
 let proseLayoutFrame = 0;
@@ -5278,6 +5280,8 @@ function proseLayoutSettings() {
   layout.justify = Boolean(layout.justify);
   layout.updatedAt = Math.max(0, Number(layout.updatedAt) || 0);
   delete layout.sidePadding;
+  // 引用字号没设过时跟正文字号一致，观感不变。
+  if (!Number.isFinite(Number(layout.quoteFontSize)) || layout.quoteFontSize === null) layout.quoteFontSize = layout.fontSize;
   for (const spec of PROSE_LAYOUT_CONTROLS) {
     const raw = Number(layout[spec.key]);
     const fallback = Number(PROSE_LAYOUT_DEFAULTS[spec.key]);
@@ -5287,7 +5291,7 @@ function proseLayoutSettings() {
 }
 
 function proseLayoutFormatValue(key, value) {
-  if (['fontSize', 'contentWidth'].includes(key)) return String(Math.round(Number(value) || 0));
+  if (['fontSize', 'quoteFontSize', 'contentWidth'].includes(key)) return String(Math.round(Number(value) || 0));
   return String(Number(Number(value).toFixed(2)));
 }
 
@@ -5495,6 +5499,7 @@ function applyProseLayout(refreshBreaks = true) {
   document.body?.classList.toggle('sd-prose-split-breaks', layout.splitBreaks);
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--sd-prose-font-size', `${layout.fontSize}px`);
+  rootStyle.setProperty('--sd-prose-quote-font-size', `${Number.isFinite(Number(layout.quoteFontSize)) ? layout.quoteFontSize : layout.fontSize}px`);
   rootStyle.setProperty('--sd-prose-letter-spacing', `${layout.letterSpacing}em`);
   rootStyle.setProperty('--sd-prose-line-height', String(layout.lineHeight));
   rootStyle.setProperty('--sd-prose-paragraph-gap', `${layout.paragraphGap}em`);

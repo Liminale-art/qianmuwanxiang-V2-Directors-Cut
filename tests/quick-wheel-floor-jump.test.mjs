@@ -202,7 +202,7 @@ assert.match(css, /\.mes\.sd-floor-jump-hit/);
 
 // 楼层工具新增独立正文排版页：默认零介入，三项开关置于滑动条组上方。
 assert.match(source, /const PROSE_LAYOUT_DEFAULTS[\s\S]*active:\s*false/);
-for (const label of ['开启排版', '字号', '字距', '行高', '段距', '缩进', '宽度', '横移', '换行整理为段落', '两端对齐']) {
+for (const label of ['开启排版', '正文字号', '引用字号', '字距', '行高', '段距', '缩进', '宽度', '横移', '换行整理为段落', '两端对齐']) {
   assert.match(source, new RegExp(label));
 }
 assert.match(source.slice(source.indexOf('const PROSE_LAYOUT_CONTROLS'), source.indexOf('const PROSE_LAYOUT_STORAGE_KEY =')), /key: 'letterSpacing', label: '字距', min: -2, max: 2, step: 0\.01, unit: 'em'/, '字距必须紧跟字号并允许在 ±2em 内细调');
@@ -236,3 +236,9 @@ assert.match(css, /\.sd-floor-jump\s*\{[^}]*border-radius:\s*999px/);
 assert.match(css, /\.sd-floor-actions button\s*\{[^}]*border-radius:\s*999px/);
 
 console.log('Quick wheel and floor jump contract OK');
+
+// 引用字号：独立滑杆；没设过时取正文字号；样式只作用于排版开启时正文里的引用。
+assert.match(source, /if \(!Number\.isFinite\(Number\(layout\.quoteFontSize\)\) \|\| layout\.quoteFontSize === null\) layout\.quoteFontSize = layout\.fontSize;/);
+assert.match(source, /setProperty\('--sd-prose-quote-font-size', `\$\{Number\.isFinite\(Number\(layout\.quoteFontSize\)\) \? layout\.quoteFontSize : layout\.fontSize\}px`\)/);
+assert.match(source, /PROSE_LAYOUT_CSS_VARS = \['--sd-prose-font-size', '--sd-prose-quote-font-size',/, '关闭排版时一并清除');
+assert.match(css, /html body\.sd-prose-layout #chat \.mes \.mes_text q \{ font-size: var\(--sd-prose-quote-font-size, var\(--sd-prose-font-size\)\) !important; \}/);

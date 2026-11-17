@@ -1395,6 +1395,8 @@ html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-pr
   line-height: var(--sd-prose-line-height) !important;
   text-indent: var(--sd-prose-indent) !important;
 }
+/* 引用（引号内文字）单独的字号；没设过时与正文字号相同。 */
+html body.sd-prose-layout #chat .mes .mes_text q { font-size: var(--sd-prose-quote-font-size, var(--sd-prose-font-size)) !important; }
 @media screen and (max-width: 720px) {
   html body.sd-prose-layout #chat .mes .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))),
   html body.sd-prose-layout #chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"] {
