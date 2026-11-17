@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.549';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.550';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.549';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.549';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.549';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.550';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.550';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.550';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.549';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.550';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.549';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.549';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.550';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.550';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.549';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.550';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -338,7 +338,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.549';
+const VERSION = '1.59.550';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -29010,12 +29010,15 @@ async function coreadGenerateAssistantReply() {
     const spoilerRule = coreadMemory().spoilerProtection !== false
       ? '严格止于当前已读范围。不得透露、暗示或利用后文信息；若问题必须依赖未读内容，直接说明需要继续阅读。'
       : '可以依据当前提供的已读内容作答，不虚构书中未提供的事实。';
-    const systemPrompt = `你是千幕的幕伴小助手，是独立的阅读工具，不扮演书友或正文角色。回答要清楚、自然、实用，可以解释选文、梳理线索、讨论写法，也可以回答由阅读衍生出的额外问题。${spoilerRule}\n当前书籍：《${reading.meta.title || '未命名'}》${reading.meta.author ? `，作者：${reading.meta.author}` : ''}，读至约 ${reading.progress}%。`;
+    const systemPrompt = `你是千幕的幕伴小助手，是独立的阅读工具，不扮演书友或正文角色。回答要清楚、自然、实用，可以解释选文、梳理线索、讨论写法，也可以回答由阅读衍生出的额外问题。${spoilerRule}\n当前书籍：《${reading.meta.title || '未命名'}》${reading.meta.author ? `，作者：${reading.meta.author}` : ''}。`;
     const history = prior.map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.text || ''}${message.images?.length ? ' [曾附图片]' : ''}`).join('\n');
     const userPrompt = [
+      // 排布按「不变的在前、每次都变的在后」：系统提示不带阅读进度，体量最大的已读范围排最前，
+      // 同一阅读位置上连续提问时，这一大段能被渠道的提示词缓存直接命中。各段内容与标题不变，只换了先后。
+      reading.visibleText ? `【当前已读范围】\n${reading.visibleText}` : '',
+      `【阅读进度】读至约 ${reading.progress}%`,
       history ? `【幕伴小助手近期对话】\n${history}` : '',
       quotes.length ? `【用户选中的文字】\n${quotes.join('\n\n')}` : '',
-      reading.visibleText ? `【当前已读范围】\n${reading.visibleText}` : '',
       `【本轮问题】\n${question}`,
     ].filter(Boolean).join('\n\n');
     const onDelta = settings.streamEnabled ? (acc) => {

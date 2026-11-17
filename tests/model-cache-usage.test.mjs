@@ -42,3 +42,12 @@ test('Yimu carries the same reader, and both surfaces show the readout', async (
   assert.match(settings, /lastCache = modelCacheText\(reply\.usage\);/);
   assert.match(view, /api\.lastCache\?\.\(\) \|\| ''/);
 });
+
+test('the reading assistant sends what stays the same first: no progress figure in the system prompt, the read range ahead of the chat history', async () => {
+  const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+  const at = entry.indexOf('你是千幕的幕伴小助手'), block = entry.slice(at, at + 2600);
+  assert.ok(at > 0);
+  assert.doesNotMatch(block.slice(0, block.indexOf('const history')), /reading\.progress/, 'a figure that changes as the user reads would break the cached prefix at the very start');
+  const order = ['【当前已读范围】', '【阅读进度】', '【幕伴小助手近期对话】', '【用户选中的文字】', '【本轮问题】'].map(title => block.indexOf(title));
+  assert.ok(order.every((value, index) => value > 0 && (!index || value > order[index - 1])), `sections in order: ${order}`);
+});
