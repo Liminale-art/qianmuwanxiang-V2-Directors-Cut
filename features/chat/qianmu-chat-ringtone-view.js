@@ -187,14 +187,24 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     const head = el('div', 'qm-ring-head');
     head.append(el('h4', '', '标签页闪烁提醒'), capsule('', s.flashEnabled, on => actions.update({ flashEnabled: on }), { ariaLabel: '开启标签页闪烁提醒' }));
     card.append(head);
-    // 两个圆形可点图标移至提醒文字之上；点击图片本身即更换（并预览），无相机角标。
+    // 三个圆形可点图标在提醒文字之上：最左是标签页平时显示的固定图标，隔开一点；右边两个是闪烁时交替的图标。
     const icons = el('div', 'qm-ring-icons');
     const frames = actions.iconFrames();
+    {
+      const picker = filePicker('image/*,.ico,.cur', file => actions.pickFixedIcon(file));
+      const cell = el('button', 'qm-ring-icon qm-ring-icon-fixed'); cell.type = 'button';
+      cell.title = '点击更换标签页图标'; cell.setAttribute('aria-label', '更换标签页图标');
+      const image = el('img'); image.alt = '标签页图标'; image.width = 32; image.height = 32; image.src = actions.fixedIcon();
+      cell.append(image);
+      cell.addEventListener('click', () => picker.click());
+      cell.appendChild(picker);
+      icons.append(cell);
+    }
     for (const slot of [0, 1]) {
       const picker = filePicker('image/*,.ico,.cur', file => actions.pickIcon(slot, file));
       const cell = el('button', 'qm-ring-icon'); cell.type = 'button';
       cell.title = `点击更换图标 ${slot + 1}`; cell.setAttribute('aria-label', `更换闪烁图标 ${slot + 1}`);
-      const image = el('img'); image.alt = `闪烁图标 ${slot + 1}`; image.width = 40; image.height = 40;
+      const image = el('img'); image.alt = `闪烁图标 ${slot + 1}`; image.width = 32; image.height = 32;
       if (frames[slot]) image.src = frames[slot]; else cell.classList.add('is-empty');
       cell.append(image);
       cell.addEventListener('click', () => picker.click());
@@ -202,7 +212,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       icons.append(cell);
     }
     card.append(icons);
-    if (s.iconSource === 'custom') {
+    if (actions.hasCustomIcons()) {
       const tools = el('div', 'qm-ring-tools');
       tools.append(button('恢复默认图标', 'qm-ring-clear', () => actions.clearIcons()));
       card.append(tools);

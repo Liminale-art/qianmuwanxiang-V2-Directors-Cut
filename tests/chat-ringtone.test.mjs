@@ -417,7 +417,7 @@ test('list rows mark the pick before the audition finishes loading', async () =>
   };
   const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
   let release;
-  const actions = { presets: RINGTONE_PRESETS.slice(0, 3), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES, toastDurations: TOAST_DURATIONS,
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 3), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {}, toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES, toastDurations: TOAST_DURATIONS,
     selectPreset: () => new Promise(resolve => { release = resolve; }) };
   const view = mountChatRingtoneView({ root: host, actions });
   const s = normalizeRingtone({});
@@ -480,7 +480,7 @@ test('wheel picker commits the value under the centre pointer once scrolling set
   };
   const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
   const updates = [];
-  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {}, toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
     toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: patch => { updates.push(patch); } };
   const view = mountChatRingtoneView({ root: host, actions });
   const s = normalizeRingtone({});
@@ -550,7 +550,7 @@ test('wheel picker renders head/tail copies and snaps a copy-centre back to the 
   };
   const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
   const updates = [], opts = [];
-  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {}, toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
     toastDurations: TOAST_DURATIONS, toastStacks: TOAST_STACKS, update: (patch, o) => { updates.push(patch); opts.push(o); } };
   const v = mountChatRingtoneView({ root: host, actions });
   v.render(normalizeRingtone({}));
@@ -598,7 +598,7 @@ test('wheel picker with too few values keeps a plain strip (no copies)', async (
     nodes.push(node); return node;
   };
   const host = make('div'); host.ownerDocument = { createElement: make, activeElement: null };
-  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 2), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {}, toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES,
     toastDurations: [[1, '1s'], [2, '2s']], toastStacks: TOAST_STACKS, update() {} };
   const v = mountChatRingtoneView({ root: host, actions });
   v.render(normalizeRingtone({}));
@@ -736,4 +736,25 @@ test('the smallest toast size scales the whole card instead of only shrinking th
   const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
   const rule = css.match(/html\[data-qm-toast-size="xs"\] body #toast-container > div \{([^}]*)\}/)?.[1] || '';
   assert.match(rule, /zoom: \.88/); assert.match(rule, /--qm-toast-fs: 11\.8px/);
+});
+
+test('the tab shows a fixed icon (the Qianmu logo by default), a picked one replaces it, and the page icon is restored on dispose', async () => {
+  const { RINGTONE_FIXED_ICON } = await import('../features/chat/qianmu-chat-ringtone.js');
+  const { doc, links } = fakeDocument();
+  doc.querySelector = () => links.find(link => link.dataset?.qianmuTabIcon) || null;
+  const st = doc.createElement(); st.setAttribute('rel', 'icon'); st.setAttribute('href', 'favicon.ico'); st.setAttribute('type', 'image/x-icon'); links.push(st);
+  const { ring, settings } = harness({ document: doc });
+  ring.activate();
+  assert.equal(st.getAttribute('href'), RINGTONE_FIXED_ICON, 'the logo is the default fixed icon');
+  assert.equal(st.getAttribute('type'), null, 'the old type no longer mislabels the new image');
+  assert.equal(ring.actions.fixedIcon(), RINGTONE_FIXED_ICON); assert.equal(ring.actions.hasCustomIcons(), false);
+  const picked = 'data:image/png;base64,iVBORw0KGgo=';
+  ring.actions.update({ fixedIcon: picked });
+  assert.equal(st.getAttribute('href'), picked); assert.equal(ring.actions.hasCustomIcons(), true);
+  ring.actions.update({ fixedIcon: 'javascript:alert(1)' });
+  assert.equal(settings.ringtone.fixedIcon, '', 'anything that is not image data falls back to the default');
+  ring.actions.update({ fixedIcon: picked }); ring.actions.clearIcons();
+  assert.equal(st.getAttribute('href'), RINGTONE_FIXED_ICON, 'restore-default resets the fixed icon too');
+  ring.dispose();
+  assert.equal(st.getAttribute('href'), 'favicon.ico'); assert.equal(st.getAttribute('type'), 'image/x-icon');
 });

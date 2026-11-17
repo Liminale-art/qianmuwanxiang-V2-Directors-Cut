@@ -21,10 +21,12 @@ const PRESET_ROWS = [
 export const RINGTONE_PRESETS = Object.freeze(PRESET_ROWS.map(([group, id, label, ext]) =>
   Object.freeze({ group, id, label, url: new URL(`../../assets/ringtones/${id}.${ext}`, import.meta.url).href })));
 export const RINGTONE_TAB_ICONS = Object.freeze([1, 2].map(n => new URL(`../../assets/tab-icons/doro-${n}.ico`, import.meta.url).href));
+// 标签页平时显示的固定图标，默认千幕 logo。
+export const RINGTONE_FIXED_ICON = new URL('../../assets/logos/qianmulogo.png', import.meta.url).href;
 export const RINGTONE_LIMITS = Object.freeze({ localSoundBytes: 5 * 1024 * 1024, localSoundCount: 20, iconInputBytes: 4 * 1024 * 1024, iconSize: 64, iconDataChars: 96 * 1024, flashText: 24, url: 2048 });
 export const RINGTONE_DEFAULTS = Object.freeze({
   soundEnabled: false, soundSource: 'builtin', soundPreset: 'line-default', soundUrl: '', localSounds: [], localId: '',
-  volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [],
+  volume: 80, soundOnlyHidden: false, flashEnabled: false, flashText: '( •̀ .̫ •́ )✧叮咚，您有新订单啦~', iconSource: 'builtin', customIcons: [], fixedIcon: '',
   toastSkin: false, toastStyle: 'default', toastFontSize: 'sm', toastDuration: 4, toastStack: 3,
 });
 // ST notification skin. Placement stays ST's own top-centre; only the card is restyled.
@@ -110,6 +112,7 @@ export function normalizeRingtone(owner) {
   const stack = Number(next.toastStack);
   next.toastStack = Number.isInteger(stack) && stack >= 1 && stack <= TOAST_STACK_MAX ? stack : RINGTONE_DEFAULTS.toastStack;
   delete next.toastPosition; // retired: placement is always ST's native top-centre
+  next.fixedIcon = isIconData(next.fixedIcon) ? next.fixedIcon : '';
   next.customIcons = Array.isArray(next.customIcons) ? next.customIcons.slice(0, 2).map(item => (isIconData(item) ? item : '')) : [];
   if (owner && typeof owner === 'object') owner.ringtone = next;
   return next;
@@ -328,10 +331,35 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   const toastLibrary = () => window?.toastr || globalThis.toastr;
   const syncToast = () => { if (skinActive) { applyToastSkin(document, state(), getLook()); applyToastTiming(toastLibrary(), state()); } };
   // { quiet: true }: the view already shows the change (wheel pick), so skip the full panel re-render.
+  // 标签页固定图标：平时显示的那一枚（闪烁结束后也回到它）。只在要显示的图变了时才动页面，
+  // 第一次改动前记下页面原来的图标，停用千幕时原样还回去。
+  let tabIconApplied = '', tabIconOriginal = null;
+  function syncTabIcon() {
+    if (disposed || !document?.querySelectorAll) return;
+    const href = state().fixedIcon || RINGTONE_FIXED_ICON;
+    if (href === tabIconApplied) return;
+    alert.stop();
+    const links = [...document.querySelectorAll('link[rel~="icon"]')];
+    tabIconOriginal ||= links.map(link => [link, link.getAttribute('href'), link.getAttribute('type')]);
+    if (!links.length && document.head) {
+      const link = document.createElement('link'); link.setAttribute('rel', 'icon'); link.dataset.qianmuTabIcon = '1';
+      document.head.append(link); links.push(link);
+    }
+    for (const link of links) { link.removeAttribute('type'); link.setAttribute('href', href); }
+    tabIconApplied = href;
+  }
+  function restoreTabIcon() {
+    for (const [link, href, type] of tabIconOriginal || []) {
+      if (href === null) link.removeAttribute('href'); else link.setAttribute('href', href);
+      if (type !== null) link.setAttribute('type', type);
+    }
+    document?.querySelector?.('link[data-qianmu-tab-icon]')?.remove();
+    tabIconOriginal = null; tabIconApplied = '';
+  }
   function update(patch, { quiet = false } = {}) {
     Object.assign(state(), patch);
     normalizeRingtone(getOwner());
-    save(); syncToast(); if (!quiet) refresh();
+    save(); syncToast(); syncTabIcon(); if (!quiet) refresh();
   }
   const newLocalId = () => `l${now().toString(36)}${(localSeq++).toString(36)}`;
   async function localSource(id) {
@@ -481,7 +509,10 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       const icons = [...state().customIcons]; icons[slot === 1 ? 1 : 0] = data;
       update({ iconSource: 'custom', customIcons: [icons[0] || '', icons[1] || ''] });
     },
-    clearIcons() { update({ customIcons: [], iconSource: 'builtin' }); },
+    clearIcons() { update({ customIcons: [], iconSource: 'builtin', fixedIcon: '' }); },
+    fixedIcon: () => state().fixedIcon || RINGTONE_FIXED_ICON,
+    hasCustomIcons: () => state().iconSource === 'custom' || Boolean(state().fixedIcon),
+    async pickFixedIcon(file) { update({ fixedIcon: await imageToFavicon(file, { document, URL: URLClass }) }); },
     testFlash() { return flash({ duration: 6000 }); },
     toastStyles: TOAST_STYLES,
     toastFontSizes: TOAST_FONT_SIZES,
@@ -502,10 +533,10 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   function unmount() { player.stop(); mounted?.view?.dispose(); mounted = null; }
   // Runtime teardown; a later re-enable may mount again.
   // Applies the saved toast skin once settings are loaded (runtime init).
-  function activate() { skinActive = true; syncToast(); }
+  function activate() { skinActive = true; syncToast(); syncTabIcon(); }
   // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
-  function refreshLook() { syncToast(); }
-  function dispose() { disposed = true; skinActive = false; applyToastSkin(document, null); applyToastTiming(toastLibrary(), null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
+  function refreshLook() { syncToast(); syncTabIcon(); }
+  function dispose() { alert.stop(); restoreTabIcon(); disposed = true; skinActive = false; applyToastSkin(document, null); applyToastTiming(toastLibrary(), null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
   // Warms the view module only (no mount, no audio, no data read).
   const preload = () => loadView().then(() => true, () => false);
   return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state, preload });

@@ -890,9 +890,11 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-volume input { width: 100%; min-width: 0; accent-color: var(--sd-accent); }
 #story-director-floor-nav .qm-ring-volume output { min-width: 3.2em; color: var(--sd-muted); font-size: var(--qm-type-caption); text-align: right; font-variant-numeric: tabular-nums; }
 /* 两个圆形可点图标 */
-#story-director-floor-nav .qm-ring-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; justify-items: center; }
-#story-director-floor-nav .qm-ring-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 58px; height: 58px; padding: 0; border: 1px dashed var(--sd-border); border-radius: 50%; background: var(--sd-glass-weak); cursor: pointer; overflow: hidden; }
-#story-director-floor-nav .qm-ring-icon img { width: 40px; height: 40px; object-fit: contain; image-rendering: auto; border-radius: 50%; }
+#story-director-floor-nav .qm-ring-icons { display: flex; justify-content: center; align-items: center; gap: 8px; }
+/* 最左的固定图标与右边两枚闪烁图标之间留宽一点 */
+#story-director-floor-nav .qm-ring-icon-fixed { margin-right: 18px; border-style: solid; }
+#story-director-floor-nav .qm-ring-icon { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; padding: 0; border: 1px dashed var(--sd-border); border-radius: 50%; background: var(--sd-glass-weak); cursor: pointer; overflow: hidden; }
+#story-director-floor-nav .qm-ring-icon img { width: 32px; height: 32px; object-fit: contain; image-rendering: auto; border-radius: 50%; }
 #story-director-floor-nav .qm-ring-icon.is-empty { border-style: dashed; color: var(--sd-muted); }
 #story-director-floor-nav .qm-ring-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 #story-director-floor-nav .qm-ring-tools button { min-height: 32px; padding: 0 12px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: var(--qm-type-caption); }
