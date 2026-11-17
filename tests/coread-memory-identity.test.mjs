@@ -41,9 +41,9 @@ test('explicit copies keep their source provenance, tolerate old worldbook point
   const source={messages:[{text:'source'}],slices:[{id:'shared',src:'dialog',summary:'Original',loreUid:42,loreBook:'source world',provenance:{bucket:'A::book',bookId:'book',readTo:100}}],readBoundary:{bookId:'book',readTo:100}};
   const before=structuredClone(source),c=vm.createContext({readerDialog:{bookId:'book',bucket:'B::book',readBoundary:{bookId:'book',readTo:800}},
     coreadMemoryWrites:0,coreadBookMeta:()=>({}),clone:structuredClone,reader,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0}),
-    coreadEchoTtl:new Map(),coreadVecCache:null,
+    coreadEchoTtl:new Map(),coreadVecCache:null,coreadVectorStates:new Map(),COREAD_SAVE_FAILED:'save failed',
     coreadSaveDialog:async()=>true,coreadRefreshContainer:async()=>{}});
-  vm.runInContext(['coreadNormalizeSlices','coreadMigrateFromChat'].map(section).join('\n'),c);
+  vm.runInContext(['coreadNormalizeSlices','coreadMemorySnapshot','coreadMemoryRestore','coreadMigrateFromChat'].map(section).join('\n'),c);
   const result=await c.coreadMigrateFromChat(source);
   assert.deepEqual(source,before);assert.equal(result.ok,true);assert.equal('wrote' in result,false);
   assert.equal(c.readerDialog.slices[0].ownerBucket,'B::book');assert.equal(c.readerDialog.slices[0].provenance.bucket,'A::book');
@@ -51,9 +51,9 @@ test('explicit copies keep their source provenance, tolerate old worldbook point
 });
 
 test('memory write gate is released on failed mutation, never leaving selection permanently locked',async()=>{
-  const c=vm.createContext({coreadMemoryWrites:0,readerDialog:{slices:[{id:'x',summary:'old'}]},uniqueClean:x=>x,coreadVectorStates:new Map(),
+  const c=vm.createContext({coreadMemoryWrites:0,coreadDistilling:false,coreadSaveDialog:async()=>true,readerDialog:{slices:[{id:'x',summary:'old'}]},uniqueClean:x=>x,coreadVectorStates:new Map(),
     coreadSliceFingerprint:()=>'',coreadPipelineCircuits:new Map(),coreadVecCache:null,coreadUpdateComicDescriptionForSlice:async()=>{throw Error('disk');}});
-  vm.runInContext(section('coreadSaveSliceEdit'),c);await assert.rejects(c.coreadSaveSliceEdit('x','new','tag'),/disk/);assert.equal(c.coreadMemoryWrites,0);
+  vm.runInContext(['coreadMemorySnapshot','coreadMemoryRestore','coreadSaveSliceEdit'].map(section).join('\n'),c);await assert.rejects(c.coreadSaveSliceEdit('x','new','tag'),/disk/);assert.equal(c.coreadMemoryWrites,0);
 });
 
 test('slice formation records the reading boundary at persist time and writes no world-book fields',async()=>{

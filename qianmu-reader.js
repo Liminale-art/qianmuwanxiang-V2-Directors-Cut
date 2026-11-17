@@ -411,6 +411,90 @@ export function calculateCoreadDialogCursor(slices, messageCount, summaryFloor =
   return cursor;
 }
 
+// 把一串条目按字数上限切成连续批次，返回各批的条目下标闭区间 [{from, to}]。
+// 只增加批次、不裁内容：单条超过上限时独占一批；空条目（长度 0）并入相邻批次。
+// cap ≤ 0 表示不限，整串一批；joinCost 是拼接时每两条非空条目之间的分隔符字数。
+export function planCoreadBatches(lengths, cap, joinCost = 0) {
+  const list = Array.isArray(lengths) ? lengths : [];
+  if (!list.length) return [];
+  const limit = Math.floor(Number(cap) || 0);
+  const join = Math.max(0, Math.floor(Number(joinCost) || 0));
+  const batches = [];
+  let from = 0;
+  let used = 0;
+  let filled = false;
+  for (let i = 0; i < list.length; i++) {
+    const len = Math.max(0, Math.floor(Number(list[i]) || 0));
+    if (!len) continue;
+    if (limit > 0 && filled && used + join + len > limit) {
+      batches.push({ from, to: i - 1 });
+      from = i;
+      used = 0;
+      filled = false;
+    }
+    used += (filled ? join : 0) + len;
+    filled = true;
+  }
+  batches.push({ from, to: list.length - 1 });
+  return batches;
+}
+
+// 把正文 [from, to) 切成连续字符区间 [{from, to}]，每段不超过 cap 字（cap ≤ 0 整段一批）。
+// 优先在换行处分段；单行超过上限时按上限硬切——正文硬切只增加批次，不丢字。
+export function planCoreadTextSpans(text, from, to, cap) {
+  const source = String(text || '');
+  const start = Math.max(0, Math.min(source.length, Math.floor(Number(from) || 0)));
+  const end = Math.max(start, Math.min(source.length, Math.floor(Number(to) || 0)));
+  if (end <= start) return [];
+  const limit = Math.floor(Number(cap) || 0);
+  if (limit <= 0) return [{ from: start, to: end }];
+  const lengths = [];
+  let pos = start;
+  while (pos < end) {
+    const newline = source.indexOf('\n', pos);
+    const lineEnd = newline < 0 || newline >= end ? end : newline + 1;
+    let rest = lineEnd - pos;
+    while (rest > limit) { lengths.push(limit); rest -= limit; }
+    if (rest > 0) lengths.push(rest);
+    pos = lineEnd;
+  }
+  const offsets = [start];
+  for (const len of lengths) offsets.push(offsets[offsets.length - 1] + len);
+  return planCoreadBatches(lengths, limit).map((batch) => ({ from: offsets[batch.from], to: offsets[batch.to + 1] }));
+}
+
+// 已读正文 [0, upTo) 中尚未被正文切片覆盖的字符区间。融合切片按其记录的正文范围计入。
+// 用区间并集而不是「最大 coveredTo」：全书蒸馏之后，没蒸到的段落仍能被增量蒸馏补上。
+export function coreadUncoveredTextRanges(slices, upTo) {
+  const end = Math.max(0, Math.floor(Number(upTo) || 0));
+  const covered = [];
+  for (const raw of (Array.isArray(slices) ? slices : [])) {
+    const provenance = raw?.provenance && typeof raw.provenance === 'object' ? raw.provenance : {};
+    const source = normalizeCoreadSource(provenance.source || raw?.src);
+    const sources = Array.isArray(provenance.sources) ? provenance.sources.map(normalizeCoreadSource) : [source];
+    if (source !== 'book' && !(source === 'mixed' && sources.includes('book'))) continue;
+    const from = finiteOrNull(provenance.charFrom) ?? (source === 'book' ? finiteOrNull(raw.coveredFrom) : null);
+    const to = finiteOrNull(provenance.charTo) ?? (source === 'book' ? finiteOrNull(raw.coveredTo) : null);
+    if (from == null || to == null || to <= from) continue;
+    covered.push({ from: Math.max(0, from), to });
+  }
+  covered.sort((a, b) => (a.from - b.from) || (a.to - b.to));
+  const gaps = [];
+  let cursor = 0;
+  for (const range of covered) {
+    if (cursor >= end) break;
+    if (range.from > cursor) gaps.push({ from: cursor, to: Math.min(range.from, end) });
+    cursor = Math.max(cursor, range.to);
+  }
+  if (cursor < end) gaps.push({ from: cursor, to: end });
+  return gaps;
+}
+
+// 切片的形成时间：近景排序用它，不用 coveredTo（各来源的 coveredTo 不是同一种坐标）。
+export function coreadSliceCreatedAt(slice) {
+  return finiteOrNull(slice?.provenance?.createdAt) ?? finiteOrNull(slice?.ts) ?? 0;
+}
+
 // 全书绝对字符位 → 章节下标；offset 视为字符位置，超界时夹到首尾章节。
 export function chapterIndexAtOffset(chapters, offset) {
   const list = Array.isArray(chapters) ? chapters : [];

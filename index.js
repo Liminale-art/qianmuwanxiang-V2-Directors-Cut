@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.553';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.554';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -27,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.553';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.553';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.553';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.554';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.554';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.554';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.553';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.554';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.553';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.553';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.554';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.554';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.553';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.554';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +334,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.553';
+const VERSION = '1.59.554';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -26040,12 +26040,45 @@ function coreadExplainError(err) {
   return msg || '未知错误';
 }
 
+function coreadTranscriptLine(msg, names) {
+  return `${msg.role === 'user' ? names.user : names.char}：${msg.text}`;
+}
+
+// 把对话下标区间 [fromIdx, toIdx] 按「上下文」字数上限分成连续批次（下标闭区间）。
+// 上限只会让批次变多：单条超限的消息独占一批、原样送出，不截断。
+function coreadDialogBatches(msgs, fromIdx, toIdx, m, names) {
+  const lengths = [];
+  for (let i = fromIdx; i <= toIdx; i++) {
+    const msg = msgs[i];
+    lengths.push(String(msg?.text || '').trim() ? coreadTranscriptLine(msg, names).length : 0);
+  }
+  return reader.planCoreadBatches(lengths, Number(m.summaryContextChars) || 0, 1)
+    .map((batch) => ({ from: fromIdx + batch.from, to: fromIdx + batch.to }));
+}
+
+// 记忆改动前的现场：存档写不进去时整份还原，内存里不留下没落盘的进度。
+const COREAD_SAVE_FAILED = '记忆未能保存，请重试';
+const COREAD_MEMORY_BUSY = '正在整理记忆，请稍候';
+function coreadMemorySnapshot() {
+  return {
+    slices: (readerDialog.slices || []).map((slice) => ({ ...slice })),
+    cursor: readerDialog.cursor,
+    summaryFloor: readerDialog.summaryFloor,
+  };
+}
+function coreadMemoryRestore(snapshot) {
+  const kept = new Set(snapshot.slices.map((slice) => slice.id));
+  for (const slice of (readerDialog.slices || [])) if (!kept.has(slice.id)) coreadVectorStates.delete(slice.id);
+  readerDialog.slices = snapshot.slices;
+  readerDialog.cursor = snapshot.cursor;
+  readerDialog.summaryFloor = snapshot.summaryFloor;
+}
+
 async function coreadDistillSegment(segMsgs, m, meta, names) {
   const seg = (segMsgs || []).filter((x) => String(x.text || '').trim());
   if (!seg.length) return null;
-  let transcript = seg.map((x) => `${x.role === 'user' ? names.user : names.char}：${x.text}`).join('\n');
-  const ctxCap = Number(m.summaryContextChars) || 0;
-  if (ctxCap > 0 && transcript.length > ctxCap) transcript = '……（较早内容略）\n' + transcript.slice(-ctxCap);
+  // 不在这里截断：字数上限由调用方分批落实（coreadDialogBatches），送出的就是切片登记覆盖的全部对话。
+  const transcript = seg.map((x) => coreadTranscriptLine(x, names)).join('\n');
   const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
   const sysPrompt = coreadBuildDistillPrompt(m, meta, names, dateHint);
 
@@ -26190,40 +26223,68 @@ async function coreadForgetSliceRuntime(sliceIds, persist = true) {
   }
 }
 
-// 把某区间对话整段蒸成一条切片。手动总结与自动总结共用同一事务：
-// 自动总结遇到先前手动生成的后段切片时，也会在新切片成功后完整替换重叠项，不制造重复记忆。
+// 把某区间对话蒸成切片。手动总结与自动总结共用同一事务：
+// 按「上下文」字数上限分成连续批次，每批一条切片、各自登记真实覆盖的消息区间；
+// 没有旧切片要替换时逐批落盘，某批失败就停在那里，之前的批次保留、进度只推进到已保存处；
+// 与旧切片重叠（重新总结）时全部批次成功后才一并替换，中途失败旧记忆原样保留。
 async function coreadReplaceDialogRange(fromIdx, toIdx, m, meta, names) {
   const msgs = readerDialog.messages || [];
   const expanded = reader.expandCoreadDialogRange(readerDialog.slices || [], fromIdx, toIdx);
   if (expanded.to >= msgs.length) return { made: 0, reason: '重叠的旧切片对应对话已不完整，请先在切片管理中编辑或删除该条记忆' };
-  const segMsgs = msgs.slice(expanded.from, expanded.to + 1);
-  const res = await coreadDistillSegment(segMsgs, m, meta, names);
-  if (!res) return { made: 0 };
-  const persisted = await coreadPersistSlice(res, meta, {
-    src: 'dialog',
-    coveredFrom: expanded.from,
-    coveredTo: expanded.to,
-    dialogMessageIds: segMsgs.map((msg) => msg?.id).filter(Boolean),
-  });
   const replacedIds = new Set(expanded.overlaps.map((slice) => slice.id));
-  if (replacedIds.size) {
-    readerDialog.slices = (readerDialog.slices || []).filter((slice) => !replacedIds.has(slice.id));
-    await coreadForgetSliceRuntime(replacedIds);
+  const mode = replacedIds.size ? 'resummarize' : 'incremental';
+  const batches = coreadDialogBatches(msgs, expanded.from, expanded.to, m, names);
+  const staged = [];
+  let made = 0, salvaged = false, last = null, failure = null;
+  for (const batch of batches) {
+    const segMsgs = msgs.slice(batch.from, batch.to + 1);
+    let res = null;
+    try { res = await coreadDistillSegment(segMsgs, m, meta, names); }
+    catch (error) { failure = { reason: coreadExplainError(error), error: true }; break; }
+    if (!res) { failure = {}; break; }
+    const item = { res, from: batch.from, to: batch.to, ids: segMsgs.map((msg) => msg?.id).filter(Boolean) };
+    if (replacedIds.size) { staged.push(item); continue; }
+    const saved = await coreadCommitDialogSlices([item], replacedIds, meta);
+    if (!saved) { failure = { reason: COREAD_SAVE_FAILED }; break; }
+    made++; last = saved; salvaged = salvaged || !!res.salvaged;
   }
+  if (!failure && staged.length) {
+    const saved = await coreadCommitDialogSlices(staged, replacedIds, meta);
+    if (!saved) failure = { reason: COREAD_SAVE_FAILED };
+    else { made = staged.length; last = saved; salvaged = staged.some((item) => item.res.salvaged); }
+  }
+  if (made) await coreadRefreshContainer(meta);
+  return {
+    made,
+    ...(failure ? { failed: true, ...failure } : {}),
+    ...(last || {}),
+    batch: last?.slice?.batch || last?.batch,
+    salvaged,
+    mode,
+    from: expanded.from,
+    to: made && !replacedIds.size ? last.slice.coveredTo : expanded.to,
+    replaced: failure ? 0 : expanded.overlaps.length,
+  };
+}
+
+// 落地一组对话切片并存档；存档失败则整组还原（切片、批次号、进度都回到改动前），返回 null。
+async function coreadCommitDialogSlices(items, replacedIds, meta) {
+  const snapshot = coreadMemorySnapshot();
+  let last = null;
+  for (const item of items) {
+    last = await coreadPersistSlice(item.res, meta, {
+      src: 'dialog',
+      coveredFrom: item.from,
+      coveredTo: item.to,
+      dialogMessageIds: item.ids,
+    });
+  }
+  if (replacedIds.size) readerDialog.slices = (readerDialog.slices || []).filter((slice) => !replacedIds.has(slice.id));
   coreadRenumberSlices();
   coreadRecalculateDialogCursor();
-  await coreadSaveDialog();
-  await coreadRefreshContainer(meta);
-  return {
-    made: 1,
-    ...persisted,
-    batch: persisted.slice?.batch || persisted.batch,
-    salvaged: !!res.salvaged,
-    mode: expanded.overlaps.length ? 'resummarize' : 'incremental',
-    from: expanded.from,
-    to: expanded.to,
-    replaced: expanded.overlaps.length,
-  };
+  if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return null; }
+  if (replacedIds.size) await coreadForgetSliceRuntime(replacedIds);
+  return last;
 }
 
 /* ── 切片来源（src 字段）──
@@ -26253,7 +26314,7 @@ async function coreadPersistSlice(res, meta, extra = {}) {
       sources: Array.isArray(extra.sources) && extra.sources.length ? extra.sources : [source],
       bookId,
       bucket: readerDialog.bucket || '',
-      createdAt: Date.now(),
+      createdAt: finiteExtra('createdAt') ?? Date.now(),
       readTo: finiteExtra('readTo') ?? (source === 'book' ? finiteExtra('coveredTo') : boundary.readTo),
       readChapter: finiteExtra('readChapter') ?? boundary.chapterIndex,
       readProgress: finiteExtra('readProgress') ?? boundary.progress,
@@ -26278,12 +26339,11 @@ async function coreadPersistSlice(res, meta, extra = {}) {
   return { ok: true, batch, sliceId, slice: normalizedSlice };
 }
 
-// 蒸馏任意文本段（非对话）→ {summary,keywords,synonyms}。复用四道闸，只换系统提示词。用于正文伴读切片 / 主线联动。
+// 蒸馏任意文本段（非对话）→ {summary,keywords,synonyms}。复用四道闸，只换系统提示词。用于正文伴读切片。
+// 不在这里截断：调用方已按字数上限分好批次（planCoreadTextSpans），送出的就是切片登记覆盖的全部正文。
 async function coreadDistillText(bodyText, sysPrompt, m, opts = {}) {
-  let text = String(bodyText || '').trim();
+  const text = String(bodyText || '').trim();
   if (!text) return null;
-  const ctxCap = Number(m.summaryContextChars) || 0;
-  if (ctxCap > 0 && text.length > ctxCap) text = '……（较早内容略）\n' + text.slice(-ctxCap);
   let lastRaw = '';
   for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
     if (opts.signal?.aborted) throw new DOMException('用户已停止', 'AbortError');
@@ -26309,8 +26369,9 @@ async function coreadDistillText(bodyText, sysPrompt, m, opts = {}) {
 
 // ── 正文伴读切片：把「已读正文」蒸成第三人称情节记忆·不依赖对话 ──
 // 覆盖范围锚点用绝对读位 readPos（coveredTo 记正文偏移·避免与对话切片的消息索引混淆·靠 src 区分语义）。
-async function coreadDistillReadText(m) {
-  if (coreadDistilling) return { ok: false, reason: '正在处理中' };
+// maxBatches：自动触发时每次最多整理几批，余下的留给下一次触发，避免跳读很远时一口气发出一长串请求；手动整理不设上限。
+async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在处理中' };
   coreadDistilling = true;
   coreadDistillAbort = false;
   try {
@@ -26328,36 +26389,47 @@ async function coreadDistillReadText(m) {
       chapters = rec.chapters; chapterIndex = meta.lastChapterIndex || 0; scrollRatio = meta.lastScrollRatio || 0;
     }
     if (!Array.isArray(chapters) || !chapters.length) return { ok: false, reason: '正文为空' };
-    // 覆盖「上次正文切片读位 → 当前读位」这段新读正文（首次则从头）。读位用全文绝对偏移。
+    // 覆盖「已读范围内还没被正文切片覆盖」的正文（首次则从头）。读位用全文绝对偏移。
+    // 按字数上限分成连续批次，每批一条切片、只登记自己真正送出的那段；逐批落盘，失败即停。
     const full = chapters.map((ch) => String(ch?.content || '')).join('');
     const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, 100, full.length);   // percent=100 拿到 readPos/totalLen
     const readPos = win.readPos;
-    const lastTextTo = (readerDialog.slices || []).filter((s) => s.src === 'text').reduce((mx, s) => Math.max(mx, Number(s.coveredTo) || 0), 0);
-    if (readPos <= lastTextTo + 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
-    let body = full.slice(lastTextTo, readPos);
-    const cap = Math.max(Number(m.summaryContextChars) || 0, 30000) || body.length;
-    if (body.length > cap) body = '……（较早内容略）\n' + body.slice(-cap);
+    const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], readPos);
+    const pendingChars = gaps.reduce((sum, gap) => sum + gap.to - gap.from, 0);
+    if (!pendingChars && readPos > 0) return { ok: false, reason: '已读内容都已总结过了' };
+    if (pendingChars <= 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
+    const cap = Number(m.summaryContextChars) > 0 ? Number(m.summaryContextChars) : 30000;
+    const spans = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, cap)).slice(0, maxBatches);
     const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
     const anchor = dateHint ? `（${dateHint}）` : '';
     // 整理要求：用户在「蒸馏提示词」卡片自定义→用其覆盖，否则回落内置默认（按文体/题材对症下药）
     const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
     const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》${anchor}中「读者刚读过」的一段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词·优先人名/事件/概念"],"synonyms":{"标准词":["别称/指代"]}}。没有可补的别称就给 {}。不要代码块标记、不要额外解释。`;
-    coreadDistillCtl = new AbortController();
-    let res;
-    try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
-    catch (e) {
-      if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) return { ok: false, aborted: true, reason: '已停止' };
-      return { ok: false, reason: coreadExplainError(e) };
+    let made = 0, salvaged = false;
+    const finish = async (result) => { if (made) await coreadRefreshContainer(); return { ...result, made, salvaged }; };
+    for (const span of spans) {
+      if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
+      const body = full.slice(span.from, span.to);
+      if (!body.trim()) continue;
+      coreadDistillCtl = new AbortController();
+      let res;
+      try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
+      catch (e) {
+        if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) return finish({ ok: false, aborted: true, reason: '已停止' });
+        return finish({ ok: false, reason: coreadExplainError(e) });
+      }
+      if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
+      if (!res) return finish({ ok: false, reason: '模型没有返回有效总结' });
+      const snapshot = coreadMemorySnapshot();
+      await coreadPersistSlice(res, meta, {
+        src: 'text', coveredFrom: span.from, coveredTo: span.to,
+        ...coreadTextRangeMeta(chapters, span.from, span.to),
+      });
+      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return finish({ ok: false, reason: COREAD_SAVE_FAILED }); }
+      made++; salvaged = salvaged || !!res.salvaged;
     }
-    if (coreadDistillAbort) return { ok: false, aborted: true, reason: '已停止' };
-    if (!res) return { ok: false, reason: '模型没有返回有效总结' };
-    await coreadPersistSlice(res, meta, {
-      src: 'text', coveredFrom: lastTextTo, coveredTo: readPos,
-      ...coreadTextRangeMeta(chapters, lastTextTo, readPos),
-    });
-    await coreadSaveDialog();
-    await coreadRefreshContainer();
-    return { ok: true, salvaged: !!res.salvaged };
+    if (!made) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
+    return finish({ ok: true });
   } catch (err) {
     console.error('[coreadDistillReadText] Unexpected error:', err);
     return { ok: false, reason: `内部错误：${err?.message || String(err).slice(0, 60)}` };
@@ -26371,7 +26443,7 @@ async function coreadDistillReadText(m) {
 // 从头到尾逐段（每段 chunkSize 字），已有切片覆盖的段可选跳过（skipExisting=true·默认 false 全部重蒸）。
 // 进度逐条 toast·整体统计成功/失败。
 async function coreadDistillFullBook(m, skipExisting = false) {
-  if (coreadDistilling) return { ok: false, reason: '正在处理中' };
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在处理中' };
   coreadDistilling = true;
   coreadDistillAbort = false;
   try {
@@ -26390,13 +26462,14 @@ async function coreadDistillFullBook(m, skipExisting = false) {
     if (!Array.isArray(chapters) || !chapters.length) return { ok: false, reason: '正文为空' };
     const full = chapters.map((ch) => String(ch?.content || '')).join('');
     if (!full.trim()) return { ok: false, reason: '正文为空' };
-    const chunkSize = Math.max(5000, Math.min(60000, Number(m.summaryContextChars) || 30000));
+    // 每段字数不超过「上下文」上限（不限时每段 30000、最多 60000），分好的段原样送出，不再二次截断。
+    const ctxCap = Number(m.summaryContextChars) || 0;
+    const chunkSize = ctxCap > 0 ? Math.min(60000, ctxCap) : 30000;
     const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
-    // 划分段落（按 chunkSize 字·段间不重叠）
-    const chunks = [];
-    for (let i = 0; i < full.length; i += chunkSize) { chunks.push({ from: i, to: Math.min(i + chunkSize, full.length) }); }
+    // 划分段落（每段至多 chunkSize 字·首尾相接不重叠·优先在换行处分段）
+    const chunks = reader.planCoreadTextSpans(full, 0, full.length, chunkSize);
     toast(`蒸馏全书：共 ${chunks.length} 段，开始逐段处理…`, 'info');
-    let ok = 0, fail = 0, aborted = false;
+    let ok = 0, fail = 0, aborted = false, saveFailed = false;
     for (let ci = 0; ci < chunks.length; ci++) {
       // 用户中途按「停止」：保留已生成的切片，剩余段不再处理
       if (coreadDistillAbort) { aborted = true; break; }
@@ -26406,6 +26479,7 @@ async function coreadDistillFullBook(m, skipExisting = false) {
         ok++; continue;
       }
       const body = full.slice(from, to);
+      if (!body.trim()) continue;
       const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》第 ${ci + 1}/${chunks.length} 段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
       let res = null;
       coreadDistillCtl = new AbortController();
@@ -26416,14 +26490,18 @@ async function coreadDistillFullBook(m, skipExisting = false) {
       }
       if (coreadDistillAbort) { aborted = true; break; }
       if (!res) { fail++; continue; }
+      // 逐段落盘：存不进去就还原这一段并停下，不把没存住的段算作完成。
+      const snapshot = coreadMemorySnapshot();
       await coreadPersistSlice(res, meta, {
         src: 'text', coveredFrom: from, coveredTo: to,
         ...coreadTextRangeMeta(chapters, from, to),
       });
+      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); saveFailed = true; break; }
       ok++;
       if ((ci + 1) % 3 === 0 || ci === chunks.length - 1) toast(`蒸馏全书：${ci + 1}/${chunks.length} 段完成…`, 'info');
     }
-    await coreadSaveDialog(); await coreadRefreshContainer();
+    await coreadRefreshContainer();
+    if (saveFailed) return { ok: false, reason: COREAD_SAVE_FAILED, made: ok, failed: fail };
     return { ok: true, made: ok, failed: fail, aborted };
   } catch (err) {
     console.error('[coreadDistillFullBook] Unexpected error:', err);
@@ -26443,12 +26521,11 @@ function coreadStopDistill() {
 
 
 async function coreadDistill(manual = false) {
-  if (coreadDistilling) return { ok: false, reason: '正在总结中' };
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在总结中' };
   const m = coreadMemory();
   const msgs = readerDialog.messages || [];
-  const previousCursor = Math.max(0, Number(readerDialog.cursor) || 0);
+  // 进度由切片连续覆盖范围推算（载入时也会重算），这里只校正内存值，随下一次成功存档一起落盘。
   const from = coreadRecalculateDialogCursor();
-  if (from !== previousCursor) void coreadSaveDialog();
   const pending = msgs.slice(from).filter((x) => String(x.text || '').trim());
   if (!pending.length) return { ok: false, reason: '没有新的对话可总结' };
   if (!manual && pending.length < Math.max(2, Number(m.distillEvery) || 20)) return { ok: false, reason: 'not-enough' };
@@ -26459,13 +26536,15 @@ async function coreadDistill(manual = false) {
     const meta = coreadBookMeta(readerDialog.bookId) || {};
     const names = { char: companionCharName(), user: coreadUserName() };
     const r = await coreadReplaceDialogRange(from, msgs.length - 1, m, meta, names);
-    if (!r.made) {
+    if (r.failed || !r.made) {
       const reason = r.reason || '模型没有返回有效总结';
-      toast(`伴读记忆：${reason}。`, 'warning');
-      return { ok: false, reason };
+      if (r.error) toast(`伴读记忆：第 ${nextBatch + r.made} 批总结失败（${reason}）。`, 'error');
+      else toast(`伴读记忆：${reason}。`, 'warning');
+      return { ok: false, reason, made: r.made };
     }
-    if (r.salvaged) toast(`伴读记忆：第 ${r.batch} 批已总结（关键词档降级保底）。`, 'warning');
-    else toast(`伴读记忆：第 ${r.batch} 批已总结 ✓`, 'success');
+    const done = r.made > 1 ? `已总结 ${r.made} 批` : `第 ${r.batch} 批已总结`;
+    if (r.salvaged) toast(`伴读记忆：${done}（关键词档降级保底）。`, 'warning');
+    else toast(`伴读记忆：${done} ✓`, 'success');
     return { ok: true, made: r.made };
   } catch (e) {
     console.warn(`[${MODULE_NAME}] distill failed`, e);
@@ -26481,7 +26560,7 @@ async function coreadDistill(manual = false) {
 // 若区间与已有切片重叠，先求完整重叠闭包并生成新切片；只有生成成功后才替换旧切片。
 // 模型/API 失败时旧档案原样保留，避免“先删后写”造成不可逆记忆丢失。
 async function coreadManualSummarize(fromIdx, toIdx) {
-  if (coreadDistilling) return { ok: false, reason: '正在总结中' };
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在总结中' };
   const msgs = readerDialog.messages || [];
   if (!msgs.length) return { ok: false, reason: '当前无对话消息' };
   // 越界检查：确保 from/to 合法且 from≤to
@@ -26500,7 +26579,7 @@ async function coreadManualSummarize(fromIdx, toIdx) {
     const meta = coreadBookMeta(readerDialog.bookId) || {};
     const names = { char: companionCharName(), user: coreadUserName() };
     const r = await coreadReplaceDialogRange(from, to, m, meta, names);
-    if (!r.made) return { ok: false, reason: r.reason || '模型没有返回有效总结', mode: overlaps.length ? 'resummarize' : 'incremental' };
+    if (r.failed || !r.made) return { ok: false, reason: r.reason || '模型没有返回有效总结', made: r.made, mode: overlaps.length ? 'resummarize' : 'incremental' };
     return { ok: true, ...r };
   } catch (e) {
     return { ok: false, reason: coreadExplainError(e), mode: overlaps.length ? 'resummarize' : 'incremental' };
@@ -26522,7 +26601,7 @@ function coreadRenumberSlices() {
 
 // 二次总结：把 batch 号在 [lo,hi] 的切片压缩成一条（省上下文/清理过早历史）。手动触发。
 async function coreadCompressSlices(lo, hi) {
-  if (coreadDistilling) return { ok: false, reason: '正在处理中' };
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在处理中' };
   const inRange = (readerDialog.slices || []).filter((s) => { const b = Number(s.batch) || 0; return b >= lo && b <= hi; });
   if (inRange.length < 2) return { ok: false, reason: '该范围内不足两条切片，无需压缩' };
   coreadDistilling = true;
@@ -26563,12 +26642,14 @@ async function coreadCompressSlices(lo, hi) {
     const dialogEnds = finiteValues(normalizedParts.map((s) => s.provenance?.dialogTo));
     const dialogIds = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.dialogMessageIds || []));
     const mainlineFloors = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.mainlineFloors || []));
+    const snapshot = coreadMemorySnapshot();
     const persisted = await coreadPersistSlice({ summary, keywords, synonyms }, meta, {
       src: compressedSource === 'book' ? 'text' : compressedSource,
       sources: partSources,
       coveredFrom,
       coveredTo,
       compressed: true,
+      createdAt: Math.max(...normalizedParts.map((s) => reader.coreadSliceCreatedAt(s))),   // 合并不是新近讨论：沿用原切片里最晚的形成时间
       readTo: readEnds.length ? Math.max(...readEnds) : coreadCurrentReadBoundarySync(bookId).readTo,
       chapterFrom: chapterStarts.length ? Math.min(...chapterStarts) : null,
       chapterTo: chapterEnds.length ? Math.max(...chapterEnds) : null,
@@ -26581,13 +26662,14 @@ async function coreadCompressSlices(lo, hi) {
     });
     const rangeIds = new Set(inRange.map((s) => s.id));
     readerDialog.slices = (readerDialog.slices || []).filter((s) => !rangeIds.has(s.id));
+    coreadRenumberSlices();
+    coreadRecalculateDialogCursor();
+    // 存档成功后才清旧切片的向量与漫画文字稿指向；存不进去就整份还原。
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     for (const old of inRange) {
       await coreadUpdateComicDescriptionForSlice(old.id, { sliceId: persisted.sliceId, summary, keywords });
     }
     await coreadForgetSliceRuntime(rangeIds);
-    coreadRenumberSlices();
-    coreadRecalculateDialogCursor();
-    await coreadSaveDialog();
     await coreadRefreshContainer(meta);   // 切片有变→重建共读记忆容器
     return { ok: true };
   } catch (e) {
@@ -26599,24 +26681,30 @@ async function coreadCompressSlices(lo, hi) {
 
 // 重新生成某条已有切片（用同区间对话重蒸馏·覆盖 summary/keywords）。
 async function coreadRegenSlice(sliceId) {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };
   coreadMemoryWrites++;
   try {
     const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
     if (!slice) return { ok: false, reason: '找不到该切片' };
+    // 只有对话切片的覆盖范围是消息下标；正文/融合/已归档切片不能拿去切对话。
+    if (reader.normalizeCoreadSource(slice.provenance?.source || slice.src) !== 'dialog' || slice.provenance?.dialogArchived === true) {
+      return { ok: false, reason: '该切片没有可重新总结的对话' };
+    }
     const msgs = readerDialog.messages || [];
-    const seg = msgs.slice(slice.coveredFrom, slice.coveredTo + 1);
+    const seg = msgs.slice(Number(slice.provenance?.dialogFrom ?? slice.coveredFrom) || 0, (Number(slice.provenance?.dialogTo ?? slice.coveredTo) || 0) + 1);
     const m = coreadMemory();
     const meta = coreadBookMeta(readerDialog.bookId) || {};
     const names = { char: companionCharName(), user: coreadUserName() };
     try {
         const res = await coreadDistillSegment(seg, m, meta, names);
         if (!res) return { ok: false, reason: '该切片对应的对话已不存在或模型无返回' };
+        const snapshot = coreadMemorySnapshot();
         slice.summary = res.summary; slice.keywords = res.keywords; slice.synonyms = res.synonyms || {}; slice.ts = Date.now();
         coreadVectorStates.set(slice.id, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(slice), updatedAt: Date.now() });
         coreadPipelineCircuits.delete(`vector:${slice.id}`);
         if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
       if (res.salvaged) slice.salvaged = true; else delete slice.salvaged;   // 重生成成功即摘掉保底标记
-      await coreadSaveDialog();
+      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
       await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
       const vector = await coreadSyncSliceVector(sliceId, { announce: false });
       return { ok: true, slice, vector };
@@ -26647,12 +26735,14 @@ async function coreadUpdateComicDescriptionForSlice(sliceId, values = null) {
 }
 
 async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };
   coreadMemoryWrites++;
   try {
     const slice = (readerDialog.slices || []).find((s) => s.id === sliceId);
     if (!slice) return { ok: false, reason: '找不到该切片' };
     const cleanSummary = String(summary || '').trim();
     if (!cleanSummary) return { ok: false, reason: '记忆内容不能为空' };
+    const snapshot = coreadMemorySnapshot();
     slice.summary = cleanSummary;
     slice.keywords = uniqueClean(String(keywordsStr || '').split(/[,，、\s]+/).map((k) => k.trim()).filter(Boolean)).slice(0, 8);
     slice.ts = Date.now();
@@ -26660,8 +26750,8 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) 
     coreadPipelineCircuits.delete(`vector:${slice.id}`);
     if (coreadVecCache?.vecs) { delete coreadVecCache.vecs[slice.id]; delete coreadVecCache.fps[slice.id]; delete coreadVecCache.errors?.[slice.id]; }
     delete slice.salvaged;   // 用户手动编辑过即视为已修正
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     await coreadUpdateComicDescriptionForSlice(sliceId, { summary: slice.summary, keywords: slice.keywords });
-    await coreadSaveDialog();
     await coreadRefreshContainer();   // 切片内容有变→反哺主线切片池失效重建
     const vector = options.syncVector === false
       ? { ok: false, skipped: true }
@@ -26672,17 +26762,18 @@ async function coreadSaveSliceEdit(sliceId, summary, keywordsStr, options = {}) 
 
 // 删除单条切片。
 async function coreadDeleteSlice(sliceId) {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };
   coreadMemoryWrites++;
   try {
     const idx = (readerDialog.slices || []).findIndex((s) => s.id === sliceId);
     if (idx < 0) return { ok: false, reason: '找不到该切片' };
-    const slice = readerDialog.slices[idx];
+    const snapshot = coreadMemorySnapshot();
     readerDialog.slices.splice(idx, 1);
-    await coreadForgetSliceRuntime([sliceId]);
-    await coreadUpdateComicDescriptionForSlice(sliceId, null);
     coreadRenumberSlices();
     coreadRecalculateDialogCursor();
-    await coreadSaveDialog();
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
+    await coreadForgetSliceRuntime([sliceId]);
+    await coreadUpdateComicDescriptionForSlice(sliceId, null);
     await coreadRefreshContainer();   // 切片有变→重建共读记忆容器
     return { ok: true };
   } finally { coreadMemoryWrites--; }
@@ -26745,13 +26836,15 @@ const coreadEchoTtl = new Map();
 const COREAD_ECHO_LIFE = 2;      // 被召回后再存活 2 回合
 const COREAD_ECHO_BONUS = 0.6;   // 回响加分（相对 BM25 原始分的偏置·防闪烁不喧宾夺主）
 
-// 取近景切片：按「覆盖到的最末对话下标」降序取最近 n 条（真·最近讨论·压缩切片也按其覆盖尾算）。返回 [{slice}] 与检索结果同构。
+// 取近景切片：按形成时间从新到旧取最近 n 条（同时刻按存放先后）。返回 [{slice}] 与检索结果同构。
+// 不按 coveredTo 排：它在对话切片里是消息下标、正文切片里是字符位、旧主线切片里是楼层号，混排时正文切片永远排在最前。
 // pool 省略＝当前伴读会话切片（readerDialog.slices）；反哺主线传入跨档案合并池（见 coreadMainlinePool）。
 function coreadRecentSlices(n, pool) {
   if (n <= 0) return [];
   const src = pool || readerDialog.slices || [];
-  const slices = src.slice()
-    .sort((a, b) => (Number(b.coveredTo) || 0) - (Number(a.coveredTo) || 0));
+  const slices = src.map((slice, index) => ({ slice, index, at: reader.coreadSliceCreatedAt(slice) }))
+    .sort((a, b) => (b.at - a.at) || (b.index - a.index))
+    .map((item) => item.slice);
   return slices.slice(0, n).map((s) => ({ slice: s, hits: s.keywords || [], score: null, recent: true }));
 }
 
@@ -27337,16 +27430,19 @@ async function coreadRefreshContainer() { coreadInvalidatePool(); }
 
 // 一键删除本「聊天×书」的全部伴读记忆（重置 cursor）。
 async function coreadClearAllSlices() {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };
   coreadMemoryWrites++;
   try {
+    const snapshot = coreadMemorySnapshot();
     readerDialog.slices = [];
+    readerDialog.summaryFloor = (readerDialog.messages || []).length;
+    readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
     coreadEchoTtl.clear();   // 切片全清，回响池随之清空
     coreadVecCache = null;   // 向量缓存随之作废
     try { if (readerDialog.bucket) await blobStore.deleteReaderVectors(readerDialog.bucket); } catch (_) {}
-    readerDialog.summaryFloor = (readerDialog.messages || []).length;
-    readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
-    await coreadSaveDialog();
     await coreadRefreshContainer();   // 无切片→容器随之禁用
+    return { ok: true };
   } finally { coreadMemoryWrites--; }
 }
 
@@ -27423,6 +27519,7 @@ async function coreadMigrateFromChat(sourceRec) {
     const bookId = readerDialog.bookId;
     const meta = coreadBookMeta(bookId) || {};
     // 复制会话到当前 readerDialog（覆盖当前·已在弹窗二次确认）
+    const previous = { ...coreadMemorySnapshot(), messages: readerDialog.messages, lastInjected: readerDialog.lastInjected };
     readerDialog.messages = Array.isArray(sourceRec.messages) ? clone(sourceRec.messages) : [];
     const boundary = sourceRec.readBoundary?.bookId === bookId ? sourceRec.readBoundary : readerDialog.readBoundary || coreadCurrentReadBoundarySync(bookId);
     readerDialog.slices = coreadNormalizeSlices(Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [], bookId, readerDialog.bucket, boundary)
@@ -27433,7 +27530,12 @@ async function coreadMigrateFromChat(sourceRec) {
     readerDialog.lastInjected = null;
     coreadEchoTtl.clear();
     coreadVecCache = null;   // 迁入新切片→向量缓存作废，下次召回按需重算
-    await coreadSaveDialog();
+    if (!await coreadSaveDialog()) {
+      coreadMemoryRestore(previous);
+      readerDialog.messages = previous.messages;
+      readerDialog.lastInjected = previous.lastInjected;
+      return { ok: false, reason: COREAD_SAVE_FAILED };
+    }
     await coreadRefreshContainer(meta);
     return { ok: true, messages: readerDialog.messages.length, slices: readerDialog.slices.length };
   } finally { coreadMemoryWrites--; }
@@ -28476,9 +28578,12 @@ async function coreadAnalyzeComicPages() {
       const saved = await coreadSaveSliceEdit(sliceId, reviewed.summary, reviewed.keywords.join('、'));
       if (!saved.ok) throw new Error(saved.reason || '文字稿保存失败');
     } else {
+      const snapshot = coreadMemorySnapshot();
       const result = await coreadPersistSlice({ summary: reviewed.summary, keywords: reviewed.keywords.length ? reviewed.keywords : [meta.title || '漫画'], synonyms: {} }, meta, {
         src: 'text', coveredFrom: fullBefore, coveredTo, chapterFrom: fromIndex, chapterTo: toIndex, comicPages: pageNums,
       });
+      // 先存伴读档案，存住了才登记文字稿，避免文字稿指向一条没落盘的切片。
+      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); toast(`${COREAD_SAVE_FAILED}。`, 'error'); return; }
       sliceId = result.sliceId || '';
     }
     const record = await blobStore.getBook(readerView.bookId);
@@ -28486,7 +28591,6 @@ async function coreadAnalyzeComicPages() {
     descriptions[rangeKey] = { fromPage: fromIndex + 1, toPage: toIndex + 1, summary: reviewed.summary, keywords: reviewed.keywords, sliceId, updatedAt: Date.now() };
     await blobStore.putBook(readerView.bookId, { ...record, comicDescriptions: descriptions });
     readerContentCache.comicDescriptions = descriptions;
-    await coreadSaveDialog();
     toast(`已保存第 ${fromIndex + 1}–${toIndex + 1} 页视觉文字稿，并写入伴读档案。`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast(`漫画识图失败：${coreadExplainError(error)}`, 'error');
@@ -29652,10 +29756,10 @@ async function coreadMaybeAutoDistillText() {
   try {
     const full = readerContentCache.chapters.map((ch) => String(ch?.content || '')).join('');
     const win = computeVisibleWindow(readerContentCache.chapters, readerView.chapterIndex, readerView.scrollRatio || 0, 100, full.length);
-    const lastTo = (readerDialog.slices || []).filter((s) => s.src === 'text').reduce((mx, s) => Math.max(mx, Number(s.coveredTo) || 0), 0);
-    if (win.readPos - lastTo < Math.max(1000, m.distillTextEvery || 8000)) return;   // 新读不足阈值
+    const pendingChars = reader.coreadUncoveredTextRanges(readerDialog.slices || [], win.readPos).reduce((sum, gap) => sum + gap.to - gap.from, 0);
+    if (pendingChars < Math.max(1000, m.distillTextEvery || 8000)) return;   // 已读而未总结的正文不足阈值（全书蒸过的部分不算）
     coreadAutoTextInFlight = true;
-    const r = await coreadDistillReadText(m);
+    const r = await coreadDistillReadText(m, { maxBatches: 2 });
     if (r?.ok) { toast('伴读记忆：已按阅读进度自动总结一段正文。', 'info'); if (coreadMemory().moreTab === 'records') rerenderMoreIfOpen?.(); }
   } catch (_) {} finally { coreadAutoTextInFlight = false; }
 }
@@ -32355,7 +32459,9 @@ function bindReaderStageEvents(stageRoot) {
       }
       if (e.target.closest('.sd-reader-sm-del')) {
         if (!await confirmDialog('删除切片', '将删除此切片及对应向量，不可恢复。确定？')) return;
-        await coreadDeleteSlice(id); coreadVectorStates.delete(id); toast('切片已删除。', 'info'); rerenderMore(); return;
+        const removed = await coreadDeleteSlice(id);
+        if (!removed?.ok) { toast(`${removed?.reason || '删除失败'}。`, 'warning'); rerenderMore(); return; }
+        coreadVectorStates.delete(id); toast('切片已删除。', 'info'); rerenderMore(); return;
       }
     }
     if (e.target.closest('.sd-reader-tour-skip')) {
@@ -32487,7 +32593,7 @@ function bindReaderStageEvents(stageRoot) {
       if (btnBook) btnBook.disabled = true;
       coreadDistillReadText(m).then((r) => {
         if (r?.aborted) toast('已停止蒸馏。', 'info');
-        else if (r?.ok) toast(`已从正文生成 1 条情节记忆切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
+        else if (r?.ok) toast(`已从正文生成 ${r.made} 条情节记忆切片${r.salvaged ? '（关键词档降级保底）' : ''}。`, 'success');
         else toast(r?.reason || '正文总结失败。', 'warning');
         rerenderMore();
       }).catch((err) => toast(`正文总结失败：${coreadExplainError(err)}`, 'error'))
@@ -32599,10 +32705,10 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
     const sliceDel = e.target.closest('.sd-reader-slice-del');
-    if (sliceDel) { coreadDeleteSlice(sliceDel.dataset.id).then(() => rerenderMore()); return; }
+    if (sliceDel) { coreadDeleteSlice(sliceDel.dataset.id).then((r) => { if (!r?.ok) toast(`${r?.reason || '删除失败'}。`, 'warning'); rerenderMore(); }); return; }
     if (e.target.closest('.sd-reader-slice-clear')) {
       confirmDialog('清空全部伴读记忆', '将删除本聊天里这本书的所有记忆切片，且不可恢复。确定继续？').then((yes) => {
-        if (yes) coreadClearAllSlices().then(() => { toast('已清空伴读记忆。', 'info'); rerenderMore(); });
+        if (yes) coreadClearAllSlices().then((r) => { if (r?.ok) toast('已清空伴读记忆。', 'info'); else toast(`${r?.reason || '清空失败'}。`, 'warning'); rerenderMore(); });
       });
       return;
     }
