@@ -5,6 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.547';
 import {createYimuCompanionBridge} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -26,11 +27,11 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.546';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.546';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.546';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.547';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.547';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.547';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.546';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.547';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -59,8 +60,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.546';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.546';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.547';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.547';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -90,7 +91,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.546';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.547';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -337,7 +338,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.546';
+const VERSION = '1.59.547';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -8300,8 +8301,12 @@ const storageDialogs = () => storageDialogs.cache ||= createStorageDialogs({ doc
 // 分镜、影片的本机资料由分镜自己管理，旧版便笺的本机原件不再单列；这些不在数据管理里清理。
 const storageStoreHidden = (name) => name === 'notes' || name === 'storyboard_inbox' || /^(storyboard|video)_/.test(name);
 
-function openStorageCleanupDialog(data) {
+let storageAccountFiles = null;
+async function openStorageCleanupDialog(data) {
   const ring = chatRingtone.actions.localSummary();
+  // 账户文件旧版本要问配套后端；后端没装或版本旧就没有这一项。各类占用明细写在控制台，便于核对。
+  storageAccountFiles = await inspectAccountFiles({ resolveNamespace: resolveImageAccountNamespace, headers: storyboardRequestHeaders });
+  if (storageAccountFiles) console.info('[千幕] 账户文件盘点', storageAccountFiles.families, { 合计: storageAccountFiles.total, 其他账户范围: storageAccountFiles.other });
   const modules = [
     ...(data?.idb?.stores || []).filter(item => !storageStoreHidden(item.name)).map((item) => ({
       id: item.name,
@@ -8313,6 +8318,7 @@ function openStorageCleanupDialog(data) {
     ...(Number(data?.orphanReaderBlobs?.count) > 0 ? [{ id: '__orphan_reader_blobs__', label: '孤儿封面与书内插图', bytes: Number(data?.orphanReaderBlobs?.bytes) || 0, count: Number(data?.orphanReaderBlobs?.count) || 0 }] : []),
     { id: '__diagnostics__', label: '生成与运行日志', bytes: Number(data?.diagnosticsBytes) || 0, count: 0 },
     ...(ring.count ? [{ id: '__ringtones__', label: '本地铃声', bytes: ring.bytes, count: ring.count }] : []),
+    ...(storageAccountFiles?.cleanable.count ? [{ id: '__account_files__', label: '账户文件旧版本', bytes: storageAccountFiles.cleanable.bytes, count: storageAccountFiles.cleanable.count }] : []),
     ...storageCleanupOptions(data),
   ];
   const filled = modules.filter(item => item.bytes > 0);
@@ -8669,6 +8675,11 @@ function bindStorageManagementEvents(root) {
       const selected = await openStorageCleanupDialog(inventory); cleanup.check();
       if (!selected?.length) return;
       await ensureStorageScanCurrent();cleanup.check();
+      if (selected.includes('__account_files__')) {
+        const done = await cleanAccountFiles(storageAccountFiles, { headers: storyboardRequestHeaders }); cleanup.check();
+        toast(`已清理 ${done.removed.count} 个旧版本文件，释放 ${formatStorageBytes(done.removed.bytes)}${done.failed.count ? `；${done.failed.count} 个未能删除` : ''}。`, done.failed.count ? 'warning' : 'success');
+        if (selected.length === 1) return await refreshStorageInventory(true);
+      }
       if(selected.includes('__assistant_native__')){await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1,true);cleanup.check();await refreshStorageInventory(true);return;}
       if(selected.includes('__assistant__')){await proseFloorTools.cleanupAssistant(root,confirmDialog,()=>cleanup.check(),inventory?.assistantStorage?.namespace,selected.length-1);cleanup.check();await refreshStorageInventory(true);return;}
       const stores = selected.filter((item) => !item.startsWith('__'));

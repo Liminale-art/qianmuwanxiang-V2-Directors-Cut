@@ -154,13 +154,14 @@ export function createQuickDial({
     if (!view) return;
     cancelAnimationFrame(view.frame);
     const current = view, from = view.position, started = performance.now(), duration = reduced() ? 0 : 170;
+    current.root.classList.add('is-settling');
     const tick = now => {
       if (view !== current) return;
       const t = duration ? Math.min(1, (now - started) / duration) : 1, eased = 1 - (1 - t) ** 3;
       view.position = from + (target - from) * eased;
       layout();
       if (t < 1) view.frame = requestAnimationFrame(tick);
-      else done?.();
+      else { current.root.classList.remove('is-settling'); done?.(); }
     };
     tick(started);
   }
@@ -283,6 +284,21 @@ export function createQuickDial({
       }
       return node;
     });
+    // logo 那一格直接沿用悬浮入口此刻显示的那枚标志：纸间／极简主题下入口画的是随主题着色的矢量标志而不是原图，
+    // 盘里照抄它本身、它的两枚主题色，以及它在圆框里的占比与偏移，滑入滑出前后才是同一个样子。
+    const mark = [...(origin.children || [])].find(node => /^(img|svg)$/i.test(node.tagName) && !node.classList.contains('sd-hive-hex-outline') && window.getComputedStyle(node).display !== 'none');
+    const homeChip = nodes[list.length - 1]?.firstElementChild;
+    if (mark && homeChip && rect.width > 0) {
+      const style = window.getComputedStyle(mark), box = mark.getBoundingClientRect(), pad = side => parseFloat(style[`padding${side}`]) || 0;
+      const width = box.width - pad('Left') - pad('Right'), height = box.height - pad('Top') - pad('Bottom'), ratio = geo.chip / rect.width;
+      const dx = (box.left + pad('Left') + width / 2 - rect.left - rect.width / 2) * ratio, dy = (box.top + pad('Top') + height / 2 - rect.top - rect.height / 2) * ratio;
+      const copy = mark.cloneNode(true);
+      copy.removeAttribute('class'); copy.removeAttribute('id'); copy.setAttribute('draggable', 'false');
+      copy.style.cssText = `display:block;width:${(width / rect.width * 100).toFixed(2)}%;height:${(height / rect.height * 100).toFixed(2)}%;padding:0;margin:0;position:static;transform:none;translate:${dx.toFixed(2)}px ${dy.toFixed(2)}px;object-fit:contain;pointer-events:none;`;
+      for (const name of ['--qm-ink', '--qm-accent']) { const value = look?.getPropertyValue(name).trim(); if (value) copy.style.setProperty(name, value); }
+      copy.classList.add('qm-dial-logo');
+      homeChip.replaceChildren(copy);
+    }
     const remembered = recall?.(), start = Math.max(0, list.findIndex(item => item.id === remembered));
     document.body.appendChild(root);
     applyIcons?.(root);
@@ -297,7 +313,6 @@ export function createQuickDial({
     view.homeFrom = { x: rect.left + rect.width / 2 - box.left - geo.x, y: rect.top + rect.height / 2 - box.top - geo.y, scale: rect.height / geo.chip };
     origin.classList?.add('sd-wheel-away');
     // 格子若正停在指针处，它的放大不走过渡、直接到位，滑入的起点才正好是悬浮入口的大小。
-    const homeChip = view.home.firstElementChild;
     if (homeChip?.style) { homeChip.style.transition = 'none'; void homeChip.offsetWidth; requestAnimationFrame(() => { homeChip.style.transition = ''; }); }
     flyHome(view, false);
     return root;

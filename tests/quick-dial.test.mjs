@@ -105,6 +105,11 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.doesNotMatch(source, /quickDial\.press|sd-float-lifted/, 'no press-to-open gesture: a tap opens the main panel as with the hive');
   assert.match(source, /run: \(id\) => id \? runQuickWheelCommand\(id\) : openModal\(\)/, 'the first entry opens the main panel');
   assert.match(module, /prefers-reduced-motion: reduce/);
+  assert.match(module, /const copy = mark\.cloneNode\(true\);/, 'the logo entry reuses the very mark the floating entry shows, so recoloured theme logos follow too');
+  assert.match(module, /for \(const name of \['--qm-ink', '--qm-accent'\]\)/, 'and carries its two theme colours');
+  assert.match(module, /width:\$\{\(width \/ rect\.width \* 100\)\.toFixed\(2\)\}%/, 'at the proportion it has inside the floating entry');
+  assert.match(css, /:is\(\.is-sliding, \.is-settling\) \.qm-dial-chip \{ -webkit-backdrop-filter: none; backdrop-filter: none; \}/, 'no per-frame backdrop blur while the dial turns');
+  assert.doesNotMatch(css, /\.qm-dial-chip \{[^}]*filter: drop-shadow/, 'entry shadows are box shadows, not filters');
   assert.match(module, /chip\.animate\(\[\{ transform: 'scale\(1\)' \}, \{ transform: 'scale\(\.8\)'/, 'the entry dips and springs back before its panel opens');
   assert.doesNotMatch(module + css, /qm-dial-drop|qm-dial-scrim/, 'no bump on the arc and no backing disc');
   assert.match(css, /\.qm-dial-chip \{[^}]*border-radius: 50%;[^}]*inset 0 0 0 calc\(1\.2px \/ var\(--qd-grow, 1\)\)/, 'round frames with the same 1.2px line as the hive outline');
