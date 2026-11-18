@@ -101,6 +101,8 @@ test('group, no chat and missing integrity fail without inventing an identity', 
 
 test('prepare freezes source, plan and core without early prompt writes or source deletion', async () => {
     const f = fixture(), source = await f.host.snapshot(), target = core(source), candidate = await plan(source);
+    // 余量很紧（刚好九成以上），装配时必须走实测分词：这条用例要验证的就是「只在最终边界核对一次」。
+    f.ctx.chatCompletionSettings.openai_max_context = 1640;
     const original = structuredClone(f.ctx.chat), beforeCore = structuredClone(target);
     const prepared = f.host.prepare(target, candidate, source);
     assert.equal(prepared.prepared, true); assert.equal(prepared.reason, 'awaiting-final-request');
@@ -174,6 +176,8 @@ test('async admission aborts atomically after source, route, generation, request
         (_f, _payload, state) => { state.active = false; },
     ]) {
         const f = fixture(), source = await f.host.snapshot(), target = core(source), candidate = await plan(source);
+        // 余量很紧（刚好九成以上），装配时必须走实测分词；这条用例用它作为「装配进行到一半」的暂停点。
+        f.ctx.chatCompletionSettings.openai_max_context = 1640;
         let complete, started; const counting = new Promise(resolve => { started = resolve; });
         f.ctx.getTokenCountAsync = () => { started(); return new Promise(resolve => { complete = resolve; }); };
         const prepared = f.host.prepare(target, candidate, source), payload = request(target), state = { active: true };
@@ -186,6 +190,8 @@ test('async admission aborts atomically after source, route, generation, request
 
 test('concurrent use cannot commit a second transaction for one session', async () => {
     const f = fixture(), source = await f.host.snapshot(), target = core(source);
+    // 余量很紧（刚好九成以上），装配时必须走实测分词；这条用例用它作为「第一笔尚未提交」的暂停点。
+    f.ctx.chatCompletionSettings.openai_max_context = 1640;
     let finish, started; const waiting = new Promise(resolve => { started = resolve; });
     f.ctx.getTokenCountAsync = () => { started(); return new Promise(resolve => { finish = resolve; }); };
     const { session } = f.host.prepare(target, await plan(source), source), a = request(target), b = request(target), before = JSON.stringify(b);
