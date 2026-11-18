@@ -262,6 +262,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     enabled.addEventListener('change', () => dispatch('enable', { enabled: enabled.checked, ...(enabled.checked && freshScope() ? { range: freshScope() } : {}) }, enabled));
     automatic.addEventListener('change', () => dispatch('autoSummary', { value: automatic.checked, ...(automatic.checked && freshScope() ? { initialRange: freshScope() } : {}) }, automatic));
     const summarizeRangeForm = el('form', 'ym-manual-range');
+    // 不用浏览器自带的表单校验：它在这个面板里拦下提交时不显示任何提示（例如楼层上限还停在聊天变长之前），
+    // 用户只看到点了没反应。范围是否有效由下面的提交处理自己判断并给出原因。
+    summarizeRangeForm.noValidate = true;
     const summarizeStart = el('input', 'ym-range-input'), summarizeEnd = el('input', 'ym-range-input');
     for (const input of [summarizeStart, summarizeEnd]) { input.type = 'number'; input.min = '0'; input.step = '1'; input.required = true; }
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
@@ -303,6 +306,11 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
         const batchFloors = typedBatchFloors();
         if (batchFloors === null) { localError = `每批层数请填 1–${MANUAL_BATCH_LIMIT} 的整数。`; localErrorPage = currentPage; updateStatus(); return; }
+        // 楼层从 0 开始显示：共 N 层时可填 0 到 N−1。填错时直接说可填的范围。
+        const total = state.snapshot?.messages?.length || 0;
+        if (!Number.isSafeInteger(range.start) || !Number.isSafeInteger(range.end) || range.start < 1 || range.end < range.start || range.end > total) {
+            localError = total ? `楼层请填 ${shownFloor(1)}–${shownFloor(total)} 之间，开始不大于结束。` : '当前聊天还没有可总结的楼层。'; localErrorPage = currentPage; updateStatus(); return;
+        }
         try {
             const plan = planManualRange(state.document, state.snapshot?.messages || [], rangePreviewSettings(), range, { batchFloors });
             if (plan.range.start !== range.start || plan.range.end !== range.end) {
@@ -888,7 +896,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             if (!wasOpen) { openMenuId = entry.id; fixed.hidden = true; moreActions.hidden = false; more.setAttribute('aria-expanded', 'true'); }
         }); more.dataset.ymMore = ''; more.setAttribute('aria-expanded', 'false');
         const insert = iconButton('插入自定义切片', 'plus', () => openManual(entry.id));
-        const use = iconButton(entry.status === 'excluded' ? '取消注入屏蔽' : '将此切片注入屏蔽', 'eye', () => entryAction(entry, entry.status === 'excluded' ? 'restore' : 'exclude', {}, use));
+        const use = iconButton(entry.status === 'excluded' ? '取消注入屏蔽' : '将此切片注入屏蔽', entry.status === 'excluded' ? 'eye-off' : 'eye', () => entryAction(entry, entry.status === 'excluded' ? 'restore' : 'exclude', {}, use));
         const up = iconButton('上移切片', 'up', () => {
             const order = orderedEntries(state.document.entries, state.document.entryOrder).filter(item => item.kind !== 'excerpt');
             const index = order.findIndex(item => item.id === entry.id); if (index > 0) void moveEntry(entry.id, order[index - 1].id);
@@ -1047,7 +1055,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const map = {
             'text-completion-boundary-unavailable': ['当前连接不是 Chat Completion（对话补全）模式，忆幕无法安全替换原文。', '请在 ST 把 API 切到“Chat Completion”类连接（OpenAI 兼容），文本补全/Text Completion 下忆幕不改写。'],
             'unsupported-tools-or-schema': ['本轮请求带了工具调用 / 函数 / 结构化输出等字段，忆幕不介入以免冲突。', '如非必要，关闭当前预设里的工具调用、函数、Web 搜索或 JSON Schema 后重试。'],
-            'custom-prompt-rewrite': ['当前预设启用了前缀补全 / 自定义正文插入，与忆幕的原文替换冲突。', '关闭“Assistant Prefill”或清空附加请求体后，忆幕即可接管。'],
+            'custom-prompt-rewrite': ['本轮请求不是普通的对话消息格式，忆幕无法替换原文。', '请确认 ST 的 API 类型是 Chat Completion。'],
             'unsupported-generation': ['续写、代写这类生成不做原文替换。', ''],
             'source-changed': ['准备记忆时聊天内容正在变化，本轮不做原文替换。', '通常下一轮即恢复。'],
             'plan-error': ['生成前整理记忆时出错，本轮没有使用记忆。', '如持续出现请反馈。'],
@@ -1068,6 +1076,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         };
         return map[reason] || ['本轮因一次安全守卫回退，未改写请求。', `原因代码：${reason}。如持续出现请反馈。`];
     }
+    // 重开 ST 后从本机取回的上一轮记录带时间，避免被当成刚发生的。
+    const roundTime = at => { const d = new Date(at), pad = n => String(n).padStart(2, '0'); return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
     function updateUsed() {
         const use = state.lastUsed, skip = use ? null : state.lastSkip;
         const signature = JSON.stringify([use, skip, use && !use.entries ? (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id) || null) : null]);
@@ -1076,6 +1086,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!use) {
             if (!skip) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
             const [why, hint] = describeSkip(skip.reason);
+            if (skip.restoredAt) usedBody.append(el('p', 'ym-muted', `上次记录 · ${roundTime(skip.restoredAt)}`));
             if (skip.offered) {
                 // 保底生效：未做原文替换/隐藏旧楼，但记忆已随请求送达模型。
                 const headline = el('p', 'ym-skip-head', '本轮以保底方式附加记忆，未隐藏旧楼');
@@ -1091,7 +1102,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             if (hint) usedBody.append(el('p', 'ym-muted', hint));
             return;
         }
-        const injectedTitle = el('p', 'ym-muted', '最后一次注入的内容');
+        const injectedTitle = el('p', 'ym-muted', use.restoredAt ? `上次注入的内容 · ${roundTime(use.restoredAt)}` : '最后一次注入的内容');
         injectedTitle.title = '记录已加入生成请求的内容，不代表模型已接收。'; usedBody.append(injectedTitle);
         if (Array.isArray(use.removedFloors) && Array.isArray(use.recentFloors)) usedBody.append(el('p', 'ym-muted',
             `替换原文 ${use.removedFloors.length} 层 · 保留近期 ${use.recentFloors.length} 层${use.semantic ? ' · 向量参与排序' : ''}`));

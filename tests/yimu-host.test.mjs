@@ -48,7 +48,7 @@ test('ST summary admission checks the complete prompt and output reservation bef
     const f = fixture();
     f.ctx.chatCompletionSettings.openai_max_context = 2000;
     f.ctx.chatCompletionSettings.openai_max_tokens = 1000;
-    await assert.rejects(f.host.generate('文'.repeat(400)), /上下文容量/);
+    await assert.rejects(f.host.generate('文'.repeat(900)), /上下文容量/);
     assert.equal(f.rawCalls.length, 0);
     assert.equal(await f.host.generate('少量合成原文'), '当前连接摘要');
     assert.equal(f.rawCalls.length, 1);

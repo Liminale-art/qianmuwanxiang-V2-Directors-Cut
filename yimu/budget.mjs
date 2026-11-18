@@ -48,8 +48,10 @@ export const BUDGET_ELASTICITY = 1.25;
 export const tokenEstimate = messages => Math.ceil(byteBudget(messages) / 2);
 
 // Shared by batch admission and the final ST/custom-connection boundary.
+// 与注入预算同一口径（字节数的一半）。原先直接拿字节数当 token，中文内容的可整理量只有连接容量的三分之一，
+// 几层正文加上整理提示词就会被判「超出上下文容量」。
 export function summaryRequestBudget(prompt, systemPrompt = '你是忆幕的整理助手。') {
-    return byteBudget([{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }]);
+    return tokenEstimate([{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }]);
 }
 
 export function memoryMessage(entries, entryOrder = []) {
@@ -76,7 +78,8 @@ export function payloadSupport(payload) {
     if (payload.tools != null || payload.functions != null || payload.tool_choice != null || payload.function_call != null
         || payload.json_schema != null || payload.response_format != null || payload.enable_web_search || payload.request_images) return 'unsupported-tools-or-schema';
     if (['prompt', 'system', 'system_prompt', 'input', 'instructions'].some(key => payload[key] != null)) return 'custom-prompt-rewrite';
-    if ([payload.custom_include_body, payload.custom_exclude_body, payload.assistant_prefill].some(value => value != null && String(value).trim())) return 'custom-prompt-rewrite';
+    // 预设里的前缀补全（assistant_prefill）与附加／排除请求体不挡忆幕：它们由 ST 在服务端处理，不改这里的 messages；
+    // 记忆功能不应因为预设怎么设而失效（用户 2026-11-18）。
     for (const message of payload.messages) {
         if (!message || !roles.has(message.role) || typeof message.content !== 'string'
             || message.name !== undefined && typeof message.name !== 'string'

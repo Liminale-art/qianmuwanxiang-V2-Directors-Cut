@@ -19,7 +19,7 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000 }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000, roundStore = globalThis.localStorage ?? null }) {
     // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
     // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
     // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
@@ -40,6 +40,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     let catchUp = true, settleTimer = null, settleIdle = 0, saveTimer = null, saveWaits = 0;
     const SETTLE_POLL_MS = 3000, SAVE_POLL_MS = 1500, SAVE_POLL_LIMIT = 8;
     const hostBusy = () => { try { return typeof host.busyGenerating === 'function' ? host.busyGenerating() : null; } catch { return null; } };
+    // 手动发起的整理不能悄悄不动：做不了就说明原因。「正在生成」的标记若已过期（ST 实际并没有在生成），就地清掉再继续。
+    const manualStartReady = key => {
+        if (jobs.has(key)) throw new Error('已有一轮整理在进行，请等它结束或先停止');
+        if (generating) {
+            if (hostBusy() === true) throw new Error('正在生成回复，等回复结束后再总结');
+            generating = false; clearTimeout(settleTimer); settleTimer = null; settleIdle = 0;
+        }
+        if (!state.sourceAvailable) throw new Error('当前聊天原件尚未通过核对，请保存聊天后重新打开忆幕');
+        localStops.delete(key);
+    };
     const settled = () => {
         clearTimeout(settleTimer); settleTimer = null; settleIdle = 0;
         generating = false; prepared = null; host.clear();
@@ -69,7 +79,28 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         activeEntryId: state.snapshot ? jobs.get(bindingKey(state.snapshot.binding))?.entryId || null : null,
         manualJob: state.snapshot && jobs.get(bindingKey(state.snapshot.binding))?.manual ? { ...jobs.get(bindingKey(state.snapshot.binding)).manual } : null,
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
-    const emit = () => { if (!disposed) onChange(snapshotState()); };
+    // 记忆调阅的「上一轮」记录按聊天存在本机（只存条目编号与数字，不存正文），重开 ST 后还能看到。
+    // 新一轮生成开始时内存里的记录会先清空，但本机那份留到下一次有结果时才被替换。
+    let roundSaved = null;
+    const roundKey = binding => `yimu:last-round:${bindingKey(binding)}`;
+    const rememberRound = () => {
+        const used = state.lastUsed, skip = state.lastSkip, binding = state.snapshot?.binding;
+        if (!binding || !used && !skip || used?.restoredAt || skip?.restoredAt || roundSaved === (used || skip)) return;
+        roundSaved = used || skip;
+        const record = { at: Date.now(), used: used ? { memoryIds: (used.entries || []).map(entry => entry.id), tokens: used.tokens, estimated: true, status: used.status, semantic: used.semantic === true,
+            sourceReplacement: used.sourceReplacement, removedFloors: used.removedFloors, recentFloors: used.recentFloors, requestTokens: used.requestTokens, contextTokens: used.contextTokens, responseTokens: used.responseTokens } : null,
+            skip: used ? null : { stage: skip.stage, reason: skip.reason, offered: skip.offered === true, ...(skip.message ? { message: skip.message } : {}) } };
+        try { roundStore?.setItem(roundKey(binding), JSON.stringify(record)); } catch { /* 存不下不影响使用 */ }
+    };
+    const restoreRound = binding => {
+        if (state.lastUsed || state.lastSkip || generating) return;
+        let record = null;
+        try { record = JSON.parse(roundStore?.getItem(roundKey(binding)) || 'null'); } catch { record = null; }
+        if (!record || !Number.isFinite(record.at)) return;
+        if (record.used && Array.isArray(record.used.memoryIds)) state.lastUsed = { ...record.used, restoredAt: record.at };
+        else if (record.skip && typeof record.skip.reason === 'string') state.lastSkip = { ...record.skip, at: 0, restoredAt: record.at };
+    };
+    const emit = () => { if (!disposed) { rememberRound(); onChange(snapshotState()); } };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
     // A streamed summary reports every chunk. Each report used to repaint the whole panel (every memory card
     // included); the preview text is kept current on every chunk, and the panel is told at most ~8 times a second.
@@ -251,7 +282,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     catch (error) { state.error = error.message; }
                 }
                 if (!data.sourceAvailable) { host.clear(); offered = false; state.error = '当前聊天原件尚未通过核对；请保存聊天后重新打开忆幕。'; }
-                state.loading = false; emit();
+                state.loading = false; restoreRound(snapshot.binding); emit();
                 if (auto && !disposed) deferFor(snapshot.binding, () => start().catch(() => {}), refreshGeneration);
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
@@ -267,11 +298,17 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     }
 
     async function start({ force = false, entryId = null, range: requestedRange = null, expectedRange = null, batchFloors, historyOnly = false, errorPage = entryId ? 'memory' : requestedRange || historyOnly ? 'overview' : 'memory' } = {}) {
-        if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || !force && !state.document.autoSummary) return;
+        if (disposed || generating || !state.document?.enabled || !state.sourceAvailable || !state.snapshot || !force && !state.document.autoSummary) {
+            if (force && !disposed && state.snapshot) { state.error = generating ? '正在生成回复，等回复结束后再总结' : !state.sourceAvailable ? '当前聊天原件尚未通过核对，请保存聊天后重新打开忆幕' : '此聊天尚未启用忆幕'; state.errorPage = errorPage; emit(); }
+            return;
+        }
         // Automatic rounds never overlap a reply that is still streaming.
         if (!force && hostBusy() === true) { waitForSave(); return; }
         const binding = clone(state.snapshot.binding), key = bindingKey(binding);
-        if (jobs.has(key) || localStops.has(key)) return;
+        if (jobs.has(key) || localStops.has(key)) {
+            if (force) { state.error = jobs.has(key) ? '已有一轮整理在进行，请等它结束或先停止' : '此聊天的忆幕已停用，请重新启用后再总结'; state.errorPage = errorPage; emit(); }
+            return;
+        }
         const doc = clone(state.document), runGeneration = generation;
         const cancelled = cancelledRounds.get(key);
         if (!force && cancelled?.epoch === doc.epoch && cancelled.total === state.snapshot.messages.length) return;
@@ -740,11 +777,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             state.error = ''; emit(); deferFor(binding, () => startStage({ force: true, start: payload.start, end: payload.end, entryId: type === 'redo' ? payload.entryId : null, includeCustom: payload.includeCustom ?? false }), actionGeneration); return true;
         }
         if (type === 'summarize' || type === 'redo') {
-            if (jobs.has(key)) return false;
+            manualStartReady(key);
             state.error = ''; emit(); deferFor(binding, () => start({ force: true, entryId: type === 'redo' ? payload.entryId : null }), actionGeneration); return true;
         }
         if (type === 'summarizeRange') {
-            if (jobs.has(key)) return false;
+            manualStartReady(key);
             const batchFloors = manualBatchFloors(payload.batchFloors);
             const plan = planManualRange(doc, snapshot.messages, summaryRun(effectiveSettings(doc, state.defaults), snapshot).settings, payload.range, { batchFloors });
             if (payload.expectedRange?.start !== plan.range.start || payload.expectedRange?.end !== plan.range.end) {

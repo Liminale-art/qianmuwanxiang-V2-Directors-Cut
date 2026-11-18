@@ -9,7 +9,7 @@ import {createApi} from '../yimu/client.mjs';
 import {createController} from '../yimu/runtime.mjs';
 import {createHost, MEMORY_PROMPT_KEY} from '../yimu/host.mjs';
 import {effectiveSettings, fingerprintMessages} from '../yimu/contract.mjs';
-import {summaryCoverage, summaryPrompt} from '../yimu/core.mjs';
+import {summaryCoverage, summaryPrompt, planManualRange} from '../yimu/core.mjs';
 import {summaryRequestBudget} from '../yimu/budget.mjs';
 import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
 
@@ -819,7 +819,7 @@ for (const mode of ['automatic', 'manual']) test(`${mode} Chinese summary batche
 test('automatic Chinese stages pass the real ST host budget while preserving the latest ten fine slices', async t => {
     const f = await fixture(t);
     f.context.chat = Array.from({length: 21}, (_, index) => ({name: '角色', mes: `合成原文${index + 1}`, send_date: `stage-${index}`}));
-    f.context.chatCompletionSettings.openai_max_context = 16384; f.context.chatCompletionSettings.openai_max_tokens = 2048;
+    f.context.chatCompletionSettings.openai_max_context = 8192; f.context.chatCompletionSettings.openai_max_tokens = 2048;
     await f.writeChat(f.context.chat); await f.enable();
     await f.controller.action('settings', {values: {stageAuto: true, stageBasis: 'tokens', stageThreshold: 1000}});
     const doc = f.controller.state.document, hashes = await fingerprintMessages(f.context.chat);
@@ -828,7 +828,7 @@ test('automatic Chinese stages pass the real ST host budget while preserving the
     await f.controller.refresh(); const prompts = [];
     f.model(async prompt => { prompts.push(prompt); return JSON.stringify({text: '此范围的有据阶段经历'}); });
     await f.controller.startStage();
-    assert.ok(prompts.length > 1); assert.ok(prompts.every(prompt => summaryRequestBudget(prompt) + 2048 <= 16384));
+    assert.ok(prompts.length > 1); assert.ok(prompts.every(prompt => summaryRequestBudget(prompt) + 2048 <= 8192));
     assert.equal(f.controller.state.error, '');
     const refs = f.controller.state.document.entries.filter(entry => entry.kind === 'stage').flatMap(entry => entry.source.parents.map(ref => ref.id));
     assert.deepEqual(refs, Array.from({length: 6}, (_, index) => `stage_fine_${index + 1}`));
@@ -1038,4 +1038,46 @@ test('when the pre-generation read is too slow the round keeps the original cont
     assert.equal(f.prompts.get(MEMORY_PROMPT_KEY), '');
     gate.release.resolve();
     await new Promise(resolve => setTimeout(resolve, 20));
+});
+
+test('the last round shown in 记忆调阅 survives a restart: kept per chat on this device without any memory text', async t => {
+    const saved = new Map(), previous = globalThis.localStorage;
+    globalThis.localStorage = { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+    t.after(() => { if (previous === undefined) delete globalThis.localStorage; else globalThis.localStorage = previous; });
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    await f.inject();
+    const used = f.controller.state.lastUsed;
+    assert.ok(used, 'the round injected');
+    assert.equal(saved.size, 1);
+    assert.doesNotMatch([...saved.values()][0], /"text"/, 'only ids and figures are kept, never memory text');
+    // 重开：新的控制器读到同一聊天，恢复上一轮记录并带上时间。
+    const second = createController({ host: f.host, api: f.api });
+    t.after(() => second.destroy());
+    await second.refresh();
+    assert.ok(second.state.lastUsed?.restoredAt > 0);
+    assert.deepEqual(second.state.lastUsed.memoryIds, used.entries.map(entry => entry.id));
+    assert.deepEqual(second.state.lastUsed.removedFloors, used.removedFloors);
+    const before = [...saved.values()][0];
+    await second.refresh();
+    assert.equal([...saved.values()][0], before, 'a restored record is not written back as if it were new');
+});
+
+test('a manual summary never does nothing silently: a stale generating flag is cleared, a real one is explained', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    const total = f.context.chat.length, range = { start: 1, end: 2 };
+    // ST 报告「没有在生成」：过期的标记被清掉，手动总结照常开始。
+    f.host.busyGenerating = () => false;
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    const entriesBefore = f.controller.state.document.entries.length;
+    const expected = planManualRange(f.controller.state.document, f.context.chat, { inputCapacity: 100000 }, range, { batchFloors: 20 }).range;
+    assert.equal(await f.controller.action('summarizeRange', { range: expected, expectedRange: expected, batchFloors: 20 }), true);
+    await f.flush();
+    assert.ok(f.controller.state.document.entries.length >= entriesBefore, 'the run was accepted');
+    // ST 确实在生成：给出原因，而不是没反应。
+    f.host.busyGenerating = () => true;
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    await assert.rejects(f.controller.action('summarizeRange', { range: expected, expectedRange: expected, batchFloors: 20 }), /正在生成回复/);
+    assert.ok(total > 2);
 });

@@ -837,14 +837,17 @@ test('ZIP import stops on account change without committing into either account 
   await assert.rejects(pending, /所属设置已变化/); assert.deepEqual(f.owner, {}); assert.deepEqual(oldOwner, {}); assert.equal(writes[0].namespace, 'one'); assert.equal(f.saves.length, 0); assert.deepEqual(notices, []); f.stop();
 });
 
-test('closing and reopening a ZIP import does not send progress or a completion toast to the replacement view', async () => {
+test('closing and reopening the panel during a ZIP import keeps the progress visible: the new view takes over progress and the completion notice', async () => {
   let finishPut; const blobs = new Map(), notices = [], newProgress = [], f = await editableSetup({ notify: text => notices.push(text), localStoreFactory: () => ({
     get: async id => blobs.get(id), put: (id, bytes) => new Promise(resolve => { finishPut = () => { blobs.set(id, new Blob([bytes])); resolve(); }; }), dispose() {},
   }) });
   const first = f.views[0].options, pending = first.onAction({ type: 'import', file: await localArchive(1) }); await waitUntil(() => finishPut);
   first.onBack(); f.entry.click(); await waitUntil(() => f.views.length === 2); const replacement = f.views[1];
   replacement.setStatus = text => replacement.options.notify(text, 'info'); replacement.setProgress = value => newProgress.push(value);
-  finishPut(); await pending; assert.equal(f.owner.fontLibrary.fonts.length, 1); assert.deepEqual(notices, []); assert.deepEqual(newProgress, []); f.stop();
+  finishPut(); await pending; assert.equal(f.owner.fontLibrary.fonts.length, 1);
+  assert.ok(newProgress.length >= 1, 'the reopened view keeps receiving import progress'); assert.equal(newProgress.at(-1), null, 'and is told when the import ends');
+  assert.ok(newProgress.slice(0, -1).every(value => value?.phase === 'import'));
+  assert.deepEqual(notices, ['字体包导入成功']); f.stop();
 });
 
 test('a group whose settings save fails never announces ZIP import success', async () => {

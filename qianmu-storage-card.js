@@ -1,6 +1,6 @@
 // 数据管理卡：占用总览（按类别分色块）＋「备份：导出／导入」＋「清理：扫描并清理／按聊天清理」。
 // 只负责生成标记与就地更新；按钮由入口文件绑定。卡片主体是静态的，扫描进度与占用只改写顶部两块，不整卡重画。
-import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.561';
+import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.562';
 
 // 扫描各步的名称，顺序与入口文件 collectStorageInventory 的任务表一致；只用于进度文字。
 export const STORAGE_SCAN_LABELS = Object.freeze(['浏览器空间', '本机资料', '伴读插图', '生图记录', '连接记录', '领取记录', 'Comfy 记录', 'Comfy 资料', 'Vibe 素材', '恢复记录',
@@ -42,7 +42,8 @@ export function storageScanText(progress = {}) {
 export function renderStorageCard({ state, format, escape, service = '', pressure = () => ({ level: 'normal' }) }) {
   const { status, data, error } = state, scanning = status === 'loading';
   const progress = state.progress || { done: 0, total: 0 };
-  const bar = scanning ? `<div class="sd-dm-scan"><p role="status">${escape(storageScanText(progress))}</p><progress max="${Math.max(1, progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress></div>` : '';
+  const done = progress.total ? Math.min(100, Math.max(0, progress.done / progress.total * 100)) : 0;
+  const bar = scanning ? `<div class="sd-dm-scan" style="--sd-dm-done:${done.toFixed(1)}%"><p role="status">${escape(storageScanText(progress))}</p><progress max="${Math.max(1, progress.total)}" value="${progress.done}" aria-label="资料扫描进度"></progress></div>` : '';
   let top = bar;
   if (data) {
     const level = pressure(data), used = Math.min(999, Math.max(0, Math.round(Number(level.ratio || 0) * 100)));

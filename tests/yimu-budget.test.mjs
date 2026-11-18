@@ -246,9 +246,6 @@ test('tools, multimodal, provider rewrites and unknown message shapes keep origi
         f => { f.payload.json_schema = {}; },
         f => { f.payload.messages[2].content = [{ type: 'text', text: 'text' }]; },
         f => { f.payload.messages[2].reasoning_content = 'reason'; },
-        f => { f.payload.custom_include_body = 'messages: replaced'; },
-        f => { f.payload.custom_exclude_body = 'messages'; },
-        f => { f.payload.assistant_prefill = 'prefix'; },
     ]) {
         const f = await fixture(); mutate(f); const before = JSON.stringify(f.payload);
         assert.equal((await buildBudgetedMessages(f.payload, f.options)).applied, false);
@@ -357,4 +354,19 @@ test('the 25% elasticity stays a property of the whole memory block, not of the 
     // Just over the share is refused although the whole block has plenty of room: the share itself is not elastic.
     f.options.entries = [f.entry('slice-1', 1, 3), reading('big', 'book', 'y'.repeat(1300))];
     assert.deepEqual((await buildBudgetedMessages(f.payload, f.options)).entries.map(item => item.id), ['slice-1']);
+});
+
+test('preset options handled on the server side never switch memory off: prefill, extra request body and post-processing', async () => {
+    for (const mutate of [
+        f => { f.payload.assistant_prefill = '好的，'; },
+        f => { f.payload.custom_include_body = 'thinking:\n  type: enabled'; },
+        f => { f.payload.custom_exclude_body = 'frequency_penalty'; },
+        f => { f.payload.custom_prompt_post_processing = 'semi'; },
+        f => { f.payload.messages.push({ role: 'assistant', content: '好的，' }); },   // 预设把前缀补全放成最后一条消息
+    ]) {
+        const f = await fixture(); mutate(f);
+        const result = await buildBudgetedMessages(f.payload, f.options);
+        assert.equal(result.applied, true); assert.deepEqual(result.removedFloors, [1, 2, 3]);
+        assert.equal(payloadSupport(f.payload), null);
+    }
 });

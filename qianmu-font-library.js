@@ -33,7 +33,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   builtinReader = readBuiltinFont, FontFace = globalThis.FontFace } = {}) {
   let owner = null, namespace = '', store = null, runtime = null, accountSync = null, view = null, portal = null, container = null;
   let accountSyncHydrated = false;
-  let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
+  let generation = 0, lifecycle = 0, operation = 0, disposed = false, busy = false, liveProgress = null, previewIds = [], previewChoices = {}, attached = null, removeEntry = null, webAbort = null, viewSession = null, viewIdentity = null, applicationNotice = null;
   let accountPushTail = Promise.resolve(), accountPushTimer = null, accountPushRevision = 0, accountHydration = null;
   const ACCOUNT_PUSH_DEBOUNCE_MS = 120;
   const statuses = new Map();
@@ -221,7 +221,8 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
     try {
       const token = await ensure(); let original = owner.fontLibrary;
       const guard = () => { assertCurrent(token); if (owner.fontLibrary !== original) throw new Error('字体库已变化，未覆盖新的选择'); };
-      const progress = (phase, value) => { if (current(token) && (!originView || originView === viewIdentity)) view?.setProgress?.(value ? { phase, ...value } : null); };
+      // 进度记在模块里并报给当前打开的那个界面：导入途中关掉面板再打开，新界面接着显示同一条进度。
+      const progress = (phase, value) => { if (!current(token)) return; liveProgress = value ? { phase, ...value } : null; view?.setProgress?.(liveProgress); };
       let next, revealFontId = '', editedFontId = '', imported = false, matchResult = null;
       if (type === 'add-web' || type === 'edit-web') {
         const tags = payload.tags === undefined ? undefined : fontLibraryTags(payload.tags);
@@ -388,7 +389,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         try { await store.delete(deleted.map(font => font.id)); } catch { if (current(token) && (!originView || originView === viewIdentity)) view?.setStatus('已移除条目，本机原件清理未完成', { error: true }); }
       }
       scheduleAccountPush(token);
-      if (imported && current(token) && (!originView || originView === viewIdentity)) view?.setStatus('字体包导入成功');
+      if (imported && current(token)) view?.setStatus('字体包导入成功');
       if (current(token)) {
         // The originating view owns its one final redraw/reveal. Preview loading
         // must not hold a successful save behind a redundant old-page sync.
@@ -425,6 +426,7 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
         onBack: () => { close(); root.querySelector('[data-font-library]')?.focus(); },
         onClose: () => closePanel ? closePanel() : root.querySelector('.sd-floor-close')?.click(),
         fontFamily: id => runtime.family(id) });
+      if (liveProgress) view.setProgress?.(liveProgress);
       container.querySelector?.('[data-font-action="back"]')?.focus({ preventScroll: true });
     } catch (error) { if (portal === root) close(); notify(error.message || '字体库打开失败', 'warning'); }
   }

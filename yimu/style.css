@@ -397,6 +397,9 @@
 }
 @media (max-height: 620px) { .ym-dialog { height: calc(100dvh - 12px); max-height: calc(100dvh - 12px); } .ym-header { min-height: 52px; } .ym-dialog .ym-nav-button { padding-block: 7px; } }
 .ym-memory { position: relative; min-width: 0; }
+/* 已屏蔽注入的记忆卡整体变淡，一眼分得出；指上去或操作时恢复清晰。 */
+.ym-memory.ym-excluded { opacity: .52; transition: opacity .15s ease; }
+.ym-memory.ym-excluded:is(:hover, :focus-within) { opacity: .88; }
 .ym-memory.ym-source-stale { border-color: color-mix(in srgb, var(--ym-warning) 72%, var(--ym-border)); box-shadow: inset 3px 0 0 var(--ym-warning); }
 .ym-memory-head { display: flex; align-items: center; gap: 8px; list-style: none; min-width: 0; }
 .ym-memory-head::-webkit-details-marker { display: none; }

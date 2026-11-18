@@ -73,7 +73,7 @@ test('the four actions are present and enabled in every scan state; only the ove
 
 test('scanning shows measured progress above the last overview without hiding it', () => {
   const context = fixture(null, 'loading');
-  assert.match(context.renderStorageManagementCard(), /<div class="sd-dm-scan"><p role="status">准备扫描…<\/p><progress max="1" value="0" aria-label="资料扫描进度"><\/progress><\/div>/);
+  assert.match(context.renderStorageManagementCard(), /<div class="sd-dm-scan" style="--sd-dm-done:0\.0%"><p role="status">准备扫描…<\/p><progress max="1" value="0" aria-label="资料扫描进度"><\/progress><\/div>/);
   context.storageInventoryState.progress = { done: 5, total: 20 };
   const scanning = context.renderStorageManagementCard();
   assert.match(scanning, /<p role="status">5\/20项 领取记录 25%<\/p><progress max="20" value="5" aria-label="资料扫描进度"><\/progress>/);
@@ -328,4 +328,13 @@ test('import opens one picker and routes the chosen files through the shared flo
   assert.deepEqual(e.calls, [['config-import', event], ['notes-import', event], ['collection-import', file, slot, event], ['favorites-import', event], ['audio-import', event],
     ['reader-import', file, slot, event], ['assistant-import', file, slot, event], ['focus-import', file, slot, event], ['ringtones-import', file]]);
   assert.deepEqual(notices, [['已导入 2 个本地铃声，1 个已存在或不可用。', 'success']]);
+});
+
+test('the scan shimmer runs only over the part already scanned', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { renderStorageCard } = await import('../qianmu-storage-card.js');
+  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.sd-dm-scan::after \{ content: ''; position: absolute; left: 0; width: var\(--sd-dm-done, 0%\);/);
+  const html = renderStorageCard({ state: { status: 'loading', data: null, progress: { done: 5, total: 20 } }, format: String, escape: String });
+  assert.match(html, /class="sd-dm-scan" style="--sd-dm-done:25\.0%"/);
 });

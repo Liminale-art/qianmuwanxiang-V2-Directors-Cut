@@ -13014,8 +13014,8 @@ html[data-qm-launcher="dial"] .sd-detached-notes-entry > :is(i, .qm-glyph-icon) 
 #story-director-modal .sd-dm .sd-dm-top:empty { display: none; }
 #story-director-modal .sd-dm .sd-dm-top > p { margin: 0; }
 #story-director-modal .sd-dm .sd-dm-scan { position: relative; display: grid; gap: 3px; }
-/* 扫描进行时进度条上扫过一道流光 */
-#story-director-modal .sd-dm .sd-dm-scan::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 99px; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, #fff 70%, var(--sd-accent)) 50%, transparent 100%) no-repeat; background-size: 34% 100%; animation: sd-dm-scan-flow 1.25s linear infinite; pointer-events: none; }
+/* 扫描进行时，流光只在已扫描的那一段上扫过 */
+#story-director-modal .sd-dm .sd-dm-scan::after { content: ''; position: absolute; left: 0; width: var(--sd-dm-done, 0%); bottom: 0; height: 3px; border-radius: 99px; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, #fff 70%, var(--sd-accent)) 50%, transparent 100%) no-repeat; background-size: 34% 100%; animation: sd-dm-scan-flow 1.25s linear infinite; pointer-events: none; }
 @keyframes sd-dm-scan-flow { from { background-position: -52% 0; } to { background-position: 152% 0; } }
 @media (prefers-reduced-motion: reduce) { #story-director-modal .sd-dm .sd-dm-scan::after { animation: none; display: none; } }
 #story-director-modal .sd-dm .sd-dm-scan > p { margin: 0; color: var(--sd-muted); font-size: 10px; line-height: 1.3; font-variant-numeric: tabular-nums; }
