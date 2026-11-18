@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS as FACTORY_DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults as factoryDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
 import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
-import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage } from '../yimu/core.mjs';
+import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage, preEnablePending } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
 import { mergeCompanionBook, companionEntries } from '../yimu/companion-contract.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
@@ -532,4 +532,35 @@ test('similarity may open a book gate only against real competition, and book sl
     doc = enable(); doc.companion = hotel(); doc.settings.vectorEnabled = true;
     plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([[bookId('h3'), 0.9], [bookId('h1'), 0.8]]) });
     assert.deepEqual(reading(plan), ['hd'], 'with no scored story memory to beat, similarity alone does not open the gate');
+});
+
+test('fragment coalescing merges only short same-scene neighbours and leaves full or moved scenes alone', async () => {
+    const hashes = await fingerprintMessages(messages);
+    const scene = { world: 'w', timeline: 't', date: '', period: '', place: '旅馆', event: '夜里', characters: ['甲'], nature: 'present', evidence: { floors: [1] } };
+    const parsed = parseSummary(JSON.stringify({ slices: [
+        { start: 1, end: 1, text: '一层', title: '甲', scenes: [{ ...scene, evidence: { floors: [1] } }] },
+        { start: 2, end: 2, text: '二层', title: '乙', scenes: [{ ...scene, evidence: { floors: [2] } }] },
+        { start: 3, end: 4, text: '长'.repeat(900), title: '丙', scenes: [{ ...scene, evidence: { floors: [3, 4] } }] },
+        { start: 5, end: 5, text: '短', title: '丁', scenes: [{ ...scene, evidence: { floors: [5] } }] },
+        { start: 6, end: 6, text: '短二', title: '戊', scenes: [{ ...scene, place: '别处', evidence: { floors: [6] } }] },
+    ] }), { start: 1, end: 6 }, hashes);
+    assert.deepEqual(parsed.map(item => [item.source.start, item.source.end]), [[1, 5], [6, 6]], 'short neighbours merge; a different place stays separate');
+    assert.equal(parsed[0].title, '丙', 'the merged slice keeps the longer part\'s name');
+    assert.deepEqual(parsed[0].source.hashes.length, 5, 'merged source covers every floor it now stands for');
+    const full = parseSummary(JSON.stringify({ slices: [
+        { start: 1, end: 1, text: '长'.repeat(900), title: '甲', scenes: [{ ...scene, evidence: { floors: [1] } }] },
+        { start: 2, end: 2, text: '也长'.repeat(450), title: '乙', scenes: [{ ...scene, evidence: { floors: [2] } }] },
+    ] }), { start: 1, end: 2 }, hashes);
+    assert.equal(full.length, 2, 'two full slices are never glued together');
+});
+
+test('pre-enable backfill offers only the first unsummarized stretch before the automatic start point', async () => {
+    let doc = enable({ start: 9, end: 12, total: 12 });
+    doc = append(doc, await entry('late', 9, 10));
+    assert.deepEqual(preEnablePending(doc, messages, DEFAULTS), { start: 1, end: 7, count: 7 }, 'floors 1-7 predate automatic summary and are untouched');
+    doc = append(doc, await entry('early', 1, 3));
+    assert.deepEqual(preEnablePending(doc, messages, DEFAULTS), { start: 4, end: 7, count: 4 }, 'the stretch stops after the gap it already covers');
+    const hidden = structuredClone(messages); hidden[4] = { ...hidden[4], is_system: true };
+    assert.equal(preEnablePending(doc, hidden, DEFAULTS).start, 4, 'an unsummarizable hidden floor is skipped, not blocking');
+    assert.equal(preEnablePending(enable({ start: 1, end: 0, total: 0 }), messages, DEFAULTS), null, 'an empty initial range has nothing to backfill');
 });

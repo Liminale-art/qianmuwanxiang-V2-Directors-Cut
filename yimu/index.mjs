@@ -3,6 +3,7 @@ import { createApi } from './client.mjs';
 import { createController } from './runtime.mjs';
 import { readYimuServiceRelease } from './release-version.mjs';
 import { createView, mountEntries } from './view.mjs';
+import { mountMessageMarks } from './message-marks.mjs';
 import { COMPANION_READY } from './companion-runtime.mjs';
 
 let instance = null;
@@ -15,11 +16,20 @@ export function boot() {
     };
     let removeEntries = null, settledService = null, pending = null;
     const host = createHost();
+    // 楼层上的忆幕标记：只在上一次生成确实替换了原文的楼层上出现。
+    const updateMarks = mountMessageMarks({});
+    const syncMarks = state => {
+        const used = state?.lastUsed, binding = state?.snapshot?.binding;
+        const key = binding ? JSON.stringify(binding) : '';
+        const floors = used && Array.isArray(used.removedFloors) && used.sourceReplacement ? used.removedFloors : [];
+        updateMarks(floors, key);
+    };
     // A background recheck keeps the last settled service status instead of flashing "checking".
     const render = state => {
         const ui = getUi(), status = state.service?.status;
         if (status && status !== 'checking') settledService = state.service;
         const shown = status === 'checking' && !state.loading && settledService ? { ...state, service: settledService } : state;
+        syncMarks(shown);
         removeEntries?.update(ui, shown);
         // 面板关着时不整页重画（一轮生成会报好几次状态，每次都要重排全部记忆卡片）：只记下最新状态，打开时画一次。
         if (view.isOpen?.() === false) { pending = { ...shown, ui }; return; }

@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT, preEnablePending } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -300,7 +300,17 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!await dispatch('uiSettings', { manualBatchFloors: value }, batchInput)) batchInput.value = String(savedBatchFloors());
     });
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
-    summarizeRangeForm.append(manualHead, manualFields, summarizeActions, summarizeNotice);
+    // 开启自动总结之前就存在的楼层，不自动整理。这里只把范围填好，是否花钱由用户自己按下「开始总结」。
+    const backfillButton = button('', () => {
+        const pending = preEnablePending(state.document, state.snapshot?.messages || [], currentSettings());
+        if (!pending) { backfillButton.hidden = true; return; }
+        summarizeStart.value = floorField(pending.start); summarizeEnd.value = floorField(pending.end);
+        manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
+        summarizeNotice.textContent = `已填入开启前的第 ${shownFloor(pending.start)}–${shownFloor(pending.end)} 层，共 ${pending.count} 层；确认范围后点「开始总结」。`;
+        summarizeNotice.hidden = false;
+    }, 'ym-small');
+    backfillButton.hidden = true;
+    summarizeRangeForm.append(manualHead, manualFields, summarizeActions, summarizeNotice, backfillButton);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
@@ -716,6 +726,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         batchProgress.textContent = manualJob ? `已完成 ${manualJob.done}／${manualJob.total} 批${manualJob.pausing ? '，本批完成后暂停' : ''}` : '';
         if (document.activeElement !== batchInput && !pendingButtons.has(batchInput)) batchInput.value = String(savedBatchFloors());
         batchInput.disabled = !available || Boolean(manualJob);
+        // 开启前的旧楼层只能手动补：有剩余时才出现，说明还剩多少，不自动花钱。
+        const backfill = available && state.document ? preEnablePending(state.document, state.snapshot?.messages || [], currentSettings()) : null;
+        backfillButton.hidden = !backfill || Boolean(manualJob);
+        backfillButton.disabled = !canSummarize || Boolean(state.busy);
+        backfillButton.textContent = backfill ? `补上开启前的 ${backfill.count} 层` : '';
+        backfillButton.title = backfill ? `第 ${shownFloor(backfill.start)}–${shownFloor(backfill.end)} 层尚未整理，点一下填入范围` : '';
         stageButton.disabled = !available;
         stageButton.title = !enabled.checked ? '请先启用忆幕后开始总结' : '';
         updateStageRange();

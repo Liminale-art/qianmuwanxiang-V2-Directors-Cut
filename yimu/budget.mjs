@@ -47,10 +47,15 @@ export const BUDGET_ELASTICITY = 1.25;
  * 直接拿字节数当 token 会把中文聊天的预算压到三分之一，记忆放不下、旧楼也就隐藏不了。 */
 export const tokenEstimate = messages => Math.ceil(byteBudget(messages) / 2);
 
+// 整理请求固定带上的身份锚定。规划批次时必须与实际发送用同一段，
+// 否则规划按一句短提示词算出「放得下」，发送时带上完整锚定就被判超容量。
+export const SUMMARY_SYSTEM = `【忆幕身份锚定｜机器规则】
+以下提示词中的“我”仅指执行本次忆幕整理的总结模型，不指当前用户、原文人物或其他聊天参与者。原文中的“我／你／他／她”仍按原文说话者与上下文解释。人格条目属于工作指令，不是故事事实，不得写入记忆正文；输出记忆正文时，不得将人格条目中的“我”当作叙述主体。`;
+
 // Shared by batch admission and the final ST/custom-connection boundary.
 // 与注入预算同一口径（字节数的一半）。原先直接拿字节数当 token，中文内容的可整理量只有连接容量的三分之一，
 // 几层正文加上整理提示词就会被判「超出上下文容量」。
-export function summaryRequestBudget(prompt, systemPrompt = '你是忆幕的整理助手。') {
+export function summaryRequestBudget(prompt, systemPrompt = SUMMARY_SYSTEM) {
     return tokenEstimate([{ role: 'system', content: String(systemPrompt) }, { role: 'user', content: prompt }]);
 }
 

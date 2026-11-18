@@ -8,7 +8,7 @@ import { createStoryActions } from './story-runtime.mjs';
 import { createCompanionActions } from './companion-runtime.mjs';
 import { createBackupActions } from './backup-runtime.mjs';
 import { validateGeneratedLength } from './scene-contract.mjs';
-import { summaryRequestBudget } from './budget.mjs';
+import { summaryRequestBudget, SUMMARY_SYSTEM } from './budget.mjs';
 import { memoryTitle } from './timeline.mjs';
 import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
@@ -167,7 +167,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         // Reserve output and framing here; the host checks the complete prompt again.
         settings.inputCapacity = context - output - 512;
         settings.batch = Math.min(settings.trigger, settings.inputCapacity);
-        const fitsPrompt = prompt => summaryRequestBudget(prompt) + output <= context;
+        // 规划与实际发送必须同一口径：发送时固定带身份锚定，所以规划也要算上它。
+        const fitsPrompt = prompt => summaryRequestBudget(prompt, SUMMARY_SYSTEM) + output <= context;
         settings.fitsSummaryBatch = (messages, batch) => fitsPrompt(summaryPrompt(messages, batch, settings));
         settings.fitsStage = parents => fitsPrompt(stagePrompt(parents, settings));
         return { settings, connection, fitsPrompt, options: { profileId: settings.profileId, model: settings.model, ...(connection ? { connection } : {}) } };

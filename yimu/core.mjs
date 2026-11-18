@@ -4,7 +4,7 @@ import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd, hasCompanionBook, COMPANION_BOOK_NOTICE } from './source-scope.mjs';
 import { companionEntries, companionBooks } from './companion-contract.mjs';
 import { orderForInjection, placementMatches, validatePlacement, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
-import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
+import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, generatedTextLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 import { filterContextText } from './context-filter.mjs';
 
@@ -202,13 +202,70 @@ export function summaryCoverage(document, messages, settings) {
     return { sliceCount: active.length + custom.length, organizedFloors: covered.size, pendingFloors, pendingRange };
 }
 
+/** 开启自动总结之前就存在的楼层，目前只能手动补。返回第一段连续可整理的楼层，
+ *  供一键填入范围；中间夹着已整理或不可整理的楼层时到此为止，补完这一段按钮会再出现。
+ *  只看原文保留层以外的部分。 */
+export function preEnablePending(document, messages, settings) {
+    const range = document?.initialRange;
+    if (!range || !Array.isArray(messages) || !messages.length) return null;
+    const entries = document?.entries || [];
+    const last = Math.min(range.total, Math.max(0, messages.length - (settings?.recent ?? DEFAULTS.recent)));
+    let start = 0, end = 0, count = 0;
+    for (let floor = Math.max(1, (document?.lineage?.bridgeCount || 0) + 1); floor <= last; floor++) {
+        if (!canSummarize(messages[floor - 1])) continue;
+        // 与统计口径一致：任何切片覆盖过的楼层都算已整理，包括被删除或屏蔽的那条，
+        // 这样填进去的范围不会立刻被「含已删除记忆」拦下。
+        if (entries.some(entry => !entry.origin && entry.kind === 'summary'
+            && entry.source.start <= floor && entry.source.end >= floor)) continue;
+        if (!start) start = floor;
+        else if (floor !== end + 1) break;
+        end = floor; count++;
+    }
+    return start ? { start, end, count } : null;
+}
+
+/** 相邻碎片合并。模型常把一层写成一片，切片数量一多压缩就白做。
+ *  只并「连续、同场景、其中一片明显偏短」的相邻切片，且合并后仍在上限内；
+ *  两条都写满、或场景不同（换地点、换时间、换视角、回忆／梦境）的一律保留原样。 */
+export const FRAGMENT_RATIO = 0.35;
+const sceneSignature = scene => JSON.stringify([scene?.world, scene?.timeline, scene?.date, scene?.period, scene?.place, scene?.nature]);
+export function coalesceFragments(entries, settings = {}) {
+    const cap = settings.sliceChars ?? 2000;
+    if (!Array.isArray(entries) || !Number.isSafeInteger(cap) || cap < 1) return entries;
+    const out = [];
+    for (const entry of entries) {
+        const last = out.at(-1);
+        const mergeable = last && last.kind === 'summary' && entry.kind === 'summary'
+            && last.source.end + 1 === entry.source.start
+            && (last.scenes || []).length === 1 && (entry.scenes || []).length === 1
+            && (last.scenes[0]?.evidence?.floors || []).length > 0 && (entry.scenes[0]?.evidence?.floors || []).length > 0
+            && sceneSignature(last.scenes[0]) === sceneSignature(entry.scenes[0])
+            && Math.min(generatedTextLength(last), generatedTextLength(entry)) < cap * FRAGMENT_RATIO
+            && generatedTextLength({ ...last, text: [last.text, entry.text].join('\n'),
+                scenes: [mergeScenes(last.scenes[0], entry.scenes[0])] }) <= cap;
+        if (!mergeable) { out.push(entry); continue; }
+        const longer = generatedTextLength(entry) > generatedTextLength(last) ? entry : last;
+        out[out.length - 1] = { ...last, title: longer.title, text: [last.text, entry.text].join('\n'),
+            scenes: [mergeScenes(last.scenes[0], entry.scenes[0])],
+            source: { ...last.source, end: entry.source.end, hashes: [...last.source.hashes, ...entry.source.hashes] } };
+    }
+    return out;
+}
+function mergeScenes(a, b) {
+    const floors = [...new Set([...(a?.evidence?.floors || []), ...(b?.evidence?.floors || [])])].sort((x, y) => x - y);
+    return { ...a, event: [a?.event, b?.event].filter(Boolean).join('；'), evidence: { ...(a?.evidence || {}), floors },
+        ...(a?.characters?.length || b?.characters?.length ? { characters: [...new Set([...(a?.characters || []), ...(b?.characters || [])])] } : {}) };
+}
+
 export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [] } = {}) {
     const source = messages.slice(batch.start - 1, batch.end).map((message, i) => ({
         floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
     }));
     return composePrompt(settings, 'summary', {
         protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"title":"不超过${MEMORY_TITLE_LIMIT}字的正文事件短名","text":"精炼、自足的记忆","scenes":[]}]}。title依据本片原文的主要事件起名，不超过${MEMORY_TITLE_LIMIT}个Unicode字符，不用楼层、时间或套话充当事件名，不新增正文没有的事实。
-slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。每片正文及可见场景文字合计不得超过 ${settings.sliceChars ?? 2000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量；不得靠删除事实边界或截断原文规避。${SCENE_PROMPT}
+slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。每片正文及可见场景文字合计不得超过 ${settings.sliceChars ?? 2000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量；不得靠删除事实边界或截断原文规避。
+切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。
+${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
 ${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}`,
         data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}`,
@@ -230,7 +287,7 @@ export function parseSummary(response, batch, hashes, settings = {}) {
             source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');
-    return entries;
+    return coalesceFragments(entries, settings);
 }
 
 export function renderMemoryPrompt(entries, { entryOrder = [] } = {}) {
