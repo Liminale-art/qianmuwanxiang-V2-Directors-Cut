@@ -466,6 +466,13 @@ export function createHost({
 
     return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
+        // 最终请求的 token 数量用 ST 自己的分词器算，取不到时由调用方退回估算。
+        countTokens: value => {
+            try {
+                const ctx = context();
+                return typeof ctx.getTokenCountAsync === 'function' ? ctx.getTokenCountAsync(value) : null;
+            } catch { return null; }
+        },
         vectorCandidates: request => connectionApi.vectorCandidates(request),
         vectorScores: request => connectionApi.vectorScores(request),
         rerankCandidates: request => connectionApi.rerankCandidates(request),

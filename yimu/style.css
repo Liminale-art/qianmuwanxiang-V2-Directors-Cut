@@ -565,3 +565,11 @@
 @media (prefers-reduced-motion: no-preference) {
     .ym-floor-mark { transition: opacity .18s ease; }
 }
+
+/* 本轮请求体积：用户看不到忆幕对聊天记录的改动，这张卡就是唯一的直观依据。 */
+.ym-request-size { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 9px 12px; }
+.ym-request-tokens { font-size: var(--ym-type-card-title); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.ym-request-detail { color: var(--ym-muted); font-size: var(--ym-type-caption); }
+.ym-request-size[data-tone="ok"] .ym-request-tokens { color: var(--ym-accent, #7d98a6); }
+.ym-request-size[data-tone="warm"] .ym-request-tokens { color: #b9986a; }
+.ym-request-size[data-tone="high"] .ym-request-tokens { color: #b87b7b; }

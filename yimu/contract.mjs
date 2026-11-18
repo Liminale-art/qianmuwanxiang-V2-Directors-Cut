@@ -13,7 +13,7 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.42';
+export const FRONTEND_VERSION = '0.8.43';
 export const SERVICE_VERSION = '0.8.13';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
@@ -141,6 +141,10 @@ export function validateDocument(raw) {
             && entry.text === '已删除' && !entry.title && !entry.history?.length && !entry.conflicts?.length && !entry.candidate,
         '已清除的删除记录无效');
         requireThat(['summary', 'manual', 'stage', 'excerpt'].includes(entry.kind) && ['active', 'invalid', 'excluded', 'deleted'].includes(entry.status) && Number.isSafeInteger(entry.revision) && entry.revision > 0 && Array.isArray(entry.history) && Array.isArray(entry.conflicts), '记忆条目格式损坏');
+        // 钉住：永不沉底、列表固定在上方；不提高带入优先级。屏蔽的永不带入，两者互斥。
+        if (entry.pinned !== undefined) requireThat(typeof entry.pinned === 'boolean', '钉住标记无效');
+        if (entry.pinned === false) delete entry.pinned;
+        if (entry.pinned && ['excluded', 'deleted'].includes(entry.status)) delete entry.pinned;
         validateTemporalFields(entry);
         if (entry.kind === 'summary') validateSource(entry.source);
         else if (entry.kind === 'stage') validateStageSource(entry.source);
@@ -398,10 +402,17 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         } else if (op.type === 'redo') revise(entry, { ...values, candidate: null });
         else {
             switch (op.action) {
-                case 'exclude': revise(entry, { status: 'excluded' }); break;
+                case 'exclude': revise(entry, { status: 'excluded', pinned: undefined }); break;
                 case 'restore':
                     requireThat(entry.status === 'excluded', '只有暂不使用的条目可恢复');
                     revise(entry, { status: 'active' }); break;
+                case 'pin': {
+                    // 钉住＝永不沉底、列表固定在上方；不提高带入优先级。与屏蔽互斥。
+                    requireThat(!['excluded', 'deleted'].includes(entry.status), '已屏蔽或已删除的记忆不能钉住');
+                    requireThat(!entry.origin?.unresolved, '继承来源尚未核对的记忆不能钉住');
+                    revise(entry, { pinned: true }); break;
+                }
+                case 'unpin': revise(entry, { pinned: undefined }); break;
                 case 'delete': revise(entry, { status: 'deleted', candidate: null, deletedRevision: doc.revision + 1 }); break;
                 case 'undoText': {
                     const previous = entry.history.slice().reverse().find(version => (version.text !== entry.text || (version.title || '') !== (entry.title || '')) && version.revision < (entry.textUndoRevision ?? Infinity));

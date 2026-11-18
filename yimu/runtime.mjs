@@ -29,7 +29,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
         return api.read(binding);
     }
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
@@ -81,21 +81,39 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     // 记忆调阅的「上一轮」记录按聊天存在本机（只存条目编号与数字，不存正文），重开 ST 后还能看到。
     // 新一轮生成开始时内存里的记录会先清空，但本机那份留到下一次有结果时才被替换。
+    // 「被想起就回暖」的楼层表也放在同一份记录里，不再单开一个键。
     let roundSaved = null;
     const roundKey = binding => `yimu:last-round:${bindingKey(binding)}`;
+    const readRound = binding => {
+        try { return JSON.parse(roundStore?.getItem(roundKey(binding)) || 'null'); } catch { return null; }
+    };
+    const writeRound = (binding, record) => { try { roundStore?.setItem(roundKey(binding), JSON.stringify(record)); } catch { /* 存不下不影响使用 */ } };
     const rememberRound = () => {
         const used = state.lastUsed, skip = state.lastSkip, binding = state.snapshot?.binding;
         if (!binding || !used && !skip || used?.restoredAt || skip?.restoredAt || roundSaved === (used || skip)) return;
         roundSaved = used || skip;
-        const record = { at: Date.now(), used: used ? { memoryIds: (used.entries || []).map(entry => entry.id), tokens: used.tokens, estimated: true, status: used.status, semantic: used.semantic === true,
+        const record = { at: Date.now(), recall: readRound(binding)?.recall || {},
+            used: used ? { memoryIds: (used.entries || []).map(entry => entry.id), tokens: used.tokens, estimated: true, status: used.status, semantic: used.semantic === true,
             sourceReplacement: used.sourceReplacement, removedFloors: used.removedFloors, recentFloors: used.recentFloors, requestTokens: used.requestTokens, contextTokens: used.contextTokens, responseTokens: used.responseTokens } : null,
             skip: used ? null : { stage: skip.stage, reason: skip.reason, offered: skip.offered === true, ...(skip.message ? { message: skip.message } : {}) } };
-        try { roundStore?.setItem(roundKey(binding), JSON.stringify(record)); } catch { /* 存不下不影响使用 */ }
+        writeRound(binding, record);
+    };
+    // 「被想起就回暖」：记下每条记忆最近一次被带进请求的楼层。与上一轮记录同一份本机数据，不回传账户。
+    const recallAtMap = binding => {
+        const saved = readRound(binding)?.recall;
+        return saved && typeof saved === 'object' ? new Map(Object.entries(saved)) : null;
+    };
+    const rememberRecall = (binding, entries) => {
+        const current = recallAtMap(binding) || new Map(), floor = state.snapshot?.messages?.length || 0;
+        for (const entry of entries || []) if (entry?.id) current.set(entry.id, floor);
+        // 上限：只留最近 300 条，防止长期聊天的本机记录无限增长。
+        const recall = Object.fromEntries([...current].slice(-300));
+        const record = readRound(binding) || { at: Date.now() };
+        writeRound(binding, { ...record, recall });
     };
     const restoreRound = binding => {
         if (state.lastUsed || state.lastSkip || generating) return;
-        let record = null;
-        try { record = JSON.parse(roundStore?.getItem(roundKey(binding)) || 'null'); } catch { record = null; }
+        const record = readRound(binding);
         if (!record || !Number.isFinite(record.at)) return;
         if (record.used && Array.isArray(record.used.memoryIds)) state.lastUsed = { ...record.used, restoredAt: record.at };
         else if (record.skip && typeof record.skip.reason === 'string') state.lastSkip = { ...record.skip, at: 0, restoredAt: record.at };
@@ -482,7 +500,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     const latestHashes = await fingerprintMessages(after.messages);
                     if (!sourceMatches(frozenSource, latestHashes)) throw new Error('整理期间原文已变化，本次结果未采用');
                 }
-                let slices = parseSummary(response, batch, hashes, settings);
+                // 整段重做本来就要把结果重新组合成一条，不再做碎片合并。
+                let slices = parseSummary(response, batch, hashes, settings, { coalesce: !batch.redo });
                 // Redo replaces exactly one existing slice, never creates overlapping entries.
                 if (batch.redo) {
                     const text = slices.map(s => s.text).join('\n\n');
@@ -894,7 +913,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 let timer;
                 return Promise.race([pending, new Promise(resolve => { timer = setTimeout(() => resolve(null), semanticWaitMs); })]).finally(() => clearTimeout(timer));
             };
-            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type, semanticScores });
+            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type, semanticScores, recalledAt: recallAtMap(snapshot.binding) });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
             const result = host.prepare(coreChat, plan, snapshot, type);
             if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true,
@@ -917,6 +936,23 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
     }
 
+    // 本轮实际发出的请求有多大：用户看不到忆幕对聊天记录的改动，就必须能直接看到请求的体积。
+    // 用 ST 自己的分词器计数，取不到时退回估算；dryRun 的试算不计。
+    async function measureRequest(messages, patch = {}) {
+        if (!Array.isArray(messages) || !messages.length) return;
+        const text = JSON.stringify(messages);
+        let tokens = null, method = 'utf8-estimate';
+        try {
+            const measured = await host.countTokens?.(text);
+            if (Number.isFinite(measured) && measured > 0) { tokens = Math.ceil(measured); method = 'st-tokenizer'; }
+        } catch { /* 取不到就估算 */ }
+        if (tokens === null) tokens = Math.ceil(new TextEncoder().encode(text).length / 2);
+        const route = state.snapshot?.route || {};
+        state.requestSize = { tokens, method, contextTokens: Number(route.context) || null, responseTokens: Number(route.response) || null,
+            messageCount: messages.length, at: Date.now(), ...patch };
+        emit();
+    }
+
     async function event(name, args = []) {
         if (disposed) return;
         if (name === 'GENERATION_STARTED') {
@@ -937,6 +973,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             // 文本/指令补全无可靠消息边界，不做原文替换，也不主张保底投递（文本模式对注入槽的
             // 取用与 chat-completion 不同，不过度声明）。保持原回退语义。
             if (prepared) { prepared = null; host.clear(); state.lastSkip = { stage: 'boundary', reason: 'text-completion-boundary-unavailable', at: ++skipSeq }; state.status = '当前请求不支持安全原文替换，本轮保留 ST 原上下文。'; emit(); }
+            return;
+        }
+        if (name === 'CHAT_COMPLETION_PROMPT_READY') {
+            // 最终请求已经装配完（含 ST 自己的全部注入与忆幕的记忆改写）：这时统计的才是用户真正付出的 token。
+            const data = args[0];
+            if (data && data.dryRun !== true && Array.isArray(data.chat)) void measureRequest(data.chat);
             return;
         }
         if (name === 'CHAT_COMPLETION_SETTINGS_READY') {
@@ -970,6 +1012,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
                     requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
                 state.lastSkip = null;
+                // 这一轮真正带进去的记忆都算「被想起」，从现在起重新计暖。
+                rememberRecall(pending.binding, result.entries);
                 prepared = null; offered = false; emit();
             } else {
                 // 诊断：未能做原文替换/隐藏旧楼。但若已成功写入保底注入槽（offered），这段记忆

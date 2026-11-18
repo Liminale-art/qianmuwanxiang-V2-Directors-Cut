@@ -171,7 +171,8 @@ test('invalidation only touches affected active sources and never revives on raw
 test('summary schema requires complete ordered source coverage, never trusts fabricated floor bounds', async () => {
     const hashes = await fingerprintMessages(messages), batch = { start: 1, end: 4 };
     const parsed = parseSummary(JSON.stringify({ slices: [{ start: 1, end: 2, text: '前半' }, { start: 3, end: 4, text: '后半未结束' }] }), batch, hashes);
-    assert.equal(parsed.length, 2);
+    // Two bare fragments now coalesce into one slice; coverage is still exact and ordered.
+    assert.deepEqual(parsed.map(item => [item.source.start, item.source.end]), [[1, 4]]);
     for (const slices of [[], [{ start: 1, end: 3, text: '缺层' }], [{ start: 0, end: 4, text: '越界' }], [{ start: 1, end: 4, text: '' }], [{ start: 1, end: 2, text: 'a' }, { start: 2, end: 4, text: 'b' }]]) {
         assert.throws(() => parseSummary(JSON.stringify({ slices }), batch, hashes));
     }
@@ -548,10 +549,16 @@ test('fragment coalescing merges only short same-scene neighbours and leaves ful
     assert.equal(parsed[0].title, '丙', 'the merged slice keeps the longer part\'s name');
     assert.deepEqual(parsed[0].source.hashes.length, 5, 'merged source covers every floor it now stands for');
     const full = parseSummary(JSON.stringify({ slices: [
-        { start: 1, end: 1, text: '长'.repeat(900), title: '甲', scenes: [{ ...scene, evidence: { floors: [1] } }] },
-        { start: 2, end: 2, text: '也长'.repeat(450), title: '乙', scenes: [{ ...scene, evidence: { floors: [2] } }] },
+        { start: 1, end: 1, text: '长'.repeat(1800), title: '甲', scenes: [{ ...scene, evidence: { floors: [1] } }] },
+        { start: 2, end: 2, text: '也长'.repeat(900), title: '乙', scenes: [{ ...scene, evidence: { floors: [2] } }] },
     ] }), { start: 1, end: 2 }, hashes);
-    assert.equal(full.length, 2, 'two full slices are never glued together');
+    assert.equal(full.length, 2, 'two slices that would exceed the cap stay separate');
+    const bare = parseSummary(JSON.stringify({ slices: [
+        { start: 1, end: 1, text: '一层', title: '甲' },
+        { start: 2, end: 2, text: '二层', title: '乙' },
+        { start: 3, end: 3, text: '三层', title: '丙' },
+    ] }), { start: 1, end: 3 }, hashes);
+    assert.deepEqual(bare.map(item => [item.source.start, item.source.end]), [[1, 3]], 'slices without scene metadata still merge, as most model output omits scenes');
 });
 
 test('pre-enable backfill offers only the first unsummarized stretch before the automatic start point', async () => {

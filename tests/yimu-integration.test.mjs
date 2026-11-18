@@ -233,9 +233,10 @@ test('a slow old refresh cannot replace a newer confirmed save in the same chat'
 
 test('stale browser originals cannot reactivate a disk-invalidated slice while an unaffected slice remains usable', async t => {
     const f = await fixture(t);
+    // 两片都写得足够长（超过字数上限的一半），才不会被碎片合并并成一片。
     f.model(async () => JSON.stringify({slices: [
-        {start: 1, end: 1, text: '旧第一层记忆应停止使用'},
-        {start: 2, end: 2, text: '第二层记忆仍有效'},
+        {start: 1, end: 1, text: '旧第一层记忆应停止使用。' + '甲'.repeat(1200)},
+        {start: 2, end: 2, text: '第二层记忆仍有效。' + '乙'.repeat(1200)},
     ]}));
     await f.enable(); await f.flush();
     assert.equal(f.controller.state.document.entries.length, 2);
@@ -450,8 +451,8 @@ test('disabling after interception expires the prepared final payload without re
 test('fine summaries become a durable stage and the next actual request substitutes it only for covered old floors', async t => {
     const f = await fixture(t);
     f.model(async () => JSON.stringify({slices: [
-        {start: 1, end: 1, text: '第一层保留的重要相遇。'},
-        {start: 2, end: 2, text: '第二层形成了尚未履行的约定。'},
+        {start: 1, end: 1, text: '第一层保留的重要相遇。' + '甲'.repeat(1200)},
+        {start: 2, end: 2, text: '第二层形成了尚未履行的约定。' + '乙'.repeat(1200)},
     ]}));
     await f.enable(); await f.flush();
     f.model(async () => JSON.stringify({text: '相遇之后形成了尚未履行的约定。'}));

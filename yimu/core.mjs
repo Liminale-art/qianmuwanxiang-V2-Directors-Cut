@@ -7,6 +7,7 @@ import { orderForInjection, placementMatches, validatePlacement, validateMemoryT
 import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, generatedTextLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 import { filterContextText } from './context-filter.mjs';
+import { memoryWarmth, admitsAtWarmth, asksToRemember } from './decay.mjs';
 
 export const estimateTokens = text => Math.ceil(Array.from(String(text)).reduce((n, ch) => n + (ch.codePointAt(0) > 127 ? 1 : 0.35), 0));
 const canSummarize = message => message && typeof message.mes === 'string' && message.mes.trim()
@@ -225,10 +226,15 @@ export function preEnablePending(document, messages, settings) {
 }
 
 /** 相邻碎片合并。模型常把一层写成一片，切片数量一多压缩就白做。
- *  只并「连续、同场景、其中一片明显偏短」的相邻切片，且合并后仍在上限内；
- *  两条都写满、或场景不同（换地点、换时间、换视角、回忆／梦境）的一律保留原样。 */
-export const FRAGMENT_RATIO = 0.35;
+ *  只并「连续、场景相容、其中一片明显偏短」的相邻切片，且合并后仍在上限内。
+ *  场景相容包括两种情况：两片都有依据且场景字段完全一致；或两片都没有场景信息（最常见的模型输出）。
+ *  换地点、换时间、换视角、回忆／梦境等不同场景一律保留原样。 */
+export const FRAGMENT_RATIO = 0.5;
 const sceneSignature = scene => JSON.stringify([scene?.world, scene?.timeline, scene?.date, scene?.period, scene?.place, scene?.nature]);
+const sceneUnproven = scene => !(scene?.evidence?.floors || []).length && !scene?.evidence?.inheritedFrom
+    && (scene?.nature || 'unknown') === 'unknown' && !scene?.world && !scene?.timeline && !scene?.date && !scene?.period && !scene?.place;
+const scenesCompatible = (a, b) => sceneUnproven(a) && sceneUnproven(b)
+    || (a?.evidence?.floors || []).length > 0 && (b?.evidence?.floors || []).length > 0 && sceneSignature(a) === sceneSignature(b);
 export function coalesceFragments(entries, settings = {}) {
     const cap = settings.sliceChars ?? 2000;
     if (!Array.isArray(entries) || !Number.isSafeInteger(cap) || cap < 1) return entries;
@@ -238,8 +244,7 @@ export function coalesceFragments(entries, settings = {}) {
         const mergeable = last && last.kind === 'summary' && entry.kind === 'summary'
             && last.source.end + 1 === entry.source.start
             && (last.scenes || []).length === 1 && (entry.scenes || []).length === 1
-            && (last.scenes[0]?.evidence?.floors || []).length > 0 && (entry.scenes[0]?.evidence?.floors || []).length > 0
-            && sceneSignature(last.scenes[0]) === sceneSignature(entry.scenes[0])
+            && scenesCompatible(last.scenes[0], entry.scenes[0])
             && Math.min(generatedTextLength(last), generatedTextLength(entry)) < cap * FRAGMENT_RATIO
             && generatedTextLength({ ...last, text: [last.text, entry.text].join('\n'),
                 scenes: [mergeScenes(last.scenes[0], entry.scenes[0])] }) <= cap;
@@ -272,7 +277,7 @@ ${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返
     });
 }
 
-export function parseSummary(response, batch, hashes, settings = {}) {
+export function parseSummary(response, batch, hashes, settings = {}, { coalesce = true } = {}) {
     if (typeof response !== 'string') throw new Error('整理结果不是有效文本');
     const text = response.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1');
     let parsed;
@@ -287,7 +292,7 @@ export function parseSummary(response, batch, hashes, settings = {}) {
             source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');
-    return coalesceFragments(entries, settings);
+    return coalesce ? coalesceFragments(entries, settings) : entries;
 }
 
 export function renderMemoryPrompt(entries, { entryOrder = [] } = {}) {
@@ -343,7 +348,7 @@ export function filterCompanionEntries(entries = [], document = {}, { includeCus
     return entries.filter(entry => !hasCustomParent(entry));
 }
 
-export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '') {
+export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '', recalledAt = null) {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
     const usable = document.entries.filter(entry => {
@@ -388,6 +393,13 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     const similar = usable.map(entry => semantic?.get?.(entry.id)).filter(Number.isFinite);
     const low = Math.min(...similar), span = Math.max(...similar) - low, scale = similar.length ? Math.max(1, ...usable.map(lexical)) : 0;
     const relevance = entry => lexical(entry) + (similar.length && Number.isFinite(semantic.get(entry.id)) ? (span > 0 ? (semantic.get(entry.id) - low) / span : 1) * scale : 0);
+    // 遗忘：按剧情进度衰减。淡去的需要更明确的相关，沉底的只有强线索才唤起；
+    // 钉住的不参与衰减。这只是门槛，不改变谁排前面，也不改变谁有权替换原文。
+    const floorNow = visibleEnd;
+    const warmthOf = entry => memoryWarmth(entry, { floor: floorNow, lastUsedFloor: recalledAt?.get?.(entry.id) ?? null, settings });
+    const strongHint = asksToRemember(recent);
+    // 一条记忆里的专名直接出现在当前正文里，才算「明确点名」。
+    const namedNow = entry => [...narrativeTerms(entry.text)].some(term => term.length >= 2 && query.has(term));
     const chosenStages = [];
     const overlaps = (a, b) => a.source.parents.some(ref => b.source.parents.some(other => other.id === ref.id));
     // A stale automatic stage only stands in while no current reading exists. If
@@ -410,7 +422,15 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     const end = entry => sourceTimelineEnd(entry, document) + (entry.origin ? 0 : document.lineage?.offset || 0);
     const currentBackground = new Set(candidates.filter(entry => entry.kind !== 'manual').sort((a, b) => end(b) - end(a)).slice(0, 2).map(e => e.id));
     const protectedContent = entry => entry.edited || entry.kind === 'manual' || hasCustomParents(entry, document);
-    const selected = candidates.filter(entry => protectedContent(entry) || currentBackground.has(entry.id) || relevance(entry) > 0);
+    // 遗忘门槛：人工内容（编辑过的、自定义切片、含自定义的）不受衰减影响——那是用户自己写定的东西。
+    const warmEligible = entry => {
+        if (protectedContent(entry)) return true;
+        const warmth = warmthOf(entry);
+        if (warmth === 'fresh') return true;
+        return admitsAtWarmth({ warmth, score: relevance(entry), strong: strongHint || namedNow(entry) });
+    };
+    const selected = candidates.filter(entry => warmEligible(entry)
+        && (protectedContent(entry) || currentBackground.has(entry.id) || relevance(entry) > 0));
     selected.sort((a, b) => Number(protectedContent(b)) - Number(protectedContent(a)) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
     // A saved excerpt accompanies its selected parent reading layer; it is never
     // allowed to stand in for a whole source floor on its own.

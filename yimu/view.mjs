@@ -352,7 +352,13 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         summarizeStart.value = floorField(next.start); summarizeEnd.value = floorField(next.end); summarizeNotice.hidden = true;
         manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
     }
-    overview.append(heroTop);
+    // 本轮请求体积：用户看不到忆幕对聊天记录的改动，就必须能直接看到这次请求到底发了多少。
+    const requestCard = el('section', 'ym-card ym-request-size');
+    const requestValue = el('b', 'ym-request-tokens', '—');
+    const requestDetail = el('span', 'ym-request-detail', '本轮请求');
+    requestCard.append(requestValue, requestDetail);
+    requestCard.title = '统计的是最终发出的请求（含 ST 的提示词、世界书、角色卡等全部注入，以及忆幕带上的记忆）。聊天记录本身不会变短，所以 Chat History 里看不出压缩。';
+    overview.append(heroTop, requestCard);
     const manualSummaryCard = el('section', 'ym-card ym-manual-summary'); manualSummaryCard.append(summarizeRangeForm);
 
     const settings = el('section', 'ym-settings');
@@ -642,6 +648,22 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         const pendingRange = coverage?.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层待整理` : '暂无待整理楼层';
         statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start && doc.initialRange.total > 0 ? `；开启前的第 0–${shownFloor(doc.initialRange.total)} 层不自动整理，也不计入，可用手动总结整理` : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
+        // 请求体积：优先显示 ST 分词器实测值，取不到时标明是估算。
+        const size = state.requestSize;
+        if (size && Number.isFinite(size.tokens)) {
+            const estimate = size.method === 'st-tokenizer' ? '' : '（估算）';
+            requestValue.textContent = `${size.tokens.toLocaleString()} token${estimate}`;
+            const parts = [`${size.messageCount} 条消息`];
+            if (Number.isFinite(size.contextTokens)) parts.push(`上下文上限 ${size.contextTokens.toLocaleString()}`);
+            if (Number.isFinite(size.responseTokens) && size.responseTokens > 0) parts.push(`回复预留 ${size.responseTokens.toLocaleString()}`);
+            requestDetail.textContent = parts.join(' · ');
+            const ratio = Number.isFinite(size.contextTokens) && size.contextTokens > 0 ? size.tokens / size.contextTokens : null;
+            requestCard.dataset.tone = ratio === null ? 'neutral' : ratio > 0.9 ? 'high' : ratio > 0.7 ? 'warm' : 'ok';
+        } else {
+            requestValue.textContent = '—';
+            requestDetail.textContent = '本轮请求（生成一次后显示）';
+            requestCard.dataset.tone = 'neutral';
+        }
         for (const [name, card] of toolCards) {
             card.hidden = false; card.button.disabled = name !== 'backup' && !doc;
             card.panel.hidden = !card.open;
@@ -922,6 +944,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             const index = order.findIndex(item => item.id === entry.id); if (index >= 0 && index < order.length - 1) void moveEntry(entry.id, order[index + 2]?.id);
         });
         moreActions.append(insert, use);
+        // 钉住：永不沉底、固定在上方；不提高带入优先级。已屏蔽或已删除的不能钉住。
+        if (entry.kind !== 'excerpt' && !['excluded', 'deleted'].includes(entry.status)) {
+            const pin = iconButton(entry.pinned ? '取消钉住' : '钉住这条记忆', 'save', () => entryAction(entry, entry.pinned ? 'unpin' : 'pin', {}, pin));
+            if (entry.pinned) pin.dataset.ymPinned = 'true';
+            moreActions.append(pin);
+        }
         if (entry.kind === 'manual') moreActions.append(up, down);
         if (canUndoText(entry)) {
             const undo = iconButton('撤回上次修改', 'back', () => entryAction(entry, 'undoText', {}, undo)); moreActions.append(undo);
@@ -1000,8 +1028,17 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         });
         card.querySelector('.ym-entry-actions')?.setAttribute('hidden', '');
     }
+    // 钉住的固定在上方：先从阶段嵌套里取出来，再在整个列表里排到最前。
+    const pinnedFirst = groups => groups.map(group => ({ ...group,
+        children: group.children.filter(child => !child.pinned) }))
+        .sort((a, b) => Number(Boolean(b.entry.pinned)) - Number(Boolean(a.entry.pinned)));
     function renderEntries() {
-        const tree = groupMemoryEntries(state.document?.entries, state.invalidSourceIds, state.document?.entryOrder);
+        const source = groupMemoryEntries(state.document?.entries, state.invalidSourceIds, state.document?.entryOrder);
+        const pinned = (state.document?.entries || []).filter(entry => entry.pinned && entry.status === 'active');
+        const tree = pinnedFirst([
+            ...pinned.filter(entry => !source.some(group => group.entry.id === entry.id && group.entry.kind !== 'stage')).map(entry => ({ entry, children: [] })),
+            ...source,
+        ]);
         const entries = tree.flatMap(group => [group.entry, ...group.children]);
         const present = new Set();
         const hasEditor = node => [...edits.values()].some(edit => {
