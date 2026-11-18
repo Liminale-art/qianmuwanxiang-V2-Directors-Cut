@@ -203,7 +203,7 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
 /** Pure transaction planner. The caller alone commits messages after its final source/lifecycle guard. */
 export async function buildBudgetedMessages(payload, {
     entries, processed, sourceHashes, hiddenFloors = [], recent = DEFAULTS.recent, budget = 0, contextTokens, responseTokens, entryOrder = [],
-}, { countTokens, isCurrent = () => true, countTimeoutMs = 1200 } = {}) {
+}, { countTokens, isCurrent = () => true, countTimeoutMs = 1200, lazyCount = false } = {}) {
     const unsupported = payloadSupport(payload);
     if (unsupported) return failure(unsupported);
     if (!isCurrent()) return failure('cancelled');
@@ -229,7 +229,18 @@ export async function buildBudgetedMessages(payload, {
     if (processed.some(item => item.floor >= firstPresent && !map.found.has(item.floor))) return failure('unverified-mapping');
     const memoryBudget = budget || Math.floor(contextTokens / 8), promptBudget = contextTokens - responseTokens;
     const selected = [], selectedIds = new Set(), covered = new Set(), removedFloors = [], removed = new Set();
-    let insertion = Math.min(...recentFloors.map(floor => map.found.get(floor))), bestFit = null;
+    // 记忆块固定放在「近期原文」之前那一处，不随入选条目往前挪。
+    // 位置固定，记忆块前面的系统提示词、示例与注入才是跨轮不变的前缀，服务商的前缀缓存才命中；
+    // 原先把它插到最早被替换的那层（往往紧贴开头），块内容每轮都在变，等于每轮作废整段缓存。
+    const insertion = Math.min(...recentFloors.map(floor => map.found.get(floor)));
+    // 尺寸一次算好、按增删累加，避免每试一条切片就整份重新序列化（原先是 O(n²)，几百条切片时要上千次整份序列化）。
+    // 用 UTF-8 字节而不是字符串 length：中文的 .length 只有字节数的三分之一。
+    const encoder = new TextEncoder();
+    const sizes = original.map(message => encoder.encode(JSON.stringify(message)).length);
+    const wrap = count => Math.max(0, count - 1) + 2 + count * 24 + 96;
+    // 原文与记忆块分开记：记忆块每次入选都要整块重算，不能和原文尺寸混在一起累加。
+    let keptBytes = sizes.reduce((total, size) => total + size, 0), keptCount = original.length, memoryBytes = 0;
+    let bestFit = null;
     const queue = [...entries];
     for (let queueIndex = 0; queueIndex < queue.length; queueIndex++) {
         const entry = queue[queueIndex];
@@ -244,32 +255,38 @@ export async function buildBudgetedMessages(payload, {
             || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent?.id && ref.revision === entry.parent?.revision))) continue;
         const floors = entryFloors(entry, sourceHashes, visible, cutoff, hidden);
         if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) { fallback(); continue; }
-        const nextRemoved = new Set(removed);
-        const actualFloors = floors.filter(floor => map.found.has(floor));
-        for (const floor of actualFloors) nextRemoved.add(map.found.get(floor));
-        const nextInsertion = Math.min(insertion, ...actualFloors.map(floor => map.found.get(floor)));
+        const actuallyRemoved = floors.filter(floor => map.found.has(floor) && !removed.has(map.found.get(floor)));
         // 书中内容整组先过自己的份额，再与其他记忆一起过总预算；上浮只属于总预算。
         if (bookLayer(entry) && bookLayerTokens([...selected.filter(bookLayer), entry]) > memoryBudget * BOOK_LAYER_SHARE) continue;
         const nextEntries = [...selected, entry], memory = memoryMessage(nextEntries, entryOrder);
         // 预算是规则，但记忆只整条带、不截断：越线的那一条在上浮 25% 以内仍整条带上，超出才换用它的细分切片或不带。
         if (tokenEstimate([memory]) > memoryBudget * BUDGET_ELASTICITY) { fallback(); continue; }
-        const next = assemble(original, nextEntries, nextRemoved, nextInsertion, entryOrder);
+        // 用累加出来的尺寸判断是否放得下，不再为每次尝试重建并序列化整份请求。
+        const nextMemoryBytes = encoder.encode(JSON.stringify(memory)).length;
+        const removedBytes = actuallyRemoved.reduce((total, floor) => total + sizes[map.found.get(floor)], 0);
+        const nextCount = keptCount - actuallyRemoved.length + 1;
+        const nextBytes = keptBytes - removedBytes + nextMemoryBytes;
         const { fallbackEntries, ...admittedEntry } = entry;
         selected.push(clone(admittedEntry)); selectedIds.add(entry.id);
         for (const custom of entry.customSlices || []) selectedIds.add(custom.id);
         floors.forEach(floor => covered.add(floor));
-        actualFloors.forEach(floor => removedFloors.push(floor));
-        for (const index of nextRemoved) removed.add(index);
-        insertion = nextInsertion;
+        actuallyRemoved.forEach(floor => { removed.add(map.found.get(floor)); removedFloors.push(floor); });
+        keptBytes -= removedBytes; keptCount = nextCount; memoryBytes = nextMemoryBytes;
         // Several complete summaries may be needed before the full request fits.
         // Do not reject the first compression merely because it alone is insufficient.
-        if (tokenEstimate(next) <= promptBudget) bestFit = {
-            messages: next, entries: [...selected], removedFloors: [...removedFloors],
+        if (Math.ceil((nextBytes + wrap(nextCount)) / 2) <= promptBudget) bestFit = {
+            entries: [...selected], removedFloors: [...removedFloors], estimatedTokens: Math.ceil((nextBytes + wrap(nextCount)) / 2),
         };
     }
     if (!bestFit) return failure('memory-does-not-fit');
-    const candidate = bestFit.messages, admitted = orderForInjection(bestFit.entries, entryOrder), actualRemovedFloors = bestFit.removedFloors;
-    const counted = await measuredBudget(candidate, countTokens, countTimeoutMs);
+    const candidate = assemble(original, bestFit.entries, removed, insertion, entryOrder);
+    const admitted = orderForInjection(bestFit.entries, entryOrder), actualRemovedFloors = bestFit.removedFloors;
+    // 实测分词只在接近上限时才有意义：ST 的分词器对 OpenAI 类连接会走网络请求，
+    // 每次生成都等它就是白白拖慢回复。只有生成路径开启 lazyCount；其余调用保持原语义。
+    const estimatedTokens = bestFit.estimatedTokens;
+    const counted = lazyCount && estimatedTokens <= promptBudget * 0.9
+        ? { tokens: estimatedTokens, measured: null, method: 'utf8-estimate' }
+        : await measuredBudget(candidate, countTokens, countTimeoutMs);
     if (!isCurrent()) return failure('cancelled');
     if (counted.tokens > promptBudget) return failure('context-budget-exceeded');
     // All recent originals must be retained verbatim and in order, not reconstructed.

@@ -884,6 +884,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     async function intercept(coreChat, contextSize, abort, type = '') {
         host.clear(); prepared = null; offered = false;
         // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
+        // 这次读取是刻意的：它能发现别的设备、别处改动过的记忆与原文，省掉它就会注入过期内容（有专门的回归测试）。
+        // 因此它只等一次、且有上限（interceptWaitMs），超时本轮不带记忆、照常生成。
         if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; generationRefresh = refresh({ quiet: true, auto: false }); }
         if (generationRefresh) {
             const deadline = Date.now() + interceptWaitMs;
@@ -913,7 +915,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 let timer;
                 return Promise.race([pending, new Promise(resolve => { timer = setTimeout(() => resolve(null), semanticWaitMs); })]).finally(() => clearTimeout(timer));
             };
-            const plan = await buildPlan(doc, defaults, snapshot, { countTokens, type, semanticScores, recalledAt: recallAtMap(snapshot.binding) });
+            // 不传 countTokens：ST 的分词器对 OpenAI 类连接要发网络请求，而这是每轮生成前都要跑的路径。
+            // 记忆块大小用 estimateTokens 估算即可（只用于记忆调阅里显示「约多少 token」）。
+            const plan = await buildPlan(doc, defaults, snapshot, { type, semanticScores, recalledAt: recallAtMap(snapshot.binding) });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
             const result = host.prepare(coreChat, plan, snapshot, type);
             if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true,
@@ -937,18 +941,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     }
 
     // 本轮实际发出的请求有多大：用户看不到忆幕对聊天记录的改动，就必须能直接看到请求的体积。
-    // 用 ST 自己的分词器计数，取不到时退回估算；dryRun 的试算不计。
-    async function measureRequest(messages, patch = {}) {
+    // 零等待：不用 ST 的分词器（它对 OpenAI 类连接会逐条发网络请求，而 ST 会 await 这个事件），
+    // 直接按与注入预算同一口径估算（字节数的一半），并如实标注是估算。
+    function measureRequest(messages, patch = {}) {
         if (!Array.isArray(messages) || !messages.length) return;
-        const text = JSON.stringify(messages);
-        let tokens = null, method = 'utf8-estimate';
-        try {
-            const measured = await host.countTokens?.(text);
-            if (Number.isFinite(measured) && measured > 0) { tokens = Math.ceil(measured); method = 'st-tokenizer'; }
-        } catch { /* 取不到就估算 */ }
-        if (tokens === null) tokens = Math.ceil(new TextEncoder().encode(text).length / 2);
+        const tokens = Math.ceil(new TextEncoder().encode(JSON.stringify(messages)).length / 2);
         const route = state.snapshot?.route || {};
-        state.requestSize = { tokens, method, contextTokens: Number(route.context) || null, responseTokens: Number(route.response) || null,
+        state.requestSize = { tokens, method: 'utf8-estimate', contextTokens: Number(route.context) || null, responseTokens: Number(route.response) || null,
             messageCount: messages.length, at: Date.now(), ...patch };
         emit();
     }

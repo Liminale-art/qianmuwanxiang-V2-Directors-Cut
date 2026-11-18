@@ -378,7 +378,7 @@ export function createHost({
                 hiddenFloors: record.hiddenFloors,
                 recent: record.plan.settings?.recent ?? DEFAULTS.recent, budget: record.plan.settings?.budget ?? 0,
                 contextTokens: record.route.context, responseTokens,
-            }, { countTokens: typeof ctx.getTokenCountAsync === 'function' ? value => ctx.getTokenCountAsync(value) : null, isCurrent: current });
+            }, { countTokens: typeof ctx.getTokenCountAsync === 'function' ? value => ctx.getTokenCountAsync(value) : null, isCurrent: current, lazyCount: true });
             if (!result.applied) return result;
             if (!current() || JSON.stringify(payload) !== frozenPayload) return fallback('request-changed');
             // The sole commit point: no early deletions, markers or partial writes.
