@@ -73,6 +73,8 @@ test('500-floor synthetic history uses complete sources while preserving the con
     f.options.recent = 10;
     f.options.contextTokens = 65536;
     f.options.budget = 32768;
+    // 条数上限 0＝不限：这条用例验证的是「只要放得下就整条带上」，不受默认的每次条数上限影响。
+    f.options.maxSlices = 0;
     f.options.entries = Array.from({ length: 98 }, (_, i) => f.entry(`large-${i}`, i * 5 + 1, i * 5 + 5));
     const result = await buildBudgetedMessages(f.payload, f.options);
     assert.equal(result.applied, true);

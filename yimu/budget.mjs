@@ -202,7 +202,7 @@ async function measuredBudget(messages, countTokens, timeoutMs) {
 
 /** Pure transaction planner. The caller alone commits messages after its final source/lifecycle guard. */
 export async function buildBudgetedMessages(payload, {
-    entries, processed, sourceHashes, hiddenFloors = [], recent = DEFAULTS.recent, budget = 0, contextTokens, responseTokens, entryOrder = [],
+    entries, processed, sourceHashes, hiddenFloors = [], recent = DEFAULTS.recent, budget = 0, maxSlices = DEFAULTS.maxSlices, contextTokens, responseTokens, entryOrder = [],
 }, { countTokens, isCurrent = () => true, countTimeoutMs = 1200, lazyCount = false } = {}) {
     const unsupported = payloadSupport(payload);
     if (unsupported) return failure(unsupported);
@@ -253,6 +253,9 @@ export async function buildBudgetedMessages(payload, {
         if (entry?.kind === 'stage' && entry.customSlices?.some(parent => selectedIds.has(parent.id))) { fallback(); continue; }
         if (entry?.kind === 'excerpt' && !selected.some(parent => parent.id === entry.parent?.id && parent.revision === entry.parent?.revision
             || parent.kind === 'stage' && parent.source.parents.some(ref => ref.id === entry.parent?.id && ref.revision === entry.parent?.revision))) continue;
+        // 条数上限与 token 上限同时生效，谁先到谁停：块再小也不无限往里塞，
+        // 否则故事一长，每轮都会把几乎全部切片从头带一遍。
+        if (maxSlices > 0 && bestFit && bestFit.entries.length >= maxSlices) break;
         const floors = entryFloors(entry, sourceHashes, visible, cutoff, hidden);
         if (!floors || floors.some(floor => covered.has(floor) || map.ambiguous.has(floor))) { fallback(); continue; }
         const actuallyRemoved = floors.filter(floor => map.found.has(floor) && !removed.has(map.found.get(floor)));

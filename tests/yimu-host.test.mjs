@@ -25,6 +25,8 @@ function fixture() {
             extra: { nested: { original: true } },
         })),
         setExtensionPrompt(...args) { writes.push(args); },
+        // ST 的真实语义：隐藏就是消息上的 is_system，saveChat 落盘后才算生效。
+        async saveChat() { saves.push(current.chat.map(message => Boolean(message.is_system))); },
         async generateRaw(...args) { rawCalls.push(args); return '当前连接摘要'; },
         ConnectionManagerRequestService: {
             getSupportedProfiles() { return [{ id: 'p1', name: '摘要连接', model: 'model-a', api: 'openai', 'secret-id': 'never-expose', 'api-url': 'private-url' }]; },
@@ -38,11 +40,33 @@ function fixture() {
             'CHAT_COMPLETION_PROMPT_READY', 'CHAT_COMPLETION_SETTINGS_READY',
         ].map(key => [key, key.toLowerCase()])),
     };
-    const errors = [];
+    const errors = [], saves = [];
     const host = createHost({ getContext: () => current, onError: error => errors.push(error) });
-    return { host, writes, rawCalls, profileCalls, counts, errors,
+    return { host, writes, saves, rawCalls, profileCalls, counts, errors,
         get ctx() { return current; }, set ctx(value) { current = value; } };
 }
+
+test('native hiding writes is_system like ST does, saves once, and leaves user-hidden floors and tool messages alone', async () => {
+    const f = fixture();
+    f.ctx.chat[6].is_system = true;   // 第 7 层：用户自己手动隐藏的
+    f.ctx.chat[2].tool_calls = [];    // 第 3 层：带工具调用，忆幕不碰
+    const hidden = () => f.ctx.chat.map(message => Boolean(message.is_system));
+    // 要隐藏 1、2、3：3 是工具消息跳过，1、2 写入。
+    const result = await f.host.applyHidden([1, 2, 3], []);
+    assert.deepEqual(result.changed, [1, 2], '工具消息不动');
+    assert.deepEqual(hidden(), [true, true, false, false, false, false, true, false]);
+    assert.equal(f.saves.length, 1, '写完只保存一次');
+    // 还原忆幕自己隐藏过的 1、2：用户手动隐藏的第 7 层保持隐藏。
+    await f.host.applyHidden([], [1, 2]);
+    assert.deepEqual(hidden(), [false, false, false, false, false, false, true, false]);
+    // 没有变化时不写盘。
+    const before = f.saves.length;
+    await f.host.applyHidden([], [1, 2]);
+    assert.equal(f.saves.length, before);
+    // 不在 want、也不在 owned 里的楼层，忆幕一概不碰（用户手动隐藏的第 7 层就这样留着）。
+    await f.host.applyHidden([1], []);
+    assert.deepEqual(hidden(), [true, false, false, false, false, false, true, false]);
+});
 
 test('ST summary admission checks the complete prompt and output reservation before generating', async () => {
     const f = fixture();

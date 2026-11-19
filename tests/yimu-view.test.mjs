@@ -908,7 +908,7 @@ test('trigger floor count sits right after the token trigger with its own hint a
     assert.equal(group, trigger.closest('.ym-settings-group')); assert.match(group.textContent, /切片总结/);
     assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
     assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '10');
-    assert.equal(floors.closest('.ym-setting-row').title, '未总结楼层（含正文保留层）达到此数 +1 时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token');
+    assert.equal(floors.closest('.ym-setting-row').title, '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token');
     assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
     assert.equal(floors.value, '10');
     f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');

@@ -274,6 +274,47 @@ export function createHost({
         return connectionApi.qianmuProfiles();
     }
 
+    // 原生隐藏：ST 的「对 AI 不可见」就是消息上的 is_system 标记（hideChatMessageRange 也是这么写的），
+    // 请求装配时 coreChat 会直接过滤掉它们，聊天里的原生小幽灵也随之亮起。
+    // 忆幕只动自己隐藏过的楼层：用户手动隐藏的那几层永远不碰，工具消息也不碰。
+    function setHidden(want = [], owned = []) {
+        let ctx;
+        try { ctx = context(); } catch { return { changed: [] }; }
+        if (!Array.isArray(ctx.chat) || typeof ctx.saveChat !== 'function') return { changed: [] };
+        const target = new Set(Array.isArray(want) ? want : []);
+        const mine = new Set(Array.isArray(owned) ? owned : []);
+        const changed = [];
+        // ST 自己的 hideChatMessageRange 除了改数据，还把楼层的 is_system 属性直接写到 DOM 上，
+        // 幽灵图标靠这个属性显示。忆幕照做同一件事，界面才会跟着变。
+        const mark = (floor, hidden) => {
+            try {
+                const node = document?.querySelector?.(`#chat .mes[mesid="${floor - 1}"]`);
+                if (node) node.setAttribute('is_system', String(hidden));
+            } catch { /* 界面不在时只改数据 */ }
+        };
+        for (let index = 0; index < ctx.chat.length; index++) {
+            const message = ctx.chat[index], floor = index + 1;
+            if (!message || typeof message !== 'object') continue;
+            if (message.tool_calls || message.extra?.tool_invocations || message.tool_call_id != null) continue;
+            // 只有两种楼层归忆幕处置：这次要隐藏的，和上次忆幕自己隐藏的。
+            if (!target.has(floor) && !mine.has(floor)) continue;
+            const shouldHide = target.has(floor);
+            if (Boolean(message.is_system) === shouldHide) continue;
+            message.is_system = shouldHide;
+            changed.push(floor);
+            mark(floor, shouldHide);
+        }
+        return { changed, chat: ctx.chat };
+    }
+
+    /** Commit the hide changes through ST's own save so the chat file and UI agree. */
+    async function applyHidden(want, owned) {
+        const result = setHidden(want, owned);
+        if (!result.changed?.length) return result;
+        await context().saveChat();
+        return result;
+    }
+
     async function generate(prompt, { profileId = '', model = '', connection, signal, systemPrompt = SUMMARY_SYSTEM, maxTokens, onChunk } = {}) {
         aborted(signal);
         if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('没有可整理的聊天原文');
@@ -377,6 +418,7 @@ export function createHost({
                 entries: record.plan.entries, entryOrder: record.plan.entryOrder, processed: record.processed, sourceHashes,
                 hiddenFloors: record.hiddenFloors,
                 recent: record.plan.settings?.recent ?? DEFAULTS.recent, budget: record.plan.settings?.budget ?? 0,
+                maxSlices: record.plan.settings?.maxSlices ?? DEFAULTS.maxSlices,
                 contextTokens: record.route.context, responseTokens,
             }, { countTokens: typeof ctx.getTokenCountAsync === 'function' ? value => ctx.getTokenCountAsync(value) : null, isCurrent: current, lazyCount: true });
             if (!result.applied) return result;
@@ -464,7 +506,7 @@ export function createHost({
         return body?.dataset ? body.dataset.generating === 'true' : null;
     }
 
-    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, subscribe, openStory, openBackup, confirmStoryBoundary,
+    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, setHidden, applyHidden, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         // 最终请求的 token 数量用 ST 自己的分词器算，取不到时由调用方退回估算。
         countTokens: value => {

@@ -59,13 +59,13 @@ export function nextBatch(document, messages, settings, { force = false, history
     if (!first) return null;
     let targetEnd = last;
     if (!force && first > initialTotal) {
-        // Tokens or floors, whichever is reached first. The floor count includes
-        // the kept recent floors: at triggerFloors + 1 unsummarized floors, every
-        // floor before the kept ones is organized, leaving room to reroll the newest.
-        const floors = settings.triggerFloors > 0 ? settings.triggerFloors + 1 : Infinity;
+        // 楼层触发只数「保留区之外」的未整理楼层：最新保留层不算进度，它们本来就不总结。
+        // 保留 5 层、触发 10 层时，只有保留区外攒够 10 层才动，而不是 6 层就动。
+        const floors = settings.triggerFloors > 0 ? settings.triggerFloors : Infinity;
         let unsummarized = 0;
-        for (let floor = first; floor <= messages.length && unsummarized < floors; floor++) if (eligible(floor)) unsummarized++;
+        for (let floor = first; floor <= last && unsummarized < floors; floor++) if (eligible(floor)) unsummarized++;
         if (unsummarized < floors) {
+            // 楼层没到就退回 token 口径：两者先到先触发，但都只在保留区之外计算。
             let pending = 0; targetEnd = 0;
             for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
                 pending += estimateTokens(messages[floor - 1].mes);
@@ -180,6 +180,35 @@ export function planManualRange(document, messages, settings, requestedRange, { 
         floor = end + 1;
     }
     return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };
+}
+
+/** 隐藏边界：可见的永远是最近「正文保留层数」层，之前被总结覆盖过的楼层一律原生隐藏。
+ *  这是独立规则，不由「本轮注入了哪几条记忆」决定——否则注入少一次，旧楼就会多露出一次。
+ *  只在「确实有有效切片覆盖」时才隐藏（fail-closed）：宁可多留原文，绝不出现原文与记忆同时消失。
+ *  返回隐藏前沿（从 1 起连续被覆盖到的最大楼层）和本次应处于隐藏状态的楼层。 */
+export function hiddenFloorsFor(document, messages, { recent = DEFAULTS.recent, excludeEnd = 0 } = {}) {
+    const total = Array.isArray(messages) ? messages.length - Math.max(0, excludeEnd) : 0;
+    if (!total) return { frontier: 0, floors: [] };
+    // 只有整个范围都被覆盖才算：缺口之后的内容不能因为后面又被总结过就跟着藏起来。
+    const covered = new Uint8Array(total + 1);
+    for (const entry of document?.entries || []) {
+        if (entry.kind !== 'summary' || entry.origin || entry.discarded || !['active', 'invalid'].includes(entry.status)) continue;
+        // 这里只读范围、不校验来源：隐藏边界每轮都要算，不能因为某条旧数据的指纹不全就中断整轮。
+        const ranges = Array.isArray(entry.source?.ranges) ? entry.source.ranges : entry.source ? [entry.source] : [];
+        for (const range of ranges) {
+            if (!Number.isSafeInteger(range?.start) || !Number.isSafeInteger(range?.end)) continue;
+            for (let floor = Math.max(1, range.start); floor <= Math.min(total, range.end); floor++) covered[floor] = 1;
+        }
+    }
+    let frontier = 0;
+    while (frontier + 1 <= total && covered[frontier + 1]) frontier++;
+    const keep = Math.min(total, Math.max(0, recent));
+    const limit = Math.max(0, total - keep);
+    // 保留区永远保留原文，即使它已经被总结覆盖过（手动总结也不动这几层）。
+    const end = Math.min(frontier, limit);
+    const floors = [];
+    for (let floor = 1; floor <= end; floor++) floors.push(floor);
+    return { frontier, floors, keep, total };
 }
 
 /** Default manual range: continue after the latest usable local slice up to the

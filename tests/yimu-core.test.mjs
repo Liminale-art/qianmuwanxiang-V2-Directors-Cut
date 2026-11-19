@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS as FACTORY_DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults as factoryDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
 import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
-import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage, preEnablePending } from '../yimu/core.mjs';
+import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage, preEnablePending, hiddenFloorsFor } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
 import { mergeCompanionBook, companionEntries } from '../yimu/companion-contract.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
@@ -332,31 +332,56 @@ test('schema eight accepts optional temporal fields for fact lifecycle tracking'
 });
 
 
-test('automatic trigger fires at triggerFloors + 1 unsummarized floors (recent included) and organizes all but the recent ones', async () => {
+test('automatic trigger counts unsummarized floors outside the kept recent ones and organizes all but the recent ones', async () => {
     const live = Array.from({ length: 30 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: '文'.repeat(400), send_date: `t${i}` }));
     const doc = enable({ start: 1, end: 0, total: 0 });
     const tokensOnly = { ...DEFAULTS, trigger: 50000, triggerFloors: 0 };
     assert.equal(nextBatch(doc, live, tokensOnly), null, 'zero floor count keeps token-only behaviour');
-    // The user's example: trigger 12, keep 5 -> nothing at 12 floors, eight floors organized once floor 13 exists.
-    const habit = { ...DEFAULTS, trigger: 50000, triggerFloors: 12, recent: 5 };
-    assert.equal(nextBatch(doc, live.slice(0, 12), habit), null);
-    assert.deepEqual(nextBatch(doc, live.slice(0, 13), habit), { start: 1, end: 8 });
-    // Factory defaults (10 / 3): eleven floors organize eight, leaving three for rerolls.
+    // 用户 2026-11-19 的口径：保留 5 层，触发 10 层 → 35 层才动；30 层时保留区外只攒了 25 层，
+    // 但此前已整理到 20，所以 26 层起就该继续。这里验证「保留层不计入触发数」。
+    const habit = { ...DEFAULTS, trigger: 50000, triggerFloors: 10, recent: 5 };
+    assert.equal(nextBatch(doc, live.slice(0, 10), habit), null, '十层未满，不动');
+    // 10 层在保留区外（共 15 层，保留 5）才触发，且只整理保留区以外的部分。
+    assert.deepEqual(nextBatch(doc, live.slice(0, 15), habit), { start: 1, end: 10 });
+    // Factory defaults (10 / 3).
     const factory = { ...FACTORY_DEFAULTS, trigger: 50000 };
     assert.equal(FACTORY_DEFAULTS.triggerFloors, 10); assert.equal(FACTORY_DEFAULTS.recent, 3);
-    assert.equal(nextBatch(doc, live.slice(0, 10), factory), null);
-    assert.deepEqual(nextBatch(doc, live.slice(0, 11), factory), { start: 1, end: 8 });
-    // Later rounds count only unsummarized floors: after 1-8 are organized, floors 9-19 trigger 9-16.
+    assert.equal(nextBatch(doc, live.slice(0, 12), factory), null);
+    assert.deepEqual(nextBatch(doc, live.slice(0, 13), factory), { start: 1, end: 10 });
+    // Later rounds count only unsummarized floors outside the kept window.
     const hashes = await fingerprintMessages(live);
     const organized = applyOperation(doc, { id: 'a1', type: 'append', expectedEpoch: doc.epoch, entry: { id: 's1', kind: 'summary', text: '摘要',
-        source: { start: 1, end: 8, hashes: hashes.slice(0, 8) } } }).document;
-    assert.equal(nextBatch(organized, live.slice(0, 18), factory), null);
-    assert.deepEqual(nextBatch(organized, live.slice(0, 19), factory), { start: 9, end: 16 });
+        source: { start: 1, end: 10, hashes: hashes.slice(0, 10) } } }).document;
+    assert.equal(nextBatch(organized, live.slice(0, 22), factory), null);
+    assert.deepEqual(nextBatch(organized, live.slice(0, 23), factory), { start: 11, end: 20 });
     assert.deepEqual(nextBatch(doc, live.slice(0, 20), { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
     const short = live.map(message => ({ ...message, mes: '短句。' }));
     assert.deepEqual(nextBatch(doc, short.slice(0, 4), { ...tokensOnly, triggerFloors: 3, recent: 1 }), { start: 1, end: 3 }, 'no minimum token floor once the floor count is reached');
     assert.throws(() => validateSettingsFor({ triggerFloors: 2001 }), /超出范围/);
     assert.deepEqual(validateSettingsFor({ triggerFloors: 0 }), { triggerFloors: 0 });
+});
+
+test('the hide boundary is independent of what this round injects: only the kept recent floors stay visible', () => {
+    const live = n => Array.from({ length: n }, (_, i) => ({ mes: `第${i + 1}层` }));
+    const summary = (id, start, end) => ({ id, kind: 'summary', status: 'active', revision: 1, origin: null, text: id, source: { start, end } });
+    const doc = entries => ({ entries });
+    // 用户 2026-11-19 的例子：28 层、每 10 层一总结、保留 5 层 → 隐藏到 23，可见的永远是最近 5 层。
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20), summary('c', 21, 23)]), live(28), { recent: 5 }).floors,
+        Array.from({ length: 23 }, (_, i) => i + 1));
+    // 往前推进到 40 层、全部覆盖时，隐藏边界跟着保留层走（35），而不是停在 23。
+    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 35)]), live(40), { recent: 5 }).floors.at(-1), 35);
+    // 保留区之内即使已经被总结覆盖也保持原文可见。
+    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(10), { recent: 5 }).floors.at(-1), 5);
+    // 中间有缺口：缺口之后的内容不会被跟着藏起来（fail-closed，宁可多留原文）。
+    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 3), summary('b', 5, 9)]), live(12), { recent: 2 }).floors.at(-1), 3);
+    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 9)]), live(12), { recent: 2 }).floors.length, 9);
+    // 删除的、屏蔽的、继承的来源都不授权隐藏。
+    assert.deepEqual(hiddenFloorsFor(doc([{ ...summary('a', 1, 9), status: 'deleted' }]), live(12), { recent: 2 }).floors, []);
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 9), { ...summary('b', 10, 12), status: 'excluded' }]), live(12), { recent: 0 }).floors,
+        Array.from({ length: 9 }, (_, i) => i + 1));
+    assert.deepEqual(hiddenFloorsFor(doc([{ ...summary('a', 1, 9), origin: { binding: { file: 'other' } } }]), live(12), { recent: 0 }).floors, []);
+    // 一个聊天都没有时什么都不藏。
+    assert.deepEqual(hiddenFloorsFor(doc([]), [], { recent: 5 }).floors, []);
 });
 
 test('floor numbers shown to the user follow ST #0 numbering while storage stays 1-based', async () => {

@@ -29,7 +29,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
         return api.read(binding);
     }
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, hiddenOwned: new Set(), hiddenFloors: [], retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
@@ -193,6 +193,27 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         return { settings, connection, fitsPrompt, options: { profileId: settings.profileId, model: settings.model, ...(connection ? { connection } : {}) } };
     }
 
+    // 原生隐藏的落点。忆幕只改自己决定要改的楼层，并且每次都从当前聊天重新核对，
+    // 绝不凭一份旧记录去改别的楼层：用户手动隐藏的那几层永远是用户自己的事。
+    // 关闭忆幕、停用或原文不再成立时，把忆幕隐藏过、但现在不该隐藏的楼层还原。
+    async function syncHidden(document, settings, { restoreAll = false } = {}) {
+        if (typeof host.applyHidden !== 'function' || !state.snapshot?.binding) return null;
+        const messages = state.snapshot.messages || [];
+        const want = restoreAll || !document?.enabled ? new Set()
+            : new Set(hiddenFloorsFor(document, messages, { recent: settings?.recent ?? DEFAULTS.recent }).floors);
+        // want＝这次要隐藏的；owned＝上次忆幕自己隐藏的（要还原的只有这些，用户手动隐藏的不在其中）。
+        const owned = state.hiddenOwned instanceof Set ? state.hiddenOwned : new Set();
+        for (const floor of [...owned]) if (floor > messages.length) owned.delete(floor);
+        const result = await host.applyHidden([...want], [...owned]);
+        if (result?.changed?.length) {
+            for (const floor of result.changed) { if (want.has(floor)) owned.add(floor); else owned.delete(floor); }
+            state.hiddenOwned = owned;
+            state.hiddenFloors = [...owned].sort((a, b) => a - b);
+            emit();
+        }
+        return result;
+    }
+
     function positionAfter(entry, document, snapshot) {
         if (!entry) return snapshot.messages.length;
         if (entry.origin) return Math.min(snapshot.messages.length, document.lineage?.bridgeCount || document.lineage?.bridgeHashes?.length || snapshot.messages.length);
@@ -303,6 +324,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 if (!data.sourceAvailable) { host.clear(); offered = false; state.error = '当前聊天原件尚未通过核对；请保存聊天后重新打开忆幕。'; }
                 state.loading = false; restoreRound(snapshot.binding); emit();
+                // 隐藏随原文一起核对：删层、改层、停用之后边界可能变了，这里只做核对与还原。
+                // 生成进行中绝不改聊天——ST 已经装配好本轮消息，这时改会让两边对不上、本轮丢掉记忆。
+                if (!generating) void syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
                 if (auto && !disposed) deferFor(snapshot.binding, () => start().catch(() => {}), refreshGeneration);
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
@@ -542,6 +566,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 failedBatch = null; failedSource = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
+                // 新的切片就位后，隐藏边界前移：这一轮结束后把这批旧楼按原生方式隐藏，下一轮起生效。
+                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
                 if (entryId || !isCurrent(binding) || generating || controller.manual?.pausing) break;
@@ -689,6 +715,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
+                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
@@ -764,7 +791,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             job.manual.pausing = true; state.status = '本批完成后暂停'; emit(); return true;
         }
         if (type === 'enable' && !payload.enabled) {
-            localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; state.lastSkip = null; emit();
+            localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; state.lastSkip = null;
+            // 停用忆幕：忆幕隐藏过的楼层立刻还原成正常原文。
+            await syncHidden({ enabled: false }, effectiveSettings(doc, state.defaults), { restoreAll: true }).catch(() => {});
+            emit();
         }
         if (type === 'autoSummary' && payload.value === false) jobs.get(key)?.abort();
         if (['error', 'mismatch'].includes(state.service.status)) throw new Error('忆幕服务尚不可用，请先刷新检测；当前修改可继续保留。');
@@ -916,6 +946,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         // automatic children cannot bypass a human revision during selection.
         for (const entry of doc.entries) if (state.invalidSourceIds.includes(entry.id) && entry.status === 'active') entry.status = 'invalid';
         try {
+            // 隐藏只能在 ST 装配 coreChat 之前改：这里已经拿到构造好的消息，再动聊天会让两边对不上
+            // （prepare 会判 source-changed）。隐藏统一由 refresh 与总结完成后同步，见 syncHidden。
             const snapshot = await host.snapshot();
             if (!equalBinding(snapshot.binding, doc.binding)) return;
             // 向量相似度限时取：到点没回来本轮就按关键词排序，请求继续在后台跑完、把向量记下，下一轮即可用上。
@@ -928,6 +960,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             // 记忆块大小用 estimateTokens 估算即可（只用于记忆调阅里显示「约多少 token」）。
             const plan = await buildPlan(doc, defaults, snapshot, { type, semanticScores, recalledAt: recallAtMap(snapshot.binding) });
             if (ticket !== generation || disposed || !state.document?.enabled || localStops.has(bindingKey(doc.binding)) || state.document?.epoch !== doc.epoch) return;
+            // 隐藏不在这里做：ST 已按当前聊天装配好本轮消息，此刻再改聊天会让两边对不上，本轮反而丢掉记忆。
+            // 隐藏统一在总结完成后与刷新时应用（见 syncHidden），下一轮装配时自然生效。
             const result = host.prepare(coreChat, plan, snapshot, type);
             if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true,
                 foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };

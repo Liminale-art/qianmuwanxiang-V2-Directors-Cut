@@ -18,6 +18,7 @@ import { mountRetrievalView } from './retrieval-view.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
+    ['maxSlices', '每次最多注入切片', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['triggerFloors', '自动总结触发楼层数', 'number', 0],
@@ -33,9 +34,11 @@ const SETTINGS = [
 // Hover hints; values that read as "off" at 0 render blank.
 const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
-    triggerFloors: '未总结楼层（含正文保留层）达到此数 +1 时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
+    triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
+    maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
 const BLANK_ZERO = new Set(['budget']);
+// 「每次最多注入切片」0 表示不限，按普通数字显示。
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
 const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
@@ -368,7 +371,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
     const settingGroups = new Map();
     for (const [name, title, keys] of [
-        ['budget', '记忆注入上限', ['budget']],
+        ['budget', '记忆注入上限', ['budget', 'maxSlices']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
