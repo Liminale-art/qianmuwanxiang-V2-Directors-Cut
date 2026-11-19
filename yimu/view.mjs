@@ -20,7 +20,7 @@ import { mountManageView } from './manage-view.mjs';
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
     ['maxSlices', '每次最多注入切片', 'number', 0],
-    ['recallCooldown', '重复带入间隔层数', 'number', 0],
+    ['recallCooldown', 'Callback冷却间隔层', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['triggerFloors', '自动总结触发楼层数', 'number', 0],
@@ -667,7 +667,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         promptContainer.hidden = !promptContainer.hidden; promptTitle.setAttribute('aria-expanded', String(!promptContainer.hidden));
         promptFolder.setAttribute('data-open', String(!promptContainer.hidden));
     }, 'ym-tool-summary');
-    promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'));
+    promptTitle.replaceChildren(createYimuIcon('edit', { document }), el('strong', '', '总结提示词'));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
     pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
