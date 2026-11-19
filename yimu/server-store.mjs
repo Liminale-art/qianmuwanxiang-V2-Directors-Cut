@@ -717,5 +717,48 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         sourcePath, checkDirectory, checkRoot, writeFile, normalizeStoreBinding, chatStorageName, fail, digest});
     const backups = createBackupHandlers({io, context, prepare, exclusive, documentRead, readFile, read, requireSource, requireForeignSource,
         sourcePath, checkDirectory, checkRoot, checkStore, writeFile, normalizeStoreBinding, chatStorageName, fail, digest});
-    return Object.freeze({read, change, defaults, rename, recallSource, ...stories, ...backups});
+    // 账户内全部聊天的忆幕文件一览。只读各文件自己记的聊天身份与条目数，不读聊天原文；
+    // 「原聊天还在不在」只看那个聊天文件是否存在。读不出来的文件如实列为异常，不猜。
+    async function manageList(request) {
+        const ctx = context(request);
+        await prepare(ctx);
+        const items = [];
+        for (const name of (await io.readdir(ctx.folder)).sort()) {
+            if (!/^chat-[a-f0-9]{64}\.json$/.test(name)) continue;
+            ctx.guard();
+            let bytes = 0, updated = 0;
+            try { const info = await io.stat(path.join(ctx.folder, name)); bytes = Number(info.size); updated = Math.round(Number(info.mtimeMs)); } catch { continue; }
+            try {
+                const {value} = await readFile(ctx, name, contract.validateDocument, () => null);
+                if (!value) continue;
+                const binding = value.binding, live = value.entries.filter(entry => entry.status !== 'deleted');
+                let sourceExists = false;
+                try { await io.stat(sourcePath(ctx, binding).target); sourceExists = true; } catch { sourceExists = false; }
+                items.push({name, binding, bytes, updated, revision: value.revision, enabled: value.enabled === true, sourceExists,
+                    moved: Boolean(value.movedTo), slices: live.filter(entry => entry.kind === 'summary').length, stages: live.filter(entry => entry.kind === 'stage').length,
+                    custom: live.filter(entry => entry.kind === 'manual').length, traces: value.entries.length - live.length});
+            } catch { items.push({name, bytes, updated, unreadable: true}); }
+        }
+        return {items};
+    }
+
+    // 删除一个聊天的忆幕文件。必须同时给出文件名与它记的聊天身份，且修订号没变——
+    // 避免列表显示之后那份记忆又有了新内容，却被这里按旧印象删掉。聊天原文从不触碰。
+    async function manageDelete(request, body) {
+        const ctx = context(request);
+        await prepare(ctx);
+        const name = body?.name;
+        if (typeof name !== 'string' || !/^chat-[a-f0-9]{64}\.json$/.test(name)) fail('manage', '记忆文件名无效', 400);
+        return exclusive(ctx, name, async () => {
+            const current = await readFile(ctx, name, contract.validateDocument, () => null);
+            if (!current.value || !current.fingerprint) return {deleted: false, missing: true};
+            if (body.binding && chatStorageName(normalizeStoreBinding(body.binding)) !== name) fail('manage', '记忆文件与所选聊天不符', 409);
+            if (Number.isSafeInteger(body.expectedRevision) && current.value.revision !== body.expectedRevision) fail('manage', '这份记忆已有新的修改，请刷新列表后再删', 409);
+            ctx.guard();
+            await io.unlink(path.join(ctx.folder, name));
+            return {deleted: true, name};
+        });
+    }
+
+    return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, ...stories, ...backups});
 }

@@ -51,6 +51,8 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
         change: (binding, operation) => request('change', { binding, operation }),
         defaults: operation => operation === undefined ? request('defaults') : request('defaults', { operation }),
         rename: (binding, newBinding) => request('rename', { binding, newBinding }),
+        manageList: () => request('manage/list', {}, transferTimeout),
+        manageDelete: item => request('manage/delete', { name: item.name, binding: item.binding, expectedRevision: item.revision }),
         backupPlan: binding => request('backup/plan', { binding }, transferTimeout),
         backupExport: (binding, query) => transfer('backup/export', { binding, request: query }, { download: true }),
         backupUpload: (file, id) => transfer('backup/upload', file, { uploadId: id }),

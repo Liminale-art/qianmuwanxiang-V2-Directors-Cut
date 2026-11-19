@@ -613,7 +613,7 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             throw new Error(errorText(error, config));
         } finally { scope.dispose(); }
     }
-    return { read, update, effectiveConnection, assertCurrent, generate, lastCache: () => lastCache, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
+    return { read, update, effectiveConnection, assertCurrent, generate, lastCache: () => lastCache, clearVectorCache: () => { const size = vectorCache.size; vectorCache.clear(); return size; }, fetchModels, testConnection, savePreset, loadPreset, deletePreset, qianmuProfiles,
         vectorRead, updateVector, saveVectorPreset, loadVectorPreset, deleteVectorPreset, vectorCandidates, vectorScores,
         fetchVectorModels, testVectorConnection,
         rerankRead, updateRerank, saveRerankPreset, loadRerankPreset, deleteRerankPreset, rerankCandidates,

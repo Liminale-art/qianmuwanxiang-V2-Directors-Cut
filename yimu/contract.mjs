@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.51';
-export const SERVICE_VERSION = '0.8.17';
+export const FRONTEND_VERSION = '0.8.52';
+export const SERVICE_VERSION = '0.8.18';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -401,6 +401,33 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             edited: value.kind === 'manual',
             history: [], conflicts: [], candidate: null });
         insertEntryOrder(doc, value, Object.hasOwn(op, 'afterId') ? op.afterId : op.entry.afterId);
+    } else if (op.type === 'purge') {
+        // 清理当前聊天的记忆。三种范围，全部只动忆幕自己的文档，聊天原文不碰：
+        //   all        清空全部条目（keepManual 为真时保留用户自己写的自定义切片）
+        //   traces     只清留痕：已删除的记录与被新切片替换掉的旧切片
+        // 设置、启用状态与自动总结起点保留，所以清完可以直接重新总结。
+        requireThat(['all', 'traces'].includes(op.scope), '清理范围无效');
+        requireThat(op.expectedRevision === doc.revision, '记忆已在别处变化，请刷新后再清理');
+        if (op.scope === 'all') {
+            const kept = op.keepManual === true ? doc.entries.filter(entry => entry.kind === 'manual' && entry.status !== 'deleted' && !entry.origin) : [];
+            // 留下的自定义切片不能再指向已清掉的条目。
+            for (const entry of kept) for (const scene of entry.scenes || []) if (scene.evidence?.inheritedFrom) delete scene.evidence.inheritedFrom;
+            doc.entries = kept; doc.entryOrder = kept.map(entry => entry.id);
+            // 旧操作的回执里存着每条记忆的原文，清空时一并丢掉，文件才真的变小。
+            doc.operations = []; doc.receipts = {};
+        } else {
+            const referenced = new Set();
+            for (const entry of doc.entries) {
+                if (entry.status === 'deleted') continue;
+                for (const ref of entry.source?.parents || []) referenced.add(ref.id);
+                if (entry.parent?.id) referenced.add(entry.parent.id);
+                for (const scene of entry.scenes || []) if (scene.evidence?.inheritedFrom?.id) referenced.add(scene.evidence.inheritedFrom.id);
+            }
+            // 仍被别的条目引用的留痕不清（清了会让引用它的条目失去依据）。
+            doc.entries = doc.entries.filter(entry => entry.status !== 'deleted' || referenced.has(entry.id));
+            const kept = new Set(doc.entries.map(entry => entry.id));
+            doc.entryOrder = (doc.entryOrder || []).filter(entryId => kept.has(entryId));
+        }
     } else if (op.type === 'invalidate') {
         for (const record of op.entries || []) {
             const entry = doc.entries.find(e => e.id === record.id);

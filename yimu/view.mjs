@@ -15,6 +15,7 @@ import { mountPromptView } from './prompt-view.mjs';
 import { mountContextRulesView } from './context-view.mjs';
 import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scene-view.mjs';
 import { mountRetrievalView } from './retrieval-view.mjs';
+import { mountManageView } from './manage-view.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
@@ -108,7 +109,7 @@ export function shortcutStatus(state = {}) {
     return { tone: 'ready', message: state.busy ? '正在处理' : '正常' };
 }
 
-export function createView({ onAction, connectionApi, document = globalThis.document, saveDelayMs = 300,
+export function createView({ onAction, connectionApi, journal = null, document = globalThis.document, saveDelayMs = 300,
     onNotice = (message, tone = 'success') => (document.defaultView?.toastr || globalThis.toastr)?.[tone]?.(message) } = {}) {
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -157,7 +158,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     let settingsTimer = null, settingsSaving = false, settingsDraftRevision = null, settingsSaveFailed = false;
     let currentPage = 'overview', manualAfterId = null, openMenuId = null, draggingId = null, dragGeneration = 0;
     const pageScroll = new Map(), pageFocus = new Map(), pages = new Map(), navButtons = new Map();
-    const pageTitles = { overview: '导览', memory: '记忆', retrieval: '检索', settings: '设置', manual: '自定义切片' };
+    const pageTitles = { overview: '导览', memory: '记忆', retrieval: '检索', manage: '管理', settings: '设置', manual: '自定义切片' };
     const pageParents = { manual: 'memory' };
     const edits = new Map(), cards = new Map(), groups = new Map(), settingDraft = new Map();
     const pendingButtons = new Set();
@@ -185,7 +186,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     headerActions.append(backButton, closeButton);
     header.append(heading, headerActions);
     const nav = el('nav', 'ym-nav-shell'); nav.setAttribute('aria-label', '忆幕页面');
-    const navigation = mountYimuNavigation(nav, { document, tabs: ['overview', 'memory', 'retrieval', 'settings'].map(name => [name, pageTitles[name]]), onNavigate: navigate });
+    const navigation = mountYimuNavigation(nav, { document, tabs: ['overview', 'memory', 'retrieval', 'manage', 'settings'].map(name => [name, pageTitles[name]]), onNavigate: navigate });
     for (const [name, item] of navigation.buttons) navButtons.set(name, item);
     const scroller = el('div', 'ym-scroll');
     const serviceStatus = el('section', 'ym-card ym-service-card');
@@ -561,13 +562,69 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     for (const [value, label] of [['all', '全部记忆'], ['summary', '记忆切片'], ['stage', '阶段总结'], ['manual', '自定义切片'], ['attention', '待确认处理']]) {
         const option = el('option', '', label); option.value = value; filter.append(option);
     }
-    filter.value = 'all'; toolbar.append(search, filter, stageButton, addManual);
-    search.addEventListener('input', applyFilter); filter.addEventListener('change', applyFilter);
+    filter.value = 'all';
+    // 筛选是一个图标按钮：原生下拉透明地盖在图标上，点图标就是点下拉，键盘与读屏照常可用。
+    const filterBox = el('span', 'ym-button ym-icon-button ym-filter-box'); filterBox.title = '筛选记忆';
+    filterBox.append(createYimuIcon('filter', { document }), filter);
+    const syncFilter = () => { filterBox.dataset.active = String(filter.value !== 'all'); };
+    // 多选删除：进入后点卡片即选中，再点「删除所选」（两下确认）。
+    let selecting = false, deleteArmed = false, deleteTimer = null;
+    const selectedIds = new Set();
+    const selectToggle = iconButton('多选删除', 'select', () => setSelecting(!selecting));
+    const selectBar = el('div', 'ym-select-bar'); selectBar.hidden = true;
+    const selectCount = el('span', 'ym-muted', '');
+    const selectDelete = button('删除所选', async () => {
+        if (!selectedIds.size || selectDelete.disabled) return;
+        if (!deleteArmed) {
+            deleteArmed = true; selectDelete.textContent = `确认删除 ${selectedIds.size} 条`;
+            clearTimeout(deleteTimer); deleteTimer = setTimeout(() => { deleteArmed = false; updateSelection(); }, 4000);
+            return;
+        }
+        clearTimeout(deleteTimer); deleteArmed = false;
+        const ids = [...selectedIds];
+        for (const entryId of ids) {
+            // 逐条走已有的删除（可在「已删除的记忆」里撤回）；某一条删不了就停下并说明，前面删掉的保留。
+            const entry = state.document?.entries.find(item => item.id === entryId);
+            if (!entry || entry.status === 'deleted') { selectedIds.delete(entryId); continue; }
+            if (!await dispatch('entry', { entryId, action: 'delete' })) break;
+            selectedIds.delete(entryId);
+        }
+        if (!selectedIds.size) setSelecting(false); else updateSelection();
+    }, 'ym-small ym-danger');
+    const selectCancel = button('取消', () => setSelecting(false), 'ym-small');
+    selectBar.append(selectCount, selectDelete, selectCancel);
+    function updateSelection() {
+        for (const id of [...selectedIds]) if (!cards.has(id) || state.document?.entries.find(entry => entry.id === id)?.status === 'deleted') selectedIds.delete(id);
+        for (const [id, item] of cards) item.node.dataset.ymSelected = String(selecting && selectedIds.has(id));
+        selectBar.hidden = !selecting; selectToggle.setAttribute('aria-pressed', String(selecting));
+        selectCount.textContent = `已选 ${selectedIds.size} 条`;
+        if (!deleteArmed) selectDelete.textContent = '删除所选';
+        selectDelete.disabled = !selectedIds.size || Boolean(state.busy);
+    }
+    function setSelecting(on) {
+        selecting = Boolean(on); deleteArmed = false; clearTimeout(deleteTimer);
+        if (!selecting) selectedIds.clear();
+        list.dataset.ymSelecting = String(selecting);
+        updateSelection();
+    }
+    // 多选时点卡片的任何位置都是「选中／取消」，不触发卡片里原有的按钮与展开。
+    list.addEventListener('click', event => {
+        if (!selecting) return;
+        const card = event.target.closest?.('.ym-memory');
+        const id = card?.dataset?.entryId;
+        if (!id) return;
+        event.preventDefault(); event.stopPropagation();
+        if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+        deleteArmed = false; updateSelection();
+    }, true);
+    toolbar.append(search, filterBox, stageButton, selectToggle, addManual);
+    search.addEventListener('input', applyFilter); filter.addEventListener('change', () => { syncFilter(); applyFilter(); });
+    syncFilter();
     const noMatch = el('p', 'ym-muted', '没有符合条件的记忆。'); noMatch.hidden = true;
     const streamPreview = el('section', 'ym-card ym-stream-preview');
-    streamPreview.append(el('h3', 'ym-setting-title', '正在接收整理结果'));
-    const streamOutput = el('pre', 'ym-stream-output'); streamOutput.setAttribute('role', 'status'); streamOutput.setAttribute('aria-live', 'polite');
-    streamPreview.append(streamOutput); streamPreview.hidden = true;
+    const streamTitle = el('h3', 'ym-setting-title', '正在整理');
+    const streamOutput = el('div', 'ym-stream-output'); streamOutput.setAttribute('role', 'status'); streamOutput.setAttribute('aria-live', 'polite');
+    streamPreview.append(streamTitle, streamOutput); streamPreview.hidden = true;
     const promptContainer = el('section', 'ym-prompt-section');
     const promptView = mountPromptView(promptContainer, { document, showTitle: false,
         onSave: (config, meta = {}) => {
@@ -595,8 +652,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         onError: error => { localError = error?.message || '正文提取设置未保存'; localErrorPage = 'overview'; updateStatus(); },
     });
     pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder, contextRulesView.element);
-    pages.get('memory').append(controlsRow, toolbar, stageForm, streamPreview, list, noMatch, deleted);
+    pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, list, noMatch, deleted);
     pages.get('retrieval').append(retrieval.element);
+    const manage = mountManageView({ document, journal, describeSkip, onAction: (type, payload) => dispatch(type, payload) });
+    pages.get('manage').append(manage.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);
 
@@ -608,6 +667,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         pageScroll.set(currentPage, scroller.scrollTop || 0);
         pageFocus.set(currentPage, document.activeElement);
         currentPage = name; updateNavigation(); updateStatus(); scroller.scrollTop = pageScroll.get(name) || 0;
+        if (name === 'manage') manage.shown();
         const focus = pageFocus.get(name);
         if (focus?.isConnected && !focus.disabled && !focus.closest('[hidden]')) focus.focus();
         else (pageParents[name] ? backButton : navButtons.get(name))?.focus();
@@ -769,10 +829,23 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         retry.hidden = !(state.failedWork && state.document?.enabled);
         retry.textContent = state.failedWork?.kind === 'stage' ? '重试阶段总结' : '重新总结失败部分';
         retry.disabled = !canSummarize || Boolean(state.busy);
-        streamOutput.textContent = typeof state.streamPreview === 'string' ? state.streamPreview : '';
-        streamPreview.hidden = !(Boolean(state.busy) && streamOutput.textContent);
+        // 一条切片在模型返回里成形了才显示一条；还在往外吐字的那一片不显示（整段原始输出看「管理 → 日志」）。
+        const forming = Array.isArray(state.streamSlices) ? state.streamSlices : [];
+        const receiving = Boolean(state.busy) && (forming.length > 0 || Boolean(state.streamPreview));
+        streamPreview.hidden = !receiving;
+        streamTitle.textContent = forming.length ? `正在整理 · 已成 ${forming.length} 片` : '正在整理';
+        if (streamOutput.dataset.ymCount !== String(receiving ? forming.length : -1)) {
+            streamOutput.dataset.ymCount = String(receiving ? forming.length : -1);
+            streamOutput.replaceChildren(...forming.map(slice => {
+                const item = el('div', 'ym-stream-slice');
+                const range = Number.isSafeInteger(slice.start) && Number.isSafeInteger(slice.end) ? `第 ${shownFloor(slice.start)}–${shownFloor(slice.end)} 层` : '';
+                item.append(el('strong', '', [range, slice.title].filter(Boolean).join(' · ') || '记忆切片'), el('p', 'ym-memory-text', slice.text));
+                return item;
+            }));
+        }
         addManual.disabled = !available;
         search.disabled = filter.disabled = !available;
+        selectToggle.disabled = !available || Boolean(state.busy) && !selecting;
         for (const control of controls.values()) control.input.disabled = !available;
         for (const redo of list.querySelectorAll('[data-ym-redo]')) {
             const active = state.activeEntryId === redo.dataset.ymRedo && state.busy;
@@ -1206,7 +1279,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             summarizeStart.value = ''; summarizeEnd.value = ''; summarizeNotice.hidden = true;
             syncManualDefault({ force: true });
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
-            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear();
+            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); setSelecting(false);
             // Backup browsing is account-scoped; other pages belong to the opened chat.
             currentPage = 'overview';
             scroller.scrollTop = 0;
@@ -1219,7 +1292,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         backup.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries(); updateOverview(); retrieval.render(state); updateNavigation();
         if (!stageForm.hidden) updateStageRange();
-        updateUsed();
+        updateUsed(); updateSelection(); syncFilter(); manage.render(state);
     }
     function open() {
         if (destroyed || opened) return;
@@ -1265,7 +1338,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     });
     return {
         render, open, close, isOpen: () => opened,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); clearTimeout(deleteTimer); manage.destroy(); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

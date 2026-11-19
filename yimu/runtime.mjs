@@ -13,13 +13,14 @@ import { memoryTitle } from './timeline.mjs';
 import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
+import { completedSlices } from './stream-slices.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000, roundStore = globalThis.localStorage ?? null }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000, roundStore = globalThis.localStorage ?? null, journal = null }) {
     // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
     // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
     // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
@@ -29,7 +30,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
         return api.read(binding);
     }
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', streamSlices: [], snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [], manage: { items: null, loading: false, error: '' },
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
@@ -93,6 +94,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const used = state.lastUsed, skip = state.lastSkip, binding = state.snapshot?.binding;
         if (!binding || !used && !skip || used?.restoredAt || skip?.restoredAt || roundSaved === (used || skip)) return;
         roundSaved = used || skip;
+        note(() => {
+            const messages = state.snapshot?.messages || [];
+            let hiddenTo = 0; while (hiddenTo < messages.length && messages[hiddenTo]?.is_system) hiddenTo++;
+            journal.add(used
+                ? { kind: 'round', status: 'success', chat: chatLabel(binding), memories: (used.entries || []).length, tokens: used.tokens, hiddenTo, waitMs: roundWaitMs }
+                : { kind: 'round', status: skip.offered ? 'cancelled' : 'blocked', chat: chatLabel(binding), reason: skip.reason, offered: skip.offered === true, hiddenTo, waitMs: roundWaitMs,
+                    ...(skip.message ? { error: skip.message } : {}) });
+        });
         const record = { at: Date.now(), recall: readRound(binding)?.recall || {},
             used: used ? { memoryIds: (used.entries || []).map(entry => entry.id), tokens: used.tokens, estimated: true, status: used.status, semantic: used.semantic === true,
             sourceReplacement: used.sourceReplacement, removedFloors: used.removedFloors, recentFloors: used.recentFloors, requestTokens: used.requestTokens, contextTokens: used.contextTokens, responseTokens: used.responseTokens } : null,
@@ -128,8 +137,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     const streamChunk = binding => (_chunk, accumulated) => {
         if (disposed || !isCurrent(binding) || typeof accumulated !== 'string') return;
         state.streamPreview = accumulated.slice(-12000);
+        state.streamSlices = completedSlices(accumulated);
+        if (liveLog) note(() => journal.update(liveLog, { raw: accumulated }, { persist: false }));
         if (streamTimer === null) streamTimer = setTimeout(() => { streamTimer = null; emit(); }, 120);
     };
+    // 日志只是旁路记录：它出任何错都不能影响整理与生成。
+    let liveLog = null;
+    const note = task => { if (!journal) return null; try { return task(); } catch { return null; } };
+    const chatLabel = binding => String(binding?.file || '');
+    const openLog = entry => { liveLog = note(() => journal.add({ status: 'loading', ...entry })); return { id: liveLog, started: Date.now() }; };
+    const closeLog = (log, patch) => { if (log?.id) note(() => journal.update(log.id, { durationMs: Date.now() - log.started, ...patch })); if (liveLog === log?.id) liveLog = null; };
     const notice = (message, tone = 'success') => {
         if (disposed || typeof onNotice !== 'function' || typeof message !== 'string' || !message) return;
         try { onNotice(message, tone); } catch { /* Notifications must never affect persistence. */ }
@@ -377,7 +394,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: rerankStatus,
             ...(rerankStatus === 'unavailable' ? { reason: '尚未配置重排候选接口，已保留当前顺序' } : {}) }, candidates: [], lastRun: null };
         emit();
-        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false;
+        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false, batchLog = null;
         const retryState = { exhausted: false };
         let manualPlan = null;
         try {
@@ -521,9 +538,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
+                batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
+                    manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length) });
                 const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
                     { binding, label: '切片总结', start: batch.start, end: batch.end, retryState });
-                if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
+                if (batchLog?.id) note(() => journal.update(batchLog.id, { raw: response, durationMs: Date.now() - batchLog.started }));
+                if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; emit(); }
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await readSource(binding); adopt(binding, beforeSave);
                 if (beforeSave.defaults.revision !== defaults.revision || !beforeSave.document.enabled || beforeSave.document.epoch !== doc.epoch) throw new Error('整理期间设置已变化，本次结果未采用');
@@ -566,6 +586,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
                 }
                 failedBatch = null; failedSource = null;
+                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })) }); batchLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
@@ -587,6 +608,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 emit();
             }
         } catch (error) {
+            closeLog(batchLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); batchLog = null;
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
@@ -597,7 +619,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
-            if (isCurrent(binding)) state.streamPreview = '';
+            // 被中止、停用或换聊天打断的那一批：如实记成未完成。
+            closeLog(batchLog, { status: 'cancelled', error: '本批未完成（已中止或被打断）' }); batchLog = null;
+            if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; }
             // 隐藏在整轮结束后做一次：每次隐藏都要把整份聊天交给 ST 保存，多批总结若每批保存一次，
             // 慢网络下会连着上传好几份聊天，还会让用户下一次发言排在这些保存后面。生成中不动聊天。
             if (processed && !disposed && !generating && isCurrent(binding)) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
@@ -656,7 +680,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
         state.streamPreview = '';
         emit();
-        let processed = false, cursor = first, failedStage = null;
+        let processed = false, cursor = first, failedStage = null, stageLog = null;
         const retryState = { exhausted: false };
         try {
             const run = summaryRun(settings, state.snapshot);
@@ -700,10 +724,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 notice(`忆幕阶段总结中：楼层${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'info');
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
+                stageLog = openLog({ kind: 'stage', chat: chatLabel(binding), range: { start: startFloor, end: endFloor }, manual: Boolean(force), parents: group.parents.length });
                 const response = await generateWithRetries(stagePrompt(group.parents, settings),
                     { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
                     { binding, label: '阶段总结', start: startFloor, end: endFloor, retryState });
-                if (isCurrent(binding)) { state.streamPreview = ''; emit(); }
+                if (stageLog?.id) note(() => journal.update(stageLog.id, { raw: response, durationMs: Date.now() - stageLog.started }));
+                if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; emit(); }
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 const latest = await readSource(binding); adopt(binding, latest);
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
@@ -716,12 +742,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const result = await change(binding, operation); processed = true;
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
+                closeLog(stageLog, { status: 'success' }); stageLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
             if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); state.status = '阶段总结已完成'; }
         } catch (error) {
+            closeLog(stageLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); stageLog = null;
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : initialTotal);
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
@@ -731,7 +759,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
-            if (isCurrent(binding)) state.streamPreview = '';
+            closeLog(stageLog, { status: 'cancelled', error: '本次阶段总结未完成（已中止或被打断）' }); stageLog = null;
+            if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; }
             emit();
         }
     }
@@ -739,6 +768,34 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     async function executeAction(type, payload = {}) {
         if (disposed) return false;
         if (type === 'refresh') return refresh({ auto: false });
+        // 账户级的记忆文件管理：不依赖当前打开的是哪个聊天。
+        if (type === 'manageList') {
+            if (typeof api.manageList !== 'function') throw new Error('当前忆幕服务端不支持文件管理，请先更新服务端');
+            state.manage = { ...state.manage, loading: true, error: '' }; emit();
+            try { const result = await api.manageList(); if (!disposed) state.manage = { items: Array.isArray(result?.items) ? result.items : [], loading: false, error: '' }; }
+            catch (error) { if (!disposed) state.manage = { ...state.manage, loading: false, error: error.message }; throw error; }
+            finally { emit(); }
+            return true;
+        }
+        if (type === 'manageDelete') {
+            const items = Array.isArray(payload.items) ? payload.items : [];
+            const open = state.snapshot?.binding ? bindingKey(state.snapshot.binding) : '';
+            // 正在打开的这个聊天不从这里删：它有专门的「清空」，并且要一并还原忆幕藏起的楼层。
+            const targets = items.filter(item => item?.name && !(item.binding && open && (() => { try { return bindingKey(item.binding) === open; } catch { return false; } })()));
+            if (!targets.length) throw new Error(items.length ? '当前打开的聊天请用上方的清理' : '没有可删除的记忆文件');
+            state.manage = { ...state.manage, loading: true, error: '' }; emit();
+            let removed = 0, firstError = '';
+            for (const item of targets) {
+                try { const result = await api.manageDelete(item); if (result?.deleted || result?.missing) removed++; }
+                catch (error) { firstError ||= error.message; }
+            }
+            try { const result = await api.manageList(); if (!disposed) state.manage = { items: Array.isArray(result?.items) ? result.items : [], loading: false, error: firstError }; }
+            catch (error) { if (!disposed) state.manage = { ...state.manage, loading: false, error: firstError || error.message }; }
+            emit();
+            if (firstError && !removed) throw new Error(firstError);
+            notice(firstError ? `已删除 ${removed} 个，另有未删除：${firstError}` : `已删除 ${removed} 个记忆文件`, firstError ? 'warning' : 'success');
+            return true;
+        }
         // Import archives are usable on the homepage too. They do not require
         // or manufacture a current-chat identity, and survive chat switches.
         if (type.startsWith('backup')) {
@@ -852,6 +909,32 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             deferFor(binding, () => start({ force: true, range, expectedRange, batchFloors }), actionGeneration);
             return true;
         }
+        // 清本机记录：上一轮注入记录、回暖记录、向量打分缓存。只在这台设备的浏览器里，账户与聊天都不动。
+        if (type === 'clearLocal') {
+            try { roundStore?.removeItem(roundKey(binding)); } catch { /* 本机存储不可用时没有东西可清 */ }
+            state.lastUsed = null; state.lastSkip = null; state.requestSize = null; roundSaved = null;
+            const vectors = typeof host.connectionApi?.clearVectorCache === 'function' ? host.connectionApi.clearVectorCache() : 0;
+            emit(); notice(`已清本机记录${vectors ? `与 ${vectors} 条向量缓存` : ''}`, 'success');
+            return true;
+        }
+        if (type === 'purge') {
+            if (!['all', 'traces'].includes(payload.scope)) throw new Error('清理范围无效');
+            // 正在跑的整理先停：它拿着清理前的条目，写回来会与清理后的文档对不上。
+            jobs.get(key)?.abort(); failures.delete(key);
+            state.busy = true; state.error = ''; emit();
+            try {
+                await change(binding, { id: id(), type: 'purge', scope: payload.scope, keepManual: payload.keepManual === true, expectedRevision: doc.revision });
+                if (isCurrent(binding)) {
+                    if (payload.scope === 'all') { state.lastUsed = null; state.lastSkip = null; try { roundStore?.removeItem(roundKey(binding)); } catch { /* 无本机存储 */ } roundSaved = null; }
+                    // 记忆清掉之后，它曾覆盖的旧楼不再有替代：把忆幕藏起的楼层还原成正常原文。
+                    if (!generating) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
+                    state.status = '';
+                }
+                notice(payload.scope === 'traces' ? '留痕已清理' : payload.keepManual ? '已清空，自定义切片保留' : '当前聊天的记忆已清空', 'success');
+                return true;
+            } catch (error) { if (isCurrent(binding)) state.error = error.message; throw error; }
+            finally { if (isCurrent(binding)) { state.busy = false; emit(); } }
+        }
         let operation = { id: id() };
         if (type === 'enable') {
             operation = { ...operation, type, enabled: payload.enabled, expectedRevision: payload.expectedRevision ?? doc.configRevision, range: payload.range };
@@ -910,6 +993,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const stamp = generation, binding = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
         const page = payload.errorPage || (type === 'settings' ? payload.values?.prompts ? 'overview' : 'settings'
             : /^(story|companion|backup)/.test(type) ? type.match(/^(story|companion|backup)/)[0]
+            : /^(manage|purge|clearLocal)/.test(type) ? 'manage'
             : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize'].includes(type) ? 'overview' : 'memory');
         try { return await executeAction(type, payload); }
         catch (error) {
@@ -922,6 +1006,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     const OFFER_ON_SKIP = new Set(['unsupported-generation', 'unverified-mapping', 'unsupported-name-format', 'unknown-context-budget', 'unsupported-tools', 'live-chat-reference', 'source-changed']);
     async function intercept(coreChat, contextSize, abort, type = '') {
+        const began = Date.now(); roundWaitMs = null;
+        try { return await interceptRound(coreChat, contextSize, abort, type); }
+        finally { roundWaitMs = Date.now() - began; }
+    }
+    // 生成前忆幕占用了多久（读取、选记忆、准备改写）。记进每轮的日志，慢不慢有据可查。
+    let roundWaitMs = null;
+    async function interceptRound(coreChat, contextSize, abort, type = '') {
+        const began = Date.now();
         host.clear(); prepared = null; offered = false;
         // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
         // 这次读取是刻意的：它能发现别的设备、别处改动过的记忆与原文，省掉它就会注入过期内容（有专门的回归测试）。
@@ -972,7 +1064,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 // 含继承（origin）记忆的方案改写需在最终边界重核，烘焙槽无法事后回核，故不走保底，
                 // 维持原有仅改写路径——这也让下方 verify 分支下 offered 恒为 false，语义一致。
                 offered = prepared.foreignIds.length ? false : host.offer(plan.prompt); }
-            else if (ticket === generation && isCurrent(doc.binding) && result.reason !== 'empty') {
+            else if (result.reason === 'empty') {
+                // 没有可带的记忆不是出错，但要留一笔：否则「这一轮为什么什么都没带」无从查起。
+                if (ticket === generation && isCurrent(doc.binding)) note(() => journal.add({ kind: 'round', status: 'cancelled', chat: chatLabel(doc.binding), reason: 'empty', memories: 0, waitMs: Date.now() - began }));
+            }
+            else if (ticket === generation && isCurrent(doc.binding)) {
                 // 原文替换做不了（续写、楼层对不上、带工具消息等）时，不再整轮没有记忆：仍以保底方式把记忆附在本轮请求里。
                 // 后台静默生成、文本补全、群聊不附加；含继承记忆的方案同上不走保底。
                 offered = OFFER_ON_SKIP.has(result.reason) && type !== 'quiet' && !plan.entries.some(entry => entry.origin) ? host.offer(plan.prompt) : false;

@@ -268,7 +268,7 @@
 @container (max-width: 360px) { .ym-manual-fields { grid-template-columns: minmax(0, 1fr); } }
 .ym-stream-preview { display: grid; gap: 8px; padding: 12px 14px; }
 .ym-stream-preview .ym-setting-title { margin: 0; }
-.ym-stream-output { margin: 0; max-height: 190px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font: inherit; color: var(--ym-ink); }
+.ym-stream-output { margin: 0; max-height: 190px; overflow: auto; overflow-wrap: anywhere; line-height: 1.65; font: inherit; color: var(--ym-ink); }
 .ym-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0; margin: 0; border: 0; }
 .ym-stat { display: grid; gap: 5px; place-content: center; justify-items: center; min-width: 0; }
 .ym-dialog .ym-stat { min-height: 88px; padding: 13px 7px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); box-shadow: none; text-align: center; }
@@ -547,3 +547,56 @@
 .ym-request-size[data-tone="ok"] .ym-request-tokens { color: var(--ym-accent, #7d98a6); }
 .ym-request-size[data-tone="warm"] .ym-request-tokens { color: #b9986a; }
 .ym-request-size[data-tone="high"] .ym-request-tokens { color: #b87b7b; }
+
+/* ---------- 管理页：清理、记忆文件、日志 ---------- */
+.ym-manage { display: grid; gap: 12px; min-width: 0; }
+.ym-manage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ym-manage-head > .ym-setting-title { margin: 0; }
+.ym-manage-head + * { margin-top: 12px; }
+.ym-manage-count { margin: 0 0 12px; font-size: var(--ym-type-caption); }
+.ym-manage-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.ym-manage-row + .ym-manage-row { margin-top: 12px; }
+.ym-manage-row > span { min-width: 0; overflow-wrap: anywhere; }
+.ym-manage-row > .ym-button, .ym-manage-file > .ym-button { flex: 0 0 auto; }
+.ym-dialog .ym-button.ym-danger { color: var(--ym-danger); }
+.ym-dialog .ym-button[data-armed="true"] { color: var(--ym-on-accent); background: var(--ym-danger); border-color: var(--ym-danger); }
+.ym-manage-list { display: grid; gap: 8px; margin-top: 12px; min-width: 0; }
+.ym-manage-file { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 8px 10px; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); }
+.ym-manage-file-text { display: grid; gap: 2px; min-width: 0; }
+.ym-manage-file-text > strong { overflow-wrap: anywhere; font-weight: 600; }
+.ym-manage-file-text > .ym-muted { font-size: var(--ym-type-caption); overflow-wrap: anywhere; }
+.ym-manage-tag { justify-self: start; padding: 0 8px; border: 1px solid var(--ym-border); border-radius: 999px; font-size: var(--ym-type-caption); color: var(--ym-muted); }
+.ym-manage-tag-warn { color: var(--ym-warning); border-color: color-mix(in srgb, var(--ym-warning) 50%, transparent); }
+.ym-manage-files > .ym-button { margin-top: 0; }
+
+/* 日志：与千幕日志同一套排版——一条一行可展开，左侧状态点，右侧来源标签，详情平铺。 */
+.ym-log-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ym-log-entry { border: 1px solid var(--ym-border); border-radius: 12px; background: color-mix(in srgb, var(--ym-card) 60%, transparent); overflow: hidden; }
+.ym-log-entry > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; cursor: pointer; list-style: none; font-size: .92em; }
+.ym-log-entry > summary::-webkit-details-marker { display: none; }
+.ym-log-status { display: inline-block; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: currentColor; color: var(--ym-muted); }
+.ym-log-status.success { color: #4f9e6b; }
+.ym-log-status.error, .ym-log-status.blocked { color: #c95e5e; }
+.ym-log-status.cancelled, .ym-log-status.loading { color: #a58035; }
+.ym-log-title { min-width: 0; overflow-wrap: anywhere; }
+.ym-log-meta { color: var(--ym-muted); font-size: .85em; }
+.ym-log-kind { margin-left: auto; padding: 1px 9px; border: 1px solid var(--ym-border); border-radius: 999px; font-size: .82em; color: var(--ym-muted); white-space: nowrap; }
+.ym-log-detail { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 12px; min-width: 0; }
+.ym-log-cap { margin-top: 6px; color: var(--ym-muted); font-size: .82em; letter-spacing: .04em; }
+.ym-log-text { margin: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.ym-log-error { color: var(--ym-danger); }
+.ym-term { margin: 0; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid rgba(255, 255, 255, .08); border-radius: 9px; background: #14161a; color: #cdd6cf; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .84em; line-height: 1.55; }
+
+/* 记忆页：筛选图标按钮（原生下拉透明盖在图标上）、多选删除、逐片显示。 */
+.ym-dialog .ym-filter-box { position: relative; flex: 0 0 auto; padding: 0; }
+.ym-dialog .ym-filter-box > select { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.ym-dialog .ym-filter-box[data-active="true"] { color: var(--ym-accent); border-color: var(--ym-accent); }
+.ym-dialog .ym-icon-button[aria-pressed="true"] { color: var(--ym-accent); border-color: var(--ym-accent); }
+.ym-select-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ym-select-bar > span { flex: 1 1 auto; min-width: 0; font-size: var(--ym-type-caption); }
+.ym-list[data-ym-selecting="true"] .ym-memory { cursor: pointer; }
+.ym-list[data-ym-selecting="true"] .ym-memory[data-ym-selected="true"] { border-color: var(--ym-accent); box-shadow: inset 0 0 0 1px var(--ym-accent); background: color-mix(in srgb, var(--ym-accent) 8%, var(--ym-card)); }
+.ym-stream-slice { padding: 8px 0; border-top: 1px solid var(--ym-border); }
+.ym-stream-slice:first-child { border-top: 0; padding-top: 0; }
+.ym-stream-slice > strong { display: block; margin-bottom: 4px; font-size: var(--ym-type-label); color: var(--ym-muted); font-weight: 600; }
+.ym-stream-slice > p { margin: 0; }

@@ -4,6 +4,7 @@ import { createController } from './runtime.mjs';
 import { readYimuServiceRelease } from './release-version.mjs';
 import { createView, mountEntries } from './view.mjs';
 import { COMPANION_READY } from './companion-runtime.mjs';
+import { createJournal } from './journal.mjs';
 
 let instance = null;
 export function boot() {
@@ -15,6 +16,8 @@ export function boot() {
     };
     let removeEntries = null, settledService = null, pending = null;
     const host = createHost();
+    // 日志只在本机浏览器里：整理与每轮生成各记一笔，供「管理」页查看。
+    const journal = createJournal();
     // A background recheck keeps the last settled service status instead of flashing "checking".
     const render = state => {
         const ui = getUi(), status = state.service?.status;
@@ -25,7 +28,7 @@ export function boot() {
         if (view.isOpen?.() === false) { pending = { ...shown, ui }; return; }
         pending = null; view.render({ ...shown, ui });
     };
-    const view = createView({ connectionApi: host.connectionApi, onNotice: notify, onAction: async (type, payload) => {
+    const view = createView({ connectionApi: host.connectionApi, journal, onNotice: notify, onAction: async (type, payload) => {
         if (type !== 'uiSettings') return controller.action(type, payload);
         const ctx = globalThis.SillyTavern.getContext();
         if (!ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 尚不能保存界面设置，请稍后重试。');
@@ -44,7 +47,7 @@ export function boot() {
         render(controller.state);
         return true;
     } });
-    const controller = createController({ host, api: createApi(), onChange: render, onNotice: notify, latestService: readYimuServiceRelease });
+    const controller = createController({ host, api: createApi(), onChange: render, onNotice: notify, latestService: readYimuServiceRelease, journal });
     // Reopening a loaded chat re-reads quietly so controls never flash disabled.
     const open = () => {
         view.open();

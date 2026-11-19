@@ -12,6 +12,7 @@ import {effectiveSettings, fingerprintMessages} from '../yimu/contract.mjs';
 import {summaryCoverage, summaryPrompt, planManualRange} from '../yimu/core.mjs';
 import {summaryRequestBudget} from '../yimu/budget.mjs';
 import {seedLegacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
+import {createJournal} from '../yimu/journal.mjs';
 
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Integration.png', file: 'Synthetic-chat', integrity: 'integration_identity'};
@@ -38,7 +39,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
     const routes = new Map(), faults = {loseChangeReply: false, failRead: false, delayChangeReply: null, delayReadReply: null};
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
     const fetcher = async (url, options) => {
-        const route = `/${url.split('/').at(-1)}`;
+        const route = url.slice(url.indexOf('/yimu/') + 5); // 「/read」「/manage/list」这类完整子路径
         seen.push(route);
         if (route === '/read' && faults.failRead) throw new Error('合成读取故障');
         let status = 200, body;
@@ -74,7 +75,8 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
     const host = createHost({getContext: () => context});
     let nextId = 0;
     const notices = [];
-    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `fixture_${++nextId}`,
+    const journal = createJournal({storage: null});
+    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `fixture_${++nextId}`, journal,
         onNotice: (message, tone) => notices.push({message, tone})});
     t.after(async () => {
         controller.destroy();
@@ -102,7 +104,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
         const prompt = payload.messages.find(message => message.content.includes('<yimu_memory>'))?.content || '';
         return {coreChat, prompt, payload, originalPayload};
     };
-    return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject, seen,
+    return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject, seen, journal,
         prompts, notices, model: value => { model = value; }, generated: () => generated};
 }
 
@@ -607,6 +609,61 @@ test('the generation path waits for one read only: no service probe before a rep
     await f.controller.event('GENERATION_ENDED', []);
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(counted.length, 1); assert.equal(f.controller.state.requestSize.method, 'st-tokenizer');
+});
+
+test('every summary batch and every generation round leaves one journal entry: what ran, how long, what came back, why it failed', async t => {
+    const f = await fixture(t); await manualReady(f);
+    await manualRange(f, 1, 4, {start: 1, end: 4}, 2);
+    const batches = f.journal.list().filter(item => item.kind === 'summary').reverse();
+    assert.deepEqual(batches.map(item => [item.status, item.range.start, item.range.end, item.manual, item.batch]), [['success', 1, 2, true, '1/2'], ['success', 3, 4, true, '2/2']]);
+    assert.match(batches[0].raw, /"slices"/, '模型原始返回留在日志里');
+    assert.deepEqual(batches[0].slices.map(slice => [slice.start, slice.end]), [[1, 2]]);
+    assert.ok(Number.isFinite(batches[0].durationMs));
+    assert.equal(batches[0].chat, binding.file);
+    // 一轮生成：带了几条、用了多久。
+    await f.inject(); await f.controller.event('GENERATION_ENDED', []);
+    const round = f.journal.list().find(item => item.kind === 'round');
+    assert.equal(round.status, 'success'); assert.equal(round.memories, 1); assert.ok(Number.isFinite(round.waitMs));
+    // 失败的一批：记下原因，状态是失败而不是一直「进行中」。
+    f.model(async () => { throw new Error('合成模型故障'); });
+    await manualRange(f, 5, 5);
+    const failed = f.journal.list().find(item => item.kind === 'summary' && item.status === 'error');
+    assert.ok(failed, '失败的批次有记录'); assert.match(failed.error, /合成模型故障/); assert.deepEqual([failed.range.start, failed.range.end], [5, 5]);
+    assert.ok(!f.journal.list().some(item => item.status === 'loading'), '没有任何条目停在进行中');
+    assert.ok(!JSON.stringify(f.journal.list()).includes('synthetic-only'), '日志不含请求头里的凭据');
+});
+
+test('clearing the current chat empties Yimu\'s memory, keeps the chat text, and gives back the floors Yimu had hidden', async t => {
+    const f = await fixture(t, {nativeHide: true}); await manualReady(f);
+    await manualRange(f, 1, 2);
+    assert.deepEqual(f.context.chat.map(message => Boolean(message.is_system)).slice(0, 3), [true, true, false]);
+    const original = f.context.chat.map(message => message.mes);
+    await f.controller.action('purge', {scope: 'all'}); await f.flush();
+    assert.deepEqual(f.controller.state.document.entries, []);
+    assert.equal(f.controller.state.document.enabled, true, '清空不等于停用');
+    assert.ok(f.context.chat.every(message => !message.is_system), '忆幕藏起的楼层全部还原');
+    assert.ok(f.context.chat.every(message => message.extra?.yimu_hidden !== true));
+    assert.deepEqual(f.context.chat.map(message => message.mes), original, '聊天原文一字未动');
+    assert.equal((await f.api.read(binding)).document.entries.length, 0, '服务端也已清空');
+    // 清完可以直接重新总结。
+    await manualRange(f, 1, 2);
+    assert.equal(f.controller.state.document.entries.filter(entry => entry.status === 'active').length, 1);
+    await assert.rejects(f.controller.action('purge', {scope: 'floors'}), /清理范围无效/);
+});
+
+test('the account file list comes through the controller, and the open chat cannot be deleted from that list', async t => {
+    const f = await fixture(t); await manualReady(f); await manualRange(f, 1, 2);
+    await f.controller.action('manageList', {});
+    const items = f.controller.state.manage.items;
+    assert.equal(items.length, 1); assert.equal(items[0].binding.file, binding.file); assert.equal(items[0].slices, 1); assert.equal(items[0].sourceExists, true);
+    await assert.rejects(f.controller.action('manageDelete', {items}), /当前打开的聊天请用上方的清理/);
+    assert.equal((await f.api.read(binding)).document.entries.length, 1, '没有被删');
+    // 清本机记录：上一轮注入记录没了，服务端的记忆不动。
+    await f.inject(); await f.controller.event('GENERATION_ENDED', []);
+    assert.ok(f.controller.state.lastUsed);
+    await f.controller.action('clearLocal', {});
+    assert.equal(f.controller.state.lastUsed, null);
+    assert.equal((await f.api.read(binding)).document.entries.length, 1);
 });
 
 test('manual partial overlap requires visible expanded bounds, replaces whole automatic slices and preserves outside memory', async t => {

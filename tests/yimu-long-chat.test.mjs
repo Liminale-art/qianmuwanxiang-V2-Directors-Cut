@@ -42,5 +42,8 @@ test('the pre-send check compares the whole chat once per synchronous stretch, a
   assert.match(current, /record\.used \|\| record\.generation !== generation \|\| isCurrent\(\) !== true/, 'cheap lifecycle flags are still read on every call');
   assert.match(current, /chatUnchanged\(ctx\)/); assert.doesNotMatch(current, /sameMessages\(ctx\.chat/);
   const runtime = await readFile(new URL('../yimu/runtime.mjs', import.meta.url), 'utf8');
-  assert.match(runtime, /state\.streamPreview = accumulated\.slice\(-12000\);\s*if \(streamTimer === null\) streamTimer = setTimeout\(\(\) => \{ streamTimer = null; emit\(\); \}, 120\);/);
+  assert.match(runtime, /state\.streamPreview = accumulated\.slice\(-12000\);/);
+  assert.match(runtime, /if \(streamTimer === null\) streamTimer = setTimeout\(\(\) => \{ streamTimer = null; emit\(\); \}, 120\);/);
+  // 流式过程中的日志更新只改内存，不每个分块都写一次本机存储。
+  assert.match(runtime, /journal\.update\(liveLog, \{ raw: accumulated \}, \{ persist: false \}\)/);
 });

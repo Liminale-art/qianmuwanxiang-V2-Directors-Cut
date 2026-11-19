@@ -224,10 +224,17 @@ test('overview uses the 导览 label and memory page exposes bounded live summar
     assert.equal(f.document.querySelector('.ym-manual-label strong').textContent, '手动总结');
     assert.equal(f.document.querySelector('.ym-manual-label .ym-icon'), null, 'manual summary keeps the heading text-only');
     f.get('记忆').click();
-    f.render({ ...f.state, busy: true, streamPreview: '正在生成：两人初见' });
+    // 模型还在吐字、尚无一条切片成形：只显示「正在整理」，不把半截原始输出摆出来（那在「管理 → 日志」里）。
+    f.render({ ...f.state, busy: true, streamPreview: '{"slices":[{"start":1,"end":2,"text":"两人初', streamSlices: [] });
     const preview = f.document.querySelector('.ym-stream-preview');
-    assert.equal(preview.hidden, false); assert.match(preview.textContent, /正在生成：两人初见/);
-    f.render({ ...f.state, busy: false, streamPreview: '' }); assert.equal(preview.hidden, true);
+    assert.equal(preview.hidden, false); assert.doesNotMatch(preview.textContent, /两人初|slices/);
+    assert.match(preview.textContent, /正在整理/);
+    // 一条切片成形才显示一条。
+    f.render({ ...f.state, busy: true, streamPreview: '…', streamSlices: [{ start: 1, end: 2, title: '初见', text: '两人在桥边初见。' }] });
+    assert.match(preview.textContent, /已成 1 片/); assert.match(preview.textContent, /第 0–1 层 · 初见/); assert.match(preview.textContent, /两人在桥边初见。/);
+    f.render({ ...f.state, busy: true, streamPreview: '…', streamSlices: [{ start: 1, end: 2, title: '初见', text: '两人在桥边初见。' }, { start: 3, end: 4, title: '同行', text: '两人结伴赶路。' }] });
+    assert.match(preview.textContent, /已成 2 片/); assert.equal(preview.querySelectorAll('.ym-stream-slice').length, 2);
+    f.render({ ...f.state, busy: false, streamPreview: '', streamSlices: [] }); assert.equal(preview.hidden, true);
 });
 
 test('API offers the three intended connections and no numeric scope controls can rewrite stored legacy choices', async t => {
@@ -1362,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.51 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.52 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1422,7 +1429,8 @@ test('stage expands inline, toggles off with the same icon, and explicitly submi
     icon.click();assert.equal(panel.hidden,true);assert.equal(icon.getAttribute('aria-expanded'),'false');
     icon.click();f.get('包含自定义切片').click();assert.equal(f.get('包含自定义切片').getAttribute('aria-pressed'),'true');
     f.get('开始阶段总结').click();await f.flush();assert.equal(f.calls.at(-1).payload.includeCustom,true);assert.equal(panel.hidden,true);
-    const add=f.get('插入自定义切片');assert.equal(add.parentNode,f.get('筛选记忆').parentNode);assert.equal(add.textContent,'');
+    const add=f.get('插入自定义切片'),toolbar=add.parentNode;assert.equal(f.get('筛选记忆').parentNode.parentNode,toolbar,'筛选下拉盖在图标按钮上，图标按钮在工具栏里');assert.equal(add.textContent,'');
+    assert.equal(toolbar.children[toolbar.children.indexOf(add)-1],f.get('多选删除'),'多选删除紧挨在插入自定义切片之前');
 });
 
 test('budget auto is blank with a concise placeholder and remains per-chat autosave',async t=>{
@@ -1482,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.51'); assert.equal(pkg.version, '0.8.17');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.52'); assert.equal(pkg.version, '0.8.18');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1511,4 +1519,86 @@ test('the 关联伴读 tool lists the linked books of this chat and unlinks one 
     assert.deepEqual(f.calls.at(-1), { type: 'companionClear', payload: { key: 'scope::two' } });
     buttons('更新关联')[0].click(); await f.flush();
     assert.deepEqual(f.calls.at(-1), { type: 'companionList', payload: { key: 'scope::one' } });
+});
+
+test('multi-select on the memory page: clicking cards selects them, and deleting takes two presses and goes one entry at a time', async t => {
+    const a = entry(), b = entry({ id: 'slice-b', source: { start: 4, end: 6 } }), c = entry({ id: 'slice-c', source: { start: 7, end: 8 } });
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [a, b, c] } }); t.after(() => f.view.destroy());
+    f.get('记忆').click();
+    const toggle = f.get('多选删除'), list = f.all().find(node => node.className.split(/\s+/).includes('ym-list') && node.dataset.ymSelecting !== undefined);
+    const card = id => f.all().find(node => node.dataset.entryId === id), bar = f.all().find(node => node.className === 'ym-select-bar');
+    assert.equal(bar.hidden, true);
+    toggle.click();
+    assert.equal(toggle.getAttribute('aria-pressed'), 'true'); assert.equal(bar.hidden, false); assert.equal(list.dataset.ymSelecting, 'true');
+    // 多选时点卡片是「选中／取消」，不触发卡片里的按钮：事件被拦下。
+    const pick = id => list.emit('click', { target: card(id) });
+    const first = pick('slice-a'); assert.equal(first.defaultPrevented, true); assert.equal(first.stopped, true);
+    pick('slice-c'); pick('slice-b'); pick('slice-b');
+    assert.deepEqual(['slice-a', 'slice-b', 'slice-c'].map(id => card(id).dataset.ymSelected), ['true', 'false', 'true']);
+    assert.match(bar.textContent, /已选 2 条/);
+    const remove = f.all().find(node => node.tagName === 'BUTTON' && node.textContent === '删除所选');
+    remove.click(); await f.flush();
+    assert.deepEqual(f.calls, [], '第一下只是确认，不删除'); assert.equal(remove.textContent, '确认删除 2 条');
+    remove.click(); await f.flush();
+    assert.deepEqual(f.calls.map(call => [call.type, call.payload.entryId, call.payload.action]), [['entry', 'slice-a', 'delete'], ['entry', 'slice-c', 'delete']]);
+    assert.equal(toggle.getAttribute('aria-pressed'), 'false', '删完自动退出多选'); assert.equal(bar.hidden, true);
+    // 不在多选时，点列表不做任何事。
+    const idle = list.emit('click', { target: card('slice-b') }); assert.equal(idle.defaultPrevented, false);
+});
+
+test('the filter is an icon button with the native select laid over it, and it marks itself when a filter is on', t => {
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry()] } }); t.after(() => f.view.destroy());
+    const select = f.get('筛选记忆'), box = select.parentNode;
+    assert.ok(box.className.split(/\s+/).includes('ym-filter-box')); assert.equal(box.querySelector('.ym-icon').dataset.ymIcon ?? box.querySelector('.ym-icon').attrs['data-ym-icon'], 'filter');
+    assert.equal(box.dataset.active, 'false');
+    select.value = 'stage'; select.emit('change');
+    assert.equal(box.dataset.active, 'true');
+});
+
+test('the 管理 page lists the journal in Qianmu\'s log layout and asks twice before anything destructive', async t => {
+    const rows = [
+        { id: 'j2', at: Date.UTC(2026, 10, 19, 4, 5, 6), kind: 'round', status: 'blocked', chat: '聊天', reason: 'text-completion-boundary-unavailable', hiddenTo: 23, waitMs: 180 },
+        { id: 'j1', at: Date.UTC(2026, 10, 19, 4, 0, 0), kind: 'summary', status: 'success', chat: '聊天', range: { start: 1, end: 10 }, manual: true, batch: '1/3', durationMs: 4200,
+            raw: '{"slices":[…]}', slices: [{ start: 1, end: 6, title: '初见' }, { start: 7, end: 10, title: '同行' }] },
+    ];
+    let cleared = 0; const listeners = new Set();
+    const journal = { list: () => rows.map(row => ({ ...row })), clear() { cleared++; rows.length = 0; for (const fn of listeners) fn(); }, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
+    const mine = entry({ id: 'mine', kind: 'manual', source: null, placement: { fromFloor: 2 } }), gone = entry({ id: 'old', status: 'deleted' });
+    const files = [{ name: 'chat-a.json', binding: { avatar: '角色.png', file: '聊天' }, bytes: 20480, updated: Date.UTC(2026, 10, 18), revision: 5, slices: 3, stages: 1, custom: 0, sourceExists: true },
+        { name: 'chat-b.json', binding: { avatar: '角色.png', file: '已删的聊天' }, bytes: 4096, updated: Date.UTC(2026, 10, 1), revision: 2, slices: 2, stages: 0, custom: 0, sourceExists: false }];
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry(), mine, gone] }, manage: { items: files, loading: false, error: '' } }, undefined, { journal });
+    t.after(() => f.view.destroy());
+    f.get('管理').click(); await f.flush();
+    assert.deepEqual(f.calls.map(call => call.type), ['manageList'], '第一次翻到这一页才读文件列表');
+    const page = f.all().find(node => node.dataset.page === 'manage'); assert.equal(page.hidden, false);
+    // 日志：一条一行可展开，状态点、来源标签、详情平铺。
+    const logs = page.querySelectorAll('.ym-log-entry'); assert.equal(logs.length, 2);
+    assert.match(logs[1].textContent, /切片总结 · 第 0–9 层/); assert.match(logs[1].textContent, /用时 4\.2 秒/); assert.match(logs[1].textContent, /2 片/); assert.match(logs[1].textContent, /手动 1\/3/);
+    assert.match(logs[1].textContent, /第 0–5 层 · 初见/); assert.equal(logs[1].querySelector('.ym-term').textContent, '{"slices":[…]}');
+    assert.ok(logs[1].querySelector('.ym-log-status').className.includes('success'));
+    assert.match(logs[0].textContent, /生成 · 未带记忆/); assert.match(logs[0].textContent, /隐藏到第 22 层/); assert.match(logs[0].textContent, /Chat Completion/);
+    // 记忆文件：当前聊天不给删除按钮；原聊天不存在的标出来，并可一键清理。
+    const fileRows = page.querySelectorAll('.ym-manage-file'); assert.equal(fileRows.length, 2);
+    assert.match(fileRows[0].textContent, /当前/); assert.equal(fileRows[0].querySelector('button'), null);
+    assert.match(fileRows[1].textContent, /原聊天不存在/); assert.match(page.textContent, /2 个聊天 · 共 24 KB/);
+    const orphan = f.all().find(node => node.tagName === 'BUTTON' && /清理原聊天已不存在的（1 个）/.test(node.textContent));
+    orphan.click(); await f.flush(); assert.equal(f.calls.length, 1, '第一下只是确认');
+    assert.equal(orphan.textContent, '确认清理');
+    orphan.click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'manageDelete', payload: { items: [files[1]] } });
+    // 当前聊天的清理：四项，各自两下确认。
+    assert.match(page.textContent, /2 条记忆 · 1 条旧记录/);
+    const clears = page.querySelectorAll('.ym-manage-row');
+    assert.deepEqual(clears.map(node => node.children[0].textContent), ['全部记忆', '全部记忆，保留自定义切片', '已删除与被替换的旧记录', '本机记录与向量缓存']);
+    assert.equal(clears[1].hidden, false);
+    const wipe = clears[0].querySelector('button'); wipe.click(); await f.flush(); assert.equal(f.calls.length, 2);
+    wipe.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all' } });
+    const keep = clears[1].querySelector('button'); keep.click(); keep.click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all', keepManual: true } });
+    // 没有自定义切片时不显示「保留自定义切片」那一行。
+    f.render({ document: { ...f.state.document, entries: [entry()] } });
+    assert.equal(page.querySelectorAll('.ym-manage-row')[1].hidden, true);
+    // 清空日志同样两下。
+    const clearLog = f.get('清空日志'); clearLog.click(); assert.equal(cleared, 0); clearLog.click(); await f.flush(); assert.equal(cleared, 1);
+    assert.match(page.querySelector('.ym-log-list').textContent, /暂无日志/);
 });
