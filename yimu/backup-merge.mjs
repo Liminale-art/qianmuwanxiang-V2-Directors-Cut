@@ -1,7 +1,7 @@
 // A package can add memory, not take over this account's settings or replay operations.
 // Source identity/mapping and the atomic write are the store's responsibility.
 import {createHash} from 'node:crypto';
-import {bindingKey, failure, validateDocument, pruneDeletedEntries} from './contract.mjs';
+import {bindingKey, failure, validateDocument, pruneDeletedEntries, OBSERVATION_LIMIT} from './contract.mjs';
 import {invalidateDependentStages} from './stage-contract.mjs';
 import {invalidateDependentExcerpts} from './recall-contract.mjs';
 import {normalizeEntryOrder} from './timeline.mjs';
@@ -128,6 +128,12 @@ export function mergeBackupDocument(current, incoming, {operationId, packageId} 
     document.entryOrder = [...previousOrder, ...appended];
     // All non-memory fields, including settings, enablement, companion and
     // initialRange, originated in receiver and are deliberately left untouched.
+    // 痕迹按标识并进来：已有的不动，新的接在后面；超出上限丢最旧的。
+    if (imported.observations?.length) {
+        const have = new Set((document.observations || []).map(item => item.id));
+        const extra = imported.observations.filter(item => !have.has(item.id));
+        if (extra.length) document.observations = [...(document.observations || []), ...structuredClone(extra)].slice(-OBSERVATION_LIMIT);
+    }
     if (same(document, receiver)) return {document: receiver, outcome: 'duplicate', counts};
     pruneDeletedEntries(document);
     invalidateDependentStages(document);

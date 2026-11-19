@@ -126,6 +126,7 @@ export function createHost({
             binding,
             messages: snapshotMessages(ctx.chat),
             name: text(ctx.characters?.[ctx.characterId]?.name || ctx.name2),
+            userName: text(ctx.name1),
             avatarUrl: typeof ctx.getThumbnailUrl === 'function' ? ctx.getThumbnailUrl('avatar', binding.avatar)
                 : `/thumbnail?type=avatar&file=${encodeURIComponent(binding.avatar)}`,
             mainApi: text(ctx.mainApi),

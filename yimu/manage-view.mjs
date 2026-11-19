@@ -150,6 +150,10 @@ export function mountManageView({ document = globalThis.document, journal = null
                 detail.append(cap('结果'));
                 for (const slice of item.slices) detail.append(el('p', 'ym-log-text', `${floors(slice)}${slice.title ? ` · ${slice.title}` : ''}`));
             }
+            if (Array.isArray(item.observations) && item.observations.length) {
+                detail.append(cap('留意到'));
+                for (const seen of item.observations) detail.append(el('p', 'ym-log-text', `${seen.about}：${seen.text}（第 ${shownFloor(seen.floor)} 层）`));
+            }
             if (item.raw) { detail.append(cap(item.status === 'loading' ? '模型返回（接收中）' : '模型返回'), term(item.raw)); }
         }
         if (item.error) { detail.append(cap('未完成'), el('p', 'ym-log-text ym-log-error', item.error)); }

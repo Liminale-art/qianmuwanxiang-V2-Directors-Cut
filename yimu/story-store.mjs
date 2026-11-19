@@ -158,6 +158,9 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         document.initialRange = {start: 1, end: value.bridgeCount, total: value.bridgeCount};
         document.lineage = {sourceBinding: clone(source), cutoff: value.cutoff, offset: value.offset, bridgeCount: value.bridgeCount, bridgeHashes: [...prepared.bridgeHashes]};
         document.entryOrder = normalizeEntryOrder(prepared.document).flatMap(id => ids.has(id) ? [ids.get(id)] : boundaryOrder.get(id) || []);
+        // 痕迹随故事续接带过去：只带续接点之前的（之后的剧情在新聊天里不存在）。
+        const carried = (prepared.document.observations || []).filter(item => item.floor <= value.cutoff);
+        if (carried.length) document.observations = clone(carried);
         document.entryOrder = normalizeEntryOrder(document);
         document.creation = {id: operation.id, requestHash, planId: value.planId, status: 'pending',
             sourceFingerprint: value.sourceFingerprint, sourceRevision: value.sourceRevision, defaultsRevision: value.defaultsRevision};

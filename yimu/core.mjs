@@ -347,7 +347,13 @@ function mergeScenes(a, b) {
         ...(a?.characters?.length || b?.characters?.length ? { characters: [...new Set([...(a?.characters || []), ...(b?.characters || [])])] } : {}) };
 }
 
-export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [] } = {}) {
+/** 痕迹的输出协议（用户 2026-11-19 审定）。{{char}}／{{user}} 在发送前换成实际名字；没有角色名时不要痕迹。 */
+export const OBSERVATION_PROTOCOL = '另外返回 "traces"：0 到 3 条，记 {{char}} 在这段正文里留意到的、关于 {{user}} 或其他角色的事——习惯、偏好、在意的东西、反复出现的反应。每条一句话，以 {{char}} 的第一人称写，写明是关于谁；只写正文里看得见的，不推测原因、不下结论；没有值得记的就返回空数组。格式：{"about":"人名","text":"……","floor":依据所在楼层整数}。';
+export function observationProtocol(names) {
+    const char = String(names?.char || '').trim(), user = String(names?.user || '').trim() || '用户';
+    return char ? OBSERVATION_PROTOCOL.replaceAll('{{char}}', char).replaceAll('{{user}}', user) : '';
+}
+export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [], names = null } = {}) {
     const source = messages.slice(batch.start - 1, batch.end).map((message, i) => ({
         floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
     }));
@@ -357,7 +363,7 @@ slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界
 切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。${Number.isSafeInteger(settings.summarySlices) && settings.summarySlices > 0 ? `本次最多返回 ${settings.summarySlices} 片。` : ''}
 ${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
-${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}`,
+${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}${observationProtocol(names) ? `\n${observationProtocol(names)}` : ''}`,
         data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}`,
     });
 }

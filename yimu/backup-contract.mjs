@@ -1,6 +1,6 @@
 // Data-only portable format. A package is not authority to adopt an existing
 // local file, activate a companion link, or replay another device's operations.
-import {SCHEMA, createDocument, validateDocument, validateSettings, normalizeBinding, bindingKey, validateDiscardedSources} from './contract.mjs';
+import {SCHEMA, createDocument, validateDocument, validateSettings, normalizeBinding, bindingKey, validateDiscardedSources, validateObservations} from './contract.mjs';
 import {validateOrigin, validateLineage} from './story-contract.mjs';
 import {validateStageSource} from './stage-contract.mjs';
 import {validateExcerpt} from './recall-contract.mjs';
@@ -123,6 +123,7 @@ export function portableDocument(value) {
     result.entryOrder=normalizeEntryOrder({...result,...(value.entryOrder!==undefined?{entryOrder:value.entryOrder}:{})});
     if(value.lineage!=null)result.lineage=validateLineage(value.lineage);
     const archived=companionArchive(value);if(archived.length)result.archivedCompanion=archived;
+    if(Array.isArray(value.observations)&&value.observations.length)result.observations=validateObservations(value.observations);
     // Validate cross-entry identity without retaining compatibility/runtime extras.
     validateDocument({...result,operations:[],receipts:{}});
     return result;
@@ -235,5 +236,6 @@ export function restoreBackupDocument(value,{binding,mappings={}}={}) {
     });
     document.entryOrder=[...portable.entryOrder];
     if(portable.archivedCompanion)document.archivedCompanion=structuredClone(portable.archivedCompanion);
+    if(portable.observations)document.observations=structuredClone(portable.observations);
     return {document:validateDocument(document),warnings};
 }

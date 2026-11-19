@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.57';
-export const SERVICE_VERSION = '0.8.22';
+export const FRONTEND_VERSION = '0.8.58';
+export const SERVICE_VERSION = '0.8.23';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -119,6 +119,39 @@ function validateTemporalFields(entry) {
         requireThat(['active', 'ended', 'uncertain'].includes(entry.factStatus), 'factStatus 必须为 active/ended/uncertain');
     }
 }
+// 观察日记的原料「痕迹」：每次切片总结顺带记下的一句「看到了什么」。只存不注入；
+// 同一件事在不同日子反复出现，才会在观察日记里凝成印象。（字段叫 observations，
+// 以免和清理范围里的 traces——已删除与被替换的旧记录——混淆。）
+export const OBSERVATION_LIMIT = 1000;
+const OBSERVATION_BATCH = 3;
+function validateObservation(value) {
+    requireThat(value && typeof value === 'object' && !Array.isArray(value), '痕迹格式无效');
+    const about = typeof value.about === 'string' ? value.about.trim() : '', text = typeof value.text === 'string' ? value.text.trim() : '';
+    requireThat(about && about.length <= 120 && text && text.length <= 300, '痕迹内容无效');
+    requireThat(Number.isSafeInteger(value.floor) && value.floor >= 1 && Number.isSafeInteger(value.at) && value.at >= 0, '痕迹的依据无效');
+    const result = { id: identifier(value.id), about, text, floor: value.floor, at: value.at };
+    if (value.date !== undefined && value.date !== '') { requireThat(typeof value.date === 'string' && value.date.length <= 60, '痕迹的日期无效'); result.date = value.date.trim(); }
+    return result;
+}
+export function validateObservations(value) {
+    requireThat(Array.isArray(value) && value.length <= OBSERVATION_LIMIT, '痕迹数量无效');
+    const ids = new Set();
+    return value.map(item => { const result = validateObservation(item); requireThat(!ids.has(result.id), '痕迹标识重复'); ids.add(result.id); return result; });
+}
+/** 从模型返回里取痕迹：格式不对的逐条丢掉，从不因为它让整次总结失败。 */
+export function parseObservations(response, { start = 1, end = Infinity } = {}) {
+    let parsed;
+    try { parsed = JSON.parse(String(response || '').trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1')); } catch { return []; }
+    if (!Array.isArray(parsed?.traces)) return [];
+    const seen = new Set();
+    return parsed.traces.flatMap(item => {
+        const about = typeof item?.about === 'string' ? item.about.trim().slice(0, 120) : '', text = typeof item?.text === 'string' ? item.text.trim().slice(0, 300) : '';
+        const floor = Number.isSafeInteger(item?.floor) && item.floor >= start && item.floor <= end ? item.floor : null;
+        if (!about || !text || floor === null || seen.has(`${about}\n${text}`)) return [];
+        seen.add(`${about}\n${text}`);
+        return [{ about, text, floor }];
+    }).slice(0, OBSERVATION_BATCH);
+}
 export function validateDocument(raw) {
     requireThat([1, 2, 3, 4, 5, 6, 7, SCHEMA].includes(raw?.schema) && Number.isSafeInteger(raw.revision) && raw.revision >= 0 && Number.isSafeInteger(raw.epoch) && raw.epoch >= 0 && Number.isSafeInteger(raw.configRevision) && raw.configRevision >= 0 && typeof raw.enabled === 'boolean' && Array.isArray(raw.entries) && Array.isArray(raw.operations), '忆幕资料格式损坏，已停止写入');
     if (raw.schema !== SCHEMA) raw = {...clone(raw), schema: SCHEMA, autoSummary: raw.schema < 6 ? raw.enabled : raw.autoSummary};
@@ -128,6 +161,7 @@ export function validateDocument(raw) {
     if (raw.lineage) raw.lineage = validateLineage(raw.lineage);
     if (raw.creation) validateCreation(raw.creation);
     if (raw.companion) raw.companion = validateCompanion(raw.companion);
+    if (raw.observations !== undefined) raw.observations = validateObservations(raw.observations);
     const ids = new Set();
     for (const entry of raw.entries) {
         identifier(entry.id); requireThat(!ids.has(entry.id), '记忆条目标识重复'); ids.add(entry.id);
@@ -426,6 +460,17 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             edited: value.kind === 'manual',
             history: [], conflicts: [], candidate: null });
         insertEntryOrder(doc, value, Object.hasOwn(op, 'afterId') ? op.afterId : op.entry.afterId);
+    } else if (op.type === 'observe') {
+        // 记下一批痕迹。同一段楼层重新总结时，旧的那批痕迹由新的一批替换，不会越记越多。
+        requireThat(Array.isArray(op.items) && op.items.length <= OBSERVATION_BATCH, '痕迹数量无效');
+        requireThat(op.range && Number.isSafeInteger(op.range.start) && op.range.start >= 1 && Number.isSafeInteger(op.range.end) && op.range.end >= op.range.start, '痕迹范围无效');
+        requireThat(Number.isSafeInteger(op.at) && op.at >= 0, '痕迹的记录时间无效');
+        const kept = (doc.observations || []).filter(item => item.floor < op.range.start || item.floor > op.range.end);
+        const added = op.items.map((item, index) => {
+            requireThat(Number.isSafeInteger(item?.floor) && item.floor >= op.range.start && item.floor <= op.range.end, '痕迹的依据不在本次总结范围内');
+            return validateObservation({ ...item, id: `${id}_${index}`.slice(0, 100), at: op.at });
+        });
+        doc.observations = [...kept, ...added].slice(-OBSERVATION_LIMIT);
     } else if (op.type === 'adopt') {
         // 把另一份记忆文件（别的聊天、或原文对不上的备份）带进当前聊天。
         // 那些记忆描述的不是这个聊天的楼层，所以一律落成自定义切片：照常注入，
@@ -448,6 +493,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         requireThat(['all', 'traces'].includes(op.scope), '清理范围无效');
         requireThat(op.expectedRevision === doc.revision, '记忆已在别处变化，请刷新后再清理');
         if (op.scope === 'all') {
+            delete doc.observations; // 痕迹跟着记忆一起清
             const kept = op.keepManual === true ? doc.entries.filter(entry => entry.kind === 'manual' && entry.status !== 'deleted' && !entry.origin) : [];
             // 留下的自定义切片不能再指向已清掉的条目。
             for (const entry of kept) for (const scene of entry.scenes || []) if (scene.evidence?.inheritedFrom) delete scene.evidence.inheritedFrom;

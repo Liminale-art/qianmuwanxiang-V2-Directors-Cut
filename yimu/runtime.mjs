@@ -1,4 +1,4 @@
-import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches, parseObservations } from './contract.mjs';
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, summaryCoverage } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
@@ -542,7 +542,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 // Keyword/vector candidates are always discovered for the check chain; only
                 // source recall turns them into a requestable catalog in the summary prompt.
                 let catalog = settings.recall === false ? [] : candidates;
-                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext });
+                // 痕迹（观察日记的原料）跟着切片总结一起要；整段重做某一条时不要。
+                let names = batch.redo ? null : { char: snapshot.name, user: snapshot.userName };
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext, names });
                 // Optional historical hints may use only spare room. Source floors are never truncated.
                 if (!run.fitsPrompt(prompt) && catalog.length) {
                     candidates = []; catalog = [];
@@ -550,9 +552,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         state.retrieval = { ...state.retrieval, candidates: [], lastRun: { ...(state.retrieval.lastRun || {}), count: 0, at: Date.now(), fallback: '预算不足，沿用关键词路径但本轮未带入候选' } };
                         emit();
                     }
-                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext });
+                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names });
                 }
-                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings); }
+                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names }); }
+                // 痕迹是顺带要的：连接容量放不下时先让路，不能因为它让切片总结做不成。
+                if (!run.fitsPrompt(prompt) && names) { names = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
                 batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
                     manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length) });
@@ -596,13 +600,23 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         return;
                     }
                 }
+                // 痕迹单独存一笔：存不上只记进日志，切片已经入库，不受影响。同一段楼层重新总结时由新的一批替换旧的。
+                let observed = [];
+                if (names?.char && !controller.signal.aborted && !disposed && !localStops.has(key)) {
+                    try {
+                        const dateOf = floor => slices.find(slice => slice.source.start <= floor && slice.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date || '';
+                        observed = parseObservations(response, { start: batch.start, end: batch.end }).map(item => { const date = dateOf(item.floor); return date ? { ...item, date: date.slice(0, 60) } : item; });
+                        const stale = (jobDocument.observations || []).some(item => item.floor >= batch.start && item.floor <= batch.end);
+                        if (observed.length || stale) { const result = await change(binding, { id: id(), type: 'observe', items: observed, range: { start: batch.start, end: batch.end }, at: Date.now() }); jobDocument = result.document; }
+                    } catch (error) { observed = []; console.warn('[忆幕] 痕迹未存入：', error?.message || error); }
+                }
                 const request = parseRecallRequest(response, catalog);
                 if (request && !recallAttempted) {
                     recallAttempted = true; // At most one bounded extraction in this entire background run.
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
                 }
                 failedBatch = null; failedSource = null;
-                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })) }); batchLog = null;
+                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}) }); batchLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
