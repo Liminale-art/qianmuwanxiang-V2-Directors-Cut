@@ -544,31 +544,6 @@
     }
 }
 
-/* 楼层上的忆幕标记：只在上一轮确实替换了原文的楼层上出现，紧跟在角色名后。 */
-.ym-floor-mark {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    margin-inline-start: 5px;
-    padding: 1px 6px 1px 4px;
-    border-radius: 999px;
-    font-size: 10px;
-    line-height: 1.5;
-    letter-spacing: .04em;
-    color: var(--ym-accent, #8a9aa8);
-    background: color-mix(in srgb, var(--ym-accent, #8a9aa8) 12%, transparent);
-    vertical-align: middle;
-    user-select: none;
-    cursor: help;
-}
-.ym-floor-mark-glyph { width: 11px; height: 11px; flex: 0 0 11px; opacity: .9; }
-.ym-floor-mark-text { font-family: var(--qm-interface-font, var(--mainFontFamily, inherit)); }
-.ym-floor-mark[hidden] { display: none !important; }
-@media (prefers-reduced-motion: no-preference) {
-    .ym-floor-mark { transition: opacity .18s ease; }
-}
-
-/* 本轮请求体积：用户看不到忆幕对聊天记录的改动，这张卡就是唯一的直观依据。 */
 .ym-request-size { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 9px 12px; }
 .ym-request-tokens { font-size: var(--ym-type-card-title); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 .ym-request-detail { color: var(--ym-muted); font-size: var(--ym-type-caption); }
