@@ -176,9 +176,13 @@
 .ym-setting-select > .ym-field > span { flex: 1 1 auto; min-width: 0; }
 .ym-dialog .ym-setting-select > .ym-field > select { flex: 0 1 var(--ym-setting-value-width); width: var(--ym-setting-value-width); min-width: 0; }
 .ym-dialog .ym-setting-select > .ym-field > select { text-align: center; text-align-last: center; }
-.ym-dialog .ym-budget-group { display: flex; align-items: center; gap: 10px; }
-.ym-budget-group > .ym-setting-title { flex: 1 1 auto; min-width: 0; }
-.ym-budget-group > .ym-settings-form { flex: 0 0 clamp(84px, 24vw, 140px); min-width: 0; }
+/* 记忆注入上限卡：标题独占一行，下面的设置行各占满宽。
+   旧写法把标题与控件并排、控件列只有 84–140px，第二项「每次最多注入切片」的标签被挤成竖排、
+   整张卡被撑变形；现在与其它分组一致，标题在上、设置行在下。 */
+.ym-settings-group.ym-budget-group { display: block; }
+.ym-budget-group > .ym-settings-form { display: grid; gap: 8px; }
+/* token 输入框前的单位标识，紧跟输入框、不参与弹性拉伸。 */
+.ym-setting-numeric > .ym-field > .ym-unit { flex: 0 0 auto; color: var(--ym-muted); font-size: var(--ym-type-caption); }
 .ym-setting-boolean { align-items: center; }
 .ym-setting-boolean > .ym-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ym-setting-boolean > .ym-field > span { min-width: 0; overflow-wrap: anywhere; }

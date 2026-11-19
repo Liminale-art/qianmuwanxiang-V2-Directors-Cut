@@ -406,7 +406,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         input.addEventListener('blur', () => { clearTimeout(settingsTimer); void saveChangedSettings(); });
         const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}`);
         const labelNode = field(label, input);
-        if (key === 'budget') labelNode.children[0].hidden = true;
+        // 「记忆注入上限」的输入框看不出单位：在框前标明 Token，其余数字项不加。
+        if (key === 'budget') { labelNode.children[0].hidden = true; labelNode.insertBefore(el('span', 'ym-unit', 'Token'), input); }
         if (SETTING_HINTS[key]) row.title = SETTING_HINTS[key];
         row.append(labelNode);
         settingGroups.get(key).append(row);
