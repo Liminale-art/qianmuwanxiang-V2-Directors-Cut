@@ -1,4 +1,4 @@
-// 「管理」页：日志、记忆备份、当前聊天的记忆清理、记忆文件。
+// 「管理」页：日志、当前聊天的记忆清理、记忆文件（含导入与导出）。
 // 这里只发起动作与显示结果；真正的清理、删除与记录都在 runtime／服务端。文案只说动作与结果。
 import { createYimuIcon } from './icons.mjs';
 import { shownFloor } from './contract.mjs';
@@ -19,7 +19,7 @@ const SCOPES = [
     { id: 'local', label: '本机记录与向量缓存', confirm: false, payload: ['clearLocal', {}] },
 ];
 
-export function mountManageView({ document = globalThis.document, journal = null, backupNode = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''] } = {}) {
+export function mountManageView({ document = globalThis.document, journal = null, backup = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''] } = {}) {
     if (!document?.createElement) throw new TypeError('忆幕管理页缺少文档容器');
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -65,9 +65,9 @@ export function mountManageView({ document = globalThis.document, journal = null
     const logCard = el('section', 'ym-card ym-settings-group ym-manage-log');
     const clearLog = iconAction('清空日志', 'trash', async () => { journal?.clear(); open.clear(); }, { needsConfirm: () => true });
     const logList = el('div', 'ym-log-list');
-    // 卡首固定一行：最近一轮最终发出的请求有多大（含 ST 自己的提示词、世界书、角色卡与忆幕带上的记忆）。
-    const requestLine = el('p', 'ym-log-request');
-    logCard.append(head('日志', clearLog), requestLine, logList);
+    // 标题同排右侧：最近一轮最终发出的请求有多大（含 ST 自己的提示词、世界书、角色卡与忆幕带上的记忆）。
+    const requestLine = el('span', 'ym-muted ym-manage-count ym-log-request');
+    logCard.append(head('日志', requestLine, clearLog), logList);
 
     // ---------- 当前聊天 ----------
     const chatCard = el('section', 'ym-card ym-settings-group ym-manage-chat');
@@ -99,13 +99,15 @@ export function mountManageView({ document = globalThis.document, journal = null
         await run('backupExportPack', { bindings: scoped().filter(item => !item.unreadable && picked.has(item.name)).map(item => item.binding) });
     });
     const fileList = el('div', 'ym-manage-list');
-    filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, selectToggle, reload), fileList);
+    // 导入与导出并在这张卡里：标题行两个小图标，导入的进度与「选目标」出现在列表上方。
+    const importFiles = iconAction('导入记忆文件', 'upload', async () => { backup?.importFiles(); });
+    const exportCurrent = iconAction('导出当前聊天的记忆', 'download', async () => { backup?.exportCurrent(); });
+    filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, importFiles, exportCurrent, selectToggle, reload));
+    if (backup?.node) filesCard.append(backup.node);
+    filesCard.append(fileList);
 
     const element = el('div', 'ym-manage');
-    // 记忆备份（导入／导出）跟在日志后面：它管的是文件，和下面两张卡是一类事。
-    const backupCard = el('section', 'ym-card ym-settings-group ym-manage-backup');
-    if (backupNode) backupCard.append(head('记忆备份'), backupNode);
-    element.append(logCard, ...(backupNode ? [backupCard] : []), chatCard, filesCard);
+    element.append(logCard, chatCard, filesCard);
 
     const cap = text => el('div', 'ym-log-cap', text);
     const term = text => el('pre', 'ym-term', text);
@@ -214,6 +216,8 @@ export function mountManageView({ document = globalThis.document, journal = null
         selectToggle.hidden = !selectable().length && !selecting;
         selectToggle.setAttribute('aria-pressed', String(selecting));
         selectAll.hidden = removePicked.hidden = exportPicked.hidden = !selecting;
+        importFiles.hidden = exportCurrent.hidden = selecting || !backup; reload.hidden = selecting;
+        importFiles.disabled = !backup?.canImport(); exportCurrent.disabled = !backup?.canExport();
         removePicked.disabled = exportPicked.disabled = !chosen;
         filesNote.textContent = selecting ? `已选 ${chosen} 个` : !loaded ? manage.loading ? '正在读取…' : manage.error || ''
             : manage.error || (items.length ? `${items.length} 个 · ${size(items.reduce((sum, item) => sum + (item.bytes || 0), 0))}` : '');

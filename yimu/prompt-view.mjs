@@ -33,7 +33,8 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     const savePreset=button('保存为预设','save',()=>{name.value='';nameRow.hidden=false;name.focus();});
     const removePreset=button('删除提示词预设','trash',()=>{
         const selected=record()?.config.presets.find(value=>value.id===preset.value);if(!selected)return;
-        ask(`删除预设「${selected.name}」？当前条目保留。`,()=>enqueue(value=>{value.presets=value.presets.filter(item=>item.id!==selected.id);if(value.selectedPreset===selected.id)value.selectedPreset='';return value;}));
+        // 直接删除，不再二次确认：删的只是预设这个存档，当前条目保留。
+        enqueue(value=>{value.presets=value.presets.filter(item=>item.id!==selected.id);if(value.selectedPreset===selected.id)value.selectedPreset='';return value;});
     });
     const download=button('导出','download',()=>{try{
         const data=exportPromptPreset(record().config);if(onExport)return onExport(data);
@@ -92,7 +93,8 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     function renderPresets(){
         const rec=record();if(!rec)return;
         const defaultActive=!rec.config.selectedPreset&&same(rec.config.groups,DEFAULT_PROMPTS.groups);
-        const items=[['','当前编辑'],[BUILTIN_PROMPT_PRESET,'内置默认'],...rec.config.presets.map(value=>[value.id,value.name])],signature=JSON.stringify(items);
+        // 下拉里只有「内置默认」与用户存的预设。条目被改过、又不属于任何预设时，下拉不选中任何一项（留空），这样再选「内置默认」仍能恢复。
+        const items=[[BUILTIN_PROMPT_PRESET,'内置默认'],...rec.config.presets.map(value=>[value.id,value.name])],signature=JSON.stringify(items);
         if(preset._ymOptions!==signature){preset._ymOptions=signature;preset.replaceChildren(...items.map(([id,text])=>{const option=el('option','',text);option.value=id;return option;}));}
         preset.value=rec.config.selectedPreset|| (defaultActive?BUILTIN_PROMPT_PRESET:'');
     }

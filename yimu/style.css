@@ -557,9 +557,12 @@
 .ym-pager { position: sticky; bottom: 0; z-index: 2; justify-self: center; display: flex; align-items: center; gap: 6px; padding: 5px 8px;
     border: 1px solid var(--ym-border); border-radius: 999px; background: var(--ym-surface); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
 .ym-pager[hidden] { display: none; }
-.ym-pager-input { width: 44px; height: 26px; min-height: 26px; padding: 0 4px; text-align: center; font-variant-numeric: tabular-nums; }
-.ym-pager-total { color: var(--ym-muted); font-size: var(--ym-type-caption); font-variant-numeric: tabular-nums; }
+.ym-dialog .ym-pager .ym-icon-button { width: 28px; height: 28px; min-height: 28px; flex: 0 0 28px; border: 0 !important; background: transparent; box-shadow: none; }
+.ym-pager-spot { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; white-space: nowrap; }
+.ym-dialog .ym-pager .ym-pager-input { width: 2.6em; min-width: 0; flex: 0 0 auto; height: 26px; min-height: 26px; padding: 0 2px; text-align: center; font-variant-numeric: tabular-nums; }
+.ym-pager-total { flex: 0 0 auto; white-space: nowrap; color: var(--ym-muted); font-size: var(--ym-type-caption); font-variant-numeric: tabular-nums; }
 .ym-pager-next .ym-icon { transform: scaleX(-1); }
+.ym-pager-top { margin-inline-start: 4px; }
 .ym-dialog .ym-button.ym-danger { color: var(--ym-danger); }
 .ym-dialog .ym-button[data-armed="true"] { color: var(--ym-on-accent); background: var(--ym-danger); border-color: var(--ym-danger); }
 .ym-manage-list { display: grid; gap: 8px; margin-top: 12px; min-width: 0; }
@@ -572,7 +575,7 @@
 .ym-manage-files > .ym-button { margin-top: 0; }
 
 /* 日志：与千幕日志同一套排版——一条一行可展开，左侧状态点，右侧来源标签，详情平铺。 */
-.ym-log-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ym-log-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-height: 360px; overflow: auto; overscroll-behavior: contain; }
 .ym-log-entry { border: 1px solid var(--ym-border); border-radius: 12px; background: color-mix(in srgb, var(--ym-card) 60%, transparent); overflow: hidden; }
 .ym-log-entry > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; cursor: pointer; list-style: none; font-size: .92em; }
 .ym-log-entry > summary::-webkit-details-marker { display: none; }
@@ -632,5 +635,14 @@
 /* 提示词条目：双击标题就地改名。 */
 .ym-prompt-title-input { flex: 1 1 0; min-width: 0; height: 26px; min-height: 26px; padding: 0 6px; font: inherit; }
 
-/* 日志卡首的本轮请求统计：固定一行，不随日志列表滚动。 */
-.ym-log-request { margin: 0; font-size: var(--ym-type-caption); color: var(--ym-muted); font-variant-numeric: tabular-nums; }
+/* 日志标题同排右侧的本轮请求统计。 */
+.ym-log-request { font-variant-numeric: tabular-nums; }
+
+/* 记忆备份并进「记忆文件」卡：导入进度与选目标排在列表上方，一条一行。 */
+.ym-manage-files > .ym-backup-compact { margin-top: 0; }
+.ym-backup-compact .ym-backup-list:not([hidden]), .ym-backup-compact .ym-backup-body > p:not([hidden]) { margin-top: 10px; }
+.ym-manage-files > .ym-backup-compact[hidden] { display: none; }
+.ym-backup-compact > .ym-backup-body { margin-top: 0; gap: 0; }
+.ym-backup-compact .ym-backup-section { margin-top: 0; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ym-border) 70%, transparent); border-radius: var(--ym-control-radius); gap: 6px; }
+.ym-backup-compact .ym-backup-section > h4 { margin: 0; font-size: var(--ym-type-label); font-weight: 400; overflow-wrap: anywhere; }
+.ym-backup-compact .ym-backup-section > p { margin: 0; font-size: var(--ym-type-caption); }

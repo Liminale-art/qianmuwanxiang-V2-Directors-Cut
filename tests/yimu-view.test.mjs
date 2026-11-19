@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.55 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.56 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.55'); assert.equal(pkg.version, '0.8.21');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.56'); assert.equal(pkg.version, '0.8.22');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1573,7 +1573,7 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.deepEqual(f.calls.map(call => call.type), ['manageList'], '第一次翻到这一页才读文件列表');
     const page = f.all().find(node => node.dataset.page === 'manage'); assert.equal(page.hidden, false);
     const cards = page.querySelector('.ym-manage').children;
-    assert.deepEqual(cards.map(node => node.querySelector('h3').textContent), ['日志', '记忆备份', '当前聊天', '记忆文件'], '日志是首卡，记忆备份紧跟其后');
+    assert.deepEqual(cards.map(node => node.querySelector('h3').textContent), ['日志', '当前聊天', '记忆文件'], '日志是首卡；记忆备份已并进记忆文件');
 
     // 日志：一条一行可展开，状态点、来源标签、详情平铺。
     const logs = page.querySelectorAll('.ym-log-entry'); assert.equal(logs.length, 2);
@@ -1582,7 +1582,7 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.match(logs[0].textContent, /生成 · 未带记忆/); assert.match(logs[0].textContent, /隐藏到第 22 层/);
 
     // 当前聊天：计数在标题同一行；清理是「下拉 + 一个图标」。
-    const chatCard = cards[2], count = chatCard.querySelector('.ym-manage-count');
+    const chatCard = cards[1], count = chatCard.querySelector('.ym-manage-count');
     assert.equal(count.textContent, '2 条记忆 · 1 条旧记录'); assert.equal(count.closest('.ym-manage-head'), chatCard.querySelector('.ym-manage-head'));
     const scope = f.get('清理范围'), clean = f.get('清理');
     assert.deepEqual(scope.children.map(option => option.textContent), ['全部记忆', '全部记忆，保留自定义切片', '已删除与被替换的旧记录', '本机记录与向量缓存']);
@@ -1600,7 +1600,7 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.deepEqual(scope.children.map(option => option.value), ['all', 'traces', 'local']);
 
     // 记忆文件：在聊天里只列这个角色的；原聊天不存在的收进折叠夹；条目里没有类型标签、文件名不加粗。
-    const fileCard = cards[3], list = fileCard.querySelector('.ym-manage-list');
+    const fileCard = cards[2], list = fileCard.querySelector('.ym-manage-list');
     assert.equal(fileCard.querySelector('.ym-manage-count').textContent, '3 个 · 28 KB');
     assert.deepEqual(list.children.map(node => node.tagName), ['DIV', 'DIV', 'DETAILS']);
     assert.deepEqual(list.querySelectorAll('.ym-manage-file-name').map(node => node.textContent), ['聊天', '另一段聊天', '已删的聊天']);
@@ -1616,10 +1616,20 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     list.children[1].querySelectorAll('button')[1].click(); await f.flush();
     assert.deepEqual(f.calls.at(-1), { type: 'backupExportFile', payload: { binding: files[1].binding } });
 
+    // 导入与导出并在这张卡的标题行：两个小图标，触发的是备份视图原有的流程；多选时让位。
+    const importIcon = f.get('导入记忆文件'), exportIcon = f.get('导出当前聊天的记忆');
+    assert.equal(importIcon.closest('.ym-manage-head'), fileCard.querySelector('.ym-manage-head')); assert.equal(importIcon.textContent, '');
+    assert.equal(f.get('导入记忆').closest('[hidden]') !== null, true, '原来的两个文字按钮不再显示');
+    assert.equal(fileCard.querySelector('.ym-backup-list').hidden, true, '没有进行中的导入时不占位置');
+    let picked = 0; f.get('忆幕备份文件').addEventListener('click', () => picked++);
+    importIcon.click(); await f.flush(); assert.equal(picked, 1);
+    exportIcon.click(); await f.flush(); assert.equal(f.document.querySelector('.ym-backup-question').open, true);
+    f.get('取消导出').click(); await f.flush();
     // 多选：点条目选中；全选只选得了能删的；删除两下确认。
     assert.equal(f.get('全选文件').hidden, true); assert.equal(f.get('删除所选文件').hidden, true);
     f.get('多选文件').click(); await f.flush();
     assert.equal(f.get('多选文件').getAttribute('aria-pressed'), 'true'); assert.equal(f.get('全选文件').hidden, false);
+    assert.equal(importIcon.hidden, true); assert.equal(exportIcon.hidden, true);
     const row = name => f.all().find(node => node.dataset.name === name);
     assert.equal(row('chat-a.json').dataset.selectable, 'false', '当前聊天不能选');
     assert.equal(row('chat-b.json').querySelector('button'), null, '多选时条目里不再放单独的按钮');
@@ -1708,7 +1718,8 @@ test('the overview opens with the chat info; the two switches are the second car
     f.get('管理').click();
     const line = f.document.querySelector('.ym-manage-log .ym-log-request');
     assert.equal(line.textContent, '本轮请求发送统计：---');
-    assert.equal(line.parentNode.children.indexOf(line), 1, '紧跟标题，在日志列表之前');
+    assert.equal(line.closest('.ym-manage-head'), f.document.querySelector('.ym-manage-log .ym-manage-head'), '与「日志」标题同排');
+    assert.ok(line.parentNode.className.includes('ym-manage-head-side'), '靠右');
     f.render({ requestSize: { tokens: 12345, method: 'estimate', messageCount: 9 } });
     assert.equal(line.textContent, '本轮请求发送统计：12,345 Token（预估）');
 });

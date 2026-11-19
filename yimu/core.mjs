@@ -520,9 +520,21 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     const currentBackground = new Set(candidates.filter(entry => entry.kind !== 'manual').sort((a, b) => end(b) - end(a)).slice(0, 2).map(e => e.id));
     // 阶段总结是常驻主干：不看相关度、不沉底，每轮都带（受注入上限约束）。细切片仍按相关度与遗忘门槛选。
     const backbone = entry => entry.kind === 'stage';
-    const ranked = candidates.filter(entry => backbone(entry) || detailGroup.has(entry.id) || warmEligible(entry)
+    const eligible = candidates.filter(entry => backbone(entry) || detailGroup.has(entry.id) || warmEligible(entry)
         && (protectedContent(entry) || currentBackground.has(entry.id) || relevance(entry) > 0));
-    ranked.sort((a, b) => Number(protectedContent(b)) - Number(protectedContent(a)) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
+    eligible.sort((a, b) => Number(protectedContent(b)) - Number(protectedContent(a)) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
+    // 「刚提过」冷却：一条细切片被带入后的若干层内，不再仅因沾边就又被带一次（推进主线时，相关的正文本来就近，
+    // 模型自己会接上，忆幕再重复带就成了过度回扣）。破例：正文在问「还记得吗」这类话，或它是这一轮最相关的那一条。
+    // 不受冷却的：阶段主干、人工内容、整组顶替阶段的细切片、最近两条背景。同一楼层重新生成时不算冷却（重随要带同样的记忆）。
+    const cooldown = Number.isSafeInteger(settings.recallCooldown) && settings.recallCooldown > 0 ? settings.recallCooldown : 0;
+    const coolable = entry => !backbone(entry) && !protectedContent(entry) && !detailGroup.has(entry.id) && !currentBackground.has(entry.id);
+    const mostRelevant = cooldown ? eligible.find(entry => coolable(entry) && relevance(entry) > 0) : null;
+    const cooling = entry => {
+        if (!cooldown || strongHint || entry === mostRelevant || !coolable(entry)) return false;
+        const last = recalledAt?.get?.(entry.id);
+        return Number.isFinite(last) && floorNow - last > 0 && floorNow - last <= cooldown;
+    };
+    const ranked = eligible.filter(entry => !cooling(entry));
     // 设了「每次最多注入切片」时，主干最多占一半名额（按相关度、再按新旧取），并排在细切片之前，
     // 不会被相关度更高的细切片挤掉；剩下的名额留给细切片。0 为不限条数，主干全带。
     const cap = Number.isSafeInteger(settings.maxSlices) && settings.maxSlices > 0 ? settings.maxSlices : 0;

@@ -1,5 +1,6 @@
 // Selection starts import immediately; only ambiguous targets need an inline choice.
-export function createBackupView({document = globalThis.document, onAction, onNotice = () => {}, pageMode = false} = {}) {
+// compact：并进管理页「记忆文件」卡时用——两个文字按钮不显示，由卡片标题行的小图标触发；这里只剩导入进度与选择。
+export function createBackupView({document = globalThis.document, onAction, onNotice = () => {}, pageMode = false, compact = false} = {}) {
     const el = (tag, cls = '', text) => {const n = document.createElement(tag); n.className = cls; if (text !== undefined) n.textContent = text; return n;};
     const button = (text, action) => {const n = el('button','ym-button',text); n.type = 'button'; n.setAttribute('aria-label',text); n.addEventListener('click',action); return n;};
     const node = el(pageMode ? 'section':'details', `ym-backup ${pageMode ? 'ym-subpage-section':'ym-card'}`);
@@ -37,6 +38,7 @@ export function createBackupView({document = globalThis.document, onAction, onNo
     const choose = button('导入记忆',()=>{if(alive&&!pick.disabled){pick.value='';pick.click();}});exportRow.append(exportButton,choose);
     const notice = el('p','ym-muted'); notice.setAttribute('aria-live','polite'); notice.hidden = true;
     const results = el('div','ym-backup-list'); results.setAttribute('aria-live','polite');
+    exportRow.hidden=compact;if(compact)node.className+=' ym-backup-compact';
     body.append(exportRow,question,pick,notice,results);
     async function invoke(type,payload={}) {
         if(!alive||working||state.backup?.busy)return;
@@ -121,5 +123,6 @@ export function createBackupView({document = globalThis.document, onAction, onNo
         if(observed&&!exportMode&&backup.error&&backup.error!==lastError&&!(backup.items||[]).some(item=>item.error))reportError(backup.error);
         lastStatus=backup.busy?'':backup.status||'';lastError=backup.error||'';observed=true;
     }
-    return{node,render(next){state=next||{};reportResults();update();},destroy(){alive=false;targets.clear();choices.clear();reported.clear();node.remove();}};
+    return{node,importFiles(){choose.click();},exportCurrent(){exportButton.click();},canImport:()=>!choose.disabled,canExport:()=>!exportButton.disabled,hasContent:()=>!notice.hidden||!results.hidden,
+        render(next){state=next||{};reportResults();update();},destroy(){alive=false;targets.clear();choices.clear();reported.clear();node.remove();}};
 }

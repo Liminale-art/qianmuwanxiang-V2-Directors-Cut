@@ -20,6 +20,7 @@ import { mountManageView } from './manage-view.mjs';
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
     ['maxSlices', '每次最多注入切片', 'number', 0],
+    ['recallCooldown', '重复带入间隔层数', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['triggerFloors', '自动总结触发楼层数', 'number', 0],
@@ -38,6 +39,7 @@ const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
     triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
+    recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
     maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
 const BLANK_ZERO = new Set(['budget']);
@@ -208,7 +210,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             shortcutToggle.checked = state.ui?.showShortcut === true;
         }
     });
-    const backup = createBackupView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
+    const backup = createBackupView({ document, pageMode: true, compact: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
     const retrieval = mountRetrievalView({ document, vectorApi: connectionApi, onNotice,
         onToggleVector: enabled => dispatch('settings', { global: false, values: { vectorEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }),
         onToggleRerank: enabled => dispatch('settings', { global: false, values: { rerankEnabled: enabled }, expectedRevision: state.document?.configRevision ?? 0 }) });
@@ -371,7 +373,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
     const settingGroups = new Map();
     for (const [name, title, keys] of [
-        ['budget', '记忆注入上限', ['budget', 'maxSlices']],
+        ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
@@ -537,7 +539,9 @@ export function createView({ onAction, connectionApi, journal = null, document =
     pageInput.addEventListener('change', () => goToPage(pageInput.value));
     pageInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault?.(); goToPage(pageInput.value); } });
     const pageTotal = el('span', 'ym-pager-total');
-    pager.append(pagePrev, pageInput, pageTotal, pageNext);
+    const pageTop = iconButton('回到顶部', 'up', () => { scroller.scrollTop = 0; }); pageTop.className += ' ym-small ym-pager-top';
+    const pageSpot = el('span', 'ym-pager-spot'); pageSpot.append(pageInput, pageTotal);
+    pager.append(pagePrev, pageSpot, pageNext, pageTop);
     const deleted = el('details', 'ym-card ym-memory ym-deleted');
     const deletedTitle = el('summary', 'ym-memory-head', '已删除的记忆'), deletedBody = el('div', 'ym-deleted-body');
     deleted.append(deletedTitle, deletedBody);
@@ -669,7 +673,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
     pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, list, noMatch, deleted, pager);
     pages.get('retrieval').append(retrieval.element);
-    const manage = mountManageView({ document, journal, describeSkip, backupNode: backup.node, onAction: (type, payload) => dispatch(type, payload) });
+    const manage = mountManageView({ document, journal, describeSkip, backup, onAction: (type, payload) => dispatch(type, payload) });
     pages.get('manage').append(manage.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);
