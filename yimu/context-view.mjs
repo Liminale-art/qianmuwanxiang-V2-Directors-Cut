@@ -48,7 +48,8 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
     const save = async () => {
         if (disposed) return;
         if (saving) { queued = true; return; }
-        const value = read(); saving = true; controls().forEach(node => { node.disabled = true; });
+        // 保存期间不把控件置灰：置灰会让正在输入的框失焦、整块闪一下。连续修改由 saving/queued 合并成顺序保存。
+        const value = read(); saving = true;
         try {
             const result = await onSave(clone(value));
             if (result === false) throw new Error('正文提取设置未保存');
@@ -56,8 +57,8 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         } catch (error) { onError(error); }
         finally {
             saving = false;
-            if (!disposed) controls().forEach(node => { node.disabled = Boolean(state.disabled); });
             if (queued && !disposed) { queued = false; void save(); }
+            else if (!disposed) applyDisabled();
         }
     };
     const removeRow = row => {
@@ -87,6 +88,12 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         for (const tag of value.blockedTags) addRow(tag, 'blocked');
         for (const tag of value.includedTags) addRow(tag, 'included');
     };
+    // 外层在自己这次保存进行时会报「忙」，那不是需要用户等待的状态：自己保存期间不置灰。
+    // 其他来源的禁用（读取中、别的操作在进行）照常生效。
+    const applyDisabled = () => {
+        const disabled = Boolean(state.disabled) && !saving && !queued;
+        controls().forEach(node => { if (node.disabled !== disabled) node.disabled = disabled; });
+    };
     strip.addEventListener('change', () => { void save(); });
     heading.addEventListener('click', () => {
         body.hidden = !body.hidden; heading.setAttribute('aria-expanded', String(!body.hidden)); card.setAttribute('data-open', String(!body.hidden));
@@ -95,12 +102,17 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         element: card,
         render(next = {}) {
             state = next; const value = normalizeContextRules(next.settings?.contextRules || next.contextRules);
-            const signature = JSON.stringify([value, Boolean(next.disabled)]); if (signature === last) return; last = signature;
-            if (document.activeElement !== strip) strip.checked = value.stripComments;
-            const editing = [strip, ...rows.flatMap(item => [item.input, item.mode])].includes(document.activeElement);
-            if (!editing) renderRules(value);
-            controls().forEach(node => { node.disabled = Boolean(next.disabled); });
             card.hidden = false;
+            // 只有规则内容真的和界面上不一样时才重建各行；忙闲状态变化只切换可用性，不动节点。
+            // 原先每次状态变化（保存开始、保存结束、新值返回）都整块重建，编辑一个标签会连闪三次。
+            const signature = JSON.stringify(value);
+            if (signature !== last) {
+                last = signature;
+                const editing = [strip, ...rows.flatMap(item => [item.input, item.mode])].includes(document.activeElement);
+                if (document.activeElement !== strip) strip.checked = value.stripComments;
+                if (!editing && !saving && !queued && JSON.stringify(read()) !== signature) renderRules(value);
+            }
+            applyDisabled();
         },
         destroy() { disposed = true; card.remove(); },
     };

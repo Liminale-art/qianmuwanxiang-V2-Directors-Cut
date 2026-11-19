@@ -33,14 +33,15 @@ test('usage arriving in several stream events is merged, later parts do not eras
   assert.equal(modelCacheText(done.usage), '↓ 90%（90 / 100）');
 });
 
-test('Yimu carries the same reader, and both surfaces show the readout', async () => {
+test('Yimu carries the same reader; Qianmu shows the readout, Yimu keeps it out of its panel for now', async () => {
   const usage = { prompt_tokens: 2000, prompt_tokens_details: { cached_tokens: 500 } };
   assert.equal(yimu.modelCacheText(usage), modelCacheText(usage));
   const read = name => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
   const [entry, settings, view] = await Promise.all([read('index.js'), read('yimu/api-settings.mjs'), read('yimu/api-view.mjs')]);
   assert.match(entry, /modelCacheText\(log\.completion\?\.usage\) \? infoTag\(modelCacheText\(log\.completion\.usage\)\)/);
   assert.match(settings, /lastCache = modelCacheText\(reply\.usage\);/);
-  assert.match(view, /api\.lastCache\?\.\(\) \|\| ''/);
+  // 用户 2026-11-19：缓存命中是后移的开发项，各版块稳定前搁置——忆幕 API 页不显示「上次整理 · 缓存命中」；读数仍在采集，日后要显示时直接可用。
+  assert.doesNotMatch(view, /lastCache|上次整理/);
 });
 
 test('the reading assistant sends what stays the same first: no progress figure in the system prompt, the read range ahead of the chat history', async () => {

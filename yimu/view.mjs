@@ -275,9 +275,10 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     // 未总结区间只作为灰字占位，不写进输入框：打开面板时看一眼范围，真要总结自己填。
     summarizeStart.placeholder = summarizeEnd.placeholder = '待填';
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
-    const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
+    // 开始与暂停是同一个位置上的图标按钮（播放／暂停），并在「每批 N 层」那一组的末尾。
+    const summarizeSubmit = iconButton('开始总结', 'play', () => summarizeRangeForm.requestSubmit(), 'ym-primary ym-manual-run');
     // Pausing lets the running batch finish and save, then stops before the next one.
-    const summarizePause = button('暂停', () => dispatch('pauseManual', {}, summarizePause));
+    const summarizePause = iconButton('暂停', 'pause', () => dispatch('pauseManual', {}, summarizePause), 'ym-manual-run');
     summarizePause.hidden = true;
     // Layout: title with live progress, then the floor range and floors per batch as two
     // matching groups, then one full-width action (Start, or Pause while running).
@@ -286,14 +287,12 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     manualLabel.append(el('strong', '', '手动总结'));
     const rangeGroup = el('div', 'ym-manual-group ym-manual-floors');
     rangeGroup.append(el('span', '', '楼层'), summarizeStart, el('span', 'ym-range-separator', '—'), summarizeEnd);
-    const summarizeActions = el('div', 'ym-manual-actions');
-    summarizeActions.append(summarizeSubmit, summarizePause);
     // Floors per batch belong to the manual card only; automatic settings never shape it.
     const batchInput = el('input', 'ym-range-input');
     batchInput.type = 'number'; batchInput.min = '1'; batchInput.max = String(MANUAL_BATCH_LIMIT); batchInput.step = '1'; batchInput.required = true;
     batchInput.setAttribute('aria-label', '手动总结每批层数'); batchInput.value = String(MANUAL_BATCH_FLOORS);
     const batchGroup = el('div', 'ym-manual-group ym-manual-batch');
-    batchGroup.append(el('span', '', '每批'), batchInput, el('span', '', '层'));
+    batchGroup.append(el('span', '', '每批'), batchInput, el('span', '', '层'), summarizeSubmit, summarizePause);
     const batchProgress = el('span', 'ym-muted ym-manual-progress'); batchProgress.setAttribute('role', 'status');
     manualHead.append(manualLabel, batchProgress);
     const manualFields = el('div', 'ym-manual-fields');
@@ -316,7 +315,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         summarizeNotice.hidden = false;
     }, 'ym-small');
     backfillButton.hidden = true;
-    summarizeRangeForm.append(manualHead, manualFields, summarizeActions, summarizeNotice, backfillButton);
+    summarizeRangeForm.append(manualHead, manualFields, summarizeNotice, backfillButton);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
@@ -350,8 +349,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         pendingRangeKey = key;
         const suggested = manualRangeDefault(state.document, messages, state.invalidSourceIds || []);
         pendingRange = suggested && !suggested.complete ? suggested : null;
-        const text = pendingRange ? `${shownFloor(pendingRange.start)}–${shownFloor(pendingRange.end)}` : '';
-        summarizeStart.placeholder = summarizeEnd.placeholder = text || '待填';
+        // 两个框各显示自己那一头的楼层号：「楼层 26 — 32」，而不是两边都写整段范围。
+        summarizeStart.placeholder = pendingRange ? String(shownFloor(pendingRange.start)) : '待填';
+        summarizeEnd.placeholder = pendingRange ? String(shownFloor(pendingRange.end)) : '待填';
         // 聊天被删层后填的值可能超出当前楼层：清空，让位给新的灰字范围。正在输入的框不动。
         const total = messages.length;
         const stale = input => input !== document.activeElement
@@ -751,7 +751,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         summarizeSubmit.hidden = Boolean(manualJob);
         summarizePause.hidden = !manualJob;
         if (manualJob && !pendingButtons.has(summarizePause)) summarizePause.disabled = manualJob.pausing === true;
-        summarizePause.textContent = manualJob?.pausing ? '暂停中' : '暂停';
+        summarizePause.title = manualJob?.pausing ? '本批完成后暂停' : '暂停';
         batchProgress.textContent = manualJob ? `已完成 ${manualJob.done}／${manualJob.total} 批${manualJob.pausing ? '，本批完成后暂停' : ''}` : '';
         if (document.activeElement !== batchInput && !pendingButtons.has(batchInput)) batchInput.value = String(savedBatchFloors());
         batchInput.disabled = !available || Boolean(manualJob);

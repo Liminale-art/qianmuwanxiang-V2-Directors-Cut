@@ -51,3 +51,18 @@ test('远端刷新不覆盖正在编辑的正文提取规则，禁用态仍保�
     f.view.render({ settings: { contextRules: { stripComments: false, blockedTags: ['aside'], includedTags: ['content'] } }, disabled: true });
     assert.equal(f.get('屏蔽标签').disabled, true); assert.equal(f.get('正文提取').hidden, false); f.view.destroy();
 });
+
+test('编辑一个标签时各行节点不被重建、也不在自己保存期间置灰（不再连闪三次）', async () => {
+    let release; const f = fixture(() => new Promise(resolve => { release = resolve; }));
+    f.byClass('ym-context-rule-add').click();
+    const input = f.get('屏蔽标签'), row = input.parentNode; input.value = 'aside'; input.emit('change');
+    await f.wait(() => f.saves.length === 1);
+    const same = () => { assert.equal(f.get('屏蔽标签'), input, '输入框还是原来那个节点'); assert.equal(input.parentNode, row); assert.equal(input.disabled, false); };
+    // 外层在这次保存期间依次报：忙 → 新值到达 → 不忙。三次状态变化都不应重建或置灰。
+    const saved = { contextRules: { stripComments: true, blockedTags: ['aside'], includedTags: ['content'] } };
+    f.view.render({ settings: {}, disabled: true }); same();
+    f.view.render({ settings: saved, disabled: true }); same();
+    release(true); await f.wait(() => f.get('屏蔽标签').disabled === false);
+    f.view.render({ settings: saved, disabled: false }); same();
+    assert.deepEqual(f.errors, []); f.view.destroy();
+});

@@ -255,7 +255,7 @@ test('unacknowledged invalid slices remain in coverage and statistics stay displ
     assert.ok(stats.children.every(node=>node.tagName==='DIV'));assert.equal(stats.querySelector('button'),null);
     stats.children[2].click();assert.deepEqual(f.calls,[]);
     assert.equal(f.get('手动总结开始楼层').value,''); assert.equal(f.get('手动总结结束楼层').value,'');
-    assert.equal(f.get('手动总结开始楼层').placeholder,'0–8');
+    assert.equal(f.get('手动总结开始楼层').placeholder, '0');
 });
 
 test('pending floor card keeps the kept-raw explanation on hover only', t => {
@@ -1210,14 +1210,14 @@ test('the unsummarized range is only a grey placeholder; the fields stay empty u
     t.after(() => f.view.destroy());
     const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
     assert.equal(start.value, ''); assert.equal(end.value, '');
-    assert.equal(start.placeholder, '3–8'); assert.equal(end.placeholder, '3–8');
+    assert.equal(start.placeholder, '3'); assert.equal(end.placeholder, '8');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(11) } });
-    assert.equal(start.value, ''); assert.equal(end.placeholder, '3–10');
+    assert.equal(start.value, ''); assert.equal(end.placeholder, '10');
     // A typed range is kept and the placeholder never overwrites it, even as the chat grows.
     start.value = '1'; end.value = '5';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(12) } });
     assert.equal(start.value, '1'); assert.equal(end.value, '5');
-    assert.equal(end.placeholder, '3–11');
+    assert.equal(end.placeholder, '11');
     assert.deepEqual(f.calls, []);
 });
 
@@ -1235,7 +1235,7 @@ test('submitting a manual range leaves the typed floors in place instead of rest
     finish(true); await f.flush();
     f.render({ document: { ...f.state.document, entries: [entry({ source: { start: 1, end: 10 } })] } });
     assert.equal(f.get('手动总结开始楼层').value, '0'); assert.equal(f.get('手动总结结束楼层').value, '9');
-    assert.equal(f.get('手动总结开始楼层').placeholder, '10–13');
+    assert.equal(f.get('手动总结开始楼层').placeholder, '10');
 });
 
 test('manual summary range follows deleted floors and only clears a stale typed value', t => {
@@ -1243,9 +1243,9 @@ test('manual summary range follows deleted floors and only clears a stale typed 
     const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
     t.after(() => f.view.destroy());
     const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
-    assert.equal(start.placeholder, '3–8');
+    assert.equal(start.placeholder, '3');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
-    assert.equal(start.placeholder, '3–6'); assert.equal(end.max, '6');
+    assert.equal(start.placeholder, '3'); assert.equal(end.max, '6');
     // A typed range that still fits is kept after a deletion.
     start.value = '1'; end.value = '4';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(6) } });
@@ -1253,9 +1253,9 @@ test('manual summary range follows deleted floors and only clears a stale typed 
     // Once the deletion leaves it out of range the fields are cleared again (back to the placeholder).
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(4) } });
     assert.equal(start.value, ''); assert.equal(end.value, '');
-    assert.equal(start.placeholder, '3–3');
+    assert.equal(start.placeholder, '3');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(8) } });
-    assert.equal(start.placeholder, '3–7');
+    assert.equal(start.placeholder, '3');
     f.render({ snapshot: { ...f.state.snapshot, messages: [] } });
     assert.equal(start.value, ''); assert.equal(end.value, '');
     assert.equal(end.placeholder, '待填', 'an empty chat has no range to offer');
@@ -1267,7 +1267,7 @@ test('a focused manual range field keeps whatever the user is typing', t => {
     const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
     const end = f.get('手动总结结束楼层'); end.focus(); end.value = '8';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
-    assert.equal(end.value, '8'); assert.equal(end.placeholder, '0–4');
+    assert.equal(end.value, '8'); assert.equal(end.placeholder, '4');
     f.document.activeElement = null; f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
     assert.equal(end.value, '8');
 });
@@ -1277,7 +1277,7 @@ test('an initially empty chat offers a placeholder once floors arrive and never 
     t.after(() => f.view.destroy());
     assert.equal(f.get('手动总结结束楼层').value, ''); assert.equal(f.get('手动总结结束楼层').placeholder, '待填');
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 8 }, () => ({ mes: '正文' })) } });
-    assert.equal(f.get('手动总结结束楼层').value, ''); assert.equal(f.get('手动总结结束楼层').placeholder, '0–7');
+    assert.equal(f.get('手动总结结束楼层').value, ''); assert.equal(f.get('手动总结结束楼层').placeholder, '7');
     f.get('手动总结结束楼层').value = '3';
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 10 }, () => ({ mes: '正文' })) } });
     assert.equal(f.get('手动总结结束楼层').value, '3'); assert.deepEqual(f.calls, []);
@@ -1362,7 +1362,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.49 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.50 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1482,7 +1482,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.49'); assert.equal(pkg.version, '0.8.15');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.50'); assert.equal(pkg.version, '0.8.16');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

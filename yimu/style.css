@@ -262,8 +262,8 @@
 .ym-manual-group { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; padding: 6px 8px; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); background: color-mix(in srgb, var(--ym-raised) 55%, transparent); }
 .ym-manual-group > span { flex: 0 0 auto; white-space: nowrap; color: var(--ym-muted); font-size: var(--ym-type-label); }
 .ym-dialog .ym-manual-group > input.ym-range-input { flex: 1 1 0; width: auto; max-width: 120px; min-width: 0; }
-.ym-manual-actions { display: grid; min-width: 0; }
-.ym-manual-actions > .ym-button { width: 100%; min-width: 0; }
+/* 开始／暂停是并在「每批 N 层」组末尾的图标按钮，不单独占一行。 */
+.ym-manual-group > .ym-manual-run { flex: 0 0 auto; }
 /* Narrow cards stack the two groups so four-digit floors are never clipped. */
 @container (max-width: 360px) { .ym-manual-fields { grid-template-columns: minmax(0, 1fr); } }
 .ym-stream-preview { display: grid; gap: 8px; padding: 12px 14px; }
@@ -326,7 +326,6 @@
 .ym-api-stream { flex: 0 0 auto; gap: 9px; font-size: var(--ym-type-body); }
 .ym-api-preset-row, .ym-api-preset-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ym-api-preset-row > select, .ym-api-preset-name > input { flex: 1 1 0; min-width: 0; }
-.ym-api-cache { margin: 2px 0 0; color: var(--ym-muted, currentColor); opacity: .78; font-size: 11px; line-height: 1.4; font-variant-numeric: tabular-nums; }
 .ym-api-params, .ym-api-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 .ym-api-params .ym-field > span { white-space: nowrap; }
 .ym-api-actions > .ym-button { min-width: 0; width: 100%; padding: 8px 5px; gap: 5px; line-height: 1.4; }

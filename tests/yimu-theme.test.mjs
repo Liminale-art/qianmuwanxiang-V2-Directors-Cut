@@ -278,7 +278,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
 });
 
 test('functional icons preserve Qianmu artwork, including the save-2 save glyph', async () => {
-    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', layers: 'stack' };
+    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', pause: 'pause', layers: 'stack' };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
     for (const [name, upstream] of Object.entries(names)) {
