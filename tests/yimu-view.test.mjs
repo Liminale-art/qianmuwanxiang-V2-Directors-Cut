@@ -476,11 +476,12 @@ test('stage grouping and invalidation do not detach an active fine editor mid-co
     assert.equal(f.get('忆幕').querySelector('.ym-list').children.length, 3);
 });
 
-test('stage automatic mode is initially off and deliberately toggling it autosaves the current chat', async t => {
+test('stage automatic mode is on by default and toggling it autosaves the current chat', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const toggle = f.get('自动阶段总结'); assert.equal(toggle.checked, false); assert.equal(f.calls.length, 0);
-    toggle.checked = true; toggle.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: true }, expectedRevision: 0 });
+    // 默认打开：老切片要靠阶段总结并粗，token 才会停止线性增长（用户 2026-11-19 确认）。
+    const toggle = f.get('自动阶段总结'); assert.equal(toggle.checked, true); assert.equal(f.calls.length, 0);
+    toggle.checked = false; toggle.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: false }, expectedRevision: 0 });
 });
 
 test('controlled recall uses one default-on trial switch and saves the existing setting key', async t => {
@@ -560,9 +561,9 @@ test('excerpt deletion, exclusion and undo retain ordinary entry actions without
 test('stage basis switches between token and slice units without replacing focused select nodes or resetting the chosen mode', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const basis = f.get('阶段整理方式'), threshold = f.get('阶段总结触发');
-    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'slices']); assert.equal(threshold.value, '65000');
+    assert.deepEqual(basis.children.map(option => option.value), ['tokens', 'slices']); assert.equal(threshold.value, '20000');
     const options=[...basis.children];basis.focus();
-    for(const [value,limit] of [['slices',12],['tokens',65000]]){
+    for(const [value,limit] of [['slices',12],['tokens',20000]]){
         basis.value=value;basis.emit('change');assert.equal(threshold.value,String(limit));assert.equal(basis.value,value);
         const call=f.calls.at(-1);assert.deepEqual(call.payload.values,{stageThreshold:limit,stageBasis:value});
         f.render({document:{...f.state.document,configRevision:(f.state.document.configRevision||0)+1,settings:{...f.state.document.settings,...call.payload.values}}});
@@ -1361,7 +1362,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.44 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.45 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1481,7 +1482,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.44'); assert.equal(pkg.version, '0.8.14');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.45'); assert.equal(pkg.version, '0.8.14');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

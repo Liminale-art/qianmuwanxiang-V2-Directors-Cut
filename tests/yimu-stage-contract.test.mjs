@@ -24,7 +24,7 @@ test('current schema upgrades legacy data only in memory and preserves original 
     assert.equal(upgraded.schema, SCHEMA); assert.deepEqual(upgraded.entries, legacy.entries); assert.deepEqual(legacy, before);
     const old = {schema: 1, revision: 3, operations: [], receipts: {}, values: {recent: 9, trigger: 5000, batch: 6000, budget: 0, preference: '旧偏好', profileId: '', model: ''}};
     const defaults = validateDefaults(old);
-    assert.equal(defaults.schema, SCHEMA); assert.equal(defaults.values.recent, 9); assert.equal(defaults.values.stageAuto, false);
+    assert.equal(defaults.schema, SCHEMA); assert.equal(defaults.values.recent, 9); assert.equal(defaults.values.stageAuto, true, '阶段总结默认打开，老切片才会被并粗');
     assert.equal(old.schema, 1); assert.equal(old.values.stageAuto, undefined);
 });
 
@@ -107,7 +107,7 @@ test('manually edited stages receive redo candidates; changed parents invalidate
 test('deleting a stage retains fine summaries and settings stay single-basis and opt-in', () => {
     const doc = change(withStage(), {id: 'delete_stage', type: 'entry', entryId: 'stage_1', expectedRevision: 1, action: 'delete'});
     assert.ok(doc.entries.filter(entry => entry.kind === 'summary').every(entry => entry.status === 'active'));
-    const initial = createDefaults(); assert.equal(initial.values.stageAuto, false);
+    const initial = createDefaults(); assert.equal(initial.values.stageAuto, true);
     const saved = applyDefaultsOperation(initial, {id: 'stage_settings', expectedRevision: 0, values: {stageAuto: true, stageBasis: 'slices', stageThreshold: 12}}).defaults;
     assert.equal(saved.values.stageBasis, 'slices'); assert.equal(saved.values.stageThreshold, 12);
     assert.throws(() => applyDefaultsOperation(saved, {id: 'bad_basis', expectedRevision: 1, values: {stageBasis: ['tokens', 'floors']}}), /依据/);

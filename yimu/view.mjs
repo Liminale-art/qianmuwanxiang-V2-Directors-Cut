@@ -40,7 +40,7 @@ const SETTING_HINTS = {
 const BLANK_ZERO = new Set(['budget']);
 // 「每次最多注入切片」0 表示不限，按普通数字显示。
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
-const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
+const STAGE_THRESHOLDS = { tokens: 20000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
 // 「记忆调阅」里每条正文最多显示这么多字，超出只给一个跳到该条目的按钮。
 const USED_TEXT_LIMIT = 300;
