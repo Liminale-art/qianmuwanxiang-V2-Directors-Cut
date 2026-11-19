@@ -211,6 +211,8 @@
 .ym-fine-list { margin-top: 8px; }
 .ym-fine-list > .ym-card { background: transparent; }
 .ym-used-entry { border-top: 1px solid var(--ym-border); margin-top: 9px; padding-top: 9px; }
+.ym-used-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ym-used-head > strong { min-width: 0; overflow-wrap: anywhere; }
 .ym-story-body, .ym-story-plan, .ym-story-choices { display: grid; gap: 12px; min-width: 0; }
 .ym-story-body { margin-top: 12px; }
 .ym-story-choice { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--ym-border); min-width: 0; }

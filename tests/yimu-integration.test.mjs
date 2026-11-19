@@ -552,10 +552,14 @@ test('manual partial overlap requires visible expanded bounds, replaces whole au
     });
     await manualRange(f, 2, 4, {start: 1, end: 5});
     const after = f.controller.state.document.entries;
-    assert.equal(f.generated(), count + 2);
-    assert.deepEqual(after.map(e => [e.id, e.source.start, e.source.end]), before.map(e => [e.id, e.source.start, e.source.end]));
-    assert.equal(after[0].text, '明确重整后的完整切片。'); assert.equal(after[1].text, '明确重整后的完整切片。');
-    assert.deepEqual(after[2], before[2]);
+    // 一次请求重做 1–5 整段；这一范围内的两条自动切片被替换，范围外的 6—7 原样保留。
+    assert.equal(f.generated(), count + 1);
+    const active = after.filter(e => e.status === 'active' && e.source.start <= 5 && e.source.end >= 1);
+    assert.equal(active.length, 1);
+    assert.deepEqual([active[0].source.start, active[0].source.end], [1, 5]);
+    assert.equal(active[0].text, '明确重整后的完整切片。');
+    assert.equal(after.filter(e => e.status === 'deleted' && e.replacedBy).length, 2);
+    assert.deepEqual(after.find(e => e.id === before[2].id), before[2], '范围外的记忆一字未动');
 });
 
 test('manual overwrite keeps hand revisions as the active version and stores the generated result for a choice', async t => {

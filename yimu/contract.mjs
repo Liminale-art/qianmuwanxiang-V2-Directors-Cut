@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.43';
-export const SERVICE_VERSION = '0.8.13';
+export const FRONTEND_VERSION = '0.8.44';
+export const SERVICE_VERSION = '0.8.14';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -254,9 +254,26 @@ export function validateDiscardedSources(value) {
         return { id, revision: ref.revision, source: validateSource(ref.source) };
     });
 }
-function requireSummaryRange(document, submitted, discardedSources) {
+function requireSummaryRange(document, submitted, discardedSources, replaces) {
     const overlaps = document.entries.filter(entry => entry.kind === 'summary' && !entry.origin && entry.source
         && entry.source.start <= submitted.source.end && entry.source.end >= submitted.source.start);
+    if (replaces !== undefined) {
+        // 手动总结按「每批 N 层」切段：一批覆盖到的旧切片整组换掉。
+        // 每条都必须带着自己的修订号与来源，且只有落在本段范围内、未被人工改过的自动切片才允许换。
+        requireThat(Array.isArray(replaces) && replaces.length > 0, '待替换的记忆引用无效');
+        const ids = new Set();
+        for (const ref of replaces) {
+            requireThat(ref && typeof ref.id === 'string' && !ids.has(ref.id) && Number.isSafeInteger(ref.revision) && ref.revision > 0, '待替换的记忆引用无效');
+            ids.add(ref.id);
+            const entry = document.entries.find(item => item.id === ref.id && item.kind === 'summary');
+            requireThat(entry && entry.revision === ref.revision && !entry.edited && !entry.origin
+                && entry.source.start >= submitted.source.start && entry.source.end <= submitted.source.end, '此范围内的记忆已变化，请刷新后重试');
+        }
+        requireThat(overlaps.every(entry => ids.has(entry.id)), '所选范围含未列出的记忆，请刷新后重试');
+        submitted.replaces = replaces.map(ref => ({ id: ref.id, revision: ref.revision }));
+        if (discardedSources !== undefined) submitted.discardedSources = validateDiscardedSources(discardedSources);
+        return;
+    }
     if (discardedSources === undefined) {
         requireThat(!overlaps.length, '此来源已有记忆，请对已有条目重新总结');
         return;
@@ -280,6 +297,16 @@ function replaceStageOwners(document, submitted, replacements = []) {
         requireThat(previous && !ids.has(ref.id) && !previous.replacedBy && !previous.edited && !hasCustomParents(previous, document) && !['deleted', 'excluded'].includes(previous.status)
             && previous.source.parents.every(parent => parents.has(parent.id)), '已有阶段已变化或包含人工修订，请对该阶段单独重新总结');
         ids.add(ref.id);
+        revise(previous, { status: 'deleted', candidate: null, replacedBy: submitted.id });
+    }
+}
+function replaceSummaryOwners(document, submitted, replacements = []) {
+    if (!replacements?.length) return;
+    requireThat(submitted.kind === 'summary', '记忆替换范围无效');
+    for (const ref of replacements) {
+        const previous = document.entries.find(entry => entry.id === ref.id && entry.kind === 'summary' && entry.revision === ref.revision);
+        // 换掉的旧切片留一条删除记录（和阶段替换一致），这样它不会再被注入，也能被追溯。
+        if (!previous) continue;
         revise(previous, { status: 'deleted', candidate: null, replacedBy: submitted.id });
     }
 }
@@ -349,13 +376,13 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
     } else if (op.type === 'append') {
         const value = submittedEntry(op.entry, doc);
         if (doc.entries.some(e => e.id === value.id)) throw failure('此记忆条目已经存在', 409);
+        // 先按修订号校验本批要换掉的旧切片，再真正替换：替换会改 revision，校验必须在它之前。
+        if (value.kind === 'summary') requireSummaryRange(doc, value, op.discardedSources, op.replaces);
         replaceStageOwners(doc, value, op.replaceStages);
+        replaceSummaryOwners(doc, value, op.replaces);
         requireUnusedStageParents(doc, value);
         if (value.kind !== 'manual') {
             requireThat(doc.enabled && op.expectedEpoch === doc.epoch, '整理期间启用状态或设置已变化，本次结果未采用');
-            // Ordinary/automatic append still rejects all overlap. Only explicitly
-            // named, revision-checked purged sources can be manually summarized anew.
-            if (value.kind === 'summary') requireSummaryRange(doc, value, op.discardedSources);
             requireThat(!doc.lineage || value.source.start > doc.lineage.bridgeCount || value.kind === 'stage', '衔接原文不是新剧情，不重复整理');
         }
         doc.entries.push({ ...value, revision: 1, status: 'active',

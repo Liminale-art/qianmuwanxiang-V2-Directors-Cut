@@ -132,7 +132,7 @@ for (const range of [{ start: 1, end: 3 }, { start: 2, end: 2 }]) test(`explicit
     const coverage = summaryCoverage(renewed, messages, DEFAULTS);
     assert.equal(coverage.organizedFloors, range.end - range.start + 1); assert.equal(coverage.pendingFloors, 0);
     const replan = planManualRange(renewed, messages, DEFAULTS, range);
-    assert.equal(replan.batches[0].redo.id, 'fresh_summary', 'a retained guard does not prevent later deliberate edits to its new summary');
+    assert.deepEqual(replan.batches[0].replaces?.map(ref => ref.id), ['fresh_summary'], 'a retained guard does not prevent later deliberate edits to its new summary');
     const imported = mergeBackupDocument(renewed, f.oldBackup, { operationId: 'stale_after_regenerate', packageId: 'stale_old' });
     assert.equal(imported.outcome, 'duplicate'); assert.deepEqual(get(imported.document, 'range_old'), guard);
     assert.equal(get(imported.document, 'fresh_summary').text, '依据当前正文重新整理的新稿');

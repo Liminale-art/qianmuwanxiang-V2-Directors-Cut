@@ -254,7 +254,8 @@ test('unacknowledged invalid slices remain in coverage and statistics stay displ
     const stats=f.document.querySelector('.ym-stats');assert.equal(stats.children.length,3);
     assert.ok(stats.children.every(node=>node.tagName==='DIV'));assert.equal(stats.querySelector('button'),null);
     stats.children[2].click();assert.deepEqual(f.calls,[]);
-    assert.equal(f.get('手动总结开始楼层').value,'0'); assert.equal(f.get('手动总结结束楼层').value,'8');
+    assert.equal(f.get('手动总结开始楼层').value,''); assert.equal(f.get('手动总结结束楼层').value,'');
+    assert.equal(f.get('手动总结开始楼层').placeholder,'0–8');
 });
 
 test('pending floor card keeps the kept-raw explanation on hover only', t => {
@@ -276,6 +277,8 @@ test('history is organized from the manual card: floors per batch is its own sav
     perBatch.value = '3'; perBatch.emit('change'); await f.flush();
     assert.deepEqual(f.calls[0], {type: 'uiSettings', payload: {manualBatchFloors: 3}});
     f.render({ui: {showShortcut: false, manualBatchFloors: 3}});
+    // 范围不再预填：按用户真正要总结的楼层填写。
+    f.get('手动总结开始楼层').value = '0'; f.get('手动总结结束楼层').value = '8';
     assert.equal(perBatch.value, '3');
     f.get('开始总结').click(); await f.flush();
     assert.deepEqual(f.calls[1], {type: 'summarizeRange', payload: {range: {start: 1, end: 9}, expectedRange: {start: 1, end: 9}, batchFloors: 3}});
@@ -785,20 +788,34 @@ test('the recent request view uses saved entry snapshots, only labels a request 
     assert.doesNotMatch(f.get('展开记忆调阅').textContent,/token|134/);
     const used = f.get('忆幕').querySelector('.ym-last-used');
     assert.equal(used.open, false); assert.match(used.textContent, /请求当时的版本/); assert.doesNotMatch(used.textContent, /后来编辑的版本/);
-    assert.match(used.querySelector('p').title, /不代表模型已接收/); assert.match(used.textContent, /134 token（估算）/);
+    assert.match(used.textContent, /本次注入约 134 token/);
 });
 
-test('the recent request view reports verified raw replacement and conservative budget without altering its snapshot', t => {
+test('the recent request view keeps only the injected token total and never re-hydrates a newer version', t => {
     const lastUsed = { entries: [entry({ text: '请求核对时的记忆' })], tokens: 134, removedFloors: [1, 2, 3], recentFloors: [10, 11, 12, 13, 14],
         requestTokens: 1234, responseTokens: 2000, contextTokens: 8192 };
     const before = structuredClone(lastUsed), f = fixture({ lastUsed }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
-    assert.match(used.textContent, /替换原文 3 层 · 保留近期 5 层/);
-    assert.match(used.textContent, /请求保守估算 1234 \+ 回复预留 2000 \/ 上下文 8192 token/);
-    assert.match(used.querySelector('p').title, /不代表模型已接收/);
+    assert.match(used.textContent, /本次注入约 134 token/);
+    assert.doesNotMatch(used.textContent, /替换原文|保留近期|请求保守估算|回复预留|上下文/);
     f.render({ document: { enabled: true, settings: {}, entries: [entry({ text: '后续人工修改' })] } });
     assert.match(used.textContent, /请求核对时的记忆/); assert.doesNotMatch(used.textContent, /后续人工修改/);
     assert.deepEqual(lastUsed, before); assert.equal(f.calls.length, 0);
+});
+
+test('a long injected slice is cut at 300 characters and offers a jump to its own memory card', async t => {
+    const long = '长'.repeat(420);
+    const saved = entry({ id: 'slice-long', text: long });
+    const f = fixture({ lastUsed: { entries: [saved], tokens: 900 }, document: { enabled: true, settings: {}, entries: [saved] } });
+    t.after(() => f.view.destroy());
+    const used = f.get('忆幕').querySelector('.ym-last-used');
+    const body = used.querySelector('.ym-memory-text');
+    assert.equal(Array.from(body.textContent).length, 301, '300 字 + 省略号');
+    assert.ok(body.textContent.endsWith('…'));
+    const jump = used.querySelector('.ym-jump');
+    assert.ok(jump, '超长条目带一个跳转按钮');
+    jump.click(); await f.flush();
+    assert.equal(f.calls.length, 0, '跳转只是面板内导航，不触发任何操作');
 });
 
 test('a fully reverted round explains why nothing was rewritten, a 保底 round says memory still reached the model', t => {
@@ -824,7 +841,7 @@ test('the recent request shows an excerpt quotation from its saved snapshot, not
     const f = fixture({ lastUsed: { entries: [usedQuote], tokens: 100 }, document: { enabled: true, settings: {}, entries: [excerpt({ quoteText: '之后重新读取的内容。' })] } }); t.after(() => f.view.destroy());
     const used = f.get('忆幕').querySelector('.ym-last-used');
     assert.match(used.textContent, /回查补充 · 第 1 层/); assert.match(used.textContent, /请求当时原文仍是秘密/);
-    assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/); assert.match(used.querySelector('p').title, /不代表模型已接收/);
+    assert.doesNotMatch(used.textContent, /之后重新读取|原文补充/);
     assert.equal(usedQuote.quoteText, '请求当时原文仍是秘密。');
 });
 
@@ -1186,67 +1203,80 @@ test('changing chats resets chat drafts and filters but never transfers the last
     assert.equal(f.get('自定义切片内容').value, ''); assert.equal(f.get('搜索记忆').value, ''); assert.deepEqual(f.calls, []);
 });
 
-test('manual summary default follows the unsummarized range until the user edits it', t => {
-    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
-    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
-    t.after(() => f.view.destroy());
-    assert.equal(f.get('手动总结开始楼层').value, '3'); assert.equal(f.get('手动总结结束楼层').value, '8');
-    f.render({ snapshot: { ...f.state.snapshot, messages: messages(11) } });
-    assert.equal(f.get('手动总结开始楼层').value, '3'); assert.equal(f.get('手动总结结束楼层').value, '10');
-    f.render({ document: { ...f.state.document, entries: [entry({ source: { start: 1, end: 3 } }), entry({ id: 'slice-b', source: { start: 4, end: 6 } })] } });
-    assert.equal(f.get('手动总结开始楼层').value, '6'); assert.equal(f.get('手动总结结束楼层').value, '10');
-    f.get('手动总结开始楼层').value = '1';
-    f.render({ snapshot: { ...f.state.snapshot, messages: messages(12) } });
-    assert.equal(f.get('手动总结开始楼层').value, '1'); assert.equal(f.get('手动总结结束楼层').value, '10');
-    assert.deepEqual(f.calls, []);
-});
-
-test('manual summary range follows deleted floors and resets an edit that no longer fits', t => {
+test('the unsummarized range is only a grey placeholder; the fields stay empty until the user types', t => {
     const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
     const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
     t.after(() => f.view.destroy());
     const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
-    assert.equal(start.value, '3'); assert.equal(end.value, '8');
+    assert.equal(start.value, ''); assert.equal(end.value, '');
+    assert.equal(start.placeholder, '3–8'); assert.equal(end.placeholder, '3–8');
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(11) } });
+    assert.equal(start.value, ''); assert.equal(end.placeholder, '3–10');
+    // A typed range is kept and the placeholder never overwrites it, even as the chat grows.
+    start.value = '1'; end.value = '5';
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(12) } });
+    assert.equal(start.value, '1'); assert.equal(end.value, '5');
+    assert.equal(end.placeholder, '3–11');
+    assert.deepEqual(f.calls, []);
+});
+
+test('submitting a manual range leaves the typed floors in place instead of restoring the unsummarized ones', async t => {
+    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
+    let finish; const f = fixture({ document: { ...state().document, enabled: true }, snapshot: { ...state().snapshot, messages: messages(14) } }, () => new Promise(resolve => { finish = resolve; }));
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(14) } });
+    t.after(() => f.view.destroy());
+    f.get('手动总结开始楼层').value = '0'; f.get('手动总结结束楼层').value = '9';
+    f.get('开始总结').click(); await f.flush();
+    assert.deepEqual(f.calls[0].payload.range, { start: 1, end: 10 });
+    // Still in flight: a refresh must not write anything into the fields.
+    f.render({ snapshot: { ...f.state.snapshot, messages: messages(14) } });
+    assert.equal(f.get('手动总结开始楼层').value, '0'); assert.equal(f.get('手动总结结束楼层').value, '9');
+    finish(true); await f.flush();
+    f.render({ document: { ...f.state.document, entries: [entry({ source: { start: 1, end: 10 } })] } });
+    assert.equal(f.get('手动总结开始楼层').value, '0'); assert.equal(f.get('手动总结结束楼层').value, '9');
+    assert.equal(f.get('手动总结开始楼层').placeholder, '10–13');
+});
+
+test('manual summary range follows deleted floors and only clears a stale typed value', t => {
+    const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
+    const f = fixture({ document: { ...state().document, enabled: true, entries: [entry({ source: { start: 1, end: 3 } })] } });
+    t.after(() => f.view.destroy());
+    const start = f.get('手动总结开始楼层'), end = f.get('手动总结结束楼层');
+    assert.equal(start.placeholder, '3–8');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
-    assert.equal(start.value, '3'); assert.equal(end.value, '6'); assert.equal(end.max, '6');
-    // A swipe/edit that keeps the count leaves the default as is.
-    f.render({ snapshot: { ...f.state.snapshot, messages: messages(7) } });
-    assert.equal(start.value, '3'); assert.equal(end.value, '6');
+    assert.equal(start.placeholder, '3–6'); assert.equal(end.max, '6');
     // A typed range that still fits is kept after a deletion.
     start.value = '1'; end.value = '4';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(6) } });
     assert.equal(start.value, '1'); assert.equal(end.value, '4');
-    // Once the deletion leaves it out of range it is replaced by the new default.
+    // Once the deletion leaves it out of range the fields are cleared again (back to the placeholder).
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(4) } });
-    assert.equal(start.value, '3'); assert.equal(end.value, '3');
-    // The replacement is auto again, so later floors are followed.
+    assert.equal(start.value, ''); assert.equal(end.value, '');
+    assert.equal(start.placeholder, '3–3');
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(8) } });
-    assert.equal(start.value, '3'); assert.equal(end.value, '7');
-    // Deleting into summarized floors falls back to the whole remaining chat.
-    start.value = '5'; end.value = '7';
-    f.render({ snapshot: { ...f.state.snapshot, messages: messages(3) } });
-    assert.equal(start.value, '2'); assert.equal(end.value, '2');
+    assert.equal(start.placeholder, '3–7');
     f.render({ snapshot: { ...f.state.snapshot, messages: [] } });
-    assert.equal(start.value, '0'); assert.equal(end.value, '', 'an empty chat has no last floor to show');
+    assert.equal(start.value, ''); assert.equal(end.value, '');
+    assert.equal(end.placeholder, '待填', 'an empty chat has no range to offer');
     assert.deepEqual(f.calls, []);
 });
 
-test('a focused manual range field is not rewritten until the user leaves it', t => {
+test('a focused manual range field keeps whatever the user is typing', t => {
     const messages = n => Array.from({ length: n }, () => ({ mes: '正文' }));
     const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
     const end = f.get('手动总结结束楼层'); end.focus(); end.value = '8';
     f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
-    assert.equal(end.value, '8');
+    assert.equal(end.value, '8'); assert.equal(end.placeholder, '0–4');
     f.document.activeElement = null; f.render({ snapshot: { ...f.state.snapshot, messages: messages(5) } });
-    assert.equal(end.value, '4');
+    assert.equal(end.value, '8');
 });
 
-test('an initially empty chat receives usable ranges without replacing an edited range on later refreshes', t => {
+test('an initially empty chat offers a placeholder once floors arrive and never replaces a typed range', t => {
     const f = fixture({ document: { enabled: true, settings: {}, entries: [], initialRange: null }, snapshot: { binding: { avatar: 'empty.png', file: 'empty' }, messages: [] } });
     t.after(() => f.view.destroy());
-    assert.equal(f.get('手动总结结束楼层').value, '');
+    assert.equal(f.get('手动总结结束楼层').value, ''); assert.equal(f.get('手动总结结束楼层').placeholder, '待填');
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 8 }, () => ({ mes: '正文' })) } });
-    assert.equal(f.get('手动总结结束楼层').value, '7');
+    assert.equal(f.get('手动总结结束楼层').value, ''); assert.equal(f.get('手动总结结束楼层').placeholder, '0–7');
     f.get('手动总结结束楼层').value = '3';
     f.render({ snapshot: { ...f.state.snapshot, messages: Array.from({ length: 10 }, () => ({ mes: '正文' })) } });
     assert.equal(f.get('手动总结结束楼层').value, '3'); assert.deepEqual(f.calls, []);
@@ -1331,7 +1361,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.43 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.44 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1451,7 +1481,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.43'); assert.equal(pkg.version, '0.8.13');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.44'); assert.equal(pkg.version, '0.8.14');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

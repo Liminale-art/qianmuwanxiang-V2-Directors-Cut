@@ -39,6 +39,8 @@ const BLANK_ZERO = new Set(['budget']);
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
 const STAGE_THRESHOLDS = { tokens: 65000, slices: 12 };
 const sourceStart = entry => entry.source?.start ?? entry.source?.ranges?.[0]?.start ?? Infinity;
+// 「记忆调阅」里每条正文最多显示这么多字，超出只给一个跳到该条目的按钮。
+const USED_TEXT_LIMIT = 300;
 const memoryText = entry => entry.kind === 'excerpt' ? typeof entry.quoteText === 'string' ? entry.quoteText : '' : entry.text;
 const INSTALL_GUIDE = 'https://github.com/Liminale-art/qianmuwanxiang-V2-Directors-Cut/blob/refactor/storyboard-modularization/yimu/README.md#安装与更新';
 
@@ -267,6 +269,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     summarizeRangeForm.noValidate = true;
     const summarizeStart = el('input', 'ym-range-input'), summarizeEnd = el('input', 'ym-range-input');
     for (const input of [summarizeStart, summarizeEnd]) { input.type = 'number'; input.min = '0'; input.step = '1'; input.required = true; }
+    // 未总结区间只作为灰字占位，不写进输入框：打开面板时看一眼范围，真要总结自己填。
+    summarizeStart.placeholder = summarizeEnd.placeholder = '待填';
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
     const summarizeSubmit = button('开始总结', () => summarizeRangeForm.requestSubmit(), 'ym-primary');
     // Pausing lets the running batch finish and save, then stops before the next one.
@@ -300,12 +304,11 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!await dispatch('uiSettings', { manualBatchFloors: value }, batchInput)) batchInput.value = String(savedBatchFloors());
     });
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
-    // 开启自动总结之前就存在的楼层，不自动整理。这里只把范围填好，是否花钱由用户自己按下「开始总结」。
+    // 开启自动总结之前就存在的楼层，不自动整理。用户按下按钮才把范围填进输入框（这是用户动作，不是机器代填）。
     const backfillButton = button('', () => {
         const pending = preEnablePending(state.document, state.snapshot?.messages || [], currentSettings());
         if (!pending) { backfillButton.hidden = true; return; }
         summarizeStart.value = floorField(pending.start); summarizeEnd.value = floorField(pending.end);
-        manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
         summarizeNotice.textContent = `已填入开启前的第 ${shownFloor(pending.start)}–${shownFloor(pending.end)} 层，共 ${pending.count} 层；确认范围后点「开始总结」。`;
         summarizeNotice.hidden = false;
     }, 'ym-small');
@@ -329,28 +332,28 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
                 summarizeNotice.hidden = false; return;
             }
             summarizeNotice.hidden = true;
-            // Once submitted, the default resumes following the next unsummarized range.
-            if (await dispatch('summarizeRange', { range, expectedRange: plan.range, batchFloors }, summarizeSubmit)) {
-                manualAuto = { start: summarizeStart.value, end: summarizeEnd.value }; syncManualDefault();
-            }
+            // 提交后什么都不改写：用户填的楼层数就停在那里，直到下一次重新打开面板。
+            await dispatch('summarizeRange', { range, expectedRange: plan.range, batchFloors }, summarizeSubmit);
         } catch (error) { localError = error.message; localErrorPage = currentPage; updateStatus(); }
     });
     for (const input of [summarizeStart, summarizeEnd]) input.addEventListener('input', () => { summarizeNotice.hidden = true; });
-    // Last automatically written bounds. The default follows the chat while the fields
-    // still show it; a typed range is kept unless deleted floors make it out of range.
-    let manualAuto = null;
-    function syncManualDefault() {
-        if (!manualAuto || [summarizeStart, summarizeEnd].includes(document.activeElement)) return;
-        const messages = state.snapshot?.messages || [], total = messages.length;
+    // 未总结区间只写成灰字占位，从不写进输入框。
+    // 用户填了什么就一直留着：提交之后也不改回未总结范围的数字；只有重新打开面板或换聊天时才重算占位。
+    let pendingRange = null, pendingRangeKey = null;
+    function syncManualDefault({ force = false } = {}) {
+        const messages = state.snapshot?.messages || [];
+        const key = `${scopeKey}|${messages.length}|${(state.document?.entries || []).length}`;
+        if (!force && key === pendingRangeKey) return;
+        pendingRangeKey = key;
         const suggested = manualRangeDefault(state.document, messages, state.invalidSourceIds || []);
-        const start = floorValue(summarizeStart.value), end = floorValue(summarizeEnd.value);
-        const stale = start > Math.max(total, 1) || end > total;
-        const auto = summarizeStart.value === manualAuto.start && summarizeEnd.value === manualAuto.end;
-        // Deleted floors reset an out-of-range edit to the new default.
-        const next = stale ? suggested || { start: 1, end: 0 } : auto && suggested && !suggested.complete ? suggested : null;
-        if (!next) return;
-        summarizeStart.value = floorField(next.start); summarizeEnd.value = floorField(next.end); summarizeNotice.hidden = true;
-        manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
+        pendingRange = suggested && !suggested.complete ? suggested : null;
+        const text = pendingRange ? `${shownFloor(pendingRange.start)}–${shownFloor(pendingRange.end)}` : '';
+        summarizeStart.placeholder = summarizeEnd.placeholder = text || '待填';
+        // 聊天被删层后填的值可能超出当前楼层：清空，让位给新的灰字范围。正在输入的框不动。
+        const total = messages.length;
+        const stale = input => input !== document.activeElement
+            && input.value !== '' && (floorValue(input.value) > Math.max(total, 1) || input === summarizeEnd && floorValue(input.value) > total);
+        if (stale(summarizeStart) || stale(summarizeEnd)) summarizeStart.value = summarizeEnd.value = '';
     }
     // 本轮请求体积：用户看不到忆幕对聊天记录的改动，就必须能直接看到这次请求到底发了多少。
     const requestCard = el('section', 'ym-card ym-request-size');
@@ -1139,7 +1142,6 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         if (!use) {
             if (!skip) { usedBody.append(el('p', 'ym-muted', '暂无注入记录')); return; }
             const [why, hint] = describeSkip(skip.reason);
-            if (skip.restoredAt) usedBody.append(el('p', 'ym-muted', `上次记录 · ${roundTime(skip.restoredAt)}`));
             if (skip.offered) {
                 // 保底生效：未做原文替换/隐藏旧楼，但记忆已随请求送达模型。
                 const headline = el('p', 'ym-skip-head', '本轮以保底方式附加记忆，未隐藏旧楼');
@@ -1155,17 +1157,32 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             if (hint) usedBody.append(el('p', 'ym-muted', hint));
             return;
         }
-        const injectedTitle = el('p', 'ym-muted', use.restoredAt ? `上次注入的内容 · ${roundTime(use.restoredAt)}` : '最后一次注入的内容');
-        injectedTitle.title = '记录已加入生成请求的内容，不代表模型已接收。'; usedBody.append(injectedTitle);
-        if (Array.isArray(use.removedFloors) && Array.isArray(use.recentFloors)) usedBody.append(el('p', 'ym-muted',
-            `替换原文 ${use.removedFloors.length} 层 · 保留近期 ${use.recentFloors.length} 层${use.semantic ? ' · 向量参与排序' : ''}`));
-        if ([use.requestTokens, use.contextTokens, use.responseTokens].every(Number.isFinite)) usedBody.append(el('p', 'ym-muted',
-            `请求保守估算 ${use.requestTokens} + 回复预留 ${use.responseTokens} / 上下文 ${use.contextTokens} token`));
+        // 只留一条总 token；每条切片 300 字以内直接看，超了就截断并给一个跳到该条目的按钮。
+        if (Number.isFinite(use.tokens)) usedBody.append(el('p', 'ym-muted', `本次注入约 ${use.tokens} token`));
         const usedEntries = use.entries || (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id)).filter(Boolean);
         for (const entry of usedEntries) {
-            const item = el('div', 'ym-used-entry'); item.append(el('strong', '', sourceLabel(entry))); appendMemoryText(item, entry); usedBody.append(item);
+            const item = el('div', 'ym-used-entry');
+            const head = el('div', 'ym-used-head');
+            head.append(el('strong', '', sourceLabel(entry)));
+            if (entry.id) head.append(iconButton('在记忆里查看此条', 'eye', () => {
+                search.value = ''; filter.value = 'all'; applyFilter();
+                navigate('memory');
+                (document.defaultView?.requestAnimationFrame?.bind(document.defaultView) || (fn => setTimeout(fn, 0)))(() => {
+                    const target = cards.get(entry.id)?.node;
+                    if (!target) return;
+                    for (let node = target.parentElement; node && node !== list; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true;
+                    target.scrollIntoView({ block: 'center' });
+                    target.focus?.();
+                });
+            }, 'ym-jump'));
+            item.append(head);
+            const text = memoryText(entry);
+            const chars = Array.from(text);
+            if (chars.length > USED_TEXT_LIMIT) {
+                item.append(el('p', 'ym-memory-text', chars.slice(0, USED_TEXT_LIMIT).join('') + '…'));
+            } else appendMemoryText(item, entry);
+            usedBody.append(item);
         }
-        if (Number.isFinite(use.tokens)) usedBody.append(el('p', 'ym-muted', `约 ${use.tokens} token（估算）`));
     }
     function render(nextState) {
         if (destroyed) return;
@@ -1179,9 +1196,9 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
             stageForm.hidden = true; stageButton.setAttribute('aria-expanded', 'false'); includeCustom = false; stageCustom.setAttribute('aria-pressed', 'false');
             stageRequest = null; stageFormGeneration++;
             manualForm.hidden = true; manualInput.value = ''; manualTitle.value = ''; localError = ''; manualAfterId = null; draggingId = null; closeMore();
-            summarizeStart.value = floorField(1);
-            summarizeEnd.value = floorField(state.snapshot?.messages?.length || 0); summarizeNotice.hidden = true;
-            manualAuto = { start: summarizeStart.value, end: summarizeEnd.value };
+            // 换聊天或重新打开：清掉用户填的范围，重算灰字占位。
+            summarizeStart.value = ''; summarizeEnd.value = ''; summarizeNotice.hidden = true;
+            syncManualDefault({ force: true });
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
             search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear();
             // Backup browsing is account-scoped; other pages belong to the opened chat.

@@ -133,27 +133,50 @@ export function planManualRange(document, messages, settings, requestedRange, { 
         throw new Error(`第 ${shownFloor(floor)} 层为空或含工具调用，请调整整理范围`);
     }
     const batches = [];
+    // 批次按「每批 N 层」切，不按既有切片的边界切：一层一片的旧记忆不会再把一次整理拆成一楼一次。
+    // 能整批替换的只有「自动生成、未人工改过」的切片。人工改过的切片当成分界：本批到它之前结束，
+    // 它自己留给用户单独重做，绝不会被顺带覆盖。
+    const owned = summaries.filter(entry => !entry.edited);
     for (let floor = range.start; floor <= range.end;) {
-        const existing = summaries.filter(entry => entry.source.start <= floor && entry.source.end >= floor);
-        if (existing.length > 1) throw new Error('已有切片范围重叠，请先处理记忆冲突');
-        const redo = existing[0];
-        let end = floor, tokens = 0;
-        if (redo) {
-            end = redo.source.end;
-            tokens = messages.slice(floor - 1, end).reduce((total, item) => total + estimateTokens(item.mes), 0);
-        } else {
-            const next = summaries.find(entry => entry.source.start > floor)?.source.start ?? Infinity;
-            for (end = floor; end <= range.end && end < next && end < floor + perBatch; end++) {
-                const size = estimateTokens(messages[end - 1].mes);
-                if (end > floor && (tokens + size > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end }))) break;
-                tokens += size;
-            }
-            end--;
+        // 人工改过的切片：用户明确从它开头重新整理时，只重做这一条，结果作为待选版本给用户挑，
+        // 绝不和别的楼层混在一批里被顺带覆盖。
+        const edited = summaries.find(entry => entry.edited && entry.source.start === floor);
+        if (edited) {
+            batches.push({ start: edited.source.start, end: edited.source.end, redo: structuredClone(edited) });
+            floor = edited.source.end + 1;
+            continue;
         }
-        if (tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) throw new Error(`第 ${shownFloor(floor)}—${shownFloor(end)} 层与总结提示词超过此连接的可用输入容量，请选择容量足够的连接`);
-        const discardedSources = !redo ? discarded.filter(entry => entry.source.start <= end && entry.source.end >= floor)
-            .map(entry => ({ id: entry.id, revision: entry.revision, source: structuredClone(entry.source) })) : [];
-        batches.push({ start: floor, end, ...(redo ? { redo: structuredClone(redo) } : {}), ...(discardedSources.length ? { discardedSources } : {}) });
+        let end = Math.min(range.end, floor + perBatch - 1);
+        // 终点落在旧切片中间时延到它结束，保证整条切片被完整重做、不被截成两半。
+        for (let changed = true; changed;) {
+            changed = false;
+            for (const entry of owned) {
+                if (entry.source.start >= floor && entry.source.start <= end && entry.source.end > end) { end = Math.min(range.end, entry.source.end); changed = true; }
+            }
+        }
+        // 人工改过的切片整条落在本批里就把它让出去；起点在本批内也让它从下一批开始。
+        const manual = summaries.filter(entry => entry.edited && entry.source.end >= floor)
+            .sort((a, b) => a.source.start - b.source.start)[0];
+        if (manual && manual.source.start <= end) end = manual.source.start - 1;
+        if (end < floor) { floor = manual.source.end + 1; continue; }
+        let tokens = messages.slice(floor - 1, end).reduce((total, item) => total + estimateTokens(item.mes), 0);
+        // 连接放不下时整批缩小；只缩到本批终点不落进任何旧切片中间为止，缩不下去就如实报容量不足。
+        const straddles = stop => owned.some(entry => entry.source.start >= floor && entry.source.start <= stop && entry.source.end > stop);
+        let blocked = false;
+        while ((tokens > batchLimit || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) && end > floor) {
+            if (straddles(end - 1)) { blocked = true; break; }
+            end--; blocked = false;
+            tokens = messages.slice(floor - 1, end).reduce((total, item) => total + estimateTokens(item.mes), 0);
+        }
+        if (blocked || tokens > batchLimit && end === floor || settings.fitsSummaryBatch && !settings.fitsSummaryBatch(messages, { start: floor, end })) {
+            throw new Error(`第 ${shownFloor(floor)}—${shownFloor(end)} 层与总结提示词超过此连接的可用输入容量，请缩小整理范围或选择容量足够的连接`);
+        }
+        // 本批覆盖到的整条自动切片一起替换，一次请求重做这一段。
+        const replaces = owned.filter(entry => entry.source.start >= floor && entry.source.end <= end)
+            .map(entry => ({ id: entry.id, revision: entry.revision, source: structuredClone(entry.source) }));
+        const discardedSources = discarded.filter(entry => entry.source.start <= end && entry.source.end >= floor)
+            .map(entry => ({ id: entry.id, revision: entry.revision, source: structuredClone(entry.source) }));
+        batches.push({ start: floor, end, ...(replaces.length ? { replaces } : {}), ...(discardedSources.length ? { discardedSources } : {}) });
         floor = end + 1;
     }
     return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };

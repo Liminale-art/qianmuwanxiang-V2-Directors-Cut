@@ -78,7 +78,9 @@ test('manual range preview expands whole affected slices visibly and never relab
     const plan = planManualRange(doc, messages, DEFAULTS, { start: 2, end: 6 });
     assert.deepEqual(plan.requestedRange, { start: 2, end: 6 });
     assert.deepEqual(plan.range, { start: 1, end: 7 }); assert.equal(plan.expanded, true);
-    assert.deepEqual(plan.batches.map(batch => [batch.start, batch.end, batch.redo?.id]), [[1, 3, 'one'], [4, 4, undefined], [5, 7, 'two']]);
+    // 批次按「每批 N 层」（默认 20）切，不跟随旧切片边界；旧切片随本批整组替换。
+    assert.deepEqual(plan.batches.map(batch => [batch.start, batch.end]), [[1, 7]]);
+    assert.deepEqual(plan.batches[0].replaces.map(ref => ref.id), ['one', 'two']);
     assert.deepEqual(doc, before);
     const hidden = structuredClone(messages); hidden[3].is_system = true;
     assert.deepEqual(planManualRange(doc, hidden, DEFAULTS, { start: 4, end: 4 }).range, { start: 4, end: 4 });
@@ -91,7 +93,8 @@ test('manual ranges reject deleted choices, bridge originals, unsupported floors
         assert.throws(() => planManualRange(changed, messages, DEFAULTS, { start: 2, end: 3 }), /删除|暂不使用/);
     }
     assert.throws(() => planManualRange({ ...doc, lineage: { bridgeCount: 2 } }, messages, DEFAULTS, { start: 1, end: 3 }), /续接/);
-    assert.throws(() => planManualRange(doc, messages, { ...DEFAULTS, batch: 1 }, { start: 2, end: 3 }), /容量/);
+    // 单层本身就超出连接容量：整批缩到不能再缩时如实报容量不足，而不是悄悄截断。
+    assert.throws(() => planManualRange(doc, messages, { ...DEFAULTS, batch: 1, trigger: 1 }, { start: 2, end: 3 }), /容量/);
     const tools = structuredClone(messages); tools[5].tool_calls = [];
     assert.throws(() => planManualRange(doc, tools, DEFAULTS, { start: 5, end: 7 }), /工具调用/);
 });

@@ -115,8 +115,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (state.lastUsed || state.lastSkip || generating) return;
         const record = readRound(binding);
         if (!record || !Number.isFinite(record.at)) return;
+        // 只取回上一次真正注入的记忆（条目与 token，记忆调阅里要看）；「本轮未改写请求」这类
+        // 上一轮的提示不再挂到面板上，重新打开时从空白开始。
         if (record.used && Array.isArray(record.used.memoryIds)) state.lastUsed = { ...record.used, restoredAt: record.at };
-        else if (record.skip && typeof record.skip.reason === 'string') state.lastSkip = { ...record.skip, at: 0, restoredAt: record.at };
     };
     const emit = () => { if (!disposed) { rememberRound(); onChange(snapshotState()); } };
     const isCurrent = binding => equalBinding(state.snapshot?.binding, binding);
@@ -266,7 +267,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         const data = await api.defaults();
                         if (ticket !== sequence || disposed) return;
                         host.clear(); prepared = null;
-                        state.snapshot = null; state.document = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.sourceAvailable = false; state.invalidSourceIds = [];
+                        state.snapshot = null; state.document = null; state.lastUsed = null; state.lastSkip = null; state.requestSize = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.sourceAvailable = false; state.invalidSourceIds = [];
                         state.story = {}; state.companion = {};
                         state.defaults = data.defaults; state.profiles = host.profiles(); state.busy = false; state.streamPreview = ''; state.status = '';
                         state.error = error.message === '请先打开一个角色的聊天' ? '' : error.message;
@@ -278,7 +279,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
                     host.clear(); prepared = null;
-                    state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.requestSize = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
                     state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
@@ -306,7 +307,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
                 if (identityFailed) {
-                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
+                    state.snapshot = null; state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.requestSize = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null };
                     state.busy = false; state.streamPreview = ''; state.status = ''; state.invalidSourceIds = [];
                 }
                 host.clear(); prepared = null; state.sourceAvailable = false; state.error = error.message; state.errorPage = 'overview'; state.loading = false; emit();
@@ -385,10 +386,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         const current = jobDocument.entries.find(entry => entry.id === batch.redo.id);
                         if (!current || current.revision !== batch.redo.revision) throw new Error('待整理的切片已变化，请刷新后重试');
                     } else {
+                        // 本批要替换的旧切片必须还停在计划时的版本，否则这次结果会覆盖别处的改动。
+                        for (const ref of batch.replaces || []) {
+                            const current = jobDocument.entries.find(entry => entry.id === ref.id);
+                            if (!current || current.revision !== ref.revision) throw new Error('此范围内的记忆已变化，请刷新后重试');
+                        }
+                        const replacedIds = new Set((batch.replaces || []).map(ref => ref.id));
                         const overlaps = jobDocument.entries.filter(entry => entry.kind === 'summary' && !entry.origin
                             && entry.source.start <= batch.end && entry.source.end >= batch.start);
-                        if (overlaps.some(entry => !entry.discarded || !batch.discardedSources?.some(ref => ref.id === entry.id && ref.revision === entry.revision
-                            && JSON.stringify(ref.source) === JSON.stringify(entry.source)))
+                        if (overlaps.some(entry => !replacedIds.has(entry.id) && (!entry.discarded || !batch.discardedSources?.some(ref => ref.id === entry.id && ref.revision === entry.revision
+                            && JSON.stringify(ref.source) === JSON.stringify(entry.source))))
                             || (batch.discardedSources || []).some(ref => !overlaps.some(entry => entry.id === ref.id && entry.revision === ref.revision))) {
                             throw new Error('此范围的记忆已变化，请刷新后确认整理范围');
                         }
@@ -514,6 +521,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     const operation = { id: id(), type: batch.redo ? 'redo' : 'append', expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision,
                         entry: { ...slice, id: batch.redo?.id || id() } };
                     if (batch.redo) { operation.entryId = batch.redo.id; operation.expectedRevision = batch.redo.revision; }
+                    // 本批覆盖的旧切片随这一批一起换掉（都带修订号），不逐条重做。
+                    else if (manualPlan && batch.replaces?.length && slice === slices[0]) operation.replaces = clone(batch.replaces);
                     else if (manualPlan && batch.discardedSources) {
                         const discardedSources = batch.discardedSources.filter(ref => doc.entries.some(entry => entry.id === ref.id
                             && entry.source.start <= slice.source.end && entry.source.end >= slice.source.start));
@@ -941,15 +950,32 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     }
 
     // 本轮实际发出的请求有多大：用户看不到忆幕对聊天记录的改动，就必须能直接看到请求的体积。
-    // 零等待：不用 ST 的分词器（它对 OpenAI 类连接会逐条发网络请求，而 ST 会 await 这个事件），
-    // 直接按与注入预算同一口径估算（字节数的一半），并如实标注是估算。
+    // 先用零等待的估算立刻显示，等 ST 的分词器算完再换成实测；分词在请求发出之后才跑，
+    // 不在生成路径上等（ST 对 OpenAI 类连接是逐条网络请求，等它就会拖慢回复）。
+    // 估算口径与正文一致：中日韩等宽字符按 1 token，ASCII 按 0.35（原先按字节数的一半算高估约一倍）。
+    function estimateRequestTokens(messages) {
+        const raw = JSON.stringify(messages);
+        let tokens = 0;
+        for (const ch of raw) tokens += ch.codePointAt(0) > 127 ? 1 : 0.35;
+        return Math.ceil(tokens);
+    }
+    let measureTicket = 0;
     function measureRequest(messages, patch = {}) {
         if (!Array.isArray(messages) || !messages.length) return;
-        const tokens = Math.ceil(new TextEncoder().encode(JSON.stringify(messages)).length / 2);
+        const ticket = ++measureTicket, text = JSON.stringify(messages);
         const route = state.snapshot?.route || {};
-        state.requestSize = { tokens, method: 'utf8-estimate', contextTokens: Number(route.context) || null, responseTokens: Number(route.response) || null,
+        const base = { contextTokens: Number(route.context) || null, responseTokens: Number(route.response) || null,
             messageCount: messages.length, at: Date.now(), ...patch };
+        state.requestSize = { tokens: estimateRequestTokens(messages), method: 'estimate', ...base };
         emit();
+        // 实测值回来后更新；期间用户已换聊天或又发了一轮，这份读数就作废。
+        const counted = host.countTokens?.(text);
+        if (counted && typeof counted.then === 'function') Promise.resolve(counted).then(value => {
+            if (ticket !== measureTicket || disposed) return;
+            if (!Number.isFinite(value) || value <= 0) return;
+            state.requestSize = { ...state.requestSize, tokens: Math.ceil(value), method: 'st-tokenizer' };
+            emit();
+        }).catch(() => {});
     }
 
     async function event(name, args = []) {
