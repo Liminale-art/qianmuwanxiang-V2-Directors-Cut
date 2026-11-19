@@ -1,4 +1,26 @@
 // Chat toolkit ringtone: one completion sound plus a background-tab title/favicon alert after a reply arrives.
+
+// 刷新页面后，千幕的设置要等 ST 把扩展加载完才读得到，这段时间标签页会先露出 ST 自带的图标。
+// 所以把上一次用的固定图标记在本机，本模块一被加载就先换上（早于千幕其余部分的初始化）；
+// 页面原来的图标照样记下，停用千幕时原样还回去。ST 加载扩展之前的那一小段，扩展够不到。
+const TAB_ICON_CACHE = 'qianmu:tab-icon:v1';
+export function applyCachedTabIcon(doc = globalThis.document, storage = globalThis.localStorage) {
+  try {
+    const href = storage?.getItem?.(TAB_ICON_CACHE);
+    if (!href || !doc?.querySelectorAll) return null;
+    const links = [...doc.querySelectorAll('link[rel~="icon"]')];
+    if (!links.length) return null;
+    const original = links.map(link => [link, link.getAttribute('href'), link.getAttribute('type')]);
+    for (const link of links) { link.removeAttribute('type'); link.setAttribute('href', href); }
+    return { href, original };
+  } catch { return null; }
+}
+const earlyTabIcon = applyCachedTabIcon();
+// 图标太大（本机存不下）就不记：下次刷新照旧等千幕加载后再换，不影响正常使用。
+function rememberTabIcon(href, storage = globalThis.localStorage) {
+  try { if (href) storage?.setItem?.(TAB_ICON_CACHE, href); else storage?.removeItem?.(TAB_ICON_CACHE); } catch { try { storage?.removeItem?.(TAB_ICON_CACHE); } catch { /* 无本机存储 */ } }
+}
+
 // It never sounds for failed, stopped, quiet or dry-run generations, and it owns no chat data.
 const PRESET_ROWS = [
   ['LINE', 'line-default', '默认铃声', 'mp3'], ['LINE', 'line-slow-chime', '慢连音', 'mp3'], ['LINE', 'line-dulcimer-1', '扬琴 1', 'mp3'],
@@ -333,7 +355,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   // { quiet: true }: the view already shows the change (wheel pick), so skip the full panel re-render.
   // 标签页固定图标：平时显示的那一枚（闪烁结束后也回到它）。只在要显示的图变了时才动页面，
   // 第一次改动前记下页面原来的图标，停用千幕时原样还回去。
-  let tabIconApplied = '', tabIconOriginal = null;
+  let tabIconApplied = '', tabIconOriginal = earlyTabIcon?.original || null;
   function syncTabIcon() {
     if (disposed || !document?.querySelectorAll) return;
     const href = state().fixedIcon || RINGTONE_FIXED_ICON;
@@ -347,6 +369,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     }
     for (const link of links) { link.removeAttribute('type'); link.setAttribute('href', href); }
     tabIconApplied = href;
+    rememberTabIcon(href);
   }
   function restoreTabIcon() {
     for (const [link, href, type] of tabIconOriginal || []) {
@@ -354,7 +377,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       if (type !== null) link.setAttribute('type', type);
     }
     document?.querySelector?.('link[data-qianmu-tab-icon]')?.remove();
-    tabIconOriginal = null; tabIconApplied = '';
+    tabIconOriginal = null; tabIconApplied = ''; rememberTabIcon('');
   }
   function update(patch, { quiet = false } = {}) {
     Object.assign(state(), patch);

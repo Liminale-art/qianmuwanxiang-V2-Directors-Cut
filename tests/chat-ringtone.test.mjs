@@ -758,3 +758,20 @@ test('the tab shows a fixed icon (the Qianmu logo by default), a picked one repl
   ring.dispose();
   assert.equal(st.getAttribute('href'), 'favicon.ico'); assert.equal(st.getAttribute('type'), 'image/x-icon');
 });
+
+test('the fixed tab icon used last time is put back as soon as the module loads, before settings are read', async () => {
+  const { applyCachedTabIcon } = await import('../features/chat/qianmu-chat-ringtone.js');
+  const link = attrs => ({ attrs: { ...attrs }, getAttribute(key) { return key in this.attrs ? this.attrs[key] : null; }, setAttribute(key, value) { this.attrs[key] = String(value); }, removeAttribute(key) { delete this.attrs[key]; } });
+  const links = [link({ rel: 'icon', href: 'favicon.ico', type: 'image/x-icon' }), link({ rel: 'shortcut icon', href: 'favicon.ico' })];
+  const doc = { querySelectorAll: () => links };
+  const store = new Map([['qianmu:tab-icon:v1', 'data:image/png;base64,AAAA']]);
+  const storage = { getItem: key => store.has(key) ? store.get(key) : null };
+  const applied = applyCachedTabIcon(doc, storage);
+  assert.equal(applied.href, 'data:image/png;base64,AAAA');
+  assert.deepEqual(links.map(item => [item.attrs.href, item.attrs.type]), [['data:image/png;base64,AAAA', undefined], ['data:image/png;base64,AAAA', undefined]]);
+  assert.deepEqual(applied.original.map(([, href, type]) => [href, type]), [['favicon.ico', 'image/x-icon'], ['favicon.ico', null]], '页面原来的图标记下，停用时能还原');
+  // 没有记录、没有图标链接、本机存储不可用：都不动页面，也不抛错。
+  assert.equal(applyCachedTabIcon(doc, { getItem: () => null }), null);
+  assert.equal(applyCachedTabIcon({ querySelectorAll: () => [] }, storage), null);
+  assert.equal(applyCachedTabIcon(doc, { getItem() { throw new Error('blocked'); } }), null);
+});
