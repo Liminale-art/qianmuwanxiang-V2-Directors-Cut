@@ -812,6 +812,18 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             notice(firstError ? `已删除 ${removed} 个，另有未删除：${firstError}` : `已删除 ${removed} 个记忆文件`, firstError ? 'warning' : 'success');
             return true;
         }
+        if (type === 'manageAssign') {
+            // 把另一份记忆文件指定给当前聊天：作为独立记忆带入（自定义切片），原文件与当前聊天已有的记忆都不动。
+            if (typeof api.manageAssign !== 'function') throw new Error('当前忆幕服务端不支持指定记忆文件，请先更新服务端');
+            const item = payload.item, binding = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
+            if (!binding || !state.snapshot.messages?.length) throw new Error('请先打开要带入记忆的聊天');
+            if (!item?.name) throw new Error('没有可指定的记忆文件');
+            const hashes = await fingerprintMessages(state.snapshot.messages);
+            const result = await api.manageAssign(item, binding, { fromFloor: 1, hash: hashes[0] }, id());
+            if (isCurrent(binding)) { adopt(binding, result); emit(); }
+            notice(`已带入 ${result.adopted} 条独立记忆`, 'success');
+            return true;
+        }
         // Import archives are usable on the homepage too. They do not require
         // or manufacture a current-chat identity, and survive chat switches.
         if (type.startsWith('backup')) {

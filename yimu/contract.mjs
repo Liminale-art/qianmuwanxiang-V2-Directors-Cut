@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.54';
-export const SERVICE_VERSION = '0.8.20';
+export const FRONTEND_VERSION = '0.8.55';
+export const SERVICE_VERSION = '0.8.21';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -344,6 +344,19 @@ function initialScope(range) {
         && (range.end >= range.start || range.start === 1 && range.end === 0), '请确认首次整理的起止楼层');
     return { start: range.start, end: range.end, total: range.total };
 }
+export const ADOPT_LIMIT = 2000;
+/** 一份记忆文件里「值得带走」的内容，按时间顺序：阶段总结，加上没有并入任何阶段的切片与自定义切片。
+ *  已删除、被替换、已丢弃、来源待核对的都不带；摘录与修订历史也不带。 */
+export function portableMemories(document) {
+    const entries = document?.entries || [], order = new Map((document?.entryOrder || []).map((value, index) => [value, index]));
+    const usable = entry => entry.status === 'active' && !entry.replacedBy && !entry.discarded && !entry.origin?.unresolved && typeof entry.text === 'string' && entry.text.trim();
+    const staged = new Set(entries.filter(entry => entry.kind === 'stage' && usable(entry)).flatMap(entry => (entry.source?.parents || []).map(ref => ref.id)));
+    return entries.filter(entry => ['stage', 'summary', 'manual'].includes(entry.kind) && usable(entry) && !staged.has(entry.id))
+        .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity))
+        .map(entry => ({ ...(entry.title ? { title: entry.title } : {}), text: entry.text,
+            scenes: (entry.scenes || []).map(scene => ({ ...Object.fromEntries(['world', 'timeline', 'date', 'period', 'place', 'event', 'characters', 'nature'].filter(key => scene[key] !== undefined).map(key => [key, clone(scene[key])])),
+                evidence: { floors: [], user: true } })) }));
+}
 export function applyOperation(current, operation, {excerpt = null} = {}) {
     current = validateDocument(current);
     const id = identifier(operation?.id);
@@ -413,6 +426,20 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             edited: value.kind === 'manual',
             history: [], conflicts: [], candidate: null });
         insertEntryOrder(doc, value, Object.hasOwn(op, 'afterId') ? op.afterId : op.entry.afterId);
+    } else if (op.type === 'adopt') {
+        // 把另一份记忆文件（别的聊天、或原文对不上的备份）带进当前聊天。
+        // 那些记忆描述的不是这个聊天的楼层，所以一律落成自定义切片：照常注入，
+        // 但不参与隐藏楼层、不会被自动重新总结，也不冒充这个聊天的来源范围。
+        requireThat(Array.isArray(op.entries) && op.entries.length >= 1 && op.entries.length <= ADOPT_LIMIT, '没有可带入的记忆');
+        const placement = validatePlacement(op.placement, { binding: doc.binding });
+        requireThat(placement, '请先打开要带入记忆的聊天');
+        let after; // 第一条按楼层自动落位（锚在首层，排在最前），其余依次接在后面，保持原来的先后。
+        op.entries.forEach((item, index) => {
+            const value = submittedEntry({ id: `${id}_${index}`.slice(0, 100), kind: 'manual', title: item?.title, text: item?.text, scenes: item?.scenes, placement }, doc);
+            requireThat(!doc.entries.some(entry => entry.id === value.id), '此记忆条目已经存在');
+            doc.entries.push({ ...value, revision: 1, status: 'active', edited: true, history: [], conflicts: [], candidate: null });
+            insertEntryOrder(doc, value, after); after = value.id;
+        });
     } else if (op.type === 'purge') {
         // 清理当前聊天的记忆。三种范围，全部只动忆幕自己的文档，聊天原文不碰：
         //   all        清空全部条目（keepManual 为真时保留用户自己写的自定义切片）

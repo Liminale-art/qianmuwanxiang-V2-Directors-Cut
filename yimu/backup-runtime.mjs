@@ -1,5 +1,32 @@
 // Import archives are account-owned documents, never synthetic chat bindings.
+import { fingerprintMessages } from './contract.mjs';
 const clone = value => structuredClone(value);
+// 多份记忆打成一个文件：一行标记、一行清单（每份的文件名与字节数），后面依次接各份备份原样的字节。
+// 拆开后每一份仍是普通的 .yimu.gz，走原有的导入流程。
+const PACK_MAGIC = 'YIMUPACK1';
+export const isBackupPack = name => /\.yimupack$/i.test(String(name || ''));
+export function packBackups(results, { BlobType = globalThis.Blob, now = new Date() } = {}) {
+    const list = results.map(item => ({ name: item.filename, size: item.blob.size }));
+    const pad = value => String(value).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    return { blob: new BlobType([`${PACK_MAGIC}\n${JSON.stringify(list)}\n`, ...results.map(item => item.blob)], { type: 'application/octet-stream' }), filename: `忆幕记忆包-${results.length}份-${stamp}.yimupack` };
+}
+export async function unpackBackups(file) {
+    const head = new Uint8Array(await file.slice(0, Math.min(file.size, 4 * 1024 * 1024)).arrayBuffer());
+    const first = head.indexOf(10), second = first < 0 ? -1 : head.indexOf(10, first + 1);
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    if (second < 0 || decoder.decode(head.slice(0, first)) !== PACK_MAGIC) throw new Error('这不是忆幕的记忆包');
+    let list; try { list = JSON.parse(decoder.decode(head.slice(first + 1, second))); } catch { throw new Error('记忆包清单已损坏'); }
+    if (!Array.isArray(list) || !list.length || list.length > 2000) throw new Error('记忆包清单已损坏');
+    let offset = second + 1; const parts = [];
+    for (const item of list) {
+        if (typeof item?.name !== 'string' || !Number.isSafeInteger(item.size) || item.size < 1 || offset + item.size > file.size) throw new Error('记忆包内容不完整');
+        const part = file.slice(offset, offset + item.size); offset += item.size;
+        parts.push({ name: item.name, stream: () => part.stream(), size: part.size, slice: (...args) => part.slice(...args), arrayBuffer: () => part.arrayBuffer() });
+    }
+    if (offset !== file.size) throw new Error('记忆包内容不完整');
+    return parts;
+}
 const same = (a, b) => !!a && !!b && a.avatar === b.avatar && a.file === b.file && a.integrity === b.integrity;
 
 export function saveBackupDownload({ blob, filename }, { document = globalThis.document, url = globalThis.URL } = {}) {
@@ -87,7 +114,7 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
                 }
                 if (result?.receipt?.status !== 'complete') {item.status = 'merge-unknown'; throw new Error('找回结果尚未确认，请核对本次导入，不会重复创建聊天。');}
             } else {
-                try {result = await api.backupApply(item.archive.id, {id: item.applyId, ...(item.targetBinding ? {targetBinding: item.targetBinding} : {})});}
+                try {result = await api.backupApply(item.archive.id, {id: item.applyId, ...(item.targetBinding ? {targetBinding: item.targetBinding} : {}), ...(item.detach ? {detach: item.detach} : {})});}
                 catch (error) {item.status = 'merge-unknown'; throw error;}
                 if (result?.status === 'selection') {item.status = 'selection'; item.candidates = result.candidates || []; item.message = result.message; publish(); return;}
                 if (result?.status !== 'complete') {item.status = 'merge-unknown'; throw new Error('合并结果尚未确认，请核对本次导入。');}
@@ -126,12 +153,30 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
                 if (active()) {await download(result); view.status = '备份已生成，已发起下载。';}
                 return result;
             }
+            if (type === 'backupExportPack') {
+                // 管理页多选导出：每个聊天各出一份备份，再打成一个文件下载。
+                const bindings = Array.isArray(payload.bindings) ? payload.bindings : [];
+                if (!bindings.length) throw new Error('没有可导出的记忆文件');
+                const results = [];
+                for (const binding of bindings) { const plan = await api.backupPlan(binding); results.push(await api.backupExport(binding, {planId: plan.planId, sourceIds: []})); }
+                const packed = results.length === 1 ? results[0] : packBackups(results);
+                if (active()) {await download(packed); view.status = results.length === 1 ? '备份已生成，已发起下载。' : `${results.length} 份记忆已打包，已发起下载。`;}
+                return packed;
+            }
             if (type === 'backupImport' && Array.isArray(payload.files)) {
+                // 记忆包先拆成一份份备份，再和单份备份一样处理。
+                const files = [];
+                for (const file of payload.files) {
+                    if (!isBackupPack(file?.name)) { files.push(file); continue; }
+                    try { files.push(...await unpackBackups(file)); }
+                    catch (error) { view.items.push({id: id(), uploadId: id(), applyId: id(), file: null, name: file.name, status: 'failed', error: error.message}); }
+                }
+                payload = {...payload, files};
                 const items = payload.files.map(file => ({id: id(), uploadId: id(), applyId: id(), file, name: file?.name || '未知文件', status: 'queued', error: ''}));
                 view.items.push(...items); publish();
                 for (const item of items) {
                     if (!active()) break;
-                    if (!/\.yimu\.gz$/i.test(item.name) || typeof item.file?.stream !== 'function') {item.status = 'failed'; item.error = '仅支持忆幕自己的 .yimu.gz 备份包'; publish(); continue;}
+                    if (!/\.yimu\.gz$/i.test(item.name) || typeof item.file?.stream !== 'function') {item.status = 'failed'; item.error = '仅支持忆幕自己的 .yimu.gz 备份或 .yimupack 记忆包'; publish(); continue;}
                     await processImport(item);
                 }
                 return {items};
@@ -142,10 +187,16 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
                 if (type === 'backupCancel') {item.status = 'cancelled'; item.file = null; item.error = ''; item.message = '已取消关联；备份原件已保留，未写入聊天。'; publish(); return;}
                 if (type === 'backupResolve') {
                     if (item.status !== 'selection') throw new Error('这份备份不需要选择目标');
-                    if (payload.targetBinding) {
+                    if (payload.detach) {
+                        // 作为独立记忆带入当前聊天：锚在这个聊天的首层，由服务端落成自定义切片。
+                        const snapshot = await host.snapshot();
+                        if (!snapshot?.binding || !snapshot.messages?.length) throw new Error('请先打开要带入记忆的聊天');
+                        const hashes = await fingerprintMessages(snapshot.messages);
+                        item.targetBinding = clone(snapshot.binding); item.detach = {placement: {fromFloor: 1, hash: hashes[0]}};
+                    } else if (payload.targetBinding) {
                         const candidate = item.candidates.find(value => same(value.binding, payload.targetBinding));
                         if (!candidate) throw new Error('请选择此列表中的聊天');
-                        item.targetBinding = clone(candidate.binding);
+                        item.targetBinding = clone(candidate.binding); item.detach = null;
                     } else if (payload.targetAvatar && item.archive.sources?.some(source => source.id === item.archive.primarySourceId && source.included)) {
                         if (!view.roles.some(role => role.avatar === payload.targetAvatar)) throw new Error('请选择当前账户角色');
                         item.restoreRequest = {id: id(), targetAvatar: payload.targetAvatar, sourceIds: item.archive.sources.filter(source => source.included).map(source => source.id)};

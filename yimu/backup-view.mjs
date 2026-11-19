@@ -33,7 +33,7 @@ export function createBackupView({document = globalThis.document, onAction, onNo
     yes.textContent='是';no.textContent='否';cancelExport.textContent='取消';
     const pack=button('打包并导出',()=>{const plan=state.backup?.exportPlan;exportMode='';update();void invoke('backupQuickExport',{includeOriginals:true,planId:plan?.planId,sourceIds:[...choices].filter(([,input])=>input.checked).map(([id])=>id)});});
     questionActions.append(yes,no,cancelExport,pack);question.append(questionText,sources,questionNotice,questionActions);
-    const pick = el('input'); pick.type = 'file'; pick.accept = '.yimu.gz'; pick.multiple = true; pick.hidden = true; pick.setAttribute('aria-label','忆幕备份文件');
+    const pick = el('input'); pick.type = 'file'; pick.accept = '.yimu.gz,.yimupack'; pick.multiple = true; pick.hidden = true; pick.setAttribute('aria-label','忆幕备份文件');
     const choose = button('导入记忆',()=>{if(alive&&!pick.disabled){pick.value='';pick.click();}});exportRow.append(exportButton,choose);
     const notice = el('p','ym-muted'); notice.setAttribute('aria-live','polite'); notice.hidden = true;
     const results = el('div','ym-backup-list'); results.setAttribute('aria-live','polite');
@@ -72,14 +72,17 @@ export function createBackupView({document = globalThis.document, onAction, onNo
             if(item.status==='selection'){
                 const select=el('select');select.setAttribute('aria-label',`导入目标 ${item.name}`);
                 const placeholder=el('option','','请选择聊天或角色');placeholder.value='';select.append(placeholder);
+                // 打开着聊天时，第一项就是「带入当前聊天」：原文对不上也能用，记忆落成独立的自定义切片。
+                if(state.snapshot?.binding){const here=el('option','','当前聊天 · 作为独立记忆带入');here.value='detach';select.append(here);}
                 for(const [index,candidate]of(item.candidates||[]).entries()){
-                    const option=el('option','',`${candidate.label}${candidate.exact?' · 原文一致':' · 原文待核对'}`);option.value=`chat:${index}`;select.append(option);
+                    const option=el('option','',`${candidate.label}${candidate.exact?' · 原文一致':candidate.sameCharacter?' · 同名角色':' · 原文待核对'}`);option.value=`chat:${index}`;select.append(option);
                 }
                 const attached=item.archive?.sources?.some(source=>source.id===item.archive.primarySourceId&&source.included);
                 if(attached)for(const role of state.backup?.roles||[]){const option=el('option','',`另建聊天至 ${role.name} · ${role.avatar}`);option.value=`role:${role.avatar}`;select.append(option);}
                 select.value=targets.get(item.id)||'';select.disabled=disabled;
                 const confirm=button('确认导入至所选目标',()=>{
-                    if(select.value.startsWith('chat:'))void invoke('backupResolve',{itemId:item.id,targetBinding:item.candidates[Number(select.value.slice(5))]?.binding});
+                    if(select.value==='detach')void invoke('backupResolve',{itemId:item.id,detach:true});
+                    else if(select.value.startsWith('chat:'))void invoke('backupResolve',{itemId:item.id,targetBinding:item.candidates[Number(select.value.slice(5))]?.binding});
                     else if(select.value.startsWith('role:'))void invoke('backupResolve',{itemId:item.id,targetAvatar:select.value.slice(5)});
                 });confirm.disabled=disabled||!select.value;
                 select.addEventListener('change',()=>{targets.set(item.id,select.value);confirm.disabled=disabled||!select.value;});

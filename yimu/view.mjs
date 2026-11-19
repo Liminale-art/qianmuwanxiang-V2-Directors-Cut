@@ -363,12 +363,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
         if (stale(summarizeStart) || stale(summarizeEnd)) summarizeStart.value = summarizeEnd.value = '';
     }
     // 本轮请求体积：用户看不到忆幕对聊天记录的改动，就必须能直接看到这次请求到底发了多少。
-    const requestCard = el('section', 'ym-card ym-request-size');
-    const requestValue = el('b', 'ym-request-tokens', '—');
-    const requestDetail = el('span', 'ym-request-detail', '本轮请求');
-    requestCard.append(requestValue, requestDetail);
-    requestCard.title = '统计的是最终发出的请求（含 ST 的提示词、世界书、角色卡等全部注入，以及忆幕带上的记忆）。聊天记录本身不会变短，所以 Chat History 里看不出压缩。';
-    overview.append(heroTop, requestCard);
+    // 本轮请求的 token 统计放在「管理」页日志卡的卡首（manage-view）。
+    overview.append(heroTop);
     const manualSummaryCard = el('section', 'ym-card ym-manual-summary'); manualSummaryCard.append(summarizeRangeForm);
 
     const settings = el('section', 'ym-settings');
@@ -526,11 +522,22 @@ export function createView({ onAction, connectionApi, journal = null, document =
         }
     });
     const list = el('div', 'ym-list');
-    // 一次多画多少条。初始只画最近这么多条（钉住的不占名额）。
-    const PAGE_STEP = 40;
-    let pageLimit = PAGE_STEP;
-    const earlier = button('', () => { pageLimit += PAGE_STEP; renderEntries(); }, 'ym-small ym-list-more');
-    earlier.hidden = true;
+    // 记忆列表：最新的在最上面，每页 PAGE_SIZE 条（钉住的不占名额，每页都在最前），底部一条翻页栏。
+    const PAGE_SIZE = 15;
+    let pageNumber = 1, pageCount = 1, revealId = null;
+    const goToPage = value => {
+        const next = Math.min(pageCount, Math.max(1, Math.trunc(Number(value)) || 1));
+        if (next !== pageNumber) { pageNumber = next; renderEntries(); applyFilter(); scroller.scrollTop = 0; }
+        else pageInput.value = String(pageNumber);
+    };
+    const pager = el('nav', 'ym-pager'); pager.setAttribute('aria-label', '记忆翻页'); pager.hidden = true;
+    const pagePrev = iconButton('上一页', 'back', () => goToPage(pageNumber - 1)), pageNext = iconButton('下一页', 'back', () => goToPage(pageNumber + 1));
+    pagePrev.className += ' ym-small'; pageNext.className += ' ym-small ym-pager-next';
+    const pageInput = el('input', 'ym-pager-input'); pageInput.type = 'text'; pageInput.inputMode = 'numeric'; pageInput.setAttribute('aria-label', '页码');
+    pageInput.addEventListener('change', () => goToPage(pageInput.value));
+    pageInput.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault?.(); goToPage(pageInput.value); } });
+    const pageTotal = el('span', 'ym-pager-total');
+    pager.append(pagePrev, pageInput, pageTotal, pageNext);
     const deleted = el('details', 'ym-card ym-memory ym-deleted');
     const deletedTitle = el('summary', 'ym-memory-head', '已删除的记忆'), deletedBody = el('div', 'ym-deleted-body');
     deleted.append(deletedTitle, deletedBody);
@@ -659,8 +666,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
     promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
-    pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder);
-    pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, earlier, list, noMatch, deleted);
+    pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
+    pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, list, noMatch, deleted, pager);
     pages.get('retrieval').append(retrieval.element);
     const manage = mountManageView({ document, journal, describeSkip, backupNode: backup.node, onAction: (type, payload) => dispatch(type, payload) });
     pages.get('manage').append(manage.element);
@@ -725,22 +732,6 @@ export function createView({ onAction, connectionApi, journal = null, document =
         const pendingRange = coverage?.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层待整理` : '暂无待整理楼层';
         statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start && doc.initialRange.total > 0 ? `；开启前的第 0–${shownFloor(doc.initialRange.total)} 层不自动整理，也不计入，可用手动总结整理` : ''}` : '';
         stats.setAttribute('aria-disabled', String(!doc));
-        // 请求体积：优先显示 ST 分词器实测值，取不到时标明是估算。
-        const size = state.requestSize;
-        if (size && Number.isFinite(size.tokens)) {
-            const estimate = size.method === 'st-tokenizer' ? '' : '（估算）';
-            requestValue.textContent = `${size.tokens.toLocaleString()} token${estimate}`;
-            const parts = [`${size.messageCount} 条消息`];
-            if (Number.isFinite(size.contextTokens)) parts.push(`上下文上限 ${size.contextTokens.toLocaleString()}`);
-            if (Number.isFinite(size.responseTokens) && size.responseTokens > 0) parts.push(`回复预留 ${size.responseTokens.toLocaleString()}`);
-            requestDetail.textContent = parts.join(' · ');
-            const ratio = Number.isFinite(size.contextTokens) && size.contextTokens > 0 ? size.tokens / size.contextTokens : null;
-            requestCard.dataset.tone = ratio === null ? 'neutral' : ratio > 0.9 ? 'high' : ratio > 0.7 ? 'warm' : 'ok';
-        } else {
-            requestValue.textContent = '—';
-            requestDetail.textContent = '本轮请求（生成一次后显示）';
-            requestCard.dataset.tone = 'neutral';
-        }
         for (const [name, card] of toolCards) {
             card.hidden = false; card.button.disabled = name !== 'rules' && !doc;
             card.panel.hidden = !card.open;
@@ -935,9 +926,19 @@ export function createView({ onAction, connectionApi, journal = null, document =
         card?.querySelector('[data-ym-more]')?.setAttribute('aria-expanded', 'false');
         openMenuId = null;
     }
-    async function moveEntry(entryId, beforeId = null) {
+    // above：拖到某张卡片上，是落在它「上方」。列表最新在上，上方就是时间上紧跟在它之后。
+    async function moveEntry(entryId, beforeId = null, { above = false } = {}) {
         const doc = state.document;
         if (!doc || state.busy) return;
+        if (above && beforeId) {
+            const target = doc.entries.find(item => item.id === beforeId);
+            const targetBlock = new Set([beforeId, ...(target?.kind === 'stage' ? target.source.parents.map(ref => ref.id) : [])]);
+            for (const quote of doc.entries.filter(item => item.kind === 'excerpt' && targetBlock.has(item.parent?.id))) targetBlock.add(quote.id);
+            const sequence = (doc.entryOrder || doc.entries.map(item => item.id)).filter(id => id !== entryId);
+            const last = Math.max(...sequence.map((id, index) => targetBlock.has(id) ? index : -1));
+            if (last < 0) return;
+            beforeId = sequence[last + 1] ?? null;
+        }
         const entry = doc.entries.find(item => item.id === entryId);
         const block = new Set([entryId, ...(entry?.kind === 'stage' ? entry.source.parents.map(ref => ref.id) : [])]);
         for (const quote of doc.entries.filter(item => item.kind === 'excerpt' && block.has(item.parent?.id))) block.add(quote.id);
@@ -1027,11 +1028,12 @@ export function createView({ onAction, connectionApi, journal = null, document =
         const use = iconButton(entry.status === 'excluded' ? '取消注入屏蔽' : '将此切片注入屏蔽', entry.status === 'excluded' ? 'eye-off' : 'eye', () => entryAction(entry, entry.status === 'excluded' ? 'restore' : 'exclude', {}, use));
         const up = iconButton('上移切片', 'up', () => {
             const order = orderedEntries(state.document.entries, state.document.entryOrder).filter(item => item.kind !== 'excerpt');
-            const index = order.findIndex(item => item.id === entry.id); if (index > 0) void moveEntry(entry.id, order[index - 1].id);
+            // 列表最新在上：往上挪就是往更新的方向挪。
+            const index = order.findIndex(item => item.id === entry.id); if (index >= 0 && index < order.length - 1) void moveEntry(entry.id, order[index + 2]?.id);
         });
         const down = iconButton('下移切片', 'down', () => {
             const order = orderedEntries(state.document.entries, state.document.entryOrder).filter(item => item.kind !== 'excerpt');
-            const index = order.findIndex(item => item.id === entry.id); if (index >= 0 && index < order.length - 1) void moveEntry(entry.id, order[index + 2]?.id);
+            const index = order.findIndex(item => item.id === entry.id); if (index > 0) void moveEntry(entry.id, order[index - 1].id);
         });
         moreActions.append(insert, use);
         // 钉住：永不沉底、固定在上方；不提高带入优先级。已屏蔽或已删除的不能钉住。
@@ -1055,7 +1057,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         }
         if (!existing) {
             card.addEventListener('dragover', event => { if (draggingId && dragGeneration === scopeGeneration && draggingId !== card.dataset.entryId) event.preventDefault(); });
-            card.addEventListener('drop', event => { if (draggingId && dragGeneration === scopeGeneration && draggingId !== card.dataset.entryId) { event.preventDefault(); event.stopPropagation(); void moveEntry(draggingId, card.dataset.entryId); draggingId = null; } });
+            card.addEventListener('drop', event => { if (draggingId && dragGeneration === scopeGeneration && draggingId !== card.dataset.entryId) { event.preventDefault(); event.stopPropagation(); void moveEntry(draggingId, card.dataset.entryId, { above: true }); draggingId = null; } });
         }
         actions.hidden = Boolean(editing);
         if (entry.candidate) {
@@ -1129,14 +1131,22 @@ export function createView({ onAction, connectionApi, journal = null, document =
             ...pinned.filter(entry => !source.some(group => group.entry.id === entry.id && group.entry.kind !== 'stage')).map(entry => ({ entry, children: [] })),
             ...source,
         ]);
-        // 分页：切片上百条后整页卡片太重。平时只画钉住的与最近的若干条，更早的点「显示更早的」再画；
-        // 搜索、筛选或多选时要在全部记忆里找，所以全画。正在编辑的条目始终保留。
+        // 倒序分页：钉住的在最前，其余最新的在上，一页 PAGE_SIZE 条；阶段里的细切片同样最新在上。
+        // 搜索、筛选或多选时要在全部记忆里找，所以全画、不分页。正在编辑的条目始终保留。
         const pinnedCount = tree.findIndex(group => !group.entry.pinned) < 0 ? tree.length : tree.findIndex(group => !group.entry.pinned);
-        const everything = Boolean(search.value.trim()) || filter.value !== 'all' || selecting || !Number.isFinite(pageLimit);
-        const skipped = everything ? 0 : Math.max(0, tree.length - pinnedCount - pageLimit);
-        const shownTree = skipped ? [...tree.slice(0, pinnedCount), ...tree.slice(pinnedCount + skipped)] : tree;
-        earlier.hidden = !skipped;
-        if (skipped) earlier.textContent = `显示更早的 ${Math.min(skipped, PAGE_STEP)} 条（还有 ${skipped} 条）`;
+        const newestFirst = tree.slice(pinnedCount).reverse().map(group => ({ ...group, children: [...group.children].reverse() }));
+        const everything = Boolean(search.value.trim()) || filter.value !== 'all' || selecting;
+        pageCount = Math.max(1, Math.ceil(newestFirst.length / PAGE_SIZE));
+        if (revealId) {
+            const at = newestFirst.findIndex(group => group.entry.id === revealId || group.children.some(child => child.id === revealId));
+            if (at >= 0) pageNumber = Math.floor(at / PAGE_SIZE) + 1;
+            revealId = null;
+        }
+        pageNumber = Math.min(pageCount, Math.max(1, pageNumber));
+        const shownTree = [...tree.slice(0, pinnedCount), ...(everything ? newestFirst : newestFirst.slice((pageNumber - 1) * PAGE_SIZE, pageNumber * PAGE_SIZE))];
+        pager.hidden = everything || pageCount <= 1;
+        pageInput.value = String(pageNumber); pageTotal.textContent = `/ ${pageCount}`;
+        pagePrev.disabled = pageNumber <= 1; pageNext.disabled = pageNumber >= pageCount;
         const entries = shownTree.flatMap(group => [group.entry, ...group.children]);
         const present = new Set();
         const hasEditor = node => [...edits.values()].some(edit => {
@@ -1260,7 +1270,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             const head = el('div', 'ym-used-head');
             head.append(el('strong', '', sourceLabel(entry)));
             if (entry.id) head.append(iconButton('在记忆里查看此条', 'eye', () => {
-                search.value = ''; filter.value = 'all'; pageLimit = Infinity; syncFilter(); renderEntries(); applyFilter();
+                search.value = ''; filter.value = 'all'; revealId = entry.id; syncFilter(); renderEntries(); applyFilter();
                 navigate('memory');
                 (document.defaultView?.requestAnimationFrame?.bind(document.defaultView) || (fn => setTimeout(fn, 0)))(() => {
                     const target = cards.get(entry.id)?.node;
@@ -1295,7 +1305,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             summarizeStart.value = ''; summarizeEnd.value = ''; summarizeNotice.hidden = true;
             syncManualDefault({ force: true });
             for (const card of toolCards.values()) setToolOpen(card, false);
-            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); pageLimit = PAGE_STEP; setSelecting(false);
+            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); pageNumber = 1; setSelecting(false);
             // Backup browsing is account-scoped; other pages belong to the opened chat.
             currentPage = 'overview';
             scroller.scrollTop = 0;

@@ -65,7 +65,9 @@ export function mountManageView({ document = globalThis.document, journal = null
     const logCard = el('section', 'ym-card ym-settings-group ym-manage-log');
     const clearLog = iconAction('清空日志', 'trash', async () => { journal?.clear(); open.clear(); }, { needsConfirm: () => true });
     const logList = el('div', 'ym-log-list');
-    logCard.append(head('日志', clearLog), logList);
+    // 卡首固定一行：最近一轮最终发出的请求有多大（含 ST 自己的提示词、世界书、角色卡与忆幕带上的记忆）。
+    const requestLine = el('p', 'ym-log-request');
+    logCard.append(head('日志', clearLog), requestLine, logList);
 
     // ---------- 当前聊天 ----------
     const chatCard = el('section', 'ym-card ym-settings-group ym-manage-chat');
@@ -92,9 +94,9 @@ export function mountManageView({ document = globalThis.document, journal = null
         if (!items.length) return;
         await run('manageDelete', { items }); picked.clear(); selecting = false; fileSignature = '';
     }, { needsConfirm: () => true, className: 'ym-danger' });
-    // 多选后一次导出：逐个文件各出一份备份，导入时可以一次全选回来。
+    // 多选后一次导出：所选的打成一个记忆包文件，导入时选这一个文件即可。
     const exportPicked = iconAction('导出所选文件', 'download', async () => {
-        for (const item of scoped().filter(item => !item.unreadable && picked.has(item.name))) await run('backupExportFile', { binding: item.binding });
+        await run('backupExportPack', { bindings: scoped().filter(item => !item.unreadable && picked.has(item.name)).map(item => item.binding) });
     });
     const fileList = el('div', 'ym-manage-list');
     filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, selectToggle, reload), fileList);
@@ -188,6 +190,8 @@ export function mountManageView({ document = globalThis.document, journal = null
             return node;
         }
         const actions = el('div', 'ym-manage-file-actions');
+        // 在聊天里：把这份记忆指定给当前聊天（作为独立记忆带入）。两下确认。
+        if (canPick && state.snapshot?.binding) actions.append(iconAction(`把 ${item.binding.file} 的记忆带入当前聊天`, 'link', () => run('manageAssign', { item }), { needsConfirm: () => true }));
         if (!item.unreadable) actions.append(iconAction(`导出 ${item.binding.file} 的记忆`, 'download', () => run('backupExportFile', { binding: item.binding })));
         if (canPick) actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
         node.append(actions);
@@ -252,6 +256,8 @@ export function mountManageView({ document = globalThis.document, journal = null
         const busy = !usable || Boolean(state.busy), chosen = scopeOf().id;
         scope.disabled = !state.snapshot;
         clean.disabled = chosen === 'local' ? !state.snapshot : busy || (chosen === 'traces' ? !traces : !entries.length);
+        const requestTokens = state.requestSize?.tokens;
+        requestLine.textContent = `本轮请求发送统计：${Number.isFinite(requestTokens) ? `${requestTokens.toLocaleString()} Token（预估）` : '---'}`;
         renderFiles(); renderLog();
     }
     const unsubscribe = journal?.subscribe?.(() => { if (!disposed && !element.hidden) renderLog(); });

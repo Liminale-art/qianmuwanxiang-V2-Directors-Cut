@@ -312,6 +312,7 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
 
     const sourceEqual = (source, chat) => !!source?.available && source.fingerprint === chat.proof.fingerprint && source.floorCount === chat.proof.floorCount;
     const identityEqual = (a, b) => contract.bindingKey(a) === contract.bindingKey(b);
+    const characterOf = binding => String(binding?.avatar || '').replace(/\.[^.]+$/, '');
     function uniqueMatch(source, chats, incomplete) {
         const matching = chats.filter(chat => sourceEqual(source, chat));
         const original = matching.find(chat => identityEqual(chat.binding, source.binding));
@@ -341,15 +342,20 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
             if (frozen && !target) fail('backup_source', '所选聊天已不存在或无法核对，请重新选择');
             if (!target) return {status: 'selection', archiveId, reason: chats.filter(chat => sourceEqual(primary, chat)).length > 1 ? 'multiple' : 'unmatched',
                 message: incomplete ? '部分聊天未能读取，请选择要导入的聊天，或取消。' : '请选择要导入的聊天，或取消。',
-                candidates: chats.map(chat => ({binding: chat.binding, label: chat.label, exact: sourceEqual(primary, chat)}))};
+                // 同名角色的聊天排在前面：原文对不上时，最可能要给的就是同一个角色的另一段聊天。
+                candidates: chats.map(chat => ({binding: chat.binding, label: chat.label, exact: sourceEqual(primary, chat), sameCharacter: characterOf(chat.binding) === characterOf(primary?.binding)}))
+                    .sort((a, b) => Number(b.exact) - Number(a.exact) || Number(b.sameCharacter) - Number(a.sameCharacter))};
             const exact = sourceEqual(primary, target), mappings = {source_0: target.binding};
+            // 原文对不上、而用户明确要「作为独立记忆带入」：不走合并，记忆落成这个聊天的自定义切片。
+            const detach = !exact && input.detach ? input.detach : null;
+            if (input.detach && exact) fail('backup_detach', '这份备份与所选聊天原文一致，直接导入即可', 409);
             if(prior.value?.result?.exact&&!exact)fail('backup_changed','本次导入原本匹配的聊天正文已变化，未改换来源');
             for (const source of record.header.sources.slice(1)) {
                 const match = uniqueMatch(source, chats, incomplete);
                 if (match && !Object.values(mappings).some(value => identityEqual(value, match.binding))) mappings[source.id] = match.binding;
             }
             const restored = restoreBackupDocument(record.header.document, {binding: target.binding, mappings});
-            if (!exact) {
+            if (!exact && !detach) {
                 // Explicitly choosing a different text is permission to retain data,
                 // never proof that old summaries describe the selected raw source.
                 const unverified = (version, current = null) => {
@@ -373,14 +379,22 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
                 }
                 const saved = await documentRead(ctx, target.binding);
                 if (!identityEqual(saved.value.binding, target.binding) || saved.value.movedTo) fail('backup_changed', '目标忆幕身份已变化，未合并');
-                const merged = mergeBackupDocument(saved.value, restored.document, {operationId, packageId: archiveId});
+                let merged;
+                if (detach) {
+                    const entries = contract.portableMemories(restored.document);
+                    if (!entries.length) fail('backup_empty', '这份备份里没有可带入的记忆', 409);
+                    const placement = {binding: clone(target.binding), fromFloor: detach.placement?.fromFloor, hash: detach.placement?.hash};
+                    await requireSource(ctx, target.binding, {start: placement.fromFloor, end: placement.fromFloor, hashes: [placement.hash]});
+                    const adopted = contract.applyOperation(saved.value, {id: operationId, type: 'adopt', entries: entries.slice(0, contract.ADOPT_LIMIT), placement});
+                    merged = {document: adopted.document, outcome: adopted.outcome === 'duplicate' ? 'duplicate' : 'adopted', counts: {added: entries.length, conflicts: 0}};
+                } else merged = mergeBackupDocument(saved.value, restored.document, {operationId, packageId: archiveId});
                 // Recheck all verified dependencies immediately before the one atomic write.
                 for (const source of record.header.sources) if (mappings[source.id]) {
                     const checked = await scanSource(ctx, mappings[source.id]);
                     if ((source.id !== 'source_0' || exact) && !sourceEqual(source, checked)) fail('backup_changed', '合并期间原文已变化，未保存');
                 }
                 const result = {status: 'complete', archiveId, binding: clone(target.binding), outcome: merged.outcome, counts: merged.counts,
-                    exact, unresolvedSources: restored.warnings.length, ...(exact ? {} : {message: '原文不一致，相关记忆已保留，核对前不会用于回复。'})};
+                    exact, unresolvedSources: restored.warnings.length, ...(exact ? {} : detach ? {message: `已作为 ${merged.counts.added} 条独立记忆带入。`} : {message: '原文不一致，相关记忆已保留，核对前不会用于回复。'})};
                 await writeFile(ctx, operationName, {status:'pending',archiveId,binding:clone(target.binding),result}, prior.fingerprint, value => value);
                 const pending = await readFile(ctx, operationName, value => value, () => null);
                 if (merged.outcome !== 'duplicate') await writeFile(ctx, chatStorageName(target.binding), merged.document, saved.fingerprint, contract.validateDocument, saved.legacyBytes);

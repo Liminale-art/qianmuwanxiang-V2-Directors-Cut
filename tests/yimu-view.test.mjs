@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.54 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.55 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.54'); assert.equal(pkg.version, '0.8.20');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.55'); assert.equal(pkg.version, '0.8.21');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1608,8 +1608,12 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.equal(list.querySelector('.ym-manage-tag'), null); assert.equal(list.querySelector('strong'), null);
     const goneFolder = list.children[2]; assert.equal(goneFolder.querySelector('summary').textContent, '原聊天不存在（1）'); assert.equal(goneFolder.open, false);
     assert.deepEqual(list.children[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 聊天 的记忆'], '当前聊天只能导出');
-    assert.deepEqual(list.children[1].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 另一段聊天 的记忆', '删除 另一段聊天 的记忆']);
-    list.children[1].querySelectorAll('button')[0].click(); await f.flush();
+    assert.deepEqual(list.children[1].querySelectorAll('button').map(node => node.attrs['aria-label']), ['把 另一段聊天 的记忆带入当前聊天', '导出 另一段聊天 的记忆', '删除 另一段聊天 的记忆']);
+    // 指定给当前聊天：两下确认。
+    const assign = list.children[1].querySelectorAll('button')[0], assignBefore = f.calls.length;
+    assign.click(); await f.flush(); assert.equal(f.calls.length, assignBefore); assert.equal(assign.getAttribute('data-armed'), 'true');
+    assign.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'manageAssign', payload: { item: files[1] } });
+    list.children[1].querySelectorAll('button')[1].click(); await f.flush();
     assert.deepEqual(f.calls.at(-1), { type: 'backupExportFile', payload: { binding: files[1].binding } });
 
     // 多选：点条目选中；全选只选得了能删的；删除两下确认。
@@ -1623,6 +1627,9 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.equal(row('chat-b.json').dataset.selected, 'true'); assert.equal(fileCard.querySelector('.ym-manage-count').textContent, '已选 1 个');
     f.get('全选文件').click(); await f.flush();
     assert.deepEqual(['chat-a.json', 'chat-b.json', 'chat-c.json'].map(name => row(name).dataset.selected), ['false', 'true', 'true']);
+    // 多选导出：所选的打成一个文件，一次动作。
+    f.get('导出所选文件').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'backupExportPack', payload: { bindings: [files[1].binding, files[2].binding] } });
     const before = f.calls.length;
     f.get('删除所选文件').click(); await f.flush(); assert.equal(f.calls.length, before, '第一下只是确认');
     f.get('删除所选文件').click(); await f.flush();
@@ -1645,42 +1652,96 @@ test('on the ST home page the file list covers every character, one folder each'
     assert.deepEqual(list.children.map(node => node.querySelector('summary').textContent), ['甲（2）', '乙（1）', '原聊天不存在（1）', '无法读取（1）']);
     assert.ok(list.children.every(node => node.tagName === 'DETAILS' && node.open === false), '都是折叠夹，默认收起');
     assert.match(list.children[2].textContent, /乙 · 1 条/, '跨角色的折叠夹里标出是哪个角色的');
-    assert.deepEqual(list.children[0].querySelectorAll('.ym-manage-file')[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 甲的聊天一 的记忆', '删除 甲的聊天一 的记忆']);
+    assert.deepEqual(list.children[0].querySelectorAll('.ym-manage-file')[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 甲的聊天一 的记忆', '删除 甲的聊天一 的记忆'], '首页没有打开聊天，不出现「带入当前聊天」');
 });
 
-test('the memory page draws the most recent slices first and reveals earlier ones on request; search, filter and multi-select look at everything', t => {
+test('the memory page lists newest first, 15 per page, with a pager at the bottom; search, filter and multi-select look at everything', t => {
     const many = Array.from({ length: 100 }, (_, i) => entry({ id: `s${i}`, text: i === 3 ? '很早的一条里提到了红围巾。' : `第 ${i} 条切片。`, source: { start: i * 2 + 1, end: i * 2 + 2 } }));
     many[0] = { ...many[0], pinned: true };
     const f = fixture({ document: { ...state().document, enabled: true, entries: many, entryOrder: many.map(item => item.id) } }); t.after(() => f.view.destroy());
     f.get('记忆').click();
     const list = f.all().find(node => node.className.split(/\s+/).includes('ym-list') && node.dataset.ymSelecting !== undefined);
     const drawn = () => list.children.map(node => node.dataset.entryId);
-    const more = f.all().find(node => node.tagName === 'BUTTON' && node.className.includes('ym-list-more'));
-    assert.equal(drawn().length, 41, '钉住的 1 条 + 最近 40 条');
-    assert.equal(drawn()[0], 's0', '钉住的在最前'); assert.equal(drawn()[1], 's60'); assert.equal(drawn().at(-1), 's99');
-    assert.equal(more.hidden, false); assert.equal(more.textContent, '显示更早的 40 条（还有 59 条）');
-    more.click();
-    assert.equal(drawn().length, 81); assert.equal(more.textContent, '显示更早的 19 条（还有 19 条）');
-    more.click();
-    assert.equal(drawn().length, 100); assert.equal(more.hidden, true);
-    // 换一个聊天再回来，从头按最近的画。搜索时要在全部记忆里找。
+    const pager = f.document.querySelector('.ym-pager'), input = f.get('页码'), total = pager.querySelector('.ym-pager-total');
+    assert.equal(pager.parentNode.children.at(-1), pager, '翻页栏在记忆页最底部');
+    assert.equal(drawn().length, 16, '钉住的 1 条 + 一页 15 条');
+    assert.deepEqual(drawn().slice(0, 3), ['s0', 's99', 's98'], '钉住的在最前，其余最新的在上');
+    assert.equal(drawn().at(-1), 's85');
+    assert.equal(pager.hidden, false); assert.equal(input.value, '1'); assert.equal(total.textContent, '/ 7');
+    assert.equal(f.get('上一页').disabled, true); assert.equal(f.get('下一页').disabled, false);
+    f.get('下一页').click();
+    assert.equal(input.value, '2'); assert.deepEqual(drawn().slice(0, 2), ['s0', 's84']); assert.equal(drawn().at(-1), 's70');
+    // 直接输入页码；越界的收到头尾，乱填的回到当前页。
+    input.value = '7'; input.emit('change');
+    assert.deepEqual(drawn(), ['s0', 's9', 's8', 's7', 's6', 's5', 's4', 's3', 's2', 's1'], '最后一页是最早的那些');
+    assert.equal(f.get('下一页').disabled, true);
+    input.value = '99'; input.emit('change'); assert.equal(input.value, '7');
+    input.value = 'abc'; input.emit('change'); assert.equal(input.value, '1'); assert.equal(drawn()[1], 's99');
+    f.get('下一页').click(); f.get('上一页').click(); assert.equal(input.value, '1');
+    // 换一个聊天再回来，回到第一页。搜索时要在全部记忆里找，不分页。
+    f.get('下一页').click();
     f.render({ snapshot: { ...f.state.snapshot, binding: { ...f.state.snapshot.binding, file: '另一聊天' } } });
     f.get('记忆').click();
-    assert.equal(drawn().length, 41);
+    assert.equal(input.value, '1'); assert.equal(drawn().length, 16);
     const search = f.get('搜索记忆'); search.value = '红围巾'; search.emit('input');
-    assert.equal(drawn().length, 100, '搜索时全部画出，才能搜到更早的');
+    assert.equal(drawn().length, 100, '搜索时全部画出，才能搜到更早的'); assert.equal(pager.hidden, true);
     assert.equal(list.children.filter(node => !node.hidden).map(node => node.dataset.entryId).join(), 's3');
     search.value = ''; search.emit('input');
-    assert.equal(drawn().length, 41);
+    assert.equal(drawn().length, 16); assert.equal(pager.hidden, false);
     f.get('多选删除').click();
-    assert.equal(drawn().length, 100, '多选时全部可选');
+    assert.equal(drawn().length, 100, '多选时全部可选'); assert.equal(pager.hidden, true);
+    // 一页以内不出现翻页栏。
+    f.render({ document: { ...f.state.document, entries: many.slice(0, 10), entryOrder: many.slice(0, 10).map(item => item.id) } });
+    f.get('多选删除').click();
+    assert.equal(pager.hidden, true);
 });
 
-test('the overview opens with the two switches; chat info and the request size follow', t => {
+test('the overview opens with the chat info; the two switches are the second card and the request size lives in the log card', t => {
     const f = fixture(); t.after(() => f.view.destroy());
     const page = f.all().find(node => node.dataset.page === 'overview');
-    const first = page.children[0];
-    assert.ok(first.className.split(/\s+/).includes('ym-hero-switches'));
-    assert.deepEqual(first.querySelectorAll('input').map(node => node.attrs['aria-label']), ['启用忆幕', '自动总结']);
-    assert.ok(page.children[1].querySelector('.ym-request-size'), '聊天信息与请求体积卡在其后');
+    assert.ok(page.children[0].querySelector('.ym-overview-name'), '聊天信息是首卡');
+    const second = page.children[1];
+    assert.ok(second.className.split(/\s+/).includes('ym-hero-switches'), '双开关在第二卡位');
+    assert.deepEqual(second.querySelectorAll('input').map(node => node.attrs['aria-label']), ['启用忆幕', '自动总结']);
+    assert.equal(page.querySelector('.ym-request-size'), null, '请求体积不再占导览页一张卡');
+    // 本轮请求统计固定在日志卡首：没有数据时只显示 ---。
+    f.get('管理').click();
+    const line = f.document.querySelector('.ym-manage-log .ym-log-request');
+    assert.equal(line.textContent, '本轮请求发送统计：---');
+    assert.equal(line.parentNode.children.indexOf(line), 1, '紧跟标题，在日志列表之前');
+    f.render({ requestSize: { tokens: 12345, method: 'estimate', messageCount: 9 } });
+    assert.equal(line.textContent, '本轮请求发送统计：12,345 Token（预估）');
+});
+
+test('an unmatched import offers the current chat first (as independent memory) and marks same-character chats', async t => {
+    const other = { avatar: '角色.png', file: '另一段聊天', integrity: 'other' };
+    const item = { id: 'imp1', name: '旧记忆.yimu.gz', status: 'selection', archive: { sources: [], primarySourceId: 'source_0' },
+        candidates: [{ binding: other, label: '角色 · 另一段聊天', exact: false, sameCharacter: true }, { binding: { avatar: '别人.png', file: '别处', integrity: 'x' }, label: '别人 · 别处', exact: false, sameCharacter: false }] };
+    const f = fixture({ backup: { items: [item], roles: [], busy: false, error: '', status: '' } }); t.after(() => f.view.destroy());
+    f.get('管理').click(); await f.flush(); f.calls.length = 0;
+    const select = f.get('导入目标 旧记忆.yimu.gz');
+    assert.deepEqual(select.children.map(option => option.textContent), ['请选择聊天或角色', '当前聊天 · 作为独立记忆带入', '角色 · 另一段聊天 · 同名角色', '别人 · 别处 · 原文待核对']);
+    select.value = 'detach'; select.emit('change'); f.get('确认导入至所选目标').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'backupResolve', payload: { itemId: 'imp1', detach: true } });
+    assert.equal(f.get('忆幕备份文件').accept, '.yimu.gz,.yimupack');
+});
+
+test('with newest on top, moving a slice up moves it later in the story and moving down moves it earlier', async t => {
+    const three = ['a', 'b', 'c'].map((id, i) => id === 'b' ? entry({ id, kind: 'manual', text: '自定义 b', source: null, placement: { fromFloor: 3 } })
+        : entry({ id, text: `切片 ${id}`, source: { start: i * 2 + 1, end: i * 2 + 2 } }));
+    const f = fixture({ document: { ...state().document, enabled: true, entries: three, entryOrder: ['a', 'b', 'c'] } }); t.after(() => f.view.destroy());
+    f.get('记忆').click();
+    const list = f.all().find(node => node.className.split(/\s+/).includes('ym-list') && node.dataset.ymSelecting !== undefined);
+    assert.deepEqual(list.children.map(node => node.dataset.entryId), ['c', 'b', 'a']);
+    const card = list.children[1], press = label => card.querySelectorAll('button').find(node => node.attrs['aria-label'] === label).click();
+    press('上移切片'); await f.flush();
+    assert.deepEqual(f.calls.at(-1).payload.entryOrder, ['a', 'c', 'b']);
+    press('下移切片'); await f.flush();
+    assert.deepEqual(f.calls.at(-1).payload.entryOrder, ['b', 'a', 'c']);
+    // 拖到某张卡片上：落在它的上方（时间上紧跟其后）。
+    const dragged = list.children[2].querySelector('[draggable]') || list.children[2].querySelectorAll('button').find(node => node.draggable);
+    if (dragged) {
+        dragged.emit('dragstart', { dataTransfer: { setData() {} } }); list.children[0].emit('drop'); await f.flush();
+        assert.deepEqual(f.calls.at(-1).payload.entryOrder, ['b', 'c', 'a']);
+    }
 });

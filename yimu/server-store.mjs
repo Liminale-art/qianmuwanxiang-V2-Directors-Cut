@@ -631,9 +631,14 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 if (current.value.movedTo) fail('moved', '该聊天已改名，请重新打开当前聊天');
                 // A new file cannot claim an unverified chat path. Existing manual notes remain editable when originals go missing.
                 if (!current.fingerprint) await requireSource(ctx, binding);
+                // 同一个锚点只核一次（一次带入上百条独立记忆时，它们共用一个锚点）。
+                const checkedPlacements = new Set();
                 for (const entry of result.document.entries) if (entry.kind === 'manual' && entry.placement) {
                     const previous = current.value.entries.find(value => value.id === entry.id);
-                    if (!previous || !equal(previous.placement, entry.placement)) await requirePlacementSource(ctx, binding, entry.placement);
+                    if (previous && equal(previous.placement, entry.placement)) continue;
+                    const key = JSON.stringify(entry.placement);
+                    if (checkedPlacements.has(key)) continue;
+                    await requirePlacementSource(ctx, binding, entry.placement); checkedPlacements.add(key);
                 }
                 if ((operation?.type === 'append' || operation?.type === 'redo') && operation.entry?.source) {
                     const generated = generatedStage ? {...operation.entry, source: contract.stageSourceFromParents(current.value, operation.entry.source.parents,
@@ -760,5 +765,23 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         });
     }
 
-    return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, ...stories, ...backups});
+    // 把账户里另一份记忆文件指定给某个聊天：读出那份文件里可带走的记忆，作为独立记忆（自定义切片）写进目标聊天。
+    // 原文件不动；目标聊天的原文、已有记忆也不动。走的是普通的 change，所以修订号、来源核对都照常。
+    async function manageAssign(request, body) {
+        const ctx = context(request);
+        await prepare(ctx);
+        const name = body?.name;
+        if (typeof name !== 'string' || !/^chat-[a-f0-9]{64}\.json$/.test(name)) fail('manage', '记忆文件名无效', 400);
+        const target = normalizeStoreBinding(body?.target);
+        if (chatStorageName(target) === name) fail('manage', '这就是当前聊天自己的记忆', 409);
+        const source = await readFile(ctx, name, contract.validateDocument, () => null);
+        if (!source.value || !source.fingerprint) fail('manage', '这份记忆文件已不存在，请刷新列表', 409);
+        const entries = contract.portableMemories(source.value);
+        if (!entries.length) fail('manage', '这份记忆文件里没有可带入的记忆', 409);
+        const placement = {binding: target, fromFloor: body?.placement?.fromFloor, hash: body?.placement?.hash};
+        const result = await change(request, target, {id: body?.id, type: 'adopt', entries: entries.slice(0, contract.ADOPT_LIMIT), placement});
+        return {...result, adopted: entries.length};
+    }
+
+    return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, manageAssign, ...stories, ...backups});
 }
