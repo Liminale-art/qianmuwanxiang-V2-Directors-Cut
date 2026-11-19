@@ -611,7 +611,7 @@ test('the generation path waits for one read only: no service probe before a rep
     assert.equal(counted.length, 1); assert.equal(f.controller.state.requestSize.method, 'st-tokenizer');
 });
 
-test('every summary batch and every generation round leaves one journal entry: what ran, how long, what came back, why it failed', async t => {
+test('every summary batch leaves one journal entry: what was sent, what came back, how long, why it failed', async t => {
     const f = await fixture(t); await manualReady(f);
     await manualRange(f, 1, 4, {start: 1, end: 4}, 2);
     const batches = f.journal.list().filter(item => item.kind === 'summary').reverse();
@@ -620,10 +620,11 @@ test('every summary batch and every generation round leaves one journal entry: w
     assert.deepEqual(batches[0].slices.map(slice => [slice.start, slice.end]), [[1, 2]]);
     assert.ok(Number.isFinite(batches[0].durationMs));
     assert.equal(batches[0].chat, binding.file);
-    // 一轮生成：带了几条、用了多久。
+    assert.match(batches[0].request, /完整覆盖第1至2层/, '发出去的全文留在日志里');
+    assert.ok(batches[0].requestTokens > 0 && batches[0].responseTokens > 0, '发送与返回各有 token 估算');
+    // 生成不再进日志：日志只记整理。
     await f.inject(); await f.controller.event('GENERATION_ENDED', []);
-    const round = f.journal.list().find(item => item.kind === 'round');
-    assert.equal(round.status, 'success'); assert.equal(round.memories, 1); assert.ok(Number.isFinite(round.waitMs));
+    assert.ok(f.journal.list().every(item => ['summary', 'stage'].includes(item.kind)));
     // 失败的一批：记下原因，状态是失败而不是一直「进行中」。
     f.model(async () => { throw new Error('合成模型故障'); });
     await manualRange(f, 5, 5);
@@ -1213,7 +1214,7 @@ test('a manual summary never does nothing silently: a stale generating flag is c
     assert.ok(total > 2);
 });
 
-test('when automatic summary does not run because the threshold is not reached, the journal says so once per floor count', async t => {
+test('when automatic summary does not run because the threshold is not reached, nothing is logged: the journal only records summaries', async t => {
     const f = await fixture(t);
     await f.controller.refresh();
     await f.controller.action('enable', {enabled: true, range: {start: 1, end: 0, total: 0}});
@@ -1221,12 +1222,7 @@ test('when automatic summary does not run because the threshold is not reached, 
     await f.controller.action('autoSummary', {value: true});
     await f.flush();
     assert.equal(f.generated(), 0, '没到触发值，不整理');
-    const idle = f.journal.list().filter(item => item.kind === 'idle');
-    assert.equal(idle.length, 1);
-    assert.equal(idle[0].pendingFloors, 6, '保留 1 层以外的 6 层都还没整理');
-    assert.equal(idle[0].triggerFloors, 50); assert.equal(idle[0].trigger, 900000); assert.equal(idle[0].recent, 1);
-    assert.deepEqual([idle[0].range.start, idle[0].range.end], [1, 6]);
-    // 楼层数没变时再检查一次，不重复记。
+    assert.deepEqual(f.journal.list(), []);
     await f.controller.start(); await f.flush();
-    assert.equal(f.journal.list().filter(item => item.kind === 'idle').length, 1);
+    assert.deepEqual(f.journal.list(), []);
 });

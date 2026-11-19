@@ -16,6 +16,7 @@ import { mountContextRulesView } from './context-view.mjs';
 import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scene-view.mjs';
 import { mountRetrievalView } from './retrieval-view.mjs';
 import { mountManageView } from './manage-view.mjs';
+import { mountHeartView } from './heart-view.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
@@ -184,8 +185,11 @@ export function createView({ onAction, connectionApi, journal = null, document =
     const backButton = iconButton('返回', 'back', () => navigate(pageParents[currentPage] || 'overview'), 'ym-back ym-small');
     backButton.hidden = true;
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
+    // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
+    const heart = mountHeartView({ document, getState: () => state });
+    const heartEntry = iconButton('心迹与观察日记', 'quill', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
-    headerActions.append(backButton, closeButton);
+    headerActions.append(backButton, heartEntry, closeButton);
     header.append(heading, headerActions);
     const nav = el('nav', 'ym-nav-shell'); nav.setAttribute('aria-label', '忆幕页面');
     const navigation = mountYimuNavigation(nav, { document, tabs: ['overview', 'memory', 'retrieval', 'manage', 'settings'].map(name => [name, pageTitles[name]]), onNavigate: navigate });
@@ -847,7 +851,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             }));
         }
         addManual.disabled = !available;
-        search.disabled = filter.disabled = !available;
+        search.disabled = filter.disabled = !available; heartEntry.hidden = !state.document;
         selectToggle.disabled = !available || Boolean(state.busy) && !selecting;
         for (const control of controls.values()) control.input.disabled = !available;
         for (const redo of list.querySelectorAll('[data-ym-redo]')) {
@@ -1368,7 +1372,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     });
     return {
         render, open, close, isOpen: () => opened,
-        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); clearTimeout(deleteTimer); manage.destroy(); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
+        destroy() { if (destroyed) return; close(); destroyed = true; scopeGeneration++; clearTimeout(settingsTimer); clearTimeout(deleteTimer); manage.destroy(); heart.destroy(); unsubscribeRetrieval(); theme.destroy(); navigation.destroy(); versionBadge.destroy(); promptView.destroy(); contextRulesView.destroy(); apiView?.destroy(); story.destroy(); backup.destroy(); retrieval.destroy(); backdrop.remove(); dialog.remove(); cards.clear(); edits.clear(); groups.clear(); },
     };
 }
 

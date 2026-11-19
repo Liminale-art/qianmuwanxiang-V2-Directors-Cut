@@ -145,7 +145,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     let liveLog = null;
     const note = task => { if (!journal) return null; try { return task(); } catch { return null; } };
     const chatLabel = binding => String(binding?.file || '');
-    const openLog = entry => { liveLog = note(() => journal.add({ status: 'loading', ...entry })); return { id: liveLog, started: Date.now() }; };
+    // 日志里存发出去的全文与它的 token 估算；返回的全文在收到后补上。
+    const promptText = prompt => typeof prompt === 'string' ? prompt : JSON.stringify(prompt, null, 2);
+    const openLog = ({ prompt, ...entry }) => { const request = prompt === undefined ? undefined : promptText(prompt);
+        liveLog = note(() => journal.add({ status: 'loading', ...entry, ...(request !== undefined ? { request, requestTokens: estimateTokens(request) } : {}) })); return { id: liveLog, started: Date.now() }; };
     const closeLog = (log, patch) => { if (log?.id) note(() => journal.update(log.id, { durationMs: Date.now() - log.started, ...patch })); if (liveLog === log?.id) liveLog = null; };
     const notice = (message, tone = 'success') => {
         if (disposed || typeof onNotice !== 'function' || typeof message !== 'string' || !message) return;
@@ -559,10 +562,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (!run.fitsPrompt(prompt) && names) { names = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
                 batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
-                    manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length) });
+                    manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length), prompt });
                 const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
                     { binding, label: '切片总结', start: batch.start, end: batch.end, retryState });
-                if (batchLog?.id) note(() => journal.update(batchLog.id, { raw: response, durationMs: Date.now() - batchLog.started }));
+                if (batchLog?.id) note(() => journal.update(batchLog.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - batchLog.started }));
                 if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; emit(); }
                 if (controller.signal.aborted || disposed || localStops.has(key)) break;
                 const beforeSave = await readSource(binding); adopt(binding, beforeSave);
@@ -754,11 +757,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 notice(`忆幕阶段总结中：楼层${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'info');
                 if (group.parents.reduce((total, entry) => total + estimateTokens(entry.text), 0) > settings.inputCapacity || !settings.fitsStage(group.parents)) throw new Error('完整阶段超过此连接的可用输入容量，请选择容量足够的连接');
                 if (controller.signal.aborted) break;
-                stageLog = openLog({ kind: 'stage', chat: chatLabel(binding), range: { start: startFloor, end: endFloor }, manual: Boolean(force), parents: group.parents.length });
-                const response = await generateWithRetries(stagePrompt(group.parents, settings),
+                const stageRequest = stagePrompt(group.parents, settings);
+                stageLog = openLog({ kind: 'stage', chat: chatLabel(binding), range: { start: startFloor, end: endFloor }, manual: Boolean(force), parents: group.parents.length, prompt: stageRequest });
+                const response = await generateWithRetries(stageRequest,
                     { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
                     { binding, label: '阶段总结', start: startFloor, end: endFloor, retryState });
-                if (stageLog?.id) note(() => journal.update(stageLog.id, { raw: response, durationMs: Date.now() - stageLog.started }));
+                if (stageLog?.id) note(() => journal.update(stageLog.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - stageLog.started }));
                 if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; emit(); }
                 if (disposed || controller.signal.aborted || localStops.has(key)) break;
                 const latest = await readSource(binding); adopt(binding, latest);

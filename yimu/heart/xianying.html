@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>显影</title>
+<style>
+/* 方案 B：幕与显影。
+   千幕是「很多道幕」，忆幕是其中记事的那一道。幕不是墙——它挡着，也随时会被拉开。
+   观察日记 = 多重曝光：同一件事每看到一次，就在同一张底片上叠一层；叠得越多，字越清楚。
+   心迹 = 幕间：平时合着，滚到那里才拉开一道缝，缝里是 TA 没说出口的话，缝上有一条跳着的线。 */
+:root { --black: #0b0a09; --cloth: #16130f; --fold: #211c16; --bone: #efe6d6; --dim: #7d7466; --red: #d8402f; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--black); color: var(--bone); font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; overflow-x: hidden; }
+body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9; opacity: .07; mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.wrap { max-width: 560px; margin: 0 auto; position: relative; }
+.sans { font-family: system-ui, -apple-system, sans-serif; }
+/* ---- 片头 ---- */
+.title { position: relative; height: 62vh; min-height: 380px; overflow: hidden; }
+.title .big { position: absolute; font-size: min(40vw, 230px); line-height: .86; letter-spacing: -.04em; color: transparent; -webkit-text-stroke: 1px var(--dim); user-select: none; }
+.title .big.a { left: -4%; top: 4%; }
+.title .big.b { right: -6%; bottom: -4%; color: var(--bone); -webkit-text-stroke: 0; mix-blend-mode: difference; }
+.title .slit { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--red); box-shadow: 0 0 18px 1px var(--red); transform-origin: top; animation: open 1.8s cubic-bezier(.7,0,.2,1) both; }
+@keyframes open { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.title p { position: absolute; left: 22px; bottom: 26px; margin: 0; font-size: 12px; letter-spacing: .34em; color: var(--dim); writing-mode: vertical-rl; }
+.title .legend { position: absolute; right: 22px; top: 26px; text-align: right; font-size: 11px; letter-spacing: .12em; color: var(--dim); line-height: 1.9; }
+.jump { position: sticky; top: 0; z-index: 6; display: flex; gap: 22px; padding: 12px 22px; font-size: 12px; letter-spacing: .3em; background: linear-gradient(var(--black) 60%, transparent); }
+.jump a { color: var(--dim); text-decoration: none; }
+.jump a.on { color: var(--bone); border-bottom: 1px solid var(--red); }
+h2 { margin: 0; padding: 70px 22px 8px; font-weight: normal; font-size: 13px; letter-spacing: .5em; color: var(--red); }
+h2 + .lead { padding: 0 22px 34px; margin: 0; font-size: 12px; color: var(--dim); letter-spacing: .1em; line-height: 1.8; }
+/* ---- 显影：多重曝光 ---- */
+.plate { position: relative; padding: 34px 22px 44px; cursor: pointer; border-top: 1px solid var(--fold); }
+.plate .meta { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .26em; color: var(--dim); }
+.plate .meta b { font-weight: normal; color: var(--red); }
+.expo { position: relative; margin-top: 20px; font-size: clamp(26px, 8.4vw, 44px); line-height: 1.3; min-height: 2.6em; }
+.expo .layer { position: absolute; left: 0; top: 0; width: 100%; transition: transform .9s cubic-bezier(.2,.8,.2,1), opacity .9s, filter .9s, font-size .9s; will-change: transform; }
+.expo .layer .proof { display: none; font-size: 15px; line-height: 1.7; color: var(--bone); }
+.expo .layer .proof i { font-style: normal; display: block; font-size: 11px; letter-spacing: .2em; color: var(--red); font-family: system-ui, sans-serif; }
+.plate.open .expo .layer { filter: none !important; opacity: 1 !important; }
+.plate.open .expo .layer .same { display: none; }
+.plate.open .expo .layer .proof { display: block; }
+.plate .bar { margin-top: 18px; height: 2px; background: var(--fold); position: relative; }
+.plate .bar::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--sure, 30%); background: var(--bone); transition: width 1.2s cubic-bezier(.2,.8,.2,1); }
+.plate[data-sure="3"] .bar::after { background: var(--red); }
+.plate .hint { margin-top: 10px; font-size: 11px; letter-spacing: .16em; color: var(--dim); }
+.plate .was { margin-top: 12px; font-size: 14px; color: var(--dim); }
+.plate .was s { text-decoration-color: var(--red); }
+/* 还没显影的：一条慢慢走的胶片，两头渐隐，字有大有小 */
+.strip { position: relative; margin-top: 30px; padding: 26px 0 30px; border-top: 1px solid var(--fold); border-bottom: 1px solid var(--fold); overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.strip::before, .strip::after { content: ''; position: absolute; left: 0; right: 0; height: 8px; background: repeating-linear-gradient(90deg, var(--fold) 0 10px, transparent 10px 22px); }
+.strip::before { top: 8px; } .strip::after { bottom: 8px; }
+.strip .reel { display: flex; gap: 46px; width: max-content; align-items: baseline; animation: reel 38s linear infinite; }
+.strip span { white-space: nowrap; color: var(--dim); animation: under 7s ease-in-out infinite; }
+@keyframes reel { to { transform: translateX(-50%); } }
+@keyframes under { 0%, 100% { opacity: .18; } 50% { opacity: .7; } }
+.strip-label { padding: 14px 22px 0; font-size: 11px; letter-spacing: .3em; color: var(--dim); }
+/* ---- 幕间 ---- */
+.act { position: relative; height: 92vh; min-height: 520px; overflow: hidden; border-top: 1px solid var(--fold); }
+.act .inner { position: absolute; inset: 0; display: flex; flex-direction: row-reverse; justify-content: center; align-items: center; gap: 22px; padding: 40px 34px; }
+.act .say { writing-mode: vertical-rl; font-size: clamp(20px, 5.6vw, 28px); line-height: 2; letter-spacing: .12em; max-height: 76%; }
+.act .say::first-letter { color: var(--red); font-size: 1.9em; }
+.act .before { writing-mode: vertical-rl; font-size: 13px; line-height: 2; letter-spacing: .1em; color: var(--dim); max-height: 60%; }
+.act .before s { text-decoration-color: var(--red); }
+.act .no { position: absolute; left: 14px; top: 16px; z-index: 4; font-size: 11px; letter-spacing: .4em; color: var(--dim); writing-mode: vertical-rl; }
+.act .no b { font-weight: normal; color: var(--red); }
+.act .ghostno { position: absolute; right: -10px; bottom: -30px; font-size: 210px; line-height: 1; font-family: Georgia, serif; font-style: italic; color: transparent; -webkit-text-stroke: 1px var(--fold); user-select: none; }
+.curtain { position: absolute; top: 0; bottom: 0; width: 50.5%; z-index: 3; will-change: transform;
+  background: repeating-linear-gradient(90deg, var(--cloth) 0 14px, var(--fold) 14px 16px, var(--cloth) 16px 34px, #0f0d0a 34px 36px); box-shadow: 0 0 60px 10px #000 inset; }
+.curtain.l { left: 0; transform: translateX(calc(var(--open, 0) * -92%)); }
+.curtain.r { right: 0; transform: translateX(calc(var(--open, 0) * 92%)); }
+.pulse { position: absolute; left: 50%; top: 0; bottom: 0; width: 60px; margin-left: -30px; z-index: 5; pointer-events: none; opacity: calc(1 - var(--open, 0) * .85); }
+.pulse path { fill: none; stroke: var(--red); stroke-width: 1.3; filter: drop-shadow(0 0 5px var(--red)); stroke-dasharray: 30 600; animation: beat 2.6s linear infinite; }
+.pulse line { stroke: var(--red); stroke-width: .6; opacity: .5; }
+@keyframes beat { from { stroke-dashoffset: 630; } to { stroke-dashoffset: 0; } }
+.fin { padding: 90px 22px 140px; text-align: center; font-size: 12px; letter-spacing: .6em; color: var(--dim); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+.ymbar { position: fixed; left: 0; right: 0; top: 0; height: 42px; z-index: 30; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; }
+.ymbar button { all: unset; cursor: pointer; }
+.ymbar button:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
+body { padding-top: 42px; }
+.empty { margin: 0; padding: 46px 22px; font-size: 14px; letter-spacing: .2em; opacity: .6; }
+.ymbar { background: linear-gradient(var(--black) 70%, transparent); font-size: 12px; letter-spacing: .4em; color: var(--dim); font-family: system-ui, sans-serif; }
+.ymbar #ym-theme { color: var(--red); }
+.jump { top: 42px !important; }
+.empty { color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="ymbar"><button id="ym-exit" aria-label="退出">幕 落</button><button id="ym-theme" aria-label="切换主题">换 景</button></div>
+<div class="wrap">
+  <header class="title">
+    <div class="big a">忆</div><div class="big b">幕</div><span class="slit"></span>
+    <p>心 迹 ／ 观 察 日 记</p>
+  </header>
+  <nav class="jump sans"><a href="#develop" class="on">显影</a><a href="#acts">幕间</a></nav>
+
+  <section id="develop">
+    <h2>显 影</h2>
+    <p class="lead sans">一件事看见一次，只是底片上很淡的一层。<br>在不同的日子里又看见，才一层一层叠清楚。</p>
+    <div id="plates"></div>
+    <p class="strip-label sans">还 没 显 出 来 的</p>
+    <div class="strip"><div class="reel" id="reel"></div></div>
+  </section>
+
+  <section id="acts">
+    <h2>幕 间</h2>
+    <p class="lead sans">没说出口的话，写在两道幕之间。</p>
+    <div id="stage"></div>
+    <p class="fin">幕 落</p>
+  </section>
+</div>
+<script>
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
+const tell = type => parent.postMessage({ yimuHeart: type }, '*');
+document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
+document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
+addEventListener('keydown', event => { if (event.key === 'Escape') tell('exit'); });
+window.yimuRender = raw => { if (window.__yimuRendered) return; window.__yimuRendered = true; const D = safe(raw || {}); D.impressions ||= []; D.loose ||= []; D.thoughts ||= [];
+
+const plates = D.impressions;
+const host = document.getElementById('plates');
+for (const [index, item] of plates.entries()) {
+  const node = document.createElement('article'); node.className = 'plate'; node.dataset.sure = item.sure; node.style.setProperty('--sure', `${Math.min(100, item.days.length / 6 * 100)}%`);
+  const blur = [0, 5.5, 2.4, 0][item.sure], spread = [0, 13, 6, 1.2][item.sure];
+  const layers = item.days.map(([day, text], i) => {
+    const angle = i * 2.4 + index, dx = Math.cos(angle) * spread, dy = Math.sin(angle * 1.7) * spread * .7;
+    return `<div class="layer" data-i="${i}" style="transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px);opacity:${(item.sure === 3 ? .9 : .5 / Math.sqrt(item.days.length) + .16).toFixed(2)};filter:blur(${(blur * (i ? 1 : .35)).toFixed(1)}px)" data-closed="translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)"><span class="same">${item.say}</span><span class="proof"><i>${day}</i>${text}</span></div>`;
+  }).join('');
+  node.innerHTML = `<div class="meta sans"><span>${item.about}</span><b>${item.word} · ${item.days.length} 次曝光</b></div><div class="expo">${layers}</div><div class="bar"></div>${item.was ? `<div class="was">以前以为：<s>${item.was}</s></div>` : ''}<div class="hint sans">点开 · 看每一次</div>`;
+  node.addEventListener('click', () => {
+    const open = node.classList.toggle('open'), expo = node.querySelector('.expo');
+    node.querySelectorAll('.layer').forEach((layer, i) => { layer.style.transform = open ? `translate(${i % 2 ? 18 : 0}px, ${i * 62}px)` : layer.dataset.closed; });
+    expo.style.minHeight = open ? `${item.days.length * 62 + 10}px` : '';
+    node.querySelector('.hint').textContent = open ? '收起 · 叠回一张' : '点开 · 看每一次';
+  });
+  host.append(node);
+}
+const loose = D.loose.map(item => item.text);
+document.getElementById('reel').innerHTML = [...loose, ...loose].map((text, i) => `<span style="font-size:${[13, 24, 16, 30, 12, 20][i % 6]}px;animation-delay:-${(i * 1.3).toFixed(1)}s;animation-duration:${6 + i % 4}s">${text}</span>`).join('');
+
+const acts = D.thoughts;
+const numerals = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+const stage = document.getElementById('stage');
+acts.forEach((act, i) => {
+  const order = acts.length - i, node = document.createElement('article'); node.className = 'act';
+  node.innerHTML = `<span class="no sans">第 ${numerals[order - 1] || order} 幕 · <b>${act.about}</b> · ${act.when}</span><span class="ghostno">${String(order).padStart(2, '0')}</span>
+    <div class="inner"><p class="say">${act.say}</p>${act.was ? `<p class="before">以前以为：<s>${act.was}</s></p>` : ''}</div>
+    <div class="curtain l"></div><div class="curtain r"></div>
+    <svg class="pulse" viewBox="0 0 60 600" preserveAspectRatio="none"><line x1="30" y1="0" x2="30" y2="600"/><path d="M30 0 V250 L22 262 L40 276 L12 296 L48 312 L26 326 L30 338 V600"/></svg>`;
+  stage.append(node);
+});
+// 幕随滚动拉开：一幕走到屏幕中段时全开，离开时再合上。
+const all = [...document.querySelectorAll('.act')], links = [...document.querySelectorAll('.jump a')];
+let ticking = false;
+function pull() {
+  ticking = false; const h = innerHeight;
+  for (const act of all) { const r = act.getBoundingClientRect(), center = r.top + r.height / 2, d = Math.abs(center - h / 2) / (h * .62);
+    const open = Math.max(0, Math.min(1, 1.25 - d * 1.25)); act.style.setProperty('--open', (open * open * (3 - 2 * open)).toFixed(3)); }
+  const inActs = document.getElementById('acts').getBoundingClientRect().top < h * .5;
+  links[0].classList.toggle('on', !inActs); links[1].classList.toggle('on', inActs);
+}
+addEventListener('scroll', pull, { passive: true });
+addEventListener('resize', pull); pull();
+
+if (!plates.length) host.innerHTML = '<p class="empty">底片上还没有叠清楚的东西。</p>';
+if (!loose.length) { document.querySelector('.strip').hidden = true; document.querySelector('.strip-label').hidden = true; }
+if (!acts.length) { stage.innerHTML = '<p class="empty">幕还没有拉开过。</p>'; document.querySelector('.fin').hidden = true; }
+
+};
+</script>
+</body>
+</html>

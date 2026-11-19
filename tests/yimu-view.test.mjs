@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.58 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.59 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.58'); assert.equal(pkg.version, '0.8.23');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.59'); assert.equal(pkg.version, '0.8.23');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1557,9 +1557,9 @@ test('the filter is an icon button with the native select laid over it, and it m
 
 test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a foldered file list scoped to this character', async t => {
     const rows = [
-        { id: 'j2', at: Date.UTC(2026, 10, 19, 4, 5, 6), kind: 'round', status: 'blocked', chat: '聊天', reason: 'text-completion-boundary-unavailable', hiddenTo: 23, waitMs: 180 },
+        { id: 'j2', at: Date.UTC(2026, 10, 19, 4, 5, 6), kind: 'stage', status: 'error', chat: '聊天', range: { start: 1, end: 20 }, durationMs: 900, request: '阶段请求全文', requestTokens: 7, error: '合成模型故障' },
         { id: 'j1', at: Date.UTC(2026, 10, 19, 4, 0, 0), kind: 'summary', status: 'success', chat: '聊天', range: { start: 1, end: 10 }, manual: true, batch: '1/3', durationMs: 4200,
-            raw: '{"slices":[…]}', slices: [{ start: 1, end: 6, title: '初见' }, { start: 7, end: 10, title: '同行' }] },
+            request: '切片请求全文', requestTokens: 1234, raw: '{"slices":[…]}', responseTokens: 56 },
     ];
     let cleared = 0; const listeners = new Set();
     const journal = { list: () => rows.map(row => ({ ...row })), clear() { cleared++; rows.length = 0; for (const fn of listeners) fn(); }, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
@@ -1575,11 +1575,15 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     const cards = page.querySelector('.ym-manage').children;
     assert.deepEqual(cards.map(node => node.querySelector('h3').textContent), ['日志', '当前聊天', '记忆文件'], '日志是首卡；记忆备份已并进记忆文件');
 
-    // 日志：一条一行可展开，状态点、来源标签、详情平铺。
+    // 日志与千幕同一形式：一行是「日期 · 用时」，右侧标切片或阶段；展开是发送与返回两块终端全文，小标题后跟 token 标签。
     const logs = page.querySelectorAll('.ym-log-entry'); assert.equal(logs.length, 2);
-    assert.match(logs[1].textContent, /切片总结 · 第 0–9 层/); assert.match(logs[1].textContent, /用时 4\.2 秒/); assert.match(logs[1].textContent, /手动 1\/3/);
-    assert.equal(logs[1].querySelector('.ym-term').textContent, '{"slices":[…]}');
-    assert.match(logs[0].textContent, /生成 · 未带记忆/); assert.match(logs[0].textContent, /隐藏到第 22 层/);
+    const clockText = at => { const d = new Date(at), pad = v => String(v).padStart(2, '0'); return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+    assert.equal(logs[1].querySelector('.ym-log-title').textContent, clockText(rows[1].at)); assert.equal(logs[1].querySelector('.ym-log-meta').textContent, '用时 4.2 秒');
+    assert.equal(logs[1].querySelector('.ym-log-kind').textContent, '切片'); assert.equal(logs[0].querySelector('.ym-log-kind').textContent, '阶段');
+    assert.deepEqual(logs[1].querySelectorAll('.ym-log-cap').map(node => node.textContent), ['发送约 1234 token', '返回约 56 token']);
+    assert.deepEqual(logs[1].querySelectorAll('.ym-term').map(node => node.textContent), ['切片请求全文', '{"slices":[…]}']);
+    assert.ok(!/第 0–9 层|手动/.test(logs[1].textContent), '条目里不再放范围、来源这些说明');
+    assert.deepEqual(logs[0].querySelectorAll('.ym-term').map(node => node.textContent), ['合成模型故障', '阶段请求全文', '暂无'], '失败原因排在最前，没有返回时写暂无');
 
     // 当前聊天：计数在标题同一行；清理是「下拉 + 一个图标」。
     const chatCard = cards[1], count = chatCard.querySelector('.ym-manage-count');

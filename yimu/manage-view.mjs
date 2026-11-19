@@ -110,60 +110,29 @@ export function mountManageView({ document = globalThis.document, journal = null
     element.append(logCard, chatCard, filesCard);
 
     const cap = text => el('div', 'ym-log-cap', text);
-    const term = text => el('pre', 'ym-term', text);
+    const term = (text, className = 'ym-term') => el('pre', className, text);
+    // 与千幕的日志同一个形式：一行是「日期 · 输出用时」，右侧标「切片」或「阶段」；
+    // 展开后两块终端样式的全文——发送、返回，小标题后跟 token 标签。
+    const tag = text => el('span', 'ym-log-tag', text);
     function logEntry(item) {
         const node = el('details', 'ym-log-entry'); node.dataset.logId = item.id; node.open = open.has(item.id);
         node.addEventListener('toggle', () => { if (node.open) open.add(item.id); else open.delete(item.id); });
         const summary = el('summary');
         const status = el('span', `ym-log-status ${item.status || ''}`.trim()); status.setAttribute('aria-hidden', 'true');
-        const isRound = item.kind === 'round', isIdle = item.kind === 'idle';
-        const [why, hint] = isRound && item.reason && item.reason !== 'empty' ? describeSkip(item.reason) : ['', ''];
-        const title = isIdle ? '自动总结 · 未到触发值' : isRound
-            ? item.status === 'success' ? `生成 · 带入 ${item.memories || 0} 条记忆` : item.reason === 'empty' ? '生成 · 没有可带的记忆' : item.offered ? '生成 · 记忆以附加方式带入' : '生成 · 未带记忆'
-            : `${item.kind === 'stage' ? '阶段总结' : '切片总结'} · ${floors(item.range)}`;
-        const meta = [clock(item.at)];
-        if (isIdle) {
-            meta.push(`待整理 ${item.pendingFloors} 层`);
-            if (item.triggerFloors > 0) meta.push(`满 ${item.triggerFloors} 层触发`);
-        } else if (isRound) {
-            if (Number.isFinite(item.tokens)) meta.push(`约 ${item.tokens} token`);
-            if (item.hiddenTo > 0) meta.push(`隐藏到第 ${shownFloor(item.hiddenTo)} 层`);
-            if (Number.isFinite(item.waitMs)) meta.push(`生成前用时 ${seconds(item.waitMs)}`);
-        } else {
-            if (Number.isFinite(item.durationMs)) meta.push(`用时 ${seconds(item.durationMs)}`);
-            if (Array.isArray(item.slices)) meta.push(`${item.slices.length} 片`);
-            if (item.status === 'loading') meta.push('进行中');
-        }
-        summary.append(status, el('span', 'ym-log-title', title), el('span', 'ym-log-meta', meta.join(' · ')));
-        const kind = isIdle ? '自动' : isRound ? '生成' : item.manual ? item.batch ? `手动 ${item.batch}` : '手动' : '自动';
-        summary.append(el('span', 'ym-log-kind', kind));
+        const took = item.status === 'loading' ? '进行中' : Number.isFinite(item.durationMs) ? `用时 ${seconds(item.durationMs)}` : '';
+        summary.append(status, el('span', 'ym-log-title', clock(item.at)), el('span', 'ym-log-meta', took), el('span', 'ym-log-kind', item.kind === 'stage' ? '阶段' : '切片'));
         const detail = el('div', 'ym-log-detail');
-        if (item.chat) { detail.append(cap('聊天'), el('p', 'ym-log-text', item.chat)); }
-        if (isIdle) {
-            detail.append(cap('情况'), el('p', 'ym-log-text', `保留最近 ${item.recent} 层以外，还有 ${floors(item.range) || `${item.pendingFloors} 层`}（共 ${item.pendingFloors} 层、约 ${item.pendingTokens} token）没整理。`
-                + `要满 ${item.triggerFloors > 0 ? `${item.triggerFloors} 层或 ` : ''}${item.trigger} token 才自动总结。`));
-        } else if (isRound) {
-            if (why) { detail.append(cap('原因'), el('p', 'ym-log-text', hint ? `${why} ${hint}` : why)); }
-            if (item.reason === 'empty') detail.append(cap('原因'), el('p', 'ym-log-text', '这一轮没有与当前正文相关、且尚未淡去的记忆。'));
-        } else {
-            if (Array.isArray(item.slices) && item.slices.length) {
-                detail.append(cap('结果'));
-                for (const slice of item.slices) detail.append(el('p', 'ym-log-text', `${floors(slice)}${slice.title ? ` · ${slice.title}` : ''}`));
-            }
-            if (Array.isArray(item.observations) && item.observations.length) {
-                detail.append(cap('留意到'));
-                for (const seen of item.observations) detail.append(el('p', 'ym-log-text', `${seen.about}：${seen.text}（第 ${shownFloor(seen.floor)} 层）`));
-            }
-            if (item.raw) { detail.append(cap(item.status === 'loading' ? '模型返回（接收中）' : '模型返回'), term(item.raw)); }
-        }
-        if (item.error) { detail.append(cap('未完成'), el('p', 'ym-log-text ym-log-error', item.error)); }
+        if (item.error) detail.append(term(item.error, 'ym-term ym-term-error'));
+        const sent = cap('发送'); if (item.request) sent.append(tag(`约 ${Number.isFinite(item.requestTokens) ? item.requestTokens : '—'} token`));
+        const back = cap(item.status === 'loading' ? '返回（接收中）' : '返回'); if (item.raw) back.append(tag(`约 ${Number.isFinite(item.responseTokens) ? item.responseTokens : '—'} token`));
+        detail.append(sent, term(item.request || '暂无'), back, term(item.raw || '暂无'));
         node.append(summary, detail);
         return node;
     }
     function renderLog() {
         const items = journal ? journal.list() : [];
         // 内容没变就不重建（否则展开着的条目会跟着闪、被收起）。
-        const signature = JSON.stringify(items.map(item => [item.id, item.status, item.durationMs ?? null, item.raw ? item.raw.length : 0, (item.slices || []).length, item.error || '']));
+        const signature = JSON.stringify(items.map(item => [item.id, item.status, item.durationMs ?? null, item.raw ? item.raw.length : 0, item.request ? item.request.length : 0, item.error || '']));
         if (signature === logSignature) return;
         logSignature = signature;
         if (!items.length) { logList.replaceChildren(el('p', 'ym-muted', '暂无日志')); clearLog.hidden = true; return; }

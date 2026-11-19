@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>燕尾蝶</title>
+<style>
+/* 方案 C「振翅」：一蝶振翅，万象如幕。
+   莫比乌斯环是一卷首尾相接的胶片——齿孔沿着环走，正面走着走着就成了背面；{{char}} 的头像在环心里。
+   观察日记是胶片上的一格一格：哪几个日子看见过，就打亮几个齿孔。
+   心迹是从环上垂下来的一条片带，一路往下，蝴蝶停在每一段话旁边。 */
+:root { --paper: #efeef3; --blue: #1228e6; --ink: #0c0c10; --mute: #8f8fa0; --hair: #c9c9d6; }
+@media (prefers-color-scheme: dark) { :root { --paper: #0d0d14; --blue: #4d63ff; --ink: #ecebf5; --mute: #7d7d92; --hair: #2a2a3a; } }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--paper); color: var(--ink); overflow-x: hidden; font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; }
+.sans { font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; }
+.wrap { max-width: 560px; margin: 0 auto; position: relative; }
+svg defs { display: none; }
+/* ---- 片头 ---- */
+.hero { position: relative; height: 560px; overflow: hidden; }
+.hero .word { position: absolute; color: var(--blue); line-height: .82; letter-spacing: -.06em; user-select: none; }
+.hero .word.one { font-size: 250px; left: -26px; top: 210px; }
+.hero .word.two { font-size: 250px; right: -40px; top: 330px; }
+.hero .rule { position: absolute; background: var(--blue); }
+.hero .rule.h { left: 0; right: 0; top: 206px; height: 1px; }
+.hero .rule.v { top: 206px; bottom: 0; left: 52%; width: 1px; }
+.hero .cap { position: absolute; left: 0; top: 14px; font-size: 34px; line-height: 1.02; letter-spacing: -.03em; color: var(--blue); }
+.hero .cap small { display: block; font-size: 15px; letter-spacing: .4em; margin-top: 10px; font-family: "Songti SC", "Noto Serif SC", serif; }
+.hero .side { position: absolute; right: 8px; top: 16px; writing-mode: vertical-rl; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
+.hero .bracket { position: absolute; right: 0; top: 226px; height: 250px; width: 8px; border: 1px solid var(--blue); border-left: 0; }
+.disc { position: absolute; border-radius: 50%; background: var(--ink); filter: url(#grain); }
+.ring { position: absolute; left: 50%; top: 96px; width: 470px; margin-left: -235px; transform: rotate(-9deg); }
+.ring .film { fill: none; stroke: var(--blue); stroke-width: 30; stroke-linecap: butt; }
+.ring .back { stroke: color-mix(in srgb, var(--blue) 62%, var(--ink)); }
+.ring .holes { fill: none; stroke: var(--paper); stroke-width: 5; stroke-dasharray: 6 10; animation: run 9s linear infinite; }
+.ring .holes.in { stroke-dashoffset: 4; }
+@keyframes run { to { stroke-dashoffset: -160; } }
+.avatar { position: absolute; left: 50%; top: 150px; margin-left: -196px; width: 122px; height: 122px; border-radius: 50%; overflow: hidden; transform: rotate(-9deg);
+  background: radial-gradient(circle at 50% 38%, #b9b9c6 0 26%, transparent 27%), radial-gradient(ellipse at 50% 112%, #9a9aa9 0 46%, transparent 47%), linear-gradient(160deg, #dcdce6, #b4b4c4); filter: grayscale(1) contrast(1.1); }
+.avatar::after { content: attr(data-name); position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 10px/1 "Helvetica Neue", Arial, sans-serif; letter-spacing: .1em; color: var(--paper); }
+.bf { position: absolute; width: var(--s, 30px); height: var(--s, 30px); color: var(--blue); }
+.bf svg { width: 100%; height: 100%; overflow: visible; }
+.bf .wing { fill: currentColor; transform-origin: 12px 12px; animation: flap var(--f, .46s) ease-in-out infinite alternate; }
+.bf .wing.r { animation-name: flapR; }
+.bf.line .wing { fill: none; stroke: currentColor; stroke-width: .9; }
+.bf.ink { color: var(--ink); }
+@keyframes flap { from { transform: scaleX(1); } to { transform: scaleX(.28); } }
+@keyframes flapR { from { transform: scaleX(-1); } to { transform: scaleX(-.28); } }
+.hero .bf.lead { left: 58%; top: 118px; --s: 74px; --f: .62s; transform: rotate(18deg); }
+.flock .bf { animation: fly 12s ease-in-out infinite; }
+@keyframes fly { 0%, 100% { translate: 0 0; } 50% { translate: 14px -18px; } }
+.note { font-size: 11px; color: var(--mute); letter-spacing: .1em; padding: 0 22px; margin: 14px 0 0; }
+/* ---- 切换 ---- */
+.switch { position: sticky; top: 0; z-index: 6; display: flex; gap: 0; padding: 14px 22px 12px; background: linear-gradient(var(--paper) 72%, transparent); }
+.switch button { all: unset; cursor: pointer; flex: 1; font-size: 13px; letter-spacing: .5em; color: var(--mute); padding: 8px 0; border-top: 1px solid var(--hair); }
+.switch button[aria-selected="true"] { color: var(--blue); border-top: 3px solid var(--blue); padding-top: 6px; }
+.switch button + button { text-align: right; }
+section[hidden] { display: none; }
+/* ---- 观察日记：一格胶片 ---- */
+.frame { position: relative; margin: 0 22px 34px; padding: 30px 0 30px; border-left: 1px solid var(--blue); border-right: 1px solid var(--blue); cursor: pointer;
+  opacity: 0; transform: translateY(30px) rotate(var(--tilt, 0deg)); transition: opacity .8s, transform .9s cubic-bezier(.2,.8,.2,1); }
+.frame.in { opacity: 1; transform: rotate(var(--tilt, 0deg)); }
+.frame .teeth { position: absolute; left: 10px; right: 10px; display: flex; justify-content: space-between; }
+.frame .teeth.top { top: 8px; } .frame .teeth.bot { bottom: 8px; }
+.frame .teeth i { width: 15px; height: 10px; border-radius: 2px; border: 1px solid var(--blue); transition: background .5s; }
+.frame.in .teeth i.on { background: var(--blue); transition-delay: calc(var(--i) * 90ms + .3s); }
+.frame .body { padding: 22px 26px 18px; position: relative; }
+.frame .no { position: absolute; right: 14px; top: 4px; font-size: 120px; line-height: 1; font-style: italic; color: transparent; -webkit-text-stroke: 1px var(--hair); user-select: none; }
+.frame .who { position: relative; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
+.frame p.say { position: relative; margin: 12px 0 14px; font-size: clamp(24px, 7.4vw, 36px); line-height: 1.34; color: var(--blue); letter-spacing: -.01em; }
+.frame[data-sure="1"] p.say { color: transparent; -webkit-text-stroke: 1px var(--blue); }
+.frame[data-sure="2"] p.say { color: color-mix(in srgb, var(--blue) 62%, transparent); }
+.frame .sure { position: relative; display: inline-block; font-size: 11px; letter-spacing: .3em; padding: 4px 8px 4px 11px; background: var(--ink); color: var(--paper); }
+.frame[data-sure="1"] .sure { background: transparent; color: var(--mute); outline: 1px dashed var(--mute); }
+.frame[data-sure="3"] .sure { background: var(--blue); }
+.frame .tip { margin-left: 12px; font-size: 11px; letter-spacing: .12em; color: var(--mute); }
+.proof { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .6s cubic-bezier(.2,.8,.2,1); }
+.proof > div { overflow: hidden; }
+.frame.open .proof { grid-template-rows: 1fr; }
+.proof ul { margin: 16px 0 0; padding: 12px 0 0; border-top: 1px solid var(--hair); list-style: none; }
+.proof li { display: flex; gap: 14px; font-size: 14px; line-height: 1.8; }
+.proof li b { flex: 0 0 5em; font: 11px/2.3 "Helvetica Neue", Arial, sans-serif; letter-spacing: .08em; color: var(--blue); }
+.proof li.was span { text-decoration: line-through; color: var(--mute); }
+.loose { position: relative; height: 230px; margin: 10px 22px 0; border-top: 1px solid var(--blue); overflow: hidden; }
+.loose h4 { margin: 12px 0 0; font-weight: normal; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
+.loose .mote { position: absolute; display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--mute); opacity: 0; animation: mote var(--d, 10s) ease-in-out infinite; }
+@keyframes mote { 0% { opacity: 0; translate: 0 8px; } 30% { opacity: .9; } 70% { opacity: .7; } 100% { opacity: 0; translate: 26px -16px; } }
+/* ---- 心迹：垂下来的片带 ---- */
+#heart { position: relative; padding-top: 24px; }
+#band { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; overflow: visible; }
+#band .film { fill: none; stroke: var(--blue); stroke-width: 15; }
+#band .holes { fill: none; stroke: var(--paper); stroke-width: 3; stroke-dasharray: 4 7; }
+#band #revealPath { fill: none; stroke: #fff; stroke-width: 26; transition: stroke-dashoffset .9s cubic-bezier(.3,.6,.2,1); }
+.chips { display: flex; gap: 16px; flex-wrap: wrap; padding: 0 22px; margin: 0 0 120px; font-size: 12px; letter-spacing: .16em; }
+.chips button { all: unset; cursor: pointer; color: var(--mute); }
+.chips button[aria-pressed="true"] { color: var(--paper); background: var(--blue); padding: 2px 7px; }
+.say2 { position: relative; z-index: 1; margin: 0 22px 110px; max-width: 70%; opacity: 0; transform: translateY(34px); transition: opacity .9s, transform .9s cubic-bezier(.2,.8,.2,1); }
+.say2.in { opacity: 1; transform: none; }
+.say2:nth-of-type(odd) { margin-left: 30%; }
+.say2 .about { font-size: 11px; letter-spacing: .34em; color: var(--blue); }
+.say2 .when { font-size: 11px; color: var(--mute); margin-left: 8px; letter-spacing: .08em; }
+.say2 p { margin: 10px 0 0; font-size: 18px; line-height: 1.9; }
+.say2 p::first-letter { font-size: 3.1em; float: left; line-height: .86; padding: 4px 8px 0 0; color: var(--blue); }
+.say2 .before { margin-top: 12px; display: inline-block; padding: 3px 8px; background: var(--ink); color: var(--paper); font-size: 13px; }
+.say2 .before s { text-decoration-color: var(--blue); text-decoration-thickness: 2px; }
+#heart > .bf { z-index: 2; margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2); scale: 0; transition: scale .7s cubic-bezier(.3,1.6,.5,1); }
+#heart > .bf.in { scale: 1; }
+.end { text-align: center; font-size: 12px; color: var(--blue); letter-spacing: .6em; padding: 20px 0 130px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .frame, .say2 { opacity: 1; transform: none; } #heart > .bf { scale: 1; } }
+.ymbar { position: fixed; left: 0; right: 0; top: 0; height: 42px; z-index: 30; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; }
+.ymbar button { all: unset; cursor: pointer; }
+.ymbar button:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
+body { padding-top: 42px; }
+.empty { margin: 0; padding: 46px 22px; font-size: 14px; letter-spacing: .2em; opacity: .6; }
+.ymbar { background: var(--paper); border-bottom: 1px solid var(--blue); font: 12px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: .24em; color: var(--blue); }
+.ymbar #ym-theme { background: var(--blue); color: var(--paper); padding: 6px 9px; }
+.switch { top: 42px !important; }
+.empty { color: var(--blue); }
+.avatar[data-photo] { background-size: cover; background-position: center; filter: none; }
+</style>
+</head>
+<body data-view="diary">
+<svg width="0" height="0" style="position:absolute"><filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.8 1.22" result="a"/><feComposite in="SourceGraphic" in2="a" operator="in"/></filter>
+</svg>
+<div class="ymbar"><button id="ym-exit" aria-label="退出">× 退出</button><button id="ym-theme" aria-label="切换主题">主题 ✦</button></div>
+<div class="wrap">
+  <header class="hero">
+    <div class="cap sans">memory<br>is a loop<small>一蝶振翅 · 万象如幕</small></div>
+    <div class="side">心 迹 ／ 观 察 日 记 ／ 忆 幕</div>
+    <span class="rule h"></span><span class="rule v"></span><span class="bracket"></span>
+    <div class="word one">心</div><div class="word two">迹</div>
+    <span class="disc" style="width:150px;height:150px;right:-34px;top:60px"></span><span class="disc" style="width:58px;height:58px;left:36%;top:438px"></span>
+    <div class="avatar"></div>
+    <svg class="ring" viewBox="0 0 470 240" aria-hidden="true">
+      <path class="film back" d="M235 120 C 300 40, 430 30, 430 120 C 430 210, 300 200, 235 120"/><path class="holes in" d="M235 120 C 300 40, 430 30, 430 120 C 430 210, 300 200, 235 120"/>
+      <path class="film" d="M235 120 C 170 200, 40 210, 40 120 C 40 30, 170 40, 235 120"/><path class="holes" d="M235 120 C 170 200, 40 210, 40 120 C 40 30, 170 40, 235 120"/>
+    </svg>
+    <span class="bf lead"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span>
+    <div class="flock"><span class="bf line" style="left:70%;top:60px;--s:20px;--f:.4s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf line" style="left:80%;top:98px;--s:13px;--f:.34s;animation-delay:-3s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span>
+      <span class="bf ink" style="left:22%;top:470px;--s:16px;--f:.38s;animation-delay:-6s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:31%;top:500px;--s:10px;--f:.3s;animation-delay:-2s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:12%;top:520px;--s:22px;--f:.5s;animation-delay:-8s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span></div>
+  </header>
+  <nav class="switch sans" role="tablist"><button role="tab" aria-selected="true" data-view="diary">观 察 日 记</button><button role="tab" aria-selected="false" data-view="heart">心 迹</button></nav>
+
+  <section id="diary"></section>
+  <section id="heart" hidden>
+    <div class="chips sans"><button aria-pressed="true" data-about="all">全部</button><button aria-pressed="false" data-about="you">对你</button><button aria-pressed="false" data-about="self">对自己</button><button aria-pressed="false" data-about="others">身边的人</button><button aria-pressed="false" data-about="books">读过的书</button></div>
+    <svg id="band" aria-hidden="true"><mask id="reveal" maskUnits="userSpaceOnUse"><path id="revealPath"/></mask><g mask="url(#reveal)"><path class="film"/><path class="holes"/></g></svg>
+    <p class="end sans">LOOP · 回 到 开 头</p>
+  </section>
+</div>
+<script>
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
+const tell = type => parent.postMessage({ yimuHeart: type }, '*');
+document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
+document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
+addEventListener('keydown', event => { if (event.key === 'Escape') tell('exit'); });
+window.yimuRender = raw => { if (window.__yimuRendered) return; window.__yimuRendered = true; const D = safe(raw || {}); D.impressions ||= []; D.loose ||= []; D.thoughts ||= [];
+
+  const face = document.querySelector('.avatar'); face.dataset.name = raw?.char || '';
+  if (raw?.avatar) { face.dataset.photo = '1'; face.style.backgroundImage = `url("${String(raw.avatar).replace(/["\\\n]/g, '')}")`; }
+  document.querySelector('#heart .end').insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="say2" data-about="${it.group}"><span class="about sans">${it.about}</span><span class="when sans">${it.when}</span><p>${it.say}</p>${it.was ? `<div class="before">以前以为：<s>${it.was}</s></div>` : ''}</article>`).join('') : '<p class="empty">片带上还是空的。</p>');
+  if (!D.thoughts.length) document.querySelector('#heart .end').hidden = true;
+
+const frames = D.impressions;
+const bf = (cls, style) => `<span class="bf ${cls}" style="${style}"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span>`;
+const diary = document.getElementById('diary');
+frames.forEach((item, index) => {
+  const teeth = Array.from({ length: 6 }, (_, i) => `<i class="${i < item.days.length ? 'on' : ''}" style="--i:${i}"></i>`).join('');
+  const node = document.createElement('article'); node.className = 'frame'; node.dataset.sure = item.sure; node.style.setProperty('--tilt', `${[-1.2, .9, -.6, 1.4][index % 4]}deg`);
+  node.innerHTML = `<div class="teeth top">${teeth}</div><div class="body"><span class="no">${String(index + 1).padStart(2, '0')}</span><span class="who sans">${item.about}</span><p class="say">${item.say}</p>
+    <span class="sure sans">${item.word}</span><span class="tip sans">${item.days.length} 个日子 · 点开看依据</span>
+    <div class="proof"><div><ul>${item.was ? `<li class="was"><b>以前以为</b><span>${item.was}</span></li>` : ''}${item.days.map(([day, text]) => `<li><b>${day}</b><span>${text}</span></li>`).join('')}</ul></div></div></div><div class="teeth bot">${teeth}</div>`;
+  node.addEventListener('click', () => node.classList.toggle('open'));
+  diary.append(node);
+});
+const loose = D.loose.slice(0, 6).map((item, i) => [item.text, [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
+diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="left:${[4, 50, 12, 56, 30, 66][i]}%;top:${[46, 70, 112, 138, 176, 190][i]}px;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
+
+const reveal = new IntersectionObserver(entries => { for (const e of entries) if (e.isIntersecting) e.target.classList.add('in'); }, { threshold: .18 });
+document.querySelectorAll('.frame, .say2').forEach(n => reveal.observe(n));
+const tabs = [...document.querySelectorAll('.switch button')], views = { diary, heart: document.getElementById('heart') };
+tabs.forEach(tab => tab.addEventListener('click', () => {
+  tabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
+  for (const [name, node] of Object.entries(views)) node.hidden = name !== tab.dataset.view;
+  document.querySelector('.switch').scrollIntoView({ behavior: 'instant', block: 'start' }); if (tab.dataset.view === 'heart') setTimeout(layoutBand, 30);
+}));
+// 片带：从上方垂下，穿过每一段话旁边；滚到哪里放到哪里。蝴蝶停在每个转弯处，大小不一。
+const heart = views.heart, band = document.getElementById('band'), film = band.querySelector('.film'), holes = band.querySelector('.holes'), mask = document.getElementById('revealPath');
+let total = 0, stops = [];
+function layoutBand() {
+  heart.querySelectorAll(':scope > .bf').forEach(n => n.remove());
+  const box = heart.getBoundingClientRect(), items = [...heart.querySelectorAll('.say2')].filter(n => !n.hidden);
+  const points = items.map((node, i) => { const r = node.getBoundingClientRect(), left = node.matches(':nth-of-type(odd)'); return { x: left ? r.left - box.left - 34 : r.right - box.left + 34, y: r.top - box.top + 14, i }; });
+  if (!points.length) { for (const p of [film, holes, mask]) p.setAttribute('d', ''); return; }
+  const cx = box.width / 2; let d = `M ${cx} ${points[0].y - 150} C ${cx} ${points[0].y - 70}, ${points[0].x} ${points[0].y - 70}, ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i], mid = (b.y - a.y) * .55; d += ` C ${a.x} ${a.y + mid}, ${b.x} ${b.y - mid}, ${b.x} ${b.y}`; }
+  const last = points.at(-1); d += ` C ${last.x} ${last.y + 80}, ${cx} ${last.y + 90}, ${cx} ${last.y + 170}`;
+  band.style.height = `${last.y + 180}px`; band.setAttribute('height', last.y + 180);
+  for (const p of [film, holes, mask]) p.setAttribute('d', d);
+  total = mask.getTotalLength(); mask.style.strokeDasharray = total;
+  const sizes = [40, 26, 34, 22, 30], extras = [];
+  for (let at = 300; at < total - 140; at += 170 + (at % 80)) { const pt = mask.getPointAtLength(at); if (points.every(p => Math.abs(p.y - pt.y) > 40)) extras.push({ x: pt.x + 16, y: pt.y, small: true, size: 10 + Math.round(at) % 9 }); }
+  stops = [...points, ...extras];
+  for (const p of stops) { const node = document.createElement('span'); node.className = 'bf' + (p.small ? ' line' : p.i === points.length - 1 ? ' ink' : '');
+    node.style.cssText = `left:${p.x}px;top:${p.y}px;--s:${p.small ? p.size : sizes[p.i % sizes.length]}px;--f:${(.34 + (p.y % 7) / 30).toFixed(2)}s;rotate:${(p.y % 40) - 20}deg`;
+    node.innerHTML = '<svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg>'; heart.append(node); p.node = node; }
+  drawBand();
+}
+function drawBand() {
+  if (heart.hidden || !total) return;
+  const box = heart.getBoundingClientRect(), height = Number(band.getAttribute('height')) || 1;
+  const atEnd = innerHeight + scrollY >= document.documentElement.scrollHeight - 4, reach = atEnd ? height : Math.max(0, innerHeight * .74 - box.top);
+  mask.style.strokeDashoffset = total * (1 - Math.min(1, reach / height));
+  for (const p of stops) p.node?.classList.toggle('in', p.y < reach);
+}
+addEventListener('scroll', drawBand, { passive: true }); addEventListener('resize', () => { if (!heart.hidden) layoutBand(); });
+document.querySelectorAll('.chips button').forEach(chip => chip.addEventListener('click', () => {
+  document.querySelectorAll('.chips button').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
+  heart.querySelectorAll('.say2').forEach(k => { k.hidden = chip.dataset.about !== 'all' && k.dataset.about !== chip.dataset.about; });
+  setTimeout(layoutBand, 30);
+}));
+
+if (!frames.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
+if (!loose.length) diary.querySelector('.loose').hidden = true;
+
+};
+</script>
+</body>
+</html>

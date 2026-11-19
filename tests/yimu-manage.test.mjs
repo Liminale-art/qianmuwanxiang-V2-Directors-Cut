@@ -3,31 +3,36 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createJournal, JOURNAL_RAW_LIMIT } from '../yimu/journal.mjs';
+import { createJournal, JOURNAL_RAW_LIMIT, JOURNAL_LIMIT } from '../yimu/journal.mjs';
 import { completedSlices } from '../yimu/stream-slices.mjs';
 import { createDocument, applyOperation, fingerprintMessages } from '../yimu/contract.mjs';
 import { createYimuStore, chatStorageName } from '../yimu/server-store.mjs';
 
 const memoryStorage = () => { const map = new Map(); return { getItem: key => map.has(key) ? map.get(key) : null, setItem: (key, value) => { map.set(key, String(value)); }, removeItem: key => { map.delete(key); }, map }; };
 
-test('the journal keeps the newest entries first, bounded in count and in raw size, on this device only', () => {
+test('the journal keeps only summaries, newest first, five at most, with the full request and reply, on this device only', () => {
     const storage = memoryStorage(); let clock = 1000;
-    const journal = createJournal({ storage, limit: 3, now: () => clock++ });
+    assert.equal(JOURNAL_LIMIT, 5);
+    const journal = createJournal({ storage, now: () => clock++ });
     const seen = []; const off = journal.subscribe(() => seen.push(journal.list().length));
-    const first = journal.add({ kind: 'summary', status: 'loading', range: { start: 1, end: 10 } });
-    journal.add({ kind: 'round', status: 'success', memories: 2 });
-    assert.deepEqual(journal.list().map(item => item.kind), ['round', 'summary']);
-    assert.equal(journal.update(first, { status: 'success', raw: '原'.repeat(JOURNAL_RAW_LIMIT + 50) }), true);
+    const first = journal.add({ kind: 'summary', status: 'loading', request: '发出去的全文', requestTokens: 6 });
+    assert.equal(journal.add({ kind: 'round', status: 'success', memories: 2 }), '', '生成记录不再进日志');
+    assert.equal(journal.add({ kind: 'idle', status: 'cancelled' }), '');
+    journal.add({ kind: 'stage', status: 'success' });
+    assert.deepEqual(journal.list().map(item => item.kind), ['stage', 'summary']);
+    assert.equal(journal.update(first, { status: 'success', raw: '原'.repeat(JOURNAL_RAW_LIMIT + 50), request: '求'.repeat(JOURNAL_RAW_LIMIT + 7) }), true);
     const saved = journal.list().find(item => item.id === first);
-    assert.equal(saved.status, 'success'); assert.match(saved.raw, /其余 50 字已省略/);
+    assert.equal(saved.status, 'success'); assert.match(saved.raw, /其余 50 字已省略/); assert.match(saved.request, /其余 7 字已省略/);
     assert.equal(journal.update('missing', { status: 'error' }), false);
-    journal.add({ kind: 'round', status: 'blocked' }); journal.add({ kind: 'round', status: 'blocked' });
-    assert.equal(journal.list().length, 3, '超出上限丢最旧的');
-    assert.ok(!journal.list().some(item => item.id === first));
-    assert.deepEqual(seen, [1, 2, 2, 3, 3]); off();
-    // 另一个页面打开同一份本机存储：读得到；改返回的副本不影响日志。
-    const again = createJournal({ storage, limit: 3 });
-    assert.equal(again.list().length, 3); again.list()[0].status = 'tampered'; assert.notEqual(again.list()[0].status, 'tampered');
+    for (let i = 0; i < 5; i++) journal.add({ kind: 'summary', status: 'success', raw: `第 ${i} 次` });
+    assert.equal(journal.list().length, 5, '只留 5 条，新的顶掉旧的');
+    assert.ok(!journal.list().some(item => item.id === first)); assert.equal(journal.list()[0].raw, '第 4 次');
+    off();
+    // 另一个页面打开同一份本机存储：读得到；改返回的副本不影响日志；旧版本留下的其他记录不再读出来。
+    const again = createJournal({ storage });
+    assert.equal(again.list().length, 5); again.list()[0].status = 'tampered'; assert.notEqual(again.list()[0].status, 'tampered');
+    const old = memoryStorage(); old.setItem('yimu:journal:v1', JSON.stringify([{ id: 'a', kind: 'round', status: 'success' }, { id: 'b', kind: 'summary', status: 'success' }]));
+    assert.deepEqual(createJournal({ storage: old }).list().map(item => item.id), ['b']);
     again.clear(); assert.deepEqual(again.list(), []); assert.equal(JSON.parse(storage.map.get('yimu:journal:v1')).length, 0);
 });
 
@@ -43,9 +48,9 @@ test('an entry still in progress when the page closed is shown as unfinished, an
     const full = { getItem: () => '不是 JSON', setItem() { throw new Error('quota'); } };
     const tolerant = createJournal({ storage: full });
     assert.deepEqual(tolerant.list(), []);
-    assert.doesNotThrow(() => tolerant.add({ kind: 'round', status: 'success' }));
+    assert.doesNotThrow(() => tolerant.add({ kind: 'summary', status: 'success' }));
     assert.equal(tolerant.list().length, 1, '存不下时本次会话仍可看');
-    assert.doesNotThrow(() => createJournal({ storage: null }).add({ kind: 'round' }));
+    assert.doesNotThrow(() => createJournal({ storage: null }).add({ kind: 'stage' }));
 });
 
 test('only slices that are complete in the stream are shown; the one still being written is not', () => {
