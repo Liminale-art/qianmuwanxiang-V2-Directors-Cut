@@ -278,7 +278,7 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
 });
 
 test('functional icons preserve Qianmu artwork, including the save-2 save glyph', async () => {
-    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', pause: 'pause', layers: 'stack', filter: 'funnel', select: 'list-checks' };
+    const names = { edit: 'pencil-simple', check: 'check', close: 'x', expand: 'caret-down', trash: 'trash', refresh: 'arrows-clockwise', play: 'play', back: 'arrow-left', settings: 'gear', eye: 'eye', plus: 'plus', download: 'download-simple', upload: 'upload-simple', book: 'book-open', link: 'link', more: 'dots-three', drag: 'list', up: 'caret-up', down: 'caret-down', 'eye-off': null, save: 'floppy-disk', help: 'question', stop: 'stop', pause: 'pause', layers: 'stack', filter: 'funnel', select: 'list-checks', undo: null };
     assert.deepEqual(YIMU_ICON_NAMES, Object.keys(names));
     const document = { createElement(tag) { return { tagName: tag, attributes: {}, setAttribute(key, value) { this.attributes[key] = value; } }; } };
     for (const [name, upstream] of Object.entries(names)) {
@@ -287,6 +287,11 @@ test('functional icons preserve Qianmu artwork, including the save-2 save glyph'
         assert.equal(element.attributes['aria-hidden'], 'true');
         assert.equal(element.attributes['data-ym-icon'], name);
         assert.match(element.innerHTML, /viewBox="0 0 24 24"/);
+        if (name === 'undo') {
+            // Iconsax undo-arrow：线条两套是向左的弯箭头，不在千幕图标库里，忆幕单独取用。
+            assert.match(element.innerHTML, /M6\.43012 10\.8104L3\.87012 8\.25043L6\.43012 5\.69043/);
+            continue;
+        }
         if (name === 'eye-off') {
             assert.match(element.innerHTML, /M3 3L21 21/);
             continue;

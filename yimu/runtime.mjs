@@ -76,7 +76,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         saveTimer = setTimeout(() => { saveTimer = null; if (!disposed) void refresh({ quiet: true, auto: true }); }, SAVE_POLL_MS);
     };
     const snapshotState = () => ({ ...state,
-        busy: state.busy || Boolean(state.snapshot && jobs.has(bindingKey(state.snapshot.binding))),
+        busy: state.busy || Boolean(state.snapshot && jobs.get(bindingKey(state.snapshot.binding)) && !jobs.get(bindingKey(state.snapshot.binding)).probing),
         failedWork: state.snapshot ? failures.get(bindingKey(state.snapshot.binding)) || null : null,
         activeEntryId: state.snapshot ? jobs.get(bindingKey(state.snapshot.binding))?.entryId || null : null,
         manualJob: state.snapshot && jobs.get(bindingKey(state.snapshot.binding))?.manual ? { ...jobs.get(bindingKey(state.snapshot.binding)).manual } : null,
@@ -376,7 +376,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         failedJobs.delete(failedKey);
         const announce = catchUp && !force; catchUp = false;
         if (!force) { clearTimeout(saveTimer); saveTimer = null; }
-        const controller = new AbortController(); controller.entryId = entryId; jobs.set(key, controller);
+        // 自动总结先「探一下有没有活」：探的这一小会儿不算忙，否则每次保存设置面板都会整片置灰再恢复（闪动、丢焦点）。
+        const controller = new AbortController(); controller.entryId = entryId; controller.probing = !force; jobs.set(key, controller);
         state.streamPreview = '';
         emit();
         let jobDocument = doc, snapshot = clone(state.snapshot);
@@ -464,6 +465,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     }
                     break;
                 }
+                if (controller.probing) { controller.probing = false; emit(); }
                 if (targetEnd === null && batch.targetEnd !== undefined) targetEnd = batch.targetEnd;
                 controller.entryId = batch.redo?.id || entryId;
                 if (snapshot.messages.slice(batch.start - 1, batch.end).reduce((total, item) => total + estimateTokens(item.mes || ''), 0) > settings.inputCapacity) throw new Error('完整切片超过此连接的可用输入容量，请选择容量足够的连接');
@@ -826,7 +828,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             for (const job of jobs.values()) job.abort();
             const operation = { id: id(), expectedRevision: payload.expectedRevision ?? state.defaults.revision, values: payload.values };
             const before = state.defaults;
-            state.busy = true; state.error = ''; state.status = ''; emit();
+            const loud = payload.quiet !== true;
+            if (loud) state.busy = true; state.error = ''; state.status = ''; emit();
             try {
                 let result;
                 try { result = await api.defaults(operation); }
@@ -840,7 +843,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     state.error = ''; state.errorPage = '';
                 }
                 return true;
-            } finally { if (current()) { state.busy = false; emit(); } }
+            } finally { if (current()) { if (loud) state.busy = false; emit(); } }
         }
         if (!state.snapshot || !state.document || !state.defaults) throw new Error('请先打开单人聊天并读取忆幕');
         const actionBinding = clone(state.snapshot.binding), actionGeneration = generation;
@@ -984,7 +987,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (!entry) throw new Error('记忆条目不存在');
             operation = { ...operation, ...payload, id: operation.id, type, expectedRevision: payload.expectedRevision ?? entry.revision };
         } else throw new Error('未知的忆幕操作');
-        state.busy = true; state.error = ''; emit();
+        const loud = !(type === 'settings' && payload.quiet === true);
+        if (loud) state.busy = true; state.error = ''; emit();
         try {
             const result = await change(binding, operation);
             if (type === 'enable' && payload.enabled) localStops.delete(key);
@@ -1000,7 +1004,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
             return true;
         } catch (error) { if (isCurrent(binding)) state.error = error.message; throw error; }
-        finally { if (isCurrent(binding)) { state.busy = false; emit(); } }
+        finally { if (isCurrent(binding)) { if (loud) state.busy = false; emit(); } }
     }
 
     async function action(type, payload = {}) {

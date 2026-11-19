@@ -16,22 +16,22 @@ function fixture(onSave = async () => {}) {
     return { ...dom, view, saves, errors };
 }
 
-test('正文提取卡默认折叠，只显示提取 content，屏蔽规则留空待用户添加', () => {
+test('标签规则卡默认折叠，只显示提取 content，屏蔽规则留空待用户添加', () => {
     const f = fixture();
-    assert.equal(f.get('正文提取').classList.contains('ym-button'), true);
-    assert.equal(f.get('正文提取').getAttribute('aria-expanded'), 'false');
-    assert.equal(f.get('正文提取').querySelector('[data-ym-icon="expand"]'), null);
+    assert.equal(f.get('标签规则').classList.contains('ym-button'), true);
+    assert.equal(f.get('标签规则').getAttribute('aria-expanded'), 'false');
+    assert.equal(f.get('标签规则').querySelector('[data-ym-icon="expand"]'), null);
     assert.equal(f.get('清除 HTML 注释').checked, true);
     assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, []);
     assert.equal(f.all().filter(node => node.classList.contains('ym-context-rule-row')).length, 1);
     assert.equal(f.get('提取标签').value, 'content');
-    f.get('正文提取').click();
-    assert.equal(f.get('正文提取').getAttribute('aria-expanded'), 'true');
+    f.get('标签规则').click();
+    assert.equal(f.get('标签规则').getAttribute('aria-expanded'), 'true');
     assert.equal(f.byClass('ym-context-rule-list').hidden, false);
     f.view.destroy();
 });
 
-test('正文提取规则只在明确修改后保存，并规范化标签名称', async () => {
+test('标签规则规则只在明确修改后保存，并规范化标签名称', async () => {
     const f = fixture(); f.byClass('ym-context-rule-add').click();
     const blocked = f.get('屏蔽标签'); blocked.value = 'Status'; blocked.emit('change');
     await f.wait(() => f.saves.length === 1);
@@ -43,13 +43,13 @@ test('正文提取规则只在明确修改后保存，并规范化标签名称',
     assert.deepEqual(f.errors, []); f.view.destroy();
 });
 
-test('远端刷新不覆盖正在编辑的正文提取规则，禁用态仍保持可见', () => {
+test('远端刷新不覆盖正在编辑的标签规则规则，禁用态仍保持可见', () => {
     const f = fixture(), blocked = f.byClass('ym-context-rule-add'); blocked.click();
     const input = f.get('屏蔽标签'); input.focus(); input.value = '自定义';
     f.view.render({ settings: { contextRules: { stripComments: false, blockedTags: ['aside'], includedTags: ['content'] } } });
     assert.equal(input.value, '自定义');
     f.view.render({ settings: { contextRules: { stripComments: false, blockedTags: ['aside'], includedTags: ['content'] } }, disabled: true });
-    assert.equal(f.get('屏蔽标签').disabled, true); assert.equal(f.get('正文提取').hidden, false); f.view.destroy();
+    assert.equal(f.get('屏蔽标签').disabled, true); assert.equal(f.get('标签规则').hidden, false); f.view.destroy();
 });
 
 test('编辑一个标签时各行节点不被重建、也不在自己保存期间置灰（不再连闪三次）', async () => {

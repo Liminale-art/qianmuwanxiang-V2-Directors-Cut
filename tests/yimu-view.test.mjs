@@ -95,7 +95,7 @@ const state = (patch = {}) => ({
 test('backup accepts several files immediately and file-picker cancellation stays local', async () => {
     const d=dom(),calls=[],view=createView({document:d.document,onAction:async(...args)=>calls.push(args)});
     view.render(state({snapshot:null,document:null,defaults:null,service:{status:'ok'}}));view.open();
-    d.get('展开记忆备份').click();
+    d.get('管理').click();await new Promise(resolve=>setTimeout(resolve,0));calls.length=0;
     const choose=d.get('导入记忆'),picker=d.get('忆幕备份文件');assert.equal(picker.multiple,true);
     let opened=0;picker.addEventListener('click',()=>opened++);choose.click();assert.equal(opened,1);assert.deepEqual(calls,[]);
     const files=[{name:'one.yimu.gz'},{name:'two.yimu.gz'}];picker.files=files;picker.emit('change');await d.flush();
@@ -1027,10 +1027,10 @@ test('formal pages show one surface at a time and navigating never performs a ba
     assert.deepEqual(visible(), ['overview']);
     f.get('记忆').click(); assert.deepEqual(visible(), ['memory']);
     f.get('设置').click(); assert.deepEqual(visible(), ['settings']);
-    f.get('导览').click(); f.get('展开记忆备份').click(); assert.deepEqual(visible(), ['overview']);
-    const card = f.get('展开记忆备份').parentElement; assert.equal(card.tagName, 'SECTION');
-    const panel = f.get('忆幕').querySelector('#ym-tool-panel-backup');
-    assert.equal(f.get('展开记忆备份').getAttribute('aria-expanded'), 'true'); assert.equal(panel.hidden, false);
+    f.get('导览').click(); f.get('展开标签规则').click(); assert.deepEqual(visible(), ['overview']);
+    const card = f.get('展开标签规则').parentElement; assert.equal(card.tagName, 'SECTION');
+    const panel = f.get('忆幕').querySelector('#ym-tool-panel-rules');
+    assert.equal(f.get('展开标签规则').getAttribute('aria-expanded'), 'true'); assert.equal(panel.hidden, false);
     assert.equal(f.document.querySelector('.ym-nav').hidden, false);
     f.view.close(); f.view.open(); assert.equal(card.open, true); assert.deepEqual(visible(), ['overview']);
     assert.equal(f.document.querySelector('.ym-nav').hidden, false); assert.equal(panel.hidden, false); assert.deepEqual(f.calls, []);
@@ -1329,7 +1329,7 @@ test('empty-chat controls remain visible and disabled while default prompt editi
     assert.equal(f.document.querySelector('.ym-hero').dataset.empty,'true');assert.equal(f.document.querySelector('.ym-overview-name').textContent,'请选择一个聊天打开');
     const stats=f.document.querySelector('.ym-stats');assert.equal(stats.hidden,false);assert.deepEqual(stats.querySelectorAll('b').map(n=>n.textContent),['0','0','0']);
     for(const label of ['展开记忆调阅','展开故事续接','展开关联伴读'])assert.equal(f.get(label).disabled,true,label);
-    assert.equal(f.get('展开记忆备份').disabled,false);assert.equal(f.get('导入记忆').disabled,false);assert.equal(f.get('导出记忆').disabled,true);
+    assert.equal(f.get('展开标签规则').disabled,false);assert.equal(f.get('导入记忆').disabled,false);assert.equal(f.get('导出记忆').disabled,true);
     assert.equal(f.get('续接楼层').disabled,true);assert.equal(f.get('建立新聊天').disabled,true);
     f.get('记忆').click();assert.equal(f.get('搜索记忆').disabled,true);assert.equal(f.get('筛选记忆').disabled,true);assert.equal(stageControl(f).disabled,true);
     f.get('导览').click();const promptFolder=f.get('展开总结提示词');assert.equal(promptFolder.querySelector('[data-ym-icon="expand"]'), null);promptFolder.click();const text=f.get('叙事与依据提示词正文');assert.equal(text.disabled,false);
@@ -1341,7 +1341,7 @@ test('empty-chat controls remain visible and disabled while default prompt editi
 
 test('tool folders are exclusive within each row and retain independent state across the other row and reopening', t => {
     const f=fixture();t.after(()=>f.view.destroy());f.view.open();
-    const used=f.get('展开记忆调阅'),story=f.get('展开故事续接'),companion=f.get('展开关联伴读'),backup=f.get('展开记忆备份');
+    const used=f.get('展开记忆调阅'),story=f.get('展开故事续接'),companion=f.get('展开关联伴读'),backup=f.get('展开标签规则');
     used.click();assert.equal(used.getAttribute('aria-expanded'),'true');assert.equal(story.getAttribute('aria-expanded'),'false');
     story.click();assert.equal(used.getAttribute('aria-expanded'),'false');assert.equal(story.getAttribute('aria-expanded'),'true');
     assert.equal(story.closest('.ym-tool-group').dataset.side,'right');
@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.53 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.54 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1415,7 +1415,7 @@ test('a prior-chat save failure never overwrites the next chat draft and does no
 });
 
 test('export confirmation Escape closes only the secondary dialog without changing the main page or writing anything', t => {
-    const f=fixture();t.after(()=>f.view.destroy());f.view.open();f.get('展开记忆备份').click();f.get('导出记忆').click();
+    const f=fixture();t.after(()=>f.view.destroy());f.view.open();f.get('管理').click();f.calls.length=0;f.get('导出记忆').click();
     const question=f.document.querySelector('.ym-backup-question');assert.equal(question.tagName,'DIALOG');assert.equal(question.open,true);
     const event=question.emit('keydown',{key:'Escape'});assert.equal(event.stopped,true);assert.equal(question.open,false);assert.equal(f.get('忆幕').open,true);assert.deepEqual(f.calls,[]);
 });
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.53'); assert.equal(pkg.version, '0.8.19');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.54'); assert.equal(pkg.version, '0.8.20');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1555,7 +1555,7 @@ test('the filter is an icon button with the native select laid over it, and it m
     assert.equal(box.dataset.active, 'true');
 });
 
-test('the 管理 page lists the journal in Qianmu\'s log layout and asks twice before anything destructive', async t => {
+test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a foldered file list scoped to this character', async t => {
     const rows = [
         { id: 'j2', at: Date.UTC(2026, 10, 19, 4, 5, 6), kind: 'round', status: 'blocked', chat: '聊天', reason: 'text-completion-boundary-unavailable', hiddenTo: 23, waitMs: 180 },
         { id: 'j1', at: Date.UTC(2026, 10, 19, 4, 0, 0), kind: 'summary', status: 'success', chat: '聊天', range: { start: 1, end: 10 }, manual: true, batch: '1/3', durationMs: 4200,
@@ -1564,47 +1564,88 @@ test('the 管理 page lists the journal in Qianmu\'s log layout and asks twice b
     let cleared = 0; const listeners = new Set();
     const journal = { list: () => rows.map(row => ({ ...row })), clear() { cleared++; rows.length = 0; for (const fn of listeners) fn(); }, subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
     const mine = entry({ id: 'mine', kind: 'manual', source: null, placement: { fromFloor: 2 } }), gone = entry({ id: 'old', status: 'deleted' });
-    const files = [{ name: 'chat-a.json', binding: { avatar: '角色.png', file: '聊天' }, bytes: 20480, updated: Date.UTC(2026, 10, 18), revision: 5, slices: 3, stages: 1, custom: 0, sourceExists: true },
-        { name: 'chat-b.json', binding: { avatar: '角色.png', file: '已删的聊天' }, bytes: 4096, updated: Date.UTC(2026, 10, 1), revision: 2, slices: 2, stages: 0, custom: 0, sourceExists: false }];
+    const file = (name, avatar, chat, patch = {}) => ({ name, binding: { avatar, file: chat }, bytes: 4096, updated: Date.UTC(2026, 10, 1), revision: 2, slices: 2, stages: 0, custom: 0, sourceExists: true, ...patch });
+    const files = [file('chat-a.json', '角色.png', '聊天', { bytes: 20480, updated: Date.UTC(2026, 10, 18), slices: 3, stages: 1 }), file('chat-b.json', '角色.png', '另一段聊天'),
+        file('chat-c.json', '角色.png', '已删的聊天', { sourceExists: false }), file('chat-d.json', '别的角色.png', '别人的聊天')];
     const f = fixture({ document: { ...state().document, enabled: true, entries: [entry(), mine, gone] }, manage: { items: files, loading: false, error: '' } }, undefined, { journal });
     t.after(() => f.view.destroy());
     f.get('管理').click(); await f.flush();
     assert.deepEqual(f.calls.map(call => call.type), ['manageList'], '第一次翻到这一页才读文件列表');
     const page = f.all().find(node => node.dataset.page === 'manage'); assert.equal(page.hidden, false);
+    const cards = page.querySelector('.ym-manage').children;
+    assert.deepEqual(cards.map(node => node.querySelector('h3').textContent), ['日志', '记忆备份', '当前聊天', '记忆文件'], '日志是首卡，记忆备份紧跟其后');
+
     // 日志：一条一行可展开，状态点、来源标签、详情平铺。
     const logs = page.querySelectorAll('.ym-log-entry'); assert.equal(logs.length, 2);
-    assert.match(logs[1].textContent, /切片总结 · 第 0–9 层/); assert.match(logs[1].textContent, /用时 4\.2 秒/); assert.match(logs[1].textContent, /2 片/); assert.match(logs[1].textContent, /手动 1\/3/);
-    assert.match(logs[1].textContent, /第 0–5 层 · 初见/); assert.equal(logs[1].querySelector('.ym-term').textContent, '{"slices":[…]}');
-    assert.ok(logs[1].querySelector('.ym-log-status').className.includes('success'));
-    assert.match(logs[0].textContent, /生成 · 未带记忆/); assert.match(logs[0].textContent, /隐藏到第 22 层/); assert.match(logs[0].textContent, /Chat Completion/);
-    // 记忆文件：当前聊天不给删除按钮；原聊天不存在的标出来，并可一键清理。
-    const fileRows = page.querySelectorAll('.ym-manage-file'); assert.equal(fileRows.length, 2);
-    assert.match(fileRows[0].textContent, /当前/); assert.deepEqual(fileRows[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 聊天 的记忆'], '当前聊天只能导出，不能从这里删');
-    assert.deepEqual(fileRows[1].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 已删的聊天 的记忆', '删除']);
-    assert.match(fileRows[1].textContent, /原聊天不存在/); assert.match(page.textContent, /2 个聊天 · 共 24 KB/);
-    const orphan = f.all().find(node => node.tagName === 'BUTTON' && /清理原聊天已不存在的（1 个）/.test(node.textContent));
-    orphan.click(); await f.flush(); assert.equal(f.calls.length, 1, '第一下只是确认');
-    assert.equal(orphan.textContent, '确认清理');
-    orphan.click(); await f.flush();
-    assert.deepEqual(f.calls.at(-1), { type: 'manageDelete', payload: { items: [files[1]] } });
-    // 单个导出：不需要确认，按所选文件的聊天身份导出。
-    fileRows[1].querySelectorAll('button')[0].click(); await f.flush();
-    assert.deepEqual(f.calls.at(-1), { type: 'backupExportFile', payload: { binding: files[1].binding } });
-    // 当前聊天的清理：四项，各自两下确认。
-    assert.match(page.textContent, /2 条记忆 · 1 条旧记录/);
-    const clears = page.querySelectorAll('.ym-manage-row');
-    assert.deepEqual(clears.map(node => node.children[0].textContent), ['全部记忆', '全部记忆，保留自定义切片', '已删除与被替换的旧记录', '本机记录与向量缓存']);
-    assert.equal(clears[1].hidden, false);
-    const wipe = clears[0].querySelector('button'); wipe.click(); await f.flush(); assert.equal(f.calls.length, 3);
-    wipe.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all' } });
-    const keep = clears[1].querySelector('button'); keep.click(); keep.click(); await f.flush();
-    assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all', keepManual: true } });
-    // 没有自定义切片时不显示「保留自定义切片」那一行。
+    assert.match(logs[1].textContent, /切片总结 · 第 0–9 层/); assert.match(logs[1].textContent, /用时 4\.2 秒/); assert.match(logs[1].textContent, /手动 1\/3/);
+    assert.equal(logs[1].querySelector('.ym-term').textContent, '{"slices":[…]}');
+    assert.match(logs[0].textContent, /生成 · 未带记忆/); assert.match(logs[0].textContent, /隐藏到第 22 层/);
+
+    // 当前聊天：计数在标题同一行；清理是「下拉 + 一个图标」。
+    const chatCard = cards[2], count = chatCard.querySelector('.ym-manage-count');
+    assert.equal(count.textContent, '2 条记忆 · 1 条旧记录'); assert.equal(count.closest('.ym-manage-head'), chatCard.querySelector('.ym-manage-head'));
+    const scope = f.get('清理范围'), clean = f.get('清理');
+    assert.deepEqual(scope.children.map(option => option.textContent), ['全部记忆', '全部记忆，保留自定义切片', '已删除与被替换的旧记录', '本机记录与向量缓存']);
+    assert.equal(clean.parentNode, scope.parentNode, '图标按钮与下拉同一行'); assert.equal(clean.textContent, '');
+    // 全部记忆：两下确认。
+    clean.click(); await f.flush(); assert.equal(f.calls.length, 1); assert.equal(clean.getAttribute('data-armed'), 'true');
+    clean.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all' } });
+    // 换一项会取消待确认；旧记录与本机记录不清记忆本身，一下即可。
+    clean.click(); scope.value = 'traces'; scope.emit('change'); assert.equal(clean.getAttribute('data-armed'), null);
+    clean.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'traces' } });
+    scope.value = 'local'; scope.emit('change'); clean.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'clearLocal', payload: {} });
+    scope.value = 'keep'; scope.emit('change'); clean.click(); clean.click(); await f.flush(); assert.deepEqual(f.calls.at(-1), { type: 'purge', payload: { scope: 'all', keepManual: true } });
+    // 没有自定义切片时不列「保留自定义切片」。
     f.render({ document: { ...f.state.document, entries: [entry()] } });
-    assert.equal(page.querySelectorAll('.ym-manage-row')[1].hidden, true);
+    assert.deepEqual(scope.children.map(option => option.value), ['all', 'traces', 'local']);
+
+    // 记忆文件：在聊天里只列这个角色的；原聊天不存在的收进折叠夹；条目里没有类型标签、文件名不加粗。
+    const fileCard = cards[3], list = fileCard.querySelector('.ym-manage-list');
+    assert.equal(fileCard.querySelector('.ym-manage-count').textContent, '3 个 · 28 KB');
+    assert.deepEqual(list.children.map(node => node.tagName), ['DIV', 'DIV', 'DETAILS']);
+    assert.deepEqual(list.querySelectorAll('.ym-manage-file-name').map(node => node.textContent), ['聊天', '另一段聊天', '已删的聊天']);
+    assert.ok(!list.textContent.includes('别人的聊天'), '别的角色的文件不在这里');
+    assert.equal(list.querySelector('.ym-manage-tag'), null); assert.equal(list.querySelector('strong'), null);
+    const goneFolder = list.children[2]; assert.equal(goneFolder.querySelector('summary').textContent, '原聊天不存在（1）'); assert.equal(goneFolder.open, false);
+    assert.deepEqual(list.children[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 聊天 的记忆'], '当前聊天只能导出');
+    assert.deepEqual(list.children[1].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 另一段聊天 的记忆', '删除 另一段聊天 的记忆']);
+    list.children[1].querySelectorAll('button')[0].click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'backupExportFile', payload: { binding: files[1].binding } });
+
+    // 多选：点条目选中；全选只选得了能删的；删除两下确认。
+    assert.equal(f.get('全选文件').hidden, true); assert.equal(f.get('删除所选文件').hidden, true);
+    f.get('多选文件').click(); await f.flush();
+    assert.equal(f.get('多选文件').getAttribute('aria-pressed'), 'true'); assert.equal(f.get('全选文件').hidden, false);
+    const row = name => f.all().find(node => node.dataset.name === name);
+    assert.equal(row('chat-a.json').dataset.selectable, 'false', '当前聊天不能选');
+    assert.equal(row('chat-b.json').querySelector('button'), null, '多选时条目里不再放单独的按钮');
+    row('chat-b.json').click();
+    assert.equal(row('chat-b.json').dataset.selected, 'true'); assert.equal(fileCard.querySelector('.ym-manage-count').textContent, '已选 1 个');
+    f.get('全选文件').click(); await f.flush();
+    assert.deepEqual(['chat-a.json', 'chat-b.json', 'chat-c.json'].map(name => row(name).dataset.selected), ['false', 'true', 'true']);
+    const before = f.calls.length;
+    f.get('删除所选文件').click(); await f.flush(); assert.equal(f.calls.length, before, '第一下只是确认');
+    f.get('删除所选文件').click(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'manageDelete', payload: { items: [files[1], files[2]] } });
+    assert.equal(f.get('多选文件').getAttribute('aria-pressed'), 'false', '删完退出多选');
+
     // 清空日志同样两下。
     const clearLog = f.get('清空日志'); clearLog.click(); assert.equal(cleared, 0); clearLog.click(); await f.flush(); assert.equal(cleared, 1);
     assert.match(page.querySelector('.ym-log-list').textContent, /暂无日志/);
+});
+
+test('on the ST home page the file list covers every character, one folder each', async t => {
+    const file = (name, avatar, chat, patch = {}) => ({ name, binding: { avatar, file: chat }, bytes: 2048, updated: Date.UTC(2026, 10, 1), revision: 1, slices: 1, stages: 0, custom: 0, sourceExists: true, ...patch });
+    const files = [file('chat-a.json', '甲.png', '甲的聊天一'), file('chat-b.json', '甲.png', '甲的聊天二'), file('chat-c.json', '乙.png', '乙的聊天'), file('chat-d.json', '乙.png', '乙删掉的聊天', { sourceExists: false }),
+        { name: 'chat-e.json', bytes: 100, updated: Date.UTC(2026, 10, 1), unreadable: true }];
+    const f = fixture({ snapshot: null, document: null, manage: { items: files, loading: false, error: '' } }); t.after(() => f.view.destroy());
+    f.get('管理').click(); await f.flush();
+    const page = f.all().find(node => node.dataset.page === 'manage'), list = page.querySelector('.ym-manage-list');
+    assert.equal(page.querySelector('.ym-manage-chat').hidden, true, '没有打开聊天时不显示「当前聊天」');
+    assert.deepEqual(list.children.map(node => node.querySelector('summary').textContent), ['甲（2）', '乙（1）', '原聊天不存在（1）', '无法读取（1）']);
+    assert.ok(list.children.every(node => node.tagName === 'DETAILS' && node.open === false), '都是折叠夹，默认收起');
+    assert.match(list.children[2].textContent, /乙 · 1 条/, '跨角色的折叠夹里标出是哪个角色的');
+    assert.deepEqual(list.children[0].querySelectorAll('.ym-manage-file')[0].querySelectorAll('button').map(node => node.attrs['aria-label']), ['导出 甲的聊天一 的记忆', '删除 甲的聊天一 的记忆']);
 });
 
 test('the memory page draws the most recent slices first and reveals earlier ones on request; search, filter and multi-select look at everything', t => {

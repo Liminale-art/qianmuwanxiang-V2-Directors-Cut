@@ -1,4 +1,4 @@
-// 「管理」页：当前聊天的记忆清理、账户内全部记忆文件、日志。
+// 「管理」页：日志、记忆备份、当前聊天的记忆清理、记忆文件。
 // 这里只发起动作与显示结果；真正的清理、删除与记录都在 runtime／服务端。文案只说动作与结果。
 import { createYimuIcon } from './icons.mjs';
 import { shownFloor } from './contract.mjs';
@@ -9,9 +9,17 @@ const day = at => { const d = new Date(at); return `${d.getFullYear()}-${pad(d.g
 const size = bytes => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 const seconds = ms => Number.isFinite(ms) ? ms >= 1000 ? `${(ms / 1000).toFixed(1)} 秒` : `${Math.round(ms)} 毫秒` : '';
 const floors = range => range && Number.isSafeInteger(range.start) && Number.isSafeInteger(range.end) ? `第 ${shownFloor(range.start)}–${shownFloor(range.end)} 层` : '';
+const character = item => String(item?.binding?.avatar || '').replace(/\.[^.]+$/, '');
 const CONFIRM_MS = 4000;
+// 清理范围：下拉里选一项，旁边一个图标按钮执行。前两项会清掉记忆本身，要点两下。
+const SCOPES = [
+    { id: 'all', label: '全部记忆', confirm: true, payload: ['purge', { scope: 'all' }] },
+    { id: 'keep', label: '全部记忆，保留自定义切片', confirm: true, payload: ['purge', { scope: 'all', keepManual: true }] },
+    { id: 'traces', label: '已删除与被替换的旧记录', confirm: false, payload: ['purge', { scope: 'traces' }] },
+    { id: 'local', label: '本机记录与向量缓存', confirm: false, payload: ['clearLocal', {}] },
+];
 
-export function mountManageView({ document = globalThis.document, journal = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''] } = {}) {
+export function mountManageView({ document = globalThis.document, journal = null, backupNode = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''] } = {}) {
     if (!document?.createElement) throw new TypeError('忆幕管理页缺少文档容器');
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -19,66 +27,83 @@ export function mountManageView({ document = globalThis.document, journal = null
         if (text !== undefined) node.textContent = text;
         return node;
     };
-    let state = {}, disposed = false, listed = false, logSignature = '';
-    const open = new Set(), timers = new Set();
+    let state = {}, disposed = false, listed = false, logSignature = '', fileSignature = '';
+    const open = new Set(), timers = new Set(), folders = new Set(), picked = new Set();
+    let selecting = false;
     const run = async (type, payload) => { try { return await onAction(type, payload); } catch { return false; } };
 
-    // 破坏性按钮都要点两下：第一下变成「确认…」，几秒内不再点就复原。不弹对话框、不打断操作。
-    const confirmButton = (label, confirmLabel, action, className = '') => {
-        const node = el('button', `ym-button ym-small ${className}`.trim(), label);
-        node.type = 'button'; node.setAttribute('aria-label', label);
+    // 小图标按钮。needsConfirm 返回真时要点两下：第一下变成「确认」样式，几秒内不再点就复原。不弹对话框。
+    const iconAction = (label, glyph, action, { needsConfirm = () => false, className = '' } = {}) => {
+        const node = el('button', `ym-button ym-icon-button ym-small ${className}`.trim());
+        node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
+        const paint = name => node.replaceChildren(createYimuIcon(name, { document }));
+        paint(glyph);
         let armed = false, timer = null;
-        const disarm = () => { armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.textContent = label; node.removeAttribute('data-armed'); };
-        node.addEventListener('click', async () => {
+        const disarm = () => { armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(glyph); };
+        node.disarm = disarm;
+        node.addEventListener('click', async event => {
+            event.stopPropagation?.();
             if (node.disabled) return;
-            if (!armed) {
-                armed = true; node.textContent = confirmLabel; node.setAttribute('data-armed', 'true');
+            if (needsConfirm() && !armed) {
+                armed = true; node.setAttribute('data-armed', 'true'); node.title = '再点一次确认'; paint('check');
                 timer = setTimeout(disarm, CONFIRM_MS); timers.add(timer);
                 return;
             }
             disarm(); node.disabled = true;
-            try { await action(); } finally { if (!disposed) node.disabled = false; render(state); }
+            try { await action(); } finally { if (!disposed) { node.disabled = false; render(state); } }
         });
         return node;
     };
-    const row = (label, control) => { const node = el('div', 'ym-manage-row'); node.append(el('span', '', label), control); return node; };
+    const head = (title, ...right) => {
+        const node = el('div', 'ym-manage-head');
+        const side = el('div', 'ym-manage-head-side'); side.append(...right);
+        node.append(el('h3', 'ym-setting-title', title), side);
+        return node;
+    };
+
+    // ---------- 日志（首卡） ----------
+    const logCard = el('section', 'ym-card ym-settings-group ym-manage-log');
+    const clearLog = iconAction('清空日志', 'trash', async () => { journal?.clear(); open.clear(); }, { needsConfirm: () => true });
+    const logList = el('div', 'ym-log-list');
+    logCard.append(head('日志', clearLog), logList);
 
     // ---------- 当前聊天 ----------
     const chatCard = el('section', 'ym-card ym-settings-group ym-manage-chat');
-    const chatTitle = el('h3', 'ym-setting-title', '当前聊天');
-    const chatCount = el('p', 'ym-muted ym-manage-count');
-    const clearAll = confirmButton('清空', '确认清空', () => run('purge', { scope: 'all' }), 'ym-danger');
-    const clearKeep = confirmButton('清空', '确认清空', () => run('purge', { scope: 'all', keepManual: true }), 'ym-danger');
-    const clearTraces = confirmButton('清理', '确认清理', () => run('purge', { scope: 'traces' }));
-    const clearLocal = confirmButton('清理', '确认清理', () => run('clearLocal', {}));
-    const rows = [row('全部记忆', clearAll), row('全部记忆，保留自定义切片', clearKeep), row('已删除与被替换的旧记录', clearTraces), row('本机记录与向量缓存', clearLocal)];
-    chatCard.append(chatTitle, chatCount, ...rows);
+    const chatCount = el('span', 'ym-muted ym-manage-count');
+    const scope = el('select', 'ym-manage-scope'); scope.setAttribute('aria-label', '清理范围');
+    const scopeOf = () => SCOPES.find(item => item.id === scope.value) || SCOPES[0];
+    const clean = iconAction('清理', 'trash', () => run(...scopeOf().payload), { needsConfirm: () => scopeOf().confirm, className: 'ym-danger' });
+    scope.addEventListener('change', () => { clean.disarm(); render(state); });
+    const cleanRow = el('div', 'ym-manage-row'); cleanRow.append(scope, clean);
+    chatCard.append(head('当前聊天', chatCount), cleanRow);
 
-    // ---------- 账户内的记忆文件 ----------
+    // ---------- 记忆文件 ----------
     const filesCard = el('section', 'ym-card ym-settings-group ym-manage-files');
-    const filesHead = el('div', 'ym-manage-head');
-    const reload = el('button', 'ym-button ym-icon-button ym-small'); reload.type = 'button'; reload.title = '刷新记忆文件列表'; reload.setAttribute('aria-label', '刷新记忆文件列表');
-    reload.append(createYimuIcon('refresh', { document }));
-    reload.addEventListener('click', () => { void run('manageList', {}); });
-    filesHead.append(el('h3', 'ym-setting-title', '记忆文件'), reload);
-    const filesNote = el('p', 'ym-muted ym-manage-count');
+    const filesNote = el('span', 'ym-muted ym-manage-count');
+    const reload = iconAction('刷新记忆文件列表', 'refresh', () => run('manageList', {}));
+    const selectToggle = iconAction('多选文件', 'select', async () => { selecting = !selecting; picked.clear(); fileSignature = ''; });
+    const selectAll = iconAction('全选文件', 'check', async () => {
+        const all = selectable(); const everything = all.length > 0 && all.every(item => picked.has(item.name));
+        picked.clear(); if (!everything) for (const item of all) picked.add(item.name);
+        fileSignature = '';
+    });
+    const removePicked = iconAction('删除所选文件', 'trash', async () => {
+        const items = selectable().filter(item => picked.has(item.name));
+        if (!items.length) return;
+        await run('manageDelete', { items }); picked.clear(); selecting = false; fileSignature = '';
+    }, { needsConfirm: () => true, className: 'ym-danger' });
+    // 多选后一次导出：逐个文件各出一份备份，导入时可以一次全选回来。
+    const exportPicked = iconAction('导出所选文件', 'download', async () => {
+        for (const item of scoped().filter(item => !item.unreadable && picked.has(item.name))) await run('backupExportFile', { binding: item.binding });
+    });
     const fileList = el('div', 'ym-manage-list');
-    let orphans = [];
-    const orphanAction = confirmButton('清理原聊天已不存在的', '确认清理', () => run('manageDelete', { items: orphans }), 'ym-danger');
-    orphanAction.hidden = true;
-    filesCard.append(filesHead, filesNote, orphanAction, fileList);
-
-    // ---------- 日志 ----------
-    const logCard = el('section', 'ym-card ym-settings-group ym-manage-log');
-    const logHead = el('div', 'ym-manage-head');
-    const clearLog = confirmButton('清空', '确认清空', async () => { journal?.clear(); open.clear(); }, '');
-    clearLog.setAttribute('aria-label', '清空日志');
-    logHead.append(el('h3', 'ym-setting-title', '日志'), clearLog);
-    const logList = el('div', 'ym-log-list');
-    logCard.append(logHead, logList);
+    filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, selectToggle, reload), fileList);
 
     const element = el('div', 'ym-manage');
-    element.append(chatCard, filesCard, logCard);
+    // 记忆备份（导入／导出）跟在日志后面：它管的是文件，和下面两张卡是一类事。
+    const backupCard = el('section', 'ym-card ym-settings-group ym-manage-backup');
+    if (backupNode) backupCard.append(head('记忆备份'), backupNode);
+    element.append(logCard, ...(backupNode ? [backupCard] : []), chatCard, filesCard);
 
     const cap = text => el('div', 'ym-log-cap', text);
     const term = text => el('pre', 'ym-term', text);
@@ -129,7 +154,7 @@ export function mountManageView({ document = globalThis.document, journal = null
     }
     function renderLog() {
         const items = journal ? journal.list() : [];
-        // 进行中的那条每个分块都会变：只更新它自己的正文，不重建整张列表（否则展开的条目会跟着闪）。
+        // 内容没变就不重建（否则展开着的条目会跟着闪、被收起）。
         const signature = JSON.stringify(items.map(item => [item.id, item.status, item.durationMs ?? null, item.raw ? item.raw.length : 0, (item.slices || []).length, item.error || '']));
         if (signature === logSignature) return;
         logSignature = signature;
@@ -137,39 +162,78 @@ export function mountManageView({ document = globalThis.document, journal = null
         clearLog.hidden = false;
         logList.replaceChildren(...items.map(logEntry));
     }
-    function renderFiles() {
-        const manage = state.manage || {}, items = Array.isArray(manage.items) ? manage.items : null;
-        reload.disabled = manage.loading === true;
-        if (!items) { filesNote.textContent = manage.loading ? '正在读取…' : manage.error || ''; filesNote.hidden = !filesNote.textContent; orphanAction.hidden = true; fileList.replaceChildren(); return; }
-        const current = state.snapshot?.binding ? JSON.stringify([state.snapshot.binding.avatar, state.snapshot.binding.file]) : '';
-        orphans = items.filter(item => !item.unreadable && item.sourceExists === false && JSON.stringify([item.binding?.avatar, item.binding?.file]) !== current);
-        const total = items.reduce((sum, item) => sum + (item.bytes || 0), 0);
-        filesNote.textContent = manage.error || (items.length ? `${items.length} 个聊天 · 共 ${size(total)}` : '还没有记忆文件');
-        filesNote.hidden = false;
-        orphanAction.hidden = !orphans.length;
-        if (orphans.length && orphanAction.getAttribute('data-armed') !== 'true') orphanAction.textContent = `清理原聊天已不存在的（${orphans.length} 个）`;
-        fileList.replaceChildren(...items.map(item => {
-            const node = el('div', 'ym-manage-file');
-            const text = el('div', 'ym-manage-file-text');
-            const isCurrent = JSON.stringify([item.binding?.avatar, item.binding?.file]) === current;
-            const name = el('strong', '', item.unreadable ? '无法读取的文件' : item.binding.file);
-            const facts = item.unreadable ? [size(item.bytes), day(item.updated)]
-                : [item.binding.avatar.replace(/\.[^.]+$/, ''), `${item.slices + item.stages + item.custom} 条`, size(item.bytes), day(item.updated)];
-            text.append(name, el('span', 'ym-muted', facts.join(' · ')));
-            if (isCurrent) text.append(el('span', 'ym-manage-tag', '当前'));
-            else if (!item.unreadable && item.sourceExists === false) text.append(el('span', 'ym-manage-tag ym-manage-tag-warn', '原聊天不存在'));
-            node.append(text);
-            const actions = el('div', 'ym-manage-file-actions');
-            if (!item.unreadable) {
-                const save = el('button', 'ym-button ym-icon-button ym-small'); save.type = 'button'; save.title = '导出这份记忆'; save.setAttribute('aria-label', `导出 ${item.binding.file} 的记忆`);
-                save.append(createYimuIcon('download', { document }));
-                save.addEventListener('click', async () => { if (save.disabled) return; save.disabled = true; try { await run('backupExportFile', { binding: item.binding }); } finally { if (!disposed) save.disabled = false; } });
-                actions.append(save);
-            }
-            if (!isCurrent) actions.append(confirmButton('删除', '确认删除', () => run('manageDelete', { items: [item] }), 'ym-danger'));
-            node.append(actions);
+
+    // ---------- 记忆文件：范围、分组、多选 ----------
+    const currentKey = () => state.snapshot?.binding ? JSON.stringify([state.snapshot.binding.avatar, state.snapshot.binding.file]) : '';
+    const keyOf = item => JSON.stringify([item.binding?.avatar, item.binding?.file]);
+    // 在某个聊天里只看这个角色的记忆文件；在 ST 首页（没有打开聊天）才看全部角色的。
+    const scoped = () => {
+        const items = Array.isArray(state.manage?.items) ? state.manage.items : [];
+        const avatar = state.snapshot?.binding?.avatar;
+        return avatar ? items.filter(item => !item.unreadable && item.binding?.avatar === avatar) : items;
+    };
+    // 当前打开的聊天不能从这里删，读不出来的文件服务端也不认，所以两者都不进多选。
+    const selectable = () => scoped().filter(item => !item.unreadable && keyOf(item) !== currentKey());
+    function fileRow(item, { withCharacter = false } = {}) {
+        const node = el('div', 'ym-manage-file'); node.dataset.name = item.name;
+        const isCurrent = !item.unreadable && keyOf(item) === currentKey(), canPick = !item.unreadable && !isCurrent;
+        const text = el('div', 'ym-manage-file-text');
+        const facts = item.unreadable ? [size(item.bytes), day(item.updated)]
+            : [...(withCharacter ? [character(item)] : []), `${item.slices + item.stages + item.custom} 条`, size(item.bytes), day(item.updated)];
+        text.append(el('span', 'ym-manage-file-name', item.unreadable ? item.name : item.binding.file), el('span', 'ym-muted', facts.join(' · ')));
+        node.append(text);
+        if (selecting) {
+            node.dataset.selectable = String(canPick); node.dataset.selected = String(canPick && picked.has(item.name));
+            if (canPick) node.addEventListener('click', () => { if (picked.has(item.name)) picked.delete(item.name); else picked.add(item.name); fileSignature = ''; render(state); });
             return node;
-        }));
+        }
+        const actions = el('div', 'ym-manage-file-actions');
+        if (!item.unreadable) actions.append(iconAction(`导出 ${item.binding.file} 的记忆`, 'download', () => run('backupExportFile', { binding: item.binding })));
+        if (canPick) actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
+        node.append(actions);
+        return node;
+    }
+    function folder(id, title, items, options) {
+        const node = el('details', 'ym-manage-folder'); node.dataset.folder = id; node.open = folders.has(id);
+        node.addEventListener('toggle', () => { if (node.open) folders.add(id); else folders.delete(id); });
+        const body = el('div', 'ym-manage-folder-body');
+        body.append(...items.map(item => fileRow(item, options)));
+        node.append(el('summary', '', `${title}（${items.length}）`), body);
+        return node;
+    }
+    function renderFiles() {
+        const manage = state.manage || {}, loaded = Array.isArray(manage.items);
+        const items = scoped(), inChat = Boolean(state.snapshot?.binding);
+        for (const name of [...picked]) if (!items.some(item => item.name === name)) picked.delete(name);
+        const chosen = selectable().filter(item => picked.has(item.name)).length;
+        reload.disabled = manage.loading === true;
+        selectToggle.hidden = !selectable().length && !selecting;
+        selectToggle.setAttribute('aria-pressed', String(selecting));
+        selectAll.hidden = removePicked.hidden = exportPicked.hidden = !selecting;
+        removePicked.disabled = exportPicked.disabled = !chosen;
+        filesNote.textContent = selecting ? `已选 ${chosen} 个` : !loaded ? manage.loading ? '正在读取…' : manage.error || ''
+            : manage.error || (items.length ? `${items.length} 个 · ${size(items.reduce((sum, item) => sum + (item.bytes || 0), 0))}` : '');
+        const signature = JSON.stringify([loaded, inChat, currentKey(), selecting, [...picked].sort(), items.map(item => [item.name, item.revision, item.bytes, item.updated, item.sourceExists, item.unreadable])]);
+        if (signature === fileSignature) return;
+        fileSignature = signature;
+        if (!loaded) { fileList.replaceChildren(); return; }
+        if (!items.length) { fileList.replaceChildren(el('p', 'ym-muted', inChat ? '这个角色还没有记忆文件' : '还没有记忆文件')); return; }
+        const live = items.filter(item => !item.unreadable && item.sourceExists !== false);
+        const gone = items.filter(item => !item.unreadable && item.sourceExists === false);
+        const broken = items.filter(item => item.unreadable);
+        const nodes = [];
+        if (inChat) {
+            // 当前聊天排最前，其余按最近更新。
+            const ordered = [...live].sort((a, b) => Number(keyOf(b) === currentKey()) - Number(keyOf(a) === currentKey()) || b.updated - a.updated);
+            nodes.push(...ordered.map(item => fileRow(item)));
+        } else {
+            const groups = new Map();
+            for (const item of live) { const name = character(item); if (!groups.has(name)) groups.set(name, []); groups.get(name).push(item); }
+            for (const [name, list] of [...groups].sort((a, b) => a[0].localeCompare(b[0], 'zh'))) nodes.push(folder(`character:${name}`, name, list.sort((a, b) => b.updated - a.updated)));
+        }
+        if (gone.length) nodes.push(folder('gone', '原聊天不存在', gone.sort((a, b) => b.updated - a.updated), { withCharacter: !inChat }));
+        if (broken.length) nodes.push(folder('broken', '无法读取', broken));
+        fileList.replaceChildren(...nodes);
     }
     function render(next = {}) {
         if (disposed) return;
@@ -178,13 +242,16 @@ export function mountManageView({ document = globalThis.document, journal = null
         const live = entries.filter(entry => entry.status !== 'deleted'), traces = entries.length - live.length;
         chatCard.hidden = !state.snapshot;
         chatCount.textContent = usable ? `${live.length} 条记忆 · ${traces} 条旧记录` : '';
-        chatCount.hidden = !chatCount.textContent;
-        const busy = !usable || Boolean(state.busy);
-        clearAll.disabled = clearKeep.disabled = busy || !entries.length;
-        clearTraces.disabled = busy || !traces;
-        clearLocal.disabled = !state.snapshot;
-        // 没有自定义切片时，「保留自定义切片」那一行与上一行等价，不显示。
-        rows[1].hidden = !live.some(entry => entry.kind === 'manual');
+        // 没有自定义切片时，「保留自定义切片」与上一项等价，不列出。
+        const options = SCOPES.filter(item => item.id !== 'keep' || live.some(entry => entry.kind === 'manual'));
+        if ([...scope.children].map(node => node.value).join() !== options.map(item => item.id).join()) {
+            const previous = scope.value;
+            scope.replaceChildren(...options.map(item => { const option = el('option', '', item.label); option.value = item.id; return option; }));
+            scope.value = options.some(item => item.id === previous) ? previous : options[0].id;
+        }
+        const busy = !usable || Boolean(state.busy), chosen = scopeOf().id;
+        scope.disabled = !state.snapshot;
+        clean.disabled = chosen === 'local' ? !state.snapshot : busy || (chosen === 'traces' ? !traces : !entries.length);
         renderFiles(); renderLog();
     }
     const unsubscribe = journal?.subscribe?.(() => { if (!disposed && !element.hidden) renderLog(); });

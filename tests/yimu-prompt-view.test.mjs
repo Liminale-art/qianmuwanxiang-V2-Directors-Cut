@@ -103,3 +103,21 @@ test('recall tab is present only while enabled, with no redundant badge and no l
     f.render({recallEnabled:true});assert.equal(f.get('原文回查').hidden,false);f.get('原文回查').click();assert.equal(f.get('何时补充提示词正文'),text);assert.equal(text.value,'未提交的原文回查草稿');
     assert.equal(f.saves.length,0,'visibility changes never submit the preserved draft');f.view.destroy();
 });
+
+test('a title is renamed in place by double-click and saved on blur; undo sits before delete with the undo arrow',async()=>{
+    const f=fixture(),input=f.get('切片总结条目名称'),row=input.closest('.ym-prompt-item'),title=row.querySelector('.ym-prompt-item-title');
+    assert.equal(input.hidden,true);assert.equal(input.parentNode,row.querySelector('.ym-prompt-item-head'),'the name field lives in the row header, not in the expanded body');
+    const tools=row.querySelector('.ym-prompt-item-tools').children.filter(node=>!node.hidden&&node.tagName==='BUTTON').map(node=>node.attrs['aria-label']);
+    assert.deepEqual(tools.slice(-2),[`撤销${title.textContent}修改`,`删除${title.textContent}`]);
+    const original=title.textContent;
+    title.emit('dblclick');assert.equal(input.hidden,false);assert.equal(title.hidden,true);assert.equal(f.doc.activeElement,input);
+    assert.equal(input.emit('click').defaultPrevented,true,'clicking the field does not toggle the row');
+    input.value='新的条目名';input.emit('input');input.emit('blur');
+    assert.equal(input.hidden,true);assert.equal(title.hidden,false);assert.equal(title.textContent,'新的条目名');
+    await f.wait(()=>f.saves.length===1);
+    assert.equal(f.saves[0][0].groups.identity.concat(f.saves[0][0].groups.summary).some(entry=>entry.name==='新的条目名'),true);
+    // Esc 放弃；清空名字则恢复原名，不存空标题。
+    title.emit('dblclick');input.value='不要这个';input.emit('input');input.emit('keydown',{key:'Escape'});
+    assert.equal(input.hidden,true);assert.notEqual(title.textContent,'不要这个');assert.notEqual(original,'');
+    f.view.destroy();
+});

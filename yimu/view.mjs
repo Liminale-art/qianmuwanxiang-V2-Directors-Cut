@@ -278,10 +278,11 @@ export function createView({ onAction, connectionApi, journal = null, document =
     // 未总结区间只作为灰字占位，不写进输入框：打开面板时看一眼范围，真要总结自己填。
     summarizeStart.placeholder = summarizeEnd.placeholder = '待填';
     summarizeStart.setAttribute('aria-label', '手动总结开始楼层'); summarizeEnd.setAttribute('aria-label', '手动总结结束楼层');
-    // 开始与暂停是同一个位置上的图标按钮（播放／暂停），并在「每批 N 层」那一组的末尾。
-    const summarizeSubmit = iconButton('开始总结', 'play', () => summarizeRangeForm.requestSubmit(), 'ym-primary ym-manual-run');
+    // 开始与暂停是同一个位置上的文字按钮，并在「每批 N 层」那一组的末尾（图标按钮在这里显得突兀，用户 11-19 改回文字）。
+    const summarizeSubmit = button('开始', () => summarizeRangeForm.requestSubmit(), 'ym-primary ym-small ym-manual-run');
+    summarizeSubmit.setAttribute('aria-label', '开始总结');
     // Pausing lets the running batch finish and save, then stops before the next one.
-    const summarizePause = iconButton('暂停', 'pause', () => dispatch('pauseManual', {}, summarizePause), 'ym-manual-run');
+    const summarizePause = button('暂停', () => dispatch('pauseManual', {}, summarizePause), 'ym-small ym-manual-run');
     summarizePause.hidden = true;
     // Layout: title with live progress, then the floor range and floors per batch as two
     // matching groups, then one full-width action (Start, or Pause while running).
@@ -537,11 +538,20 @@ export function createView({ onAction, connectionApi, journal = null, document =
     const usedBody = el('div', 'ym-used-body'); lastUsed.append(usedBody);
     const story = createStoryView({ document, pageMode: true, onNotice, onAction: (type, payload) => onAction?.(type, payload) });
     const companion = mountCompanionView({ document, el, button, pageMode: true, onNotice, onAction: (type, payload) => dispatch(type, payload) });
+    // 标签规则放在工具卡里（原「记忆备份」的位置）；记忆备份搬去「管理」页。
+    const contextRulesView = mountContextRulesView({ document, bare: true,
+        onSave: rules => {
+            const global = !state.document;
+            return dispatch('settings', { global, quiet: true, values: { contextRules: rules },
+                expectedRevision: global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0 });
+        },
+        onError: error => { localError = error?.message || '标签规则设置未保存'; localErrorPage = 'overview'; updateStatus(); },
+    });
     const routes = el('div', 'ym-tools'), toolCards = new Map();
     let toolRow = null, toolPanels = null, toolGroup = null, toolIndex = 0;
     for (const [name, title, icon, body] of [
         ['used', '记忆调阅', 'eye', lastUsed], ['story', '故事续接', 'book', story.node],
-        ['companion', '关联伴读', 'link', companion.element], ['backup', '记忆备份', 'download', backup.node],
+        ['companion', '关联伴读', 'link', companion.element], ['rules', '标签规则', 'settings', contextRulesView.element],
     ]) {
         if (toolIndex++ % 2 === 0) {
             toolGroup = el('div', 'ym-tool-group'); toolRow = el('div', 'ym-tool-row'); toolPanels = el('div', 'ym-folder-panels'); toolGroup.append(toolRow, toolPanels); routes.append(toolGroup);
@@ -636,7 +646,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         onSave: (config, meta = {}) => {
             if (meta.scope && meta.scope !== 'global' && meta.scope !== JSON.stringify(state.snapshot?.binding || null)) return false;
             const global = meta.scope ? meta.scope === 'global' : !state.document;
-            return dispatch('settings', { global, values: { prompts: config },
+            return dispatch('settings', { global, quiet: true, values: { prompts: config },
                 expectedRevision: meta.revision ?? (global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0) });
         },
         onError: error => { localError = error?.message || '提示词保存未完成'; localErrorPage = 'overview'; updateStatus(); },
@@ -649,18 +659,10 @@ export function createView({ onAction, connectionApi, journal = null, document =
     promptTitle.replaceChildren(createYimuIcon('settings', { document }), el('strong', '', '总结提示词'));
     promptTitle.setAttribute('aria-expanded', 'false'); promptContainer.hidden = true; promptContainer.className += ' ym-tool-body';
     promptFolder.append(promptTitle, promptContainer);
-    const contextRulesView = mountContextRulesView({ document,
-        onSave: rules => {
-            const global = !state.document;
-            return dispatch('settings', { global, values: { contextRules: rules },
-                expectedRevision: global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0 });
-        },
-        onError: error => { localError = error?.message || '正文提取设置未保存'; localErrorPage = 'overview'; updateStatus(); },
-    });
-    pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder, contextRulesView.element);
+    pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder);
     pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, earlier, list, noMatch, deleted);
     pages.get('retrieval').append(retrieval.element);
-    const manage = mountManageView({ document, journal, describeSkip, onAction: (type, payload) => dispatch(type, payload) });
+    const manage = mountManageView({ document, journal, describeSkip, backupNode: backup.node, onAction: (type, payload) => dispatch(type, payload) });
     pages.get('manage').append(manage.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);
@@ -740,7 +742,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             requestCard.dataset.tone = 'neutral';
         }
         for (const [name, card] of toolCards) {
-            card.hidden = false; card.button.disabled = name !== 'backup' && !doc;
+            card.hidden = false; card.button.disabled = name !== 'rules' && !doc;
             card.panel.hidden = !card.open;
         }
     }
@@ -819,7 +821,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         summarizeSubmit.hidden = Boolean(manualJob);
         summarizePause.hidden = !manualJob;
         if (manualJob && !pendingButtons.has(summarizePause)) summarizePause.disabled = manualJob.pausing === true;
-        summarizePause.title = manualJob?.pausing ? '本批完成后暂停' : '暂停';
+        summarizePause.textContent = manualJob?.pausing ? '暂停中' : '暂停';
         batchProgress.textContent = manualJob ? `已完成 ${manualJob.done}／${manualJob.total} 批${manualJob.pausing ? '，本批完成后暂停' : ''}` : '';
         if (document.activeElement !== batchInput && !pendingButtons.has(batchInput)) batchInput.value = String(savedBatchFloors());
         batchInput.disabled = !available || Boolean(manualJob);
@@ -1292,7 +1294,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             // 换聊天或重新打开：清掉用户填的范围，重算灰字占位。
             summarizeStart.value = ''; summarizeEnd.value = ''; summarizeNotice.hidden = true;
             syncManualDefault({ force: true });
-            for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
+            for (const card of toolCards.values()) setToolOpen(card, false);
             search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); pageLimit = PAGE_STEP; setSelecting(false);
             // Backup browsing is account-scoped; other pages belong to the opened chat.
             currentPage = 'overview';

@@ -29,7 +29,7 @@ export function normalizeContextRules(value) {
     return { stripComments: source.stripComments !== false, blockedTags, includedTags: includedTags.filter(tag => !blockedTags.includes(tag)) };
 }
 export function validateContextRules(value) {
-    if (value !== undefined && value !== null && (typeof value !== 'object' || Array.isArray(value))) throw new Error('正文提取规则格式无效');
+    if (value !== undefined && value !== null && (typeof value !== 'object' || Array.isArray(value))) throw new Error('标签规则格式无效');
     const source = value && typeof value === 'object' ? value : {};
     if (Object.hasOwn(source, 'stripComments') && typeof source.stripComments !== 'boolean') throw new Error('正文注释处理开关无效');
     for (const key of ['blockedTags', 'includedTags']) {

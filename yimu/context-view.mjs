@@ -6,8 +6,9 @@ import { createYimuIcon } from './icons.mjs';
 const clone = value => structuredClone(value);
 export { DEFAULT_CONTEXT_RULES, normalizeContextRules } from './context-filter.mjs';
 
-export function mountContextRulesView({ document = globalThis.document, onSave = () => {}, onError = () => {} } = {}) {
-    if (!document?.createElement) throw new TypeError('正文提取缺少文档容器');
+// bare：只要内容区（标题与折叠由外层的工具卡负责）。
+export function mountContextRulesView({ bare = false, document = globalThis.document, onSave = () => {}, onError = () => {} } = {}) {
+    if (!document?.createElement) throw new TypeError('标签规则缺少文档容器');
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -23,8 +24,8 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
     };
     const card = el('section', 'ym-card ym-tool-card ym-prompt-folder ym-context-rules-card');
     const heading = el('button', 'ym-button ym-tool-summary'); heading.type = 'button';
-    heading.append(createYimuIcon('settings', { document }), el('strong', '', '正文提取'));
-    heading.setAttribute('aria-label', '正文提取'); heading.setAttribute('aria-expanded', 'false');
+    heading.append(createYimuIcon('settings', { document }), el('strong', '', '标签规则'));
+    heading.setAttribute('aria-label', '标签规则'); heading.setAttribute('aria-expanded', 'false');
     const body = el('div', 'ym-tool-body'); body.hidden = true;
     const stripRow = el('label', 'ym-switch-row');
     const strip = el('input', 'ym-switch'); strip.type = 'checkbox'; strip.setAttribute('aria-label', '清除 HTML 注释');
@@ -32,6 +33,7 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
     const rules = el('div', 'ym-context-rule-list'); rules.setAttribute('aria-label', '正文标签规则');
     const add = button('添加正文标签', 'plus', event => { event.preventDefault(); addRow('', 'blocked', true); }, 'ym-icon-button ym-context-rule-add');
     body.append(stripRow, rules, add); card.append(heading, body);
+    if (bare) { body.hidden = false; body.className = 'ym-context-rules-body'; }
 
     let state = {}, last = '', saving = false, queued = false, disposed = false;
     const rows = [];
@@ -52,7 +54,7 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         const value = read(); saving = true;
         try {
             const result = await onSave(clone(value));
-            if (result === false) throw new Error('正文提取设置未保存');
+            if (result === false) throw new Error('标签规则设置未保存');
             state = { ...state, contextRules: value };
         } catch (error) { onError(error); }
         finally {
@@ -99,7 +101,7 @@ export function mountContextRulesView({ document = globalThis.document, onSave =
         body.hidden = !body.hidden; heading.setAttribute('aria-expanded', String(!body.hidden)); card.setAttribute('data-open', String(!body.hidden));
     });
     return {
-        element: card,
+        element: bare ? body : card,
         render(next = {}) {
             state = next; const value = normalizeContextRules(next.settings?.contextRules || next.contextRules);
             card.hidden = false;
