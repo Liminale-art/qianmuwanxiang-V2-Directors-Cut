@@ -39,6 +39,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
     const fetcher = async (url, options) => {
         const route = `/${url.split('/').at(-1)}`;
+        seen.push(route);
         if (route === '/read' && faults.failRead) throw new Error('合成读取故障');
         let status = 200, body;
         const response = {status(value) { status = value; return this; }, json(value) { body = clone(value); return this; }};
@@ -53,7 +54,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
         return {ok: status >= 200 && status < 300, status, json: async () => clone(body)};
     };
     const api = createApi({fetcher, headers: () => ({'X-CSRF-Token': 'synthetic-only'})});
-    const prompts = new Map(), tasks = [];
+    const prompts = new Map(), tasks = [], seen = [];
     let generated = 0, model = async prompt => {
         const match = prompt.match(/完整覆盖第(\d+)至(\d+)层/);
         assert.ok(match, 'fixture model receives a bounded original range');
@@ -101,7 +102,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
         const prompt = payload.messages.find(message => message.content.includes('<yimu_memory>'))?.content || '';
         return {coreChat, prompt, payload, originalPayload};
     };
-    return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject,
+    return {root, account, chats, request, writeChat, store, api, faults, context, host, controller, tasks, flush, enable, inject, seen,
         prompts, notices, model: value => { model = value; }, generated: () => generated};
 }
 
@@ -586,6 +587,26 @@ test('one manual batch that returns several slices replaces every old one-floor 
     await manualRange(f, 1, 5, {start: 1, end: 5}, 10);
     assert.equal(f.controller.state.error, '');
     assert.equal(f.controller.state.document.entries.filter(entry => entry.status === 'active').length, 2);
+});
+
+test('the generation path waits for one read only: no service probe before a reply, and the tokenizer upload waits until the reply has ended', async t => {
+    const f = await fixture(t); await f.enable(); await f.flush();
+    // 用户两次发言通常隔一分钟以上：「刚确认过服务就跳过探测」的窗口早已过期。
+    const realNow = Date.now; Date.now = () => realNow() + 10 * 60 * 1000; t.after(() => { Date.now = realNow; });
+    const counted = []; f.context.getTokenCountAsync = async text => { counted.push(text.length); return Math.ceil(text.length / 3); };
+    f.seen.length = 0;
+    await f.controller.event('GENERATION_STARTED', ['normal', {}, false]);
+    const coreChat = clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
+    await f.controller.intercept(coreChat, 65536, () => {}, 'normal');
+    assert.deepEqual(f.seen, ['/read'], '生成前只有一次读取，没有额外的服务探测');
+    // 最终请求装配完：体积卡先用零等待的估算，不在此刻把整份请求再上传给分词接口。
+    const chat = [{role: 'system', content: '合成设定'}, ...coreChat.map(message => ({role: message.is_user ? 'user' : 'assistant', content: message.mes}))];
+    await f.controller.event('CHAT_COMPLETION_PROMPT_READY', [{chat, dryRun: false}]);
+    assert.equal(f.controller.state.requestSize.method, 'estimate'); assert.deepEqual(counted, []);
+    // 回复结束后才去实测，并把读数换成实测值。
+    await f.controller.event('GENERATION_ENDED', []);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(counted.length, 1); assert.equal(f.controller.state.requestSize.method, 'st-tokenizer');
 });
 
 test('manual partial overlap requires visible expanded bounds, replaces whole automatic slices and preserves outside memory', async t => {

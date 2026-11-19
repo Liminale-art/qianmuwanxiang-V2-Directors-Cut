@@ -53,6 +53,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     const settled = () => {
         clearTimeout(settleTimer); settleTimer = null; settleIdle = 0;
         generating = false; prepared = null; host.clear();
+        countPendingRequest();
         if (state.snapshot?.binding) deferFor(state.snapshot.binding, () => refresh({ quiet: true, auto: true }));
     };
     const pollSettle = stamp => {
@@ -261,7 +262,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
     }
 
-    async function refresh({ quiet = false, auto = false } = {}) {
+    async function refresh({ quiet = false, auto = false, probe = true } = {}) {
         companionActions.connect();
         const ticket = ++sequence, refreshGeneration = generation;
         if (!quiet) { state.loading = true; state.error = ''; emit(); }
@@ -298,7 +299,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
                 if (serviceError) throw serviceError;
-                if (quiet && !serviceFresh()) await checkService();
+                // 生成前的那次刷新不先探服务：探测是一次额外的网络往返，而紧接着的读取本身失败就会如实报出来。
+                // 用户两次发言通常间隔超过一分钟，按「刚确认过就跳过」的规则几乎每轮都会多等这一趟。
+                if (quiet && probe && !serviceFresh()) await checkService();
                 const data = await readSource(snapshot.binding);
                 if (ticket !== sequence || disposed) return;
                 const live = await host.snapshot();
@@ -564,8 +567,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 }
                 failedBatch = null; failedSource = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
-                // 新的切片就位后，隐藏边界前移：这一轮结束后把这批旧楼按原生方式隐藏，下一轮起生效。
-                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
                 if (entryId || !isCurrent(binding) || generating || controller.manual?.pausing) break;
@@ -597,6 +598,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         } finally {
             if (jobs.get(key) === controller) jobs.delete(key);
             if (isCurrent(binding)) state.streamPreview = '';
+            // 隐藏在整轮结束后做一次：每次隐藏都要把整份聊天交给 ST 保存，多批总结若每批保存一次，
+            // 慢网络下会连着上传好几份聊天，还会让用户下一次发言排在这些保存后面。生成中不动聊天。
+            if (processed && !disposed && !generating && isCurrent(binding)) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
             if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}), runGeneration);
             emit();
         }
@@ -713,7 +717,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
-                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
@@ -923,7 +926,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
         // 这次读取是刻意的：它能发现别的设备、别处改动过的记忆与原文，省掉它就会注入过期内容（有专门的回归测试）。
         // 因此它只等一次、且有上限（interceptWaitMs），超时本轮不带记忆、照常生成。
-        if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; generationRefresh = refresh({ quiet: true, auto: false }); }
+        if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; generationRefresh = refresh({ quiet: true, auto: false, probe: false }); }
         if (generationRefresh) {
             const deadline = Date.now() + interceptWaitMs;
             let ready = true, waited;
@@ -1000,10 +1003,18 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             messageCount: messages.length, at: Date.now(), ...patch };
         state.requestSize = { tokens: estimateRequestTokens(messages), method: 'estimate', ...base };
         emit();
-        // 实测值回来后更新；期间用户已换聊天或又发了一轮，这份读数就作废。
-        const counted = host.countTokens?.(text);
+        // 实测要把整份请求再上传给 ST 的分词接口。此刻生成请求正要发出，两份大请求会抢同一条上行带宽，
+        // 所以只先记下，等这一轮回复结束（settled）再去量；期间换了聊天或又发了一轮，这份读数作废。
+        pendingCount = { ticket, text };
+    }
+    let pendingCount = null;
+    function countPendingRequest() {
+        const pending = pendingCount; pendingCount = null;
+        if (!pending || pending.ticket !== measureTicket || disposed) return;
+        let counted = null;
+        try { counted = host.countTokens?.(pending.text); } catch { return; }
         if (counted && typeof counted.then === 'function') Promise.resolve(counted).then(value => {
-            if (ticket !== measureTicket || disposed) return;
+            if (pending.ticket !== measureTicket || disposed || !state.requestSize) return;
             if (!Number.isFinite(value) || value <= 0) return;
             state.requestSize = { ...state.requestSize, tokens: Math.ceil(value), method: 'st-tokenizer' };
             emit();
@@ -1016,7 +1027,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (args[2]) return;
             generation++; generating = true; prepared = null; offered = false; state.lastUsed = null; state.lastSkip = null; host.clear();
             settleIdle = 0; pollSettle(generation);
-            generationRefresh = refresh({ quiet: true, auto: false });
+            generationRefresh = refresh({ quiet: true, auto: false, probe: false });
             return;
         }
         if (name === 'GENERATION_STOPPED' || name === 'GENERATION_ENDED' || name === 'GENERATION_SETTLED') {

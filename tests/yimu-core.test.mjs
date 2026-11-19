@@ -456,7 +456,9 @@ test('a closed panel is not repainted and a quiet refresh does not probe a servi
     assert.match(entry, /if \(view\.isOpen\?\.\(\) === false\) \{ pending = \{ \.\.\.shown, ui \}; return; \}/);
     assert.match(entry, /view\.open\(\);\s*if \(pending\) \{ const state = pending; pending = null; view\.render\(state\); \}/, 'the latest state is painted when the panel opens');
     assert.match(view, /render, open, close, isOpen: \(\) => opened,/);
-    assert.match(runtime, /if \(quiet && !serviceFresh\(\)\) await checkService\(\);/);
+    assert.match(runtime, /if \(quiet && probe && !serviceFresh\(\)\) await checkService\(\);/);
+    // 生成前的那次刷新不先探服务（省一次网络往返），两处调用都显式关掉。
+    assert.equal(runtime.match(/generationRefresh = refresh\(\{ quiet: true, auto: false, probe: false \}\)/g)?.length, 2);
     assert.match(runtime, /state\.service\?\.status === 'ok' && Date\.now\(\) - serviceOkAt < serviceFreshMs/);
 });
 
