@@ -45,7 +45,7 @@ export async function inspectSources(document, messages) {
 
 // Each batch is bounded by content, while the model splits it at narrative boundaries.
 // Chosen initial gaps and explicit exclusions/deletions never get silently filled.
-export function nextBatch(document, messages, settings, { force = false, historyOnly = false, limitEnd = Infinity } = {}) {
+export function nextBatch(document, messages, settings, { force = false, historyOnly = false, limitEnd = Infinity, align = false } = {}) {
     if (!document.enabled || !document.initialRange || !force && !document.autoSummary) return null;
     const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity, limitEnd);
     const capacity = settings.inputCapacity ?? settings.batch ?? settings.trigger;
@@ -74,6 +74,11 @@ export function nextBatch(document, messages, settings, { force = false, history
             if (!targetEnd) return null;
         }
     }
+    // 按回合对齐（只用于自动总结）：这一轮整理不停在用户发言上——那句话和它引出的回复是一个回合，
+    // 拆开总结，下一轮就少了上文。终点是用户发言时回退一层，把它留到下一轮与回复一起整理。
+    // 对齐的是整轮的终点而不是单批的终点：否则被留下的那一句会被紧接着的续批单独拿去总结。
+    // 只剩这一层时不退（否则它永远整理不了）。
+    if (align && targetEnd > first && messages[targetEnd - 1]?.is_user === true) targetEnd--;
     let start = 0, end = 0, tokens = 0;
     for (let floor = first; floor <= targetEnd; floor++) {
         if (!eligible(floor)) { if (start) break; continue; }
@@ -107,7 +112,7 @@ export function planManualRange(document, messages, settings, requestedRange, { 
     if (!Array.isArray(messages) || !Number.isSafeInteger(requested.start) || !Number.isSafeInteger(requested.end)
         || requested.start < 1 || requested.end < requested.start || requested.end > messages.length) throw new Error('请选择有效的起止楼层');
     const range = { ...requested };
-    const discarded = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && entry.discarded);
+    const discarded = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && entry.discarded && !entry.replacedBy);
     // A purged deletion has no old text left to redo or preserve. Only this explicit
     // manual planner may create fresh summaries there; the deletion guard remains.
     const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && !entry.discarded && !entry.replacedBy)

@@ -525,6 +525,11 @@ export function createView({ onAction, connectionApi, journal = null, document =
         }
     });
     const list = el('div', 'ym-list');
+    // 一次多画多少条。初始只画最近这么多条（钉住的不占名额）。
+    const PAGE_STEP = 40;
+    let pageLimit = PAGE_STEP;
+    const earlier = button('', () => { pageLimit += PAGE_STEP; renderEntries(); }, 'ym-small ym-list-more');
+    earlier.hidden = true;
     const deleted = el('details', 'ym-card ym-memory ym-deleted');
     const deletedTitle = el('summary', 'ym-memory-head', '已删除的记忆'), deletedBody = el('div', 'ym-deleted-body');
     deleted.append(deletedTitle, deletedBody);
@@ -604,6 +609,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     function setSelecting(on) {
         selecting = Boolean(on); deleteArmed = false; clearTimeout(deleteTimer);
         if (!selecting) selectedIds.clear();
+        if (state.document) renderEntries();
         list.dataset.ymSelecting = String(selecting);
         updateSelection();
     }
@@ -618,7 +624,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         deleteArmed = false; updateSelection();
     }, true);
     toolbar.append(search, filterBox, stageButton, selectToggle, addManual);
-    search.addEventListener('input', applyFilter); filter.addEventListener('change', () => { syncFilter(); applyFilter(); });
+    search.addEventListener('input', () => { renderEntries(); applyFilter(); }); filter.addEventListener('change', () => { syncFilter(); renderEntries(); applyFilter(); });
     syncFilter();
     const noMatch = el('p', 'ym-muted', '没有符合条件的记忆。'); noMatch.hidden = true;
     const streamPreview = el('section', 'ym-card ym-stream-preview');
@@ -651,8 +657,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
         },
         onError: error => { localError = error?.message || '正文提取设置未保存'; localErrorPage = 'overview'; updateStatus(); },
     });
-    pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder, contextRulesView.element);
-    pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, list, noMatch, deleted);
+    pages.get('overview').append(enableCard, overview, manualSummaryCard, stats, routes, promptFolder, contextRulesView.element);
+    pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, earlier, list, noMatch, deleted);
     pages.get('retrieval').append(retrieval.element);
     const manage = mountManageView({ document, journal, describeSkip, onAction: (type, payload) => dispatch(type, payload) });
     pages.get('manage').append(manage.element);
@@ -1121,7 +1127,15 @@ export function createView({ onAction, connectionApi, journal = null, document =
             ...pinned.filter(entry => !source.some(group => group.entry.id === entry.id && group.entry.kind !== 'stage')).map(entry => ({ entry, children: [] })),
             ...source,
         ]);
-        const entries = tree.flatMap(group => [group.entry, ...group.children]);
+        // 分页：切片上百条后整页卡片太重。平时只画钉住的与最近的若干条，更早的点「显示更早的」再画；
+        // 搜索、筛选或多选时要在全部记忆里找，所以全画。正在编辑的条目始终保留。
+        const pinnedCount = tree.findIndex(group => !group.entry.pinned) < 0 ? tree.length : tree.findIndex(group => !group.entry.pinned);
+        const everything = Boolean(search.value.trim()) || filter.value !== 'all' || selecting || !Number.isFinite(pageLimit);
+        const skipped = everything ? 0 : Math.max(0, tree.length - pinnedCount - pageLimit);
+        const shownTree = skipped ? [...tree.slice(0, pinnedCount), ...tree.slice(pinnedCount + skipped)] : tree;
+        earlier.hidden = !skipped;
+        if (skipped) earlier.textContent = `显示更早的 ${Math.min(skipped, PAGE_STEP)} 条（还有 ${skipped} 条）`;
+        const entries = shownTree.flatMap(group => [group.entry, ...group.children]);
         const present = new Set();
         const hasEditor = node => [...edits.values()].some(edit => {
             for (let current = edit.form; current; current = current.parentNode) if (current === node) return true;
@@ -1138,8 +1152,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
             const item = renderCard(entry, cards.get(entry.id));
             cards.set(entry.id, item);
         }
-        for (let index = 0; index < tree.length; index++) {
-            const group = tree[index], item = cards.get(group.entry.id);
+        for (let index = 0; index < shownTree.length; index++) {
+            const group = shownTree[index], item = cards.get(group.entry.id);
             place(item.node, list, index);
             if (group.entry.kind !== 'stage') continue;
             let nested = groups.get(group.entry.id);
@@ -1155,7 +1169,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             item.node.remove(); cards.delete(id);
         }
         for (const [id, group] of groups) {
-            const active = tree.some(item => item.entry.id === id && item.children.length > 0);
+            const active = shownTree.some(item => item.entry.id === id && item.children.length > 0);
             const count = group.body.children.length;
             group.title.textContent = `${active ? '记忆切片' : '编辑中的切片'}（${count}）`;
             group.node.hidden = !count;
@@ -1244,7 +1258,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             const head = el('div', 'ym-used-head');
             head.append(el('strong', '', sourceLabel(entry)));
             if (entry.id) head.append(iconButton('在记忆里查看此条', 'eye', () => {
-                search.value = ''; filter.value = 'all'; applyFilter();
+                search.value = ''; filter.value = 'all'; pageLimit = Infinity; syncFilter(); renderEntries(); applyFilter();
                 navigate('memory');
                 (document.defaultView?.requestAnimationFrame?.bind(document.defaultView) || (fn => setTimeout(fn, 0)))(() => {
                     const target = cards.get(entry.id)?.node;
@@ -1279,7 +1293,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             summarizeStart.value = ''; summarizeEnd.value = ''; summarizeNotice.hidden = true;
             syncManualDefault({ force: true });
             for (const [name, card] of toolCards) if (name !== 'backup') setToolOpen(card, false);
-            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); setSelecting(false);
+            search.value = ''; filter.value = 'all'; pageScroll.clear(); pageFocus.clear(); pageLimit = PAGE_STEP; setSelecting(false);
             // Backup browsing is account-scoped; other pages belong to the opened chat.
             currentPage = 'overview';
             scroller.scrollTop = 0;

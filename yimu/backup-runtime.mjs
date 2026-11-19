@@ -117,6 +117,15 @@ export function createBackupActions({ state, host, api, emit, id, lifecycle = ()
                 if (active()) {await download(result); view.status = '备份已生成，已发起下载。';}
                 return result;
             }
+            if (type === 'backupExportFile') {
+                // 管理页里按文件导出：不要求那个聊天正开着，也不要求它的聊天原件还在。
+                const binding = payload.binding;
+                if (!binding) throw new Error('没有可导出的记忆文件');
+                const plan = await api.backupPlan(binding);
+                const result = await api.backupExport(binding, {planId: plan.planId, sourceIds: []});
+                if (active()) {await download(result); view.status = '备份已生成，已发起下载。';}
+                return result;
+            }
             if (type === 'backupImport' && Array.isArray(payload.files)) {
                 const items = payload.files.map(file => ({id: id(), uploadId: id(), applyId: id(), file, name: file?.name || '未知文件', status: 'queued', error: ''}));
                 view.items.push(...items); publish();

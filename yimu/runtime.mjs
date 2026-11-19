@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, summaryCoverage } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -34,7 +34,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
-    const cancelledRounds = new Map();
+    const cancelledRounds = new Map(), idleNoted = new Map();
     let refreshTimer = null, generationRefresh = null;
     // Entry/enable rounds announce a catch-up start; settle polling covers ST
     // paths that start a round but never block input (slash-command aborts).
@@ -448,8 +448,22 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     if (entry.origin) throw new Error('这是独立继承的记忆，可在此手动修订；自动重总结不会跨故事改写');
                     batch = { start: entry.source.start, end: entry.source.end, redo: clone(entry) };
                     if (batch.end > snapshot.messages.length) throw new Error('对应原文楼层已不存在，请先处理来源变化');
-                } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force: force || targetEnd !== null, historyOnly, limitEnd: targetEnd ?? Infinity });
-                if (!batch) { noWork = true; break; }
+                } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force: force || targetEnd !== null, historyOnly, limitEnd: targetEnd ?? Infinity, align: !force });
+                if (!batch) {
+                    noWork = true;
+                    // 自动总结这一轮没动：留一笔原因（每个楼层数只记一次），否则「为什么还不总结」无从查起。
+                    if (!force && !processed && idleNoted.get(key) !== snapshot.messages.length) {
+                        idleNoted.set(key, snapshot.messages.length);
+                        note(() => {
+                            const coverage = summaryCoverage(jobDocument, snapshot.messages, settings);
+                            if (!coverage.pendingFloors) return;
+                            const range = coverage.pendingRange, pendingTokens = range ? snapshot.messages.slice(range.start - 1, range.end).reduce((total, item) => total + estimateTokens(item.mes || ''), 0) : 0;
+                            journal.add({ kind: 'idle', status: 'cancelled', chat: chatLabel(binding), pendingFloors: coverage.pendingFloors, pendingTokens, range,
+                                triggerFloors: settings.triggerFloors, trigger: settings.trigger, recent: settings.recent });
+                        });
+                    }
+                    break;
+                }
                 if (targetEnd === null && batch.targetEnd !== undefined) targetEnd = batch.targetEnd;
                 controller.entryId = batch.redo?.id || entryId;
                 if (snapshot.messages.slice(batch.start - 1, batch.end).reduce((total, item) => total + estimateTokens(item.mes || ''), 0) > settings.inputCapacity) throw new Error('完整切片超过此连接的可用输入容量，请选择容量足够的连接');

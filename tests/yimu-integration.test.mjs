@@ -1212,3 +1212,21 @@ test('a manual summary never does nothing silently: a stale generating flag is c
     await assert.rejects(f.controller.action('summarizeRange', { range: expected, expectedRange: expected, batchFloors: 20 }), /正在生成回复/);
     assert.ok(total > 2);
 });
+
+test('when automatic summary does not run because the threshold is not reached, the journal says so once per floor count', async t => {
+    const f = await fixture(t);
+    await f.controller.refresh();
+    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 0, total: 0}});
+    await f.controller.action('settings', {values: {trigger: 900000, triggerFloors: 50, recent: 1}});
+    await f.controller.action('autoSummary', {value: true});
+    await f.flush();
+    assert.equal(f.generated(), 0, '没到触发值，不整理');
+    const idle = f.journal.list().filter(item => item.kind === 'idle');
+    assert.equal(idle.length, 1);
+    assert.equal(idle[0].pendingFloors, 6, '保留 1 层以外的 6 层都还没整理');
+    assert.equal(idle[0].triggerFloors, 50); assert.equal(idle[0].trigger, 900000); assert.equal(idle[0].recent, 1);
+    assert.deepEqual([idle[0].range.start, idle[0].range.end], [1, 6]);
+    // 楼层数没变时再检查一次，不重复记。
+    await f.controller.start(); await f.flush();
+    assert.equal(f.journal.list().filter(item => item.kind === 'idle').length, 1);
+});

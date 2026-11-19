@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.52';
-export const SERVICE_VERSION = '0.8.18';
+export const FRONTEND_VERSION = '0.8.53';
+export const SERVICE_VERSION = '0.8.19';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -179,6 +179,8 @@ function isDuplicate(document, operation) {
 }
 function finish(document, operation, outcome = 'applied') {
     if (operation.type === 'entry' && operation.action === 'delete') pruneDeletedEntries(document);
+    // 早先版本留下的、仍带全文的「已被替换」记录，顺手压成最小记录。
+    for (const entry of document.entries) if (entry.kind === 'summary' && entry.replacedBy && !entry.discarded) compactReplaced(document, entry);
     document.entryOrder = normalizeEntryOrder(document);
     invalidateDependentStages(document);
     invalidateDependentExcerpts(document);
@@ -316,11 +318,21 @@ function replaceSummaryOwners(document, submitted, replacements = []) {
     if (!replacements?.length) return;
     requireThat(submitted.kind === 'summary', '记忆替换范围无效');
     for (const ref of replacements) {
-        const previous = document.entries.find(entry => entry.id === ref.id && entry.kind === 'summary' && entry.revision === ref.revision);
-        // 换掉的旧切片留一条删除记录（和阶段替换一致），这样它不会再被注入，也能被追溯。
+        // 按编号找（修订号在批次之间会自然变化，校验已在 requireSummaryRange 里做过）。
+        const previous = document.entries.find(entry => entry.id === ref.id && entry.kind === 'summary');
         if (!previous) continue;
-        revise(previous, { status: 'deleted', candidate: null, replacedBy: submitted.id });
+        previous.replacedBy = submitted.id;
+        compactReplaced(document, previous);
     }
+}
+// 被新切片替换掉的旧切片不能撤回（范围已由新切片接管），留着全文与修订历史只会让文件越总结越大。
+// 只保留最小记录：编号、来源范围与「被谁替换」——足以防止旧备份把它当成有效记忆带回来。
+function compactReplaced(document, entry) {
+    const retained = Object.fromEntries(['id', 'kind', 'source', 'replacedBy', 'deletedRevision'].filter(key => Object.hasOwn(entry, key)).map(key => [key, clone(entry[key])]));
+    const revision = entry.revision + 1;
+    for (const key of Object.keys(entry)) delete entry[key];
+    Object.assign(entry, retained, { text: '已删除', revision, status: 'deleted', discarded: true, edited: false, scenes: [], history: [], conflicts: [], candidate: null,
+        deletedRevision: retained.deletedRevision ?? document.revision + 1 });
 }
 function candidate(entry, operation, values, reason) {
     entry.conflicts.push({ id: operation.id, reason, ...clone(values) });

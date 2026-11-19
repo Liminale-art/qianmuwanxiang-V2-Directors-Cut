@@ -87,13 +87,16 @@ export function mountManageView({ document = globalThis.document, journal = null
         node.addEventListener('toggle', () => { if (node.open) open.add(item.id); else open.delete(item.id); });
         const summary = el('summary');
         const status = el('span', `ym-log-status ${item.status || ''}`.trim()); status.setAttribute('aria-hidden', 'true');
-        const isRound = item.kind === 'round';
+        const isRound = item.kind === 'round', isIdle = item.kind === 'idle';
         const [why, hint] = isRound && item.reason && item.reason !== 'empty' ? describeSkip(item.reason) : ['', ''];
-        const title = isRound
+        const title = isIdle ? '自动总结 · 未到触发值' : isRound
             ? item.status === 'success' ? `生成 · 带入 ${item.memories || 0} 条记忆` : item.reason === 'empty' ? '生成 · 没有可带的记忆' : item.offered ? '生成 · 记忆以附加方式带入' : '生成 · 未带记忆'
             : `${item.kind === 'stage' ? '阶段总结' : '切片总结'} · ${floors(item.range)}`;
         const meta = [clock(item.at)];
-        if (isRound) {
+        if (isIdle) {
+            meta.push(`待整理 ${item.pendingFloors} 层`);
+            if (item.triggerFloors > 0) meta.push(`满 ${item.triggerFloors} 层触发`);
+        } else if (isRound) {
             if (Number.isFinite(item.tokens)) meta.push(`约 ${item.tokens} token`);
             if (item.hiddenTo > 0) meta.push(`隐藏到第 ${shownFloor(item.hiddenTo)} 层`);
             if (Number.isFinite(item.waitMs)) meta.push(`生成前用时 ${seconds(item.waitMs)}`);
@@ -103,11 +106,14 @@ export function mountManageView({ document = globalThis.document, journal = null
             if (item.status === 'loading') meta.push('进行中');
         }
         summary.append(status, el('span', 'ym-log-title', title), el('span', 'ym-log-meta', meta.join(' · ')));
-        const kind = isRound ? '生成' : item.manual ? item.batch ? `手动 ${item.batch}` : '手动' : '自动';
+        const kind = isIdle ? '自动' : isRound ? '生成' : item.manual ? item.batch ? `手动 ${item.batch}` : '手动' : '自动';
         summary.append(el('span', 'ym-log-kind', kind));
         const detail = el('div', 'ym-log-detail');
         if (item.chat) { detail.append(cap('聊天'), el('p', 'ym-log-text', item.chat)); }
-        if (isRound) {
+        if (isIdle) {
+            detail.append(cap('情况'), el('p', 'ym-log-text', `保留最近 ${item.recent} 层以外，还有 ${floors(item.range) || `${item.pendingFloors} 层`}（共 ${item.pendingFloors} 层、约 ${item.pendingTokens} token）没整理。`
+                + `要满 ${item.triggerFloors > 0 ? `${item.triggerFloors} 层或 ` : ''}${item.trigger} token 才自动总结。`));
+        } else if (isRound) {
             if (why) { detail.append(cap('原因'), el('p', 'ym-log-text', hint ? `${why} ${hint}` : why)); }
             if (item.reason === 'empty') detail.append(cap('原因'), el('p', 'ym-log-text', '这一轮没有与当前正文相关、且尚未淡去的记忆。'));
         } else {
@@ -153,7 +159,15 @@ export function mountManageView({ document = globalThis.document, journal = null
             if (isCurrent) text.append(el('span', 'ym-manage-tag', '当前'));
             else if (!item.unreadable && item.sourceExists === false) text.append(el('span', 'ym-manage-tag ym-manage-tag-warn', '原聊天不存在'));
             node.append(text);
-            if (!isCurrent) node.append(confirmButton('删除', '确认删除', () => run('manageDelete', { items: [item] }), 'ym-danger'));
+            const actions = el('div', 'ym-manage-file-actions');
+            if (!item.unreadable) {
+                const save = el('button', 'ym-button ym-icon-button ym-small'); save.type = 'button'; save.title = '导出这份记忆'; save.setAttribute('aria-label', `导出 ${item.binding.file} 的记忆`);
+                save.append(createYimuIcon('download', { document }));
+                save.addEventListener('click', async () => { if (save.disabled) return; save.disabled = true; try { await run('backupExportFile', { binding: item.binding }); } finally { if (!disposed) save.disabled = false; } });
+                actions.append(save);
+            }
+            if (!isCurrent) actions.append(confirmButton('删除', '确认删除', () => run('manageDelete', { items: [item] }), 'ym-danger'));
+            node.append(actions);
             return node;
         }));
     }

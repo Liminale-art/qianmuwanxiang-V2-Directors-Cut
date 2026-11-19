@@ -137,3 +137,18 @@ test('the server lists every chat\'s memory file for this account and deletes on
     await f.store.defaults(f.request);
     assert.equal((await f.store.manageList(f.request)).items.length, 1);
 });
+
+test('one chat\'s memory can be exported from the file list even after its chat file is gone', async t => {
+    const f = await serverFixture(t);
+    await f.writeChat(binding.file, binding.integrity);
+    await f.store.change(f.request, binding, { id: 'enable_x', type: 'enable', enabled: true, expectedRevision: 0, range: { start: 1, end: 12, total: 12 } });
+    const hashes = await fingerprintMessages(messages), epoch = (await f.store.read(f.request, binding)).document.epoch;
+    await f.store.change(f.request, binding, { id: 'add_x', type: 'append', expectedEpoch: epoch, entry: { id: 'slice', kind: 'summary', text: '要导出的一条切片', source: { start: 1, end: 2, hashes: hashes.slice(0, 2) } } });
+    await fs.rm(f.chatFile(binding.file));
+    const plan = await f.store.backupPlan(f.request, binding);
+    assert.ok(plan.planId);
+    const result = await f.store.backupExport(f.request, binding, { planId: plan.planId, sourceIds: [] });
+    const chunks = []; for await (const chunk of result.stream) chunks.push(Buffer.from(chunk));
+    assert.ok(Buffer.concat(chunks).length > 0, '只含记忆的备份可以生成');
+    assert.match(result.filename, /\.yimu\.gz$/);
+});

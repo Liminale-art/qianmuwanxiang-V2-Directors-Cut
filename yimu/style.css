@@ -558,6 +558,8 @@
 .ym-manage-row + .ym-manage-row { margin-top: 12px; }
 .ym-manage-row > span { min-width: 0; overflow-wrap: anywhere; }
 .ym-manage-row > .ym-button, .ym-manage-file > .ym-button { flex: 0 0 auto; }
+.ym-manage-file-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ym-list-more { justify-self: center; }
 .ym-dialog .ym-button.ym-danger { color: var(--ym-danger); }
 .ym-dialog .ym-button[data-armed="true"] { color: var(--ym-on-accent); background: var(--ym-danger); border-color: var(--ym-danger); }
 .ym-manage-list { display: grid; gap: 8px; margin-top: 12px; min-width: 0; }
