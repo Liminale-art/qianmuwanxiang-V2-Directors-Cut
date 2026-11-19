@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.50';
-export const SERVICE_VERSION = '0.8.16';
+export const FRONTEND_VERSION = '0.8.51';
+export const SERVICE_VERSION = '0.8.17';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -23,7 +23,7 @@ export const shownFloor = floor => floor - 1;
 export const floorField = floor => Number.isSafeInteger(floor) && floor >= 1 ? String(floor - 1) : '';
 export const floorValue = text => String(text ?? '').trim() === '' ? 0 : Number(text) + 1;
 export const SCHEMA = 8;
-export const DEFAULTS = Object.freeze({ recent: 3, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, preference: '', profileId: '', model: '',
+export const DEFAULTS = Object.freeze({ recent: 3, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, summarySlices: 4, preference: '', profileId: '', model: '',
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     contextRules: DEFAULT_CONTEXT_RULES });
@@ -45,7 +45,7 @@ export const bindingKey = binding => JSON.stringify(normalizeBinding(binding));
 export function validateSettings(input, partial = true) {
     requireThat(input && typeof input === 'object' && !Array.isArray(input), '设置格式无效');
     const result = {};
-    const bounds = { recent: [1, 2000], trigger: [256, 1000000], triggerFloors: [1, 2000], batch: [256, 100000], budget: [0, 1000000], maxSlices: [0, 2000], stageThreshold: [1, 1000000],
+    const bounds = { recent: [1, 2000], trigger: [256, 1000000], triggerFloors: [1, 2000], batch: [256, 100000], budget: [0, 1000000], maxSlices: [0, 2000], summarySlices: [0, 2000], stageThreshold: [1, 1000000],
         stageRecent: [0, 2000], sliceChars: [1, 100000], stageChars: [1, 100000] };
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');

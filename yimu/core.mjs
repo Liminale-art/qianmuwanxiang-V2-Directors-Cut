@@ -308,6 +308,34 @@ export function coalesceFragments(entries, settings = {}) {
     }
     return out;
 }
+/** 每次总结的切片数量上限（硬规则）。模型给多了就把相邻的并起来，直到不超过上限：
+ *  不拒收、不重发请求、不截断正文。优先并同场景的、合起来最短的那一对；
+ *  合并后会超过单条字数上限的那一对不并——字数上限优先于条数上限。0 为不限。 */
+export function capSlices(entries, settings = {}) {
+    const limit = settings.summarySlices, cap = settings.sliceChars ?? 2000;
+    if (!Array.isArray(entries) || !Number.isSafeInteger(limit) || limit < 1 || entries.length <= limit) return entries;
+    const out = [...entries];
+    const joined = (a, b) => {
+        const single = (a.scenes || []).length === 1 && (b.scenes || []).length === 1 && scenesCompatible(a.scenes[0], b.scenes[0]);
+        const longer = generatedTextLength(b) > generatedTextLength(a) ? b : a;
+        return { merged: { ...a, title: longer.title, text: [a.text, b.text].join('\n'),
+            scenes: single ? [mergeScenes(a.scenes[0], b.scenes[0])] : [...(a.scenes || []), ...(b.scenes || [])].slice(0, 16),
+            source: { ...a.source, end: b.source.end, hashes: [...a.source.hashes, ...b.source.hashes] } }, sameScene: single };
+    };
+    while (out.length > limit) {
+        let best = null;
+        for (let index = 0; index + 1 < out.length; index++) {
+            const a = out[index], b = out[index + 1];
+            if (a.kind !== 'summary' || b.kind !== 'summary' || a.source.end + 1 !== b.source.start) continue;
+            const { merged, sameScene } = joined(a, b), length = generatedTextLength(merged);
+            if (length > cap) continue;
+            if (!best || Number(sameScene) > Number(best.sameScene) || sameScene === best.sameScene && length < best.length) best = { index, merged, sameScene, length };
+        }
+        if (!best) break; // 再并就超过单条字数上限：到此为止，宁可多一条。
+        out.splice(best.index, 2, best.merged);
+    }
+    return out;
+}
 function mergeScenes(a, b) {
     const floors = [...new Set([...(a?.evidence?.floors || []), ...(b?.evidence?.floors || [])])].sort((x, y) => x - y);
     return { ...a, event: [a?.event, b?.event].filter(Boolean).join('；'), evidence: { ...(a?.evidence || {}), floors },
@@ -321,7 +349,7 @@ export function summaryPrompt(messages, batch, settings, { recallCandidates = []
     return composePrompt(settings, 'summary', {
         protocol: `输出一个JSON对象，不用Markdown：{"slices":[{"start":起始楼层整数,"end":结束楼层整数,"title":"不超过${MEMORY_TITLE_LIMIT}字的正文事件短名","text":"精炼、自足的记忆","scenes":[]}]}。title依据本片原文的主要事件起名，不超过${MEMORY_TITLE_LIMIT}个Unicode字符，不用楼层、时间或套话充当事件名，不新增正文没有的事实。
 slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界、重叠或漏层；每片正文非空。每片正文及可见场景文字合计不得超过 ${settings.sliceChars ?? 2000} 字，按非空白Unicode字符计（标点、英文、数字各计一），不是输入token量；不得靠删除事实边界或截断原文规避。
-切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。
+切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。${Number.isSafeInteger(settings.summarySlices) && settings.summarySlices > 0 ? `本次最多返回 ${settings.summarySlices} 片。` : ''}
 ${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
 ${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}`,
@@ -344,7 +372,7 @@ export function parseSummary(response, batch, hashes, settings = {}, { coalesce 
             source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');
-    return coalesce ? coalesceFragments(entries, settings) : entries;
+    return coalesce ? capSlices(coalesceFragments(entries, settings), settings) : entries;
 }
 
 export function renderMemoryPrompt(entries, { entryOrder = [] } = {}) {
@@ -464,15 +492,6 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     // Old/externally altered data must not inject competing readings for the same
     // source. Protected human stages take precedence; ambiguous automatic stages
     // fall back to their valid fine summaries instead of choosing a random winner.
-    for (const stage of stageCandidates.filter(entry => !stageCandidates.some(other => other.id !== entry.id && overlaps(entry, other)))) {
-        const children = usable.filter(entry => stage.source.parents.some(ref => ref.id === entry.id));
-        const detailNeeded = settings.recall !== false && !stage.edited && children.some(child => relevance(child) > relevance(stage) && relevance(child) > 0);
-        if (!detailNeeded) chosenStages.push(stage);
-    }
-    const grouped = new Set(chosenStages.flatMap(stage => stage.source.parents.map(ref => ref.id)));
-    const candidates = [...chosenStages, ...usable.filter(entry => !['stage', 'excerpt'].includes(entry.kind) && !grouped.has(entry.id) && !protectedParents.has(entry.id))];
-    const end = entry => sourceTimelineEnd(entry, document) + (entry.origin ? 0 : document.lineage?.offset || 0);
-    const currentBackground = new Set(candidates.filter(entry => entry.kind !== 'manual').sort((a, b) => end(b) - end(a)).slice(0, 2).map(e => e.id));
     const protectedContent = entry => entry.edited || entry.kind === 'manual' || hasCustomParents(entry, document);
     // 遗忘门槛：人工内容（编辑过的、自定义切片、含自定义的）不受衰减影响——那是用户自己写定的东西。
     const warmEligible = entry => {
@@ -481,9 +500,30 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         if (warmth === 'fresh') return true;
         return admitsAtWarmth({ warmth, score: relevance(entry), strong: strongHint || namedNow(entry) });
     };
-    const selected = candidates.filter(entry => warmEligible(entry)
+    const detailGroup = new Set();
+    for (const stage of stageCandidates.filter(entry => !stageCandidates.some(other => other.id !== entry.id && overlaps(entry, other)))) {
+        const children = usable.filter(entry => stage.source.parents.some(ref => ref.id === entry.id));
+        // 正文问到这个阶段里的具体细节时，用它的细切片顶替阶段摘要——并且是整组细切片一起带：
+        // 只带相关的那一条，其余几条所覆盖的旧楼既已隐藏、又没有记忆，就成了空洞。
+        const detailNeeded = settings.recall !== false && !stage.edited && children.some(child => relevance(child) > relevance(stage) && relevance(child) > 0);
+        if (!detailNeeded) chosenStages.push(stage);
+        else for (const child of children) detailGroup.add(child.id);
+    }
+    const grouped = new Set(chosenStages.flatMap(stage => stage.source.parents.map(ref => ref.id)));
+    const candidates = [...chosenStages, ...usable.filter(entry => !['stage', 'excerpt'].includes(entry.kind) && !grouped.has(entry.id) && !protectedParents.has(entry.id))];
+    const end = entry => sourceTimelineEnd(entry, document) + (entry.origin ? 0 : document.lineage?.offset || 0);
+    const currentBackground = new Set(candidates.filter(entry => entry.kind !== 'manual').sort((a, b) => end(b) - end(a)).slice(0, 2).map(e => e.id));
+    // 阶段总结是常驻主干：不看相关度、不沉底，每轮都带（受注入上限约束）。细切片仍按相关度与遗忘门槛选。
+    const backbone = entry => entry.kind === 'stage';
+    const ranked = candidates.filter(entry => backbone(entry) || detailGroup.has(entry.id) || warmEligible(entry)
         && (protectedContent(entry) || currentBackground.has(entry.id) || relevance(entry) > 0));
-    selected.sort((a, b) => Number(protectedContent(b)) - Number(protectedContent(a)) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
+    ranked.sort((a, b) => Number(protectedContent(b)) - Number(protectedContent(a)) || relevance(b) - relevance(a) || Number(currentBackground.has(b.id)) - Number(currentBackground.has(a.id)) || end(b) - end(a));
+    // 设了「每次最多注入切片」时，主干最多占一半名额（按相关度、再按新旧取），并排在细切片之前，
+    // 不会被相关度更高的细切片挤掉；剩下的名额留给细切片。0 为不限条数，主干全带。
+    const cap = Number.isSafeInteger(settings.maxSlices) && settings.maxSlices > 0 ? settings.maxSlices : 0;
+    const stageQuota = cap ? Math.ceil(cap / 2) : Infinity;
+    const stages = ranked.filter(entry => backbone(entry) && !protectedContent(entry)).slice(0, stageQuota);
+    const selected = [...ranked.filter(protectedContent), ...stages, ...ranked.filter(entry => !backbone(entry) && !protectedContent(entry))];
     // A saved excerpt accompanies its selected parent reading layer; it is never
     // allowed to stand in for a whole source floor on its own.
     const story = selected.flatMap(entry => [entry.kind === 'stage' && entry.source.parents.some(ref => document.entries.find(item => item.id === ref.id)?.kind === 'manual')

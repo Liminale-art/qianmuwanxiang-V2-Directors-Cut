@@ -19,7 +19,10 @@ const coveredEnd = entry => entry?.source?.end ?? entry?.source?.ranges?.at(-1)?
  */
 export function memoryWarmth(entry, { floor = 0, lastUsedFloor = null, settings = {} } = {}) {
     if (entry?.pinned) return FRESH;                       // 钉住的不参与衰减
-    if (!['summary', 'stage'].includes(entry?.kind)) return FRESH; // 自定义切片与回查补充由人自己管
+    // 阶段总结是故事的主干，不参与沉底：旧楼已按原生方式隐藏，细切片又会随剧情推进淡去，
+    // 若主干也跟着沉，故事早期就既没有原文也没有记忆。细切片照旧遗忘。
+    if (entry?.kind === 'stage') return FRESH;
+    if (entry?.kind !== 'summary') return FRESH; // 自定义切片与回查补充由人自己管
     const decay = { ...DECAY, ...(settings.decay || {}) };
     const age = Number.isFinite(floor) && floor > 0 ? Math.max(0, floor - coveredEnd(entry)) : 0;
     // 被想起过就回暖：以「最近一次被带入的楼层」为新的起点重新计算。

@@ -22,6 +22,7 @@ const SETTINGS = [
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['triggerFloors', '自动总结触发楼层数', 'number', 0],
+    ['summarySlices', '每次总结最多切片', 'number', 0],
     ['sliceChars', '每条切片字数上限', 'number', 0],
     ['stageAuto', '自动阶段总结', 'checkbox'],
     ['stageBasis', '阶段整理方式', 'select'],
@@ -35,6 +36,7 @@ const SETTINGS = [
 const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
     triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
+    summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
 const BLANK_ZERO = new Set(['budget']);
@@ -372,7 +374,7 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
     const settingGroups = new Map();
     for (const [name, title, keys] of [
         ['budget', '记忆注入上限', ['budget', 'maxSlices']],
-        ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'sliceChars']],
+        ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
