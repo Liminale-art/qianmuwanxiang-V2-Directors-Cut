@@ -23,7 +23,7 @@ const deferredValue = () => {
     return {promise, resolve, reject};
 };
 
-async function fixture(t, {legacyDefaults = true} = {}) {
+async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
     const parent = await fs.realpath(os.tmpdir());
     const root = await fs.mkdtemp(path.join(parent, 'yimu-integration-test-'));
     const account = path.join(root, 'account');
@@ -68,6 +68,8 @@ async function fixture(t, {legacyDefaults = true} = {}) {
         setExtensionPrompt(key, prompt) { prompts.set(key, prompt); },
         async generateRaw({prompt}) { generated++; return model(prompt); },
     };
+    // 原生隐藏走 ST 的 saveChat：只有专门验证隐藏的用例才接上，其余用例保持聊天不被改动。
+    if (nativeHide) context.saveChat = async () => { await writeChat(context.chat); };
     const host = createHost({getContext: () => context});
     let nextId = 0;
     const notices = [];
@@ -538,6 +540,52 @@ test('hidden original floors are summarized without unhiding them and only actua
     assert.ok(result.prompt.includes(f.controller.state.document.entries[0].text));
     assert.deepEqual(f.controller.state.lastUsed.removedFloors, [2]);
     assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), messages.slice(-5).map(message => message.mes));
+});
+
+test('re-summarizing floors that Yimu itself has natively hidden works: hiding never invalidates the slices or blocks the next batch', async t => {
+    const f = await fixture(t, {nativeHide: true}); await manualReady(f);
+    await manualRange(f, 1, 2);
+    // 保留 5 层、共 7 层：总结完成后 1–2 层被原生隐藏并落盘。
+    assert.deepEqual(f.context.chat.map(message => Boolean(message.is_system)), [true, true, false, false, false, false, false]);
+    await f.controller.refresh(); await f.flush();
+    const kept = f.controller.state.document.entries.filter(entry => entry.status !== 'deleted');
+    assert.equal(kept.length, 1); assert.equal(kept[0].status, 'active', '隐藏之后切片来源仍然成立，不被判失效');
+    assert.deepEqual(f.controller.state.invalidSourceIds, []);
+    // 用户的原始情形：对已总结（且已被隐藏）的范围再手动总结一次，不应被「记忆已变化」拦下。
+    const before = f.generated();
+    await manualRange(f, 1, 2);
+    assert.equal(f.controller.state.error, '');
+    assert.equal(f.generated(), before + 1);
+    const active = f.controller.state.document.entries.filter(entry => entry.status === 'active');
+    assert.equal(active.length, 1); assert.deepEqual([active[0].source.start, active[0].source.end], [1, 2]);
+    assert.notEqual(active[0].id, kept[0].id, '旧切片被新切片替换');
+    // 多批连续：第二批开始时第一批的楼层刚被隐藏，同样不受影响。
+    await manualRange(f, 1, 2, {start: 1, end: 2}, 1);
+    assert.equal(f.controller.state.error, '');
+    assert.equal(f.generated(), before + 2, '已有的 1–2 层切片不会被截成两半：每批 1 层也整条重做，一次请求');
+});
+
+test('one manual batch that returns several slices replaces every old one-floor slice in the batch (the user-reported failure)', async t => {
+    const f = await fixture(t); await manualReady(f);
+    // 先造出「一层一片」的旧记忆：1–5 层各一条。
+    await manualRange(f, 1, 5, {start: 1, end: 5}, 1);
+    assert.equal(f.controller.state.document.entries.filter(entry => entry.status === 'active').length, 5);
+    // 再对 1–5 层整批重做，模型按场景切成两片（1–3、4–5）——正常且应当成功的情形。
+    f.model(async prompt => {
+        const m = prompt.match(/完整覆盖第(\d+)至(\d+)层/); assert.deepEqual([m[1], m[2]], ['1', '5']);
+        return JSON.stringify({slices: [{start: 1, end: 3, text: '前三层合成一段经历，篇幅足够不被当作碎片。'.repeat(60)}, {start: 4, end: 5, text: '后两层是另一段经历，篇幅同样足够。'.repeat(60)}]});
+    });
+    const before = f.generated();
+    await manualRange(f, 1, 5, {start: 1, end: 5}, 10);
+    assert.equal(f.controller.state.error, '', '不应再报「此范围内的记忆已变化」');
+    assert.equal(f.generated(), before + 1, '每批 10 层 → 五层只发一次请求');
+    const entries = f.controller.state.document.entries;
+    assert.deepEqual(entries.filter(entry => entry.status === 'active').map(entry => [entry.source.start, entry.source.end]).sort(), [[1, 3], [4, 5]]);
+    assert.equal(entries.filter(entry => entry.replacedBy).length, 5, '五条旧切片全部留痕归档');
+    // 归档留痕不挡以后的再次总结。
+    await manualRange(f, 1, 5, {start: 1, end: 5}, 10);
+    assert.equal(f.controller.state.error, '');
+    assert.equal(f.controller.state.document.entries.filter(entry => entry.status === 'active').length, 2);
 });
 
 test('manual partial overlap requires visible expanded bounds, replaces whole automatic slices and preserves outside memory', async t => {

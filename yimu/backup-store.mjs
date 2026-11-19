@@ -72,7 +72,7 @@ export function createBackupHandlers({io, context, prepare, exclusive, documentR
                 if (!value || typeof value !== 'object' || Array.isArray(value) || String(value.chat_metadata?.integrity || '') !== binding.integrity) fail('backup_raw', '备份中的 ST 聊天身份与来源说明不符', 400);
             } else {
                 if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.mes !== 'string') fail('backup_raw', '备份中的聊天正文格式无效', 400);
-                const hash = digest(JSON.stringify([String(value.name || ''), Boolean(value.is_user), Boolean(value.is_system), String(value.mes || ''), String(value.send_date ?? '')]));
+                const hash = digest(JSON.stringify([String(value.name || ''), Boolean(value.is_user), false, String(value.mes || ''), String(value.send_date ?? '')]));
                 contentHash.update(`${floor === 1 ? '' : ','}${JSON.stringify(hash)}`);
                 if (collectHashes) hashes.push(hash);
             }

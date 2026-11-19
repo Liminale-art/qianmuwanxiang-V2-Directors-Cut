@@ -276,13 +276,14 @@ export function createHost({
 
     // 原生隐藏：ST 的「对 AI 不可见」就是消息上的 is_system 标记（hideChatMessageRange 也是这么写的），
     // 请求装配时 coreChat 会直接过滤掉它们，聊天里的原生小幽灵也随之亮起。
-    // 忆幕只动自己隐藏过的楼层：用户手动隐藏的那几层永远不碰，工具消息也不碰。
-    function setHidden(want = [], owned = []) {
+    // 忆幕藏的楼层在消息自身留一个记号（extra.yimu_hidden），随聊天文件保存：
+    // 刷新页面、换设备之后仍分得清「忆幕藏的」和「用户自己藏的」，停用或调大保留层数时只还原前者。
+    // 用户手动隐藏的楼层与带工具调用的楼层一概不碰。binding 不符（已切到别的聊天）时什么都不做。
+    function setHidden(want = [], binding = null) {
         let ctx;
-        try { ctx = context(); } catch { return { changed: [] }; }
+        try { ctx = context(); if (binding && !sameBinding(bindingOf(ctx), binding)) return { changed: [] }; } catch { return { changed: [] }; }
         if (!Array.isArray(ctx.chat) || typeof ctx.saveChat !== 'function') return { changed: [] };
         const target = new Set(Array.isArray(want) ? want : []);
-        const mine = new Set(Array.isArray(owned) ? owned : []);
         const changed = [];
         // ST 自己的 hideChatMessageRange 除了改数据，还把楼层的 is_system 属性直接写到 DOM 上，
         // 幽灵图标靠这个属性显示。忆幕照做同一件事，界面才会跟着变。
@@ -296,20 +297,26 @@ export function createHost({
             const message = ctx.chat[index], floor = index + 1;
             if (!message || typeof message !== 'object') continue;
             if (message.tool_calls || message.extra?.tool_invocations || message.tool_call_id != null) continue;
-            // 只有两种楼层归忆幕处置：这次要隐藏的，和上次忆幕自己隐藏的。
-            if (!target.has(floor) && !mine.has(floor)) continue;
-            const shouldHide = target.has(floor);
-            if (Boolean(message.is_system) === shouldHide) continue;
-            message.is_system = shouldHide;
+            const mine = message.extra?.yimu_hidden === true;
+            if (target.has(floor)) {
+                // 已经隐藏的（用户自己藏的，或忆幕上次藏的）原样不动；只有可见的才由忆幕藏起并留记号。
+                if (message.is_system) continue;
+                message.is_system = true;
+                message.extra = { ...(message.extra && typeof message.extra === 'object' ? message.extra : {}), yimu_hidden: true };
+            } else if (mine) {
+                // 不该再藏的：只还原带忆幕记号的楼层。
+                if (message.is_system) message.is_system = false;
+                delete message.extra.yimu_hidden;
+            } else continue;
             changed.push(floor);
-            mark(floor, shouldHide);
+            mark(floor, Boolean(message.is_system));
         }
-        return { changed, chat: ctx.chat };
+        return { changed };
     }
 
     /** Commit the hide changes through ST's own save so the chat file and UI agree. */
-    async function applyHidden(want, owned) {
-        const result = setHidden(want, owned);
+    async function applyHidden(want, binding) {
+        const result = setHidden(want, binding);
         if (!result.changed?.length) return result;
         await context().saveChat();
         return result;

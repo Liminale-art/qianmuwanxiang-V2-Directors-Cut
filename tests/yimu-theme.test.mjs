@@ -243,9 +243,9 @@ test('surface CSS remains scoped, preserves hidden pages and supports three fami
     assert.match(css, /\.ym-stream-output[^\n]*max-height: 190px/);
     // 记忆注入上限卡：标题在上、设置行各占满宽。旧写法把控件列压到 84–140px，
     // 第二项「每次最多注入切片」的标签被挤成竖排、整卡变形，已改回普通分组布局。
-    assert.match(css, /\.ym-settings-group\.ym-budget-group \{ display: block; \}/);
+    assert.match(css, /\.ym-settings-group > \.ym-setting-title \{ margin-bottom: 12px; \}/);
+    assert.doesNotMatch(css, /\.ym-dialog \.ym-budget-group \{ display: flex/);
     assert.doesNotMatch(css, /\.ym-budget-group > \.ym-settings-form \{ flex: 0 0 clamp\(84px/);
-    assert.match(css, /\.ym-setting-numeric > \.ym-field > \.ym-unit \{ flex: 0 0 auto/);
     assert.match(css, /@media \(max-width: 380px\)[\s\S]*\.ym-dialog \.ym-api-params input\[type="number"\][^\n]*padding-inline: 4px[^\n]*appearance: textfield/);
     assert.match(css, /\.ym-dialog \.ym-api-params input\[type="number"\]::-webkit-outer-spin-button[^\n]*-webkit-appearance: none/);
     assert.match(css, /\.ym-dialog \.ym-prompt-item-head[^\n]*display: grid[^\n]*minmax\(0, 1fr\)/);

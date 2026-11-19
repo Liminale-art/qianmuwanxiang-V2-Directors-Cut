@@ -406,8 +406,8 @@ export function createView({ onAction, connectionApi, document = globalThis.docu
         input.addEventListener('blur', () => { clearTimeout(settingsTimer); void saveChangedSettings(); });
         const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}`);
         const labelNode = field(label, input);
-        // 「记忆注入上限」的输入框看不出单位：在框前标明 Token，其余数字项不加。
-        if (key === 'budget') { labelNode.children[0].hidden = true; labelNode.insertBefore(el('span', 'ym-unit', 'Token'), input); }
+        // 卡片标题已是「记忆注入上限」，行内标题写明这一项是什么：与切片总结卡同样左标题、右输入框。
+        if (key === 'budget') labelNode.children[0].textContent = '最大注入Token值';
         if (SETTING_HINTS[key]) row.title = SETTING_HINTS[key];
         row.append(labelNode);
         settingGroups.get(key).append(row);

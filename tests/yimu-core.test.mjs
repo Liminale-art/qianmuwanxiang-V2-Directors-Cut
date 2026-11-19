@@ -14,13 +14,17 @@ const enable = (range = { start: 1, end: 12, total: 12 }) => ({ ...applyOperatio
 const entry = async (id, start, end, text = '初次约会很重要；未告知的秘密不成为他人所知。') => ({ id, kind: 'summary', text, source: { start, end, hashes: (await fingerprintMessages(messages)).slice(start - 1, end) } });
 const append = (doc, item, id = item.id) => applyOperation(doc, { id, type: 'append', expectedEpoch: doc.epoch, entry: item }).document;
 
-test('sources fingerprint exact visible content, sender, time and hidden state without retaining originals', async () => {
+test('sources fingerprint exact content, sender and time; hiding a floor never invalidates its source', async () => {
     const source = (await entry('s', 2, 4)).source;
     assert.equal(sourceMatches(source, await fingerprintMessages(messages)), true);
-    for (const [key, value] of [['mes', '改写'], ['name', '其他人'], ['send_date', '不同时间'], ['is_system', true]]) {
+    for (const [key, value] of [['mes', '改写'], ['name', '其他人'], ['send_date', '不同时间']]) {
         const copy = structuredClone(messages); copy[2][key] = value;
         assert.equal(sourceMatches(source, await fingerprintMessages(copy)), false);
     }
+    // 忆幕按「保留最近 N 层」原生隐藏旧楼；隐藏不改变那层写了什么，来源必须仍然成立，
+    // 否则忆幕刚隐藏就把自己的切片判失效，手动总结的下一批随即被「记忆已变化」拦下。
+    const hidden = structuredClone(messages); for (const i of [1, 2, 3]) hidden[i].is_system = true;
+    assert.equal(sourceMatches(source, await fingerprintMessages(hidden)), true);
     assert.ok(!JSON.stringify(source).includes('约会'));
 });
 

@@ -13,8 +13,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.47';
-export const SERVICE_VERSION = '0.8.14';
+export const FRONTEND_VERSION = '0.8.48';
+export const SERVICE_VERSION = '0.8.15';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -254,22 +254,34 @@ export function validateDiscardedSources(value) {
         return { id, revision: ref.revision, source: validateSource(ref.source) };
     });
 }
-function requireSummaryRange(document, submitted, discardedSources, replaces) {
-    const overlaps = document.entries.filter(entry => entry.kind === 'summary' && !entry.origin && entry.source
+function requireSummaryRange(document, submitted, discardedSources, replaces, replaceRange) {
+    // 已被新切片替换掉的旧记录（replacedBy）只是留痕，不占来源：同一批的后续切片、以后的再次总结都不受它阻挡。
+    const overlaps = document.entries.filter(entry => entry.kind === 'summary' && !entry.origin && entry.source && !entry.replacedBy
         && entry.source.start <= submitted.source.end && entry.source.end >= submitted.source.start);
     if (replaces !== undefined) {
         // 手动总结按「每批 N 层」切段：一批覆盖到的旧切片整组换掉。
-        // 每条都必须带着自己的修订号与来源，且只有落在本段范围内、未被人工改过的自动切片才允许换。
+        // 这里只做「能不能换」的判断，不要求修订号与计划时完全一致——批次之间会自然产生修订
+        // （前几批的替换、来源核对留下的失效标记），拿旧修订号去卡只会让正常总结反复报「记忆已变化」。
+        // 真正必须守住的边界是：只换自动生成、未人工改过、且范围完整落在本段内的切片；
+        // 已人工修订或含自定义内容的切片一律不换（它们会作为分界把本批隔开）。
         requireThat(Array.isArray(replaces) && replaces.length > 0, '待替换的记忆引用无效');
+        // 一批通常产出多条切片：要换掉的旧切片按「整批范围」核对，而不是按本批第一条切片的范围——
+        // 否则第一条切片范围之外的旧切片全被判成「记忆已变化」，正常总结反而走不通。
+        const scope = replaceRange ?? submitted.source;
+        requireThat(Number.isSafeInteger(scope?.start) && Number.isSafeInteger(scope?.end) && scope.start >= 1 && scope.end >= scope.start
+            && scope.start <= submitted.source.start && scope.end >= submitted.source.end, '待替换的记忆范围无效');
         const ids = new Set();
         for (const ref of replaces) {
-            requireThat(ref && typeof ref.id === 'string' && !ids.has(ref.id) && Number.isSafeInteger(ref.revision) && ref.revision > 0, '待替换的记忆引用无效');
+            requireThat(ref && typeof ref.id === 'string' && !ids.has(ref.id), '待替换的记忆引用无效');
             ids.add(ref.id);
             const entry = document.entries.find(item => item.id === ref.id && item.kind === 'summary');
-            requireThat(entry && entry.revision === ref.revision && !entry.edited && !entry.origin
-                && entry.source.start >= submitted.source.start && entry.source.end <= submitted.source.end, '此范围内的记忆已变化，请刷新后重试');
+            requireThat(entry && !entry.edited && !entry.origin && entry.status !== 'deleted'
+                && !hasCustomParents(entry, document)
+                && entry.source.start >= scope.start && entry.source.end <= scope.end,
+            '此范围内的记忆已变化，请刷新后重试');
         }
-        requireThat(overlaps.every(entry => ids.has(entry.id)), '所选范围含未列出的记忆，请刷新后重试');
+        // 段内若出现本批没列出的自动切片，说明计划之后又生成了新的：这种情况下本批照常写入，
+        // 由替换逻辑把它们一并归档，不再整批作废。
         submitted.replaces = replaces.map(ref => ({ id: ref.id, revision: ref.revision }));
         if (discardedSources !== undefined) submitted.discardedSources = validateDiscardedSources(discardedSources);
         return;
@@ -377,7 +389,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         const value = submittedEntry(op.entry, doc);
         if (doc.entries.some(e => e.id === value.id)) throw failure('此记忆条目已经存在', 409);
         // 先按修订号校验本批要换掉的旧切片，再真正替换：替换会改 revision，校验必须在它之前。
-        if (value.kind === 'summary') requireSummaryRange(doc, value, op.discardedSources, op.replaces);
+        if (value.kind === 'summary') requireSummaryRange(doc, value, op.discardedSources, op.replaces, op.replaceRange);
         replaceStageOwners(doc, value, op.replaceStages);
         replaceSummaryOwners(doc, value, op.replaces);
         requireUnusedStageParents(doc, value);
@@ -497,14 +509,20 @@ export function applyDefaultsOperation(current, op) {
     return { defaults: { schema: SCHEMA, revision: current.revision + 1, values, operations: [...current.operations, id], receipts: { ...current.receipts, [id]: receipt(op) } }, outcome: 'applied' };
 }
 // Every floor is fingerprinted again on each refresh, each generation and each summary batch, while almost
-// all floors are unchanged between calls. The digest of one floor depends only on its five identity fields,
+// all floors are unchanged between calls. The digest of one floor depends only on its identity fields,
 // so it is remembered by those fields (bounded; a changed floor simply misses and is hashed afresh).
+//
+// 隐藏标记（is_system）不参与指纹，该位固定按「未隐藏」计算：忆幕自己会按「保留最近 N 层」隐藏旧楼，
+// 而隐藏从不改变那一层写了什么。它参与指纹会自相矛盾——忆幕刚隐藏的楼层来源指纹立刻对不上，
+// 自己的切片被判失效，手动总结的下一批随即报「此范围内的记忆已变化」。
+// 元组形状不变（该位恒为 false），所以楼层未隐藏时生成的旧指纹原样匹配，不需要兼容层。
+// 服务端 server-store.mjs 与 backup-store.mjs 各有一份同步实现，三处必须一致。
 const FINGERPRINT_MEMO = new Map(), FINGERPRINT_MEMO_LIMIT = 6000;
 export async function fingerprintMessages(messages) {
     const subtle = globalThis.crypto?.subtle ?? (typeof process !== 'undefined' && process.versions?.node ? (await import('node:crypto')).webcrypto.subtle : null);
     requireThat(subtle, '当前页面缺少安全指纹能力，请使用 HTTPS 或本机地址');
     return Promise.all(messages.map(async message => {
-        const key = JSON.stringify([String(message.name || ''), Boolean(message.is_user), Boolean(message.is_system), String(message.mes || ''), String(message.send_date ?? '')]);
+        const key = JSON.stringify([String(message.name || ''), Boolean(message.is_user), false, String(message.mes || ''), String(message.send_date ?? '')]);
         const known = FINGERPRINT_MEMO.get(key);
         if (known) return known;
         const hash = Array.from(new Uint8Array(await subtle.digest('SHA-256', new TextEncoder().encode(key))), x => x.toString(16).padStart(2, '0')).join('');

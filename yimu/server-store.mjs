@@ -14,7 +14,7 @@ const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 const MAX_SOURCE_LINE_BYTES = 32 * 1024 * 1024;
 const digest = value => createHash('sha256').update(value).digest('hex');
 // This is the exact canonical tuple used by contract.fingerprintMessages, hashed synchronously for a streamed server scan.
-const messageHash = message => digest(JSON.stringify([String(message.name || ''), Boolean(message.is_user), Boolean(message.is_system),
+const messageHash = message => digest(JSON.stringify([String(message.name || ''), Boolean(message.is_user), false,
     String(message.mes || ''), String(message.send_date ?? '')]));
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clone = value => structuredClone(value);

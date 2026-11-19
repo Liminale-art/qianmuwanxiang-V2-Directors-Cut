@@ -1,5 +1,5 @@
-import { SERVICE_VERSION, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens } from './core.mjs';
+import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -29,7 +29,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
         return api.read(binding);
     }
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, hiddenOwned: new Set(), hiddenFloors: [], retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [],
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
@@ -196,22 +196,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     // 原生隐藏的落点。忆幕只改自己决定要改的楼层，并且每次都从当前聊天重新核对，
     // 绝不凭一份旧记录去改别的楼层：用户手动隐藏的那几层永远是用户自己的事。
     // 关闭忆幕、停用或原文不再成立时，把忆幕隐藏过、但现在不该隐藏的楼层还原。
+    // 隐藏失败不能再被悄悄吞掉：曾因漏了一个导入，隐藏整条链路从未生效却毫无痕迹。
+    const reportHideFailure = error => { try { console.warn('[忆幕] 隐藏旧楼未完成：', error); } catch { /* 无控制台 */ } };
     async function syncHidden(document, settings, { restoreAll = false } = {}) {
         if (typeof host.applyHidden !== 'function' || !state.snapshot?.binding) return null;
         const messages = state.snapshot.messages || [];
-        const want = restoreAll || !document?.enabled ? new Set()
-            : new Set(hiddenFloorsFor(document, messages, { recent: settings?.recent ?? DEFAULTS.recent }).floors);
-        // want＝这次要隐藏的；owned＝上次忆幕自己隐藏的（要还原的只有这些，用户手动隐藏的不在其中）。
-        const owned = state.hiddenOwned instanceof Set ? state.hiddenOwned : new Set();
-        for (const floor of [...owned]) if (floor > messages.length) owned.delete(floor);
-        const result = await host.applyHidden([...want], [...owned]);
-        if (result?.changed?.length) {
-            for (const floor of result.changed) { if (want.has(floor)) owned.add(floor); else owned.delete(floor); }
-            state.hiddenOwned = owned;
-            state.hiddenFloors = [...owned].sort((a, b) => a - b);
-            emit();
-        }
-        return result;
+        const want = restoreAll || !document?.enabled ? []
+            : hiddenFloorsFor(document, messages, { recent: settings?.recent ?? DEFAULTS.recent }).floors;
+        // 「哪些楼是忆幕藏的」记在消息自身（extra.yimu_hidden），host 据此只还原忆幕自己藏过的楼层。
+        return host.applyHidden(want, state.snapshot.binding);
     }
 
     function positionAfter(entry, document, snapshot) {
@@ -326,7 +319,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 state.loading = false; restoreRound(snapshot.binding); emit();
                 // 隐藏随原文一起核对：删层、改层、停用之后边界可能变了，这里只做核对与还原。
                 // 生成进行中绝不改聊天——ST 已经装配好本轮消息，这时改会让两边对不上、本轮丢掉记忆。
-                if (!generating) void syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
+                if (!generating) void syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
                 if (auto && !disposed) deferFor(snapshot.binding, () => start().catch(() => {}), refreshGeneration);
             } catch (error) {
                 if (ticket !== sequence || disposed) return;
@@ -410,17 +403,22 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         const current = jobDocument.entries.find(entry => entry.id === batch.redo.id);
                         if (!current || current.revision !== batch.redo.revision) throw new Error('待整理的切片已变化，请刷新后重试');
                     } else {
-                        // 本批要替换的旧切片必须还停在计划时的版本，否则这次结果会覆盖别处的改动。
+                        // 只核「要换的旧切片是否还在、还能换」，不核修订号：批次之间会自然产生修订
+                        // （前几批的替换、来源核对留下的失效标记），拿旧修订号卡会让正常总结反复中断。
                         for (const ref of batch.replaces || []) {
                             const current = jobDocument.entries.find(entry => entry.id === ref.id);
-                            if (!current || current.revision !== ref.revision) throw new Error('此范围内的记忆已变化，请刷新后重试');
+                            if (!current || current.kind !== 'summary' || current.edited || current.status === 'deleted') {
+                                throw new Error('此范围内的记忆已变化，请刷新后重试');
+                            }
                         }
+                        // 段内若是人工改过或丢弃的来源，仍按原规则处理；自动切片由本批一并替换。
                         const replacedIds = new Set((batch.replaces || []).map(ref => ref.id));
-                        const overlaps = jobDocument.entries.filter(entry => entry.kind === 'summary' && !entry.origin
+                        const overlaps = jobDocument.entries.filter(entry => entry.kind === 'summary' && !entry.origin && !entry.replacedBy
                             && entry.source.start <= batch.end && entry.source.end >= batch.start);
-                        if (overlaps.some(entry => !replacedIds.has(entry.id) && (!entry.discarded || !batch.discardedSources?.some(ref => ref.id === entry.id && ref.revision === entry.revision
-                            && JSON.stringify(ref.source) === JSON.stringify(entry.source))))
-                            || (batch.discardedSources || []).some(ref => !overlaps.some(entry => entry.id === ref.id && entry.revision === ref.revision))) {
+                        if (overlaps.some(entry => !replacedIds.has(entry.id) && !entry.edited
+                            && (!entry.discarded || !batch.discardedSources?.some(ref => ref.id === entry.id
+                                && JSON.stringify(ref.source) === JSON.stringify(entry.source))))
+                            || (batch.discardedSources || []).some(ref => !overlaps.some(entry => entry.id === ref.id))) {
                             throw new Error('此范围的记忆已变化，请刷新后确认整理范围');
                         }
                     }
@@ -546,7 +544,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         entry: { ...slice, id: batch.redo?.id || id() } };
                     if (batch.redo) { operation.entryId = batch.redo.id; operation.expectedRevision = batch.redo.revision; }
                     // 本批覆盖的旧切片随这一批一起换掉（都带修订号），不逐条重做。
-                    else if (manualPlan && batch.replaces?.length && slice === slices[0]) operation.replaces = clone(batch.replaces);
+                    else if (manualPlan && batch.replaces?.length && slice === slices[0]) { operation.replaces = clone(batch.replaces); operation.replaceRange = { start: batch.start, end: batch.end }; }
                     else if (manualPlan && batch.discardedSources) {
                         const discardedSources = batch.discardedSources.filter(ref => doc.entries.some(entry => entry.id === ref.id
                             && entry.source.start <= slice.source.end && entry.source.end >= slice.source.start));
@@ -567,7 +565,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 failedBatch = null; failedSource = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 // 新的切片就位后，隐藏边界前移：这一轮结束后把这批旧楼按原生方式隐藏，下一轮起生效。
-                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
+                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
                 if (entryId || !isCurrent(binding) || generating || controller.manual?.pausing) break;
@@ -715,7 +713,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
-                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(() => {});
+                await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
             }
@@ -793,7 +791,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (type === 'enable' && !payload.enabled) {
             localStops.add(key); jobs.get(key)?.abort(); host.clear(); prepared = null; state.lastUsed = null; state.lastSkip = null;
             // 停用忆幕：忆幕隐藏过的楼层立刻还原成正常原文。
-            await syncHidden({ enabled: false }, effectiveSettings(doc, state.defaults), { restoreAll: true }).catch(() => {});
+            await syncHidden({ enabled: false }, effectiveSettings(doc, state.defaults), { restoreAll: true }).catch(reportHideFailure);
             emit();
         }
         if (type === 'autoSummary' && payload.value === false) jobs.get(key)?.abort();

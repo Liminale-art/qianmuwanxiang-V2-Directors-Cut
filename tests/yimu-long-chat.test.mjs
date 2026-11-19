@@ -5,7 +5,7 @@ import { webcrypto } from 'node:crypto';
 import { fingerprintMessages } from '../yimu/contract.mjs';
 
 const direct = async message => {
-  const bytes = new TextEncoder().encode(JSON.stringify([String(message.name || ''), Boolean(message.is_user), Boolean(message.is_system), String(message.mes || ''), String(message.send_date ?? '')]));
+  const bytes = new TextEncoder().encode(JSON.stringify([String(message.name || ''), Boolean(message.is_user), false, String(message.mes || ''), String(message.send_date ?? '')]));
   return Array.from(new Uint8Array(await webcrypto.subtle.digest('SHA-256', bytes)), x => x.toString(16).padStart(2, '0')).join('');
 };
 
@@ -14,11 +14,14 @@ test('remembered floor fingerprints always equal a direct digest, and any identi
   const first = await fingerprintMessages(chat);
   assert.deepEqual(first, await Promise.all(chat.map(direct)));
   assert.deepEqual(await fingerprintMessages(structuredClone(chat)), first, 'a cloned snapshot of the same floors reuses the entries');
-  for (const change of [m => { m.mes += '。'; }, m => { m.name = 'B'; }, m => { m.is_user = true; }, m => { m.is_system = true; }, m => { m.send_date = '2026-01-02'; }]) {
+  for (const change of [m => { m.mes += '。'; }, m => { m.name = 'B'; }, m => { m.is_user = true; }, m => { m.send_date = '2026-01-02'; }]) {
     const edited = structuredClone(chat); change(edited[0]);
     const hashes = await fingerprintMessages(edited);
     assert.notEqual(hashes[0], first[0]); assert.equal(hashes[0], await direct(edited[0])); assert.equal(hashes[1], first[1]);
   }
+  // 隐藏标记不属于楼层身份：忆幕自己会隐藏旧楼，隐藏不能让自己的切片来源失效。
+  const hidden = structuredClone(chat); hidden[0].is_system = true;
+  assert.deepEqual(await fingerprintMessages(hidden), first);
   // Fields outside the identity (swipes, extra) never affected the digest and still do not.
   assert.deepEqual(await fingerprintMessages(chat.map(m => ({ ...m, extra: { x: 1 }, swipes: ['z'] }))), first);
 });

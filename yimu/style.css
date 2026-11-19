@@ -162,7 +162,7 @@
 .ym-settings-group { padding: 14px 16px; border: 1px solid var(--ym-border); border-radius: var(--ym-card-radius); background: var(--ym-card); min-width: 0; }
 .ym-settings-group > summary, .ym-interface-settings > .ym-switch-row { font: 600 var(--ym-type-card-title)/1.5 var(--ym-font); }
 .ym-settings-group[open] > summary { margin-bottom: 14px; }
-.ym-settings-group:not(.ym-budget-group) > .ym-setting-title { margin-bottom: 12px; }
+.ym-settings-group > .ym-setting-title { margin-bottom: 12px; }
 .ym-extra-settings > .ym-setting-title { margin-bottom: 7px; }
 .ym-setting-row { display: flex; align-items: end; gap: 8px; }
 .ym-setting-row > .ym-field { flex: 1; }
@@ -176,13 +176,7 @@
 .ym-setting-select > .ym-field > span { flex: 1 1 auto; min-width: 0; }
 .ym-dialog .ym-setting-select > .ym-field > select { flex: 0 1 var(--ym-setting-value-width); width: var(--ym-setting-value-width); min-width: 0; }
 .ym-dialog .ym-setting-select > .ym-field > select { text-align: center; text-align-last: center; }
-/* 记忆注入上限卡：标题独占一行，下面的设置行各占满宽。
-   旧写法把标题与控件并排、控件列只有 84–140px，第二项「每次最多注入切片」的标签被挤成竖排、
-   整张卡被撑变形；现在与其它分组一致，标题在上、设置行在下。 */
-.ym-settings-group.ym-budget-group { display: block; }
-.ym-budget-group > .ym-settings-form { display: grid; gap: 8px; }
-/* token 输入框前的单位标识，紧跟输入框、不参与弹性拉伸。 */
-.ym-setting-numeric > .ym-field > .ym-unit { flex: 0 0 auto; color: var(--ym-muted); font-size: var(--ym-type-caption); }
+/* 记忆注入上限卡与其它分组（如切片总结）同一套排版：标题在上，设置行左标题、右输入框，间距一致。 */
 .ym-setting-boolean { align-items: center; }
 .ym-setting-boolean > .ym-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ym-setting-boolean > .ym-field > span { min-width: 0; overflow-wrap: anywhere; }

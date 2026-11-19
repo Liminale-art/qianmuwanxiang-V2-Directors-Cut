@@ -46,26 +46,29 @@ function fixture() {
         get ctx() { return current; }, set ctx(value) { current = value; } };
 }
 
-test('native hiding writes is_system like ST does, saves once, and leaves user-hidden floors and tool messages alone', async () => {
+test('native hiding writes is_system like ST does, marks its own floors on the message, and leaves user-hidden floors and tool messages alone', async () => {
     const f = fixture();
     f.ctx.chat[6].is_system = true;   // 第 7 层：用户自己手动隐藏的
     f.ctx.chat[2].tool_calls = [];    // 第 3 层：带工具调用，忆幕不碰
     const hidden = () => f.ctx.chat.map(message => Boolean(message.is_system));
-    // 要隐藏 1、2、3：3 是工具消息跳过，1、2 写入。
-    const result = await f.host.applyHidden([1, 2, 3], []);
-    assert.deepEqual(result.changed, [1, 2], '工具消息不动');
+    const marked = () => f.ctx.chat.map((message, i) => message.extra?.yimu_hidden === true ? i + 1 : 0).filter(Boolean);
+    // 要隐藏 1、2、3、7：3 是工具消息跳过；7 已被用户隐藏，不留忆幕记号。
+    const result = await f.host.applyHidden([1, 2, 3, 7]);
+    assert.deepEqual(result.changed, [1, 2]);
     assert.deepEqual(hidden(), [true, true, false, false, false, false, true, false]);
+    assert.deepEqual(marked(), [1, 2], '记号写在消息自身，随聊天文件保存');
+    assert.equal(f.ctx.chat[0].extra.nested.original, true, '消息原有的 extra 不丢');
     assert.equal(f.saves.length, 1, '写完只保存一次');
-    // 还原忆幕自己隐藏过的 1、2：用户手动隐藏的第 7 层保持隐藏。
-    await f.host.applyHidden([], [1, 2]);
-    assert.deepEqual(hidden(), [false, false, false, false, false, false, true, false]);
     // 没有变化时不写盘。
-    const before = f.saves.length;
-    await f.host.applyHidden([], [1, 2]);
-    assert.equal(f.saves.length, before);
-    // 不在 want、也不在 owned 里的楼层，忆幕一概不碰（用户手动隐藏的第 7 层就这样留着）。
-    await f.host.applyHidden([1], []);
-    assert.deepEqual(hidden(), [true, false, false, false, false, false, true, false]);
+    await f.host.applyHidden([1, 2, 3, 7]);
+    assert.equal(f.saves.length, 1);
+    // 记号在消息上，所以「重开页面后」（没有任何内存记录）仍只还原忆幕藏的：用户藏的第 7 层保持隐藏。
+    await f.host.applyHidden([]);
+    assert.deepEqual(hidden(), [false, false, false, false, false, false, true, false]);
+    assert.deepEqual(marked(), []);
+    // 已切到别的聊天时什么都不做。
+    const other = await f.host.applyHidden([1, 2], { avatar: 'other.png', file: 'another-chat', integrity: 'other-id' });
+    assert.deepEqual(other.changed, []); assert.deepEqual(hidden(), [false, false, false, false, false, false, true, false]);
 });
 
 test('ST summary admission checks the complete prompt and output reservation before generating', async () => {

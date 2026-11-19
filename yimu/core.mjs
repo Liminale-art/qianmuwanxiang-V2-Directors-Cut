@@ -110,7 +110,7 @@ export function planManualRange(document, messages, settings, requestedRange, { 
     const discarded = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && entry.discarded);
     // A purged deletion has no old text left to redo or preserve. Only this explicit
     // manual planner may create fresh summaries there; the deletion guard remains.
-    const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && !entry.discarded)
+    const summaries = (document?.entries || []).filter(entry => entry.kind === 'summary' && !entry.origin && !entry.discarded && !entry.replacedBy)
         .sort((a, b) => a.source.start - b.source.start || a.source.end - b.source.end);
     for (let changed = true; changed;) {
         changed = false;
