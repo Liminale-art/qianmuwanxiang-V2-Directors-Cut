@@ -788,3 +788,39 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 :is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"]:checked::after {
   color: var(--qm-on-zhu) !important;
 }
+
+/* ==== 纸间 · 线装书骨架（与忆幕同款，只用在带页签的主面板上） ====
+   版框只框正文；右缘留出书口，页签竖排在书口上，选中的那枚顶着朱砂鱼尾；左缘是装订线与线孔。
+   版框以外（书口、书脊、连同页签）比书页略深一点，像一本合着的书露出的边。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) {
+  --qm-mouth: 34px; --qm-spine: 20px;
+  --qm-book-edge: color-mix(in srgb, var(--qm-ink) 8%, var(--qm-bg));
+  border: 0 !important; outline: 0;
+  padding: 12px calc(var(--qm-mouth) + 12px) 12px calc(var(--qm-spine) + 12px) !important;
+  background: var(--qm-paper-grain), linear-gradient(var(--qm-bg), var(--qm-bg)), var(--qm-book-edge) !important;
+  background-repeat: no-repeat !important;
+  background-position: var(--qm-spine) 6px !important;
+  background-size: calc(100% - var(--qm-spine) - var(--qm-mouth)) calc(100% - 12px) !important;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell)::before {
+  content: ''; display: block; position: absolute; inset: 6px var(--qm-mouth) 6px var(--qm-spine); z-index: 2; pointer-events: none;
+  width: auto; height: auto; margin: 0; border-radius: 0; background: none; opacity: 1; filter: none; transform: none;
+  border: 2px solid var(--qm-ink); outline: 1px solid color-mix(in srgb, var(--qm-ink) 70%, transparent); outline-offset: -6px;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell)::after {
+  content: ''; position: absolute; left: 6px; top: 26px; bottom: 26px; width: 9px; z-index: 2; pointer-events: none;
+  --qm-thread: color-mix(in srgb, var(--qm-ink) 55%, var(--qm-book-edge));
+  background: radial-gradient(circle at 4.5px 4.5px, var(--qm-book-edge) 2.6px, var(--qm-thread) 2.8px 4.2px, transparent 4.4px) 0 0 / 9px 33.33% repeat-y, linear-gradient(var(--qm-thread), var(--qm-thread)) 4px 0 / 1.5px 100% no-repeat;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header { padding-inline: 14px 8px; border-bottom: 1px solid var(--qm-ink); }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell { position: absolute; right: 0; top: 40px; width: var(--qm-mouth); max-height: calc(100% - 52px); margin: 0 !important; padding: 0 !important; overflow: visible; z-index: 3; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell > .sd-tabs { flex-direction: column; justify-content: flex-start; gap: 0; width: 100%; max-height: inherit; padding: 0 !important; overflow: hidden auto; -webkit-mask: none; mask: none; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab { flex: 0 0 auto !important; width: 100%; min-height: 0; padding: 16px 0 10px !important; border-radius: 0 !important; writing-mode: vertical-rl !important; letter-spacing: .3em; display: flex; align-items: center; justify-content: center; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab + .sd-tab { border-top: 1px solid var(--qm-rule) !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab.active .sd-tab-label { transform: none; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab-mark { top: 0; bottom: auto; width: 18px; height: 9px; transform: translate(-50%, 0); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+@media (max-width: 760px) {
+  #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) { --qm-mouth: 28px; --qm-spine: 14px; padding: 10px calc(var(--qm-mouth) + 8px) 10px calc(var(--qm-spine) + 8px) !important; }
+  #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell)::after { left: 2px; }
+  #story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab { padding: 14px 0 8px !important; }
+}

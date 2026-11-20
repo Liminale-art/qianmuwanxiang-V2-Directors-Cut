@@ -711,3 +711,15 @@
 .ym-dialog[data-ym-theme="editorial"] .ym-nav-mark { top: 0; bottom: auto; width: 18px; height: 9px; transform: translate(-50%, 0); clip-path: polygon(0 0, 100% 0, 50% 100%); }
 @media (max-width: 760px) { .ym-dialog[data-ym-theme="editorial"] { --ym-mouth: 28px; --ym-spine: 14px; } .ym-dialog[data-ym-theme="editorial"] .ym-shell { padding: 10px calc(var(--ym-mouth) + 8px) 10px calc(var(--ym-spine) + 8px); } .ym-dialog[data-ym-theme="editorial"]::before { left: 2px; } .ym-dialog[data-ym-theme="editorial"] .ym-nav-button { font-size: 11px; padding: 14px 0 8px; } }
 #yimu-dialog[data-ym-theme="editorial"] { border-radius: 0 !important; }
+/* 版框以外（书口、书脊、连同页签）比书页略深一点；书页的纸色与纤维只铺在版框里。 */
+.ym-dialog[data-ym-theme="editorial"] { --ym-book-edge: color-mix(in srgb, var(--ym-ink) 8%, var(--ym-surface)); background: var(--ym-book-edge);
+  --ym-paper-grain: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--ym-ink) 2.6%, transparent) 2px 3px), repeating-linear-gradient(91deg, transparent 0 9px, color-mix(in srgb, var(--ym-ink) 1.8%, transparent) 9px 10px); }
+.ym-dialog[data-ym-theme="editorial"] .ym-shell { background: var(--ym-paper-grain), linear-gradient(var(--ym-surface), var(--ym-surface)); background-repeat: no-repeat; background-position: var(--ym-spine) 6px; background-size: calc(100% - var(--ym-spine) - var(--ym-mouth)) calc(100% - 12px); }
+.ym-dialog[data-ym-theme="editorial"]::before { --ym-thread: color-mix(in srgb, var(--ym-ink) 55%, var(--ym-book-edge));
+  background: radial-gradient(circle at 4.5px 4.5px, var(--ym-book-edge) 2.6px, var(--ym-thread) 2.8px 4.2px, transparent 4.4px) 0 0 / 9px 33.33% repeat-y, linear-gradient(var(--ym-thread), var(--ym-thread)) 4px 0 / 1.5px 100% no-repeat; }
+/* 标题字距收紧（末字后面多出来的那截字距一并抵掉），版本号贴着标题、不带标签框；小图标抬高一点。 */
+.ym-dialog[data-ym-theme="editorial"] .ym-heading { gap: 8px; }
+.ym-dialog[data-ym-theme="editorial"] .ym-heading h2 { letter-spacing: .12em; margin-right: -.12em; }
+.ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-logo { transform: translateY(-1px); }
+.ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-version-tag { align-self: flex-end; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; transform: translateY(-1px); }
+.ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-version-tag.is-update-available { background: none; box-shadow: none; text-decoration: underline; text-underline-offset: 3px; }
