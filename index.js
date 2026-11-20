@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.587';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.588';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.587';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.588';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,14 +28,14 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.587';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.587';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.587';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.587';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.587';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.587';
+import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.588';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.588';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.588';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.588';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.588';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.588';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.587';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.588';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -64,8 +64,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.587';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.587';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.588';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.588';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -95,7 +95,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.587';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.588';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -338,7 +338,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.587';
+const VERSION = '1.59.588';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -26030,7 +26030,7 @@ function coreadExplainError(err) {
   const msg = String(err?.message || err || '');
   if (/INVALID_API_SETTINGS|missing/i.test(msg)) return '总结 API 未配置（需填 URL/Key/模型，或确认 SillyTavern 连接可用）';
   if (/HTTP\s*401|HTTP\s*403/.test(msg)) return 'API 鉴权失败（Key 错误或无权限）';
-  if (/HTTP\s*400/.test(msg)) return 'API 请求非法（模型名或参数有误）';
+  if (/HTTP\s*400/.test(msg)) return `API 拒收了这次请求（模型名、参数有误，或内容超出模型上限）：${msg.slice(0, 120)}`;
   return msg || '未知错误';
 }
 
@@ -26411,16 +26411,16 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
       try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
       catch (e) {
         if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) return finish({ ok: false, aborted: true, reason: '已停止' });
-        return finish({ ok: false, reason: coreadExplainError(e) });
+        return finish({ ok: false, failed: true, reason: coreadExplainError(e) });
       }
       if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
-      if (!res) return finish({ ok: false, reason: '模型没有返回有效总结' });
+      if (!res) return finish({ ok: false, failed: true, reason: '模型没有返回有效总结' });
       const snapshot = coreadMemorySnapshot();
       await coreadPersistSlice(res, meta, {
         src: 'text', coveredFrom: span.from, coveredTo: span.to,
         ...coreadTextRangeMeta(chapters, span.from, span.to),
       });
-      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return finish({ ok: false, reason: COREAD_SAVE_FAILED }); }
+      if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return finish({ ok: false, failed: true, reason: COREAD_SAVE_FAILED }); }
       made++; salvaged = salvaged || !!res.salvaged;
     }
     if (!made) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
@@ -26467,7 +26467,7 @@ async function coreadDistillFullBook(m) {
     const chunks = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, chunkSize)).filter(({ from, to }) => full.slice(from, to).trim());
     if (!chunks.length) return { ok: false, reason: '全书都已总结过了' };
     toast(`蒸馏全书：共 ${chunks.length} 段，开始逐段处理…`, 'info');
-    let ok = 0, fail = 0, aborted = false, saveFailed = false;
+    let ok = 0, fail = 0, aborted = false, saveFailed = false, stopped = false, lastFailure = '';
     for (let ci = 0; ci < chunks.length; ci++) {
       // 用户中途按「停止」：保留已生成的切片，剩余段不再处理
       if (coreadDistillAbort) { aborted = true; break; }
@@ -26480,10 +26480,12 @@ async function coreadDistillFullBook(m) {
       try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
       catch (e) {
         if (coreadDistillAbort || /abort/i.test(String(e?.name || e?.message || ''))) { aborted = true; break; }
-        fail++; console.warn(`[coreadDistillFullBook] 第${ci + 1}段失败`, e); continue;
+        fail++; lastFailure = coreadExplainError(e); console.warn(`[coreadDistillFullBook] 第${ci + 1}段失败`, e);
+        if (!coreadIsTransientError(e)) { stopped = true; break; }
+        continue;
       }
       if (coreadDistillAbort) { aborted = true; break; }
-      if (!res) { fail++; continue; }
+      if (!res) { fail++; lastFailure = '模型没有返回有效总结'; continue; }
       // 逐段落盘：存不进去就还原这一段并停下，不把没存住的段算作完成。
       const snapshot = coreadMemorySnapshot();
       await coreadPersistSlice(res, meta, {
@@ -26495,6 +26497,8 @@ async function coreadDistillFullBook(m) {
       if ((ci + 1) % 3 === 0 || ci === chunks.length - 1) toast(`蒸馏全书：${ci + 1}/${chunks.length} 段完成…`, 'info');
     }
     if (saveFailed) return { ok: false, reason: COREAD_SAVE_FAILED, made: ok, failed: fail };
+    if (stopped) return { ok: false, reason: `蒸馏全书已停下：${lastFailure}${ok ? `（之前的 ${ok} 段已存好）` : ''}`, made: ok, failed: fail };
+    if (!ok && fail && !aborted) return { ok: false, reason: `蒸馏全书没有成功：${lastFailure}`, made: 0, failed: fail };
     return { ok: true, made: ok, failed: fail, aborted };
   } catch (err) {
     console.error('[coreadDistillFullBook] Unexpected error:', err);
@@ -28589,7 +28593,7 @@ async function coreadGenerateReply(isReroll = false) {
   const recallQuery = [...pendingUsers, ...msgs.slice(Math.max(0, s + 1 - recallScanN), s + 1)].map((x) => x.text || '').join(' ');
   const assembled = await buildCompanionContext(bookId, recallQuery);
   if (readerView !== preparingView || readerDialog !== preparingDialog || dialogGenToken !== preparingToken) return;
-  if (!assembled) { toast('无法读取正文，先在阅读器打开这本书。', 'warn'); return; }
+  if (!assembled) { toast('无法读取正文，先在阅读器打开这本书。', 'warning'); return; }
 
   const token = ++dialogGenToken;
   dialogBusy = true;
@@ -28695,7 +28699,7 @@ async function coreadGenerateReply(isReroll = false) {
       console.warn(`[${MODULE_NAME}] reader dialog gen failed`, error);
       readerDialog.messages = readerDialog.messages.filter((m) => m.id !== friendMsg.id);
       if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
-      toast('伴读对话生成失败，请重试。', 'warn');
+      toast(`伴读对话生成失败：${coreadExplainError(error)}`, 'warning');
       await coreadSaveDialog();
     }
   } finally {
@@ -29782,7 +29786,8 @@ let coreadAutoTextInFlight = false;
 async function coreadMaybeAutoDistillText() {
   const m = coreadMemory();
   if (!m.autoDistillText || coreadAutoTextInFlight) return;
-  if (!readerView || !readerContentCache) return;
+  if (!readerView || !readerContentCache || readerView.autoTextOff) return;
+  const view = readerView;
   const id = readerView.bookId;
   if (coreadBookMeta(id)?.mode === 'comic') return;
   if (!readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(id)) return;
@@ -29793,8 +29798,11 @@ async function coreadMaybeAutoDistillText() {
     if (pendingChars < Math.max(1000, m.distillTextEvery || 8000)) return;   // 已读而未总结的正文不足阈值（全书蒸过的部分不算）
     coreadAutoTextInFlight = true;
     const r = await coreadDistillReadText(m, { maxBatches: 2 });
-    if (r?.ok) { toast('伴读记忆：已按阅读进度自动总结一段正文。', 'info'); if (coreadMemory().moreTab === 'records') rerenderMoreIfOpen?.(); }
-  } catch (_) {} finally { coreadAutoTextInFlight = false; }
+    // 两批里先成了一批、后一批才失败时，成的那批照样提示并刷新。
+    if (r?.made > 0) { toast('伴读记忆：已按阅读进度自动总结一段正文。', 'info'); if (coreadMemory().moreTab === 'records') rerenderMoreIfOpen?.(); }
+    // 真失败（接口报错、没返回有效总结、存不进去）：说一次原因，这次开书期间不再自动——否则每存一次阅读进度都会再发一次必然失败的请求。手动总结照常可用。
+    if (r && !r.ok && r.failed) { view.autoTextOff = true; toast(`自动总结正文失败：${r.reason}`, 'warning'); }
+  } catch (error) { console.warn(`[${MODULE_NAME}] 自动总结正文出错`, error); } finally { coreadAutoTextInFlight = false; }
 }
 
 // 阅读器选区监听句柄（document 级·portal 每次重建都会重绑·此处存旧句柄以便先摘再挂·防泄漏）
@@ -32653,7 +32661,7 @@ function bindReaderStageEvents(stageRoot) {
     if (castDel) { const card = castDel.closest('.sd-reader-comic-cast'); castDel.closest('.sd-reader-comic-castrow').remove(); void coreadComicSaveSheet(card); return; }
     // — 蒸馏已读内容 —
     if (e.target.closest('.sd-reader-distill-text')) {
-      if (coreadDistilling) return;   // 另一按钮正在运行时点击无效（按钮应已被禁用，双保险）
+      if (coreadDistilling) { toast('正在总结中，请稍候。', 'info'); return; }   // 别的总结（对话自动总结、手动总结等）占着时这个按钮是可点的，得说一声
       const card = e.target.closest('.sd-reader-mcard');
       const btnText = card?.querySelector('.sd-reader-distill-text');
       const btnBook = card?.querySelector('.sd-reader-distill-fullbook');
@@ -32675,7 +32683,7 @@ function bindReaderStageEvents(stageRoot) {
     }
     // — 蒸馏全书 —
     if (e.target.closest('.sd-reader-distill-fullbook')) {
-      if (coreadDistilling) return;
+      if (coreadDistilling) { toast('正在总结中，请稍候。', 'info'); return; }
       const card = e.target.closest('.sd-reader-mcard');
       const btnText = card?.querySelector('.sd-reader-distill-text');
       const btnBook = card?.querySelector('.sd-reader-distill-fullbook');
