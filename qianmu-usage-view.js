@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.589';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.590';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -106,19 +106,29 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID} .qm-usage-char:first-of-type { border-top: 0; }
 #${ROOT_ID} .qm-usage-char { position: relative; }
 /* 第一位：名字与头像圈用强调色。 */
+#${ROOT_ID} { --u-fate: color-mix(in srgb, #e3364e 84%, var(--u-accent)); --u-fate-pale: color-mix(in srgb, var(--u-fate) 50%, #fff); --u-fate-deep: color-mix(in srgb, var(--u-fate) 74%, #2a0008); }
+/* 第一位：名字用强调色，头像外一根细线。 */
 #${ROOT_ID} .qm-usage-char.is-top .who span:first-child { color: var(--u-accent); font-weight: 600; }
-#${ROOT_ID} .qm-usage-char.is-top .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 3.5px var(--u-accent); }
-/* 两种排法的第一位是同一位：换成红线的颜色，名字上方系一根会自己画出来的红线。 */
-#${ROOT_ID} { --u-fate: color-mix(in srgb, #e3364e 84%, var(--u-accent)); }
-#${ROOT_ID} .qm-usage-char.is-fated { padding-top: 38px; }
-#${ROOT_ID} .qm-usage-char.is-fated .who span { color: var(--u-fate); font-weight: 600; }
-#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 3.5px var(--u-fate), 0 0 16px color-mix(in srgb, var(--u-fate) 55%, transparent); }
-#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-bar > span { background: linear-gradient(90deg, var(--u-accent), var(--u-fate)); }
-#${ROOT_ID} .qm-usage-thread { position: absolute; left: 0; top: 4px; width: 100%; height: 30px; overflow: visible; pointer-events: none; }
-#${ROOT_ID} .qm-usage-thread path { fill: none; stroke: url(#qm-usage-thread-ink); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--u-fate) 55%, transparent));
-  animation: qm-usage-thread-draw 3.8s cubic-bezier(.45,.05,.3,1) .35s forwards, qm-usage-thread-pulse 3.2s ease-in-out 4.3s infinite alternate; }
+#${ROOT_ID} .qm-usage-char.is-top .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 2.7px var(--u-accent); }
+/* 两种排法的第一位是同一位：换成红线的颜色；进度条是红色一色、由浅入深。 */
+#${ROOT_ID} .qm-usage-char.is-fated .who span { color: var(--u-fate-deep); font-weight: 600; }
+#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 2.7px color-mix(in srgb, var(--u-fate) 82%, transparent); }
+#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-bar > span { background: linear-gradient(90deg, var(--u-fate-pale), var(--u-fate-deep)); }
+/* 红线：一笔有粗细的飘带，浮在这一行之上。从面板左缘出来，掠过头像下沿，打一个小卷，沿进度条向右去；由浅入深。 */
+#${ROOT_ID} .qm-usage-thread { position: absolute; inset: 0; z-index: 2; pointer-events: none; transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+#${ROOT_ID} .qm-usage-thread svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; animation: qm-usage-thread-sway 8s ease-in-out infinite alternate; }
+@keyframes qm-usage-thread-sway { from { translate: -1.4px .7px; } to { translate: 1.6px -.9px; } }
+#${ROOT_ID} .qm-usage-silk { filter: drop-shadow(0 3px 2.5px color-mix(in srgb, var(--u-fate-deep) 30%, transparent)); }
+#${ROOT_ID} .qm-usage-reveal { fill: none; stroke: #fff; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: qm-usage-thread-draw 4.4s cubic-bezier(.5,.05,.25,1) .4s forwards; }
 @keyframes qm-usage-thread-draw { to { stroke-dashoffset: 0; } }
-@keyframes qm-usage-thread-pulse { from { opacity: 1; } to { opacity: .55; } }
+/* 光点：大小不一，散在线的上下，各自缓缓地浮、缓缓地明暗。 */
+#${ROOT_ID} .qm-usage-mote { fill: #fff; opacity: 0; filter: drop-shadow(0 0 2px var(--u-fate)) drop-shadow(0 0 5px color-mix(in srgb, var(--u-fate) 70%, transparent)); animation: qm-usage-mote-in 2.4s ease var(--delay) forwards, qm-usage-mote-float var(--dur) cubic-bezier(.45,0,.55,1) var(--delay) infinite alternate; }
+@keyframes qm-usage-mote-in { to { opacity: var(--o); } }
+@keyframes qm-usage-mote-float { from { translate: 0 calc(var(--dy) * -1); scale: .8; } to { translate: var(--dx) var(--dy); scale: 1.1; } }
+/* 莫比乌斯环：单线，在头像框左上角。像写一个横着的 8，从无到有一笔写出，停一停，淡去，再写。 */
+#${ROOT_ID} .qm-usage-mobius { position: absolute; left: -5px; top: 6.5px; z-index: 3; width: 26px; height: 15px; overflow: visible; pointer-events: none; filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--u-fate) 60%, transparent)); }
+#${ROOT_ID} .qm-usage-mobius path { fill: none; stroke: var(--u-fate); stroke-width: 1; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: qm-usage-mobius-write 6.5s cubic-bezier(.5,.05,.3,1) .8s infinite; }
+@keyframes qm-usage-mobius-write { 0% { stroke-dashoffset: 1; opacity: 1; } 55% { stroke-dashoffset: 0; opacity: 1; } 82% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
 #${ROOT_ID} .qm-usage-char .qm-usage-face { grid-row: 1 / span 3; }
 #${ROOT_ID} .qm-usage-char .who { display: flex; justify-content: space-between; gap: 10px; }
 #${ROOT_ID} .qm-usage-char .who span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -126,7 +136,7 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID} .qm-usage-char small { font-size: 12px; color: var(--u-mute); }
 #${ROOT_ID} .qm-usage-empty { margin: 0; padding: 40px 10px; text-align: center; color: var(--u-mute); }
 #${ROOT_ID} [hidden] { display: none !important; }
-@media (prefers-reduced-motion: reduce) { #${ROOT_ID} * { animation: none !important; transition: none !important; } #${ROOT_ID} .qm-usage-thread path { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { #${ROOT_ID} * { animation: none !important; transition: none !important; } #${ROOT_ID} :is(.qm-usage-reveal, .qm-usage-mobius path) { stroke-dashoffset: 0; } #${ROOT_ID} .qm-usage-mote { opacity: var(--o); } }
 /* 纸间：一页书。直角、文武线、界行；数字是朱砂，不发光。 */
 #${ROOT_ID}[data-qm-theme="editorial"] { --u-ink: var(--qm-ink); --u-mute: var(--qm-muted); --u-bg: var(--qm-bg); --u-card: transparent; --u-line: color-mix(in srgb, var(--qm-ink) 18%, transparent); --u-accent: var(--qm-accent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-panel { border-radius: 0; border: 2px solid var(--u-ink); outline: 1px solid color-mix(in srgb, var(--u-ink) 70%, transparent); outline-offset: -6px; padding: 20px; font-family: var(--qm-editorial-font, serif); }
@@ -139,6 +149,7 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i[data-level="3"] { background: color-mix(in srgb, var(--u-accent) 76%, transparent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i[data-level="4"] { background: var(--u-accent); }
 #${ROOT_ID}[data-qm-theme="editorial"] :is(.qm-usage-range button, .qm-usage-icon, .qm-usage-pick input, .qm-usage-bar, .qm-usage-face, .qm-usage-grid i::after) { border-radius: 0; }
+#${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-mobius { left: -8px; top: 3px; }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-last { border-radius: 0; box-shadow: none; margin-top: 0; padding-inline: 8px; border-bottom: 1px solid var(--u-ink); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-last:hover { background: color-mix(in srgb, var(--u-accent) 8%, transparent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-cards { gap: 0; margin-top: 0; }
@@ -158,8 +169,64 @@ export function timeZones() {
     if (!zoneNames?.length) zoneNames = ['Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Taipei', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Bangkok', 'Asia/Kolkata', 'Asia/Dubai', 'Europe/Moscow', 'Europe/Berlin', 'Europe/Paris', 'Europe/London', 'UTC', 'America/Sao_Paulo', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Pacific/Honolulu', 'Australia/Sydney', 'Pacific/Auckland'];
     return zoneNames;
 }
-// 红线：从左边渐显着绕过来，在正中绕出一颗心，再绕着向右渐隐。只有「相处最久」与「聊得最多」是同一位时才出现。
-const THREAD = '<svg class="qm-usage-thread" viewBox="0 0 320 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><linearGradient id="qm-usage-thread-ink" x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:var(--u-fate);stop-opacity:0"/><stop offset=".2" style="stop-color:var(--u-fate)"/><stop offset=".8" style="stop-color:var(--u-fate)"/><stop offset="1" style="stop-color:var(--u-fate);stop-opacity:0"/></linearGradient></defs><path pathLength="1" d="M0,18 C22,10 44,24 62,16 C74,10 72,2 64,4 C56,6 62,20 84,18 C112,16 140,17 160,26 C142,17 140,5 150,5 C157,5 160,9 160,12 C160,9 163,5 170,5 C180,5 178,17 160,26 C180,31 206,20 232,16 C250,13 262,4 254,3 C246,2 244,14 262,17 C284,21 302,12 320,15"/></svg>';
+// ---- 红线 ----
+// 只有「相处最久」与「聊得最多」是同一位时才出现。线的形状要按这一行实际的尺寸来画，所以名单画好之后才量、才画（drawThread）。
+const fix = point => `${point[0].toFixed(2)},${point[1].toFixed(2)}`;
+/** 莫比乌斯环：一个横着的 8，从交叉点起笔，先绕右圈、再绕左圈。 */
+const MOBIUS = (() => {
+    const points = [];
+    for (let i = 0; i <= 96; i++) { const t = Math.PI / 2 - Math.PI * 2 * i / 96, d = 1 + Math.sin(t) ** 2; points.push([13 + 11.5 * Math.cos(t) / d, 7.5 - 13.5 * Math.sin(t) * Math.cos(t) / d]); }
+    return `<svg class="qm-usage-mobius" viewBox="0 0 26 15" aria-hidden="true"><path pathLength="1" d="M${points.map(fix).join('L')}"/></svg>`;
+})();
+/** 过一串点的平滑曲线，密密取样。 */
+function sampleCurve(points, steps = 16) {
+    const out = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i - 1] || points[i], p1 = points[i], p2 = points[i + 1], p3 = points[i + 2] || p2;
+        const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+        for (let s = i ? 1 : 0; s <= steps; s++) { const t = s / steps, u = 1 - t; out.push([0, 1].map(k => u * u * u * p1[k] + 3 * u * u * t * c1[k] + 3 * u * t * t * c2[k] + t * t * t * p2[k])); }
+    }
+    return out;
+}
+/** 这一行的红线。尺寸都以这一行的左上角为原点：left／right 是面板的左右缘，face 是头像（圆心与半径），nameY／barY 是名字与进度条的中线。 */
+export function threadMarkup({ left = 0, right = 320, face = { cx: 29, cy: 35, r: 23 }, nameY = 22, barY = 37 } = {}) {
+    const span = right - left, bx = face.cx + face.r + 12; // 进度条的起点
+    // 一个舒展的小卷：边绕边往右走
+    const curl = Array.from({ length: 8 }, (_, i) => { const t = i / 7, u = (.1 + 1.8 * t) * Math.PI; return [bx + 34 + 20 * (t - .5) + 9.5 * Math.sin(u), barY - 1 + 8.5 * Math.cos(u)]; });
+    const points = [[left - 12, face.cy + 24], [face.cx - face.r * .5, face.cy + 19], [face.cx + face.r * .7, face.cy + 12], [bx + 4, barY + 9], ...curl,
+        [left + span * .54, barY - 8], [left + span * .76, barY + 6], [right - 34, barY - 5], [right + 12, Math.min(barY - 22, nameY - 6)]];
+    const curve = sampleCurve(points), n = curve.length, upper = [], lower = [], widths = [], normals = [];
+    // 像斜着的笔尖写出来的一笔：走向与笔尖垂直时粗，顺着笔尖时细；两头收成尖
+    for (let i = 0; i < n; i++) {
+        const a = curve[Math.max(0, i - 1)], b = curve[Math.min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy) || 1;
+        normals.push([-dy / length, dx / length]);
+        const pen = Math.abs(Math.sin(Math.atan2(dy, dx) + 38 * Math.PI / 180)) ** 1.5, t = i / (n - 1), tip = Math.min(1, t / .1, (1 - t) / .14);
+        widths.push((.5 + 2.1 * pen) * tip * tip * (3 - 2 * tip));
+    }
+    for (let i = 0; i < n; i++) {
+        let sum = 0, count = 0; for (let k = -6; k <= 6; k++) if (widths[i + k] !== undefined) { sum += widths[i + k]; count++; }
+        const half = sum / count / 2, [x, y] = curve[i], [nx, ny] = normals[i];
+        upper.push([x + nx * half, y + ny * half]); lower.push([x - nx * half, y - ny * half]);
+    }
+    // 光点：位置固定（每次打开都一样），大小、快慢各不相同
+    let seed = 77, motes = ''; const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+    for (let i = 0; i < 20; i++) {
+        const at = Math.floor(10 + (n - 20) * (i + random() * .8) / 20), [x, y] = curve[at], [nx, ny] = normals[at], off = (random() < .5 ? -1 : 1) * (3 + random() * 12), big = random();
+        motes += `<circle class="qm-usage-mote" cx="${(x + nx * off).toFixed(1)}" cy="${(y + ny * off).toFixed(1)}" r="${(.45 + big * big * 1.9).toFixed(2)}" style="--o:${(.45 + random() * .55).toFixed(2)};--delay:${(1 + at / n * 2.8 + random() * .8).toFixed(2)}s;--dur:${(5 + random() * 5).toFixed(1)}s;--dx:${((random() - .5) * 4).toFixed(1)}px;--dy:${(1.5 + random() * 3).toFixed(1)}px"/>`;
+    }
+    return `<svg aria-hidden="true"><defs><linearGradient id="qm-usage-silk-ink" gradientUnits="userSpaceOnUse" x1="${left.toFixed(1)}" y1="0" x2="${right.toFixed(1)}" y2="0"><stop offset="0" style="stop-color:var(--u-fate-pale)"/><stop offset=".22" style="stop-color:var(--u-fate-pale)"/><stop offset=".6" style="stop-color:var(--u-fate)"/><stop offset="1" style="stop-color:var(--u-fate-deep)"/></linearGradient>`
+        + `<mask id="qm-usage-silk-mask" maskUnits="userSpaceOnUse" x="${(left - 40).toFixed(1)}" y="-60" width="${(span + 80).toFixed(1)}" height="240"><path class="qm-usage-reveal" pathLength="1" d="M${curve.map(fix).join('L')}"/></mask></defs>`
+        + `<polygon class="qm-usage-silk" points="${[...upper, ...lower.reverse()].map(fix).join(' ')}" fill="url(#qm-usage-silk-ink)" mask="url(#qm-usage-silk-mask)"/>${motes}</svg>`;
+}
+/** 名单画好后：量出系红线那一行的尺寸，把线画进去。量不出来（环境不支持）就不画，名单照常。 */
+function drawThread(panel) {
+    const holder = panel.querySelector?.('.qm-usage-thread'), row = holder?.parentElement;
+    if (!row || typeof row.getBoundingClientRect !== 'function') return;
+    const box = row.getBoundingClientRect(), frame = panel.getBoundingClientRect(), middle = selector => { const rect = row.querySelector(selector)?.getBoundingClientRect(); return rect ? { x: rect.left - box.left + rect.width / 2, y: rect.top - box.top + rect.height / 2, r: rect.width / 2 } : null; };
+    const face = middle('.qm-usage-face'), name = middle('.who'), bar = middle('.qm-usage-bar');
+    if (!face || !name || !bar || !(box.width > 0)) return;
+    holder.innerHTML = threadMarkup({ left: frame.left - box.left, right: frame.right - box.left, face: { cx: face.x, cy: face.y, r: face.r }, nameY: name.y, barY: bar.y });
+}
 const ICON = body => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICON_TIME = ICON('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'), ICON_FLOORS = ICON('<path d="M12 4 3.5 8.5 12 13l8.5-4.5L12 4Z"/><path d="m3.5 12.5 8.5 4.5 8.5-4.5"/><path d="m3.5 16.5 8.5 4.5 8.5-4.5"/>');
 const face = (item, avatarUrl) => `<span class="qm-usage-face"><span>${esc(Array.from(item.name || '？')[0])}</span><img alt="" loading="lazy" src="${esc(item.avatar || avatarUrl(item.key))}" hidden></span>`;
@@ -179,7 +246,7 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
         const timeTop = summary.chars[0]?.ms > 0 ? summary.chars[0].key : '', fated = timeTop && timeTop === ranked[0]?.key ? timeTop : '';
         const list = mode === 'floors' ? ranked.map(item => ({ key: item.key, ms: 0, last: 0, ...known.get(item.key), name: known.get(item.key)?.name || item.name, floors: item.floors })) : summary.chars;
         const most = mode === 'floors' ? ranked[0].floors : summary.top;
-        const rows = list.length ? list.map((item, index) => { const value = mode === 'floors' ? item.floors : item.ms; return `<article class="qm-usage-char${index === 0 ? ' is-top' : ''}${item.key === fated ? ' is-fated' : ''}" style="--n:${index}">${item.key === fated ? THREAD : ''}${face(item, avatarUrl)}
+        const rows = list.length ? list.map((item, index) => { const value = mode === 'floors' ? item.floors : item.ms; return `<article class="qm-usage-char${index === 0 ? ' is-top' : ''}${item.key === fated ? ' is-fated' : ''}" style="--n:${index}">${item.key === fated ? `<span class="qm-usage-thread" aria-hidden="true"></span>${MOBIUS}` : ''}${face(item, avatarUrl)}
         <div class="who"><span>${esc(nameOf(item))}</span><span>${mode === 'floors' ? `${item.floors} 层` : esc(durationText(item.ms))}</span></div>
         <div class="qm-usage-bar"><span style="--p:${most ? Math.max(2, Math.round(value / most * 100)) : 0}%;--n:${index}"></span></div>
         <small>最后一次聊天：${esc(lastChatText(item.last ? wall(item.last) : 0, now))}</small></article>`; }).join('') : '<p class="qm-usage-empty">还没有和谁聊过。</p>';
@@ -239,7 +306,14 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
         // 头像取得到才显示；取不到（角色已删）就留着名字的第一个字。
         for (const image of panel.querySelectorAll('.qm-usage-face img')) { const show = () => { image.hidden = false; }; image.addEventListener('load', show); if (image.complete && image.naturalWidth) show(); }
         panel.scrollTop = 0; if (animate) countUp();
+        try { drawThread(panel); } catch (error) { console.warn('[微醺记录] 红线没画出来', error); }
     };
+    // 视差：红线浮在上面，指针一动它错开得比内容多。
+    root.addEventListener('pointermove', event => {
+        const thread = panel.querySelector('.qm-usage-thread'); if (!thread?.style || typeof panel.getBoundingClientRect !== 'function') return;
+        const frame = panel.getBoundingClientRect(); if (!(frame.width > 0)) return;
+        thread.style.transform = `translate(${(-((event.clientX - frame.left) / frame.width - .5) * 10).toFixed(1)}px, ${(-((event.clientY - frame.top) / frame.height - .5) * 7).toFixed(1)}px)`;
+    });
     root.addEventListener('click', event => {
         event.stopPropagation();
         const hit = event.target.closest?.('button, .qm-usage-backdrop');

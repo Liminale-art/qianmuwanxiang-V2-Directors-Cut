@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { FLOOR_KEY, normalizeFloors, recordChat, recordList, chatFloors, floorTotal, floorRanking, createFloorCounter } from '../qianmu-floor-count.js';
-import { usageMarkup } from '../qianmu-usage-view.js';
+import { usageMarkup, threadMarkup } from '../qianmu-usage-view.js';
 import { heartData } from '../yimu/heart-view.mjs';
 
 test('the copy shipped with Yimu is the same file', async () => {
@@ -111,7 +111,9 @@ test('first in both rankings: that one row is tied with the red thread, in eithe
         const html = usageMarkup(usage, { now: T0, page: 'chars', floors, rank });
         assert.deepEqual([...html.matchAll(/<article class="qm-usage-char([^"]*)"/g)].map(match => match[1]), [' is-top is-fated', '']);
         assert.equal((html.match(/class="qm-usage-thread"/g) || []).length, 1);
-        assert.match(html, /is-fated" style="--n:0"><svg class="qm-usage-thread"[^>]*aria-hidden="true">.*<path pathLength="1" d="M0,18 /s);
+        // 线本身要量过这一行的尺寸才画，名单里先留一个位置；莫比乌斯环是固定的一小枚，直接在名单里。
+        assert.match(html, /is-fated" style="--n:0"><span class="qm-usage-thread" aria-hidden="true"><\/span><svg class="qm-usage-mobius" viewBox="0 0 26 15" aria-hidden="true"><path pathLength="1" d="M13\.00,7\.50L/);
+        assert.equal((html.match(/class="qm-usage-mobius"/g) || []).length, 1);
     }
     assert.ok(!usageMarkup({ days: {}, hours: [], chars: {} }, { now: T0, page: 'chars', floors }).includes('is-fated'), 'no time recorded yet: nobody is first in both');
 });
@@ -119,4 +121,22 @@ test('first in both rankings: that one row is tied with the red thread, in eithe
 test('the heart page carries the two counts only when there is something to show', () => {
     assert.deepEqual(heartData({}, { chat: 12, total: 45 }).floors, { chat: 12, total: 45 });
     assert.ok(!('floors' in heartData({}, null))); assert.ok(!('floors' in heartData({}, { chat: 0, total: 0 }))); assert.ok(!('floors' in heartData({})));
+});
+
+test('the thread is one tapered ribbon from beyond the left edge to beyond the right, pale to deep, with twenty motes around it', () => {
+    const html = threadMarkup({ left: -20, right: 380, face: { cx: 29, cy: 35, r: 23 }, nameY: 22, barY: 37 });
+    assert.equal((html.match(/<polygon class="qm-usage-silk"/g) || []).length, 1);
+    assert.equal((html.match(/class="qm-usage-mote"/g) || []).length, 20);
+    assert.match(html, /<linearGradient id="qm-usage-silk-ink" gradientUnits="userSpaceOnUse" x1="-20\.0" y1="0" x2="380\.0" y2="0"><stop offset="0" style="stop-color:var\(--u-fate-pale\)"\/>.*<stop offset="1" style="stop-color:var\(--u-fate-deep\)"\/>/);
+    const line = html.match(/class="qm-usage-reveal" pathLength="1" d="M([^"]+)"/)[1].split('L').map(pair => pair.split(',').map(Number));
+    assert.ok(line[0][0] < -20 && line.at(-1)[0] > 380, 'it comes out of the left edge and leaves past the right one');
+    assert.ok(line.every(point => point.every(Number.isFinite)));
+    // 掠过头像的下半边，不绕头像一圈：经过头像那一段都在圆心以下。
+    const over = line.filter(([x]) => x > 6 && x < 52);
+    assert.ok(over.length > 5 && over.every(([, y]) => y > 35 && y < 35 + 23 + 4));
+    // 两头收成尖：飘带在起笔与收笔处的宽度趋近于零。
+    const ribbon = html.match(/points="([^"]+)"/)[1].split(' ').map(pair => pair.split(',').map(Number)), half = ribbon.length / 2;
+    const widthAt = i => Math.hypot(ribbon[i][0] - ribbon[ribbon.length - 1 - i][0], ribbon[i][1] - ribbon[ribbon.length - 1 - i][1]);
+    assert.ok(widthAt(0) < .2 && widthAt(half - 1) < .2); assert.ok(Math.max(...Array.from({ length: half }, (_, i) => widthAt(i))) > 1.6);
+    assert.equal(threadMarkup({ left: -20, right: 380 }), threadMarkup({ left: -20, right: 380 }), 'the motes are placed the same every time');
 });
