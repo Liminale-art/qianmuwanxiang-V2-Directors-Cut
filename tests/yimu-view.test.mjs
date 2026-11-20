@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.63 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.64 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.63'); assert.equal(pkg.version, '0.8.25');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.64'); assert.equal(pkg.version, '0.8.26');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1743,6 +1743,52 @@ test('after 带入本聊天 the row turns into 撤销带入 for this panel sessi
     assert.deepEqual(deletes().slice(before + 2), [{ entryId: 'assign_2_1', action: 'delete' }]);
     assert.equal(statuses().own, 'active');
     assert.deepEqual((await store.read(request, target)).document.entries.filter(entry => entry.status === 'active').map(entry => entry.id), ['own'], '服务端上也只剩原有的那条');
+});
+
+test('带入本聊天 offers 连同日记心迹 only while confirming and only for files that hold heart material; the choice rides on the confirm', async t => {
+    const file = (name, chat, patch = {}) => ({ name, binding: { avatar: '角色.png', file: chat }, bytes: 4096, updated: Date.UTC(2026, 10, 1), revision: 2, slices: 2, stages: 0, custom: 0, sourceExists: true, ...patch });
+    const files = [file('chat-a.json', '聊天'), file('chat-b.json', '有心迹的聊天', { heart: true }), file('chat-c.json', '没心迹的聊天', { heart: false })];
+    const f = fixture({ manage: { items: files, loading: false, error: '' } });
+    t.after(() => f.view.destroy());
+    f.get('管理').click(); await f.flush();
+    const row = name => f.all().find(node => node.dataset.name === name);
+    const toggle = name => row(name).querySelector('.ym-manage-with-heart'), confirm = name => f.get(`把 ${name === 'chat-b.json' ? '有心迹的聊天' : '没心迹的聊天'} 的记忆带入本聊天`);
+    const assigns = () => f.calls.filter(call => call.type === 'manageAssign').map(call => call.payload);
+    const shown = name => toggle(name).closest('[hidden]') === null;
+
+    // 没有日记心迹的文件：整个过程都不出现这个开关。
+    assert.equal(toggle('chat-c.json'), null);
+    confirm('chat-c.json').click(); assert.equal(confirm('chat-c.json').textContent, '再点确认'); assert.equal(toggle('chat-c.json'), null);
+    confirm('chat-c.json').click(); await f.flush();
+    assert.deepEqual(assigns(), [{ item: files[2] }]);
+
+    // 有的文件：平时不显示；点了「带入本聊天」才出现，默认不选，与操作同在一排。
+    assert.equal(shown('chat-b.json'), false);
+    confirm('chat-b.json').click();
+    assert.equal(confirm('chat-b.json').textContent, '再点确认'); assert.equal(shown('chat-b.json'), true);
+    assert.equal(toggle('chat-b.json').textContent, '连同日记心迹'); assert.equal(toggle('chat-b.json').tagName, 'BUTTON');
+    assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'false');
+    assert.equal(toggle('chat-b.json').parentNode, confirm('chat-b.json').parentNode); assert.equal(toggle('chat-b.json').parentNode.className, 'ym-manage-file-actions');
+    assert.equal(toggle('chat-b.json').parentNode.parentNode.className, 'ym-manage-file-meta');
+    // 点它只是选与不选，不会带入，也不会退出待确认。
+    toggle('chat-b.json').click(); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'true');
+    toggle('chat-b.json').click(); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'false');
+    toggle('chat-b.json').click(); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'true');
+    assert.equal(confirm('chat-b.json').textContent, '再点确认'); assert.equal(assigns().length, 1);
+    // 取消待确认：收起并复位；再来一次不选直接确认，载荷里没有 heart。
+    confirm('chat-b.json').disarm();
+    assert.equal(shown('chat-b.json'), false); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'false'); assert.equal(confirm('chat-b.json').textContent, '带入本聊天');
+    confirm('chat-b.json').click(); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'false');
+    confirm('chat-b.json').click(); await f.flush();
+    assert.deepEqual(assigns().at(-1), { item: files[1] });
+    // 选上再确认：载荷带 heart；确认后开关收起并复位。
+    confirm('chat-b.json').click(); toggle('chat-b.json').click();
+    confirm('chat-b.json').click(); await f.flush();
+    assert.deepEqual(assigns().at(-1), { item: files[1], heart: true }); assert.equal(assigns().length, 3);
+    assert.equal(shown('chat-b.json'), false); assert.equal(toggle('chat-b.json').getAttribute('aria-pressed'), 'false');
+    // 上一回选过，不会被下一回沿用。
+    confirm('chat-b.json').click(); confirm('chat-b.json').click(); await f.flush();
+    assert.deepEqual(assigns().at(-1), { item: files[1] });
 });
 
 test('the heart page opened from the panel deletes one item through the panel action and gets the new data when the panel state changes', async t => {

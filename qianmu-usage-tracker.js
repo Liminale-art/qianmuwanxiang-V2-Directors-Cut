@@ -86,10 +86,37 @@ export function durationText(ms) {
 /** 大数字用的短写法：「2:50」这样的时:分。 */
 export const clockText = ms => { const minutes = Math.floor(num(ms) / 60000); return `${Math.floor(minutes / 60)}:${pad(minutes % 60)}`; };
 
-export function usageSummary(data, at = Date.now(), { weeks = 20 } = {}) {
+/** 大数字：从分钟起步；位数多到格子放不下时才换成小时、再换成天。单位是跟在数字后面的小字。 */
+export function compactTime(ms) {
+    const minutes = Math.floor(num(ms) / 60000);
+    if (minutes < 10000) return { value: String(minutes), unit: 'min' };
+    const hours = minutes / 60;
+    if (hours < 10000) return { value: hours < 1000 ? hours.toFixed(1) : String(Math.round(hours)), unit: 'h' };
+    return { value: String(Math.round(hours / 24)), unit: 'd' };
+}
+const weekStartOf = at => { const day = startOfDay(at); return addDays(day, -((new Date(day).getDay() + 6) % 7)); };
+/** 一个季度的起止（shift：往前或往后几个季度）。 */
+export function quarterRange(at, shift = 0) {
+    const d = new Date(at), quarter = Math.floor(d.getMonth() / 3) + shift;
+    return { from: new Date(d.getFullYear(), quarter * 3, 1).getTime(), to: new Date(d.getFullYear(), quarter * 3 + 3, 0).getTime() };
+}
+/** 热力格：一列一周（周一到周日），列数跟着所选范围走。越深用得越久；范围外与还没到的日子不画。 */
+export function heatCells(data, from, to, at = Date.now()) {
+    const usage = normalizeUsage(data), today = startOfDay(at), start = startOfDay(Math.min(from, to)), end = startOfDay(Math.max(from, to));
+    const first = weekStartOf(start), weeks = Math.round((weekStartOf(end) - first) / (7 * DAY)) + 1, cells = [];
+    let max = 0, total = 0;
+    for (let column = 0; column < weeks; column++) for (let row = 0; row < 7; row++) {
+        const time = addDays(first, column * 7 + row), inside = time >= start && time <= end && time <= today, ms = inside ? usage.days[dayKey(time)] || 0 : null;
+        if (ms) { max = Math.max(max, ms); total += ms; }
+        cells.push({ time, ms, column, row, today: time === today });
+    }
+    for (const cell of cells) cell.level = cell.ms === null ? -1 : !cell.ms ? 0 : Math.min(4, 1 + Math.floor(cell.ms / Math.max(1, max) * 3.999));
+    return { cells, weeks, from: start, to: end, total };
+}
+
+export function usageSummary(data, at = Date.now()) {
     const usage = normalizeUsage(data), today = startOfDay(at), of = time => usage.days[dayKey(time)] || 0;
     const sumFrom = from => { let total = 0; for (let day = from; day <= today; day = addDays(day, 1)) total += of(day); return total; };
-    const weekStart = addDays(today, -((new Date(today).getDay() + 6) % 7));
     const monthStart = new Date(today); monthStart.setDate(1);
     const yearStart = new Date(today); yearStart.setMonth(0, 1);
     const all = Object.values(usage.days).reduce((a, b) => a + b, 0), activeDays = Object.keys(usage.days).length;
@@ -98,24 +125,18 @@ export function usageSummary(data, at = Date.now(), { weeks = 20 } = {}) {
     let longest = 0, run = 0, previous = null;
     for (const key of Object.keys(usage.days).sort()) { const time = new Date(`${key}T00:00:00`).getTime(); run = previous !== null && Math.round((time - previous) / DAY) === 1 ? run + 1 : 1; longest = Math.max(longest, run); previous = time; }
     const peak = usage.hours.reduce((best, ms, hour) => ms > usage.hours[best] ? hour : best, 0);
-    // 热力格：一列一周（周一到周日），最右一列是本周。
-    const first = addDays(weekStart, -7 * (weeks - 1)), cells = [];
-    let max = 0;
-    for (let column = 0; column < weeks; column++) for (let row = 0; row < 7; row++) {
-        const time = addDays(first, column * 7 + row), ms = time > today ? null : of(time);
-        if (ms) max = Math.max(max, ms);
-        cells.push({ time, ms, column, row });
-    }
-    for (const cell of cells) cell.level = cell.ms === null ? -1 : !cell.ms ? 0 : Math.min(4, 1 + Math.floor(cell.ms / Math.max(1, max) * 3.999));
     const chars = Object.entries(usage.chars).map(([key, item]) => ({ key, ...item })).filter(item => item.ms > 0 || item.last > 0).sort((a, b) => b.ms - a.ms || b.last - a.last);
-    return { today: of(today), week: sumFrom(weekStart), month: sumFrom(monthStart.getTime()), year: sumFrom(yearStart.getTime()), all, activeDays, average: activeDays ? all / activeDays : 0,
-        streak, longest, peak: usage.hours[peak] ? peak : null, since: usage.since, cells, weeks, from: first, to: today, chars, top: chars[0]?.ms || 0 };
+    const first = Object.keys(usage.days).sort()[0];
+    return { today: of(today), week: sumFrom(weekStartOf(today)), month: sumFrom(monthStart.getTime()), year: sumFrom(yearStart.getTime()), all, activeDays,
+        streak, longest, peak: usage.hours[peak] ? peak : null, since: usage.since, firstDay: first ? new Date(`${first}T00:00:00`).getTime() : 0,
+        chars, top: chars[0]?.ms || 0, recent: [...chars].sort((a, b) => b.last - a.last)[0] || null };
 }
 
 /** 接到页面上：操作与可见性用捕获阶段听（面板会拦住冒泡），每个节拍记一次账，离开页面时存盘。返回停止函数。 */
 export function startUsageTracking(tracker, { document = globalThis.document, window = globalThis, tickMs = 15000 } = {}) {
     const touch = () => tracker.touch(), options = { capture: true, passive: true };
-    const names = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    // 移动鼠标、滑动手指也算在用：只读不点的时候不该被当成挂机；重新动一下就立刻接着计。
+    const names = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'touchmove', 'scroll'];
     for (const name of names) document.addEventListener(name, touch, options);
     const leave = () => { if (document.visibilityState === 'hidden') tracker.flush(); else tracker.touch(); };
     document.addEventListener('visibilitychange', leave);

@@ -1,7 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialOpacity, quickDialTone } from '../qianmu-quick-dial.js';
+import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialOpacity, quickDialTone, tidyCellRows, bindQuickCellLayout } from '../qianmu-quick-dial.js';
+
+test('quick cells fill every row: rows differ by at most one cell and none is left with a stray one or two', () => {
+  assert.deepEqual(tidyCellRows(17, 209), [3, 3, 3, 3, 3, 2], 'the narrowest phone panel: cells stay wide enough for a four-character label');
+  assert.deepEqual(tidyCellRows(17, 283), [4, 4, 3, 3, 3]);
+  assert.deepEqual(tidyCellRows(17, 319), [5, 4, 4, 4]);
+  assert.deepEqual(tidyCellRows(17, 700), [9, 8], 'a wide panel');
+  assert.deepEqual(tidyCellRows(16, 283), [4, 4, 4, 4]);
+  assert.deepEqual(tidyCellRows(17, 60), [3, 3, 3, 3, 3, 2], 'never fewer than three to a row');
+  assert.deepEqual(tidyCellRows(17, 0), [4, 4, 3, 3, 3], 'width not known yet: plan for four');
+  assert.deepEqual(tidyCellRows(0, 400), []);
+  for (let count = 1; count <= 40; count++) for (let width = 120; width <= 1400; width += 37) {
+    const rows = tidyCellRows(count, width);
+    assert.equal(rows.reduce((a, b) => a + b, 0), count);
+    assert.ok(Math.max(...rows) - Math.min(...rows) <= 1, `${count} cells at ${width}px: ${rows}`);
+    assert.ok(Math.max(...rows) <= 9);
+  }
+});
+
+test('the cell layout writes each cell its row size and one shared height, and lays out again after a reorder', () => {
+  const cell = id => ({ dataset: { command: id }, vars: {}, style: { setProperty(name, value) { this.owner.vars[name] = value; } } });
+  const cells = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(cell); for (const item of cells) item.style.owner = item;
+  const list = { clientWidth: 330, vars: {}, isConnected: true, querySelectorAll: () => cells, style: { setProperty: (name, value) => { list.vars[name] = value; } } };
+  const observers = [];
+  class Observer { constructor(run) { this.run = run; observers.push(this); } observe() {} disconnect() { this.off = true; } }
+  const stop = bindQuickCellLayout(list, { window: { ResizeObserver: Observer, MutationObserver: Observer } });
+  assert.deepEqual(cells.map(item => item.vars['--qm-row']), ['4', '4', '4', '4', '3', '3', '3']);
+  assert.equal(list.vars['--qm-cell-h'], '70px');
+  cells.reverse(); observers[1].run();
+  assert.deepEqual(cells.map(item => item.vars['--qm-row']), ['4', '4', '4', '4', '3', '3', '3'], 'the dragged order is laid out afresh');
+  list.clientWidth = 480; observers[0].run();
+  assert.deepEqual(cells.map(item => item.vars['--qm-row']), ['7', '7', '7', '7', '7', '7', '7']);
+  stop(); assert.ok(observers.every(observer => observer.off));
+});
 
 const phone = side => quickDialGeometry({ centerX: side === 'right' ? 340 : 20, centerY: 400, width: 360, height: 780, size: 44 });
 const point = (geo, offset) => { const angle = quickDialAngle(offset, geo); return [geo.sign * geo.ringX * Math.cos(angle), geo.ringY * Math.sin(angle)]; };

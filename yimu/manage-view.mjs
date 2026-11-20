@@ -43,6 +43,8 @@ export function mountManageView({ document = globalThis.document, journal = null
         let armed = false, timer = null;
         const disarm = () => { const was = armed; armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(false); if (was) onArm?.(false); };
         node.disarm = disarm;
+        // 待确认期间旁边的小开关被点了：确认的时限重新算，不让它在用户刚选完时收回。
+        node.rearm = () => { if (!armed) return; clearTimeout(timer); timers.delete(timer); timer = setTimeout(disarm, CONFIRM_MS); timers.add(timer); };
         node.addEventListener('click', async event => {
             event.stopPropagation?.();
             if (node.disabled) return;
@@ -180,13 +182,14 @@ export function mountManageView({ document = globalThis.document, journal = null
         const live = new Set(entriesNow().filter(entry => entry.status !== 'deleted').map(entry => entry.id));
         return ids.filter(id => live.has(id));
     };
-    async function assign(item) {
+    async function assign(item, withHeart = false) {
         const key = adoptKey(item), before = new Set(entriesNow().map(entry => entry.id));
-        if (await run('manageAssign', { item }) === false) return;
+        if (await run('manageAssign', withHeart ? { item, heart: true } : { item }) === false) return;
         const fresh = entriesNow().filter(entry => !before.has(entry.id) && entry.kind === 'manual' && /_\d+$/.test(entry.id));
         const batches = new Set(fresh.map(entry => entry.id.replace(/_\d+$/, '')));
         adopted.set(key, batches.size === 1 ? fresh.map(entry => entry.id) : []);
     }
+    // 撤销带入只撤那一批记忆切片；一起带来的日记、心迹、年表不撤（要删在心迹页里逐条删）。
     async function undoAssign(item) {
         const key = adoptKey(item);
         if (undoing.has(key)) return;
@@ -220,8 +223,27 @@ export function mountManageView({ document = globalThis.document, journal = null
             if (liveBatch(item).length) {
                 const undo = iconAction(`撤销带入 ${item.binding.file} 的记忆`, 'back', () => undoAssign(item), { needsConfirm: () => true, text: '撤销带入', confirmText: '再点撤销' });
                 undo.disabled = undoing.has(adoptKey(item)); actions.append(undo);
-            } else actions.append(iconAction(`把 ${item.binding.file} 的记忆带入本聊天`, 'link', () => assign(item), { needsConfirm: () => true, text: '带入本聊天',
-                onArm: adopted.has(adoptKey(item)) ? armed => { info.textContent = armed ? '这份已带入过，再点一次重复带入' : facts.join(' · '); } : null }));
+            } else {
+                // 那份文件里有日记心迹时，待确认这一步多一个小开关「连同日记心迹」：默认不选，取消待确认就收起并复位。
+                // 确认时按钮先退出待确认（开关随之复位）再执行，所以退出那一刻把选择记到 sending 里交给带入。
+                const again = adopted.has(adoptKey(item));
+                let sending = false, confirm = null;
+                const heartToggle = item.heart === true ? el('button', 'ym-manage-with-heart', '连同日记心迹') : null;
+                const setHeart = on => heartToggle.setAttribute('aria-pressed', String(on));
+                if (heartToggle) {
+                    heartToggle.type = 'button'; heartToggle.hidden = true; setHeart(false);
+                    heartToggle.addEventListener('click', event => { event.stopPropagation?.(); setHeart(heartToggle.getAttribute('aria-pressed') !== 'true'); confirm.rearm(); });
+                    actions.append(heartToggle);
+                }
+                confirm = iconAction(`把 ${item.binding.file} 的记忆带入本聊天`, 'link', () => assign(item, sending), { needsConfirm: () => true, text: '带入本聊天',
+                    onArm: again || heartToggle ? armed => {
+                        if (again) info.textContent = armed ? '这份已带入过，再点一次重复带入' : facts.join(' · ');
+                        if (!heartToggle) return;
+                        sending = !armed && heartToggle.getAttribute('aria-pressed') === 'true';
+                        heartToggle.hidden = !armed; setHeart(false);
+                    } : null });
+                actions.append(confirm);
+            }
         }
         actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
         meta.append(actions);
@@ -255,7 +277,7 @@ export function mountManageView({ document = globalThis.document, journal = null
         removePicked.disabled = exportPicked.disabled = !chosen;
         filesNote.textContent = selecting ? `已选 ${chosen} 个` : !loaded ? manage.loading ? '正在读取…' : manage.error || ''
             : manage.error || (items.length ? `${items.length} 个 · ${size(items.reduce((sum, item) => sum + (item.bytes || 0), 0))}` : '');
-        const signature = JSON.stringify([loaded, inChat, currentKey(), selecting, [...picked].sort(), items.map(item => [item.name, item.revision, item.bytes, item.updated, item.sourceExists, item.unreadable, ...(inChat && !item.unreadable ? [adopted.has(adoptKey(item)), liveBatch(item).length, undoing.has(adoptKey(item))] : [])])]);
+        const signature = JSON.stringify([loaded, inChat, currentKey(), selecting, [...picked].sort(), items.map(item => [item.name, item.revision, item.bytes, item.updated, item.sourceExists, item.unreadable, item.heart === true, ...(inChat && !item.unreadable ? [adopted.has(adoptKey(item)), liveBatch(item).length, undoing.has(adoptKey(item))] : [])])]);
         if (signature === fileSignature) return;
         fileSignature = signature;
         if (!loaded) { fileList.replaceChildren(); return; }

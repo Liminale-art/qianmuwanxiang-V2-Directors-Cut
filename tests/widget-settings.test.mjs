@@ -33,7 +33,7 @@ function fixture(overrides = {}) {
     const settings = {
         floatingButton: true, quickWheelEnabled: true, quickWheelCustomExpanded: false,
         quickWheelCustomOrder: [...commandIds], quickWheelCustomEnabled: ['dashboard', 'notes'],
-        quickWheelDockedPlugins: [], proseHiveVersion: 3,
+        quickWheelDockedPlugins: [], proseHiveVersion: 4,
         notes: { detached: true, position: { x: 17, y: 92 }, appearance: { tone: 'light', edgeIndex: 0 }, panelSize: { width: 310, height: 420 } },
         ...overrides,
     };
@@ -65,6 +65,7 @@ function fixture(overrides = {}) {
         currentHiveThemeKey: () => 'light', THEME_KEYS: ['light'], QUICK_HEX_BORDER_SVG: '<svg></svg>',
         applyQianmuIcons() {}, bindFloatingNoteEvents() {}, appearanceSession: { mountNotes() {} },
         bindQuickDialReorder: (_list, options) => { reorder = options; },
+        bindQuickCellLayout: () => () => {},
     });
     const names = ['migrateWidgetSettings', 'normalizeQuickWheelSettings', 'notesFeatureEnabled', 'closeNotesPanel',
         'renderFloatingNotes', 'refreshWidgetRuntime', 'bindWidgetSettings', 'renderQuickWheelSettings', 'renderPlugTab'];

@@ -890,9 +890,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (!binding || !state.snapshot.messages?.length) throw new Error('请先打开要带入记忆的聊天');
             if (!item?.name) throw new Error('没有可指定的记忆文件');
             const hashes = await fingerprintMessages(state.snapshot.messages);
-            const result = await api.manageAssign(item, binding, { fromFloor: 1, hash: hashes[0] }, id());
+            // payload.heart：连同那份文件的日记、心迹、年表一起带（服务端按条并入）。记忆带入了而这一步没成时，照实说。
+            const result = await api.manageAssign(item, binding, { fromFloor: 1, hash: hashes[0] }, id(), { heart: payload.heart === true });
             if (isCurrent(binding)) { adopt(binding, result); emit(); }
-            notice(`已带入 ${result.adopted} 条独立记忆`, 'success');
+            if (result.heartError) notice(`已带入 ${result.adopted} 条独立记忆，日记心迹没有带成：${result.heartError}`, 'warning');
+            else notice(`已带入 ${result.adopted} 条独立记忆${result.heart ? '，连同日记心迹' : ''}`, 'success');
             return true;
         }
         // Import archives are usable on the homepage too. They do not require

@@ -9,19 +9,21 @@ function rules(selector) {
     return [...css.matchAll(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`, 'g'))].map(match => match[1]);
 }
 
-test('widget toggles stay in two columns and hive choices stay in four at every breakpoint', () => {
+test('widget toggles stay in two columns and hive choices share each row evenly at every breakpoint', () => {
     const toggles = rules('#story-director-modal .sd-widget-toggle-row');
     const choices = rules('#story-director-modal .sd-wheel-custom-list');
     assert.equal(toggles.length, 1, 'a mobile override must not change the two-toggle layout');
     assert.equal(choices.length, 1, 'one shared choice grid covers narrow and wide panels');
     assert.match(toggles[0], /display:\s*grid/);
     assert.match(toggles[0], /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(choices[0], /display:\s*grid/);
-    assert.match(choices[0], /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+    // 每行几格由脚本按面板宽度写进 --qm-row；样式只负责一行之内平分，所以不再有固定列数。
+    assert.match(choices[0], /display:\s*flex/);
+    assert.match(choices[0], /flex-wrap:\s*wrap/);
+    assert.doesNotMatch(choices[0], /grid-template-columns/);
     assert.doesNotMatch(css, /\.sd-wheel-custom-row\b/, 'the former checkbox/order row is retired');
 });
 
-test('hive choices stack icons above wrapping labels in compact near-square cells', () => {
+test('hive choices stack icons above single-line labels in compact cells', () => {
     const base = rules('#story-director-modal .sd-widget-toggle:not(.sd-btn)').join('\n');
     const icons = rules('#story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon)').join('\n');
     const labels = rules('#story-director-modal .sd-wheel-command-toggle > span').join('\n');
@@ -30,12 +32,13 @@ test('hive choices stack icons above wrapping labels in compact near-square cell
     assert.match(base, /min-height:\s*31px/);
     assert.match(icons, /flex:\s*0\s+0\s+14px/);
     assert.match(choices, /flex-direction:\s*column/);
-    assert.match(choices, /width:\s*100%/);
-    assert.match(choices, /aspect-ratio:\s*1\.12/);
+    assert.match(choices, /width:\s*calc\(\(100% - \(var\(--qm-row, 4\) - 1\) \* 5px\) \/ var\(--qm-row, 4\)/, 'a row of N cells splits the width N ways');
+    assert.match(choices, /height:\s*var\(--qm-cell-h, 66px\)/, 'every cell is the same height whatever its row holds');
+    assert.doesNotMatch(choices, /aspect-ratio/);
     assert.match(labels, /min-width:\s*0/);
     assert.match(labels, /max-width:\s*100%/);
-    assert.match(labels, /white-space:\s*normal/);
-    assert.match(labels, /overflow-wrap:\s*anywhere/);
+    assert.match(labels, /white-space:\s*nowrap/, 'labels never break into two lines');
+    assert.doesNotMatch(labels, /overflow-wrap/);
 });
 
 test('the hive title and selected tags retain the existing theme system', () => {

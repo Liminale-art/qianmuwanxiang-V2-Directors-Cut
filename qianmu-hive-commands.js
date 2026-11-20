@@ -16,7 +16,7 @@ export const QIANMU_HIVE_COMMANDS = Object.freeze([
   { id: 'plug', label: 'API与日志', icon: 'fa-gear', glyph: 'qm-duotone-gear' },
   { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-regular-aperture' },
   { id: 'floor', label: '聊天工具包', icon: 'fa-layer-group', glyph: 'floor-tools' },
-  { id: 'usage', label: '时长', icon: 'fa-clock', glyph: 'qm-duotone-clock' },
+  { id: 'usage', label: '微醺记录', icon: 'fa-clock', glyph: 'qm-duotone-clock' },
 ]);
 
 export function upgradeProseHiveCommands(settings) {

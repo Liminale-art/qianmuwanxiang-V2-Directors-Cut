@@ -158,8 +158,8 @@ test('hive upgrade adds the new command only once and respects a later user remo
     assert.equal(QIANMU_HIVE_COMMANDS.filter(item => item.id === 'text-collection').length, 1);
     const settings = {proseHiveVersion: 2, quickWheelCustomOrder: ['collections', 'notes'], quickWheelCustomEnabled: ['assistant']};
     upgradeProseHiveCommands(settings);
-    assert.deepEqual(settings.quickWheelCustomOrder, ['notes', 'text-collection']);
-    assert.deepEqual(settings.quickWheelCustomEnabled, ['assistant', 'text-collection']);
+    assert.deepEqual(settings.quickWheelCustomOrder, ['notes', 'text-collection', 'usage']);
+    assert.deepEqual(settings.quickWheelCustomEnabled, ['assistant', 'text-collection', 'usage']);
     settings.quickWheelCustomEnabled = []; upgradeProseHiveCommands(settings);
     assert.deepEqual(settings.quickWheelCustomEnabled, []);
 });

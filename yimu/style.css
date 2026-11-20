@@ -564,6 +564,9 @@
 .ym-dialog .ym-manage-file-actions > .ym-button { height: 24px; min-height: 24px; padding: 0 7px; font-size: var(--ym-type-caption); line-height: 1; }
 .ym-dialog .ym-manage-file-actions > .ym-icon-button { width: 24px; flex: 0 0 24px; padding: 0; }
 .ym-manage-file-actions .ym-icon { width: 14px; height: 14px; flex-basis: 14px; }
+.ym-dialog .ym-manage-with-heart { flex: 0 0 auto; height: 24px; margin: 0; padding: 0 2px; border: 0; background: none; color: var(--ym-muted); font: inherit; font-size: var(--ym-type-caption); line-height: 1; white-space: nowrap; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.ym-dialog .ym-manage-with-heart[aria-pressed="true"] { color: var(--ym-accent); font-weight: 650; text-decoration: none; }
+.ym-dialog .ym-manage-with-heart[aria-pressed="true"]::before { content: "✓ "; }
 /* 记忆页底部的翻页栏：浮在列表底部，随页面滚动始终可见。 */
 .ym-pager { position: sticky; bottom: 0; z-index: 2; justify-self: center; display: flex; align-items: center; gap: 6px; padding: 5px 8px;
     border: 1px solid var(--ym-border); border-radius: 999px; background: var(--ym-surface); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }

@@ -52,7 +52,7 @@ export function createApi({ fetcher = globalThis.fetch.bind(globalThis), headers
         defaults: operation => operation === undefined ? request('defaults') : request('defaults', { operation }),
         rename: (binding, newBinding) => request('rename', { binding, newBinding }),
         manageList: () => request('manage/list', {}, transferTimeout),
-        manageAssign: (item, target, placement, id) => request('manage/assign', { name: item.name, target, placement, id }, transferTimeout),
+        manageAssign: (item, target, placement, id, { heart = false } = {}) => request('manage/assign', { name: item.name, target, placement, id, ...(heart ? { heart: true } : {}) }, transferTimeout),
         manageDelete: item => request('manage/delete', { name: item.name, binding: item.binding, expectedRevision: item.revision }),
         backupPlan: binding => request('backup/plan', { binding }, transferTimeout),
         backupExport: (binding, query) => transfer('backup/export', { binding, request: query }, { download: true }),

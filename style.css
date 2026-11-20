@@ -9617,10 +9617,12 @@ svg.qm-glyph-svg > g[data-qm-icon-fixed] { display: inline; }
 #story-director-modal .sd-widget-toggle :is(i, .qm-glyph-icon) { width: 14px; height: 14px; font-size: 14px; }
 #story-director-modal .sd-wheel-settings { margin-top: 0; }
 #story-director-modal .sd-wheel-custom-details > summary { min-height: 31px; padding-block: 4px; font-size: calc(1em - 2px); }
-#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding-top: 5px; }
-#story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle { flex-direction: column; width: 100%; aspect-ratio: 1.12; min-height: 62px; }
+/* 快捷格：每行几格由脚本按面板宽度定（--qm-row），一行之内平分宽度，各行最多差一格，所以左右两边始终对齐。 */
+#story-director-modal .sd-wheel-custom-list { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; padding-top: 5px; }
+#story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle { flex-direction: column; flex: 0 0 auto; width: calc((100% - (var(--qm-row, 4) - 1) * 5px) / var(--qm-row, 4) - .02px); height: var(--qm-cell-h, 66px); padding-inline: 2px; }
 #story-director-modal .sd-wheel-command-toggle > :is(i, .qm-glyph-icon) { flex: 0 0 14px; }
-#story-director-modal .sd-wheel-command-toggle > span { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+/* 文字始终一行：每格的最小宽度按四个字放得下来定（见 tidyCellRows），所以这里不换行。 */
+#story-director-modal .sd-wheel-command-toggle > span { min-width: 0; max-width: 100%; white-space: nowrap; text-align: center; }
 
 /* 专注页沿用圆弧矩形，不再出现与系统规范割裂的大胶囊或圆形播放底框。 */
 #story-director-modal :is(.sd-focus-phase-tabs, .sd-focus-activity-tabs, .sd-focus-sound-sources, .sd-focus-segments) { border-radius: 10px !important; }
@@ -12987,7 +12989,6 @@ html[data-qm-launcher="dial"] .sd-detached-notes-entry > :is(i, .qm-glyph-icon) 
 #story-director-modal .sd-wheel-custom-list.is-sortable > .sd-wheel-command-toggle { cursor: grab; touch-action: pan-y; }
 #story-director-modal .sd-wheel-custom-list > .sd-wheel-command-toggle.is-reordering { cursor: grabbing; opacity: .72; outline: 1px dashed var(--sd-accent); outline-offset: -2px; touch-action: none; }
 #story-director-modal .sd-wheel-order-hint { margin: 8px 0 0; color: var(--sd-muted); font-size: 11px; line-height: 1.4; }
-#story-director-modal .sd-wheel-settings > .sd-wheel-custom-list > .sd-wheel-command-toggle { max-height: 72px; }
 
 /* ── 数据管理卡：占用总览按类别分色块；下面只有「备份」「清理」两行。 ── */
 #story-director-modal .sd-dm { --sd-dm-gap: 10px; }

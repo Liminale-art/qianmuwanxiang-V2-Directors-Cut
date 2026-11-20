@@ -85,6 +85,71 @@ test('the server assigns another chat\'s memory file to this chat, leaving the o
     assert.equal((await f.store.read(f.request, target)).document.entries.length, 4);
 });
 
+// ---- 带入时连同日记心迹 ----
+const day = (name, at) => ({ day: name, text: `${name}看见的一件事。`, at });
+const sourceHeart = { impressions: [{ id: 'imp_s', about: '乙', text: '旧聊天里攒下的一条日记。', days: [day('十一月一日', 1), day('十一月二日', 2), day('十一月三日', 3)], at: 3, updatedAt: 3 }],
+    thoughts: [{ id: 'th_s', group: 'you', about: '乙', text: '旧聊天里的一则心迹。', floor: 77, at: 5 }],
+    events: [{ id: 'ev_same', title: '旧聊天的说法', text: '同一个标识，旧聊天里的内容。', floor: 9, at: 4 }, { id: 'ev_s', title: '旧聊天的节点', text: '第四十层发生的事。', floor: 40, at: 6 }],
+    eventFloor: 50, thoughtFloor: 77 };
+const seedHeart = f => f.store.change(f.request, source, { id: 'heart_s', type: 'heartImport', heart: sourceHeart });
+const listed = async (f, binding) => (await f.store.manageList(f.request)).items.find(value => value.binding.file === binding.file);
+
+test('the file list says whether a memory file holds diary and heart notes; assigning without asking for them leaves them behind', async t => {
+    const f = await serverFixture(t);
+    assert.equal((await listed(f, source)).heart, false, '没有日记心迹的文件');
+    await seedHeart(f);
+    const item = await listed(f, source);
+    assert.equal(item.heart, true);
+    const result = await f.store.manageAssign(f.request, { name: item.name, target, placement: f.placement, id: 'plain_1' });
+    assert.equal(result.adopted, 2); assert.equal(result.heart, false); assert.equal(result.heartError, undefined);
+    const doc = (await f.store.read(f.request, target)).document;
+    assert.equal(doc.heart, undefined, '没选就不带'); assert.equal(doc.entries.length, 2);
+    assert.ok(!doc.operations.includes('plain_1_heart'));
+    assert.equal((await listed(f, target)).heart, false);
+});
+
+test('assigning with heart merges the diary, notes and chronicle item by item: floors stay as they were, nothing already there is overwritten, progress marks are not carried', async t => {
+    const f = await serverFixture(t); await seedHeart(f);
+    // 目标聊天自己已有一条同标识的年表与自己的整理进度。
+    await f.store.change(f.request, target, { id: 'heart_t', type: 'heartImport', heart: { events: [{ id: 'ev_same', title: '本聊天的说法', text: '本聊天已有的不被覆盖。', floor: 2, at: 1 }], eventFloor: 3 } });
+    const item = await listed(f, source);
+    const result = await f.store.manageAssign(f.request, { name: item.name, target, placement: f.placement, id: 'with_1', heart: true });
+    assert.equal(result.adopted, 2); assert.equal(result.heart, true); assert.equal(result.heartError, undefined);
+    const doc = (await f.store.read(f.request, target)).document;
+    assert.deepEqual(result.document.heart, doc.heart, '返回的就是并入后的文档');
+    assert.deepEqual(doc.entries.map(entry => [entry.kind, entry.text]), [['manual', '旧聊天的切片 a'], ['manual', '旧聊天的切片 b']]);
+    assert.deepEqual(doc.heart.impressions, sourceHeart.impressions, '日记整份并入');
+    assert.deepEqual(doc.heart.thoughts, sourceHeart.thoughts, '心迹原样并入，楼层号不改');
+    assert.deepEqual(doc.heart.events.map(event => [event.id, event.title, event.floor]), [['ev_same', '本聊天的说法', 2], ['ev_s', '旧聊天的节点', 40]]);
+    assert.deepEqual([doc.heart.eventFloor, doc.heart.thoughtFloor], [3, 0], '别的聊天的整理进度不带过来');
+    assert.deepEqual((await f.store.read(f.request, source)).document.heart, sourceHeart, '来源文件不动');
+    // 同一次请求重发：记忆与日记心迹都不会再带一遍。
+    const again = await f.store.manageAssign(f.request, { name: item.name, target, placement: f.placement, id: 'with_1', heart: true });
+    assert.equal(again.heart, true); assert.equal(again.adopted, 2);
+    const after = (await f.store.read(f.request, target)).document;
+    assert.equal(after.revision, doc.revision); assert.equal(after.entries.length, 2); assert.deepEqual(after.heart, doc.heart);
+});
+
+test('asking for heart from a file that has none just brings the memory; a heart merge that fails is reported, not passed off as done', async t => {
+    const f = await serverFixture(t);
+    const bare = await listed(f, source);
+    const plain = await f.store.manageAssign(f.request, { name: bare.name, target, placement: f.placement, id: 'none_1', heart: true });
+    assert.equal(plain.adopted, 2); assert.equal(plain.heart, false); assert.equal(plain.heartError, undefined);
+    let doc = (await f.store.read(f.request, target)).document;
+    assert.equal(doc.heart, undefined); assert.ok(!doc.operations.includes('none_1_heart'), '来源没有就跳过，不留空操作');
+    // 让并入这一步真的失败：派生的操作号已被另一份内容占用。
+    await seedHeart(f);
+    await f.store.change(f.request, target, { id: 'clash_1_heart', type: 'heartImport', heart: { events: [{ id: 'ev_t', title: '占位', text: '先占住这个操作号。', floor: 1, at: 1 }] } });
+    const item = await listed(f, source);
+    const failed = await f.store.manageAssign(f.request, { name: item.name, target, placement: f.placement, id: 'clash_1', heart: true });
+    assert.equal(failed.adopted, 2); assert.equal(failed.heart, false); assert.match(failed.heartError, /同一操作标识对应不同内容/);
+    doc = (await f.store.read(f.request, target)).document;
+    assert.deepEqual(failed.document.entries.map(entry => entry.id), doc.entries.map(entry => entry.id), '返回的文档与落盘一致');
+    assert.equal(doc.entries.length, 4); assert.deepEqual(doc.heart.events.map(event => event.id), ['ev_t'], '日记心迹确实没有并入');
+    await assert.rejects(f.store.manageAssign(f.request, { name: item.name, target, placement: f.placement, id: 'x'.repeat(95), heart: true }), /操作标识无效/);
+    assert.equal((await f.store.read(f.request, target)).document.entries.length, 4, '标识派生不出来时整件事都不做');
+});
+
 test('a backup whose text does not match can be brought into a chosen chat as independent memory; same-character chats are offered first', async t => {
     const f = await serverFixture(t);
     const plan = await f.store.backupPlan(f.request, source);

@@ -871,7 +871,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
             }));
         }
         addManual.disabled = !available;
-        search.disabled = filter.disabled = !available; heartEntry.hidden = !state.document;
+        search.disabled = filter.disabled = !available; heartEntry.hidden = !state.snapshot; // 打开了聊天就在：读不到记忆（服务端待更新等）时页面是空的，但入口不该跟着消失
         selectToggle.disabled = !available || Boolean(state.busy) && !selecting;
         for (const control of controls.values()) control.input.disabled = !available;
         for (const redo of list.querySelectorAll('[data-ym-redo]')) {

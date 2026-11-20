@@ -1,8 +1,8 @@
 // 使用时长：只数真正在用的时间；按天与按角色各一份；汇总与面板。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createUsageTracker, normalizeUsage, usageSummary, durationText, clockText, dayKey } from '../qianmu-usage-tracker.js';
-import { usageMarkup, lastChatText } from '../qianmu-usage-view.js';
+import { createUsageTracker, normalizeUsage, usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey } from '../qianmu-usage-tracker.js';
+import { usageMarkup, lastChatText, DRINKS, timeZoneText } from '../qianmu-usage-view.js';
 
 const T0 = new Date(2026, 10, 20, 14, 0, 0).getTime(), MIN = 60000;
 function fixture(saved = null) {
@@ -46,32 +46,61 @@ test('each character gets their own total, kept by avatar file so it outlives th
     assert.deepEqual(normalizeUsage({ days: { bad: 5, '2026-11-20': -1 }, chars: { '': {}, ok: { ms: 'x' } }, hours: 'no' }), { version: 1, since: 0, days: {}, hours: Array(24).fill(0), chars: { ok: { name: '', ms: 0, last: 0 } } });
 });
 
-test('the summary gives day, week, month, year totals, streaks, the usual hour, a week-per-column heat grid and characters ranked by time', () => {
+test('the summary gives day, week, month, year and all-time totals, streaks, the usual hour and characters ranked by time, plus the one chatted with most recently', () => {
     const day = n => dayKey(T0 - n * 86400000), days = { [day(0)]: 50 * MIN, [day(1)]: 120 * MIN, [day(2)]: 10 * MIN, [day(4)]: 30 * MIN, [day(40)]: 60 * MIN };
     const hours = Array(24).fill(0); hours[22] = 9; hours[14] = 3;
-    const data = { since: T0 - 40 * 86400000, days, hours, chars: { 'A.png': { name: '阿澈', ms: 200 * MIN, last: T0 - 3600000 }, 'B.png': { name: '店主', ms: 20 * MIN, last: T0 - 9 * 86400000 }, 'C.png': { name: '没聊过', ms: 0, last: 0 } } };
-    const s = usageSummary(data, T0, { weeks: 8 });
-    assert.equal(s.today, 50 * MIN); assert.equal(s.week, (50 + 120 + 10 + 30) * MIN, '2026-11-20 是周五，本周从周一 11-16 起'); assert.equal(s.month, 210 * MIN); assert.equal(s.year, 270 * MIN);
+    const data = { since: T0 - 40 * 86400000, days, hours, chars: { 'A.png': { name: '阿澈', ms: 200 * MIN, last: T0 - 9 * 86400000 }, 'B.png': { name: '店主', ms: 20 * MIN, last: T0 - 3600000 }, 'C.png': { name: '没聊过', ms: 0, last: 0 } } };
+    const s = usageSummary(data, T0);
+    assert.equal(s.today, 50 * MIN); assert.equal(s.week, (50 + 120 + 10 + 30) * MIN, '2026-11-20 是周五，本周从周一 11-16 起'); assert.equal(s.month, 210 * MIN); assert.equal(s.year, 270 * MIN); assert.equal(s.all, 270 * MIN);
     assert.deepEqual([s.streak, s.longest, s.activeDays, s.peak], [3, 3, 5, 22]);
-    assert.equal(s.cells.length, 56); assert.equal(s.cells.at(-1).level, -1, '本周还没到的日子不画');
-    const todayCell = s.cells.find(cell => cell.time === new Date(T0).setHours(0, 0, 0, 0)); assert.deepEqual([todayCell.column, todayCell.row, todayCell.level], [7, 4, 2]);
-    assert.equal(Math.max(...s.cells.map(cell => cell.level)), 4);
-    assert.deepEqual(s.chars.map(item => item.key), ['A.png', 'B.png']); assert.equal(s.top, 200 * MIN);
-    assert.deepEqual([durationText(0), durationText(30000), durationText(5 * MIN), durationText(125 * MIN), durationText(120 * MIN), clockText(170 * MIN)], ['0 分钟', '不到 1 分钟', '5 分钟', '2 小时 5 分', '2 小时', '2:50']);
-    // 今天还没用，昨天之前连着：不算断。
-    assert.equal(usageSummary({ days: { [day(1)]: 5, [day(2)]: 5 } }, T0).streak, 2);
+    assert.deepEqual(s.chars.map(item => item.key), ['A.png', 'B.png']); assert.equal(s.top, 200 * MIN); assert.equal(s.recent.key, 'B.png', '最近聊过的那位不一定是时长最长的');
+    assert.equal(usageSummary({ days: { [day(1)]: 5, [day(2)]: 5 } }, T0).streak, 2, '今天还没用，昨天之前连着：不算断');
+    // 大数字从分钟起步，放不下才换单位。
+    assert.deepEqual([compactTime(0), compactTime(59 * MIN), compactTime(9999 * MIN), compactTime(10000 * MIN), compactTime(600000 * MIN), compactTime(1e9 * MIN)],
+        [{ value: '0', unit: 'min' }, { value: '59', unit: 'min' }, { value: '9999', unit: 'min' }, { value: '166.7', unit: 'h' }, { value: '417', unit: 'd' }, { value: '694444', unit: 'd' }]);
+    assert.deepEqual([durationText(0), durationText(30000), durationText(5 * MIN), durationText(125 * MIN), durationText(120 * MIN)], ['0 分钟', '不到 1 分钟', '5 分钟', '2 小时 5 分', '2 小时']);
 });
 
-test('the panel markup: heat grid and six cards on the home page; the character page lists face, name, a bar, total time and the last chat; text is escaped', () => {
-    const data = { since: T0 - 86400000, days: { [dayKey(T0)]: 170 * MIN }, hours: Array(24).fill(0), chars: { 'A.png': { name: '<b>阿澈</b>', ms: 100 * MIN, last: T0 - 86400000 }, 'B.png': { name: '店主', ms: 25 * MIN, last: 0 } } };
-    const home = usageMarkup(data, { now: T0 });
-    assert.match(home, /<h3>时长<\/h3>/); assert.equal((home.match(/class="qm-usage-card"/g) || []).length, 6); assert.equal((home.match(/<i data-level=/g) || []).length, 140);
-    assert.match(home, /<em>今日<\/em><strong>2:50<\/strong>/); assert.match(home, /data-usage-page="chars"><span>角色时长<\/span><span>2 位/);
-    assert.match(home, /data-usage-shift="1" aria-label="更早" disabled/);
+test('the heat grid defaults to the current quarter, follows any chosen range, and is darker for longer days', () => {
+    const q = quarterRange(T0);
+    assert.deepEqual([new Date(q.from).toDateString(), new Date(q.to).toDateString()], [new Date(2026, 9, 1).toDateString(), new Date(2026, 11, 31).toDateString()]);
+    assert.equal(new Date(quarterRange(T0, -1).from).getMonth(), 6);
+    const day = n => dayKey(T0 - n * 86400000), data = { days: { [day(0)]: 10 * MIN, [day(1)]: 40 * MIN, [day(2)]: 80 * MIN, [day(3)]: 160 * MIN } };
+    const heat = heatCells(data, q.from, q.to, T0);
+    assert.equal(heat.weeks, 14); assert.equal(heat.cells.length, 98); assert.equal(heat.total, 290 * MIN);
+    const at = n => heat.cells.find(cell => cell.time === new Date(T0 - n * 86400000).setHours(0, 0, 0, 0));
+    assert.ok(at(3).level > at(2).level && at(2).level > at(0).level, '越久越深'); assert.equal(at(3).level, 4); assert.equal(at(0).today, true);
+    assert.equal(heat.cells.filter(cell => cell.time > new Date(T0).setHours(0, 0, 0, 0)).every(cell => cell.level === -1), true, '还没到的日子不画');
+    assert.equal(heat.cells[0].level, -1, '范围前面补齐那几天不画');
+    const week = heatCells(data, T0 - 6 * 86400000, T0, T0); assert.ok(week.weeks <= 2);
+    const year = heatCells(data, T0 - 364 * 86400000, T0, T0); assert.ok(year.weeks >= 52);
+});
+
+test('the panel: heat grid with a range line and a custom picker, the most recent character right below it, eight counters with small English units; the regulars page lists face, name, bar, total and last chat', () => {
+    const data = { since: T0 - 86400000, days: { [dayKey(T0)]: 170 * MIN }, hours: Object.assign(Array(24).fill(0), { 14: 5 }), chars: { 'A.png': { name: '<b>阿澈</b>', ms: 100 * MIN, last: T0 - 86400000 }, 'B.png': { name: '店主', ms: 25 * MIN, last: T0 - 60000 } } };
+    const home = usageMarkup(data, { now: T0, drink: 'Negroni', zone: 'Asia/Shanghai · UTC+8' });
+    assert.match(home, /<h3>微醺记录<\/h3>/);
+    assert.equal((home.match(/class="qm-usage-card"/g) || []).length, 8);
+    assert.match(home, /<em>今日<\/em><strong><i data-count="170">170<\/i><span>min<\/span><\/strong><\/section>/, '分钟起步、英文小单位、下面不再重复小字');
+    assert.ok(!home.includes('qm-usage-bar'), '进度条只给常客名单用');
+    assert.match(home, /<em>今日来杯 Negroni<\/em>.*<small>始于 <b>11月19日<\/b><\/small>/s);
+    assert.match(home, /<em>最常在<\/em><strong><span>下午<\/span><i>14:00<\/i><\/strong><small>Asia\/Shanghai · UTC\+8<\/small>/);
+    assert.match(home, /<span>2026\.10\.1 — 2026\.12\.31<\/span>/); assert.match(home, /data-usage-custom aria-pressed="false"/); assert.match(home, /class="qm-usage-pick" hidden/);
+    // 最近聊过的那位紧跟热力格：没有标题与人数，点进去就是名单。
+    const heatAt = home.indexOf('qm-usage-heat'), lastAt = home.indexOf('qm-usage-last'), cardsAt = home.indexOf('qm-usage-cards');
+    assert.ok(heatAt < lastAt && lastAt < cardsAt);
+    assert.match(home, /class="qm-usage-last" data-usage-page="chars"[^>]*>.*<strong>店主<\/strong>.*<small>今天 13:59 聊过<\/small>/s);
+    assert.ok(!/位 ›|角色时长/.test(home));
+    const custom = usageMarkup(data, { now: T0, range: { from: T0 - 6 * 86400000, to: T0, custom: true } });
+    assert.match(custom, /data-usage-custom aria-pressed="true"/); assert.match(custom, /data-usage-from aria-label="开始日期" value="2026-11-14"/); assert.ok(!custom.includes('class="qm-usage-pick" hidden'));
     const chars = usageMarkup(data, { now: T0, page: 'chars' });
-    assert.match(chars, /<h3>角色时长<\/h3>/); assert.ok(chars.includes('&lt;b&gt;阿澈&lt;/b&gt;') && !chars.includes('<b>阿澈</b>'));
-    assert.match(chars, /1 小时 40 分/); assert.match(chars, /--p:100%/); assert.match(chars, /--p:25%/); assert.match(chars, /最后一次聊天：昨天 14:00/); assert.match(chars, /最后一次聊天：还没有聊过/);
+    assert.match(chars, /<h3>常客<\/h3>/); assert.ok(chars.includes('&lt;b&gt;阿澈&lt;/b&gt;') && !chars.includes('<b>阿澈</b>'));
+    assert.match(chars, /1 小时 40 分/); assert.match(chars, /--p:100%/); assert.match(chars, /--p:25%/); assert.match(chars, /最后一次聊天：昨天 14:00/);
     assert.match(chars, /src="\/thumbnail\?type=avatar&amp;file=A\.png"/);
     assert.match(usageMarkup({}, { now: T0, page: 'chars' }), /还没有和谁聊过/);
+    assert.ok(!usageMarkup({}, { now: T0 }).includes('qm-usage-last'), '还没聊过谁就不放那一格');
     assert.deepEqual([lastChatText(T0 - 60000, T0), lastChatText(T0 - 3 * 86400000, T0), lastChatText(new Date(2026, 9, 1, 8).getTime(), T0)], ['今天 13:59', '3 天前', '2026年10月1日']);
+    // 酒名都短得放得进半宽的格子。
+    assert.ok(DRINKS.length >= 30 && DRINKS.every(name => name.length <= 9) && new Set(DRINKS).size === DRINKS.length);
+    assert.match(timeZoneText(new Date(T0)), /UTC[+-]\d/);
 });

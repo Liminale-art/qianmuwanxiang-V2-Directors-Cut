@@ -453,3 +453,41 @@ export function bindQuickDialReorder(list, { selector = '[data-command]', onReor
   list.addEventListener('pointerup', finish);
   list.addEventListener('pointercancel', finish);
 }
+
+/** 快捷格每行放几个：先按可用宽度定一行最多几格，再把格子均分到各行（各行最多差一格），末行不会只剩一两格。
+ * min 是一格至少多宽：四个字的入口名要一行放得下。 */
+export function tidyCellRows(count, width, { min = 54, gap = 5, most = 9 } = {}) {
+  const total = Math.max(0, Math.floor(Number(count) || 0));
+  if (!total) return [];
+  const fit = width > 0 ? Math.max(3, Math.min(most, Math.floor((width + gap) / (min + gap)))) : 4;
+  const rows = Math.ceil(total / fit), base = Math.floor(total / rows), extra = total % rows;
+  return Array.from({ length: rows }, (_, row) => base + (row < extra ? 1 : 0));
+}
+
+// 设置页里的快捷格：跟着面板宽度重排。每格记下自己那一行有几格（--qm-row），宽度由样式按它平分；高度全表一致。
+// 拖动排序会挪动节点，所以节点一变就重排一次。返回停止函数。
+export function bindQuickCellLayout(list, { selector = '[data-command]', gap = 5, window = globalThis } = {}) {
+  if (!list) return () => {};
+  let last = '';
+  const layout = () => {
+    const cells = [...list.querySelectorAll(selector)], width = list.clientWidth || 0, rows = tidyCellRows(cells.length, width, { gap });
+    const widest = Math.max(1, ...rows), height = width > 0 ? Math.round(Math.max(62, Math.min(72, (width - (widest - 1) * gap) / widest / 1.12))) : 0;
+    const signature = `${rows.join(',')}|${height}|${cells.map(cell => cell.dataset?.command).join(',')}`;
+    if (signature === last) return;
+    last = signature;
+    let index = 0;
+    for (const size of rows) for (let n = 0; n < size; n++) cells[index++]?.style?.setProperty('--qm-row', String(size));
+    if (height) list.style?.setProperty('--qm-cell-h', `${height}px`);
+  };
+  layout();
+  const observers = [];
+  const watch = (Observer, options) => {
+    if (typeof Observer !== 'function') return;
+    const observer = new Observer(() => { if (list.isConnected === false) stop(); else layout(); });
+    observer.observe(list, options); observers.push(observer);
+  };
+  function stop() { for (const observer of observers.splice(0)) observer.disconnect(); }
+  watch(window.ResizeObserver);
+  watch(window.MutationObserver, { childList: true });
+  return stop;
+}

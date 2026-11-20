@@ -25,6 +25,7 @@ const withReceipt = operation => {
     const {receipt: ignored, ...values} = operation;
     return {...values, receipt: digest(JSON.stringify(values))};
 };
+const hasHeart = heart => Boolean(heart && (heart.impressions?.length || heart.thoughts?.length || heart.events?.length));
 const sameFile = (a, b) => a?.ino > 0n && a.ino === b?.ino && a.dev === b?.dev;
 const sameVersion = (a, b) => sameFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs;
 const child = (parent, target) => {
@@ -741,7 +742,7 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
                 try { await io.stat(sourcePath(ctx, binding).target); sourceExists = true; } catch { sourceExists = false; }
                 items.push({name, binding, bytes, updated, revision: value.revision, enabled: value.enabled === true, sourceExists,
                     moved: Boolean(value.movedTo), slices: live.filter(entry => entry.kind === 'summary').length, stages: live.filter(entry => entry.kind === 'stage').length,
-                    custom: live.filter(entry => entry.kind === 'manual').length, traces: value.entries.length - live.length});
+                    custom: live.filter(entry => entry.kind === 'manual').length, traces: value.entries.length - live.length, heart: hasHeart(value.heart)});
             } catch { items.push({name, bytes, updated, unreadable: true}); }
         }
         return {items};
@@ -767,6 +768,9 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
 
     // 把账户里另一份记忆文件指定给某个聊天：读出那份文件里可带走的记忆，作为独立记忆（自定义切片）写进目标聊天。
     // 原文件不动；目标聊天的原文、已有记忆也不动。走的是普通的 change，所以修订号、来源核对都照常。
+    // body.heart 为真时，记忆带入之后再把那份文件的日记、心迹、年表并进来（按条去重，已有的不覆盖）：
+    // 楼层号是原聊天的，原样并入，只用于排序与显示；那份文件的整理进度不带，免得这个聊天自己的日记、心迹被它挡住。
+    // 第二步的操作号由传入的 id 派生，同一次请求重发不会并两遍。记忆已带入而日记心迹没并成时，如实返回 heartError，不算成功。
     async function manageAssign(request, body) {
         const ctx = context(request);
         await prepare(ctx);
@@ -778,9 +782,18 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         if (!source.value || !source.fingerprint) fail('manage', '这份记忆文件已不存在，请刷新列表', 409);
         const entries = contract.portableMemories(source.value);
         if (!entries.length) fail('manage', '这份记忆文件里没有可带入的记忆', 409);
+        const withHeart = body?.heart === true && hasHeart(source.value.heart);
+        if (withHeart && !(typeof body.id === 'string' && body.id.length <= 94)) fail('manage', '操作标识无效', 400);
         const placement = {binding: target, fromFloor: body?.placement?.fromFloor, hash: body?.placement?.hash};
         const result = await change(request, target, {id: body?.id, type: 'adopt', entries: entries.slice(0, contract.ADOPT_LIMIT), placement});
-        return {...result, adopted: entries.length};
+        if (!withHeart) return {...result, adopted: entries.length, heart: false};
+        const {impressions, thoughts, events} = source.value.heart;
+        try {
+            const merged = await change(request, target, {id: `${body.id}_heart`, type: 'heartImport', heart: {impressions, thoughts, events}});
+            return {...merged, adopted: entries.length, heart: true};
+        } catch (error) {
+            return {...result, adopted: entries.length, heart: false, heartError: error?.message || '日记心迹没有带成'};
+        }
     }
 
     return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, manageAssign, ...stories, ...backups});

@@ -63,13 +63,13 @@ try {
         const grid = await page.locator('.sd-wheel-custom-list').evaluate(node => {
             const frame = node.getBoundingClientRect(), buttons = [...node.children], rows = new Map();
             for (const button of buttons) { const y = Math.round(button.getBoundingClientRect().top); rows.set(y, (rows.get(y) || 0) + 1); }
-            return { columns: getComputedStyle(node).gridTemplateColumns.split(' ').length, rows: [...rows.values()],
+            return { rows: [...rows.values()],
                 cells: buttons.map(button => { const rect = button.getBoundingClientRect(), icon = button.querySelector('.qm-glyph-icon').getBoundingClientRect(), text = button.querySelector('span').getBoundingClientRect(); return { label: button.querySelector('span').textContent, ratio: rect.width / rect.height, above: icon.bottom <= text.top + 1, centered: Math.abs(icon.left + icon.width / 2 - text.left - text.width / 2) < 1, fits: rect.left >= frame.left && rect.right <= frame.right + 1 && button.scrollWidth <= button.clientWidth + 1 && button.scrollHeight <= button.clientHeight + 1 }; }) };
         });
-        assert.equal(grid.columns, 4, label); assert.deepEqual(grid.rows, [4, 4, 4, 4], label);
+        assert.equal(grid.rows.reduce((a, b) => a + b, 0), QIANMU_HIVE_COMMANDS.length, label); assert.ok(Math.max(...grid.rows) - Math.min(...grid.rows) <= 1, `${label}: rows ${grid.rows}`);
         assert.deepEqual(grid.cells.map(cell => cell.label), QIANMU_HIVE_COMMANDS.map(item => item.label));
-        assert.ok(grid.cells.every(cell => cell.above && cell.centered && cell.fits && cell.ratio >= 0.7 && cell.ratio <= 1.2), `${label}: ${JSON.stringify(grid.cells)}`);
-        record(`${label}: four near-square columns keep all sixteen icons above complete centered labels`);
+        assert.ok(grid.cells.every(cell => cell.above && cell.centered && cell.fits && cell.ratio >= 0.7 && cell.ratio <= 1.9), `${label}: ${JSON.stringify(grid.cells)}`);
+        record(`${label}: evenly filled rows keep every icon above a complete centered label`);
         const bar = page.locator('.sd-lib-icon-selection');
         assert.equal(await page.locator('.sd-lib-cancel-export').count(), 0);
         const actions = await bar.locator('button').evaluateAll(nodes => nodes.map(node => {

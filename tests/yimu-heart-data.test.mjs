@@ -9,7 +9,7 @@ import {registerYimuRoutes} from '../yimu/server-plugin.mjs';
 import {createApi} from '../yimu/client.mjs';
 import {createController} from '../yimu/runtime.mjs';
 import {createHost, HEART_PROMPT_KEY} from '../yimu/host.mjs';
-import {createDocument, applyOperation, validateDocument, DEFAULTS, validateSettings} from '../yimu/contract.mjs';
+import {createDocument, applyOperation, validateDocument, DEFAULTS, validateSettings, fingerprintMessages} from '../yimu/contract.mjs';
 import {buildPlan} from '../yimu/core.mjs';
 import {sureOf, mergeHeart, carryHeart, validateHeart} from '../yimu/heart-contract.mjs';
 import {diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, HEART_TAG} from '../yimu/heart-core.mjs';
@@ -211,7 +211,8 @@ async function fixture(t) {
     };
     const host = createHost({getContext: () => context});
     let nextId = 0;
-    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `heart_${++nextId}`, roundStore: null});
+    let noticed = () => {};
+    const controller = createController({host, api, defer: fn => tasks.push(fn), id: () => `heart_${++nextId}`, roundStore: null, onNotice: (...args) => noticed(...args)});
     t.after(async () => { controller.destroy(); await fs.rm(await fs.realpath(root), {recursive: true}); });
     const flush = async () => { for (let pass = 0; pass < 20; pass++) { while (tasks.length) await tasks.shift()(); await new Promise(resolve => setTimeout(resolve, 5)); if (!tasks.length) break; } };
     const round = async (type, reply) => {
@@ -227,7 +228,7 @@ async function fixture(t) {
         await flush();
         return asked;
     };
-    return {api, context, controller, prompts, sent, flush, round, model: value => { model = value; }, read: async () => (await api.read(binding)).document};
+    return {api, chats, context, controller, prompts, sent, flush, round, onNotice: fn => { noticed = fn; }, model: value => { model = value; }, read: async () => (await api.read(binding)).document};
 }
 
 test('whole chain: traces ride on a summary → the diary turns them into an impression and a chronicle entry → a heart note written by the main model is lifted out of the reply', async t => {
@@ -276,6 +277,37 @@ test('whole chain: traces ride on a summary → the diary turns them into an imp
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);
     assert.deepEqual(page.thoughts, []);
+});
+
+test('whole chain: 带入本聊天 with 连同日记心迹 goes panel action → runtime → client → server and lands in the open chat; without it the heart stays behind', async t => {
+    const f = await fixture(t);
+    const other = {avatar: binding.avatar, file: 'Earlier-chat', integrity: 'earlier_identity'};
+    const lines = Array.from({length: 4}, (_, i) => ({name: i % 2 ? '阿澈' : '小满', is_user: !(i % 2), mes: `更早的聊天第 ${i + 1} 层。`, send_date: String(i)}));
+    await fs.writeFile(path.join(f.chats, 'Heart', `${other.file}.jsonl`), [{chat_metadata: {integrity: other.integrity}}, ...lines].map(JSON.stringify).join('\n'), 'utf8');
+    const hashes = await fingerprintMessages(lines);
+    await f.api.change(other, {id: 'own_note', type: 'append', entry: {id: 'note', kind: 'manual', text: '更早那段聊天里记下的一条。', source: null, placement: {binding: other, fromFloor: 1, hash: hashes[0]}}});
+    await f.api.change(other, {id: 'own_heart', type: 'heartImport', heart: {thoughts: [{id: 'th_old', group: 'you', about: '小满', text: '更早时写下的一则心迹。', floor: 30, at: 2}],
+        events: [{id: 'ev_old', title: '初见', text: '更早那段聊天里的节点。', floor: 12, at: 1}], eventFloor: 30, thoughtFloor: 30}});
+    const notices = []; f.onNotice((message, tone) => notices.push([message, tone]));
+    await f.controller.refresh();
+    await f.controller.action('manageList', {});
+    const item = f.controller.state.manage.items.find(value => value.binding.file === other.file);
+    assert.equal(item.heart, true);
+    assert.equal(f.controller.state.manage.items.find(value => value.binding.file === binding.file)?.heart ?? false, false);
+    // 不选：只带记忆。
+    await f.controller.action('manageAssign', {item});
+    assert.deepEqual(notices.at(-1), ['已带入 1 条独立记忆', 'success']);
+    assert.equal((await f.read()).heart, undefined);
+    // 选了：记忆之外，日记心迹也并进当前聊天，面板状态里立刻就有。
+    await f.controller.action('manageAssign', {item, heart: true});
+    assert.deepEqual(notices.at(-1), ['已带入 1 条独立记忆，连同日记心迹', 'success']);
+    const doc = await f.read();
+    assert.deepEqual(doc.heart.thoughts.map(note => [note.id, note.floor]), [['th_old', 30]]);
+    assert.deepEqual(doc.heart.events.map(event => [event.id, event.floor]), [['ev_old', 12]]);
+    assert.deepEqual([doc.heart.eventFloor, doc.heart.thoughtFloor], [0, 0]);
+    assert.deepEqual(f.controller.state.document.heart, doc.heart);
+    assert.equal(doc.entries.filter(entry => entry.status === 'active' && entry.kind === 'manual').length, 2);
+    assert.deepEqual(heartData(f.controller.state).events.map(event => event.title), ['初见'], '心迹页拿得到');
 });
 
 test('an exported page carries the raw material and can be brought back in: merged by item, nothing already there is overwritten', () => {
