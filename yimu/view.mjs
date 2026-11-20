@@ -32,6 +32,14 @@ const SETTINGS = [
     ['stageThreshold', '阶段总结触发', 'number', 0],
     ['stageRecent', '保留最近记忆切片', 'number', 0],
     ['stageChars', '每条阶段总结字数上限', 'number', 0],
+    ['diary', '观察日记', 'checkbox'],
+    ['diaryChars', '每条印象字数上限', 'number', 10],
+    ['diaryInject', '印象随记忆带入', 'checkbox'],
+    ['chronicle', '关系年表', 'checkbox'],
+    ['thoughts', '心迹', 'checkbox'],
+    ['thoughtChars', '每则心迹字数上限', 'number', 20],
+    ['thoughtCooldown', '心迹间隔层数', 'number', 1],
+    ['thoughtInject', '心迹随记忆带入', 'checkbox'],
     ['recall', '原文回查与补充', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
@@ -41,6 +49,12 @@ const SETTING_HINTS = {
     triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
+    diary: '把留意到的事归成印象：同一件事在 3 个不同的日子里看见才算数，6 个日子才笃定；跟着阶段总结一起整理，用总结的连接',
+    diaryInject: '回复时带上在场的人的印象，最多三条',
+    chronicle: '从记忆里拾出这段关系的节点：第一次、约定、和解……',
+    thoughts: '由写正文的模型在回复末尾顺带写一则，写完即从正文里收走；只支持聊天补全',
+    thoughtCooldown: '两则心迹至少隔这么多层，并且其间完成过一次阶段总结；模型可以不写',
+    thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受 Callback 冷却约束',
     maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
 const BLANK_ZERO = new Set(['budget']);
@@ -380,11 +394,14 @@ export function createView({ onAction, connectionApi, journal = null, document =
         ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
+        ['heart', '心迹日记', ['diary', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
         const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
         group.append(el('h3', 'ym-setting-title', title));
         const body = el('div', 'ym-settings-form'); group.append(body);
+        // 观察日记与年表平时跟着阶段总结整理；这里可以随手整理一次。
+        if (name === 'heart') { const run = button('整理日记', () => { void dispatch('heartDiary', {}, run); }, 'ym-heart-run'); group.append(run); }
         settingsForm.append(group); for (const key of keys) settingGroups.set(key, body);
     }
     for (const [key, label, type, min] of SETTINGS) {
@@ -1271,7 +1288,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
             return;
         }
         // 只留一条总 token；每条切片 300 字以内直接看，超了就截断并给一个跳到该条目的按钮。
-        if (Number.isFinite(use.tokens)) usedBody.append(el('p', 'ym-muted', `本次注入约 ${use.tokens} token`));
+        if (Number.isFinite(use.tokens)) usedBody.append(el('p', 'ym-muted', `本次注入约 ${use.tokens} token${use.semantic ? ' · 向量参与排序' : ''}`));
+        if (!use.semantic && use.semanticNote) usedBody.append(el('p', 'ym-muted', `向量未参与：${use.semanticNote}`));
         const usedEntries = use.entries || (use.memoryIds || []).map(id => state.document?.entries.find(entry => entry.id === id)).filter(Boolean);
         for (const entry of usedEntries) {
             const item = el('div', 'ym-used-entry');
@@ -1351,6 +1369,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
         if (openMenuId && !event.target.closest?.('.ym-entry-actions')) closeMore();
         if (event.target === dialog) close();
     });
+    // 捕获阶段：管理页的小按钮会拦住冒泡，这里要在它们之前知道点到了哪里，好把「更多」收回。
+    dialog.addEventListener('click', event => manage.clickedAt(event.target), true);
     dialog.addEventListener('keydown', event => {
         const ownerDialog = event.target.closest?.('dialog');
         if (ownerDialog && ownerDialog !== dialog) return;

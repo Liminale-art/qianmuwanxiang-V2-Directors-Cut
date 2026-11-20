@@ -1155,12 +1155,38 @@ test('a source that stays unverified uses no memory this round and says why; the
     assert.equal(f.controller.state.lastSkip, null);
 });
 
-test('when the pre-generation read is too slow the round keeps the original context and records a timeout', async t => {
+test('when the pre-generation read is too slow the round goes on with the last verified memory; rerolls too', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();
     const slow = createController({host: f.host, api: f.api, defer: fn => f.tasks.push(fn), interceptWaitMs: 30});
     t.after(() => slow.destroy());
     await slow.refresh();
+    assert.ok(slow.state.document.entries.length > 0, 'the fixture has memory to carry');
+    for (const type of ['normal', 'regenerate']) {
+        const gate = {started: deferredValue(), release: deferredValue()};
+        f.faults.delayReadReply = gate;
+        await slow.event('GENERATION_STARTED', [type, {}, false]);
+        const coreChat = clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
+        await slow.intercept(coreChat, 65536, () => {}, type);
+        assert.equal(slow.state.lastSkip, null, `${type}: a slow read alone is not a reason to drop memory`);
+        assert.ok(String(f.prompts.get(MEMORY_PROMPT_KEY) || '').includes('<yimu_memory>'), `${type}: memory rides along`);
+        gate.release.resolve();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        await slow.event('GENERATION_ENDED', []);
+    }
+});
+
+test('a slow pre-generation read with nothing verified yet on this device keeps the original context and records a timeout', async t => {
+    const f = await fixture(t);
+    await f.enable(); await f.flush();
+    // 上一次读到的结果没通过原文核对：没有可以放心沿用的记忆。
+    const read = f.api.read; let broken = true;
+    const api = {...f.api, read: async binding => { const data = await read(binding); return broken ? {...data, sourceAvailable: false} : data; }};
+    const slow = createController({host: f.host, api, defer: fn => f.tasks.push(fn), interceptWaitMs: 30, sourceRetryMs: 1});
+    t.after(() => slow.destroy());
+    await slow.refresh();
+    assert.equal(slow.state.sourceAvailable, false);
+    broken = false;
     const gate = {started: deferredValue(), release: deferredValue()};
     f.faults.delayReadReply = gate;
     await slow.event('GENERATION_STARTED', ['normal', {}, false]);

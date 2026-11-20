@@ -151,7 +151,7 @@ test('empty plan and clear invalidate older sessions without changing an existin
     const prepared = f.host.prepare(target, candidate, source), payload = request(target), before = JSON.stringify(payload);
     assert.equal(f.host.prepare(target, { entries: [] }, source).reason, 'empty');
     assert.equal((await f.host.applyPrepared(payload, prepared.session)).reason, 'expired-session');
-    assert.equal(JSON.stringify(payload), before); assert.deepEqual(f.writes.at(-1), [MEMORY_PROMPT_KEY, '', 1, 0, false, 0]);
+    assert.equal(JSON.stringify(payload), before); assert.deepEqual(f.writes.filter(write => write[0] === MEMORY_PROMPT_KEY).at(-1), [MEMORY_PROMPT_KEY, '', 1, 0, false, 0]);
 });
 
 test('raw, quiet, impersonation, continue, text completion and live references stay unchanged', async () => {

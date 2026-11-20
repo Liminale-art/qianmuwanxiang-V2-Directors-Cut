@@ -68,6 +68,8 @@ export async function discoverVectorCandidates({ provider, query, candidates = [
             .map(({ vectorScore, ...candidate }) => candidate);
         return { status: 'ready', candidates: unique };
     } catch (error) {
+        // 调用方自己取消的请求不是接口故障：不记成「请求失败」。
+        if (signal?.aborted) return { status: 'cancelled', candidates: [], reason: '本次候选请求已取消' };
         return { status: 'error', candidates: [], reason: error instanceof Error ? error.message : '向量候选接口不可用' };
     }
 }
@@ -102,5 +104,8 @@ export async function discoverRerankCandidates({ provider, query, candidates = [
             .slice(0, Math.max(1, Math.min(Number.isSafeInteger(limit) ? limit : 6, VECTOR_LIMITS.candidates)))
             .map(({ rerankScore, index, ...candidate }) => candidate);
         return { status: 'ready', candidates: unique };
-    } catch (error) { return { status: 'error', candidates: [], reason: error instanceof Error ? error.message : '重排接口不可用' }; }
+    } catch (error) {
+        if (signal?.aborted) return { status: 'cancelled', candidates: [], reason: '本次重排请求已取消' };
+        return { status: 'error', candidates: [], reason: error instanceof Error ? error.message : '重排接口不可用' };
+    }
 }

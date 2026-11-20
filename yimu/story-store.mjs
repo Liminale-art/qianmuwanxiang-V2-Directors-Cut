@@ -3,6 +3,7 @@ import * as contract from './contract.mjs';
 import {entryOrigin, selectStoryEntries, storyOffset} from './story-contract.mjs';
 import {normalizeEntryOrder} from './timeline.mjs';
 import {unknownScenes, validateGeneratedLength} from './scene-contract.mjs';
+import {carryHeart} from './heart-contract.mjs';
 const clone = value => structuredClone(value);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const requestId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
@@ -161,6 +162,9 @@ export function createStoryHandlers({io, context, prepare, exclusive, documentRe
         // 痕迹随故事续接带过去：只带续接点之前的（之后的剧情在新聊天里不存在）。
         const carried = (prepared.document.observations || []).filter(item => item.floor <= value.cutoff);
         if (carried.length) document.observations = clone(carried);
+        // 印象整份带走，心迹与年表只带续接点之前的。
+        const heart = carryHeart(prepared.document.heart, value.cutoff);
+        if (heart) document.heart = heart;
         document.entryOrder = normalizeEntryOrder(document);
         document.creation = {id: operation.id, requestHash, planId: value.planId, status: 'pending',
             sourceFingerprint: value.sourceFingerprint, sourceRevision: value.sourceRevision, defaultsRevision: value.defaultsRevision};

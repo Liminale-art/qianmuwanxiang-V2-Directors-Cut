@@ -54,7 +54,7 @@ test('schema7 backup preserves scenes, manual placements, explicit order, undo c
     doc.settings.prompts={groups:{summary:[{id:'mine',name:'我的总结',text:'保留真实质感',enabled:true}],stage:[],recall:[]},presets:[],selectedPreset:''};
     const portable=portableDocument(doc);assert.deepEqual(portable.entryOrder,['custom','fine']);
     // Older prompt configs without the common identity group gain only the current default identity.
-    const {identity,...legacyGroups}=portable.settings.prompts.groups;assert.ok(Array.isArray(identity)&&identity.length>0);
+    const {identity,heart,...legacyGroups}=portable.settings.prompts.groups;assert.ok(Array.isArray(identity)&&identity.length>0);assert.ok(Array.isArray(heart)&&heart.length===3,'早先存下的配置读到时补上心迹这一组');
     assert.deepEqual({...portable.settings.prompts,groups:legacyGroups},doc.settings.prompts);
     assert.equal(portable.entries[0].scenes[0].event,'甲独自读信');assert.equal(portable.entries[0].textUndoRevision,1);
     const result=restoreBackupDocument(portable,{binding:target,mappings:{source_0:target,source_1:mapped}}).document;

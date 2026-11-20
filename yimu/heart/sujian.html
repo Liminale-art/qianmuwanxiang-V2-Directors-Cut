@@ -4,28 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>素笺</title>
+<link rel="stylesheet" href="https://fontsapi.zeoseven.com/292/main/result.css">
 <style>
-:root { --paper: #f1ece2; --ink: #1d1a17; --faint: #8b8479; --red: #b3261e; --line: #cfc6b6; --wash: #e6dfd1; }
+:root { --paper: #f1ece2; --ink: #1d1a17; --faint: #8b8479; --red: #b3261e; --line: #cfc6b6; --wash: #e6dfd1;
+  --ymd-ink: var(--ink); --ymd-mute: var(--faint); --ymd-accent: var(--red); --ymd-paper: var(--paper); --ymd-line: var(--line);
+  --hand: "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "Noto Serif SC", serif; }
 @media (prefers-color-scheme: dark) { :root { --paper: #15130f; --ink: #ece5d8; --faint: #8a8275; --red: #e2574c; --line: #3a352c; --wash: #201d18; } }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; overflow-x: hidden; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--hand); overflow-x: hidden; }
 .stage { max-width: 520px; margin: 0 auto; padding: 0 22px 120px; position: relative; }
 /* ---- 顶部：两个竖排大字作切换 ---- */
-.switch { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 0 10px; background: linear-gradient(var(--paper) 70%, transparent); }
+.pin { position: sticky; top: 42px; z-index: 5; background: linear-gradient(var(--paper) 86%, transparent); }
+.pin #ym-date { padding-inline: 0; }
+.pin .ym-cal { left: 0; }
+.switch { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 0 6px; }
 .switch button { all: unset; cursor: pointer; writing-mode: vertical-rl; font-size: 34px; letter-spacing: .18em; line-height: 1; color: var(--line); transition: color .5s, transform .5s; }
 .switch button[aria-selected="true"] { color: var(--ink); }
-.switch button:last-child[aria-selected="true"] { color: var(--red); }
+.switch button[data-view="heart"][aria-selected="true"] { color: var(--red); }
 .switch .rule { flex: 1; height: 1px; background: var(--line); margin: 20px 14px 0; position: relative; }
-.switch .rule::after { content: ''; position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); left: 0; transition: left .7s cubic-bezier(.6,0,.2,1); }
-body[data-view="heart"] .switch .rule::after { left: calc(100% - 7px); }
-.note { font-family: system-ui, sans-serif; font-size: 11px; color: var(--faint); letter-spacing: .08em; margin: 2px 0 26px; }
+/* 一颗红点沿着线走到选中的那两个字旁边。 */
+.switch .rule::after { content: ''; position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); opacity: 0; transition: left .7s cubic-bezier(.6,0,.2,1), opacity .4s; }
+.switch .rule.a::after { left: 0; } .switch .rule.b::after { left: calc(100% - 7px); }
+body[data-view="diary"] .switch .rule.a::after { opacity: 1; }
+body[data-view="heart"] .switch .rule.a::after { opacity: 1; left: calc(100% - 7px); }
+body[data-view="chron"] .switch .rule.b::after { opacity: 1; }
+.note { font-family: var(--hand); font-size: 11px; color: var(--faint); letter-spacing: .08em; margin: 2px 0 26px; }
 section[hidden] { display: none; }
 /* ---- 观察日记：解构式排版 ---- */
 .slip { position: relative; padding: 26px 0 30px; border-top: 1px solid var(--line); opacity: 0; transform: translateY(26px); transition: opacity .9s, transform .9s cubic-bezier(.2,.7,.2,1); }
 .slip.in { opacity: 1; transform: none; }
 .slip .no { position: absolute; right: -8px; top: -14px; font-size: 96px; line-height: 1; color: var(--wash); font-family: Georgia, "Times New Roman", serif; font-style: italic; user-select: none; z-index: 0; }
-.slip .who { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: .3em; color: var(--faint); position: relative; }
+.slip .who { font-family: var(--hand); font-size: 11px; letter-spacing: .3em; color: var(--faint); position: relative; }
 .slip p.say { position: relative; margin: 10px 0 14px; font-size: 22px; line-height: 1.55; max-width: 13em; }
 .slip:nth-child(even) p.say { margin-left: auto; text-align: right; }
 .slip p.say em { font-style: normal; background: linear-gradient(transparent 62%, color-mix(in srgb, var(--red) 28%, transparent) 62%); }
@@ -36,17 +46,17 @@ section[hidden] { display: none; }
 .days { display: inline-flex; gap: 5px; margin-left: 12px; vertical-align: middle; }
 .days i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--faint); }
 .days i.on { background: var(--ink); border-color: var(--ink); }
-.slip button.why { all: unset; cursor: pointer; display: block; margin-top: 12px; font-family: system-ui, sans-serif; font-size: 11px; color: var(--faint); letter-spacing: .12em; }
+.slip button.why { all: unset; cursor: pointer; display: block; margin-top: 12px; font-family: var(--hand); font-size: 11px; color: var(--faint); letter-spacing: .12em; }
 .slip:nth-child(even) button.why { text-align: right; }
 .proof { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .6s cubic-bezier(.2,.7,.2,1); }
 .proof > div { overflow: hidden; }
 .slip.open .proof { grid-template-rows: 1fr; }
 .proof li { list-style: none; font-size: 14px; line-height: 1.7; color: var(--faint); padding-left: 5.2em; text-indent: -5.2em; }
 .proof ul { margin: 10px 0 0; padding: 0; }
-.proof li b { font-weight: normal; font-family: system-ui, sans-serif; font-size: 11px; display: inline-block; width: 5.2em; text-indent: 0; color: var(--ink); }
+.proof li b { font-weight: normal; font-family: var(--hand); font-size: 11px; display: inline-block; width: 5.2em; text-indent: 0; color: var(--ink); }
 .proof .was { text-decoration: line-through; text-decoration-color: var(--red); }
 .drift { position: relative; height: 190px; margin-top: 34px; border-top: 1px solid var(--line); }
-.drift h4 { font-family: system-ui, sans-serif; font-weight: normal; font-size: 11px; letter-spacing: .3em; color: var(--faint); margin: 14px 0 0; }
+.drift h4 { font-family: var(--hand); font-weight: normal; font-size: 11px; letter-spacing: .3em; color: var(--faint); margin: 14px 0 0; }
 .drift span { position: absolute; font-size: 14px; color: var(--faint); white-space: nowrap; opacity: 0; animation: drift 11s ease-in-out infinite; }
 @keyframes drift { 0% { transform: translate(0, 6px) rotate(-1deg); opacity: 0; } 30% { opacity: .85; } 70% { opacity: .7; } 100% { transform: translate(22px, -14px) rotate(1.5deg); opacity: 0; } }
 /* ---- 心迹：红线串心 ---- */
@@ -58,8 +68,8 @@ section[hidden] { display: none; }
 .knot { position: relative; z-index: 1; margin: 0 0 92px; max-width: 74%; opacity: 0; transform: translateY(30px) scale(.97); transition: opacity 1s, transform 1s cubic-bezier(.2,.7,.2,1); }
 .knot.in { opacity: 1; transform: none; }
 .knot:nth-of-type(odd) { margin-left: 26%; }
-.knot .about { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: .3em; color: var(--red); }
-.knot .when { font-family: system-ui, sans-serif; font-size: 11px; color: var(--faint); margin-left: 8px; }
+.knot .about { font-family: var(--hand); font-size: 11px; letter-spacing: .3em; color: var(--red); }
+.knot .when { font-family: var(--hand); font-size: 11px; color: var(--faint); margin-left: 8px; }
 .knot p { margin: 8px 0 0; font-size: 18px; line-height: 1.85; }
 .knot p.first::first-letter { font-size: 2.4em; float: left; line-height: .95; padding-right: 6px; color: var(--red); }
 .knot .before { margin-top: 12px; padding-left: 12px; border-left: 1px solid var(--red); font-size: 14px; color: var(--faint); line-height: 1.7; }
@@ -72,7 +82,7 @@ section[hidden] { display: none; }
 .heart svg { width: 100%; height: 100%; fill: var(--red); animation: beat 2.6s ease-in-out infinite; transform-origin: center; }
 .heart.hollow svg { fill: var(--paper); stroke: var(--red); stroke-width: 1.6; animation: none; }
 @keyframes beat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.18); } 24% { transform: scale(.96); } 36% { transform: scale(1.1); } }
-.chips { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 46px; font-family: system-ui, sans-serif; font-size: 12px; letter-spacing: .14em; }
+.chips { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 46px; font-family: var(--hand); font-size: 12px; letter-spacing: .14em; }
 .chips button { all: unset; cursor: pointer; color: var(--faint); padding-bottom: 3px; border-bottom: 1px solid transparent; }
 .chips button[aria-pressed="true"] { color: var(--ink); border-color: var(--red); }
 .end { text-align: center; font-size: 13px; color: var(--faint); letter-spacing: .5em; padding-top: 10px; }
@@ -84,17 +94,33 @@ body { padding-top: 42px; }
 .empty { margin: 0; padding: 46px 22px; font-size: 14px; letter-spacing: .2em; opacity: .6; }
 .ymbar { background: linear-gradient(var(--paper) 78%, transparent); font-size: 12px; letter-spacing: .3em; color: var(--faint); }
 .ymbar #ym-theme { color: var(--red); }
-.switch { top: 42px !important; }
+/* ---- 年表：一条细线上的红点 ---- */
+#chron { position: relative; padding: 6px 0 0 26px; }
+#chron::before { content: ''; position: absolute; left: 4px; top: 12px; bottom: 30px; width: 1px; background: var(--line); }
+.mark { position: relative; padding: 0 0 40px; opacity: 0; transform: translateY(22px); transition: opacity .9s, transform .9s cubic-bezier(.2,.7,.2,1); }
+.mark.in { opacity: 1; transform: none; }
+.mark::before { content: ''; position: absolute; left: -26px; top: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--paper); border: 1px solid var(--red); }
+.mark.now::before { background: var(--red); box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 18%, transparent); }
+.mark .on { font-size: 11px; letter-spacing: .3em; color: var(--faint); }
+.mark h3 { margin: 6px 0 6px; font-weight: normal; font-size: 22px; line-height: 1.4; }
+.mark.now h3 { background: linear-gradient(transparent 62%, color-mix(in srgb, var(--red) 28%, transparent) 62%); display: inline; }
+.mark p { margin: 6px 0 0; font-size: 15px; line-height: 1.85; color: var(--faint); }
+/*@@HEART_SHARED_CSS@@*/
 </style>
 </head>
 <body data-view="diary">
 <div class="ymbar"><button id="ym-exit" aria-label="退出">← 回去</button><button id="ym-theme" aria-label="切换主题">换一页纸</button></div>
 <div class="stage">
-  <nav class="switch" role="tablist">
-    <button role="tab" aria-selected="true" data-view="diary">观察日记</button>
-    <span class="rule"></span>
-    <button role="tab" aria-selected="false" data-view="heart">心迹</button>
-  </nav>
+  <div class="pin">
+    <nav class="switch" role="tablist">
+      <button role="tab" aria-selected="true" data-view="diary">观察日记</button>
+      <span class="rule a"></span>
+      <button role="tab" aria-selected="false" data-view="heart">心迹</button>
+      <span class="rule b"></span>
+      <button role="tab" aria-selected="false" data-view="chron">年表</button>
+    </nav>
+    <div id="ym-date"></div>
+  </div>
 
   <section id="diary"></section>
 
@@ -103,30 +129,15 @@ body { padding-top: 42px; }
     <svg id="thread" aria-hidden="true"><defs><linearGradient id="threadFade" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-opacity="1"/><stop offset="1" stop-opacity="0"/></linearGradient></defs><path class="ghost"></path><path class="line"></path></svg>
     <p class="end">最 早 的 一 段</p>
   </section>
+
+  <section id="chron" hidden></section>
 </div>
 <script>
-const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
-const tell = type => parent.postMessage({ yimuHeart: type }, '*');
-document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
-document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
-addEventListener('keydown', event => { if (event.key === 'Escape') tell('exit'); });
-window.yimuRender = raw => { if (window.__yimuRendered) return; window.__yimuRendered = true; const D = safe(raw || {}); D.impressions ||= []; D.loose ||= []; D.thoughts ||= [];
-
-  document.getElementById('diary').innerHTML = (D.impressions.length ? D.impressions.map((it, i) => `<article class="slip"><span class="no">${String(i + 1).padStart(2, '0')}</span><span class="who">${it.about}</span>
-      <p class="say">${it.say}</p><span class="sure" data-level="${it.sure}">${it.word}</span><span class="days">${Array.from({ length: 6 }, (_, n) => `<i class="${n < it.days.length ? 'on' : ''}"></i>`).join('')}</span>
-      <button class="why">依据 · ${it.was ? '改过一次口' : it.days.length + ' 个不同的日子'}</button>
-      <div class="proof"><div><ul>${it.was ? `<li><b>以前以为</b><span class="was">${it.was}</span></li>` : ''}${it.days.map(([day, text]) => `<li><b>${day}</b>${text}</li>`).join('')}</ul></div></div></article>`).join('')
-    : '<p class="empty">还没有攒够的印象。同一件事在几个不同的日子里都看见，才会写在这里。</p>')
-    + (D.loose.length ? `<div class="drift"><h4>还 在 留 意 的</h4>${D.loose.slice(0, 7).map((it, i) => `<span style="left:${[4, 52, 10, 56, 30, 20, 60][i]}%;top:${[40, 70, 112, 140, 160, 86, 104][i]}px;font-size:${[21, 12, 15, 18, 11, 13, 16][i]}px;animation-delay:-${i * 2}s;animation-duration:${[13, 9, 11, 15, 8, 12, 10][i]}s">${it.text}</span>`).join('')}</div>` : '');
-  document.querySelector('#heart .end').insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="knot" data-about="${it.group}"><span class="about">${it.about}</span><span class="when">${it.when}</span>
-      <p class="first">${it.say}</p>${it.was ? `<div class="before">以前以为：<s>${it.was}</s></div>` : ''}</article>`).join('') : '<p class="empty">还没有写下心迹。</p>');
-  if (!D.thoughts.length) document.querySelector('#heart .end').hidden = true;
-
-const body = document.body, tabs = [...document.querySelectorAll('.switch button')], views = { diary: document.getElementById('diary'), heart: document.getElementById('heart') };
+/*@@HEART_SHARED_JS@@*/
+const body = document.body, tabs = [...document.querySelectorAll('.switch button')], chips = [...document.querySelectorAll('.chips button')];
+const views = { diary: document.getElementById('diary'), heart: document.getElementById('heart'), chron: document.getElementById('chron') };
 const reveal = new IntersectionObserver(entries => { for (const e of entries) if (e.isIntersecting) e.target.classList.add('in'); }, { threshold: .2 });
-document.querySelectorAll('.slip, .knot').forEach(n => reveal.observe(n));
-document.querySelectorAll('.slip .why').forEach(b => b.addEventListener('click', () => b.closest('.slip').classList.toggle('open')));
+let about = 'all';
 tabs.forEach(tab => tab.addEventListener('click', () => {
   tabs.forEach(t => t.setAttribute('aria-selected', String(t === tab))); body.dataset.view = tab.dataset.view;
   for (const [name, node] of Object.entries(views)) node.hidden = name !== tab.dataset.view;
@@ -134,12 +145,12 @@ tabs.forEach(tab => tab.addEventListener('click', () => {
 }));
 // 红线：穿过每一段的「结」，左右交替摆动；滚到哪里画到哪里。
 const heart = views.heart, svg = document.getElementById('thread'), line = svg.querySelector('.line'), ghost = svg.querySelector('.ghost');
-let total = 0;
+let total = 0, threadPoints = [];
 function layoutThread() {
   heart.querySelectorAll('.heart').forEach(n => n.remove());
   const box = heart.getBoundingClientRect(), knots = [...heart.querySelectorAll('.knot')].filter(n => !n.hidden);
   const points = knots.map((knot, i) => { const r = knot.getBoundingClientRect(), left = knot.matches(':nth-of-type(odd)'); return { x: left ? r.left - box.left - 26 : r.right - box.left + 26, y: r.top - box.top + 8, knot, i }; });
-  if (!points.length) { line.setAttribute('d', ''); ghost.setAttribute('d', ''); return; }
+  if (!points.length) { line.setAttribute('d', ''); ghost.setAttribute('d', ''); total = 0; threadPoints = []; return; }
   // 线头先画出一颗心，再从心尖往下蜿蜒。
   const cx = box.width / 2, hy = points[0].y - 132;
   let d = `M ${cx} ${hy + 34} C ${cx - 34} ${hy + 12}, ${cx - 24} ${hy - 16}, ${cx} ${hy + 4} C ${cx + 24} ${hy - 16}, ${cx + 34} ${hy + 12}, ${cx} ${hy + 34}`
@@ -148,17 +159,16 @@ function layoutThread() {
   const last = points.at(-1); d += ` C ${last.x} ${last.y + 70}, ${box.width / 2} ${last.y + 90}, ${box.width / 2} ${last.y + 150}`;
   svg.setAttribute('height', last.y + 160); svg.style.height = `${last.y + 160}px`;
   line.setAttribute('d', d); ghost.setAttribute('d', d);
-  total = line.getTotalLength(); line.style.strokeDasharray = total; drawThread();
+  total = line.getTotalLength(); line.style.strokeDasharray = total;
   // 线上再散几颗小心，大小不一、各跳各的。
   const sizes = [26, 18, 22, 16, 20], extras = [];
   for (let at = 260; at < total - 120; at += 150 + (at % 90)) { const pt = line.getPointAtLength(at); if (points.every(p => Math.abs(p.y - pt.y) > 34)) extras.push({ x: pt.x, y: pt.y, small: true, size: 7 + (Math.round(at) % 7) }); }
-  for (const p of [...points, ...extras]) { const node = document.createElement('span'); node.className = 'heart' + (p.small ? ' small' : p.knot.querySelector('.before') ? '' : p.i === points.length - 1 ? ' hollow' : '');
-    node.style.setProperty('--s', `${p.small ? p.size : sizes[p.i % sizes.length]}px`); node.firstChild; node.dataset.delay = String((p.y % 9) / 4);
+  for (const p of [...points, ...extras]) { const node = document.createElement('span'); node.className = 'heart' + (p.small ? ' small' : p.i === points.length - 1 ? ' hollow' : '');
+    node.style.setProperty('--s', `${p.small ? p.size : sizes[p.i % sizes.length]}px`);
     node.style.left = `${p.x}px`; node.style.top = `${p.y}px`; node.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 21C10.2 19.4 2 13.7 2 8.4C2 5.3 4.3 3 7.3 3C9.2 3 10.9 4 12 5.6C13.1 4 14.8 3 16.7 3C19.7 3 22 5.3 22 8.4C22 13.7 13.8 19.4 12 21Z"/></svg>';
-    node.querySelector('svg').style.animationDelay = `-${node.dataset.delay}s`; heart.append(node); p.node = node; }
+    node.querySelector('svg').style.animationDelay = `-${(p.y % 9) / 4}s`; heart.append(node); p.node = node; }
   threadPoints = [...points, ...extras]; drawThread();
 }
-let threadPoints = [];
 function drawThread() {
   if (heart.hidden || !total) return;
   const box = heart.getBoundingClientRect(), height = Number(svg.getAttribute('height')) || 1;
@@ -170,12 +180,32 @@ function drawThread() {
   for (const p of threadPoints) p.node?.classList.toggle('in', p.y < reach);
 }
 addEventListener('scroll', drawThread, { passive: true }); addEventListener('resize', () => { if (!heart.hidden) layoutThread(); });
-document.querySelectorAll('.chips button').forEach(chip => chip.addEventListener('click', () => {
-  document.querySelectorAll('.chips button').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
-  heart.querySelectorAll('.knot').forEach(k => { k.hidden = chip.dataset.about !== 'all' && k.dataset.about !== chip.dataset.about; });
-  setTimeout(layoutThread, 30);
-}));
+function applyAbout() {
+  chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.about === about)));
+  heart.querySelectorAll('.knot').forEach(k => { k.hidden = about !== 'all' && k.dataset.about !== about; });
+  if (!heart.hidden) setTimeout(layoutThread, 30);
+}
+chips.forEach(chip => chip.addEventListener('click', () => { about = chip.dataset.about; applyAbout(); }));
 
+window.yimuPaint = D => {
+  views.diary.innerHTML = (D.impressions.length ? D.impressions.map((it, i) => `<article class="slip"><span class="no">${String(i + 1).padStart(2, '0')}</span><span class="who">${it.about}</span>
+      <p class="say">${it.say}</p><span class="sure" data-level="${it.sure}">${it.word}</span><span class="days">${Array.from({ length: 6 }, (_, n) => `<i class="${n < it.days.length ? 'on' : ''}"></i>`).join('')}</span>
+      <button class="why">依据 · ${it.was ? '改过一次口' : it.days.length + ' 个不同的日子'}</button>
+      <div class="proof"><div><ul>${it.was ? `<li><b>以前以为</b><span class="was">${it.was}</span></li>` : ''}${it.days.map(([day, text]) => `<li><b>${day}</b>${text}</li>`).join('')}</ul></div></div></article>`).join('')
+    : '<p class="empty">这段日子还没有攒够的印象。同一件事在几个不同的日子里都看见，才会写在这里。</p>')
+    + (D.loose.length ? `<div class="drift"><h4>还 在 留 意 的</h4>${D.loose.slice(0, 7).map((it, i) => `<span style="left:${[4, 52, 10, 56, 30, 20, 60][i]}%;top:${[40, 70, 112, 140, 160, 86, 104][i]}px;font-size:${[21, 12, 15, 18, 11, 13, 16][i]}px;animation-delay:-${i * 2}s;animation-duration:${[13, 9, 11, 15, 8, 12, 10][i]}s">${it.text}</span>`).join('')}</div>` : '');
+  views.diary.querySelectorAll('.slip .why').forEach(b => b.addEventListener('click', () => b.closest('.slip').classList.toggle('open')));
+
+  heart.querySelectorAll('.knot, .empty').forEach(node => node.remove());
+  const end = heart.querySelector('.end');
+  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="knot" data-about="${it.group}"><span class="about">${it.about}</span><span class="when">${it.when}</span>
+      <p class="first">${it.say}</p></article>`).join('') : '<p class="empty">这段日子还没有写下心迹。</p>');
+  end.hidden = !D.thoughts.length;
+
+  views.chron.innerHTML = D.events.length ? D.events.map(it => `<article class="mark${it.now ? ' now' : ''}"><span class="on">${it.date || it.when}</span><br><h3>${it.title}</h3><p>${it.text}</p></article>`).join('')
+    : '<p class="empty">还没有值得标一个日子的事。</p>';
+  document.querySelectorAll('.slip, .knot, .mark').forEach(n => reveal.observe(n));
+  applyAbout();
 };
 </script>
 </body>

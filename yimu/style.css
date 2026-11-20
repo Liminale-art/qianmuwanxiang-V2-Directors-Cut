@@ -265,7 +265,12 @@
 /* 开始／暂停是并在「每批 N 层」组末尾的图标按钮，不单独占一行。 */
 .ym-manual-group > .ym-manual-run { flex: 0 0 auto; }
 /* Narrow cards stack the two groups so four-digit floors are never clipped. */
-@container (max-width: 360px) { .ym-manual-fields { grid-template-columns: minmax(0, 1fr); } }
+@container (max-width: 360px) {
+    .ym-manual-fields { grid-template-columns: minmax(0, 1fr); }
+    /* 窄卡：「每批 N 层」从左边排起，开始／暂停撑满这一排剩下的宽度。 */
+    .ym-manual-batch { justify-content: flex-start; }
+    .ym-manual-batch > .ym-manual-run { flex: 1 1 auto; }
+}
 .ym-stream-preview { display: grid; gap: 8px; padding: 12px 14px; }
 .ym-stream-preview .ym-setting-title { margin: 0; }
 .ym-stream-output { margin: 0; max-height: 190px; overflow: auto; overflow-wrap: anywhere; line-height: 1.65; font: inherit; color: var(--ym-ink); }
@@ -459,6 +464,9 @@
 .ym-prompt-confirm { display: flex; gap: 7px; align-items: center; }
 .ym-prompt-confirm > span { flex: 1; min-width: 0; }
 .ym-prompt-groups { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; }
+/* 四个标签（开了原文回查）在窄处排成两排，宽处仍是一排；三个标签始终一排。 */
+.ym-card:has(> .ym-prompt-groups) { container-type: inline-size; }
+@container (max-width: 430px) { .ym-prompt-groups[data-count="4"] { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .ym-prompt-groups > [aria-selected="true"] { color: var(--ym-accent); border-color: var(--ym-accent); background: var(--ym-raised); }
 .ym-prompt-groups > button { display: flex; align-items: center; justify-content: center; gap: 5px; }
 .ym-prompt-list { display: grid; gap: 7px; min-width: 0; }
@@ -552,7 +560,10 @@
 .ym-manage-row + .ym-manage-row { margin-top: 12px; }
 .ym-manage-row > span { min-width: 0; overflow-wrap: anywhere; }
 .ym-manage-row > .ym-button, .ym-manage-file > .ym-button { flex: 0 0 auto; }
-.ym-manage-file-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ym-manage-file-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.ym-dialog .ym-manage-file-actions > .ym-button { height: 24px; min-height: 24px; padding: 0 7px; font-size: var(--ym-type-caption); line-height: 1; }
+.ym-dialog .ym-manage-file-actions > .ym-icon-button { width: 24px; flex: 0 0 24px; padding: 0; }
+.ym-manage-file-actions .ym-icon { width: 14px; height: 14px; flex-basis: 14px; }
 /* 记忆页底部的翻页栏：浮在列表底部，随页面滚动始终可见。 */
 .ym-pager { position: sticky; bottom: 0; z-index: 2; justify-self: center; display: flex; align-items: center; gap: 6px; padding: 5px 8px;
     border: 1px solid var(--ym-border); border-radius: 999px; background: var(--ym-surface); box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
@@ -566,10 +577,10 @@
 .ym-dialog .ym-button.ym-danger { color: var(--ym-danger); }
 .ym-dialog .ym-button[data-armed="true"] { color: var(--ym-on-accent); background: var(--ym-danger); border-color: var(--ym-danger); }
 .ym-manage-list { display: grid; gap: 8px; margin-top: 12px; min-width: 0; }
-.ym-manage-file { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 8px 10px; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); }
-.ym-manage-file-text { display: grid; gap: 2px; min-width: 0; }
-.ym-manage-file-text > strong { overflow-wrap: anywhere; font-weight: 600; }
-.ym-manage-file-text > .ym-muted { font-size: var(--ym-type-caption); overflow-wrap: anywhere; }
+.ym-manage-file { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; padding: 8px 10px; border: 1px solid var(--ym-border); border-radius: var(--ym-control-radius); }
+/* 第二行：左边小字信息，右边「带入本聊天」「删除」；没有操作的条目也留同样的行高。 */
+.ym-manage-file-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 24px; }
+.ym-manage-file-meta > .ym-muted { flex: 1 1 auto; min-width: 0; font-size: var(--ym-type-caption); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ym-manage-tag { justify-self: start; padding: 0 8px; border: 1px solid var(--ym-border); border-radius: 999px; font-size: var(--ym-type-caption); color: var(--ym-muted); }
 .ym-manage-tag-warn { color: var(--ym-warning); border-color: color-mix(in srgb, var(--ym-warning) 50%, transparent); }
 .ym-manage-files > .ym-button { margin-top: 0; }
@@ -613,7 +624,8 @@
 .ym-manage-list { display: block; max-height: 320px; overflow: auto; margin-top: 12px; overscroll-behavior: contain; }
 .ym-manage-file { border: 0; border-bottom: 1px solid color-mix(in srgb, var(--ym-border) 60%, transparent); border-radius: 0; padding: 7px 2px; }
 .ym-manage-list > .ym-manage-file:last-child, .ym-manage-folder-body > .ym-manage-file:last-child { border-bottom: 0; }
-.ym-manage-file-name { overflow-wrap: anywhere; font-weight: 400; }
+.ym-manage-file-name { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.ym-manage-more, .ym-manage-more-tray { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .ym-manage-file[data-selectable="true"] { cursor: pointer; }
 .ym-manage-file[data-selectable="false"] { opacity: .45; }
 .ym-manage-file[data-selected="true"] { background: color-mix(in srgb, var(--ym-accent) 12%, transparent); box-shadow: inset 2px 0 0 var(--ym-accent); }
@@ -623,6 +635,7 @@
 .ym-manage-folder > summary::-webkit-details-marker { display: none; }
 .ym-manage-folder > summary::before { content: '›'; display: inline-block; width: 1em; transition: transform .15s ease; }
 .ym-manage-folder[open] > summary::before { transform: rotate(90deg); }
+.ym-manage-folder[data-folder="gone"] > summary::before { content: none; }
 .ym-manage-folder-body { padding-left: 12px; }
 .ym-dialog .ym-icon-button[data-armed="true"] { color: var(--ym-on-accent); background: var(--ym-danger); border-color: var(--ym-danger); }
 
@@ -655,3 +668,4 @@
 /* 心迹与观察日记：全屏的独立页面，盖住整个视口；里面是一份自带样式的主题页面。 */
 .ym-heart-layer { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 2147483000; background: #0b0a09; }
 .ym-heart-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.ym-heart-run { justify-self: end; margin-top: 10px; }

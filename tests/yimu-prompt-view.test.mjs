@@ -121,3 +121,14 @@ test('a title is renamed in place by double-click and saved on blur; undo sits b
     assert.equal(input.hidden,true);assert.notEqual(title.textContent,'不要这个');assert.notEqual(original,'');
     f.view.destroy();
 });
+
+test('the heart tab sits between stage and recall and shows its three entries; four visible tabs are counted for the two-row layout',()=>{
+    const f=fixture();f.render({recallEnabled:true});
+    const tabs=f.all().filter(node=>node.getAttribute?.('role')==='tab'&&!node.hidden).map(node=>node.textContent);
+    assert.deepEqual(tabs,['切片总结','阶段总结','心迹日记','原文回查']);
+    const row=f.byClass('ym-prompt-groups');assert.equal(row.dataset.count,'4');
+    f.get('心迹日记').click();
+    assert.equal(f.get('心迹日记').getAttribute('aria-selected'),'true');
+    for(const name of ['观察日记','关系年表','心迹'])assert.ok(f.get(`${name}提示词正文`),`${name} 这一条可编辑`);
+    f.render({recallEnabled:false});assert.equal(row.dataset.count,'3');
+});

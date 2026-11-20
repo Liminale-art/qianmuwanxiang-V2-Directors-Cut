@@ -29,23 +29,24 @@ export function mountManageView({ document = globalThis.document, journal = null
     };
     let state = {}, disposed = false, listed = false, logSignature = '', fileSignature = '';
     const open = new Set(), timers = new Set(), folders = new Set(), picked = new Set();
-    let selecting = false;
+    let selecting = false, moreOpen = false;
     const run = async (type, payload) => { try { return await onAction(type, payload); } catch { return false; } };
 
     // 小图标按钮。needsConfirm 返回真时要点两下：第一下变成「确认」样式，几秒内不再点就复原。不弹对话框。
-    const iconAction = (label, glyph, action, { needsConfirm = () => false, className = '' } = {}) => {
-        const node = el('button', `ym-button ym-icon-button ym-small ${className}`.trim());
+    // 给了 text 就是文字按钮（待确认时文字换成「再点确认」），否则是图标按钮（待确认时换成对勾）。
+    const iconAction = (label, glyph, action, { needsConfirm = () => false, className = '', text = '' } = {}) => {
+        const node = el('button', `ym-button ${text ? '' : 'ym-icon-button '}ym-small ${className}`.trim());
         node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
-        const paint = name => node.replaceChildren(createYimuIcon(name, { document }));
-        paint(glyph);
+        const paint = confirming => { if (text) node.textContent = confirming ? '再点确认' : text; else node.replaceChildren(createYimuIcon(confirming ? 'check' : glyph, { document })); };
+        paint(false);
         let armed = false, timer = null;
-        const disarm = () => { armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(glyph); };
+        const disarm = () => { armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(false); };
         node.disarm = disarm;
         node.addEventListener('click', async event => {
             event.stopPropagation?.();
             if (node.disabled) return;
             if (needsConfirm() && !armed) {
-                armed = true; node.setAttribute('data-armed', 'true'); node.title = '再点一次确认'; paint('check');
+                armed = true; node.setAttribute('data-armed', 'true'); node.title = '再点一次确认'; paint(true);
                 timer = setTimeout(disarm, CONFIRM_MS); timers.add(timer);
                 return;
             }
@@ -83,7 +84,7 @@ export function mountManageView({ document = globalThis.document, journal = null
     const filesCard = el('section', 'ym-card ym-settings-group ym-manage-files');
     const filesNote = el('span', 'ym-muted ym-manage-count');
     const reload = iconAction('刷新记忆文件列表', 'refresh', () => run('manageList', {}));
-    const selectToggle = iconAction('多选文件', 'select', async () => { selecting = !selecting; picked.clear(); fileSignature = ''; });
+    const selectToggle = iconAction('多选文件', 'select', async () => { selecting = !selecting; moreOpen = false; picked.clear(); fileSignature = ''; });
     const selectAll = iconAction('全选文件', 'check', async () => {
         const all = selectable(); const everything = all.length > 0 && all.every(item => picked.has(item.name));
         picked.clear(); if (!everything) for (const item of all) picked.add(item.name);
@@ -99,10 +100,17 @@ export function mountManageView({ document = globalThis.document, journal = null
         await run('backupExportPack', { bindings: scoped().filter(item => !item.unreadable && picked.has(item.name)).map(item => item.binding) });
     });
     const fileList = el('div', 'ym-manage-list');
-    // 导入与导出并在这张卡里：标题行两个小图标，导入的进度与「选目标」出现在列表上方。
-    const importFiles = iconAction('导入记忆文件', 'upload', async () => { backup?.importFiles(); });
-    const exportCurrent = iconAction('导出当前聊天的记忆', 'download', async () => { backup?.exportCurrent(); });
-    filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, importFiles, exportCurrent, selectToggle, reload));
+    // 导入、导出、多选收在「更多」里：点开后三个小图标横排在它左边，点别处收回。导入的进度与「选目标」出现在列表上方。
+    const importFiles = iconAction('导入记忆文件', 'upload', async () => { moreOpen = false; backup?.importFiles(); });
+    const exportCurrent = iconAction('导出当前聊天的记忆', 'download', async () => { moreOpen = false; backup?.exportCurrent(); });
+    const more = el('button', 'ym-button ym-icon-button ym-small');
+    more.type = 'button'; more.title = '更多'; more.setAttribute('aria-label', '更多文件操作'); more.setAttribute('aria-expanded', 'false');
+    more.append(createYimuIcon('more', { document }));
+    more.addEventListener('click', () => { moreOpen = !moreOpen; renderFiles(); });
+    const moreTray = el('div', 'ym-manage-more-tray'); moreTray.hidden = true;
+    moreTray.append(importFiles, exportCurrent, selectToggle);
+    const moreGroup = el('div', 'ym-manage-more'); moreGroup.append(moreTray, more);
+    filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, moreGroup, reload));
     if (backup?.node) filesCard.append(backup.node);
     filesCard.append(fileList);
 
@@ -120,7 +128,7 @@ export function mountManageView({ document = globalThis.document, journal = null
         const summary = el('summary');
         const status = el('span', `ym-log-status ${item.status || ''}`.trim()); status.setAttribute('aria-hidden', 'true');
         const took = item.status === 'loading' ? '进行中' : Number.isFinite(item.durationMs) ? `用时 ${seconds(item.durationMs)}` : '';
-        summary.append(status, el('span', 'ym-log-title', clock(item.at)), el('span', 'ym-log-meta', took), el('span', 'ym-log-kind', item.kind === 'stage' ? '阶段' : '切片'));
+        summary.append(status, el('span', 'ym-log-title', clock(item.at)), el('span', 'ym-log-meta', took), el('span', 'ym-log-kind', item.kind === 'stage' ? '阶段' : item.kind === 'diary' ? '日记' : '切片'));
         const detail = el('div', 'ym-log-detail');
         if (item.error) detail.append(term(item.error, 'ym-term ym-term-error'));
         const sent = cap('发送'); if (item.request) sent.append(tag(`约 ${Number.isFinite(item.requestTokens) ? item.requestTokens : '—'} token`));
@@ -154,22 +162,24 @@ export function mountManageView({ document = globalThis.document, journal = null
     function fileRow(item, { withCharacter = false } = {}) {
         const node = el('div', 'ym-manage-file'); node.dataset.name = item.name;
         const isCurrent = !item.unreadable && keyOf(item) === currentKey(), canPick = !item.unreadable && !isCurrent;
-        const text = el('div', 'ym-manage-file-text');
+        const fileName = item.unreadable ? item.name : item.binding.file;
         const facts = item.unreadable ? [size(item.bytes), day(item.updated)]
             : [...(withCharacter ? [character(item)] : []), `${item.slices + item.stages + item.custom} 条`, size(item.bytes), day(item.updated)];
-        text.append(el('span', 'ym-manage-file-name', item.unreadable ? item.name : item.binding.file), el('span', 'ym-muted', facts.join(' · ')));
-        node.append(text);
+        // 文件名独占一行（单行，超出省略，完整名字在 title）；下一行左边是小字信息，右边是操作。
+        const name = el('span', 'ym-manage-file-name', fileName); name.title = fileName;
+        const meta = el('div', 'ym-manage-file-meta'); meta.append(el('span', 'ym-muted', facts.join(' · ')));
+        node.append(name, meta);
         if (selecting) {
             node.dataset.selectable = String(canPick); node.dataset.selected = String(canPick && picked.has(item.name));
             if (canPick) node.addEventListener('click', () => { if (picked.has(item.name)) picked.delete(item.name); else picked.add(item.name); fileSignature = ''; render(state); });
             return node;
         }
+        if (!canPick) return node;
         const actions = el('div', 'ym-manage-file-actions');
-        // 在聊天里：把这份记忆指定给当前聊天（作为独立记忆带入）。两下确认。
-        if (canPick && state.snapshot?.binding) actions.append(iconAction(`把 ${item.binding.file} 的记忆带入当前聊天`, 'link', () => run('manageAssign', { item }), { needsConfirm: () => true }));
-        if (!item.unreadable) actions.append(iconAction(`导出 ${item.binding.file} 的记忆`, 'download', () => run('backupExportFile', { binding: item.binding })));
-        if (canPick) actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
-        node.append(actions);
+        // 在聊天里：把这份记忆指定给当前聊天（作为独立记忆带入）。两下确认。单个导出走「更多 → 多选 → 导出」。
+        if (state.snapshot?.binding) actions.append(iconAction(`把 ${item.binding.file} 的记忆带入本聊天`, 'link', () => run('manageAssign', { item }), { needsConfirm: () => true, text: '带入本聊天' }));
+        actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
+        meta.append(actions);
         return node;
     }
     function folder(id, title, items, options) {
@@ -188,6 +198,11 @@ export function mountManageView({ document = globalThis.document, journal = null
         reload.disabled = manage.loading === true;
         selectToggle.hidden = !selectable().length && !selecting;
         selectToggle.setAttribute('aria-pressed', String(selecting));
+        // 多选时「更多」让位，只留「多选」这一个图标用来退出。
+        more.hidden = selecting || !backup && !selectable().length;
+        if (more.hidden) moreOpen = false;
+        more.setAttribute('aria-expanded', String(moreOpen));
+        moreTray.hidden = !moreOpen && !selecting;
         selectAll.hidden = removePicked.hidden = exportPicked.hidden = !selecting;
         importFiles.hidden = exportCurrent.hidden = selecting || !backup; reload.hidden = selecting;
         importFiles.disabled = !backup?.canImport(); exportCurrent.disabled = !backup?.canExport();
@@ -242,6 +257,8 @@ export function mountManageView({ document = globalThis.document, journal = null
         element,
         render,
         /** 第一次翻到这一页时才读账户文件列表：平时打开面板不为它多发请求。 */
+        /** 面板里任何一处被点到时由外层告知：点在「更多」之外就把它收回。 */
+        clickedAt(target) { if (moreOpen && target?.closest?.('.ym-manage-more') !== moreGroup) { moreOpen = false; renderFiles(); } },
         shown() { renderLog(); if (!listed) { listed = true; void run('manageList', {}); } },
         destroy() { disposed = true; unsubscribe?.(); for (const timer of timers) clearTimeout(timer); element.remove(); },
     };

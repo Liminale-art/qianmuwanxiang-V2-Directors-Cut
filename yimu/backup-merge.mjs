@@ -6,6 +6,7 @@ import {invalidateDependentStages} from './stage-contract.mjs';
 import {invalidateDependentExcerpts} from './recall-contract.mjs';
 import {normalizeEntryOrder} from './timeline.mjs';
 import {validateScenes} from './scene-contract.mjs';
+import {mergeHeart} from './heart-contract.mjs';
 
 const clone = value => structuredClone(value);
 const stable = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
@@ -134,6 +135,8 @@ export function mergeBackupDocument(current, incoming, {operationId, packageId} 
         const extra = imported.observations.filter(item => !have.has(item.id));
         if (extra.length) document.observations = [...(document.observations || []), ...structuredClone(extra)].slice(-OBSERVATION_LIMIT);
     }
+    // 印象、心迹与年表同样按标识并进来。
+    if (imported.heart) document.heart = mergeHeart(document.heart, imported.heart);
     if (same(document, receiver)) return {document: receiver, outcome: 'duplicate', counts};
     pruneDeletedEntries(document);
     invalidateDependentStages(document);

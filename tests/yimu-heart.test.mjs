@@ -14,20 +14,42 @@ test('the bundled themes are exactly what the theme sources say; the default is 
         assert.match(theme.html, /id="ym-exit"[^>]*aria-label="退出"/, `${theme.name}：左上角退出`);
         assert.match(theme.html, /id="ym-theme"[^>]*aria-label="切换主题"/, `${theme.name}：右上角切换主题`);
         assert.match(theme.html, /window\.yimuRender = raw =>/);
-        assert.ok(!/占位内容|视觉方案/.test(theme.html), `${theme.name}：不含方案稿里的占位说明`);
-        assert.ok(!/<script[^>]+src=|<link[^>]+href=|@import|https?:\/\//.test(theme.html.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, '')), `${theme.name}：不向外加载任何东西`);
-        // 页面文字由数据填入时先转义。
-        assert.match(theme.html, /const D = safe\(raw \|\| \{\}\)/);
+        assert.match(theme.html, /window\.yimuPaint = /, `${theme.name}：换日期时可以重画`);
+        assert.ok(!/占位内容|视觉方案|@@HEART_/.test(theme.html), `${theme.name}：不含方案稿里的占位说明，共用部分已并入`);
+        // 字体固定用指定的网络字体（不随设备变）：页面只向外加载这一处的字体样式表，别的一概不加载。
+        const outside = theme.html.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, '').match(/https?:\/\/[^"')\s]+/g) || [];
+        assert.ok(outside.length >= 1 && outside.every(url => /^https:\/\/fontsapi\.zeoseven\.com\/\d+\/main\/result\.css$/.test(url)), `${theme.name}：只加载字体样式表`);
+        assert.ok(!/<script[^>]+src=|@import/.test(theme.html));
+        // 页面在内嵌框里：「#锚点」链接会让内嵌框去加载外面的整个页面（显影切换版块时卡死黑屏的原因）。
+        assert.ok(!/href\s*=\s*["']#/.test(theme.html), `${theme.name}：不用锚点链接`);
+        // 页面文字由数据填入时先转义；三个版块与日期条都在。
+        assert.match(theme.html, /window\.yimuPaint\?\.\(safe\(picked\(YM\.raw\)\), YM\.raw\)/);
+        assert.match(theme.html, /id="ym-date"/); assert.match(theme.html, /年\s?表/);
     }
 });
 
-test('the page gets the traces of this chat, newest first; impressions and heart notes are not generated yet', () => {
+test('the page gets what is still being noticed, newest first, each with the moment it was written down', () => {
     const data = heartData({ snapshot: { name: '阿澈', userName: '小满', avatarUrl: '/thumb.png' }, document: { observations: [
-        { id: 'a', about: '小满', text: '她又点了辣的。', floor: 2, at: Date.UTC(2026, 10, 1), date: '三月初四' }, { id: 'b', about: '店主', text: '他记得她的口味。', floor: 9, at: new Date(2026, 10, 19).getTime() }] } });
+        { id: 'a', about: '小满', text: '她又点了辣的。', floor: 2, at: Date.UTC(2026, 10, 1), date: '三月初四' }, { id: 'b', about: '店主', text: '他记得她的口味。', floor: 9, at: new Date(2026, 10, 19).getTime() },
+        { id: 'c', about: '小满', text: '已经归进印象的不再算留意。', floor: 3, at: 5, used: true }] } });
     assert.deepEqual([data.char, data.user, data.avatar], ['阿澈', '小满', '/thumb.png']);
-    assert.deepEqual(data.loose, [{ about: '店主', text: '他记得她的口味。', day: '11月19日', floor: 9 }, { about: '小满', text: '她又点了辣的。', day: '三月初四', floor: 2 }]);
-    assert.deepEqual([data.impressions, data.thoughts], [[], []]);
+    assert.deepEqual(data.loose, [{ about: '店主', text: '他记得她的口味。', day: '11月19日', floor: 9, at: new Date(2026, 10, 19).getTime() }, { about: '小满', text: '她又点了辣的。', day: '三月初四', floor: 2, at: Date.UTC(2026, 10, 1) }]);
+    assert.deepEqual([data.impressions, data.thoughts, data.events], [[], [], []]);
     assert.deepEqual(heartData({}).loose, []);
+});
+
+test('impressions show once seen on enough different days; fewer days stay under "still noticing"; notes are newest first and the chronicle is in story order', () => {
+    const day = n => ({ day: `第${n}天`, text: `第${n}天看见的`, at: n * 1000 });
+    const data = heartData({ snapshot: { name: '阿澈', userName: '小满' }, document: { heart: { eventFloor: 0, thoughtFloor: 0,
+        impressions: [{ id: 'i1', about: '小满', text: '她离不开辣。', days: [1, 2, 3, 4, 5, 6].map(day), was: '她好像爱吃辣。', at: 1, updatedAt: 6000 },
+            { id: 'i2', about: '店主', text: '他好像记得熟客。', days: [1, 2].map(day), at: 1, updatedAt: 2000 }, { id: 'i3', about: '小满', text: '她也许怕冷场。', days: [1, 2, 3].map(day), at: 1, updatedAt: 9000 }],
+        thoughts: [{ id: 't1', group: 'you', about: '小满', text: '甲', floor: 30, at: new Date(2026, 10, 2).getTime() }, { id: 't2', group: 'books', about: '雪国', text: '乙', floor: 70, at: new Date(2026, 10, 9).getTime() }],
+        events: [{ id: 'e1', title: '相遇', text: '丙', floor: 2, at: 1, date: '三月初四' }, { id: 'e2', title: '约定', text: '丁', floor: 40, at: 2 }] } } });
+    assert.deepEqual(data.impressions.map(item => [item.id, item.sure, item.word, item.days.length, item.was]), [['i3', 1, '也许', 3, undefined], ['i1', 3, '笃定', 6, '她好像爱吃辣。']]);
+    assert.deepEqual(data.impressions[1].days[0], ['第1天', '第1天看见的']);
+    assert.deepEqual(data.loose.map(item => [item.about, item.text, item.day]), [['店主', '他好像记得熟客。', '第2天']]);
+    assert.deepEqual(data.thoughts.map(item => [item.id, item.about, item.when, item.say]), [['t2', '读《雪国》', '11月9日', '乙'], ['t1', '对小满', '11月2日', '甲']]);
+    assert.deepEqual(data.events.map(item => [item.title, item.date, item.floor]), [['相遇', '三月初四', 2], ['约定', '', 40]]);
 });
 
 function fakeDocument() {

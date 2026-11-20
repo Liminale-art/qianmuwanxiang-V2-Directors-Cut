@@ -3,8 +3,11 @@ const clone = value => structuredClone(value);
 const fail = message => { throw Object.assign(new Error(message), { status: 400, statusCode: 400 }); };
 // `identity` is the editable common role entry in the built-in default. The
 // remaining kinds are request-specific guidance groups shown alongside it.
-export const PROMPT_KINDS = Object.freeze(['identity', 'summary', 'stage', 'recall']);
-export const PROMPT_TASK_KINDS = Object.freeze(['summary', 'stage', 'recall']);
+// `heart` 是心迹页的一组：观察日记与关系年表（跟着整理走）、心迹（主模型写正文时顺带写）。
+export const PROMPT_KINDS = Object.freeze(['identity', 'summary', 'stage', 'heart', 'recall']);
+export const PROMPT_TASK_KINDS = Object.freeze(['summary', 'stage', 'recall', 'heart']);
+/** 心迹这一条不进日记整理的请求：它是写给主模型的。 */
+export const HEART_NOTE_ID = 'heart-note';
 const item = (id, name, text) => ({ id, name, enabled: true, text });
 const groups = {
     identity: [
@@ -19,6 +22,11 @@ const groups = {
     stage: [
         item("stage-purpose", "阶段整理", "基于叙事顺序排布的记忆内容搭建精简读取层，在压缩篇幅的同时留存完整因果骨架，原切片全程保留不作删减。\n提取本阶段推动人物关系、行动目标、现实处境与世界状态发生转变的核心节点，以连贯短叙事串联事件前因、状态变化与未决事项，具备节点意义的重要经历完整留存。\n用户确认的自定义切片保留原有表意，明确区分计划安排与已发生事实；信息不足或未确认的内容，保留其不确定性。"),
         item("stage-texture", "质感与时空", "承袭细摘要中有据可依的情绪脉络、动作细节、简短对白与场景氛围，赋予阶段摘要叙事温度与故事质感。\n表述严格贴合原文信息边界，行文保有自然叙事节奏，不因压缩篇幅流于冷硬刻板。\n不同世界观、叙事视角、日期与地点分别对应呈现所属事件；阶段内容可覆盖多个时空维度，清晰区分回忆叙事与当下事实。\n按时间线分别梳理：每条时间线标明所属的世界观与时间线名称，线内事件按日期先后排列，日期沿用细摘要中有据的年月日（古代或架空背景为纪年与节气或时令），不合并成「此后」「一段时间里」这类无法排出先后的表述；各时间线的日期互不换算。穿越、循环与时间跳转写明前后所在的时间线与日期。\n持续厘清客观事实与角色个体知情范围的边界。\n优质的阶段摘要，既清晰呈现故事推进带来的状态变化，也明确留存尚未兑现的线索与伏笔。"),
+    ],
+    heart: [
+        item("heart-diary", "观察日记", "### 定位\n以 {{char}} 的第一人称，把零散的留意归拢成对人的印象。印象是 {{char}} 自己慢慢看出来的规律，像私下记的一笔，不是档案，也不是结论。\n### 归拢\n同一个人、同一件事的痕迹归入同一条印象；已有的印象容得下新痕迹时沿用原印象，说法确实需要更新时才改写。互不相干的痕迹各自留着，不为凑数硬并。\n### 口吻\n一条印象一句话，带着 {{char}} 说话的习惯与分寸；写看得见的举止与反应，把握不足处用「好像」「似乎」这样的说法。\n### 改口\n新痕迹与旧印象相左时如实改口，并留下原先的说法。"),
+        item("heart-chronicle", "关系年表", "### 定位\n记下这段关系里值得标一个日子的节点：第一次、称呼或距离的变化、约定与兑现、争执与和解、分别与重逢。\n### 取舍\n只记这些记忆里确实发生过的事，一个节点一条；寻常往来不记，没有节点就留空。\n### 写法\n标题是一个短名；正文一两句，写清是谁与谁之间、发生了什么、由此变了什么，如实平叙。"),
+        item(HEART_NOTE_ID, "心迹", "这次回复的正文全部写完之后，另起一段，以 {{char}} 的口吻写一则只给自己看的心迹。\n写此刻心里沉下来的一个看法：关于 {{user}}，关于自己，关于 {{user}} 身边常出现的人，或关于一起读过的书，任选其一。它来自这段时间的相处，是回头看时才有的体会；不复述刚发生的情节，不对任何人说话，也不改变正文的写法。\n此刻没有新的体会，就不写这一段。"),
     ],
     recall: [
         item("recall-purpose", "何时补充", "仅检查本次明确问题是否需要从指定原文追加原文引证。不重写记忆、不编造事实。只有原文确实回答问题、现有记忆缺少该细节、且不与人工内容冲突时才返回引用；证据不足则返回空。优先补足会影响续写判断的具体事实，例如某件物品最后放在哪里、某个约定的条件是什么；不得为润色或补气氛寻找额外资料。"),
@@ -39,7 +47,9 @@ function validateGroups(value) {
     // Older saved configs and exports predate the editable common identity
     // group. Add the current default only when that group is absent; an empty
     // group remains a deliberate user choice.
-    const source = Object.hasOwn(value, 'identity') ? value : { ...value, identity: clone(groups.identity) };
+    let source = Object.hasOwn(value, 'identity') ? value : { ...value, identity: clone(groups.identity) };
+    // 心迹这一组同理：早先存下的配置里没有它，读到时补上默认的；用户清空的不补。
+    if (!Object.hasOwn(source, 'heart')) source = { ...source, heart: clone(groups.heart) };
     if (Object.keys(source).some(key => !PROMPT_KINDS.includes(key))) fail('总结提示词分组无效');
     const output = {};
     for (const kind of PROMPT_KINDS) {
@@ -72,11 +82,12 @@ export function resolvePromptConfig(settings = {}) {
     if (preference) for (const kind of ['summary', 'stage']) result.groups[kind].push(item('legacy-preference', '原有整理偏好', preference));
     return result;
 }
-export function composePrompt(settings, kind, { protocol = '', data = '' } = {}) {
+export function composePrompt(settings, kind, { protocol = '', data = '', only = null } = {}) {
     if (!PROMPT_TASK_KINDS.includes(kind)) fail('总结提示词用途无效');
     const config = resolvePromptConfig(settings);
     const shared = config.groups.identity.filter(entry => entry.enabled).map(entry => entry.text).filter(Boolean);
-    const specific = config.groups[kind].filter(entry => entry.enabled).map(entry => entry.text).filter(Boolean);
+    // only：只取这一组里指定的几条（日记整理按开关取观察日记或关系年表）；写给主模型的心迹那一条从不进整理请求。
+    const specific = config.groups[kind].filter(entry => entry.enabled && entry.id !== HEART_NOTE_ID && (!only || only(entry))).map(entry => entry.text).filter(Boolean);
     return [shared.concat(specific).join('\n'), protocol, data].filter(Boolean).join('\n\n');
 }
 export function exportPromptPreset(config) {
@@ -109,4 +120,9 @@ export function selectPromptPreset(current, selected) {
     const found=before.presets.find(preset=>preset.id===selected);
     if(!found)fail('所选提示词预设已不存在');
     return {...before,groups:clone(found.groups),selectedPreset:found.id};
+}
+/** 写给主模型的那一条心迹要求；被关掉或删掉时返回空，这一轮就不要心迹。 */
+export function heartNotePrompt(settings) {
+    const entry = resolvePromptConfig(settings).groups.heart.find(item => item.id === HEART_NOTE_ID);
+    return entry?.enabled && entry.text.trim() ? entry.text.trim() : '';
 }

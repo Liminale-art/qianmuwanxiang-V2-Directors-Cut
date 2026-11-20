@@ -437,3 +437,20 @@ test('generation-time similarity scores every slice, remembers slice vectors and
     f.answer = () => new Response('nope', { status: 500 });
     await assert.rejects(f.api.vectorScores({ query: '又一句', candidates: [{ id: 'z', text: '新片' }] }), error => !error.message.includes('vector-secret'));
 });
+
+test('a remembered slice vector whose dimension no longer matches the query is dropped and asked for again', async () => {
+    const f = fixture();
+    await f.api.updateVector({ apiUrl: 'https://vector.example/v1', model: 'embed-fixture' });
+    const inputs = () => f.calls.at(-1).body.input;
+    // First reply: the query is two-dimensional, the slices three-dimensional. Nothing is comparable.
+    f.answer = (path, options) => Response.json({ data: JSON.parse(options.body).input.map((value, index) => ({ index, embedding: index ? [1, 0, 0] : [1, 0] })) });
+    const slices = [{ id: 'a', text: '甲' }, { id: 'b', text: '乙' }];
+    assert.equal((await f.api.vectorScores({ query: '当前', candidates: slices })).size, 0);
+    assert.deepEqual(inputs(), ['当前', '甲', '乙']);
+    // The mismatched vectors must not stay remembered: the next round asks for both slices again and scores them.
+    f.answer = (path, options) => Response.json({ data: JSON.parse(options.body).input.map((value, index) => ({ index, embedding: value === '乙' ? [0, 1] : [1, 0] })) });
+    const next = await f.api.vectorScores({ query: '当前', candidates: slices });
+    assert.deepEqual(inputs(), ['当前', '甲', '乙']);
+    assert.deepEqual([...next], [['a', 1], ['b', 0]]);
+    assert.equal(f.api.clearVectorCache(), 2);
+});

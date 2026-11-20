@@ -439,6 +439,7 @@ export function filterCompanionEntries(entries = [], document = {}, { includeCus
     return entries.filter(entry => !hasCustomParent(entry));
 }
 
+const SEMANTIC_GATE = 0.5;
 export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '', recalledAt = null) {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
@@ -483,7 +484,10 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     // 它不能让失效、屏蔽或删除的条目回来，也不改变谁有权替换原文。
     const similar = usable.map(entry => semantic?.get?.(entry.id)).filter(Number.isFinite);
     const low = Math.min(...similar), span = Math.max(...similar) - low, scale = similar.length ? Math.max(1, ...usable.map(lexical)) : 0;
-    const relevance = entry => lexical(entry) + (similar.length && Number.isFinite(semantic.get(entry.id)) ? (span > 0 ? (semantic.get(entry.id) - low) / span : 1) * scale : 0);
+    // 相似度归一化之后，除了最低的那条都大于 0：直接加进相关度，等于开了向量就人人够格。
+    // 所以只有排在前一半的相似度才算数——向量帮着把真正相近的提上来，不把沾不上边的也放进来。
+    const boost = entry => similar.length && Number.isFinite(semantic.get(entry.id)) ? (span > 0 ? (semantic.get(entry.id) - low) / span : 1) : 0;
+    const relevance = entry => lexical(entry) + (boost(entry) >= SEMANTIC_GATE ? boost(entry) * scale : 0);
     // 遗忘：按剧情进度衰减。淡去的需要更明确的相关，沉底的只有强线索才唤起；
     // 钉住的不参与衰减。这只是门槛，不改变谁排前面，也不改变谁有权替换原文。
     const floorNow = visibleEnd;
@@ -616,7 +620,7 @@ function bookLayerCandidates(document) {
         .sort((a, b) => b.companion.readTo - a.companion.readTo).slice(0, BOOK_LAYER_CANDIDATES).map(entry => ({ id: entry.id, text: entry.text }));
 }
 
-export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '', semanticScores = null, queryText = '' } = {}) {
+export async function buildPlan(document, defaults, snapshot, { countTokens = null, type = '', semanticScores = null, queryText = '', recalledAt = null } = {}) {
     const empty = { prompt: '', coveredRanges: [], memoryIds: [], entries: [], tokens: 0, estimated: !countTokens };
     if (!document.enabled || document.movedTo) return empty;
     const settings = effectiveSettings(document, defaults);
@@ -632,7 +636,8 @@ export async function buildPlan(document, defaults, snapshot, { countTokens = nu
         try { semantic = await semanticScores({ query, candidates }); } catch { semantic = null; }
         if (!(semantic instanceof Map) || !semantic.size) semantic = null;
     }
-    const selected = selectMemories(document, snapshot, settings, hashes, type, semantic, queryText);
+    // recalledAt：每条记忆上次被带进请求时的楼层（本机记录），「刚提过」冷却与回暖都靠它。
+    const selected = selectMemories(document, snapshot, settings, hashes, type, semantic, queryText, recalledAt);
     if (!selected.length) return empty;
     const prompt = renderMemoryPrompt(selected, { entryOrder: document.entryOrder });
     // This is selection, not admission. Only the final-payload adapter may remove raw text.

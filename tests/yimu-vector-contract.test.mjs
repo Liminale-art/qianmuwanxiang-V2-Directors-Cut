@@ -96,3 +96,19 @@ test('rankVectorCandidates output satisfies discoverVectorCandidates contract', 
     assert.deepEqual(result.candidates.map(c => c.id), ['a', 'b']);
     assert.equal('score' in result.candidates[0], false, 'discoverVectorCandidates strips score from final output');
 });
+
+test('a request cancelled by the caller is reported as cancelled, not as a provider failure', async () => {
+    const candidates = [{ id: 'a', text: '第一条' }, { id: 'b', text: '第二条' }];
+    // The provider rejects once the caller aborts, as a real request does.
+    const provider = ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('请求已中断')), { once: true }));
+    for (const discover of [discoverVectorCandidates, discoverRerankCandidates]) {
+        const controller = new AbortController();
+        const pending = discover({ provider, query: '当前', candidates, signal: controller.signal });
+        controller.abort();
+        const cancelled = await pending;
+        assert.equal(cancelled.status, 'cancelled'); assert.deepEqual(cancelled.candidates, []);
+        // Without a cancellation the same rejection is still a reviewable provider error.
+        const failed = await discover({ provider: async () => { throw new Error('接口暂不可用'); }, query: '当前', candidates, signal: new AbortController().signal });
+        assert.equal(failed.status, 'error'); assert.match(failed.reason, /暂不可用/);
+    }
+});

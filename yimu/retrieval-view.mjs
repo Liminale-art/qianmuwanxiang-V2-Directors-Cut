@@ -79,7 +79,7 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
         const presetRow = el('div', 'ym-api-preset-row'); presetRow.append(preset, removePreset);
 
         const url = input('API URL', 'url');
-        url.placeholder = 'https://api.siliconflow.cn/v1';
+        url.placeholder = 'https://example.com/v1';
         const key = input('API Key', 'password'); key.autocomplete = 'new-password';
         key.placeholder = '输入 API Key';
         const keyVisibility = runButton('显示 API Key', 'eye', () => {

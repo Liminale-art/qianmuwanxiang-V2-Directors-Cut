@@ -14,6 +14,7 @@ import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 import { completedSlices } from './stream-slices.mjs';
+import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -55,7 +56,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         clearTimeout(settleTimer); settleTimer = null; settleIdle = 0;
         generating = false; prepared = null; host.clear();
         countPendingRequest();
-        if (state.snapshot?.binding) deferFor(state.snapshot.binding, () => refresh({ quiet: true, auto: true }));
+        const binding = state.snapshot?.binding;
+        // 心迹先摘走并存下，再去做回复后的刷新与自动总结（它们读的应该是去掉那一段之后的正文）。
+        const after = () => { if (binding && !disposed) deferFor(binding, () => refresh({ quiet: true, auto: true })); };
+        if (thoughtAsk) finishThought().catch(error => console.warn('[忆幕] 心迹未存入：', error?.message || error)).then(after); else after();
     };
     const pollSettle = stamp => {
         clearTimeout(settleTimer);
@@ -496,7 +500,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                                 id: entry.id, revision: entry.revision, start: entry.source.start, end: entry.source.end, title: entry.title || '记忆切片', text: entry.text,
                             })),
                             context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
-                        }).candidates.filter(candidate => candidate.kind === 'local');
+                        }).candidates.filter(candidate => candidate.kind === 'local').slice(-64); // 向量一次最多看 64 条：取最近的，不让新切片永远排不上
                         const queryText = snapshot.messages.slice(batch.start - 1, batch.end).map(message => message?.mes || message?.message || '').join('\n');
                         vector = await discoverVectorCandidates({ provider: request => host.vectorCandidates(request), query: queryText, candidates: pool, context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }), limit: 6, signal: controller.signal });
                         if (vector.status === 'ready' && vector.candidates.length) {
@@ -658,7 +662,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             // 隐藏在整轮结束后做一次：每次隐藏都要把整份聊天交给 ST 保存，多批总结若每批保存一次，
             // 慢网络下会连着上传好几份聊天，还会让用户下一次发言排在这些保存后面。生成中不动聊天。
             if (processed && !disposed && !generating && isCurrent(binding)) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
-            if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}), runGeneration);
+            if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}).then(() => startDiary()).catch(() => {}), runGeneration);
             emit();
         }
     }
@@ -777,6 +781,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '阶段摘要的两版修订均已保留，请在条目内选择。'; return; }
                 failedStage = null; failures.delete(key);
                 closeLog(stageLog, { status: 'success' }); stageLog = null;
+                stagedForDiary.add(key);
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(startFloor)}–${shownFloor(endFloor)}`, 'success');
                 if (entryId || !isCurrent(binding)) break;
                 cursor = endFloor + 1;
@@ -797,6 +802,70 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (isCurrent(binding)) { state.streamPreview = ''; state.streamSlices = []; }
             emit();
         }
+    }
+
+    // 日记整理：把还没看过的痕迹归成印象，从新的记忆切片里拾出年表节点。用总结的连接，一次请求。
+    // 自动：刚完成一次阶段总结，或攒够了没看过的痕迹；手动（force）不看这些条件。失败不影响已有记忆。
+    const stagedForDiary = new Set();
+    async function startDiary({ force = false } = {}) {
+        if (disposed || generating || !state.document?.enabled || !state.snapshot) return false;
+        const binding = clone(state.snapshot.binding), key = bindingKey(binding);
+        const staged = stagedForDiary.has(key);
+        if (jobs.has(key) || localStops.has(key)) { if (force) throw new Error('已有一轮整理在进行，请等它结束'); return false; }
+        if (!force && !state.document.autoSummary) return false;
+        const doc = clone(state.document), defaults = clone(state.defaults), settings = effectiveSettings(doc, defaults);
+        const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
+        let work = names.char ? diaryWork(doc, settings) : null;
+        if (!work) { stagedForDiary.delete(key); if (force) throw new Error(settings.diary === false && settings.chronicle === false ? '观察日记与关系年表都关着' : '没有新的痕迹或记忆可整理'); return false; }
+        if (!force && !staged && work.traces.length < DIARY_TRACE_TRIGGER) return false;
+        stagedForDiary.delete(key);
+        const controller = new AbortController(); jobs.set(key, controller);
+        let log = null;
+        const retryState = { exhausted: false };
+        try {
+            const run = summaryRun(settings, state.snapshot);
+            // 放不下时先少读几条记忆（剩下的留到下一次），再少看几条痕迹；一条都不截断。
+            let prompt = diaryPrompt(settings, names, work);
+            while (!run.fitsPrompt(prompt) && work.slices.length > 0) { work = { ...work, slices: work.slices.slice(0, Math.floor(work.slices.length / 2)) }; prompt = diaryPrompt(settings, names, work); }
+            while (!run.fitsPrompt(prompt) && work.traces.length > 1) { work = { ...work, traces: work.traces.slice(0, Math.ceil(work.traces.length / 2)) }; prompt = diaryPrompt(settings, names, work); }
+            if (!run.fitsPrompt(prompt) || !work.traces.length && !work.slices.length) throw new Error('日记整理的内容超过此连接的可用输入容量，请选择容量足够的连接');
+            const start = work.slices[0]?.source.start ?? Math.min(...work.traces.map(item => item.floor)), end = work.slices.at(-1)?.source.end ?? Math.max(...work.traces.map(item => item.floor));
+            if (isCurrent(binding)) { state.status = '正在整理观察日记'; emit(); }
+            log = openLog({ kind: 'diary', chat: chatLabel(binding), range: { start, end }, manual: force, prompt });
+            const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal }, { binding, label: '日记整理', start, end, retryState });
+            if (log?.id) note(() => journal.update(log.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - log.started }));
+            if (controller.signal.aborted || disposed || localStops.has(key)) return false;
+            const result = parseDiary(response, work);
+            await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: result.impressions, events: result.events, used: work.traces.map(item => item.id),
+                ...(work.slices.length ? { eventFloor: work.slices.at(-1).source.end } : {}) });
+            closeLog(log, { status: 'success', impressions: result.impressions.length, events: result.events.length }); log = null;
+            if (isCurrent(binding)) { state.status = '观察日记已整理'; emit(); }
+            return true;
+        } catch (error) {
+            closeLog(log, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); log = null;
+            console.warn('[忆幕] 日记整理未完成：', error?.message || error);
+            if (force) throw error;
+            return false;
+        } finally {
+            if (jobs.get(key) === controller) jobs.delete(key);
+            closeLog(log, { status: 'cancelled', error: '本次日记整理未完成（已中止或被打断）' });
+            emit();
+        }
+    }
+
+    // 心迹：这一轮向主模型要过一则时，回复落定后从最后一条回复里摘走那一段，正文里不留。
+    // 只认最终留下的回复：同一层重新生成，新的顶掉旧的；模型这次没写也记一笔，不必每轮都问。
+    let thoughtAsk = null;
+    async function finishThought() {
+        const ask = thoughtAsk; thoughtAsk = null;
+        host.stopHeartVeil?.();
+        if (!ask || disposed || !isCurrent(ask.binding) || typeof host.lastReply !== 'function') return;
+        const reply = host.lastReply(ask.binding);
+        if (!reply || reply.floor !== ask.floor) return; // 这一轮没有留下回复（被中止、报错）：下次再问。
+        const books = (state.document?.companion?.books || []).map(book => book?.title).filter(Boolean);
+        const { item, cleaned } = takeThought(reply.text, ask.names, { books });
+        if (cleaned !== reply.text) await host.rewriteReply(ask.binding, reply.floor, cleaned);
+        await change(ask.binding, { id: id(), type: 'heartThought', floor: reply.floor, at: Date.now(), ...(item ? { item } : {}) });
     }
 
     async function executeAction(type, payload = {}) {
@@ -964,6 +1033,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             emit(); notice(`已清本机记录${vectors ? `与 ${vectors} 条向量缓存` : ''}`, 'success');
             return true;
         }
+        if (type === 'heartDiary') {
+            await startDiary({ force: true });
+            notice('观察日记已整理', 'success');
+            return true;
+        }
+        if (type === 'heartRemove') {
+            await change(binding, { id: id(), type: 'heartRemove', kind: payload.kind, itemId: payload.itemId, at: Date.now() });
+            return true;
+        }
         if (type === 'purge') {
             if (!['all', 'traces'].includes(payload.scope)) throw new Error('清理范围无效');
             // 正在跑的整理先停：它拿着清理前的条目，写回来会与清理后的文档对不上。
@@ -1041,7 +1119,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const stamp = generation, binding = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
         const page = payload.errorPage || (type === 'settings' ? payload.values?.prompts ? 'overview' : 'settings'
             : /^(story|companion|backup)/.test(type) ? type.match(/^(story|companion|backup)/)[0]
-            : /^(manage|purge|clearLocal)/.test(type) ? 'manage'
+            : /^(manage|purge|clearLocal)/.test(type) ? 'manage' : /^heart/.test(type) ? 'settings'
             : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize'].includes(type) ? 'overview' : 'memory');
         try { return await executeAction(type, payload); }
         catch (error) {
@@ -1062,7 +1140,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     let roundWaitMs = null;
     async function interceptRound(coreChat, contextSize, abort, type = '') {
         const began = Date.now();
-        host.clear(); prepared = null; offered = false;
+        host.clear(); prepared = null; offered = false; thoughtAsk = null; host.stopHeartVeil?.();
         // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
         // 这次读取是刻意的：它能发现别的设备、别处改动过的记忆与原文，省掉它就会注入过期内容（有专门的回归测试）。
         // 因此它只等一次、且有上限（interceptWaitMs），超时本轮不带记忆、照常生成。
@@ -1077,7 +1155,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 clearTimeout(timer);
             } while (ready && refreshing && refreshing !== waited);
             // A slow storage read never holds normal generation hostage — but the round says why it carried no memory.
-            if (!ready) { if (!disposed && state.document?.enabled) { state.lastSkip = { stage: 'refresh', reason: 'refresh-timeout', at: ++skipSeq }; emit(); } return; }
+            // 读取没赶上（多见于 ST 正在上传保存整份聊天、同一条上行被占住；重新生成与滑动也会先保存一次，所以会连着超时）：
+            // 不再整轮丢掉记忆，改用上一次已经核对过的记忆继续。原文仍在下面按当前聊天逐层核对指纹，
+            // 最终边界还会再核一遍修订号；只有本机从没读到过这个聊天的记忆时才真的无记忆可用。
+            // 换了聊天的情况由下面的现场快照核对（绑定不同即不带）。
+            if (!ready) {
+                const usable = !disposed && state.document?.enabled === true && state.sourceAvailable === true && !!state.snapshot;
+                if (!usable) { if (!disposed && state.document?.enabled) { state.lastSkip = { stage: 'refresh', reason: 'refresh-timeout', at: ++skipSeq }; emit(); } return; }
+                console.info('[忆幕] 生成前读取超时，本轮沿用上一次已核对的记忆');
+            }
         }
         if (disposed || !state.document?.enabled || !state.snapshot || localStops.has(bindingKey(state.snapshot.binding))) return;
         if (!state.sourceAvailable) { state.lastSkip = { stage: 'refresh', reason: 'source-unverified', at: ++skipSeq }; emit(); return; }
@@ -1092,10 +1178,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             const snapshot = await host.snapshot();
             if (!equalBinding(snapshot.binding, doc.binding)) return;
             // 向量相似度限时取：到点没回来本轮就按关键词排序，请求继续在后台跑完、把向量记下，下一轮即可用上。
+            let semanticNote = '';
             const semanticScores = typeof host.vectorScores !== 'function' ? null : request => {
-                const pending = Promise.resolve().then(() => host.vectorScores(request)).catch(() => null);
+                const pending = Promise.resolve().then(() => host.vectorScores(request)).catch(error => { semanticNote = String(error?.message || error).slice(0, 120); return null; });
                 let timer;
-                return Promise.race([pending, new Promise(resolve => { timer = setTimeout(() => resolve(null), semanticWaitMs); })]).finally(() => clearTimeout(timer));
+                return Promise.race([pending, new Promise(resolve => { timer = setTimeout(() => { semanticNote ||= '没在限时内返回，本轮按关键词排序'; resolve(null); }, semanticWaitMs); })]).finally(() => clearTimeout(timer));
             };
             // 不传 countTokens：ST 的分词器对 OpenAI 类连接要发网络请求，而这是每轮生成前都要跑的路径。
             // 记忆块大小用 estimateTokens 估算即可（只用于记忆调阅里显示「约多少 token」）。
@@ -1104,7 +1191,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             // 隐藏不在这里做：ST 已按当前聊天装配好本轮消息，此刻再改聊天会让两边对不上，本轮反而丢掉记忆。
             // 隐藏统一在总结完成后与刷新时应用（见 syncHidden），下一轮装配时自然生效。
             const result = host.prepare(coreChat, plan, snapshot, type);
-            if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true,
+            // prepare 会先清注入槽，所以心迹的那一段放在它之后。后台静默生成不带。
+            if (type !== 'quiet') offerHeartRound(doc, defaults, snapshot, type, ticket);
+            if (result.prepared) { prepared = { session: result.session, generation: ticket, binding: clone(doc.binding), revision: doc.revision, defaultsRevision: defaults.revision, epoch: doc.epoch, semantic: plan.semantic === true, semanticNote: plan.semantic === true ? '' : semanticNote,
                 foreignIds: plan.entries.filter(entry => entry.origin).map(entry => entry.id) };
                 // 保底：把记忆写入持久注入槽，由 ST 烘焙进本轮 payload。若最终请求边界无法安全
                 // 改写（能力/路由受限等），这段记忆仍随原请求送达模型；成功改写时
@@ -1126,6 +1215,22 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             host.clear(); // Failure retains ST's unchanged original context.
             if (ticket === generation && !disposed) { state.lastSkip = { stage: 'plan', reason: 'plan-error', message: String(error?.message || error).slice(0, 200), at: ++skipSeq }; emit(); }
         }
+    }
+
+    // 心迹页与正文的两处接点，都走独立的注入槽：开了注入时带上出场的人的印象与一则心迹；
+    // 到了该写心迹的时候，向主模型要一则（回复落定后由 finishThought 摘走）。
+    function offerHeartRound(doc, defaults, snapshot, type, ticket) {
+        if (typeof host.offerHeart !== 'function') return;
+        try {
+            const settings = effectiveSettings(doc, defaults), names = { char: String(snapshot.name || '').trim(), user: String(snapshot.userName || '').trim() };
+            const carried = heartInjection(doc, settings, snapshot, { type, recalledAt: recallAtMap(snapshot.binding) });
+            const due = ['', 'normal', 'swipe', 'regenerate'].includes(type || '') ? thoughtDue(doc, settings, snapshot, type) : null;
+            const ask = due ? thoughtRequest(settings, names) : '';
+            const text = [carried.text, ask].filter(Boolean).join('\n\n');
+            if (!text || !host.offerHeart(text)) return;
+            if (carried.ids.length) rememberRecall(snapshot.binding, carried.ids.map(value => ({ id: value })));
+            if (ask) { thoughtAsk = { binding: clone(snapshot.binding), floor: due.floor, names, generation: ticket }; host.veilHeart?.(HEART_TAG); }
+        } catch (error) { console.warn('[忆幕] 心迹这一轮未带入：', error?.message || error); }
     }
 
     // 本轮实际发出的请求有多大：用户看不到忆幕对聊天记录的改动，就必须能直接看到请求的体积。
@@ -1220,7 +1325,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 return;
             }
             if (result.applied) {
-                state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared', semantic: pending.semantic === true,
+                state.lastUsed = { entries: clone(result.entries), tokens: result.tokens, estimated: true, status: 'prepared', semantic: pending.semantic === true, ...(pending.semanticNote ? { semanticNote: pending.semanticNote } : {}),
                     sourceReplacement: result.removedFloors.length > 0, removedFloors: result.removedFloors, recentFloors: result.recentFloors,
                     requestTokens: result.requestTokens, contextTokens: result.contextTokens, responseTokens: result.responseTokens };
                 state.lastSkip = null;

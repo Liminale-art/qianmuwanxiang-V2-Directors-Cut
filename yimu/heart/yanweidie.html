@@ -4,17 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>燕尾蝶</title>
+<link rel="stylesheet" href="https://fontsapi.zeoseven.com/285/main/result.css">
+<link rel="stylesheet" href="https://fontsapi.zeoseven.com/161/main/result.css">
 <style>
 /* 方案 C「振翅」：一蝶振翅，万象如幕。
    莫比乌斯环是一卷首尾相接的胶片——齿孔沿着环走，正面走着走着就成了背面；{{char}} 的头像在环心里。
    观察日记是胶片上的一格一格：哪几个日子看见过，就打亮几个齿孔。
-   心迹是从环上垂下来的一条片带，一路往下，蝴蝶停在每一段话旁边。 */
-:root { --paper: #efeef3; --blue: #1228e6; --ink: #0c0c10; --mute: #8f8fa0; --hair: #c9c9d6; }
+   心迹是从环上垂下来的一条片带，一路往下，蝴蝶停在每一段话旁边。
+   年表是一卷竖着放的胶片：一格一个日子，这段日子里新添的那几格是亮的。 */
+:root { --paper: #efeef3; --blue: #1228e6; --ink: #0c0c10; --mute: #8f8fa0; --hair: #c9c9d6;
+  --ymd-ink: var(--ink); --ymd-mute: var(--mute); --ymd-accent: var(--blue); --ymd-paper: var(--paper); --ymd-line: var(--hair);
+  --serif: "Noto Serif CJK", "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; --label: "Helvetica Neue", Helvetica, Arial, "Sarasa Gothic SC", system-ui, sans-serif; }
 @media (prefers-color-scheme: dark) { :root { --paper: #0d0d14; --blue: #4d63ff; --ink: #ecebf5; --mute: #7d7d92; --hair: #2a2a3a; } }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--paper); color: var(--ink); overflow-x: hidden; font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; }
-.sans { font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; }
+body { margin: 0; background: var(--paper); color: var(--ink); overflow-x: hidden; font-family: var(--serif); }
+.sans { font-family: var(--label); }
 .wrap { max-width: 560px; margin: 0 auto; position: relative; }
 svg defs { display: none; }
 /* ---- 片头 ---- */
@@ -26,7 +31,7 @@ svg defs { display: none; }
 .hero .rule.h { left: 0; right: 0; top: 206px; height: 1px; }
 .hero .rule.v { top: 206px; bottom: 0; left: 52%; width: 1px; }
 .hero .cap { position: absolute; left: 0; top: 14px; font-size: 34px; line-height: 1.02; letter-spacing: -.03em; color: var(--blue); }
-.hero .cap small { display: block; font-size: 15px; letter-spacing: .4em; margin-top: 10px; font-family: "Songti SC", "Noto Serif SC", serif; }
+.hero .cap small { display: block; font-size: 15px; letter-spacing: .4em; margin-top: 10px; font-family: var(--serif); }
 .hero .side { position: absolute; right: 8px; top: 16px; writing-mode: vertical-rl; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
 .hero .bracket { position: absolute; right: 0; top: 226px; height: 250px; width: 8px; border: 1px solid var(--blue); border-left: 0; }
 .disc { position: absolute; border-radius: 50%; background: var(--ink); filter: url(#grain); }
@@ -38,7 +43,7 @@ svg defs { display: none; }
 @keyframes run { to { stroke-dashoffset: -160; } }
 .avatar { position: absolute; left: 50%; top: 150px; margin-left: -196px; width: 122px; height: 122px; border-radius: 50%; overflow: hidden; transform: rotate(-9deg);
   background: radial-gradient(circle at 50% 38%, #b9b9c6 0 26%, transparent 27%), radial-gradient(ellipse at 50% 112%, #9a9aa9 0 46%, transparent 47%), linear-gradient(160deg, #dcdce6, #b4b4c4); filter: grayscale(1) contrast(1.1); }
-.avatar::after { content: attr(data-name); position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 10px/1 "Helvetica Neue", Arial, sans-serif; letter-spacing: .1em; color: var(--paper); }
+.avatar::after { content: attr(data-name); position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 10px/1 var(--label); letter-spacing: .1em; color: var(--paper); }
 .bf { position: absolute; width: var(--s, 30px); height: var(--s, 30px); color: var(--blue); }
 .bf svg { width: 100%; height: 100%; overflow: visible; }
 .bf .wing { fill: currentColor; transform-origin: 12px 12px; animation: flap var(--f, .46s) ease-in-out infinite alternate; }
@@ -52,10 +57,12 @@ svg defs { display: none; }
 @keyframes fly { 0%, 100% { translate: 0 0; } 50% { translate: 14px -18px; } }
 .note { font-size: 11px; color: var(--mute); letter-spacing: .1em; padding: 0 22px; margin: 14px 0 0; }
 /* ---- 切换 ---- */
-.switch { position: sticky; top: 0; z-index: 6; display: flex; gap: 0; padding: 14px 22px 12px; background: linear-gradient(var(--paper) 72%, transparent); }
+.pin { position: sticky; top: 42px; z-index: 6; background: linear-gradient(var(--paper) 88%, transparent); }
+.switch { display: flex; gap: 0; padding: 14px 22px 4px; }
 .switch button { all: unset; cursor: pointer; flex: 1; font-size: 13px; letter-spacing: .5em; color: var(--mute); padding: 8px 0; border-top: 1px solid var(--hair); }
 .switch button[aria-selected="true"] { color: var(--blue); border-top: 3px solid var(--blue); padding-top: 6px; }
-.switch button + button { text-align: right; }
+.switch button + button { text-align: center; }
+.switch button:last-child { text-align: right; }
 section[hidden] { display: none; }
 /* ---- 观察日记：一格胶片 ---- */
 .frame { position: relative; margin: 0 22px 34px; padding: 30px 0 30px; border-left: 1px solid var(--blue); border-right: 1px solid var(--blue); cursor: pointer;
@@ -80,7 +87,7 @@ section[hidden] { display: none; }
 .frame.open .proof { grid-template-rows: 1fr; }
 .proof ul { margin: 16px 0 0; padding: 12px 0 0; border-top: 1px solid var(--hair); list-style: none; }
 .proof li { display: flex; gap: 14px; font-size: 14px; line-height: 1.8; }
-.proof li b { flex: 0 0 5em; font: 11px/2.3 "Helvetica Neue", Arial, sans-serif; letter-spacing: .08em; color: var(--blue); }
+.proof li b { flex: 0 0 5em; font: 11px/2.3 var(--label); letter-spacing: .08em; color: var(--blue); }
 .proof li.was span { text-decoration: line-through; color: var(--mute); }
 .loose { position: relative; height: 230px; margin: 10px 22px 0; border-top: 1px solid var(--blue); overflow: hidden; }
 .loose h4 { margin: 12px 0 0; font-weight: normal; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
@@ -113,11 +120,23 @@ section[hidden] { display: none; }
 .ymbar button:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
 body { padding-top: 42px; }
 .empty { margin: 0; padding: 46px 22px; font-size: 14px; letter-spacing: .2em; opacity: .6; }
-.ymbar { background: var(--paper); border-bottom: 1px solid var(--blue); font: 12px/1 "Helvetica Neue", Helvetica, Arial, sans-serif; letter-spacing: .24em; color: var(--blue); }
+.ymbar { background: var(--paper); border-bottom: 1px solid var(--blue); font: 12px/1 var(--label); letter-spacing: .24em; color: var(--blue); }
 .ymbar #ym-theme { background: var(--blue); color: var(--paper); padding: 6px 9px; }
-.switch { top: 42px !important; }
 .empty { color: var(--blue); }
 .avatar[data-photo] { background-size: cover; background-position: center; filter: none; }
+/* ---- 年表：竖着的一卷胶片 ---- */
+#chron { position: relative; padding: 18px 22px 0 58px; }
+#chron::before { content: ''; position: absolute; left: 22px; top: 0; bottom: 60px; width: 22px; background: var(--blue); }
+#chron::after { content: ''; position: absolute; left: 30px; top: 0; bottom: 60px; width: 6px; background: repeating-linear-gradient(var(--paper) 0 8px, transparent 8px 20px); }
+.tick { position: relative; padding: 0 0 46px; opacity: 0; transform: translateX(18px); transition: opacity .8s, transform .8s cubic-bezier(.2,.8,.2,1); }
+.tick.in { opacity: 1; transform: none; }
+.tick .on { font-family: var(--label); font-size: 11px; letter-spacing: .3em; color: var(--mute); }
+.tick h3 { margin: 6px 0 8px; font-weight: normal; font-size: clamp(24px, 7vw, 34px); line-height: 1.2; letter-spacing: -.01em; color: transparent; -webkit-text-stroke: 1px var(--blue); }
+.tick p { margin: 0; font-size: 15px; line-height: 1.85; max-width: 22em; }
+.tick.now h3 { color: var(--blue); -webkit-text-stroke: 0; }
+.tick.now .on { display: inline-block; padding: 3px 8px; background: var(--blue); color: var(--paper); }
+#chron .end { padding-left: 0; text-align: left; }
+/*@@HEART_SHARED_CSS@@*/
 </style>
 </head>
 <body data-view="diary">
@@ -127,7 +146,7 @@ body { padding-top: 42px; }
 <div class="wrap">
   <header class="hero">
     <div class="cap sans">memory<br>is a loop<small>一蝶振翅 · 万象如幕</small></div>
-    <div class="side">心 迹 ／ 观 察 日 记 ／ 忆 幕</div>
+    <div class="side">心 迹 ／ 观 察 日 记 ／ 年 表</div>
     <span class="rule h"></span><span class="rule v"></span><span class="bracket"></span>
     <div class="word one">心</div><div class="word two">迹</div>
     <span class="disc" style="width:150px;height:150px;right:-34px;top:60px"></span><span class="disc" style="width:58px;height:58px;left:36%;top:438px"></span>
@@ -140,7 +159,10 @@ body { padding-top: 42px; }
     <div class="flock"><span class="bf line" style="left:70%;top:60px;--s:20px;--f:.4s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf line" style="left:80%;top:98px;--s:13px;--f:.34s;animation-delay:-3s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span>
       <span class="bf ink" style="left:22%;top:470px;--s:16px;--f:.38s;animation-delay:-6s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:31%;top:500px;--s:10px;--f:.3s;animation-delay:-2s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:12%;top:520px;--s:22px;--f:.5s;animation-delay:-8s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span></div>
   </header>
-  <nav class="switch sans" role="tablist"><button role="tab" aria-selected="true" data-view="diary">观 察 日 记</button><button role="tab" aria-selected="false" data-view="heart">心 迹</button></nav>
+  <div class="pin sans">
+    <nav class="switch" role="tablist"><button role="tab" aria-selected="true" data-view="diary">观 察 日 记</button><button role="tab" aria-selected="false" data-view="heart">心 迹</button><button role="tab" aria-selected="false" data-view="chron">年 表</button></nav>
+    <div id="ym-date"></div>
+  </div>
 
   <section id="diary"></section>
   <section id="heart" hidden>
@@ -148,52 +170,29 @@ body { padding-top: 42px; }
     <svg id="band" aria-hidden="true"><mask id="reveal" maskUnits="userSpaceOnUse"><path id="revealPath"/></mask><g mask="url(#reveal)"><path class="film"/><path class="holes"/></g></svg>
     <p class="end sans">LOOP · 回 到 开 头</p>
   </section>
+  <section id="chron" hidden></section>
 </div>
 <script>
-const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
-const tell = type => parent.postMessage({ yimuHeart: type }, '*');
-document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
-document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
-addEventListener('keydown', event => { if (event.key === 'Escape') tell('exit'); });
-window.yimuRender = raw => { if (window.__yimuRendered) return; window.__yimuRendered = true; const D = safe(raw || {}); D.impressions ||= []; D.loose ||= []; D.thoughts ||= [];
-
-  const face = document.querySelector('.avatar'); face.dataset.name = raw?.char || '';
-  if (raw?.avatar) { face.dataset.photo = '1'; face.style.backgroundImage = `url("${String(raw.avatar).replace(/["\\\n]/g, '')}")`; }
-  document.querySelector('#heart .end').insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="say2" data-about="${it.group}"><span class="about sans">${it.about}</span><span class="when sans">${it.when}</span><p>${it.say}</p>${it.was ? `<div class="before">以前以为：<s>${it.was}</s></div>` : ''}</article>`).join('') : '<p class="empty">片带上还是空的。</p>');
-  if (!D.thoughts.length) document.querySelector('#heart .end').hidden = true;
-
-const frames = D.impressions;
-const bf = (cls, style) => `<span class="bf ${cls}" style="${style}"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span>`;
-const diary = document.getElementById('diary');
-frames.forEach((item, index) => {
-  const teeth = Array.from({ length: 6 }, (_, i) => `<i class="${i < item.days.length ? 'on' : ''}" style="--i:${i}"></i>`).join('');
-  const node = document.createElement('article'); node.className = 'frame'; node.dataset.sure = item.sure; node.style.setProperty('--tilt', `${[-1.2, .9, -.6, 1.4][index % 4]}deg`);
-  node.innerHTML = `<div class="teeth top">${teeth}</div><div class="body"><span class="no">${String(index + 1).padStart(2, '0')}</span><span class="who sans">${item.about}</span><p class="say">${item.say}</p>
-    <span class="sure sans">${item.word}</span><span class="tip sans">${item.days.length} 个日子 · 点开看依据</span>
-    <div class="proof"><div><ul>${item.was ? `<li class="was"><b>以前以为</b><span>${item.was}</span></li>` : ''}${item.days.map(([day, text]) => `<li><b>${day}</b><span>${text}</span></li>`).join('')}</ul></div></div></div><div class="teeth bot">${teeth}</div>`;
-  node.addEventListener('click', () => node.classList.toggle('open'));
-  diary.append(node);
-});
-const loose = D.loose.slice(0, 6).map((item, i) => [item.text, [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
-diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="left:${[4, 50, 12, 56, 30, 66][i]}%;top:${[46, 70, 112, 138, 176, 190][i]}px;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
-
+/*@@HEART_SHARED_JS@@*/
+const WING = '<svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg>';
+const bf = (cls, style) => `<span class="bf ${cls}" style="${style}">${WING}</span>`;
+const diary = document.getElementById('diary'), heart = document.getElementById('heart'), chron = document.getElementById('chron');
+const views = { diary, heart, chron }, tabs = [...document.querySelectorAll('.switch button')], chips = [...document.querySelectorAll('.chips button')];
 const reveal = new IntersectionObserver(entries => { for (const e of entries) if (e.isIntersecting) e.target.classList.add('in'); }, { threshold: .18 });
-document.querySelectorAll('.frame, .say2').forEach(n => reveal.observe(n));
-const tabs = [...document.querySelectorAll('.switch button')], views = { diary, heart: document.getElementById('heart') };
+let about = 'all';
 tabs.forEach(tab => tab.addEventListener('click', () => {
   tabs.forEach(t => t.setAttribute('aria-selected', String(t === tab)));
   for (const [name, node] of Object.entries(views)) node.hidden = name !== tab.dataset.view;
-  document.querySelector('.switch').scrollIntoView({ behavior: 'instant', block: 'start' }); if (tab.dataset.view === 'heart') setTimeout(layoutBand, 30);
+  document.querySelector('.pin').scrollIntoView({ behavior: 'instant', block: 'start' }); if (tab.dataset.view === 'heart') setTimeout(layoutBand, 30);
 }));
 // 片带：从上方垂下，穿过每一段话旁边；滚到哪里放到哪里。蝴蝶停在每个转弯处，大小不一。
-const heart = views.heart, band = document.getElementById('band'), film = band.querySelector('.film'), holes = band.querySelector('.holes'), mask = document.getElementById('revealPath');
+const band = document.getElementById('band'), film = band.querySelector('.film'), holes = band.querySelector('.holes'), mask = document.getElementById('revealPath');
 let total = 0, stops = [];
 function layoutBand() {
   heart.querySelectorAll(':scope > .bf').forEach(n => n.remove());
   const box = heart.getBoundingClientRect(), items = [...heart.querySelectorAll('.say2')].filter(n => !n.hidden);
   const points = items.map((node, i) => { const r = node.getBoundingClientRect(), left = node.matches(':nth-of-type(odd)'); return { x: left ? r.left - box.left - 34 : r.right - box.left + 34, y: r.top - box.top + 14, i }; });
-  if (!points.length) { for (const p of [film, holes, mask]) p.setAttribute('d', ''); return; }
+  if (!points.length) { for (const p of [film, holes, mask]) p.setAttribute('d', ''); total = 0; stops = []; return; }
   const cx = box.width / 2; let d = `M ${cx} ${points[0].y - 150} C ${cx} ${points[0].y - 70}, ${points[0].x} ${points[0].y - 70}, ${points[0].x} ${points[0].y}`;
   for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i], mid = (b.y - a.y) * .55; d += ` C ${a.x} ${a.y + mid}, ${b.x} ${b.y - mid}, ${b.x} ${b.y}`; }
   const last = points.at(-1); d += ` C ${last.x} ${last.y + 80}, ${cx} ${last.y + 90}, ${cx} ${last.y + 170}`;
@@ -205,7 +204,7 @@ function layoutBand() {
   stops = [...points, ...extras];
   for (const p of stops) { const node = document.createElement('span'); node.className = 'bf' + (p.small ? ' line' : p.i === points.length - 1 ? ' ink' : '');
     node.style.cssText = `left:${p.x}px;top:${p.y}px;--s:${p.small ? p.size : sizes[p.i % sizes.length]}px;--f:${(.34 + (p.y % 7) / 30).toFixed(2)}s;rotate:${(p.y % 40) - 20}deg`;
-    node.innerHTML = '<svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg>'; heart.append(node); p.node = node; }
+    node.innerHTML = WING; heart.append(node); p.node = node; }
   drawBand();
 }
 function drawBand() {
@@ -216,15 +215,40 @@ function drawBand() {
   for (const p of stops) p.node?.classList.toggle('in', p.y < reach);
 }
 addEventListener('scroll', drawBand, { passive: true }); addEventListener('resize', () => { if (!heart.hidden) layoutBand(); });
-document.querySelectorAll('.chips button').forEach(chip => chip.addEventListener('click', () => {
-  document.querySelectorAll('.chips button').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
-  heart.querySelectorAll('.say2').forEach(k => { k.hidden = chip.dataset.about !== 'all' && k.dataset.about !== chip.dataset.about; });
-  setTimeout(layoutBand, 30);
-}));
+function applyAbout() {
+  chips.forEach(c => c.setAttribute('aria-pressed', String(c.dataset.about === about)));
+  heart.querySelectorAll('.say2').forEach(k => { k.hidden = about !== 'all' && k.dataset.about !== about; });
+  if (!heart.hidden) setTimeout(layoutBand, 30);
+}
+chips.forEach(chip => chip.addEventListener('click', () => { about = chip.dataset.about; applyAbout(); }));
 
-if (!frames.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
-if (!loose.length) diary.querySelector('.loose').hidden = true;
+window.yimuPaint = (D, raw) => {
+  const face = document.querySelector('.avatar'); face.dataset.name = raw?.char || '';
+  if (raw?.avatar) { face.dataset.photo = '1'; face.style.backgroundImage = `url("${String(raw.avatar).replace(/["\\\n]/g, '')}")`; }
 
+  diary.innerHTML = '';
+  D.impressions.forEach((item, index) => {
+    const teeth = Array.from({ length: 6 }, (_, i) => `<i class="${i < item.days.length ? 'on' : ''}" style="--i:${i}"></i>`).join('');
+    const node = document.createElement('article'); node.className = 'frame'; node.dataset.sure = item.sure; node.style.setProperty('--tilt', `${[-1.2, .9, -.6, 1.4][index % 4]}deg`);
+    node.innerHTML = `<div class="teeth top">${teeth}</div><div class="body"><span class="no">${String(index + 1).padStart(2, '0')}</span><span class="who sans">${item.about}</span><p class="say">${item.say}</p>
+      <span class="sure sans">${item.word}</span><span class="tip sans">${item.days.length} 个日子 · 点开看依据</span>
+      <div class="proof"><div><ul>${item.was ? `<li class="was"><b>以前以为</b><span>${item.was}</span></li>` : ''}${item.days.map(([day, text]) => `<li><b>${day}</b><span>${text}</span></li>`).join('')}</ul></div></div></div><div class="teeth bot">${teeth}</div>`;
+    node.addEventListener('click', () => node.classList.toggle('open'));
+    diary.append(node);
+  });
+  if (!D.impressions.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">这段日子还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
+  const loose = D.loose.slice(0, 6).map((item, i) => [item.text, [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
+  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="left:${[4, 50, 12, 56, 30, 66][i]}%;top:${[46, 70, 112, 138, 176, 190][i]}px;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
+
+  heart.querySelectorAll('.say2, .empty').forEach(node => node.remove());
+  const end = heart.querySelector('.end');
+  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="say2" data-about="${it.group}"><span class="about sans">${it.about}</span><span class="when sans">${it.when}</span><p>${it.say}</p></article>`).join('') : '<p class="empty">这段日子，片带上还是空的。</p>');
+  end.hidden = !D.thoughts.length;
+
+  chron.innerHTML = D.events.length ? D.events.map(item => `<article class="tick${item.now ? ' now' : ''}"><span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('') + '<p class="end sans">TO BE CONTINUED</p>'
+    : '<p class="empty">还没有值得标一个日子的事。</p>';
+  document.querySelectorAll('.frame, .say2, .tick').forEach(n => reveal.observe(n));
+  applyAbout();
 };
 </script>
 </body>

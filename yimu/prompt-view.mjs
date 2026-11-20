@@ -1,7 +1,7 @@
 import {DEFAULT_PROMPTS,BUILTIN_PROMPT_PRESET,PROMPT_KINDS,resolvePromptConfig,validatePromptConfig,importPromptPreset,exportPromptPreset,mergeImportedPromptConfig,selectPromptPreset} from './prompt-settings.mjs';
 import {createYimuIcon} from './icons.mjs';
 
-const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',heart:'心迹日记',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 /** Committed configuration and per-entry text drafts are deliberately separate. */
 export function mountPromptView(container,{document=container?.ownerDocument||globalThis.document,onSave=async()=>{},onError=()=>{},onExport,showTitle=true,autosaveMs=1200}={}){
     const autosaveTimers=new Set();
@@ -52,7 +52,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     const groups=el('div','ym-prompt-groups');groups.setAttribute('role','tablist');groups.setAttribute('aria-label','提示词用途');
     const groupButtons=new Map();
     const recallVisible=()=>state.recallEnabled??state.settings?.recall!==false;
-    for(const key of PROMPT_KINDS){const node=button(LABELS[key],{identity:'book',summary:'edit',stage:'book',recall:'eye'}[key],()=>{if(key==='recall'&&!recallVisible())return;kind=key;renderRows();update();});node.className='ym-button';node.replaceChildren(el('span','',LABELS[key]));node.setAttribute('role','tab');groupButtons.set(key,node);groups.append(node);}
+    for(const key of PROMPT_KINDS){const node=button(LABELS[key],{identity:'book',summary:'edit',stage:'book',heart:'quill',recall:'eye'}[key],()=>{if(key==='recall'&&!recallVisible())return;kind=key;renderRows();update();});node.className='ym-button';node.replaceChildren(el('span','',LABELS[key]));node.setAttribute('role','tab');groupButtons.set(key,node);groups.append(node);}
     const list=el('div','ym-prompt-list'),empty=el('p','ym-muted','此组没有条目，可新增或选择内置默认。');
     const status=el('p','ym-muted ym-prompt-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
     const retry=button('重试本次提示词保存','refresh',()=>{const rec=record();if(rec.remote){rec.saved=clone(rec.remote.config);rec.revision=rec.remote.revision;}rec.error='';rec.failed=false;rebuildConfig(rec);void drain(rec);});
@@ -188,6 +188,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         recovery.hidden=!rec.failed;retry.disabled=disabled||!!rec.saving;cancelOperation.disabled=disabled||!!rec.saving;
         status.textContent=rec.error||rec.message||'';status.hidden=!status.textContent;
         for(const [key,node]of groupButtons){node.hidden=(key==='recall'&&!recallVisible())||key==='identity';node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
+        groups.dataset.count=String([...groupButtons.values()].filter(node=>!node.hidden).length);
         card.setAttribute('aria-busy',String(!!rec.saving));
     }
     file.addEventListener('cancel',event=>event.stopPropagation?.());

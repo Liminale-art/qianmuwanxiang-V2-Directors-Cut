@@ -4,6 +4,7 @@ import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudge
 import { createApiSettings } from './api-settings.mjs';
 
 export const MEMORY_PROMPT_KEY = 'yimu-memory';
+export const HEART_PROMPT_KEY = 'yimu-heart';
 // Fixed identity boundary. The editable persona and request guidance are
 // composed from prompt-settings.mjs; the machine protocol is appended separately.
 const EVENTS = [
@@ -254,6 +255,62 @@ export function createHost({
         const ctx = getContext();
         if (typeof ctx?.setExtensionPrompt !== 'function') return false;
         ctx.setExtensionPrompt(MEMORY_PROMPT_KEY, '', 1, 0, false, 0);
+        ctx.setExtensionPrompt(HEART_PROMPT_KEY, '', 1, 0, false, 0);
+        return true;
+    }
+
+    // 心迹页的注入槽：印象与看法的那一小段，以及「这次顺带写一则心迹」的要求。与记忆块分开放，
+    // 所以记忆改写成不成功都不影响它；prepare 会先清一次槽，调用方要在 prepare 之后再放。
+    function offerHeart(prompt) {
+        const content = text(prompt);
+        if (!content) return false;
+        const ctx = getContext();
+        if (typeof ctx?.setExtensionPrompt !== 'function') return false;
+        ctx.setExtensionPrompt(HEART_PROMPT_KEY, content, 1, 0, false, 0);
+        return true;
+    }
+    /** 最后一条角色回复（心迹只认最终留下的这一条）。没有就返回 null。 */
+    function lastReply(binding = null) {
+        let ctx;
+        try { ctx = context(); if (binding && !sameBinding(bindingOf(ctx), binding)) return null; } catch { return null; }
+        const index = Array.isArray(ctx.chat) ? ctx.chat.length - 1 : -1, message = ctx.chat?.[index];
+        if (!message || message.is_user || message.is_system || typeof message.mes !== 'string') return null;
+        return { floor: index + 1, text: message.mes };
+    }
+    /** 把去掉心迹那一段的正文写回这条回复（连同当前这一版滑动），重画这一层并保存聊天。 */
+    async function rewriteReply(binding, floor, value) {
+        const ctx = context();
+        if (binding && !sameBinding(bindingOf(ctx), binding)) return false;
+        const message = ctx.chat?.[floor - 1];
+        if (!message || message.is_user || typeof value !== 'string') return false;
+        message.mes = value;
+        if (Array.isArray(message.swipes) && Number.isSafeInteger(message.swipe_id) && typeof message.swipes[message.swipe_id] === 'string') message.swipes[message.swipe_id] = value;
+        if (typeof ctx.updateMessageBlock === 'function') ctx.updateMessageBlock(floor - 1, message);
+        if (typeof ctx.saveChat === 'function') await ctx.saveChat();
+        return true;
+    }
+    // 流式输出时把心迹那一段藏起来：它是写给忆幕的，不该在正文里一闪而过。只动显示，不动数据；
+    // 回复结束后由 rewriteReply 从正文里真正去掉。
+    let heartVeil = null;
+    function stopHeartVeil() { if (heartVeil) { heartVeil.disconnect(); heartVeil = null; } }
+    function veilHeart(tag) {
+        stopHeartVeil();
+        const chat = document?.querySelector?.('#chat');
+        if (!chat || typeof MutationObserver !== 'function' || !tag) return false;
+        const mark = `<${tag}`;
+        const sweep = () => {
+            const body = chat.querySelector('.mes.last_mes .mes_text') || [...chat.querySelectorAll('.mes .mes_text')].at(-1);
+            if (!body || !String(body.textContent || '').includes(mark)) return;
+            let hide = false;
+            for (const node of [...body.childNodes]) {
+                if (!hide && String(node.textContent || '').includes(mark)) hide = true;
+                if (!hide) continue;
+                if (node.nodeType === 1) node.style.display = 'none';
+                else if (node.nodeType === 3 && node.textContent.trim()) { const span = document.createElement('span'); span.style.display = 'none'; node.replaceWith(span); span.append(node); }
+            }
+        };
+        heartVeil = new MutationObserver(sweep);
+        heartVeil.observe(chat, { childList: true, subtree: true, characterData: true });
         return true;
     }
 
@@ -514,7 +571,7 @@ export function createHost({
         return body?.dataset ? body.dataset.generating === 'true' : null;
     }
 
-    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, prepare, applyPrepared, setHidden, applyHidden, subscribe, openStory, openBackup, confirmStoryBoundary,
+    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, offerHeart, lastReply, rewriteReply, veilHeart, stopHeartVeil, prepare, applyPrepared, setHidden, applyHidden, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         // 最终请求的 token 数量用 ST 自己的分词器算，取不到时由调用方退回估算。
         countTokens: value => {

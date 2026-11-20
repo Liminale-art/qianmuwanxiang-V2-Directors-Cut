@@ -2,20 +2,34 @@
 // 所以不受千幕、忆幕本体主题的影响；左上角退出，右上角换主题，选过的主题记在本机。
 // 这里只负责开合、换主题与把数据交给页面；页面长什么样全在 yimu/heart/ 的主题文件里。
 import { HEART_THEMES } from './heart-themes.mjs';
+import { sureOf, SURE_WORDS } from './heart-contract.mjs';
 
 const THEME_KEY = 'yimu:heart-theme:v1';
-const pad = value => String(value).padStart(2, '0');
-const dayOf = item => item.date || (() => { const d = new Date(item.at); return `${d.getMonth() + 1}月${d.getDate()}日`; })();
+const realDay = at => { const d = new Date(at); return `${d.getMonth() + 1}月${d.getDate()}日`; };
+const dayOf = item => item.date || realDay(item.at);
 
-/** 页面要的数据。印象与心迹的生成还没接上，这两项暂时为空；「还在留意的」是已记下的痕迹，新的在前。 */
+/** 页面要的数据。每一项都带记下的时刻（at，系统时间），页面按它做日期筛选。
+ *  impressions：在够多个不同日子里看见过、已成印象的（最近有动静的在前）；
+ *  loose：还在留意的——没看过的痕迹，以及日子还不够的印象（新的在前）；
+ *  thoughts：心迹（新的在前）；events：关系年表（按剧情先后）。 */
 export function heartData(state = {}) {
-    const observations = Array.isArray(state.document?.observations) ? state.document.observations : [];
+    const document = state.document || {}, heart = document.heart || {};
+    const observations = Array.isArray(document.observations) ? document.observations : [];
+    const graded = (heart.impressions || []).map(item => ({ item, sure: sureOf(item.days.length) }));
+    const loose = [
+        ...observations.filter(item => !item.used).map(item => ({ about: item.about, text: item.text, day: dayOf(item), floor: item.floor, at: item.at })),
+        ...graded.filter(({ sure }) => sure === 0).map(({ item }) => ({ about: item.about, text: item.text, day: item.days.at(-1).day, at: item.updatedAt })),
+    ].sort((a, b) => b.at - a.at).slice(0, 60);
     return {
         char: state.snapshot?.name || '', user: state.snapshot?.userName || '', avatar: state.snapshot?.avatarUrl || '',
-        impressions: [], thoughts: [],
-        loose: [...observations].reverse().slice(0, 40).map(item => ({ about: item.about, text: item.text, day: dayOf(item), floor: item.floor })),
+        impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure],
+            days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
+        loose,
+        thoughts: [...(heart.thoughts || [])].reverse().map(item => ({ id: item.id, group: item.group, about: THOUGHT_LABELS[item.group](item.about), say: item.text, when: realDay(item.at), floor: item.floor, at: item.at })),
+        events: (heart.events || []).map(item => ({ id: item.id, title: item.title, text: item.text, date: item.date || '', when: realDay(item.at), floor: item.floor, at: item.at })),
     };
 }
+const THOUGHT_LABELS = { you: name => `对${name}`, self: () => '对自己', others: name => `对${name}`, books: name => `读${/[《》]/.test(name) ? name : `《${name}》`}` };
 
 export function mountHeartView({ document = globalThis.document, storage = globalThis.localStorage ?? null, getState = () => ({}), themes = HEART_THEMES } = {}) {
     if (!document?.createElement) throw new TypeError('心迹页缺少文档容器');

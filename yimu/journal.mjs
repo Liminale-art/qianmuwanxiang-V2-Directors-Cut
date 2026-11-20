@@ -4,7 +4,7 @@
 const KEY = 'yimu:journal:v1';
 export const JOURNAL_LIMIT = 5;          // 最多保留多少条
 export const JOURNAL_RAW_LIMIT = 400000; // 发送与返回各自最多保留多少字（够放一次完整请求）
-const KINDS = new Set(['summary', 'stage']);
+const KINDS = new Set(['summary', 'stage', 'diary']);
 
 const clip = (value, limit) => {
     const text = typeof value === 'string' ? value : '';
@@ -33,7 +33,7 @@ export function createJournal({ storage = globalThis.localStorage ?? null, key =
         /** 新的在前。返回的是副本，调用方改它不会改到日志。 */
         list() { return entries.map(entry => ({ ...entry })); },
         add(entry) {
-            if (!KINDS.has(entry?.kind)) return ''; // 只记切片总结与阶段总结
+            if (!KINDS.has(entry?.kind)) return ''; // 只记整理：切片总结、阶段总结、日记整理
             const id = `j${now().toString(36)}${(sequence++).toString(36)}`;
             entries = [tidy({ ...entry, id, at: now() }), ...entries].slice(0, limit);
             persist(); publish();

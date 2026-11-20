@@ -7,14 +7,15 @@ import { validateScenes } from './scene-contract.mjs';
 import { normalizeEntryOrder, insertEntryOrder, validatePlacement, validateMemoryTitle } from './timeline.mjs';
 import { DEFAULT_PROMPTS, validatePromptConfig, resolvePromptConfig } from './prompt-settings.mjs';
 import { DEFAULT_CONTEXT_RULES, validateContextRules } from './context-filter.mjs';
+import { validateHeart, applyHeartOperation, HEART_OPERATIONS } from './heart-contract.mjs';
 export {sourceRanges, stageDependenciesValid, stageSourceFromParents, validateStageSource} from './stage-contract.mjs';
 export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs';
 // Frontend assets and the server plugin are released independently.  The
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.59';
-export const SERVICE_VERSION = '0.8.23';
+export const FRONTEND_VERSION = '0.8.60';
+export const SERVICE_VERSION = '0.8.24';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -26,6 +27,8 @@ export const SCHEMA = 8;
 export const DEFAULTS = Object.freeze({ recent: 3, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, recallCooldown: 6, summarySlices: 4, preference: '', profileId: '', model: '',
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
+    // 心迹页：观察日记与关系年表跟着整理走（默认开）；心迹由主模型顺带写（默认关）；两处注入都默认关。
+    diary: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 30, thoughtInject: false,
     contextRules: DEFAULT_CONTEXT_RULES });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
@@ -46,16 +49,16 @@ export function validateSettings(input, partial = true) {
     requireThat(input && typeof input === 'object' && !Array.isArray(input), '设置格式无效');
     const result = {};
     const bounds = { recent: [1, 2000], trigger: [256, 1000000], triggerFloors: [1, 2000], batch: [256, 100000], budget: [0, 1000000], maxSlices: [0, 2000], recallCooldown: [0, 2000], summarySlices: [0, 2000], stageThreshold: [1, 1000000],
-        stageRecent: [0, 2000], sliceChars: [1, 100000], stageChars: [1, 100000] };
+        stageRecent: [0, 2000], sliceChars: [1, 100000], stageChars: [1, 100000], diaryChars: [10, 400], thoughtChars: [20, 2000], thoughtCooldown: [1, 2000] };
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
-        if (key === 'stageAuto' || key === 'recall' || key === 'companionShareCustom' || key === 'vectorEnabled' || key === 'rerankEnabled') requireThat(typeof value === 'boolean', '忆幕开关设置无效');
+        if (['stageAuto', 'recall', 'companionShareCustom', 'vectorEnabled', 'rerankEnabled', 'diary', 'chronicle', 'diaryInject', 'thoughts', 'thoughtInject'].includes(key)) requireThat(typeof value === 'boolean', '忆幕开关设置无效');
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
         else if (key === 'contextRules') { result[key] = validateContextRules(value); continue; }
         else if (bounds[key]) {
-            requireThat(Number.isSafeInteger(value) && (value === 0 && !['sliceChars', 'stageChars'].includes(key) || value >= bounds[key][0]) && value <= bounds[key][1], '设置数值超出范围');
+            requireThat(Number.isSafeInteger(value) && (value === 0 && !['sliceChars', 'stageChars', 'diaryChars', 'thoughtChars', 'thoughtCooldown'].includes(key) || value >= bounds[key][0]) && value <= bounds[key][1], '设置数值超出范围');
         } else requireThat(typeof value === 'string' && value.length <= (key === 'preference' ? 12000 : 300), '设置文字过长或无效');
         result[key] = value;
     }
@@ -131,6 +134,7 @@ function validateObservation(value) {
     requireThat(Number.isSafeInteger(value.floor) && value.floor >= 1 && Number.isSafeInteger(value.at) && value.at >= 0, '痕迹的依据无效');
     const result = { id: identifier(value.id), about, text, floor: value.floor, at: value.at };
     if (value.date !== undefined && value.date !== '') { requireThat(typeof value.date === 'string' && value.date.length <= 60, '痕迹的日期无效'); result.date = value.date.trim(); }
+    if (value.used === true) result.used = true; // 已经归进过印象（或看过、不成印象）的痕迹
     return result;
 }
 export function validateObservations(value) {
@@ -162,6 +166,7 @@ export function validateDocument(raw) {
     if (raw.creation) validateCreation(raw.creation);
     if (raw.companion) raw.companion = validateCompanion(raw.companion);
     if (raw.observations !== undefined) raw.observations = validateObservations(raw.observations);
+    if (raw.heart !== undefined) raw.heart = validateHeart(raw.heart);
     const ids = new Set();
     for (const entry of raw.entries) {
         identifier(entry.id); requireThat(!ids.has(entry.id), '记忆条目标识重复'); ids.add(entry.id);
@@ -471,6 +476,8 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             return validateObservation({ ...item, id: `${id}_${index}`.slice(0, 100), at: op.at });
         });
         doc.observations = [...kept, ...added].slice(-OBSERVATION_LIMIT);
+    } else if (HEART_OPERATIONS.includes(op.type)) {
+        applyHeartOperation(doc, op, id);
     } else if (op.type === 'adopt') {
         // 把另一份记忆文件（别的聊天、或原文对不上的备份）带进当前聊天。
         // 那些记忆描述的不是这个聊天的楼层，所以一律落成自定义切片：照常注入，
@@ -493,7 +500,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
         requireThat(['all', 'traces'].includes(op.scope), '清理范围无效');
         requireThat(op.expectedRevision === doc.revision, '记忆已在别处变化，请刷新后再清理');
         if (op.scope === 'all') {
-            delete doc.observations; // 痕迹跟着记忆一起清
+            delete doc.observations; delete doc.heart; // 痕迹、印象、心迹与年表跟着记忆一起清
             const kept = op.keepManual === true ? doc.entries.filter(entry => entry.kind === 'manual' && entry.status !== 'deleted' && !entry.origin) : [];
             // 留下的自定义切片不能再指向已清掉的条目。
             for (const entry of kept) for (const scene of entry.scenes || []) if (scene.evidence?.inheritedFrom) delete scene.evidence.inheritedFrom;

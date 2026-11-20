@@ -565,6 +565,8 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
         for (const candidate of pool) {
             const vector = vectorCache.get(keyOf(candidate.text));
             if (vector && vector.length === queryVector.length) scores.set(candidate.id, vector.reduce((sum, value, index) => sum + value * queryVector[index], 0));
+            // 维度与本轮查询对不上的旧向量（同一地址与模型名下换了维度）不留：否则它永远不会被重新请求，这条切片就一直没有相似度。
+            else if (vector) vectorCache.delete(keyOf(candidate.text));
         }
         return scores;
     }
