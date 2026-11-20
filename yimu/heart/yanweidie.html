@@ -137,6 +137,10 @@ body { padding-top: 42px; }
 .tick.now .on { display: inline-block; padding: 3px 8px; background: var(--blue); color: var(--paper); }
 #chron .end { padding-left: 0; text-align: left; }
 /*@@HEART_SHARED_CSS@@*/
+/* 删除单条：标签字体，待确认时蓝底反白（与筛选签同一种做法）。 */
+.ym-rm { font-family: var(--label); }
+.frame .ym-rm { right: 4px; }
+.ym-rm[data-armed] { background: var(--blue); color: var(--paper); padding: 4px 7px; }
 </style>
 </head>
 <body data-view="diary">
@@ -230,7 +234,7 @@ window.yimuPaint = (D, raw) => {
   D.impressions.forEach((item, index) => {
     const teeth = Array.from({ length: 6 }, (_, i) => `<i class="${i < item.days.length ? 'on' : ''}" style="--i:${i}"></i>`).join('');
     const node = document.createElement('article'); node.className = 'frame'; node.dataset.sure = item.sure; node.style.setProperty('--tilt', `${[-1.2, .9, -.6, 1.4][index % 4]}deg`);
-    node.innerHTML = `<div class="teeth top">${teeth}</div><div class="body"><span class="no">${String(index + 1).padStart(2, '0')}</span><span class="who sans">${item.about}</span><p class="say">${item.say}</p>
+    node.innerHTML = `<div class="teeth top">${teeth}</div><div class="body">${rm('impression', item.id)}<span class="no">${String(index + 1).padStart(2, '0')}</span><span class="who sans">${item.about}</span><p class="say">${item.say}</p>
       <span class="sure sans">${item.word}</span><span class="tip sans">${item.days.length} 个日子 · 点开看依据</span>
       <div class="proof"><div><ul>${item.was ? `<li class="was"><b>以前以为</b><span>${item.was}</span></li>` : ''}${item.days.map(([day, text]) => `<li><b>${day}</b><span>${text}</span></li>`).join('')}</ul></div></div></div><div class="teeth bot">${teeth}</div>`;
     node.addEventListener('click', () => node.classList.toggle('open'));
@@ -242,10 +246,10 @@ window.yimuPaint = (D, raw) => {
 
   heart.querySelectorAll('.say2, .empty').forEach(node => node.remove());
   const end = heart.querySelector('.end');
-  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="say2" data-about="${it.group}"><span class="about sans">${it.about}</span><span class="when sans">${it.when}</span><p>${it.say}</p></article>`).join('') : '<p class="empty">这段日子，片带上还是空的。</p>');
+  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="say2" data-about="${it.group}">${rm('thought', it.id)}<span class="about sans">${it.about}</span><span class="when sans">${it.when}</span><p>${it.say}</p></article>`).join('') : '<p class="empty">这段日子，片带上还是空的。</p>');
   end.hidden = !D.thoughts.length;
 
-  chron.innerHTML = D.events.length ? D.events.map(item => `<article class="tick${item.now ? ' now' : ''}"><span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('') + '<p class="end sans">TO BE CONTINUED</p>'
+  chron.innerHTML = D.events.length ? D.events.map(item => `<article class="tick${item.now ? ' now' : ''}">${rm('event', item.id)}<span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('') + '<p class="end sans">TO BE CONTINUED</p>'
     : '<p class="empty">还没有值得标一个日子的事。</p>';
   document.querySelectorAll('.frame, .say2, .tick').forEach(n => reveal.observe(n));
   applyAbout();

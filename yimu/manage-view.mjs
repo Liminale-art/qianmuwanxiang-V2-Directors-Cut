@@ -33,20 +33,20 @@ export function mountManageView({ document = globalThis.document, journal = null
     const run = async (type, payload) => { try { return await onAction(type, payload); } catch { return false; } };
 
     // 小图标按钮。needsConfirm 返回真时要点两下：第一下变成「确认」样式，几秒内不再点就复原。不弹对话框。
-    // 给了 text 就是文字按钮（待确认时文字换成「再点确认」），否则是图标按钮（待确认时换成对勾）。
-    const iconAction = (label, glyph, action, { needsConfirm = () => false, className = '', text = '' } = {}) => {
+    // 给了 text 就是文字按钮（待确认时文字换成 confirmText），否则是图标按钮（待确认时换成对勾）。onArm 在进入、退出待确认时各叫一次。
+    const iconAction = (label, glyph, action, { needsConfirm = () => false, className = '', text = '', confirmText = '再点确认', onArm = null } = {}) => {
         const node = el('button', `ym-button ${text ? '' : 'ym-icon-button '}ym-small ${className}`.trim());
         node.type = 'button'; node.title = label; node.setAttribute('aria-label', label);
-        const paint = confirming => { if (text) node.textContent = confirming ? '再点确认' : text; else node.replaceChildren(createYimuIcon(confirming ? 'check' : glyph, { document })); };
+        const paint = confirming => { if (text) node.textContent = confirming ? confirmText : text; else node.replaceChildren(createYimuIcon(confirming ? 'check' : glyph, { document })); };
         paint(false);
         let armed = false, timer = null;
-        const disarm = () => { armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(false); };
+        const disarm = () => { const was = armed; armed = false; clearTimeout(timer); timers.delete(timer); timer = null; node.removeAttribute('data-armed'); node.title = label; paint(false); if (was) onArm?.(false); };
         node.disarm = disarm;
         node.addEventListener('click', async event => {
             event.stopPropagation?.();
             if (node.disabled) return;
             if (needsConfirm() && !armed) {
-                armed = true; node.setAttribute('data-armed', 'true'); node.title = '再点一次确认'; paint(true);
+                armed = true; node.setAttribute('data-armed', 'true'); node.title = '再点一次确认'; paint(true); onArm?.(true);
                 timer = setTimeout(disarm, CONFIRM_MS); timers.add(timer);
                 return;
             }
@@ -159,6 +159,33 @@ export function mountManageView({ document = globalThis.document, journal = null
     };
     // 当前打开的聊天不能从这里删，读不出来的文件服务端也不认，所以两者都不进多选。
     const selectable = () => scoped().filter(item => !item.unreadable && keyOf(item) !== currentKey());
+    // 带入之后的「撤销带入」：只记在这次面板会话里，不落盘。带入写进来的条目编号是「操作号_序号」的自定义切片，
+    // 带入前后各看一眼当前聊天的条目，多出来的那一批就是它；认不出来（或已撤完）就留空，只记得「带入过」。
+    const adopted = new Map(), undoing = new Set();
+    const adoptKey = item => `${currentKey()}\n${item.name}`;
+    const entriesNow = () => Array.isArray(state.document?.entries) ? state.document.entries : [];
+    const liveBatch = item => {
+        const ids = adopted.get(adoptKey(item));
+        if (!ids?.length) return [];
+        const live = new Set(entriesNow().filter(entry => entry.status !== 'deleted').map(entry => entry.id));
+        return ids.filter(id => live.has(id));
+    };
+    async function assign(item) {
+        const key = adoptKey(item), before = new Set(entriesNow().map(entry => entry.id));
+        if (await run('manageAssign', { item }) === false) return;
+        const fresh = entriesNow().filter(entry => !before.has(entry.id) && entry.kind === 'manual' && /_\d+$/.test(entry.id));
+        const batches = new Set(fresh.map(entry => entry.id.replace(/_\d+$/, '')));
+        adopted.set(key, batches.size === 1 ? fresh.map(entry => entry.id) : []);
+    }
+    async function undoAssign(item) {
+        const key = adoptKey(item);
+        if (undoing.has(key)) return;
+        undoing.add(key);
+        try {
+            // 逐条走记忆页多选删除用的同一个删除（可在「已删除的记忆」里撤回）；某一条删不了就停下，前面删掉的保留。
+            for (const entryId of liveBatch(item)) if (await run('entry', { entryId, action: 'delete' }) === false) break;
+        } finally { undoing.delete(key); }
+    }
     function fileRow(item, { withCharacter = false } = {}) {
         const node = el('div', 'ym-manage-file'); node.dataset.name = item.name;
         const isCurrent = !item.unreadable && keyOf(item) === currentKey(), canPick = !item.unreadable && !isCurrent;
@@ -167,7 +194,8 @@ export function mountManageView({ document = globalThis.document, journal = null
             : [...(withCharacter ? [character(item)] : []), `${item.slices + item.stages + item.custom} 条`, size(item.bytes), day(item.updated)];
         // 文件名独占一行（单行，超出省略，完整名字在 title）；下一行左边是小字信息，右边是操作。
         const name = el('span', 'ym-manage-file-name', fileName); name.title = fileName;
-        const meta = el('div', 'ym-manage-file-meta'); meta.append(el('span', 'ym-muted', facts.join(' · ')));
+        const info = el('span', 'ym-muted', facts.join(' · '));
+        const meta = el('div', 'ym-manage-file-meta'); meta.append(info);
         node.append(name, meta);
         if (selecting) {
             node.dataset.selectable = String(canPick); node.dataset.selected = String(canPick && picked.has(item.name));
@@ -177,7 +205,14 @@ export function mountManageView({ document = globalThis.document, journal = null
         if (!canPick) return node;
         const actions = el('div', 'ym-manage-file-actions');
         // 在聊天里：把这份记忆指定给当前聊天（作为独立记忆带入）。两下确认。单个导出走「更多 → 多选 → 导出」。
-        if (state.snapshot?.binding) actions.append(iconAction(`把 ${item.binding.file} 的记忆带入本聊天`, 'link', () => run('manageAssign', { item }), { needsConfirm: () => true, text: '带入本聊天' }));
+        // 这次会话里带入过、那一批还在：按钮换成「撤销带入」。带入过又要再带：待确认时在左边那行小字里说一句。
+        if (state.snapshot?.binding) {
+            if (liveBatch(item).length) {
+                const undo = iconAction(`撤销带入 ${item.binding.file} 的记忆`, 'back', () => undoAssign(item), { needsConfirm: () => true, text: '撤销带入', confirmText: '再点撤销' });
+                undo.disabled = undoing.has(adoptKey(item)); actions.append(undo);
+            } else actions.append(iconAction(`把 ${item.binding.file} 的记忆带入本聊天`, 'link', () => assign(item), { needsConfirm: () => true, text: '带入本聊天',
+                onArm: adopted.has(adoptKey(item)) ? armed => { info.textContent = armed ? '这份已带入过，再点一次重复带入' : facts.join(' · '); } : null }));
+        }
         actions.append(iconAction(`删除 ${item.binding.file} 的记忆`, 'trash', () => run('manageDelete', { items: [item] }), { needsConfirm: () => true, className: 'ym-danger' }));
         meta.append(actions);
         return node;
@@ -209,7 +244,7 @@ export function mountManageView({ document = globalThis.document, journal = null
         removePicked.disabled = exportPicked.disabled = !chosen;
         filesNote.textContent = selecting ? `已选 ${chosen} 个` : !loaded ? manage.loading ? '正在读取…' : manage.error || ''
             : manage.error || (items.length ? `${items.length} 个 · ${size(items.reduce((sum, item) => sum + (item.bytes || 0), 0))}` : '');
-        const signature = JSON.stringify([loaded, inChat, currentKey(), selecting, [...picked].sort(), items.map(item => [item.name, item.revision, item.bytes, item.updated, item.sourceExists, item.unreadable])]);
+        const signature = JSON.stringify([loaded, inChat, currentKey(), selecting, [...picked].sort(), items.map(item => [item.name, item.revision, item.bytes, item.updated, item.sourceExists, item.unreadable, ...(inChat && !item.unreadable ? [adopted.has(adoptKey(item)), liveBatch(item).length, undoing.has(adoptKey(item))] : [])])]);
         if (signature === fileSignature) return;
         fileSignature = signature;
         if (!loaded) { fileList.replaceChildren(); return; }

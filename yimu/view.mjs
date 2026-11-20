@@ -200,7 +200,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     backButton.hidden = true;
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
     // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
-    const heart = mountHeartView({ document, getState: () => state });
+    const heart = mountHeartView({ document, getState: () => state, onAction: (type, payload) => dispatch(type, payload) });
     const heartEntry = iconButton('心迹与观察日记', 'quill', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
     headerActions.append(backButton, heartEntry, closeButton);
@@ -1344,7 +1344,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         backup.render(state);
         updateStatus(); updateControls(); updateSettings(); renderEntries(); updateOverview(); retrieval.render(state); updateNavigation();
         if (!stageForm.hidden) updateStageRange();
-        updateUsed(); updateSelection(); syncFilter(); manage.render(state);
+        updateUsed(); updateSelection(); syncFilter(); manage.render(state); heart.update();
     }
     function open() {
         if (destroyed || opened) return;

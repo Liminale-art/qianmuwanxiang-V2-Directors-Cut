@@ -98,6 +98,11 @@ h2 + .lead { padding: 0 22px 34px; margin: 0; font-size: 12px; color: var(--dim)
 body { padding-top: 42px; }
 .empty { margin: 0; padding: 46px 22px; font-size: 14px; letter-spacing: .2em; opacity: .6; color: var(--dim); }
 /*@@HEART_SHARED_CSS@@*/
+/* 删除单条：暗底上的一点灰，待确认时转红。 */
+.ym-rm { font-family: var(--label); letter-spacing: .2em; }
+.plate .ym-rm { top: 6px; right: 14px; }
+.act .ym-rm { top: 10px; right: 10px; }
+.cell .ym-rm { top: 8px; }
 </style>
 </head>
 <body>
@@ -161,7 +166,7 @@ window.yimuPaint = D => {
       const angle = i * 2.4 + index, dx = Math.cos(angle) * spread, dy = Math.sin(angle * 1.7) * spread * .7;
       return `<div class="layer" style="transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px);opacity:${(item.sure === 3 ? .9 : .5 / Math.sqrt(item.days.length) + .16).toFixed(2)};filter:blur(${(blur * (i ? 1 : .35)).toFixed(1)}px)" data-closed="translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px)"><span class="same">${item.say}</span><span class="proof"><i>${day}</i>${text}</span></div>`;
     }).join('');
-    node.innerHTML = `<div class="meta sans"><span>${item.about}</span><b>${item.word} · ${item.days.length} 次曝光</b></div><div class="expo">${layers}</div><div class="bar"></div>${item.was ? `<div class="was">以前以为：<s>${item.was}</s></div>` : ''}<div class="hint sans">点开 · 看每一次</div>`;
+    node.innerHTML = `${rm('impression', item.id)}<div class="meta sans"><span>${item.about}</span><b>${item.word} · ${item.days.length} 次曝光</b></div><div class="expo">${layers}</div><div class="bar"></div>${item.was ? `<div class="was">以前以为：<s>${item.was}</s></div>` : ''}<div class="hint sans">点开 · 看每一次</div>`;
     node.addEventListener('click', () => {
       const open = node.classList.toggle('open'), expo = node.querySelector('.expo');
       node.querySelectorAll('.layer').forEach((layer, i) => { layer.style.transform = open ? `translate(${i % 2 ? 18 : 0}px, ${i * 62}px)` : layer.dataset.closed; });
@@ -178,7 +183,7 @@ window.yimuPaint = D => {
   stage.innerHTML = '';
   D.thoughts.forEach((act, i) => {
     const order = D.thoughts.length - i, node = document.createElement('article'); node.className = 'act';
-    node.innerHTML = `<span class="no sans">第 ${numerals[order - 1] || order} 幕 · <b>${act.about}</b> · ${act.when}</span><span class="ghostno">${String(order).padStart(2, '0')}</span>
+    node.innerHTML = `${rm('thought', act.id)}<span class="no sans">第 ${numerals[order - 1] || order} 幕 · <b>${act.about}</b> · ${act.when}</span><span class="ghostno">${String(order).padStart(2, '0')}</span>
       <div class="inner"><p class="say">${act.say}</p></div>
       <div class="curtain l"></div><div class="curtain r"></div>
       <svg class="pulse" viewBox="0 0 60 600" preserveAspectRatio="none"><line x1="30" y1="0" x2="30" y2="600"/><path d="M30 0 V250 L22 262 L40 276 L12 296 L48 312 L26 326 L30 338 V600"/></svg>`;
@@ -187,7 +192,7 @@ window.yimuPaint = D => {
   if (!D.thoughts.length) stage.innerHTML = '<p class="empty">这段日子，幕还没有拉开过。</p>';
   acts = [...document.querySelectorAll('.act')];
 
-  sheet.innerHTML = D.events.length ? D.events.map(item => `<article class="cell${item.now ? ' now' : ''}"><span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('')
+  sheet.innerHTML = D.events.length ? D.events.map(item => `<article class="cell${item.now ? ' now' : ''}">${rm('event', item.id)}<span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('')
     : '<p class="empty">还没有值得标一个日子的事。</p>';
   pull();
 };

@@ -25,6 +25,11 @@ test('the bundled themes are exactly what the theme sources say; the default is 
         // 页面文字由数据填入时先转义；三个版块与日期条都在。
         assert.match(theme.html, /window\.yimuPaint\?\.\(safe\(picked\(YM\.raw\)\), YM\.raw\)/);
         assert.match(theme.html, /id="ym-date"/); assert.match(theme.html, /年\s?表/);
+        // 印象、心迹、年表三样各有一个删除入口，「还在留意的」没有；页面发出的是 remove 消息。
+        for (const kind of ['impression', 'thought', 'event']) assert.equal(theme.html.split(`\${rm('${kind}', `).length, 2, `${theme.name}：${kind} 各有一处删除入口`);
+        assert.equal(theme.html.split('${rm(').length, 4, `${theme.name}：别处没有删除入口`);
+        assert.match(theme.html, /parent\.postMessage\(\{ yimuHeart: 'remove', kind: button\.dataset\.rmKind, id: button\.dataset\.rmId \}, '\*'\)/);
+        assert.match(theme.html, /\.ym-rm \{ all: unset; position: absolute;/);
     }
 });
 
@@ -83,4 +88,82 @@ test('opening goes full screen in its own frame; the top-right button cycles the
     // 下次打开用上次选的主题；本机存储不可用时用默认的。
     assert.equal(mountHeartView({ document: fakeDocument(), storage }).theme, 'xianying');
     assert.equal(mountHeartView({ document: fakeDocument(), storage: { getItem() { throw new Error('blocked'); } } }).theme, 'yanweidie');
+});
+
+const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+const heartState = events => ({ snapshot: { name: '阿澈', userName: '小满' }, document: { heart: { impressions: [], eventFloor: 0, thoughtFloor: 0,
+    thoughts: [{ id: 't1', group: 'you', about: '小满', text: '甲', floor: 30, at: 5 }], events: events.map((id, index) => ({ id, title: `节点${id}`, text: '丙', floor: index + 1, at: index + 1 })) } } });
+
+test('a remove message from the page deletes that one item through the panel action, and the page gets the new data once the state has changed', async t => {
+    const document = fakeDocument(), calls = [], warned = [];
+    const warn = console.warn; console.warn = (...args) => warned.push(args); t.after(() => { console.warn = warn; });
+    let state = heartState(['e1', 'e2']), outcome = 'ok';
+    // 面板的做法：动作成功时状态先变，面板随即刷新（刷新里会叫 update），之后动作才返回。
+    const view = mountHeartView({ document, storage: null, getState: () => state, onAction: async (type, payload) => {
+        calls.push([type, payload]);
+        if (outcome === 'throw') throw new Error('合成故障');
+        if (outcome === 'refused') return false;
+        state = heartState(state.document.heart.events.map(item => item.id).filter(id => id !== payload.itemId)); view.update();
+        return true;
+    } });
+    view.update(); assert.equal(document.body.children.length, 0, '没打开时状态变化不做任何事');
+    view.open();
+    const frame = document.body.children[0].children[0], page = frame.contentWindow;
+    frame.listeners.get('load')();
+    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e1', 'e2']]);
+    const post = (source, data) => document.listeners.get('message')({ source, data });
+
+    post({}, { yimuHeart: 'remove', kind: 'event', id: 'e1' }); await flush();
+    assert.deepEqual(calls, [], '不是这一页发来的消息不理会');
+    for (const data of [{ yimuHeart: 'remove', kind: 'loose', id: 'e1' }, { yimuHeart: 'remove', kind: 'event' }, { yimuHeart: 'remove', kind: 'event', id: 7 }]) post(page, data);
+    await flush(); assert.deepEqual(calls, [], '类别不对或没有标识的不发');
+
+    post(page, { yimuHeart: 'remove', kind: 'event', id: 'e1' }); await flush();
+    assert.deepEqual(calls, [['heartRemove', { kind: 'event', itemId: 'e1' }]]);
+    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e1', 'e2'], ['e2']], '状态变了之后页面收到新数据，而且只重画一次');
+    post(page, { yimuHeart: 'remove', kind: 'thought', id: 't1' }); post(page, { yimuHeart: 'remove', kind: 'impression', id: 'i9' }); await flush();
+    assert.deepEqual(calls.slice(1).map(call => call[1]), [{ kind: 'thought', itemId: 't1' }, { kind: 'impression', itemId: 'i9' }]);
+
+    // 面板别处改了数据（比如刚整理完日记）：开着的页面跟着更新；数据没变就不重画。
+    const before = page.rendered.length;
+    view.update(); assert.equal(page.rendered.length, before);
+    state = heartState(['e2', 'e3']); view.update();
+    assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e2', 'e3']); assert.equal(page.rendered.length, before + 1);
+
+    // 没删成（被拒绝或出错）：数据原样重交一次，让页面上那个按钮复原；出错留一行记录。
+    outcome = 'refused'; post(page, { yimuHeart: 'remove', kind: 'event', id: 'e2' }); await flush();
+    assert.equal(page.rendered.length, before + 2); assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e2', 'e3']);
+    outcome = 'throw'; post(page, { yimuHeart: 'remove', kind: 'event', id: 'e2' }); await flush();
+    assert.equal(page.rendered.length, before + 3); assert.equal(warned.length, 1); assert.match(String(warned[0][1]?.message), /合成故障/);
+
+    // 换了主题是一张新页面：加载好后照常收到数据。关掉以后不再理会。
+    post(page, { yimuHeart: 'theme' });
+    const next = document.body.children[0].children[0]; next.listeners.get('load')();
+    assert.deepEqual(next.contentWindow.rendered.map(data => data.events.map(item => item.id)), [['e2', 'e3']]);
+    view.close(); state = heartState([]); view.update();
+    assert.equal(next.contentWindow.rendered.length, 1);
+});
+
+test('on the page the small × asks once more before sending; a click elsewhere or a few seconds cancel it', async () => {
+    const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
+    const handlers = [], sent = [], timers = [];
+    const stub = () => ({ addEventListener() {}, innerHTML: '' });
+    const fakeDocument = { getElementById: () => stub(), addEventListener: (type, fn, capture) => handlers.push({ type, fn, capture: capture === true }) };
+    const run = new Function('document', 'parent', 'addEventListener', 'window', 'setTimeout', 'clearTimeout', `${source}\nreturn { rm };`);
+    const page = run(fakeDocument, { postMessage: (data, target) => sent.push([data, target]) }, () => {}, {}, fn => { timers.push(fn); return timers.length; }, () => {});
+    assert.equal(page.rm('event', 'op_e0'), '<button type="button" class="ym-rm" data-rm-kind="event" data-rm-id="op_e0" aria-label="删除">×</button>');
+    assert.equal(page.rm('event', ''), '', '没有标识的条目不给删除入口');
+    const capture = handlers.find(item => item.type === 'click' && item.capture).fn;
+    const button = (kind, id) => { const node = { dataset: { rmKind: kind, rmId: id }, attrs: { 'aria-label': '删除' }, textContent: '×', disabled: false,
+        setAttribute(key, value) { this.attrs[key] = String(value); }, removeAttribute(key) { delete this.attrs[key]; }, closest: selector => selector === '.ym-rm' ? node : null }; return node; };
+    const click = target => { const event = { target, stopped: false, preventDefault() {}, stopPropagation() { this.stopped = true; } }; capture(event); return event; };
+    const first = button('thought', 't1'), second = button('event', 'e1');
+    assert.equal(click(first).stopped, true, '点删除不会连带触发条目自己的展开');
+    assert.deepEqual([first.textContent, first.attrs['data-armed'], sent.length], ['再点删除', 'true', 0]);
+    click(second);
+    assert.deepEqual([first.textContent, first.attrs['data-armed'], second.textContent], ['×', undefined, '再点删除'], '同时只有一条在等确认');
+    assert.equal(click({ closest: () => null }).stopped, false); assert.equal(second.textContent, '×', '点别处就取消');
+    click(second); timers.at(-1)(); assert.equal(second.textContent, '×', '几秒不点也取消'); assert.equal(sent.length, 0);
+    click(second); click(second);
+    assert.deepEqual(sent, [[{ yimuHeart: 'remove', kind: 'event', id: 'e1' }, '*']]); assert.equal(second.disabled, true); assert.equal(second.textContent, '×');
 });

@@ -345,8 +345,8 @@
 .ym-dialog[data-ym-theme="glass"][data-ym-mode="light"] :is(.ym-card:not(.ym-tool-card), .ym-prompt-folder, .ym-route, .ym-settings-group, .ym-tool-summary, .ym-folder-body, .ym-stat) { border-color: #ffffffdc; }
 .ym-dialog[data-ym-theme="glass"] .ym-prompt-folder > .ym-tool-summary { background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 .ym-dialog[data-ym-theme="glass"] .ym-card .ym-card { background: color-mix(in srgb, var(--ym-raised) 32%, transparent); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.ym-dialog:is([data-ym-theme="editorial"], [data-ym-theme="glass"]) .ym-heading h2 { background: var(--ym-title-gradient, linear-gradient(92deg, var(--ym-accent), var(--ym-ink))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.ym-dialog[data-ym-theme="editorial"] .ym-nav-mark { width: 5px; height: 5px; bottom: 6px; }
+.ym-dialog[data-ym-theme="glass"] .ym-heading h2 { background: var(--ym-title-gradient, linear-gradient(92deg, var(--ym-accent), var(--ym-ink))); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-mark { width: 14px; height: 8px; bottom: 6px; border-radius: 0; background: var(--ym-zhu); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 42%, 0 100%); }
 .ym-dialog[data-ym-theme="editorial"] .ym-nav-button[aria-selected="true"] .ym-nav-label { transform: translateY(-2px); }
 .ym-dialog:is([data-ym-theme="editorial"], [data-ym-theme="glass"]) .ym-nav-dot { display: none; }
 .ym-dialog[data-ym-theme="glass"] .ym-nav-mark { display: none; }
@@ -669,3 +669,22 @@
 .ym-heart-layer { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 2147483000; background: #0b0a09; }
 .ym-heart-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
 .ym-heart-run { justify-self: end; margin-top: 10px; }
+/* ==== 纸间 · 线装书页（与千幕同一套）====
+   文武线版框、宣纸纤维、界行；朱砂只用在标题、选中与主操作（印）上。 */
+.ym-dialog[data-ym-theme="editorial"] { --ym-zhu: var(--ym-accent); --ym-on-zhu: var(--ym-on-accent); --ym-rule: color-mix(in srgb, var(--ym-ink) 18%, transparent);
+  background: var(--ym-window-material, var(--ym-surface)); border: 2px solid var(--ym-ink); outline: 1px solid color-mix(in srgb, var(--ym-ink) 70%, transparent); outline-offset: -6px; }
+.ym-dialog[data-ym-theme="editorial"] .ym-heading h2 { color: var(--ym-zhu); letter-spacing: .28em; font-weight: 400; }
+.ym-dialog[data-ym-theme="editorial"] :is(.ym-card:not(.ym-tool-card), .ym-prompt-folder, .ym-route, .ym-settings-group, .ym-stat) { background: color-mix(in srgb, var(--ym-raised) 45%, transparent); border-color: var(--ym-rule) transparent; }
+.ym-dialog[data-ym-theme="editorial"] .ym-card .ym-card { background: transparent; }
+.ym-dialog[data-ym-theme="editorial"] :is(input:not([type="checkbox"]), select) { background: transparent; border-color: transparent transparent var(--ym-ink); }
+.ym-dialog[data-ym-theme="editorial"] textarea { background: color-mix(in srgb, var(--ym-raised) 45%, transparent); border-color: var(--ym-rule); }
+.ym-dialog[data-ym-theme="editorial"] :is(input:not([type="checkbox"]), select, textarea):focus-visible { outline: none; border-bottom-color: var(--ym-zhu); }
+.ym-dialog[data-ym-theme="editorial"] .ym-button:not(.ym-icon-button):not(.ym-nav-button) { border-color: var(--ym-ink); }
+.ym-dialog[data-ym-theme="editorial"] .ym-button:not(:disabled):hover { background: color-mix(in srgb, var(--ym-zhu) 12%, transparent); }
+.ym-dialog[data-ym-theme="editorial"] .ym-primary { background: var(--ym-zhu); border-color: var(--ym-zhu); color: var(--ym-on-zhu); }
+.ym-dialog[data-ym-theme="editorial"] :is(.ym-prompt-groups, .ym-date-mode) > [aria-selected="true"] { color: var(--ym-zhu); border-color: var(--ym-zhu); background: transparent; }
+/* 开关是一方小印：关着是空框，开了盖上朱文。 */
+.ym-dialog[data-ym-theme="editorial"] input.ym-switch { width: 24px; min-width: 24px; max-width: 24px; flex-basis: 24px; height: 24px; min-height: 24px; max-height: 24px; border: 1px solid var(--ym-muted); border-radius: 2px; background: transparent; }
+.ym-dialog[data-ym-theme="editorial"] input.ym-switch::after { content: '印'; inset: 0; width: auto; height: auto; display: grid; place-items: center; background: none; border-radius: 0; font: 13px/1 var(--ym-font); color: transparent; transform: none; }
+.ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked { background: var(--ym-zhu); border-color: var(--ym-zhu); }
+.ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked::after { transform: none; background: none; color: var(--ym-on-zhu); }

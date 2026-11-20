@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.60 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.61 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.60'); assert.equal(pkg.version, '0.8.24');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.61'); assert.equal(pkg.version, '0.8.24');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1673,6 +1673,95 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     // 清空日志同样两下。
     const clearLog = f.get('清空日志'); clearLog.click(); assert.equal(cleared, 0); clearLog.click(); await f.flush(); assert.equal(cleared, 1);
     assert.match(page.querySelector('.ym-log-list').textContent, /暂无日志/);
+});
+
+test('after 带入本聊天 the row turns into 撤销带入 for this panel session; undoing deletes just that batch through the ordinary delete', async t => {
+    // 带入与删除都走真的服务端存储：条目编号、可撤回的删除都是实际的样子。
+    const fs = await import('node:fs/promises'), os = (await import('node:os')).default, path = (await import('node:path')).default;
+    const { createYimuStore } = await import('../yimu/server-store.mjs'), { fingerprintMessages } = await import('../yimu/contract.mjs');
+    const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'yimu-undo-adopt-')); t.after(() => fs.rm(root, { recursive: true }));
+    const account = path.join(root, 'account'), chats = path.join(account, 'chats'); await fs.mkdir(path.join(chats, 'Hero'), { recursive: true });
+    const request = { user: { profile: { handle: 'fixture' }, directories: { root: account, chats } } };
+    const source = { avatar: 'Hero.png', file: 'Old story', integrity: 'old-identity' }, target = { avatar: 'Hero.png', file: 'New story', integrity: 'new-identity' };
+    const lines = (label, count) => Array.from({ length: count }, (_, i) => ({ name: i % 2 ? '甲' : '乙', is_user: i % 2 === 0, mes: `${label}第 ${i + 1} 层正文。`, send_date: String(i) }));
+    const oldMessages = lines('旧聊天', 12), newMessages = lines('新聊天', 6);
+    for (const [binding, messages] of [[source, oldMessages], [target, newMessages]]) await fs.writeFile(path.join(chats, 'Hero', `${binding.file}.jsonl`), [{ chat_metadata: { integrity: binding.integrity } }, ...messages].map(row => JSON.stringify(row)).join('\n'), 'utf8');
+    const store = createYimuStore({ hostCwd: root }), oldHashes = await fingerprintMessages(oldMessages), placement = { fromFloor: 1, hash: (await fingerprintMessages(newMessages))[0] };
+    await store.change(request, source, { id: 'enable_s', type: 'enable', enabled: true, expectedRevision: 0, range: { start: 1, end: 12, total: 12 } });
+    const epoch = (await store.read(request, source)).document.epoch;
+    for (const [id, start, end] of [['a', 1, 2], ['b', 3, 4]]) await store.change(request, source, { id: `add_${id}`, type: 'append', expectedEpoch: epoch, entry: { id, kind: 'summary', text: `旧聊天的切片 ${id}`, source: { start, end, hashes: oldHashes.slice(start - 1, end) } } });
+    // 当前聊天自己原有的一条自定义切片：撤销带入不能碰它。
+    await store.change(request, target, { id: 'own_add', type: 'append', entry: { id: 'own', kind: 'manual', text: '本聊天自己的一条', source: null, placement: { binding: target, ...placement } } });
+    const item = (await store.manageList(request)).items.find(value => value.binding.file === source.file);
+    let assignCount = 0, dropCount = 0, refuse = '';
+    const f = fixture({ snapshot: { binding: target, name: 'Hero', messages: newMessages }, document: (await store.read(request, target)).document, manage: { items: [item], loading: false, error: '' } }, async (type, payload) => {
+        if (type === 'manageAssign') { const result = await store.manageAssign(request, { name: payload.item.name, target, placement, id: `assign_${++assignCount}` }); f.render({ document: result.document }); return true; }
+        if (type === 'entry') {
+            if (payload.entryId === refuse) throw new Error('合成故障');
+            const current = f.state.document.entries.find(entry => entry.id === payload.entryId);
+            const result = await store.change(request, target, { id: `drop_${++dropCount}`, type: 'entry', action: payload.action, entryId: payload.entryId, expectedRevision: current.revision });
+            f.render({ document: result.document }); return true;
+        }
+        return undefined;
+    });
+    t.after(() => f.view.destroy());
+    const until = async (check, label) => { for (let i = 0; i < 600 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 5)); assert.ok(check(), label); };
+    const row = () => f.all().find(node => node.dataset.name === item.name), action = () => row().querySelectorAll('button')[0], info = () => row().querySelector('.ym-manage-file-meta').children[0].textContent;
+    const statuses = () => Object.fromEntries(f.state.document.entries.map(entry => [entry.id, entry.status])), deletes = () => f.calls.filter(call => call.type === 'entry').map(call => call.payload);
+    f.get('管理').click(); await f.flush();
+    const facts = info();
+    assert.equal(action().textContent, '带入本聊天');
+
+    // 带入：两下。成功后这一行的按钮变成「撤销带入」。
+    action().click(); assert.equal(action().textContent, '再点确认'); assert.equal(info(), facts, '头一回带入不多说什么');
+    action().click(); await until(() => action().textContent === '撤销带入', '带入后按钮变成撤销带入');
+    assert.deepEqual(statuses(), { own: 'active', assign_1_0: 'active', assign_1_1: 'active' });
+    assert.equal(action().attrs['aria-label'], '撤销带入 Old story 的记忆');
+    assert.deepEqual(row().querySelectorAll('button').map(node => node.attrs['aria-label']), ['撤销带入 Old story 的记忆', '删除 Old story 的记忆']);
+
+    // 撤销：点一下问一句，再点才动；这一批逐条删除（可在「已删除的记忆」里撤回），别的条目不动。
+    action().click(); assert.equal(action().textContent, '再点撤销'); assert.deepEqual(deletes(), []);
+    action().click(); await until(() => action().textContent === '带入本聊天', '撤完按钮回到带入');
+    assert.deepEqual(deletes(), [{ entryId: 'assign_1_0', action: 'delete' }, { entryId: 'assign_1_1', action: 'delete' }], '与记忆页多选删除同一个动作');
+    assert.deepEqual(statuses(), { own: 'active', assign_1_0: 'deleted', assign_1_1: 'deleted' });
+    assert.ok(f.state.document.entries.filter(entry => entry.status === 'deleted').every(entry => entry.history.length > 0), '删掉的可以撤回');
+
+    // 这份已带入过：再点带入先说一句，不点第二下就不带；取消后那行小字复原。
+    const assigns = () => f.calls.filter(call => call.type === 'manageAssign').length;
+    action().click(); assert.equal(action().textContent, '再点确认'); assert.equal(info(), '这份已带入过，再点一次重复带入'); assert.equal(assigns(), 1);
+    action().disarm(); assert.equal(info(), facts); assert.equal(action().textContent, '带入本聊天');
+    action().click(); action().click(); await until(() => action().textContent === '撤销带入', '第二次带入');
+    assert.equal(assigns(), 2);
+    assert.deepEqual(statuses(), { own: 'active', assign_1_0: 'deleted', assign_1_1: 'deleted', assign_2_0: 'active', assign_2_1: 'active' });
+
+    // 撤到一半有一条删不了：停下，删掉的保留，按钮还在；再撤只处理剩下的那条。
+    refuse = 'assign_2_1'; const before = deletes().length;
+    action().click(); action().click(); await until(() => deletes().length === before + 2 && !action().disabled, '撤销停在删不了的那条');
+    assert.equal(action().textContent, '撤销带入');
+    assert.deepEqual([statuses().assign_2_0, statuses().assign_2_1], ['deleted', 'active']);
+    refuse = ''; action().click(); action().click(); await until(() => action().textContent === '带入本聊天', '剩下的那条也撤掉');
+    assert.deepEqual(deletes().slice(before + 2), [{ entryId: 'assign_2_1', action: 'delete' }]);
+    assert.equal(statuses().own, 'active');
+    assert.deepEqual((await store.read(request, target)).document.entries.filter(entry => entry.status === 'active').map(entry => entry.id), ['own'], '服务端上也只剩原有的那条');
+});
+
+test('the heart page opened from the panel deletes one item through the panel action and gets the new data when the panel state changes', async t => {
+    const heart = ids => ({ impressions: [], thoughts: [], eventFloor: 0, thoughtFloor: 0, events: ids.map((id, index) => ({ id, title: `节点${id}`, text: '丙', floor: index + 1, at: index + 1 })) });
+    const f = fixture({ document: { ...state().document, enabled: true, heart: heart(['e1', 'e2']) } }, (type, payload) => {
+        if (type === 'heartRemove') f.render({ document: { ...f.state.document, heart: heart(['e1', 'e2'].filter(id => id !== payload.itemId)) } });
+    });
+    t.after(() => f.view.destroy());
+    const listeners = new Map();
+    f.document.defaultView.addEventListener = (name, handler) => listeners.set(name, handler); f.document.defaultView.removeEventListener = name => listeners.delete(name);
+    f.get('心迹与观察日记').click();
+    const frame = f.all().find(node => node.tagName === 'IFRAME');
+    frame.contentWindow = { rendered: [], yimuRender(data) { this.rendered.push(data.events.map(item => item.id)); } }; frame.emit('load');
+    assert.deepEqual(frame.contentWindow.rendered, [['e1', 'e2']]);
+    listeners.get('message')({ source: frame.contentWindow, data: { yimuHeart: 'remove', kind: 'event', id: 'e1' } });
+    await f.flush(); await f.flush();
+    assert.deepEqual(f.calls.at(-1), { type: 'heartRemove', payload: { kind: 'event', itemId: 'e1' } });
+    assert.deepEqual(frame.contentWindow.rendered, [['e1', 'e2'], ['e2']], '面板状态变了，开着的页面跟着拿到新数据');
+    f.render({ status: '别处的变化' }); assert.equal(frame.contentWindow.rendered.length, 2, '心迹的数据没变就不重画');
 });
 
 test('on the ST home page the file list covers every character, one folder each', async t => {

@@ -106,6 +106,9 @@ body { padding-top: 42px; }
 .mark.now h3 { background: linear-gradient(transparent 62%, color-mix(in srgb, var(--red) 28%, transparent) 62%); display: inline; }
 .mark p { margin: 6px 0 0; font-size: 15px; line-height: 1.85; color: var(--faint); }
 /*@@HEART_SHARED_CSS@@*/
+/* 删除单条：纸上很淡的一笔，待确认时转朱。 */
+.slip .ym-rm { top: 4px; }
+.knot .ym-rm, .mark .ym-rm { top: -4px; }
 </style>
 </head>
 <body data-view="diary">
@@ -188,7 +191,7 @@ function applyAbout() {
 chips.forEach(chip => chip.addEventListener('click', () => { about = chip.dataset.about; applyAbout(); }));
 
 window.yimuPaint = D => {
-  views.diary.innerHTML = (D.impressions.length ? D.impressions.map((it, i) => `<article class="slip"><span class="no">${String(i + 1).padStart(2, '0')}</span><span class="who">${it.about}</span>
+  views.diary.innerHTML = (D.impressions.length ? D.impressions.map((it, i) => `<article class="slip">${rm('impression', it.id)}<span class="no">${String(i + 1).padStart(2, '0')}</span><span class="who">${it.about}</span>
       <p class="say">${it.say}</p><span class="sure" data-level="${it.sure}">${it.word}</span><span class="days">${Array.from({ length: 6 }, (_, n) => `<i class="${n < it.days.length ? 'on' : ''}"></i>`).join('')}</span>
       <button class="why">依据 · ${it.was ? '改过一次口' : it.days.length + ' 个不同的日子'}</button>
       <div class="proof"><div><ul>${it.was ? `<li><b>以前以为</b><span class="was">${it.was}</span></li>` : ''}${it.days.map(([day, text]) => `<li><b>${day}</b>${text}</li>`).join('')}</ul></div></div></article>`).join('')
@@ -198,11 +201,11 @@ window.yimuPaint = D => {
 
   heart.querySelectorAll('.knot, .empty').forEach(node => node.remove());
   const end = heart.querySelector('.end');
-  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="knot" data-about="${it.group}"><span class="about">${it.about}</span><span class="when">${it.when}</span>
+  end.insertAdjacentHTML('beforebegin', D.thoughts.length ? D.thoughts.map(it => `<article class="knot" data-about="${it.group}">${rm('thought', it.id)}<span class="about">${it.about}</span><span class="when">${it.when}</span>
       <p class="first">${it.say}</p></article>`).join('') : '<p class="empty">这段日子还没有写下心迹。</p>');
   end.hidden = !D.thoughts.length;
 
-  views.chron.innerHTML = D.events.length ? D.events.map(it => `<article class="mark${it.now ? ' now' : ''}"><span class="on">${it.date || it.when}</span><br><h3>${it.title}</h3><p>${it.text}</p></article>`).join('')
+  views.chron.innerHTML = D.events.length ? D.events.map(it => `<article class="mark${it.now ? ' now' : ''}">${rm('event', it.id)}<span class="on">${it.date || it.when}</span><br><h3>${it.title}</h3><p>${it.text}</p></article>`).join('')
     : '<p class="empty">还没有值得标一个日子的事。</p>';
   document.querySelectorAll('.slip, .knot, .mark').forEach(n => reveal.observe(n));
   applyAbout();

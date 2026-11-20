@@ -1,4 +1,4 @@
-// 三套主题共用的部分：把数据里的文字转义、退出与换主题、日期筛选（日／周，前后翻，月历）。
+// 三套主题共用的部分：把数据里的文字转义、退出与换主题、删除单条、日期筛选（日／周，前后翻，月历）。
 // 主题页面只需提供 window.yimuPaint(D, raw)：D 是按所选日期筛过、已转义的数据，可以反复调用。
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
@@ -6,6 +6,24 @@ const tell = type => parent.postMessage({ yimuHeart: type }, '*');
 document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
 document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
 addEventListener('keydown', event => { if (event.key === 'Escape') { if (YM.open) { YM.open = false; drawDate(); } else tell('exit'); } });
+
+// 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」。点一下变「再点删除」，几秒内再点才删。
+// 「还在留意的」不放。在捕获阶段接住点击，条目自己的展开不会跟着触发。
+const rm = (kind, id) => id ? `<button type="button" class="ym-rm" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
+let rmArmed = null, rmTimer = 0;
+const rmDisarm = () => { clearTimeout(rmTimer); if (rmArmed) { rmArmed.removeAttribute('data-armed'); rmArmed.textContent = '×'; rmArmed.setAttribute('aria-label', '删除'); } rmArmed = null; };
+document.addEventListener('click', event => {
+    const button = event.target.closest?.('.ym-rm');
+    if (!button) { rmDisarm(); return; }
+    event.preventDefault(); event.stopPropagation();
+    if (rmArmed !== button) {
+        rmDisarm(); rmArmed = button; button.setAttribute('data-armed', 'true'); button.textContent = '再点删除'; button.setAttribute('aria-label', '再点删除');
+        rmTimer = setTimeout(rmDisarm, 4000);
+        return;
+    }
+    rmDisarm(); button.disabled = true;
+    parent.postMessage({ yimuHeart: 'remove', kind: button.dataset.rmKind, id: button.dataset.rmId }, '*');
+}, true);
 
 // 日期按「记下的那一刻」（系统时间）算。默认停在最新有记录的那一天。
 const DAY = 86400000, WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];

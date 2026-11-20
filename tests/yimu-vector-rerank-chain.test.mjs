@@ -521,16 +521,21 @@ test('总结前：向量补进关键词找不到的旧切片，重排改变目�
     assert.equal(page.toggle('启用向量').checked, true); assert.equal(page.toggle('启用重排').checked, true);
 });
 
-test('总结前：关键词候选已占满六条时，向量不再补候选（现状记录）', async t => {
-    // 切片正文很短时，目录预算放得下六条时间近邻候选；此时向量候选没有名额。
+test('总结前：关键词候选已占满六条时，不向向量接口发请求，检索页如实写明', async t => {
+    // 切片正文很短时，目录预算放得下六条时间近邻候选；此时向量候选没有名额，请求发了也白发。
     const f = await fixture(t);
     await f.prepare(); await f.useVector();
     f.net.similarity = {灯塔: 0.9, 码头: 0.8};
     await f.extend(4);
     const result = await f.summarize();
-    assert.equal(result.retrieval.vector.status, 'ready');
+    assert.equal(f.sent('/embeddings').length, 0, '候选已满，向量请求没有发出');
+    assert.equal(result.retrieval.vector.status, 'skipped');
+    assert.equal(result.retrieval.vector.reason, '关键词候选已满，本批不另取向量');
     assert.deepEqual(result.shown, ['矿井', '果园', '钟楼', '渡船', '书库', '集市']);
     assert.ok(result.retrieval.candidates.every(candidate => !/向量/.test(candidate.reason)));
+    assert.equal(f.controller.state.error, '');
+    const page = retrievalPage(f); page.render();
+    assert.deepEqual(page.row('向量'), {badge: '可用', detail: '关键词候选已满，本批没取向量', hover: ''}, '不显示成失败');
 });
 
 test('总结前：重排只返回部分有效结果时，有效的排到前面，其余原样保留', async t => {

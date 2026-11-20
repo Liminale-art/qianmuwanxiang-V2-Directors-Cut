@@ -199,10 +199,10 @@ export function mountRetrievalView({ document = globalThis.document, vectorApi =
     };
     // One short line per status; long runtime reasons stay out of the row text.
     const DETAILS = {
-        vector: { ready: '已接入候选发现', unavailable: '未配置向量接口，已回退关键词召回', error: '向量请求失败，已回退关键词召回', off: '当前聊天未启用', planned: '等待本轮整理' },
+        vector: { ready: '已接入候选发现', skipped: '关键词候选已满，本批没取向量', unavailable: '未配置向量接口，已回退关键词召回', error: '向量请求失败，已回退关键词召回', off: '当前聊天未启用', planned: '等待本轮整理' },
         rerank: { ready: '已接入排序', unavailable: '未配置重排接口，保留原顺序', error: '重排请求失败，保留原顺序', off: '当前聊天未启用', planned: '等待本轮整理' },
     };
-    const toneOf = status => status === 'ready' ? 'ready' : status === 'error' || status === 'unavailable' ? 'error' : status === 'disabled' ? 'off' : 'planned';
+    const toneOf = status => status === 'ready' || status === 'skipped' ? 'ready' :status === 'error' || status === 'unavailable' ? 'error' : status === 'disabled' ? 'off' : 'planned';
     const sourceText = candidate => {
         const start = Number.isSafeInteger(candidate?.start) ? candidate.start : null;
         const end = Number.isSafeInteger(candidate?.end) ? candidate.end : null;

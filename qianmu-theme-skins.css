@@ -145,7 +145,8 @@
 }
 /* One selection shape per family; all share an unpainted rail and fixed hitboxes. */
 #story-director-modal[data-qm-theme] .sd-tab.active { color: var(--qm-ink) !important; }
-#story-director-modal[data-qm-theme="editorial"] .sd-tab-mark { width: 5px; height: 5px; bottom: 6px; }
+/* 选中的页签下是一枚朱砂鱼尾。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-tab-mark { width: 14px; height: 8px; bottom: 6px; border-radius: 0; background: var(--qm-zhu); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 42%, 0 100%); }
 #story-director-modal[data-qm-theme="editorial"] .sd-tab.active .sd-tab-label { transform: translateY(-2px); }
 #story-director-modal:is([data-qm-theme="editorial"], [data-qm-theme="glass"]) .sd-tab-dot { display: none; }
 #story-director-modal[data-qm-theme="glass"] .sd-tab-mark { display: none; }
@@ -163,8 +164,8 @@
   background: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
-  -webkit-text-fill-color: var(--qm-ink) !important;
-  color: var(--qm-ink) !important;
+  -webkit-text-fill-color: var(--qm-zhu) !important;
+  color: var(--qm-zhu) !important;
   text-shadow: none !important;
 }
 
@@ -713,4 +714,77 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+}
+
+/* ==== 纸间 · 线装书页 ====
+   一页书：文武线版框（外粗内细）、宣纸的纤维、界行分栏；朱砂只用在标题、选中与主操作（印）上，
+   其余全是墨与纸。只换材质与线，不动尺寸、字号与交互。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] {
+  --qm-zhu: var(--qm-accent);
+  --qm-on-zhu: var(--qm-on-accent);
+  --qm-rule: color-mix(in srgb, var(--qm-ink) 18%, transparent);
+  --qm-action-ink: var(--qm-ink);
+  /* 宣纸的纤维：两层极淡的细线，不用图片。 */
+  --qm-paper-grain: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--qm-ink) 2.6%, transparent) 2px 3px), repeating-linear-gradient(91deg, transparent 0 9px, color-mix(in srgb, var(--qm-ink) 1.8%, transparent) 9px 10px);
+  --qm-skin-window: var(--qm-paper-grain), var(--qm-bg);
+  --qm-skin-material: color-mix(in srgb, var(--qm-raised) 45%, transparent);
+}
+/* 版框：外粗线是窗体的边，内细线画在窗体里一圈。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-window,
+#story-director-floor-nav[data-qm-theme="editorial"] .qm-font-window {
+  border: 2px solid var(--qm-ink) !important;
+  outline: 1px solid color-mix(in srgb, var(--qm-ink) 70%, transparent);
+  outline-offset: -6px;
+}
+/* 界行：卡片不画框，只留上下两道细线。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(.sd-card, .sd-accordion) {
+  border-color: var(--qm-rule) transparent !important;
+}
+/* 字写在界行上：单行输入只留一条底线，聚焦时是朱笔。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(input.text_pole, select.text_pole, .sd-notes-search) {
+  background: transparent !important;
+  border-color: transparent transparent var(--qm-ink) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(input.text_pole, select.text_pole, textarea.text_pole, .sd-notes-search):focus {
+  border-bottom-color: var(--qm-zhu) !important;
+  outline: none !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] textarea.text_pole {
+  background: color-mix(in srgb, var(--qm-raised) 45%, transparent) !important;
+  border-color: var(--qm-rule) !important;
+}
+/* 按钮是文线框；图标按钮不画底。主操作是一枚印。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(.sd-btn, .sd-option-chip) {
+  background: transparent !important;
+  border-color: var(--qm-ink) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .sd-icon-btn {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(.sd-btn, .sd-option-chip, .sd-icon-btn):not(:disabled):hover {
+  background: color-mix(in srgb, var(--qm-zhu) 12%, transparent) !important;
+}
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .sd-primary:not(.sd-option-chip),
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .sd-option-chip:is(.active, .selected, [aria-pressed="true"], [aria-selected="true"]) {
+  background: var(--qm-zhu) !important;
+  color: var(--qm-on-zhu) !important;
+  border-color: var(--qm-zhu) !important;
+}
+/* 开关是一方小印：关着是空框，开了盖上朱文。 */
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"] {
+  width: 24px !important; min-width: 24px !important; max-width: 24px !important; flex: 0 0 24px !important;
+  height: 24px !important; min-height: 24px !important; max-height: 24px !important;
+  border: 1px solid var(--qm-muted) !important; border-radius: 2px !important; background: transparent !important;
+}
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"]::after {
+  content: '印' !important; inset: 0 !important; width: auto !important; height: auto !important;
+  display: grid !important; place-items: center; background: none !important; border: 0 !important; border-radius: 0 !important;
+  transform: none !important; font: 13px/1 var(--qm-editorial-font) !important; color: transparent !important;
+}
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"]:checked {
+  background: var(--qm-zhu) !important; border-color: var(--qm-zhu) !important;
+}
+:is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"]:checked::after {
+  color: var(--qm-on-zhu) !important;
 }

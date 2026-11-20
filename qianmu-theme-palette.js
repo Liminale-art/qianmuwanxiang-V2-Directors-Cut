@@ -9,6 +9,7 @@
  */
 
 const MIN_TEXT_CONTRAST = 4.5;
+const EDITORIAL_ZHU = Object.freeze({ light: '#b5322a', dark: '#d8574c' });
 const BASES = {
     editorial: {
         light: {
@@ -158,16 +159,17 @@ export function createThemePalette({ theme = 'editorial', mode = 'light', accent
         throw new TypeError('mode must be light or dark.');
     }
     const seed = normalizeHex(accent);
-    const [seedLightness, seedChroma, seedHue] = hexToOklch(seed);
     const dark = mode === 'dark';
     const glass = theme === 'glass';
+    // 纸间是线装书页：强调色只有朱砂一种（标题、选中、印），不随封面或所选强调色变。
+    const [seedLightness, seedChroma, seedHue] = hexToOklch(glass ? seed : EDITORIAL_ZHU[mode]);
     const base = BASES[theme][mode];
     const background = color(...base.bg);
     const surface = color(...base.surface);
     const raised = color(...base.raised);
     const backgrounds = [background, surface, raised];
     const accentChroma = Math.min(seedChroma, glass ? 0.20 : 0.16);
-    const action = color(clamp(seedLightness, dark ? 0.67 : 0.38, dark ? 0.80 : 0.60), accentChroma, seedHue);
+    const action = glass ? color(clamp(seedLightness, dark ? 0.67 : 0.38, dark ? 0.80 : 0.60), accentChroma, seedHue) : EDITORIAL_ZHU[mode];
     const ink = readableText(base.ink, backgrounds, mode);
     const muted = readableText(base.muted, backgrounds, mode);
     const onAccent = actionText(action);

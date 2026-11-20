@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches, parseObservations } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, summaryCoverage } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -35,7 +35,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
-    const cancelledRounds = new Map(), idleNoted = new Map();
+    const cancelledRounds = new Map();
     let refreshTimer = null, generationRefresh = null;
     // Entry/enable rounds announce a catch-up start; settle polling covers ST
     // paths that start a round but never block input (slash-command aborts).
@@ -98,14 +98,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const used = state.lastUsed, skip = state.lastSkip, binding = state.snapshot?.binding;
         if (!binding || !used && !skip || used?.restoredAt || skip?.restoredAt || roundSaved === (used || skip)) return;
         roundSaved = used || skip;
-        note(() => {
-            const messages = state.snapshot?.messages || [];
-            let hiddenTo = 0; while (hiddenTo < messages.length && messages[hiddenTo]?.is_system) hiddenTo++;
-            journal.add(used
-                ? { kind: 'round', status: 'success', chat: chatLabel(binding), memories: (used.entries || []).length, tokens: used.tokens, hiddenTo, waitMs: roundWaitMs }
-                : { kind: 'round', status: skip.offered ? 'cancelled' : 'blocked', chat: chatLabel(binding), reason: skip.reason, offered: skip.offered === true, hiddenTo, waitMs: roundWaitMs,
-                    ...(skip.message ? { error: skip.message } : {}) });
-        });
         const record = { at: Date.now(), recall: readRound(binding)?.recall || {},
             used: used ? { memoryIds: (used.entries || []).map(entry => entry.id), tokens: used.tokens, estimated: true, status: used.status, semantic: used.semantic === true,
             sourceReplacement: used.sourceReplacement, removedFloors: used.removedFloors, recentFloors: used.recentFloors, requestTokens: used.requestTokens, contextTokens: used.contextTokens, responseTokens: used.responseTokens } : null,
@@ -459,17 +451,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 } else batch = nextBatch(jobDocument, snapshot.messages, settings, { force: force || targetEnd !== null, historyOnly, limitEnd: targetEnd ?? Infinity, align: !force });
                 if (!batch) {
                     noWork = true;
-                    // 自动总结这一轮没动：留一笔原因（每个楼层数只记一次），否则「为什么还不总结」无从查起。
-                    if (!force && !processed && idleNoted.get(key) !== snapshot.messages.length) {
-                        idleNoted.set(key, snapshot.messages.length);
-                        note(() => {
-                            const coverage = summaryCoverage(jobDocument, snapshot.messages, settings);
-                            if (!coverage.pendingFloors) return;
-                            const range = coverage.pendingRange, pendingTokens = range ? snapshot.messages.slice(range.start - 1, range.end).reduce((total, item) => total + estimateTokens(item.mes || ''), 0) : 0;
-                            journal.add({ kind: 'idle', status: 'cancelled', chat: chatLabel(binding), pendingFloors: coverage.pendingFloors, pendingTokens, range,
-                                triggerFloors: settings.triggerFloors, trigger: settings.trigger, recent: settings.recent });
-                        });
-                    }
                     break;
                 }
                 if (controller.probing) { controller.probing = false; emit(); }
@@ -494,6 +475,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     const vectorConfig = typeof host.connectionApi?.vectorRead === 'function' ? host.connectionApi.vectorRead() : null;
                     if (!vectorConfig?.apiUrl || !vectorConfig?.model || typeof host.vectorCandidates !== 'function') {
                         vector = { status: 'unavailable', candidates: [], reason: '尚未配置向量候选接口，已回退关键词召回' };
+                    } else if (candidates.length >= 6) {
+                        // 关键词候选已占满六个名额：向量一条也补不进去，这一批就不发请求。
+                        vector = { status: 'skipped', candidates: [], reason: '关键词候选已满，本批不另取向量' };
                     } else {
                         const pool = buildRetrievalCandidates({
                             localCandidates: candidateDocument.entries.filter(entry => entry.kind === 'summary' && entry.status === 'active' && !entry.origin && entry.source).map(entry => ({
@@ -1132,14 +1116,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     const OFFER_ON_SKIP = new Set(['unsupported-generation', 'unverified-mapping', 'unsupported-name-format', 'unknown-context-budget', 'unsupported-tools', 'live-chat-reference', 'source-changed']);
     async function intercept(coreChat, contextSize, abort, type = '') {
-        const began = Date.now(); roundWaitMs = null;
-        try { return await interceptRound(coreChat, contextSize, abort, type); }
-        finally { roundWaitMs = Date.now() - began; }
-    }
-    // 生成前忆幕占用了多久（读取、选记忆、准备改写）。记进每轮的日志，慢不慢有据可查。
-    let roundWaitMs = null;
-    async function interceptRound(coreChat, contextSize, abort, type = '') {
-        const began = Date.now();
         host.clear(); prepared = null; offered = false; thoughtAsk = null; host.stopHeartVeil?.();
         // 用户刚发出的消息会排一次稍后的刷新；它若在本轮准备好之后才跑，会把刚读到的状态顶掉。这里提前跑掉，并等到最新一次刷新结束。
         // 这次读取是刻意的：它能发现别的设备、别处改动过的记忆与原文，省掉它就会注入过期内容（有专门的回归测试）。
@@ -1201,10 +1177,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 // 含继承（origin）记忆的方案改写需在最终边界重核，烘焙槽无法事后回核，故不走保底，
                 // 维持原有仅改写路径——这也让下方 verify 分支下 offered 恒为 false，语义一致。
                 offered = prepared.foreignIds.length ? false : host.offer(plan.prompt); }
-            else if (result.reason === 'empty') {
-                // 没有可带的记忆不是出错，但要留一笔：否则「这一轮为什么什么都没带」无从查起。
-                if (ticket === generation && isCurrent(doc.binding)) note(() => journal.add({ kind: 'round', status: 'cancelled', chat: chatLabel(doc.binding), reason: 'empty', memories: 0, waitMs: Date.now() - began }));
-            }
+            else if (result.reason === 'empty') { /* 没有可带的记忆不是出错：不改写请求，也不记成跳过。 */ }
             else if (ticket === generation && isCurrent(doc.binding)) {
                 // 原文替换做不了（续写、楼层对不上、带工具消息等）时，不再整轮没有记忆：仍以保底方式把记忆附在本轮请求里。
                 // 后台静默生成、文本补全、群聊不附加；含继承记忆的方案同上不走保底。

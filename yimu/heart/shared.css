@@ -18,3 +18,9 @@
 #ym-date .ym-cal-grid button.on { background: var(--ymd-accent); color: var(--ymd-paper); }
 .ym-cal-grid button.on.has::after { background: var(--ymd-paper); }
 .ym-cal-grid button.today { outline: 1px dashed var(--ymd-mute); outline-offset: -2px; }
+/* 删除单条：条目右上角很淡的「×」，点一下变「再点删除」。位置各主题自己定（条目须是定位容器）。 */
+.ym-rm { all: unset; position: absolute; right: 0; top: 0; z-index: 6; cursor: pointer; padding: 6px 8px; font-size: 12px; line-height: 1; letter-spacing: .1em; white-space: nowrap; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
+.ym-rm:hover, .ym-rm:focus-visible { opacity: .85; }
+.ym-rm:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
+.ym-rm[data-armed] { opacity: 1; color: var(--ymd-accent); }
+.ym-rm[disabled] { opacity: .2; cursor: default; }
