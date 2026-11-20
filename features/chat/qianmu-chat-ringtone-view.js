@@ -209,6 +209,7 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       cell.append(image);
       cell.addEventListener('click', () => picker.click());
       cell.appendChild(picker);
+      if (slot === 0) icons.append(el('span', 'qm-ring-icon-label', '闪烁小图标'));
       icons.append(cell);
     }
     card.append(icons);

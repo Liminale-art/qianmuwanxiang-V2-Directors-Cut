@@ -14,6 +14,7 @@ export function normalizeUsage(value) {
     const out = { version: USAGE_VERSION, since: 0, days: {}, hours: Array(24).fill(0), chars: {} };
     if (!value || typeof value !== 'object') return out;
     out.since = num(value.since);
+    if (typeof value.zone === 'string' && value.zone && value.zone.length <= 64) out.zone = value.zone;
     for (const [key, ms] of Object.entries(value.days && typeof value.days === 'object' ? value.days : {})) if (/^\d{4}-\d{2}-\d{2}$/.test(key) && num(ms)) out.days[key] = Math.round(ms);
     if (Array.isArray(value.hours)) out.hours = out.hours.map((_, hour) => Math.round(num(value.hours[hour])));
     for (const [key, item] of Object.entries(value.chars && typeof value.chars === 'object' ? value.chars : {})) {
@@ -21,6 +22,17 @@ export function normalizeUsage(value) {
         out.chars[key] = { name: String(item.name || '').slice(0, 120), ms: Math.round(num(item.ms)), last: num(item.last), ...(item.avatar ? { avatar: String(item.avatar).slice(0, 600) } : {}) };
     }
     return out;
+}
+
+/** 自选时区下的「钟面」比本机快或慢多少毫秒：把时间加上它，再按本机时间取年月日时，得到的就是那个时区的年月日时。
+ * 没选（跟随系统）或时区名不认识时是 0。 */
+export function zoneShift(at, zone) {
+    if (!zone) return 0;
+    try {
+        const parts = {};
+        for (const part of new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(at))) parts[part.type] = Number(part.value);
+        return new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second).getTime() - Math.floor(at / 1000) * 1000;
+    } catch { return 0; }
 }
 
 export function createUsageTracker({ load = () => null, save = () => {}, now = () => Date.now(), character = () => null, visible = () => true, busy = () => false,
@@ -43,9 +55,10 @@ export function createUsageTracker({ load = () => null, save = () => {}, now = (
         if (!lastActive || at - lastActive > idleMs) return 0;
         const add = Math.min(since, tickMs * 2);
         if (!data.since) data.since = at;
-        const key = dayKey(at);
+        // 哪一天、几点钟按所选时区的钟面算；since 与 last 仍记真实时刻。
+        const wall = at + zoneShift(at, data.zone), key = dayKey(wall);
         data.days[key] = (data.days[key] || 0) + add;
-        data.hours[new Date(at).getHours()] += add;
+        data.hours[new Date(wall).getHours()] += add;
         const who = character();
         if (who?.key) {
             const item = data.chars[who.key] ||= { name: '', ms: 0, last: 0 };
@@ -67,6 +80,14 @@ export function createUsageTracker({ load = () => null, save = () => {}, now = (
             dirty = true;
         },
         flush() { tick(); trim(); flush(); },
+        /** 换时区：空串是跟随系统。只影响之后记的账；已经记下的日子与钟点不重算。 */
+        setZone(zone) {
+            tick();
+            let next = typeof zone === 'string' && zone.length <= 64 ? zone : '';
+            if (next) { try { new Intl.DateTimeFormat('en-US', { timeZone: next }); } catch { next = ''; } }
+            if (next) data.zone = next; else delete data.zone;
+            dirty = true; trim(); flush();
+        },
         get data() { return data; },
     };
 }
@@ -95,10 +116,10 @@ export function compactTime(ms) {
     return { value: String(Math.round(hours / 24)), unit: 'd' };
 }
 const weekStartOf = at => { const day = startOfDay(at); return addDays(day, -((new Date(day).getDay() + 6) % 7)); };
-/** 一个季度的起止（shift：往前或往后几个季度）。 */
+/** 默认看的那一段：十三周（一个季度那么长），整周起头，最后一格是今天，所以格子总是铺满。shift：往前或往后翻整段。 */
 export function quarterRange(at, shift = 0) {
-    const d = new Date(at), quarter = Math.floor(d.getMonth() / 3) + shift;
-    return { from: new Date(d.getFullYear(), quarter * 3, 1).getTime(), to: new Date(d.getFullYear(), quarter * 3 + 3, 0).getTime() };
+    const today = startOfDay(at), monday = addDays(weekStartOf(today), shift * 91);
+    return { from: addDays(monday, -84), to: shift ? addDays(monday, 6) : today };
 }
 /** 热力格：一列一周（周一到周日），列数跟着所选范围走。越深用得越久；范围外与还没到的日子不画。 */
 export function heatCells(data, from, to, at = Date.now()) {

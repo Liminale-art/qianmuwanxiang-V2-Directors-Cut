@@ -824,3 +824,9 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
   #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell)::after { left: 2px; }
   #story-director-modal[data-qm-theme="editorial"] .sd-window > .sd-tabs-shell .sd-tab { padding: 14px 0 8px !important; }
 }
+/* 纸间标题栏：版本号不带标签框，贴着标题（与忆幕一致）；右侧五个图标去掉底框、略缩小，选中的那个用朱砂。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-header .sd-version-tag { padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-header .sd-version-tag.is-update-available { text-decoration: underline; text-underline-offset: 3px; }
+#story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close):is(.active, :hover, [aria-expanded="true"]) { color: var(--qm-zhu) !important; }
+#story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) :is(i, .qm-glyph-icon) { transform: scale(.9); }
