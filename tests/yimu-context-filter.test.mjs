@@ -5,10 +5,15 @@ import { DEFAULTS, validateSettings } from '../yimu/contract.mjs';
 import { portableDocument } from '../yimu/backup-contract.mjs';
 import { summaryPrompt } from '../yimu/core.mjs';
 
-test('default context rules keep blocking opt-in and extract only content', () => {
+test('default context rules block only the model thinking tags, in any letter case, and extract only content', () => {
     const raw = '<content>正文一<!-- 状态注释 -->\n正文二</content><status>状态栏</status><style>.card{color:red}</style><p>保留</p>';
     assert.equal(filterContextText(raw), '正文一\n正文二');
-    assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, []);
+    assert.deepEqual(DEFAULT_CONTEXT_RULES.blockedTags, ['think', 'thinking', 'thought']);
+    // 思考过程默认不进总结；标签名不分大小写。
+    assert.equal(filterContextText('<Think>盘算</Think>开头<THINKING>再想想</THINKING>中间<thought>念头</thought>结尾'), '开头中间结尾');
+    assert.equal(filterContextText('<CONTENT>正文</Content><think>盘算</think>'), '正文');
+    assert.equal(filterContextText('<Status>栏</STATUS>正文', { blockedTags: ['STATUS'], includedTags: [] }), '正文', '用户填的标签同样不分大小写');
+    assert.equal(filterContextText('<think>想</think>正文', { blockedTags: [], includedTags: [] }), '<think>想</think>正文', '用户清空屏蔽规则后不再屏蔽');
     assert.deepEqual(DEFAULT_CONTEXT_RULES.includedTags, ['content']);
     assert.equal(filterContextText(raw, { blockedTags: ['status', 'style'], includedTags: [] }), '<content>正文一\n正文二</content><p>保留</p>');
 });

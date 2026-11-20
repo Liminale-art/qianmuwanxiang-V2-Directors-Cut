@@ -1109,13 +1109,55 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         finally { if (isCurrent(binding)) { if (loud) state.busy = false; emit(); } }
     }
 
+    // 标签规则与总结类设置是这个账户的全局默认：在哪个聊天里改都存到全局，所有聊天共用一份，新开的聊天直接沿用。
+    // 这个聊天以前单独存过的同类设置，趁这次一并升为全局并从聊天里清掉（以这个聊天里看到的值为准），之后它也跟着全局走。
+    // 全局没存成时退回老办法——照旧存在这个聊天里，改动不丢。其余设置（注入、心迹、连接等）仍按聊天存。
+    const GLOBAL_SETTINGS = new Set(['contextRules', 'prompts', 'recent', 'trigger', 'triggerFloors', 'batch', 'summarySlices', 'sliceChars', 'stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']);
+    let defaultsQueue = Promise.resolve();
+    function saveDefaults(values) {
+        const run = async () => {
+            for (let attempt = 0; attempt < 2 && !disposed; attempt++) {
+                try {
+                    const loaded = attempt === 0 && state.defaults ? state.defaults : (await api.defaults()).defaults;
+                    const result = await api.defaults({ id: id(), expectedRevision: loaded.revision, values });
+                    if (!state.defaults || result.defaults.revision >= state.defaults.revision) state.defaults = result.defaults;
+                    return true;
+                } catch (error) { if (attempt === 1) console.warn('[忆幕] 全局默认设置没有存成，这次改动先存在当前聊天里', error); }
+            }
+            return false;
+        };
+        const next = defaultsQueue.then(run, run);
+        defaultsQueue = next.catch(() => false);
+        return next;
+    }
+    /** 聊天这边已经按原路径存好之后调用：把全局类的那几项升到全局默认，再把它们从聊天里清掉。 */
+    async function liftGlobalSettings(values, still) {
+        const edited = Object.entries(values || {}).filter(([key, value]) => GLOBAL_SETTINGS.has(key) && value !== undefined);
+        if (!edited.length || !state.document) return;
+        const own = Object.fromEntries(Object.entries(state.document.settings || {}).filter(([key]) => GLOBAL_SETTINGS.has(key)));
+        // 「恢复默认」（值为 null）也要传到全局：那一项在全局里回到内置默认。
+        const lifted = { ...own, ...Object.fromEntries(edited.filter(([, value]) => value === null)) };
+        if (!Object.keys(lifted).length || !await saveDefaults(lifted) || !still()) { if (still()) emit(); return; }
+        const clear = Object.fromEntries(Object.keys(own).map(key => [key, null]));
+        if (Object.keys(clear).length) {
+            try { await executeAction('settings', { quiet: true, values: clear, expectedRevision: state.document?.configRevision ?? 0 }); }
+            catch (error) { console.warn('[忆幕] 全局默认已存好；这个聊天里的旧值没清掉，下次保存时再清', error); }
+        }
+        if (still()) emit();
+    }
+
     async function action(type, payload = {}) {
         const stamp = generation, binding = state.snapshot?.binding ? clone(state.snapshot.binding) : null;
         const page = payload.errorPage || (type === 'settings' ? payload.values?.prompts ? 'overview' : 'settings'
             : /^(story|companion|backup)/.test(type) ? type.match(/^(story|companion|backup)/)[0]
             : /^(manage|purge|clearLocal)/.test(type) ? 'manage' : /^heart/.test(type) ? 'settings'
             : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize'].includes(type) ? 'overview' : 'memory');
-        try { return await executeAction(type, payload); }
+        try {
+            const done = await executeAction(type, payload);
+            const still = () => !disposed && stamp === generation && Boolean(binding) && isCurrent(binding);
+            if (type === 'settings' && !payload.global && done !== false && still()) await liftGlobalSettings(payload.values, still);
+            return done;
+        }
         catch (error) {
             if (!disposed && stamp === generation && (binding ? isCurrent(binding) : !state.snapshot)) {
                 state.error = error.message; state.errorPage = page; emit();

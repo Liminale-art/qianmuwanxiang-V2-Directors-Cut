@@ -1266,3 +1266,31 @@ test('when automatic summary does not run because the threshold is not reached, 
     await f.controller.start(); await f.flush();
     assert.deepEqual(f.journal.list(), []);
 });
+
+test('tag rules and summary settings edited inside a chat become the account defaults and stop living in that chat; other settings stay with the chat', async t => {
+    const f = await fixture(t);
+    await f.controller.refresh();
+    const rules = {stripComments: true, blockedTags: ['status'], includedTags: ['content']};
+    assert.equal(await f.controller.action('settings', {values: {sliceChars: 1234, stageThreshold: 4321, contextRules: rules, maxSlices: 7}}), true);
+    let read = await f.api.read(binding);
+    assert.equal(read.defaults.values.sliceChars, 1234); assert.equal(read.defaults.values.stageThreshold, 4321);
+    assert.deepEqual(read.defaults.values.contextRules, rules);
+    assert.deepEqual(read.document.settings, {maxSlices: 7}, 'only the per-chat setting is left in the chat');
+    assert.equal(read.defaults.values.maxSlices, 12, 'a per-chat setting does not leak into the defaults');
+    assert.equal(f.controller.state.defaults.values.sliceChars, 1234);
+    assert.equal(f.controller.state.document.settings.sliceChars, undefined);
+    // 「恢复默认」传到全局：那一项回到内置默认，其它全局项不动。
+    assert.equal(await f.controller.action('settings', {values: {sliceChars: null}}), true);
+    read = await f.api.read(binding);
+    assert.equal(read.defaults.values.sliceChars, 2000); assert.equal(read.defaults.values.stageThreshold, 4321);
+    // 全局存不成时，改动照旧留在这个聊天里，不丢。
+    const defaults = f.api.defaults; f.api.defaults = async operation => { if (operation) throw new Error('offline'); return defaults(); };
+    assert.equal(await f.controller.action('settings', {values: {stageChars: 2222}}), true);
+    f.api.defaults = defaults; read = await f.api.read(binding);
+    assert.equal(read.document.settings.stageChars, 2222); assert.equal(read.defaults.values.stageChars, 3000);
+    // 下一次保存时，这个聊天里攒下的旧值一并升为全局并清掉。
+    assert.equal(await f.controller.action('settings', {values: {stageRecent: 5}}), true);
+    read = await f.api.read(binding);
+    assert.equal(read.defaults.values.stageChars, 2222); assert.equal(read.defaults.values.stageRecent, 5);
+    assert.deepEqual(read.document.settings, {maxSlices: 7});
+});

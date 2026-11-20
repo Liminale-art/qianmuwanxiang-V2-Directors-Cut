@@ -2,13 +2,11 @@
 // source hashes; the original floor remains the source of truth.
 const TAG = /^[A-Za-z][A-Za-z0-9:_-]{0,63}$/;
 const MAX_TAGS = 32;
-// Presentation-only containers commonly emitted around a chat response.
-// Inner-thought tags are not blocked by default: they may be part of a user's
-// chosen narrative and can be added explicitly in the card when appropriate.
-// Do not guess which tags are presentation-only.  A user's story may use any
-// of these names as meaningful prose, so the blocked list starts empty and is
-// opt-in.  `content` remains the only default extraction boundary.
-export const DEFAULT_BLOCKED_TAGS = Object.freeze([]);
+// 内置默认只屏蔽模型的思考过程（think / thinking / thought）：它们不是故事正文，带进总结只会添乱。
+// 其余标签不替用户猜——故事里可能把任何名字当正文用，要屏蔽的由用户自己加。
+// 标签名不分大小写：存的时候一律转小写，匹配时也忽略大小写。
+// `content` 仍是默认唯一的提取边界。
+export const DEFAULT_BLOCKED_TAGS = Object.freeze(['think', 'thinking', 'thought']);
 export const DEFAULT_INCLUDED_TAGS = Object.freeze(['content']);
 export const DEFAULT_CONTEXT_RULES = Object.freeze({ stripComments: true, blockedTags: DEFAULT_BLOCKED_TAGS, includedTags: DEFAULT_INCLUDED_TAGS });
 
