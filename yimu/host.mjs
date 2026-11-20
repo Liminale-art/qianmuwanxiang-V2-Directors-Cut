@@ -2,6 +2,7 @@
 import { DEFAULTS, shownFloor, fingerprintMessages } from './contract.mjs';
 import { buildBudgetedMessages, captureCore, payloadSupport, summaryRequestBudget, SUMMARY_SYSTEM } from './budget.mjs';
 import { createApiSettings } from './api-settings.mjs';
+import { createFloorCounter } from './floor-count.mjs';
 
 export const MEMORY_PROMPT_KEY = 'yimu-memory';
 export const HEART_PROMPT_KEY = 'yimu-heart';
@@ -110,6 +111,15 @@ export function createHost({
     document = globalThis.document,
 } = {}) {
     let generation = 0;
+    // 楼层计数：只数数，不读内容；与千幕共用酒馆账户设置里的同一份。只在打开心迹页时才去数——
+    // 不放进 snapshot：那是生成前也要走的读路径，不该顺带发请求、存设置。
+    const floorCounter = createFloorCounter({ getContext, fetch: fetcher });
+    /** 当前聊天与这个角色的楼层数；其他聊天窗口的条数取回来后再用 onUpdate 报一次。 */
+    function floors(onUpdate) {
+        const now = floorCounter.touch();
+        if (now) floorCounter.sync().then(changed => { if (changed) onUpdate?.(floorCounter.touch()); }, () => {});
+        return now;
+    }
     let generating = false, opening = null, recentStory = null;
     const sessions = new WeakMap(), promoteFinalListeners = new Set();
     const connectionApi = createApiSettings({ getContext, fetchImpl: fetcher });
@@ -571,7 +581,7 @@ export function createHost({
         return body?.dataset ? body.dataset.generating === 'true' : null;
     }
 
-    return { snapshot, generate, profiles, busyGenerating, characters, clear, offer, offerHeart, lastReply, rewriteReply, veilHeart, stopHeartVeil, prepare, applyPrepared, setHidden, applyHidden, subscribe, openStory, openBackup, confirmStoryBoundary,
+    return { floors, snapshot, generate, profiles, busyGenerating, characters, clear, offer, offerHeart, lastReply, rewriteReply, veilHeart, stopHeartVeil, prepare, applyPrepared, setHidden, applyHidden, subscribe, openStory, openBackup, confirmStoryBoundary,
         connectionApi,
         // 最终请求的 token 数量用 ST 自己的分词器算，取不到时由调用方退回估算。
         countTokens: value => {

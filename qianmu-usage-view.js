@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.588';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.589';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -98,12 +98,27 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 /* 时区：点这行小字换。原生下拉透明地盖在字上，点到的就是它。 */
 #${ROOT_ID} .qm-usage-zone { position: relative; display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 #${ROOT_ID} .qm-usage-zone select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font: inherit; font-size: 16px; }
-/* ---- 常客名单 ---- */
+/* ---- 宿缘：按时长或按楼层排的名单 ---- */
 #${ROOT_ID} .qm-usage-bar { height: 5px; border-radius: 999px; background: color-mix(in srgb, var(--u-ink) 12%, transparent); overflow: hidden; }
 #${ROOT_ID} .qm-usage-bar > span { display: block; height: 100%; width: var(--p, 0%); border-radius: inherit; background: var(--u-accent); transform-origin: left; animation: qm-usage-grow .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--n, 0) * 60ms + 150ms); }
 @keyframes qm-usage-grow { from { transform: scaleX(0); } }
 #${ROOT_ID} .qm-usage-char { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 12px 6px; border-top: 1px solid color-mix(in srgb, var(--u-line) 70%, transparent); animation: qm-usage-rise .45s both; animation-delay: calc(var(--n) * 50ms); }
 #${ROOT_ID} .qm-usage-char:first-of-type { border-top: 0; }
+#${ROOT_ID} .qm-usage-char { position: relative; }
+/* 第一位：名字与头像圈用强调色。 */
+#${ROOT_ID} .qm-usage-char.is-top .who span:first-child { color: var(--u-accent); font-weight: 600; }
+#${ROOT_ID} .qm-usage-char.is-top .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 3.5px var(--u-accent); }
+/* 两种排法的第一位是同一位：换成红线的颜色，名字上方系一根会自己画出来的红线。 */
+#${ROOT_ID} { --u-fate: color-mix(in srgb, #e3364e 84%, var(--u-accent)); }
+#${ROOT_ID} .qm-usage-char.is-fated { padding-top: 38px; }
+#${ROOT_ID} .qm-usage-char.is-fated .who span { color: var(--u-fate); font-weight: 600; }
+#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-face { box-shadow: 0 0 0 2px var(--u-bg-solid, var(--u-card)), 0 0 0 3.5px var(--u-fate), 0 0 16px color-mix(in srgb, var(--u-fate) 55%, transparent); }
+#${ROOT_ID} .qm-usage-char.is-fated .qm-usage-bar > span { background: linear-gradient(90deg, var(--u-accent), var(--u-fate)); }
+#${ROOT_ID} .qm-usage-thread { position: absolute; left: 0; top: 4px; width: 100%; height: 30px; overflow: visible; pointer-events: none; }
+#${ROOT_ID} .qm-usage-thread path { fill: none; stroke: url(#qm-usage-thread-ink); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--u-fate) 55%, transparent));
+  animation: qm-usage-thread-draw 3.8s cubic-bezier(.45,.05,.3,1) .35s forwards, qm-usage-thread-pulse 3.2s ease-in-out 4.3s infinite alternate; }
+@keyframes qm-usage-thread-draw { to { stroke-dashoffset: 0; } }
+@keyframes qm-usage-thread-pulse { from { opacity: 1; } to { opacity: .55; } }
 #${ROOT_ID} .qm-usage-char .qm-usage-face { grid-row: 1 / span 3; }
 #${ROOT_ID} .qm-usage-char .who { display: flex; justify-content: space-between; gap: 10px; }
 #${ROOT_ID} .qm-usage-char .who span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -111,7 +126,7 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID} .qm-usage-char small { font-size: 12px; color: var(--u-mute); }
 #${ROOT_ID} .qm-usage-empty { margin: 0; padding: 40px 10px; text-align: center; color: var(--u-mute); }
 #${ROOT_ID} [hidden] { display: none !important; }
-@media (prefers-reduced-motion: reduce) { #${ROOT_ID} * { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { #${ROOT_ID} * { animation: none !important; transition: none !important; } #${ROOT_ID} .qm-usage-thread path { stroke-dashoffset: 0; } }
 /* 纸间：一页书。直角、文武线、界行；数字是朱砂，不发光。 */
 #${ROOT_ID}[data-qm-theme="editorial"] { --u-ink: var(--qm-ink); --u-mute: var(--qm-muted); --u-bg: var(--qm-bg); --u-card: transparent; --u-line: color-mix(in srgb, var(--qm-ink) 18%, transparent); --u-accent: var(--qm-accent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-panel { border-radius: 0; border: 2px solid var(--u-ink); outline: 1px solid color-mix(in srgb, var(--u-ink) 70%, transparent); outline-offset: -6px; padding: 20px; font-family: var(--qm-editorial-font, serif); }
@@ -143,21 +158,33 @@ export function timeZones() {
     if (!zoneNames?.length) zoneNames = ['Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Taipei', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Bangkok', 'Asia/Kolkata', 'Asia/Dubai', 'Europe/Moscow', 'Europe/Berlin', 'Europe/Paris', 'Europe/London', 'UTC', 'America/Sao_Paulo', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Pacific/Honolulu', 'Australia/Sydney', 'Pacific/Auckland'];
     return zoneNames;
 }
+// 红线：从左边渐显着绕过来，在正中绕出一颗心，再绕着向右渐隐。只有「相处最久」与「聊得最多」是同一位时才出现。
+const THREAD = '<svg class="qm-usage-thread" viewBox="0 0 320 30" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><linearGradient id="qm-usage-thread-ink" x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:var(--u-fate);stop-opacity:0"/><stop offset=".2" style="stop-color:var(--u-fate)"/><stop offset=".8" style="stop-color:var(--u-fate)"/><stop offset="1" style="stop-color:var(--u-fate);stop-opacity:0"/></linearGradient></defs><path pathLength="1" d="M0,18 C22,10 44,24 62,16 C74,10 72,2 64,4 C56,6 62,20 84,18 C112,16 140,17 160,26 C142,17 140,5 150,5 C157,5 160,9 160,12 C160,9 163,5 170,5 C180,5 178,17 160,26 C180,31 206,20 232,16 C250,13 262,4 254,3 C246,2 244,14 262,17 C284,21 302,12 320,15"/></svg>';
+const ICON = body => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON_TIME = ICON('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'), ICON_FLOORS = ICON('<path d="M12 4 3.5 8.5 12 13l8.5-4.5L12 4Z"/><path d="m3.5 12.5 8.5 4.5 8.5-4.5"/><path d="m3.5 16.5 8.5 4.5 8.5-4.5"/>');
 const face = (item, avatarUrl) => `<span class="qm-usage-face"><span>${esc(Array.from(item.name || '？')[0])}</span><img alt="" loading="lazy" src="${esc(item.avatar || avatarUrl(item.key))}" hidden></span>`;
 const nameOf = item => item.name || item.key.replace(/\.[^.]+$/, '');
 const big = ms => { const { value, unit } = compactTime(ms); return `<i data-count="${esc(value)}">${esc(value)}</i><span>${unit}</span>`; };
 
-/** range：{ from, to, custom }；custom 为真时显示两个日期框。drink：这次打开抽到的酒名。 */
-export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', drink = DRINKS[0], zones = timeZones(), avatarUrl = key => `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}` } = {}) {
+/** range：{ from, to, custom }；custom 为真时显示两个日期框。drink：这次打开抽到的酒名。
+ * floors：按楼层数排好的角色 [{ key, name, floors }]；rank：名单按时长（time）还是按楼层（floors）排。 */
+export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', drink = DRINKS[0], zones = timeZones(), floors = [], rank = 'time', avatarUrl = key => `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}` } = {}) {
     // 按所选时区的钟面来看：今天是哪天、几点聊的，都以它为准。
     const picked = typeof data?.zone === 'string' ? data.zone : '', wall = at => at + zoneShift(at, picked), now = wall(real);
     const summary = usageSummary(data, now);
     if (page === 'chars') {
-        const rows = summary.chars.length ? summary.chars.map((item, index) => `<article class="qm-usage-char" style="--n:${index}">${face(item, avatarUrl)}
-        <div class="who"><span>${esc(nameOf(item))}</span><span>${esc(durationText(item.ms))}</span></div>
-        <div class="qm-usage-bar"><span style="--p:${summary.top ? Math.max(2, Math.round(item.ms / summary.top * 100)) : 0}%;--n:${index}"></span></div>
-        <small>最后一次聊天：${esc(lastChatText(item.last ? wall(item.last) : 0, now))}</small></article>`).join('') : '<p class="qm-usage-empty">还没有和谁聊过。</p>';
-        return `<header><button type="button" class="qm-usage-icon" data-usage-page="home" aria-label="返回">‹</button><h3>常客</h3><button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>${rows}`;
+        // 两种排法：相处的时长、聊过的楼层。各自的第一位高亮；两边第一是同一位时，那一位系上红线。
+        const known = new Map(summary.chars.map(item => [item.key, item])), ranked = (Array.isArray(floors) ? floors : []).filter(item => item?.key && item.floors > 0);
+        const mode = rank === 'floors' && ranked.length ? 'floors' : 'time';
+        const timeTop = summary.chars[0]?.ms > 0 ? summary.chars[0].key : '', fated = timeTop && timeTop === ranked[0]?.key ? timeTop : '';
+        const list = mode === 'floors' ? ranked.map(item => ({ key: item.key, ms: 0, last: 0, ...known.get(item.key), name: known.get(item.key)?.name || item.name, floors: item.floors })) : summary.chars;
+        const most = mode === 'floors' ? ranked[0].floors : summary.top;
+        const rows = list.length ? list.map((item, index) => { const value = mode === 'floors' ? item.floors : item.ms; return `<article class="qm-usage-char${index === 0 ? ' is-top' : ''}${item.key === fated ? ' is-fated' : ''}" style="--n:${index}">${item.key === fated ? THREAD : ''}${face(item, avatarUrl)}
+        <div class="who"><span>${esc(nameOf(item))}</span><span>${mode === 'floors' ? `${item.floors} 层` : esc(durationText(item.ms))}</span></div>
+        <div class="qm-usage-bar"><span style="--p:${most ? Math.max(2, Math.round(value / most * 100)) : 0}%;--n:${index}"></span></div>
+        <small>最后一次聊天：${esc(lastChatText(item.last ? wall(item.last) : 0, now))}</small></article>`; }).join('') : '<p class="qm-usage-empty">还没有和谁聊过。</p>';
+        const toggle = ranked.length ? `<button type="button" class="qm-usage-icon" data-usage-rank="${mode === 'floors' ? 'time' : 'floors'}" aria-label="${mode === 'floors' ? '按时长排' : '按楼层排'}" title="${mode === 'floors' ? '按时长排' : '按楼层排'}">${mode === 'floors' ? ICON_TIME : ICON_FLOORS}</button>` : '';
+        return `<header><button type="button" class="qm-usage-icon" data-usage-page="home" aria-label="返回">‹</button><h3>宿缘</h3>${toggle}<button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>${rows}`;
     }
     const span = range || { ...quarterRange(now), custom: false }, heat = heatCells(data, span.from, span.to, now);
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
@@ -170,7 +197,7 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
       <section class="qm-usage-heat"><div class="qm-usage-grid" style="--weeks:${heat.weeks}">${labels.map(name => `<b>${name}</b>`).join('')}${cells}</div>
         <div class="qm-usage-range"><button type="button" data-usage-shift="-1" aria-label="往前"${!span.custom && !earlier ? ' disabled' : ''}>‹</button><button type="button" class="qm-usage-span" data-usage-custom aria-label="自选范围" aria-expanded="${span.custom ? 'true' : 'false'}">${dotted(heat.from)} — ${dotted(heat.to)}</button><button type="button" data-usage-shift="1" aria-label="往后"${!span.custom && !later ? ' disabled' : ''}>›</button></div>
         <div class="qm-usage-pick"${span.custom ? '' : ' hidden'}><input type="date" data-usage-from aria-label="开始日期" value="${dayKey(heat.from)}"><span>至</span><input type="date" data-usage-to aria-label="结束日期" value="${dayKey(heat.to)}"></div></section>
-      ${recent ? `<button type="button" class="qm-usage-last" data-usage-page="chars" aria-label="常客名单">${face(recent, avatarUrl)}<strong>${esc(nameOf(recent))}</strong><em>${esc(durationText(recent.ms))} ›</em><small>${esc(recent.last ? `${lastChatText(wall(recent.last), now)} 聊过` : lastChatText(0, now))}</small></button>` : ''}
+      ${recent ? `<button type="button" class="qm-usage-last" data-usage-page="chars" aria-label="宿缘">${face(recent, avatarUrl)}<strong>${esc(nameOf(recent))}</strong><em>${esc(durationText(recent.ms))} ›</em><small>${esc(recent.last ? `${lastChatText(wall(recent.last), now)} 聊过` : lastChatText(0, now))}</small></button>` : ''}
       <div class="qm-usage-cards">
         ${card(0, '今日', big(summary.today))}
         ${card(1, '本周', big(summary.week))}
@@ -184,7 +211,7 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
 }
 
 /** 打开面板。mount：把根节点交给主题系统（跟随千幕当前主题）。返回关闭函数。 */
-export function openUsagePanel({ document = globalThis.document, getData = () => null, setZone = () => {}, themeClass = '', mount = () => {}, now: clock = () => Date.now(), random = Math.random } = {}) {
+export function openUsagePanel({ document = globalThis.document, getData = () => null, getFloors = () => [], setZone = () => {}, themeClass = '', mount = () => {}, now: clock = () => Date.now(), random = Math.random } = {}) {
     document.getElementById(ROOT_ID)?.remove();
     const view = document.defaultView || globalThis;
     let style = document.getElementById(`${ROOT_ID}-style`);
@@ -193,7 +220,7 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
     const root = document.createElement('div'); root.id = ROOT_ID; if (themeClass) root.className = themeClass;
     root.innerHTML = '<div class="qm-usage-backdrop"></div><section class="qm-usage-panel" role="dialog" aria-modal="true" aria-label="微醺记录"></section>';
     const panel = root.querySelector('.qm-usage-panel'), drink = DRINKS[Math.floor(random() * DRINKS.length) % DRINKS.length];
-    let page = 'home', range = null, quarter = 0;
+    let page = 'home', range = null, quarter = 0, rank = 'time';
     // 翻页与自选都按所选时区的「今天」来算。
     const now = () => { const at = clock(), zone = getData()?.zone; return at + zoneShift(at, typeof zone === 'string' ? zone : ''); };
     const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); };
@@ -208,7 +235,7 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
         }
     };
     const paint = ({ animate = true } = {}) => {
-        panel.innerHTML = usageMarkup(getData(), { now: clock(), range, page, drink });
+        panel.innerHTML = usageMarkup(getData(), { now: clock(), range, page, drink, rank, floors: page === 'chars' ? getFloors() : [] });
         // 头像取得到才显示；取不到（角色已删）就留着名字的第一个字。
         for (const image of panel.querySelectorAll('.qm-usage-face img')) { const show = () => { image.hidden = false; }; image.addEventListener('load', show); if (image.complete && image.naturalWidth) show(); }
         panel.scrollTop = 0; if (animate) countUp();
@@ -218,7 +245,8 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
         const hit = event.target.closest?.('button, .qm-usage-backdrop');
         if (!hit) return;
         if (hit.matches('.qm-usage-backdrop') || hit.hasAttribute('data-usage-close')) return close();
-        if (hit.dataset.usagePage) { page = hit.dataset.usagePage; paint(); }
+        if (hit.dataset.usageRank) { rank = hit.dataset.usageRank; paint(); }
+        else if (hit.dataset.usagePage) { page = hit.dataset.usagePage; paint(); }
         else if (hit.hasAttribute('data-usage-custom')) {
             if (range?.custom) { range = null; quarter = 0; } else range = { ...(range || quarterRange(now(), quarter)), custom: true };
             paint({ animate: false });

@@ -100,7 +100,7 @@ test('the panel: heat grid with a range line and a custom picker, the most recen
     const custom = usageMarkup(data, { now: T0, range: { from: T0 - 6 * 86400000, to: T0, custom: true } });
     assert.match(custom, /data-usage-custom aria-label="自选范围" aria-expanded="true"/); assert.match(custom, /data-usage-from aria-label="开始日期" value="2026-11-14"/); assert.ok(!custom.includes('class="qm-usage-pick" hidden'));
     const chars = usageMarkup(data, { now: T0, page: 'chars' });
-    assert.match(chars, /<h3>常客<\/h3>/); assert.ok(chars.includes('&lt;b&gt;阿澈&lt;/b&gt;') && !chars.includes('<b>阿澈</b>'));
+    assert.match(chars, /<h3>宿缘<\/h3>/); assert.ok(chars.includes('&lt;b&gt;阿澈&lt;/b&gt;') && !chars.includes('<b>阿澈</b>'));
     assert.match(chars, /1 小时 40 分/); assert.match(chars, /--p:100%/); assert.match(chars, /--p:25%/); assert.match(chars, /最后一次聊天：昨天 14:00/);
     assert.match(chars, /src="\/characters\/A\.png"/, '原图，不是缩略图');
     assert.match(usageMarkup({}, { now: T0, page: 'chars' }), /还没有和谁聊过/);

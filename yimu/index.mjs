@@ -28,7 +28,7 @@ export function boot() {
         if (view.isOpen?.() === false) { pending = { ...shown, ui }; return; }
         pending = null; view.render({ ...shown, ui });
     };
-    const view = createView({ connectionApi: host.connectionApi, journal, onNotice: notify, onAction: async (type, payload) => {
+    const view = createView({ connectionApi: host.connectionApi, journal, onNotice: notify, floors: onUpdate => host.floors(onUpdate), onAction: async (type, payload) => {
         if (type !== 'uiSettings') return controller.action(type, payload);
         const ctx = globalThis.SillyTavern.getContext();
         if (!ctx.extensionSettings || typeof ctx.saveSettingsDebounced !== 'function') throw new Error('当前 ST 尚不能保存界面设置，请稍后重试。');

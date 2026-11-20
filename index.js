@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.588';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.589';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.588';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.589';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,14 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.588';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.588';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.588';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.588';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.588';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.588';
+import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.589';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.589';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.589';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.589';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.589';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.589';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.589';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.588';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.589';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -64,8 +65,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.588';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.588';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.589';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.589';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -95,7 +96,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.588';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.589';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -338,7 +339,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.588';
+const VERSION = '1.59.589';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -5858,7 +5859,7 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
-  if (id === 'usage') return openUsagePanel({ getData: () => { usageTracker?.tick(); return usageTracker?.data; }, setZone: zone => usageTracker?.setZone(zone), themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
+  if (id === 'usage') return openUsagePanel({ getData: () => { usageTracker?.tick(); return usageTracker?.data; }, setZone: zone => usageTracker?.setZone(zone), getFloors: () => { floorCounter?.touch(); return floorCounter ? floorRanking(floorCounter.store()) : []; }, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
   if (id === 'assistant') {
     const timed = globalThis.qianmuPerf?.start('场外特助'), opening = proseFloorTools.openAssistant();
     void Promise.resolve(opening).then(() => timed?.('面板就绪'), () => {});
@@ -34830,7 +34831,8 @@ function bindEvents() {
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
     [types.PERSONA_CHANGED || 'persona_changed', personaChangedHandler],   // 冷启动即读 ST 当前头像；切换人设后同步伴读设定
     [types.MESSAGE_RECEIVED || 'message_received', refreshHandler],   // 仅角色回复触发；重 roll/删楼由 refreshHandler 照实重算
-    [types.MESSAGE_SENT || 'message_sent', () => usageTracker?.message()], [types.MESSAGE_RECEIVED || 'message_received', () => usageTracker?.message()],   // 时长统计：记下这个角色最后一次聊天的时间
+    [types.MESSAGE_SENT || 'message_sent', () => { usageTracker?.message(); floorCounter?.touch(); }], [types.MESSAGE_RECEIVED || 'message_received', () => { usageTracker?.message(); floorCounter?.touch(); }],
+    [types.CHAT_CHANGED || 'chat_changed', () => { floorCounter?.touch(); void floorCounter?.sync(); }],   // 楼层计数：进聊天时记下这个聊天的楼层数，并把这个角色的其他聊天过一遍   // 时长统计：记下这个角色最后一次聊天的时间
     [types.MESSAGE_DELETED || 'message_deleted', storyboardMessageDeletedHandler],   // 删楼重判推演注入，并把分镜成片转为可恢复的孤儿记录
     [types.MESSAGE_EDITED || 'message_edited', ttsMessageEditedHandler],   // 原地编辑：仅按缓存补回被重渲抹掉的内联 🔊（不动列表/音频/key）
     [types.MESSAGE_SWIPED || 'message_swiped', storyboardMessageVersionHandler],
@@ -34853,7 +34855,7 @@ function bindEvents() {
 }
 
 // 使用时长：只数现实里真正在用的时间（可见且两分钟内有过操作，或正在等回复），按天与按角色各记一份，存在千幕设置里。
-let usageTracker = null, stopUsageTracking = null, stopSharpAvatars = null;
+let usageTracker = null, stopUsageTracking = null, stopSharpAvatars = null, floorCounter = null;
 function startUsage() {
   if (usageTracker) return;
   usageTracker = createUsageTracker({
@@ -34862,6 +34864,7 @@ function startUsage() {
     character: () => { const context = ctx(), item = context.groupId ? null : context.characters?.[context.characterId]; return item?.avatar && context.chatId ? { key: item.avatar, name: item.name } : null; },
   });
   stopUsageTracking = startUsageTracking(usageTracker);
+  floorCounter = createFloorCounter({ getContext: () => ctx() });   // 楼层计数：只数数，与忆幕共用同一份
 }
 
 function init() {
@@ -34963,7 +34966,7 @@ function cleanupRuntime(resetSettings = false) {
   if (!isRuntimeOwner()) return;
   initialized = false;
   disposeChatWriteGuard();
-  stopUsageTracking?.(); stopUsageTracking = null; usageTracker = null;
+  stopUsageTracking?.(); stopUsageTracking = null; usageTracker = null; floorCounter = null;
   stopSharpAvatars?.(); stopSharpAvatars = null;
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   chatRecoveryClient?.dispose(); chatRecoveryClient = null;

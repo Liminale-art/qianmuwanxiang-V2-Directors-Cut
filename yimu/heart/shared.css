@@ -32,3 +32,6 @@
 .ymbar-r { display: flex; align-items: center; gap: 16px; }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
 body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm) { display: none !important; }
+/* 楼层计数：日期条下的一行小字。 */
+#ym-floors { position: relative; z-index: 6; display: flex; gap: 16px; margin: -4px 0 8px; padding: 0 29px; font-size: 11px; letter-spacing: .12em; color: var(--ymd-mute); font-variant-numeric: tabular-nums; }
+#ym-floors b { font-weight: 500; color: var(--ymd-ink); }

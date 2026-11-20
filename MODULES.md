@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 440 个，其中 `qianmu-*` 模块 423 个。
+根目录文件 441 个，其中 `qianmu-*` 模块 424 个。
 
 ## 入口、宿主与安装
 
@@ -37,11 +37,11 @@
 | `features/` | 191 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1012 |
+| `tests/` | 1014 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
-| `yimu/` | 68 |
+| `yimu/` | 69 |
 
 ## 文档
 
@@ -536,11 +536,12 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（9）
+## 其他模块（10）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-browser-credentials.js` | 是 | API keys that must stay readable in the browser. |
+| `qianmu-floor-count.js` | 是 | 楼层计数：和每个角色一共聊了多少层。只做计数，不读消息内容、不碰记忆与聊天本身。 |
 | `qianmu-log-bodies-sidecar.js` | 是 | Full request/response text of Qianmu's recent API logs, kept out of ST's settings file. |
 | `qianmu-pending-panel.js` | 是 | A small stand-in window shown the moment an entry is clicked, while the real panel's code, styles or |
 | `qianmu-perf-probe.js` | 是 | Opt-in timing probe for "click → shown → ready" on a few surfaces (main tabs, notes, assistant, chat toolkit). |

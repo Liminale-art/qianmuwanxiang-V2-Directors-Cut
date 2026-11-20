@@ -12,7 +12,7 @@ const dayOf = item => item.date || realDay(item.at);
  *  impressions：在够多个不同日子里看见过、已成印象的（最近有动静的在前）；
  *  loose：还在留意的——没看过的痕迹，以及日子还不够的印象（新的在前）；
  *  thoughts：心迹（新的在前）；events：关系年表（按剧情先后）。 */
-export function heartData(state = {}) {
+export function heartData(state = {}, floors = null) {
     const document = state.document || {}, heart = document.heart || {};
     const observations = Array.isArray(document.observations) ? document.observations : [];
     const graded = (heart.impressions || []).map(item => ({ item, sure: sureOf(item.days.length) }));
@@ -22,6 +22,8 @@ export function heartData(state = {}) {
     ].sort((a, b) => b.at - a.at).slice(0, 60);
     return {
         char: state.snapshot?.name || '', user: state.snapshot?.userName || '', avatar: state.snapshot?.avatarUrl || '',
+        // 楼层计数：这个聊天多少层、和这个角色一共多少层（所有聊天合计，只增不减）。
+        ...(floors?.total > 0 ? { floors: { chat: floors.chat || 0, total: floors.total } } : {}),
         impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure],
             days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
         loose,
@@ -66,17 +68,17 @@ function saveFile(name, text, document) {
     setTimeout(() => view.URL.revokeObjectURL(url), 30000);
 }
 
-export function mountHeartView({ document = globalThis.document, storage = globalThis.localStorage ?? null, getState = () => ({}), onAction = async () => false, themes = HEART_THEMES, save = saveFile, onNotice = () => {} } = {}) {
+export function mountHeartView({ document = globalThis.document, storage = globalThis.localStorage ?? null, getState = () => ({}), getFloors = () => null, onAction = async () => false, themes = HEART_THEMES, save = saveFile, onNotice = () => {} } = {}) {
     if (!document?.createElement) throw new TypeError('心迹页缺少文档容器');
     const view = document.defaultView || globalThis;
-    let layer = null, frame = null, opened = false, fed = '';
+    let layer = null, frame = null, opened = false, fed = '', floors = null;
     const saved = () => { try { return storage?.getItem(THEME_KEY) || ''; } catch { return ''; } };
     let themeId = themes.some(theme => theme.id === saved()) ? saved() : themes[0].id;
     const current = () => themes.find(theme => theme.id === themeId) || themes[0];
     // 把数据交给页面。changedOnly：只在数据与上次交出去的不同时才交（面板每次刷新都会来问一遍，页面不必跟着重画）。
     const feed = ({ changedOnly = false } = {}) => {
         try {
-            const data = heartData(getState()), signature = JSON.stringify(data);
+            const data = heartData(getState(), floors), signature = JSON.stringify(data);
             if (changedOnly && signature === fed || typeof frame?.contentWindow?.yimuRender !== 'function') return;
             frame.contentWindow.yimuRender(data); fed = signature;
         } catch { /* 页面还没准备好：等它的 load */ }
@@ -112,7 +114,7 @@ export function mountHeartView({ document = globalThis.document, storage = globa
     }
     async function exportPage() {
         try {
-            const state = getState(), data = heartData(state), now = new Date();
+            const state = getState(), data = heartData(state, floors), now = new Date();
             // 头像换成内嵌的图，离线也能看；取不到就不带头像。
             try { data.avatar = await inlineImage(data.avatar, view); } catch (error) { console.warn('[忆幕] 导出时没取到头像', error); data.avatar = ''; }
             const name = `心迹-${String(data.char || '未名').replace(/[\\/:*?"<>|]/g, '_')}-${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}.html`;
@@ -121,6 +123,8 @@ export function mountHeartView({ document = globalThis.document, storage = globa
         } catch (error) { console.warn('[忆幕] 心迹页没有导出成', error); onNotice(`导出未完成：${error?.message || '未知错误'}`, 'error'); }
     }
     function open() {
+        // 打开时数一次楼层；别的聊天窗口的条数取回来后再补一次。数不出来（群聊、宿主不给）就不显示这一行。
+        try { floors = getFloors(next => { floors = next; if (opened) feed({ changedOnly: true }); }); } catch (error) { console.warn('[忆幕] 楼层计数没取到', error); floors = null; }
         if (opened) return;
         opened = true;
         layer = document.createElement('div'); layer.className = 'ym-heart-layer'; layer.setAttribute('role', 'dialog'); layer.setAttribute('aria-label', '心迹与观察日记');

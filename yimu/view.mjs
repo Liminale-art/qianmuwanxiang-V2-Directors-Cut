@@ -126,7 +126,7 @@ export function shortcutStatus(state = {}) {
     return { tone: 'ready', message: state.busy ? '正在处理' : '正常' };
 }
 
-export function createView({ onAction, connectionApi, journal = null, document = globalThis.document, saveDelayMs = 300,
+export function createView({ onAction, connectionApi, journal = null, floors = () => null, document = globalThis.document, saveDelayMs = 300,
     onNotice = (message, tone = 'success') => (document.defaultView?.toastr || globalThis.toastr)?.[tone]?.(message) } = {}) {
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -200,7 +200,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     backButton.hidden = true;
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
     // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
-    const heart = mountHeartView({ document, getState: () => state, onAction: (type, payload) => dispatch(type, payload), onNotice });
+    const heart = mountHeartView({ document, getFloors: floors, getState: () => state, onAction: (type, payload) => dispatch(type, payload), onNotice });
     const heartEntry = iconButton('心迹与观察日记', 'loveletter', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
     headerActions.append(backButton, heartEntry, closeButton);

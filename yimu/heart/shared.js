@@ -63,7 +63,17 @@ function drawDate() {
         : `<div class="ym-cal-head"><button type="button" data-month="-1" aria-label="上个月">‹</button><button type="button" data-pick="1" class="ym-cal-title" aria-label="选年月">${first.getFullYear()} 年 ${first.getMonth() + 1} 月</button><button type="button" data-month="1" aria-label="下个月">›</button></div>
       <div class="ym-cal-grid">${['一', '二', '三', '四', '五', '六', '日'].map(name => `<span>${name}</span>`).join('')}${cells.join('')}</div>`}</div>`;
 }
-function repaint() { drawDate(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); }
+// 楼层计数：日期条下面一行小字。只有数字，数字不进筛选。
+function drawFloors() {
+    const host = document.getElementById('ym-date'); if (!host) return;
+    let node = document.getElementById('ym-floors');
+    const floors = YM.raw?.floors, total = Number(floors?.total) || 0;
+    if (!(total > 0)) { node?.remove(); return; }
+    if (!node) { node = document.createElement('p'); node.id = 'ym-floors'; host.after(node); }
+    const part = (label, value) => { const span = document.createElement('span'); span.append(label + ' '); const b = document.createElement('b'); b.textContent = String(Math.max(0, Math.floor(Number(value) || 0))); span.append(b, ' 层'); return span; };
+    node.replaceChildren(part('本聊天', floors.chat), part('累计', total));
+}
+function repaint() { drawDate(); drawFloors(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); }
 document.addEventListener('click', event => {
     const target = event.target.closest?.('#ym-date button');
     if (!target) { if (YM.open && !event.target.closest?.('.ym-cal')) { YM.open = false; drawDate(); } return; }
