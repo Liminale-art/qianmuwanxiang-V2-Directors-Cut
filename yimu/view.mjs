@@ -21,7 +21,7 @@ import { mountHeartView } from './heart-view.mjs';
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
     ['maxSlices', '每次最多注入切片', 'number', 0],
-    ['recallCooldown', 'Callback冷却间隔层', 'number', 0],
+    ['recallCooldown', '召回冷却间隔层', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
     ['triggerFloors', '自动总结触发楼层数', 'number', 0],
@@ -33,8 +33,8 @@ const SETTINGS = [
     ['stageRecent', '保留最近记忆切片', 'number', 0],
     ['stageChars', '每条阶段总结字数上限', 'number', 0],
     ['diary', '观察日记', 'checkbox'],
-    ['diaryChars', '每条印象字数上限', 'number', 10],
-    ['diaryInject', '印象随记忆带入', 'checkbox'],
+    ['diaryChars', '每条日记字数上限', 'number', 10],
+    ['diaryInject', '日记随记忆带入', 'checkbox'],
     ['chronicle', '关系年表', 'checkbox'],
     ['thoughts', '心迹', 'checkbox'],
     ['thoughtChars', '每则心迹字数上限', 'number', 20],
@@ -49,12 +49,12 @@ const SETTING_HINTS = {
     triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
-    diary: '把留意到的事归成印象：同一件事在 3 个不同的日子里看见才算数，6 个日子才笃定；跟着阶段总结一起整理，用总结的连接',
-    diaryInject: '回复时带上在场的人的印象，最多三条',
+    diary: '留意到的事合订成日记：同一件事在 3 个不同的日子里看见才写进去，6 个日子才笃定；跟着阶段总结一起合订，用总结的连接',
+    diaryInject: '回复时带上在场的人的日记，最多三条',
     chronicle: '从记忆里拾出这段关系的节点：第一次、约定、和解……',
     thoughts: '由写正文的模型在回复末尾顺带写一则，写完即从正文里收走；只支持聊天补全',
     thoughtCooldown: '两则心迹至少隔这么多层，并且其间完成过一次阶段总结；模型可以不写',
-    thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受 Callback 冷却约束',
+    thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受召回冷却约束',
     maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
 const BLANK_ZERO = new Set(['budget']);
@@ -200,8 +200,8 @@ export function createView({ onAction, connectionApi, journal = null, document =
     backButton.hidden = true;
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
     // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
-    const heart = mountHeartView({ document, getState: () => state, onAction: (type, payload) => dispatch(type, payload) });
-    const heartEntry = iconButton('心迹与观察日记', 'quill', () => heart.open(), 'ym-heart-entry');
+    const heart = mountHeartView({ document, getState: () => state, onAction: (type, payload) => dispatch(type, payload), onNotice });
+    const heartEntry = iconButton('心迹与观察日记', 'loveletter', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
     headerActions.append(backButton, heartEntry, closeButton);
     header.append(heading, headerActions);
@@ -400,8 +400,6 @@ export function createView({ onAction, connectionApi, journal = null, document =
         const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
         group.append(el('h3', 'ym-setting-title', title));
         const body = el('div', 'ym-settings-form'); group.append(body);
-        // 观察日记与年表平时跟着阶段总结整理；这里可以随手整理一次。
-        if (name === 'heart') { const run = button('整理日记', () => { void dispatch('heartDiary', {}, run); }, 'ym-heart-run'); group.append(run); }
         settingsForm.append(group); for (const key of keys) settingGroups.set(key, body);
     }
     for (const [key, label, type, min] of SETTINGS) {
@@ -427,13 +425,18 @@ export function createView({ onAction, connectionApi, journal = null, document =
         input.addEventListener('input', readInput);
         input.addEventListener('change', readInput);
         input.addEventListener('blur', () => { clearTimeout(settingsTimer); void saveChangedSettings(); });
-        const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}`);
+        const row = el('div', `ym-setting-row${type === 'checkbox' ? ' ym-setting-boolean' : type === 'number' ? ' ym-setting-numeric' : type === 'select' ? ' ym-setting-select' : ''}${key === 'chronicle' || key === 'thoughts' ? ' ym-setting-divide' : ''}`);
         const labelNode = field(label, input);
         // 卡片标题已是「记忆注入上限」，行内标题写明这一项是什么：与切片总结卡同样左标题、右输入框。
         if (key === 'budget') labelNode.children[0].textContent = '最大注入Token值';
         if (SETTING_HINTS[key]) row.title = SETTING_HINTS[key];
         row.append(labelNode);
+        // 心迹日记卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
         settingGroups.get(key).append(row);
+        // 这一项的作用一句话写在下面（用户要求）。
+        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被带入后，这么多层内不再重复带入'));
+        // 平时跟着阶段总结合订；这里可以随手合订一次。放在观察日记这一块的末尾。
+        if (key === 'diaryInject') { const run = button('将留意到的事合订为日记', () => { void dispatch('heartDiary', {}, run); }, 'ym-heart-run'); settingGroups.get(key).append(run); }
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
     async function saveChangedSettings() {

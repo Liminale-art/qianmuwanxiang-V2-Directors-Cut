@@ -21,7 +21,7 @@ const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
 const clone = value => structuredClone(value);
 
 /** Browser-lifetime coordinator, not a background server or a second source database. */
-export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 1500, semanticWaitMs = 1200, serviceFreshMs = 60000, roundStore = globalThis.localStorage ?? null, journal = null }) {
+export function createController({ host, api, onChange = () => {}, onNotice = () => {}, countTokens = null, id = uniqueId, defer = fn => setTimeout(fn, 0), latestService = null, sourceRetryMs = 350, interceptWaitMs = 4000, semanticWaitMs = 1200, serviceFreshMs = 60000, roundStore = globalThis.localStorage ?? null, journal = null }) {
     // ST 保存聊天时会整份替换聊天文件。服务端核对原文若恰好跨在这次保存上，就会报「来源不可用」——
     // 这只是撞上了保存，并非原文真的变了。稍等片刻重读一次即可分辨；确实不可用（聊天已迁走、
     // 创建未完成、原件缺失）时第二次仍是同样结果，照常按不可用处理。
@@ -800,7 +800,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const doc = clone(state.document), defaults = clone(state.defaults), settings = effectiveSettings(doc, defaults);
         const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
         let work = names.char ? diaryWork(doc, settings) : null;
-        if (!work) { stagedForDiary.delete(key); if (force) throw new Error(settings.diary === false && settings.chronicle === false ? '观察日记与关系年表都关着' : '没有新的痕迹或记忆可整理'); return false; }
+        if (!work) { stagedForDiary.delete(key); if (force) throw new Error(settings.diary === false && settings.chronicle === false ? '观察日记与关系年表都关着' : '没有新留意到的事或新记忆可合订'); return false; }
         if (!force && !staged && work.traces.length < DIARY_TRACE_TRIGGER) return false;
         stagedForDiary.delete(key);
         const controller = new AbortController(); jobs.set(key, controller);
@@ -814,7 +814,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             while (!run.fitsPrompt(prompt) && work.traces.length > 1) { work = { ...work, traces: work.traces.slice(0, Math.ceil(work.traces.length / 2)) }; prompt = diaryPrompt(settings, names, work); }
             if (!run.fitsPrompt(prompt) || !work.traces.length && !work.slices.length) throw new Error('日记整理的内容超过此连接的可用输入容量，请选择容量足够的连接');
             const start = work.slices[0]?.source.start ?? Math.min(...work.traces.map(item => item.floor)), end = work.slices.at(-1)?.source.end ?? Math.max(...work.traces.map(item => item.floor));
-            if (isCurrent(binding)) { state.status = '正在整理观察日记'; emit(); }
+            if (isCurrent(binding)) { state.status = '正在合订日记'; emit(); }
             log = openLog({ kind: 'diary', chat: chatLabel(binding), range: { start, end }, manual: force, prompt });
             const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal }, { binding, label: '日记整理', start, end, retryState });
             if (log?.id) note(() => journal.update(log.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - log.started }));
@@ -823,7 +823,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: result.impressions, events: result.events, used: work.traces.map(item => item.id),
                 ...(work.slices.length ? { eventFloor: work.slices.at(-1).source.end } : {}) });
             closeLog(log, { status: 'success', impressions: result.impressions.length, events: result.events.length }); log = null;
-            if (isCurrent(binding)) { state.status = '观察日记已整理'; emit(); }
+            if (isCurrent(binding)) { state.status = '已合订为日记'; emit(); }
             return true;
         } catch (error) {
             closeLog(log, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); log = null;
@@ -1019,7 +1019,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
         if (type === 'heartDiary') {
             await startDiary({ force: true });
-            notice('观察日记已整理', 'success');
+            notice('已合订为日记', 'success');
             return true;
         }
         if (type === 'heartRemove') {
@@ -1122,17 +1122,24 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         // 因此它只等一次、且有上限（interceptWaitMs），超时本轮不带记忆、照常生成。
         if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; generationRefresh = refresh({ quiet: true, auto: false, probe: false }); }
         if (generationRefresh) {
-            const deadline = Date.now() + interceptWaitMs;
-            let ready = true, waited;
-            do {
-                waited = refreshing || generationRefresh;
-                let timer;
-                ready = await Promise.race([Promise.resolve(waited).then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now())); })]);
-                clearTimeout(timer);
-            } while (ready && refreshing && refreshing !== waited);
+            const began = Date.now(), deadline = began + interceptWaitMs;
+            const settle = async until => {
+                let ready = true, waited;
+                do {
+                    waited = refreshing || generationRefresh;
+                    let timer;
+                    ready = await Promise.race([Promise.resolve(waited).then(() => true, () => false), new Promise(resolve => { timer = setTimeout(() => resolve(false), Math.max(0, until - Date.now())); })]);
+                    clearTimeout(timer);
+                } while (ready && refreshing && refreshing !== waited);
+                return ready;
+            };
+            // 在途的那次读取是回合一开始就发出的，正撞上 ST 上传保存整份聊天（服务端核对原文时聊天文件也正在被改写）。
+            // 走到这里时保存已经结束：它若还没回来，就不再干等，另发一次干净的读取——这一次不和保存抢路，通常一趟往返就回。
+            let ready = await settle(Math.min(deadline, began + Math.max(10, Math.min(400, Math.floor(interceptWaitMs / 3)))));
+            if (!ready && !disposed) { generationRefresh = refresh({ quiet: true, auto: false, probe: false }); ready = await settle(deadline); }
+            if (Date.now() - began > 800) console.info(`[忆幕] 生成前读取用了 ${Date.now() - began} 毫秒${ready ? '' : '，仍未返回'}`);
             // A slow storage read never holds normal generation hostage — but the round says why it carried no memory.
-            // 读取没赶上（多见于 ST 正在上传保存整份聊天、同一条上行被占住；重新生成与滑动也会先保存一次，所以会连着超时）：
-            // 不再整轮丢掉记忆，改用上一次已经核对过的记忆继续。原文仍在下面按当前聊天逐层核对指纹，
+            // 两次读取都没在上限内回来（网络确实很慢）：最后的保底是沿用上一次已经核对过的记忆，而不是整轮丢掉。原文仍在下面按当前聊天逐层核对指纹，
             // 最终边界还会再核一遍修订号；只有本机从没读到过这个聊天的记忆时才真的无记忆可用。
             // 换了聊天的情况由下面的现场快照核对（绑定不同即不带）。
             if (!ready) {

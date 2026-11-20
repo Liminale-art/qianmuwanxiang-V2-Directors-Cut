@@ -33,7 +33,31 @@ const THOUGHT_LABELS = { you: name => `对${name}`, self: () => '对自己', oth
 
 const REMOVABLE = new Set(['impression', 'thought', 'event']);
 
-export function mountHeartView({ document = globalThis.document, storage = globalThis.localStorage ?? null, getState = () => ({}), onAction = async () => false, themes = HEART_THEMES } = {}) {
+export const HEART_EXPORT_FORMAT = 'yimu-heart';
+/** 把当前主题的页面连同数据做成一份单独的网页：离线能看，日期筛选照常可用；里面带着原始资料，日后可以再导入。 */
+export function heartExportHtml(theme, data, heart = null, { at = Date.now() } = {}) {
+    const payload = JSON.stringify({ format: HEART_EXPORT_FORMAT, version: 1, exportedAt: at, theme: theme.id, data, heart }).replace(/</g, '\\u003c');
+    const tail = `<script type="application/json" id="yimu-heart-export">${payload}</script>\n<script>document.body.dataset.standalone = '1'; window.yimuRender(JSON.parse(document.getElementById('yimu-heart-export').textContent).data);</script>\n`;
+    const at2 = theme.html.lastIndexOf('</body>');
+    if (at2 < 0) throw new Error('主题页面不完整，无法导出');
+    return theme.html.slice(0, at2) + tail + theme.html.slice(at2);
+}
+const pad2 = value => String(value).padStart(2, '0');
+async function inlineImage(url, view) {
+    if (!url || typeof view.fetch !== 'function' || typeof view.FileReader !== 'function') return '';
+    const response = await view.fetch(url);
+    if (!response.ok) return '';
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => { const reader = new view.FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
+}
+function saveFile(name, text, document) {
+    const view = document.defaultView || globalThis, url = view.URL.createObjectURL(new view.Blob([text], { type: 'text/html;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = name; link.style.display = 'none';
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => view.URL.revokeObjectURL(url), 30000);
+}
+
+export function mountHeartView({ document = globalThis.document, storage = globalThis.localStorage ?? null, getState = () => ({}), onAction = async () => false, themes = HEART_THEMES, save = saveFile, onNotice = () => {} } = {}) {
     if (!document?.createElement) throw new TypeError('心迹页缺少文档容器');
     const view = document.defaultView || globalThis;
     let layer = null, frame = null, opened = false, fed = '';
@@ -61,6 +85,7 @@ export function mountHeartView({ document = globalThis.document, storage = globa
         if (!opened || !frame || event.source !== frame.contentWindow) return;
         const type = event.data?.yimuHeart;
         if (type === 'exit') close();
+        else if (type === 'export') void exportPage();
         else if (type === 'remove') {
             const { kind, id } = event.data;
             if (!REMOVABLE.has(kind) || typeof id !== 'string' || !id) return;
@@ -75,6 +100,16 @@ export function mountHeartView({ document = globalThis.document, storage = globa
             try { storage?.setItem(THEME_KEY, themeId); } catch { /* 记不下就只在这次生效 */ }
             show();
         }
+    }
+    async function exportPage() {
+        try {
+            const state = getState(), data = heartData(state), now = new Date();
+            // 头像换成内嵌的图，离线也能看；取不到就不带头像。
+            try { data.avatar = await inlineImage(data.avatar, view); } catch (error) { console.warn('[忆幕] 导出时没取到头像', error); data.avatar = ''; }
+            const name = `心迹-${String(data.char || '未名').replace(/[\\/:*?"<>|]/g, '_')}-${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}.html`;
+            save(name, heartExportHtml(current(), data, state.document?.heart || null, { at: now.getTime() }), document);
+            onNotice('已导出为网页', 'success');
+        } catch (error) { console.warn('[忆幕] 心迹页没有导出成', error); onNotice(`导出未完成：${error?.message || '未知错误'}`, 'error'); }
     }
     function open() {
         if (opened) return;

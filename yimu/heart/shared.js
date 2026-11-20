@@ -5,6 +5,7 @@ const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof v
 const tell = type => parent.postMessage({ yimuHeart: type }, '*');
 document.getElementById('ym-exit').addEventListener('click', () => tell('exit'));
 document.getElementById('ym-theme').addEventListener('click', () => tell('theme'));
+document.getElementById('ym-export').addEventListener('click', () => tell('export'));
 addEventListener('keydown', event => { if (event.key === 'Escape') { if (YM.open) { YM.open = false; drawDate(); } else tell('exit'); } });
 
 // 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」。点一下变「再点删除」，几秒内再点才删。
@@ -30,7 +31,7 @@ const DAY = 86400000, WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六
 const dayStart = ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const weekStart = ms => { const d = new Date(dayStart(ms)); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); }; // 周一起
 const addDays = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };
-const YM = { raw: { impressions: [], loose: [], thoughts: [], events: [] }, mode: 'day', anchor: 0, month: 0, open: false };
+const YM = { raw: { impressions: [], loose: [], thoughts: [], events: [] }, mode: 'day', anchor: 0, month: 0, open: false, pick: false };
 const stamps = raw => [...raw.loose.map(item => item.at), ...raw.thoughts.map(item => item.at), ...raw.impressions.flatMap(item => [item.at, ...(item.stamps || [])])].filter(Number.isFinite);
 const recordDays = () => [...new Set(stamps(YM.raw).map(dayStart))].sort((a, b) => a - b);
 const span = () => { const from = YM.mode === 'week' ? weekStart(YM.anchor) : YM.anchor; return [from, addDays(from, YM.mode === 'week' ? 7 : 1)]; };
@@ -47,6 +48,7 @@ function drawDate() {
     const days = recordDays(), [from, to] = span(), before = days.filter(day => day < from).at(-1), after = days.find(day => day >= to);
     const first = new Date(YM.month); first.setDate(1); first.setHours(0, 0, 0, 0);
     const lead = (first.getDay() + 6) % 7, count = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(), has = new Set(days), today = dayStart(Date.now());
+    const months = new Set(days.map(day => { const d = new Date(day); return `${d.getFullYear()}-${d.getMonth()}`; }));
     const cells = Array.from({ length: lead }, () => '<i></i>').concat(Array.from({ length: count }, (_, index) => {
         const at = new Date(first.getFullYear(), first.getMonth(), index + 1).getTime();
         return `<button type="button" data-day="${at}" class="${[has.has(at) ? 'has' : '', at >= from && at < to ? 'on' : '', at === today ? 'today' : ''].join(' ').trim()}">${index + 1}</button>`;
@@ -55,14 +57,21 @@ function drawDate() {
       <button type="button" id="ym-date-label" aria-haspopup="dialog" aria-expanded="${YM.open}">${spanLabel()}</button>
       <button type="button" data-go="${after ?? ''}" aria-label="往后" ${after === undefined ? 'disabled' : ''}>›</button>
       <span class="ym-date-mode"><button type="button" data-mode="day" aria-pressed="${YM.mode === 'day'}">日</button><button type="button" data-mode="week" aria-pressed="${YM.mode === 'week'}">周</button></span>
-      <div class="ym-cal" role="dialog" aria-label="选日期" ${YM.open ? '' : 'hidden'}><div class="ym-cal-head"><button type="button" data-month="-1" aria-label="上个月">‹</button><b>${first.getFullYear()} 年 ${first.getMonth() + 1} 月</b><button type="button" data-month="1" aria-label="下个月">›</button></div>
-      <div class="ym-cal-grid">${['一', '二', '三', '四', '五', '六', '日'].map(name => `<span>${name}</span>`).join('')}${cells.join('')}</div></div>`;
+      <div class="ym-cal" role="dialog" aria-label="选日期" ${YM.open ? '' : 'hidden'}>${YM.pick
+        ? `<div class="ym-cal-head"><button type="button" data-year="-1" aria-label="上一年">‹</button><button type="button" data-pick="0" class="ym-cal-title">${first.getFullYear()} 年</button><button type="button" data-year="1" aria-label="下一年">›</button></div>
+      <div class="ym-cal-months">${Array.from({ length: 12 }, (_, month) => `<button type="button" data-pick-month="${month}" class="${[months.has(`${first.getFullYear()}-${month}`) ? 'has' : '', month === first.getMonth() ? 'on' : ''].join(' ').trim()}">${month + 1} 月</button>`).join('')}</div>`
+        : `<div class="ym-cal-head"><button type="button" data-month="-1" aria-label="上个月">‹</button><button type="button" data-pick="1" class="ym-cal-title" aria-label="选年月">${first.getFullYear()} 年 ${first.getMonth() + 1} 月</button><button type="button" data-month="1" aria-label="下个月">›</button></div>
+      <div class="ym-cal-grid">${['一', '二', '三', '四', '五', '六', '日'].map(name => `<span>${name}</span>`).join('')}${cells.join('')}</div>`}</div>`;
 }
 function repaint() { drawDate(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); }
 document.addEventListener('click', event => {
     const target = event.target.closest?.('#ym-date button');
     if (!target) { if (YM.open && !event.target.closest?.('.ym-cal')) { YM.open = false; drawDate(); } return; }
-    if (target.id === 'ym-date-label') { YM.open = !YM.open; YM.month = YM.anchor; drawDate(); return; }
+    if (target.id === 'ym-date-label') { YM.open = !YM.open; YM.pick = false; YM.month = YM.anchor; drawDate(); return; }
+    // 点月历顶上的年月：换成十二个月的格子，可翻年；点某个月回到那个月的日子。
+    if (target.dataset.pick) { YM.pick = target.dataset.pick === '1'; drawDate(); return; }
+    if (target.dataset.year) { const d = new Date(YM.month); d.setDate(1); d.setFullYear(d.getFullYear() + Number(target.dataset.year)); YM.month = d.getTime(); drawDate(); return; }
+    if (target.dataset.pickMonth) { const d = new Date(YM.month); d.setDate(1); d.setMonth(Number(target.dataset.pickMonth)); YM.month = d.getTime(); YM.pick = false; drawDate(); return; }
     if (target.dataset.month) { const d = new Date(YM.month); d.setDate(1); d.setMonth(d.getMonth() + Number(target.dataset.month)); YM.month = d.getTime(); drawDate(); return; }
     if (target.dataset.mode) YM.mode = target.dataset.mode;
     else if (target.dataset.go) YM.anchor = Number(target.dataset.go);

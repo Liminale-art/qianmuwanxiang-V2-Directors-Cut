@@ -9,7 +9,12 @@
 .ym-cal { position: absolute; left: 22px; top: 100%; z-index: 20; width: min(300px, calc(100vw - 44px)); padding: 12px; background: var(--ymd-paper); border: 1px solid var(--ymd-accent); box-shadow: 0 14px 44px rgba(0, 0, 0, .28); }
 .ym-cal[hidden] { display: none; }
 .ym-cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--ymd-ink); }
-.ym-cal-head b { font-weight: normal; letter-spacing: .2em; }
+#ym-date .ym-cal-title { letter-spacing: .2em; color: var(--ymd-ink); border-bottom: 1px dotted var(--ymd-mute); }
+.ym-cal-months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+#ym-date .ym-cal-months button { position: relative; padding: 12px 0; font-size: 12px; letter-spacing: 0; color: var(--ymd-mute); }
+#ym-date .ym-cal-months button.has { color: var(--ymd-ink); }
+.ym-cal-months button.has::after { content: ''; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ymd-accent); }
+#ym-date .ym-cal-months button.on { outline: 1px solid var(--ymd-accent); outline-offset: -2px; }
 .ym-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
 .ym-cal-grid span { font-size: 10px; padding: 4px 0; color: var(--ymd-mute); }
 #ym-date .ym-cal-grid button { position: relative; padding: 8px 0; font-size: 12px; letter-spacing: 0; color: var(--ymd-mute); }
@@ -24,3 +29,6 @@
 .ym-rm:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
 .ym-rm[data-armed] { opacity: 1; color: var(--ymd-accent); }
 .ym-rm[disabled] { opacity: .2; cursor: default; }
+.ymbar-r { display: flex; align-items: center; gap: 16px; }
+/* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
+body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm) { display: none !important; }

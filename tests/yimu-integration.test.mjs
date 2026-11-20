@@ -1155,46 +1155,60 @@ test('a source that stays unverified uses no memory this round and says why; the
     assert.equal(f.controller.state.lastSkip, null);
 });
 
-test('when the pre-generation read is too slow the round goes on with the last verified memory; rerolls too', async t => {
+test('a pre-generation read stuck behind the chat save is replaced by a clean second read; if both are slow the last verified memory still rides, rerolls too', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();
-    const slow = createController({host: f.host, api: f.api, defer: fn => f.tasks.push(fn), interceptWaitMs: 30});
+    const core = () => clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
+    // 第一种：只有回合开头发出的那次读取被卡住，补发的那次很快回来——本轮用的是新读到的记忆。
+    const hedged = createController({host: f.host, api: f.api, defer: fn => f.tasks.push(fn), interceptWaitMs: 600});
+    t.after(() => hedged.destroy());
+    await hedged.refresh();
+    const stuck = {started: deferredValue(), release: deferredValue()};
+    f.faults.delayReadReply = stuck;
+    const before = f.seen.filter(route => route === '/read').length;
+    await hedged.event('GENERATION_STARTED', ['normal', {}, false]);
+    await hedged.intercept(core(), 65536, () => {}, 'normal');
+    assert.equal(f.seen.filter(route => route === '/read').length, before + 2, '补发了一次读取');
+    assert.equal(hedged.state.lastSkip, null);
+    assert.ok(String(f.prompts.get(MEMORY_PROMPT_KEY) || '').includes('<yimu_memory>'));
+    stuck.release.resolve(); await new Promise(resolve => setTimeout(resolve, 20));
+    await hedged.event('GENERATION_ENDED', []);
+    // 第二种：两次都回不来——沿用上一次已核对的记忆，重新生成也一样。
+    const gate = deferredValue(); let stalled = false;
+    const read = f.api.read, api = {...f.api, read: async binding => { if (stalled) await gate.promise; return read(binding); }};
+    const slow = createController({host: f.host, api, defer: fn => f.tasks.push(fn), interceptWaitMs: 30});
     t.after(() => slow.destroy());
     await slow.refresh();
     assert.ok(slow.state.document.entries.length > 0, 'the fixture has memory to carry');
+    stalled = true;
     for (const type of ['normal', 'regenerate']) {
-        const gate = {started: deferredValue(), release: deferredValue()};
-        f.faults.delayReadReply = gate;
         await slow.event('GENERATION_STARTED', [type, {}, false]);
-        const coreChat = clone(f.context.chat).filter(message => !message.is_system).map((message, index) => ({...message, index}));
-        await slow.intercept(coreChat, 65536, () => {}, type);
+        await slow.intercept(core(), 65536, () => {}, type);
         assert.equal(slow.state.lastSkip, null, `${type}: a slow read alone is not a reason to drop memory`);
         assert.ok(String(f.prompts.get(MEMORY_PROMPT_KEY) || '').includes('<yimu_memory>'), `${type}: memory rides along`);
-        gate.release.resolve();
-        await new Promise(resolve => setTimeout(resolve, 20));
         await slow.event('GENERATION_ENDED', []);
     }
+    gate.resolve(); await new Promise(resolve => setTimeout(resolve, 20));
 });
 
 test('a slow pre-generation read with nothing verified yet on this device keeps the original context and records a timeout', async t => {
     const f = await fixture(t);
     await f.enable(); await f.flush();
-    // 上一次读到的结果没通过原文核对：没有可以放心沿用的记忆。
-    const read = f.api.read; let broken = true;
-    const api = {...f.api, read: async binding => { const data = await read(binding); return broken ? {...data, sourceAvailable: false} : data; }};
+    // 上一次读到的结果没通过原文核对：没有可以放心沿用的记忆；随后在途的与补发的读取都回不来。
+    const gate = deferredValue(); let broken = true, stalled = false;
+    const read = f.api.read;
+    const api = {...f.api, read: async binding => { if (stalled) await gate.promise; const data = await read(binding); return broken ? {...data, sourceAvailable: false} : data; }};
     const slow = createController({host: f.host, api, defer: fn => f.tasks.push(fn), interceptWaitMs: 30, sourceRetryMs: 1});
     t.after(() => slow.destroy());
     await slow.refresh();
     assert.equal(slow.state.sourceAvailable, false);
-    broken = false;
-    const gate = {started: deferredValue(), release: deferredValue()};
-    f.faults.delayReadReply = gate;
+    broken = false; stalled = true;
     await slow.event('GENERATION_STARTED', ['normal', {}, false]);
     const coreChat = clone(f.context.chat).map((message, index) => ({...message, index}));
     await slow.intercept(coreChat, 65536, () => {}, 'normal');
     assert.deepEqual({stage: slow.state.lastSkip?.stage, reason: slow.state.lastSkip?.reason}, {stage: 'refresh', reason: 'refresh-timeout'});
     assert.equal(f.prompts.get(MEMORY_PROMPT_KEY), '');
-    gate.release.resolve();
+    gate.resolve();
     await new Promise(resolve => setTimeout(resolve, 20));
 });
 

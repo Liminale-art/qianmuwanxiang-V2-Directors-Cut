@@ -89,9 +89,9 @@ test('the heart prompt group is editable like the others; the note for the main 
     const settings = {prompts: clone(DEFAULT_PROMPTS)};
     assert.deepEqual(DEFAULT_PROMPTS.groups.heart.map(item => item.name), ['观察日记', '关系年表', '心迹']);
     const diary = composePrompt(settings, 'heart', {protocol: 'P', data: 'D'});
-    assert.ok(diary.includes('把零散的留意归拢成对人的印象') && diary.includes('值得标一个日子的节点'));
-    assert.ok(!diary.includes('只给自己看的心迹'));
-    assert.ok(heartNotePrompt(settings).startsWith('这次回复的正文全部写完之后'));
+    assert.ok(diary.includes('将零散的观察细节归拢为针对人物的私人印象') && diary.includes('锚定关系发展中的标志性时间节点'));
+    assert.ok(!diary.includes('仅写给自己的私密心绪记录'));
+    assert.ok(heartNotePrompt(settings).startsWith('正文撰写完毕后另起段落'));
     const off = clone(DEFAULT_PROMPTS); off.groups.heart.find(item => item.id === 'heart-note').enabled = false;
     assert.equal(heartNotePrompt({prompts: off}), '');
     // 早先存下的配置没有这一组：读到时补上默认的。
@@ -107,7 +107,7 @@ test('a diary request offers unseen traces and unread slices; the reply is read 
     const work = diaryWork(doc, settings);
     assert.deepEqual([work.traces.length, work.slices.map(entry => entry.id)], [2, ['s1']]);
     const prompt = diaryPrompt(settings, names, work);
-    assert.ok(prompt.includes('以 阿澈 的第一人称') && !prompt.includes('{{char}}'), '名字在发送前换成实际的');
+    assert.ok(prompt.includes('以阿澈第一人称视角') && !prompt.includes('{{char}}'), '名字在发送前换成实际的');
     assert.ok(prompt.includes('"n":1') && prompt.includes('三月初四') && prompt.includes('不超过60字'));
     const parsed = parseDiary(JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2, 2, 9]}, {about: '', text: '没有对象的丢掉', traces: [1]}, {id: 'ghost', about: '小满', text: '编号是编的、又没有新痕迹', traces: []}],
         events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 2}, {title: '越界的', text: '楼层不在所给记忆里', floor: 30}]}), work);
@@ -135,7 +135,7 @@ test('a heart note is asked for only when it is due, and is lifted out of the re
     assert.equal(thoughtDue({...written, entries: [stage(20)]}, settings, snapshot(70), 'normal'), null, '上一则之后没有新的阶段总结');
     assert.deepEqual(thoughtDue({...written, entries: [stage(20), stage(55)]}, settings, snapshot(70), 'normal'), {floor: 71});
     const ask = thoughtRequest(settings, names);
-    assert.ok(ask.includes(`<${HEART_TAG} 对象=`) && ask.includes('不超过 200 字') && ask.includes('关于 小满') && !ask.includes('{{'));
+    assert.ok(ask.includes(`<${HEART_TAG} 对象=`) && ask.includes('不超过 200 字') && ask.includes('可围绕小满') && !ask.includes('{{'));
     const reply = `正文一段。\n\n<${HEART_TAG} 对象="小满">她比看上去更怕冷场。</${HEART_TAG}>`;
     assert.deepEqual(takeThought(reply, names), {item: {group: 'you', about: '小满', text: '她比看上去更怕冷场。'}, cleaned: '正文一段。'});
     assert.deepEqual(takeThought(`甲<${HEART_TAG} 对象="自己">我在等。</${HEART_TAG}>`, names).item, {group: 'self', about: '自己', text: '我在等。'});
@@ -242,7 +242,7 @@ test('whole chain: traces ride on a summary → the diary turns them into an imp
     assert.equal(doc.heart, undefined, '痕迹不够多、也没有阶段总结：不自动整理日记');
     // 手动整理一次日记。
     const before = f.sent.length;
-    f.model(async prompt => { assert.ok(prompt.includes('新痕迹') && prompt.includes('以 阿澈 的第一人称') && prompt.includes('记忆：'));
+    f.model(async prompt => { assert.ok(prompt.includes('新痕迹') && prompt.includes('以阿澈第一人称视角') && prompt.includes('记忆：'));
         return JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}], events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}]}); });
     await f.controller.action('heartDiary');
     assert.equal(f.sent.length, before + 1, '一次请求');
@@ -250,7 +250,7 @@ test('whole chain: traces ride on a summary → the diary turns them into an imp
     assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text, item.days.length]), [['小满', '她好像离不开辣。', 1]]);
     assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]]);
     assert.ok(doc.observations.every(item => item.used));
-    await assert.rejects(f.controller.action('heartDiary'), /没有新的痕迹或记忆可整理/);
+    await assert.rejects(f.controller.action('heartDiary'), /没有新留意到的事或新记忆可合订/);
     // 页面拿到的数据：只看见一个日子的还在「留意」里，不算印象；年表有一条。
     let page = heartData(f.controller.state);
     assert.deepEqual([page.impressions.length, page.loose.length, page.events.map(item => item.title)], [0, 1, ['第一次同桌']]);
@@ -260,7 +260,7 @@ test('whole chain: traces ride on a summary → the diary turns them into an imp
     assert.equal(await f.round('normal', '不该被要求写心迹的一轮。'), '', '开关关着时不要');
     await f.controller.action('settings', {values: {thoughts: true, thoughtCooldown: 1}}); await f.flush();
     const asked = await f.round('normal', `她笑了一下。\n\n<${HEART_TAG} 对象="小满">她比看上去更怕冷场。</${HEART_TAG}>`);
-    assert.ok(asked.includes(`<${HEART_TAG} 对象=`) && asked.includes('关于 小满'));
+    assert.ok(asked.includes(`<${HEART_TAG} 对象=`) && asked.includes('可围绕小满'));
     assert.equal(f.context.chat.at(-1).mes, '她笑了一下。', '那一段从正文里去掉了');
     doc = await f.read();
     assert.deepEqual(doc.heart.thoughts.map(item => [item.group, item.about, item.text, item.floor]), [['you', '小满', '她比看上去更怕冷场。', f.context.chat.length]]);
