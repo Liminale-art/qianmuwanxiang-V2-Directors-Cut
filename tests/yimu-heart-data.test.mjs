@@ -14,7 +14,8 @@ import {buildPlan} from '../yimu/core.mjs';
 import {sureOf, mergeHeart, carryHeart, validateHeart} from '../yimu/heart-contract.mjs';
 import {diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, HEART_TAG} from '../yimu/heart-core.mjs';
 import {DEFAULT_PROMPTS, composePrompt, heartNotePrompt, validatePromptConfig} from '../yimu/prompt-settings.mjs';
-import {heartData} from '../yimu/heart-view.mjs';
+import {heartData, heartExportHtml, parseHeartExport} from '../yimu/heart-view.mjs';
+import {HEART_THEMES} from '../yimu/heart-themes.mjs';
 
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Heart.png', file: 'Heart-chat', integrity: 'heart_identity'};
@@ -275,4 +276,22 @@ test('whole chain: traces ride on a summary → the diary turns them into an imp
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);
     assert.deepEqual(page.thoughts, []);
+});
+
+test('an exported page carries the raw material and can be brought back in: merged by item, nothing already there is overwritten', () => {
+    const heart = {impressions: [], thoughts: [{id: 'a', group: 'you', about: '小满', text: '她比看上去更怕冷场。', floor: 5, at: 1}], events: [{id: 'e', title: '相遇', text: '</script><b>不该破坏页面</b>', floor: 2, at: 1}], eventFloor: 20, thoughtFloor: 5};
+    const html = heartExportHtml(HEART_THEMES[0], {char: '阿澈', impressions: [], loose: [], thoughts: [], events: []}, heart, {at: 9});
+    assert.ok(html.includes("document.body.dataset.standalone = '1'") && html.trimEnd().endsWith('</html>'));
+    assert.equal((html.match(/<\/script>/g) || []).length, (HEART_THEMES[0].html.match(/<\/script>/g) || []).length + 2, '数据里的尖括号不会提前结束脚本块');
+    assert.deepEqual(parseHeartExport(html), heart);
+    assert.throws(() => parseHeartExport('<html>随便一个网页</html>'), /不是忆幕导出的心迹页/);
+    let doc = {...createDocument(binding), enabled: true};
+    doc = applyOperation(doc, {id: 't1', type: 'heartThought', floor: 5, at: 3, item: {group: 'self', about: '自己', text: '本机已有的不被覆盖。'}}).document;
+    const own = doc.heart.thoughts[0].id;
+    doc = applyOperation(doc, {id: 'imp1', type: 'heartImport', heart, at: 10}).document;
+    assert.deepEqual(doc.heart.thoughts.map(item => item.id).sort(), ['a', own].sort());
+    assert.deepEqual(doc.heart.events.map(item => item.title), ['相遇']);
+    const again = applyOperation(doc, {id: 'imp2', type: 'heartImport', heart, at: 11}).document;
+    assert.equal(again.heart.thoughts.length, 2, '同一份再导入一次不会重复');
+    assert.throws(() => applyOperation(doc, {id: 'imp3', type: 'heartImport', at: 12}), /没有可并入/);
 });

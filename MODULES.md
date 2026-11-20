@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 436 个，其中 `qianmu-*` 模块 419 个。
+根目录文件 439 个，其中 `qianmu-*` 模块 422 个。
 
 ## 入口、宿主与安装
 
@@ -37,11 +37,11 @@
 | `features/` | 191 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1007 |
+| `tests/` | 1011 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
-| `yimu/` | 64 |
+| `yimu/` | 68 |
 
 ## 文档
 
@@ -299,7 +299,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（63）
+## 专注／阅读／文本（64）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -342,6 +342,7 @@
 | `qianmu-reader-center-view.js` | 是 | Display-only center components; callers own reading boundaries, filtering and guide state. |
 | `qianmu-reader-chat-sync.js` | 是 | 伴读对话（陪读会话：消息、总结、游标）跟随 ST 账户走。 |
 | `qianmu-reader-comic.js` | 是 | 伴读·漫画识图的纯逻辑：每本漫画一份记录（逐页画面稿、分段总结、人物表、阅读方向）， |
+| `qianmu-reader-cover-sync.js` | 是 | 伴读封面跟随 ST 账户走（只同步缩略图；书籍正文不同步）。 |
 | `qianmu-reader-identity-view.js` | 是 | Display-only inputs. Identity ownership, ST access and persistence stay with the caller. |
 | `qianmu-reader-library-view.js` | 是 | Shelf cards only. Collection ownership, current metadata resolution, sorting and cover loading stay with the caller. |
 | `qianmu-reader-package.js` | 是 | Reader packs contain original media, unlike the smaller configuration-only package. |
@@ -535,7 +536,7 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（6）
+## 其他模块（8）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -545,3 +546,5 @@
 | `qianmu-perf-probe.js` | 是 | Opt-in timing probe for "click → shown → ready" on a few surfaces (main tabs, notes, assistant, chat toolkit). |
 | `qianmu-settings-persistence.js` | 是 | What Qianmu writes into ST's settings file, as opposed to what it keeps in memory. |
 | `qianmu-settings-sidecars.js` | 是 | One place that assembles the side stores behind Qianmu's settings (see qianmu-settings-persistence.js). |
+| `qianmu-usage-tracker.js` | 是 | 使用时长：按现实时间统计「在酒馆里真正在用」的时间，与故事内容无关。 |
+| `qianmu-usage-view.js` | 是 | 「时长」面板：现实里用了多久。上面一张热力格（一列一周），下面几张大数字卡；另有一页按角色排的聊天交互时长。 |

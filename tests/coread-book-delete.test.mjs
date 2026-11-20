@@ -5,7 +5,9 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 function fixture() {
   const data={books:[{id:'a',title:'Alpha',progress:45},{id:'b',title:'Beta'}],collections:[{id:'folder',name:'Folder',bookIds:['a','b'],createdAt:1,updatedAt:1}]};
-  const page={isConnected:true,hidden:false},modal={classList:{contains:()=>true},querySelector:()=>page},calls=[],notices=[];
+  const page={isConnected:true,hidden:false},modal={classList:{contains:()=>true},querySelector:()=>page},calls=[],notices=[],account=[];
+  // The account side of a deletion: what the reader asked the two mirrors to do, and what the chat mirror answers.
+  const answer={registered:true,pending:[]};
   let saveAnswer;
   const c=vm.createContext({settings:{enabled:true,coread:data},MODAL_ID:'modal',RUNTIME_LOCK_KEY:'runtime',runtime:{},coreadOpenRequestId:0,
     document:{getElementById:()=>modal},readerDialog:{bookId:'a',bucket:'chat::a',loaded:true,slices:['unsaved']},readerView:null,coreadEchoTtl:new Map(),
@@ -14,11 +16,14 @@ function fixture() {
     
     reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
     focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,
-    blobStore:{deleteReaderBookData:async()=>{calls.push('delete-body');return {status:'committed'};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
+    readerChatSync:{remove:async keys=>{account.push(['chat-remove',[...keys]]);return {registered:answer.registered,synced:answer.registered?keys.filter(key=>!answer.pending.includes(key)):[],pending:answer.registered?answer.pending.filter(key=>keys.includes(key)):[...keys]};},
+      request:(...args)=>account.push(['chat-request',...args])},
+    readerCoverSync:{remove:async ids=>{account.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}},
+    blobStore:{deleteReaderBookData:async(id,options)=>{calls.push('delete-body');return {status:'committed',chatKeys:options.deleteMemory?[`chat::${id}`,`other::${id}`,`comic::${id}`]:[]};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
   c.coread=()=>c.settings.coread;
-  const names=['coreadBookMeta','coreadCollections','coreadCaptureCollectionMutation','coreadDeleteBook','coreadCanDeleteBooks','coreadRequestDeleteBooks'];
+  const names=['coreadBookMeta','coreadCollections','coreadCaptureCollectionMutation','coreadReportAccountRemoval','coreadDeleteBook','coreadCanDeleteBooks','coreadRequestDeleteBooks'];
   vm.runInContext(names.map(section).join('\n'),c);
-  return {c,data,page,calls,notices,answerSave:value=>saveAnswer(value)};
+  return {c,data,page,calls,notices,account,answer,answerSave:value=>saveAnswer(value)};
 }
 
 test('failed dialogue preservation stops before removing any book, cache or in-memory slices',async()=>{
@@ -103,9 +108,9 @@ test('preserving dialogue participates in the existing memory-write guard and ex
   assert.equal(await failed.c.coreadDeleteBook('a'),false);assert.equal(failed.c.coreadMemoryWrites,0,'a rejected save must release its own guard');
 });
 
-test('admitted deletion preserves other books and applies the memory choice to the local archive only',async()=>{
+test('admitted deletion preserves other books and applies the memory choice to the local archive',async()=>{
   for(const deleteMemory of [false,true]){const f=fixture();let choice;
-    f.c.blobStore.deleteReaderBookData=async(id,options)=>{f.calls.push('delete-body');choice=options.deleteMemory;return {status:'committed'};};
+    f.c.blobStore.deleteReaderBookData=async(id,options)=>{f.calls.push('delete-body');choice=options.deleteMemory;return {status:'committed',chatKeys:options.deleteMemory?['chat::a','comic::a']:[]};};
     const pending=f.c.coreadDeleteBook('a',{deleteMemory});f.answerSave(true);
     assert.equal(await pending,true);assert.equal(f.data.books.length,1);assert.equal(f.data.books[0].id,'b');
     assert.equal(choice,deleteMemory);assert.deepEqual(f.calls,['save-dialog','delete-body','save-settings'],'no world-book write happens');
@@ -166,4 +171,35 @@ test('a changed collection during the memory choice cancels the entire mixed bat
   const f=requestFixture(),pending=f.c.coreadRequestDeleteBooks(['a'],['folder']);f.confirm(true);await tick();
   f.data.collections[0].name='New name';const before=JSON.stringify(f.data);f.memory(false);
   assert.equal(await pending,false);assert.equal(JSON.stringify(f.data),before);assert.deepEqual(f.calls,[]);
+});
+
+test('deleting memory asks the account to drop exactly the archives the local transaction removed; keeping it uploads the rewritten ones',async()=>{
+  const gone=fixture(),first=gone.c.coreadDeleteBook('a',{deleteMemory:true});gone.answerSave(true);assert.equal(await first,true);
+  assert.deepEqual(gone.account,[['chat-remove',['chat::a','other::a','comic::a']],['cover-remove',['a']]]);
+  assert.equal(gone.notices.some(notice=>/账户/.test(notice[0])),false,'a deletion that reached the account needs no extra notice');
+  const kept=fixture(),second=kept.c.coreadDeleteBook('a',{deleteMemory:false});kept.answerSave(true);assert.equal(await second,true);
+  assert.deepEqual(kept.account,[['chat-request'],['cover-remove',['a']]],'the cover goes with the book either way');
+  const failed=fixture();failed.c.blobStore.deleteReaderBookData=async()=>{throw Error('local failure');};
+  const third=failed.c.coreadDeleteBook('a',{deleteMemory:true});failed.answerSave(true);assert.equal(await third,false);
+  assert.deepEqual(failed.account,[],'nothing is asked of the account when the local transaction did not commit');
+});
+
+test('an account copy that could not be deleted is reported as such, once per batch, never as deleted',async()=>{
+  const offline=requestFixture();offline.answer.pending=['chat::a','chat::b'];
+  const pending=offline.c.coreadRequestDeleteBooks(['a','b']);offline.confirm(true);await tick();offline.memory(true);await tick();offline.answerSave(true);
+  assert.equal(await pending,true);assert.equal(offline.data.books.length,0);
+  assert.deepEqual(offline.account.filter(call=>call[0]==='chat-remove').map(call=>call[1][0]),['chat::a','chat::b']);
+  const warnings=offline.notices.filter(notice=>/账户/.test(notice[0]));
+  assert.equal(warnings.length,1,'two books, one notice');assert.equal(warnings[0][1],'warning');
+  assert.equal(warnings[0][0],'本机记忆已删除；账户里的副本暂时没删掉，联网后会自动补删');
+  assert.equal(offline.notices.at(-1),warnings[0],'the honest notice is the last word');
+
+  const unnoted=requestFixture();unnoted.answer.registered=false;
+  const second=unnoted.c.coreadRequestDeleteBooks(['a']);unnoted.confirm(true);await tick();unnoted.memory(true);await tick();unnoted.answerSave(true);
+  assert.equal(await second,true);
+  assert.deepEqual(unnoted.notices.at(-1),['本机已删除，但没能登记账户端删除，其他设备上的副本不会被删','warning']);
+
+  const alone=fixture();alone.answer.pending=['chat::a'];
+  const third=alone.c.coreadDeleteBook('a',{deleteMemory:true});alone.answerSave(true);assert.equal(await third,true);
+  assert.match(alone.notices.at(-1)[0],/暂时没删掉/,'a single deletion outside a batch reports for itself');
 });

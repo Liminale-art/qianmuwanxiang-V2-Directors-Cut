@@ -29,7 +29,7 @@ function fixture() {
         boundaries:{book:{readTo:100}},story:{avatar:'Char.png',file:'story',integrity:'proof'},currentKey:key};
     let account = 'st-user:fixture', record = {bookId:'book',slices:[dialog(),book()]}, keys = [key], reads = 0, scans = 0, reader = null;
     Object.defineProperty(record, 'messages', {get() { throw Error('whole dialogue must never be traversed'); }});
-    const bridge = createYimuCompanionBridge({getState:()=>state,resolveAccount:async()=>account,hash,readDictionary:()=>typeof state.dictionary==='function'?state.dictionary():state.dictionary,
+    const bridge = createYimuCompanionBridge({getState:()=>state,resolveAccount:async()=>account,hash,readDictionary:bound=>typeof state.dictionary==='function'?state.dictionary(bound):state.dictionary,
         listKeys:async()=>{scans++; return [...keys];},readRecord:async()=>{reads++; return reader ? reader() : record;}});
     return {bridge,state,coread,get record(){return record;},set record(value){record=value;},get reads(){return reads;},get scans(){return scans;},
         account(value){account=value;},keys(value){keys=value;},reader(value){reader=value;}};
@@ -153,7 +153,8 @@ test('singleton mount, ready notification and cleanup preserve unrelated owners'
 
 test('production wiring only projects persisted slices and uses narrow optional consumption hooks',async()=>{
     const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
-    assert.match(source,/readRecord: async key[\s\S]*?createReaderPackageReader\(\)\.getReaderChat\(key\)[\s\S]*?bookId:rec\.bookId, slices:rec\.slices\} : null/);
+    assert.match(source,/readRecord: async key[\s\S]*?createReaderPackageReader\(\)\.getReaderChat\(key\)[\s\S]*?bookId:rec\.bookId, slices:rec\.slices, dictBound:rec\.dictBound\} : null/);
+    assert.match(source,/readDictionary: bound => coreadDictFor\(bound\),/);
     assert.match(source,/yimuCompanionBridge\.consume\(\{key:coreadDialogBucket\(id\)/);
     assert.match(source,/yimuCompanionBridge\.consume\(\{key:coreadDialogBucket\(id\)[\s\S]{0,260}?\}, 'companion', \{query:recallQuery\}\)/);
     assert.doesNotMatch(source,/filterMainline|companionOwner/);
@@ -202,6 +203,11 @@ test('read label and book terms: explicit label, live label at the same position
     f.coread.books[0].charCount=200;assert.equal((await f.bridge.api.readSnapshot({...consent,confirmedReadTo:95})).readLabel,'48%');
     f.state.dictionary={'车站':['站台','驿'],'月球':['月亮'],'结局':[]};
     assert.deepEqual((await f.bridge.api.readSnapshot(consent)).terms,['合成书','车站','站台','结局']);
+    const asked=[];f.state.dictionary=bound=>{asked.push(bound);return {};};
+    await f.bridge.api.readSnapshot(consent);assert.deepEqual(asked,[undefined],'an archive that never chose lets the reader apply its default');
+    f.record={bookId:'book',slices:[dialog(),book()],dictBound:['places',7,'people']};await f.bridge.api.readSnapshot(consent);
+    assert.deepEqual(asked[1],['places','people'],'the archive\'s own list is what the dictionary lookup receives');
+    f.record={bookId:'book',slices:[dialog(),book()],dictBound:[]};await f.bridge.api.readSnapshot(consent);assert.deepEqual(asked[2],[]);
     f.state.dictionary=()=>{throw Error('no dictionary');};assert.deepEqual((await f.bridge.api.readSnapshot(consent)).terms,['合成书']);
     assert.equal(formatReadLabel({chapterIndex:11,progress:37}),'第12章 · 37%');assert.equal(formatReadLabel({chapterIndex:4,progress:50.4,comic:true}),'第5页 · 50%');
     assert.equal(formatReadLabel({chapterIndex:null,progress:NaN}),'');
@@ -271,4 +277,36 @@ test('the reader centre button links an unlinked book after one confirmation and
     assert.equal(asked[0].body,'这次读到 第2章 · 40%。要更新到当前故事吗？');assert.equal(confirmed.length,2);
     f.state.story=null;assert.equal(await runLink(f.bridge,captured,ui),'unavailable');assert.deepEqual(notes.at(-1),[LINK_TEXT.noStory,'info']);
     assert.equal(await runLink(f.bridge,{selection,confirmedReadTo:null},ui),'skipped');
+});
+
+test('book terms come from the dictionaries of the archive being linked, not from the one open in the reader, with the reader\'s real lookup',async()=>{
+    const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
+    const cut=name=>{const start=source.indexOf(`\nfunction ${name}(`)+1,end=source.indexOf('\n}\n',start)+3;assert.ok(start>0&&end>start,name);return source.slice(start,end);};
+    const memory={dictBooks:[
+        {id:'dict-default',name:'默认词典',pairs:{'结局':['终章']}},
+        {id:'places',name:'地名',pairs:{'车站':['站台','驿']}},
+        {id:'people',name:'人名',pairs:{'人物':['角色','主角']}},
+        {id:'unused',name:'别的书',pairs:{'月球':['月亮']}}]};
+    // The reader has a third archive open, bound to a dictionary neither linked archive uses.
+    const c=vm.createContext({COREAD_DEFAULT_DICT:'dict-default',coreadMemory:()=>memory,readerDialog:{bucket:'open::book',loaded:true,dictBound:['unused']},
+        isPlainObject:value=>value!==null&&typeof value==='object'&&!Array.isArray(value),uniqueClean:list=>[...new Set(list.map(item=>String(item||'').trim()).filter(Boolean))]});
+    vm.runInContext(['coreadNormalizeSynonyms','coreadMergeSynonyms','coreadBoundDicts','coreadDictFor','coreadActiveDict'].map(cut).join('\n'),c);
+    const keys=['scope-a::book','scope-b::book','scope-c::book','scope-d::book'];
+    const slicesFor=bucket=>[dialog(),book()].map(slice=>({...slice,provenance:{...slice.provenance,bucket}}));
+    const records={
+        'scope-a::book':{bookId:'book',slices:slicesFor('scope-a::book'),dictBound:['places']},
+        'scope-b::book':{bookId:'book',slices:slicesFor('scope-b::book'),dictBound:['people','places']},
+        'scope-c::book':{bookId:'book',slices:slicesFor('scope-c::book')},                     // saved before the field existed
+        'scope-d::book':{bookId:'book',slices:slicesFor('scope-d::book'),dictBound:[]}};       // everything released on purpose
+    const state={available:true,owner:{},coread:{books:[{id:'book',title:'合成书'}],companionSessions:keys.map((k,i)=>({scope:k.split('::')[0],avatar:`Char${i}.png`,userAvatar:'Persona.png'}))},
+        characters:keys.map((k,i)=>({avatar:`Char${i}.png`,name:`书友${i}`})),personas:[{key:'Persona.png',name:'读者'}],boundaries:{book:{readTo:100}},story:{avatar:'Char0.png',file:'story',integrity:'proof'},currentKey:'open::book'};
+    const bridge=createYimuCompanionBridge({getState:()=>state,resolveAccount:async()=>'st-user:fixture',hash,listKeys:async()=>keys,
+        readRecord:async k=>{const rec=records[k];return rec?{bookId:rec.bookId,slices:rec.slices,dictBound:rec.dictBound}:null;},readDictionary:bound=>c.coreadDictFor(bound)});
+    const terms=async k=>(await bridge.api.readSnapshot({...consent,key:k})).terms;
+    assert.deepEqual(await terms('scope-a::book'),['合成书','车站','站台']);
+    assert.deepEqual(await terms('scope-b::book'),['合成书','车站','站台','人物','角色','主角']);
+    assert.deepEqual(await terms('scope-c::book'),['合成书','结局','终章'],'no choice recorded: the default dictionary only');
+    assert.deepEqual(await terms('scope-d::book'),['合成书'],'an emptied list brings no dictionary at all');
+    assert.deepEqual(Object.keys(c.coreadActiveDict([])),['月球'],'while the reader itself keeps using the open archive\'s list');
+    c.readerDialog={bucket:'',loaded:false};assert.deepEqual(Object.keys(c.coreadActiveDict([])),['结局']);
 });

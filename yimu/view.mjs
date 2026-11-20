@@ -434,7 +434,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
         // 心迹日记卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
         settingGroups.get(key).append(row);
         // 这一项的作用一句话写在下面（用户要求）。
-        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被带入后，这么多层内不再重复带入'));
+        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内不再重复'));
         // 平时跟着阶段总结合订；这里可以随手合订一次。放在观察日记这一块的末尾。
         if (key === 'diaryInject') { const run = button('将留意到的事合订为日记', () => { void dispatch('heartDiary', {}, run); }, 'ym-heart-run'); settingGroups.get(key).append(run); }
         controls.set(key, { input, type, min, label: labelNode.children[0] });
@@ -697,7 +697,7 @@ export function createView({ onAction, connectionApi, journal = null, document =
     pages.get('overview').append(overview, enableCard, manualSummaryCard, stats, routes, promptFolder);
     pages.get('memory').append(controlsRow, toolbar, selectBar, stageForm, streamPreview, list, noMatch, deleted, pager);
     pages.get('retrieval').append(retrieval.element);
-    const manage = mountManageView({ document, journal, describeSkip, backup, onAction: (type, payload) => dispatch(type, payload) });
+    const manage = mountManageView({ document, journal, describeSkip, backup, onNotice, onAction: (type, payload) => dispatch(type, payload) });
     pages.get('manage').append(manage.element);
     pages.get('settings').append(apiSection, interfaceCard, settings, serviceStatus);
     pages.get('manual').append(manualForm);

@@ -1369,7 +1369,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.62 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.63 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1490,7 +1490,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.62'); assert.equal(pkg.version, '0.8.24');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.63'); assert.equal(pkg.version, '0.8.25');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1630,7 +1630,7 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.equal(importIcon.closest('.ym-manage-head'), fileCard.querySelector('.ym-manage-head')); assert.equal(importIcon.textContent, '');
     const more = f.get('更多文件操作'), tray = fileCard.querySelector('.ym-manage-more-tray'), panel = f.document.querySelector('.ym-dialog');
     assert.equal(more.closest('.ym-manage-head'), fileCard.querySelector('.ym-manage-head')); assert.equal(more.querySelector('.ym-icon').attrs['data-ym-icon'], 'more');
-    assert.deepEqual(tray.children, [importIcon, exportIcon, f.get('多选文件')]); assert.equal(tray.parentNode, more.parentNode, '三个控件与「更多」同排');
+    assert.equal(tray.children.length, 4); assert.ok(tray.children[0] === importIcon && tray.children[1] === f.get('导入心迹页') && tray.children[2] === exportIcon && tray.children[3] === f.get('多选文件'), '导入、导入心迹页、导出、多选'); assert.equal(tray.parentNode, more.parentNode, '三个控件与「更多」同排');
     assert.equal(tray.hidden, true); assert.equal(more.getAttribute('aria-expanded'), 'false');
     more.click(); assert.equal(tray.hidden, false); assert.equal(more.getAttribute('aria-expanded'), 'true');
     panel.emit('click', { target: importIcon }); assert.equal(tray.hidden, false, '点在展开的控件上不收回');

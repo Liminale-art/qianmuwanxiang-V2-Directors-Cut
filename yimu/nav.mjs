@@ -44,8 +44,9 @@ export function mountYimuNavigation(container, { document = container?.ownerDocu
         if (shouldAnimate && old && !changedTheme && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
             if (family === 'glass') animate(part.rect, [{ strokeDasharray: '1', strokeDashoffset: '.92', opacity: .55 }, { strokeDasharray: '1', strokeDashoffset: '0', opacity: 1 }], 380);
             else if (family === 'editorial') {
-                animate(part.mark, [{ transform: 'translate(-50%, 50%) scale(.25)', opacity: .4 }, { transform: 'translate(-50%, 50%) scale(1.15)', opacity: 1, offset: .7 }, { transform: 'translate(-50%, 50%) scale(1)', opacity: 1 }], 300);
-                animate(part.text, [{ transform: 'translateY(0)' }, { transform: 'translateY(-4px)', offset: .5 }, { transform: 'translateY(-2px)' }], 300);
+                // 纸间的页签竖排在书口上：鱼尾从上落下，字由淡转实（不再上下跳）。
+                animate(part.mark, [{ transform: 'translate(-50%, -6px) scale(.4)', opacity: .4 }, { transform: 'translate(-50%, 1px) scale(1.1)', opacity: 1, offset: .7 }, { transform: 'translate(-50%, 0) scale(1)', opacity: 1 }], 300);
+                animate(part.text, [{ opacity: .55 }, { opacity: 1 }], 300);
             } else {
                 const a = painted || old.getBoundingClientRect?.(), b = next.getBoundingClientRect?.();
                 const width = part.mark.getBoundingClientRect?.().width, oldWidth = prior.mark.getBoundingClientRect?.().width || width;

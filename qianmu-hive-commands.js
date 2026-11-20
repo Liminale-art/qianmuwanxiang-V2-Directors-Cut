@@ -16,6 +16,7 @@ export const QIANMU_HIVE_COMMANDS = Object.freeze([
   { id: 'plug', label: 'API与日志', icon: 'fa-gear', glyph: 'qm-duotone-gear' },
   { id: 'imagegen', label: '分镜', icon: 'fa-video', glyph: 'qm-regular-aperture' },
   { id: 'floor', label: '聊天工具包', icon: 'fa-layer-group', glyph: 'floor-tools' },
+  { id: 'usage', label: '时长', icon: 'fa-clock', glyph: 'qm-duotone-clock' },
 ]);
 
 export function upgradeProseHiveCommands(settings) {
@@ -28,5 +29,12 @@ export function upgradeProseHiveCommands(settings) {
       if (Array.isArray(settings[key]) && !settings[key].includes('text-collection')) settings[key].push('text-collection');
     }
     settings.proseHiveVersion = 3;
+  }
+  // 「时长」是后来加的快捷入口：已有的设置里补上一次，之后关不关由用户定。
+  if (!(settings.proseHiveVersion >= 4)) {
+    for (const key of ['quickWheelCustomOrder', 'quickWheelCustomEnabled']) {
+      if (Array.isArray(settings[key]) && !settings[key].includes('usage')) settings[key].push('usage');
+    }
+    settings.proseHiveVersion = 4;
   }
 }

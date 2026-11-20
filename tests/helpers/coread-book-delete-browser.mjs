@@ -16,6 +16,8 @@ export async function checkBookDeleteBrowser(page) {
       window.coreadSaveDialog=async()=>{saveEntered=true;deleteCalls.push('preserve');return scenario.startsWith('save-')?await gate:true;};
       window.unmountReaderPortal=()=>deleteCalls.push('unmount');
       window.reader={COREAD_SLICE_SCHEMA_VERSION:3};window.coreadArchiveDialogSlices=s=>s;window.focusClockActiveLock=()=>null;
+      window.accountCalls=[];window.readerChatSync={remove:async keys=>{accountCalls.push(['chat-remove',[...keys]]);return {registered:true,synced:[...keys],pending:[]};},request:()=>accountCalls.push(['chat-request'])};
+      window.readerCoverSync={remove:async ids=>{accountCalls.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}};
       window.readerContentCache=null;window.readerAssistant=null;window.readerAssistantSessions=new Map();window.dialogGenToken=0;window.dialogAbort=null;
       for(const id of ['a','b'])await nativeBooks.putBook(id,{meta:{title:id},fullText:'Synthetic body',chapters:[{}]});
       window.blobStore={...blobStore,deleteReaderBookData:async (id,options)=>{
@@ -25,7 +27,7 @@ export async function checkBookDeleteBrowser(page) {
       }};
       window.deleteBefore={data:JSON.stringify(settings.coread),renders:shelfRenders};
     };
-  },['coreadChooseDeleteMemory','coreadCanDeleteBooks','coreadRequestDeleteBooks','coreadDeleteBook'].map(section).join('\n'));
+  },['coreadChooseDeleteMemory','coreadCanDeleteBooks','coreadRequestDeleteBooks','coreadReportAccountRemoval','coreadDeleteBook'].map(section).join('\n'));
   const results=[];
   const scenarios=['single-keep','single-purge','batch','cancel','confirm-owner','confirm-page','memory-owner','memory-page','memory-replaced','memory-busy','save-failed','save-owner','save-dialogue','next-book'];
   for(const width of [320,360,430,1100])for(const scenario of scenarios){
@@ -54,17 +56,19 @@ export async function checkBookDeleteBrowser(page) {
     }
     await page.waitForFunction(()=>deleteFinished);
     const result=await page.evaluate(async()=>({data:JSON.stringify(settings.coread),before:deleteBefore,ids:settings.coread.books.map(b=>b.id),
-      bodyA:!!await nativeBooks.getBook('a'),bodyB:!!await nativeBooks.getBook('b'),calls:deleteCalls,saves:shelfCalls.filter(c=>c[0]==='save').length,renders:shelfRenders,notices:shelfNotices}));
+      bodyA:!!await nativeBooks.getBook('a'),bodyB:!!await nativeBooks.getBook('b'),calls:deleteCalls,account:accountCalls,saves:shelfCalls.filter(c=>c[0]==='save').length,renders:shelfRenders,notices:shelfNotices}));
     const label=width+':'+scenario,admitted=['single-keep','single-purge','batch','next-book'].includes(scenario);
     if(admitted){
       assert.equal(result.bodyA,false,label);assert.equal(result.bodyB,scenario!=='batch',label);assert.equal(result.ids.includes('a'),false,label);
       assert.ok(result.calls.every(c=>c==='preserve'||c==='unmount'),label);
       assert.equal(result.saves,scenario==='batch'?2:1,label);assert.equal(result.renders,result.before.renders+1,label);
       if(scenario==='next-book')assert.match(result.notices.at(-1)[0],/1\/2.*停止/,label);
+      assert.equal(result.account.filter(c=>c[0]==='cover-remove').length,scenario==='batch'?2:1,label);
+      assert.equal(result.account.some(c=>c[0]==='chat-remove'),scenario==='single-purge',label);assert.equal(result.account.some(c=>c[0]==='chat-request'),scenario!=='single-purge',label);
     }else{
       assert.equal(result.data,result.before.data,label);assert.equal(result.bodyA,true,label);assert.equal(result.bodyB,true,label);
       assert.equal(result.saves,0,label);assert.equal(result.renders,result.before.renders+(scenario.endsWith('-page')?1:0),label);
-      assert.ok(result.calls.every(c=>c==='preserve'),label);assert.ok(result.notices.every(n=>!/已从书架移除/.test(n[0])),label);
+      assert.ok(result.calls.every(c=>c==='preserve'),label);assert.deepEqual(result.account,[],label);assert.ok(result.notices.every(n=>!/已从书架移除/.test(n[0])),label);
     }
     assert.equal(await page.locator('#shelf-popup-fixture').count(),0,label);results.push({width,scenario});
   }

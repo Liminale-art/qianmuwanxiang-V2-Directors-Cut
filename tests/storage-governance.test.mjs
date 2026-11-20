@@ -49,7 +49,7 @@ assert.match(storeSource, /allowedCategories = new Set\(\['audio', 'logs', 'cach
 assert.match(storeSource, /export async function clearStorageItems\(storeNames = \[\], \{check = \(\) => \{\}\} = \{\}\)/, 'explicit per-store cleanup must retain optional scope checks');
 assert.match(storeSource, /allowedNames = new Set\(Object\.keys\(STORAGE_STORE_INFO\)\.filter\(name => name !== STORE_STORYBOARD_INBOX\)\)/, 'per-store cleanup must exclude account-owned pending originals');
 assert.match(storeSource, /clearStorageItems[\s\S]*const failed = \[\][\s\S]*catch \(error\)[\s\S]*failed\.push/, 'one failed store must not prevent later selected stores from being cleared');
-assert.match(storeSource, /export async function auditOrphanedReaderBlobs\(\)/, 'reader blob orphan audit must be available');
+assert.match(storeSource, /export async function auditOrphanedReaderBlobs\(\{shelfBookIds = \[\]\} = \{\}\)/, 'reader blob orphan audit must be available');
 assert.match(storeSource, /STORE_COVERS[\s\S]*STORE_IMAGES[\s\S]*books\.has\(bookId\)/, 'only reader cover/image records without a canonical book may be marked orphaned');
 assert.match(storeSource, /auditOrphanedStore[\s\S]*openCursor\(\)[\s\S]*estimateStoredValueBytes\(current\.value\)/, 'blob audit must stream values through a cursor instead of retaining the full library in memory');
 assert.match(storeSource, /\u4f34\u8bfb\u4f1a\u8bdd\/\u5411\u91cf[\s\S]*\u7edd\u4e0d\u81ea\u52a8\u5224\u5b64/, 'retained reader memories and vectors must not be treated as orphaned blobs');
@@ -88,7 +88,7 @@ assert.match(source, /blobStore\.clearStorageItems\(stores, cleanup\)[\s\S]*sele
 assert.match(source, /cleared\.has\('storyboard_pipeline_logs'\)[\s\S]*storyboardPipelineArchiveEpoch\+\+[\s\S]*filter\(\(item\) => !storyboardPipelineIsTerminal\(item\)\)/, 'clearing detailed logs must invalidate archive callbacks while preserving active pipelines');
 assert.match(source, /portableTtsBytes[\s\S]*item\.name === 'tts_lines'[\s\S]*cleared\.has\('tts_lines'\)[\s\S]*ttsLineCache\.clear\(\)/, 'the TTS cache item must include and clear its portable chat snapshot');
 assert.match(source, /__orphan_reader_blobs__[\s\S]*孤儿封面与书内插图/, 'orphaned reader blobs retain a clearly labelled explicit cleanup choice, not a duplicate accounting row');
-assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(cleanup\)/, 'orphan cleanup must only run after explicit selection under its initiating session');
+assert.match(source, /selected\.includes\('__orphan_reader_blobs__'\)[\s\S]*clearOrphanedReaderBlobs\(\{check:\(\)=>cleanup\.check\(\),shelfBookIds:coreadShelfBookIds\(\)\}\)/, 'orphan cleanup must only run after explicit selection under its initiating session');
 assert.match(source, /scopeCount: Array\.isArray\(item\.scopes\)[\s\S]*item\.scopeCount[\s\S]*个聊天/, 'cleanup rows must reveal how many chat buckets each registered store contains');
 assert.match(source, /openStorageChatCleanupDialog[\s\S]*clearChatScopedStorage\(selected, cleanup\)/, 'chat cleanup retains session-scoped per-item deletion');
 assert.doesNotMatch(source,/sd-storage-export-(?:reader|audio)/,'cleanup must not run duplicate exports while holding the cleanup lock');

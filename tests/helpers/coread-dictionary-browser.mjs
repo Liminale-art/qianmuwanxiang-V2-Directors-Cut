@@ -23,7 +23,7 @@ export async function checkDictionaryMutationBrowser(page){
     window.eval(functions);
     window.prepareDictionary=()=>{
       document.querySelector('.sd-reader-morepage').hidden=false;dictionaryChat='A';dictionaryFixtureRuntime={};readerView={bookId:'book'};
-      coreadOpenRequestId++;resetInject();store.coreadDictBound=['custom"'];rerenderMore();
+      coreadOpenRequestId++;resetInject();store.dictBound=['custom"'];readerDialog.dictBound=['custom"'];rerenderMore();
       calls.save=0;calls.metadata=0;calls.invalidate=0;calls.renders=0;calls.notices=[];
     };
   },['coreadPromptText','coreadOpenDictEntryDialog'].map(storyboardFunctionSource).join('\n'));
@@ -40,7 +40,7 @@ export async function checkDictionaryMutationBrowser(page){
     }
     await page.evaluate(change=>{
       if(change==='normalize')memory.dictBooks=memory.dictBooks.map(d=>({...d,pairs:coreadNormalizeSynonyms(d.pairs)}));
-      if(change==='chat'){dictionaryChat='B';window.store={coreadDictBound:['custom"','other']};}
+      if(change==='chat'){dictionaryChat='B';readerDialog={...readerDialog,bucket:'fixture-b::book',dictBound:['custom"','other']};window.store={dictBound:['custom"','other']};}
       if(change==='reopen'){const n=document.querySelector('.sd-reader-morepage');n.hidden=true;n.hidden=false;rerenderMore();}
       if(change==='identity'){coreadOpenRequestId++;readerView={bookId:'book',companion:'new'};}
       if(change==='runtime')dictionaryFixtureRuntime={};
@@ -48,7 +48,7 @@ export async function checkDictionaryMutationBrowser(page){
       window.beforeDictionary={data:JSON.stringify([memory,store]),renders:calls.renders};
     },change);
     await page.evaluate(async action=>{answerDictionary(['add','rename'].includes(action)?' New dictionary ':true);await new Promise(resolve=>setTimeout(resolve,0));},action);
-    const result=await page.evaluate(()=>({data:JSON.stringify([memory,store]),before:beforeDictionary,save:calls.save,metadata:calls.metadata,invalidate:calls.invalidate,renders:calls.renders,notices:calls.notices,books:memory.dictBooks,bound:store.coreadDictBound}));
+    const result=await page.evaluate(()=>({data:JSON.stringify([memory,store]),before:beforeDictionary,save:calls.save,metadata:calls.metadata,invalidate:calls.invalidate,renders:calls.renders,notices:calls.notices,books:memory.dictBooks,bound:store.dictBound}));
     const label=width+':'+action+':'+change;
     if(!['none','normalize'].includes(change)){
       assert.equal(result.data,result.before.data,label);assert.equal(result.save,0,label);assert.equal(result.metadata,0,label);assert.equal(result.invalidate,0,label);assert.equal(result.renders,result.before.renders,label);

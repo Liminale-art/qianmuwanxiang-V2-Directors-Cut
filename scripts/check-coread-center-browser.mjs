@@ -213,8 +213,11 @@ try{
     window.isPlainObject=window.eval('('+plainObject+')');window.coreadOpenRequestId=0;window.readerView={bookId:'book'};
     window.RUNTIME_LOCK_KEY='dictionaryFixtureRuntime';window.dictionaryFixtureRuntime={};window.getChatKey=()=> 'fixture-chat';
     window.coreadRecentSlices=()=>[];window.coreadRecallSlices=()=>[{slice:readerDialog.slices[0],hits:['关键词'],score:1.25}];
-    window.coreadActiveDict=()=>({关键词:['同义词']});window.coreadBoundDicts=()=>store.coreadDictBound;
-    window.getChatStore=()=>store;window.saveMetadata=()=>calls.metadata++;
+    window.coreadActiveDict=()=>({关键词:['同义词']});
+    // The binding lives in the open reading archive; `store` stands for what the archive store last saved.
+    window.coreadDistilling=false;window.coreadMemoryWrites=0;window.COREAD_MEMORY_BUSY='正在整理记忆，请稍候';window.rerenderMoreIfOpen=()=>rerenderMore();
+    window.coreadSaveDialog=async()=>{if(!readerDialog.bucket||!readerDialog.loaded)return false;store.dictBound=Array.isArray(readerDialog.dictBound)?[...readerDialog.dictBound]:undefined;return true;};
+    window.getChatStore=()=>{throw Error('dictionary binding must not touch chat metadata');};window.saveMetadata=()=>{throw Error('dictionary binding must not save chat metadata');};
     window.coreadPromptText=async(...args)=>{calls.prompts.push(args);return promptAnswer;};
     window.coreadOpenDictEntryDialog=async(...args)=>{if(args[3]?.tagName!=='BUTTON')throw Error('Dictionary editor must retain its originating button');calls.entries.push(args.slice(0,3));return false;};
     window.uid=()=> 'new-fixture';window.eval(functions);
@@ -222,7 +225,7 @@ try{
       memory={guideSeen:true,moreTab:'inject',recallScanMessages:2,recentInject:1,recallCount:3,rerankTopN:4,
         dictBooks:[{id:'default',name:'默认词册',pairs:{}},{id:'custom"',name:'自定义<&',pairs:{'关键词<&':['同义词<&']}}]};
       settings.enabled=true;settings.coread={memory};
-      window.store={coreadDictBound:[]};coreadCurrentDictId='custom"';window.promptAnswer=null;confirmAnswer=false;
+      window.store={dictBound:[]};Object.assign(readerDialog,{bucket:'fixture::book',loaded:true,dictBound:[]});coreadCurrentDictId='custom"';window.promptAnswer=null;confirmAnswer=false;
       Object.assign(calls,{metadata:0,prompts:[],entries:[],confirmations:[],notices:[],save:0});
       readerDialog.slices=[{id:'a',batch:1,summary:'实际注入的安全摘要。'.repeat(8),keywords:['关键词'],src:'book'}];
       readerDialog.lastInjected={channel:'companion',items:[{id:'a',hits:['关键词']}]};readerDialog.messages=[{text:'当前语境'.repeat(30)}];rerenderMore();
@@ -232,7 +235,7 @@ try{
     root.addEventListener('change',new Function('e','const m=coreadMemory();'+injectChange));
     root.addEventListener('input',new Function('e','const m=coreadMemory();'+injectInput));
     resetInject();
-  },{functions:coreadInjectFunctions+'\n'+storyboardFunctionSource('coreadNormalizeSynonyms')+'\n'+storyboardFunctionSource('coreadCaptureDictMutation'),unique:uniqueClean.toString(),plainObject:isPlainObject.toString(),
+  },{functions:coreadInjectFunctions+'\n'+storyboardFunctionSource('coreadNormalizeSynonyms')+'\n'+storyboardFunctionSource('coreadCaptureDictMutation')+'\n'+storyboardFunctionSource('coreadBoundDicts')+'\n'+storyboardFunctionSource('coreadSetBoundDicts'),unique:uniqueClean.toString(),plainObject:isPlainObject.toString(),
     dictClick:between('    // 词典册：新建词册',"  });\n  morePage?.addEventListener('change', (e) => {\n    const packInput"),
     injectChange:between("    if (e.target.closest('.sd-reader-dict-booksel'))",'    // 总结提示词预设下拉'),
     injectInput:between("    if (e.target.closest('.sd-reader-inj-recall'))",'    const map = [')});
@@ -253,16 +256,18 @@ try{
     await page.locator('.sd-reader-dict-selector').scrollIntoViewIfNeeded();await page.screenshot({path:fileURLToPath(new URL(`../dist/local-qa/coread-inject-${width}.png`,import.meta.url)),fullPage:true});
     await page.locator('.sd-reader-dict-booksel').selectOption('default');assert.equal(await page.locator('.sd-reader-dictbook-delbtn').count(),0);
     await page.locator('.sd-reader-dict-booksel').selectOption('custom"');
-    await page.locator('.sd-reader-dictbook-bind').tap();assert.deepEqual(await page.evaluate(()=>store.coreadDictBound),['custom"']);
-    await page.locator('.sd-reader-dictbook-bind').tap();assert.deepEqual(await page.evaluate(()=>store.coreadDictBound),[]);
+    assert.equal(await page.locator('.sd-reader-dictbook-bind').textContent(),'用于这本书');
+    await page.locator('.sd-reader-dictbook-bind').tap();await page.waitForFunction(()=>store.dictBound.length===1);assert.deepEqual(await page.evaluate(()=>[store.dictBound,readerDialog.dictBound]),[['custom"'],['custom"']]);
+    assert.equal(await page.locator('.sd-reader-dictbook-bind').textContent(),'解除绑定');
+    await page.locator('.sd-reader-dictbook-bind').tap();await page.waitForFunction(()=>store.dictBound.length===0);assert.deepEqual(await page.evaluate(()=>readerDialog.dictBound),[]);
     await page.locator('.sd-reader-dict-row-edit').tap();await page.locator('.sd-reader-dict-addentry').tap();
     assert.deepEqual(await page.evaluate(()=>calls.entries),[['custom"','关键词<&',['同义词<&']],['custom"','',[]]]);
     await page.locator('.sd-reader-dict-row-del').tap();assert.equal(await page.locator('.sd-reader-dict-row').count(),1);
     await page.evaluate(()=>{confirmAnswer=true;});await page.locator('.sd-reader-dict-row-del').tap();await page.waitForFunction(()=>!Object.keys(memory.dictBooks[1].pairs).length);
     await page.evaluate(()=>{promptAnswer='  重命名  ';});await page.locator('.sd-reader-dictbook-rename').tap();await page.waitForFunction(()=>memory.dictBooks[1].name==='重命名');
-    await page.locator('.sd-reader-dictbook-bind').tap();await page.evaluate(()=>{confirmAnswer=false;});await page.locator('.sd-reader-dictbook-delbtn').tap();assert.equal(await page.evaluate(()=>memory.dictBooks.length),2);
+    await page.locator('.sd-reader-dictbook-bind').tap();await page.waitForFunction(()=>store.dictBound.length===1);await page.evaluate(()=>{confirmAnswer=false;});await page.locator('.sd-reader-dictbook-delbtn').tap();assert.equal(await page.evaluate(()=>memory.dictBooks.length),2);
     await page.evaluate(()=>{confirmAnswer=true;});await page.locator('.sd-reader-dictbook-delbtn').tap();await page.waitForFunction(()=>memory.dictBooks.length===1);
-    assert.deepEqual(await page.evaluate(()=>[coreadCurrentDictId,store.coreadDictBound,calls.confirmations.length]),['default',[],4]);
+    assert.deepEqual(await page.evaluate(()=>[coreadCurrentDictId,store.dictBound,calls.confirmations.length]),['default',[],4]);
     await page.evaluate(()=>{promptAnswer=null;});await page.locator('.sd-reader-dictbook-add').tap();assert.equal(await page.evaluate(()=>memory.dictBooks.length),1);
     await page.evaluate(()=>{promptAnswer=' 新词册 ';});await page.locator('.sd-reader-dictbook-add').tap();await page.waitForFunction(()=>coreadCurrentDictId==='new-fixture');
     assert.equal(await page.locator('.sd-reader-dict-booksel').inputValue(),'new-fixture');assert.equal(await page.evaluate(()=>memory.dictBooks[1].name),'新词册');

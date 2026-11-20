@@ -42,6 +42,15 @@ export function heartExportHtml(theme, data, heart = null, { at = Date.now() } =
     if (at2 < 0) throw new Error('主题页面不完整，无法导出');
     return theme.html.slice(0, at2) + tail + theme.html.slice(at2);
 }
+/** 从一份导出的网页里取回原始资料；不是忆幕导出的、或里面没有资料时说明原因。 */
+export function parseHeartExport(text) {
+    const match = String(text || '').match(/<script type="application\/json" id="yimu-heart-export">([\s\S]*?)<\/script>/);
+    if (!match) throw new Error('这不是忆幕导出的心迹页');
+    let value; try { value = JSON.parse(match[1]); } catch { throw new Error('这份心迹页读不出来'); }
+    if (value?.format !== HEART_EXPORT_FORMAT || value.version !== 1) throw new Error('这不是忆幕导出的心迹页');
+    if (!value.heart || typeof value.heart !== 'object') throw new Error('这份心迹页里没有可并入的内容');
+    return value.heart;
+}
 const pad2 = value => String(value).padStart(2, '0');
 async function inlineImage(url, view) {
     if (!url || typeof view.fetch !== 'function' || typeof view.FileReader !== 'function') return '';

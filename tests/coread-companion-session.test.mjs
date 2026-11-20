@@ -299,3 +299,42 @@ test('an active reading lock cannot open another book or silently replace a miss
   await e.context.coreadOpenBook('other');assert.equal(e.context.readerView,null);
   await e.context.coreadOpenBook('book');assert.equal(e.context.readerView,null);assert.match(e.notices.at(-1),/书友已不存在/);
 });
+
+test('dictionary binding is saved in the archive: it survives reopening, differs per companion, and ignores the ST chat',async()=>{
+  const e=fixture(),records=new Map();let failing=false;
+  e.context.COREAD_DEFAULT_DICT='dict-default';
+  vm.runInContext(['coreadLoadDialog','coreadBoundDicts','coreadSetBoundDicts'].map(section).join('\n'),e.context);
+  e.context.blobStore.getReaderChat=async key=>structuredClone(records.get(key));
+  e.context.blobStore.putReaderChat=async(key,value)=>{if(failing)throw Error('disk full');records.set(key,structuredClone(value));};
+  const bound=()=>Array.from(e.context.coreadBoundDicts());
+  await e.context.coreadOpenBook('book');await e.context.coreadLoadDialog('book');
+  const aBucket=e.dialog().bucket;
+  assert.deepEqual(bound(),['dict-default'],'a new archive uses the default dictionary only');
+  assert.equal(await e.context.coreadSetBoundDicts(['dict-default','places']),true);
+  assert.deepEqual(records.get(aBucket).dictBound,['dict-default','places'],'the choice is written into the archive record');
+
+  await e.context.coreadApplyIdentityChoice('char','b.png');await e.context.coreadLoadDialog('book');
+  const bBucket=e.dialog().bucket;assert.notEqual(bBucket,aBucket);
+  assert.deepEqual(bound(),['dict-default'],'another companion reading the same book starts from its own default');
+  assert.equal(await e.context.coreadSetBoundDicts([]),true);
+  assert.deepEqual(records.get(bBucket).dictBound,[]);assert.deepEqual(records.get(aBucket).dictBound,['dict-default','places'],'and does not change the first archive');
+
+  e.host.chatId='another-st-chat';
+  await e.context.coreadApplyIdentityChoice('char','a.png');await e.context.coreadLoadDialog('book');
+  assert.equal(e.dialog().bucket,aBucket);assert.deepEqual(bound(),['dict-default','places'],'reopened under another ST chat: same archive, same dictionaries');
+  await e.context.coreadApplyIdentityChoice('char','b.png');await e.context.coreadLoadDialog('book');
+  assert.deepEqual(bound(),[],'released on purpose stays empty after reopening');
+
+  failing=true;
+  assert.equal(await e.context.coreadSetBoundDicts(['places']),false,'a save that failed is reported as failed');
+  assert.deepEqual(bound(),[],'and the list in memory is put back');assert.deepEqual(records.get(bBucket).dictBound,[]);
+  assert.equal(e.context.coreadMemoryWrites,0);failing=false;
+
+  // A record saved before the field existed, and one whose field is damaged: both read as the default, neither crashes.
+  await e.context.coreadApplyIdentityChoice('char','a.png');
+  const old={...records.get(aBucket)};delete old.dictBound;records.set(aBucket,old);
+  await e.context.coreadLoadDialog('book');assert.deepEqual(bound(),['dict-default']);
+  await e.context.coreadSaveDialog();assert.equal('dictBound' in records.get(aBucket),false,'saving does not invent a choice');
+  records.set(aBucket,{...old,dictBound:'places'});await e.context.coreadLoadDialog('book');assert.deepEqual(bound(),['dict-default']);
+  records.set(aBucket,{...old,dictBound:['places',null,3]});await e.context.coreadLoadDialog('book');assert.deepEqual(bound(),['places']);
+});

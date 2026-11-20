@@ -2,6 +2,7 @@
 // 这里只发起动作与显示结果；真正的清理、删除与记录都在 runtime／服务端。文案只说动作与结果。
 import { createYimuIcon } from './icons.mjs';
 import { shownFloor } from './contract.mjs';
+import { parseHeartExport } from './heart-view.mjs';
 
 const pad = value => String(value).padStart(2, '0');
 const clock = at => { const d = new Date(at); return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
@@ -19,7 +20,7 @@ const SCOPES = [
     { id: 'local', label: '本机记录与向量缓存', confirm: false, payload: ['clearLocal', {}] },
 ];
 
-export function mountManageView({ document = globalThis.document, journal = null, backup = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''] } = {}) {
+export function mountManageView({ document = globalThis.document, journal = null, backup = null, onAction = async () => {}, describeSkip = reason => [String(reason || ''), ''], onNotice: notify = () => {} } = {}) {
     if (!document?.createElement) throw new TypeError('忆幕管理页缺少文档容器');
     const el = (tag, className, text) => {
         const node = document.createElement(tag);
@@ -107,8 +108,17 @@ export function mountManageView({ document = globalThis.document, journal = null
     more.type = 'button'; more.title = '更多'; more.setAttribute('aria-label', '更多文件操作'); more.setAttribute('aria-expanded', 'false');
     more.append(createYimuIcon('more', { document }));
     more.addEventListener('click', () => { moreOpen = !moreOpen; renderFiles(); });
+    // 导入一份导出的心迹页（网页文件）：里面的日记、心迹、年表并进当前聊天，按条去重。
+    const heartFile = el('input'); heartFile.type = 'file'; heartFile.accept = '.html,text/html'; heartFile.hidden = true; heartFile.setAttribute('aria-label', '选择导出的心迹页');
+    heartFile.addEventListener('change', async () => {
+        const file = heartFile.files?.[0]; heartFile.value = '';
+        if (!file) return;
+        try { await run('heartImport', { heart: parseHeartExport(await file.text()) }); }
+        catch (error) { notify(error?.message || '心迹页没有导入成', 'error'); }
+    });
+    const importHeart = iconAction('导入心迹页', 'loveletter', async () => { moreOpen = false; heartFile.click(); });
     const moreTray = el('div', 'ym-manage-more-tray'); moreTray.hidden = true;
-    moreTray.append(importFiles, exportCurrent, selectToggle);
+    moreTray.append(importFiles, importHeart, exportCurrent, selectToggle); // 文件选择框不挂进页面，点图标时直接唤起
     const moreGroup = el('div', 'ym-manage-more'); moreGroup.append(moreTray, more);
     filesCard.append(head('记忆文件', filesNote, selectAll, exportPicked, removePicked, moreGroup, reload));
     if (backup?.node) filesCard.append(backup.node);
@@ -234,12 +244,13 @@ export function mountManageView({ document = globalThis.document, journal = null
         selectToggle.hidden = !selectable().length && !selecting;
         selectToggle.setAttribute('aria-pressed', String(selecting));
         // 多选时「更多」让位，只留「多选」这一个图标用来退出。
-        more.hidden = selecting || !backup && !selectable().length;
+        more.hidden = selecting || !backup && !selectable().length && !state.document;
         if (more.hidden) moreOpen = false;
         more.setAttribute('aria-expanded', String(moreOpen));
         moreTray.hidden = !moreOpen && !selecting;
         selectAll.hidden = removePicked.hidden = exportPicked.hidden = !selecting;
         importFiles.hidden = exportCurrent.hidden = selecting || !backup; reload.hidden = selecting;
+        importHeart.hidden = selecting || !state.document;
         importFiles.disabled = !backup?.canImport(); exportCurrent.disabled = !backup?.canExport();
         removePicked.disabled = exportPicked.disabled = !chosen;
         filesNote.textContent = selecting ? `已选 ${chosen} 个` : !loaded ? manage.loading ? '正在读取…' : manage.error || ''

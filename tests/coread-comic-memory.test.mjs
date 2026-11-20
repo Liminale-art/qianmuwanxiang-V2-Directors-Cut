@@ -313,7 +313,7 @@ test('a per-book record is not listed under any chat, survives "keep memory" del
   assert.equal(c.readerBucketScope('chat-a::book', { bookId: 'book' }), 'chat-a');
   assert.equal(c.readerBucketScope('comic::book', { bookId: 'book', kind: 'comic' }), '', 'never offered in clean-up by chat');
   assert.equal(c.readerBucketScope('comic::book', {}), '');
-  assert.match(store, /if \(bookRecord\) \{ if \(deleteMemory\) watch\(target\.delete\(cursor\.key\)\); \}\s*else if \(storeName === STORE_CHATS && !deleteMemory\)/,
+  assert.match(store, /if \(bookRecord\) \{ if \(deleteMemory\) \{ watch\(target\.delete\(cursor\.key\)\); chatKeys\.push\(cursor\.key\); \} \}\s*else if \(storeName === STORE_CHATS && !deleteMemory\)/,
     'deleting a book keeps the record with retained memory, removes it with deleted memory, and never archives it as a dialogue');
   // 整包导入：页稿照常写回，但不计作「对话」。
   const puts = [], progress = createCoreadImportProgress();

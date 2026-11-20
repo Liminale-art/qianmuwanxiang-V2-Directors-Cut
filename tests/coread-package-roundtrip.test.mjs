@@ -15,7 +15,7 @@ function fixture(){
     ['novel',{fullText:'Moonlight ⟦img:1⟧',chapters:[{start:0,title:'one'}],sig:'original',comicDescriptions:{}}],
     ['comic',{fullText:'',chapters:[],sig:'comic',comicDescriptions:{1:'window'}}],
   ]);
-  const chats=new Map(['role-a','role-b'].map((role,index)=>[role+'::novel',{messages:[{text:role}],slices:[{memory:role}],cursor:index+3}]));
+  const chats=new Map(['role-a','role-b'].map((role,index)=>[role+'::novel',{messages:[{text:role}],slices:[{memory:role}],cursor:index+3,dictBound:index?[]:['dict-default','places']}]));
   const vectors=new Map([...chats.keys()].map(key=>[key,{model:'synthetic',vecs:{[key]:[1,2,3]}}]));
   const images=[{key:'novel::1',blob:new Blob(['illustration'],{type:'image/png'})},{key:'comic::1',blob:new Blob(['comic page'],{type:'image/png'})}];
   const settings={apiKey:'synthetic-source',coread:{books,bookId:'novel',assistant:{apiProfileId:'source-only'}}};

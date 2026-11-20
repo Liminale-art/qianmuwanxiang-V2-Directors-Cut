@@ -8,6 +8,7 @@ import {createCoreadImportProgress,coreadImportProgressText,coreadPackageRestore
 function fixture(){
   const notices=[],calls=[],levels=[];const c=vm.createContext({configRestoreGuard,createCoreadImportProgress,coreadImportProgressText,coreadPackageRestoreMessage,finishCoreadPackageImport,settings:{coread:{}},storyboardAdmissionEpoch:1,toast:(m,level)=>{notices.push(m);levels.push(level);},
     readCoreadPackageFile:async()=>({books:[]}),confirmDialog:async()=>true,blobStore:{blobStoreAvailable:()=>true},isPlainObject:()=>false,
+    coverRequests:[],readerCoverSync:{request(...args){c.coverRequests.push(args);}},
     base64ToBlob(){},MODULE_NAME:'fixture',saveSettings(){calls.push('save');},renderModal(){calls.push('render');},rerenderMoreIfOpen(){},
     applyCoreadPackageData:async()=>{calls.push('write');return {ok:0,chatOk:0,imageOk:0,vectorOk:0,audioOk:0,logOk:0};}});
   c.coread=()=>c.settings.coread;c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy)||(includeCleanup&&c.storageCleanupSession.busy),...c.competingActivity});
@@ -53,6 +54,7 @@ test('reader baseline compares only admission and does not reject its own succes
   };
   await e.run();assert.equal(checks,2,'do not serialize the shelf for every transaction or written original');
   assert.deepEqual(e.calls,['save','save','render']);assert.equal(e.c.settings.coread.books[0].progress,12);
+  assert.deepEqual(e.c.coverRequests,[[]],'covers that came with the package are sent to the account in one full round');
   assert.equal(e.levels.at(-1),'success');
 });
 

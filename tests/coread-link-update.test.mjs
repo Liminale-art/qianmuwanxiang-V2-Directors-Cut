@@ -185,7 +185,7 @@ test('the input popup takes custom buttons and a placeholder without changing it
   assert.match(body, /new Popup\(header, context\.POPUP_TYPE\.INPUT, String\(defaultValue \|\| ''\), \{ okButton, cancelButton \}\)/);
   assert.match(body, /if \(placeholder && popup\.mainInput\) popup\.mainInput\.placeholder = placeholder;/);
   assert.match(source, /if \(linkCapture\) void coreadOfferLinkUpdate\(linkCapture\);/);
-  assert.match(source, /readDictionary: \(\) => coreadActiveDict\(\[\]\)/);
+  assert.match(source, /readDictionary: bound => coreadDictFor\(bound\),/);
 });
 
 test('runLink is what the memory page button runs: one confirmation to link, the update dialog once linked', async () => {

@@ -18,7 +18,7 @@ function identity(item) {
     return [item.key, item.bookId, item.scope, item.persona, item.avatar];
 }
 
-/** getState returns a live settings owner plus metadata only; readRecord is called solely after consent. */
+/** getState returns a live settings owner plus metadata only; readRecord is called solely after consent and returns {bookId, slices, dictBound?}. */
 export function createYimuCompanionBridge({getState, resolveAccount, listKeys, readRecord, readDictionary = () => null, hash = fingerprint} = {}) {
     let mounted = null, epoch = 0, consumer = null, link = null;
     const accountName = async () => {
@@ -85,10 +85,11 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         }
         return unique(list, 1, 12);
     }
-    // The title plus the bound dictionary's names that this book's shared memories actually use.
-    function bookTerms(title, entries) {
+    // The title plus the names, from the dictionaries this archive uses, that its shared memories actually mention.
+    // `bound` is the archive's own list (record.dictBound); the reader decides what an unset list means.
+    function bookTerms(title, entries, bound) {
         let dictionary = null;
-        try { dictionary = readDictionary(); } catch { dictionary = null; }
+        try { dictionary = readDictionary(Array.isArray(bound) ? bound.filter(id => typeof id === 'string') : undefined); } catch { dictionary = null; }
         const body = entries.map(entry => `${entry.text}\n${entry.keywords.join('\n')}`).join('\n'), list = [title];
         for (const [canon, aliases] of Object.entries(dictionary && typeof dictionary === 'object' ? dictionary : {})) {
             const group = [canon, ...(Array.isArray(aliases) ? aliases : [])].map(word).filter(Boolean);
@@ -137,7 +138,7 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         const total = Number(meta?.charCount) || 0, live = state.boundaries?.[item.bookId];
         const label = word(readLabel).slice(0, 60) || (live?.readTo === confirmedReadTo && word(live.label).slice(0, 60))
             || (total > 0 ? `${Math.max(0, Math.min(100, Math.round(confirmedReadTo / total * 100)))}%` : '');
-        const snapshot = {version: 2, account: context.account, ...item, confirmedReadTo, readLabel: label, terms: bookTerms(item.title, entries),
+        const snapshot = {version: 2, account: context.account, ...item, confirmedReadTo, readLabel: label, terms: bookTerms(item.title, entries, record.dictBound),
             evidence: 'user-confirmed-snapshot', entries, omitted};
         delete snapshot.readTo; delete snapshot.ownership;
         snapshot.hash = await hash(snapshot);

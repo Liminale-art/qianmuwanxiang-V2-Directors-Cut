@@ -1022,6 +1022,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             notice('已合订为日记', 'success');
             return true;
         }
+        if (type === 'heartImport') {
+            const before = state.document?.heart || { impressions: [], thoughts: [], events: [] };
+            await change(binding, { id: id(), type: 'heartImport', heart: payload.heart, at: Date.now() });
+            const after = state.document?.heart || before, count = key2 => (after[key2]?.length || 0) - (before[key2]?.length || 0);
+            const added = count('impressions') + count('thoughts') + count('events');
+            notice(added > 0 ? `已并入 ${added} 条` : '这份里的内容都已经有了', 'success');
+            return true;
+        }
         if (type === 'heartRemove') {
             await change(binding, { id: id(), type: 'heartRemove', kind: payload.kind, itemId: payload.itemId, at: Date.now() });
             return true;

@@ -690,3 +690,21 @@
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch::after { content: '印'; inset: 0; width: auto; height: auto; display: grid; place-items: center; background: none; border-radius: 0; font: 13px/1 var(--ym-font); color: transparent; transform: none; }
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked { background: var(--ym-zhu); border-color: var(--ym-zhu); }
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked::after { transform: none; background: none; color: var(--ym-on-zhu); }
+/* 纸间 · 书页的骨架（照样稿）：版框只框住正文，右缘留出书口，页签竖排写在书口上；左侧是装订线与线孔。四角一律直角。 */
+.ym-dialog[data-ym-theme="editorial"] { border: 0 !important; outline: 0; border-radius: 0 !important; --ym-mouth: 34px; --ym-spine: 20px; }
+.ym-dialog[data-ym-theme="editorial"] .ym-shell { position: relative; padding: 12px calc(var(--ym-mouth) + 12px) 12px calc(var(--ym-spine) + 12px); }
+.ym-dialog[data-ym-theme="editorial"] .ym-shell::before, .ym-dialog[data-ym-theme="editorial"] .ym-shell::after { content: ''; position: absolute; pointer-events: none; z-index: 2; }
+.ym-dialog[data-ym-theme="editorial"] .ym-shell::before { inset: 6px var(--ym-mouth) 6px var(--ym-spine); border: 2px solid var(--ym-ink); }
+.ym-dialog[data-ym-theme="editorial"] .ym-shell::after { inset: 11px calc(var(--ym-mouth) + 5px) 11px calc(var(--ym-spine) + 5px); border: 1px solid color-mix(in srgb, var(--ym-ink) 70%, transparent); }
+.ym-dialog[data-ym-theme="editorial"]::before { content: ''; position: absolute; left: 6px; top: 26px; bottom: 26px; width: 9px; pointer-events: none; --ym-thread: color-mix(in srgb, var(--ym-ink) 55%, var(--ym-surface));
+  background: radial-gradient(circle at 4.5px 4.5px, var(--ym-surface) 2.6px, var(--ym-thread) 2.8px 4.2px, transparent 4.4px) 0 0 / 9px 33.33% repeat-y, linear-gradient(var(--ym-thread), var(--ym-thread)) 4px 0 / 1.5px 100% no-repeat; }
+.ym-dialog[data-ym-theme="editorial"] .ym-header { padding-inline: 14px 8px; border-bottom: 1px solid var(--ym-ink); }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-shell { position: absolute; right: 0; top: 40px; width: var(--ym-mouth); padding: 0; overflow: visible; z-index: 3; }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav { flex-direction: column; gap: 0; overflow: visible; }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-button { flex: 0 0 auto; min-height: 0; padding: 16px 0 10px; border-radius: 0; writing-mode: vertical-rl; letter-spacing: .3em; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-button + .ym-nav-button { border-top: 1px solid var(--ym-rule); }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-button[aria-selected="true"] { color: var(--ym-ink); }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-button[aria-selected="true"] .ym-nav-label { transform: none; }
+.ym-dialog[data-ym-theme="editorial"] .ym-nav-mark { top: 0; bottom: auto; width: 18px; height: 9px; transform: translate(-50%, 0); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+@media (max-width: 760px) { .ym-dialog[data-ym-theme="editorial"] { --ym-mouth: 28px; --ym-spine: 14px; } .ym-dialog[data-ym-theme="editorial"] .ym-shell { padding: 10px calc(var(--ym-mouth) + 8px) 10px calc(var(--ym-spine) + 8px); } .ym-dialog[data-ym-theme="editorial"]::before { left: 2px; } .ym-dialog[data-ym-theme="editorial"] .ym-nav-button { font-size: 11px; padding: 14px 0 8px; } }
+#yimu-dialog[data-ym-theme="editorial"] { border-radius: 0 !important; }

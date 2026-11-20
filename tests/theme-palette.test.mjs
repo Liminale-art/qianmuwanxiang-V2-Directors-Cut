@@ -116,10 +116,8 @@ test('the selected accent does not recolor base surfaces, typography, borders, o
         const red = createThemePalette({ ...options, accent: '#ff0000' });
         const blue = createThemePalette({ ...options, accent: '#0000ff' });
         for (const token of fixedTokens) assert.equal(red.css[token], blue.css[token], token);
-        // 纸间是线装书页：强调色只有朱砂一种，不随所选强调色变；极简照旧跟着变。
         for (const token of ['--qm-accent', '--qm-accent-soft', '--qm-glow-1', '--qm-glow-2']) {
-            if (options.theme === 'editorial') assert.equal(red.css[token], blue.css[token], token);
-            else assert.notEqual(red.css[token], blue.css[token], token);
+            assert.notEqual(red.css[token], blue.css[token], token);
         }
     }
 });
@@ -139,15 +137,15 @@ test('glass light uses a white canvas, neutral near-white surfaces, and the exis
     assert.equal(css['--qm-glow-2'], '#d5ddfa');
 });
 
-test('editorial paper with its fixed cinnabar accent, and glass night, keep their color tokens', () => {
+test('editorial palettes and glass night preserve their existing color tokens', () => {
     const preserved = [
         {
             theme: 'editorial', mode: 'light',
             css: {
                 '--qm-bg': '#f5f1e8', '--qm-surface': '#fbf8f1', '--qm-raised': '#fefdfa',
                 '--qm-ink': '#24201c', '--qm-muted': '#615b55', '--qm-line': '#cdc8be',
-                '--qm-accent': '#b5322a', '--qm-on-accent': '#ffffff', '--qm-accent-soft': '#ffdbd6',
-                '--qm-glow-1': '#f0c5bf', '--qm-glow-2': '#e9dcc4',
+                '--qm-accent': '#005f73', '--qm-on-accent': '#ffffff', '--qm-accent-soft': '#d1eaf1',
+                '--qm-glow-1': '#bdd6de', '--qm-glow-2': '#daddea',
                 '--qm-danger': '#c13234', '--qm-on-danger': '#ffffff',
             },
         },
@@ -156,8 +154,8 @@ test('editorial paper with its fixed cinnabar accent, and glass night, keep thei
             css: {
                 '--qm-bg': '#1a1612', '--qm-surface': '#231e1a', '--qm-raised': '#2e2924',
                 '--qm-ink': '#e9e6df', '--qm-muted': '#ada9a0', '--qm-line': '#464039',
-                '--qm-accent': '#d8574c', '--qm-on-accent': '#000000', '--qm-accent-soft': '#4a2c28',
-                '--qm-glow-1': '#6c4843', '--qm-glow-2': '#493e2a',
+                '--qm-accent': '#56a1b7', '--qm-on-accent': '#000000', '--qm-accent-soft': '#24393f',
+                '--qm-glow-1': '#41575d', '--qm-glow-2': '#3d3f49',
                 '--qm-danger': '#ff7871', '--qm-on-danger': '#000000',
             },
         },
@@ -194,7 +192,7 @@ test('the themes have distinct bases, low-chroma editorial paper, and ordered su
 });
 
 test('neutral seeds produce neutral accent-derived roles instead of a spurious hue', () => {
-    for (const options of COMBINATIONS.filter(item => item.theme !== 'editorial')) for (const accent of ['#000', '#fff', '#777']) {
+    for (const options of COMBINATIONS) for (const accent of ['#000', '#fff', '#777']) {
         const { css } = createThemePalette({ ...options, accent });
         for (const token of ['--qm-accent', '--qm-accent-soft', '--qm-glow-1', '--qm-glow-2']) {
             const channels = css[token].slice(1).match(/../g);

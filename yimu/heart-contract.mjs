@@ -48,7 +48,7 @@ export function validateHeart(value) {
 }
 export const emptyHeart = () => ({ impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 0 });
 export const heartOf = document => document?.heart ? clone(document.heart) : emptyHeart();
-export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove']);
+export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport']);
 
 /** 应用一次心迹操作，直接改 doc（调用方已复制过）。opId 用来给新条目编号。 */
 export function applyHeartOperation(doc, op, opId) {
@@ -95,6 +95,12 @@ export function applyHeartOperation(doc, op, opId) {
             heart.thoughts.sort((a, b) => a.floor - b.floor || a.at - b.at);
         }
         heart.thoughtFloor = Math.max(heart.thoughtFloor, floor);
+    } else if (op.type === 'heartImport') {
+        // 把一份导出的心迹页并进来：按条去重，已有的不覆盖。
+        need(op.heart && typeof op.heart === 'object', '没有可并入的心迹资料');
+        const merged = mergeHeart(heart, op.heart);
+        doc.heart = merged;
+        return;
     } else if (op.type === 'heartRemove') {
         const key = { impression: 'impressions', thought: 'thoughts', event: 'events' }[op.kind];
         need(key, '要删除的心迹类别无效');

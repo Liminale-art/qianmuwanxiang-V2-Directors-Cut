@@ -18,7 +18,7 @@ function fixture(result, kind = 'chat') {
     openStorageChatCleanupDialog:async()=>selected,openStorageCleanupDialog:async()=>['__diagnostics__'],blobStore:{clearChatScopedStorage:async entries=>{calls.clear++;assert.equal(entries,selected);return result;},clearStorageItems:async()=>{calls.clear++;return result;}},
     getChatKey:()=> 'a',reconcileClearedStorageItems:names=>{reconciled.push([...names]);return {chatMetadataChanged:false};},saveSettings(){calls.save++;},saveMetadata:async()=>{calls.metadata++;},
     refreshStorageInventory:async()=>{calls.refresh++;},toast:(...args)=>notices.push(args),formatStorageBytes:()=> '0 B'}));
-  vm.runInContext([source('ensureStorageScanCurrent'),source('storageScanForCleanup'),source('bindStorageManagementEvents')].join('\n'),c);
+  vm.runInContext([source('ensureStorageScanCurrent'),source('storageScanForCleanup'),source('bindStorageManagementEvents'),source('coreadShelfBookIds')].join('\n'),c);
   c.storageCleanupSession=createStorageCleanupSession({owner:()=>c.settings,scope:()=>c.getChatKey(),epoch:()=>c.storyboardAdmissionEpoch});
   const root=card.root;
   c.bindStorageManagementEvents(root);
@@ -131,7 +131,9 @@ test('a newly started task permanently invalidates the old cleanup, even after t
 test('orphan cleanup receives the initiating session, not an unguarded background delete',async()=>{
   const e=fixture({cleared:[],failed:[]},'module');let checked=false;
   e.c.openStorageCleanupDialog=async()=>['__orphan_reader_blobs__'];
+  e.c.settings.coread={books:[{id:'book1'},{id:'book2'},{}]};
   e.c.blobStore.clearOrphanedReaderBlobs=async(session)=>{
+    assert.deepEqual(Array.from(session.shelfBookIds),['book1','book2'],'covers of books still on the shelf are named so they are kept');
     session.check();e.root.isConnected=false;
     assert.throws(()=>session.check(),/后续操作已停止/);checked=true;return {cleared:[],failed:[]};
   };

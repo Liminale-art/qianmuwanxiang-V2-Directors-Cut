@@ -85,6 +85,21 @@ test('renaming travels; removing here is not undone and does not remove it elsew
   assert.equal((await wiped.sync.run()).downloaded, 2);
 });
 
+test('favourites never delete across devices: the store has no delete, so remove() refuses and rounds count nothing removed', async () => {
+  const account = fakeAccount(), a = device(account), b = device(account);
+  for (const [id, text] of [['fav:one', '一'], ['fav:two', '二'], ['fav:three', '三']]) a.rows.set(id, { blob: clip(text), meta: {}, label: id, createdAt: 1 });
+  assert.deepEqual(await a.sync.run(), { uploaded: 3, downloaded: 0, dismissed: 0, conflicts: 0, unchanged: 0, removed: 0, tombstoned: 0 });
+  assert.deepEqual(await b.sync.run(), { uploaded: 0, downloaded: 3, dismissed: 0, conflicts: 0, unchanged: 0, removed: 0, tombstoned: 0 });
+  a.rows.delete('fav:two');
+  assert.deepEqual(await a.sync.remove(['fav:two']), { registered: false, synced: [], pending: ['fav:two'] });
+  assert.deepEqual(await a.sync.run(), { uploaded: 0, downloaded: 0, dismissed: 1, conflicts: 0, unchanged: 2, removed: 0, tombstoned: 0 });
+  const entry = account.slots.get(TTS_FAVORITES_INDEX_SLOT).value.entries[accountMirrorSlot('tts-favorite-', 'fav:two')];
+  assert.equal(entry.deleted, undefined, 'the account copy is not turned into a tombstone');
+  assert.ok(account.slots.get(accountMirrorSlot('tts-favorite-', 'fav:two')).value.body, 'and still carries the clip');
+  assert.deepEqual(await b.sync.run(), { uploaded: 0, downloaded: 0, dismissed: 0, conflicts: 0, unchanged: 3, removed: 0, tombstoned: 0 });
+  assert.equal(b.rows.size, 3);
+});
+
 test('clips that cannot be carried are left local, and a damaged account copy is ignored', async () => {
   const account = fakeAccount(), a = device(account), b = device(account);
   a.rows.set('fav:empty', { blob: clip(''), meta: {}, label: '', createdAt: 1 });

@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.581';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.582';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,6 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.582';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -27,11 +28,13 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.581';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.581';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.581';
+import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.582';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.582';
+import { createQuickDial, bindQuickDialReorder } from './qianmu-quick-dial.js?v=1.59.582';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.582';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.582';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.581';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.582';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -60,8 +63,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.581';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.581';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.582';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.582';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -91,7 +94,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.581';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.582';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -334,7 +337,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.581';
+const VERSION = '1.59.582';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -380,7 +383,8 @@ function regexGroupsWrite(value) {
 }
 const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:qianmuToastLook});
-const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record)},resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
+const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record),delete:async key=>{await blobStore.deleteReaderChat(key);await blobStore.deleteReaderVectors(key);}},onRemoved:keys=>coreadAccountRemovedChats(keys),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
+const readerCoverSync=createReaderCoverSync({blobStore,onDownloaded:ids=>coreadAccountCovers(ids,true),onRemoved:ids=>coreadAccountCovers(ids,false),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const ttsFavoritesSync=createTtsFavoritesSync({blobStore,resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const sidecars=createSettingsSidecars({resolveNamespace:resolveImageAccountNamespace,requestSave:()=>saveSettings(),notify:message=>toast(message,'info'),onRestored:()=>rerenderIfOpen()}),fontFaces=sidecars.fontFaces;
 const fontLibrary=fontFaces.gate(createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}}),()=>settings);
@@ -391,9 +395,9 @@ const yimuCompanionBridge = createYimuCompanionBridge({
     // IDB stores an archive as one value. Only persisted slice fields leave this adapter;
     // dialogue messages, assistants, books and connection settings are never consumed.
     const rec = await blobStore.createReaderPackageReader().getReaderChat(key);
-    return rec ? {bookId:rec.bookId, slices:rec.slices} : null;
+    return rec ? {bookId:rec.bookId, slices:rec.slices, dictBound:rec.dictBound} : null;
   },
-  readDictionary: () => coreadActiveDict([]),
+  readDictionary: bound => coreadDictFor(bound),
 });
 let chatWriteGuard = null, chatWriteFetchBefore = null, chatSaveFollowup = null;
 let chatRecoveryClient = null, chatRecoveryPanel = null, chatRecoveryLoading = null, chatRecoveryNamespace = null;
@@ -1074,8 +1078,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   proseLayout: { ...PROSE_LAYOUT_DEFAULTS },
   quickWheelEnabled: true,
   quickWheelScheme: 'custom',   // 兼容旧配置字段；蜂巢快捷盘从 1.27 起仅使用用户自定义入口
-  quickWheelCustomOrder: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
-  quickWheelCustomEnabled: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor'],
+  quickWheelCustomOrder: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor', 'usage'],
+  quickWheelCustomEnabled: ['dashboard', 'focus', 'notes', 'tts', 'coread', 'theater', 'imagegen', 'floor', 'usage'],
   quickWheelDockedPlugins: [],
   quickWheelCustomExpanded: true,
   regexBindingDefaults: {},   // C-11d：正则绑定的全局默认基线 { 'global:<id>'|'preset:<预设名>:<id>': { enabled } }，每聊天覆盖存 chat_metadata
@@ -1331,7 +1335,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       spoilerProtection: true,      // 共读记忆防剧透：按每条切片形成时的阅读水位过滤后文章节（默认开）
       rerankTopN: 4,               // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
-      // 绑定到聊天(chatStore.coreadDictBound)后并入召回归一——主线与伴读对话走同一召回路径·天然共有。
+      // 哪份伴读档案用哪些词册，记在档案自己的 dictBound 里（见 coreadBoundDicts），随档案走。
       dictBooks: [],
       // 书籍蒸馏提示词（「整理要求」段·空=用内置默认 DEFAULT_DISTILL_TEXT_PROMPT）。
       // 不同文体题材精炼方式不同·用户可按在读书籍调整（如议论文重观点、小说重情节转折）。
@@ -5553,6 +5557,7 @@ function scheduleExtraPreload() {
       quiet(() => warmStoryboardFeatures()),
       quiet(() => COREAD_ENABLED ? featureRuntime.load('readerCore') : null),
       quiet(() => COREAD_ENABLED ? readerChatSync.run() : null),
+      quiet(() => COREAD_ENABLED ? readerCoverSync.run() : null),
       quiet(() => ttsFavoritesSync.run()),
       // 正文收藏：首开要现场下载 7 个脚本（3 层）＋4 个样式（2 层），全部到齐才出面板——这里提前暖好。
       quiet(async () => {
@@ -5852,6 +5857,7 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
+  if (id === 'usage') return openUsagePanel({ getData: () => { usageTracker?.tick(); return usageTracker?.data; }, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
   if (id === 'assistant') {
     const timed = globalThis.qianmuPerf?.start('场外特助'), opening = proseFloorTools.openAssistant();
     void Promise.resolve(opening).then(() => timed?.('面板就绪'), () => {});
@@ -7951,7 +7957,7 @@ async function collectStorageInventory(onProgress) {
   const jobs=[
     ()=>storageApi?.estimate?.().catch(() => null) || Promise.resolve(null),
     ()=>blobStore.estimateBlobStoreUsage(),
-    ()=>blobStore.auditOrphanedReaderBlobs(),
+    ()=>blobStore.auditOrphanedReaderBlobs({shelfBookIds:(settings?.coread?.books||[]).map(book=>book?.id)}),
     ()=>featureRuntime.load('imageAdmission').then(module => module.manageImageAdmissionStorage()).catch(error => ({ bytes: 0, count: 0, error: error?.message || '生图防重记录暂不可读取' })),
     ()=>storyboardManageImageChannels().catch(error => ({ bytes: 0, count: 0, error: error?.message || 'NAI 连接协调记录暂不可读取' })),
     ()=>storyboardImageServiceRuntime().then(client => client.manage()).catch(error => ({ bytes: 0, count: 0, error: error?.message || '增强生图领取记录暂不可读取' })),
@@ -8528,7 +8534,7 @@ function bindStorageManagementEvents(root) {
       const storageResult = await blobStore.clearStorageItems(stores, cleanup); cleanup.check();
       const reconciled = reconcileClearedStorageItems(storageResult.cleared);
       let orphanResult = null;
-      if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs(cleanup);
+      if (selected.includes('__orphan_reader_blobs__')) orphanResult = await blobStore.clearOrphanedReaderBlobs({check:()=>cleanup.check(),shelfBookIds:coreadShelfBookIds()});
       cleanup.check();
       if (selected.includes('__diagnostics__')) {
         settings.logHistory = [];
@@ -26827,7 +26833,7 @@ function coreadRecallSlices(queryText, n, excludeIds, pool) {
   if (excludeIds && excludeIds.size) slices = slices.filter((s) => !excludeIds.has(s.id));
   if (!slices.length) return [];
 
-  // 生效词典＝绑定词典册 + 所有切片 synonyms 并集（主线/伴读共用）——查询与每篇文档统一用它归一。
+  // 生效词典＝绑定词典册 + 所有切片 synonyms 并集——查询与每篇文档统一用它归一。
   const globalDict = coreadActiveDict(slices);
   const qNorm = coreadApplySynonyms(queryText, globalDict);
   const qTokens = coreadTokenize(qNorm);
@@ -27206,20 +27212,33 @@ async function coreadRetrieveHits(queryText, n, excludeIds, m, pool) {
   return fused.slice(0, n).map((h) => ({ slice: h.slice, hits: h.slice.keywords || [], score: h.rrf ?? h.rerank ?? 0, ...h }));
 }
 
-// 本聊天绑定的词典册 id 列表（存 chatStore）。
+// 当前伴读档案（书 × 书友 × 人设）用的词典册 id，存在档案的 dictBound 里。没设过时只带默认词典；解绑到空就是空。
 function coreadBoundDicts() {
-  const store = getChatStore();
-  if (!Array.isArray(store.coreadDictBound)) store.coreadDictBound = [];
-  return store.coreadDictBound;
+  return Array.isArray(readerDialog.dictBound) ? readerDialog.dictBound : [COREAD_DEFAULT_DICT];
 }
 
-// 生效检索词典：本聊天绑定的词典册 pairs + 切片自带 synonyms 并集。召回归一与可视化统一走它。
+// 给定档案的词册列表（缺省同上）命中的词册 pairs + 切片自带 synonyms 并集。
+function coreadDictFor(bound, slices = []) {
+  const ids = new Set(Array.isArray(bound) ? bound : [COREAD_DEFAULT_DICT]);
+  const dictPairsList = (coreadMemory().dictBooks || []).filter((d) => ids.has(d.id)).map((d) => d.pairs);
+  return coreadMergeSynonyms([...dictPairsList, ...(slices || []).map((s) => s.synonyms)]);
+}
+
+// 生效检索词典：当前档案绑定的词典册 pairs + 切片自带 synonyms 并集。召回归一与可视化统一走它。
 function coreadActiveDict(slices) {
-  const m = coreadMemory();
-  const bound = new Set(coreadBoundDicts());
-  const dictPairsList = (m.dictBooks || []).filter((d) => bound.has(d.id)).map((d) => d.pairs);
-  const slicePairsList = (slices || []).map((s) => s.synonyms);
-  return coreadMergeSynonyms([...dictPairsList, ...slicePairsList]);
+  return coreadDictFor(coreadBoundDicts(), slices);
+}
+
+// 改当前档案的词册绑定并存档；没存上就退回原样。返回是否存上。
+async function coreadSetBoundDicts(next) {
+  const dialog = readerDialog, had = Object.hasOwn(dialog, 'dictBound'), before = dialog.dictBound;
+  dialog.dictBound = next;
+  coreadMemoryWrites++;
+  let saved = false;
+  try { saved = readerDialog === dialog && await coreadSaveDialog(); }
+  finally { coreadMemoryWrites--; }
+  if (!saved) { if (had) dialog.dictBound = before; else delete dialog.dictBound; }
+  return saved;
 }
 
 // 通用文本输入弹窗：返回用户输入的字符串（取消返回 null）。用于词册命名/重命名。
@@ -27244,14 +27263,14 @@ async function coreadPromptText(title, label, defaultValue = '', { okButton = '�
 // bookId=词册ID，canon=标准词（空=新增），aliases=当前同义词数组。
 function coreadCaptureDictMutation(m, bookId = '', origin = null) {
   const owner = settings, view = readerView, requestId = coreadOpenRequestId;
-  const runtime = globalThis[RUNTIME_LOCK_KEY], chatKey = getChatKey();
+  const runtime = globalThis[RUNTIME_LOCK_KEY], archive = readerDialog.bucket;
   const page = origin?.closest('.sd-reader-morepage') || document.querySelector('#sd-reader-portal .sd-reader-morepage');
   const signature = (book) => book ? JSON.stringify([
     book.id, book.name, Object.entries(coreadNormalizeSynonyms(book.pairs)).sort(([a], [b]) => a.localeCompare(b)),
   ]) : null;
   const baseline = signature((m.dictBooks || []).find((book) => book.id === bookId));
   const isCurrent = () => settings === owner && settings.enabled && settings.coread?.memory === m
-    && readerView === view && coreadOpenRequestId === requestId && getChatKey() === chatKey
+    && readerView === view && coreadOpenRequestId === requestId && readerDialog.bucket === archive
     && !!runtime && globalThis[RUNTIME_LOCK_KEY] === runtime && !!page?.isConnected && !page.hidden
     && (!origin || origin.isConnected);
   const currentBook = () => {
@@ -27679,6 +27698,7 @@ async function coreadLoadDialog(bookId) {
       readerDialog.lastInjected = rec.lastInjected && typeof rec.lastInjected === 'object' ? rec.lastInjected : null;
       readerDialog.pipelineStatus = rec.pipelineStatus && typeof rec.pipelineStatus === 'object' ? rec.pipelineStatus : null;
       if (Array.isArray(rec.comicDismissed)) readerDialog.comicDismissed = rec.comicDismissed;
+      if (Array.isArray(rec.dictBound)) readerDialog.dictBound = rec.dictBound.filter((id) => typeof id === 'string');
       persistentAssistantMessages = Array.isArray(rec.assistantMessages) ? rec.assistantMessages : [];
     }
   } catch (error) {
@@ -27726,6 +27746,7 @@ async function coreadSaveDialog() {
       sliceSchemaVersion: reader.COREAD_SLICE_SCHEMA_VERSION,
       readBoundary: readerDialog.readBoundary,
       ...(readerDialog.comicDismissed?.length ? { comicDismissed: readerDialog.comicDismissed } : {}),
+      ...(Array.isArray(readerDialog.dictBound) ? { dictBound: readerDialog.dictBound } : {}),
       updatedAt: Date.now(),
       names: { char: companionCharName(), user: coreadUserName() },
     });
@@ -29050,6 +29071,39 @@ async function loadShelfCovers(root) {
   }
 }
 
+// 书架里仍有的书：它们的封面随账户同步而来，本机可以没有正文，不算孤儿。
+function coreadShelfBookIds() {
+  return (settings?.coread?.books || []).map((book) => String(book?.id || '')).filter(Boolean);
+}
+
+// 账户同步带来或删掉了封面：丢掉旧的对象地址，开着的书架重新取图。
+function coreadAccountCovers(ids, arrived) {
+  let changed = false;
+  for (const id of ids) {
+    const url = shelfCoverUrls.get(id);
+    if (url) { URL.revokeObjectURL(url); shelfCoverUrls.delete(id); }
+    for (const img of document.querySelectorAll('.sd-reader-cover-img[data-cover]')) {
+      if (img.dataset.cover !== id) continue;
+      img.removeAttribute('src'); img.classList.remove('sd-reader-cover-img-on');
+    }
+    const meta = arrived ? (settings?.coread?.books || []).find((book) => book?.id === id) : null;
+    if (meta && !meta.hasCover) { meta.hasCover = true; changed = true; }
+  }
+  if (changed) saveSettings();
+  if (arrived) void loadShelfCovers(document);
+}
+
+// 账户同步删掉了本机的伴读档案（另一台设备删了书和记忆）。正开着的那份：空闲时清空重渲，忙时不动。
+function coreadAccountRemovedChats(keys) {
+  if (!readerDialog.bucket || !keys.includes(readerDialog.bucket)) return;
+  if (coreadMemoryWrites || coreadIdentitySwitchBusy || coreadDistilling || coreadAutoTextInFlight || dialogBusy || readerAssistantBusy || coreadComicVisionBusy) return;
+  dialogGenToken++;
+  coreadEchoTtl.clear();
+  const bookId = readerDialog.bookId;
+  if (readerView?.bookId === bookId) { void coreadLoadDialog(bookId).then(() => rerenderMoreIfOpen()); return; }
+  readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
+}
+
 /* ── 导入（一期：上传文件，集成在导入按钮；TXT 走编码嗅探，其余格式后续接） ── */
 
 async function coreadImportText(rawText, title = '', author = '', preChapters = null, cover = null, images = null, bookOptions = {}) {
@@ -29078,6 +29132,7 @@ async function coreadImportText(rawText, title = '', author = '', preChapters = 
     try {
       await blobStore.putCover(bookId, new Blob([cover.bytes], { type: cover.mime || 'image/jpeg' }));
       hasCover = true;
+      readerCoverSync.request(bookId);
     } catch (e) { console.warn(`[${MODULE_NAME}] putCover failed`, e); }
   }
   // 书内插图（正文 ⟦img:n⟧ 占位符引用）→ 逐张存 IndexedDB，阅读器渲染时懒取
@@ -29150,7 +29205,7 @@ async function coreadImportComicParsed(parsed, title, refillBookId = '', author 
   // 仅覆写漫画页使用的小序号图片；保留同书对话里使用的大序号附件，避免补全书籍时误删聊天图片。
   await blobStore.putBook(refillBookId, { meta: { title: meta.title, author: meta.author, mode: 'comic' }, fullText: pageText, chapters: parsed.chapters, sig: reader.contentSignature(pageText), comicDescriptions: {} });
   for (const image of parsed.images || []) await blobStore.putReaderImage(refillBookId, image.n, new Blob([image.bytes], { type: image.mime || 'image/jpeg' }));
-  if (parsed.cover?.bytes?.length) await blobStore.putCover(refillBookId, new Blob([parsed.cover.bytes], { type: parsed.cover.mime || 'image/jpeg' }));
+  if (parsed.cover?.bytes?.length) { await blobStore.putCover(refillBookId, new Blob([parsed.cover.bytes], { type: parsed.cover.mime || 'image/jpeg' })); readerCoverSync.request(refillBookId); }
   Object.assign(meta, { mode: 'comic', pageCount: parsed.pageCount, chapterCount: parsed.pageCount, charCount: pageText.length, imageCount: parsed.pageCount, hasCover: true, lastChapterIndex: Math.min(meta.lastChapterIndex || 0, parsed.pageCount - 1) });
   saveSettings();
   toast(`已补全《${meta.title}》：${parsed.pageCount} 页。`, 'success');
@@ -29383,7 +29438,7 @@ async function coreadEditBookInfo(bookId) {
 async function coreadChooseDeleteMemory(label, { isCurrent = () => true } = {}) {
   if (!isCurrent()) return null;
   const title = `是否一并删除${label}的长期记忆？`;
-  const text = '长期记忆默认保留。选择“删除记忆”会清除本机记忆档案；选择“保留记忆”会继续删书。';
+  const text = '长期记忆默认保留。选择“删除记忆”会清除本机和账户里的记忆档案，其他设备下次同步时一并删除；选择“保留记忆”会继续删书。';
   try {
     const context = ctx();
     const Popup = context.Popup;
@@ -29447,15 +29502,17 @@ async function coreadRequestDeleteBooks(bookIds, collectionIds = []) {
   const deleteMemory = ids.length ? await coreadChooseDeleteMemory(bookLabel, { isCurrent: allReady }) : false;
   if (deleteMemory === null || !allReady()) return false;
   let removed = 0;
+  const account = { unregistered: 0, pending: 0 };
   for (const entry of entries) {
     if (!ready(entry) || !collectionsReady()) break;
     try {
-      if (!await coreadDeleteBook(entry.id, { deleteMemory, silent: true, mutation: entry.mutation })) break;
+      if (!await coreadDeleteBook(entry.id, { deleteMemory, silent: true, mutation: entry.mutation, account })) break;
       removed++;
       removedBookIds.add(entry.id);
     } catch (error) {
       console.warn(`[${MODULE_NAME}] delete book interrupted`, error);
       toast('删除过程未完成，请核对书架后再试。', 'warning');
+      coreadReportAccountRemoval(account);
       return entries[0].mutation.isCurrent();
     }
   }
@@ -29470,7 +29527,14 @@ async function coreadRequestDeleteBooks(bookIds, collectionIds = []) {
   }
   // 数量只表示已移除的书架条目，不作为各项缓存清理完成的凭据。
   if (removed) toast(removed === ids.length ? `已从书架移除 ${removed} 本书。` : `已从书架移除 ${removed}/${ids.length} 本书，剩余操作已停止。`, removed === ids.length ? 'info' : 'warning');
+  coreadReportAccountRemoval(account);
   return (removed > 0 || removedCollections > 0) && (entries[0] || collectionEntries[0]).mutation.isCurrent();
+}
+
+// 删书删记忆后账户端没跟上时如实说，不报成已删除。
+function coreadReportAccountRemoval(account) {
+  if (account.unregistered) toast('本机已删除，但没能登记账户端删除，其他设备上的副本不会被删', 'warning');
+  else if (account.pending) toast('本机记忆已删除；账户里的副本暂时没删掉，联网后会自动补删', 'warning');
 }
 
 async function coreadDeleteBook(bookId, options = {}) {
@@ -29503,6 +29567,9 @@ async function coreadDeleteBook(bookId, options = {}) {
     if (result?.status === 'stale') return false;
     if (result?.status !== 'committed') throw new Error('书籍清理未提交');
     localCommitted = true;
+    // 账户端：删记忆时让其他设备一并删除；保留记忆时把改写后的档案传上去。封面跟书走，两种都删。结果在书架状态落定后再看。
+    const accountRemoval = deleteMemory ? readerChatSync.remove(result.chatKeys || []) : (readerChatSync.request(), null);
+    void readerCoverSync.remove([bookId]);
     if (!current()) { toast('本机资源已清理，但书架已变化，未覆盖新状态，请重新打开核对。', 'warning'); return false; }
     // 只卸载这一本书的阅读状态，不经过会再次保存旧会话的通用关闭路径。
     if (readerView?.bookId === bookId) {
@@ -29537,6 +29604,11 @@ async function coreadDeleteBook(bookId, options = {}) {
     }
     saveSettings();
     if (!silent && mutation.isCurrent()) toast(`已从书架移除《${meta.title}》。`, 'info');
+    if (accountRemoval) {
+      const outcome = await accountRemoval, account = options.account || { unregistered: 0, pending: 0 };
+      if (!outcome.registered) account.unregistered++; else if (outcome.pending.length) account.pending++;
+      if (!options.account) coreadReportAccountRemoval(account);
+    }
     return true;
   } catch (error) {
     console.warn(`[${MODULE_NAME}] book cleanup incomplete`, error);
@@ -32732,13 +32804,17 @@ function bindReaderStageEvents(stageRoot) {
       const id = dictDelBtn.dataset.id;
       if (id === COREAD_DEFAULT_DICT) return;
       const mutation = coreadCaptureDictMutation(m, id, dictDelBtn);
-      confirmDialog('删除词册', `确定删除词册「${(m.dictBooks.find(d => d.id === id)?.name || '未命名')}」？词册内所有词条将被删除，且不可恢复。`).then((yes) => {
+      confirmDialog('删除词册', `确定删除词册「${(m.dictBooks.find(d => d.id === id)?.name || '未命名')}」？词册内所有词条将被删除，且不可恢复。`).then(async (yes) => {
         if (!yes || !mutation.currentBook()) return;
+        // 当前档案若用着这本词册，先把它从档案里拿掉并存好，再删词册。
+        if (Array.isArray(readerDialog.dictBound) && readerDialog.dictBound.includes(id)) {
+          if (coreadDistilling || coreadMemoryWrites) { toast(`${COREAD_MEMORY_BUSY}。`, 'info'); return; }
+          if (!await coreadSetBoundDicts(readerDialog.dictBound.filter((x) => x !== id))) { toast('绑定未能保存，请重试', 'warning'); return; }
+          if (!mutation.currentBook()) return;
+        }
         m.dictBooks = (m.dictBooks || []).filter((d) => d.id !== id);
-        const store = getChatStore();
-        store.coreadDictBound = coreadBoundDicts().filter((x) => x !== id);
         if (coreadCurrentDictId === id) coreadCurrentDictId = '';
-        saveSettings(); saveMetadata(); rerenderMore();
+        saveSettings(); rerenderMore();
         toast('已删除词册。', 'info');
       });
       return;
@@ -32751,15 +32827,17 @@ function bindReaderStageEvents(stageRoot) {
       coreadOpenDictEntryDialog(coreadCurrentDictId, '', [], origin).then((r) => { if (r && mutation.isCurrent()) { toast('已添加词条。', 'success'); rerenderMore(); } });
       return;
     }
-    // 词典：绑定/解绑当前选中词册
+    // 词典：当前伴读档案用／不用选中的词册
     if (e.target.closest('.sd-reader-dictbook-bind')) {
       if (!coreadCurrentDictId) return;
-      const store = getChatStore();
-      const list = coreadBoundDicts();
-      const i = list.indexOf(coreadCurrentDictId);
-      if (i >= 0) list.splice(i, 1); else list.push(coreadCurrentDictId);
-      store.coreadDictBound = list; saveMetadata(); rerenderMore();
-      toast(i >= 0 ? '已解除绑定。' : '已绑定至此聊天。', 'success');
+      if (!readerDialog.bucket || !readerDialog.loaded) { toast('档案还在读取，请稍候', 'info'); return; }
+      if (coreadDistilling || coreadMemoryWrites) { toast(`${COREAD_MEMORY_BUSY}。`, 'info'); return; }
+      const id = coreadCurrentDictId, bound = coreadBoundDicts().includes(id);
+      coreadSetBoundDicts(bound ? coreadBoundDicts().filter((x) => x !== id) : [...coreadBoundDicts(), id]).then((saved) => {
+        rerenderMoreIfOpen();
+        if (saved) toast(bound ? '已解除' : '已用于这本书的伴读', 'success');
+        else toast('绑定未能保存，请重试', 'warning');
+      });
       return;
     }
     // 词典行：编辑词条（弹窗）
@@ -33498,6 +33576,7 @@ async function coreadImportDataFile(file, origin) {
     checkBeforeWrite();
     await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, onBookIndexed:saveSettings, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
     check();
+    readerCoverSync.request();   // 包里带来的封面一并送上账户
     finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,
       preparePrefs:()=>coreadMergePackageValue(clone(reader), omitConfigConnections({coread:data.prefs}).coread),
       refresh:()=>{renderModal();rerenderMoreIfOpen();}});
@@ -34721,6 +34800,7 @@ function bindEvents() {
     [types.APP_READY || 'app_ready', appReadyHandler],   // 注水后把悬浮球挪回上次拖动的位置（修偶发回默认位）
     [types.PERSONA_CHANGED || 'persona_changed', personaChangedHandler],   // 冷启动即读 ST 当前头像；切换人设后同步伴读设定
     [types.MESSAGE_RECEIVED || 'message_received', refreshHandler],   // 仅角色回复触发；重 roll/删楼由 refreshHandler 照实重算
+    [types.MESSAGE_SENT || 'message_sent', () => usageTracker?.message()], [types.MESSAGE_RECEIVED || 'message_received', () => usageTracker?.message()],   // 时长统计：记下这个角色最后一次聊天的时间
     [types.MESSAGE_DELETED || 'message_deleted', storyboardMessageDeletedHandler],   // 删楼重判推演注入，并把分镜成片转为可恢复的孤儿记录
     [types.MESSAGE_EDITED || 'message_edited', ttsMessageEditedHandler],   // 原地编辑：仅按缓存补回被重渲抹掉的内联 🔊（不动列表/音频/key）
     [types.MESSAGE_SWIPED || 'message_swiped', storyboardMessageVersionHandler],
@@ -34742,11 +34822,24 @@ function bindEvents() {
   }
 }
 
+// 使用时长：只数现实里真正在用的时间（可见且两分钟内有过操作，或正在等回复），按天与按角色各记一份，存在千幕设置里。
+let usageTracker = null, stopUsageTracking = null;
+function startUsage() {
+  if (usageTracker) return;
+  usageTracker = createUsageTracker({
+    load: () => settings.usage, save: data => { settings.usage = data; saveSettings(); },
+    visible: () => document.visibilityState === 'visible', busy: () => document.body?.dataset?.generating === 'true',
+    character: () => { const context = ctx(), item = context.groupId ? null : context.characters?.[context.characterId]; return item?.avatar && context.chatId ? { key: item.avatar, name: item.name } : null; },
+  });
+  stopUsageTracking = startUsageTracking(usageTracker);
+}
+
 function init() {
   if (initialized || !acquireRuntimeOwnership()) return;
   try {
     const initStartedAt = globalThis.performance?.now?.() ?? Date.now();
     settings = getSettings();
+    startUsage();
     installChatWriteGuard();
     void storyboardCredentialAccount();   // 先确认账户，分镜页同步读取密钥状态时才有值
     if (isPlainObject(settings.imagegen)) normalizeStoryboardState(settings.imagegen);
@@ -34839,6 +34932,7 @@ function cleanupRuntime(resetSettings = false) {
   if (!isRuntimeOwner()) return;
   initialized = false;
   disposeChatWriteGuard();
+  stopUsageTracking?.(); stopUsageTracking = null; usageTracker = null;
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   chatRecoveryClient?.dispose(); chatRecoveryClient = null;
   chatRecoveryNamespace = null;

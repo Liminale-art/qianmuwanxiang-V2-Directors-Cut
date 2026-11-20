@@ -38,10 +38,11 @@ test('moving a book over from another chat stays available on the slice page', (
   assert.match(css, /\.sd-reader-slice-secondary\s*\{/);
 });
 
-test('what stays: story context for the book friend, chat-bound dictionaries and old mainline-sourced slices', () => {
+test('what stays: story context for the book friend, dictionaries (now bound per reading archive) and old mainline-sourced slices', () => {
   assert.match(source, /function getMainlineCharContext\(floors\)/);
   assert.match(source, /cp\.chatCtxEnabled && coreadCompanionMatchesChat\(\) \? getMainlineCharContext\(cp\.chatCtxFloors\)/);
-  assert.match(source, /function coreadBoundDicts\(\)[\s\S]*?store\.coreadDictBound/);
+  assert.match(source, /function coreadBoundDicts\(\) \{\n  return Array\.isArray\(readerDialog\.dictBound\) \? readerDialog\.dictBound : \[COREAD_DEFAULT_DICT\];\n\}/);
+  assert.doesNotMatch(source, /coreadDictBound/, 'the old per-chat binding in chat metadata is neither read, written nor migrated');
   assert.match(source, /function coreadSliceSourceLabel[\s\S]*?source === 'mainline'\) return '正文回响'/);
 });
 

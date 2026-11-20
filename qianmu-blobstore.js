@@ -584,8 +584,10 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
   return new Promise((resolve, reject) => {
     let stale = false, failure;
     const counts = { books: 0, covers: 0, images: 0, conversations: 0, buckets: 0, vectors: 0 };
+    // 删除记忆时实际删掉的档案键（含 comic::书），供账户端一并删除。
+    const chatKeys = [];
     const error = () => failure || tx.error || new Error('书籍资源清理未提交');
-    tx.oncomplete = () => resolve({ status: 'committed', counts });
+    tx.oncomplete = () => resolve({ status: 'committed', counts, chatKeys });
     tx.onerror = () => { if (!stale || failure) reject(error()); };
     tx.onabort = () => stale && !failure ? resolve({ status: 'stale' }) : reject(error());
     const abort = cause => { failure = cause; try { tx.abort(); } catch (_) { reject(cause); } };
@@ -614,7 +616,7 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
           if (typeof cursor.key === 'string' && matches(cursor.key)) {
             // 漫画页稿（comic::书）不是对话档案：保留记忆时原样留下，删除记忆时一并删掉但不计入档案数。
             const bookRecord = storeName === STORE_CHATS && cursor.key.startsWith(READER_BOOK_RECORD_PREFIX);
-            if (bookRecord) { if (deleteMemory) watch(target.delete(cursor.key)); }
+            if (bookRecord) { if (deleteMemory) { watch(target.delete(cursor.key)); chatKeys.push(cursor.key); } }
             else if (storeName === STORE_CHATS && !deleteMemory) {
               const key = cursor.key, read = target.get(key);
               read.onsuccess = () => {
@@ -627,7 +629,7 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
                     lastInjected: null, sliceSchemaVersion, updatedAt: Date.now() }, key));
                 } catch (cause) { abort(cause); }
               };
-            } else { watch(target.delete(cursor.key)); counts[field]++; }
+            } else { watch(target.delete(cursor.key)); counts[field]++; if (storeName === STORE_CHATS) chatKeys.push(cursor.key); }
           }
           cursor.continue();
         } catch (cause) { abort(cause); }
@@ -657,6 +659,16 @@ export async function putCover(bookId, blob) {
 export async function getCover(bookId) {
   const s = await store(STORE_COVERS, 'readonly');
   return reqP(s.get(bookId));
+}
+
+export async function listCoverKeys() {
+  const s = await store(STORE_COVERS, 'readonly');
+  return (await reqP(s.getAllKeys())).map(String);
+}
+
+export async function deleteCover(bookId) {
+  const s = await store(STORE_COVERS, 'readwrite');
+  await reqP(s.delete(bookId));
 }
 
 // ── 伴读：书内插图 ───────────────────────────────────────────
@@ -1828,12 +1840,15 @@ async function auditOrphanedStore(name, kind, bookIdForKey, books) {
 
 // 仅将“已无 reader_books 主体”的封面和书内插图判为孤儿。
 // 伴读会话/向量可以在删书后作为用户保留的记忆继续存在，故绝不自动判孤。
-export async function auditOrphanedReaderBlobs() {
+// shelfBookIds：书架里仍有的书。封面随账户同步，另一台设备上只有封面没有正文，这些封面不算孤儿。
+const shelfBookSet = (shelfBookIds) => new Set(Array.from(shelfBookIds || [], (value) => String(value ?? '')).filter(Boolean));
+export async function auditOrphanedReaderBlobs({shelfBookIds = []} = {}) {
   if (!blobStoreAvailable()) return { available: false, records: [], count: 0, bytes: 0, scannedAt: Date.now() };
   const bookIds = await listBookIds();
   const books = new Set(bookIds.map((value) => String(value)));
+  const shelf = shelfBookSet(shelfBookIds);
   const [covers, images] = await Promise.all([
-    auditOrphanedStore(STORE_COVERS, 'cover', (key) => String(key ?? ''), books),
+    auditOrphanedStore(STORE_COVERS, 'cover', (key) => String(key ?? ''), new Set([...books, ...shelf])),
     auditOrphanedStore(STORE_IMAGES, 'image', readerImageBookId, books),
   ]);
   const records = [...covers, ...images];
@@ -1848,8 +1863,9 @@ export async function auditOrphanedReaderBlobs() {
 
 // Recheck the book and remove its orphan in one transaction: a concurrent import
 // must not slip between a separate readonly check and the resource deletion.
-async function deleteOrphanedReaderBlob(item, check) {
+async function deleteOrphanedReaderBlob(item, check, shelf = new Set()) {
   check();
+  if (item.store === STORE_COVERS && item.bookId && shelf.has(String(item.bookId))) return false;
   const db = await openDB();
   check();
   return new Promise((resolve, reject) => {
@@ -1874,17 +1890,18 @@ async function deleteOrphanedReaderBlob(item, check) {
 }
 
 // 删除前逐项重查书籍主体；若盘点后书籍被重新导入，该资源会被跳过。
-export async function clearOrphanedReaderBlobs({check = () => {}} = {}) {
+export async function clearOrphanedReaderBlobs({check = () => {}, shelfBookIds = []} = {}) {
   if (!blobStoreAvailable()) throw new Error('当前浏览器储存不可用，未清理阅读资源。');
   check();
-  const audit = await auditOrphanedReaderBlobs();
+  const shelf = shelfBookSet(shelfBookIds);
+  const audit = await auditOrphanedReaderBlobs({shelfBookIds: shelf});
   check();
   const cleared = [];
   const skipped = [];
   const failed = [];
   for (const item of audit.records) {
     try {
-      if (!await deleteOrphanedReaderBlob(item, check)) {
+      if (!await deleteOrphanedReaderBlob(item, check, shelf)) {
         skipped.push({ ...item, reason: '书籍已恢复，保留资源' });
         continue;
       }
@@ -1893,7 +1910,7 @@ export async function clearOrphanedReaderBlobs({check = () => {}} = {}) {
       failed.push({ ...item, error: error?.message || String(error) });
     }
   }
-  const remainingAudit = await auditOrphanedReaderBlobs();
+  const remainingAudit = await auditOrphanedReaderBlobs({shelfBookIds: shelf});
   return {
     cleared,
     skipped,

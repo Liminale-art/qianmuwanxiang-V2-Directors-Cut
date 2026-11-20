@@ -189,7 +189,7 @@ export function renderCoreadInjectionDictionaryView({curBook, curBound, isDefaul
     <div class="sd-reader-mactions">
       <button type="button" class="sd-reader-mbtn sd-reader-dictbook-add">新建词册</button>
       <button type="button" class="sd-reader-mbtn sd-reader-dict-addentry">新增词条</button>
-      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-bind">${curBound ? '解除绑定' : '绑定至此聊天'}</button>
+      <button type="button" class="sd-reader-mbtn sd-reader-dictbook-bind">${curBound ? '解除绑定' : '用于这本书'}</button>
     </div>`;
   return dictBody;
 }

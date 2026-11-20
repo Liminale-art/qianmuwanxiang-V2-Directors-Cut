@@ -39,6 +39,10 @@ export function updateAppearancePreferences(settings, patch) {
 /** Cover analysis is supplied by the cover owner; never decode media or read gallery data here. */
 export function appearanceThemeOptions(preferences, coverAccent = null) {
     if (preferences.family === 'classic') return null;
+    // 纸间是线装书页：没有手动选过颜色时，强调色是朱砂（标题、选中、印），不跟封面走；手动选了就用所选的。
+    if (preferences.family === 'editorial' && preferences.source !== 'manual') {
+        return Object.freeze({ theme: 'editorial', mode: preferences.mode, accent: preferences.mode === 'dark' ? '#d8574c' : '#b5322a' });
+    }
     const sampled = preferences.source === 'cover' ? color(coverAccent) : null;
     return Object.freeze({ theme: preferences.family, mode: preferences.mode, accent: sampled || preferences.accent });
 }

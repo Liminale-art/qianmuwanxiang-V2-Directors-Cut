@@ -3,8 +3,10 @@
 // The companion conversations live in this browser's IndexedDB, keyed `scope::bookId`. The bookshelf itself
 // (book ids, progress) is in ST settings and already follows the account, so on a second device the books
 // were listed but their conversations were missing. Each conversation is mirrored to one ST account file by
-// the shared engine in qianmu-account-mirror.js (rules there: nothing is ever deleted remotely, the side
-// that changed wins, and when both changed the later write wins while the other is kept locally).
+// the shared engine in qianmu-account-mirror.js (rules there: the side that changed wins, and when both
+// changed the later write wins while the other is kept locally). A conversation only disappears from the
+// account when the reader asks for it with remove(keys) — deleting a book together with its memory — and
+// `store.delete` lets other devices drop their copy; `onRemoved(keys)` tells the reader which ones went.
 // IndexedDB stays the working copy; nothing else in the reader changes.
 import { createAccountMirror, accountMirrorSlot, portableJson } from './qianmu-account-mirror.js';
 

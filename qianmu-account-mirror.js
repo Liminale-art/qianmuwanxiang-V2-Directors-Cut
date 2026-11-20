@@ -6,16 +6,22 @@
 //   • Local only → upload. Account only → download. Both → the side that changed since the last sync wins;
 //     if both changed, `order` decides (higher wins, ties keep the local one) and the other version is kept
 //     in a local "conflicts" store.
-//   • Deletions are never propagated. A record that was synced and is now gone locally is remembered as
-//     dismissed on this device and is not downloaded again; the account copy stays for other devices.
-//     A wiped browser profile loses that memory too, so everything comes back.
+//   • A record that was synced and is now gone locally is remembered as dismissed on this device and is
+//     not downloaded again; the account copy stays for other devices. A wiped browser profile loses that
+//     memory too, so everything comes back.
+//   • A deletion travels only when the caller asks for it with remove(keys) and the store can delete.
+//     The account file is then overwritten by a tombstone (no body; the file itself is never removed) and
+//     the index entry becomes `{key, deleted:true, at}`. Another device deletes its copy when it meets the
+//     tombstone. A copy with changes not yet synced is judged by time: changed after the deletion, it is
+//     uploaded again; changed before, it goes too, but is first kept in the local "conflicts" store.
 //   • Every remote write is conditional on what was read; a failed or conflicting write is retried on the
 //     next round, never forced.
 //
 // A record type supplies:
-//   store      { listKeys(), get(key), put(key, record) }
+//   store      { listKeys(), get(key), put(key, record), delete(key)? }   without delete nothing is ever removed
 //   token      record → string|number that changes whenever the record changes
-//   order      record → number used only to pick a winner when both sides changed
+//   order      record → number used to pick a winner when both sides changed, and compared with the time
+//              of a deletion (so a mirror that deletes should return the record's last-change time)
 //   encode     record → Promise<string|null>   text that carries the record whole; null = leave local
 //   decode     text → Promise<record|null>
 import { sha256 } from './vendor/noble-hashes-2.4.0/sha2.js';
@@ -65,7 +71,7 @@ async function unpack(body) {
 
 export function createAccountMirror({
   name, label = name, indexSlot, slotPrefix, store, token, order = () => 0, encode, decode, compress = true,
-  resolveNamespace, isCurrent = () => true, onDownloaded = () => {}, indexedDB = globalThis.indexedDB,
+  resolveNamespace, isCurrent = () => true, onDownloaded = () => {}, onRemoved = () => {}, indexedDB = globalThis.indexedDB,
   storageFactory = createConfiguredStAccountStorage, isConfigured = isStAccountStorageConfigured,
   schedule = setTimeout, cancel = clearTimeout, delay = 6000,
 } = {}) {
@@ -73,6 +79,9 @@ export function createAccountMirror({
   if (!/^[a-z][a-z0-9-]*$/.test(String(name)) || typeof token !== 'function' || typeof encode !== 'function' || typeof decode !== 'function') throw new TypeError('Account mirror is not fully described.');
   let timer = null, running = null, disposed = false, storagePromise = null, again = false, pending = new Set(), pendingAll = false;
   const slotOf = key => accountMirrorSlot(slotPrefix, key);
+  const canDelete = typeof store.delete === 'function';
+  // Deletions asked for while a round is already under way; that round must not overwrite their manifest rows.
+  const intents = new Set();
   // Entries and rows written by the first version of the reader-chat mirror used `updatedAt` / `localAt` / `remoteAt`.
   const entryToken = entry => entry?.token ?? entry?.updatedAt ?? null;
   const rowTokens = row => ({ local: row.localToken ?? row.localAt ?? null, remote: row.remoteToken ?? row.remoteAt ?? null });
@@ -102,11 +111,12 @@ export function createAccountMirror({
     return new Map((request.result || []).filter(plain).map(row => [row.id, row]));
   }
   const remember = rows => (rows.length ? memory('readwrite', manifest => { for (const row of rows) manifest.put(row); }) : undefined);
-  const keepConflict = (key, side, text) => memory('readwrite', (_manifest, conflicts) => {
+  const saveConflict = (key, side, text) => memory('readwrite', (_manifest, conflicts) => {
     conflicts.put({ id: `${Date.now()}::${side}::${key}`, key, side, text, at: Date.now() });
     const all = conflicts.getAllKeys();
     all.onsuccess = () => { for (const id of (all.result || []).sort().slice(0, -CONFLICTS_KEPT)) conflicts.delete(id); };
-  }).catch(() => {});
+  });
+  const keepConflict = (key, side, text) => saveConflict(key, side, text).catch(() => {});
 
   // ── account files ────────────────────────────────────────────────────────────────────────────────
   async function storage() {
@@ -137,8 +147,10 @@ export function createAccountMirror({
     const local = new Map();
     for (const key of keys) if (!wanted || wanted.has(key)) { const record = await store.get(key); if (record !== undefined && record !== null) local.set(key, record); }
     const remote = new Map(Object.values(index.entries).filter(entry => plain(entry) && typeof entry.key === 'string').map(entry => [entry.key, entry]));
-    const result = { uploaded: 0, downloaded: 0, dismissed: 0, conflicts: 0, unchanged: 0 };
-    const rows = [], indexChanges = new Map(), arrived = [];
+    const result = { uploaded: 0, downloaded: 0, dismissed: 0, conflicts: 0, unchanged: 0, removed: 0, tombstoned: 0 };
+    const rows = [], indexChanges = new Map(), arrived = [], gone = [];
+    const asked = new Set([...manifest.values()].filter(row => row.pendingDelete === true).map(row => row.id));
+    const forgotten = (key, at) => ({ id: key, deleted: true, at, remoteToken: null });
 
     const upload = async (key, record, text = null) => {
       text ??= await encode(record);
@@ -152,7 +164,7 @@ export function createAccountMirror({
     };
     const download = async (key, entry) => {
       const text = await readRemoteText(target, key), record = typeof text === 'string' ? await decode(text) : null;
-      if (record === null || record === undefined) return false;
+      if (record === null || record === undefined || intents.has(key)) return false;
       await store.put(key, record);
       const written = await store.get(key);
       rows.push({ id: key, localToken: token(written), remoteToken: entryToken(entry) });
@@ -165,8 +177,27 @@ export function createAccountMirror({
       if (disposed || !isCurrent()) break;
       const entry = remote.get(key), known = manifest.get(key), localToken = token(record), remoteToken = entryToken(entry);
       try {
-        if (!entry) { await upload(key, record); continue; }
-        const tokens = known && !known.dismissed ? rowTokens(known) : null;
+        // Present although its deletion was asked for: it was made again afterwards, so the request is dropped.
+        if (!entry || known?.pendingDelete) { await upload(key, record); continue; }
+        const tokens = known && !known.dismissed && !known.deleted ? rowTokens(known) : null;
+        if (entry.deleted === true) {
+          if (!canDelete) continue;
+          const at = Number(entry.at) || 0;
+          // Made again after this device handled the same tombstone: it lives.
+          if (known?.deleted && known.at === entry.at) { await upload(key, record); continue; }
+          if (!tokens || tokens.local !== localToken) {
+            // Changed here since the last sync, or never synced: time decides. Later than the deletion, it lives.
+            if (Number(order(record)) > at) { await upload(key, record); continue; }
+            // Older work goes, but only once a full copy is safely kept here.
+            const text = await encode(record);
+            if (typeof text !== 'string') continue;
+            await saveConflict(key, 'local', text);
+            result.conflicts += 1;
+          }
+          await store.delete(key);
+          gone.push(key); rows.push(forgotten(key, entry.at)); result.removed += 1;
+          continue;
+        }
         const localChanged = !tokens || tokens.local !== localToken, remoteChanged = !tokens || tokens.remote !== remoteToken;
         if (!localChanged && !remoteChanged) { result.unchanged += 1; continue; }
         if (localChanged && !remoteChanged) { await upload(key, record); continue; }
@@ -186,13 +217,27 @@ export function createAccountMirror({
         }
       } catch (error) { console.warn(`[千幕] 一份${label}本轮未同步，稍后重试`, error?.message || error); }
     }
-    for (const [key, entry] of remote) {
+    for (const key of new Set([...remote.keys(), ...asked])) {
       if (disposed || !isCurrent()) break;
       if (local.has(key) || (wanted && !wanted.has(key)) || (!wanted && keys.includes(key))) continue;
-      const known = manifest.get(key);
-      // Synced before and gone now: removed on this device. Remember that; do not bring it back, do not delete it remotely.
-      if (known) { if (!known.dismissed) { rows.push({ ...known, dismissed: true }); result.dismissed += 1; } continue; }
-      try { await download(key, entry); } catch (error) { console.warn(`[千幕] 一份${label}本轮未取回，稍后重试`, error?.message || error); }
+      const entry = remote.get(key), known = manifest.get(key), tomb = entry?.deleted === true;
+      try {
+        if (known?.pendingDelete && canDelete) {
+          if (tomb) { rows.push(forgotten(key, entry.at)); continue; }
+          // The file first, then the index (at the end of the round); the request is cleared only when both are written.
+          const slot = slotOf(key), before = await target.read(slot);
+          await target.write(slot, { version: VERSION, key, deleted: known.at }, { expectedFingerprint: before?.exists ? before.fingerprint : null });
+          indexChanges.set(slot, { key, deleted: true, at: known.at });
+          rows.push(forgotten(key, known.at)); result.tombstoned += 1;
+          continue;
+        }
+        // Deleted on purpose somewhere: never downloaded, not even by a fresh device.
+        if (tomb) { if (!(known?.deleted && known.at === entry.at)) rows.push(forgotten(key, entry.at)); continue; }
+        if (!entry) continue;
+        // Synced before and gone now without a request: removed on this device only. Remember that; do not bring it back, do not delete it remotely.
+        if (known && !known.deleted) { if (!known.dismissed) { rows.push({ ...known, dismissed: true }); result.dismissed += 1; } continue; }
+        await download(key, entry);
+      } catch (error) { console.warn(`[千幕] 一份${label}本轮未取回，稍后重试`, error?.message || error); }
     }
     if (indexChanges.size) {
       // Merge into whatever the index is now; a concurrent writer simply causes a retry next round.
@@ -200,8 +245,11 @@ export function createAccountMirror({
       for (const [slot, entry] of indexChanges) entries[slot] = entry;
       await target.write(indexSlot, { version: VERSION, entries }, { expectedFingerprint: latest.fingerprint });
     }
-    await remember(rows);
+    // A deletion asked for after this round read the manifest belongs to the next round; its row is left alone.
+    await remember(rows.filter(row => !intents.has(row.id) || asked.has(row.id)));
+    for (const key of asked) if (rows.some(row => row.id === key)) intents.delete(key);
     if (arrived.length) { try { onDownloaded(arrived); } catch { /* a view refresh must not fail the round */ } }
+    if (gone.length) { try { onRemoved(gone); } catch { /* a view refresh must not fail the round */ } }
     return result;
   }
 
@@ -230,5 +278,33 @@ export function createAccountMirror({
     if (disposed || !key) return Promise.resolve(false);
     return Promise.race([run([String(key)]).then(() => true, () => false), new Promise(resolve => schedule(() => resolve(false), timeoutMs))]);
   }
-  return Object.freeze({ request, refresh, run, slotOf, dispose() { disposed = true; cancel(timer); timer = null; } });
+  /**
+   * Carries a deletion the caller has already made locally to the account, so other devices drop the record too.
+   * `registered` false: nothing was noted, the account copy stays. `pending`: noted, written on a later round.
+   */
+  async function remove(keys, { timeoutMs = 8000 } = {}) {
+    const ids = [...new Set((Array.isArray(keys) ? keys : [keys]).filter(key => key !== null && key !== undefined && key !== '').map(String))];
+    if (!ids.length) return { registered: true, synced: [], pending: [] };
+    if (disposed || !canDelete) return { registered: false, synced: [], pending: ids };
+    const at = Date.now();
+    for (const id of ids) intents.add(id);
+    try { await remember(ids.map(id => ({ id, pendingDelete: true, at }))); }
+    catch (error) {
+      for (const id of ids) intents.delete(id);
+      console.warn(`[千幕] ${label}的删除未能登记`, error?.message || error);
+      return { registered: false, synced: [], pending: ids };
+    }
+    // run() hands back a round that is already under way, and that round may not include these keys.
+    const settle = (async () => {
+      while (running) await running;
+      await run(ids);
+      const manifest = await readManifest();
+      return ids.filter(id => manifest.get(id)?.deleted === true);
+    })().catch(error => { console.warn(`[千幕] ${label}的删除本轮未写入账户，稍后重试`, error?.message || error); return []; });
+    let handle = null;
+    const synced = await Promise.race([settle, new Promise(resolve => { handle = schedule(() => resolve([]), timeoutMs); })]);
+    cancel(handle);
+    return { registered: true, synced, pending: ids.filter(id => !synced.includes(id)) };
+  }
+  return Object.freeze({ request, refresh, run, remove, slotOf, dispose() { disposed = true; cancel(timer); timer = null; } });
 }
