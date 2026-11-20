@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 439 个，其中 `qianmu-*` 模块 422 个。
+根目录文件 440 个，其中 `qianmu-*` 模块 423 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 191 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1011 |
+| `tests/` | 1012 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -536,7 +536,7 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（8）
+## 其他模块（9）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -546,5 +546,6 @@
 | `qianmu-perf-probe.js` | 是 | Opt-in timing probe for "click → shown → ready" on a few surfaces (main tabs, notes, assistant, chat toolkit). |
 | `qianmu-settings-persistence.js` | 是 | What Qianmu writes into ST's settings file, as opposed to what it keeps in memory. |
 | `qianmu-settings-sidecars.js` | 是 | One place that assembles the side stores behind Qianmu's settings (see qianmu-settings-persistence.js). |
+| `qianmu-sharp-avatars.js` | 是 | 头像清晰化：酒馆显示头像时取的是压缩过的缩略图（/thumbnail?type=avatar…），放大一点就糊。 |
 | `qianmu-usage-tracker.js` | 是 | 使用时长：按现实时间统计「在酒馆里真正在用」的时间，与故事内容无关。 |
-| `qianmu-usage-view.js` | 是 | 「时长」面板：现实里用了多久。上面一张热力格（一列一周），下面几张大数字卡；另有一页按角色排的聊天交互时长。 |
+| `qianmu-usage-view.js` | 是 | 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单）， |

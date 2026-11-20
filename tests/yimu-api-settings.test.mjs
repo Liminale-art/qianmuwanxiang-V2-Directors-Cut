@@ -217,12 +217,12 @@ test('legacy ST presets remain usable; explicit independent/profile choices neve
     assert.equal(f.calls.length, 0); assert.equal(f.profile.length, 1); assert.equal(f.raw.length, 1);
 });
 
-test('snapshot avatar uses ST thumbnail API and encoded native fallback without touching chat', async () => {
+test('snapshot avatar points at the original character image, not the blurry thumbnail, without touching chat', async () => {
     const f = fixture(); Object.assign(f.ctx, { groupId: null, characterId: 0, chatId: 'story', chatMetadata: { integrity: 'id' }, chat: [], characters: [{ name: '秦铎', avatar: '秦 铎.png' }] });
     const host = createHost({ getContext: () => f.ctx });
-    assert.equal((await host.snapshot()).avatarUrl, '/thumbnail?type=avatar&file=%E7%A7%A6%20%E9%93%8E.png');
+    assert.equal((await host.snapshot()).avatarUrl, '/characters/%E7%A7%A6%20%E9%93%8E.png');
     f.ctx.getThumbnailUrl = (type, file) => `native:${type}:${file}`;
-    assert.equal((await host.snapshot()).avatarUrl, 'native:avatar:秦 铎.png'); assert.equal(f.saves.length, 0);
+    assert.equal((await host.snapshot()).avatarUrl, '/characters/%E7%A7%A6%20%E9%93%8E.png', 'the thumbnail API is not consulted'); assert.equal(f.saves.length, 0);
 });
 
 test('status requests have bounded cancellation and never reveal endpoint credentials in errors', async () => {

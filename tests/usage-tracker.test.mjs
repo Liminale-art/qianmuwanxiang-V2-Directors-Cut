@@ -102,7 +102,7 @@ test('the panel: heat grid with a range line and a custom picker, the most recen
     const chars = usageMarkup(data, { now: T0, page: 'chars' });
     assert.match(chars, /<h3>常客<\/h3>/); assert.ok(chars.includes('&lt;b&gt;阿澈&lt;/b&gt;') && !chars.includes('<b>阿澈</b>'));
     assert.match(chars, /1 小时 40 分/); assert.match(chars, /--p:100%/); assert.match(chars, /--p:25%/); assert.match(chars, /最后一次聊天：昨天 14:00/);
-    assert.match(chars, /src="\/thumbnail\?type=avatar&amp;file=A\.png"/);
+    assert.match(chars, /src="\/characters\/A\.png"/, '原图，不是缩略图');
     assert.match(usageMarkup({}, { now: T0, page: 'chars' }), /还没有和谁聊过/);
     assert.ok(!usageMarkup({}, { now: T0 }).includes('qm-usage-last'), '还没聊过谁就不放那一格');
     assert.deepEqual([lastChatText(T0 - 60000, T0), lastChatText(T0 - 3 * 86400000, T0), lastChatText(new Date(2026, 9, 1, 8).getTime(), T0)], ['今天 13:59', '3 天前', '2026年10月1日']);

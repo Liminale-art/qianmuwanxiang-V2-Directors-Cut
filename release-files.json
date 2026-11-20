@@ -13,6 +13,7 @@
     "qianmu-tts-favorites-sync.js",
     "qianmu-reader-chat-sync.js",
     "qianmu-reader-cover-sync.js",
+    "qianmu-sharp-avatars.js",
     "qianmu-usage-tracker.js",
     "qianmu-usage-view.js",
     "qianmu-settings-persistence.js",

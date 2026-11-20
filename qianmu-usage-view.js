@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.585';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.586';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -148,7 +148,7 @@ const nameOf = item => item.name || item.key.replace(/\.[^.]+$/, '');
 const big = ms => { const { value, unit } = compactTime(ms); return `<i data-count="${esc(value)}">${esc(value)}</i><span>${unit}</span>`; };
 
 /** range：{ from, to, custom }；custom 为真时显示两个日期框。drink：这次打开抽到的酒名。 */
-export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', drink = DRINKS[0], zones = timeZones(), avatarUrl = key => `/thumbnail?type=avatar&file=${encodeURIComponent(key)}` } = {}) {
+export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', drink = DRINKS[0], zones = timeZones(), avatarUrl = key => `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}` } = {}) {
     // 按所选时区的钟面来看：今天是哪天、几点聊的，都以它为准。
     const picked = typeof data?.zone === 'string' ? data.zone : '', wall = at => at + zoneShift(at, picked), now = wall(real);
     const summary = usageSummary(data, now);

@@ -128,8 +128,8 @@ export function createHost({
             messages: snapshotMessages(ctx.chat),
             name: text(ctx.characters?.[ctx.characterId]?.name || ctx.name2),
             userName: text(ctx.name1),
-            avatarUrl: typeof ctx.getThumbnailUrl === 'function' ? ctx.getThumbnailUrl('avatar', binding.avatar)
-                : `/thumbnail?type=avatar&file=${encodeURIComponent(binding.avatar)}`,
+            // 原图，不走酒馆的缩略图：缩略图放大到心迹页的片头会糊成一团。
+            avatarUrl: binding.avatar ? `/characters/${String(binding.avatar).split('/').map(encodeURIComponent).join('/')}` : '',
             mainApi: text(ctx.mainApi),
             maxContext: Number(ctx.mainApi === 'openai' ? ctx.chatCompletionSettings?.openai_max_context : ctx.maxContext) || 0,
             maxResponse: Number(ctx.chatCompletionSettings?.openai_max_tokens) || 0,
