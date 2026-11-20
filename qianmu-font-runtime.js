@@ -13,6 +13,9 @@ const PROSE_EDIT = '#chat .mes .mes_text textarea.edit_textarea';
 const PROSE_MIXED_PARAGRAPH = '#chat .mes .mes_text:not([data-sd-prose-mixed="1"]):has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style])) > :is(p, div):not([class], [style]):not(:has(style, .np-min-card, [data-sd-prose-exempt], :is(div, section, article, p):is([class], [style])))';
 const PROSE_TEXT_EXEMPT = 'pre, code, kbd, samp, svg, canvas, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="icon"], .np-min-card, [data-sd-prose-exempt], [id^="story-director-"], :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)';
 const PROSE_TEXT_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) :is(p, div, span, a, b, strong, em, i, u, s, q, blockquote, ul, ol, li, h1, h2, h3, h4, h5, h6, sub, sup, small):not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
+// 伴读阅读页的书籍正文跟字体库的「正文」「引用」走；字号、行距、段距等排版仍由伴读自己管。
+const READER_TEXT = '.sd-reader-article, .sd-reader-article :is(h2, p, mark, span)';
+const READER_QUOTE = '.sd-reader-article .sd-reader-q, .sd-reader-article .sd-reader-q *';
 const PROSE_QUOTE_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) q:not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
 // Body carries state classes such as sd-prose-layout; those are not a Qianmu
 // window and must not accidentally exempt the whole host interface.
@@ -115,11 +118,12 @@ export function fontScopeCss(scope, family, selection = {}) {
   // never rewrites another extension's stylesheet or its enabled state.
   const layer = css => `@layer qianmu-font-application {\n${css}\n}`;
   const font = `font-family:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif) !important;`;
-  if (scope === 'body') return layer(`:root { --qm-body-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\ntextarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${READING_META_PSEUDO} { ${font} }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }`);
+  if (scope === 'body') return layer(`:root { --qm-body-font:${quoted(family)},var(--mainFontFamily,system-ui,sans-serif); }\ntextarea#send_textarea,\n${PROSE_EDIT},\n${PROSE_ROOT},\n${PROSE_RUN},\n${PROSE_MIXED_PARAGRAPH},\n${READING_META} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n${READING_META_PSEUDO} { ${font} }\n${PROSE_EDIT} { font-size:var(--sd-prose-font-size, inherit) !important; }\n${PROSE_TEXT_TARGET} { ${font} }\n${READER_TEXT} { ${font} font-weight:${weight} !important; font-style:${style} !important; }\n.sd-reader-article .sd-reader-h2 { font-weight:600 !important; }`);
   // ST's messageFormatting wraps "…" “…” «…» 「…」 『…』 ＂…＂ in <q>. Same
   // specificity as PROSE_TEXT_TARGET; painted after body so it wins by order.
   if (scope === 'quote') return layer(`${PROSE_QUOTE_TARGET} { ${font} font-weight:${weight} !important; font-style:${style} !important; }
-${PROSE_QUOTE_TARGET} * { ${font} }`);
+${PROSE_QUOTE_TARGET} * { ${font} }
+${READER_QUOTE} { ${font} font-weight:${weight} !important; font-style:${style} !important; }`);
   if (scope !== 'st') return '';
   // Classic Qianmu panels may follow the applied interface family without
   // widening ST_TARGET or changing the host's native --mainFontFamily. Paper

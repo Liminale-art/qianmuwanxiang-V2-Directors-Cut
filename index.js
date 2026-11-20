@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.586';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.587';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.586';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.587';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,14 +28,14 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.586';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.586';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.586';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.586';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.586';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.586';
+import { createUsageTracker, startUsageTracking } from './qianmu-usage-tracker.js?v=1.59.587';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.587';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.587';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.587';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.587';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.587';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.586';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.587';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -64,8 +64,8 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.586';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.586';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.587';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.587';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -95,7 +95,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.586';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.587';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -338,7 +338,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.586';
+const VERSION = '1.59.587';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -30103,6 +30103,25 @@ function renderLibraryView() {
 }
 
 // 章节正文 → 段落 HTML。自动判定分段；hiList=本章划线对象 [{id,text,hlStyle,color}]，命中处包带样式 <mark>。
+// 引号里的话（与酒馆正文认的是同几种引号）：包一层 span，字体库的「引用」字体才落得到它上面。
+// 只在纯文本的一小段上做，所以不会跨过划线的 <mark>；不改变文字本身，划线、选区按文字定位都不受影响。
+const READER_QUOTE_RE = /"[^"\n]*"|“[^”\n]*”|«[^»\n]*»|「[^」\n]*」|『[^』\n]*』|＂[^＂\n]*＂/g;
+function readerQuoteRanges(text) {
+  const ranges = [];
+  for (const match of String(text).matchAll(READER_QUOTE_RE)) ranges.push([match.index, match.index + match[0].length]);
+  return ranges;
+}
+function readerTextHtml(text, start, end, quotes) {
+  let html = '', cursor = start;
+  for (const [from, to] of quotes) {
+    if (to <= cursor) continue;
+    if (from >= end) break;
+    const a = Math.max(from, cursor), b = Math.min(to, end);
+    html += htmlEscape(text.slice(cursor, a)) + `<span class="sd-reader-q">${htmlEscape(text.slice(a, b))}</span>`;
+    cursor = b;
+  }
+  return html + htmlEscape(text.slice(cursor, end));
+}
 function buildReaderParagraphs(text, hiList) {
   const s = String(text || '');
   const hasBlankLines = /\n\s*\n/.test(s);
@@ -30123,7 +30142,8 @@ function buildReaderParagraphs(text, hiList) {
     // 书内插图占位符 ⟦img:n⟧ → 图片位（懒加载 IndexedDB blob·失败静默移除）
     const imgM = /^⟦img:(\d+)⟧$/.exec(p.trim());
     if (imgM) return `<figure class="sd-reader-inline-fig"><img class="sd-reader-inline-img" data-img="${htmlEscape(imgM[1])}" alt="插图" loading="lazy"></figure>`;
-    if (!hi.length) return `<p>${htmlEscape(p)}</p>`;
+    const quotes = readerQuoteRanges(p);
+    if (!hi.length) return `<p>${readerTextHtml(p, 0, p.length, quotes)}</p>`;
     // 在「纯文本」上定位匹配区间（绝不在已注入的 HTML 标签/属性里误命中）；
     // 长串优先占位、贪心跳过重叠 → 杜绝嵌套 <mark> 与属性串被短划线击穿。
     const ranges = [];
@@ -30134,17 +30154,17 @@ function buildReaderParagraphs(text, hiList) {
         from = idx + h.text.length;
       }
     }
-    if (!ranges.length) return `<p>${htmlEscape(p)}</p>`;
+    if (!ranges.length) return `<p>${readerTextHtml(p, 0, p.length, quotes)}</p>`;
     ranges.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
     let cursor = 0, html = '';
     for (const r of ranges) {
       if (r.start < cursor) continue;   // 与已占位区间重叠 → 跳过
-      html += htmlEscape(p.slice(cursor, r.start));
+      html += readerTextHtml(p, cursor, r.start, quotes);
       const styleAttr = r.h.color ? ` style="--hl-color:${r.h.color}"` : '';
-      html += `<mark class="sd-reader-hl sd-reader-hl-${r.h.style}" data-note="${htmlEscape(r.h.id)}"${styleAttr}>${htmlEscape(p.slice(r.start, r.end))}</mark>`;
+      html += `<mark class="sd-reader-hl sd-reader-hl-${r.h.style}" data-note="${htmlEscape(r.h.id)}"${styleAttr}>${readerTextHtml(p, r.start, r.end, quotes)}</mark>`;
       cursor = r.end;
     }
-    html += htmlEscape(p.slice(cursor));
+    html += readerTextHtml(p, cursor, p.length, quotes);
     return `<p>${html}</p>`;
   }).join('');
   return out || '<p class="sd-reader-blank">（本章无正文）</p>';
