@@ -425,16 +425,16 @@ test('the hide boundary is independent of what this round injects: the kept rece
     assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20), summary('c', 21, 23)]), live(28), { recent: 5 }).floors, span(1, 23));
     // 往前推进到 40 层、全部覆盖时，隐藏边界跟着保留层走（35），而不是停在 23。
     assert.equal(hiddenFloorsFor(doc([summary('a', 1, 35)]), live(40), { recent: 5 }).floors.at(-1), 35);
-    // 保留区之内即使已经被总结覆盖也保持原文可见；切片终点落在保留区里，整条都不藏。
-    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(10), { recent: 5 }), { frontier: 10, floors: [], keep: 5, total: 10 });
-    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(14), { recent: 5 }).floors, []);
-    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(15), { recent: 5 }).floors, span(1, 10), '保留区越过它之后整条一起藏');
-    // 跨保留区边界的那一条不藏，它之前的整条照常藏。
-    const crossing = hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20)]), live(22), { recent: 5 });
-    assert.deepEqual(crossing.floors, span(1, 10)); assert.equal(crossing.frontier, 20);
-    // 多段来源的切片：任一段终点落在保留区里，整条都不藏。
+    // 保留区之内即使已经被总结覆盖也保持原文可见；隐藏边界严格等于保留层数，切片压在边界上时只藏它在保留区之外的楼层。
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(10), { recent: 5 }), { frontier: 10, floors: span(1, 5), keep: 5, total: 10 });
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(14), { recent: 5 }).floors, span(1, 9));
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(15), { recent: 5 }).floors, span(1, 10));
+    // 用户 2026-11-22 的例子：共 23 层、已总结到第 19 层、保留 5 层 → 隐藏到第 18 层（界面上是 0–17），不因最后一条切片压线而停在更前面。
+    const crossing = hiddenFloorsFor(doc([summary('a', 1, 15), summary('b', 16, 19)]), live(23), { recent: 5 });
+    assert.deepEqual(crossing.floors, span(1, 18)); assert.equal(crossing.frontier, 19);
+    // 多段来源的切片同样按楼层算。
     const split = { ...summary('m', 1, 3), source: { ranges: [{ start: 1, end: 3 }, { start: 9, end: 11 }] } };
-    assert.deepEqual(hiddenFloorsFor(doc([split]), live(12), { recent: 2 }).floors, []);
+    assert.deepEqual(hiddenFloorsFor(doc([split]), live(12), { recent: 2 }).floors, [1, 2, 3, 9, 10]);
     assert.deepEqual(hiddenFloorsFor(doc([split]), live(13), { recent: 2 }).floors, [1, 2, 3, 9, 10, 11]);
     // 中间有缺口：没总结的那一层自己保持可见，不挡后面已总结楼层的隐藏；frontier 仍是从第 1 层起连续覆盖到的位置。
     const gap = hiddenFloorsFor(doc([summary('a', 1, 3), summary('b', 5, 9)]), live(12), { recent: 2 });

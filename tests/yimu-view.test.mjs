@@ -944,7 +944,7 @@ test('trigger floor count sits right after the token trigger with its own hint a
     assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
     assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '10');
     assert.equal(floors.closest('.ym-setting-row').title, '未整理楼层达到此数时自动总结；最新 3 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token');
-    assert.equal(f.get('正文保留层数').closest('.ym-setting-row').title, '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层才隐藏并由记忆替代');
+    assert.equal(f.get('正文保留层数').closest('.ym-setting-row').title, '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层隐藏并由记忆替代');
     assert.equal(f.get('关系年表').closest('.ym-setting-row').title, '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……');
     assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
     assert.equal(floors.value, '10');
@@ -1398,7 +1398,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.73 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.74 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1530,7 +1530,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.73'); assert.equal(pkg.version, '0.8.31');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.74'); assert.equal(pkg.version, '0.8.31');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

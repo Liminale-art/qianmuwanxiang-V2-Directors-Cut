@@ -47,7 +47,7 @@ const SETTINGS = [
 // Hover hints; values that read as "off" at 0 render blank.
 const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
-    recent: '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层才隐藏并由记忆替代',
+    recent: '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层隐藏并由记忆替代',
     triggerFloors: `未整理楼层达到此数时自动总结；最新 ${REROLL_GUARD} 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token`,
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',

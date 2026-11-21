@@ -109,12 +109,13 @@ test('stage ranges and fine slices are mutually exclusive even if caller supplie
     assert.ok(result.messages.some(message => message.content === f.processed[2].request.content));
 });
 
-test('a slice crossing the recent boundary is skipped whole, never partly replaced', async () => {
-    const f = await fixture(); f.options.entries = [f.entry('overlap', 6, 8), f.entry('old', 1, 2)];
+test('a slice crossing the recent boundary replaces only its floors outside the kept window; one wholly inside is skipped', async () => {
+    const f = await fixture(); f.options.entries = [f.entry('overlap', 6, 8), f.entry('old', 1, 2), f.entry('inside', 9, 10)];
     const result = await buildBudgetedMessages(f.payload, f.options);
-    assert.deepEqual(result.entries.map(entry => entry.id), ['old']);
-    assert.deepEqual(result.removedFloors, [1, 2]); assert.deepEqual(result.messages.slice(-5), f.payload.messages.slice(-5));
-    assert.ok(result.messages.some(message => message.content === f.processed[5].request.content));
+    assert.deepEqual(result.entries.map(entry => entry.id).sort(), ['old', 'overlap']);
+    assert.deepEqual(result.removedFloors, [1, 2, 6, 7]); assert.deepEqual(result.messages.slice(-5), f.payload.messages.slice(-5));
+    assert.ok(result.messages.some(message => message.content === f.processed[7].request.content), 'floor 8 sits in the kept window and stays as raw text');
+    assert.ok(!result.messages.some(message => message.content === f.processed[5].request.content));
 });
 
 test('swipe protects the actual visible tail, not the removed assistant floor', async () => {

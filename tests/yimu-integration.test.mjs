@@ -1360,19 +1360,24 @@ test('more than 80 unsummarized old floors: 否 moves the automatic start point 
     assert.equal(summaryCoverage(saved, f.context.chat, effectiveSettings(saved, f.controller.state.defaults)).pendingFloors, 92, '未整理层 still counts the old floors');
 });
 
-test('native hiding follows whole slices and the kept recent floors: changing 正文保留层数 moves the boundary at once', async t => {
+test('native hiding follows the kept recent floors exactly: changing 正文保留层数 moves the boundary at once', async t => {
     const f = await fixture(t, {nativeHide: true});
     await f.enable(); await f.flush();
     const hidden = () => f.context.chat.map(message => Boolean(message.is_system));
     assert.deepEqual(ranges(f.controller.state.document), [[1, 4]]);
     // 保留 3 层、共 7 层：切片第 1–4 层整条在保留区之外，隐藏。
     assert.deepEqual(hidden(), [true, true, true, true, false, false, false]);
-    // 保留层数改成 5：切片的终点（第 4 层）落进保留区，整条都不藏——不等下一条消息，当场放回。
+    // 保留层数改成 5：边界严格跟着走——只剩第 1、2 层藏着，不等下一条消息，当场放回另外两层。压线的那条切片照常注入。
     await f.controller.action('settings', {values: {recent: 5}}); await f.flush();
-    assert.deepEqual(hidden(), [false, false, false, false, false, false, false]);
-    assert.equal((await f.inject()).prompt, '', 'a slice crossing the kept window is not injected either');
+    assert.deepEqual(hidden(), [true, true, false, false, false, false, false]);
+    assert.ok((await f.inject()).prompt.includes('<yimu_memory>'), 'the slice whose first floors are hidden is still injected');
     await f.controller.event('GENERATION_ENDED'); await f.flush();
+    assert.deepEqual(hidden(), [true, true, false, false, false, false, false]);
+    // 保留层数比总层数还多：一层都不藏，整条都在保留区里的切片也不注入。
+    await f.controller.action('settings', {values: {recent: 7}}); await f.flush();
     assert.deepEqual(hidden(), [false, false, false, false, false, false, false]);
+    assert.equal((await f.inject()).prompt, '', 'a slice wholly inside the kept window is not injected');
+    await f.controller.event('GENERATION_ENDED'); await f.flush();
     await f.controller.action('settings', {values: {recent: 3}}); await f.flush();
     assert.deepEqual(hidden(), [true, true, true, true, false, false, false]);
     assert.ok((await f.inject()).prompt.includes('<yimu_memory>'));

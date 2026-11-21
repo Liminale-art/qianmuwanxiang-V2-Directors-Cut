@@ -227,31 +227,29 @@ export function planManualRange(document, messages, settings, requestedRange, { 
 
 /** 隐藏边界：最近「正文保留层数」层永远可见，即使已被总结；更早的楼层只要被有效切片覆盖就原生隐藏。
  *  这是独立规则，不由「本轮注入了哪几条记忆」决定——否则注入少一次，旧楼就会多露出一次。
- *  按整条切片算：切片有任何一层还在保留区里，它整条都不藏（那条切片此时也不注入，见 selectMemories），
- *  等保留区随楼层推进越过它再一起藏。这样不会出现「原文藏了、对应的记忆却没带」。
- *  按楼层算、不要求从第一层起连续：中间有没总结的楼层（用户选了不从首层总结、空楼、带工具调用的楼）
- *  只是那几层自己保持可见，不挡后面已总结的楼层隐藏。
+ *  按楼层算（用户 2026-11-22）：隐藏边界严格等于保留层数。切片压在保留区边界上时，它在保留区之外的楼层照样藏，
+ *  那条切片也照常注入（见 selectMemories）；落在保留区里的那一两层原文与记忆会同时出现，这是有意的取舍。
+ *  不要求从第一层起连续：中间有没总结的楼层（用户选了不从首层总结、空楼、带工具调用的楼）只是那几层自己保持可见。
  *  frontier 仍是「从第一层起连续被覆盖到的最大楼层」，只供显示。 */
 export function hiddenFloorsFor(document, messages, { recent = DEFAULTS.recent, excludeEnd = 0 } = {}) {
     const total = Array.isArray(messages) ? messages.length - Math.max(0, excludeEnd) : 0;
     if (!total) return { frontier: 0, floors: [] };
     const keep = Math.min(total, Math.max(0, recent));
     const limit = Math.max(0, total - keep);
-    const covered = new Uint8Array(total + 1), hide = new Uint8Array(total + 1);
+    const covered = new Uint8Array(total + 1);
     for (const entry of document?.entries || []) {
         if (entry.kind !== 'summary' || entry.origin || entry.discarded || !['active', 'invalid'].includes(entry.status)) continue;
         // 这里只读范围、不校验来源：隐藏边界每轮都要算，不能因为某条旧数据的指纹不全就中断整轮。
-        const ranges = (Array.isArray(entry.source?.ranges) ? entry.source.ranges : entry.source ? [entry.source] : [])
-            .filter(range => Number.isSafeInteger(range?.start) && Number.isSafeInteger(range?.end));
-        const whole = ranges.length > 0 && ranges.every(range => range.end <= limit);
-        for (const range of ranges) for (let floor = Math.max(1, range.start); floor <= Math.min(total, range.end); floor++) {
-            covered[floor] = 1; if (whole) hide[floor] = 1;
+        const ranges = Array.isArray(entry.source?.ranges) ? entry.source.ranges : entry.source ? [entry.source] : [];
+        for (const range of ranges) {
+            if (!Number.isSafeInteger(range?.start) || !Number.isSafeInteger(range?.end)) continue;
+            for (let floor = Math.max(1, range.start); floor <= Math.min(total, range.end); floor++) covered[floor] = 1;
         }
     }
     let frontier = 0;
     while (frontier + 1 <= total && covered[frontier + 1]) frontier++;
     const floors = [];
-    for (let floor = 1; floor <= limit; floor++) if (hide[floor]) floors.push(floor);
+    for (let floor = 1; floor <= limit; floor++) if (covered[floor]) floors.push(floor);
     return { frontier, floors, keep, total };
 }
 
@@ -460,8 +458,8 @@ const SEMANTIC_GATE = 0.5;
 export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '', recalledAt = null) {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
-    // 保留区里的楼层不由记忆替代；但原文已经隐藏的楼层（重新生成、删掉最新几层之后保留区会暂时前移）
-    // 必须仍由它的切片顶上，否则这一段既没有原文也没有记忆。
+    // 整条都在保留区里的切片不注入（原文都在）。只要有一层在保留区之外，那一层的原文就是藏着的，切片必须带上；
+    // 原文已全部隐藏的切片同理（重新生成、删掉最新几层之后保留区会暂时前移）。
     const allHidden = range => { for (let floor = range.start; floor <= range.end; floor++) if (!snapshot.messages[floor - 1]?.is_system) return false; return range.end >= range.start; };
     const usable = document.entries.filter(entry => {
         if (!['active', 'invalid'].includes(entry.status)) return false;
@@ -476,7 +474,7 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         const sceneValid = sceneDependenciesValid(entry, document);
         const sourceValid = entry.origin
             ? inheritedSourceValid(entry, document, hashes) && sourceTimelineEnd(entry, document) <= (document.lineage?.offset || 0) + cutoff
-            : sourceRanges(entry).every(range => (range.end <= cutoff || allHidden(range)) && sourceMatches(range, hashes));
+            : sourceRanges(entry).every(range => (range.start <= cutoff || allHidden(range)) && sourceMatches(range, hashes));
         const stageValid = entry.kind !== 'stage' || stageDependenciesValid(entry, document) && entry.source.parents.every(ref => {
             const parent = document.entries.find(item => item.id === ref.id);
             return parent?.kind !== 'manual' || placementMatches(parent, document, hashes, visibleEnd);

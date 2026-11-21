@@ -160,11 +160,12 @@ function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     if (!ranges.length) return entry.kind === 'stage' ? [] : null;
     let previous = 0;
     for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
-        // 越过保留区边界的切片不用；整段原文都已隐藏的例外——那一段只剩记忆能代表。
+        // 整段都在保留区里的切片不用（原文都在）；整段原文都已隐藏的例外。压在保留区边界上的切片照用：只替换它在保留区之外的楼层。
         const concealed = () => { for (let floor = range.start; floor <= range.end; floor++) if (!hidden.has(floor)) return false; return true; };
-        if (!sourceMatches(range, sourceHashes) || range.end > cutoff && !concealed() || range.start <= previous) return null;
+        if (!sourceMatches(range, sourceHashes) || range.start > cutoff && !concealed() || range.start <= previous) return null;
         for (let floor = range.start; floor <= range.end; floor++) {
             const item = visible.get(floor);
+            if (floor > cutoff && !hidden.has(floor)) continue; // 保留区里的原文原样留着
             if (!item && !hidden.has(floor) || item?.external) return null;
             result.push(floor);
         }

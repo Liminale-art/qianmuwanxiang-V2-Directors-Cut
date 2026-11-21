@@ -81,9 +81,9 @@ test('review: recent raw and uncovered floors are never included merely through 
     const f = await fixture(); const doc = f.append(f.doc, 'early', ['fine-0', 'fine-1']);
     const messages = f.messages.slice(0, 10), before = structuredClone(messages);
     const plan = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
-    assert.ok(plan.coveredRanges.every(range => range.end <= 5));
-    assert.ok(!plan.coveredRanges.some(range => range.start <= 5 && range.end >= 5), 'the fine slice crossing the recent cutoff stays raw');
+    assert.ok(plan.coveredRanges.every(range => range.start <= 5), 'nothing that lies wholly inside the kept recent floors is brought');
+    assert.ok(plan.coveredRanges.some(range => range.start <= 5 && range.end > 5), 'the fine slice crossing the recent cutoff is brought: its older floor is hidden');
     assert.deepEqual(messages, before);
     const swipe = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 }, { type: 'swipe' });
-    assert.ok(swipe.coveredRanges.every(range => range.end <= 4));
+    assert.ok(swipe.coveredRanges.every(range => range.start <= 4));
 });
