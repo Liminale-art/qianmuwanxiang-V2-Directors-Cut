@@ -387,9 +387,9 @@ test('automatic trigger counts every unsummarized floor and organizes up to the 
     assert.equal(live[6].is_user, true);
     assert.deepEqual(nextBatch(doc, live.slice(0, 10), habit, { align: true }), { start: 1, end: 6 });
     assert.deepEqual(nextBatch(doc, live.slice(0, 11), habit, { align: true }), { start: 1, end: 8 });
-    // Factory defaults (10 / 3).
+    // Factory defaults (10 / 5).
     const factory = { ...FACTORY_DEFAULTS, trigger: 50000 };
-    assert.equal(FACTORY_DEFAULTS.triggerFloors, 10); assert.equal(FACTORY_DEFAULTS.recent, 3);
+    assert.equal(FACTORY_DEFAULTS.triggerFloors, 10); assert.equal(FACTORY_DEFAULTS.recent, 5);
     assert.equal(nextBatch(doc, live.slice(0, 9), factory), null);
     assert.deepEqual(nextBatch(doc, live.slice(0, 10), factory), { start: 1, end: 7 });
     // Later rounds count every floor not yet summarized, the protected newest ones included.

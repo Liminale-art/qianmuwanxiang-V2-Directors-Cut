@@ -87,7 +87,7 @@ section[hidden] { display: none; }
 .chips button { all: unset; cursor: pointer; color: var(--faint); padding-bottom: 3px; border-bottom: 1px solid transparent; }
 .chips button[aria-pressed="true"] { color: var(--ink); border-color: var(--red); }
 .end { text-align: center; font-size: 13px; color: var(--faint); letter-spacing: .5em; padding-top: 10px; }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .slip, .knot { opacity: 1; transform: none; } .heart { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } .slip, .knot { opacity: 1; transform: none; } .drift span { opacity: .85; } .heart { transform: scale(1); } }
 .ymbar { position: fixed; left: 0; right: 0; top: 0; height: 42px; z-index: 30; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; }
 .ymbar button { all: unset; cursor: pointer; }
 .ymbar button:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }

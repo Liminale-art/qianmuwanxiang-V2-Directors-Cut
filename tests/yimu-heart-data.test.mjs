@@ -155,7 +155,7 @@ test('injection is off unless switched on; it brings at most three impressions o
         thoughts: [{id: 't1', group: 'others', about: '店主', text: '他大概也在留意她。', floor: 20, at: 1}, {id: 't2', group: 'you', about: '小满', text: '她比看上去更怕冷场。', floor: 40, at: 2}]};
     const snapshot = {name: '阿澈', userName: '小满', messages: [{mes: '很早以前提过店主。'}, {mes: '今天只有我们两个。'}, {mes: '嗯。'}, {mes: '走吧。'}]};
     assert.deepEqual(heartInjection({heart}, DEFAULTS, snapshot), {text: '', ids: []});
-    const on = {...DEFAULTS, diaryInject: true, thoughtInject: true};
+    const on = {...DEFAULTS, recent: 3, diaryInject: true, thoughtInject: true};
     const carried = heartInjection({heart}, on, snapshot);
     assert.ok(carried.text.startsWith('<yimu_heart>') && carried.text.includes('她离不开辣。') && carried.text.includes('"sure":"笃定"'));
     assert.ok(!carried.text.includes('还只看见两次') && !carried.text.includes('熟客'), '不成印象的、没出场的人不带');

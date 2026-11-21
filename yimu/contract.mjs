@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.69';
-export const SERVICE_VERSION = '0.8.28';
+export const FRONTEND_VERSION = '0.8.70';
+export const SERVICE_VERSION = '0.8.29';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -24,7 +24,7 @@ export const shownFloor = floor => floor - 1;
 export const floorField = floor => Number.isSafeInteger(floor) && floor >= 1 ? String(floor - 1) : '';
 export const floorValue = text => String(text ?? '').trim() === '' ? 0 : Number(text) + 1;
 export const SCHEMA = 8;
-export const DEFAULTS = Object.freeze({ recent: 3, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, recallCooldown: 6, summarySlices: 4, preference: '', profileId: '', model: '',
+export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, recallCooldown: 6, summarySlices: 4, preference: '', profileId: '', model: '',
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     // 心迹页：观察日记与关系年表跟着整理走（默认开）；心迹由主模型顺带写（默认关）；两处注入都默认关。
