@@ -3,7 +3,7 @@
 // 这里只负责开合、换主题与把数据交给页面；页面长什么样全在 yimu/heart/ 的主题文件里。
 import { HEART_THEMES } from './heart-themes.mjs';
 import { gradeOf, SURE_WORDS } from './heart-contract.mjs';
-import { fillPlan } from './core.mjs';
+import { fillPlan, FILL_BATCH_FLOORS } from './core.mjs';
 
 const THEME_KEY = 'yimu:heart-theme:v1';
 const realDay = at => { const d = new Date(at); return `${d.getMonth() + 1}月${d.getDate()}日`; };
@@ -26,7 +26,10 @@ export function heartData(state = {}, floors = null) {
         // 楼层计数：这个聊天多少层、和这个角色一共多少层（所有聊天合计，只增不减）。
         ...(floors?.total > 0 ? { floors: { chat: floors.chat || 0, total: floors.total } } : {}),
         // 补全：能不能做、大约几次请求、正在做到第几批。
-        tools: { ready: document.enabled === true, batches: document.enabled === true ? fillPlan(document, state.snapshot?.messages || []).length : 0, fill: state.fillJob ? { done: state.fillJob.done, total: state.fillJob.total } : null, floors: state.snapshot?.messages?.length || 0 },
+        // last：能补到的最后一层（页面上从 0 数）；per：每批几层，页面据此估算请求次数。
+        tools: (() => { const plan = document.enabled === true ? fillPlan(document, state.snapshot?.messages || []) : [];
+            return { ready: document.enabled === true, pending: observations.filter(item => !item.used).length, batches: plan.length, first: plan.length ? plan[0].start - 1 : 0, last: plan.length ? plan.at(-1).end - 1 : 0, per: FILL_BATCH_FLOORS,
+                fill: state.fillJob ? { done: state.fillJob.done, total: state.fillJob.total } : null, floors: state.snapshot?.messages?.length || 0 }; })(),
         impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure], ...(item.own ? { own: true } : {}),
             days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
         loose,
@@ -125,8 +128,16 @@ export function mountHeartView({ document = globalThis.document, storage = globa
                 .catch(error => { console.warn('[忆幕] 心迹条目没有存下', error); return false; })
                 .then(done => { if (done === false) onNotice('没有存下，请再试一次', 'error'); if (opened) feed({ changedOnly: done !== false }); });
         }
+        else if (type === 'bind') {
+            // 「待凝定的印象」旁的合订：把还没看过的留意合订成日记。做不成的原因由面板的提示说明。
+            Promise.resolve().then(() => onAction('heartDiary', {}))
+                .catch(error => { console.warn('[忆幕] 合订没有完成', error); return false; })
+                .then(() => { if (opened) feed(); });
+        }
         else if (type === 'fill' || type === 'fillStop') {
-            Promise.resolve().then(() => onAction(type === 'fill' ? 'heartFill' : 'stop', {}))
+            // 页面上的楼层从 0 数；给了范围就只补那一段。
+            const floorAt = value => /^\d+$/.test(String(value ?? '').trim()) ? Number(value) + 1 : null, start = floorAt(event.data.start), end = floorAt(event.data.end);
+            Promise.resolve().then(() => onAction(type === 'fill' ? 'heartFill' : 'stop', type === 'fill' && start && end && end >= start ? { range: { start, end } } : {}))
                 .catch(error => { console.warn('[忆幕] 补全没有开始', error); return false; })
                 .then(() => { if (opened) feed(); });
         }
@@ -152,7 +163,7 @@ export function mountHeartView({ document = globalThis.document, storage = globa
         try { floors = getFloors(next => { floors = next; if (opened) feed({ changedOnly: true }); }); } catch (error) { console.warn('[忆幕] 楼层计数没取到', error); floors = null; }
         if (opened) return;
         opened = true;
-        layer = document.createElement('div'); layer.className = 'ym-heart-layer'; layer.setAttribute('role', 'dialog'); layer.setAttribute('aria-label', '心迹与观察日记');
+        layer = document.createElement('div'); layer.className = 'ym-heart-layer'; layer.setAttribute('role', 'dialog'); layer.setAttribute('aria-label', '心迹与心间存照');
         // 忆幕的面板是顶层对话框：全屏页放进同一个对话框里才能盖在它上面；找不到就放进页面。
         (document.querySelector?.('#yimu-dialog[open]') || document.body).append(layer);
         view.addEventListener?.('message', onMessage);

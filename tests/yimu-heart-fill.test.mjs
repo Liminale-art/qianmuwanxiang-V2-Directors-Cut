@@ -62,7 +62,7 @@ test('filling in from the original text goes floor by floor in batches, leaves t
     const chronicle = chronicleAsk(settings, names, { heart: { impressions: [], thoughts: [], events: [{ id: 'e', title: '第一次同桌', text: '拼桌', floor: 2, at: 1 }], eventFloor: 0, thoughtFloor: 0 } });
     const prompt = fillPrompt(settings, sourceRows(messages, plan[0], settings), { observation: '另外返回 "traces"：痕迹要求', chronicle });
     assert.match(prompt, /输出一个JSON对象，不用Markdown：\{"traces":\[\],"events":\[\]\}。/);
-    assert.ok(prompt.includes('痕迹要求') && prompt.includes('另外返回 "events"') && prompt.includes('已有年表：[{"title":"第一次同桌","floor":2}]'));
+    assert.ok(prompt.includes('痕迹要求') && prompt.includes('另外返回"events"字段') && prompt.includes('已有年表：[{"title":"第一次同桌","floor":2}]'));
     assert.ok(prompt.includes('"floor":1') && prompt.includes('第8层的正文') && !prompt.includes('第9层的正文'), '只带这一批的原文');
     assert.ok(!prompt.includes('"slices"'), '补全不出切片');
     assert.match(fillPrompt(settings, [], { chronicle }), /\{"events":\[\]\}。/);

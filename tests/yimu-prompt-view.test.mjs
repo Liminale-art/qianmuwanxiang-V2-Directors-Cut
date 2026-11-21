@@ -129,6 +129,6 @@ test('the heart tab sits between stage and recall and shows its three entries; f
     const row=f.byClass('ym-prompt-groups');assert.equal(row.dataset.count,'4');
     f.get('心迹日记').click();
     assert.equal(f.get('心迹日记').getAttribute('aria-selected'),'true');
-    for(const name of ['观察日记','关系年表','心迹'])assert.ok(f.get(`${name}提示词正文`),`${name} 这一条可编辑`);
+    for(const name of ['心间存照','关系年表','心迹'])assert.ok(f.get(`${name}提示词正文`),`${name} 这一条可编辑`);
     f.render({recallEnabled:false});assert.equal(row.dataset.count,'3');
 });

@@ -99,11 +99,11 @@ test('explicit manual range carries discarded source authorization through runti
     await f.controller.refresh(); await f.flush(); assert.equal(f.generated.length, 0);
     f.model(async () => JSON.stringify({ slices: [{ start: 1, end: 1, title: '重读来信', text: '依据第一层重新整理' }] }));
     await f.controller.action('summarizeRange', { range: { start: 1, end: 1 }, expectedRange: { start: 1, end: 1 } }); await f.flush();
-    assert.equal(f.generated.length, 1, f.controller.state.error);
+    assert.equal(f.generated.filter(prompt => prompt.includes('"slices"')).length, 1, f.controller.state.error);
     const saved = (await f.read()).document;
     assert.ok(saved.entries.some(entry => entry.status === 'active' && entry.source?.start === 1 && entry.title === '重读来信'), f.controller.state.error);
     for (const id of ['fine_1', 'fine_2']) assert.deepEqual(saved.entries.find(entry => entry.id === id), before.entries.find(entry => entry.id === id));
-    await f.controller.refresh(); await f.flush(); assert.equal(f.generated.length, 1, 'the second discarded floor remains absent after automatic refresh');
+    await f.controller.refresh(); await f.flush(); assert.equal(f.generated.filter(prompt => prompt.includes('"slices"')).length, 1, 'the second discarded floor remains absent after automatic refresh');
 });
 
 for (const edited of [false, true]) test(`fine redo preserves the returned title ${edited ? 'as a candidate beside manual text' : 'on the active generated slice'}`, async t => {

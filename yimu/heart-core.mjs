@@ -52,7 +52,8 @@ export function chronicleAsk(settings, names, document) {
     const guide = settings?.chronicle === false || !String(names?.char || '').trim() ? '' : heartChroniclePrompt(settings);
     if (!guide) return null;
     return {
-        protocol: fill(`另外返回 "events"：0 到 ${CHRONICLE_PER_BATCH} 条关系年表节点，直接依据这段正文。\n${guide}\n各种「第一次」（第一次正式接触、第一次去到对方的世界或住处）与婚礼这类仪式都算节点；只写这段正文里确实发生了的，日常相处不算；已有年表里写过的不再写；没有节点就返回空数组。格式：{"title":"不超过12字的短名","text":"一两句，不超过120字","floor":依据所在楼层整数}。`, names),
+        // 衔接语是用户 2026-11-21 的修订稿；中间接用户可编辑的「关系年表」提示词，末尾是固定的格式。
+        protocol: fill(`另外返回"events"字段：从本次正文中提取 0–${CHRONICLE_PER_BATCH} 条关系年表节点。节点覆盖各类具备里程碑意义的首次事件（如首次正式接触、首次进入新环境、确认关系等）与仪式性事件（如婚礼）；仅收录本次正文内明确发生的内容，日常相处不计入；已录入既有年表的节点不再重复输出，无符合条件的节点则返回空数组。\n${guide}\n格式：{"title":"不超过12字的短名","text":"一两句，不超过120字","floor":依据所在楼层整数}。`, names),
         data: `已有年表：${JSON.stringify(heartOf(document).events.slice(-60).map(item => ({ title: item.title, floor: item.floor })))}`,
     };
 }
@@ -107,15 +108,13 @@ export function parseDiary(response, work) {
     return { impressions, events };
 }
 
-/** 这一轮回复要不要顺带写心迹：开关开着、聊天补全、有提示词、离上一则够远，并且这期间完成过一次阶段总结。
+/** 这一轮回复要不要顺带写心迹：开关开着、聊天补全、有提示词、离上一则够远（用户 2026-11-21：不再要求期间完成过阶段总结）。
  *  同一层重新生成时照旧再要一次——只认最后留下的那条回复。 */
 export function thoughtDue(document, settings, snapshot, type = '') {
     if (settings.thoughts !== true || snapshot?.mainApi !== 'openai' || !String(snapshot?.name || '').trim() || !heartNotePrompt(settings)) return null;
     const heart = heartOf(document), floor = snapshot.messages.length + (type === 'swipe' ? 0 : 1);
     if (heart.thoughtFloor && floor === heart.thoughtFloor) return { floor };
-    if (floor - heart.thoughtFloor < (settings.thoughtCooldown || 30)) return null;
-    const staged = (document.entries || []).some(entry => entry.kind === 'stage' && entry.status === 'active' && (rangeOf(entry)?.end ?? 0) > heart.thoughtFloor);
-    return staged ? { floor } : null;
+    return floor - heart.thoughtFloor < (settings.thoughtCooldown || 30) ? null : { floor };
 }
 export function thoughtRequest(settings, names) {
     const base = heartNotePrompt(settings);

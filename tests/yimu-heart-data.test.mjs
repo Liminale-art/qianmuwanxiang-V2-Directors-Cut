@@ -88,7 +88,7 @@ test('the page settings: diary and chronicle on, heart notes and both injections
 
 test('the heart prompt group is editable like the others; the note for the main model never goes into the diary request', () => {
     const settings = {prompts: clone(DEFAULT_PROMPTS)};
-    assert.deepEqual(DEFAULT_PROMPTS.groups.heart.map(item => item.name), ['观察日记', '关系年表', '心迹']);
+    assert.deepEqual(DEFAULT_PROMPTS.groups.heart.map(item => item.name), ['心间存照', '关系年表', '心迹']);
     const diary = composePrompt(settings, 'heart', {protocol: 'P', data: 'D'});
     assert.ok(diary.includes('将零散的观察细节归拢为针对人物的私人印象') && diary.includes('锚定关系发展中的标志性时间节点'));
     assert.ok(!diary.includes('仅写给自己的私密心绪记录'));
@@ -127,13 +127,13 @@ test('a heart note is asked for only when it is due, and is lifted out of the re
     const doc = {entries: [stage(20)]};
     assert.equal(thoughtDue(doc, settings, snapshot(20), 'normal'), null, '离上一则不够远');
     assert.deepEqual(thoughtDue(doc, settings, snapshot(29), 'normal'), {floor: 30});
-    assert.equal(thoughtDue({entries: []}, settings, snapshot(60), 'normal'), null, '其间没有完成过阶段总结');
+    assert.deepEqual(thoughtDue({entries: []}, settings, snapshot(60), 'normal'), {floor: 61}, '不再要求其间完成过阶段总结');
     assert.equal(thoughtDue(doc, {...settings, thoughts: false}, snapshot(60)), null);
     assert.equal(thoughtDue(doc, settings, {...snapshot(60), mainApi: 'textgenerationwebui'}), null, '只支持聊天补全');
     const written = {entries: [stage(20)], heart: {impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 30}};
     assert.equal(thoughtDue(written, settings, snapshot(45), 'normal'), null);
     assert.deepEqual(thoughtDue(written, settings, snapshot(30), 'swipe'), {floor: 30}, '同一层重新生成时照旧再要一次');
-    assert.equal(thoughtDue({...written, entries: [stage(20)]}, settings, snapshot(70), 'normal'), null, '上一则之后没有新的阶段总结');
+    assert.deepEqual(thoughtDue({...written, entries: [stage(20)]}, settings, snapshot(70), 'normal'), {floor: 71}, '上一则之后没有新的阶段总结也照样到期');
     assert.deepEqual(thoughtDue({...written, entries: [stage(20), stage(55)]}, settings, snapshot(70), 'normal'), {floor: 71});
     const ask = thoughtRequest(settings, names);
     assert.ok(ask.includes(`<${HEART_TAG} 对象=`) && ask.includes('不超过 200 字') && ask.includes('可围绕小满') && !ask.includes('{{'));
@@ -233,20 +233,21 @@ async function fixture(t) {
 
 test('whole chain: traces and chronicle entries ride on a summary → the diary turns the traces into an impression → a heart note written by the main model is lifted out of the reply', async t => {
     const f = await fixture(t);
-    // 关系年表随批次：切片总结请求里多带「另外返回 "events"」与「已有年表」，节点直接从这段正文里拾。
-    f.model(async prompt => { assert.ok(prompt.includes('另外返回 "events"') && prompt.includes('已有年表：[]'), '年表要求随切片总结一起发');
+    // 关系年表随批次：切片总结请求里多带「另外返回"events"字段」与「已有年表」，节点直接从这段正文里拾。
+    f.model(async prompt => { assert.ok(prompt.includes('另外返回"events"字段') && prompt.includes('已有年表：[]'), '年表要求随切片总结一起发');
         return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}],
             traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
             events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}, {title: '批次之外', text: '楼层不在这一批里，不采用。', floor: 5}]}); });
     await f.controller.refresh();
     await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}});
     await f.controller.action('autoSummary', {value: true}); await f.flush();
+    await f.controller.action('settings', {values: {diaryAuto: false}}); await f.flush();
     await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}, batchFloors: 10}); await f.flush();
     let doc = await f.read();
     assert.equal(doc.observations.length, 2, '痕迹随切片总结记下');
     assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]], '年表节点随切片总结存入，楼层不在这一批里的丢掉');
     assert.equal(doc.heart.eventFloor, 2, '年表进度推到这一批末尾');
-    assert.deepEqual(doc.heart.impressions, []); assert.ok(doc.observations.every(item => !item.used), '痕迹不够多、也没有阶段总结：不自动整理日记');
+    assert.deepEqual(doc.heart.impressions, []); assert.ok(doc.observations.every(item => !item.used), '关了自动合订：总结之后不自动整理日记');
     assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹')), '没有发过日记整理请求');
     // 手动整理一次日记：这两条切片年表已经读过，不再为年表重读它们，只整理痕迹。
     const before = f.sent.length;
@@ -277,8 +278,8 @@ test('whole chain: traces and chronicle entries ride on a summary → the diary 
     const again = await f.round('swipe', '她只是点了点头。');
     assert.ok(again.includes(`<${HEART_TAG} 对象=`));
     doc = await f.read();
-    assert.deepEqual(doc.heart.thoughts, []); assert.equal(doc.heart.thoughtFloor, f.context.chat.length);
-    // 下一轮离上一则太近、其间也没有新的阶段总结：不再要。
+    // next round is too close to the last note once the gap is widened: not asked again
+    await f.controller.action('settings', {values: {thoughtCooldown: 30}}); await f.flush();
     f.context.chat.push({name: '小满', is_user: true, mes: '走吧。'});
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);

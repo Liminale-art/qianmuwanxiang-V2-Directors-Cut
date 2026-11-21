@@ -32,11 +32,16 @@
 .ymbar-r { display: flex; align-items: center; gap: 16px; }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
 body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-tools) { display: none !important; }
-/* 「还在留意的」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
+/* 「待凝定的印象」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
 .ym-loose { cursor: default; }
 .ym-loose:hover, .ym-loose[data-pick] { animation-play-state: paused !important; opacity: 1 !important; }
 .ym-rm.ym-rmq { position: static; display: inline-block; margin-left: 4px; padding: 2px 6px; vertical-align: middle; font-size: 13px; opacity: 0; pointer-events: none; }
 .ym-loose:hover > .ym-rmq, .ym-loose[data-pick] > .ym-rmq, .ym-rmq:focus-visible { opacity: .9; pointer-events: auto; color: var(--ymd-accent); }
+/* 合订：小标题后面的一个小字钮。 */
+.ym-bind { all: unset; cursor: pointer; margin-left: 12px; padding: 2px 6px; letter-spacing: .2em; color: var(--ymd-accent); border-bottom: 1px dotted var(--ymd-accent); }
+.ym-bind[disabled] { opacity: .5; cursor: default; }
+.ym-bind:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
+body[data-standalone] .ym-bind { display: none !important; }
 /* 修改：小叉左边的一支小笔，同样很淡。 */
 .ym-ed { all: unset; position: absolute; right: 26px; top: 0; z-index: 6; cursor: pointer; padding: 6px 6px; font-size: 12px; line-height: 1; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
 .ym-ed:hover, .ym-ed:focus-visible { opacity: .9; color: var(--ymd-accent); }
@@ -61,6 +66,10 @@ body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-t
 .ym-sheet-card input:focus, .ym-sheet-card textarea:focus { border-bottom-color: var(--ymd-accent); }
 .ym-sheet-card ::placeholder { color: var(--ymd-mute); opacity: .6; }
 .ym-sheet-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.ym-sheet-foot button[disabled] { opacity: .45; cursor: default; }
+.ym-sheet-note { margin: 0; font-size: 12px; line-height: 1.7; color: var(--ymd-mute); }
+.ym-sheet-range { display: flex; gap: 14px; }
+.ym-sheet-range label { flex: 1; min-width: 0; }
 /* 楼层计数：日期条下的一行小字。 */
 #ym-floors { position: relative; z-index: 6; display: flex; gap: 16px; margin: -4px 0 8px; padding: 0 29px; font-size: 11px; letter-spacing: .12em; color: var(--ymd-mute); font-variant-numeric: tabular-nums; }
 #ym-floors b { font-weight: 500; color: var(--ymd-ink); }

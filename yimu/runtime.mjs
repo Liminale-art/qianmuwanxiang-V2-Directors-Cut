@@ -680,6 +680,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             // 隐藏在整轮结束后做一次：每次隐藏都要把整份聊天交给 ST 保存，多批总结若每批保存一次，
             // 慢网络下会连着上传好几份聊天，还会让用户下一次发言排在这些保存后面。生成中不动聊天。
             if (processed && !disposed && !generating && isCurrent(binding)) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
+            // 每做完一轮切片总结，新留意到的事就值得合订一次（设置里可改成只手动）。
+            if (processed && !entryId) stagedForDiary.add(key); // 重做单条不算新的总结
             if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}).then(() => startDiary()).catch(() => {}), runGeneration);
             emit();
         }
@@ -834,7 +836,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const doc = clone(state.document), defaults = clone(state.defaults), settings = effectiveSettings(doc, defaults);
         const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
         let work = names.char ? diaryWork(doc, settings) : null;
-        if (!work) { stagedForDiary.delete(key); if (force) throw new Error(settings.diary === false && settings.chronicle === false ? '观察日记与关系年表都关着' : '没有新留意到的事或新记忆可合订'); return false; }
+        if (!work) { stagedForDiary.delete(key); if (force) throw new Error(settings.diary === false && settings.chronicle === false ? '心间存照与关系年表都关着' : '没有新留意到的事或新记忆可合订'); return false; }
+        // 自动合订可以在设置里关掉（只留手动）。开着时：刚做完一次总结（切片或阶段），或攒够了没看过的痕迹。
+        if (!force && settings.diaryAuto === false) { stagedForDiary.delete(key); return false; }
         if (!force && !staged && work.traces.length < DIARY_TRACE_TRIGGER) return false;
         stagedForDiary.delete(key);
         const controller = new AbortController(); jobs.set(key, controller);
@@ -873,7 +877,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     // 从正文补全日记与年表：中途才启用、或当时没拾到的楼层，按批把原文再过一遍，只要痕迹与年表节点，不动记忆切片。
     // 用户在心迹页里发起；已有痕迹的那一段不再要痕迹（免得把归过日记的换掉），年表靠「已有年表」去重。做完把新痕迹合订成日记。
-    async function startHeartFill() {
+    async function startHeartFill({ range = null } = {}) {
         if (disposed || !state.document?.enabled || !state.snapshot) throw new Error('请先启用忆幕');
         if (generating && hostBusy() === true) throw new Error('正在生成回复，等回复结束后再补全');
         if (!state.sourceAvailable) throw new Error('当前聊天原件尚未通过核对，请保存聊天后重新打开忆幕');
@@ -882,9 +886,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const doc = clone(state.document), defaults = clone(state.defaults), settings = effectiveSettings(doc, defaults);
         const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
         const wantTraces = settings.diary !== false && Boolean(names.char);
-        if (!wantTraces && !chronicleAsk(settings, names, doc)) throw new Error('观察日记与关系年表都关着');
-        const plan = fillPlan(doc, state.snapshot.messages);
-        if (!plan.length) throw new Error('还没有可以补全的楼层');
+        if (!wantTraces && !chronicleAsk(settings, names, doc)) throw new Error('心间存照与关系年表都关着');
+        const plan = fillPlan(doc, state.snapshot.messages, Number.isSafeInteger(range?.start) && Number.isSafeInteger(range?.end) && range.start >= 1 && range.end >= range.start ? { from: range.start, to: range.end } : {});
+        if (!plan.length) throw new Error(range ? '这一段没有可以补全的楼层' : '还没有可以补全的楼层');
         const run = summaryRun(settings, state.snapshot);
         const controller = new AbortController(); controller.fill = { done: 0, total: plan.length }; jobs.set(key, controller);
         let log = null, finished = false;
@@ -1170,7 +1174,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await change(binding, { id: id(), type: 'heartAdd', kind: payload.kind, item: built, at: Date.now() });
             return true;
         }
-        if (type === 'heartFill') { await startHeartFill(); return true; }
+        if (type === 'heartFill') { await startHeartFill({ range: payload.range || null }); return true; }
         if (type === 'purge') {
             if (!['all', 'traces'].includes(payload.scope)) throw new Error('清理范围无效');
             // 正在跑的整理先停：它拿着清理前的条目，写回来会与清理后的文档对不上。

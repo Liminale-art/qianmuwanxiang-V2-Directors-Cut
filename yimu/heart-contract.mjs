@@ -12,7 +12,7 @@ export const HEART_LIMITS = Object.freeze({ impressions: 300, thoughts: 300, eve
 export const THOUGHT_GROUPS = Object.freeze(['you', 'self', 'others', 'books']);
 /** 把握程度只看「在几个不同的日子里看见过」：3 个日子起步，6 个日子笃定。不到 3 个的还只是留意，不算印象。 */
 export const sureOf = days => days >= 6 ? 3 : days >= 4 ? 2 : days >= 3 ? 1 : 0;
-export const SURE_WORDS = Object.freeze(['还在留意', '也许', '我觉得', '笃定']);
+export const SURE_WORDS = Object.freeze(['待凝定', '也许', '我觉得', '笃定']);
 /** 一条印象的把握程度。用户自己写下或改过的（own）是他认定的，直接算笃定，不再数日子。 */
 export const gradeOf = item => item?.own === true ? 3 : sureOf(item?.days?.length || 0);
 

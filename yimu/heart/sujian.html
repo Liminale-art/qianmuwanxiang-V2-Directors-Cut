@@ -117,7 +117,7 @@ body { padding-top: 42px; }
 <div class="stage">
   <div class="pin">
     <nav class="switch" role="tablist">
-      <button role="tab" aria-selected="true" data-view="diary">观察日记</button>
+      <button role="tab" aria-selected="true" data-view="diary">心间存照</button>
       <span class="rule a"></span>
       <button role="tab" aria-selected="false" data-view="heart">心迹</button>
       <span class="rule b"></span>
@@ -197,7 +197,7 @@ window.yimuPaint = D => {
       <button class="why">依据 · ${it.was ? '改过一次口' : it.days.length + ' 个不同的日子'}</button>
       <div class="proof"><div><ul>${it.was ? `<li><b>以前以为</b><span class="was">${it.was}</span></li>` : ''}${it.days.map(([day, text]) => `<li><b>${day}</b>${text}</li>`).join('')}</ul></div></div></article>`).join('')
     : '<p class="empty">这段日子还没有攒够的印象。同一件事在几个不同的日子里都看见，才会写在这里。</p>')
-    + (D.loose.length ? `<div class="drift"><h4>还 在 留 意 的</h4>${D.loose.slice(0, 7).map((it, i) => `<span style="--x:${[2, 30, 10, 20, 36, 26, 6][i]}%;font-size:${[21, 12, 15, 18, 11, 13, 16][i]}px;animation-delay:-${i * 2}s;animation-duration:${[13, 9, 11, 15, 8, 12, 10][i]}s" class="ym-loose">${it.text}${rmq(it.kind, it.id)}</span>`).join('')}</div>` : '');
+    + (D.loose.length ? `<div class="drift"><h4>待 凝 定 的 印 象</h4>${D.loose.slice(0, 7).map((it, i) => `<span style="--x:${[2, 30, 10, 20, 36, 26, 6][i]}%;font-size:${[21, 12, 15, 18, 11, 13, 16][i]}px;animation-delay:-${i * 2}s;animation-duration:${[13, 9, 11, 15, 8, 12, 10][i]}s" class="ym-loose">${it.text}${rmq(it.kind, it.id)}</span>`).join('')}</div>` : '');
   views.diary.querySelectorAll('.slip .why').forEach(b => b.addEventListener('click', () => b.closest('.slip').classList.toggle('open')));
 
   heart.querySelectorAll('.knot, .empty').forEach(node => node.remove());

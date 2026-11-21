@@ -671,7 +671,6 @@
 /* 心迹与观察日记：全屏的独立页面，盖住整个视口；里面是一份自带样式的主题页面。 */
 .ym-heart-layer { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; z-index: 2147483000; background: #0b0a09; }
 .ym-heart-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
-.ym-heart-run { justify-self: end; }
 .ym-setting-divide { border-top: 1px solid var(--ym-border); padding-top: 12px; margin-top: 2px; }
 .ym-setting-note { margin: -6px 0 0; font-size: var(--ym-type-caption, 11px); }
 /* ==== 纸间 · 线装书页（与千幕同一套）====

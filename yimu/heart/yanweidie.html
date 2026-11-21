@@ -152,7 +152,7 @@ body { padding-top: 42px; }
 <div class="wrap">
   <header class="hero">
     <div class="cap sans">memory<br>is a loop<small>一蝶振翅 · 万象如幕</small></div>
-    <div class="side">心 迹 ／ 观 察 日 记 ／ 年 表</div>
+    <div class="side">心 迹 ／ 心 间 存 照 ／ 年 表</div>
     <span class="rule h"></span><span class="rule v"></span><span class="bracket"></span>
     <div class="word one">心</div><div class="word two">迹</div>
     <span class="disc" style="width:150px;height:150px;right:-34px;top:60px"></span><span class="disc" style="width:58px;height:58px;left:36%;top:438px"></span>
@@ -166,7 +166,7 @@ body { padding-top: 42px; }
       <span class="bf ink" style="left:22%;top:470px;--s:16px;--f:.38s;animation-delay:-6s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:31%;top:500px;--s:10px;--f:.3s;animation-delay:-2s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span><span class="bf ink" style="left:12%;top:520px;--s:22px;--f:.5s;animation-delay:-8s"><svg viewBox="0 0 24 24"><path class="wing" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/><path class="wing r" d="M12 12C8 3 1 2 1.5 8.5C2 12 7 13 12 12C7 13 3.5 16 5.5 20C7.5 23 11 18 12 12Z"/></svg></span></div>
   </header>
   <div class="pin sans">
-    <nav class="switch" role="tablist"><button role="tab" aria-selected="true" data-view="diary">观 察 日 记</button><button role="tab" aria-selected="false" data-view="heart">心 迹</button><button role="tab" aria-selected="false" data-view="chron">年 表</button></nav>
+    <nav class="switch" role="tablist"><button role="tab" aria-selected="true" data-view="diary">心 间 存 照</button><button role="tab" aria-selected="false" data-view="heart">心 迹</button><button role="tab" aria-selected="false" data-view="chron">年 表</button></nav>
     <div id="ym-date"></div>
   </div>
 
@@ -244,7 +244,7 @@ window.yimuPaint = (D, raw) => {
   });
   if (!D.impressions.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">这段日子还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
   const loose = D.loose.slice(0, 6).map((item, i) => [item.text + rmq(item.kind, item.id), [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
-  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote ym-loose" style="--x:${[2, 30, 10, 22, 36, 0][i]}%;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
+  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">待 凝 定 的 印 象</h4>${loose.map(([text, size, d], i) => `<span class="mote ym-loose" style="--x:${[2, 30, 10, 22, 36, 0][i]}%;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
 
   heart.querySelectorAll('.say2, .empty').forEach(node => node.remove());
   const end = heart.querySelector('.end');

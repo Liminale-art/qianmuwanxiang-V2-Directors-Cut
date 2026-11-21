@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.71';
-export const SERVICE_VERSION = '0.8.30';
+export const FRONTEND_VERSION = '0.8.72';
+export const SERVICE_VERSION = '0.8.31';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -28,7 +28,7 @@ export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: true, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     // 心迹页：观察日记与关系年表跟着整理走（默认开）；心迹由主模型顺带写（默认关）；两处注入都默认关。
-    diary: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 30, thoughtInject: false,
+    diary: true, diaryAuto: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 30, thoughtInject: false,
     contextRules: DEFAULT_CONTEXT_RULES });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
@@ -53,7 +53,7 @@ export function validateSettings(input, partial = true) {
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
-        if (['stageAuto', 'recall', 'companionShareCustom', 'vectorEnabled', 'rerankEnabled', 'diary', 'chronicle', 'diaryInject', 'thoughts', 'thoughtInject'].includes(key)) requireThat(typeof value === 'boolean', '忆幕开关设置无效');
+        if (['stageAuto', 'recall', 'companionShareCustom', 'vectorEnabled', 'rerankEnabled', 'diary', 'diaryAuto', 'chronicle', 'diaryInject', 'thoughts', 'thoughtInject'].includes(key)) requireThat(typeof value === 'boolean', '忆幕开关设置无效');
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
         else if (key === 'contextRules') { result[key] = validateContextRules(value); continue; }

@@ -32,7 +32,8 @@ const SETTINGS = [
     ['stageThreshold', '阶段总结触发', 'number', 0],
     ['stageRecent', '保留最近记忆切片', 'number', 0],
     ['stageChars', '每条阶段总结字数上限', 'number', 0],
-    ['diary', '观察日记', 'checkbox'],
+    ['diary', '心间存照', 'checkbox'],
+    ['diaryAuto', '自动合订', 'checkbox'],
     ['diaryChars', '每条日记字数上限', 'number', 10],
     ['diaryInject', '日记随记忆带入', 'checkbox'],
     ['chronicle', '关系年表', 'checkbox'],
@@ -50,11 +51,12 @@ const SETTING_HINTS = {
     triggerFloors: `未整理楼层达到此数时自动总结；最新 ${REROLL_GUARD} 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token`,
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
-    diary: '留意到的事合订成日记：同一件事在 3 个不同的日子里看见才写进去，6 个日子才笃定；跟着阶段总结一起合订，用总结的连接',
+    diary: '留意到的事合订成日记：同一件事在故事里 3 个不同的日子都看见才写进去，6 个日子才笃定；用总结的连接',
+    diaryAuto: '开着：每次总结之后有新留意到的事就合订一次，攒够 12 条也会合订；关掉就只在心迹页里点「合订」时合订',
     diaryInject: '回复时带上在场的人的日记，最多三条',
     chronicle: '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……',
     thoughts: '由写正文的模型在回复末尾顺带写一则，写完即从正文里收走；只支持聊天补全',
-    thoughtCooldown: '两则心迹至少隔这么多层，并且其间完成过一次阶段总结；模型可以不写',
+    thoughtCooldown: '两则心迹至少隔这么多层；模型可以不写',
     thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受召回冷却约束',
     maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
 };
@@ -202,7 +204,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
     // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
     const heart = mountHeartView({ document, getFloors: floors, getState: () => state, onAction: (type, payload) => dispatch(type, payload), onNotice });
-    const heartEntry = iconButton('心迹与观察日记', 'loveletter', () => heart.open(), 'ym-heart-entry');
+    const heartEntry = iconButton('心迹与心间存照', 'loveletter', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
     headerActions.append(backButton, heartEntry, closeButton);
     header.append(heading, headerActions);
@@ -392,7 +394,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
-        ['heart', '心迹日记', ['diary', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
+        ['heart', '心迹日记', ['diary', 'diaryAuto', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
         const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
@@ -433,8 +435,6 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         settingGroups.get(key).append(row);
         // 这一项的作用一句话写在下面（用户要求）。
         if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内不再重复'));
-        // 平时跟着阶段总结合订；这里可以随手合订一次。放在观察日记这一块的末尾。
-        if (key === 'diaryInject') { const run = button('将留意到的事合订为日记', () => { void dispatch('heartDiary', {}, run); }, 'ym-heart-run'); settingGroups.get(key).append(run); }
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
     async function saveChangedSettings() {

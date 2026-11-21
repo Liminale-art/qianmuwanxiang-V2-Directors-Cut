@@ -9,7 +9,7 @@ document.getElementById('ym-export').addEventListener('click', () => tell('expor
 addEventListener('keydown', event => { if (event.key === 'Escape') { if (YM.open) { YM.open = false; drawDate(); } else tell('exit'); } });
 
 // 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」。点一下变「再点删除」，几秒内再点才删。
-// 「还在留意的」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现，点一下直接删、不留底。
+// 「待凝定的印象」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现，点一下直接删、不留底。
 // 在捕获阶段接住点击，条目自己的展开不会跟着触发。
 const rmq = (kind, id) => id ? `<button type="button" class="ym-rm ym-rmq" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
 const rm = (kind, id) => id ? `<button type="button" class="ym-rm" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
@@ -17,7 +17,7 @@ let rmArmed = null, rmTimer = 0;
 const rmDisarm = () => { clearTimeout(rmTimer); if (rmArmed) { rmArmed.removeAttribute('data-armed'); rmArmed.textContent = '×'; rmArmed.setAttribute('aria-label', '删除'); } rmArmed = null; };
 document.addEventListener('click', event => {
     const button = event.target.closest?.('.ym-rm');
-    // 触屏没有悬停：点一下「还在留意的」那一条，它的小叉才出来；再点别处收回。
+    // 触屏没有悬停：点一下「待凝定的印象」那一条，它的小叉才出来；再点别处收回。
     const loose = event.target.closest?.('.ym-loose');
     for (const node of document.querySelectorAll?.('.ym-loose[data-pick]') || []) if (node !== loose) node.removeAttribute('data-pick');
     if (loose && !button) loose.toggleAttribute('data-pick');
@@ -94,6 +94,15 @@ function repaint() { drawDate(); drawFloors(); drawTools(); window.yimuPaint?.(s
 // 修改：每条日记、心迹、年表的小「×」旁边再放一支小笔，不用主题各自去摆。
 function decorate() {
     if (document.body?.dataset?.standalone || typeof document.querySelectorAll !== 'function') return;
+    // 合订：放在「待凝定的印象」这行小标题后面；有还没合订的留意、忆幕开着才出现。
+    const tools = YM.raw?.tools || {};
+    for (const title of document.querySelectorAll('.drift h4, .loose h4, .strip-label')) {
+        title.querySelector('.ym-bind')?.remove();
+        if (!tools.ready || !(tools.pending > 0) || title.hidden) continue;
+        const bind = document.createElement('button');
+        bind.type = 'button'; bind.className = 'ym-bind'; bind.textContent = bindBusy ? '合订中' : '合订'; bind.disabled = bindBusy; bind.title = '把这些合订成日记';
+        title.append(bind);
+    }
     for (const rmButton of document.querySelectorAll('.ym-rm:not(.ym-rmq)')) {
         if (rmButton.previousElementSibling?.classList?.contains('ym-ed')) continue;
         const pen = document.createElement('button');
@@ -103,30 +112,50 @@ function decorate() {
         try { const at = getComputedStyle(rmButton); pen.style.top = at.top; pen.style.right = `${(parseFloat(at.right) || 0) + rmButton.offsetWidth + 2}px`; } catch { /* keep the stylesheet position */ }
     }
 }
-// 补记、补全：放在日期条里「日／周」的左边。补全要点两下，第一下说明大约几次请求。
-let fillArmed = false, fillTimer = 0;
+// 补记、补全：放在日期条里「日／周」的左边。补全点开一张小纸条：选楼层范围，按钮上写着大约几次请求。
 function drawTools() {
     const host = document.getElementById('ym-date'); if (!host || document.body?.dataset?.standalone || typeof host.querySelector !== 'function') return;
     const tools = YM.raw?.tools || {}, mode = host.querySelector('.ym-date-mode'); if (!mode) return;
     const box = document.createElement('span'); box.className = 'ym-tools';
     const add = document.createElement('button'); add.type = 'button'; add.id = 'ym-add'; add.textContent = '补记'; add.title = '自己写一条日记、心迹或年表';
     const fill = document.createElement('button'); fill.type = 'button'; fill.id = 'ym-fill';
-    if (tools.fill) { fill.textContent = `补全中 ${tools.fill.done}／${tools.fill.total} · 停`; fill.dataset.running = '1'; fillArmed = false; }
-    else if (fillArmed) { fill.textContent = `约 ${tools.batches} 次请求 · 再点开始`; fill.dataset.armed = 'true'; }
-    else { fill.textContent = '补全'; fill.title = '把已有的正文再过一遍，补上当时没记下的留意与年表'; }
+    if (tools.fill) { fill.textContent = `补全中 ${tools.fill.done}／${tools.fill.total} · 停`; fill.dataset.running = '1'; }
+    else { fill.textContent = '补全'; fill.title = '把已有的正文再过一遍，补上当时没记下的印象与年表'; }
     if (!tools.ready || !tools.fill && !(tools.batches > 0)) fill.disabled = true;
     box.append(add, fill); mode.before(box);
 }
+const fillCount = (from, to, per) => Number.isFinite(from) && Number.isFinite(to) && to >= from ? Math.max(1, Math.ceil((to - from + 1) / Math.max(1, per || 20))) : 0;
+function openFill() {
+    closeSheet();
+    const tools = YM.raw?.tools || {}, sheet = document.createElement('div'); sheet.id = 'ym-sheet';
+    sheet.innerHTML = `<form class="ym-sheet-card" role="dialog" aria-label="补全">
+        <div class="ym-sheet-head"><b>从正文补全</b></div>
+        <p class="ym-sheet-note">把这一段正文再过一遍，补上当时没记下的印象与年表；记忆切片不动。</p>
+        <div class="ym-sheet-range"><label><span>从第几层</span><input name="start" inputmode="numeric" value="${Number(tools.first) || 0}"></label><label><span>到第几层</span><input name="end" inputmode="numeric" value="${Number(tools.last) || 0}"></label></div>
+        <div class="ym-sheet-foot"><button type="button" data-sheet-close>算了</button><button type="submit"></button></div></form>`;
+    const start = sheet.querySelector('[name="start"]'), end = sheet.querySelector('[name="end"]'), go = sheet.querySelector('[type="submit"]');
+    const read = node => /^\d+$/.test(node.value.trim()) ? Number(node.value) : NaN;
+    const sync = () => { const count = fillCount(Math.max(read(start), Number(tools.first) || 0), Math.min(read(end), Number(tools.last) || 0), tools.per); go.textContent = count ? `约 ${count} 次请求 · 确认补全` : '楼层没填对'; go.disabled = !count; };
+    sync(); document.body.append(sheet);
+    sheet.addEventListener('input', sync);
+    sheet.addEventListener('click', event => { if (event.target === sheet || event.target.closest?.('[data-sheet-close]')) closeSheet(); });
+    sheet.addEventListener('submit', event => {
+        event.preventDefault(); if (go.disabled) return;
+        parent.postMessage({ yimuHeart: 'fill', start: Math.max(read(start), Number(tools.first) || 0), end: Math.min(read(end), Number(tools.last) || 0) }, '*');
+        closeSheet();
+    });
+}
+let bindBusy = false;
 document.addEventListener('click', event => {
+    const bind = event.target.closest?.('.ym-bind');
+    if (bind) { event.preventDefault(); event.stopPropagation(); if (bindBusy) return; bindBusy = true; decorate(); parent.postMessage({ yimuHeart: 'bind' }, '*'); return; }
     const pen = event.target.closest?.('.ym-ed');
     if (pen) { event.preventDefault(); event.stopPropagation(); openSheet(pen.dataset.edKind, pen.dataset.edId); return; }
     if (event.target.closest?.('#ym-add')) { event.stopPropagation(); openSheet('impression', ''); return; }
     const fill = event.target.closest?.('#ym-fill');
     if (!fill) return;
-    event.stopPropagation(); clearTimeout(fillTimer);
-    if (fill.dataset.running) { parent.postMessage({ yimuHeart: 'fillStop' }, '*'); return; }
-    if (!fillArmed) { fillArmed = true; fillTimer = setTimeout(() => { fillArmed = false; drawDate(); drawTools(); }, 5000); drawDate(); drawTools(); return; }
-    fillArmed = false; parent.postMessage({ yimuHeart: 'fill' }, '*'); drawDate(); drawTools();
+    event.stopPropagation();
+    if (fill.dataset.running) parent.postMessage({ yimuHeart: 'fillStop' }, '*'); else openFill();
 }, true);
 // 一张小纸条：改一条，或补记一条。补记时先选是哪一种。
 const SHEET_KINDS = [['impression', '日记'], ['thought', '心迹'], ['event', '年表']];
@@ -183,6 +212,7 @@ document.addEventListener('click', event => {
     YM.month = YM.anchor; repaint();
 });
 window.yimuRender = raw => {
+    bindBusy = false; // 新数据到了：合订那一下已经有了结果
     const data = raw && typeof raw === 'object' ? raw : {};
     YM.raw = { ...data, impressions: data.impressions || [], loose: data.loose || [], thoughts: data.thoughts || [], events: data.events || [] };
     if (!YM.anchor) { YM.anchor = recordDays().at(-1) ?? dayStart(Date.now()); YM.month = YM.anchor; }

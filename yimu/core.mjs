@@ -116,10 +116,10 @@ export function nextBatch(document, messages, settings, { force = false, history
 
 /** 从正文补全日记与年表时的分批：每批最多 perBatch 层连续的可整理楼层，不含最新的重 roll 保护层。 */
 export const FILL_BATCH_FLOORS = 20;
-export function fillPlan(document, messages, { perBatch = FILL_BATCH_FLOORS } = {}) {
-    const batches = [], last = (Array.isArray(messages) ? messages.length : 0) - REROLL_GUARD;
+export function fillPlan(document, messages, { perBatch = FILL_BATCH_FLOORS, from = 1, to = Infinity } = {}) {
+    const batches = [], last = Math.min((Array.isArray(messages) ? messages.length : 0) - REROLL_GUARD, to);
     let start = 0, end = 0;
-    for (let floor = (document?.lineage?.bridgeCount || 0) + 1; floor <= last; floor++) {
+    for (let floor = Math.max((document?.lineage?.bridgeCount || 0) + 1, from); floor <= last; floor++) {
         const ok = canSummarize(messages[floor - 1]);
         if (ok && !start) start = floor;
         if (ok) end = floor;
