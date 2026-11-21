@@ -89,9 +89,11 @@ section[hidden] { display: none; }
 .proof li { display: flex; gap: 14px; font-size: 14px; line-height: 1.8; }
 .proof li b { flex: 0 0 5em; font: 11px/2.3 var(--label); letter-spacing: .08em; color: var(--blue); }
 .proof li.was span { text-decoration: line-through; color: var(--mute); }
-.loose { position: relative; height: 230px; margin: 10px 22px 0; border-top: 1px solid var(--blue); overflow: hidden; }
+.loose { position: relative; min-height: 230px; margin: 10px 22px 0; padding-bottom: 24px; border-top: 1px solid var(--blue); overflow: hidden; }
 .loose h4 { margin: 12px 0 0; font-weight: normal; font-size: 11px; letter-spacing: .34em; color: var(--blue); }
-.loose .mote { position: absolute; display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--mute); opacity: 0; animation: mote var(--d, 10s) ease-in-out infinite; }
+/* 一条一行往下排，左边错开；右边留出飘动的 26px，字多了就折行，不出右缘。 */
+.loose .mote { position: relative; display: flex; align-items: center; gap: 6px; width: fit-content; max-width: calc(100% - 26px - var(--x, 0%)); margin: 18px 0 0 var(--x, 0%); line-height: 1.4; overflow-wrap: anywhere; color: var(--mute); opacity: 0; animation: mote var(--d, 10s) ease-in-out infinite; }
+.loose .mote .bf { flex: none; }
 @keyframes mote { 0% { opacity: 0; translate: 0 8px; } 30% { opacity: .9; } 70% { opacity: .7; } 100% { opacity: 0; translate: 26px -16px; } }
 /* ---- 心迹：垂下来的片带 ---- */
 #heart { position: relative; padding-top: 24px; }
@@ -242,7 +244,7 @@ window.yimuPaint = (D, raw) => {
   });
   if (!D.impressions.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">这段日子还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
   const loose = D.loose.slice(0, 6).map((item, i) => [item.text, [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
-  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="left:${[4, 50, 12, 56, 30, 66][i]}%;top:${[46, 70, 112, 138, 176, 190][i]}px;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
+  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="--x:${[2, 30, 10, 22, 36, 0][i]}%;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
 
   heart.querySelectorAll('.say2, .empty').forEach(node => node.remove());
   const end = heart.querySelector('.end');

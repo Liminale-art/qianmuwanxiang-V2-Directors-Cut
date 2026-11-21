@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.68';
-export const SERVICE_VERSION = '0.8.27';
+export const FRONTEND_VERSION = '0.8.69';
+export const SERVICE_VERSION = '0.8.28';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -428,7 +428,7 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             doc.autoSummary = op.value;
             if (!doc.initialRange && op.range) doc.initialRange = initialScope(op.range);
         } else if (op.type === 'history') {
-            requireThat(!doc.initialRange, '历史楼层范围已确认；请使用手动总结补充');
+            // 自动总结从哪一层算起可以重定：旧楼很多时用户选「不从首层总结」，起点改到当时那一层。
             doc.initialRange = initialScope(op.range);
         } else {
             for (const [key, value] of Object.entries(validateSettings(op.values))) {

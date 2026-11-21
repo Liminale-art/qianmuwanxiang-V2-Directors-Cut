@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS as FACTORY_DEFAULTS, SCHEMA, validateSettings as validateSettingsFor, createDocument, createDefaults as factoryDefaults, validateDocument, applyOperation, applyDefaultsOperation, fingerprintMessages, sourceMatches } from '../yimu/contract.mjs';
 import {legacySettings, legacyDefaults} from './helpers/yimu-legacy-defaults.mjs';
-import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage, preEnablePending, hiddenFloorsFor } from '../yimu/core.mjs';
+import { nextBatch, parseSummary, summaryPrompt, buildPlan, inspectSources, initialRangePreview, planManualRange, summaryCoverage, hiddenFloorsFor, autoBacklog, REROLL_GUARD } from '../yimu/core.mjs';
 import { buildBudgetedMessages, captureCore } from '../yimu/budget.mjs';
 import { mergeCompanionBook, companionEntries } from '../yimu/companion-contract.mjs';
 // Fixtures assume the pre-0.8.20 defaults (five recent originals, token-only trigger).
@@ -39,10 +39,19 @@ test('feature enable does not authorize automatic work; empty and confirmed hist
     assert.deepEqual(on.initialRange, empty.initialRange);
 });
 
-test('content batches preserve five recent floors and skip unchosen initial history, not just current rendered messages', () => {
-    assert.deepEqual(nextBatch(enable(), messages, DEFAULTS), { start: 1, end: 7 });
-    assert.deepEqual(nextBatch(enable({ start: 3, end: 4, total: 12 }), messages, DEFAULTS), { start: 3, end: 4 });
-    assert.equal(nextBatch(enable(), messages.slice(0, 5), DEFAULTS), null);
+test('content batches stop before the three newest floors whatever the kept-recent setting, and start at the chosen first floor', () => {
+    // 触发 10 层：12 层未总结已够数，一次总结到「总层数 − 3」为止；正文保留层数（5）不决定终点。
+    const auto = { ...DEFAULTS, triggerFloors: 10 };
+    assert.equal(REROLL_GUARD, 3);
+    assert.deepEqual(nextBatch(enable(), messages, auto), { start: 1, end: 9 });
+    assert.deepEqual(nextBatch(enable(), messages, { ...auto, recent: 9 }), { start: 1, end: 9 }, 'recent no longer decides where a summary ends');
+    // initialRange.start 是自动总结的起点；end／total 不再限定资格。
+    assert.deepEqual(nextBatch(enable({ start: 3, end: 4, total: 12 }), messages, auto), { start: 3, end: 9 });
+    assert.equal(nextBatch(enable({ start: 4, end: 4, total: 12 }), messages, auto), null, 'only nine floors from the start point: below the trigger');
+    assert.equal(nextBatch(enable(), messages.slice(0, 9), auto), null);
+    assert.equal(nextBatch(enable(), messages.slice(0, 3), { ...auto, triggerFloors: 3 }), null, 'the three newest floors are never summarized automatically');
+    assert.deepEqual(nextBatch(enable(), messages.slice(0, 4), { ...auto, triggerFloors: 3 }), { start: 1, end: 1 });
+    assert.equal(nextBatch(enable(), messages, DEFAULTS), null, 'token-only triggering waits for the token threshold even inside the initial range');
 });
 
 test('schema seven preserves schema-six explicit auto choices and migrates earlier enabled chats without writes', () => {
@@ -57,13 +66,22 @@ test('schema seven preserves schema-six explicit auto choices and migrates earli
     assert.throws(() => validateDocument({ ...fresh, autoSummary: undefined }), /自动总结/);
 });
 
-test('history cancellation is a persistent skip, not an empty-chat-only sentinel or permission to process older gaps', () => {
+test('the legacy empty history range now means every floor; a history operation may move the automatic start point later', () => {
     let doc = enable(); doc.initialRange = null;
     doc = applyOperation(doc, { id: 'skip', type: 'history', expectedRevision: doc.configRevision, range: { start: 1, end: 0, total: 12 } }).document;
-    assert.equal(nextBatch(doc, messages, DEFAULTS, { force: true }), null);
+    // 旧形态 {start:1,end:0,total:T} 不再表示「开启前的楼层不整理」：全部楼层都可总结。
+    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 1, end: 9 });
+    assert.deepEqual(nextBatch(doc, messages, { ...DEFAULTS, triggerFloors: 10 }), { start: 1, end: 9 });
+    assert.equal(autoBacklog(doc, messages), 9);
+    // 「不从首层总结」：起点改到当时那一层，已有的 initialRange 可以被覆盖。
+    const moved = applyOperation(doc, { id: 'again', type: 'history', expectedRevision: doc.configRevision, range: { start: 12, end: 12, total: 12 } }).document;
+    assert.deepEqual(moved.initialRange, { start: 12, end: 12, total: 12 }); assert.equal(moved.configRevision, doc.configRevision + 1);
+    assert.equal(nextBatch(moved, messages, DEFAULTS, { force: true }), null);
+    assert.equal(autoBacklog(moved, messages), 0);
     const future = [...messages, ...messages.slice(0, 6)];
-    assert.deepEqual(nextBatch(doc, future, DEFAULTS, { force: true }), { start: 13, end: 13 });
-    assert.throws(() => applyOperation(doc, { id: 'again', type: 'history', expectedRevision: doc.configRevision, range: { start: 1, end: 12, total: 12 } }), /已确认/);
+    assert.deepEqual(nextBatch(moved, future, DEFAULTS, { force: true }), { start: 12, end: 15 }, 'earlier floors stay out; the newest three stay protected');
+    assert.equal(autoBacklog(moved, future), 4);
+    assert.equal(autoBacklog({ ...moved, initialRange: null }, future), 0);
 });
 
 test('auto switch never turns on the master switch and turning off auto preserves enabled memory use', () => {
@@ -73,7 +91,7 @@ test('auto switch never turns on the master switch and turning off auto preserve
     const off = applyOperation(on, { id: 'auto_off', type: 'autoSummary', expectedRevision: on.configRevision, value: false }).document;
     assert.equal(off.enabled, true); assert.equal(off.autoSummary, false);
     assert.equal(nextBatch(off, messages, DEFAULTS), null);
-    assert.deepEqual(nextBatch(off, messages, DEFAULTS, { force: true }), { start: 1, end: 7 });
+    assert.deepEqual(nextBatch(off, messages, DEFAULTS, { force: true }), { start: 1, end: 9 });
 });
 
 test('manual range preview expands whole affected slices visibly and never relabels outside text', async () => {
@@ -110,11 +128,16 @@ test('manual exact redo cannot silently shrink an existing source range', async 
         entry: shortened }), /不能改变/);
 });
 
-test('status counts fine-slice floor unions once and pending work excludes recent and user-deleted floors', async () => {
+test('status counts fine-slice floor unions once; pending work is every unsummarized floor, recent ones included, user-deleted ones excluded', async () => {
     let doc = append(append(enable(), await entry('one', 1, 2)), await entry('two', 4, 4));
     doc.entries[1].status = 'deleted';
     doc.entries.push({ kind: 'stage', status: 'active', source: { ranges: [doc.entries[0].source] } });
-    assert.deepEqual(summaryCoverage(doc, messages, DEFAULTS), { sliceCount: 1, organizedFloors: 2, pendingFloors: 4, pendingRange: { start: 3, end: 7 } });
+    assert.deepEqual(summaryCoverage(doc, messages, DEFAULTS), { sliceCount: 1, organizedFloors: 2, pendingFloors: 9, pendingRange: { start: 3, end: 12 } });
+    // 不受正文保留层数与 initialRange 限制：开启前的旧楼也算未整理。
+    assert.deepEqual(summaryCoverage({ ...doc, initialRange: { start: 12, end: 12, total: 12 } }, messages, { ...DEFAULTS, recent: 9 }),
+        { sliceCount: 1, organizedFloors: 2, pendingFloors: 9, pendingRange: { start: 3, end: 12 } });
+    const all = append(enable(), await entry('all', 1, 12));
+    assert.deepEqual(summaryCoverage(all, messages, DEFAULTS), { sliceCount: 1, organizedFloors: 12, pendingFloors: 0, pendingRange: null });
 });
 
 test('first-enable preview includes hidden source floors while preserving recent raw and hidden flags', () => {
@@ -123,7 +146,7 @@ test('first-enable preview includes hidden source floors while preserving recent
     const before = structuredClone(source), doc = enable({ start: 1, end: 11, total: 11 });
     const preview = initialRangePreview(doc, source, { start: 1, end: 11 }, DEFAULTS);
     assert.deepEqual(preview, { valid: true, hidden: [1, 2, 3, 4, 5], recent: [7, 8, 9, 10, 11], handled: [], unsupported: [], eligible: [1, 2, 3, 4, 5, 6] });
-    assert.deepEqual(nextBatch(doc, source, DEFAULTS), { start: 1, end: 6 });
+    assert.deepEqual(nextBatch(doc, source, { ...DEFAULTS, triggerFloors: 10 }), { start: 1, end: 8 });
     assert.deepEqual(source, before);
     assert.deepEqual(initialRangePreview(doc, source, { start: 3, end: 5 }, DEFAULTS).eligible, [3, 4, 5]);
     assert.deepEqual(initialRangePreview(doc, source, { start: 7, end: 11 }, DEFAULTS).hidden, []);
@@ -148,20 +171,23 @@ test('initial-range preview never counts tool, empty, inherited or already handl
 test('incremental batches require content threshold, explicit summarize may process the smaller gap', async () => {
     const doc = append(enable({ start: 1, end: 2, total: 2 }), await entry('a', 1, 2));
     assert.equal(nextBatch(doc, messages, DEFAULTS), null);
-    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 3, end: 7 });
+    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 3, end: 9 });
 });
 
 test('deleted and excluded slices do not silently reappear; invalid sources wait for an explicit user repair', async () => {
     let doc = append(enable(), await entry('a', 1, 4));
+    // 第 5–12 层共 8 层未总结：触发设为 8 才够数；被删除的第 1–4 层不算进度，也不会被重新总结。
+    const auto = { ...DEFAULTS, triggerFloors: 8 };
     doc = applyOperation(doc, { id: 'del', type: 'entry', entryId: 'a', expectedRevision: 1, action: 'delete' }).document;
-    assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
+    assert.deepEqual(nextBatch(doc, messages, auto), { start: 5, end: 9 });
+    assert.equal(nextBatch(doc, messages, { ...auto, triggerFloors: 9 }), null, 'deleted floors do not count toward the trigger');
     doc = append(enable(), await entry('b', 1, 4));
     doc = applyOperation(doc, { id: 'bad', type: 'invalidate', entries: [{ id: 'b', revision: 1 }] }).document;
-    assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
-    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 5, end: 7 });
+    assert.deepEqual(nextBatch(doc, messages, auto), { start: 5, end: 9 });
+    assert.deepEqual(nextBatch(doc, messages, DEFAULTS, { force: true }), { start: 5, end: 9 });
     doc = applyOperation(doc, { id: 'edit', type: 'edit', entryId: 'b', expectedRevision: 2, text: '手动修订' }).document;
     assert.equal(doc.entries[0].status, 'invalid');
-    assert.deepEqual(nextBatch(doc, messages, DEFAULTS), { start: 5, end: 7 });
+    assert.deepEqual(nextBatch(doc, messages, auto), { start: 5, end: 9 });
 });
 
 test('invalidation only touches affected active sources and never revives on raw rollback', async () => {
@@ -200,6 +226,16 @@ test('generation selects only whole valid slices outside recent raw, with explic
     const tinyBudget = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
     assert.equal(tinyBudget.settings.budget, 1, 'selection retains complete entries; final-payload admission enforces the actual budget');
     assert.equal(tinyBudget.entries[0].text, doc.entries[0].text);
+});
+
+test('a slice inside the kept recent window is injected only when every floor it covers is already hidden', async () => {
+    const doc = append(append(enable(), await entry('a', 1, 2)), await entry('b', 8, 9));
+    const plan = async source => [...(await buildPlan(doc, createDefaults(), { messages: source, maxContext: 8192 })).memoryIds].sort();
+    // 重新生成／删掉最新几层之后保留区暂时前移：原文已经隐藏的那一段仍由它的切片顶上。
+    const hidden = structuredClone(messages); hidden[7].is_system = true; hidden[8].is_system = true;
+    assert.deepEqual(await plan(hidden), ['a', 'b']);
+    const partly = structuredClone(messages); partly[7].is_system = true;
+    assert.deepEqual(await plan(partly), ['a'], 'one visible floor keeps the slice out, symmetric with hiding');
 });
 
 test('source-changed slices remain injected while raw edited floors stay intact', async () => {
@@ -336,53 +372,78 @@ test('schema eight accepts optional temporal fields for fact lifecycle tracking'
 });
 
 
-test('automatic trigger counts unsummarized floors outside the kept recent ones and organizes all but the recent ones', async () => {
+test('automatic trigger counts every unsummarized floor and organizes up to the three newest ones, in batches when the backlog is long', async () => {
     const live = Array.from({ length: 30 }, (_, i) => ({ name: i % 2 ? '角色' : '用户', is_user: i % 2 === 0, mes: '文'.repeat(400), send_date: `t${i}` }));
     const doc = enable({ start: 1, end: 0, total: 0 });
     const tokensOnly = { ...DEFAULTS, trigger: 50000, triggerFloors: 0 };
     assert.equal(nextBatch(doc, live, tokensOnly), null, 'zero floor count keeps token-only behaviour');
-    // 用户 2026-11-19 的口径：保留 5 层，触发 10 层 → 35 层才动；30 层时保留区外只攒了 25 层，
-    // 但此前已整理到 20，所以 26 层起就该继续。这里验证「保留层不计入触发数」。
+    // 用户 2026-11-21 的口径：10 层、触发 10、保留 5 → 总结第 1–7 层。保留层、保护层都算进度，
+    // 正文保留层数不决定总结到哪一层。
     const habit = { ...DEFAULTS, trigger: 50000, triggerFloors: 10, recent: 5 };
-    assert.equal(nextBatch(doc, live.slice(0, 10), habit), null, '十层未满，不动');
-    // 10 层在保留区外（共 15 层，保留 5）才触发，且只整理保留区以外的部分。
-    assert.deepEqual(nextBatch(doc, live.slice(0, 15), habit), { start: 1, end: 10 });
+    assert.equal(nextBatch(doc, live.slice(0, 9), habit), null, '十层未满，不动');
+    assert.deepEqual(nextBatch(doc, live.slice(0, 10), habit), { start: 1, end: 7 });
+    assert.deepEqual(nextBatch(doc, live.slice(0, 10), { ...habit, recent: 1 }), { start: 1, end: 7 });
+    // 自动总结按回合对齐：终点是用户发言时回退一层。
+    assert.equal(live[6].is_user, true);
+    assert.deepEqual(nextBatch(doc, live.slice(0, 10), habit, { align: true }), { start: 1, end: 6 });
+    assert.deepEqual(nextBatch(doc, live.slice(0, 11), habit, { align: true }), { start: 1, end: 8 });
     // Factory defaults (10 / 3).
     const factory = { ...FACTORY_DEFAULTS, trigger: 50000 };
     assert.equal(FACTORY_DEFAULTS.triggerFloors, 10); assert.equal(FACTORY_DEFAULTS.recent, 3);
-    assert.equal(nextBatch(doc, live.slice(0, 12), factory), null);
-    assert.deepEqual(nextBatch(doc, live.slice(0, 13), factory), { start: 1, end: 10 });
-    // Later rounds count only unsummarized floors outside the kept window.
+    assert.equal(nextBatch(doc, live.slice(0, 9), factory), null);
+    assert.deepEqual(nextBatch(doc, live.slice(0, 10), factory), { start: 1, end: 7 });
+    // Later rounds count every floor not yet summarized, the protected newest ones included.
     const hashes = await fingerprintMessages(live);
-    const organized = applyOperation(doc, { id: 'a1', type: 'append', expectedEpoch: doc.epoch, entry: { id: 's1', kind: 'summary', text: '摘要',
-        source: { start: 1, end: 10, hashes: hashes.slice(0, 10) } } }).document;
-    assert.equal(nextBatch(organized, live.slice(0, 22), factory), null);
-    assert.deepEqual(nextBatch(organized, live.slice(0, 23), factory), { start: 11, end: 20 });
-    assert.deepEqual(nextBatch(doc, live.slice(0, 20), { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
+    const cover = (base, id, start, end) => applyOperation(base, { id: `op_${id}`, type: 'append', expectedEpoch: base.epoch, entry: { id, kind: 'summary', text: '摘要',
+        source: { start, end, hashes: hashes.slice(start - 1, end) } } }).document;
+    const organized = cover(doc, 's1', 1, 7);
+    assert.equal(nextBatch(organized, live.slice(0, 16), factory), null);
+    assert.deepEqual(nextBatch(organized, live.slice(0, 17), factory), { start: 8, end: 14 });
+    // 积压多时按触发楼层数分批；剩下不超过一批半就并成一批。
+    assert.deepEqual(nextBatch(doc, live.slice(0, 18), factory), { start: 1, end: 15 }, 'fifteen floors are one batch and a half: still one request');
+    assert.deepEqual(nextBatch(doc, live.slice(0, 19), factory), { start: 1, end: 10, targetEnd: 16 });
+    assert.deepEqual(nextBatch(doc, live, factory), { start: 1, end: 10, targetEnd: 27 });
+    const second = cover(doc, 'b1', 1, 10);
+    assert.deepEqual(nextBatch(second, live, factory, { limitEnd: 27 }), { start: 11, end: 20, targetEnd: 27 });
+    assert.deepEqual(nextBatch(cover(second, 'b2', 11, 20), live, factory, { limitEnd: 27 }), { start: 21, end: 27 }, 'the seven left over are one last batch');
+    // 强制总结同样以「总层数 − 3」为界；historyOnly 仍受 initialRange.end 限制。
+    assert.deepEqual(nextBatch(organized, live.slice(0, 12), factory, { force: true }), { start: 8, end: 9 });
+    assert.deepEqual(nextBatch(enable({ start: 1, end: 4, total: 12 }), live.slice(0, 12), factory, { force: true, historyOnly: true }), { start: 1, end: 4 });
+    assert.deepEqual(nextBatch(doc, live.slice(0, 19), { ...DEFAULTS, trigger: 2000, triggerFloors: 20 }), { start: 1, end: 5 }, 'tokens can still arrive first');
     const short = live.map(message => ({ ...message, mes: '短句。' }));
-    assert.deepEqual(nextBatch(doc, short.slice(0, 4), { ...tokensOnly, triggerFloors: 3, recent: 1 }), { start: 1, end: 3 }, 'no minimum token floor once the floor count is reached');
+    assert.deepEqual(nextBatch(doc, short.slice(0, 6), { ...tokensOnly, triggerFloors: 3, recent: 1 }), { start: 1, end: 3 }, 'no minimum token floor once the floor count is reached');
     assert.throws(() => validateSettingsFor({ triggerFloors: 2001 }), /超出范围/);
     assert.deepEqual(validateSettingsFor({ triggerFloors: 0 }), { triggerFloors: 0 });
 });
 
-test('the hide boundary is independent of what this round injects: only the kept recent floors stay visible', () => {
+test('the hide boundary is independent of what this round injects: the kept recent floors stay visible and slices hide whole', () => {
     const live = n => Array.from({ length: n }, (_, i) => ({ mes: `第${i + 1}层` }));
     const summary = (id, start, end) => ({ id, kind: 'summary', status: 'active', revision: 1, origin: null, text: id, source: { start, end } });
     const doc = entries => ({ entries });
+    const span = (start, end) => Array.from({ length: end - start + 1 }, (_, i) => start + i);
     // 用户 2026-11-19 的例子：28 层、每 10 层一总结、保留 5 层 → 隐藏到 23，可见的永远是最近 5 层。
-    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20), summary('c', 21, 23)]), live(28), { recent: 5 }).floors,
-        Array.from({ length: 23 }, (_, i) => i + 1));
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20), summary('c', 21, 23)]), live(28), { recent: 5 }).floors, span(1, 23));
     // 往前推进到 40 层、全部覆盖时，隐藏边界跟着保留层走（35），而不是停在 23。
     assert.equal(hiddenFloorsFor(doc([summary('a', 1, 35)]), live(40), { recent: 5 }).floors.at(-1), 35);
-    // 保留区之内即使已经被总结覆盖也保持原文可见。
-    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(10), { recent: 5 }).floors.at(-1), 5);
-    // 中间有缺口：缺口之后的内容不会被跟着藏起来（fail-closed，宁可多留原文）。
-    assert.equal(hiddenFloorsFor(doc([summary('a', 1, 3), summary('b', 5, 9)]), live(12), { recent: 2 }).floors.at(-1), 3);
+    // 保留区之内即使已经被总结覆盖也保持原文可见；切片终点落在保留区里，整条都不藏。
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(10), { recent: 5 }), { frontier: 10, floors: [], keep: 5, total: 10 });
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(14), { recent: 5 }).floors, []);
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 10)]), live(15), { recent: 5 }).floors, span(1, 10), '保留区越过它之后整条一起藏');
+    // 跨保留区边界的那一条不藏，它之前的整条照常藏。
+    const crossing = hiddenFloorsFor(doc([summary('a', 1, 10), summary('b', 11, 20)]), live(22), { recent: 5 });
+    assert.deepEqual(crossing.floors, span(1, 10)); assert.equal(crossing.frontier, 20);
+    // 多段来源的切片：任一段终点落在保留区里，整条都不藏。
+    const split = { ...summary('m', 1, 3), source: { ranges: [{ start: 1, end: 3 }, { start: 9, end: 11 }] } };
+    assert.deepEqual(hiddenFloorsFor(doc([split]), live(12), { recent: 2 }).floors, []);
+    assert.deepEqual(hiddenFloorsFor(doc([split]), live(13), { recent: 2 }).floors, [1, 2, 3, 9, 10, 11]);
+    // 中间有缺口：没总结的那一层自己保持可见，不挡后面已总结楼层的隐藏；frontier 仍是从第 1 层起连续覆盖到的位置。
+    const gap = hiddenFloorsFor(doc([summary('a', 1, 3), summary('b', 5, 9)]), live(12), { recent: 2 });
+    assert.deepEqual(gap.floors, [1, 2, 3, 5, 6, 7, 8, 9]); assert.equal(gap.frontier, 3);
+    assert.deepEqual(hiddenFloorsFor(doc([summary('b', 5, 9)]), live(12), { recent: 2 }), { frontier: 0, floors: [5, 6, 7, 8, 9], keep: 2, total: 12 });
     assert.equal(hiddenFloorsFor(doc([summary('a', 1, 9)]), live(12), { recent: 2 }).floors.length, 9);
     // 删除的、屏蔽的、继承的来源都不授权隐藏。
     assert.deepEqual(hiddenFloorsFor(doc([{ ...summary('a', 1, 9), status: 'deleted' }]), live(12), { recent: 2 }).floors, []);
-    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 9), { ...summary('b', 10, 12), status: 'excluded' }]), live(12), { recent: 0 }).floors,
-        Array.from({ length: 9 }, (_, i) => i + 1));
+    assert.deepEqual(hiddenFloorsFor(doc([summary('a', 1, 9), { ...summary('b', 10, 12), status: 'excluded' }]), live(12), { recent: 0 }).floors, span(1, 9));
     assert.deepEqual(hiddenFloorsFor(doc([{ ...summary('a', 1, 9), origin: { binding: { file: 'other' } } }]), live(12), { recent: 0 }).floors, []);
     // 一个聊天都没有时什么都不藏。
     assert.deepEqual(hiddenFloorsFor(doc([]), [], { recent: 5 }).floors, []);
@@ -593,15 +654,4 @@ test('fragment coalescing merges only short same-scene neighbours and leaves ful
         { start: 3, end: 3, text: '三层', title: '丙' },
     ] }), { start: 1, end: 3 }, hashes);
     assert.deepEqual(bare.map(item => [item.source.start, item.source.end]), [[1, 3]], 'slices without scene metadata still merge, as most model output omits scenes');
-});
-
-test('pre-enable backfill offers only the first unsummarized stretch before the automatic start point', async () => {
-    let doc = enable({ start: 9, end: 12, total: 12 });
-    doc = append(doc, await entry('late', 9, 10));
-    assert.deepEqual(preEnablePending(doc, messages, DEFAULTS), { start: 1, end: 7, count: 7 }, 'floors 1-7 predate automatic summary and are untouched');
-    doc = append(doc, await entry('early', 1, 3));
-    assert.deepEqual(preEnablePending(doc, messages, DEFAULTS), { start: 4, end: 7, count: 4 }, 'the stretch stops after the gap it already covers');
-    const hidden = structuredClone(messages); hidden[4] = { ...hidden[4], is_system: true };
-    assert.equal(preEnablePending(doc, hidden, DEFAULTS).start, 4, 'an unsummarizable hidden floor is skipped, not blocking');
-    assert.equal(preEnablePending(enable({ start: 1, end: 0, total: 0 }), messages, DEFAULTS), null, 'an empty initial range has nothing to backfill');
 });

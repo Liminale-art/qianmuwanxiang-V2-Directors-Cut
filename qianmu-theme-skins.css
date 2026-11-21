@@ -778,7 +778,7 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
   border: 1px solid var(--qm-muted) !important; border-radius: 2px !important; background: transparent !important;
 }
 :is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] .checkbox_label > input[type="checkbox"]::after {
-  content: '印' !important; inset: 0 !important; width: auto !important; height: auto !important;
+  content: '启' !important; inset: 0 !important; width: auto !important; height: auto !important;
   display: grid !important; place-items: center; background: none !important; border: 0 !important; border-radius: 0 !important;
   transform: none !important; font: 13px/1 var(--qm-editorial-font) !important; color: transparent !important;
 }
@@ -830,3 +830,19 @@ dialog[data-qm-theme] { background: var(--qm-bg); color: var(--qm-ink); border-c
 #story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) { border-color: transparent !important; background: transparent !important; box-shadow: none !important; }
 #story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close):is(.active, :hover, [aria-expanded="true"]) { color: var(--qm-zhu) !important; }
 #story-director-modal[data-qm-theme="editorial"] .sd-header-actions :is(.sd-coread-shortcut, .sd-storyboard-shortcut, .sd-plug-shortcut, .sd-theme-btn, .sd-close) :is(i, .qm-glyph-icon) { transform: scale(.9); }
+/* 版框里的内容离左右框线近一点（只收左右，上下不动）。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) .sd-body { padding-inline: 10px; }
+@media (max-width: 760px) {
+  #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) .sd-body { padding-inline: 7px; }
+}
+/* 关闭放在书脊顶上（面板左上角、版框之外），在装订线起头的上方；点按范围比图标大一圈。 */
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header .sd-close {
+  position: absolute !important; left: calc(-12px - var(--qm-spine)); top: -10px; z-index: 3;
+  width: var(--qm-spine); min-width: 0; height: 22px;
+}
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header .sd-close::after { content: ''; position: absolute; inset: -2px -8px -4px 0; }
+#story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header .sd-close :is(i, .qm-glyph-icon) { transform: scale(.8); }
+@media (max-width: 760px) {
+  #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header .sd-close { left: calc(-8px - var(--qm-spine)); top: -8px; }
+  #story-director-modal[data-qm-theme="editorial"] .sd-window:has(> .sd-tabs-shell) > .sd-header .sd-close :is(i, .qm-glyph-icon) { transform: scale(.6); }
+}

@@ -690,7 +690,7 @@
 .ym-dialog[data-ym-theme="editorial"] :is(.ym-prompt-groups, .ym-date-mode) > [aria-selected="true"] { color: var(--ym-zhu); border-color: var(--ym-zhu); background: transparent; }
 /* 开关是一方小印：关着是空框，开了盖上朱文。 */
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch { width: 24px; min-width: 24px; max-width: 24px; flex-basis: 24px; height: 24px; min-height: 24px; max-height: 24px; border: 1px solid var(--ym-muted); border-radius: 2px; background: transparent; }
-.ym-dialog[data-ym-theme="editorial"] input.ym-switch::after { content: '印'; inset: 0; width: auto; height: auto; display: grid; place-items: center; background: none; border-radius: 0; font: 13px/1 var(--ym-font); color: transparent; transform: none; }
+.ym-dialog[data-ym-theme="editorial"] input.ym-switch::after { content: '启'; inset: 0; width: auto; height: auto; display: grid; place-items: center; background: none; border-radius: 0; font: 13px/1 var(--ym-font); color: transparent; transform: none; }
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked { background: var(--ym-zhu); border-color: var(--ym-zhu); }
 .ym-dialog[data-ym-theme="editorial"] input.ym-switch:checked::after { transform: none; background: none; color: var(--ym-on-zhu); }
 /* 纸间 · 书页的骨架（照样稿）：版框只框住正文，右缘留出书口，页签竖排写在书口上；左侧是装订线与线孔。四角一律直角。 */
@@ -723,3 +723,25 @@
 .ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-logo { transform: translateY(-1px); }
 .ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-version-tag { align-self: flex-end; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; transform: translateY(-1px); }
 .ym-dialog[data-ym-theme="editorial"] .ym-heading .ym-version-tag.is-update-available { background: none; box-shadow: none; text-decoration: underline; text-underline-offset: 3px; }
+/* 版框里的内容离左右框线近一点（只收左右，上下不动）。 */
+.ym-dialog[data-ym-theme="editorial"] .ym-scroll { padding-inline: 12px; }
+@media (max-width: 480px) { .ym-dialog[data-ym-theme="editorial"] .ym-scroll { padding-inline: 7px; } }
+/* API 设置卡的三个操作只留文字，窄屏也不折行。 */
+.ym-dialog[data-ym-theme="editorial"] .ym-api-card .ym-api-actions > .ym-button > .ym-icon { display: none; }
+.ym-dialog[data-ym-theme="editorial"] .ym-api-card .ym-api-actions > .ym-button > span:not(.ym-icon) { white-space: nowrap; overflow-wrap: normal; }
+/* 关闭放在书脊顶上（面板左上角、版框之外），在装订线起头的上方；点按范围比图标大一圈。 */
+.ym-dialog[data-ym-theme="editorial"] .ym-header-actions .ym-close { position: absolute; left: 0; top: 2px; z-index: 3; flex: none; width: var(--ym-spine); height: 22px; min-height: 22px; border: 0; background: transparent; }
+.ym-dialog[data-ym-theme="editorial"] .ym-header-actions .ym-close::after { content: ''; position: absolute; inset: -2px -8px -4px 0; }
+.ym-dialog[data-ym-theme="editorial"] .ym-header-actions .ym-close:not(:disabled):hover { background: transparent; color: var(--ym-zhu); }
+.ym-dialog[data-ym-theme="editorial"] .ym-header-actions .ym-close .ym-icon { width: 16px; height: 16px; flex-basis: 16px; }
+@media (max-width: 760px) { .ym-dialog[data-ym-theme="editorial"] .ym-header-actions .ym-close .ym-icon { width: 12px; height: 12px; flex-basis: 12px; } }
+
+/* 询问层：盖住整个面板，答完才收起（旧楼超出 80 层时问是否从首层总结）。 */
+.ym-shell { position: relative; }
+.ym-ask { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 18px; box-sizing: border-box; background: rgba(0, 0, 0, .46); }
+.ym-ask[hidden] { display: none; }
+.ym-ask-card { width: min(100%, 340px); padding: 18px 18px 14px; text-align: center; box-shadow: 0 12px 36px rgba(0, 0, 0, .32); }
+.ym-ask-title { margin: 0 0 8px; font-weight: 600; line-height: 1.5; }
+.ym-ask-note { margin: 0 0 14px; font-size: .86em; }
+.ym-ask-actions { display: flex; gap: 10px; justify-content: center; }
+.ym-ask-actions .ym-button { min-width: 72px; justify-content: center; }

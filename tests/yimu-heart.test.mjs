@@ -167,3 +167,21 @@ test('on the page the small × asks once more before sending; a click elsewhere 
     click(second); click(second);
     assert.deepEqual(sent, [[{ yimuHeart: 'remove', kind: 'event', id: 'e1' }, '*']]); assert.equal(second.disabled, true); assert.equal(second.textContent, '×');
 });
+
+test('the floor line under the date bar reads 本卷同叙 N 节・共织故事 M 章, and goes away when there is no total', async () => {
+    const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
+    const make = () => { const node = { children: [], textContent: '', removed: false,
+        append(...items) { this.children.push(...items); }, replaceChildren(...items) { this.children = items; }, remove() { this.removed = true; placed = null; },
+        get text() { return this.children.map(item => typeof item === 'string' ? item : item.children.length ? item.text : item.textContent).join(''); } }; return node; };
+    let placed = null;
+    const host = { addEventListener() {}, innerHTML: '', after(node) { placed = node; } };
+    const fakeDocument = { getElementById: id => id === 'ym-floors' ? placed : host, addEventListener() {}, createElement: make };
+    const page = {};
+    new Function('document', 'parent', 'addEventListener', 'window', source)(fakeDocument, { postMessage() {} }, () => {}, page);
+    page.yimuRender({ floors: { chat: 12, total: 340 } });
+    assert.equal(placed.text, '本卷同叙 12 节・共织故事 340 章');
+    page.yimuRender({ floors: { chat: 0, total: 7 } });
+    assert.equal(placed.text, '本卷同叙 0 节・共织故事 7 章', '本聊天还没有楼层时照样两段都写');
+    page.yimuRender({});
+    assert.equal(placed, null, '没有累计数就不显示这一行');
+});

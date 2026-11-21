@@ -231,26 +231,32 @@ async function fixture(t) {
     return {api, chats, context, controller, prompts, sent, flush, round, onNotice: fn => { noticed = fn; }, model: value => { model = value; }, read: async () => (await api.read(binding)).document};
 }
 
-test('whole chain: traces ride on a summary → the diary turns them into an impression and a chronicle entry → a heart note written by the main model is lifted out of the reply', async t => {
+test('whole chain: traces and chronicle entries ride on a summary → the diary turns the traces into an impression → a heart note written by the main model is lifted out of the reply', async t => {
     const f = await fixture(t);
-    f.model(async () => JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}],
-        traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}]}));
+    // 关系年表随批次：切片总结请求里多带「另外返回 "events"」与「已有年表」，节点直接从这段正文里拾。
+    f.model(async prompt => { assert.ok(prompt.includes('另外返回 "events"') && prompt.includes('已有年表：[]'), '年表要求随切片总结一起发');
+        return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}],
+            traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
+            events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}, {title: '批次之外', text: '楼层不在这一批里，不采用。', floor: 5}]}); });
     await f.controller.refresh();
     await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}});
     await f.controller.action('autoSummary', {value: true}); await f.flush();
     await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}, batchFloors: 10}); await f.flush();
     let doc = await f.read();
     assert.equal(doc.observations.length, 2, '痕迹随切片总结记下');
-    assert.equal(doc.heart, undefined, '痕迹不够多、也没有阶段总结：不自动整理日记');
-    // 手动整理一次日记。
+    assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]], '年表节点随切片总结存入，楼层不在这一批里的丢掉');
+    assert.equal(doc.heart.eventFloor, 2, '年表进度推到这一批末尾');
+    assert.deepEqual(doc.heart.impressions, []); assert.ok(doc.observations.every(item => !item.used), '痕迹不够多、也没有阶段总结：不自动整理日记');
+    assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹')), '没有发过日记整理请求');
+    // 手动整理一次日记：这两条切片年表已经读过，不再为年表重读它们，只整理痕迹。
     const before = f.sent.length;
-    f.model(async prompt => { assert.ok(prompt.includes('新痕迹') && prompt.includes('以阿澈第一人称视角') && prompt.includes('记忆：'));
-        return JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}], events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}]}); });
+    f.model(async prompt => { assert.ok(prompt.includes('新痕迹') && prompt.includes('以阿澈第一人称视角')); assert.ok(!prompt.includes('记忆：[') && !prompt.includes('已有年表'), '已读过的切片不再随日记整理发出');
+        return JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}], events: [{title: '不该出现', text: '这次没有请它拾年表。', floor: 1}]}); });
     await f.controller.action('heartDiary');
     assert.equal(f.sent.length, before + 1, '一次请求');
     doc = await f.read();
     assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text, item.days.length]), [['小满', '她好像离不开辣。', 1]]);
-    assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]]);
+    assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]]); assert.equal(doc.heart.eventFloor, 2);
     assert.ok(doc.observations.every(item => item.used));
     await assert.rejects(f.controller.action('heartDiary'), /没有新留意到的事或新记忆可合订/);
     // 页面拿到的数据：只看见一个日子的还在「留意」里，不算印象；年表有一条。

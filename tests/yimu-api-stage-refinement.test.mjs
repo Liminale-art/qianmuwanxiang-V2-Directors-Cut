@@ -27,7 +27,7 @@ test('new API defaults and algorithm defaults do not overwrite explicit saved va
     assert.equal(fresh.temperature, 1); assert.equal(fresh.maxTokens, 32000); assert.equal(fresh.contextTokens, 1000000);
     f.ctx.extensionSettings.yimu = { api: { temperature: 0.7, maxTokens: 2048, contextTokens: 32768 } };
     assert.equal(f.api.read().temperature, 0.7); assert.equal(f.api.read().maxTokens, 2048); assert.equal(f.api.read().contextTokens, 32768);
-    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.27');
+    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.28');
     assert.equal(DEFAULTS.trigger, 50000); assert.equal(DEFAULTS.stageThreshold, 20000); assert.equal(DEFAULTS.stageRecent, 10); assert.equal(DEFAULTS.stageAuto, true);
     const old = { ...createDefaults(), values: { ...DEFAULTS, trigger: 4000, stageThreshold: 6000 } };
     assert.equal(validateDefaults(old).values.trigger, 4000); assert.equal(validateDefaults(old).values.stageThreshold, 6000);
@@ -118,7 +118,7 @@ test('trigger remains reachable above actual capacity and approves bounded conti
     document.entries.push({ id: 'saved', kind: 'summary', source: { start: 1, end: 1 } });
     assert.deepEqual(nextBatch(document, messages, settings, { force: true, limitEnd: 2 }), { start: 2, end: 2 });
     assert.deepEqual(nextBatch({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 1000 }), { start: 1, end: 2 });
-    assert.throws(() => nextBatch({ ...document, entries: [] }, [{ mes: '文'.repeat(1001) }, { mes: '近期' }], { ...settings, inputCapacity: 1000 }), /可用输入容量/);
+    assert.throws(() => nextBatch({ ...document, entries: [] }, [{ mes: '文'.repeat(1001) }, { mes: '近期' }, { mes: '近期' }, { mes: '近期' }], { ...settings, inputCapacity: 1000 }), /可用输入容量/);
     assert.equal(planManualRange({ ...document, entries: [] }, messages, { ...settings, batch: 50, inputCapacity: 1000 }, { start: 1, end: 2 }).batches.length, 1);
     // Manual batches follow the chosen floor count, never the automatic trigger.
     assert.deepEqual(planManualRange({ ...document, entries: [] }, messages, { ...settings, inputCapacity: 10000 }, { start: 1, end: 5 }).batches.map(batch => [batch.start, batch.end]), [[1, 5]]);

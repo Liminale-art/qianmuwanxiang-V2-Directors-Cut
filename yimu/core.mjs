@@ -43,29 +43,44 @@ export async function inspectSources(document, messages) {
     return { hashes, invalid };
 }
 
+/** 重 roll 保护：最新这几层随时可能被重新生成或删改，自动总结不碰它们。固定值，不是设置项。 */
+export const REROLL_GUARD = 3;
+/** 自动总结遇到这么多层以上的旧楼还没整理时，先问用户要不要从首层开始。 */
+export const BACKLOG_ASK_FLOORS = 80;
+const coveredBySummary = (document, floor) => document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
+/** 自动总结从哪一层算起：默认第一层；用户在「超出 80 层」的提示里选了否，就从当时那一层起。 */
+const autoFrom = document => Math.max(1, document?.initialRange?.start || 1, (document?.lineage?.bridgeCount || 0) + 1);
+/** 自动总结眼下够得着的未整理楼层数（不含最新的重 roll 保护层）。 */
+export function autoBacklog(document, messages) {
+    if (!document?.initialRange || !Array.isArray(messages)) return 0;
+    let count = 0;
+    for (let floor = autoFrom(document); floor <= messages.length - REROLL_GUARD; floor++) if (canSummarize(messages[floor - 1]) && !coveredBySummary(document, floor)) count++;
+    return count;
+}
+
 // Each batch is bounded by content, while the model splits it at narrative boundaries.
-// Chosen initial gaps and explicit exclusions/deletions never get silently filled.
+// Explicit exclusions/deletions never get silently filled.
+// 规则（用户 2026-11-21 重申）：未整理楼层攒够「触发楼层数」就总结，一次总结到最新 3 层（重 roll 保护）之前为止；
+// 「正文保留层数」只管隐藏与注入，不管总结到哪。中途开启时从第一层算起，不从开启那一层算起。
 export function nextBatch(document, messages, settings, { force = false, historyOnly = false, limitEnd = Infinity, align = false } = {}) {
     if (!document.enabled || !document.initialRange || !force && !document.autoSummary) return null;
-    const last = Math.min(Math.max(0, messages.length - settings.recent), historyOnly ? document.initialRange.end : Infinity, limitEnd);
+    const last = Math.min(Math.max(0, messages.length - REROLL_GUARD), historyOnly ? document.initialRange.end : Infinity, limitEnd);
     const capacity = settings.inputCapacity ?? settings.batch ?? settings.trigger;
     // A changed source is a quiet review state, not an automatic repair job.
     // Keep the old slice available for injection and let the user explicitly
     // choose redo/edit/delete from the memory page.
-    const { start: initialStart, end: initialEnd, total: initialTotal } = document.initialRange;
-    const eligible = floor => floor > (document.lineage?.bridgeCount || 0) && (floor <= initialEnd || floor > initialTotal) && canSummarize(messages[floor - 1])
-        && !document.entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
-    const first = Array.from({ length: Math.max(0, last - initialStart + 1) }, (_, index) => initialStart + index).find(eligible);
+    const from = autoFrom(document);
+    const eligible = floor => floor >= from && canSummarize(messages[floor - 1]) && !coveredBySummary(document, floor);
+    const first = Array.from({ length: Math.max(0, last - from + 1) }, (_, index) => from + index).find(eligible);
     if (!first) return null;
     let targetEnd = last;
-    if (!force && first > initialTotal) {
-        // 楼层触发只数「保留区之外」的未整理楼层：最新保留层不算进度，它们本来就不总结。
-        // 保留 5 层、触发 10 层时，只有保留区外攒够 10 层才动，而不是 6 层就动。
-        const floors = settings.triggerFloors > 0 ? settings.triggerFloors : Infinity;
+    const floors = settings.triggerFloors > 0 ? settings.triggerFloors : Infinity;
+    if (!force) {
+        // 楼层触发数的是全部未整理楼层（保留层、保护层都算进度）：10 层一总结就是每攒 10 层动一次。
         let unsummarized = 0;
-        for (let floor = first; floor <= last && unsummarized < floors; floor++) if (eligible(floor)) unsummarized++;
+        for (let floor = first; floor <= messages.length && unsummarized < floors; floor++) if (eligible(floor)) unsummarized++;
         if (unsummarized < floors) {
-            // 楼层没到就退回 token 口径：两者先到先触发，但都只在保留区之外计算。
+            // 楼层没到就退回 token 口径：两者先到先触发。
             let pending = 0; targetEnd = 0;
             for (let floor = first; floor <= last; floor++) if (eligible(floor)) {
                 pending += estimateTokens(messages[floor - 1].mes);
@@ -79,7 +94,11 @@ export function nextBatch(document, messages, settings, { force = false, history
     // 对齐的是整轮的终点而不是单批的终点：否则被留下的那一句会被紧接着的续批单独拿去总结。
     // 只剩这一层时不退（否则它永远整理不了）。
     if (align && targetEnd > first && messages[targetEnd - 1]?.is_user === true) targetEnd--;
-    let start = 0, end = 0, tokens = 0;
+    // 积压很多时按「触发楼层数」分批，一批一次请求；剩下不到一批半就并成一批，不留零头。
+    let remaining = 0;
+    for (let floor = first; floor <= targetEnd; floor++) if (eligible(floor)) remaining++;
+    const perBatch = remaining > floors * 1.5 ? floors : Infinity;
+    let start = 0, end = 0, tokens = 0, count = 0;
     for (let floor = first; floor <= targetEnd; floor++) {
         if (!eligible(floor)) { if (start) break; continue; }
         const size = estimateTokens(messages[floor - 1].mes);
@@ -88,11 +107,11 @@ export function nextBatch(document, messages, settings, { force = false, history
         // A single very large floor is never silently truncated into a misleading summary.
         if (!start && !fits) throw new Error(`第 ${shownFloor(floor)} 层与总结提示词超过此连接的可用输入容量，请为忆幕选择容量足够的连接`);
         if (!start) start = floor;
-        end = floor; tokens += size;
-        if (tokens >= settings.trigger) break;
+        end = floor; tokens += size; count++;
+        if (tokens >= settings.trigger || count >= perBatch) break;
     }
     if (!start) return null;
-    return { start, end, ...(!force && start > initialTotal && end < targetEnd ? { targetEnd } : {}) };
+    return { start, end, ...(!force && end < targetEnd ? { targetEnd } : {}) };
 }
 
 /** Manual summary batch size in floors. A user preference of the manual card only;
@@ -187,32 +206,33 @@ export function planManualRange(document, messages, settings, requestedRange, { 
     return { requestedRange: requested, range, expanded: range.start !== requested.start || range.end !== requested.end, batches };
 }
 
-/** 隐藏边界：可见的永远是最近「正文保留层数」层，之前被总结覆盖过的楼层一律原生隐藏。
+/** 隐藏边界：最近「正文保留层数」层永远可见，即使已被总结；更早的楼层只要被有效切片覆盖就原生隐藏。
  *  这是独立规则，不由「本轮注入了哪几条记忆」决定——否则注入少一次，旧楼就会多露出一次。
- *  只在「确实有有效切片覆盖」时才隐藏（fail-closed）：宁可多留原文，绝不出现原文与记忆同时消失。
- *  返回隐藏前沿（从 1 起连续被覆盖到的最大楼层）和本次应处于隐藏状态的楼层。 */
+ *  按整条切片算：切片有任何一层还在保留区里，它整条都不藏（那条切片此时也不注入，见 selectMemories），
+ *  等保留区随楼层推进越过它再一起藏。这样不会出现「原文藏了、对应的记忆却没带」。
+ *  按楼层算、不要求从第一层起连续：中间有没总结的楼层（用户选了不从首层总结、空楼、带工具调用的楼）
+ *  只是那几层自己保持可见，不挡后面已总结的楼层隐藏。
+ *  frontier 仍是「从第一层起连续被覆盖到的最大楼层」，只供显示。 */
 export function hiddenFloorsFor(document, messages, { recent = DEFAULTS.recent, excludeEnd = 0 } = {}) {
     const total = Array.isArray(messages) ? messages.length - Math.max(0, excludeEnd) : 0;
     if (!total) return { frontier: 0, floors: [] };
-    // 只有整个范围都被覆盖才算：缺口之后的内容不能因为后面又被总结过就跟着藏起来。
-    const covered = new Uint8Array(total + 1);
+    const keep = Math.min(total, Math.max(0, recent));
+    const limit = Math.max(0, total - keep);
+    const covered = new Uint8Array(total + 1), hide = new Uint8Array(total + 1);
     for (const entry of document?.entries || []) {
         if (entry.kind !== 'summary' || entry.origin || entry.discarded || !['active', 'invalid'].includes(entry.status)) continue;
         // 这里只读范围、不校验来源：隐藏边界每轮都要算，不能因为某条旧数据的指纹不全就中断整轮。
-        const ranges = Array.isArray(entry.source?.ranges) ? entry.source.ranges : entry.source ? [entry.source] : [];
-        for (const range of ranges) {
-            if (!Number.isSafeInteger(range?.start) || !Number.isSafeInteger(range?.end)) continue;
-            for (let floor = Math.max(1, range.start); floor <= Math.min(total, range.end); floor++) covered[floor] = 1;
+        const ranges = (Array.isArray(entry.source?.ranges) ? entry.source.ranges : entry.source ? [entry.source] : [])
+            .filter(range => Number.isSafeInteger(range?.start) && Number.isSafeInteger(range?.end));
+        const whole = ranges.length > 0 && ranges.every(range => range.end <= limit);
+        for (const range of ranges) for (let floor = Math.max(1, range.start); floor <= Math.min(total, range.end); floor++) {
+            covered[floor] = 1; if (whole) hide[floor] = 1;
         }
     }
     let frontier = 0;
     while (frontier + 1 <= total && covered[frontier + 1]) frontier++;
-    const keep = Math.min(total, Math.max(0, recent));
-    const limit = Math.max(0, total - keep);
-    // 保留区永远保留原文，即使它已经被总结覆盖过（手动总结也不动这几层）。
-    const end = Math.min(frontier, limit);
     const floors = [];
-    for (let floor = 1; floor <= end; floor++) floors.push(floor);
+    for (let floor = 1; floor <= limit; floor++) if (hide[floor]) floors.push(floor);
     return { frontier, floors, keep, total };
 }
 
@@ -231,7 +251,8 @@ export function manualRangeDefault(document, messages, invalidIds = []) {
     return start > total ? { start: total, end: total, complete: true } : { start, end: total, complete: false };
 }
 
-/** Count independent fine/custom slices once; stage/excerpt reading layers are not extra originals. */
+/** Count independent fine/custom slices once; stage/excerpt reading layers are not extra originals.
+ *  pendingFloors 是全部未总结的楼层数（保留层、保护层、开启前的旧楼都算），导览页「未整理层」用。 */
 export function summaryCoverage(document, messages, settings) {
     const covered = new Set(), entries = document?.entries || [];
     const active = entries.filter(entry => entry.kind === 'summary' && ['active', 'invalid'].includes(entry.status)
@@ -242,9 +263,8 @@ export function summaryCoverage(document, messages, settings) {
         for (let floor = entry.source.start; floor <= Math.min(entry.source.end, messages.length); floor++) covered.add(floor);
     }
     let pendingFloors = 0, pendingRange = null;
-    const range = document?.initialRange, last = Math.max(0, messages.length - settings.recent);
-    if (range) for (let floor = Math.max(range.start, (document?.lineage?.bridgeCount || 0) + 1); floor <= last; floor++) {
-        if (!(floor <= range.end || floor > range.total) || !canSummarize(messages[floor - 1])) continue;
+    for (let floor = (document?.lineage?.bridgeCount || 0) + 1; floor <= messages.length; floor++) {
+        if (!canSummarize(messages[floor - 1])) continue;
         const handled = entries.some(entry => !entry.origin && entry.kind === 'summary' && entry.source.start <= floor && entry.source.end >= floor);
         if (!handled) { pendingFloors++; pendingRange = pendingRange ? { ...pendingRange, end: floor } : { start: floor, end: floor }; }
     }
@@ -258,28 +278,6 @@ export function summaryCoverage(document, messages, settings) {
             } catch { return false; }
         })());
     return { sliceCount: active.length + custom.length, organizedFloors: covered.size, pendingFloors, pendingRange };
-}
-
-/** 开启自动总结之前就存在的楼层，目前只能手动补。返回第一段连续可整理的楼层，
- *  供一键填入范围；中间夹着已整理或不可整理的楼层时到此为止，补完这一段按钮会再出现。
- *  只看原文保留层以外的部分。 */
-export function preEnablePending(document, messages, settings) {
-    const range = document?.initialRange;
-    if (!range || !Array.isArray(messages) || !messages.length) return null;
-    const entries = document?.entries || [];
-    const last = Math.min(range.total, Math.max(0, messages.length - (settings?.recent ?? DEFAULTS.recent)));
-    let start = 0, end = 0, count = 0;
-    for (let floor = Math.max(1, (document?.lineage?.bridgeCount || 0) + 1); floor <= last; floor++) {
-        if (!canSummarize(messages[floor - 1])) continue;
-        // 与统计口径一致：任何切片覆盖过的楼层都算已整理，包括被删除或屏蔽的那条，
-        // 这样填进去的范围不会立刻被「含已删除记忆」拦下。
-        if (entries.some(entry => !entry.origin && entry.kind === 'summary'
-            && entry.source.start <= floor && entry.source.end >= floor)) continue;
-        if (!start) start = floor;
-        else if (floor !== end + 1) break;
-        end = floor; count++;
-    }
-    return start ? { start, end, count } : null;
 }
 
 /** 相邻碎片合并。模型常把一层写成一片，切片数量一多压缩就白做。
@@ -353,7 +351,7 @@ export function observationProtocol(names) {
     const char = String(names?.char || '').trim(), user = String(names?.user || '').trim() || '用户';
     return char ? OBSERVATION_PROTOCOL.replaceAll('{{char}}', char).replaceAll('{{user}}', user) : '';
 }
-export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [], names = null } = {}) {
+export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [], names = null, chronicle = null } = {}) {
     const source = messages.slice(batch.start - 1, batch.end).map((message, i) => ({
         floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
     }));
@@ -363,8 +361,8 @@ slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界
 切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。${Number.isSafeInteger(settings.summarySlices) && settings.summarySlices > 0 ? `本次最多返回 ${settings.summarySlices} 片。` : ''}
 ${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
-${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}${observationProtocol(names) ? `\n${observationProtocol(names)}` : ''}`,
-        data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}`,
+${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}${observationProtocol(names) ? `\n${observationProtocol(names)}` : ''}${chronicle?.protocol ? `\n${chronicle.protocol}` : ''}`,
+        data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}${chronicle?.data ? `\n${chronicle.data}` : ''}`,
     });
 }
 
@@ -443,6 +441,9 @@ const SEMANTIC_GATE = 0.5;
 export function selectMemories(document, snapshot, settings, hashes, type = '', semantic = null, queryText = '', recalledAt = null) {
     const visibleEnd = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const cutoff = visibleEnd - settings.recent;
+    // 保留区里的楼层不由记忆替代；但原文已经隐藏的楼层（重新生成、删掉最新几层之后保留区会暂时前移）
+    // 必须仍由它的切片顶上，否则这一段既没有原文也没有记忆。
+    const allHidden = range => { for (let floor = range.start; floor <= range.end; floor++) if (!snapshot.messages[floor - 1]?.is_system) return false; return range.end >= range.start; };
     const usable = document.entries.filter(entry => {
         if (!['active', 'invalid'].includes(entry.status)) return false;
         // Invalid source-backed entries remain usable. Their old text is still
@@ -456,7 +457,7 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         const sceneValid = sceneDependenciesValid(entry, document);
         const sourceValid = entry.origin
             ? inheritedSourceValid(entry, document, hashes) && sourceTimelineEnd(entry, document) <= (document.lineage?.offset || 0) + cutoff
-            : sourceRanges(entry).every(range => range.end <= cutoff && sourceMatches(range, hashes));
+            : sourceRanges(entry).every(range => (range.end <= cutoff || allHidden(range)) && sourceMatches(range, hashes));
         const stageValid = entry.kind !== 'stage' || stageDependenciesValid(entry, document) && entry.source.parents.every(ref => {
             const parent = document.entries.find(item => item.id === ref.id);
             return parent?.kind !== 'manual' || placementMatches(parent, document, hashes, visibleEnd);

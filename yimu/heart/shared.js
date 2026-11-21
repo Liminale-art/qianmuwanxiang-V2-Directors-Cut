@@ -70,8 +70,10 @@ function drawFloors() {
     const floors = YM.raw?.floors, total = Number(floors?.total) || 0;
     if (!(total > 0)) { node?.remove(); return; }
     if (!node) { node = document.createElement('p'); node.id = 'ym-floors'; host.after(node); }
-    const part = (label, value) => { const span = document.createElement('span'); span.append(label + ' '); const b = document.createElement('b'); b.textContent = String(Math.max(0, Math.floor(Number(value) || 0))); span.append(b, ' 层'); return span; };
-    node.replaceChildren(part('本聊天', floors.chat), part('累计', total));
+    // 一整句放在同一个 span 里：「本卷同叙 N 节・共织故事 M 章」，数字两侧各一个空格。
+    const count = value => { const b = document.createElement('b'); b.textContent = String(Math.max(0, Math.floor(Number(value) || 0))); return b; };
+    const line = document.createElement('span'); line.append('本卷同叙 ', count(floors.chat), ' 节・共织故事 ', count(total), ' 章');
+    node.replaceChildren(line);
 }
 function repaint() { drawDate(); drawFloors(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); }
 document.addEventListener('click', event => {

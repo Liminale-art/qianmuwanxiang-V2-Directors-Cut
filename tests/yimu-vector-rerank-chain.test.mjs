@@ -22,6 +22,8 @@ const VECTOR_URL = 'https://synthetic-vector.example/v1', RERANK_URL = 'https://
 // 九条旧切片各有一个互不相同的专名；近期原文与新一批原文都不含这些词，关键词因此分不出先后。
 const TOPICS = ['灯塔', '码头', '雪山', '集市', '书库', '渡船', '钟楼', '果园', '矿井'];
 const SUMMARIZED = TOPICS.length, RECENT = 5;
+// 聊天多出四层（共 18 层）后强制整理一批：总结到「总层数 − 3」为止，即第 10–15 层，六层各成一条。
+const BATCH = 6;
 const floorText = floor => floor <= SUMMARIZED ? `${TOPICS[floor - 1]}那天的对话与经过。` : '两人并肩慢慢走着，谁也没有先开口。';
 const baseMessages = () => Array.from({length: SUMMARIZED + RECENT}, (_, index) => ({name: index % 2 ? '角色' : '用户', is_user: !(index % 2),
     mes: floorText(index + 1), send_date: `2026-10-25T10:${String(index).padStart(2, '0')}:00.000Z`}));
@@ -132,6 +134,10 @@ async function fixture(t, {sliceFiller = 0, semanticWaitMs = 1200, retrievalTime
         await controller.action('enable', {enabled: true, range: {start: 1, end: context.chat.length, total: context.chat.length}});
         await controller.action('autoSummary', {value: true});
         await flush();
+        // 自动总结现在一律要先够触发条件，且一次总结到「总层数 − 3」；夹具要的是「恰好前九层成片、最近五层是原文」，
+        // 所以用手动范围总结把第 1–9 层整理出来（走同一条总结链路）。
+        await controller.action('summarizeRange', {range: {start: 1, end: SUMMARIZED}, expectedRange: {start: 1, end: SUMMARIZED}, batchFloors: 20});
+        await flush();
         const saved = await entries();
         assert.deepEqual(saved.map(entry => [entry.source.start, entry.source.end]), TOPICS.map((_, index) => [index + 1, index + 1]), '夹具有九条各占一层的切片');
         return saved;
@@ -169,7 +175,9 @@ async function fixture(t, {sliceFiller = 0, semanticWaitMs = 1200, retrievalTime
     const summarize = async () => {
         await controller.start({force: true}); await flush();
         const prompt = prompts.at(-1) || '', at = prompt.indexOf('可回查的旧细摘要目录：');
-        const catalog = at < 0 ? [] : JSON.parse(prompt.slice(at + '可回查的旧细摘要目录：'.length, prompt.lastIndexOf(']') + 1));
+        // 目录占一行；它后面现在还跟着一行「已有年表：[…]」（关系年表随批次），所以只取目录这一行。
+        const line = at < 0 ? '' : prompt.slice(at + '可回查的旧细摘要目录：'.length).split('\n')[0];
+        const catalog = at < 0 ? [] : JSON.parse(line.slice(0, line.lastIndexOf(']') + 1));
         return {retrieval: controller.state.retrieval, shown: topicsOf(controller.state.retrieval.candidates), catalog: topicsOf(catalog)};
     };
     return {api, context, host, controller, net, sent, prompts, slot, notices, flush, entries, prepare, useVector, useRerank, extend, begin, finish, inject, summarize,
@@ -511,7 +519,7 @@ test('总结前：向量补进关键词找不到的旧切片，重排改变目�
     assert.ok(rerank.body.query.includes('谁也没有先开口'));
     assert.deepEqual(rerank.body.documents.map(topicOf), vector.shown, '送去重排的正是已过滤的候选');
     assert.equal(f.controller.state.error, '');
-    assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, 4, '本批总结已保存');
+    assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH, '本批总结已保存');
 
     // 检索页显示同一份状态。
     const page = retrievalPage(f); page.render();
@@ -578,7 +586,7 @@ for (const [label, reply] of BAD_RERANK) {
         assert.deepEqual(result.shown, [...LEXICAL, '灯塔', '码头', '雪山', '集市'], '顺序与没有重排时完全一致');
         assert.deepEqual(result.catalog, result.shown);
         assert.equal(f.controller.state.error, '', '重排失败不算整理失败');
-        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, 4, '本批总结已保存');
+        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH, '本批总结已保存');
         const page = retrievalPage(f); page.render();
         assert.equal(page.row('重排').badge, '不可用'); assert.equal(page.row('重排').detail, '重排请求失败，保留原顺序');
         assert.equal(page.row('重排').hover, result.retrieval.rerank.reason);
@@ -611,7 +619,7 @@ for (const [label, reply] of BAD_CANDIDATE_VECTORS) {
         assert.ok(result.retrieval.vector.reason && !result.retrieval.vector.reason.includes('vector-fixture-key'));
         assert.deepEqual(result.shown, LEXICAL); assert.deepEqual(result.catalog, LEXICAL);
         assert.equal(f.controller.state.error, '');
-        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, 4);
+        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH);
         const page = retrievalPage(f); page.render();
         assert.deepEqual(page.row('向量'), {badge: '不可用', detail: '向量请求失败，已回退关键词召回', hover: result.retrieval.vector.reason});
     });
@@ -632,7 +640,7 @@ test('总结前：向量与重排各自超时后退回，总结不被拖住', as
     assert.ok(f.net.calls.every(call => call.signal.aborted), '超时的请求都已取消');
     assert.deepEqual(result.shown, LEXICAL); assert.deepEqual(result.catalog, LEXICAL);
     assert.equal(f.controller.state.error, '');
-    assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, 4);
+    assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH);
 });
 
 for (const [label, kind] of [['向量', '/embeddings'], ['重排', '/rerank']]) {
@@ -659,7 +667,7 @@ for (const [label, kind] of [['向量', '/embeddings'], ['重排', '/rerank']]) 
         f.net.embeddings = null; f.net.rerank = null;
         const result = await f.summarize();
         assert.equal(result.retrieval.vector.status, 'ready'); assert.equal(result.retrieval.rerank.status, 'ready');
-        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, 4);
+        assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH);
     });
 }
 

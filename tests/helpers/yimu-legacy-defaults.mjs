@@ -10,9 +10,12 @@ export const LEGACY_SETTINGS = Object.freeze({recent: 5, triggerFloors: 0});
 
 // Seeds <account>/.yimu/defaults.json at revision 0 in the store's checksum envelope,
 // so revision assertions in the fixtures are unchanged.
-export async function seedLegacyDefaults(account) {
+// `overrides` lets a fixture pin further values on top (since 0.8.69 every automatic summary
+// needs its trigger met and ends three floors before the newest, so a fixture that wants an
+// automatic round on its short synthetic chat states its own floor trigger).
+export async function seedLegacyDefaults(account, overrides = {}) {
     const value = createDefaults();
-    value.values = {...value.values, ...LEGACY_SETTINGS};
+    value.values = {...value.values, ...LEGACY_SETTINGS, ...overrides};
     const folder = path.join(account, '.yimu');
     await fs.mkdir(folder, {recursive: true});
     const checksum = createHash('sha256').update(JSON.stringify(value)).digest('hex');

@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches, parseObservations } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -14,7 +14,7 @@ import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 import { completedSlices } from './stream-slices.mjs';
-import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
+import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -31,11 +31,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         await new Promise(resolve => setTimeout(resolve, sourceRetryMs));
         return api.read(binding);
     }
-    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', streamSlices: [], snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, sourceAvailable: false, invalidSourceIds: [], manage: { items: null, loading: false, error: '' },
+    const state = { loading: false, error: '', errorPage: '', status: '', streamPreview: '', streamSlices: [], snapshot: null, document: null, defaults: null, busy: false, profiles: [], lastUsed: null, lastSkip: null, requestSize: null, retrieval: { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }, failedWork: null, backlogAsk: null, sourceAvailable: false, invalidSourceIds: [], manage: { items: null, loading: false, error: '' },
         service: { status: 'unknown', version: '', requiredVersion: SERVICE_VERSION } };
     let sequence = 0, serviceSequence = 0, disposed = false, generation = 0, generating = false, prepared = null, refreshing = null, skipSeq = 0, offered = false;
     const jobs = new Map(), localStops = new Set(), failedJobs = new Map(), failures = new Map();
     const cancelledRounds = new Map();
+    // 旧楼很多（超出 80 层没整理）时，自动总结先停下来问一次要不要从首层开始；答过「是」的聊天记在本机，不再问。
+    const backlogYes = new Set(), backlogTold = new Set();
+    const backlogKey = binding => `yimu:backlog-ok:${bindingKey(binding)}`;
+    const backlogAccepted = binding => { if (backlogYes.has(bindingKey(binding))) return true; try { return roundStore?.getItem(backlogKey(binding)) === '1'; } catch { return false; } };
+    const backlogForget = binding => { backlogYes.delete(bindingKey(binding)); try { roundStore?.removeItem(backlogKey(binding)); } catch { /* 无本机存储 */ } };
     let refreshTimer = null, generationRefresh = null;
     // Entry/enable rounds announce a catch-up start; settle polling covers ST
     // paths that start a round but never block input (slash-command aborts).
@@ -146,6 +151,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
     const openLog = ({ prompt, ...entry }) => { const request = prompt === undefined ? undefined : promptText(prompt);
         liveLog = note(() => journal.add({ status: 'loading', ...entry, ...(request !== undefined ? { request, requestTokens: estimateTokens(request) } : {}) })); return { id: liveLog, started: Date.now() }; };
     const closeLog = (log, patch) => { if (log?.id) note(() => journal.update(log.id, { durationMs: Date.now() - log.started, ...patch })); if (liveLog === log?.id) liveLog = null; };
+    // 失败的那一次也要留下「收到了什么」：流式途中已记下的保持不动，否则用失败带出来的内容（半截正文、只有思考的回复）。
+    const failedReply = (log, error) => {
+        const received = typeof error?.received === 'string' ? error.received : '';
+        if (!log?.id || !received) return {};
+        const kept = note(() => journal.list().find(item => item.id === log.id)?.raw) || '';
+        return kept ? {} : { raw: received, responseTokens: estimateTokens(received) };
+    };
     const notice = (message, tone = 'success') => {
         if (disposed || typeof onNotice !== 'function' || typeof message !== 'string' || !message) return;
         try { onNotice(message, tone); } catch { /* Notifications must never affect persistence. */ }
@@ -310,7 +322,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 const switched = !equalBinding(snapshot.binding, state.snapshot?.binding);
                 if (switched) {
                     host.clear(); prepared = null;
-                    state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.requestSize = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = [];
+                    state.document = null; state.defaults = null; state.lastUsed = null; state.lastSkip = null; state.requestSize = null; state.retrieval = { mode: 'lexical', vector: { status: 'planned' }, rerank: { status: 'planned' }, candidates: [], lastRun: null }; state.streamPreview = ''; state.status = ''; state.error = ''; state.sourceAvailable = false; state.busy = false; state.invalidSourceIds = []; state.backlogAsk = null;
                     state.story = storyActions.forBinding(snapshot.binding); state.companion = {};
                 }
                 state.snapshot = snapshot; state.profiles = host.profiles(); emit();
@@ -453,6 +465,15 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     noWork = true;
                     break;
                 }
+                if (!force && !processed && !manualPlan && !entryId) {
+                    const backlog = autoBacklog(jobDocument, snapshot.messages), limit = Math.max(BACKLOG_ASK_FLOORS, settings.triggerFloors || 0);
+                    if (backlog <= limit) { backlogForget(binding); if (isCurrent(binding)) state.backlogAsk = null; }
+                    else if (!backlogAccepted(binding)) {
+                        if (isCurrent(binding)) { state.backlogAsk = { count: backlog, floor: snapshot.messages.length }; state.status = ''; }
+                        if (!backlogTold.has(key)) { backlogTold.add(key); notice('忆幕：未总结楼层超出 80 层，请在忆幕里确认是否从首层总结', 'warning'); }
+                        break;
+                    }
+                }
                 if (controller.probing) { controller.probing = false; emit(); }
                 if (targetEnd === null && batch.targetEnd !== undefined) targetEnd = batch.targetEnd;
                 controller.entryId = batch.redo?.id || entryId;
@@ -535,7 +556,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 let catalog = settings.recall === false ? [] : candidates;
                 // 痕迹（观察日记的原料）跟着切片总结一起要；整段重做某一条时不要。
                 let names = batch.redo ? null : { char: snapshot.name, user: snapshot.userName };
-                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext, names });
+                // 关系年表的节点也跟着这一批要：直接依据这段正文拾。
+                let chronicle = names ? chronicleAsk(settings, names, jobDocument) : null;
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext, names, chronicle });
                 // Optional historical hints may use only spare room. Source floors are never truncated.
                 if (!run.fitsPrompt(prompt) && catalog.length) {
                     candidates = []; catalog = [];
@@ -543,11 +566,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         state.retrieval = { ...state.retrieval, candidates: [], lastRun: { ...(state.retrieval.lastRun || {}), count: 0, at: Date.now(), fallback: '预算不足，沿用关键词路径但本轮未带入候选' } };
                         emit();
                     }
-                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names });
+                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle });
                 }
-                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names }); }
-                // 痕迹是顺带要的：连接容量放不下时先让路，不能因为它让切片总结做不成。
-                if (!run.fitsPrompt(prompt) && names) { names = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
+                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names, chronicle }); }
+                // 痕迹与年表是顺带要的：连接容量放不下时先让路，不能因为它们让切片总结做不成。
+                if (!run.fitsPrompt(prompt) && names) { names = null; chronicle = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
                 batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
                     manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length), prompt });
@@ -601,13 +624,23 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         if (observed.length || stale) { const result = await change(binding, { id: id(), type: 'observe', items: observed, range: { start: batch.start, end: batch.end }, at: Date.now() }); jobDocument = result.document; }
                     } catch (error) { observed = []; console.warn('[忆幕] 痕迹未存入：', error?.message || error); }
                 }
+                // 年表节点同样单独存一笔，存不上只记一句，不影响已入库的切片。这一批之前没有年表还没读过的切片时，把年表进度推到这一批末尾。
+                let chronicled = [];
+                if (chronicle && !controller.signal.aborted && !disposed && !localStops.has(key)) {
+                    try {
+                        chronicled = parseChronicle(response, { start: batch.start, end: batch.end }, slices);
+                        const read = jobDocument.heart?.eventFloor || 0;
+                        const behind = jobDocument.entries.some(entry => entry.kind === 'summary' && entry.status === 'active' && !entry.origin && !entry.replacedBy && entry.source?.start > read && entry.source.end < batch.start);
+                        if (chronicled.length || !behind) { const result = await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: [], events: chronicled, used: [], ...(behind ? {} : { eventFloor: batch.end }) }); jobDocument = result.document; }
+                    } catch (error) { chronicled = []; console.warn('[忆幕] 年表节点未存入：', error?.message || error); }
+                }
                 const request = parseRecallRequest(response, catalog);
                 if (request && !recallAttempted) {
                     recallAttempted = true; // At most one bounded extraction in this entire background run.
                     await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
                 }
                 failedBatch = null; failedSource = null;
-                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}) }); batchLog = null;
+                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}), ...(chronicled.length ? { events: chronicled.length } : {}) }); batchLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
@@ -629,7 +662,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                 emit();
             }
         } catch (error) {
-            closeLog(batchLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); batchLog = null;
+            closeLog(batchLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误', ...failedReply(batchLog, error) }); batchLog = null;
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
@@ -772,7 +805,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
             if (processed && isCurrent(binding) && !controller.signal.aborted) { failures.delete(key); state.status = '阶段总结已完成'; }
         } catch (error) {
-            closeLog(stageLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); stageLog = null;
+            closeLog(stageLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误', ...failedReply(stageLog, error) }); stageLog = null;
             if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : initialTotal);
                 if (failedStage) failures.set(key, { ...failedStage, error: error.message });
@@ -826,7 +859,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (isCurrent(binding)) { state.status = '已合订为日记'; emit(); }
             return true;
         } catch (error) {
-            closeLog(log, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误' }); log = null;
+            closeLog(log, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误', ...failedReply(log, error) }); log = null;
             console.warn('[忆幕] 日记整理未完成：', error?.message || error);
             if (force) throw error;
             return false;
@@ -956,6 +989,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await syncHidden({ enabled: false }, effectiveSettings(doc, state.defaults), { restoreAll: true }).catch(reportHideFailure);
             emit();
         }
+        if (type === 'autoSummary' && payload.value === false || type === 'enable' && !payload.enabled) state.backlogAsk = null;
         if (type === 'autoSummary' && payload.value === false) jobs.get(key)?.abort();
         if (['error', 'mismatch'].includes(state.service.status)) throw new Error('忆幕服务尚不可用，请先刷新检测；当前修改可继续保留。');
         if (type.startsWith('story')) {
@@ -1009,6 +1043,14 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             state.error = ''; emit();
             const range = clone(payload.range), expectedRange = clone(payload.expectedRange);
             deferFor(binding, () => start({ force: true, range, expectedRange, batchFloors }), actionGeneration);
+            return true;
+        }
+        // 旧楼超出 80 层时的回答：是＝从首层起分批总结；否＝从当前这一层起算，之前的楼层不自动总结。
+        if (type === 'backlogChoice') {
+            if (payload.fromStart) { backlogYes.add(key); try { roundStore?.setItem(backlogKey(binding), '1'); } catch { /* 存不下就只在本次有效 */ } }
+            else { const total = snapshot.messages.length; await change(binding, { id: id(), type: 'history', expectedRevision: doc.configRevision, range: { start: total, end: total, total } }); }
+            state.backlogAsk = null; backlogTold.delete(key); emit();
+            catchUp = true; deferFor(binding, () => start().catch(() => {}), actionGeneration);
             return true;
         }
         // 清本机记录：上一轮注入记录、回暖记录、向量打分缓存。只在这台设备的浏览器里，账户与聊天都不动。
@@ -1151,11 +1193,13 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const page = payload.errorPage || (type === 'settings' ? payload.values?.prompts ? 'overview' : 'settings'
             : /^(story|companion|backup)/.test(type) ? type.match(/^(story|companion|backup)/)[0]
             : /^(manage|purge|clearLocal)/.test(type) ? 'manage' : /^heart/.test(type) ? 'settings'
-            : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize'].includes(type) ? 'overview' : 'memory');
+            : ['enable', 'autoSummary', 'history', 'summarizeRange', 'summarize', 'backlogChoice'].includes(type) ? 'overview' : 'memory');
         try {
             const done = await executeAction(type, payload);
             const still = () => !disposed && stamp === generation && Boolean(binding) && isCurrent(binding);
             if (type === 'settings' && !payload.global && done !== false && still()) await liftGlobalSettings(payload.values, still);
+            // 改了「正文保留层数」等设置后，隐藏边界当场跟着走，不等下一条消息。生成中不动聊天。
+            if (type === 'settings' && done !== false && still() && !generating && state.document) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
             return done;
         }
         catch (error) {

@@ -145,7 +145,9 @@ export function mountManageView({ document = globalThis.document, journal = null
         if (item.error) detail.append(term(item.error, 'ym-term ym-term-error'));
         const sent = cap('发送'); if (item.request) sent.append(tag(`约 ${Number.isFinite(item.requestTokens) ? item.requestTokens : '—'} token`));
         const back = cap(item.status === 'loading' ? '返回（接收中）' : '返回'); if (item.raw) back.append(tag(`约 ${Number.isFinite(item.responseTokens) ? item.responseTokens : '—'} token`));
-        detail.append(sent, term(item.request || '暂无'), back, term(item.raw || '暂无'));
+        // 没有返回时说明是哪种情况，不笼统写「暂无」。
+        const none = item.status === 'loading' ? '等待返回' : item.status === 'success' ? '暂无' : '没有收到返回';
+        detail.append(sent, term(item.request || '暂无'), back, term(item.raw || none));
         node.append(summary, detail);
         return node;
     }

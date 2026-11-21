@@ -338,8 +338,11 @@ test('final admission requires the excerpt parent, gives the excerpt no raw-remo
 });
 
 test('an already saved excerpt may accompany its valid stage reading layer without reactivating automatic recall', async t => {
-    const f = await fixture(t); await f.controller.start({force: true}); let data = await f.read();
+    const f = await fixture(t); await f.controller.start({force: true});
+    // 强制总结现在到「总层数 − 3」（第 3–9 层）为止；阶段总结不得含保留区原文，所以这里把正文保留层数设为 3。
+    await f.settings({recent: 3}); let data = await f.read();
     const fine = data.document.entries.filter(entry => entry.kind === 'summary'), [excerpt] = excerpts(data);
+    assert.deepEqual(fine.map(entry => [entry.source.start, entry.source.end]), [[1, 2], [3, 9]]);
     await f.api.change(f.binding, {id: 'stage_saved', type: 'append', expectedEpoch: data.document.epoch, expectedDefaultsRevision: data.defaults.revision,
         entry: {id: 'stage_saved', kind: 'stage', text: '两人再次讨论信封，但此前未公开的细节仍未变成共同知识。',
             source: {parents: fine.map(entry => ({id: entry.id, revision: entry.revision}))}}});
@@ -348,6 +351,6 @@ test('an already saved excerpt may accompany its valid stage reading layer witho
     assert.deepEqual(plan.entries.map(entry => entry.id), ['stage_saved', excerpt.id]);
     const callsBefore = f.generated.length, result = await f.inject();
     assert.match(result.prompt, /stage_saved/); assert.ok(result.prompt.includes(QUOTE));
-    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2, 3, 4, 5, 6, 7]);
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
     assert.equal(f.generated.length, callsBefore, 'using an existing supplement cannot schedule another recall call');
 });

@@ -18,6 +18,9 @@ const clone = value => structuredClone(value);
 const binding = {avatar: 'Integration.png', file: 'Synthetic-chat', integrity: 'integration_identity'};
 const messages = Array.from({length: 7}, (_, i) => ({name: i % 2 ? '角色' : '用户', is_user: !(i % 2),
     mes: `合成原文第 ${i + 1} 层。` + '只有已告知的事实才是角色所知。重要经历保留，未告知的秘密不推定知情。'.repeat(20), send_date: `2026-10-25T10:0${i}:00.000Z`}));
+// 夹具的口径（0.8.69 起）：7 层的合成聊天，未总结楼层攒够 7 层就自动总结，一次总结到「总层数 − 3」即第 1–4 层；
+// 正文保留 3 层，所以这条切片不越过保留区边界，下一轮就注入并替换第 1–4 层原文。之后要再攒 7 层才会自动再动。
+const AUTO_SETTINGS = Object.freeze({recent: 3, triggerFloors: 7});
 const deferredValue = () => {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -34,7 +37,7 @@ async function fixture(t, {legacyDefaults = true, nativeHide = false} = {}) {
     const writeChat = async (items = messages, identity = binding.integrity, name = binding.file) => fs.writeFile(
         path.join(chats, 'Integration', `${name}.jsonl`), [{chat_metadata: {integrity: identity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await writeChat();
-    if (legacyDefaults) await seedLegacyDefaults(account);
+    if (legacyDefaults) await seedLegacyDefaults(account, AUTO_SETTINGS);
     const store = createYimuStore({hostCwd: root});
     const routes = new Map(), faults = {loseChangeReply: false, failRead: false, delayChangeReply: null, delayReadReply: null};
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
@@ -117,12 +120,12 @@ test('single-chat loop: explicit enable, fixture summary, durable save, next pro
     assert.equal(f.generated(), 1);
     const saved = (await f.api.read(binding)).document;
     assert.equal(saved.entries.length, 1);
-    assert.deepEqual([saved.entries[0].source.start, saved.entries[0].source.end], [1, 2]);
+    assert.deepEqual([saved.entries[0].source.start, saved.entries[0].source.end], [1, 4], 'seven floors: summarized up to the three newest ones');
     const {coreChat, prompt, payload} = await f.inject();
     assert.ok(prompt.includes(saved.entries[0].text));
     assert.equal(coreChat.length, messages.length, 'interception retains the original core chat');
-    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
-    assert.deepEqual(payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2, 3, 4]);
+    assert.deepEqual(payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(4).map(message => message.mes));
     assert.equal(f.controller.state.lastUsed.entries.length, 1);
     await f.controller.action('edit', {entryId: saved.entries[0].id, text: '人工确认的合成修订，不允许自动覆盖。'});
     assert.equal((await f.api.read(binding)).document.entries[0].edited, true);
@@ -165,7 +168,7 @@ test('late fixture generation after disabling cannot append memory or resume ano
     const job = f.flush();
     await started.promise;
     await f.controller.action('enable', {enabled: false});
-    answer.resolve(JSON.stringify({slices: [{start: 1, end: 2, text: '不应被迟到采纳'}]}));
+    answer.resolve(JSON.stringify({slices: [{start: 1, end: 4, text: '不应被迟到采纳'}]}));
     await job;
     const saved = await f.api.read(binding);
     assert.equal(saved.document.enabled, false);
@@ -241,10 +244,10 @@ test('stale browser originals cannot reactivate a disk-invalidated slice while a
     // 两片都写得足够长（超过字数上限的一半），才不会被碎片合并并成一片。
     f.model(async () => JSON.stringify({slices: [
         {start: 1, end: 1, text: '旧第一层记忆应停止使用。' + '甲'.repeat(1200)},
-        {start: 2, end: 2, text: '第二层记忆仍有效。' + '乙'.repeat(1200)},
+        {start: 2, end: 4, text: '第二层记忆仍有效。' + '乙'.repeat(1200)},
     ]}));
     await f.enable(); await f.flush();
-    assert.equal(f.controller.state.document.entries.length, 2);
+    assert.deepEqual(f.controller.state.document.entries.map(entry => [entry.source.start, entry.source.end]), [[1, 1], [2, 4]]);
     await f.writeChat([{...messages[0], mes: '由另一设备修改了第一层，浏览器仍未重读聊天'}, ...messages.slice(1)]);
     assert.equal(f.context.chat[0].mes, messages[0].mes, 'browser fixture intentionally retains its old original');
     const injected = await f.inject();
@@ -266,7 +269,7 @@ test('remote defaults changes while the fixture model is running discard the old
     await started.promise;
     const prior = (await f.api.read(binding)).defaults;
     await f.store.defaults(f.request, {id: 'remote_policy_change', expectedRevision: prior.revision, values: {...prior.values, preference: '新的人工整理偏好'}});
-    answer.resolve(JSON.stringify({slices: [{start: 1, end: 2, text: '不应接受旧整理策略的迟到输出'}]}));
+    answer.resolve(JSON.stringify({slices: [{start: 1, end: 4, text: '不应接受旧整理策略的迟到输出'}]}));
     await job;
     assert.equal((await f.api.read(binding)).document.entries.length, 0);
     assert.match(f.controller.state.error, /设置|策略|默认/);
@@ -456,12 +459,12 @@ test('disabling after interception expires the prepared final payload without re
 test('fine summaries become a durable stage and the next actual request substitutes it only for covered old floors', async t => {
     const f = await fixture(t);
     f.model(async () => JSON.stringify({slices: [
-        {start: 1, end: 1, text: '第一层保留的重要相遇。' + '甲'.repeat(1200)},
-        {start: 2, end: 2, text: '第二层形成了尚未履行的约定。' + '乙'.repeat(1200)},
+        {start: 1, end: 2, text: '前两层保留的重要相遇。' + '甲'.repeat(1200)},
+        {start: 3, end: 4, text: '后两层形成了尚未履行的约定。' + '乙'.repeat(1200)},
     ]}));
     await f.enable(); await f.flush();
     f.model(async () => JSON.stringify({text: '相遇之后形成了尚未履行的约定。'}));
-    await f.controller.action('stage', {start: 1, end: 2}); await f.flush();
+    await f.controller.action('stage', {start: 1, end: 4}); await f.flush();
     const saved = (await f.api.read(binding)).document;
     assert.equal(saved.entries.filter(entry => entry.kind === 'summary').length, 2);
     const stage = saved.entries.find(entry => entry.kind === 'stage');
@@ -471,8 +474,8 @@ test('fine summaries become a durable stage and the next actual request substitu
     assert.ok(result.prompt.includes(stage.text));
     assert.ok(!result.prompt.includes(saved.entries[0].text));
     assert.deepEqual(f.controller.state.lastUsed.entries.map(entry => entry.id), [stage.id]);
-    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
-    assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2, 3, 4]);
+    assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(4).map(message => message.mes));
     assert.deepEqual(f.context.chat, messages, 'original ST chat is never replaced or mutated');
 });
 
@@ -515,7 +518,10 @@ test('history confirmation fills only selected old floors with auto off and canc
     const f = await fixture(t); await manualReady(f);
     await f.controller.action('history', {range: {start: 1, end: 6, total: 7}}); await f.flush();
     assert.equal(f.generated(), 1); assert.equal(f.controller.state.document.autoSummary, false);
-    assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), [[1, 2]], 'five recent originals remain untouched');
+    assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), [[1, 4]], 'the three newest originals remain untouched');
+    const partial = await fixture(t); await manualReady(partial);
+    await partial.controller.action('history', {range: {start: 1, end: 3, total: 7}}); await partial.flush();
+    assert.deepEqual(partial.controller.state.document.entries.map(e => [e.source.start, e.source.end]), [[1, 3]], 'only the selected old floors are filled');
     const other = await fixture(t); await manualReady(other);
     await other.controller.action('history', {range: {start: 1, end: 0, total: 7}}); await other.flush();
     await other.controller.refresh();
@@ -542,7 +548,7 @@ test('hidden original floors are summarized without unhiding them and only actua
     const result = await f.inject();
     assert.ok(result.prompt.includes(f.controller.state.document.entries[0].text));
     assert.deepEqual(f.controller.state.lastUsed.removedFloors, [2]);
-    assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), messages.slice(-5).map(message => message.mes));
+    assert.deepEqual(result.payload.messages.filter(message => message.role !== 'system').map(message => message.content), messages.slice(2).map(message => message.mes));
 });
 
 test('re-summarizing floors that Yimu itself has natively hidden works: hiding never invalidates the slices or blocks the next batch', async t => {
@@ -726,13 +732,13 @@ test('a transient summary failure retries in the background and reports the save
     f.model(async () => {
         attempts += 1;
         if (attempts <= 3) throw new Error('临时服务故障');
-        return JSON.stringify({slices: [{start: 1, end: 2, text: '重试后保存的合成经历。'}]});
+        return JSON.stringify({slices: [{start: 1, end: 4, text: '重试后保存的合成经历。'}]});
     });
     await f.enable(); await f.flush();
     assert.equal(attempts, 4);
     assert.equal((await f.api.read(binding)).document.entries.length, 1);
     assert.equal(f.notices.filter(item => item.tone === 'success' && /已存至记忆/.test(item.message)).length, 1);
-    assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：0–1/);
+    assert.match(f.notices.at(-1).message, /本次总结已存至记忆，总结范围：0–3/);
 });
 
 test('ST prompt-only regexes do not change Yimu summary sources or floor replacement', async t => {
@@ -793,8 +799,11 @@ test('manual range batches continuously until complete without using or removing
     assert.equal(f.generated(), 7);
     assert.deepEqual(f.controller.state.document.entries.map(e => [e.source.start, e.source.end]), Array.from({length: 7}, (_, i) => [i + 1, i + 1]));
     const result = await f.inject();
-    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [1, 2]);
-    assert.deepEqual(result.payload.messages.slice(-5).map(message => message.content), f.context.chat.slice(-5).map(message => message.mes));
+    // 保留 3 层：第 5–7 层虽然也已总结，原文照旧留在请求里，它们的切片这一轮不注入。
+    // 保留区之外有第 1–4 层四条切片；与近期正文无关时只带最近的两条作背景（第 3、4 层），所以替换的是这两层。
+    assert.deepEqual(f.controller.state.lastUsed.removedFloors, [3, 4]);
+    assert.deepEqual(f.controller.state.lastUsed.entries.map(entry => entry.source.start), [3, 4]);
+    assert.deepEqual(result.payload.messages.slice(-3).map(message => message.content), f.context.chat.slice(-3).map(message => message.mes));
 });
 
 test('manual summary shows batch progress, pauses after the current batch and keeps saved batches', async t => {
@@ -852,23 +861,26 @@ test('stopping a redo preserves the chat switch and original slice, discards lat
     assert.equal(await f.controller.action('stop', {entryId: entry.id}), true);
     assert.equal(f.controller.state.busy, false); assert.equal(f.controller.state.document.enabled, true);
     assert.equal(f.controller.state.document.autoSummary, true); assert.equal(f.controller.state.failedWork, null);
-    answer.resolve(JSON.stringify({slices: [{start: 1, end: 2, text: '停止后返回的结果不能保存'}]}));
+    answer.resolve(JSON.stringify({slices: [{start: 1, end: 4, text: '停止后返回的结果不能保存'}]}));
     await running; await f.flush(); await f.controller.start(); await f.controller.startStage();
     assert.deepEqual((await f.api.read(binding)).document.entries[0], entry);
     assert.equal(f.generated(), 2, 'no background restart or retry after stop');
     assert.equal(f.controller.state.error, '');
-    f.model(async () => JSON.stringify({slices: [{start: 1, end: 2, text: '用户再次明确开始的新版'}]}));
+    f.model(async () => JSON.stringify({slices: [{start: 1, end: 4, text: '用户再次明确开始的新版'}]}));
     await f.controller.action('redo', {entryId: entry.id}); await f.flush();
     assert.equal(f.generated(), 3); assert.equal(f.controller.state.document.entries[0].text, '用户再次明确开始的新版');
 });
 
 test('a threshold needing multiple admitted batches keeps its frozen range despite new arriving floors', async t => {
-    const f = await fixture(t); await f.controller.refresh();
-    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 0, total: 7}});
+    const f = await fixture(t);
+    // 自动总结的起点定在第 8 层（相当于在「超出 80 层」的提示里选了否），之前的 7 层不自动整理。
+    // 共 13 层：最新 3 层是重 roll 保护，第 8–10 层够得着；起点之后只有 6 层、不到触发楼层数（7），走 token 口径：
+    // 第 8、9 两层累计到 600 即触发，这一轮的终点冻结在第 9 层。
+    f.context.chat.push(...Array.from({length: 6}, (_, index) => ({name: '角色', mes: '文'.repeat(300), send_date: `later-${index}`})));
+    await f.writeChat(f.context.chat); await f.controller.refresh();
+    await f.controller.action('enable', {enabled: true, range: {start: 8, end: 13, total: 13}});
     await f.controller.action('autoSummary', {value: true});
     await f.controller.action('settings', {values: {recent: 1, trigger: 600}});
-    f.context.chat.push(...Array.from({length: 4}, (_, index) => ({name: '角色', mes: '文'.repeat(300), send_date: `later-${index}`})));
-    await f.writeChat(f.context.chat); await f.controller.refresh();
     const settings = effectiveSettings(f.controller.state.document, f.controller.state.defaults);
     const contextTokens = summaryRequestBudget(summaryPrompt(f.context.chat, {start: 8, end: 8}, settings)) + 356;
     f.host.summaryConnection = () => ({mode: 'external', contextTokens, maxTokens: 256});
@@ -945,7 +957,8 @@ for (const mode of ['automatic', 'manual']) test(`${mode} Chinese summary batche
     assert.ok(prompts.every(prompt => summaryRequestBudget(prompt) + 2048 <= 16384));
     assert.equal(f.controller.state.error, '');
     const covered = f.controller.state.document.entries.flatMap(entry => Array.from({length: entry.source.end - entry.source.start + 1}, (_, index) => entry.source.start + index));
-    assert.deepEqual(covered, Array.from({length: mode === 'automatic' ? 13 : 18}, (_, index) => index + 1));
+    // 自动：18 层总结到「总层数 − 3」即第 15 层为止；手动：所选范围全部。
+    assert.deepEqual(covered, Array.from({length: mode === 'automatic' ? 15 : 18}, (_, index) => index + 1));
 });
 
 test('automatic Chinese stages pass the real ST host budget while preserving the latest ten fine slices', async t => {
@@ -1293,4 +1306,74 @@ test('tag rules and summary settings edited inside a chat become the account def
     read = await f.api.read(binding);
     assert.equal(read.defaults.values.stageChars, 2222); assert.equal(read.defaults.values.stageRecent, 5);
     assert.deepEqual(read.document.settings, {maxSlices: 7});
+});
+
+// ---- 0.8.69：旧楼超出 80 层先问；隐藏按整条切片、保留层永远可见 ----
+const longChat = count => Array.from({length: count}, (_, i) => ({name: i % 2 ? '角色' : '用户', is_user: !(i % 2), mes: `旧楼第 ${i + 1} 层的寻常对话。`, send_date: `long-${i}`}));
+const ranges = document => document.entries.filter(entry => entry.kind === 'summary').map(entry => [entry.source.start, entry.source.end]);
+
+test('more than 80 unsummarized old floors: automatic summary asks first, and 是 summarizes from the first floor in batches', async t => {
+    const f = await fixture(t);
+    f.context.chat = longChat(90); await f.writeChat(f.context.chat);
+    await f.enable(); await f.flush();
+    // 起点之后、最新 3 层之前有 87 层没总结，超过 80：这一轮不总结，等回答。
+    assert.equal(f.generated(), 0, 'nothing is summarized before the answer');
+    assert.deepEqual(f.controller.state.backlogAsk, {count: 87, floor: 90});
+    const warnings = () => f.notices.filter(item => item.tone === 'warning' && /未总结楼层超出 80 层/.test(item.message));
+    assert.equal(warnings().length, 1);
+    await f.controller.start(); await f.flush();
+    assert.equal(f.generated(), 0); assert.equal(warnings().length, 1, 'the question is announced once, not on every round');
+    assert.equal(await f.controller.action('backlogChoice', {fromStart: true}), true);
+    assert.equal(f.controller.state.backlogAsk, null);
+    await f.flush();
+    const saved = (await f.api.read(binding)).document;
+    assert.deepEqual(saved.initialRange, {start: 1, end: 90, total: 90}, '是 keeps the start point at the first floor');
+    // 触发 7 层：按 7 层一批、一批一次请求，一直整理到「总层数 − 3」（第 87 层）之前；最新 3 层不碰。
+    // 第 87 层是用户发言，按回合对齐留给下一轮与它的回复一起整理，所以这一轮的终点是第 86 层。
+    const done = ranges(saved);
+    assert.equal(f.context.chat[86].is_user, true);
+    assert.deepEqual(done[0], [1, 7]); assert.equal(done.at(-1)[1], 86);
+    assert.ok(done.every(([start], index) => start === (index ? done[index - 1][1] + 1 : 1)), 'batches are contiguous');
+    assert.equal(f.generated(), done.length); assert.ok(done.length >= 12);
+    assert.equal(f.controller.state.backlogAsk, null); assert.equal(f.controller.state.error, '');
+});
+
+test('more than 80 unsummarized old floors: 否 moves the automatic start point to the current floor and older floors are left alone', async t => {
+    const f = await fixture(t);
+    f.context.chat = longChat(90); await f.writeChat(f.context.chat);
+    await f.enable(); await f.flush();
+    assert.deepEqual(f.controller.state.backlogAsk, {count: 87, floor: 90});
+    const before = f.controller.state.document.configRevision;
+    assert.equal(await f.controller.action('backlogChoice', {fromStart: false}), true);
+    await f.flush();
+    let saved = (await f.api.read(binding)).document;
+    assert.deepEqual(saved.initialRange, {start: 90, end: 90, total: 90}, 'an existing start point is replaced by a history operation');
+    assert.equal(saved.configRevision, before + 1);
+    assert.equal(f.controller.state.backlogAsk, null); assert.equal(f.generated(), 0); assert.deepEqual(ranges(saved), []);
+    // 之后只从第 90 层起算：再来 9 层（共 99 层），第 90–99 层攒够 7 层，总结到第 96 层为止。
+    f.context.chat.push(...longChat(9).map((message, i) => ({...message, send_date: `after-${i}`})));
+    await f.writeChat(f.context.chat);
+    await f.controller.event('GENERATION_ENDED'); await f.flush();
+    saved = (await f.api.read(binding)).document;
+    assert.deepEqual(ranges(saved), [[90, 96]]);
+    assert.equal(f.controller.state.backlogAsk, null, 'floors before the start point no longer count as backlog');
+    assert.equal(summaryCoverage(saved, f.context.chat, effectiveSettings(saved, f.controller.state.defaults)).pendingFloors, 92, '未整理层 still counts the old floors');
+});
+
+test('native hiding follows whole slices and the kept recent floors: changing 正文保留层数 moves the boundary at once', async t => {
+    const f = await fixture(t, {nativeHide: true});
+    await f.enable(); await f.flush();
+    const hidden = () => f.context.chat.map(message => Boolean(message.is_system));
+    assert.deepEqual(ranges(f.controller.state.document), [[1, 4]]);
+    // 保留 3 层、共 7 层：切片第 1–4 层整条在保留区之外，隐藏。
+    assert.deepEqual(hidden(), [true, true, true, true, false, false, false]);
+    // 保留层数改成 5：切片的终点（第 4 层）落进保留区，整条都不藏——不等下一条消息，当场放回。
+    await f.controller.action('settings', {values: {recent: 5}}); await f.flush();
+    assert.deepEqual(hidden(), [false, false, false, false, false, false, false]);
+    assert.equal((await f.inject()).prompt, '', 'a slice crossing the kept window is not injected either');
+    await f.controller.event('GENERATION_ENDED'); await f.flush();
+    assert.deepEqual(hidden(), [false, false, false, false, false, false, false]);
+    await f.controller.action('settings', {values: {recent: 3}}); await f.flush();
+    assert.deepEqual(hidden(), [true, true, true, true, false, false, false]);
+    assert.ok((await f.inject()).prompt.includes('<yimu_memory>'));
 });

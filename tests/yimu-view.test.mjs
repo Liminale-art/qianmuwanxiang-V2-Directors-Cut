@@ -210,8 +210,8 @@ test('first card has independent master and automatic switches, manual stays ava
     assert.equal(master.closest('.ym-hero'), null, 'switches are now a separate card above the chat card');
     assert.equal(automatic.disabled, true); assert.equal(f.get('开始总结').disabled, true);
     master.checked = true; master.emit('change'); await f.flush();
-    assert.deepEqual(f.calls, [{type: 'enable', payload: {enabled: true, range: {start: 1, end: 0, total: 9}}}]);
-    f.render({document: {...f.state.document, enabled: true, autoSummary: false, initialRange: {start: 1, end: 0, total: 9}}});
+    assert.deepEqual(f.calls, [{type: 'enable', payload: {enabled: true, range: {start: 1, end: 9, total: 9}}}]);
+    f.render({document: {...f.state.document, enabled: true, autoSummary: false, initialRange: {start: 1, end: 9, total: 9}}});
     assert.equal(automatic.disabled, false); assert.equal(f.get('开始总结').disabled, false);
     automatic.checked = true; automatic.emit('change'); await f.flush();
     assert.deepEqual(f.calls.at(-1), {type: 'autoSummary', payload: {value: true}});
@@ -265,11 +265,18 @@ test('unacknowledged invalid slices remain in coverage and statistics stay displ
     assert.equal(f.get('手动总结开始楼层').placeholder, '0');
 });
 
-test('pending floor card keeps the kept-raw explanation on hover only', t => {
+test('unsummarized floor card counts every unsummarized floor, kept recent ones included, and explains itself on hover only', t => {
     const f=fixture({document:{...state().document,enabled:true,entries:[entry()]}});t.after(()=>f.view.destroy());
     const pending=f.document.querySelector('.ym-stats').children[2];
     assert.equal(pending.querySelector('.ym-stat-note'),null);assert.doesNotMatch(pending.textContent,/保留原文/);
-    assert.match(pending.textContent,/^\d+待整理层$/);assert.match(pending.title,/最新 5 层作为近期原文保留/);
+    // 9 层、第 1–3 层已总结：其余 6 层（含最新的保留层）都算未整理。
+    assert.equal(pending.textContent,'6未整理层');assert.equal(pending.title,'第 3–8 层之间还有未总结的楼层');
+    assert.doesNotMatch(pending.title,/近期原文保留|不计入|开启前/);
+    // 不受 initialRange 限制：起点改到后面，之前的旧楼照样算未整理。
+    f.render({document:{...f.state.document,initialRange:{start:9,end:9,total:9}}});
+    assert.equal(pending.textContent,'6未整理层');
+    f.render({document:{...f.state.document,entries:[entry({source:{start:1,end:9}})]}});
+    assert.equal(pending.textContent,'0未整理层');assert.equal(pending.title,'全部楼层都已总结');
 });
 
 test('history is organized from the manual card: floors per batch is its own saved preference and a run can pause', async t => {
@@ -339,28 +346,48 @@ test('manual range controls are disabled by the master switch and no hidden enab
 test('a new chat with only its opening floor skips the history question and counts every floor as new', async t => {
     const f=fixture({snapshot:{...state().snapshot,messages:[{mes:'开场白'}]}}); t.after(()=>f.view.destroy());
     const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:0}}});
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:1,total:1}}});
     // Before the enable result arrives (or after an older enable without a scope), turning auto on also supplies it.
     f.render({document:{...f.state.document,enabled:true}});
     const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:0,total:0}}});
+    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:1,total:1}}});
     // Once a scope exists, nothing is resent; turning auto off never sends one.
-    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:0,total:0}}});
+    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:1,total:1}}});
     auto.checked=false; auto.emit('change'); await f.flush();
     assert.deepEqual(f.calls[2],{type:'autoSummary',payload:{value:false}});
 });
 
-test('an existing multi-floor chat is never asked about history: automatic summary starts after its current floors', async t => {
+test('an existing multi-floor chat is not asked about history when enabled: automatic summary counts from its first floor', async t => {
     const f=fixture(); t.after(()=>f.view.destroy());
     const master=f.get('启用忆幕'); master.checked=true; master.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:0,total:9}}});
+    assert.deepEqual(f.calls[0],{type:'enable',payload:{enabled:true,range:{start:1,end:9,total:9}}});
     // An older chat enabled without a scope records it when auto is turned on.
     f.render({document:{...f.state.document,enabled:true}});
     const auto=f.get('自动总结'); auto.checked=true; auto.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:0,total:9}}});
-    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:0,total:9}}});
+    assert.deepEqual(f.calls[1],{type:'autoSummary',payload:{value:true,initialRange:{start:1,end:9,total:9}}});
+    f.render({document:{...f.state.document,autoSummary:true,initialRange:{start:1,end:9,total:9}}});
     assert.equal(f.get('开始总结').disabled,false,'earlier floors stay available to manual summary');
-    assert.match(f.document.querySelector('.ym-stats').children[2].title,/开启前的第 0–8 层不自动整理/);
+    assert.equal(f.document.querySelector('.ym-stats').children[2].title,'第 0–8 层之间还有未总结的楼层');
+    assert.equal(f.document.querySelector('.ym-ask').hidden,true,'nine floors are far below the backlog question');
+    // 旧形态的范围（开启前的楼层不整理）也不再有「补上开启前的 N 层」按钮与相应说明。
+    f.render({document:{...f.state.document,initialRange:{start:1,end:0,total:9}}});
+    assert.doesNotMatch(f.document.querySelector('.ym-manual-range').textContent,/补上开启前/);
+    assert.doesNotMatch(f.document.querySelector('.ym-stats').children[2].title,/开启前/);
+});
+
+test('a long unsummarized backlog asks once whether to start from the first floor, and each answer sends its own choice', async t => {
+    const f=fixture({document:{...state().document,enabled:true,autoSummary:true,initialRange:{start:1,end:9,total:9}}}); t.after(()=>f.view.destroy());
+    const layer=f.document.querySelector('.ym-ask'); assert.equal(layer.hidden,true);
+    f.render({backlogAsk:{count:120,floor:123}});
+    assert.equal(layer.hidden,false); assert.equal(layer.querySelector('.ym-ask-card').attrs.role,'alertdialog');
+    assert.match(layer.textContent,/当前未总结楼层超出80层，是否从首层总结？/); assert.match(layer.textContent,/选否则从开启的当前层开始计算/);
+    const [yes,no]=layer.querySelectorAll('button'); assert.equal(yes.textContent,'是'); assert.equal(no.textContent,'否');
+    yes.click(); await f.flush(); no.click(); await f.flush();
+    assert.deepEqual(f.calls,[{type:'backlogChoice',payload:{fromStart:true}},{type:'backlogChoice',payload:{fromStart:false}}]);
+    // 答完（运行时清掉 backlogAsk）、关掉自动总结或停用后都不再盖着面板。
+    f.render({backlogAsk:null}); assert.equal(layer.hidden,true);
+    f.render({backlogAsk:{count:120,floor:123},document:{...f.state.document,autoSummary:false}}); assert.equal(layer.hidden,true);
+    f.render({document:{...f.state.document,autoSummary:true,enabled:false}}); assert.equal(layer.hidden,true);
 });
 
 test('background work never disables the per-chat off action, and reopening a known chat does not ask initial range again', async t => {
@@ -916,7 +943,9 @@ test('trigger floor count sits right after the token trigger with its own hint a
     assert.equal(group, trigger.closest('.ym-settings-group')); assert.match(group.textContent, /切片总结/);
     assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
     assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '10');
-    assert.equal(floors.closest('.ym-setting-row').title, '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token');
+    assert.equal(floors.closest('.ym-setting-row').title, '未整理楼层达到此数时自动总结；最新 3 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token');
+    assert.equal(f.get('正文保留层数').closest('.ym-setting-row').title, '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层才隐藏并由记忆替代');
+    assert.equal(f.get('关系年表').closest('.ym-setting-row').title, '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……');
     assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
     assert.equal(floors.value, '10');
     f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');
@@ -1369,7 +1398,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.68 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.69 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1403,6 +1432,17 @@ test('autosave coalesces typing and drains newer edits only after the earlier sa
     f.render({document:{...f.state.document,configRevision:1,settings:{recent:8}}});finish(true);await f.flush();
     assert.equal(input.value,'9');assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].payload,{global:false,values:{recent:9},expectedRevision:1});
     f.render({document:{...f.state.document,configRevision:2,settings:{recent:9}}});finish(true);await f.flush();assert.equal(input.value,'9');assert.equal(f.calls.length,2);
+});
+
+test('a second save uses the revision the panel holds now, not the previous one plus one', async t => {
+    // 保存全局类设置时聊天侧修订号一次进 2（先存进聊天、再升到全局并从聊天里清掉）；接着存的那一笔必须带当前值。
+    let finish;const f=fixture({},()=>new Promise(resolve=>{finish=resolve;}),{saveDelayMs:0});t.after(()=>f.view.destroy());
+    f.get('设置').click();const input=f.get('正文保留层数');input.value='8';input.emit('change');await f.flush();
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].payload.expectedRevision,0);
+    input.value='9';input.emit('input');input.emit('blur');assert.equal(f.calls.length,1,'the newer edit waits for the first save');
+    f.render({document:{...f.state.document,configRevision:2,settings:{}},defaults:{...f.state.defaults,revision:1,values:{...f.state.defaults.values,recent:8}}});
+    finish(true);await f.flush();
+    assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].payload,{global:false,values:{recent:9},expectedRevision:2});
 });
 
 test('a prior-chat save failure never overwrites the next chat draft and does not strand its deliberate save', async t => {
@@ -1490,7 +1530,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.68'); assert.equal(pkg.version, '0.8.27');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.69'); assert.equal(pkg.version, '0.8.28');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1583,7 +1623,7 @@ test('the 管理 page: log first, a dropdown plus one icon for cleanup, and a fo
     assert.deepEqual(logs[1].querySelectorAll('.ym-log-cap').map(node => node.textContent), ['发送约 1234 token', '返回约 56 token']);
     assert.deepEqual(logs[1].querySelectorAll('.ym-term').map(node => node.textContent), ['切片请求全文', '{"slices":[…]}']);
     assert.ok(!/第 0–9 层|手动/.test(logs[1].textContent), '条目里不再放范围、来源这些说明');
-    assert.deepEqual(logs[0].querySelectorAll('.ym-term').map(node => node.textContent), ['合成模型故障', '阶段请求全文', '暂无'], '失败原因排在最前，没有返回时写暂无');
+    assert.deepEqual(logs[0].querySelectorAll('.ym-term').map(node => node.textContent), ['合成模型故障', '阶段请求全文', '没有收到返回'], '失败原因排在最前，没有返回时写暂无');
 
     // 当前聊天：计数在标题同一行；清理是「下拉 + 一个图标」。
     const chatCard = cards[1], count = chatCard.querySelector('.ym-manage-count');

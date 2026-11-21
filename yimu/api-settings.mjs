@@ -384,9 +384,21 @@ export function createApiSettings({ getContext = () => globalThis.SillyTavern?.g
             const reply = await readModelResponse(response, { stream: config.stream, signal, onDelta }), result = reply.text;
             lastCache = modelCacheText(reply.usage);
             aborted(signal); assertCurrent(connection || { revision: config.revision });
-            if (!result.trim()) fail('忆幕没有收到可用的整理结果');
+            if (!result.trim()) {
+                // 只有思考、没有正文：把收到的思考留给日志，原因写明白，不笼统说「没有收到」。
+                const empty = new Error(reply.reasoning ? '模型只返回了思考、没有正文，未保存；请提高最大输出或关闭思考' : '忆幕没有收到可用的整理结果');
+                if (reply.reasoning) empty.received = `（模型的思考，不是正文）\n${reply.reasoning}`;
+                throw empty;
+            }
             return result;
-        } catch (error) { aborted(signal); throw new Error(summaryFailure(error, config)); }
+        } catch (error) {
+            aborted(signal);
+            // 失败时把已经收到的内容带出去（被截断的半截正文、只有思考的回复），日志里才看得到「收到了什么」。
+            const failure = new Error(summaryFailure(error, config)), partial = error?.modelResponse;
+            const received = error?.received || partial?.text || (partial?.reasoning ? `（模型的思考，不是正文）\n${partial.reasoning}` : '');
+            if (received) failure.received = String(received);
+            throw failure;
+        }
     }
     function savePreset(name) {
         const label = text(name); if (!label || label.length > 120) return Promise.reject(new Error('请输入 1—120 字的预设名称'));

@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT, preEnablePending } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT, REROLL_GUARD } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -46,12 +46,13 @@ const SETTINGS = [
 // Hover hints; values that read as "off" at 0 render blank.
 const SETTING_HINTS = {
     trigger: '待整理正文达到此 token 数时自动总结',
-    triggerFloors: '保留层以外的未整理楼层达到此数时，总结保留层以外的全部楼层；与 token 阈值先到先触发；填 0 仅按 token',
+    recent: '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层才隐藏并由记忆替代',
+    triggerFloors: `未整理楼层达到此数时自动总结；最新 ${REROLL_GUARD} 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token`,
     summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
     recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
     diary: '留意到的事合订成日记：同一件事在 3 个不同的日子里看见才写进去，6 个日子才笃定；跟着阶段总结一起合订，用总结的连接',
     diaryInject: '回复时带上在场的人的日记，最多三条',
-    chronicle: '从记忆里拾出这段关系的节点：第一次、约定、和解……',
+    chronicle: '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……',
     thoughts: '由写正文的模型在回复末尾顺带写一则，写完即从正文里收走；只支持聊天补全',
     thoughtCooldown: '两则心迹至少隔这么多层，并且其间完成过一次阶段总结；模型可以不写',
     thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受召回冷却约束',
@@ -241,7 +242,15 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         pages.set(name, page); main.append(page);
     }
     scroller.append(status, main);
-    shell.append(header, nav, scroller);
+    // 询问层：盖在面板上，答完才收起。旧的未总结楼层很多时，自动总结先问要不要从首层开始。
+    const backlogLayer = el('div', 'ym-ask'); backlogLayer.hidden = true;
+    const backlogCard = el('div', 'ym-card ym-ask-card'); backlogCard.setAttribute('role', 'alertdialog'); backlogCard.setAttribute('aria-label', '是否从首层总结');
+    const backlogYes = button('是', () => dispatch('backlogChoice', { fromStart: true }, backlogYes), 'ym-primary ym-small');
+    const backlogNo = button('否', () => dispatch('backlogChoice', { fromStart: false }, backlogNo), 'ym-small');
+    const backlogButtons = el('div', 'ym-ask-actions'); backlogButtons.append(backlogYes, backlogNo);
+    backlogCard.append(el('p', 'ym-ask-title', '当前未总结楼层超出80层，是否从首层总结？'), el('p', 'ym-muted ym-ask-note', '选否则从开启的当前层开始计算'), backlogButtons);
+    backlogLayer.append(backlogCard);
+    shell.append(header, nav, scroller, backlogLayer);
     dialog.append(shell);
     // Center through the same body-level grid layer as Qianmu's main panel.
     // Keeping the dialog inside it avoids browser-specific dialog placement.
@@ -263,7 +272,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     const avatar = el('img', 'ym-avatar'); avatar.alt = ''; avatar.hidden = true;
     avatar.addEventListener('error', () => { avatar.hidden = true; });
     const stats = el('div', 'ym-stats'), statValues = [], statCards = [];
-    for (const label of ['记忆切片', '已整理层', '待整理层']) {
+    for (const label of ['记忆切片', '已整理层', '未整理层']) {
         const stat = el('div', 'ym-card ym-stat'), value = el('b', '', '0');
         stat.append(value, el('span', '', label)); statValues.push(value); statCards.push(stat); stats.append(stat);
     }
@@ -279,13 +288,11 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     automatic.setAttribute('aria-label', '自动总结');
     const automaticLabel = el('label', 'ym-switch-row'); automaticLabel.append(el('span', '', '自动总结'), automatic);
     enableCard.append(enableLabel, automaticLabel);
-    // Automatic summary starts from the floors that exist when it is first enabled;
-    // earlier history is organized through manual summary, never swept automatically.
-    // A new chat (at most the opening floor) counts every floor as new.
+    // 自动总结从第一层算起，不从开启那一层算起（用户 2026-11-21）。旧楼超出 80 层时由运行时先问一次（见下面的询问层）。
     const freshScope = () => {
         if (state.document?.initialRange) return undefined;
         const total = state.snapshot?.messages?.length || 0;
-        return { start: 1, end: 0, total: total <= 1 ? 0 : total };
+        return { start: 1, end: total, total };
     };
     enabled.addEventListener('change', () => dispatch('enable', { enabled: enabled.checked, ...(enabled.checked && freshScope() ? { range: freshScope() } : {}) }, enabled));
     automatic.addEventListener('change', () => dispatch('autoSummary', { value: automatic.checked, ...(automatic.checked && freshScope() ? { initialRange: freshScope() } : {}) }, automatic));
@@ -330,16 +337,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         if (!await dispatch('uiSettings', { manualBatchFloors: value }, batchInput)) batchInput.value = String(savedBatchFloors());
     });
     const summarizeNotice = el('p', 'ym-muted'); summarizeNotice.hidden = true; summarizeNotice.setAttribute('role', 'status');
-    // 开启自动总结之前就存在的楼层，不自动整理。用户按下按钮才把范围填进输入框（这是用户动作，不是机器代填）。
-    const backfillButton = button('', () => {
-        const pending = preEnablePending(state.document, state.snapshot?.messages || [], currentSettings());
-        if (!pending) { backfillButton.hidden = true; return; }
-        summarizeStart.value = floorField(pending.start); summarizeEnd.value = floorField(pending.end);
-        summarizeNotice.textContent = `已填入开启前的第 ${shownFloor(pending.start)}–${shownFloor(pending.end)} 层，共 ${pending.count} 层；确认范围后点「开始总结」。`;
-        summarizeNotice.hidden = false;
-    }, 'ym-small');
-    backfillButton.hidden = true;
-    summarizeRangeForm.append(manualHead, manualFields, summarizeNotice, backfillButton);
+    summarizeRangeForm.append(manualHead, manualFields, summarizeNotice);
     summarizeRangeForm.addEventListener('submit', async event => {
         event.preventDefault();
         const range = { start: floorValue(summarizeStart.value), end: floorValue(summarizeEnd.value) };
@@ -460,7 +458,9 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
             saved = await dispatch('settings', { global: false, values, expectedRevision });
             if (saved && generation === scopeGeneration) {
                 for (const [key, value] of Object.entries(values)) if (settingDraft.get(key) === value) settingDraft.delete(key);
-                settingsDraftRevision = settingDraft.size ? expectedRevision + 1 : null;
+                // 存好之后以面板此刻拿到的修订号为准，不按「上次 +1」推：全局类设置一次保存会让聊天这边连进两个修订
+                // （先存进聊天、再升到全局并从聊天里清掉），按 +1 接着存会被误判成「另一设备修改」。
+                settingsDraftRevision = settingDraft.size ? state.document?.configRevision ?? expectedRevision + 1 : null;
                 updateSettings();
             } else if (generation === scopeGeneration) settingsSaveFailed = true;
         } finally {
@@ -755,10 +755,8 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         statValues[0].textContent = coverage ? String(coverage.sliceCount) : '0';
         statValues[1].textContent = coverage ? String(coverage.organizedFloors) : '0';
         statValues[2].textContent = coverage ? String(coverage.pendingFloors) : '0';
-        // Pending excludes the newest floors kept as raw text and any history the user chose not to organize.
-        const kept = coverage ? Math.min(total, Math.max(0, Number(currentSettings().recent) || 0)) : 0;
-        const pendingRange = coverage?.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层待整理` : '暂无待整理楼层';
-        statCards[2].title = coverage ? `${pendingRange}；最新 ${kept} 层作为近期原文保留，不计入待整理${doc.initialRange && doc.initialRange.end < doc.initialRange.start && doc.initialRange.total > 0 ? `；开启前的第 0–${shownFloor(doc.initialRange.total)} 层不自动整理，也不计入，可用手动总结整理` : ''}` : '';
+        // 未整理层：全部还没被总结的楼层，保留层与最新几层也算。
+        statCards[2].title = coverage ? coverage.pendingRange ? `第 ${shownFloor(coverage.pendingRange.start)}–${shownFloor(coverage.pendingRange.end)} 层之间还有未总结的楼层` : '全部楼层都已总结' : '';
         stats.setAttribute('aria-disabled', String(!doc));
         for (const [name, card] of toolCards) {
             card.hidden = false; card.button.disabled = name !== 'rules' && !doc;
@@ -844,12 +842,9 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         batchProgress.textContent = manualJob ? `已完成 ${manualJob.done}／${manualJob.total} 批${manualJob.pausing ? '，本批完成后暂停' : ''}` : '';
         if (document.activeElement !== batchInput && !pendingButtons.has(batchInput)) batchInput.value = String(savedBatchFloors());
         batchInput.disabled = !available || Boolean(manualJob);
-        // 开启前的旧楼层只能手动补：有剩余时才出现，说明还剩多少，不自动花钱。
-        const backfill = available && state.document ? preEnablePending(state.document, state.snapshot?.messages || [], currentSettings()) : null;
-        backfillButton.hidden = !backfill || Boolean(manualJob);
-        backfillButton.disabled = !canSummarize || Boolean(state.busy);
-        backfillButton.textContent = backfill ? `补上开启前的 ${backfill.count} 层` : '';
-        backfillButton.title = backfill ? `第 ${shownFloor(backfill.start)}–${shownFloor(backfill.end)} 层尚未整理，点一下填入范围` : '';
+        // 旧楼超出 80 层：自动总结停着等回答。
+        const ask = state.backlogAsk && state.document?.enabled && state.document.autoSummary ? state.backlogAsk : null;
+        backlogLayer.hidden = !ask;
         stageButton.disabled = !available;
         stageButton.title = !enabled.checked ? '请先启用忆幕后开始总结' : '';
         updateStageRange();

@@ -1,6 +1,6 @@
 // 心迹页的前端逻辑：日记整理（痕迹归成印象、从记忆里拾出年表节点）的请求与解析，
 // 主模型顺带写的那则心迹的要求与摘取，以及开了注入时带进请求的那一小段。数据规则在 heart-contract.mjs。
-import { composePrompt, heartNotePrompt } from './prompt-settings.mjs';
+import { composePrompt, heartNotePrompt, heartChroniclePrompt } from './prompt-settings.mjs';
 import { heartOf, sureOf, SURE_WORDS, HEART_LIMITS } from './heart-contract.mjs';
 
 export const HEART_TAG = '忆幕之心迹';
@@ -43,6 +43,30 @@ export function diaryPrompt(settings, names, work) {
     if (work.slices.length) rules.push(`events 的 floor 必须落在所给记忆的楼层范围内；已有年表里写过的不再写；这次最多 ${CHRONICLE_ITEMS} 条，没有节点返回空数组。`);
     const only = entry => entry.id === 'heart-diary' ? work.traces.length > 0 : entry.id === 'heart-chronicle' ? work.slices.length > 0 : true;
     return fill(composePrompt(settings, 'heart', { protocol: rules.join('\n'), data: data.join('\n'), only }), names);
+}
+
+/** 关系年表跟着每一批切片总结走：总结请求里本来就带着这段正文，顺带让模型直接依据正文拾出节点（用户 2026-11-21）。
+ *  返回并进总结请求的两段文字（输出要求、已有年表）；年表关着、提示词停用或没有角色名时返回 null。 */
+export const CHRONICLE_PER_BATCH = 4;
+export function chronicleAsk(settings, names, document) {
+    const guide = settings?.chronicle === false || !String(names?.char || '').trim() ? '' : heartChroniclePrompt(settings);
+    if (!guide) return null;
+    return {
+        protocol: fill(`另外返回 "events"：0 到 ${CHRONICLE_PER_BATCH} 条关系年表节点，直接依据这段正文。\n${guide}\n各种「第一次」（第一次正式接触、第一次去到对方的世界或住处）与婚礼这类仪式都算节点；只写这段正文里确实发生了的，日常相处不算；已有年表里写过的不再写；没有节点就返回空数组。格式：{"title":"不超过12字的短名","text":"一两句，不超过120字","floor":依据所在楼层整数}。`, names),
+        data: `已有年表：${JSON.stringify(heartOf(document).events.slice(-60).map(item => ({ title: item.title, floor: item.floor })))}`,
+    };
+}
+/** 从切片总结的返回里读出年表节点：楼层必须落在这一批里，格式不对的逐条丢掉。 */
+export function parseChronicle(response, { start, end }, slices = []) {
+    const parsed = parseJson(response), seen = new Set();
+    return (Array.isArray(parsed?.events) ? parsed.events : []).flatMap(item => {
+        const title = typeof item?.title === 'string' ? item.title.trim().slice(0, 60) : '', text = typeof item?.text === 'string' ? item.text.trim() : '';
+        const floor = Number.isSafeInteger(item?.floor) && item.floor >= start && item.floor <= end ? item.floor : null;
+        if (!title || !text || text.length > 600 || floor === null || seen.has(`${floor}\n${title}`)) return [];
+        seen.add(`${floor}\n${title}`);
+        const date = slices.find(entry => entry.source.start <= floor && entry.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date;
+        return [{ title, text, floor, ...(date ? { date: String(date).slice(0, 60) } : {}) }];
+    }).slice(0, CHRONICLE_PER_BATCH);
 }
 
 /** 读回整理结果。格式不对的逐条丢掉；整份读不出来才算失败。 */

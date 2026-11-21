@@ -107,10 +107,15 @@ test('only ten recent deleted bodies survive; guards preserve excluded floors wi
         assert.throws(() => change(doc, { id: `edit_${id}`, type: 'edit', entryId: id, expectedRevision: entry.revision, text: '不能重新填入' }), /超出保留/);
     }
     assert.equal(nextBatch(doc, messages, DEFAULTS), null, 'deleted source guards do not become automatic gaps');
+    // 第 14–20 层从未总结过：够数时从第 14 层起，被删除的第 1–12 层不回填。
+    assert.deepEqual(nextBatch(doc, messages, { ...DEFAULTS, triggerFloors: 7 }), { start: 14, end: 17 }, 'deleted source guards do not become automatic gaps');
+    assert.equal(nextBatch(doc, messages, { ...DEFAULTS, triggerFloors: 8 }), null, 'deleted floors do not count toward the trigger');
     const plan = await buildPlan(doc, createDefaults(), { messages });
     assert.deepEqual(plan.memoryIds, ['fine_13']);
     const coverage = summaryCoverage(doc, messages, DEFAULTS);
-    assert.equal(coverage.organizedFloors, 1); assert.equal(coverage.sliceCount, 1); assert.equal(coverage.pendingFloors, 0);
+    assert.equal(coverage.organizedFloors, 1); assert.equal(coverage.sliceCount, 1);
+    // 未整理层现在数全部没总结过的楼层（第 14–20 层）；被删除的第 1–12 层不算。
+    assert.equal(coverage.pendingFloors, 7); assert.deepEqual(coverage.pendingRange, { start: 14, end: 20 });
     const latest = get(doc, 'fine_12');
     doc = change(doc, { id: 'undo_latest', type: 'entry', action: 'undo', entryId: latest.id, expectedRevision: latest.revision });
     assert.equal(get(doc, 'fine_12').status, 'active'); assert.equal(get(doc, 'fine_12').text, '第12份原有正文');
@@ -128,9 +133,11 @@ for (const range of [{ start: 1, end: 3 }, { start: 2, end: 2 }]) test(`explicit
     const renewed = change(f.doc, { ...operation, discardedSources: plan.batches[0].discardedSources });
     assert.deepEqual(get(renewed, 'range_old'), guard);
     assert.equal(get(renewed, 'fresh_summary').status, 'active'); assert.equal(get(renewed, 'fresh_summary').history.length, 0);
-    assert.equal(nextBatch(renewed, messages, DEFAULTS, { force: true }), null, 'unselected deleted floors must not be automatically recreated');
+    // 强制总结只接着第 4 层往后（到「总层数 − 3」）；第 1–3 层里没被选中的已删除楼层不回填。
+    assert.deepEqual(nextBatch(renewed, messages, DEFAULTS, { force: true }), { start: 4, end: 17 }, 'unselected deleted floors must not be automatically recreated');
     const coverage = summaryCoverage(renewed, messages, DEFAULTS);
-    assert.equal(coverage.organizedFloors, range.end - range.start + 1); assert.equal(coverage.pendingFloors, 0);
+    assert.equal(coverage.organizedFloors, range.end - range.start + 1);
+    assert.equal(coverage.pendingFloors, 17); assert.deepEqual(coverage.pendingRange, { start: 4, end: 20 }, 'deleted floors 1-3 are not pending either');
     const replan = planManualRange(renewed, messages, DEFAULTS, range);
     assert.deepEqual(replan.batches[0].replaces?.map(ref => ref.id), ['fresh_summary'], 'a retained guard does not prevent later deliberate edits to its new summary');
     const imported = mergeBackupDocument(renewed, f.oldBackup, { operationId: 'stale_after_regenerate', packageId: 'stale_old' });
@@ -193,7 +200,7 @@ test('fresh summaries over discarded guards survive export, mapped restore, merg
     const injection = await buildPlan(merged, createDefaults(), { messages });
     assert.ok(injection.memoryIds.includes('renewed_stage'));
     assert.ok(!injection.memoryIds.some(id => ['fine_1', 'fine_2', 'renewed_1', 'renewed_2'].includes(id)), 'the stage replaces its new parents without injecting guards or duplicate summaries');
-    assert.equal(nextBatch(merged, messages, DEFAULTS, { force: true }), null);
+    assert.deepEqual(nextBatch(merged, messages, DEFAULTS, { force: true }), { start: 14, end: 17 }, 'only never-summarized floors are offered; deleted floors 3-12 stay deleted');
     const oldIncoming = restoreBackupDocument(portableDocument(f.doc), { binding: target, mappings: { source_0: target } }).document;
     const oldOnly = { ...oldIncoming, entries: oldIncoming.entries.filter(entry => ['fine_1', 'fine_2'].includes(entry.id)), entryOrder: ['fine_1', 'fine_2'] };
     const staleMerge = mergeBackupDocument(merged, oldOnly, { operationId: 'stale_import', packageId: 'old_package' });

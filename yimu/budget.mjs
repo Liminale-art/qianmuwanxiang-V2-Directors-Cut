@@ -160,7 +160,9 @@ function entryFloors(entry, sourceHashes, visible, cutoff, hidden) {
     if (!ranges.length) return entry.kind === 'stage' ? [] : null;
     let previous = 0;
     for (const range of [...ranges].sort((a, b) => a.start - b.start)) {
-        if (!sourceMatches(range, sourceHashes) || range.end > cutoff || range.start <= previous) return null;
+        // 越过保留区边界的切片不用；整段原文都已隐藏的例外——那一段只剩记忆能代表。
+        const concealed = () => { for (let floor = range.start; floor <= range.end; floor++) if (!hidden.has(floor)) return false; return true; };
+        if (!sourceMatches(range, sourceHashes) || range.end > cutoff && !concealed() || range.start <= previous) return null;
         for (let floor = range.start; floor <= range.end; floor++) {
             const item = visible.get(floor);
             if (!item && !hidden.has(floor) || item?.external) return null;

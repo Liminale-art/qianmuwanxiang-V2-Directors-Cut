@@ -11,13 +11,13 @@ const settings = { ...DEFAULTS, trigger: 500000, triggerFloors: 4, recent: 2 };
 
 test('automatic batches end on a full turn: a trailing user message waits for its reply', () => {
     const doc = enabled();
-    // 7 层、保留 2：可整理的是 1–5，第 5 层是用户发言 → 回退到第 4 层（角色回复），第 5 层留给下一批。
-    assert.deepEqual(nextBatch(doc, chat(7), settings, { align: true }), { start: 1, end: 4 });
-    assert.deepEqual(nextBatch(doc, chat(7), settings), { start: 1, end: 5 }, '不对齐时照旧');
-    // 8 层、保留 2：可整理的是 1–6，第 6 层是角色回复 → 不动。
-    assert.deepEqual(nextBatch(doc, chat(8), settings, { align: true }), { start: 1, end: 6 });
+    // 8 层：最新 3 层是重 roll 保护，可整理的是 1–5（与保留层数无关），第 5 层是用户发言 → 回退到第 4 层（角色回复），第 5 层留给下一批。
+    assert.deepEqual(nextBatch(doc, chat(8), settings, { align: true }), { start: 1, end: 4 });
+    assert.deepEqual(nextBatch(doc, chat(8), settings), { start: 1, end: 5 }, '不对齐时照旧');
+    // 9 层：可整理的是 1–6，第 6 层是角色回复 → 不动。
+    assert.deepEqual(nextBatch(doc, chat(9), settings, { align: true }), { start: 1, end: 6 });
     // 只剩一层可整理且它是用户发言：不退，否则这一层永远整理不了。
-    const single = [{ name: '用户', is_user: true, mes: '只有这一句。'.repeat(30), send_date: '0' }, ...chat(2)];
+    const single = [{ name: '用户', is_user: true, mes: '只有这一句。'.repeat(30), send_date: '0' }, ...chat(3)];
     assert.deepEqual(nextBatch(doc, single, { ...settings, triggerFloors: 1 }, { align: true }), { start: 1, end: 1 });
 });
 

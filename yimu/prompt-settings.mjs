@@ -122,6 +122,11 @@ export function selectPromptPreset(current, selected) {
     return {...before,groups:clone(found.groups),selectedPreset:found.id};
 }
 /** 写给主模型的那一条心迹要求；被关掉或删掉时返回空，这一轮就不要心迹。 */
+/** 关系年表那一条提示词（用户可编辑）。停用或清空时返回空串——那就不拾年表。 */
+export function heartChroniclePrompt(settings) {
+    const entry = resolvePromptConfig(settings).groups.heart.find(item => item.id === 'heart-chronicle');
+    return entry?.enabled && entry.text.trim() ? entry.text.trim() : '';
+}
 export function heartNotePrompt(settings) {
     const entry = resolvePromptConfig(settings).groups.heart.find(item => item.id === HEART_NOTE_ID);
     return entry?.enabled && entry.text.trim() ? entry.text.trim() : '';

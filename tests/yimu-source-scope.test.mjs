@@ -56,7 +56,8 @@ test('unverified ancestor proof is never accepted and inherited floors do not bl
     const f = await fixture(); f.document.entries.forEach(entry => delete entry.originVerified);
     assert.equal((await buildPlan(f.document, f.defaults, f.snapshot)).entries.length, 0);
     f.snapshot.messages.push(...structuredClone(original.slice(0, 5)));
-    assert.deepEqual(nextBatch(f.document, f.snapshot.messages, DEFAULTS, {force: true}), {start: 6, end: 10});
+    // 15 层：续接的前 5 层不算，强制总结到「总层数 − 3」为止。
+    assert.deepEqual(nextBatch(f.document, f.snapshot.messages, DEFAULTS, {force: true}), {start: 6, end: 12});
     assert.deepEqual(stageGroups(f.document), []);
     assert.deepEqual(recallCandidates(f.document, DEFAULTS, f.snapshot.messages, {start: 6, end: 10}, await fingerprintMessages(f.snapshot.messages)), []);
 });
