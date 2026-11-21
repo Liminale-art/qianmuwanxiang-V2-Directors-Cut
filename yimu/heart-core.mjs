@@ -1,7 +1,7 @@
 // 心迹页的前端逻辑：日记整理（痕迹归成印象、从记忆里拾出年表节点）的请求与解析，
 // 主模型顺带写的那则心迹的要求与摘取，以及开了注入时带进请求的那一小段。数据规则在 heart-contract.mjs。
 import { composePrompt, heartNotePrompt, heartChroniclePrompt } from './prompt-settings.mjs';
-import { heartOf, sureOf, SURE_WORDS, HEART_LIMITS } from './heart-contract.mjs';
+import { heartOf, gradeOf, SURE_WORDS, HEART_LIMITS } from './heart-contract.mjs';
 
 export const HEART_TAG = '忆幕之心迹';
 /** 攒够这么多条没看过的痕迹，就值得单独整理一次日记（阶段总结完成时不论多少都整理）。 */
@@ -55,6 +55,13 @@ export function chronicleAsk(settings, names, document) {
         protocol: fill(`另外返回 "events"：0 到 ${CHRONICLE_PER_BATCH} 条关系年表节点，直接依据这段正文。\n${guide}\n各种「第一次」（第一次正式接触、第一次去到对方的世界或住处）与婚礼这类仪式都算节点；只写这段正文里确实发生了的，日常相处不算；已有年表里写过的不再写；没有节点就返回空数组。格式：{"title":"不超过12字的短名","text":"一两句，不超过120字","floor":依据所在楼层整数}。`, names),
         data: `已有年表：${JSON.stringify(heartOf(document).events.slice(-60).map(item => ({ title: item.title, floor: item.floor })))}`,
     };
+}
+/** 从正文补全：只要痕迹与年表节点，不出切片。observation、chronicle 是切片总结里用的那两段输出要求，原样沿用。 */
+export function fillPrompt(settings, rows, { observation = '', chronicle = null } = {}) {
+    const fields = [observation ? '"traces":[]' : '', chronicle ? '"events":[]' : ''].filter(Boolean).join(',');
+    return composePrompt(settings, 'heart', { only: () => false,
+        protocol: [`输出一个JSON对象，不用Markdown：{${fields}}。`, observation, chronicle?.protocol].filter(Boolean).join('\n'),
+        data: [`原文：${JSON.stringify(rows)}`, chronicle?.data].filter(Boolean).join('\n') });
 }
 /** 从切片总结的返回里读出年表节点：楼层必须落在这一批里，格式不对的逐条丢掉。 */
 export function parseChronicle(response, { start, end }, slices = []) {
@@ -138,7 +145,7 @@ export function heartInjection(document, settings, snapshot, { type = '', recall
     const heart = heartOf(document), end = snapshot.messages.length - (type === 'swipe' ? 1 : 0);
     const spoken = plain(snapshot.messages.slice(Math.max(0, end - Math.max(1, settings.recent || 3)), end).map(message => message.mes || '').join('\n'));
     const user = plain(snapshot.userName), present = name => { const key = plain(name).replace(/[《》]/g, ''); return key.length >= 1 && (key === user || key.length >= 2 && spoken.includes(key)); };
-    const impressions = settings.diaryInject !== true ? [] : heart.impressions.map(item => ({ item, sure: sureOf(item.days.length) }))
+    const impressions = settings.diaryInject !== true ? [] : heart.impressions.map(item => ({ item, sure: gradeOf(item) }))
         .filter(({ item, sure }) => sure >= 1 && present(item.about))
         .sort((a, b) => b.sure - a.sure || b.item.updatedAt - a.item.updatedAt).slice(0, 3);
     const cooldown = settings.recallCooldown || 0;

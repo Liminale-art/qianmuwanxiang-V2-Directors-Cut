@@ -114,6 +114,25 @@ export function nextBatch(document, messages, settings, { force = false, history
     return { start, end, ...(!force && end < targetEnd ? { targetEnd } : {}) };
 }
 
+/** 从正文补全日记与年表时的分批：每批最多 perBatch 层连续的可整理楼层，不含最新的重 roll 保护层。 */
+export const FILL_BATCH_FLOORS = 20;
+export function fillPlan(document, messages, { perBatch = FILL_BATCH_FLOORS } = {}) {
+    const batches = [], last = (Array.isArray(messages) ? messages.length : 0) - REROLL_GUARD;
+    let start = 0, end = 0;
+    for (let floor = (document?.lineage?.bridgeCount || 0) + 1; floor <= last; floor++) {
+        const ok = canSummarize(messages[floor - 1]);
+        if (ok && !start) start = floor;
+        if (ok) end = floor;
+        if (start && (!ok || end - start + 1 >= perBatch)) { batches.push({ start, end }); start = 0; }
+    }
+    if (start) batches.push({ start, end });
+    return batches;
+}
+/** 交给模型的原文行：与切片总结同一口径（标签规则照样生效）。 */
+export const sourceRows = (messages, batch, settings) => messages.slice(batch.start - 1, batch.end).map((message, i) => ({
+    floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
+}));
+
 /** Manual summary batch size in floors. A user preference of the manual card only;
  * the automatic trigger, recent floors and floor trigger never shape manual batches. */
 export const MANUAL_BATCH_FLOORS = 20;

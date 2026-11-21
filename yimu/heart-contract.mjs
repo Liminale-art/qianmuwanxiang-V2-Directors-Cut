@@ -13,6 +13,8 @@ export const THOUGHT_GROUPS = Object.freeze(['you', 'self', 'others', 'books']);
 /** 把握程度只看「在几个不同的日子里看见过」：3 个日子起步，6 个日子笃定。不到 3 个的还只是留意，不算印象。 */
 export const sureOf = days => days >= 6 ? 3 : days >= 4 ? 2 : days >= 3 ? 1 : 0;
 export const SURE_WORDS = Object.freeze(['还在留意', '也许', '我觉得', '笃定']);
+/** 一条印象的把握程度。用户自己写下或改过的（own）是他认定的，直接算笃定，不再数日子。 */
+export const gradeOf = item => item?.own === true ? 3 : sureOf(item?.days?.length || 0);
 
 function validateDay(value) {
     need(value && typeof value === 'object' && !Array.isArray(value), '印象的依据无效');
@@ -24,6 +26,7 @@ function validateImpression(value) {
     const result = { id: idOf(value.id), about: str(value.about, 120, '印象的对象'), text: str(value.text, 400, '印象'), days: value.days.map(validateDay), at: stamp(value.at), updatedAt: stamp(value.updatedAt) };
     need(new Set(result.days.map(item => item.day)).size === result.days.length, '印象的日子重复');
     if (value.was !== undefined && value.was !== '') result.was = str(value.was, 400, '原先的印象');
+    if (value.own === true) result.own = true; // 用户自己写下或改过：整理时不再改它的说法
     return result;
 }
 function validateThought(value) {
@@ -48,7 +51,7 @@ export function validateHeart(value) {
 }
 export const emptyHeart = () => ({ impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 0 });
 export const heartOf = document => document?.heart ? clone(document.heart) : emptyHeart();
-export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport']);
+export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport', 'heartEdit', 'heartAdd']);
 
 /** 应用一次心迹操作，直接改 doc（调用方已复制过）。opId 用来给新条目编号。 */
 export function applyHeartOperation(doc, op, opId) {
@@ -68,8 +71,9 @@ export function applyHeartOperation(doc, op, opId) {
             const existing = typeof item.id === 'string' ? heart.impressions.find(entry => entry.id === item.id) : null;
             if (!existing && !fresh.length) return;
             const target = existing || { id: `${opId}_i${index}`.slice(0, 100), about: str(item.about, 120, '印象的对象'), text: '', days: [], at, updatedAt: at };
-            const text = str(item.text, 400, '印象');
-            if (existing && item.was !== undefined && item.was !== '' && text !== existing.text) target.was = str(item.was, 400, '原先的印象');
+            // 用户改过的印象只添依据，不改说法。
+            const text = existing?.own ? existing.text : str(item.text, 400, '印象');
+            if (existing && !existing.own && item.was !== undefined && item.was !== '' && text !== existing.text) target.was = str(item.was, 400, '原先的印象');
             target.text = text;
             const days = new Map(target.days.map(day => [day.day, day]));
             for (const day of fresh) if (!days.has(day.day)) days.set(day.day, day);
@@ -101,6 +105,47 @@ export function applyHeartOperation(doc, op, opId) {
         const merged = mergeHeart(heart, op.heart);
         doc.heart = merged;
         return;
+    } else if (op.type === 'heartRemove' && op.kind === 'trace') {
+        // 「还在留意的」里的一条痕迹：直接删掉，不留底。
+        const before = (doc.observations || []).length;
+        doc.observations = (doc.observations || []).filter(entry => entry.id !== op.itemId);
+        need(doc.observations.length < before, '这一条已经不在了');
+        return;
+    } else if (op.type === 'heartEdit') {
+        // 改一条日记、心迹或年表。只改给出的字段；改过的日记记为用户认定（own）。
+        const key = { impression: 'impressions', thought: 'thoughts', event: 'events' }[op.kind];
+        need(key, '要修改的心迹类别无效');
+        const entry = heart[key].find(item => item.id === op.itemId);
+        need(entry, '这一条已经不在了');
+        if (op.kind === 'impression') {
+            if (op.about !== undefined) entry.about = str(op.about, 120, '日记写的是谁');
+            entry.text = str(op.text, 400, '日记'); entry.own = true; entry.updatedAt = at; delete entry.was;
+        } else if (op.kind === 'thought') {
+            if (op.about !== undefined) entry.about = str(op.about, 120, '心迹写的是谁');
+            entry.text = str(op.text, 2000, '心迹');
+        } else {
+            entry.title = str(op.title, 60, '年表标题'); entry.text = str(op.text, 600, '年表内容');
+            if (op.date !== undefined) { if (op.date === '') delete entry.date; else entry.date = str(op.date, 60, '年表日期'); }
+            if (op.floor !== undefined) entry.floor = floorOf(op.floor);
+            heart.events.sort((a, b) => a.floor - b.floor || a.at - b.at);
+        }
+    } else if (op.type === 'heartAdd') {
+        // 用户自己补记一条。日记直接算认定的；心迹与年表要给出它落在哪一层。
+        const item = op.item;
+        need(item && typeof item === 'object' && !Array.isArray(item), '补记的内容无效');
+        if (op.kind === 'impression') {
+            const text = str(item.text, 400, '日记');
+            heart.impressions.push({ id: `${opId}_a`.slice(0, 100), about: str(item.about, 120, '日记写的是谁'), text,
+                days: [{ day: str(item.day, 60, '日记的日子'), text: text.slice(0, 300), at }], at, updatedAt: at, own: true });
+        } else if (op.kind === 'thought') {
+            need(THOUGHT_GROUPS.includes(item.group), '心迹的对象类别无效');
+            heart.thoughts.push({ id: `${opId}_a`.slice(0, 100), group: item.group, about: str(item.about, 120, '心迹写的是谁'), text: str(item.text, 2000, '心迹'), floor: floorOf(item.floor), at });
+            heart.thoughts.sort((a, b) => a.floor - b.floor || a.at - b.at);
+        } else if (op.kind === 'event') {
+            heart.events.push({ id: `${opId}_a`.slice(0, 100), title: str(item.title, 60, '年表标题'), text: str(item.text, 600, '年表内容'), floor: floorOf(item.floor), at,
+                ...(item.date ? { date: str(item.date, 60, '年表日期') } : {}) });
+            heart.events.sort((a, b) => a.floor - b.floor || a.at - b.at);
+        } else fail('要补记的心迹类别无效');
     } else if (op.type === 'heartRemove') {
         const key = { impression: 'impressions', thought: 'thoughts', event: 'events' }[op.kind];
         need(key, '要删除的心迹类别无效');

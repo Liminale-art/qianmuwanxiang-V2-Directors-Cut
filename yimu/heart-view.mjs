@@ -2,7 +2,8 @@
 // 所以不受千幕、忆幕本体主题的影响；左上角退出，右上角换主题，选过的主题记在本机。
 // 这里只负责开合、换主题与把数据交给页面；页面长什么样全在 yimu/heart/ 的主题文件里。
 import { HEART_THEMES } from './heart-themes.mjs';
-import { sureOf, SURE_WORDS } from './heart-contract.mjs';
+import { gradeOf, SURE_WORDS } from './heart-contract.mjs';
+import { fillPlan } from './core.mjs';
 
 const THEME_KEY = 'yimu:heart-theme:v1';
 const realDay = at => { const d = new Date(at); return `${d.getMonth() + 1}月${d.getDate()}日`; };
@@ -15,25 +16,35 @@ const dayOf = item => item.date || realDay(item.at);
 export function heartData(state = {}, floors = null) {
     const document = state.document || {}, heart = document.heart || {};
     const observations = Array.isArray(document.observations) ? document.observations : [];
-    const graded = (heart.impressions || []).map(item => ({ item, sure: sureOf(item.days.length) }));
+    const graded = (heart.impressions || []).map(item => ({ item, sure: gradeOf(item) }));
     const loose = [
-        ...observations.filter(item => !item.used).map(item => ({ about: item.about, text: item.text, day: dayOf(item), floor: item.floor, at: item.at })),
-        ...graded.filter(({ sure }) => sure === 0).map(({ item }) => ({ about: item.about, text: item.text, day: item.days.at(-1).day, at: item.updatedAt })),
+        ...observations.filter(item => !item.used).map(item => ({ kind: 'trace', id: item.id, about: item.about, text: item.text, day: dayOf(item), floor: item.floor, at: item.at })),
+        ...graded.filter(({ sure }) => sure === 0).map(({ item }) => ({ kind: 'impression', id: item.id, about: item.about, text: item.text, day: item.days.at(-1).day, at: item.updatedAt })),
     ].sort((a, b) => b.at - a.at).slice(0, 60);
     return {
         char: state.snapshot?.name || '', user: state.snapshot?.userName || '', avatar: state.snapshot?.avatarUrl || '',
         // 楼层计数：这个聊天多少层、和这个角色一共多少层（所有聊天合计，只增不减）。
         ...(floors?.total > 0 ? { floors: { chat: floors.chat || 0, total: floors.total } } : {}),
-        impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure],
+        // 补全：能不能做、大约几次请求、正在做到第几批。
+        tools: { ready: document.enabled === true, batches: document.enabled === true ? fillPlan(document, state.snapshot?.messages || []).length : 0, fill: state.fillJob ? { done: state.fillJob.done, total: state.fillJob.total } : null, floors: state.snapshot?.messages?.length || 0 },
+        impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure], ...(item.own ? { own: true } : {}),
             days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
         loose,
-        thoughts: [...(heart.thoughts || [])].reverse().map(item => ({ id: item.id, group: item.group, about: THOUGHT_LABELS[item.group](item.about), say: item.text, when: realDay(item.at), floor: item.floor, at: item.at })),
+        thoughts: [...(heart.thoughts || [])].reverse().map(item => ({ id: item.id, group: item.group, about: THOUGHT_LABELS[item.group](item.about), who: item.about, say: item.text, when: realDay(item.at), floor: item.floor, at: item.at })),
         events: (heart.events || []).map(item => ({ id: item.id, title: item.title, text: item.text, date: item.date || '', when: realDay(item.at), floor: item.floor, at: item.at })),
     };
 }
 const THOUGHT_LABELS = { you: name => `对${name}`, self: () => '对自己', others: name => `对${name}`, books: name => `读${/[《》]/.test(name) ? name : `《${name}》`}` };
 
-const REMOVABLE = new Set(['impression', 'thought', 'event']);
+const REMOVABLE = new Set(['impression', 'thought', 'event', 'trace']);
+const EDITABLE = new Set(['impression', 'thought', 'event']);
+const line = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : '';
+/** 页面交来的表单：只取认识的字段。楼层在页面上从 0 数，存的时候从 1 数；没填就不带。 */
+function heartFields(kind, raw = {}) {
+    const floor = /^\d+$/.test(String(raw.floor ?? '').trim()) ? Number(raw.floor) + 1 : undefined;
+    if (kind === 'event') return { title: line(raw.title, 60), text: line(raw.text, 600), date: line(raw.date, 60), ...(floor ? { floor } : {}) };
+    return { about: line(raw.about, 120), text: line(raw.text, kind === 'thought' ? 2000 : 400), ...(kind === 'thought' && floor ? { floor } : {}) };
+}
 
 export const HEART_EXPORT_FORMAT = 'yimu-heart';
 /** 把当前主题的页面连同数据做成一份单独的网页：离线能看，日期筛选照常可用；里面带着原始资料，日后可以再导入。 */
@@ -104,6 +115,20 @@ export function mountHeartView({ document = globalThis.document, storage = globa
             Promise.resolve().then(() => onAction('heartRemove', { kind, itemId: id }))
                 .catch(error => { console.warn('[忆幕] 心迹条目没有删掉', error); return false; })
                 .then(done => { if (opened) feed({ changedOnly: done !== false }); });
+        }
+        else if (type === 'edit' || type === 'add') {
+            const { kind, id } = event.data;
+            if (!EDITABLE.has(kind) || type === 'edit' && (typeof id !== 'string' || !id)) return;
+            const fields = heartFields(kind, event.data.fields);
+            if (!fields.text || kind === 'event' && !fields.title || kind !== 'event' && !fields.about) { onNotice('还有没填的地方', 'warning'); return; }
+            Promise.resolve().then(() => type === 'edit' ? onAction('heartEdit', { kind, itemId: id, ...fields }) : onAction('heartAdd', { kind, item: fields }))
+                .catch(error => { console.warn('[忆幕] 心迹条目没有存下', error); return false; })
+                .then(done => { if (done === false) onNotice('没有存下，请再试一次', 'error'); if (opened) feed({ changedOnly: done !== false }); });
+        }
+        else if (type === 'fill' || type === 'fillStop') {
+            Promise.resolve().then(() => onAction(type === 'fill' ? 'heartFill' : 'stop', {}))
+                .catch(error => { console.warn('[忆幕] 补全没有开始', error); return false; })
+                .then(() => { if (opened) feed(); });
         }
         else if (type === 'theme') {
             const index = themes.findIndex(theme => theme.id === themeId);

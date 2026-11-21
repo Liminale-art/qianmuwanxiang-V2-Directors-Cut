@@ -59,6 +59,7 @@ h2 + .lead { padding: 0 22px 34px; margin: 0; font-size: 12px; color: var(--dim)
 .strip::before, .strip::after { content: ''; position: absolute; left: 0; right: 0; height: 8px; background: repeating-linear-gradient(90deg, var(--fold) 0 10px, transparent 10px 22px); }
 .strip::before { top: 8px; } .strip::after { bottom: 8px; }
 .strip .reel { display: flex; gap: 46px; width: max-content; align-items: baseline; animation: reel 38s linear infinite; }
+.strip .reel:has(.ym-loose:hover), .strip .reel:has(.ym-loose[data-pick]) { animation-play-state: paused; }
 .strip span { white-space: nowrap; color: var(--dim); animation: under 7s ease-in-out infinite; }
 @keyframes reel { to { transform: translateX(-50%); } }
 @keyframes under { 0%, 100% { opacity: .18; } 50% { opacity: .7; } }
@@ -176,8 +177,8 @@ window.yimuPaint = D => {
     plateHost.append(node);
   }
   if (!D.impressions.length) plateHost.innerHTML = '<p class="empty">这段日子，底片上还没有叠清楚的东西。</p>';
-  const loose = D.loose.map(item => item.text);
-  document.getElementById('reel').innerHTML = [...loose, ...loose].map((text, i) => `<span style="font-size:${[13, 24, 16, 30, 12, 20][i % 6]}px;animation-delay:-${(i * 1.3).toFixed(1)}s;animation-duration:${6 + i % 4}s">${text}</span>`).join('');
+  const loose = D.loose.map(item => item.text + rmq(item.kind, item.id));
+  document.getElementById('reel').innerHTML = [...loose, ...loose].map((text, i) => `<span class="ym-loose" style="font-size:${[13, 24, 16, 30, 12, 20][i % 6]}px;animation-delay:-${(i * 1.3).toFixed(1)}s;animation-duration:${6 + i % 4}s">${text}</span>`).join('');
   document.querySelector('.strip').hidden = document.querySelector('.strip-label').hidden = !loose.length;
 
   stage.innerHTML = '';

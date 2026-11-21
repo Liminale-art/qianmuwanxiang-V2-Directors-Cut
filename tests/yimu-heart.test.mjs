@@ -38,7 +38,7 @@ test('the page gets what is still being noticed, newest first, each with the mom
         { id: 'a', about: '小满', text: '她又点了辣的。', floor: 2, at: Date.UTC(2026, 10, 1), date: '三月初四' }, { id: 'b', about: '店主', text: '他记得她的口味。', floor: 9, at: new Date(2026, 10, 19).getTime() },
         { id: 'c', about: '小满', text: '已经归进印象的不再算留意。', floor: 3, at: 5, used: true }] } });
     assert.deepEqual([data.char, data.user, data.avatar], ['阿澈', '小满', '/thumb.png']);
-    assert.deepEqual(data.loose, [{ about: '店主', text: '他记得她的口味。', day: '11月19日', floor: 9, at: new Date(2026, 10, 19).getTime() }, { about: '小满', text: '她又点了辣的。', day: '三月初四', floor: 2, at: Date.UTC(2026, 10, 1) }]);
+    assert.deepEqual(data.loose, [{ kind: 'trace', id: 'b', about: '店主', text: '他记得她的口味。', day: '11月19日', floor: 9, at: new Date(2026, 10, 19).getTime() }, { kind: 'trace', id: 'a', about: '小满', text: '她又点了辣的。', day: '三月初四', floor: 2, at: Date.UTC(2026, 10, 1) }]);
     assert.deepEqual([data.impressions, data.thoughts, data.events], [[], [], []]);
     assert.deepEqual(heartData({}).loose, []);
 });

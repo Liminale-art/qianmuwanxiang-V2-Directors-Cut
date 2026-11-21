@@ -1,5 +1,5 @@
 /* 三套主题共用的日期条与月历。颜色取各主题给的五个变量：--ymd-ink / --ymd-mute / --ymd-accent / --ymd-paper / --ymd-line。 */
-#ym-date { position: relative; z-index: 7; display: flex; align-items: center; gap: 4px; padding: 6px 22px 10px; font-size: 12px; letter-spacing: .1em; color: var(--ymd-mute); }
+#ym-date { position: relative; z-index: 7; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 22px 10px; font-size: 12px; letter-spacing: .1em; color: var(--ymd-mute); }
 #ym-date button { all: unset; cursor: pointer; padding: 5px 7px; }
 #ym-date button:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
 #ym-date button[disabled] { opacity: .28; cursor: default; }
@@ -31,7 +31,36 @@
 .ym-rm[disabled] { opacity: .2; cursor: default; }
 .ymbar-r { display: flex; align-items: center; gap: 16px; }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
-body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm) { display: none !important; }
+body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-tools) { display: none !important; }
+/* 「还在留意的」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
+.ym-loose { cursor: default; }
+.ym-loose:hover, .ym-loose[data-pick] { animation-play-state: paused !important; opacity: 1 !important; }
+.ym-rm.ym-rmq { position: static; display: inline-block; margin-left: 4px; padding: 2px 6px; vertical-align: middle; font-size: 13px; opacity: 0; pointer-events: none; }
+.ym-loose:hover > .ym-rmq, .ym-loose[data-pick] > .ym-rmq, .ym-rmq:focus-visible { opacity: .9; pointer-events: auto; color: var(--ymd-accent); }
+/* 修改：小叉左边的一支小笔，同样很淡。 */
+.ym-ed { all: unset; position: absolute; right: 26px; top: 0; z-index: 6; cursor: pointer; padding: 6px 6px; font-size: 12px; line-height: 1; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
+.ym-ed:hover, .ym-ed:focus-visible { opacity: .9; color: var(--ymd-accent); }
+.ym-ed:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
+/* 补记、补全：日期条里的两个小字钮。 */
+.ym-tools { margin-left: auto; display: flex; gap: 2px; white-space: nowrap; }
+.ym-tools + .ym-date-mode { margin-left: 6px; }
+#ym-date .ym-tools button { border-bottom: 1px dotted var(--ymd-mute); padding: 4px 5px; margin: 0 2px; }
+#ym-date .ym-tools button[data-armed], #ym-date .ym-tools button[data-running] { color: var(--ymd-accent); border-bottom-color: var(--ymd-accent); }
+/* 改与补记用的小纸条：颜色全取主题的五个变量。 */
+#ym-sheet { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(0, 0, 0, .38); }
+.ym-sheet-card { width: min(100%, 380px); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 12px; background: var(--ymd-paper); color: var(--ymd-ink); border: 1px solid var(--ymd-accent); box-shadow: 0 18px 50px rgba(0, 0, 0, .34); font-size: 13px; letter-spacing: .06em; }
+.ym-sheet-card[data-shake] { border-style: dashed; }
+.ym-sheet-head { display: flex; gap: 6px; align-items: center; letter-spacing: .2em; }
+.ym-sheet-card button { all: unset; cursor: pointer; padding: 6px 12px; color: var(--ymd-mute); }
+.ym-sheet-card button:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+.ym-sheet-head button[aria-pressed="true"], .ym-sheet-foot button[type="submit"] { color: var(--ymd-paper); background: var(--ymd-accent); }
+.ym-sheet-card label { display: flex; flex-direction: column; gap: 4px; }
+.ym-sheet-card label span { font-size: 11px; letter-spacing: .2em; color: var(--ymd-mute); }
+.ym-sheet-card input, .ym-sheet-card textarea { all: unset; box-sizing: border-box; width: 100%; padding: 7px 2px; border-bottom: 1px solid var(--ymd-line); color: var(--ymd-ink); font: inherit; letter-spacing: .04em; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ym-sheet-card textarea { min-height: 5.2em; }
+.ym-sheet-card input:focus, .ym-sheet-card textarea:focus { border-bottom-color: var(--ymd-accent); }
+.ym-sheet-card ::placeholder { color: var(--ymd-mute); opacity: .6; }
+.ym-sheet-foot { display: flex; justify-content: flex-end; gap: 8px; }
 /* 楼层计数：日期条下的一行小字。 */
 #ym-floors { position: relative; z-index: 6; display: flex; gap: 16px; margin: -4px 0 8px; padding: 0 29px; font-size: 11px; letter-spacing: .12em; color: var(--ymd-mute); font-variant-numeric: tabular-nums; }
 #ym-floors b { font-weight: 500; color: var(--ymd-ink); }

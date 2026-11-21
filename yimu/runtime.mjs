@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches, parseObservations } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS, fillPlan, sourceRows, observationProtocol } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
@@ -14,7 +14,7 @@ import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 import { completedSlices } from './stream-slices.mjs';
-import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
+import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, fillPrompt, realDay, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -89,6 +89,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         failedWork: state.snapshot ? failures.get(bindingKey(state.snapshot.binding)) || null : null,
         activeEntryId: state.snapshot ? jobs.get(bindingKey(state.snapshot.binding))?.entryId || null : null,
         manualJob: state.snapshot && jobs.get(bindingKey(state.snapshot.binding))?.manual ? { ...jobs.get(bindingKey(state.snapshot.binding)).manual } : null,
+        fillJob: state.snapshot && jobs.get(bindingKey(state.snapshot.binding))?.fill ? { ...jobs.get(bindingKey(state.snapshot.binding)).fill } : null,
         paused: state.snapshot && localStops.has(bindingKey(state.snapshot.binding)) });
     // 记忆调阅的「上一轮」记录按聊天存在本机（只存条目编号与数字，不存正文），重开 ST 后还能看到。
     // 新一轮生成开始时内存里的记录会先清空，但本机那份留到下一次有结果时才被替换。
@@ -870,6 +871,79 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         }
     }
 
+    // 从正文补全日记与年表：中途才启用、或当时没拾到的楼层，按批把原文再过一遍，只要痕迹与年表节点，不动记忆切片。
+    // 用户在心迹页里发起；已有痕迹的那一段不再要痕迹（免得把归过日记的换掉），年表靠「已有年表」去重。做完把新痕迹合订成日记。
+    async function startHeartFill() {
+        if (disposed || !state.document?.enabled || !state.snapshot) throw new Error('请先启用忆幕');
+        if (generating && hostBusy() === true) throw new Error('正在生成回复，等回复结束后再补全');
+        if (!state.sourceAvailable) throw new Error('当前聊天原件尚未通过核对，请保存聊天后重新打开忆幕');
+        const binding = clone(state.snapshot.binding), key = bindingKey(binding);
+        if (jobs.has(key)) throw new Error('已有一轮整理在进行，请等它结束');
+        const doc = clone(state.document), defaults = clone(state.defaults), settings = effectiveSettings(doc, defaults);
+        const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
+        const wantTraces = settings.diary !== false && Boolean(names.char);
+        if (!wantTraces && !chronicleAsk(settings, names, doc)) throw new Error('观察日记与关系年表都关着');
+        const plan = fillPlan(doc, state.snapshot.messages);
+        if (!plan.length) throw new Error('还没有可以补全的楼层');
+        const run = summaryRun(settings, state.snapshot);
+        const controller = new AbortController(); controller.fill = { done: 0, total: plan.length }; jobs.set(key, controller);
+        let log = null, finished = false;
+        const retryState = { exhausted: false };
+        const stopped = () => disposed || controller.signal.aborted || localStops.has(key) || !isCurrent(binding);
+        (async () => {
+            try {
+                for (let index = 0; index < plan.length; index++) {
+                    if (stopped() || generating) break;
+                    const batch = plan[index], snapshot = await host.snapshot();
+                    if (!equalBinding(snapshot.binding, binding) || batch.end > snapshot.messages.length) break;
+                    const fresh = await readSource(binding); adopt(binding, fresh);
+                    if (!fresh.sourceAvailable || !fresh.document.enabled || fresh.document.epoch !== doc.epoch) break;
+                    const seen = (fresh.document.observations || []).some(item => item.floor >= batch.start && item.floor <= batch.end);
+                    const observation = wantTraces && !seen ? observationProtocol(names) : '', chronicle = chronicleAsk(settings, names, fresh.document);
+                    if (!observation && !chronicle) { controller.fill.done = index + 1; emit(); continue; }
+                    const prompt = fillPrompt(settings, sourceRows(snapshot.messages, batch, settings), { observation, chronicle });
+                    if (!run.fitsPrompt(prompt)) {
+                        // 放不下就把这一批对半拆开；单层都放不下才算失败。
+                        if (batch.end === batch.start) throw new Error(`第 ${shownFloor(batch.start)} 层超过此连接的可用输入容量，请选择容量足够的连接`);
+                        const mid = Math.floor((batch.start + batch.end) / 2);
+                        plan.splice(index, 1, { start: batch.start, end: mid }, { start: mid + 1, end: batch.end }); controller.fill.total = plan.length; index--; continue;
+                    }
+                    if (isCurrent(binding)) { state.status = `正在补全第 ${shownFloor(batch.start)}—${shownFloor(batch.end)} 层的日记与年表`; emit(); }
+                    log = openLog({ kind: 'diary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end }, manual: true, prompt });
+                    const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal }, { binding, label: '补全', start: batch.start, end: batch.end, retryState });
+                    if (log?.id) note(() => journal.update(log.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - log.started }));
+                    if (stopped()) break;
+                    const slices = fresh.document.entries.filter(entry => entry.kind === 'summary' && entry.status === 'active' && !entry.origin && entry.source);
+                    const dateOf = floor => slices.find(entry => entry.source.start <= floor && entry.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date || '';
+                    const traces = observation ? parseObservations(response, batch).map(item => { const date = dateOf(item.floor); return date ? { ...item, date: date.slice(0, 60) } : item; }) : [];
+                    const events = chronicle ? parseChronicle(response, batch, slices) : [];
+                    if (traces.length) await change(binding, { id: id(), type: 'observe', items: traces, range: { start: batch.start, end: batch.end }, at: Date.now() });
+                    if (events.length) await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: [], events, used: [] });
+                    closeLog(log, { status: 'success', ...(events.length ? { events: events.length } : {}) }); log = null;
+                    controller.fill.done = index + 1; emit();
+                }
+                finished = !stopped() && controller.fill.done >= plan.length;
+                if (isCurrent(binding)) { state.status = finished ? '日记与年表已补全' : `补全停在第 ${controller.fill.done}／${plan.length} 批`; }
+                if (finished) notice('日记与年表已补全', 'success');
+            } catch (error) {
+                closeLog(log, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误', ...failedReply(log, error) }); log = null;
+                if (!controller.signal.aborted && !disposed) {
+                    if (isCurrent(binding)) { state.error = error.message; state.errorPage = 'settings'; state.status = `补全停在第 ${controller.fill.done}／${plan.length} 批，已补的保留`; }
+                    notice(`补全未完成：${error?.message || '未知错误'}`, 'error');
+                }
+            } finally {
+                if (jobs.get(key) === controller) jobs.delete(key);
+                closeLog(log, { status: 'cancelled', error: '本次补全未完成（已中止或被打断）' });
+                emit();
+                // 新补的痕迹合订成日记：一次最多看四十条，没看完就接着订，最多八次。
+                if (finished) for (let round = 0; round < 8 && !disposed && isCurrent(binding) && (state.document?.observations || []).some(item => !item.used); round++) {
+                    try { if (!await startDiary({ force: true })) break; } catch (error) { console.warn('[忆幕] 补全后的日记合订未完成：', error?.message || error); break; }
+                }
+            }
+        })();
+        emit();
+    }
+
     // 心迹：这一轮向主模型要过一则时，回复落定后从最后一条回复里摘走那一段，正文里不留。
     // 只认最终留下的回复：同一层重新生成，新的顶掉旧的；模型这次没写也记一笔，不必每轮都问。
     let thoughtAsk = null;
@@ -1078,6 +1152,25 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await change(binding, { id: id(), type: 'heartRemove', kind: payload.kind, itemId: payload.itemId, at: Date.now() });
             return true;
         }
+        if (type === 'heartEdit') {
+            const { kind, itemId, text, title, about, date, floor } = payload;
+            await change(binding, { id: id(), type: 'heartEdit', kind, itemId, text, at: Date.now(), ...(title !== undefined ? { title } : {}), ...(about !== undefined ? { about } : {}),
+                ...(date !== undefined ? { date } : {}), ...(floor !== undefined ? { floor } : {}) });
+            return true;
+        }
+        if (type === 'heartAdd') {
+            // 补记一条。没写落在哪一层的，算在当前最新一层；心迹写的是谁，按名字归到「你／自己／书／别人」。
+            const item = payload.item || {}, total = Math.max(1, snapshot.messages.length), plain = value => String(value || '').trim().toLowerCase();
+            const floor = Number.isSafeInteger(item.floor) && item.floor >= 1 && item.floor <= total ? item.floor : total;
+            const about = String(item.about || '').trim(), who = plain(about).replace(/[《》]/g, '');
+            const group = !about || who === plain(snapshot.userName) || ['你', '用户'].includes(who) ? 'you' : ['自己', '我', plain(snapshot.name)].includes(who) ? 'self' : /[《》]/.test(about) ? 'books' : 'others';
+            const built = payload.kind === 'impression' ? { about, text: item.text, day: realDay(Date.now()) }
+                : payload.kind === 'thought' ? { group, about: group === 'you' ? String(snapshot.userName || '').trim() || '你' : group === 'self' ? '自己' : about, text: item.text, floor }
+                : { title: item.title, text: item.text, floor, ...(item.date ? { date: item.date } : {}) };
+            await change(binding, { id: id(), type: 'heartAdd', kind: payload.kind, item: built, at: Date.now() });
+            return true;
+        }
+        if (type === 'heartFill') { await startHeartFill(); return true; }
         if (type === 'purge') {
             if (!['all', 'traces'].includes(payload.scope)) throw new Error('清理范围无效');
             // 正在跑的整理先停：它拿着清理前的条目，写回来会与清理后的文档对不上。

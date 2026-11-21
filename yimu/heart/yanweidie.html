@@ -243,8 +243,8 @@ window.yimuPaint = (D, raw) => {
     diary.append(node);
   });
   if (!D.impressions.length) diary.insertAdjacentHTML('afterbegin', '<p class="empty">这段日子还没有一格显出来。同一件事在几个不同的日子里都看见，才会留在胶片上。</p>');
-  const loose = D.loose.slice(0, 6).map((item, i) => [item.text, [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
-  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote" style="--x:${[2, 30, 10, 22, 36, 0][i]}%;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
+  const loose = D.loose.slice(0, 6).map((item, i) => [item.text + rmq(item.kind, item.id), [21, 12, 15, 18, 11, 24][i], [13, 9, 11, 15, 8, 12][i]]);
+  if (loose.length) diary.insertAdjacentHTML('beforeend', `<div class="loose"><h4 class="sans">还 在 留 意 的</h4>${loose.map(([text, size, d], i) => `<span class="mote ym-loose" style="--x:${[2, 30, 10, 22, 36, 0][i]}%;font-size:${size}px;--d:${d}s;animation-delay:-${i * 2.1}s">${bf('line', `position:static;--s:${Math.round(size * .9)}px;--f:${(.3 + i * .05).toFixed(2)}s`)}${text}</span>`).join('')}</div>`);
 
   heart.querySelectorAll('.say2, .empty').forEach(node => node.remove());
   const end = heart.querySelector('.end');

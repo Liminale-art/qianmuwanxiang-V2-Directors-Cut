@@ -590,7 +590,7 @@
 
 /* 日志：与千幕日志同一套排版——一条一行可展开，左侧状态点，右侧来源标签，详情平铺。 */
 .ym-log-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-height: 360px; overflow: auto; overscroll-behavior: contain; }
-.ym-log-entry { border: 1px solid var(--ym-border); border-radius: 12px; background: color-mix(in srgb, var(--ym-card) 60%, transparent); overflow: hidden; }
+.ym-log-entry { flex: none; border: 1px solid var(--ym-border); border-radius: 12px; background: color-mix(in srgb, var(--ym-card) 60%, transparent); overflow: hidden; }
 .ym-log-entry > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 12px; cursor: pointer; list-style: none; font-size: .92em; }
 .ym-log-entry > summary::-webkit-details-marker { display: none; }
 .ym-log-status { display: inline-block; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: currentColor; color: var(--ym-muted); }
