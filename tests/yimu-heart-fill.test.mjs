@@ -58,6 +58,7 @@ test('filling in from the original text goes floor by floor in batches, leaves t
     assert.equal(plan.at(-1).end, messages.length - REROLL_GUARD);
     assert.deepEqual(fillPlan({ entries: [], lineage: { bridgeCount: 40 } }, messages), [{ start: 41, end: 47 }]);
     assert.deepEqual(fillPlan({ entries: [] }, messages.slice(0, 3)), []);
+    assert.deepEqual(fillPlan({ entries: [] }, messages, { from: 12, to: 26, perBatch: 6 }), [{ start: 12, end: 17 }, { start: 18, end: 23 }, { start: 24, end: 26 }]);
     const names = { char: '阿澈', user: '小满' }, settings = { ...DEFAULTS };
     const chronicle = chronicleAsk(settings, names, { heart: { impressions: [], thoughts: [], events: [{ id: 'e', title: '第一次同桌', text: '拼桌', floor: 2, at: 1 }], eventFloor: 0, thoughtFloor: 0 } });
     const prompt = fillPrompt(settings, sourceRows(messages, plan[0], settings), { observation: '另外返回 "traces"：痕迹要求', chronicle });

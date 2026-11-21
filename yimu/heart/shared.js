@@ -131,17 +131,18 @@ function openFill() {
     sheet.innerHTML = `<form class="ym-sheet-card" role="dialog" aria-label="补全">
         <div class="ym-sheet-head"><b>从正文补全</b></div>
         <p class="ym-sheet-note">把这一段正文再过一遍，补上当时没记下的印象与年表；记忆切片不动。</p>
-        <div class="ym-sheet-range"><label><span>从第几层</span><input name="start" inputmode="numeric" value="${Number(tools.first) || 0}"></label><label><span>到第几层</span><input name="end" inputmode="numeric" value="${Number(tools.last) || 0}"></label></div>
+        <div class="ym-sheet-range"><label><span>从第几层</span><input name="start" inputmode="numeric" value="${Number(tools.first) || 0}"></label><label><span>到第几层</span><input name="end" inputmode="numeric" value="${Number(tools.last) || 0}"></label><label><span>每批几层</span><input name="per" inputmode="numeric" value="${Number(tools.per) || 20}"></label></div>
         <div class="ym-sheet-foot"><button type="button" data-sheet-close>算了</button><button type="submit"></button></div></form>`;
-    const start = sheet.querySelector('[name="start"]'), end = sheet.querySelector('[name="end"]'), go = sheet.querySelector('[type="submit"]');
+    const start = sheet.querySelector('[name="start"]'), end = sheet.querySelector('[name="end"]'), per = sheet.querySelector('[name="per"]'), go = sheet.querySelector('[type="submit"]');
+    const perOk = () => read(per) >= 1 && read(per) <= 200;
     const read = node => /^\d+$/.test(node.value.trim()) ? Number(node.value) : NaN;
-    const sync = () => { const count = fillCount(Math.max(read(start), Number(tools.first) || 0), Math.min(read(end), Number(tools.last) || 0), tools.per); go.textContent = count ? `约 ${count} 次请求 · 确认补全` : '楼层没填对'; go.disabled = !count; };
+    const sync = () => { const count = perOk() ? fillCount(Math.max(read(start), Number(tools.first) || 0), Math.min(read(end), Number(tools.last) || 0), read(per)) : 0; go.textContent = count ? `约 ${count} 次请求 · 确认补全` : perOk() ? '楼层没填对' : '每批填 1–200'; go.disabled = !count; };
     sync(); document.body.append(sheet);
     sheet.addEventListener('input', sync);
     sheet.addEventListener('click', event => { if (event.target === sheet || event.target.closest?.('[data-sheet-close]')) closeSheet(); });
     sheet.addEventListener('submit', event => {
         event.preventDefault(); if (go.disabled) return;
-        parent.postMessage({ yimuHeart: 'fill', start: Math.max(read(start), Number(tools.first) || 0), end: Math.min(read(end), Number(tools.last) || 0) }, '*');
+        parent.postMessage({ yimuHeart: 'fill', start: Math.max(read(start), Number(tools.first) || 0), end: Math.min(read(end), Number(tools.last) || 0), per: read(per) }, '*');
         closeSheet();
     });
 }

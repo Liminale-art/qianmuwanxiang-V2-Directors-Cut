@@ -877,7 +877,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     // 从正文补全日记与年表：中途才启用、或当时没拾到的楼层，按批把原文再过一遍，只要痕迹与年表节点，不动记忆切片。
     // 用户在心迹页里发起；已有痕迹的那一段不再要痕迹（免得把归过日记的换掉），年表靠「已有年表」去重。做完把新痕迹合订成日记。
-    async function startHeartFill({ range = null } = {}) {
+    async function startHeartFill({ range = null, perBatch } = {}) {
         if (disposed || !state.document?.enabled || !state.snapshot) throw new Error('请先启用忆幕');
         if (generating && hostBusy() === true) throw new Error('正在生成回复，等回复结束后再补全');
         if (!state.sourceAvailable) throw new Error('当前聊天原件尚未通过核对，请保存聊天后重新打开忆幕');
@@ -887,7 +887,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         const names = { char: String(state.snapshot.name || '').trim(), user: String(state.snapshot.userName || '').trim() };
         const wantTraces = settings.diary !== false && Boolean(names.char);
         if (!wantTraces && !chronicleAsk(settings, names, doc)) throw new Error('心间存照与关系年表都关着');
-        const plan = fillPlan(doc, state.snapshot.messages, Number.isSafeInteger(range?.start) && Number.isSafeInteger(range?.end) && range.start >= 1 && range.end >= range.start ? { from: range.start, to: range.end } : {});
+        const scope = Number.isSafeInteger(range?.start) && Number.isSafeInteger(range?.end) && range.start >= 1 && range.end >= range.start ? { from: range.start, to: range.end } : {};
+        if (Number.isSafeInteger(perBatch) && perBatch >= 1 && perBatch <= 200) scope.perBatch = perBatch;
+        const plan = fillPlan(doc, state.snapshot.messages, scope);
         if (!plan.length) throw new Error(range ? '这一段没有可以补全的楼层' : '还没有可以补全的楼层');
         const run = summaryRun(settings, state.snapshot);
         const controller = new AbortController(); controller.fill = { done: 0, total: plan.length }; jobs.set(key, controller);
@@ -1174,7 +1176,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await change(binding, { id: id(), type: 'heartAdd', kind: payload.kind, item: built, at: Date.now() });
             return true;
         }
-        if (type === 'heartFill') { await startHeartFill({ range: payload.range || null }); return true; }
+        if (type === 'heartFill') { await startHeartFill({ range: payload.range || null, perBatch: payload.perBatch }); return true; }
         if (type === 'purge') {
             if (!['all', 'traces'].includes(payload.scope)) throw new Error('清理范围无效');
             // 正在跑的整理先停：它拿着清理前的条目，写回来会与清理后的文档对不上。

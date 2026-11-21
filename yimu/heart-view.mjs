@@ -5,7 +5,9 @@ import { HEART_THEMES } from './heart-themes.mjs';
 import { gradeOf, SURE_WORDS } from './heart-contract.mjs';
 import { fillPlan, FILL_BATCH_FLOORS } from './core.mjs';
 
-const THEME_KEY = 'yimu:heart-theme:v1';
+const THEME_KEY = 'yimu:heart-theme:v1', FILL_PER_KEY = 'yimu:heart-fill-per:v1';
+/** 补全每批几层：用户自己定，1–200，记在本机。 */
+export const fillPerOf = value => { const n = Number(value); return Number.isSafeInteger(n) && n >= 1 && n <= 200 ? n : FILL_BATCH_FLOORS; };
 const realDay = at => { const d = new Date(at); return `${d.getMonth() + 1}月${d.getDate()}日`; };
 const dayOf = item => item.date || realDay(item.at);
 
@@ -13,7 +15,7 @@ const dayOf = item => item.date || realDay(item.at);
  *  impressions：在够多个不同日子里看见过、已成印象的（最近有动静的在前）；
  *  loose：还在留意的——没看过的痕迹，以及日子还不够的印象（新的在前）；
  *  thoughts：心迹（新的在前）；events：关系年表（按剧情先后）。 */
-export function heartData(state = {}, floors = null) {
+export function heartData(state = {}, floors = null, { fillPer = FILL_BATCH_FLOORS } = {}) {
     const document = state.document || {}, heart = document.heart || {};
     const observations = Array.isArray(document.observations) ? document.observations : [];
     const graded = (heart.impressions || []).map(item => ({ item, sure: gradeOf(item) }));
@@ -28,7 +30,7 @@ export function heartData(state = {}, floors = null) {
         // 补全：能不能做、大约几次请求、正在做到第几批。
         // last：能补到的最后一层（页面上从 0 数）；per：每批几层，页面据此估算请求次数。
         tools: (() => { const plan = document.enabled === true ? fillPlan(document, state.snapshot?.messages || []) : [];
-            return { ready: document.enabled === true, pending: observations.filter(item => !item.used).length, batches: plan.length, first: plan.length ? plan[0].start - 1 : 0, last: plan.length ? plan.at(-1).end - 1 : 0, per: FILL_BATCH_FLOORS,
+            return { ready: document.enabled === true, pending: observations.filter(item => !item.used).length, batches: plan.length, first: plan.length ? plan[0].start - 1 : 0, last: plan.length ? plan.at(-1).end - 1 : 0, per: fillPer,
                 fill: state.fillJob ? { done: state.fillJob.done, total: state.fillJob.total } : null, floors: state.snapshot?.messages?.length || 0 }; })(),
         impressions: graded.filter(({ sure }) => sure >= 1).sort((a, b) => b.item.updatedAt - a.item.updatedAt).map(({ item, sure }) => ({ id: item.id, about: item.about, say: item.text, sure, word: SURE_WORDS[sure], ...(item.own ? { own: true } : {}),
             days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
@@ -89,10 +91,11 @@ export function mountHeartView({ document = globalThis.document, storage = globa
     const saved = () => { try { return storage?.getItem(THEME_KEY) || ''; } catch { return ''; } };
     let themeId = themes.some(theme => theme.id === saved()) ? saved() : themes[0].id;
     const current = () => themes.find(theme => theme.id === themeId) || themes[0];
+    const fillPer = () => { try { return fillPerOf(storage?.getItem(FILL_PER_KEY)); } catch { return FILL_BATCH_FLOORS; } };
     // 把数据交给页面。changedOnly：只在数据与上次交出去的不同时才交（面板每次刷新都会来问一遍，页面不必跟着重画）。
     const feed = ({ changedOnly = false } = {}) => {
         try {
-            const data = heartData(getState(), floors), signature = JSON.stringify(data);
+            const data = heartData(getState(), floors, { fillPer: fillPer() }), signature = JSON.stringify(data);
             if (changedOnly && signature === fed || typeof frame?.contentWindow?.yimuRender !== 'function') return;
             frame.contentWindow.yimuRender(data); fed = signature;
         } catch { /* 页面还没准备好：等它的 load */ }
@@ -137,7 +140,9 @@ export function mountHeartView({ document = globalThis.document, storage = globa
         else if (type === 'fill' || type === 'fillStop') {
             // 页面上的楼层从 0 数；给了范围就只补那一段。
             const floorAt = value => /^\d+$/.test(String(value ?? '').trim()) ? Number(value) + 1 : null, start = floorAt(event.data.start), end = floorAt(event.data.end);
-            Promise.resolve().then(() => onAction(type === 'fill' ? 'heartFill' : 'stop', type === 'fill' && start && end && end >= start ? { range: { start, end } } : {}))
+            const per = fillPerOf(event.data.per);
+            if (type === 'fill') try { storage?.setItem(FILL_PER_KEY, String(per)); } catch { /* 记不下就只在这次生效 */ }
+            Promise.resolve().then(() => onAction(type === 'fill' ? 'heartFill' : 'stop', type === 'fill' ? { perBatch: per, ...(start && end && end >= start ? { range: { start, end } } : {}) } : {}))
                 .catch(error => { console.warn('[忆幕] 补全没有开始', error); return false; })
                 .then(() => { if (opened) feed(); });
         }
