@@ -518,11 +518,11 @@ test('stage automatic mode is on by default and toggling it autosaves the curren
     assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: false }, expectedRevision: 0 });
 });
 
-test('controlled recall uses one default-on trial switch and saves the existing setting key', async t => {
+test('controlled recall uses one default-off switch and saves the existing setting key', async t => {
     const f = fixture(); t.after(() => f.view.destroy());
-    const recall = f.get('原文回查与补充'); assert.equal(recall.checked, true);
-    assert.equal(recall.closest('details'),null);assert.equal(recall.closest('.ym-extra-settings').tagName.toLowerCase(),'section');recall.checked = false; recall.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: false }, expectedRevision: 0 });
+    const recall = f.get('原文回查与补充'); assert.equal(recall.checked, false);
+    assert.equal(recall.closest('details'),null);assert.equal(recall.closest('.ym-extra-settings').tagName.toLowerCase(),'section');recall.checked = true; recall.emit('change'); await f.flush();
+    assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: true }, expectedRevision: 0 });
     assert.equal(f.get('按需回查细摘要'), undefined);
 });
 
@@ -936,17 +936,17 @@ test('shortcut colors distinguish execution failure from unavailable states with
     dispose(); dispose.update({ showShortcut: true }, ready); assert.equal(shortcut.isConnected, false);
 });
 
-test('trigger floor count sits right after the token trigger with its own hint and shows the factory default', t => {
+test('trigger floor count sits right after the token trigger, carries no hover hint and shows the factory default', t => {
     const f = fixture({ document: { ...state().document, enabled: true } }); t.after(() => f.view.destroy());
     const trigger = f.get('自动总结触发'), floors = f.get('自动总结触发楼层数');
     const group = floors.closest('.ym-settings-group'), rows = group.querySelectorAll('.ym-setting-row');
     assert.equal(group, trigger.closest('.ym-settings-group')); assert.match(group.textContent, /切片总结/);
     assert.equal(rows.indexOf(floors.closest('.ym-setting-row')), rows.indexOf(trigger.closest('.ym-setting-row')) + 1);
     assert.equal(floors.type, 'number'); assert.equal(floors.min, '0'); assert.equal(floors.placeholder, '10');
-    assert.equal(floors.closest('.ym-setting-row').title, '未整理楼层达到此数时自动总结；最新 3 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token');
-    assert.equal(f.get('正文保留层数').closest('.ym-setting-row').title, '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层隐藏并由记忆替代');
-    assert.equal(f.get('关系年表').closest('.ym-setting-row').title, '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……');
-    assert.match(trigger.closest('.ym-setting-row').title, /待整理正文.*token/);
+    // 设置页各项不再带悬停提示。
+    for (const key of ['自动总结触发', '正文保留层数', '关系年表', '心间存照', '自动合订为存照', '每次最多注入切片']) assert.equal(f.get(key).closest('.ym-setting-row').title || '', '', key);
+    assert.match(f.get('自动合订为存照').closest('.ym-settings-group').textContent, /心迹脉络.*每条印象字数上限/s);
+    assert.match(f.get('自动合订为存照').closest('.ym-settings-group').textContent, /每次总结后合订；待凝定的印象满 12 条也会合订/);
     assert.equal(floors.value, '10');
     f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');
     f.render({ document: { ...f.state.document, configRevision: 2, settings: { triggerFloors: 0 } } }); assert.equal(floors.value, '0');
@@ -1398,7 +1398,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.74 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.75 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1530,7 +1530,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.74'); assert.equal(pkg.version, '0.8.31');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.75'); assert.equal(pkg.version, '0.8.32');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

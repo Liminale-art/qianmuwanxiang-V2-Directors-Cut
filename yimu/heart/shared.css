@@ -23,15 +23,21 @@
 #ym-date .ym-cal-grid button.on { background: var(--ymd-accent); color: var(--ymd-paper); }
 .ym-cal-grid button.on.has::after { background: var(--ymd-paper); }
 .ym-cal-grid button.today { outline: 1px dashed var(--ymd-mute); outline-offset: -2px; }
-/* 删除单条：条目右上角很淡的「×」，点一下变「再点删除」。位置各主题自己定（条目须是定位容器）。 */
+/* 删除单条：条目右上角很淡的「×」，点一下直接删。位置各主题自己定（条目须是定位容器）。 */
 .ym-rm { all: unset; position: absolute; right: 0; top: 0; z-index: 6; cursor: pointer; padding: 6px 8px; font-size: 12px; line-height: 1; letter-spacing: .1em; white-space: nowrap; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
 .ym-rm:hover, .ym-rm:focus-visible { opacity: .85; }
 .ym-rm:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
-.ym-rm[data-armed] { opacity: 1; color: var(--ymd-accent); }
 .ym-rm[disabled] { opacity: .2; cursor: default; }
-.ymbar-r { display: flex; align-items: center; gap: 16px; }
+.ymbar-r, .ymbar-l { display: flex; align-items: center; gap: 16px; }
+/* 一键清空：「返回」后面很淡的小字，待确认时转成主题的强调色。 */
+#ym-clear { opacity: .55; }
+#ym-clear:hover, #ym-clear:focus-visible { opacity: .9; }
+#ym-clear[data-armed] { opacity: 1; color: var(--ymd-accent); }
+#ym-clear[disabled] { opacity: .22; cursor: default; }
+/* 「待凝定的印象」换位置：各条脱开一行一行的排法，位置由脚本给。 */
+[data-roam] > .ym-loose.ym-loose { position: absolute; left: 0; top: 0; margin: 0; max-width: calc(100% - 26px); }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
-body[data-standalone] :is(#ym-exit, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-tools) { display: none !important; }
+body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-tools) { display: none !important; }
 /* 「待凝定的印象」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
 .ym-loose { cursor: default; }
 .ym-loose:hover, .ym-loose[data-pick] { animation-play-state: paused !important; opacity: 1 !important; }

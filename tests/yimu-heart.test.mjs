@@ -144,7 +144,7 @@ test('a remove message from the page deletes that one item through the panel act
     assert.equal(next.contentWindow.rendered.length, 1);
 });
 
-test('on the page the small × asks once more before sending; a click elsewhere or a few seconds cancel it', async () => {
+test('on the page one click on the small × deletes that entry straight away, without opening the entry', async () => {
     const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
     const handlers = [], sent = [], timers = [];
     const stub = () => ({ addEventListener() {}, innerHTML: '' });
@@ -159,13 +159,11 @@ test('on the page the small × asks once more before sending; a click elsewhere 
     const click = target => { const event = { target, stopped: false, preventDefault() {}, stopPropagation() { this.stopped = true; } }; capture(event); return event; };
     const first = button('thought', 't1'), second = button('event', 'e1');
     assert.equal(click(first).stopped, true, '点删除不会连带触发条目自己的展开');
-    assert.deepEqual([first.textContent, first.attrs['data-armed'], sent.length], ['再点删除', 'true', 0]);
+    assert.deepEqual(sent, [[{ yimuHeart: 'remove', kind: 'thought', id: 't1' }, '*']], '点一下就删，不再问一次');
+    assert.deepEqual([first.disabled, first.textContent, first.attrs['data-armed']], [true, '×', undefined]);
+    assert.equal(click({ closest: () => null }).stopped, false); assert.equal(sent.length, 1, '点别处什么都不发');
     click(second);
-    assert.deepEqual([first.textContent, first.attrs['data-armed'], second.textContent], ['×', undefined, '再点删除'], '同时只有一条在等确认');
-    assert.equal(click({ closest: () => null }).stopped, false); assert.equal(second.textContent, '×', '点别处就取消');
-    click(second); timers.at(-1)(); assert.equal(second.textContent, '×', '几秒不点也取消'); assert.equal(sent.length, 0);
-    click(second); click(second);
-    assert.deepEqual(sent, [[{ yimuHeart: 'remove', kind: 'event', id: 'e1' }, '*']]); assert.equal(second.disabled, true); assert.equal(second.textContent, '×');
+    assert.deepEqual(sent.at(-1), [{ yimuHeart: 'remove', kind: 'event', id: 'e1' }, '*']); assert.equal(second.disabled, true);
 });
 
 test('the floor line under the date bar reads 本卷同叙 N 节・共织故事 M 章, and goes away when there is no total', async () => {

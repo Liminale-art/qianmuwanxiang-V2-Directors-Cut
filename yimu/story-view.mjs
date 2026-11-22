@@ -8,14 +8,17 @@ export function createStoryView({document = globalThis.document, onAction, onNot
     const body=el('div','ym-story-body'), cutoff=el('input');cutoff.type='number';cutoff.min='0';cutoff.step='1';cutoff.setAttribute('aria-label','续接楼层');
     const field=el('label','ym-field ym-story-cutoff');field.append(el('span','','续接楼层'),cutoff);
     const create=button('建立新聊天',()=>{
-        const story=state.story||{},receipt=story.result?.receipt||story.receipt;
-        if(receipt?.status==='complete')return invoke('storyOpen');
+        const story=state.story||{},receipt=done();
+        if(receipt)return invoke('storyOpen');
         if(story.pending||story.operation||story.operationId)return invoke('storyCreate',{retry:true});
         return invoke('storyContinue',{cutoff:floorValue(cutoff.value)});
     });create.className+=' ym-primary';
     const controls=el('div','ym-story-controls');controls.append(field,create);
     body.append(controls);node.append(body);
-    let state={},scope='',alive=true,working=false,revision=0;
+    let state={},scope='',alive=true,working=false,revision=0,passed='';
+    const mark=receipt=>receipt?String(receipt.id||JSON.stringify(receipt.target||null)):'';
+    // 已建好但还没打开的那一次：按钮用来打开它。用户改了楼层就是要另建一个，这一次不再拦着。
+    const done=()=>{const story=state.story||{},receipt=story.result?.receipt||story.receipt;return receipt?.status==='complete'&&mark(receipt)!==passed?receipt:null;};
     const count=()=>state.snapshot?.messages?.length||0;
     async function invoke(type,payload={}){
         if(!alive||working||state.story?.busy)return;
@@ -34,13 +37,12 @@ export function createStoryView({document = globalThis.document, onAction, onNot
     }
     function update(){
         const story=state.story||{},busy=working||story.busy,available=!!state.snapshot&&!!state.document&&!state.loading&&state.sourceAvailable!==false;
-        const receipt=story.result?.receipt||story.receipt,complete=receipt?.status==='complete',pending=!complete&&!!(story.pending||story.operation||story.operationId);
-        cutoff.max=String(Math.max(0,count()-1));cutoff.disabled=!available||!!busy||pending||complete;
+        const complete=!!done(),pending=!complete&&!!(story.pending||story.operation||story.operationId);
+        cutoff.max=String(Math.max(0,count()-1));cutoff.disabled=!available||!!busy||pending;
         create.disabled=!available||!!busy||!!state.busy;
         create.textContent=busy?'正在建立…':'建立新聊天';
-        create.title=complete?'打开本次已建立的聊天，不重复建立':pending?'继续核对本次建立，不重复创建':'';
         node.setAttribute('aria-busy',String(!!busy));
     }
-    cutoff.addEventListener('input',update);
+    cutoff.addEventListener('input',()=>{const story=state.story||{};passed=mark(story.result?.receipt||story.receipt);update();});
     return{node,render(next){state=next||{};const key=JSON.stringify(state.snapshot?.binding||null);if(key!==scope){scope=key;revision++;working=false;cutoff.value=floorField(count());if(!pageMode)node.open=false;}update();},destroy(){alive=false;revision++;node.remove();}};
 }

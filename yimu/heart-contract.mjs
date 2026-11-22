@@ -51,7 +51,7 @@ export function validateHeart(value) {
 }
 export const emptyHeart = () => ({ impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 0 });
 export const heartOf = document => document?.heart ? clone(document.heart) : emptyHeart();
-export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport', 'heartEdit', 'heartAdd']);
+export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport', 'heartEdit', 'heartAdd', 'heartClear']);
 
 /** 应用一次心迹操作，直接改 doc（调用方已复制过）。opId 用来给新条目编号。 */
 export function applyHeartOperation(doc, op, opId) {
@@ -104,6 +104,11 @@ export function applyHeartOperation(doc, op, opId) {
         need(op.heart && typeof op.heart === 'object', '没有可并入的心迹资料');
         const merged = mergeHeart(heart, op.heart);
         doc.heart = merged;
+        return;
+    } else if (op.type === 'heartClear') {
+        // 一键清空：存照、心迹、年表连同待凝定的印象（痕迹）。进度留着，清掉的不会被下一次总结重新拾回；要找回就用「补全」。
+        delete doc.observations;
+        doc.heart = validateHeart({ ...emptyHeart(), eventFloor: heart.eventFloor, thoughtFloor: heart.thoughtFloor });
         return;
     } else if (op.type === 'heartRemove' && op.kind === 'trace') {
         // 「还在留意的」里的一条痕迹：直接删掉，不留底。

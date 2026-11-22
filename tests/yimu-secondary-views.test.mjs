@@ -202,3 +202,16 @@ test('companion page lists every linked book with its own actions, and one 关�
     view.render({ ...s, service: { status: 'error' } });
     assert.ok(d.all(view.element).filter(node => node.tagName === 'BUTTON').every(node => node.disabled));
 });
+
+test('a finished continuation never locks the floor box: the button opens it, and a new floor builds another one', async () => {
+    const d=dom(),calls=[],view=createStoryView({document:d.document,pageMode:true,onAction:async(...args)=>{calls.push(args);return{};}});
+    const s={...state(),story:{result:{receipt:{id:'done-1',status:'complete',target:{file:'续接一'}}}}};view.render(s);
+    const get=label=>d.get(view.node,label);
+    assert.equal(get('续接楼层').disabled,false,'建好一次之后楼层仍可改');
+    get('建立新聊天').click();await d.flush();assert.deepEqual(calls.at(-1),['storyOpen',{}],'没改楼层：打开已建好的那一个，不重复建');
+    get('续接楼层').value='3';get('续接楼层').emit('input');view.render(s);
+    get('建立新聊天').click();await d.flush();assert.deepEqual(calls.at(-1),['storyContinue',{cutoff:4}],'改了楼层：另建一个');
+    // 新的一次建好后（回执换了），按钮又回到「打开它」。
+    const next={...s,story:{result:{receipt:{id:'done-2',status:'complete',target:{file:'续接二'}}}}};view.render(next);
+    get('建立新聊天').click();await d.flush();assert.deepEqual(calls.at(-1),['storyOpen',{}]);
+});

@@ -133,3 +133,14 @@ test('a chosen time zone decides which day and hour time is booked under, from t
     assert.match(home, /<em>今日<\/em><strong><i data-count="30">30<\/i>/);
     assert.match(home, new RegExp(`data-today title="${new Date(T0 + zoneShift(T0, east)).getMonth() + 1}月${new Date(T0 + zoneShift(T0, east)).getDate()}日 · 30 分钟"`));
 });
+
+test('each day in the heat grid carries its date and time, and the line under the grid starts on today', () => {
+    const data = { days: { [dayKey(T0)]: 30 * MIN, [dayKey(T0 - 86400000)]: 0 }, hours: Array(24).fill(0), chars: {} };
+    const home = usageMarkup(data, { now: T0, zones: [] }), d = new Date(T0), today = `${d.getMonth() + 1}月${d.getDate()}日`;
+    assert.match(home, new RegExp(`data-today title="${today} · 30 分钟" class="on" data-day="${today}" data-spent="30 分钟"`));
+    assert.match(home, /data-day="[^"]+" data-spent="没喝"/, '没记录的日子也点得出来');
+    assert.match(home, new RegExp(`<p class="qm-usage-day" aria-live="polite"><i data-level="\\d"></i><span>${today}</span><b>30 分钟</b></p>`));
+    // 今天不在所选范围里：那一行先空着，点了才有。
+    const past = usageMarkup(data, { now: T0, zones: [], range: { from: T0 - 40 * 86400000, to: T0 - 20 * 86400000, custom: true } });
+    assert.match(past, /<p class="qm-usage-day" aria-live="polite"><\/p>/);
+});

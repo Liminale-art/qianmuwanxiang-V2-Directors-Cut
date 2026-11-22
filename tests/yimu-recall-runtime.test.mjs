@@ -40,7 +40,8 @@ async function fixture(t, {floors = 12, longFloors = false, ambiguous = false, r
     const writeChat = (items = context.chat) => fs.writeFile(rawPath, [{chat_metadata: {integrity: binding.integrity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await fs.writeFile(rawPath, [{chat_metadata: {integrity: binding.integrity}}, ...messages].map(JSON.stringify).join('\n'), 'utf8');
     const request = {user: {profile: {handle: 'synthetic-fixture'}, directories: {root: account, chats}}};
-    await seedLegacyDefaults(account);
+    // 原文回查默认关；这一组验的就是回查，所以夹具里开着。
+    await seedLegacyDefaults(account, {recall: true});
     const store = createYimuStore({hostCwd: root}), routes = new Map(), calls = [], faults = {};
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
     const fetcher = async (url, options) => {

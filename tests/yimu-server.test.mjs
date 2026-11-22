@@ -436,7 +436,7 @@ for (const schema of [1, 5]) test(`schema ${schema} reads are non-mutating and f
     await fs.writeFile(path.join(folder, 'defaults.json'), oldDefaults);
     await f.store.defaults(f.request, {id: 'upgrade_defaults', expectedRevision: 0, values: {recent: 9}});
     assert.deepEqual(await fs.readFile(path.join(folder, `defaults.json.schema${schema}.bak`)), oldDefaults);
-    assert.equal((await f.store.read(f.request, binding)).defaults.values.recall, true);
+    assert.equal((await f.store.read(f.request, binding)).defaults.values.recall, false, '旧默认里没有这一项：按现在的默认，关着');
 });
 
 test('an occupied or corrupt legacy backup blocks upgrade without replacing legacy memory', async t => {

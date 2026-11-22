@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {createYimuStore, chatStorageName} from '../yimu/server-store.mjs';
 import {registerYimuRoutes} from '../yimu/server-plugin.mjs';
-import {fingerprintMessages, createDocument, DEFAULTS, SCHEMA, VERSION, applyOperation, recallBlockReason, excerptDependenciesValid} from '../yimu/contract.mjs';
+import {fingerprintMessages, createDocument, createDefaults, DEFAULTS, SCHEMA, VERSION, applyOperation, recallBlockReason, excerptDependenciesValid} from '../yimu/contract.mjs';
 
 const clone = value => structuredClone(value);
 const binding = {avatar: 'Recall.png', file: 'Synthetic-recall', integrity: 'recall_identity'};
@@ -33,6 +33,9 @@ async function fixture(t, {messages = original, parentEnd = 2, seed = true} = {}
     const read = () => store.read(request, binding);
     const change = operation => store.change(request, binding, {id: `op_${++serial}`, ...operation});
     if (seed) {
+        // 原文回查默认关；这一组验的就是回查，所以账户默认里开着（修订号仍是 0）。
+        await fs.mkdir(path.join(account, '.yimu'), {recursive: true});
+        await fs.writeFile(path.join(account, '.yimu', 'defaults.json'), envelope({...createDefaults(), values: {...createDefaults().values, recall: true}}));
         await change({type: 'enable', expectedRevision: 0, enabled: true, range: {start: 1, end: messages.length, total: messages.length}});
         await change({type: 'append', expectedEpoch: 1, entry: {id: 'parent', kind: 'summary', text: '保留了手链与未完成约定的经历。', source}});
     }

@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT, REROLL_GUARD } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -17,6 +17,7 @@ import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scen
 import { mountRetrievalView } from './retrieval-view.mjs';
 import { mountManageView } from './manage-view.mjs';
 import { mountHeartView } from './heart-view.mjs';
+import { DIARY_TRACE_TRIGGER } from './heart-core.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
@@ -33,8 +34,8 @@ const SETTINGS = [
     ['stageRecent', '保留最近记忆切片', 'number', 0],
     ['stageChars', '每条阶段总结字数上限', 'number', 0],
     ['diary', '心间存照', 'checkbox'],
-    ['diaryAuto', '自动合订', 'checkbox'],
-    ['diaryChars', '每条日记字数上限', 'number', 10],
+    ['diaryAuto', '自动合订为存照', 'checkbox'],
+    ['diaryChars', '每条印象字数上限', 'number', 10],
     ['diaryInject', '日记随记忆带入', 'checkbox'],
     ['chronicle', '关系年表', 'checkbox'],
     ['thoughts', '心迹', 'checkbox'],
@@ -44,22 +45,6 @@ const SETTINGS = [
     ['recall', '原文回查与补充', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
-// Hover hints; values that read as "off" at 0 render blank.
-const SETTING_HINTS = {
-    trigger: '待整理正文达到此 token 数时自动总结',
-    recent: '最新这么多层始终保留原文、不隐藏，已总结的也不藏；更早且已总结的楼层隐藏并由记忆替代',
-    triggerFloors: `未整理楼层达到此数时自动总结；最新 ${REROLL_GUARD} 层留作重 roll 保护，不进这次总结；与 token 阈值先到先触发；填 0 仅按 token`,
-    summarySlices: '一次总结最多生成几条切片；模型给多了会把相邻的并起来，不截断正文；填 0 不限',
-    recallCooldown: '同一条记忆被带入后，这么多层内不再因为沾边重复带入；问到「还记得吗」或它是本轮最相关的一条时照常带；填 0 关闭',
-    diary: '留意到的事合订成日记：同一件事在故事里 3 个不同的日子都看见才写进去，6 个日子才笃定；用总结的连接',
-    diaryAuto: '开着：每次总结之后有新留意到的事就合订一次，攒够 12 条也会合订；关掉就只在心迹页里点「合订」时合订',
-    diaryInject: '回复时带上在场的人的日记，最多三条',
-    chronicle: '每次总结时从正文里拾出这段关系的节点：第一次、约定、和解……',
-    thoughts: '由写正文的模型在回复末尾顺带写一则，写完即从正文里收走；只支持聊天补全',
-    thoughtCooldown: '两则心迹至少隔这么多层；模型可以不写',
-    thoughtInject: '回复时带上一则相关的心迹，每轮最多一则，受召回冷却约束',
-    maxSlices: '每轮最多带几条记忆；与「记忆注入上限」同时生效，谁先到谁停；填 0 不限条数',
-};
 const BLANK_ZERO = new Set(['budget']);
 // 「每次最多注入切片」0 表示不限，按普通数字显示。
 const STAGE_BASES = [{ id: 'tokens', name: '记忆切片 token 数' }, { id: 'slices', name: '记忆切片份数' }];
@@ -394,7 +379,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
-        ['heart', '心迹日记', ['diary', 'diaryAuto', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
+        ['heart', '心迹脉络', ['diary', 'diaryAuto', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
         ['extra', '附加功能', ['recall', 'companionShareCustom']],
     ]) {
         const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
@@ -429,12 +414,12 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         const labelNode = field(label, input);
         // 卡片标题已是「记忆注入上限」，行内标题写明这一项是什么：与切片总结卡同样左标题、右输入框。
         if (key === 'budget') labelNode.children[0].textContent = '最大注入Token值';
-        if (SETTING_HINTS[key]) row.title = SETTING_HINTS[key];
         row.append(labelNode);
-        // 心迹日记卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
+        // 心迹脉络卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
         settingGroups.get(key).append(row);
         // 这一项的作用一句话写在下面（用户要求）。
         if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内不再重复'));
+        if (key === 'diaryAuto') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', `每次总结后合订；待凝定的印象满 ${DIARY_TRACE_TRIGGER} 条也会合订`));
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
     async function saveChangedSettings() {
@@ -1299,9 +1284,12 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
                 (document.defaultView?.requestAnimationFrame?.bind(document.defaultView) || (fn => setTimeout(fn, 0)))(() => {
                     const target = cards.get(entry.id)?.node;
                     if (!target) return;
-                    for (let node = target.parentElement; node && node !== list; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true;
+                    // 定位到的那一条连同它所在的阶段一起展开，再渐隐渐显两次，好认出是哪一条。
+                    for (let node = target; node && node !== list; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true;
                     target.scrollIntoView({ block: 'center' });
                     target.focus?.();
+                    target.classList.remove('ym-located'); void target.offsetWidth; target.classList.add('ym-located');
+                    target.addEventListener('animationend', () => target.classList.remove('ym-located'), { once: true });
                 });
             }, 'ym-jump'));
             item.append(head);

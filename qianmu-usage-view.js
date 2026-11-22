@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.596';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.597';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -56,11 +56,17 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
   animation: qm-usage-pop .5s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(var(--c) * 22ms + var(--r) * 14ms); }
 @keyframes qm-usage-pop { from { opacity: 0; transform: scale(.2); } }
 #${ROOT_ID} .qm-usage-grid i[data-level="-1"] { visibility: hidden; }
-#${ROOT_ID} .qm-usage-grid i[data-level="1"] { background: color-mix(in srgb, var(--u-accent) 30%, transparent); }
-#${ROOT_ID} .qm-usage-grid i[data-level="2"] { background: color-mix(in srgb, var(--u-accent) 52%, transparent); }
-#${ROOT_ID} .qm-usage-grid i[data-level="3"] { background: color-mix(in srgb, var(--u-accent) 76%, transparent); }
-#${ROOT_ID} .qm-usage-grid i[data-level="4"] { background: var(--u-accent); box-shadow: 0 0 8px color-mix(in srgb, var(--u-accent) 60%, transparent); }
+#${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="1"] { background: color-mix(in srgb, var(--u-accent) 30%, transparent); }
+#${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="2"] { background: color-mix(in srgb, var(--u-accent) 52%, transparent); }
+#${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="3"] { background: color-mix(in srgb, var(--u-accent) 76%, transparent); }
+#${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="4"] { background: var(--u-accent); box-shadow: 0 0 8px color-mix(in srgb, var(--u-accent) 60%, transparent); }
 #${ROOT_ID} .qm-usage-grid i:hover, #${ROOT_ID} .qm-usage-grid i.on { transform: scale(1.45); filter: brightness(1.2); z-index: 2; }
+/* 点中的那一天：格子下面一行写着日期和时长（触屏没有悬停，靠这一行看）。 */
+#${ROOT_ID} .qm-usage-day { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 18px; margin: 10px 0 0; font-size: 12px; line-height: 18px; color: var(--u-mute); font-variant-numeric: tabular-nums; }
+#${ROOT_ID} .qm-usage-day i { flex: none; width: 9px; height: 9px; border-radius: 28%; background: color-mix(in srgb, var(--u-ink) 9%, transparent); }
+#${ROOT_ID} .qm-usage-day b { font-weight: 600; color: var(--u-ink); }
+#${ROOT_ID} .qm-usage-day.is-swap { animation: qm-usage-day-in .35s ease both; }
+@keyframes qm-usage-day-in { from { opacity: 0; transform: translateY(3px); } }
 /* 今天这一格在呼吸 */
 #${ROOT_ID} .qm-usage-grid i[data-today]::after { content: ''; position: absolute; inset: -3px; border-radius: inherit; border: 1.5px solid var(--u-accent); animation: qm-usage-breathe 2.4s ease-in-out infinite; }
 @keyframes qm-usage-breathe { 0%, 100% { opacity: .25; transform: scale(.9); } 50% { opacity: 1; transform: scale(1.12); } }
@@ -255,13 +261,17 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
     }
     const span = range || { ...quarterRange(now), custom: false }, heat = heatCells(data, span.from, span.to, now);
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    const cells = heat.cells.map(cell => `<i data-level="${cell.level}" style="--c:${cell.column};--r:${cell.row}"${cell.today ? ' data-today' : ''}${cell.ms === null ? '' : ` title="${md(cell.time)} · ${cell.ms ? esc(durationText(cell.ms)) : '没喝'}"`}></i>`).join('');
+    // 每一格带着自己那天的日期与时长；点一下，格子下面那一行就换成这一天。默认停在今天（今天不在范围里就空着）。
+    const dayText = cell => `<i data-level="${cell.level}"></i><span>${md(cell.time)}</span><b>${cell.ms ? esc(durationText(cell.ms)) : '没喝'}</b>`;
+    const today = heat.cells.find(cell => cell.today && cell.ms !== null);
+    const cells = heat.cells.map(cell => `<i data-level="${cell.level}" style="--c:${cell.column};--r:${cell.row}"${cell.today ? ' data-today' : ''}${cell.ms === null ? '' : ` title="${md(cell.time)} · ${cell.ms ? esc(durationText(cell.ms)) : '没喝'}"`}${cell === today ? ' class="on"' : ''}${cell.ms === null ? '' : ` data-day="${esc(md(cell.time))}" data-spent="${cell.ms ? esc(durationText(cell.ms)) : '没喝'}"`}></i>`).join('');
     const earlier = summary.firstDay && summary.firstDay < heat.from, later = quarterRange(now).to > heat.to;
     const recent = summary.recent;
     const card = (index, title, body, small = '') => `<section class="qm-usage-card" style="--n:${index}"><em>${title}</em><strong>${body}</strong>${small ? `<small>${small}</small>` : ''}</section>`;
     const peakWord = summary.peak === null ? '' : summary.peak < 6 ? '深夜' : summary.peak < 12 ? '上午' : summary.peak < 18 ? '下午' : '夜里';
     return `<header><h3>微醺记录</h3><button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>
       <section class="qm-usage-heat"><div class="qm-usage-grid" style="--weeks:${heat.weeks}">${labels.map(name => `<b>${name}</b>`).join('')}${cells}</div>
+        <p class="qm-usage-day" aria-live="polite">${today ? dayText(today) : ''}</p>
         <div class="qm-usage-range"><button type="button" data-usage-shift="-1" aria-label="往前"${!span.custom && !earlier ? ' disabled' : ''}>‹</button><button type="button" class="qm-usage-span" data-usage-custom aria-label="自选范围" aria-expanded="${span.custom ? 'true' : 'false'}">${dotted(heat.from)} — ${dotted(heat.to)}</button><button type="button" data-usage-shift="1" aria-label="往后"${!span.custom && !later ? ' disabled' : ''}>›</button></div>
         <div class="qm-usage-pick"${span.custom ? '' : ' hidden'}><input type="date" data-usage-from aria-label="开始日期" value="${dayKey(heat.from)}"><span>至</span><input type="date" data-usage-to aria-label="结束日期" value="${dayKey(heat.to)}"></div></section>
       ${recent ? `<button type="button" class="qm-usage-last" data-usage-page="chars" aria-label="宿缘">${face(recent, avatarUrl)}<strong>${esc(nameOf(recent))}</strong><em>${esc(durationText(recent.ms))} ›</em><small>${esc(recent.last ? `${lastChatText(wall(recent.last), now)} 聊过` : lastChatText(0, now))}</small></button>` : ''}
@@ -316,6 +326,18 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
     });
     root.addEventListener('click', event => {
         event.stopPropagation();
+        // 点热力格里的一天：这一格放大，下面那一行换成它的日期与时长。只换这一行，格子不重画。
+        const cell = event.target.closest?.('.qm-usage-grid i[data-day]');
+        if (cell) {
+            const line = panel.querySelector('.qm-usage-day'); if (!line) return;
+            for (const other of panel.querySelectorAll('.qm-usage-grid i.on')) other.classList.remove('on');
+            cell.classList.add('on');
+            const swatch = document.createElement('i'), day = document.createElement('span'), spent = document.createElement('b');
+            swatch.dataset.level = cell.dataset.level; day.textContent = cell.dataset.day; spent.textContent = cell.dataset.spent;
+            line.replaceChildren(swatch, day, spent);
+            line.classList.remove('is-swap'); void line.offsetWidth; line.classList.add('is-swap');
+            return;
+        }
         const hit = event.target.closest?.('button, .qm-usage-backdrop');
         if (!hit) return;
         if (hit.matches('.qm-usage-backdrop') || hit.hasAttribute('data-usage-close')) return close();

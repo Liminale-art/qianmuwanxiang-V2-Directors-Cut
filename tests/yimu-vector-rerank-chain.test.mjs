@@ -53,7 +53,8 @@ async function fixture(t, {sliceFiller = 0, semanticWaitMs = 1200, retrievalTime
     const writeChat = async items => fs.writeFile(path.join(chats, 'Chain', `${binding.file}.jsonl`),
         [{chat_metadata: {integrity: binding.integrity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await writeChat(baseMessages());
-    await seedLegacyDefaults(account);
+    // 原文回查默认关；总结前的候选目录只在回查开着时才有。
+    await seedLegacyDefaults(account, {recall: true});
     const store = createYimuStore({hostCwd: root});
     const routes = new Map();
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});

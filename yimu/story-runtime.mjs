@@ -54,7 +54,8 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                 const opened = await host.openStory(view.result, { sourceSnapshot: snapshot,
                     isCurrent: () => !lifecycle().disposed && !lifecycle().generating && lifecycle().generation === stamp });
                 view.status = opened.opened ? '已打开新故事。' : opened.message;
-                if (opened.opened) await refresh({ auto: false });
+                // 新聊天已经打开：这一次到此了结，回到原聊天可以再建别的续接。
+                if (opened.opened) { view.result = null; view.receipt = null; await refresh({ auto: false }); }
                 return {...opened, ...(transferNote ? {transferNote} : {})};
             }
             if (type !== 'storyCreate' || !view.plan) throw new Error('请先核对续接或分支范围');
@@ -135,7 +136,10 @@ export function createStoryActions({ state, host, api, emit, id, lifecycle, refr
                 if (opened.opened) { view.status = `已建立并打开新故事，原聊天保持不变。${detail}`; await refresh({ auto: false }); }
                 else view.status += `；${opened.message || '请从此角色聊天记录打开。'}`;
             }
-            return {...view.result, ...(openResult ? {openResult} : {})};
+            const done = {...view.result, ...(openResult ? {openResult} : {})};
+            // 新聊天已经打开：这一次到此了结，回到原聊天可以再建别的续接（没打开的留着，按钮用来打开它）。
+            if (openResult?.opened) { view.result = null; view.receipt = null; }
+            return done;
         } catch (error) { view.error = error.message; throw error; }
         finally { view.busy = false; emit(); }
     };

@@ -69,3 +69,14 @@ test('filling in from the original text goes floor by floor in batches, leaves t
     assert.match(fillPrompt(settings, [], { chronicle }), /\{"events":\[\]\}。/);
     assert.equal(chronicleAsk({ ...settings, chronicle: false }, names, {}), null);
 });
+
+test('clearing wipes the diary, thoughts, chronicle and the things still being noticed, and keeps the progress marks', () => {
+    const doc = base(); doc.heart.eventFloor = 7; doc.heart.thoughtFloor = 4;
+    applyHeartOperation(doc, { type: 'heartClear', at: 9 }, 'c');
+    assert.equal(doc.observations, undefined);
+    assert.deepEqual(doc.heart, { impressions: [], thoughts: [], events: [], eventFloor: 7, thoughtFloor: 4 });
+    const data = heartData({ document: doc, snapshot: { name: '阿澈', userName: '小满', messages: [] } });
+    assert.deepEqual([data.impressions.length, data.loose.length, data.thoughts.length, data.events.length], [0, 0, 0, 0]);
+    applyHeartOperation(doc, { type: 'heartClear', at: 10 }, 'c2'); // 已经是空的：再清一次不报错
+    assert.deepEqual(doc.heart.events, []);
+});

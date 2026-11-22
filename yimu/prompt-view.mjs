@@ -1,7 +1,7 @@
 import {DEFAULT_PROMPTS,BUILTIN_PROMPT_PRESET,PROMPT_KINDS,resolvePromptConfig,validatePromptConfig,importPromptPreset,exportPromptPreset,mergeImportedPromptConfig,selectPromptPreset} from './prompt-settings.mjs';
 import {createYimuIcon} from './icons.mjs';
 
-const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',heart:'心迹日记',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',heart:'心迹脉络',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 /** Committed configuration and per-entry text drafts are deliberately separate. */
 export function mountPromptView(container,{document=container?.ownerDocument||globalThis.document,onSave=async()=>{},onError=()=>{},onExport,showTitle=true,autosaveMs=1200}={}){
     const autosaveTimers=new Set();

@@ -673,6 +673,10 @@
 .ym-heart-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
 .ym-setting-divide { border-top: 1px solid var(--ym-border); padding-top: 12px; margin-top: 2px; }
 .ym-setting-note { margin: -6px 0 0; font-size: var(--ym-type-caption, 11px); }
+/* 从「记忆调阅」跳过来的那一条：渐隐渐显两次。 */
+.ym-memory.ym-located { animation: ym-located 1.6s ease-in-out; }
+@keyframes ym-located { 0%, 50%, 100% { opacity: 1; } 25%, 75% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .ym-memory.ym-located { animation: none; box-shadow: inset 0 0 0 1px var(--ym-accent); } }
 /* ==== 纸间 · 线装书页（与千幕同一套）====
    文武线版框、宣纸纤维、界行；朱砂只用在标题、选中与主操作（印）上。 */
 .ym-dialog[data-ym-theme="editorial"] { --ym-zhu: var(--ym-accent); --ym-on-zhu: var(--ym-on-accent); --ym-rule: color-mix(in srgb, var(--ym-ink) 18%, transparent);

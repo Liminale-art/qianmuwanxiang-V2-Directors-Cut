@@ -122,6 +122,11 @@ export function mountHeartView({ document = globalThis.document, storage = globa
                 .catch(error => { console.warn('[忆幕] 心迹条目没有删掉', error); return false; })
                 .then(done => { if (opened) feed({ changedOnly: done !== false }); });
         }
+        else if (type === 'clear') {
+            Promise.resolve().then(() => onAction('heartClear', {}))
+                .catch(error => { console.warn('[忆幕] 心迹页没有清空', error); return false; })
+                .then(done => { if (done === false) onNotice('没有清空，请再试一次', 'error'); if (opened) feed({ changedOnly: done !== false }); });
+        }
         else if (type === 'edit' || type === 'add') {
             const { kind, id } = event.data;
             if (!EDITABLE.has(kind) || type === 'edit' && (typeof id !== 'string' || !id)) return;

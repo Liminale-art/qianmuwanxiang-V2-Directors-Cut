@@ -1158,6 +1158,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             await change(binding, { id: id(), type: 'heartRemove', kind: payload.kind, itemId: payload.itemId, at: Date.now() });
             return true;
         }
+        if (type === 'heartClear') {
+            await change(binding, { id: id(), type: 'heartClear', at: Date.now() });
+            notice('已清空', 'success');
+            return true;
+        }
         if (type === 'heartEdit') {
             const { kind, itemId, text, title, about, date, floor } = payload;
             await change(binding, { id: id(), type: 'heartEdit', kind, itemId, text, at: Date.now(), ...(title !== undefined ? { title } : {}), ...(about !== undefined ? { about } : {}),

@@ -8,32 +8,39 @@ document.getElementById('ym-theme').addEventListener('click', () => tell('theme'
 document.getElementById('ym-export').addEventListener('click', () => tell('export'));
 addEventListener('keydown', event => { if (event.key === 'Escape') { if (YM.open) { YM.open = false; drawDate(); } else tell('exit'); } });
 
-// 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」。点一下变「再点删除」，几秒内再点才删。
-// 「待凝定的印象」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现，点一下直接删、不留底。
+// 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」，点一下直接删。
+// 「待凝定的印象」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现。
 // 在捕获阶段接住点击，条目自己的展开不会跟着触发。
 const rmq = (kind, id) => id ? `<button type="button" class="ym-rm ym-rmq" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
 const rm = (kind, id) => id ? `<button type="button" class="ym-rm" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
-let rmArmed = null, rmTimer = 0;
-const rmDisarm = () => { clearTimeout(rmTimer); if (rmArmed) { rmArmed.removeAttribute('data-armed'); rmArmed.textContent = '×'; rmArmed.setAttribute('aria-label', '删除'); } rmArmed = null; };
+// 一键清空：顶栏「返回」后面的小字钮，把存照、心迹、年表连同待凝定的印象一起清掉。量大，所以点一下变「再点清空」，几秒内再点才清。
+const clearButton = (() => {
+    const exit = document.getElementById('ym-exit');
+    if (!exit || typeof exit.before !== 'function' || typeof document.createElement !== 'function') return null;
+    const left = document.createElement('span'), button = document.createElement('button');
+    left.className = 'ymbar-l'; button.type = 'button'; button.id = 'ym-clear'; button.textContent = '清空'; button.setAttribute('aria-label', '清空存照、心迹与年表');
+    exit.before(left); left.append(exit, button);
+    return button;
+})();
+let clearTimer = 0;
+const clearDisarm = () => { clearTimeout(clearTimer); if (clearButton?.hasAttribute('data-armed')) { clearButton.removeAttribute('data-armed'); clearButton.textContent = '清空'; } };
+const clearSync = () => { if (!clearButton) return; const raw = YM.raw; clearButton.disabled = !(raw.impressions.length || raw.loose.length || raw.thoughts.length || raw.events.length); if (clearButton.disabled) clearDisarm(); };
+clearButton?.addEventListener('click', event => {
+    event.stopPropagation();
+    if (!clearButton.hasAttribute('data-armed')) { clearButton.setAttribute('data-armed', 'true'); clearButton.textContent = '再点清空'; clearTimer = setTimeout(clearDisarm, 4000); return; }
+    clearDisarm(); clearButton.disabled = true;
+    parent.postMessage({ yimuHeart: 'clear' }, '*');
+});
 document.addEventListener('click', event => {
     const button = event.target.closest?.('.ym-rm');
     // 触屏没有悬停：点一下「待凝定的印象」那一条，它的小叉才出来；再点别处收回。
     const loose = event.target.closest?.('.ym-loose');
     for (const node of document.querySelectorAll?.('.ym-loose[data-pick]') || []) if (node !== loose) node.removeAttribute('data-pick');
     if (loose && !button) loose.toggleAttribute('data-pick');
-    if (!button) { rmDisarm(); return; }
+    if (event.target !== clearButton) clearDisarm();
+    if (!button) return;
     event.preventDefault(); event.stopPropagation();
-    if (button.classList?.contains('ym-rmq')) {
-        rmDisarm(); button.disabled = true;
-        parent.postMessage({ yimuHeart: 'remove', kind: button.dataset.rmKind, id: button.dataset.rmId }, '*');
-        return;
-    }
-    if (rmArmed !== button) {
-        rmDisarm(); rmArmed = button; button.setAttribute('data-armed', 'true'); button.textContent = '再点删除'; button.setAttribute('aria-label', '再点删除');
-        rmTimer = setTimeout(rmDisarm, 4000);
-        return;
-    }
-    rmDisarm(); button.disabled = true;
+    button.disabled = true;
     parent.postMessage({ yimuHeart: 'remove', kind: button.dataset.rmKind, id: button.dataset.rmId }, '*');
 }, true);
 
@@ -88,7 +95,48 @@ function drawFloors() {
     const line = document.createElement('span'); line.append('本卷同叙 ', count(floors.chat), ' 节・共织故事 ', count(total), ' 章');
     node.replaceChildren(line);
 }
-function repaint() { drawDate(); drawFloors(); drawTools(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); decorate(); }
+function repaint() { drawDate(); drawFloors(); drawTools(); clearSync(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); decorate(); roam(); }
+
+// —— 「待凝定的印象」换位置 ——
+// 每一条淡出到看不见的那一刻换到另一处（尽量不压着别的条），再淡入。只在会飘的两套主题里（.drift／.loose）；
+// 「减少动态效果」下不动，仍是一条一行往下排。
+const ROAM_DRIFT = 26, ROAM_GAP = 12;
+function roamPlace(box, node) {
+    const top = Number(box.dataset.roamTop) || 0, width = node.offsetWidth, height = node.offsetHeight;
+    const spanX = Math.max(0, box.clientWidth - width - ROAM_DRIFT), spanY = Math.max(0, box.clientHeight - top - height - ROAM_GAP);
+    const others = [...box.querySelectorAll('.ym-loose')].filter(other => other !== node && other.dataset.roamX)
+        .map(other => ({ x: Number(other.dataset.roamX), y: Number(other.dataset.roamY), w: other.offsetWidth, h: other.offsetHeight }));
+    let best = null;
+    for (let turn = 0; turn < 28; turn++) {
+        const x = Math.random() * spanX, y = top + Math.random() * spanY;
+        const hit = others.reduce((sum, other) => sum + Math.max(0, Math.min(x + width, other.x + other.w) + ROAM_DRIFT - Math.max(x, other.x))
+            * Math.max(0, Math.min(y + height, other.y + other.h) + ROAM_GAP - Math.max(y, other.y)), 0);
+        if (!best || hit < best.hit) best = { x, y, hit };
+        if (!hit) break;
+    }
+    node.dataset.roamX = String(Math.round(best.x)); node.dataset.roamY = String(Math.round(best.y));
+    node.style.left = `${node.dataset.roamX}px`; node.style.top = `${node.dataset.roamY}px`;
+}
+function roam() {
+    if (typeof document.querySelectorAll !== 'function' || typeof matchMedia !== 'function' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const box of document.querySelectorAll('.drift, .loose')) {
+        const items = [...box.querySelectorAll('.ym-loose')]; if (!items.length || !box.clientWidth) continue;
+        // 先按一条一行量出各条的高，再留出一倍多的空，好有地方换。
+        box.removeAttribute('data-roam'); box.style.height = '';
+        for (const node of items) { node.style.left = node.style.top = ''; delete node.dataset.roamX; delete node.dataset.roamY; }
+        const head = box.querySelector('h4'), top = head ? head.offsetTop + head.offsetHeight + 14 : 14;
+        const need = items.reduce((sum, node) => sum + node.offsetHeight + ROAM_GAP, 0);
+        box.dataset.roamTop = String(top); box.dataset.roam = '1';
+        box.style.height = `${Math.round(top + Math.max(150, need * 1.6) + ROAM_GAP)}px`;
+        for (const node of items) roamPlace(box, node);
+    }
+}
+document.addEventListener('animationiteration', event => {
+    const node = event.target, box = node?.parentElement;
+    if (node?.classList?.contains('ym-loose') && box?.dataset?.roam) roamPlace(box, node);
+}, true);
+let roamTimer = 0;
+addEventListener('resize', () => { clearTimeout(roamTimer); roamTimer = setTimeout(roam, 200); });
 
 // —— 修改、补记、补全 ——
 // 修改：每条日记、心迹、年表的小「×」旁边再放一支小笔，不用主题各自去摆。

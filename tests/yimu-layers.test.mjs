@@ -68,6 +68,7 @@ test('related specific detail recalls saved fine summaries rather than injecting
     document.entryOrder = document.entryOrder.filter(id => !['fine2', 'fine3'].includes(id));
     const snapshot = { messages: structuredClone(messages), maxContext: 8192 };
     snapshot.messages[15].mes = '还记得当年的红围巾吗？';
+    document.settings.recall = true; // 默认关：开着时才换成细切片
     let plan = await buildPlan(document, createDefaults(), snapshot);
     assert.ok(plan.memoryIds.includes('fine0'));
     assert.ok(!plan.entries.some(e => e.kind === 'stage'));

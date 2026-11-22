@@ -327,11 +327,12 @@ test('on-demand recall reads existing fine detail while disabling recall keeps t
     saved = await f.read();
     for (let index = 6; index < 10; index++) f.snapshot.messages[index].mes = '窗外阳光明亮。';
     f.snapshot.messages[10].mes = '那条蓝色手链究竟去了哪里？';
-    let plan = await buildPlan(saved.document, saved.defaults, f.snapshot);
+    // 原文回查默认关：开着时才把阶段换成它下面更对题的细切片。
+    const withRecall = clone(saved.defaults); withRecall.values.recall = true;
+    let plan = await buildPlan(saved.document, withRecall, f.snapshot);
     assert.ok(plan.entries.some(entry => entry.id === fine.id));
     assert.ok(plan.entries.every(entry => entry.kind !== 'stage'));
-    const noRecall = clone(saved.defaults); noRecall.values.recall = false;
-    plan = await buildPlan(saved.document, noRecall, f.snapshot);
+    plan = await buildPlan(saved.document, saved.defaults, f.snapshot);
     assert.deepEqual(plan.entries.map(entry => entry.kind), ['stage']);
     assert.equal(f.generated.length, 1, 'recall uses saved entries and does not generate new facts');
 });

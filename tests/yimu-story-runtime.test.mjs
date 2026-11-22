@@ -254,3 +254,18 @@ test('a generation or source edit during boundary work discards the model result
     await assert.rejects(f.action('storyCreate', { manualChoices: [] }), /生成状态已变化/);
     assert.equal(f.calls.create.length, 0); assert.equal(f.state.story.pending, undefined);
 });
+
+test('once the new chat has been opened the source chat is free to build another continuation', async () => {
+    const f = await fixture(); f.host.openStory = async () => ({opened: true});
+    const first = await f.action('storyContinue', {cutoff: 8});
+    assert.equal(first.receipt.status, 'complete'); assert.equal(first.openResult.opened, true);
+    assert.equal(f.state.story.result, null); assert.equal(f.state.story.receipt, null); assert.equal(f.state.story.pending, false);
+    await f.action('storyContinue', {cutoff: 6});
+    assert.equal(f.calls.create.length, 2, 'a second continuation is created, not blocked by the first');
+    assert.notEqual(f.calls.create[0].operation.id, f.calls.create[1].operation.id);
+    // 没能打开的那一次留着，按钮用来打开它；打开之后同样了结。
+    const g = await fixture(); await g.action('storyContinue', {cutoff: 8});
+    assert.equal(g.state.story.receipt.status, 'complete');
+    g.host.openStory = async () => ({opened: true}); await g.action('storyOpen');
+    assert.equal(g.state.story.result, null); assert.equal(g.state.story.receipt, null);
+});
