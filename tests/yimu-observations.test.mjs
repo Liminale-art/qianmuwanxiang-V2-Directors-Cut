@@ -27,8 +27,9 @@ test('traces are read leniently: malformed ones are dropped one by one, never fa
         { about: '小满', text: '我注意到她又点了辣的。', floor: 2 }, { about: '小满', text: '我注意到她又点了辣的。', floor: 3 },
         { about: '', text: '没有写是谁', floor: 2 }, { about: '店主', text: '越界的楼层', floor: 9 }, { about: '店主', text: '他记得她的口味。', floor: 4 },
         { about: '小满', text: '第四条有效的，但一次最多三条。', floor: 1 }, '不是对象'] });
+    // n：这条在返回的 traces 里的序号（从 1 数起，丢掉的也占位），同一次返回里的印象按它指认痕迹。
     assert.deepEqual(parseObservations(reply, { start: 1, end: 4 }), [
-        { about: '小满', text: '我注意到她又点了辣的。', floor: 2 }, { about: '店主', text: '他记得她的口味。', floor: 4 }, { about: '小满', text: '第四条有效的，但一次最多三条。', floor: 1 }]);
+        { about: '小满', text: '我注意到她又点了辣的。', floor: 2, n: 1 }, { about: '店主', text: '他记得她的口味。', floor: 4, n: 5 }, { about: '小满', text: '第四条有效的，但一次最多三条。', floor: 1, n: 6 }]);
     for (const bad of ['不是 JSON', '{"slices":[]}', '{"traces":"x"}', '', undefined]) assert.deepEqual(parseObservations(bad), []);
     assert.equal(parseObservations('```json\n' + reply + '\n```', { start: 1, end: 4 }).length, 3);
 });

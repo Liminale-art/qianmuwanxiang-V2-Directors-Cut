@@ -14,7 +14,7 @@ const gate = () => { let resolve; const promise = new Promise(done => { resolve 
 const turn = () => new Promise(resolve => setImmediate(resolve));
 const entry = (id, text = `正文 ${id}`) => ({id, text, charName: '角色甲', userName: '读者乙', createdAt: stamp, updatedAt: stamp, source: {chatId: 'chat-one', messageId: `message-${id}`}});
 
-function fixture(t, initial = []) {
+function fixture(t, initial = [], options = {}) {
     let live = true, revision = 1, readHook, writeHook, reads = 0, writes = 0, subscriptions = 0, id = 0;
     let remote = initial === null ? {exists: false, fingerprint: null, value: null}
         : {exists: true, fingerprint: key(revision), value: {version: 1, items: structuredClone(initial)}};
@@ -39,7 +39,7 @@ function fixture(t, initial = []) {
         return () => { if (removed) return; removed = true; subscriptions--; unsubscribe(); };
     }};
     const dom = textCollectionDom(), copied = [];
-    const view = createTextCollectionPanel({parent: dom.parent, collection: presented, isCurrent: () => live, copyText: async text => { copied.push(text); }});
+    const view = createTextCollectionPanel({parent: dom.parent, collection: presented, isCurrent: () => live, copyText: async text => { copied.push(text); }, ...options});
     t.after(() => { view.dispose(); session.dispose(); });
     return {dom, view, collection, session, copied,
         get reads() { return reads; }, get writes() { return writes; }, get subscriptions() { return subscriptions; },
@@ -220,7 +220,7 @@ test('local control icons carry their intended glyph instead of an unresolved fa
     const expected = {
         '关闭收藏': 'x', '刷新收藏': 'arrows-clockwise', '多选收藏': 'list-checks', '删除选中收藏': 'trash',
         '返回收藏列表': 'arrow-left', '管理文件夹': 'folder-plus', '整理收藏': 'tag',
-        '复制收藏正文': 'copy', '编辑收藏': 'pencil-simple', '取消编辑': 'arrow-left', '保存收藏': 'star',
+        '复制收藏正文': 'copy', '编辑收藏': 'pencil-simple', '取消编辑': 'arrow-left', '保存收藏': 'check',
     };
     for (const [label, glyph] of Object.entries(expected)) {
         const icon = f.dom.get(label).children.find(node => node.tagName === 'SVG');
@@ -531,4 +531,58 @@ test('header returns are left of title, copy is reading-only and short reading s
     assert.match(css, /font-family: var\(--qm-body-font, var\(--qm-prose-font, var\(--sd-font, inherit\)\)\); font-size: var\(--sd-prose-font-size, var\(--qm-prose-size, 1em\)\); letter-spacing: var\(--qm-prose-letter-spacing, normal\); line-height: 1\.55; text-align: justify/);
     assert.match(css, /margin: 0 0 \.75em;[^}]*text-indent: 2em/);
     assert.doesNotMatch(css, /textarea\)[^}]*font-size: 16px/);
+});
+
+test('a full-text capture lays the text out for editing without taking focus; tapping the text is what starts editing', async t => {
+    const f = fixture(t, null), before = f.dom.doc.activeElement;
+    assert.equal(await f.view.collect({text: '整段正文', charName: '角色甲', userName: '读者乙', source: null}), true);
+    assert.equal(f.dom.visible(editor(f)), true); assert.equal(displayed(f), '整段正文');
+    assert.notEqual(f.dom.doc.activeElement, editor(f), 'no focus: a phone keyboard does not pop up on its own');
+    assert.equal(f.dom.doc.activeElement, before);
+    assert.equal(editor(f).getAttribute('contenteditable') !== 'false', true, 'still editable the moment it is tapped');
+    click(f, '保存收藏'); await waitReady(f);
+    click(f, '编辑收藏'); assert.equal(f.dom.doc.activeElement, editor(f), 'choosing to edit a saved entry still focuses the editor');
+});
+
+test('entries from the open chat show a floor tag that jumps there; other chats, missing floors and multi-select show none', async t => {
+    const floors = new Map([['message-one', 12], ['message-two', 0]]), jumps = [];
+    let lookups = 0, chatOpen = true;
+    const f = fixture(t, [entry('one'), entry('two'), entry('three')], {
+        locateFloor: () => { lookups++; return source => chatOpen && source?.chatId === 'chat-one' ? floors.get(source.messageId) ?? null : null; },
+        onJumpFloor: floor => { jumps.push(floor); return true; },
+    });
+    await f.view.open();
+    const tags = () => Object.fromEntries(f.dom.all().filter(node => node.classList.contains('qm-collection-floor') && f.dom.visible(node))
+        .map(node => [node.parentNode.querySelector('.qm-collection-entry')?.dataset.itemId ?? 'read', node.textContent]));
+    assert.deepEqual(tags(), {one: '#12', two: '#0'}, 'floor 0 is a real floor; an entry without a live floor has no tag');
+    assert.equal(f.dom.get('跳到第 12 层').tagName, 'BUTTON');
+    assert.ok(lookups >= 1 && lookups < 3 * 10, 'a lookup table per paint, not one per entry and paint');
+    click(f, '多选收藏'); assert.deepEqual(tags(), {}, 'no jump targets while selecting');
+    f.view.close(); await f.view.open(); assert.deepEqual(tags(), {one: '#12', two: '#0'});
+    floors.delete('message-one');
+    f.view.close(); await f.view.open();
+    assert.deepEqual(tags(), {two: '#0'}, 'a deleted floor drops its tag on the next paint');
+    floors.set('message-one', 12);
+    f.view.close(); await f.view.open();
+    click(f, '阅读收藏：one'); assert.deepEqual(tags(), {read: '#12'}, 'the reading page carries the same tag');
+    floors.set('message-one', 15);
+    f.dom.all().find(node => node.getAttribute('aria-label') === '跳到第 12 层' && f.dom.visible(node)).click();
+    await turn(); assert.deepEqual(jumps, [15], 'the floor is looked up again at the tap, never taken from a stale paint');
+    assert.equal(f.dom.all().some(node => node.classList.contains('qm-collection-panel')), false, 'the panel steps aside for the chat');
+    chatOpen = false; await f.view.open();
+    assert.deepEqual(tags(), {}, 'another chat: no tags');
+    chatOpen = true; floors.clear(); await f.view.open();
+    assert.deepEqual(tags(), {});
+});
+
+test('without a floor locator, or when it fails, the list renders exactly as before', async t => {
+    const warn = console.warn; const warnings = []; console.warn = (...args) => warnings.push(args); t.after(() => { console.warn = warn; });
+    const f = fixture(t, [entry('one')], {locateFloor: () => { throw Error('host gone'); }, onJumpFloor: () => true});
+    await f.view.open(); f.view.close(); await f.view.open();
+    assert.ok(f.dom.get('阅读收藏：one'));
+    assert.equal(f.dom.all().some(node => node.classList.contains('qm-collection-floor') && f.dom.visible(node)), false);
+    assert.equal(warnings.length, 1, 'reported once, not on every paint');
+    const plain = fixture(t, [entry('one')], {locateFloor: () => () => 3});
+    await plain.view.open();
+    assert.equal(plain.dom.all().some(node => node.classList.contains('qm-collection-floor') && plain.dom.visible(node)), false, 'no jump action: no tag');
 });

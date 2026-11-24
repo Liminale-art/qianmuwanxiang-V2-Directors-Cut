@@ -29,6 +29,11 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     let characterIndex = null, characterIndexRevision = 0;
     const pickerStates = new WeakMap();
     let hasRead = false;
+    // 找回结果与出错提示只在这次打开面板期间显示：控制器跨面板保留着上一次的结果，重新打开时不再把它摆出来。
+    // 这次打开后自己做过操作，或打开时正好有一次读取／找回在进行中，之后的结果照常显示。
+    const opening = controller.snapshot?.() || {};
+    const staleResult = opening.busy ? null : JSON.stringify(opening.result || null), staleError = opening.busy ? null : opening.error || '';
+    let acted = false;
     const element = (tag, className, text) => {
         const node = document.createElement(tag);
         if (className) node.className = className;
@@ -39,7 +44,8 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         const node = element('button', '', label); node.type = 'button';
         node.addEventListener('click', action); return node;
     };
-    const run = async action => {
+    const run = async (action, { mine = true } = {}) => {
+        if (mine) acted = true;
         try { await action(); }
         catch (error) { if (!disposed) notify(error?.message || '操作未完成，请核对后重试。', 'warning'); }
     };
@@ -355,13 +361,14 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
         load.classList.toggle('is-loading', !!snapshot.busy);
         load.disabled = !!snapshot.busy || !selection; input.disabled = !!snapshot.busy; character.disabled = !!snapshot.busy; characterIcon.disabled = !!snapshot.busy;
         moreCharacters.disabled = !!snapshot.busy;
-        const result = snapshot.result;
-        status.hidden = !(snapshot.busy || snapshot.error || result);
+        const result = acted || staleResult === null || JSON.stringify(snapshot.result || null) !== staleResult ? snapshot.result : null;
+        const error = acted || staleError === null || (snapshot.error || '') !== staleError ? snapshot.error : '';
+        status.hidden = !(snapshot.busy || error || result);
         status.classList.toggle('is-loading', !!snapshot.busy);
         status.replaceChildren();
         if (snapshot.busy) {
             status.append(element('span', 'qm-recovery-loading-dot'), element('span', '', '正在读取，请稍候…'));
-        } else if (snapshot.error) status.append(element('span', '', snapshot.error));
+        } else if (error) status.append(element('span', '', error));
         else if (result?.status === 'verified') status.textContent = `已将此聊天备份找回至${result.target?.name || '所选角色'}`;
         else if (result) status.append(element('span', '', result.status === 'conflict' ? '找到的文件与预期内容不一致，未覆盖或自动重试。' : '找回未完成，未创建副本。'));
         input.disabled = !!snapshot.busy;
@@ -483,7 +490,7 @@ export function mountChatRecoveryView({ root, controller, getCharacters, confirm
     // the local shell is painted so the panel is immediately visible, while
     // keeping older server plugins (without this route) non-blocking.
     if (typeof controller.inspectNativeBackupPolicy === 'function' && controller.snapshot()?.nativeBackupPolicy?.availability === 'unknown') {
-        void run(() => controller.inspectNativeBackupPolicy());
+        void run(() => controller.inspectNativeBackupPolicy(), { mine: false });
     }
     return Object.freeze({ render, dispose() { disposed = true; clearTimeout(searchTimer); clearTimeout(targetSearchTimer); root.replaceChildren();
         document.removeEventListener?.('click', closePickerOnClickOutside, { capture: true });

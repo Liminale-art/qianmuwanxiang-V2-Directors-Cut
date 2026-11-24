@@ -459,7 +459,8 @@ test('disabling after interception expires the prepared final payload without re
 test('fine summaries become a durable stage and the next actual request substitutes it only for covered old floors', async t => {
     const f = await fixture(t);
     f.model(async () => JSON.stringify({slices: [
-        {start: 1, end: 2, text: '前两层保留的重要相遇。' + '甲'.repeat(1200)},
+        // 细切片的用词不与最近几层正文相交：正文没问到阶段里的细节，所以用阶段（细节顶替自 2026-11-24 起始终生效，不再有开关可关）。
+        {start: 1, end: 2, text: '前两层里的初次相遇。' + '甲'.repeat(1200)},
         {start: 3, end: 4, text: '后两层形成了尚未履行的约定。' + '乙'.repeat(1200)},
     ]}));
     await f.enable(); await f.flush();
@@ -469,7 +470,6 @@ test('fine summaries become a durable stage and the next actual request substitu
     assert.equal(saved.entries.filter(entry => entry.kind === 'summary').length, 2);
     const stage = saved.entries.find(entry => entry.kind === 'stage');
     assert.ok(stage);
-    await f.controller.action('settings', {global: true, values: {recall: false}});
     const result = await f.inject();
     assert.ok(result.prompt.includes(stage.text));
     assert.ok(!result.prompt.includes(saved.entries[0].text));
@@ -1280,7 +1280,8 @@ test('when automatic summary does not run because the threshold is not reached, 
     assert.deepEqual(f.journal.list(), []);
 });
 
-test('tag rules and summary settings edited inside a chat become the account defaults and stop living in that chat; other settings stay with the chat', async t => {
+test('every setting edited inside a chat becomes the account default and nothing stays in that chat; a failed global save is reported, not kept as a chat setting', async t => {
+    // 用户 2026-11-24：忆幕的设置都是账户全局的，不分聊天。
     const f = await fixture(t);
     await f.controller.refresh();
     const rules = {stripComments: true, blockedTags: ['status'], includedTags: ['content']};
@@ -1288,24 +1289,27 @@ test('tag rules and summary settings edited inside a chat become the account def
     let read = await f.api.read(binding);
     assert.equal(read.defaults.values.sliceChars, 1234); assert.equal(read.defaults.values.stageThreshold, 4321);
     assert.deepEqual(read.defaults.values.contextRules, rules);
-    assert.deepEqual(read.document.settings, {maxSlices: 7}, 'only the per-chat setting is left in the chat');
-    assert.equal(read.defaults.values.maxSlices, 12, 'a per-chat setting does not leak into the defaults');
+    assert.equal(read.defaults.values.maxSlices, 7, 'formerly per-chat settings are account defaults too');
+    assert.deepEqual(read.document.settings, {}, 'nothing is left in the chat');
     assert.equal(f.controller.state.defaults.values.sliceChars, 1234);
     assert.equal(f.controller.state.document.settings.sliceChars, undefined);
+    assert.equal(effectiveSettings(read.document, read.defaults).maxSlices, 7);
     // 「恢复默认」传到全局：那一项回到内置默认，其它全局项不动。
     assert.equal(await f.controller.action('settings', {values: {sliceChars: null}}), true);
     read = await f.api.read(binding);
     assert.equal(read.defaults.values.sliceChars, 2000); assert.equal(read.defaults.values.stageThreshold, 4321);
-    // 全局存不成时，改动照旧留在这个聊天里，不丢。
+    // 全局存不成时如实报错：聊天里的值不生效，不能当作改好了。
     const defaults = f.api.defaults; f.api.defaults = async operation => { if (operation) throw new Error('offline'); return defaults(); };
-    assert.equal(await f.controller.action('settings', {values: {stageChars: 2222}}), true);
+    await f.controller.action('settings', {values: {stageChars: 2222}});
+    assert.equal(f.controller.state.error, '设置没有存成，请重试'); assert.equal(f.controller.state.errorPage, 'settings');
     f.api.defaults = defaults; read = await f.api.read(binding);
-    assert.equal(read.document.settings.stageChars, 2222); assert.equal(read.defaults.values.stageChars, 3000);
-    // 下一次保存时，这个聊天里攒下的旧值一并升为全局并清掉。
+    assert.equal(read.defaults.values.stageChars, 3000);
+    assert.equal(effectiveSettings(read.document, read.defaults).stageChars, 3000, 'the chat-only value does not take effect');
+    // 下一次保存：只把这次改动的存到全局，聊天里残留的旧值全部清掉（不会被悄悄升为全局）。
     assert.equal(await f.controller.action('settings', {values: {stageRecent: 5}}), true);
     read = await f.api.read(binding);
-    assert.equal(read.defaults.values.stageChars, 2222); assert.equal(read.defaults.values.stageRecent, 5);
-    assert.deepEqual(read.document.settings, {maxSlices: 7});
+    assert.equal(read.defaults.values.stageRecent, 5); assert.equal(read.defaults.values.stageChars, 3000);
+    assert.deepEqual(read.document.settings, {});
 });
 
 // ---- 0.8.69：旧楼超出 80 层先问；隐藏按整条切片、保留层永远可见 ----

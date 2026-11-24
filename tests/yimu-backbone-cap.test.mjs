@@ -41,16 +41,16 @@ test('hundreds of floors later an ordinary message still carries the stage backb
 
 test('with a slice cap the backbone takes at most half the slots and is ordered ahead of fine slices', async () => {
     const f = await fixture({ stages: 4 });
-    const settings = applyOperation(f.document, { id: 'cap', type: 'settings', expectedRevision: f.document.configRevision, values: { maxSlices: 4 } }).document;
-    const plan = await buildPlan(settings, createDefaults(), { messages: f.messages, maxContext: 65536 });
+    // 条数上限是账户全局设置（2026-11-24 起设置不分聊天）。
+    const cap = maxSlices => { const defaults = createDefaults(); defaults.values = { ...defaults.values, maxSlices }; return defaults; };
+    const plan = await buildPlan(f.document, cap(4), { messages: f.messages, maxContext: 65536 });
     const stages = plan.entries.filter(entry => entry.kind === 'stage');
     assert.equal(stages.length, 2, '上限 4 → 主干最多 2 条');
     assert.deepEqual(stages.map(entry => entry.id), ['stage3', 'stage2'], '相关度相同时取更近的阶段');
     const firstFine = plan.entries.findIndex(entry => entry.kind === 'summary');
     if (firstFine >= 0) assert.ok(plan.entries.findIndex(entry => entry.kind === 'stage') < firstFine, '主干排在细切片之前，不会被条数上限挤掉');
     // 0 为不限条数：主干全带。
-    const unlimited = applyOperation(f.document, { id: 'nocap', type: 'settings', expectedRevision: f.document.configRevision, values: { maxSlices: 0 } }).document;
-    const all = await buildPlan(unlimited, createDefaults(), { messages: f.messages, maxContext: 65536 });
+    const all = await buildPlan(f.document, cap(0), { messages: f.messages, maxContext: 65536 });
     assert.equal(all.entries.filter(entry => entry.kind === 'stage').length, 4);
 });
 

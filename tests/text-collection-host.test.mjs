@@ -11,6 +11,7 @@ const turn = () => new Promise(resolve => setImmediate(resolve));
 function fixture(t) {
     const dom = textCollectionDom(), root = dom.parent, window = new EventTarget();
     let live = true, reads = 0, writes = 0, stores = 0, view, context;
+    const jumps = [];
     let remote = {exists: false, fingerprint: null, value: null};
     const css = {fontFamily: 'serif', fontSize: '18px', lineHeight: '30px', getPropertyValue: () => ''};
     dom.doc.defaultView.getComputedStyle = () => css;
@@ -29,6 +30,7 @@ function fixture(t) {
     renderFloor();
     const host = createTextCollectionHost({getContext: () => context, names: () => ({charName: '角色', userName: '用户'}),
         document: dom.doc, window, isCurrent: () => live, resolveNamespace: async () => 'st-user:test', headers: () => ({}),
+        jumpToFloor: floor => { jumps.push(floor); return true; },
         async storeFactory() {
             stores++; return {
                 async read(_slot, {guard}) { reads++; guard(); return structuredClone(remote); },
@@ -39,12 +41,12 @@ function fixture(t) {
                 }, close() {},
             };
         },
-        async viewFactory({collection, isCurrent, typography}) {
+        async viewFactory({collection, isCurrent, typography, locateFloor, jumpToFloor}) {
             const parent = dom.doc.createElement('section'); dom.doc.body.append(parent);
             parent.style.setProperty = (key, value) => { parent.style[key] = value; };
             parent.style.removeProperty = key => { delete parent.style[key]; };
             typography(parent);
-            const panel = createTextCollectionPanel({parent, collection, isCurrent});
+            const panel = createTextCollectionPanel({parent, collection, isCurrent, locateFloor, onJumpFloor: jumpToFloor});
             const capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, scope) => panel.collect(input, scope)});
             view = {parent, collection, panel, capture, dispose() { capture.dispose(); panel.dispose(); parent.remove(); }};
             return view;
@@ -56,7 +58,7 @@ function fixture(t) {
     const action = label => { const node = dom.get(label); assert.ok(node, label); node.click(); };
     return {host, dom, root, window, star, click, action, renderFloor,
         get context() { return context; }, set context(value) { context = value; },
-        get view() { return view; }, get reads() { return reads; }, get writes() { return writes; }, get stores() { return stores; },
+        get view() { return view; }, jumps, get reads() { return reads; }, get writes() { return writes; }, get stores() { return stores; },
         inactive() { live = false; },
     };
 }
@@ -171,4 +173,32 @@ test('host wiring is before storyboard gating and user-render callback performs 
     assert.match(entry, /const collectionRenderedHandler = \(\) => proseFloorTools\.refreshCollection\(document\.getElementById\('chat'\)\);/);
     assert.match(entry, /types\.USER_MESSAGE_RENDERED[^\n]+collectionRenderedHandler/);
     assert.match(entry, /mountPortal\(root,\{inheritTheme:true\}\)/);
+});
+
+test('a saved passage shows its floor only while its own chat is open and the floor still exists; the tag jumps there', async t => {
+    const f = fixture(t); f.host.refresh(f.root); f.click();
+    await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
+    await f.dom.wait(() => f.dom.visible(f.dom.byClass('qm-collection-editor')));
+    assert.notEqual(f.dom.doc.activeElement, f.dom.byClass('qm-collection-editor'), 'full text opens without grabbing focus');
+    f.action('保存收藏');
+    await f.dom.wait(() => f.star().getAttribute('aria-pressed') === 'true');
+    const visibleTags = () => f.dom.all().filter(node => node.classList.contains('qm-collection-floor') && f.dom.visible(node)).map(node => node.textContent);
+    assert.deepEqual(visibleTags(), ['#0'], 'the reading page right after saving');
+    f.action('返回收藏列表'); assert.deepEqual(visibleTags(), ['#0']);
+    // An earlier floor inserted before it: the same passage is now floor 1.
+    const original = f.context.chat[0];
+    f.context = {...f.context, chat: [{mes: '新的一层', is_user: true, send_date: '2026-09-27T00:00:00.000Z'}, original]};
+    f.action('关闭收藏'); await f.host.open(); assert.deepEqual(visibleTags(), ['#1']);
+    f.action('跳到第 1 层'); await turn(); assert.deepEqual(f.jumps, [1]);
+    // Same chat, floor deleted.
+    f.context = {...f.context, chat: [f.context.chat[0]]};
+    await f.host.open(); assert.deepEqual(visibleTags(), [], 'deleted floor: no tag');
+    // Another chat with an identical-looking floor.
+    f.context = {...f.context, chatId: 'different-chat', characters: [{avatar: 'actor.png', chat: 'different-chat'}],
+        chat: [{...original}], chatMetadata: {integrity: 'different'}};
+    f.action('关闭收藏'); await f.host.open(); assert.deepEqual(visibleTags(), [], 'another chat: no tag');
+    // Outside any chat.
+    f.context = {characters: [], chat: [], chatMetadata: {}};
+    f.action('关闭收藏'); await f.host.open(); assert.deepEqual(visibleTags(), [], 'no chat open: no tag');
+    assert.deepEqual(f.jumps, [1]);
 });

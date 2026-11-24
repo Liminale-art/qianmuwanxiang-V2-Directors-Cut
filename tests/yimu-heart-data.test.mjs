@@ -90,7 +90,8 @@ test('the heart prompt group is editable like the others; the note for the main 
     const settings = {prompts: clone(DEFAULT_PROMPTS)};
     assert.deepEqual(DEFAULT_PROMPTS.groups.heart.map(item => item.name), ['心间存照', '关系年表', '心迹']);
     const diary = composePrompt(settings, 'heart', {protocol: 'P', data: 'D'});
-    assert.ok(diary.includes('将零散的观察细节归拢为针对人物的私人印象') && diary.includes('锚定关系发展中的标志性时间节点'));
+    // 「心间存照」默认提示词是用户修订稿（2026-11-24）。
+    assert.ok(diary.includes('从日常言行的细碎观察里沉淀出藏于心间的阶段性忖度') && diary.includes('锚定关系发展中的标志性时间节点'));
     assert.ok(!diary.includes('仅写给自己的私密心绪记录'));
     assert.ok(heartNotePrompt(settings).startsWith('正文撰写完毕后另起段落'));
     const off = clone(DEFAULT_PROMPTS); off.groups.heart.find(item => item.id === 'heart-note').enabled = false;
@@ -108,7 +109,7 @@ test('a diary request offers unseen traces and unread slices; the reply is read 
     const work = diaryWork(doc, settings);
     assert.deepEqual([work.traces.length, work.slices.map(entry => entry.id)], [2, ['s1']]);
     const prompt = diaryPrompt(settings, names, work);
-    assert.ok(prompt.includes('以阿澈第一人称视角') && !prompt.includes('{{char}}'), '名字在发送前换成实际的');
+    assert.ok(prompt.includes('为阿澈专属的私人手记') && !prompt.includes('{{char}}'), '名字在发送前换成实际的');
     assert.ok(prompt.includes('"n":1') && prompt.includes('三月初四') && prompt.includes('不超过60字'));
     const parsed = parseDiary(JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2, 2, 9]}, {about: '', text: '没有对象的丢掉', traces: [1]}, {id: 'ghost', about: '小满', text: '编号是编的、又没有新痕迹', traces: []}],
         events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 2}, {title: '越界的', text: '楼层不在所给记忆里', floor: 30}]}), work);
@@ -235,6 +236,7 @@ test('whole chain: traces and chronicle entries ride on a summary → the diary 
     const f = await fixture(t);
     // 关系年表随批次：切片总结请求里多带「另外返回"events"字段」与「已有年表」，节点直接从这段正文里拾。
     f.model(async prompt => { assert.ok(prompt.includes('另外返回"events"字段') && prompt.includes('已有年表：[]'), '年表要求随切片总结一起发');
+        assert.ok(prompt.includes('另外返回"impressions"字段') && prompt.includes('已有印象：[]'), '心间存照随切片总结一起要；这次模型没给，行为与以前一样');
         return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}],
             traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
             events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}, {title: '批次之外', text: '楼层不在这一批里，不采用。', floor: 5}]}); });
@@ -248,10 +250,10 @@ test('whole chain: traces and chronicle entries ride on a summary → the diary 
     assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]], '年表节点随切片总结存入，楼层不在这一批里的丢掉');
     assert.equal(doc.heart.eventFloor, 2, '年表进度推到这一批末尾');
     assert.deepEqual(doc.heart.impressions, []); assert.ok(doc.observations.every(item => !item.used), '关了自动合订：总结之后不自动整理日记');
-    assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹')), '没有发过日记整理请求');
+    assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹：')), '没有发过日记整理请求');
     // 手动整理一次日记：这两条切片年表已经读过，不再为年表重读它们，只整理痕迹。
     const before = f.sent.length;
-    f.model(async prompt => { assert.ok(prompt.includes('新痕迹') && prompt.includes('以阿澈第一人称视角')); assert.ok(!prompt.includes('记忆：[') && !prompt.includes('已有年表'), '已读过的切片不再随日记整理发出');
+    f.model(async prompt => { assert.ok(prompt.includes('新痕迹：') && prompt.includes('为阿澈专属的私人手记')); assert.ok(!prompt.includes('记忆：[') && !prompt.includes('已有年表'), '已读过的切片不再随日记整理发出');
         return JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}], events: [{title: '不该出现', text: '这次没有请它拾年表。', floor: 1}]}); });
     await f.controller.action('heartDiary');
     assert.equal(f.sent.length, before + 1, '一次请求');
@@ -284,6 +286,42 @@ test('whole chain: traces and chronicle entries ride on a summary → the diary 
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);
     assert.deepEqual(page.thoughts, []);
+});
+
+// 心间存照并进切片总结那一次调用（用户 2026-11-24）：模型在总结里同时给出 impressions，不必另发日记整理请求。
+async function summarizeWithImpressions(f, reply, settings = null) {
+    f.model(async prompt => {
+        if (prompt.includes('新痕迹：')) throw new Error('不该另发日记整理请求');
+        return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}], ...reply});
+    });
+    await f.controller.refresh();
+    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}});
+    await f.controller.action('autoSummary', {value: true}); await f.flush();
+    if (settings) { await f.controller.action('settings', {values: settings}); await f.flush(); }
+    await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}, batchFloors: 10}); await f.flush();
+    return f.read();
+}
+
+test('whole chain: impressions returned with the slice summary become heart impressions in the same request and use up their traces', async t => {
+    const f = await fixture(t);
+    const doc = await summarizeWithImpressions(f, {traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
+        impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}]});
+    const summaries = f.sent.filter(prompt => prompt.includes('完整覆盖第'));
+    assert.equal(f.sent.length, 1, '只有切片总结这一次请求'); assert.equal(summaries.length, 1);
+    assert.ok(summaries[0].includes('另外返回"impressions"字段') && summaries[0].includes('已有印象：[]'));
+    assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹：')), '没有另外的日记请求');
+    assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text]), [['小满', '她好像离不开辣。']]);
+    assert.equal(doc.observations.length, 2); assert.ok(doc.observations.every(item => item.used === true), '归入印象的两条痕迹都已用掉');
+    assert.equal(f.controller.state.error, '');
+});
+
+test('whole chain: an impression refers to traces by their position in the returned list, even when an earlier trace is dropped as malformed', async t => {
+    const f = await fixture(t);
+    const doc = await summarizeWithImpressions(f, {traces: [{about: '', text: '格式不对：没有写是谁', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}, {about: '小满', text: '她又点了辣的。', floor: 1}],
+        impressions: [{about: '小满', text: '她会把辣椒挑给别人。', traces: [2]}]}, {diaryAuto: false}); // 留下的那条照旧等合订；这里关掉自动合订，只看序号
+    assert.deepEqual(doc.observations.map(item => [item.text, Boolean(item.used)]).sort(), [['她又点了辣的。', false], ['她把辣椒挑给了我。', true]],
+        '序号 2 仍指原来的第二条；没归进印象的那条留在待凝定里');
+    assert.deepEqual(doc.heart.impressions.map(item => item.text), ['她会把辣椒挑给别人。']);
 });
 
 test('whole chain: 带入本聊天 with 连同日记心迹 goes panel action → runtime → client → server and lands in the open chat; without it the heart stays behind', async t => {

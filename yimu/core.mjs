@@ -368,7 +368,7 @@ export function observationProtocol(names) {
     const char = String(names?.char || '').trim(), user = String(names?.user || '').trim() || '用户';
     return char ? OBSERVATION_PROTOCOL.replaceAll('{{char}}', char).replaceAll('{{user}}', user) : '';
 }
-export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [], names = null, chronicle = null } = {}) {
+export function summaryPrompt(messages, batch, settings, { recallCandidates = [], previousContext = [], names = null, chronicle = null, impressions = null } = {}) {
     const source = messages.slice(batch.start - 1, batch.end).map((message, i) => ({
         floor: batch.start + i, speaker: String(message.name || ''), role: message.is_user ? 'user' : 'character', text: filterContextText(message.mes || '', settings.contextRules),
     }));
@@ -378,8 +378,8 @@ slices必须依次完整覆盖第${batch.start}至${batch.end}层，不得越界
 切片数量取决于场景与结算点，不取决于楼层数；不得一层一片。${Number.isSafeInteger(settings.summarySlices) && settings.summarySlices > 0 ? `本次最多返回 ${settings.summarySlices} 片。` : ''}
 ${SCENE_PROMPT}
 有据继承时 evidence 可另含 inheritedFrom:{id,revision}，只能引用本次提供的上文锚点，不得编造ID、版本或从当前排列推定日期。
-${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}${observationProtocol(names) ? `\n${observationProtocol(names)}` : ''}${chronicle?.protocol ? `\n${chronicle.protocol}` : ''}`,
-        data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}${chronicle?.data ? `\n${chronicle.data}` : ''}`,
+${recallCandidates.length ? '本批确有明确旧细节缺口时，可额外返回recallRequests:[{"parentId":"目录中的id","question":"具体问题"}]，最多一个；无需要省略或[]。' : ''}${observationProtocol(names) ? `\n${observationProtocol(names)}` : ''}${observationProtocol(names) && impressions?.protocol ? `\n${impressions.protocol}` : ''}${chronicle?.protocol ? `\n${chronicle.protocol}` : ''}`,
+        data: `来源有效的上文锚点：${JSON.stringify(previousContext)}\n原文：${JSON.stringify(source)}${recallCandidates.length ? `\n可回查的旧细摘要目录：${JSON.stringify(recallCandidates)}` : ''}${observationProtocol(names) && impressions?.data ? `\n${impressions.data}` : ''}${chronicle?.data ? `\n${chronicle.data}` : ''}`,
     });
 }
 
@@ -538,7 +538,7 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         const children = usable.filter(entry => stage.source.parents.some(ref => ref.id === entry.id));
         // 正文问到这个阶段里的具体细节时，用它的细切片顶替阶段摘要——并且是整组细切片一起带：
         // 只带相关的那一条，其余几条所覆盖的旧楼既已隐藏、又没有记忆，就成了空洞。
-        const detailNeeded = settings.recall !== false && !stage.edited && children.some(child => relevance(child) > relevance(stage) && relevance(child) > 0);
+        const detailNeeded = !stage.edited && children.some(child => relevance(child) > relevance(stage) && relevance(child) > 0);
         if (!detailNeeded) chosenStages.push(stage);
         else for (const child of children) detailGroup.add(child.id);
     }

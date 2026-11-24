@@ -53,8 +53,8 @@ async function fixture(t, {sliceFiller = 0, semanticWaitMs = 1200, retrievalTime
     const writeChat = async items => fs.writeFile(path.join(chats, 'Chain', `${binding.file}.jsonl`),
         [{chat_metadata: {integrity: binding.integrity}}, ...items].map(JSON.stringify).join('\n'), 'utf8');
     await writeChat(baseMessages());
-    // 原文回查默认关；总结前的候选目录只在回查开着时才有。
-    await seedLegacyDefaults(account, {recall: true});
+    // 「原文回查」已去掉（2026-11-24）：总结前照常发现候选并显示在检索页，但不再作为目录发给整理模型。
+    await seedLegacyDefaults(account);
     const store = createYimuStore({hostCwd: root});
     const routes = new Map();
     registerYimuRoutes({get(route, fn) { routes.set(`GET ${route}`, fn); }, post(route, fn) { routes.set(`POST ${route}`, fn); }}, {store});
@@ -172,14 +172,15 @@ async function fixture(t, {sliceFiller = 0, semanticWaitMs = 1200, retrievalTime
         return {prompt, used, skip, topics: TOPICS.filter(topic => prompt.includes(`${topic}往事`))};
     };
     const inject = async () => { const {coreChat, intercepting} = await begin(); await intercepting; return finish(coreChat); };
-    // 切片总结前的候选发现：聊天多出四层后手动整理一批，返回这一批的候选顺序（界面状态与真正发给整理模型的目录）。
+    // 切片总结前的候选发现：聊天多出四层后手动整理一批，返回这一批的候选顺序（检索页显示的界面状态）。
+    // 原文回查已去掉（2026-11-24）：发给整理模型的总结请求里不再有候选目录，也不再请它提回查请求。
     const summarize = async () => {
+        const before = prompts.length;
         await controller.start({force: true}); await flush();
-        const prompt = prompts.at(-1) || '', at = prompt.indexOf('可回查的旧细摘要目录：');
-        // 目录占一行；它后面现在还跟着一行「已有年表：[…]」（关系年表随批次），所以只取目录这一行。
-        const line = at < 0 ? '' : prompt.slice(at + '可回查的旧细摘要目录：'.length).split('\n')[0];
-        const catalog = at < 0 ? [] : JSON.parse(line.slice(0, line.lastIndexOf(']') + 1));
-        return {retrieval: controller.state.retrieval, shown: topicsOf(controller.state.retrieval.candidates), catalog: topicsOf(catalog)};
+        for (const prompt of prompts.slice(before)) {
+            assert.ok(!prompt.includes('可回查的旧细摘要目录') && !prompt.includes('recallRequests'), '总结请求不带候选目录');
+        }
+        return {retrieval: controller.state.retrieval, shown: topicsOf(controller.state.retrieval.candidates)};
     };
     return {api, context, host, controller, net, sent, prompts, slot, notices, flush, entries, prepare, useVector, useRerank, extend, begin, finish, inject, summarize,
         chatSettings, writeChat, model: value => { model = value; }};
@@ -476,12 +477,12 @@ test('向量缓存：按「接口地址＋模型＋正文」记在本机内存�
 const LONG = {sliceFiller: 40};
 const LEXICAL = ['矿井', '果园'];
 
-test('总结前：向量补进关键词找不到的旧切片，重排改变目录顺序，界面与发给整理模型的目录一致', async t => {
+test('总结前：向量补进关键词找不到的旧切片，重排改变候选顺序，检索页显示同一份候选', async t => {
     // 对照：两个开关都关。
     const off = await fixture(t, LONG);
     await off.prepare(); await off.extend(4);
     const plain = await off.summarize();
-    assert.deepEqual(plain.shown, LEXICAL); assert.deepEqual(plain.catalog, LEXICAL);
+    assert.deepEqual(plain.shown, LEXICAL);
     assert.equal(plain.retrieval.vector.status, 'disabled'); assert.equal(plain.retrieval.rerank.status, 'disabled');
     assert.equal(off.net.calls.length, 0);
 
@@ -493,7 +494,6 @@ test('总结前：向量补进关键词找不到的旧切片，重排改变目�
     const vector = await v.summarize();
     assert.equal(vector.retrieval.vector.status, 'ready'); assert.equal(vector.retrieval.rerank.status, 'disabled');
     assert.deepEqual(vector.shown, [...LEXICAL, '灯塔', '码头', '雪山', '集市'], '关键词候选在前，向量候选按相似度补在后面');
-    assert.deepEqual(vector.catalog, vector.shown);
     assert.equal(v.sent('/embeddings').length, 1); assert.equal(v.sent('/rerank').length, 0);
     const embedding = v.sent('/embeddings')[0];
     assert.equal(embedding.authorization, 'Bearer vector-fixture-key');
@@ -510,7 +510,6 @@ test('总结前：向量补进关键词找不到的旧切片，重排改变目�
     const reranked = await f.summarize();
     assert.equal(reranked.retrieval.vector.status, 'ready'); assert.equal(reranked.retrieval.rerank.status, 'ready');
     assert.deepEqual(reranked.shown, ['雪山', '果园', '矿井', '灯塔', '码头', '集市'], '重排分数高的排到前面，其余保持原先的相对顺序');
-    assert.deepEqual(reranked.catalog, reranked.shown, '整理模型收到的目录就是重排后的顺序');
     assert.deepEqual([...reranked.shown].sort(), [...vector.shown].sort(), '重排不新增也不丢候选');
     assert.equal(f.sent('/rerank').length, 1);
     const rerank = f.sent('/rerank')[0];
@@ -559,7 +558,6 @@ test('总结前：重排只返回部分有效结果时，有效的排到前面�
     const result = await f.summarize();
     assert.equal(result.retrieval.rerank.status, 'ready');
     assert.deepEqual(result.shown, ['码头', '矿井', '果园', '灯塔', '雪山', '集市']);
-    assert.deepEqual(result.catalog, result.shown);
 });
 
 const BAD_RERANK = [
@@ -585,7 +583,6 @@ for (const [label, reply] of BAD_RERANK) {
         assert.ok(result.retrieval.rerank.reason && !result.retrieval.rerank.reason.includes('rerank-fixture-key'));
         assert.equal(result.retrieval.vector.status, 'ready');
         assert.deepEqual(result.shown, [...LEXICAL, '灯塔', '码头', '雪山', '集市'], '顺序与没有重排时完全一致');
-        assert.deepEqual(result.catalog, result.shown);
         assert.equal(f.controller.state.error, '', '重排失败不算整理失败');
         assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH, '本批总结已保存');
         const page = retrievalPage(f); page.render();
@@ -618,7 +615,7 @@ for (const [label, reply] of BAD_CANDIDATE_VECTORS) {
         assert.equal(f.sent('/embeddings').length, 1, '确实向向量接口发过请求，且失败后不重试');
         assert.equal(result.retrieval.vector.status, 'error');
         assert.ok(result.retrieval.vector.reason && !result.retrieval.vector.reason.includes('vector-fixture-key'));
-        assert.deepEqual(result.shown, LEXICAL); assert.deepEqual(result.catalog, LEXICAL);
+        assert.deepEqual(result.shown, LEXICAL);
         assert.equal(f.controller.state.error, '');
         assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH);
         const page = retrievalPage(f); page.render();
@@ -639,7 +636,7 @@ test('总结前：向量与重排各自超时后退回，总结不被拖住', as
     assert.equal(result.retrieval.vector.status, 'error'); assert.match(result.retrieval.vector.reason, /超时，已回退关键词召回/);
     assert.equal(result.retrieval.rerank.status, 'error'); assert.match(result.retrieval.rerank.reason, /超时，已保留当前顺序/);
     assert.ok(f.net.calls.every(call => call.signal.aborted), '超时的请求都已取消');
-    assert.deepEqual(result.shown, LEXICAL); assert.deepEqual(result.catalog, LEXICAL);
+    assert.deepEqual(result.shown, LEXICAL);
     assert.equal(f.controller.state.error, '');
     assert.equal((await f.entries()).filter(entry => entry.source.start > SUMMARIZED).length, BATCH);
 });
@@ -689,7 +686,7 @@ test('总结前：等重排答复期间本批原文被改动（来源在途中�
     assert.equal((await f.entries()).length, SUMMARIZED, '已有记忆不受影响');
 });
 
-test('检索页：界面开关经由同一个设置动作落到当前聊天；中止后的状态不显示为失败', async t => {
+test('检索页：界面开关经由同一个设置动作存为账户设置；中止后的状态不显示为失败', async t => {
     const f = await fixture(t, LONG);
     await f.prepare();
     await f.host.connectionApi.updateVector({apiUrl: VECTOR_URL, apiKey: 'vector-fixture-key', model: 'synthetic-embedding'});
@@ -698,9 +695,11 @@ test('检索页：界面开关经由同一个设置动作落到当前聊天；�
     assert.deepEqual(page.row('关键词召回'), {badge: '可召回', detail: '当前默认候选路径', hover: ''});
     page.toggle('启用向量').checked = true;
     await page.toggle('启用向量').emit('change'); await f.flush();
-    assert.equal(f.controller.state.document.settings.vectorEnabled, true);
-    assert.equal((await f.api.read(binding)).document.settings.vectorEnabled, true, '开关保存在当前聊天');
-    assert.equal((await f.api.read(binding)).defaults.values.vectorEnabled, false, '其他聊天仍默认关闭');
+    // 设置都是账户全局的（2026-11-24）：开关存进全局默认，不留在当前聊天里。
+    assert.equal(f.controller.state.defaults.values.vectorEnabled, true);
+    const saved = await f.api.read(binding);
+    assert.equal(saved.defaults.values.vectorEnabled, true, '开关存为账户设置，所有聊天共用');
+    assert.equal(saved.document.settings.vectorEnabled, undefined, '当前聊天里不另存一份');
     f.net.similarity = {灯塔: 0.9};
     await f.extend(4);
     await f.summarize(); page.render();

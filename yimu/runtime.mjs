@@ -2,8 +2,8 @@ import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, f
 import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS, fillPlan, sourceRows, observationProtocol } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
-import { recallCandidates, parseRecallRequest, recallPrompt, parseRecallQuote, recallFits } from './recall.mjs';
-import { recallBlockReason } from './recall-contract.mjs';
+import { recallCandidates } from './recall.mjs';
+import { heartOf } from './heart-contract.mjs';
 import { createStoryActions } from './story-runtime.mjs';
 import { createCompanionActions } from './companion-runtime.mjs';
 import { createBackupActions } from './backup-runtime.mjs';
@@ -14,7 +14,7 @@ import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 import { completedSlices } from './stream-slices.mjs';
-import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, fillPrompt, realDay, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
+import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, impressionAsk, parseImpressions, fillPrompt, realDay, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -120,10 +120,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         for (const entry of entries || []) if (entry?.id) current.set(entry.id, floor);
         // 上限：只留最近 300 条，防止长期聊天的本机记录无限增长。
         const recall = Object.fromEntries([...current].slice(-300));
+        if (isCurrent(binding)) state.recalledAt = recall; // 记忆页按它标「冷却／淡去／沉底」
         const record = readRound(binding) || { at: Date.now() };
         writeRound(binding, { ...record, recall });
     };
     const restoreRound = binding => {
+        state.recalledAt = Object.fromEntries(recallAtMap(binding) || []);
         if (state.lastUsed || state.lastSkip || generating) return;
         const record = readRound(binding);
         if (!record || !Number.isFinite(record.at)) return;
@@ -407,7 +409,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             ...(vectorStatus === 'unavailable' ? { reason: '尚未配置向量候选接口，已回退关键词召回' } : {}) }, rerank: { status: rerankStatus,
             ...(rerankStatus === 'unavailable' ? { reason: '尚未配置重排候选接口，已保留当前顺序' } : {}) }, candidates: [], lastRun: null };
         emit();
-        let processed = false, recallAttempted = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false, batchLog = null;
+        let processed = false, noWork = false, failedBatch = null, failedSource = null, targetEnd = null, awaitingSave = false, announced = false, batchLog = null;
         const retryState = { exhausted: false };
         let manualPlan = null;
         try {
@@ -486,7 +488,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     hashes: plannedHashes.slice(manualPlan.range.start - 1, manualPlan.range.end) }, hashes)) throw new Error('整理期间所选原文已变化，请确认后重试');
                 const candidateDocument = clone(jobDocument);
                 for (const entry of candidateDocument.entries) if (fresh.invalidSourceIds?.includes(entry.id)) entry.status = 'invalid';
-                let candidates = !manualPlan && !historyOnly && !entryId && !recallAttempted ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
+                let candidates = !manualPlan && !historyOnly && !entryId ? recallCandidates(candidateDocument, settings, snapshot.messages, batch, hashes) : [];
                 const retrieval = buildRetrievalCandidates({
                     localCandidates: candidates,
                     context: retrievalContext(candidateDocument, { beforeFloor: batch.start, invalidIds: fresh.invalidSourceIds }),
@@ -552,26 +554,17 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
                 if (controller.signal.aborted) break;
-                // Keyword/vector candidates are always discovered for the check chain; only
-                // source recall turns them into a requestable catalog in the summary prompt.
-                let catalog = settings.recall === false ? [] : candidates;
                 // 痕迹（观察日记的原料）跟着切片总结一起要；整段重做某一条时不要。
                 let names = batch.redo ? null : { char: snapshot.name, user: snapshot.userName };
                 // 关系年表的节点也跟着这一批要：直接依据这段正文拾。
                 let chronicle = names ? chronicleAsk(settings, names, jobDocument) : null;
-                let prompt = summaryPrompt(snapshot.messages, batch, settings, { recallCandidates: catalog, previousContext, names, chronicle });
-                // Optional historical hints may use only spare room. Source floors are never truncated.
-                if (!run.fitsPrompt(prompt) && catalog.length) {
-                    candidates = []; catalog = [];
-                    if (isCurrent(binding)) {
-                        state.retrieval = { ...state.retrieval, candidates: [], lastRun: { ...(state.retrieval.lastRun || {}), count: 0, at: Date.now(), fallback: '预算不足，沿用关键词路径但本轮未带入候选' } };
-                        emit();
-                    }
-                    prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle });
-                }
-                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names, chronicle }); }
-                // 痕迹与年表是顺带要的：连接容量放不下时先让路，不能因为它们让切片总结做不成。
-                if (!run.fitsPrompt(prompt) && names) { names = null; chronicle = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
+                // 心间存照也在这一次里写（用户 2026-11-24）：读着正文，把刚留意到的事直接归进 {{char}} 心里的印象。
+                let impressions = names ? impressionAsk(settings, names, jobDocument) : null;
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle, impressions });
+                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names, chronicle, impressions }); }
+                // 痕迹、存照与年表是顺带要的：连接容量放不下时先让路，不能因为它们让切片总结做不成。
+                if (!run.fitsPrompt(prompt) && impressions) { impressions = null; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle }); }
+                if (!run.fitsPrompt(prompt) && names) { names = null; chronicle = null; impressions = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
                 batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
                     manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length), prompt });
@@ -616,14 +609,28 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     }
                 }
                 // 痕迹单独存一笔：存不上只记进日志，切片已经入库，不受影响。同一段楼层重新总结时由新的一批替换旧的。
-                let observed = [];
+                let observed = [], stored = [];
                 if (names?.char && !controller.signal.aborted && !disposed && !localStops.has(key)) {
                     try {
                         const dateOf = floor => slices.find(slice => slice.source.start <= floor && slice.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date || '';
-                        observed = parseObservations(response, { start: batch.start, end: batch.end }).map(item => { const date = dateOf(item.floor); return date ? { ...item, date: date.slice(0, 60) } : item; });
+                        const read = parseObservations(response, { start: batch.start, end: batch.end });
+                        observed = read.map(({ n, ...item }) => { const date = dateOf(item.floor); return date ? { ...item, date: date.slice(0, 60) } : item; });
                         const stale = (jobDocument.observations || []).some(item => item.floor >= batch.start && item.floor <= batch.end);
-                        if (observed.length || stale) { const result = await change(binding, { id: id(), type: 'observe', items: observed, range: { start: batch.start, end: batch.end }, at: Date.now() }); jobDocument = result.document; }
-                    } catch (error) { observed = []; console.warn('[忆幕] 痕迹未存入：', error?.message || error); }
+                        if (observed.length || stale) {
+                            const opId = id(), at = Date.now();
+                            const result = await change(binding, { id: opId, type: 'observe', items: observed, range: { start: batch.start, end: batch.end }, at }); jobDocument = result.document;
+                            // 存下的痕迹按模型返回时的序号排好（中间丢掉的格式不对的留空），存照里的序号才对得上。
+                            read.forEach((item, index) => { const saved = jobDocument.observations?.find(trace => trace.id === `${opId}_${index}`.slice(0, 100)); if (saved) stored[item.n - 1] = saved; });
+                        }
+                    } catch (error) { observed = []; stored = []; console.warn('[忆幕] 痕迹未存入：', error?.message || error); }
+                }
+                // 这一批直接归成的心间存照。归不进印象的痕迹仍留在「待凝定的印象」里，攒够了再合订。
+                let impressed = [];
+                if (impressions && stored.length && !controller.signal.aborted && !disposed && !localStops.has(key)) {
+                    try {
+                        impressed = parseImpressions(response, stored, heartOf(jobDocument));
+                        if (impressed.length) { const result = await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: impressed, events: [], used: [] }); jobDocument = result.document; }
+                    } catch (error) { impressed = []; console.warn('[忆幕] 心间存照未存入：', error?.message || error); }
                 }
                 // 年表节点同样单独存一笔，存不上只记一句，不影响已入库的切片。这一批之前没有年表还没读过的切片时，把年表进度推到这一批末尾。
                 let chronicled = [];
@@ -635,13 +642,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         if (chronicled.length || !behind) { const result = await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: [], events: chronicled, used: [], ...(behind ? {} : { eventFloor: batch.end }) }); jobDocument = result.document; }
                     } catch (error) { chronicled = []; console.warn('[忆幕] 年表节点未存入：', error?.message || error); }
                 }
-                const request = parseRecallRequest(response, catalog);
-                if (request && !recallAttempted) {
-                    recallAttempted = true; // At most one bounded extraction in this entire background run.
-                    await completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource: frozenSource, slices, recallGeneration: runGeneration, connection: run.connection });
-                }
                 failedBatch = null; failedSource = null;
-                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}), ...(chronicled.length ? { events: chronicled.length } : {}) }); batchLog = null;
+                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}), ...(impressed.length ? { impressions: impressed.length } : {}), ...(chronicled.length ? { events: chronicled.length } : {}) }); batchLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
@@ -664,7 +666,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             }
         } catch (error) {
             closeLog(batchLog, { status: controller.signal.aborted ? 'cancelled' : 'error', error: error?.message || '未知错误', ...failedReply(batchLog, error) }); batchLog = null;
-            if (!controller.signal.aborted && !disposed) {
+            if (!controller.signal.aborted && !disposed && controller.probing) {
+                // 自动总结还在「看有没有活」（只读了一次记忆，还没找到要整理的楼层）就失败了：这不是一次总结，
+                // 不报「总结失败」也不留错误状态；等下一层新楼再看一次。
+                failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
+                console.info('[忆幕] 自动总结检查没完成，下一层再看：', error?.message || error);
+            } else if (!controller.signal.aborted && !disposed) {
                 failedJobs.set(failedKey, isCurrent(binding) ? state.snapshot.messages.length : snapshot.messages.length);
                 if (failedBatch && failedBatch.start <= failedBatch.end) failures.set(key, { kind: 'summary', entryId: failedBatch.redo?.id || entryId,
                     range: { start: failedBatch.start, end: failedBatch.end }, ...(manualPlan ? { batchFloors } : {}), source: failedSource, epoch: doc.epoch, defaultsRevision: defaults.revision, error: error.message });
@@ -684,40 +691,6 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             if (processed && !entryId) stagedForDiary.add(key); // 重做单条不算新的总结
             if (!disposed && !controller.signal.aborted && !failedJobs.has(failedKey) && isCurrent(binding)) deferFor(binding, () => startStage().catch(() => {}).then(() => startDiary()).catch(() => {}), runGeneration);
             emit();
-        }
-    }
-
-    async function completeRecall({ binding, key, controller, doc, defaults, settings, snapshot, request, triggerSource, slices, recallGeneration, connection }) {
-        const active = () => !disposed && !controller.signal.aborted && generation === recallGeneration && !generating && !localStops.has(key) && isCurrent(binding)
-            && state.document?.enabled && state.document.epoch === doc.epoch && state.defaults?.revision === defaults.revision
-            && effectiveSettings(state.document, state.defaults).recall !== false;
-        if (!active() || typeof api.recallSource !== 'function') return;
-        try {
-            const fresh = await readSource(binding); adopt(binding, fresh);
-            const parent = fresh.document.entries.find(entry => entry.id === request.parentId);
-            if (!active() || !fresh.sourceAvailable || recallBlockReason(fresh.document, parent)) return;
-            const source = await api.recallSource(binding, { parentId: request.parentId, parentRevision: request.parentRevision,
-                expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision, triggerSource });
-            if (!active()) return;
-            const prompt = recallPrompt(source, request, fresh.document, slices, settings);
-            const recallSnapshot = connection && connection.mode !== 'profile' ? { ...snapshot, maxContext: connection.contextTokens, maxResponse: connection.maxTokens } : snapshot;
-            if (!recallFits(prompt, { ...settings, profileId: connection?.mode === 'profile' ? connection.profileId : connection ? '' : settings.profileId }, recallSnapshot)) return;
-            state.status = '正在核对一处相关原文；正常聊天不受阻塞。'; emit();
-            const response = await host.generate(prompt, { profileId: settings.profileId, model: settings.model, signal: controller.signal, maxTokens: 1024, ...(connection ? { connection } : {}) });
-            if (!active()) return;
-            const quote = parseRecallQuote(response, source);
-            if (!quote) return;
-            const latestSnapshot = await host.snapshot();
-            if (!equalBinding(latestSnapshot.binding, binding)) return;
-            const hashes = await fingerprintMessages(latestSnapshot.messages);
-            if (!sourceMatches(triggerSource, hashes) || !sourceMatches(source.source, hashes) || !active()) return;
-            await change(binding, { id: id(), type: 'recall', entryId: id(), expectedRevision: source.documentRevision,
-                expectedEpoch: doc.epoch, expectedDefaultsRevision: defaults.revision, parent: source.parent, triggerSource, quote });
-            if (active()) adopt(binding, await readSource(binding)); // Excerpts materialize from ST originals only on read.
-        } catch {
-            // Optional recall never rolls back good summaries, retries a model in a
-            // loop, or turns a failed/unknown write into a success notification.
-            if (active()) { state.status = '本次原文补充未采用，已保存的记忆保持不变。'; emit(); }
         }
     }
 
@@ -1255,10 +1228,10 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         finally { if (isCurrent(binding)) { if (loud) state.busy = false; emit(); } }
     }
 
-    // 标签规则与总结类设置是这个账户的全局默认：在哪个聊天里改都存到全局，所有聊天共用一份，新开的聊天直接沿用。
-    // 这个聊天以前单独存过的同类设置，趁这次一并升为全局并从聊天里清掉（以这个聊天里看到的值为准），之后它也跟着全局走。
-    // 全局没存成时退回老办法——照旧存在这个聊天里，改动不丢。其余设置（注入、心迹、连接等）仍按聊天存。
-    const GLOBAL_SETTINGS = new Set(['contextRules', 'prompts', 'recent', 'trigger', 'triggerFloors', 'batch', 'summarySlices', 'sliceChars', 'stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']);
+    // 忆幕的设置都是账户全局的（用户 2026-11-24：不分聊天，在哪个聊天里改都对所有聊天生效）：先按原路径存进聊天（保住原有的核对），
+    // 再把改动的那几项存到全局，并把这个聊天里单独存过的设置全部清掉。读取时全局优先（contract.mjs 的 effectiveSettings）。
+    // 全局没存成时如实报错：聊天里的值不再生效，不能让用户以为改好了。
+    const GLOBAL_SETTINGS = new Set(Object.keys(DEFAULTS));
     let defaultsQueue = Promise.resolve();
     function saveDefaults(values) {
         const run = async () => {
@@ -1276,15 +1249,17 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         defaultsQueue = next.catch(() => false);
         return next;
     }
-    /** 聊天这边已经按原路径存好之后调用：把全局类的那几项升到全局默认，再把它们从聊天里清掉。 */
+    /** 聊天这边已经按原路径存好之后调用：把改动的那几项存到全局，再把这个聊天里单独存过的设置全部清掉。 */
     async function liftGlobalSettings(values, still) {
         const edited = Object.entries(values || {}).filter(([key, value]) => GLOBAL_SETTINGS.has(key) && value !== undefined);
         if (!edited.length || !state.document) return;
-        const own = Object.fromEntries(Object.entries(state.document.settings || {}).filter(([key]) => GLOBAL_SETTINGS.has(key)));
         // 「恢复默认」（值为 null）也要传到全局：那一项在全局里回到内置默认。
-        const lifted = { ...own, ...Object.fromEntries(edited.filter(([, value]) => value === null)) };
-        if (!Object.keys(lifted).length || !await saveDefaults(lifted) || !still()) { if (still()) emit(); return; }
-        const clear = Object.fromEntries(Object.keys(own).map(key => [key, null]));
+        if (!await saveDefaults(Object.fromEntries(edited))) {
+            if (still()) { state.error = '设置没有存成，请重试'; state.errorPage = 'settings'; emit(); }
+            return false;
+        }
+        if (!still()) return;
+        const clear = Object.fromEntries(Object.keys(state.document.settings || {}).filter(key => GLOBAL_SETTINGS.has(key)).map(key => [key, null]));
         if (Object.keys(clear).length) {
             try { await executeAction('settings', { quiet: true, values: clear, expectedRevision: state.document?.configRevision ?? 0 }); }
             catch (error) { console.warn('[忆幕] 全局默认已存好；这个聊天里的旧值没清掉，下次保存时再清', error); }
@@ -1301,7 +1276,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         try {
             const done = await executeAction(type, payload);
             const still = () => !disposed && stamp === generation && Boolean(binding) && isCurrent(binding);
-            if (type === 'settings' && !payload.global && done !== false && still()) await liftGlobalSettings(payload.values, still);
+            // 全局没存成：这次保存不算成功（界面据此保留草稿、不当作已改好）。
+            if (type === 'settings' && !payload.global && done !== false && still() && await liftGlobalSettings(payload.values, still) === false) return false;
             // 改了「正文保留层数」等设置后，隐藏边界当场跟着走，不等下一条消息。生成中不动聊天。
             if (type === 'settings' && done !== false && still() && !generating && state.document) await syncHidden(state.document, effectiveSettings(state.document, state.defaults)).catch(reportHideFailure);
             return done;

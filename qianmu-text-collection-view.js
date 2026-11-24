@@ -4,7 +4,7 @@ import {createTextCollectionImageDialog} from './qianmu-text-collection-image-di
 
 // Created once by the account owner, not on every panel open. Only these two
 // local stylesheets and this portal belong to the view.
-export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography, verifyAccount, download}) {
+export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography, verifyAccount, download, locateFloor, jumpToFloor}) {
     const parent = document.createElement('section'), links = [], loading = new AbortController();
     parent.className = 'qm-collection-portal';
     let panel, capture, images, detach, disposed = false;
@@ -35,7 +35,7 @@ export async function createTextCollectionView({document, collection, isCurrent,
         if (disposed || !isCurrent()) throw Error('Collection view is no longer current');
         document.body.append(parent); detach = mountPortal?.(parent); typography?.(parent);
         images = createTextCollectionImageDialog({parent, isCurrent, verifyAccount, download});
-        panel = createTextCollectionPanel({parent, collection, isCurrent, onExportImage: item => images.open(item)});
+        panel = createTextCollectionPanel({parent, collection, isCurrent, onExportImage: item => images.open(item), locateFloor, onJumpFloor: jumpToFloor});
         capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, selection) => panel.collect(input, selection)});
         return Object.freeze({parent, panel, capture, dispose});
     } catch (error) { dispose(); throw error; }

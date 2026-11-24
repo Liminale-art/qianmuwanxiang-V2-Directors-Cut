@@ -149,7 +149,7 @@ test('multiple automatic boundaries use one confirmation covering all and only t
 test('continuation boundary generation uses the chosen character cap, never a different hidden default',async()=>{
     for(const [cap,length,accepted]of[[3,5,false],[3,4,true],[3000,2500,true]]){
         const f=await fixture(),hashes=await fingerprintMessages(f.snapshot.messages);
-        f.state.document.settings.sliceChars=cap;
+        f.state.defaults.values.sliceChars=cap; // 字数上限是账户全局设置
         f.plan.boundaries=[{id:'edge',source:{start:2,end:4,hashes:hashes.slice(1,4)},messages:f.snapshot.messages.slice(1,4).map((m,i)=>({...m,floor:i+2}))}];
         f.host.generate=async()=>JSON.stringify({slices:[{start:2,end:4,title:'截至此处',text:'文'.repeat(length)}]});
         await f.action('storyPlan',{cutoff:4});

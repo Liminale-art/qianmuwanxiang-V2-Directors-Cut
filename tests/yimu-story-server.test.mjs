@@ -283,8 +283,9 @@ test('a pre-upgrade complete receipt resolves its original file after the contin
 });
 
 test('new boundary summaries obey the selected character cap before any chat or memory is created',async t=>{
-    const f=await fixture(t),before=(await f.store.read(f.request,binding)).document;
-    await f.change({type:'settings',expectedRevision:before.configRevision,values:{sliceChars:3}});
+    const f=await fixture(t),before=(await f.store.read(f.request,binding)).defaults;
+    // 字数上限是账户全局设置（2026-11-24 起设置不分聊天）。
+    await f.store.defaults(f.request,{id:'cap_defaults',expectedRevision:before.revision,values:{sliceChars:3}});
     const p=await f.plan(),op=f.operation(p,'overlong-boundary');
     await assert.rejects(f.store.createStory(f.request,binding,op),/远超 3 字上限/);
     assert.deepEqual((await fs.readdir(f.folder)).filter(name=>name.endsWith('.jsonl')),['Original.jsonl']);

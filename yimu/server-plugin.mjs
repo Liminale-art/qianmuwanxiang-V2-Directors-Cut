@@ -34,6 +34,7 @@ export function registerYimuRoutes(router, {store = createYimuStore({hostCwd: pr
     router.post('/manage/list', route(request => store.manageList(request)));
     router.post('/manage/delete', route(request => store.manageDelete(request, request.body)));
     router.post('/manage/assign', route(request => store.manageAssign(request, request.body)));
+    router.post('/manage/follow', route(request => store.manageFollow(request, request.body)));
     router.post('/story/plan', route(request => store.planStory(request, request.body?.binding, request.body?.request)));
     router.post('/story/create', route(request => store.createStory(request, request.body?.binding, request.body?.request)));
     router.post('/story/result', route(request => store.storyResult(request, request.body?.binding, request.body?.request)));

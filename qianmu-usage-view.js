@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from './qianmu-usage-tracker.js?v=1.59.597';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift, normalizeUsage, tokenSummary, tokenTotals, compactTokens, tokenText } from './qianmu-usage-tracker.js?v=1.59.598';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -48,11 +48,16 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID} button:focus-visible, #${ROOT_ID} input:focus-visible { outline: 2px solid var(--u-accent); outline-offset: 2px; }
 #${ROOT_ID} .qm-usage-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--u-mute); font-size: 18px; }
 #${ROOT_ID} .qm-usage-icon:hover { color: var(--u-ink); }
+/* 时长 / token：标题旁一对小胶囊。 */
+#${ROOT_ID} .qm-usage-mode { display: flex; flex: none; padding: 2px; border-radius: 999px; background: color-mix(in srgb, var(--u-ink) 8%, transparent); }
+#${ROOT_ID} .qm-usage-mode button { height: 24px; padding: 0 10px; line-height: 24px; border-radius: 999px; font-size: 12px; color: var(--u-mute); transition: background .2s, color .2s; }
+#${ROOT_ID} .qm-usage-mode button:hover { color: var(--u-ink); }
+#${ROOT_ID} .qm-usage-mode button[aria-pressed="true"] { background: var(--u-card); color: var(--u-accent); box-shadow: 0 1px 3px color-mix(in srgb, #000 22%, transparent); }
 /* ---- 热力格 ---- */
 #${ROOT_ID} .qm-usage-heat { position: relative; padding: 16px 16px 12px; border-radius: 22px; background: linear-gradient(color-mix(in srgb, var(--u-accent) 22%, var(--u-card)), color-mix(in srgb, var(--u-accent) 9%, var(--u-card))); }
 #${ROOT_ID} .qm-usage-grid { display: grid; grid-template-columns: 14px repeat(var(--weeks), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column; gap: clamp(1px, calc(60px / var(--weeks)), 4px); align-items: center; }
 #${ROOT_ID} .qm-usage-grid b { font-weight: 500; font-size: 10px; color: var(--u-mute); }
-#${ROOT_ID} .qm-usage-grid i { position: relative; aspect-ratio: 1; border-radius: 28%; background: color-mix(in srgb, var(--u-ink) 9%, transparent); cursor: pointer; transition: transform .25s cubic-bezier(.3,1.7,.5,1), filter .25s;
+#${ROOT_ID} .qm-usage-grid i { position: relative; aspect-ratio: 1; border-radius: 28%; background: color-mix(in srgb, var(--u-ink) 9%, transparent); cursor: pointer; transition: filter .25s;
   animation: qm-usage-pop .5s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(var(--c) * 22ms + var(--r) * 14ms); }
 @keyframes qm-usage-pop { from { opacity: 0; transform: scale(.2); } }
 #${ROOT_ID} .qm-usage-grid i[data-level="-1"] { visibility: hidden; }
@@ -60,7 +65,10 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="2"] { background: color-mix(in srgb, var(--u-accent) 52%, transparent); }
 #${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="3"] { background: color-mix(in srgb, var(--u-accent) 76%, transparent); }
 #${ROOT_ID} :is(.qm-usage-grid, .qm-usage-day) i[data-level="4"] { background: var(--u-accent); box-shadow: 0 0 8px color-mix(in srgb, var(--u-accent) 60%, transparent); }
-#${ROOT_ID} .qm-usage-grid i:hover, #${ROOT_ID} .qm-usage-grid i.on { transform: scale(1.45); filter: brightness(1.2); z-index: 2; }
+/* 悬停与点中：弹一下（放大再缩回），不停在放大的样子。弹动叠在入场动画后面，名字不同、互不重播；点中的那格靠一圈描边认出来。 */
+#${ROOT_ID} .qm-usage-grid i:is(:hover, .on) { z-index: 2; animation: qm-usage-pop .5s cubic-bezier(.3,1.5,.5,1) both, qm-usage-tap .42s cubic-bezier(.3,1.4,.5,1); animation-delay: calc(var(--c) * 22ms + var(--r) * 14ms), 0s; }
+@keyframes qm-usage-tap { 0%, 100% { scale: 1; } 40% { scale: 1.5; } }
+#${ROOT_ID} .qm-usage-grid i.on { filter: brightness(1.15); outline: 1.5px solid var(--u-ink); outline-offset: 1px; }
 /* 点中的那一天：格子下面一行写着日期和时长（触屏没有悬停，靠这一行看）。 */
 #${ROOT_ID} .qm-usage-day { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 18px; margin: 10px 0 0; font-size: 12px; line-height: 18px; color: var(--u-mute); font-variant-numeric: tabular-nums; }
 #${ROOT_ID} .qm-usage-day i { flex: none; width: 9px; height: 9px; border-radius: 28%; background: color-mix(in srgb, var(--u-ink) 9%, transparent); }
@@ -154,6 +162,10 @@ body.no-blur #${ROOT_ID}:not([data-qm-theme]) .qm-usage-panel { background: var(
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i[data-level="2"] { background: color-mix(in srgb, var(--u-accent) 52%, transparent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i[data-level="3"] { background: color-mix(in srgb, var(--u-accent) 76%, transparent); }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i[data-level="4"] { background: var(--u-accent); }
+#${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-grid i.on { outline: 1.5px solid var(--u-ink); outline-offset: 0; }
+#${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-mode { border-radius: 0; background: none; padding: 0; gap: 6px; }
+#${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-mode button { border-radius: 0; padding: 0 2px; }
+#${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-mode button[aria-pressed="true"] { background: none; box-shadow: inset 0 -1px 0 var(--u-accent); }
 #${ROOT_ID}[data-qm-theme="editorial"] :is(.qm-usage-range button, .qm-usage-icon, .qm-usage-pick input, .qm-usage-bar, .qm-usage-face, .qm-usage-grid i::after) { border-radius: 0; }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-mobius { left: -8px; top: 3px; }
 #${ROOT_ID}[data-qm-theme="editorial"] .qm-usage-last { border-radius: 0; box-shadow: none; margin-top: 0; padding-inline: 8px; border-bottom: 1px solid var(--u-ink); }
@@ -238,14 +250,18 @@ const ICON_TIME = ICON('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2
 const face = (item, avatarUrl) => `<span class="qm-usage-face"><span>${esc(Array.from(item.name || '？')[0])}</span><img alt="" loading="lazy" src="${esc(item.avatar || avatarUrl(item.key))}" hidden></span>`;
 const nameOf = item => item.name || item.key.replace(/\.[^.]+$/, '');
 const big = ms => { const { value, unit } = compactTime(ms); return `<i data-count="${esc(value)}">${esc(value)}</i><span>${unit}</span>`; };
+const bigTokens = n => { const { value, unit } = compactTokens(n); return `<i data-count="${esc(value)}">${esc(value)}</i><span>${unit}</span>`; };
+const splitText = item => `发出 ${tokenText(item?.sent)} · 收到 ${tokenText(item?.received)}`;
+const modeSwitch = mode => `<div class="qm-usage-mode" role="group" aria-label="统计口径">${[['time', '时长'], ['tokens', 'token']].map(([id, label]) => `<button type="button" data-usage-mode="${id}" aria-pressed="${mode === id}">${label}</button>`).join('')}</div>`;
 
-/** range：{ from, to, custom }；custom 为真时显示两个日期框。drink：这次打开抽到的酒名。
+/** range：{ from, to, custom }；custom 为真时显示两个日期框。drink：这次打开抽到的酒名。mode：time 按时长，tokens 按正文聊天的 token。
  * floors：按楼层数排好的角色 [{ key, name, floors }]；rank：名单按时长（time）还是按楼层（floors）排。 */
-export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', drink = DRINKS[0], zones = timeZones(), floors = [], rank = 'time', avatarUrl = key => `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}` } = {}) {
+export function usageMarkup(data, { now: real = Date.now(), range = null, page = 'home', mode = 'time', drink = DRINKS[0], zones = timeZones(), floors = [], rank = 'time', avatarUrl = key => `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}` } = {}) {
     // 按所选时区的钟面来看：今天是哪天、几点聊的，都以它为准。
     const picked = typeof data?.zone === 'string' ? data.zone : '', wall = at => at + zoneShift(at, picked), now = wall(real);
+    const tokens = mode === 'tokens';
     const summary = usageSummary(data, now);
-    if (page === 'chars') {
+    if (page === 'chars' && !tokens) {
         // 两种排法：相处的时长、聊过的楼层。各自的第一位高亮；两边第一是同一位时，那一位系上红线。
         const known = new Map(summary.chars.map(item => [item.key, item])), ranked = (Array.isArray(floors) ? floors : []).filter(item => item?.key && item.floors > 0);
         const mode = rank === 'floors' && ranked.length ? 'floors' : 'time';
@@ -259,23 +275,24 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
         const toggle = ranked.length ? `<button type="button" class="qm-usage-icon" data-usage-rank="${mode === 'floors' ? 'time' : 'floors'}" aria-label="${mode === 'floors' ? '按时长排' : '按楼层排'}" title="${mode === 'floors' ? '按时长排' : '按楼层排'}">${mode === 'floors' ? ICON_TIME : ICON_FLOORS}</button>` : '';
         return `<header><button type="button" class="qm-usage-icon" data-usage-page="home" aria-label="返回">‹</button><h3>宿缘</h3>${toggle}<button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>${rows}`;
     }
-    const span = range || { ...quarterRange(now), custom: false }, heat = heatCells(data, span.from, span.to, now);
+    const span = range || { ...quarterRange(now), custom: false }, heat = heatCells(data, span.from, span.to, now, tokens ? tokenTotals(data) : null);
+    const ledger = tokens ? tokenSummary(data, now) : null, tokenDays = tokens ? normalizeUsage(data).tokens?.days || {} : null;
     const labels = ['一', '二', '三', '四', '五', '六', '日'];
-    // 每一格带着自己那天的日期与时长；点一下，格子下面那一行就换成这一天。默认停在今天（今天不在范围里就空着）。
-    const dayText = cell => `<i data-level="${cell.level}"></i><span>${md(cell.time)}</span><b>${cell.ms ? esc(durationText(cell.ms)) : '没喝'}</b>`;
+    // 每一格带着自己那天的日期与时长（token 模式是那天发出与收到的数）；点一下，格子下面那一行就换成这一天。默认停在今天（今天不在范围里就空着）。
+    const spentText = cell => !cell.ms ? '没喝' : tokens ? splitText(tokenDays[dayKey(cell.time)]) : durationText(cell.ms);
+    const dayText = cell => `<i data-level="${cell.level}"></i><span>${md(cell.time)}</span><b>${esc(spentText(cell))}</b>`;
     const today = heat.cells.find(cell => cell.today && cell.ms !== null);
-    const cells = heat.cells.map(cell => `<i data-level="${cell.level}" style="--c:${cell.column};--r:${cell.row}"${cell.today ? ' data-today' : ''}${cell.ms === null ? '' : ` title="${md(cell.time)} · ${cell.ms ? esc(durationText(cell.ms)) : '没喝'}"`}${cell === today ? ' class="on"' : ''}${cell.ms === null ? '' : ` data-day="${esc(md(cell.time))}" data-spent="${cell.ms ? esc(durationText(cell.ms)) : '没喝'}"`}></i>`).join('');
-    const earlier = summary.firstDay && summary.firstDay < heat.from, later = quarterRange(now).to > heat.to;
-    const recent = summary.recent;
+    const cells = heat.cells.map(cell => `<i data-level="${cell.level}" style="--c:${cell.column};--r:${cell.row}"${cell.today ? ' data-today' : ''}${cell.ms === null ? '' : ` title="${md(cell.time)} · ${esc(spentText(cell))}"`}${cell === today ? ' class="on"' : ''}${cell.ms === null ? '' : ` data-day="${esc(md(cell.time))}" data-spent="${esc(spentText(cell))}"`}></i>`).join('');
+    const earlier = (tokens ? ledger.firstDay : summary.firstDay) && (tokens ? ledger.firstDay : summary.firstDay) < heat.from, later = quarterRange(now).to > heat.to;
+    const recent = tokens ? null : summary.recent;
     const card = (index, title, body, small = '') => `<section class="qm-usage-card" style="--n:${index}"><em>${title}</em><strong>${body}</strong>${small ? `<small>${small}</small>` : ''}</section>`;
     const peakWord = summary.peak === null ? '' : summary.peak < 6 ? '深夜' : summary.peak < 12 ? '上午' : summary.peak < 18 ? '下午' : '夜里';
-    return `<header><h3>微醺记录</h3><button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>
-      <section class="qm-usage-heat"><div class="qm-usage-grid" style="--weeks:${heat.weeks}">${labels.map(name => `<b>${name}</b>`).join('')}${cells}</div>
-        <p class="qm-usage-day" aria-live="polite">${today ? dayText(today) : ''}</p>
-        <div class="qm-usage-range"><button type="button" data-usage-shift="-1" aria-label="往前"${!span.custom && !earlier ? ' disabled' : ''}>‹</button><button type="button" class="qm-usage-span" data-usage-custom aria-label="自选范围" aria-expanded="${span.custom ? 'true' : 'false'}">${dotted(heat.from)} — ${dotted(heat.to)}</button><button type="button" data-usage-shift="1" aria-label="往后"${!span.custom && !later ? ' disabled' : ''}>›</button></div>
-        <div class="qm-usage-pick"${span.custom ? '' : ' hidden'}><input type="date" data-usage-from aria-label="开始日期" value="${dayKey(heat.from)}"><span>至</span><input type="date" data-usage-to aria-label="结束日期" value="${dayKey(heat.to)}"></div></section>
-      ${recent ? `<button type="button" class="qm-usage-last" data-usage-page="chars" aria-label="宿缘">${face(recent, avatarUrl)}<strong>${esc(nameOf(recent))}</strong><em>${esc(durationText(recent.ms))} ›</em><small>${esc(recent.last ? `${lastChatText(wall(recent.last), now)} 聊过` : lastChatText(0, now))}</small></button>` : ''}
-      <div class="qm-usage-cards">
+    // token 模式：前五格是总数，下面一行分出发出与收到；后三格是日均、记了几天、最多的一天。没有角色名单。
+    const counters = tokens ? `
+        ${[['今日', ledger.today], ['本周', ledger.week], ['本月', ledger.month], ['今年', ledger.year], ['累计', ledger.all]].map(([title, item], index) => card(index, title, bigTokens(item.total), esc(splitText(item)))).join('\n        ')}
+        ${card(5, '日均', bigTokens(ledger.average))}
+        ${card(6, '记录天数', `<i data-count="${ledger.activeDays}">${ledger.activeDays}</i><span>days</span>`, ledger.since ? `始于 <b>${md(wall(ledger.since))}</b>` : '今天开始记')}
+        ${card(7, '最多一天', ledger.peak ? bigTokens(ledger.peak.total) : '—', ledger.peak ? `<b>${md(ledger.peak.day)}</b>` : '')}` : `
         ${card(0, '今日', big(summary.today))}
         ${card(1, '本周', big(summary.week))}
         ${card(2, '本月', big(summary.month))}
@@ -283,10 +300,19 @@ export function usageMarkup(data, { now: real = Date.now(), range = null, page =
         ${card(4, '累计', big(summary.all))}
         ${card(5, '连续', `<i data-count="${summary.streak}">${summary.streak}</i><span>days</span>`, `最长 <b>${summary.longest} 天</b>`)}
         ${card(6, `今日来杯 ${esc(drink)}`, `<i data-count="${summary.activeDays}">${summary.activeDays}</i><span>days</span>`, summary.since ? `始于 <b>${md(wall(summary.since))}</b>` : '今天开始记')}
-        ${card(7, '最常在', summary.peak === null ? '—' : `<span>${peakWord}</span><i>${pad(summary.peak)}:00</i>`, `<span class="qm-usage-zone">${esc(timeZoneText(new Date(real), picked))}<select data-usage-zone aria-label="时区"><option value=""${picked ? '' : ' selected'}>跟随系统</option>${zones.map(name => `<option value="${esc(name)}"${name === picked ? ' selected' : ''}>${esc(name.replace(/_/g, ' '))}</option>`).join('')}</select></span>`)}
+        ${card(7, '最常在', summary.peak === null ? '—' : `<span>${peakWord}</span><i>${pad(summary.peak)}:00</i>`, `<span class="qm-usage-zone">${esc(timeZoneText(new Date(real), picked))}<select data-usage-zone aria-label="时区"><option value=""${picked ? '' : ' selected'}>跟随系统</option>${zones.map(name => `<option value="${esc(name)}"${name === picked ? ' selected' : ''}>${esc(name.replace(/_/g, ' '))}</option>`).join('')}</select></span>`)}`;
+    return `<header><h3>微醺记录</h3>${modeSwitch(tokens ? 'tokens' : 'time')}<button type="button" class="qm-usage-icon" data-usage-close aria-label="关闭">✕</button></header>
+      <section class="qm-usage-heat"><div class="qm-usage-grid" style="--weeks:${heat.weeks}">${labels.map(name => `<b>${name}</b>`).join('')}${cells}</div>
+        <p class="qm-usage-day" aria-live="polite">${today ? dayText(today) : ''}</p>
+        <div class="qm-usage-range"><button type="button" data-usage-shift="-1" aria-label="往前"${!span.custom && !earlier ? ' disabled' : ''}>‹</button><button type="button" class="qm-usage-span" data-usage-custom aria-label="自选范围" aria-expanded="${span.custom ? 'true' : 'false'}">${dotted(heat.from)} — ${dotted(heat.to)}</button><button type="button" data-usage-shift="1" aria-label="往后"${!span.custom && !later ? ' disabled' : ''}>›</button></div>
+        <div class="qm-usage-pick"${span.custom ? '' : ' hidden'}><input type="date" data-usage-from aria-label="开始日期" value="${dayKey(heat.from)}"><span>至</span><input type="date" data-usage-to aria-label="结束日期" value="${dayKey(heat.to)}"></div></section>
+      ${recent ? `<button type="button" class="qm-usage-last" data-usage-page="chars" aria-label="宿缘">${face(recent, avatarUrl)}<strong>${esc(nameOf(recent))}</strong><em>${esc(durationText(recent.ms))} ›</em><small>${esc(recent.last ? `${lastChatText(wall(recent.last), now)} 聊过` : lastChatText(0, now))}</small></button>` : ''}
+      <div class="qm-usage-cards">${counters}
       </div>`;
 }
 
+/** 上次看的是时长还是 token：本次打开酒馆期间记着，下次打开面板接着看。 */
+let lastMode = 'time';
 /** 打开面板。mount：把根节点交给主题系统（跟随千幕当前主题）。返回关闭函数。 */
 export function openUsagePanel({ document = globalThis.document, getData = () => null, getFloors = () => [], setZone = () => {}, themeClass = '', mount = () => {}, now: clock = () => Date.now(), random = Math.random } = {}) {
     document.getElementById(ROOT_ID)?.remove();
@@ -297,7 +323,7 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
     const root = document.createElement('div'); root.id = ROOT_ID; if (themeClass) root.className = themeClass;
     root.innerHTML = '<div class="qm-usage-backdrop"></div><section class="qm-usage-panel" role="dialog" aria-modal="true" aria-label="微醺记录"></section>';
     const panel = root.querySelector('.qm-usage-panel'), drink = DRINKS[Math.floor(random() * DRINKS.length) % DRINKS.length];
-    let page = 'home', range = null, quarter = 0, rank = 'time';
+    let page = 'home', range = null, quarter = 0, rank = 'time', mode = lastMode;
     // 翻页与自选都按所选时区的「今天」来算。
     const now = () => { const at = clock(), zone = getData()?.zone; return at + zoneShift(at, typeof zone === 'string' ? zone : ''); };
     const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); };
@@ -312,7 +338,7 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
         }
     };
     const paint = ({ animate = true } = {}) => {
-        panel.innerHTML = usageMarkup(getData(), { now: clock(), range, page, drink, rank, floors: page === 'chars' ? getFloors() : [] });
+        panel.innerHTML = usageMarkup(getData(), { now: clock(), range, page, mode, drink, rank, floors: page === 'chars' ? getFloors() : [] });
         // 头像取得到才显示；取不到（角色已删）就留着名字的第一个字。
         for (const image of panel.querySelectorAll('.qm-usage-face img')) { const show = () => { image.hidden = false; }; image.addEventListener('load', show); if (image.complete && image.naturalWidth) show(); }
         panel.scrollTop = 0; if (animate) countUp();
@@ -326,11 +352,12 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
     });
     root.addEventListener('click', event => {
         event.stopPropagation();
-        // 点热力格里的一天：这一格放大，下面那一行换成它的日期与时长。只换这一行，格子不重画。
+        // 点热力格里的一天：这一格弹一下并描上边，下面那一行换成它的日期与时长。只换这一行，格子不重画。
         const cell = event.target.closest?.('.qm-usage-grid i[data-day]');
         if (cell) {
             const line = panel.querySelector('.qm-usage-day'); if (!line) return;
             for (const other of panel.querySelectorAll('.qm-usage-grid i.on')) other.classList.remove('on');
+            void cell.offsetWidth; // 再点同一格也重新弹一下
             cell.classList.add('on');
             const swatch = document.createElement('i'), day = document.createElement('span'), spent = document.createElement('b');
             swatch.dataset.level = cell.dataset.level; day.textContent = cell.dataset.day; spent.textContent = cell.dataset.spent;
@@ -341,7 +368,8 @@ export function openUsagePanel({ document = globalThis.document, getData = () =>
         const hit = event.target.closest?.('button, .qm-usage-backdrop');
         if (!hit) return;
         if (hit.matches('.qm-usage-backdrop') || hit.hasAttribute('data-usage-close')) return close();
-        if (hit.dataset.usageRank) { rank = hit.dataset.usageRank; paint(); }
+        if (hit.dataset.usageMode) { if (hit.dataset.usageMode !== mode) { mode = lastMode = hit.dataset.usageMode === 'tokens' ? 'tokens' : 'time'; page = 'home'; paint(); } }
+        else if (hit.dataset.usageRank) { rank = hit.dataset.usageRank; paint(); }
         else if (hit.dataset.usagePage) { page = hit.dataset.usagePage; paint(); }
         else if (hit.hasAttribute('data-usage-custom')) {
             if (range?.custom) { range = null; quarter = 0; } else range = { ...(range || quarterRange(now(), quarter)), custom: true };

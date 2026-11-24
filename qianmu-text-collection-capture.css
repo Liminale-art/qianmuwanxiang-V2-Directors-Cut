@@ -35,8 +35,10 @@
 .qm-collection-capture .qm-collection-capture-choices { display: flex; gap: 10px; }
 .qm-collection-capture .qm-collection-capture-choices button { flex: 1; min-height: 44px; background: var(--sd-input-bg, #8881); }
 .qm-collection-capture .qm-collection-capture-paragraphs { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 6px 10px; margin: 0 0 .75em; text-align: justify; text-align-last: start; text-indent: 2em; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--qm-prose-font, var(--sd-font, inherit)); font-size: var(--qm-prose-size, 1em); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; }
+.qm-collection-capture .qm-collection-capture-paragraph { display: block; width: 100%; padding: 6px 10px; margin: 0 0 .75em; text-align: justify; text-align-last: start; text-indent: 2em; overflow-wrap: anywhere; white-space: pre-line; font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))); font-size: var(--qm-prose-size, 1em); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; }
 .qm-collection-capture .qm-collection-capture-paragraph:last-child { margin-bottom: 0; }
 .qm-collection-capture .qm-collection-capture-paragraph[aria-pressed="true"] { background: color-mix(in srgb, var(--sd-accent, #8aafcf) 18%, transparent); box-shadow: none; }
 .qm-collection-capture footer span { color: var(--sd-muted, #999); }
 .qm-collection-capture .qm-collection-capture-status { margin: 0; overflow-wrap: anywhere; }
+/* 段落选择与阅读页一样跟随字体库的正文字体：极简／纸间外观给面板内文字指定的外观字体不能盖过它。 */
+:is(#story-director-modal, [data-qm-theme])[data-qm-theme] .qm-collection-capture .qm-collection-capture-paragraph { font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))) !important; }

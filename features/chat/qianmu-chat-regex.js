@@ -804,6 +804,43 @@ export async function switchPreset(context, name) {
   return true;
 }
 
+// 批量删预设：逐个走 ST 原生删除（PresetManager.deletePreset，和原生「删除预设」按钮同一条路），原生下拉随之同步；
+// 删到正在用的那个时由 ST 自己切到剩下的第一个，所以它排在最后删。每删掉一个发一次 PRESET_DELETED、最后存一次设置，与原生一致。
+// 只删当前名单里真有的名字（原生对不存在的名字会误删最后一个）；删完名单里还在、或 ST 说没删成的，算没删掉。
+export async function deletePresets(context, names) {
+  const ctx = context && typeof context === 'object' ? context : {};
+  const manager = presetManager(ctx);
+  if (!canSwitchPresets(manager) || typeof manager.deletePreset !== 'function') throw new Error('当前 ST 不支持在此删除预设');
+  const listed = () => readPresetChoices(ctx).names;
+  const known = new Set(listed()), current = text(attempt(() => manager.getSelectedPresetName(), ''));
+  const wanted = [...new Set((Array.isArray(names) ? names : []).map(text).filter(name => name && known.has(name)))];
+  const ordered = [...wanted.filter(name => name !== current), ...wanted.filter(name => name === current)];
+  const deleted = [], failed = [];
+  const emitter = ctx.eventSource && typeof ctx.eventSource.emit === 'function' ? ctx.eventSource : null;
+  const deletedType = attempt(() => ctx.eventTypes?.PRESET_DELETED || ctx.event_types?.PRESET_DELETED, '') || 'preset_deleted';
+  for (const name of ordered) {
+    if (!listed().includes(name)) continue;
+    let result;
+    try { result = await manager.deletePreset(name); } catch (_) { result = false; }
+    if (result === false || listed().includes(name)) { failed.push(name); continue; }
+    deleted.push(name);
+    if (emitter) { try { await emitter.emit(deletedType, { apiId: manager.apiId, name }); } catch (_) { /* 别的监听者出错不影响删除结果 */ } }
+  }
+  if (deleted.length) attempt(() => ctx.saveSettingsDebounced?.(), null);
+  return Object.freeze({ deleted: Object.freeze(deleted), failed: Object.freeze(failed) });
+}
+
+// 纯函数：从一份正则开关记录里去掉这些预设名下的条目（`preset:<预设名>:<id>`）。没有变化时原样返回同一个对象。
+export function dropPresetKeys(map, names) {
+  const value = map && typeof map === 'object' ? map : {};
+  const prefixes = (Array.isArray(names) ? names : []).map(name => `preset:${text(name)}:`).filter(prefix => prefix.length > 8);
+  const keys = Object.keys(value).filter(key => prefixes.some(prefix => key.startsWith(prefix)));
+  if (!keys.length) return value;
+  const next = { ...value };
+  for (const key of keys) delete next[key];
+  return next;
+}
+
 // 预设正则对已显示楼层的影响签名：仅在被允许运行时，取启用中的显示类脚本 id。
 // 切预设前后签名不同才需要重载聊天，两个预设都没有显示类正则时不白白重载。
 export function presetDisplaySignature(sources) {
@@ -880,7 +917,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
   // C-19：固定分组存取（组名 → 成员 id），存千幕自己的设置；未接线时整套固定分组惰性，不写任何东西。
   // C-22：手动分组归属存取（id → 组名 / null），存千幕自己的设置；未接线时整套手动分组惰性，不写任何东西。
   readGroups = () => ({}), writeGroups = () => {},
-  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.597') } = {}) {
+  loadView = () => import('./qianmu-chat-regex-view.js?v=1.59.598') } = {}) {
   let mounted = null, disposed = false, view = 'order', reloadTimer = null, reloadPending = false, applying = false;
   let presetBusy = false, missingNoticed = '';
   const pending = new Set();
@@ -1076,9 +1113,15 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
           }
         } catch (error) {
           if (!stillCurrent(token, chatId)) return 0;
-          // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
-          const notice = `${chatId}\n${bound}`;
-          if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
+          if (deletedPresets.has(bound)) {
+            // 这个预设是在快切里删掉的：本聊天对它的绑定随之清掉，不再提示。
+            const b = currentBinding();
+            saveBinding({ preset: '', overrides: dropPresetKeys(b.overrides, [bound]) });
+          } else {
+            // 绑定的预设被删/改名：每个聊天只提示一次，跳过预设、正则照常套用。
+            const notice = `${chatId}\n${bound}`;
+            if (missingNoticed !== notice) { missingNoticed = notice; notify(`本聊天绑定的预设「${bound}」无法切换（${error?.message || '未知原因'}），已跳过`, 'warning'); }
+          }
         }
       }
       if (!stillCurrent(token, chatId)) return 0;
@@ -1129,6 +1172,37 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     } finally {
       presetBusy = false;
       if (reload) scheduleReload();
+      refresh();
+    }
+  }
+
+  // 快切里批量删预设。删掉的预设名下的绑定记录一并清掉：全局默认里的、当前聊天的（绑定的预设与它名下的正则开关）。
+  // 别的聊天的记录存在各自的聊天文件里，读不到；本次打开期间进到那些聊天时再顺手清（见 applyBinding）。
+  const deletedPresets = new Set();
+  async function removePresets(names) {
+    const list = (Array.isArray(names) ? names : []).map(text).filter(Boolean);
+    if (!list.length || presetBusy || disposed) return 0;
+    bumpSession();
+    presetBusy = true; refresh();
+    try {
+      const { deleted, failed } = await deletePresets(context(), list);
+      for (const name of deleted) deletedPresets.add(name);
+      if (deleted.length) {
+        const defaults = attempt(() => readDefaults(), {}) || {}, nextDefaults = dropPresetKeys(defaults, deleted);
+        if (nextDefaults !== defaults) writeDefaults(nextDefaults);
+        if (text(currentChatId())) {
+          const b = currentBinding(), overrides = dropPresetKeys(b.overrides, deleted), lostPreset = deleted.includes(b.preset);
+          if (lostPreset || overrides !== b.overrides) saveBinding({ overrides, ...(lostPreset ? { preset: '' } : {}) });
+        }
+      }
+      if (failed.length) notify(deleted.length ? `已删除 ${deleted.length} 个预设，${failed.length} 个没删掉` : '预设没删掉', 'warning');
+      else if (deleted.length) notify(`已删除 ${deleted.length} 个预设`, 'success');
+      return deleted.length;
+    } catch (error) {
+      notify(error?.message || '预设没删掉', 'warning');
+      return 0;
+    } finally {
+      presetBusy = false;
       refresh();
     }
   }
@@ -1754,6 +1828,7 @@ export function createChatRegex({ getContext = () => ({}), notify = () => {},
     setBindingOverride,
     clearBindingOverride,
     selectPreset,
+    deletePresets: removePresets,
     readScript, removeMany, undoRemove, setRecycle, copyMany, move, moveRow, pickMove, cancelPick, dropMove, insert, saveScript, rename, regroup, retag,
     setManaging, setSelected, openEditor, closeEditor, importMany, exportMany,
     renameGroup, unfixGroup,

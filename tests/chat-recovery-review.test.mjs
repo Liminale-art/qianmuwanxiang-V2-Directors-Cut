@@ -126,6 +126,24 @@ test('recovery action does not open a confirmation popup', async () => {
   assert.equal(recover.disabled, true, 'the recovered source remains protected after reloading the list');
 });
 
+test('the recovery notice shows only while the panel that did it stays open; reopening starts clean', async () => {
+  const f = fixture(); await f.prepare(); const ui = dom();
+  const mount = () => mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });
+  const status = () => ui.find(node => node.className === 'qm-recovery-status');
+  let view = f.view = mount();
+  const target = ui.find(node => node.className === 'qm-recovery-character-select'); target.value = 'Synthetic.png'; await target.handlers.change();
+  const item = ui.find(node => node.className === 'qm-recovery-item'); await item.handlers.click();
+  await ui.find(node => node.tag === 'button' && node.textContent.startsWith('将当前所选聊天找回至')).handlers.click();
+  assert.match(status().textContent, /^已将此聊天备份找回至/, '这次打开期间照常显示');
+  assert.equal(f.controller.snapshot().result.status, 'verified', '控制器仍记着结果（找回按钮的防重复要用）');
+  // 关掉面板再打开：提示不再出现，哪怕控制器又推了一次同样的状态。
+  view.dispose(); view = f.view = mount();
+  assert.equal(status().hidden, true); view.render(f.controller.snapshot()); assert.equal(status().hidden, true);
+  // 再读一次列表：旧结果清掉，提示照常不显示。
+  await f.controller.load(); assert.equal(status().hidden, true);
+});
+
+
 test('role autocomplete binds the selected avatar, keeps the controls icon-only, and nests load-more in the scroller', async () => {
   const f = fixture(); await f.controller.load();
   const ui = dom(); mountChatRecoveryView({ root: ui.root, controller: f.controller, getCharacters: () => f.characters, confirm: async () => true });

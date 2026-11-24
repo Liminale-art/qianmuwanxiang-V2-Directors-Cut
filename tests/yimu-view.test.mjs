@@ -518,12 +518,13 @@ test('stage automatic mode is on by default and toggling it autosaves the curren
     assert.deepEqual(f.calls[0].payload, { global: false, values: { stageAuto: false }, expectedRevision: 0 });
 });
 
-test('controlled recall uses one default-off switch and saves the existing setting key', async t => {
+test('the removed source recall has no settings switch, whatever old global or chat values say', t => {
+    // 「原文回查与补充」整项已去掉（2026-11-24）：设置页没有这个开关，旧资料里存着的 true 也不让它回来，更不写迁移。
     const f = fixture(); t.after(() => f.view.destroy());
-    const recall = f.get('原文回查与补充'); assert.equal(recall.checked, false);
-    assert.equal(recall.closest('details'),null);assert.equal(recall.closest('.ym-extra-settings').tagName.toLowerCase(),'section');recall.checked = true; recall.emit('change'); await f.flush();
-    assert.deepEqual(f.calls[0].payload, { global: false, values: { recall: true }, expectedRevision: 0 });
-    assert.equal(f.get('按需回查细摘要'), undefined);
+    assert.equal(f.get('原文回查与补充'), undefined); assert.equal(f.get('按需回查细摘要'), undefined);
+    f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: true } }, document: { ...f.state.document, settings: { recall: true } } });
+    assert.equal(f.get('原文回查与补充'), undefined); assert.equal(f.get('按需回查细摘要'), undefined);
+    assert.equal(f.calls.length, 0);
 });
 
 test('custom-slice sharing is an explicit Yimu setting and defaults off', async t => {
@@ -532,17 +533,6 @@ test('custom-slice sharing is an explicit Yimu setting and defaults off', async 
     assert.equal(control.checked, false);
     control.checked = true; control.emit('change'); await f.flush();
     assert.deepEqual(f.calls.at(-1).payload.values, { companionShareCustom: true });
-});
-
-test('the renamed trial switch preserves old global and chat-level false values without writing a migration', t => {
-    const f = fixture(); t.after(() => f.view.destroy());
-    f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: false } } });
-    assert.equal(f.get('原文回查与补充').checked, false);
-    f.render({ document: { ...f.state.document, settings: { recall: true } } });
-    assert.equal(f.get('原文回查与补充').checked, true, 'an explicit chat override wins');
-    f.render({ defaults: { ...f.state.defaults, values: { ...f.state.defaults.values, recall: true } }, document: { ...f.state.document, settings: { recall: false } } });
-    assert.equal(f.get('原文回查与补充').checked, false);
-    assert.equal(f.calls.length, 0);
 });
 
 test('source-backed excerpts show the hydrated quotation and speaker as independent floor-ordered records, not their stored marker', t => {
@@ -673,11 +663,14 @@ test('candidate and device-conflict decisions explicitly identify the record rev
 });
 
 test('clearing an individual setting restores its default without rewriting other settings or global defaults', async t => {
-    const f = fixture({ document: { enabled: false, settings: { recent: 7 }, entries: [] } }); t.after(() => f.view.destroy());
+    // 设置是账户全局的（2026-11-24）：显示的是全局默认里的值；清空交给设置动作，由它把那一项在全局里恢复成内置默认。
+    const values = state().defaults.values;
+    const f = fixture({ document: { enabled: false, settings: {}, entries: [] }, defaults: { revision: 0, values: { ...values, recent: 7 } } }); t.after(() => f.view.destroy());
     const recent=f.get('正文保留层数');assert.equal(recent.value, '7');
     for(const label of ['近期原文层数跟随默认','恢复默认设置','保存设置','全局默认','当前聊天','取消设置修改'])assert.equal(f.get(label),undefined);
     recent.value='';recent.emit('change');await f.flush();assert.deepEqual(f.calls[0],{type:'settings',payload:{global:false,values:{recent:null},expectedRevision:0}});
-    f.render({document:{...f.state.document,configRevision:1,settings:{}}});assert.equal(recent.value,'5');
+    assert.equal(f.state.defaults.values.recent, 7, 'view itself never mutates canonical defaults');
+    f.render({document:{...f.state.document,configRevision:1,settings:{}},defaults:{revision:1,values:{...values,recent:5}}});assert.equal(recent.value,'5');
     recent.value='8';recent.emit('change');await f.flush();assert.deepEqual(f.calls[1],{type:'settings',payload:{global:false,values:{recent:8},expectedRevision:1}});
     assert.equal(f.state.defaults.values.recent, 5, 'view itself never mutates canonical defaults');
 });
@@ -1341,12 +1334,14 @@ test('an existing slice edits time and prose in place and keeps newer typing acr
     assert.equal(card.querySelector('.ym-memory-content').hidden,true);assert.ok(f.get('保存修订').closest('.ym-memory-head'));assert.equal(f.get('保存修订').textContent,'');
     assert.match(text.value,/五月十日.*清晨.*车站/);assert.equal(f.get('场景1日期'),undefined);
     text.value=text.value.replace('五月十日','五月十一日');text.emit('input');
-    f.get('保存修订').click(); await f.flush(); assert.deepEqual(f.calls[0].payload.scenes,[]);assert.match(f.calls[0].payload.text,/五月十一日/);
+    // 场景行里改了日期：按原格式读回成场景字段（2026-11-24），正文不变。
+    const scene=date=>({...initial.scenes[0],world:'',timeline:'',date});
+    f.get('保存修订').click(); await f.flush(); assert.deepEqual(f.calls[0].payload.scenes,[scene('五月十一日')]);assert.equal(f.calls[0].payload.text,initial.text);
     text.value=text.value.replace('五月十一日','五月十二日');text.emit('input');
-    f.render({ document: { ...f.state.document, entries: [entry({ revision: 3, edited: true, text:f.calls[0].payload.text,scenes: [] })] } });
+    f.render({ document: { ...f.state.document, entries: [entry({ revision: 3, edited: true, text:f.calls[0].payload.text,scenes: f.calls[0].payload.scenes })] } });
     finish(true); await f.flush();
     assert.equal(f.get('编辑记忆内容'), text);assert.equal(text.isConnected,true);assert.match(text.value,/五月十二日/);
-    f.get('保存修订').click(); await f.flush(); assert.equal(f.calls[1].payload.expectedRevision, 3); assert.match(f.calls[1].payload.text,/五月十二日/);assert.deepEqual(f.calls[1].payload.scenes,[]);
+    f.get('保存修订').click(); await f.flush(); assert.equal(f.calls[1].payload.expectedRevision, 3); assert.equal(f.calls[1].payload.text,initial.text);assert.deepEqual(f.calls[1].payload.scenes,[scene('五月十二日')]);
     finish(true); await f.flush(); assert.equal(f.get('编辑记忆内容'), undefined); assert.equal(text.isConnected, false);
 });
 
@@ -1398,7 +1393,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.75 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.76 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1429,9 +1424,10 @@ test('autosave coalesces typing and drains newer edits only after the earlier sa
     f.get('设置').click();const input=f.get('正文保留层数');input.value='7';input.emit('input');input.value='8';input.emit('input');
     await new Promise(resolve=>setTimeout(resolve,5));assert.equal(f.calls.length,1);assert.equal(f.calls[0].payload.values.recent,8);
     input.value='9';input.emit('input');input.emit('blur');assert.equal(f.calls.length,1);
-    f.render({document:{...f.state.document,configRevision:1,settings:{recent:8}}});finish(true);await f.flush();
+    // 设置是账户全局的（2026-11-24）：存好后的值在全局默认里，聊天里单独存的设置被清空。
+    f.render({document:{...f.state.document,configRevision:1,settings:{}},defaults:{...f.state.defaults,revision:1,values:{...f.state.defaults.values,recent:8}}});finish(true);await f.flush();
     assert.equal(input.value,'9');assert.equal(f.calls.length,2);assert.deepEqual(f.calls[1].payload,{global:false,values:{recent:9},expectedRevision:1});
-    f.render({document:{...f.state.document,configRevision:2,settings:{recent:9}}});finish(true);await f.flush();assert.equal(input.value,'9');assert.equal(f.calls.length,2);
+    f.render({document:{...f.state.document,configRevision:2,settings:{}},defaults:{...f.state.defaults,revision:2,values:{...f.state.defaults.values,recent:9}}});finish(true);await f.flush();assert.equal(input.value,'9');assert.equal(f.calls.length,2);
 });
 
 test('a second save uses the revision the panel holds now, not the previous one plus one', async t => {
@@ -1530,7 +1526,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.75'); assert.equal(pkg.version, '0.8.32');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.76'); assert.equal(pkg.version, '0.8.33');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);

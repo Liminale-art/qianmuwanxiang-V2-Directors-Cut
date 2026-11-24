@@ -65,8 +65,10 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
       panel.style.removeProperty('--qm-ring-lock-h');
     }
   }
-  function goMain() { actions.stopSound(); page = 'main'; lockPanel(false); render(last); }
-  function openList(kind) { lockPanel(true); page = kind; render(last); }
+  // 列表里点选只存设置、不重画，所以回到上一级时按当前存着的设置画，刚选的铃声立刻显示出来。
+  const fresh = () => actions.current?.() || last;
+  function goMain() { actions.stopSound(); page = 'main'; lockPanel(false); render(fresh()); }
+  function openList(kind) { lockPanel(true); page = kind; render(fresh()); }
 
   // Phone-OS style chooser: each row auditions + selects on tap; the filled radio marks the current pick.
   // Selection persists without a re-render (actions.select*), so tapping never resets the list scroll.
@@ -105,17 +107,79 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
     return wrap;
   }
 
-  // Dot-matrix audio bar as a strip card between the sub-page head and the list, outside the scrollable list.
-  // Grey while idle, a soft pulse while the audition loads, light green and dancing while it plays (CSS only).
-  const EQ_HEIGHTS = [3, 5, 4, 7, 5, 8, 6, 4, 7, 9, 6, 5, 8, 6, 4, 7, 5, 8, 6, 9, 5, 7, 4, 6, 8, 5, 3, 6, 8, 5, 7, 4, 6, 9, 5, 8, 6, 4, 7, 5, 9, 6, 4, 8, 5, 7, 6, 3];
+  // Audio bar: a strip card between the sub-page head and the list, outside the scrollable list.
+  // It follows the real audition: the bars are the live spectrum read from the playing sound (actions.audioLevels),
+  // centre-out from low to high, rising quickly and settling softly. Nothing moves unless sound data really arrives:
+  // idle, loading, a sound that cannot be analysed (cross-origin, no Web Audio) and reduced motion all draw a still row.
+  const BAR = 2, GAP = 3, QUIET_FRAMES = 36;
+  let loop = 0, bins = null, heights = [], quiet = 0, live = false;
   function audioBar() {
     const bar = el('div', 'qm-ring-eq'); bar.setAttribute('aria-hidden', 'true'); bar.dataset.audio = audio;
-    EQ_HEIGHTS.forEach((h, i) => { const col = el('span'); col.style.setProperty('--h', String(h)); col.style.setProperty('--d', `${(i * 137) % 900}ms`); bar.append(col); });
+    bar.append(el('canvas', 'qm-ring-eq-canvas'));
     return bar;
+  }
+  const win = () => document.defaultView || null;
+  const stillMotion = () => { try { return Boolean(win()?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches); } catch (_) { return false; } };
+  // One frame. levels: 0–1 per bar, or null for the still row (a dotted hairline).
+  function drawBars(levels) {
+    const canvas = eq?.querySelector?.('canvas'), ctx = canvas?.getContext?.('2d');
+    if (!ctx) return 0;
+    const ratio = win()?.devicePixelRatio || 1, width = canvas.clientWidth, height = canvas.clientHeight;
+    if (!(width > 0 && height > 0)) return 0;
+    if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const count = Math.max(8, Math.floor((width + GAP) / (BAR + GAP))), left = (width - (count * (BAR + GAP) - GAP)) / 2, middle = height / 2;
+    let color = '';
+    try { color = win()?.getComputedStyle?.(eq)?.color || ''; } catch (_) {}
+    ctx.fillStyle = '#7f7f7f'; if (color) ctx.fillStyle = color;
+    for (let i = 0; i < count; i += 1) {
+      const level = levels ? levels[i] || 0 : 0, tall = Math.max(BAR, level * (height - 6));
+      ctx.globalAlpha = levels ? 0.35 + 0.65 * Math.min(1, level * 1.4) : 0.55;
+      const x = left + i * (BAR + GAP), y = middle - tall / 2;
+      if (typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(x, y, BAR, tall, BAR / 2); ctx.fill(); } else ctx.fillRect(x, y, BAR, tall);
+    }
+    ctx.globalAlpha = 1;
+    return count;
+  }
+  // Spectrum → bars, mirrored around the centre: low notes in the middle, highs toward both ends.
+  // Returns null until the sound has produced any data at all; after that, silent stretches settle down smoothly.
+  function spectrum(count) {
+    const usable = Math.max(4, Math.floor(bins.length * 0.72)), out = new Array(count), half = (count - 1) / 2 || 1;
+    let any = false;
+    for (let i = 0; i < count; i += 1) {
+      const distance = Math.abs(i - half) / half, index = Math.min(usable - 1, Math.floor(distance ** 1.4 * usable));
+      const target = bins[index] / 255, current = heights[i] || 0;
+      if (bins[index]) any = true;
+      out[i] = heights[i] = current + (target - current) * (target > current ? 0.55 : 0.16);
+    }
+    if (any) live = true;
+    return live ? out : null;
+  }
+  function stopLoop() { if (loop) win()?.cancelAnimationFrame?.(loop); loop = 0; heights = []; quiet = 0; live = false; }
+  function frame() {
+    loop = 0;
+    if (disposed || !eq || audio !== 'playing') return;
+    const count = Math.max(8, Math.floor(((eq.querySelector?.('canvas')?.clientWidth || 0) + GAP) / (BAR + GAP)));
+    if (!bins) bins = new Uint8Array(128);
+    const got = actions.audioLevels?.(bins) === true;
+    const levels = got ? spectrum(count) : null;
+    // Data never arrives (a source the browser keeps silent): give up and stay still instead of faking motion.
+    quiet = levels ? 0 : quiet + 1;
+    if (!got || quiet > QUIET_FRAMES) { drawBars(null); return; }
+    drawBars(levels);
+    loop = win()?.requestAnimationFrame?.(frame) || 0;
+  }
+  function paintAudio() {
+    stopLoop();
+    if (!eq) return;
+    eq.dataset.audio = audio;
+    drawBars(null);
+    if (audio === 'playing' && !stillMotion() && typeof win()?.requestAnimationFrame === 'function') loop = win().requestAnimationFrame(frame);
   }
   function setAudio(next) {
     audio = ['loading', 'playing'].includes(next) ? next : 'idle';
-    if (eq) eq.dataset.audio = audio;
+    paintAudio();
   }
 
   function builtinListPage(s) {
@@ -380,13 +444,14 @@ export function mountChatRingtoneView({ root, actions, notify = () => {} }) {
   function render(s) {
     if (disposed) return;
     last = s; eq = null;
-    if (page === 'builtin') { root.replaceChildren(builtinListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
-    if (page === 'local') { root.replaceChildren(localListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); return; }
+    if (page === 'builtin') { root.replaceChildren(builtinListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); paintAudio(); return; }
+    if (page === 'local') { root.replaceChildren(localListPage(s)); root.querySelector('.qm-ring-list-item.is-active')?.scrollIntoView?.({ block: 'nearest' }); paintAudio(); return; }
+    stopLoop();
     const focused = document.activeElement && root.contains(document.activeElement) ? document.activeElement.className : '';
     afterRender = [];
     root.replaceChildren(soundCard(s), backgroundCard(s), flashCard(s), toastCard(s));
     for (const task of afterRender.splice(0)) task();
     if (focused) root.querySelector(`.${String(focused).split(' ')[0]}`)?.focus?.();
   }
-  return Object.freeze({ render, setAudio, dispose() { disposed = true; lockPanel(false); root.replaceChildren(); }, state: () => last });
+  return Object.freeze({ render, setAudio, dispose() { disposed = true; stopLoop(); lockPanel(false); root.replaceChildren(); }, state: () => last });
 }

@@ -358,3 +358,87 @@ test('s9: writes are mirrored onto ST\'s already-rendered native regex list (che
   assert.equal(alien.children.length, 1);
   assert.equal(syncNativeRegexList(st.ctx, { root: { getElementById: () => null } }), 0, '原生面板不在：跳过');
 });
+
+// —— 快切·预设目录的批量删除 ——
+// 仿 ST 原生 PresetManager.deletePreset：先从名单里摘掉（不查是否存在，-1 会摘掉最后一个），删的是正在用的就切到剩下的第一个，再告诉服务器。
+function fakeDeleteST({ names = ['甲', '乙 v1', '乙 v2', '丙'], current = '甲', refuse = [] } = {}) {
+  const log = { deleted: [], events: [], saves: 0 };
+  const list = [...names]; let selected = current;
+  const manager = { apiId: 'openai', getAllPresets: () => [...list], getSelectedPresetName: () => selected,
+    findPreset: name => (list.includes(name) ? name : undefined), selectPreset: async value => { selected = value; },
+    readPresetExtensionField: () => null,
+    async deletePreset(name) { const target = name || selected; list.splice(list.indexOf(target), 1); if (selected === target && list.length) selected = list[0]; log.deleted.push(target); return !refuse.includes(target); } };
+  const ctx = { extensionSettings: { regex: [] }, getPresetManager: () => manager, saveSettingsDebounced: () => { log.saves += 1; },
+    eventSource: { emit: async (type, data) => { log.events.push([type, data.apiId, data.name]); } }, eventTypes: { PRESET_DELETED: 'preset_deleted' } };
+  return { ctx, log, list: () => [...list], selected: () => selected };
+}
+
+test('presets are deleted through the native manager, the one in use last, unknown names never touched', async () => {
+  const { deletePresets, dropPresetKeys } = await import('../features/chat/qianmu-chat-regex.js');
+  const st = fakeDeleteST();
+  const result = await deletePresets(st.ctx, ['甲', '丙', '不存在', '丙', '']);
+  assert.deepEqual(st.log.deleted, ['丙', '甲'], '正在用的放最后删；不存在的不碰（原生会误删最后一个）');
+  assert.deepEqual([...result.deleted], ['丙', '甲']); assert.deepEqual([...result.failed], []);
+  assert.deepEqual(st.list(), ['乙 v1', '乙 v2']); assert.equal(st.selected(), '乙 v1', '删到正在用的：按 ST 原生切到剩下的第一个');
+  assert.deepEqual(st.log.events, [['preset_deleted', 'openai', '丙'], ['preset_deleted', 'openai', '甲']], '和原生一样逐个发删除事件');
+  assert.equal(st.log.saves, 1, '最后存一次设置');
+  // 服务器没删成：算没删掉。
+  const refused = fakeDeleteST({ refuse: ['丙'] });
+  const partial = await deletePresets(refused.ctx, ['乙 v1', '丙']);
+  assert.deepEqual([...partial.deleted], ['乙 v1']); assert.deepEqual([...partial.failed], ['丙']);
+  await assert.rejects(deletePresets({ getPresetManager: () => ({ getAllPresets: () => [], getSelectedPresetName: () => '', findPreset() {}, selectPreset() {} }) }, ['甲']), /不支持/);
+  const map = { 'preset:甲:p1': 1, 'preset:甲乙:p2': 2, 'global:g1': 3 };
+  assert.deepEqual(dropPresetKeys(map, ['甲']), { 'preset:甲乙:p2': 2, 'global:g1': 3 }, '只去掉这个预设名下的');
+  assert.equal(dropPresetKeys(map, ['丙']), map, '没变化时原样返回');
+});
+
+test('deleting presets clears their binding records: global defaults, this chat now, other chats when entered', async () => {
+  const st = fakeDeleteST();
+  let chat = 'chat-1', defaults = { 'preset:甲:p1': { enabled: true }, 'preset:丙:p9': { enabled: false }, 'global:g1': { enabled: true } };
+  const bindings = { 'chat-1': { enabled: true, preset: '甲', overrides: { 'preset:甲:p1': { enabled: false }, 'global:g1': { enabled: false } } },
+    'chat-2': { enabled: true, preset: '丙', overrides: { 'preset:丙:p9': { enabled: true }, 'global:g1': { enabled: true } } },
+    'chat-3': { enabled: true, preset: '没删过', overrides: {} } };
+  st.ctx.getCurrentChatId = () => chat;
+  const notes = [];
+  const ctrl = createChatRegex({ getContext: () => st.ctx, timers: manualTimers(), notify: (message, type) => notes.push([message, type]),
+    readBinding: () => bindings[chat], writeBinding: value => { bindings[chat] = value; }, readDefaults: () => defaults, writeDefaults: value => { defaults = value; } });
+  assert.equal(await ctrl.actions.deletePresets(['甲', '丙']), 2);
+  assert.deepEqual(defaults, { 'global:g1': { enabled: true } }, '全局默认里这两个预设名下的记录清掉');
+  assert.deepEqual(bindings['chat-1'], { enabled: true, overrides: { 'global:g1': { enabled: false } } }, '当前聊天：绑定的预设与它名下的开关清掉，其余留着');
+  assert.deepEqual(notes.at(-1), ['已删除 2 个预设', 'success']);
+  assert.equal(ctrl.state().presets.busy, false);
+  // 进到别的聊天：绑的是刚删掉的预设，顺手清掉、不提示；绑的是别处没了的预设，照旧提示一次。
+  chat = 'chat-2'; ctrl.events.chatChanged(); await settle(); await settle();
+  assert.deepEqual(bindings['chat-2'], { enabled: true, overrides: { 'global:g1': { enabled: true } } });
+  assert.ok(!notes.some(([message]) => message.includes('「丙」无法切换')));
+  chat = 'chat-3'; ctrl.events.chatChanged(); await settle(); await settle();
+  assert.ok(notes.some(([message]) => message.includes('「没删过」无法切换')));
+  assert.equal(bindings['chat-3'].preset, '没删过', '不是在这里删的就不动它的记录');
+});
+
+test('the preset directory offers multi-select delete: tick presets or a whole version group, then tap delete twice', async () => {
+  const deleted = [];
+  const presetState = { presets: { available: true, names: ['甲', '乙 v1', '乙 v2', '丙'], current: '甲', busy: false } };
+  const { host, view } = await mountList(presetState, { selectPreset: () => assert.fail('多选时点预设不切换'), deletePresets: async names => { deleted.push(names); return names.length; } });
+  const find = key => walkAll(host).find(n => n.dataset?.key === key);
+  assert.ok(find('preset-manage'), '标题行有多选删除的开关');
+  assert.equal(find('preset-manage').getAttribute('aria-label'), '多选删除');
+  find('preset-manage').listeners.click();
+  assert.ok(walkAll(host).find(n => n.classList?.contains('qm-regex-preset-box')).classList.contains('is-picking'));
+  find('preset-pick:丙').listeners.click();
+  assert.equal(find('preset-pick:丙').getAttribute('aria-checked'), 'true');
+  // 整组勾选：一下勾上这一组的全部版本。
+  find('preset-group-pick:乙').listeners.click();
+  assert.equal(find('preset-group-pick:乙').getAttribute('aria-checked'), 'true');
+  assert.equal(walkAll(host).find(n => n.classList?.contains('qm-regex-selbar-count')).textContent, '已选 3 个');
+  // 删除点两下：第一下只是待确认。
+  find('preset-del').listeners.click();
+  assert.equal(deleted.length, 0); assert.equal(find('preset-del').getAttribute('data-armed'), 'true'); assert.equal(find('preset-del').title, '再点一次确认');
+  find('preset-del').listeners.click(); await settle();
+  assert.deepEqual(deleted, [['丙', '乙 v2', '乙 v1']]);
+  assert.ok(!find('preset-del'), '删完退出多选');
+  // 取消：清掉勾选、回到单选。
+  find('preset-manage').listeners.click(); find('preset-pick:甲').listeners.click(); find('preset-pick-cancel').listeners.click();
+  assert.ok(!find('preset-pick:甲') && !find('preset-del'));
+  view.dispose();
+});

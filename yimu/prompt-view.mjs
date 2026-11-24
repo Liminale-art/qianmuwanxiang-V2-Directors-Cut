@@ -4,7 +4,7 @@ import {createYimuIcon} from './icons.mjs';
 const LABELS={identity:'忆幕履职',summary:'切片总结',stage:'阶段总结',heart:'心迹脉络',recall:'原文回查'},clone=value=>structuredClone(value),same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 /** Committed configuration and per-entry text drafts are deliberately separate. */
 export function mountPromptView(container,{document=container?.ownerDocument||globalThis.document,onSave=async()=>{},onError=()=>{},onExport,showTitle=true,autosaveMs=1200}={}){
-    const autosaveTimers=new Set();
+    const autosaveTimers=new Set(),pendingCommits=new Set();
     if(!container||!document?.createElement)throw new TypeError('总结提示词缺少容器');
     const el=(tag,cls='',text='')=>{const node=document.createElement(tag);node.className=cls;node.textContent=text;return node;};
     const scopes=new Map(),rowNodes=new Map(),buttons=new Set();
@@ -33,8 +33,8 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     const savePreset=button('保存为预设','save',()=>{name.value='';nameRow.hidden=false;name.focus();});
     const removePreset=button('删除提示词预设','trash',()=>{
         const selected=record()?.config.presets.find(value=>value.id===preset.value);if(!selected)return;
-        // 直接删除，不再二次确认：删的只是预设这个存档，当前条目保留。
-        enqueue(value=>{value.presets=value.presets.filter(item=>item.id!==selected.id);if(value.selectedPreset===selected.id)value.selectedPreset='';return value;});
+        // 删的是当前选中的预设：自动换到剩下的第一个预设；一个都不剩就回到内置默认。下拉不留空。
+        enqueue(value=>{value.presets=value.presets.filter(item=>item.id!==selected.id);if(value.selectedPreset&&value.selectedPreset!==selected.id)return value;return selectPromptPreset(value,value.presets[0]?.id||BUILTIN_PROMPT_PRESET);});
     });
     const download=button('导出','download',()=>{try{
         const data=exportPromptPreset(record().config);if(onExport)return onExport(data);
@@ -51,7 +51,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
     }),button('取消预设命名','close',()=>{nameRow.hidden=true;}));
     const groups=el('div','ym-prompt-groups');groups.setAttribute('role','tablist');groups.setAttribute('aria-label','提示词用途');
     const groupButtons=new Map();
-    const recallVisible=()=>state.recallEnabled??state.settings?.recall!==false;
+    const recallVisible=()=>false; // 原文回查已去掉（2026-11-24）：它的提示词页签不再显示，已存的条目原样保留在配置里。
     for(const key of PROMPT_KINDS){const node=button(LABELS[key],{identity:'book',summary:'edit',stage:'book',heart:'quill',recall:'eye'}[key],()=>{if(key==='recall'&&!recallVisible())return;kind=key;renderRows();update();});node.className='ym-button';node.replaceChildren(el('span','',LABELS[key]));node.setAttribute('role','tab');groupButtons.set(key,node);groups.append(node);}
     const list=el('div','ym-prompt-list'),empty=el('p','ym-muted','此组没有条目，可新增或选择内置默认。');
     const status=el('p','ym-muted ym-prompt-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
@@ -114,15 +114,16 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         const save=button('保存此条提示词','save',()=>{if(!active())return;const draft=local();if(!draft)return;const patch={name:draft.name,text:draft.text};enqueue(value=>{const entry=value.groups[group].find(entry=>entry.id===id);if(!entry)throw new Error('此条目已被另一端删除，草稿仍保留');Object.assign(entry,patch);return value;},{draftKey:key,draftVersion:draft.version});});
         const cancel=button('撤销此条修改','undo',()=>{if(!active())return;rec.drafts.delete(key);const saving=rec.saving?.item,oldHead=rec.queue[0];rec.queue=rec.queue.filter(item=>item===saving||item.draftKey!==key);if(!rec.saving&&rec.failed&&rec.queue[0]!==oldHead){rec.failed=false;rec.error='';}if(!rec.queue.length&&rec.remote?.revision>rec.revision){rec.saved=clone(rec.remote.config);rec.revision=rec.remote.revision;}rebuildConfig(rec);renderRows();update();void drain(rec);});
         const edited=()=>{if(!active())return;const entry=current()||local()?.base;if(!entry)return;const previous=local();rec.drafts.set(key,{name:titleInput.value,text:content.value,version:(previous?.version||0)+1,base:clone(entry)});update();};
-        // 自动保存：停手片刻或离开输入框就保存，不再需要手动点保存图标（图标保留在结构里但不显示）。
+        // 自动保存：离开编辑区（失焦）时才存最后的状态，打字途中不存，免得边写边刷新。
         // 上一次保存失败后不自动重发——失败要由用户明确点「重试」；同一版草稿已在排队或保存中时也不重复提交。
         save.hidden=true;save.dataset.rowOwned='true';cancel.dataset.rowOwned='true';
         let autosaveTimer=null;
         const commit=()=>{clearTimeout(autosaveTimer);autosaveTimers.delete(autosaveTimer);autosaveTimer=null;if(!active()||state.disabled||rec.failed)return;const draft=local();if(!draft)return;
             if(rec.saving?.item.draftKey===key&&rec.saving.item.draftVersion===draft.version||rec.queue.some(item=>item.draftKey===key&&item.draftVersion===draft.version))return;save.click();};
-        const schedule=()=>{clearTimeout(autosaveTimer);autosaveTimers.delete(autosaveTimer);autosaveTimer=setTimeout(commit,autosaveMs);autosaveTimers.add(autosaveTimer);};
-        titleInput.addEventListener('input',()=>{edited();schedule();});content.addEventListener('input',()=>{edited();schedule();});
-        titleInput.addEventListener('change',commit);content.addEventListener('change',commit);
+        // 后台正忙时失焦：草稿先留着，忙完后补存（见 render）。
+        pendingCommits.add(()=>{if(local()&&document.activeElement!==content&&document.activeElement!==titleInput)commit();});
+        titleInput.addEventListener('input',edited);content.addEventListener('input',edited);
+        titleInput.addEventListener('change',commit);content.addEventListener('change',commit);content.addEventListener('blur',commit);
         // 排序只靠拖动（上下箭头与它重复，不再显示）。拖动时被拖的条目变淡，落点处画一条线：
         // 往下拖落在目标之后、往上拖落在目标之前，与松手后的实际位置一致。
         up.hidden=true;down.hidden=true;
@@ -183,8 +184,8 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         // 每个按钮只写一次最终值：先统一放开再个别禁用会让按钮在一次刷新里来回切换。
         const noPreset=!rec.config.presets.some(value=>value.id===preset.value);
         for(const node of buttons){if(node.dataset.rowOwned==='true')continue;const off=disabled||node.dataset.edgeDisabled==='true'||node===removePreset&&noPreset;if(node.disabled!==off)node.disabled=off;}preset.disabled=disabled;name.disabled=disabled;file.disabled=disabled;
-        for(const row of rowNodes.values())if(row.scope===scope){const draft=rec.drafts.get(row.key),ownSaving=rec.saving?.item.draftKey===row.key;row.titleInput.disabled=disabled;row.content.disabled=disabled;row.enabled.disabled=disabled;const idle=disabled||!draft||ownSaving;if(row.save.disabled!==idle)row.save.disabled=idle;if(row.cancel.disabled!==idle)row.cancel.disabled=idle;row.node.dataset.dirty=String(!!draft);}
-        badge.textContent=rec.saving||rec.queue.length?'正在保存':rec.drafts.size?'有条目草稿':'';badge.hidden=!badge.textContent;
+        for(const row of rowNodes.values())if(row.scope===scope){const draft=rec.drafts.get(row.key),ownSaving=rec.saving?.item.draftKey===row.key;const locked=state.locked===true;row.titleInput.disabled=locked;row.content.disabled=locked;row.enabled.disabled=disabled;const idle=disabled||!draft||ownSaving;if(row.save.disabled!==idle)row.save.disabled=idle;if(row.cancel.disabled!==idle)row.cancel.disabled=idle;row.node.dataset.dirty=String(!!draft);}
+        badge.textContent='';badge.hidden=true; // 保存是无感的：不显示「正在保存」「有条目草稿」
         recovery.hidden=!rec.failed;retry.disabled=disabled||!!rec.saving;cancelOperation.disabled=disabled||!!rec.saving;
         status.textContent=rec.error||rec.message||'';status.hidden=!status.textContent;
         for(const [key,node]of groupButtons){node.hidden=(key==='recall'&&!recallVisible())||key==='identity';node.setAttribute('aria-selected',String(kind===key));node.tabIndex=kind===key?0:-1;}
@@ -208,6 +209,7 @@ export function mountPromptView(container,{document=container?.ownerDocument||gl
         if(kind==='recall'&&!recallVisible())kind='summary';
         if(kind==='identity')kind='summary';
         renderPresets();renderRows();update();if(!rec.failed)void drain(rec);
+        if(!state.disabled)for(const flush of pendingCommits)flush();
     }
     render();
     return{render,destroy(){if(disposed)return;disposed=true;for(const timer of autosaveTimers)clearTimeout(timer);autosaveTimers.clear();scopes.clear();rowNodes.clear();buttons.clear();card.remove();}};

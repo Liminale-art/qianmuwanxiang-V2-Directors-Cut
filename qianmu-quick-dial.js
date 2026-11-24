@@ -1,5 +1,5 @@
 // 快捷轮盘：贴着千幕 logo 展开的半椭圆拨盘。
-// logo 靠右时弧线向左凸，靠左时向右凸；弧线纵向拉长，内侧留出更多空间。入口沿弧线内侧排布、向两端淡出；
+// logo 靠右时弧线向左凸，靠左时向右凸；弧线纵向拉长，内侧留出更多空间。入口沿弧线内侧排布、向两端逐渐失焦（虚化并略淡）；
 // 指针是一枚固定在弧线正中内侧的圆点，拨到圆点处的入口放大并在弧外显示名称。
 // 与蜂巢格一样由长按 logo 展开并留在屏上；长按后不抬手继续移动则是挪动 logo（轮盘随即收起），与蜂巢格一致。
 // 展开时圆形 logo 自己滑进弧线、排在最后一格（即主面板入口）；收起时滑回原位，盘里不再另放一枚 logo。
@@ -89,8 +89,13 @@ export function quickDialOffset(delta, geo) {
   return delta * geo.pitch + clamp(delta, -1, 1) * geo.chip * GROW / 2;
 }
 
-// 指针上下各 SLOTS 格清晰可见，最外一格略淡，再往外淡出。
-export function quickDialOpacity(delta) { return 1 - clamp((Math.abs(delta) - (SLOTS - 0.6)) / 1.5, 0, 1); }
+// 失焦：指针处的入口清晰；离指针越远越虚、略淡，最外一格之外淡出。拨动时逐帧按连续的 delta 计算，所以虚实是平滑过渡的。
+export function quickDialOpacity(delta) {
+  const away = Math.abs(delta);
+  return (1 - 0.06 * Math.min(away, SLOTS)) * (1 - clamp((away - (SLOTS - 0.6)) / 1.5, 0, 1));
+}
+// 模糊半径（px）：指针附近不虚，往外逐格加深，封顶 3px。
+export function quickDialBlur(delta) { return Math.min(3, Math.max(0, Math.abs(delta) - 0.15) * 1.25); }
 
 export function quickDialSelected(position, count, cyclic) {
   const index = Math.round(position);
@@ -131,6 +136,9 @@ export function createQuickDial({
       const angle = quickDialAngle(quickDialOffset(delta, geo), geo);
       node.style.translate = `${(geo.sign * geo.ringX * Math.cos(angle)).toFixed(1)}px ${(geo.ringY * Math.sin(angle)).toFixed(1)}px`;
       node.style.opacity = quickDialOpacity(delta).toFixed(3);
+      // 只改 filter：不触发布局。指针处不挂滤镜（filter 会让入口自身的毛玻璃底失去背景）。
+      const blur = quickDialBlur(delta);
+      node.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : '';
       node.style.setProperty('--qd-grow', (1 + GROW * Math.max(0, 1 - Math.abs(delta))).toFixed(3));
     }
     if (selected === view.selected) return;
@@ -194,7 +202,7 @@ export function createQuickDial({
     const [tx, ty] = node.hidden ? [current.geo.sign * current.geo.ringX, 0] : String(node.style.translate || '0px 0px').split(' ').map(parseFloat);
     // 格子停在指针处时自身已放大，起止帧按它折算，滑动全程 logo 与圆框都是悬浮入口的大小比例。
     const grow = parseFloat(node.style.getPropertyValue('--qd-grow')) || 1;
-    const away = { transform: `translate(${(from.x - tx).toFixed(1)}px, ${(from.y - (ty || 0)).toFixed(1)}px) scale(${(from.scale / grow).toFixed(3)})`, opacity: 1 }, home = { transform: 'none' };
+    const away = { transform: `translate(${(from.x - tx).toFixed(1)}px, ${(from.y - (ty || 0)).toFixed(1)}px) scale(${(from.scale / grow).toFixed(3)})`, opacity: 1, filter: 'none' }, home = { transform: 'none' };
     if (node.hidden) { if (!back) return null; node.hidden = false; node.style.translate = `${tx}px 0px`; node.style.opacity = '1'; }
     return node.animate(back ? [home, away] : [away, home], { duration: back ? 190 : 260, easing: 'cubic-bezier(.25, .9, .3, 1)', fill: back ? 'forwards' : 'none' });
   }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialOpacity, quickDialTone, tidyCellRows, bindQuickCellLayout } from '../qianmu-quick-dial.js';
+import { quickDialGeometry, quickDialCyclic, quickDialDelta, quickDialOffset, quickDialAngle, quickDialSelected, quickDialOpacity, quickDialBlur, quickDialTone, tidyCellRows, bindQuickCellLayout } from '../qianmu-quick-dial.js';
 
 test('quick cells fill every row: rows differ by at most one cell and none is left with a stray one or two', () => {
   assert.deepEqual(tidyCellRows(17, 209), [3, 3, 3, 3, 3, 2], 'the narrowest phone panel: cells stay wide enough for a four-character label');
@@ -95,9 +95,25 @@ test('five slots: two entries on each side of the pointer fill the visible arc, 
     assert.ok(Math.abs(quickDialAngle(quickDialOffset(3, geo), geo)) > 78 * Math.PI / 180 || Math.abs(quickDialAngle(quickDialOffset(3, geo), geo)) > quarter, 'the third neighbour falls at or beyond its edge');
     assert.ok(geo.pitch >= geo.chip + 8, 'entries never touch');
   }
-  assert.equal(quickDialOpacity(0), 1); assert.equal(quickDialOpacity(1), 1);
-  assert.ok(quickDialOpacity(2) > 0.55 && quickDialOpacity(2) < 1, 'the outer slot is slightly faded');
+  assert.equal(quickDialOpacity(0), 1);
+  assert.ok(quickDialOpacity(1) > 0.9 && quickDialOpacity(1) < 1, 'a neighbour is only slightly fainter');
+  assert.ok(quickDialOpacity(2) > 0.45 && quickDialOpacity(2) < quickDialOpacity(1), 'the outer slot is fainter still');
   assert.equal(quickDialOpacity(2.9), 0); assert.equal(quickDialOpacity(-2.9), 0);
+  assert.equal(quickDialBlur(0), 0, 'the entry at the pointer is sharp');
+  assert.ok(quickDialBlur(0.1) === 0 && quickDialBlur(-1) === quickDialBlur(1), 'symmetric, and sharp while just nudged');
+  let last = 0;
+  for (let away = 0.2; away <= 2.9; away += 0.1) { const blur = quickDialBlur(away); assert.ok(blur >= last && blur <= 3, `blur grows with distance (${away.toFixed(1)})`); last = blur; }
+  assert.ok(quickDialBlur(1) >= 0.8 && quickDialBlur(1) <= 1.4 && quickDialBlur(2) > quickDialBlur(1) + 0.8, 'each slot further out is visibly softer');
+});
+
+test('defocus: entries blur with distance through filter only, and the arc glow stays tight', () => {
+  const module = readFileSync(new URL('../qianmu-quick-dial.js', import.meta.url), 'utf8'), css = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+  assert.match(module, /node\.style\.filter = blur > 0\.05 \? `blur\(\$\{blur\.toFixed\(2\)\}px\)` : '';/, 'the pointed entry carries no filter at all');
+  assert.match(module, /opacity: 1, filter: 'none' \}, home = \{ transform: 'none' \};/, 'the logo slides in and out sharp');
+  assert.match(css, /\.qm-dial-item \{[^}]*will-change: translate, opacity, filter;/);
+  const glow = css.match(/\.qm-dial \.qm-dial-glow \{([^}]*)\}/)[1], wide = css.match(/\.qm-dial \.qm-dial-glow-wide \{([^}]*)\}/)[1];
+  assert.ok(Number(/stroke-width: ([\d.]+)/.exec(glow)[1]) <= 3 && Number(/blur\(([\d.]+)px\)/.exec(glow)[1]) <= 2, 'inner glow hugs the line');
+  assert.ok(Number(/stroke-width: ([\d.]+)/.exec(wide)[1]) <= 8 && Number(/blur\(([\d.]+)px\)/.exec(wide)[1]) <= 4 && Number(/opacity: ([\d.]+)/.exec(wide)[1]) <= .15, 'outer glow is barely there');
 });
 
 test('entries wrap around only when there are more than the five slots can show', () => {
@@ -156,6 +172,10 @@ test('wiring: same gestures as the hive (tap opens the panel, long press opens t
   assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry > :is\(i, \.qm-glyph-icon\) \{[^}]*\* \.46\)/, 'dragged-out entries use the dial icon proportion');
   assert.match(css, /\.qm-prose-hive-layer\.qm-prose-hive-floor \{ z-index: 2147483000; \}/, 'the dragged-out chat toolkit entry sits below the main panel');
   assert.match(css, /html\[data-qm-launcher="dial"\] \.sd-detached-notes-entry \{[^}]*clip-path: circle\(50%\)/, 'dragged-out entries are round in dial mode');
+  // 纸间外观把已登记图层里的按钮一律改成直角；拖出的入口在轮盘形态下靠圆角画圆框，被改成直角后圆裁切只剩四段弧。
+  const skins = readFileSync(new URL('../qianmu-theme-skins.css', import.meta.url), 'utf8');
+  const square = skins.match(/\[data-qm-theme="editorial"\] :is\(\s*(button[^,]*),/)[1];
+  assert.match(square, /:where\(:not\(\.sd-detached-notes-entry\)\)$/, 'the paper skin leaves dragged-out launcher entries round, without raising the rule specificity');
   assert.match(source, /setAttribute\('data-qm-launcher', settings\.quickLauncher === 'dial' \? 'dial' : 'hive'\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ :is\(#story-director-quick-wheel, #qm-dial-leaving\)\.qm-dial \.qm-dial-stage > :not\(\.qm-dial-items\), [^{]*\.qm-dial-item:not\(\.is-home\) \{ animation: none; \} \}/);
   assert.match(css, /\.qm-dial-item:not\(\.is-home\) \{ animation: qm-dial-in [^}]*backwards; \}\s*@keyframes qm-dial-in \{ from \{ opacity: 0; \} \}/, 'the logo entry takes no part in the fade-in: it slides in from the floating entry unchanged');

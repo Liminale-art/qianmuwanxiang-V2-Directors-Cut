@@ -279,7 +279,21 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
         recovered.push({ sourceName: pending.sourceName, fileName: name, target: clone(pending.target), operationId: pending.id, messageCount: pending.messageCount });
         state.recovered = recovered;
         state.result = publicResult('verified', name); state.phase = 'verified'; state.error = '';
+        // 原聊天用过忆幕的话，把那份记忆复制给这份副本（副本是新的聊天身份，忆幕自己认不出）。没装忆幕、原聊天没用过忆幕都不算出错。
+        const memory = await followMemory(pending, name, token);
+        if (memory) state.result = { ...state.result, memory };
         return snapshot();
+    }
+    async function followMemory(item, name, token) {
+        if (!item?.sourceIntegrity || !item.integrity) return null;
+        try {
+            const result = await json('/api/plugins/yimu/manage/follow', { source: { integrity: item.sourceIntegrity },
+                target: { avatar: item.target.avatar, file: String(name).replace(/\.jsonl$/, ''), integrity: item.integrity } }, token);
+            return result?.copied ? 'copied' : null;
+        } catch (error) {
+            console.info('[千幕] 找回的聊天没有接上忆幕记录：', error?.message || error);
+            return null;
+        }
     }
     async function run(phase, action, { bind = false } = {}) {
         need(!active, 'busy', '正在处理上一项找回操作');
@@ -416,7 +430,7 @@ export function createChatRecovery({ fetch: request = globalThis.fetch, getReque
                 // empty and the native route rejects the import with 400.
                 form.set('avatar', new Blob([rows.map(row => JSON.stringify(row)).join('\n')], { type: 'application/jsonl' }), prefix + '.jsonl');
                 await guard(token); sameTarget(target);
-                pending = { id, prefix, sourceName: original.name, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, renamePending: false, fileName: '' };
+                pending = { id, prefix, sourceName: original.name, sourceIntegrity: original.rows[0].chat_metadata?.integrity || '', integrity, existingNames: names, target, expected: canonical(rows), messageCount: original.messageCount, submitted: false, verified: false, renamePending: false, fileName: '' };
                 try {
                     const raw = await response('/api/chats/import', form, token, { form: true, beforeSend: () => { sameTarget(target); pending.submitted = true; state.result = publicResult('unknown'); } });
                     let result; try { result = parse(raw, CHAT_RECOVERY_LIMITS.bytes); } catch {}

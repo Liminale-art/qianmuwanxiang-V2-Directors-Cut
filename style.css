@@ -920,18 +920,14 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-ring-list-del { flex: 0 0 auto; width: 34px; height: 34px; margin-right: 8px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); }
 #story-director-floor-nav .qm-ring-list-empty { margin: 0; padding: 22px 14px; text-align: center; color: var(--sd-muted); font-size: var(--qm-type-caption); }
 #story-director-floor-nav .qm-ring-list-add { flex: 0 0 auto; }
-/* 铃声音频条：点阵，C-14 起是子页头与列表之间的独立条卡（与可滚动列表并列的兄弟，不随列表滚动）。
-   C-15：底内边距 8px→1px，点阵直接落在条卡底边（最高 9 格=36px 恰好放进 37px 内容盒）。
-   未加载/空闲浅灰；加载中灰色呼吸；播放中淡绿并跳动。只用 clip-path 动画，不触发排版。 */
-#story-director-floor-nav .qm-ring-eq { --qm-eq-dot: rgba(150, 150, 150, .3); flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px; height: 44px; padding: 4px 16px 1px; box-sizing: border-box; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); pointer-events: none; transition: opacity .3s ease; }
+/* 铃声音频条：子页头与列表之间的独立条卡（与可滚动列表并列的兄弟，不随列表滚动）。
+   画布上画的是试听时真实播放的频谱：低音在中间、高音往两边，起得快、落得缓；只有真的读到声音数据才动。
+   空闲、加载中、读不到数据（跨域音频、没有网页音频）、减少动态效果时，都是一排静止的短点。颜色跟主题：平时淡色，播放时强调色。 */
+#story-director-floor-nav .qm-ring-eq { flex: 0 0 auto; height: 44px; padding: 4px 16px; box-sizing: border-box; overflow: hidden; border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); color: var(--sd-muted); pointer-events: none; transition: opacity .3s ease; }
 #story-director-floor-nav[data-qm-theme] .qm-ring-eq { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; }
-#story-director-floor-nav .qm-ring-eq > span { flex: 0 0 3px; height: calc(var(--h) * 4px); background: radial-gradient(circle, var(--qm-eq-dot) 0 1.3px, transparent 1.6px) center bottom / 3px 4px repeat-y; }
-#story-director-floor-nav .qm-ring-eq[data-audio="loading"] > span { animation: qm-ring-eq-wait 1.1s ease-in-out infinite alternate; }
-#story-director-floor-nav .qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142 62% 52% / .55); }
-#story-director-floor-nav .qm-ring-eq[data-audio="playing"] > span { animation: qm-ring-eq-dance .62s var(--d, 0ms) ease-in-out infinite alternate; }
-@keyframes qm-ring-eq-wait { from { opacity: .35; } to { opacity: 1; } }
-@keyframes qm-ring-eq-dance { 0% { clip-path: inset(72% 0 0 0); } 50% { clip-path: inset(18% 0 0 0); } 100% { clip-path: inset(46% 0 0 0); } }
-@media (prefers-reduced-motion: reduce) { #story-director-floor-nav .qm-ring-eq > span { animation: none !important; } }
+#story-director-floor-nav .qm-ring-eq[data-audio="loading"] { opacity: .6; }
+#story-director-floor-nav .qm-ring-eq[data-audio="playing"] { color: var(--sd-primary); }
+#story-director-floor-nav .qm-ring-eq-canvas { display: block; width: 100%; height: 100%; }
 /* 通知 · 铃声列表子页：占满整个工具包面板（隐藏标题与页签），面板高度锁定为打开前通知页的高度，超出在列表内滚动 */
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open { height: var(--qm-ring-lock-h, auto); }
 #story-director-floor-nav .sd-floor-panel.qm-ring-subpage-open > :is(header, .sd-floor-tabs) { display: none; }
@@ -1047,6 +1043,20 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .qm-regex-preset-optbound { flex: none; margin-left: auto; color: var(--sd-primary); font-size: .72em; opacity: .8; }
 #story-director-floor-nav .qm-regex-preset-bound { flex: none; color: var(--sd-primary); font-size: .8em; }
 #story-director-floor-nav .qm-regex-preset-bound.is-off { color: var(--sd-muted); opacity: .6; }
+/* 预设目录·多选删除：标题行尾一个小图标开关（目录展开时才有）；开着时预设前是勾选框、版本组头前是整组勾选，
+   目录底下一条「已选 N 个 · 删除 · 取消」，删除点两下（第一下变成对勾）。 */
+#story-director-floor-nav .qm-regex-preset-manage { flex: none; display: none; align-items: center; justify-content: center; width: 28px; height: 28px; margin: 0; padding: 0; border: 0; border-radius: var(--qm-button-radius, 7px); background: transparent; color: var(--sd-muted); font-size: .86em; cursor: pointer; }
+#story-director-floor-nav .qm-regex-preset-box.is-open .qm-regex-preset-manage { display: inline-flex; }
+#story-director-floor-nav .qm-regex-preset-manage:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
+#story-director-floor-nav .qm-regex-preset-manage.is-on { color: var(--sd-primary); }
+#story-director-floor-nav .qm-regex-preset-manage:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 1px; }
+#story-director-floor-nav :is(.qm-regex-preset-option, .qm-regex-preset-group-pick) .qm-regex-check { width: 14px; height: 14px; border-radius: 4px; pointer-events: none; }
+#story-director-floor-nav .qm-regex-preset-group-row { display: flex; align-items: center; min-width: 0; padding-left: 8px; }
+#story-director-floor-nav .qm-regex-preset-group-row > .qm-regex-preset-group-head { flex: 1 1 auto; }
+#story-director-floor-nav .qm-regex-preset-group-pick { flex: none; display: inline-flex; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; }
+#story-director-floor-nav .qm-regex-preset-group-pick:focus-visible { outline: 2px solid var(--sd-primary); outline-offset: 2px; border-radius: 4px; }
+#story-director-floor-nav .qm-regex-preset-pickbar { margin-top: 6px; }
+#story-director-floor-nav .qm-regex-preset-pickbar .qm-regex-selact[data-armed] { color: #fff; background: var(--sd-danger, #d9534f); }
 @media (prefers-reduced-motion: reduce) {
   #story-director-floor-nav .qm-regex-preset-group-caret,
   #story-director-floor-nav .qm-regex-preset-option { transition: none; }
@@ -1347,10 +1357,17 @@ html[data-qm-toast="glow"] body #toast-container > div::before { inset: -1px aut
 html[data-qm-toast="glow"] body #toast-container > div .toast-title { margin-bottom: 1px !important; font-size: calc(var(--qm-toast-fs) + 1px) !important; font-weight: 650 !important; }
 html[data-qm-toast="glow"] body #toast-container > div .toast-title + .toast-message { color: rgba(242, 244, 247, .74) !important; }
 html[data-qm-toast="glow"] body #toast-container > div .toast-progress { left: 11px !important; height: 2px !important; background: var(--gw-edge) !important; opacity: .85 !important; }
-/* 样式2 虹彩：玻璃胶囊＋亮边（参考图3）。状态图标为消息铃铛，底部一点对应状态色柔光；
-   铃铛放大→晃一晃→缩回。只用 CSS，减少动态效果时关闭。 */
-html[data-qm-toast="iris"] body #toast-container > div { --iris-glow: color-mix(in srgb, var(--qm-toast-status) 90%, white); border-radius: 999px !important; padding: 8px 18px 8px 44px !important; border-color: rgba(255, 255, 255, .11) !important; background: color-mix(in srgb, var(--qm-toast-bg) 56%, transparent) !important; backdrop-filter: blur(18px) saturate(1.7) !important; -webkit-backdrop-filter: blur(18px) saturate(1.7) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .34), inset 0 0 0 .5px rgba(255, 255, 255, .13), 0 0 9px color-mix(in srgb, var(--qm-toast-status) 32%, transparent), 0 10px 28px var(--qm-toast-drop) !important; }
-html[data-qm-toast="iris"][data-qm-toast-mode="dark"] body #toast-container > div { border-color: rgba(255, 255, 255, .045) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 .5px rgba(255, 255, 255, .05), 0 0 10px color-mix(in srgb, var(--qm-toast-status) 42%, transparent), 0 10px 30px var(--qm-toast-drop) !important; }
+/* 样式2 玻璃：液态玻璃胶囊。内部清透，顶缘一道镜面高光、底缘一线回光，左右两侧各一抹极淡的冷暖色散；
+   Chromium 内核另挂一枚 SVG 位移滤镜（qianmu-toast-liquid.js 以节点注入，<html data-qm-toast-liquid> 为标记），让透过玻璃的背景轻微折射。
+   其余浏览器只有普通毛玻璃加高光边；ST「禁用模糊」或浏览器不支持背景模糊时，底色加厚到足以压住背后文字。
+   状态图标为消息铃铛，铃铛放大→晃一晃→缩回，底部一点状态色柔光。只用 CSS，减少动态效果时关闭。 */
+html[data-qm-toast="iris"] body #toast-container > div { --iris-glow: color-mix(in srgb, var(--qm-toast-status) 90%, white); --lq-tint: color-mix(in srgb, var(--qm-toast-bg) 50%, transparent); --lq-rim: rgba(255, 255, 255, .72); --lq-catch: rgba(255, 255, 255, .26); --lq-inner: rgba(255, 255, 255, .16); --lq-warm: rgba(255, 96, 168, .2); --lq-cool: rgba(70, 172, 255, .22); --lq-sheen: rgba(255, 255, 255, .34); border-radius: 999px !important; padding: 8px 18px 8px 44px !important; border-color: rgba(255, 255, 255, .34) !important; background: linear-gradient(180deg, var(--lq-sheen) 0, color-mix(in srgb, var(--lq-sheen) 18%, transparent) 46%, transparent 56%, color-mix(in srgb, var(--lq-sheen) 26%, transparent) 100%), radial-gradient(120% 170% at 16% -46%, var(--lq-sheen), transparent 54%), var(--lq-tint) !important; backdrop-filter: blur(14px) saturate(1.8) brightness(1.06) !important; -webkit-backdrop-filter: blur(14px) saturate(1.8) brightness(1.06) !important; box-shadow: inset 0 1px .5px var(--lq-rim), inset 0 -1px 1px var(--lq-catch), inset 3px 0 3px -2px var(--lq-warm), inset -3px 0 3px -2px var(--lq-cool), inset 0 0 12px var(--lq-inner), 0 0 9px color-mix(in srgb, var(--qm-toast-status) 28%, transparent), 0 10px 28px var(--qm-toast-drop) !important; }
+html[data-qm-toast="iris"][data-qm-toast-mode="dark"] body #toast-container > div { --lq-tint: color-mix(in srgb, var(--qm-toast-bg) 58%, transparent); --lq-rim: rgba(255, 255, 255, .3); --lq-catch: rgba(255, 255, 255, .1); --lq-inner: rgba(255, 255, 255, .05); --lq-warm: rgba(255, 110, 180, .16); --lq-cool: rgba(90, 185, 255, .18); --lq-sheen: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .1) !important; }
+html[data-qm-toast="iris"][data-qm-toast-liquid] body #toast-container > div { backdrop-filter: url(#qm-toast-liquid) blur(7px) saturate(1.8) brightness(1.06) !important; -webkit-backdrop-filter: url(#qm-toast-liquid) blur(7px) saturate(1.8) brightness(1.06) !important; }
+html[data-qm-toast="iris"] body.no-blur #toast-container > div { --lq-tint: color-mix(in srgb, var(--qm-toast-bg) 96%, transparent); backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+html[data-qm-toast="iris"] body #toast-container > div { --lq-tint: color-mix(in srgb, var(--qm-toast-bg) 96%, transparent) !important; }
+}
 html[data-qm-toast="iris"] body #toast-container > div::before { left: 13px !important; top: calc(50% - 11px) !important; width: 22px !important; height: 22px !important; border-radius: 0 !important; background: var(--iris-glow) !important; box-shadow: none !important; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a2 2 0 0 1 2 2v.3a7 7 0 0 1 5 6.7v4l2 3H3l2-3v-4a7 7 0 0 1 5-6.7V4a2 2 0 0 1 2-2zm0 20a3 3 0 0 1-3-3h6a3 3 0 0 1-3 3z'/%3E%3C/svg%3E") center / contain no-repeat !important; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a2 2 0 0 1 2 2v.3a7 7 0 0 1 5 6.7v4l2 3H3l2-3v-4a7 7 0 0 1 5-6.7V4a2 2 0 0 1 2-2zm0 20a3 3 0 0 1-3-3h6a3 3 0 0 1-3 3z'/%3E%3C/svg%3E") center / contain no-repeat !important; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--iris-glow) 92%, transparent)) drop-shadow(0 0 12px color-mix(in srgb, var(--iris-glow) 60%, transparent)) !important; transform-origin: 50% 92%; animation: qm-toast-bell 640ms cubic-bezier(.34, 1.56, .64, 1) both !important; }
 html[data-qm-toast="iris"] body #toast-container > div::after { content: "" !important; position: absolute !important; left: 24px !important; top: 50% !important; width: 24px !important; height: 24px !important; z-index: -1; margin: 0 !important; border: 0 !important; border-radius: 50% !important; background: radial-gradient(circle, color-mix(in srgb, var(--iris-glow) 55%, transparent) 0, transparent 70%) !important; opacity: .85 !important; transform: translate(-50%, -50%); pointer-events: none !important; animation: qm-toast-bell-glow 640ms ease-out both !important; }
 /* 堆叠数量 1–8（默认 3）：最新在最上（toastr 默认 newestOnTop），只用 CSS 隐藏超出条目，不碰 toastr 队列与计时 */
@@ -12940,12 +12957,13 @@ html body :is(#story-director-modal, #sd-reader-portal, #qianmu-notes-panel-laye
 @keyframes qm-dial-in { from { opacity: 0; } }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-arc { position: absolute; overflow: visible; pointer-events: none; }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-line { fill: none; stroke-width: 1.6; stroke-linecap: round; }
-:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-glow { fill: none; stroke-width: 7; opacity: .5; filter: blur(5px); }
-:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-glow-wide { stroke-width: 22; opacity: .26; filter: blur(16px); }
+/* 柔光克制到贴着弧线、刚好看得出：内层一道窄光，外层只比它宽一点。 */
+:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-glow { fill: none; stroke-width: 3; opacity: .32; filter: blur(1.5px); }
+:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-glow-wide { stroke-width: 6; opacity: .12; filter: blur(3.5px); }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-dot { fill: var(--qd-accent); filter: drop-shadow(0 0 4px var(--qd-mid)); }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial.is-dark .qm-dial-dot { fill: color-mix(in srgb, var(--qd-accent) 45%, #ffffff); }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-items { position: absolute; left: 0; top: 0; width: 0; height: 0; }
-:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-item { position: absolute; left: calc(var(--qd-chip) / -2); top: calc(var(--qd-chip) / -2); width: var(--qd-chip) !important; height: var(--qd-chip) !important; min-width: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 50% !important; background: none !important; box-shadow: none !important; color: var(--qd-ink) !important; pointer-events: auto; touch-action: none; cursor: pointer; will-change: translate, opacity; }
+:is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-item { position: absolute; left: calc(var(--qd-chip) / -2); top: calc(var(--qd-chip) / -2); width: var(--qd-chip) !important; height: var(--qd-chip) !important; min-width: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 50% !important; background: none !important; box-shadow: none !important; color: var(--qd-ink) !important; pointer-events: auto; touch-action: none; cursor: pointer; will-change: translate, opacity, filter; }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-item[hidden] { display: none !important; }
 :is(#story-director-quick-wheel, #qm-dial-leaving).qm-dial .qm-dial-item.is-current { z-index: 2; }
 /* 入口一律圆框，外框取主题色、线宽与蜂巢格外框一致（1.2px，放大时不随之变粗）；千幕 logo 完整放进圆框内，不裁切。 */

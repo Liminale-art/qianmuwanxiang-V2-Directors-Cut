@@ -216,10 +216,35 @@ export function createTabAlert({ document, setInterval = globalThis.setInterval,
 /**
  * A single reusable media element; volume is the stored percentage.
  * `onChange(state)` reports 'idle' | 'loading' | 'playing' (drives the list's audio bar), once per change.
+ * With `AudioContext` the element is routed through an analyser so the audio bar can follow the real sound (levels()).
+ * Only same-origin and local (blob:/data:) sounds are routed: a cross-origin sound would be muted by the browser once
+ * routed, so those play untouched and the bar stays still. A context that will not start is never used either.
  */
-export function createRingPlayer({ Audio, onChange = () => {} }) {
+export function createRingPlayer({ Audio, onChange = () => {}, AudioContext: AudioContextClass = null, origin = globalThis.location?.origin || '' }) {
   let media = null, source = '', sequence = 0, status = 'idle';
+  let graph = null, analyser = null, tapped = null, tapNode = null;
   const report = next => { if (next === status) return; status = next; try { onChange(next); } catch (_) {} };
+  const analysable = url => {
+    try { const at = new URL(url, globalThis.location?.href); return at.protocol === 'blob:' || at.protocol === 'data:' || (Boolean(origin) && at.origin === origin); }
+    catch (_) { return false; }
+  };
+  const wake = () => Promise.race([graph.resume(), new Promise(resolve => setTimeout(resolve, 300))]).catch(() => {});
+  async function tap(element, url) {
+    if (!AudioContextClass) return;
+    // 已经接上的元素：声音走分析节点，所以上下文被系统挂起时要先叫醒，否则会没声。
+    if (tapped === element) { if (graph.state !== 'running') await wake(); return; }
+    if (!analysable(url)) return;
+    try {
+      graph ||= new AudioContextClass();
+      if (graph.state !== 'running') await wake();
+      if (graph.state !== 'running' || element !== media) return;
+      try { tapNode?.disconnect(); } catch (_) {}
+      tapNode = graph.createMediaElementSource(element);
+      analyser = graph.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.55;
+      tapNode.connect(analyser); analyser.connect(graph.destination);
+      tapped = element;
+    } catch (error) { analyser = null; console.warn('[铃声] 读不到试听的音频数据，音频条保持静止', error); }
+  }
   function stop() {
     sequence += 1;
     try { media?.pause(); if (media) media.currentTime = 0; } catch (_) {}
@@ -238,6 +263,8 @@ export function createRingPlayer({ Audio, onChange = () => {} }) {
     const mine = ++sequence;
     report('loading');
     try {
+      await tap(media, url);
+      if (mine !== sequence) return false;
       media.volume = Math.min(1, Math.max(0, Number(volume) / 100));
       media.currentTime = 0;
       await media.play();
@@ -246,8 +273,18 @@ export function createRingPlayer({ Audio, onChange = () => {} }) {
     } catch (_) { if (mine === sequence) report('idle'); return false; }
   }
   const playing = () => Boolean(media && !media.paused && !media.ended);
-  function dispose() { stop(); try { media?.removeAttribute?.('src'); media?.load?.(); } catch (_) {} media = null; source = ''; }
-  return Object.freeze({ play, stop, playing, dispose, source: () => source, state: () => status });
+  /** 正在播放且接上了分析节点：把此刻的频谱写进 out（0–255），返回 true；否则 false（音频条保持静止）。 */
+  function levels(out) {
+    if (!analyser || tapped !== media || status !== 'playing' || !out) return false;
+    try { analyser.getByteFrequencyData(out); return true; } catch (_) { return false; }
+  }
+  function dispose() {
+    stop(); try { media?.removeAttribute?.('src'); media?.load?.(); } catch (_) {} media = null; source = '';
+    try { tapNode?.disconnect(); } catch (_) {}
+    try { graph?.close?.(); } catch (_) {}
+    graph = null; analyser = null; tapped = null; tapNode = null;
+  }
+  return Object.freeze({ play, stop, playing, levels, dispose, source: () => source, state: () => status });
 }
 
 /** The local sound lives in this browser only (one record per account), never in synced settings. */
@@ -305,9 +342,12 @@ export async function imageToFavicon(file, { document, URL: URLClass = globalThi
 
 export function createChatRingtone({ getOwner, save, getContext, resolveNamespace, notify = () => {}, isCurrent = () => true,
   document = globalThis.document, window = globalThis.window, Audio = globalThis.Audio, URL: URLClass = globalThis.URL,
-  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.503'), now = () => Date.now(), fetch: fetchFn = (...args) => globalThis.fetch(...args), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval }) {
-  // The list's audio bar mirrors the audition: idle (grey) / loading / playing (green).
-  const player = createRingPlayer({ Audio, onChange: next => mounted?.view?.setAudio?.(next) });
+  indexedDB = globalThis.indexedDB, getLook = () => null, loadView = () => import('./qianmu-chat-ringtone-view.js?v=1.59.503'), now = () => Date.now(), fetch: fetchFn = (...args) => globalThis.fetch(...args), setInterval: setIntervalFn = globalThis.setInterval, clearInterval: clearIntervalFn = globalThis.clearInterval,
+  AudioContext: AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext || null }) {
+  // 回复完成时响的那一声用自己的播放器，不经过网页音频（后台时上下文可能没启动，接进去会没声）。
+  const player = createRingPlayer({ Audio });
+  // 列表里点选试听用另一个：点按本身就是用户操作，能把网页音频叫醒，音频条跟着真实播放走：idle / loading / playing。
+  const audition = createRingPlayer({ Audio, AudioContext: AudioContextClass, onChange: next => mounted?.view?.setAudio?.(next) });
   const alert = createTabAlert({ document, setInterval: setIntervalFn, clearInterval: clearIntervalFn });
   alert.setClock(now);
   const store = createLocalSoundStore({ indexedDB, resolveNamespace });
@@ -396,7 +436,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
   }
   function dropLocalUrl(id) {
     if (id) { const url = localUrls.get(id); if (url) { URLClass.revokeObjectURL(url); localUrls.delete(id); } return; }
-    player.stop();
+    player.stop(); audition.stop();
     for (const url of localUrls.values()) URLClass.revokeObjectURL(url);
     localUrls.clear();
   }
@@ -449,13 +489,17 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     presets: RINGTONE_PRESETS, limits: RINGTONE_LIMITS, builtinIcons: RINGTONE_TAB_ICONS, iconFrames: () => iconFrames(),
     update,
     // Phone-OS list behaviour: picking a row auditions it and records the choice at once (no separate preview button).
-    stopSound() { player.stop(); },
+    stopSound() { audition.stop(); },
+    // 试听正在播放时此刻的频谱（0–255）；没接上分析节点或没在播放时返回 false，音频条保持静止。
+    audioLevels: out => audition.levels(out),
+    // 当前存着的设置（返回上一级时按它重画，刚在列表里点选的铃声才会立刻显示出来）。
+    current: () => state(),
     async selectPreset(id) {
       const preset = RINGTONE_PRESETS.find(item => item.id === id);
       if (!preset) return;
       const s = state(); s.soundPreset = id; normalizeRingtone(getOwner()); save();
       void cachePreset(preset.id, preset.url);
-      await player.play(preset.url, s.volume);
+      await audition.play(preset.url, s.volume);
     },
     setVolume(value, commit = false) {
       const s = state(); s.volume = value; normalizeRingtone(getOwner());
@@ -480,7 +524,7 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
       if (!state().localSounds.some(item => item.id === id)) return;
       const s = state(); s.localId = id; normalizeRingtone(getOwner()); save();
       const url = await localSource(id).catch(() => '');
-      if (url) await player.play(url, s.volume);
+      if (url) await audition.play(url, s.volume);
     },
     async clearLocal(id) {
       const s = state();
@@ -550,16 +594,16 @@ export function createChatRingtone({ getOwner, save, getContext, resolveNamespac
     const module = await loadView();
     if (disposed || mounted?.token !== token || !host.isConnected) return;
     mounted.view = module.mountChatRingtoneView({ root: host, actions, notify });
-    mounted.view.setAudio?.(player.state());
+    mounted.view.setAudio?.(audition.state());
     refresh();
   }
-  function unmount() { player.stop(); mounted?.view?.dispose(); mounted = null; }
+  function unmount() { player.stop(); audition.stop(); mounted?.view?.dispose(); mounted = null; }
   // Runtime teardown; a later re-enable may mount again.
   // Applies the saved toast skin once settings are loaded (runtime init).
   function activate() { skinActive = true; syncToast(); syncTabIcon(); }
   // Re-reads the Qianmu theme after a theme/day-night change so the default card follows it.
   function refreshLook() { syncToast(); syncTabIcon(); }
-  function dispose() { alert.stop(); restoreTabIcon(); disposed = true; skinActive = false; applyToastSkin(document, null); applyToastTiming(toastLibrary(), null); unmount(); listen(false); alert.stop(); player.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
+  function dispose() { alert.stop(); restoreTabIcon(); disposed = true; skinActive = false; applyToastSkin(document, null); applyToastTiming(toastLibrary(), null); unmount(); listen(false); alert.stop(); player.dispose(); audition.dispose(); dropLocalUrl(); dropPresetUrls(null); armed = false; }
   // Warms the view module only (no mount, no audio, no data read).
   const preload = () => loadView().then(() => true, () => false);
   return Object.freeze({ events, mount, unmount, activate, refreshLook, dispose, actions, state, preload });

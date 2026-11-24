@@ -227,9 +227,11 @@
 /* Editorial is a rectangular control system, including late-mounted dialogs,
    detached notes and label-based upload buttons. The duplicated root in :is()
    matches the legacy two-ID mobile rules without touching the host document.
-   Do not square avatar selectors, radio dots, switch tracks/thumbs or media. */
+   Do not square avatar selectors, radio dots, switch tracks/thumbs or media.
+   Dragged-out launcher entries keep their own launcher shape: in dial mode the
+   round frame is drawn by border-radius and would show only four arcs if squared. */
 :is(#story-director-modal, [data-qm-theme]):is(#story-director-modal, [data-qm-theme])[data-qm-theme="editorial"] :is(
-  button:not([data-coread-identity]):not(.sd-world-edge):not([role="switch"]),
+  button:not([data-coread-identity]):not(.sd-world-edge):not([role="switch"]):where(:not(.sd-detached-notes-entry)),
   .sd-btn, .sd-icon-btn, .menu_button, .sd-option-chip,
   input:not([type="radio"]):not([type="checkbox"]):not([type="range"]),
   textarea, select, details, details > summary,

@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.75';
-export const SERVICE_VERSION = '0.8.32';
+export const FRONTEND_VERSION = '0.8.76';
+export const SERVICE_VERSION = '0.8.33';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -65,7 +65,10 @@ export function validateSettings(input, partial = true) {
     return partial ? result : { ...DEFAULTS, ...result };
 }
 export function effectiveSettings(document, defaults) {
-    const settings = { ...DEFAULTS, ...defaults?.values, ...document?.settings };
+    // 忆幕的设置都是账户全局的（用户 2026-11-24：不分聊天）。聊天里以前单独存过的值只在还没读到全局默认时兜底。
+    const settings = { ...DEFAULTS, ...document?.settings, ...defaults?.values };
+    // 「原文回查与补充」已去掉（用户 2026-11-24）：旧资料里存着的开关一律当作关。已存下的原文摘录照常可读。
+    settings.recall = false;
     for (const key of ['recent', 'trigger']) if (settings[key] === 0) settings[key] = DEFAULTS[key];
     // Legacy batch is retained on disk only. Trigger is the single input target;
     // runtime may narrow this derived cap to the actual connection window.
@@ -148,12 +151,13 @@ export function parseObservations(response, { start = 1, end = Infinity } = {}) 
     try { parsed = JSON.parse(String(response || '').trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1')); } catch { return []; }
     if (!Array.isArray(parsed?.traces)) return [];
     const seen = new Set();
-    return parsed.traces.flatMap(item => {
+    // n：这条在模型返回的 "traces" 里是第几条（从 1 数起）。同一次返回里的印象按这个序号指认痕迹；它不存进资料。
+    return parsed.traces.flatMap((item, index) => {
         const about = typeof item?.about === 'string' ? item.about.trim().slice(0, 120) : '', text = typeof item?.text === 'string' ? item.text.trim().slice(0, 300) : '';
         const floor = Number.isSafeInteger(item?.floor) && item.floor >= start && item.floor <= end ? item.floor : null;
         if (!about || !text || floor === null || seen.has(`${about}\n${text}`)) return [];
         seen.add(`${about}\n${text}`);
-        return [{ about, text, floor }];
+        return [{ about, text, floor, n: index + 1 }];
     }).slice(0, OBSERVATION_BATCH);
 }
 export function validateDocument(raw) {

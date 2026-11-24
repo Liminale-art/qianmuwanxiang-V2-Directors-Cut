@@ -481,13 +481,56 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
   // 点开显示各版本（单选圆点 + 版本号标签）；孤立预设是一条单选行。
   // 展开态记在视图里（presetOpen），重绘后保持；含当前预设的组默认展开，其余默认收起。
   const presetOpen = new Map();
+  // 多选删除：开着时目录里的预设变成勾选框（点按勾选，不切换），版本系列的组头前多一个整组勾选；
+  // 底下一条「已选 N 个 · 删除 · 取消」，删除要点两下。勾选只活在视图里，重绘时去掉已不存在的名字。
+  let presetPicking = false;
+  const presetPicked = new Set();
+  const CONFIRM_MS = 4000;
+  function presetCheck(on, mixed = false) {
+    const mark = el('i', `fa-solid ${mixed ? 'fa-minus' : 'fa-check'} qm-regex-check-mark`); mark.setAttribute('aria-hidden', 'true');
+    const box = el('span', `qm-regex-check${on || mixed ? ' is-on' : ''}`); box.setAttribute('aria-hidden', 'true'); box.append(mark);
+    return box;
+  }
+  function presetPickBar() {
+    const bar = el('div', 'qm-regex-selbar qm-regex-preset-pickbar');
+    bar.append(el('span', 'qm-regex-selbar-count', `已选 ${presetPicked.size} 个`));
+    const icon = glyph => { const i = el('i', `fa-solid ${glyph}`); i.setAttribute('aria-hidden', 'true'); return i; };
+    const remove = el('button', 'qm-regex-selact is-icon is-danger'); remove.type = 'button'; remove.dataset.key = 'preset-del';
+    remove.setAttribute('aria-label', '删除所选预设'); remove.title = '删除所选预设'; remove.append(icon('fa-trash-can'));
+    remove.disabled = !presetPicked.size;
+    // 点两下才删：第一下换成对勾，几秒内不再点就复原。不弹对话框。
+    let armed = false, timer = null;
+    const disarm = () => { armed = false; clearTimeout(timer); timer = null; remove.removeAttribute?.('data-armed'); remove.title = '删除所选预设'; remove.setAttribute('aria-label', '删除所选预设'); remove.replaceChildren(icon('fa-trash-can')); };
+    remove.addEventListener('click', () => {
+      if (remove.disabled) return;
+      if (!armed) {
+        armed = true; remove.setAttribute('data-armed', 'true'); remove.title = '再点一次确认'; remove.setAttribute('aria-label', '再点一次确认删除'); remove.replaceChildren(icon('fa-check'));
+        timer = setTimeout(disarm, CONFIRM_MS);
+        return;
+      }
+      disarm(); remove.disabled = true;
+      const names = [...presetPicked];
+      Promise.resolve().then(() => actions.deletePresets(names))
+        .then(count => { if (count) { presetPicked.clear(); presetPicking = false; } })
+        .catch(error => notify(error?.message || '预设没删掉', 'warning'))
+        .finally(() => { if (!disposed && lastState) render(lastState); });
+    });
+    const cancel = el('button', 'qm-regex-selact is-icon is-quiet'); cancel.type = 'button'; cancel.dataset.key = 'preset-pick-cancel';
+    cancel.setAttribute('aria-label', '取消'); cancel.title = '取消'; cancel.append(icon('fa-xmark'));
+    cancel.addEventListener('click', () => { presetPicking = false; presetPicked.clear(); render(lastState); });
+    bar.append(remove, cancel);
+    return bar;
+  }
   function presetDirectory(presets, binding) {
     const boundName = binding.enabled ? binding.preset || '' : '';
     const names = [...presets.names];
     if (presets.current && !names.includes(presets.current)) names.unshift(presets.current);
+    for (const name of [...presetPicked]) if (!presets.names.includes(name)) presetPicked.delete(name);
+    const canDelete = typeof actions.deletePresets === 'function';
+    const picking = canDelete && presetPicking;
     const disabled = presets.busy || !names.length;
     const dirOpen = !disabled && presetOpen.get('dir') === true;
-    const box = el('section', `qm-regex-card qm-regex-preset-box${dirOpen ? ' is-open' : ''}`);
+    const box = el('section', `qm-regex-card qm-regex-preset-box${dirOpen ? ' is-open' : ''}${picking ? ' is-picking' : ''}`);
 
     const triggerRow = el('div', 'qm-regex-preset-trigger-row');
     const trigger = el('button', 'qm-regex-preset-trigger'); trigger.type = 'button';
@@ -504,16 +547,35 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       mark.title = boundName === presets.current ? '已是本聊天绑定的预设' : `本聊天绑定的是「${boundName}」`;
       triggerRow.append(mark);
     }
+    if (canDelete && !disabled) {
+      const manage = el('button', `qm-regex-preset-manage${picking ? ' is-on' : ''}`); manage.type = 'button'; manage.dataset.key = 'preset-manage';
+      manage.setAttribute('aria-pressed', String(picking));
+      manage.setAttribute('aria-label', picking ? '退出多选' : '多选删除'); manage.title = picking ? '退出多选' : '多选删除';
+      const mi = el('i', 'fa-solid fa-list-check'); mi.setAttribute('aria-hidden', 'true'); manage.append(mi);
+      manage.addEventListener('click', () => { presetPicking = !picking; presetPicked.clear(); render(lastState); });
+      triggerRow.append(manage);
+    }
 
     const dir = el('div', 'qm-regex-preset-dir');
     dir.setAttribute('role', 'radiogroup');
     dir.setAttribute('aria-label', '预设列表');
-    // 单选行：圆点 + 预设名（+ 版本号标签，仅版本系列的成员有）；本聊天绑定的那条带链环。
+    // 单选行：圆点 + 预设名（+ 版本号标签，仅版本系列的成员有）；本聊天绑定的那条带链环。多选时圆点换成勾选框，点按只勾选。
     const option = (name, tagText, shownName = name) => {
       const on = name === presets.current;
       const node = el('button', `qm-regex-preset-option${on ? ' is-current' : ''}`);
       node.type = 'button';
       node.dataset.value = name;
+      if (picking) {
+        const picked = presetPicked.has(name);
+        node.dataset.key = `preset-pick:${name}`;
+        node.classList.add('is-pick'); if (picked) node.classList.add('is-picked');
+        node.setAttribute('role', 'checkbox'); node.setAttribute('aria-checked', String(picked));
+        node.setAttribute('aria-label', `${name}${on ? '（正在用）' : ''}`); node.title = name;
+        node.append(presetCheck(picked), el('span', 'qm-regex-preset-name', shownName));
+        if (tagText !== undefined) node.append(el('span', 'qm-regex-preset-ver', tagText));
+        node.addEventListener('click', () => { if (presetPicked.has(name)) presetPicked.delete(name); else presetPicked.add(name); render(lastState); });
+        return node;
+      }
       node.setAttribute('role', 'radio'); node.setAttribute('aria-checked', String(on));
       node.setAttribute('aria-label', `${name}${name === boundName ? '（本聊天绑定）' : ''}`); node.title = name;
       const dot = el('span', 'qm-regex-preset-radio'); dot.setAttribute('aria-hidden', 'true');
@@ -547,9 +609,21 @@ export function mountChatRegexView({ root, actions, notify = () => {} }) {
       });
       const body = el('div', 'qm-regex-preset-group-body');
       for (const item of row.items) body.append(option(item.name, item.versionText ? `v${item.versionText}` : '原版', row.base));
-      group.append(head, body);
+      if (picking) {
+        // 整组勾选：组头前一个勾选框，点按把这一组的版本全勾上或全取消。
+        const members = row.items.map(item => item.name), count = members.filter(name => presetPicked.has(name)).length;
+        const all = count === members.length, some = count > 0 && !all;
+        const pick = el('button', 'qm-regex-preset-group-pick'); pick.type = 'button'; pick.dataset.key = `preset-group-pick:${row.base}`;
+        pick.setAttribute('role', 'checkbox'); pick.setAttribute('aria-checked', all ? 'true' : some ? 'mixed' : 'false');
+        pick.setAttribute('aria-label', all ? `整组取消：${row.base}` : `整组选中：${row.base}`); pick.title = all ? '整组取消' : '整组选中';
+        pick.append(presetCheck(all, some));
+        pick.addEventListener('click', () => { for (const name of members) { if (all) presetPicked.delete(name); else presetPicked.add(name); } render(lastState); });
+        const headRow = el('div', 'qm-regex-preset-group-row'); headRow.append(pick, head);
+        group.append(headRow, body);
+      } else group.append(head, body);
       dir.append(group);
     }
+    if (picking) dir.append(presetPickBar());
     trigger.addEventListener('click', () => {
       if (trigger.disabled) return;
       const next = trigger.getAttribute('aria-expanded') !== 'true';

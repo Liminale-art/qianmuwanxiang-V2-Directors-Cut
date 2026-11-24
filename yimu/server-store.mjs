@@ -748,6 +748,39 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         return {items};
     }
 
+    // 聊天工具包从备份找回聊天时，副本带的是新的聊天身份，忆幕认不出它。这里按「原聊天身份标识」找到原来那份记忆，
+    // 复制一份给副本（原记录不动）。副本已经有忆幕资料时不覆盖；找不到原记忆就什么都不做。只在找回成功后调用一次。
+    async function manageFollow(request, body) {
+        const ctx = context(request);
+        await prepare(ctx);
+        const integrity = body?.source?.integrity;
+        if (typeof integrity !== 'string' || !integrity || integrity.length > 240) fail('manage', '原聊天身份无效', 400);
+        const target = normalizeStoreBinding(body?.target);
+        if (target.integrity === integrity) fail('manage', '副本与原聊天身份相同', 400);
+        await requireSource(ctx, target);
+        let found = null;
+        for (const name of (await io.readdir(ctx.folder)).sort()) {
+            if (!/^chat-[a-f0-9]{64}\.json$/.test(name)) continue;
+            ctx.guard();
+            let value = null, updated = 0;
+            try { ({ value } = await readFile(ctx, name, contract.validateDocument, () => null)); updated = Math.round(Number((await io.stat(path.join(ctx.folder, name))).mtimeMs)); } catch { continue; }
+            if (!value || value.movedTo || value.binding?.integrity !== integrity) continue;
+            if (!value.entries.some(entry => entry.status !== 'deleted') && !hasHeart(value.heart)) continue;
+            if (!found || updated > found.updated) found = { value, updated };
+        }
+        if (!found) return {copied: false, missing: true};
+        const storage = chatStorageName(target);
+        return exclusive(ctx, storage, async () => {
+            const existing = await documentRead(ctx, target);
+            if (existing.fingerprint) return {copied: false, exists: true};
+            const document = {...clone(found.value), binding: target};
+            delete document.movedTo;
+            contract.validateDocument(document);
+            await writeFile(ctx, storage, document, null, contract.validateDocument);
+            return {copied: true, slices: document.entries.filter(entry => entry.kind === 'summary' && entry.status !== 'deleted').length};
+        });
+    }
+
     // 删除一个聊天的忆幕文件。必须同时给出文件名与它记的聊天身份，且修订号没变——
     // 避免列表显示之后那份记忆又有了新内容，却被这里按旧印象删掉。聊天原文从不触碰。
     async function manageDelete(request, body) {
@@ -796,5 +829,5 @@ export function createYimuStore({hostCwd = process.cwd(), io = fs, lockTimeoutMs
         }
     }
 
-    return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, manageAssign, ...stories, ...backups});
+    return Object.freeze({read, change, defaults, rename, recallSource, manageList, manageDelete, manageAssign, manageFollow, ...stories, ...backups});
 }

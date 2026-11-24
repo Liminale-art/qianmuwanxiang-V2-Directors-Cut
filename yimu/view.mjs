@@ -18,6 +18,7 @@ import { mountRetrievalView } from './retrieval-view.mjs';
 import { mountManageView } from './manage-view.mjs';
 import { mountHeartView } from './heart-view.mjs';
 import { DIARY_TRACE_TRIGGER } from './heart-core.mjs';
+import { memoryWarmth, FADING, SUNKEN } from './decay.mjs';
 
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
@@ -42,7 +43,6 @@ const SETTINGS = [
     ['thoughtChars', '每则心迹字数上限', 'number', 20],
     ['thoughtCooldown', '心迹间隔层数', 'number', 1],
     ['thoughtInject', '心迹随记忆带入', 'checkbox'],
-    ['recall', '原文回查与补充', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
 const BLANK_ZERO = new Set(['budget']);
@@ -380,7 +380,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['heart', '心迹脉络', ['diary', 'diaryAuto', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
-        ['extra', '附加功能', ['recall', 'companionShareCustom']],
+        ['extra', '附加功能', ['companionShareCustom']],
     ]) {
         const group = el('section', `ym-card ym-settings-group${name === 'budget' ? ' ym-budget-group' : ''}${name === 'extra' ? ' ym-extra-settings' : ''}`);
         group.append(el('h3', 'ym-setting-title', title));
@@ -663,12 +663,8 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     streamPreview.append(streamTitle, streamOutput); streamPreview.hidden = true;
     const promptContainer = el('section', 'ym-prompt-section');
     const promptView = mountPromptView(promptContainer, { document, showTitle: false,
-        onSave: (config, meta = {}) => {
-            if (meta.scope && meta.scope !== 'global' && meta.scope !== JSON.stringify(state.snapshot?.binding || null)) return false;
-            const global = meta.scope ? meta.scope === 'global' : !state.document;
-            return dispatch('settings', { global, quiet: true, values: { prompts: config },
-                expectedRevision: meta.revision ?? (global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0) });
-        },
+        onSave: (config, meta = {}) => dispatch('settings', { global: true, quiet: true, values: { prompts: config },
+            expectedRevision: meta.revision ?? state.defaults?.revision ?? 0 }),
         onError: error => { localError = error?.message || '提示词保存未完成'; localErrorPage = 'overview'; updateStatus(); },
     });
     const promptFolder = el('section', 'ym-card ym-tool-card ym-prompt-folder');
@@ -889,11 +885,12 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         apiView?.render({ settings: currentSettings(),
             profiles: state.profiles || [], snapshot: state.snapshot, isGlobal: true,
             overrides: state.document?.settings || {}, showFollow: false });
-        const global = !state.document;
-        promptView.render({ settings: global ? state.defaults?.values || DEFAULTS : currentSettings(), snapshot: state.snapshot,
-            scope: global ? 'global' : JSON.stringify(state.snapshot?.binding || null),
-            revision: global ? state.defaults?.revision ?? 0 : state.document?.configRevision ?? 0, global,
-            disabled: !state.defaults || state.loading || state.busy, recallEnabled: currentSettings().recall !== false });
+        // 设置都是全局的：提示词与标签规则直接读写全局默认，一次保存只走一趟、只刷新一次（不再先存聊天、再升全局、再清聊天）。
+        const global = true;
+        promptView.render({ settings: state.defaults?.values || DEFAULTS, snapshot: state.snapshot,
+            scope: 'global', revision: state.defaults?.revision ?? 0, global,
+            // 编辑区只在还没读到设置时锁住；后台整理忙碌时照常可写，草稿等空下来再存，不让编辑区一闪一闪地变灰。
+            disabled: !state.defaults || state.loading || state.busy, locked: !state.defaults || state.loading });
         contextRulesView.render({ settings: global ? state.defaults?.values || DEFAULTS : currentSettings(),
             disabled: !state.defaults || state.loading || state.busy });
     }
@@ -959,6 +956,18 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         closeMore();
         await dispatch('reorder', { entryOrder: order, movedId: entryId, expectedRevision: doc.revision });
     }
+    // 记忆眼下的流动状态（只看自动切片：自定义、改过的、钉住的不参与）。冷却＝刚带入过、这几层内不再仅因沾边重复带入；
+    // 淡去／沉底按剧情走了多少层算。依据是本机记下的「上次带入的楼层」，与选记忆用的是同一份。
+    function memoryMark(entry) {
+        if (entry.kind !== 'summary' || entry.status !== 'active' || entry.pinned || entry.edited || entry.origin) return null;
+        const total = state.snapshot?.messages?.length || 0;
+        if (!total) return null;
+        const settings = currentSettings(), last = Number(state.recalledAt?.[entry.id]), used = Number.isFinite(last) && last > 0;
+        const cooldown = Number.isSafeInteger(settings.recallCooldown) ? settings.recallCooldown : 0;
+        if (cooldown > 0 && used && total - last > 0 && total - last <= cooldown) return { id: 'cool', text: '冷却' };
+        const warmth = memoryWarmth(entry, { floor: total, lastUsedFloor: used ? last : null, settings });
+        return warmth === FADING ? { id: 'fading', text: '淡去' } : warmth === SUNKEN ? { id: 'sunken', text: '沉底' } : null;
+    }
     function entryHeading(entry) {
         const heading = el('h3', `ym-entry-title${entry.kind === 'manual' ? ' ym-custom-name' : ''}`);
         const range = entry.source?.start !== undefined ? `楼层${shownFloor(entry.source.start)}-${shownFloor(entry.source.end)}`
@@ -966,11 +975,23 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         if (range) heading.append(el('small', 'ym-entry-range', range));
         const title = entry.kind === 'excerpt' ? '回查补充' : memoryTitle(entry);
         heading.append(el('span', 'ym-entry-name', title));
-        heading.title = `${sourceLabel(entry)}${title ? ` · ${title}` : ''}`;
+        const mark = memoryMark(entry);
+        if (mark) { const tag = el('small', `ym-entry-mark ym-mark-${mark.id}`, mark.text); heading.append(tag); }
+        heading.title = `${sourceLabel(entry)}${title ? ` · ${title}` : ''}${mark ? ` · ${mark.text}` : ''}`;
         return heading;
     }
+    // 「正文发生变化」只在第一次展开那条切片时出现；之后靠卡片左侧的色条提示。按条目与修订记在本机。
+    const SEEN_CHANGES_KEY = 'yimu:seen-source-changes:v1';
+    const seenChanges = (() => { try { return new Set(JSON.parse(globalThis.localStorage?.getItem(SEEN_CHANGES_KEY) || '[]')); } catch { return new Set(); } })();
+    const changeKey = entry => `${entry.id}:${entry.revision}`;
+    function markChangeSeen(entry) {
+        const key = changeKey(entry);
+        if (seenChanges.has(key)) return;
+        seenChanges.add(key);
+        try { globalThis.localStorage?.setItem(SEEN_CHANGES_KEY, JSON.stringify([...seenChanges].slice(-500))); } catch { /* 本机存不了就只在这次打开里记着 */ }
+    }
     function renderCard(entry, existing) {
-        const signature = JSON.stringify(entry);
+        const signature = `${JSON.stringify(entry)}|${memoryMark(entry)?.id || ''}|${seenChanges.has(changeKey(entry)) ? 1 : 0}`;
         if (existing?.signature === signature) return existing;
         const card = existing?.node || el('details', 'ym-card ym-memory');
         card.className = `ym-card ym-memory${entry.kind === 'stage' ? ' ym-stage' : ''}${entry.status === 'excluded' ? ' ym-excluded' : ''}${entry.status === 'invalid' ? ' ym-source-stale' : ''}`;
@@ -983,7 +1004,6 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         const content = el('div', 'ym-memory-content');
         const top = el('summary', 'ym-memory-head');
         top.append(entryHeading(entry));
-        if (entry.edited && entry.kind !== 'manual') content.append(el('p', 'ym-muted', '人工保护'));
         if (entry.kind === 'manual' && entry.placementVerified === false) content.append(el('p', 'ym-inline-warning', '叙事位置已变化，请重新定位'));
         if (entry.status === 'excluded') { content.append(el('p', 'ym-muted', '已屏蔽注入')); top.title = '已屏蔽注入'; }
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
@@ -992,8 +1012,11 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         // that is dependency state, not a change to the stage text itself.
         // Keep the status border for quiet review, but do not repeat a source
         // warning inside the stage card.
-        if (entry.status === 'invalid' && entry.kind !== 'stage' && !(entry.kind === 'excerpt' && !memoryText(entry).trim())) {
+        if (entry.status === 'invalid' && entry.kind !== 'stage' && !(entry.kind === 'excerpt' && !memoryText(entry).trim()) && !seenChanges.has(changeKey(entry))) {
             content.append(el('p', 'ym-inline-warning', '正文发生变化'));
+            // 第一次展开时看到它；收起之后就记为看过，下次不再出现。
+            const seen = () => { if (!card.open) { markChangeSeen(entry); card.removeEventListener('toggle', seen); } };
+            card.addEventListener('toggle', seen);
         }
         appendMemoryText(content, entry);
         const actions = el('div', 'ym-actions ym-entry-actions'), fixed = el('div', 'ym-fixed-actions');
@@ -1436,7 +1459,18 @@ export function mountEntries(onOpen, { document = globalThis.document } = {}) {
         const status = shortcutStatus(state);
         shortcut.hidden = preferences.showShortcut !== true;
         shortcut.dataset.ymState = status.tone;
-        shortcut.dataset.ymBusy = String(Boolean(state.busy && /正在(?:整理|重试|核对)/.test(String(state.status || ''))));
+        const busy = Boolean(state.busy && /正在(?:整理|重试|核对)/.test(String(state.status || '')));
+        // 「总结中」的呼吸跟着当前主题的强调色走：开始呼吸时从千幕面板（或其悬浮入口）读一次强调色，读不到用 ST 主题的引用色。
+        if (busy && shortcut.dataset.ymBusy !== 'true') {
+            let accent = '';
+            try {
+                const source = ['story-director-modal', 'story-director-float'].map(id => document.getElementById(id)).find(Boolean);
+                const style = source && document.defaultView?.getComputedStyle?.(source);
+                accent = String(style?.getPropertyValue('--qm-accent') || style?.getPropertyValue('--sd-accent') || '').trim();
+            } catch { accent = ''; }
+            if (accent) shortcut.style?.setProperty?.('--ym-entry-accent', accent); else shortcut.style?.removeProperty?.('--ym-entry-accent');
+        }
+        shortcut.dataset.ymBusy = String(busy);
         shortcut.title = `忆幕：${status.message}`;
         shortcut.setAttribute('aria-label', `忆幕：${status.message}`);
     };

@@ -11,7 +11,9 @@ const PAGE_SIZE = 20;
 const displayText = text => text.replace(/\r\n?/g, '\n').replace(/\n(?:[\t ]*\n){2,}/g, '\n\n');
 const titleFor = item => `${item.charName || '未命名角色'} & ${item.userName || '未命名用户'} · ${new Date(item.createdAt).toLocaleDateString('zh-CN')}`;
 
-export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage} = {}) {
+// locateFloor() 每次调用都按当前打开的聊天现算一张对照表，返回「来源 → 楼层号或 null」；只有来源确实落在当前聊天、
+// 且那一层还在时才有楼层号。onJumpFloor(楼层号) 沿用聊天工具包的跳层。两者缺省时不显示楼层标签。
+export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage, locateFloor, onJumpFloor} = {}) {
     const doc = parent?.ownerDocument;
     if (!doc || !collection || typeof isCurrent !== 'function') throw new TypeError('Collection panel requires its owner');
     const make = (tag, className, text) => {
@@ -112,8 +114,10 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         startEditor();
     });
     const organizeButton = button('整理收藏', 'tag', () => { if (activeItem() && !busy()) organizeView.organize([selectedId]); });
-    const saveButton = button('保存收藏', 'star', save);
-    readActions.append(organizeButton, imageButton, copyButton, editButton, saveButton); footer.append(readActions);
+    const saveButton = button('保存收藏', 'check', save);
+    const floorButton = make('button', 'qm-collection-floor'); floorButton.type = 'button'; floorButton.hidden = true;
+    floorButton.addEventListener('click', () => { if (current() && route === 'read') jumpToFloor(selectedId); });
+    readActions.append(organizeButton, imageButton, copyButton, editButton, saveButton); footer.append(floorButton, readActions);
     const status = make('div', 'qm-collection-status'); status.setAttribute('role', 'status');
     const statusText = make('span'), reconcileButton = button('核对保存结果', 'arrows-clockwise', refresh);
     status.append(statusText, reconcileButton);
@@ -131,9 +135,11 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     function activeItem() { return snapshot?.items.find(item => item.id === selectedId); }
     function endSelection() { multi = false; selection.clear(); }
     function busy() { return pending || ['loading', 'refreshing', 'saving'].includes(snapshot?.phase); }
-    function startEditor() {
+    // focus=false：只把正文摆进编辑区，不抢焦点；用户点到文字才开始编辑（手机上不会一进来就弹输入法）。
+    function startEditor(focus = true) {
         route = 'edit'; notice = ''; editorControl.setText(draft.text); editor.scrollTop = 0;
-        render(); editor.focus();
+        render();
+        if (focus) editor.focus();
     }
     function renderStatus() {
         if (!visible) return;
@@ -234,6 +240,44 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         }
         if (visibleItems.length < items.length) list.append(moreButton);
         list.scrollTop = listScroll;
+        paintListFloors();
+    }
+    // 楼层标签：每次绘制都按当前聊天重新核对，换了聊天、楼层被删或来源对不上就不显示。
+    let floorFailureLogged = false;
+    function floorLookup() {
+        if (typeof locateFloor !== 'function' || typeof onJumpFloor !== 'function') return () => null;
+        let find;
+        try { find = locateFloor(); } catch (error) {
+            if (!floorFailureLogged) { floorFailureLogged = true; console.warn('[Qianmu] Collection floor lookup failed', error); }
+            return () => null;
+        }
+        if (typeof find !== 'function') return () => null;
+        return source => { const floor = find(source); return Number.isSafeInteger(floor) && floor >= 0 ? floor : null; };
+    }
+    function paintFloorTag(tag, floor) {
+        tag.textContent = `#${floor}`; tag.dataset.floor = String(floor);
+        tag.title = `跳到第 ${floor} 层`; tag.setAttribute('aria-label', `跳到第 ${floor} 层`);
+    }
+    function paintListFloors() {
+        const find = floorLookup(), byId = new Map((snapshot?.items || []).map(item => [item.id, item]));
+        for (const row of list.querySelectorAll('.qm-collection-row')) {
+            const id = row.querySelector('.qm-collection-entry')?.dataset.itemId, item = byId.get(id);
+            const floor = multi || !item ? null : find(item.source);
+            let tag = row.querySelector('.qm-collection-floor');
+            if (floor === null) { tag?.remove(); continue; }
+            if (!tag) {
+                tag = make('button', 'qm-collection-floor'); tag.type = 'button';
+                tag.addEventListener('click', () => { if (current()) jumpToFloor(id); });
+                row.append(tag);
+            }
+            paintFloorTag(tag, floor);
+        }
+    }
+    function jumpToFloor(id) {
+        const item = snapshot?.items.find(entry => entry.id === id), floor = item ? floorLookup()(item.source) : null;
+        if (floor === null) { render(); return; }
+        close();
+        Promise.resolve().then(() => onJumpFloor(floor)).catch(error => console.warn('[Qianmu] Collection floor jump failed', error));
     }
     function render() {
         if (!visible || !current()) return;
@@ -257,6 +301,9 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             }
             reader.scrollTop = readScroll;
         }
+        const readFloor = route === 'read' ? floorLookup()(item.source) : null;
+        floorButton.hidden = readFloor === null;
+        if (readFloor !== null) paintFloorTag(floorButton, readFloor);
         updateControls(); renderStatus();
     }
     async function refresh() {
@@ -367,7 +414,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             id: crypto.randomUUID(), createdAt: new Date().toISOString()};
         selectedId = null;
         draft = {item, text: input.text, fingerprint: snapshot.fingerprint, isNew: true};
-        startEditor();
+        startEditor(false);
         if (immediate) {
             await save();
             if (!captureCurrent() || requestedOpening !== opening) return false;

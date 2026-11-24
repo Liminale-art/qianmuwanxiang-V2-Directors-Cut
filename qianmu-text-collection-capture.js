@@ -61,7 +61,7 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
     const paragraphs = make('div', 'qm-collection-capture-paragraphs');
     const footer = make('footer'), count = make('span');
     count.setAttribute('aria-live', 'polite');
-    const confirmButton = iconButton('确认选段', 'star', () => {
+    const confirmButton = iconButton('确认选段', 'check', () => {
         if (!pending && selected.size) submit(selectedText());
     });
     footer.append(count, confirmButton);

@@ -27,7 +27,7 @@ test('new API defaults and algorithm defaults do not overwrite explicit saved va
     assert.equal(fresh.temperature, 1); assert.equal(fresh.maxTokens, 32000); assert.equal(fresh.contextTokens, 1000000);
     f.ctx.extensionSettings.yimu = { api: { temperature: 0.7, maxTokens: 2048, contextTokens: 32768 } };
     assert.equal(f.api.read().temperature, 0.7); assert.equal(f.api.read().maxTokens, 2048); assert.equal(f.api.read().contextTokens, 32768);
-    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.32');
+    assert.equal(f.writes.length, 0); assert.equal(VERSION, '0.8.33');
     assert.equal(DEFAULTS.trigger, 50000); assert.equal(DEFAULTS.stageThreshold, 20000); assert.equal(DEFAULTS.stageRecent, 10); assert.equal(DEFAULTS.stageAuto, true);
     const old = { ...createDefaults(), values: { ...DEFAULTS, trigger: 4000, stageThreshold: 6000 } };
     assert.equal(validateDefaults(old).values.trigger, 4000); assert.equal(validateDefaults(old).values.stageThreshold, 6000);
@@ -102,11 +102,13 @@ test('recent-slice retention counts valid custom and hand-edited slices, ignores
 
 test('floor/slice bases are accepted independently and zero factory thresholds resolve with the selected unit', () => {
     assert.deepEqual(validateSettings({ stageBasis: 'floors', stageThreshold: 9 }), { stageBasis: 'floors', stageThreshold: 9 });
-    const legacy = effectiveSettings({ settings: { stageBasis: 'floors', stageThreshold: 0 } }, createDefaults());
+    // 设置都是账户全局的（2026-11-24）：存在全局默认里的值才生效。
+    const global = values => { const defaults = createDefaults(); defaults.values = { ...defaults.values, ...values }; return defaults; };
+    const legacy = effectiveSettings({ settings: {} }, global({ stageBasis: 'floors', stageThreshold: 0 }));
     assert.equal(legacy.stageBasis, 'tokens'); assert.equal(legacy.stageThreshold, 65000);
-    assert.equal(effectiveSettings({ settings: { stageBasis: 'slices', stageThreshold: 0 } }, createDefaults()).stageThreshold, 12);
-    assert.equal(effectiveSettings({ settings: { stageBasis: 'tokens', stageThreshold: 0 } }, createDefaults()).stageThreshold, 65000);
-    assert.equal(effectiveSettings({ settings: { batch: 1000, trigger: 50000 } }, createDefaults()).batch, 50000);
+    assert.equal(effectiveSettings({ settings: {} }, global({ stageBasis: 'slices', stageThreshold: 0 })).stageThreshold, 12);
+    assert.equal(effectiveSettings({ settings: {} }, global({ stageBasis: 'tokens', stageThreshold: 0 })).stageThreshold, 65000);
+    assert.equal(effectiveSettings({ settings: {} }, global({ batch: 1000, trigger: 50000 })).batch, 50000);
 });
 
 test('trigger remains reachable above actual capacity and approves bounded continuation without reading future floors', () => {

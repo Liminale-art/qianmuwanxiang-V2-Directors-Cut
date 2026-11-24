@@ -32,6 +32,7 @@ test('opens only the compact choice and full-text selection preserves every char
     assert.equal(paragraphs(f).children.length, 0);
     assert.equal(f.dom.visible(paragraphs(f)), false);
     assert.equal(f.dom.visible(f.dom.get('确认选段')), false);
+    assert.equal(f.dom.get('确认选段').children.find(node => node.tagName === 'SVG')?.getAttribute('data-qm-glyph'), 'qm-regular-check', 'a small tick, not a star');
     click(f, '全文收藏'); await turn();
     assert.deepEqual(f.calls[0][0], source);
     assert.equal(f.calls[0][1].saveImmediately, false);
@@ -104,6 +105,9 @@ test('capture CSS uses content height and bounded inner scrolling rather than fi
     assert.match(css, /\.qm-collection-capture-paragraphs\s*\{[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/);
     const paragraph = css.match(/\.qm-collection-capture-paragraph\s*\{([^}]+)\}/)?.[1];
     for (const expected of ['margin: 0 0 .75em;', 'text-align: justify;', 'text-indent: 2em;', 'line-height: 1.55;', 'font-size: var(--qm-prose-size, 1em);']) assert.ok(paragraph.includes(expected));
+    // 段落选择跟随字体库的正文字体（与阅读页同一条变量链），且外观自带字体不能盖过它。
+    assert.ok(paragraph.includes('font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit)));'));
+    assert.match(css, /\[data-qm-theme\] \.qm-collection-capture \.qm-collection-capture-paragraph \{ font-family: var\(--qm-body-font, var\(--qm-prose-font, var\(--sd-font, inherit\)\)\) !important; \}/);
     const selected = css.match(/\.qm-collection-capture-paragraph\[aria-pressed="true"\]\s*\{([^}]+)\}/)?.[1];
     assert.match(selected, /background:\s*color-mix/);
     assert.match(selected, /box-shadow:\s*none;/);

@@ -1,47 +1,69 @@
 // 使用时长：只数真正在用的时间；按天与按角色各一份；汇总与面板。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createUsageTracker, normalizeUsage, usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift } from '../qianmu-usage-tracker.js';
+import { createUsageTracker, normalizeUsage, usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift, createTokenMeter, estimateTextTokens, tokenSummary, compactTokens, tokenText } from '../qianmu-usage-tracker.js';
 import { usageMarkup, lastChatText, DRINKS, timeZoneText } from '../qianmu-usage-view.js';
 
 const T0 = new Date(2026, 10, 20, 14, 0, 0).getTime(), MIN = 60000;
 function fixture(saved = null) {
-    let at = T0, who = { key: 'Alice.png', name: '阿澈' }, visible = true, busy = false; const saves = [];
-    const tracker = createUsageTracker({ load: () => saved, save: data => saves.push(structuredClone(data)), now: () => at, character: () => who, visible: () => visible, busy: () => busy });
-    return { tracker, saves, step(ms) { at += ms; return tracker.tick(); }, set(patch) { if ('who' in patch) who = patch.who; if ('visible' in patch) visible = patch.visible; if ('busy' in patch) busy = patch.busy; }, get at() { return at; } };
+    let at = T0, who = { key: 'Alice.png', name: '阿澈' }, visible = true, busy = false, focused = true; const saves = [];
+    const tracker = createUsageTracker({ load: () => saved, save: data => saves.push(structuredClone(data)), now: () => at, character: () => who, visible: () => visible, busy: () => busy, focused: () => focused });
+    return { tracker, saves, step(ms) { at += ms; return tracker.tick(); }, set(patch) { if ('who' in patch) who = patch.who; if ('visible' in patch) visible = patch.visible; if ('busy' in patch) busy = patch.busy; if ('focused' in patch) focused = patch.focused; }, get at() { return at; } };
 }
+const today = f => f.tracker.data.days[dayKey(T0)] || 0;
 
-test('time counts only while the page is visible and there was a recent action; idling past two minutes stops the clock', () => {
+test('time runs from one action to the next only when they are at most two minutes apart; the idle tail after the last action never counts', () => {
     const f = fixture();
     assert.equal(f.step(15000), 0, '还没有任何操作');
-    f.tracker.touch();
-    assert.equal(f.step(15000), 15000); assert.equal(f.step(15000), 15000);
-    // 挂着不动：两分钟内仍算（在看），之后不算。
-    for (let i = 0; i < 6; i++) f.step(15000);
-    const before = f.tracker.data.days[dayKey(T0)];
-    assert.equal(before, 120000);
-    assert.equal(f.step(15000), 0); assert.equal(f.step(15000), 0);
-    // 切到别的标签页不算；回来操作后接着算。
-    f.tracker.touch(); f.set({ visible: false }); assert.equal(f.step(15000), 0);
-    f.set({ visible: true }); f.tracker.touch(); assert.equal(f.step(15000), 15000);
-    // 标签页被挂起很久后醒来：睡着的时间不算。
-    f.tracker.touch(); assert.equal(f.step(3600000), 0);
-    // 正在等回复、看流式输出也算在用；节拍被拖得很长时最多补两个节拍。
-    f.set({ busy: true }); assert.equal(f.step(15000), 15000); assert.equal(f.step(600000), 30000);
+    f.tracker.touch(); assert.equal(f.step(15000), 0, '只有一次操作：还没有可记的一段');
+    f.tracker.touch(); assert.equal(f.step(15000), 15000, '两次操作相隔 15 秒：这 15 秒记上');
+    // 停下来不动：之后的节拍一秒也不加，哪怕还没满两分钟。
+    for (let i = 0; i < 6; i++) assert.equal(f.step(15000), 0);
+    assert.equal(today(f), 15000);
+    // 停了 105 秒（不到两分钟）又动了一下：中间这段整段补记。
+    f.tracker.touch(); assert.equal(f.step(15000), 105000); assert.equal(today(f), 120000);
+    // 停了超过两分钟才再动：中间那段不算，从这一下重新起。
+    for (let i = 0; i < 8; i++) f.step(15000);
+    f.tracker.touch(); assert.equal(f.step(15000), 0);
+    f.tracker.touch(); assert.equal(f.step(15000), 15000);
+    assert.equal(today(f), 135000);
+});
+
+test('hidden pages, an idle unfocused desktop window and a sleeping tab never count; a generating reply counts even without focus', () => {
+    const f = fixture();
+    // 切到别的标签页：这一段收住，回来后从头起。
+    f.tracker.touch(); f.step(15000); f.set({ visible: false }); f.tracker.touch(); assert.equal(f.step(15000), 0);
+    f.set({ visible: true }); f.tracker.touch(); assert.equal(f.step(15000), 0); f.tracker.touch(); assert.equal(f.step(15000), 15000);
+    // 电脑上切到别的窗口、又没在生成：失焦即收住；失焦期间的操作不算。
+    f.tracker.touch(); f.set({ focused: false }); f.tracker.pause(); assert.equal(today(f), 30000, '收住时记到失焦前最后一次操作'); assert.equal(f.step(15000), 0);
+    f.tracker.touch(); assert.equal(f.step(15000), 0, '失焦时的操作不算');
+    // 生成中照常计，哪怕窗口没有焦点（等回复时可能在别处做事）；失焦也不收住。
+    f.set({ busy: true }); assert.equal(f.step(15000), 0, '从这一刻起算'); f.tracker.pause(); assert.equal(f.step(15000), 15000);
+    // 生成完了、窗口仍没焦点：只记到最后一个生成节拍，之后不算。
+    f.set({ busy: false }); assert.equal(f.step(15000), 0); assert.equal(today(f), 45000);
+    f.set({ busy: true, focused: true }); assert.equal(f.step(15000), 0); assert.equal(f.step(15000), 15000);
+    // 生成中算在用：每个节拍都是一次操作。
+    assert.equal(f.step(15000), 15000);
+    // 标签页被挂起很久后醒来：睡着的时间不算，哪怕一直在生成。
+    assert.equal(f.step(600000), 0); assert.equal(f.step(15000), 15000);
+    // 睡得不到两分钟也一样：节拍断过，就不把那段算进去。
+    f.set({ busy: false }); f.tracker.touch(); f.step(0); f.tracker.touch(); assert.equal(f.step(90000), 0); f.tracker.touch(); assert.equal(f.step(15000), 0);
+    // 手机上 pause 不收住（focused 一直为真）。
+    const m = fixture(); m.tracker.touch(); m.step(10000); m.tracker.pause(); m.tracker.touch(); assert.equal(m.step(0), 10000);
 });
 
 test('each character gets their own total, kept by avatar file so it outlives the chat; no character open means only the day total grows', () => {
-    const f = fixture();
-    f.tracker.touch(); f.step(15000); f.tracker.message();
-    f.set({ who: { key: 'Bob.png', name: '店主' } }); f.tracker.touch(); f.step(15000); f.step(15000);
-    f.set({ who: null }); f.tracker.touch(); f.step(15000);
+    const f = fixture(), act = ms => { f.tracker.touch(); f.step(ms); f.tracker.touch(); f.step(0); };
+    act(15000); f.tracker.message();
+    f.set({ who: { key: 'Bob.png', name: '店主' } }); act(15000); act(15000);
+    f.set({ who: null }); act(15000);
     const { chars, days, hours } = f.tracker.data;
     assert.deepEqual(Object.fromEntries(Object.entries(chars).map(([key, item]) => [key, [item.name, item.ms]])), { 'Alice.png': ['阿澈', 15000], 'Bob.png': ['店主', 30000] });
     assert.equal(chars['Alice.png'].last, T0 + 15000); assert.equal(chars['Bob.png'].last, 0);
     assert.equal(days[dayKey(T0)], 60000); assert.equal(hours[14], 60000);
     // 存盘：攒够三分钟存一次，离开页面时也存；读回来接着累计。
     assert.equal(f.saves.length, 0); f.tracker.flush(); assert.equal(f.saves.length, 1);
-    const again = fixture(f.saves[0]); again.tracker.touch(); again.step(15000);
+    const again = fixture(f.saves[0]); again.tracker.touch(); again.step(15000); again.tracker.touch(); again.step(0);
     assert.equal(again.tracker.data.chars['Alice.png'].ms, 30000);
     assert.deepEqual(normalizeUsage({ days: { bad: 5, '2026-11-20': -1 }, chars: { '': {}, ok: { ms: 'x' } }, hours: 'no' }), { version: 1, since: 0, days: {}, hours: Array(24).fill(0), chars: { ok: { name: '', ms: 0, last: 0 } } });
 });
@@ -115,7 +137,7 @@ test('a chosen time zone decides which day and hour time is booked under, from t
     const east = 'Pacific/Kiritimati', west = 'Pacific/Pago_Pago'; // 相差二十五小时：同一刻在两地永远不是同一天
     assert.equal(zoneShift(T0, ''), 0); assert.equal(zoneShift(T0, 'No/Such_Zone'), 0);
     assert.equal(zoneShift(T0, east) - zoneShift(T0, west), 25 * 3600000);
-    const book = zone => { const f = fixture(); f.tracker.touch(); f.tracker.setZone(zone); f.tracker.touch(); f.step(15000); return { data: f.tracker.data, saves: f.saves }; };
+    const book = zone => { const f = fixture(); f.tracker.touch(); f.tracker.setZone(zone); f.tracker.touch(); f.step(15000); f.tracker.touch(); f.step(0); return { data: f.tracker.data, saves: f.saves }; };
     const a = book(east), b = book(west);
     assert.deepEqual(Object.keys(a.data.days), [dayKey(T0 + 15000 + zoneShift(T0, east))]);
     assert.deepEqual(Object.keys(b.data.days), [dayKey(T0 + 15000 + zoneShift(T0, west))]);
@@ -143,4 +165,84 @@ test('each day in the heat grid carries its date and time, and the line under th
     // 今天不在所选范围里：那一行先空着，点了才有。
     const past = usageMarkup(data, { now: T0, zones: [], range: { from: T0 - 40 * 86400000, to: T0 - 20 * 86400000, custom: true } });
     assert.match(past, /<p class="qm-usage-day" aria-live="polite"><\/p>/);
+});
+
+test('the token ledger counts only chat generations: the final request goes out, the reply that lands in the chat comes back', () => {
+    const recorded = [], queue = [], chat = [{ is_user: true, mes: 'hi' }];
+    const meter = createTokenMeter({ getContext: () => ({ chat }), record: counts => recorded.push(counts), defer: fn => queue.push(fn) });
+    const run = () => { while (queue.length) queue.shift()(); };
+    assert.equal(estimateTextTokens('你好'), 2); assert.equal(estimateTextTokens('abcdefghij'), 4); assert.equal(estimateTextTokens(''), 0);
+    // 普通生成：发出按最终消息估算（图片块不算），收到按落进聊天的回复（连同思考）。
+    meter.generationStarted('normal', {}, false);
+    meter.afterData({ prompt: [{ role: 'system', content: '设定' }, { role: 'user', content: [{ type: 'text', text: '你好' }, { type: 'image_url', image_url: { url: 'x' } }] }] }, false);
+    assert.equal(recorded.length, 0, '估算放到事件之后，不拖慢生成'); run();
+    assert.deepEqual(recorded, [{ sent: 4 }]);
+    chat.push({ is_user: false, mes: '晚上好', extra: { reasoning: '想想' } }); meter.messageReceived(1, 'normal'); run();
+    assert.deepEqual(recorded.at(-1), { received: 5 });
+    // 只拼不发的（dryRun）、后台生成、插件自己发的都不记；后台生成插在正文生成途中时这一次分不清，宁可不记。
+    const before = recorded.length;
+    meter.generationStarted('normal', {}, true); meter.afterData({ prompt: 'x'.repeat(100) }, true);
+    meter.generationStarted('quiet', { quiet_prompt: 'sum up' }, false); meter.afterData({ prompt: 'x'.repeat(100) }, false);
+    meter.generationStarted('normal', { quiet_prompt: 'q' }, false); meter.afterData({ prompt: 'abc' }, false);
+    meter.generationStarted('swipe', {}, false); meter.generationStarted('quiet', {}, false); meter.afterData({ prompt: 'abc' }, false);
+    meter.messageReceived(1, 'normal'); meter.messageReceived(1, 'extension'); run();
+    assert.equal(recorded.length, before, '这些一个都不记');
+    // 文本补全：整段提示词。继续：只算接上的那一截。
+    meter.generationStarted('continue', {}, false); meter.afterData({ prompt: 'abcdefghij' }, false); run();
+    assert.deepEqual(recorded.at(-1), { sent: 4 });
+    chat[1].mes = '晚上好，今天'; meter.messageReceived(1, 'continue'); run();
+    assert.deepEqual(recorded.at(-1), { received: 3 });
+    // 别处发来的消息（命令、首条、图片扩展）不算回复；聊天换了就作废。
+    meter.generationStarted('regenerate', {}, false); meter.afterData({ prompt: 'a' }, false); run();
+    const settled = recorded.length;
+    meter.messageReceived(1, 'command'); meter.messageReceived(1, 'first_message'); meter.chatChanged(); meter.messageReceived(1, 'regenerate'); run();
+    assert.equal(recorded.length, settled);
+    // 代拟：填进输入框的那段。
+    meter.generationStarted('impersonate', {}, false); meter.afterData({ prompt: 'ab' }, false); meter.messageReceived(1, 'normal'); meter.impersonateReady('我来说'); run();
+    assert.deepEqual(recorded.slice(-2), [{ sent: 1 }, { received: 3 }]);
+});
+
+test('tokens are booked per day, saved on the same throttle as time, trimmed the same way, and summed for the panel', () => {
+    const f = fixture();
+    f.tracker.addTokens({ sent: 1200, received: 300 }); f.tracker.addTokens({ sent: -5, received: 'x' });
+    assert.deepEqual(f.tracker.data.tokens.days[dayKey(T0)], { sent: 1200, received: 300 }); assert.equal(f.tracker.data.tokens.since, T0);
+    assert.equal(f.saves.length, 0, '刚开始不存，等节流');
+    f.step(180000); assert.equal(f.saves.length, 1, '满三分钟就存'); assert.deepEqual(f.saves[0].tokens.days[dayKey(T0)], { sent: 1200, received: 300 });
+    f.tracker.addTokens({ sent: 1 }); assert.equal(f.saves.length, 1); f.tracker.flush(); assert.equal(f.saves.length, 2, '离开页面时也存');
+    assert.deepEqual(normalizeUsage({ tokens: { days: { bad: { sent: 1 }, '2026-11-20': { sent: 'x', received: -1 }, '2026-11-19': { sent: 5 } } } }).tokens, { since: 0, days: { '2026-11-19': { sent: 5, received: 0 } } });
+    const days = {}; for (let i = 0; i < 805; i++) days[dayKey(T0 - i * 86400000)] = { sent: 1, received: 1 };
+    const big = fixture({ tokens: { since: 1, days } }); big.tracker.addTokens({ sent: 1 }); big.tracker.flush();
+    assert.equal(Object.keys(big.saves.at(-1).tokens.days).length, 800, '和时长一样最多留 800 天');
+    const day = n => dayKey(T0 - n * 86400000);
+    const s = tokenSummary({ tokens: { since: T0 - 40 * 86400000, days: { [day(0)]: { sent: 100, received: 20 }, [day(1)]: { sent: 1000, received: 500 }, [day(40)]: { sent: 10, received: 0 } } } }, T0);
+    assert.deepEqual([s.today.total, s.today.sent, s.today.received, s.week.total, s.month.total, s.all.total, s.activeDays, s.average], [120, 100, 20, 1620, 1620, 1630, 3, 543]);
+    assert.equal(s.peak.total, 1500); assert.equal(new Date(s.peak.day).getDate(), new Date(T0 - 86400000).getDate());
+    assert.deepEqual([0, 999, 1000, 12345, 123456, 1234567, 2.5e9].map(n => compactTokens(n)), [{ value: '0', unit: 'tok' }, { value: '999', unit: 'tok' }, { value: '1', unit: 'k' }, { value: '12.3', unit: 'k' }, { value: '123', unit: 'k' }, { value: '1.2', unit: 'M' }, { value: '2.5', unit: 'B' }]);
+    assert.deepEqual([tokenText(800), tokenText(4567)], ['800', '4.5k']);
+});
+
+test('token mode: same heat grid shaded by the day total, the line under it splits sent and received, eight token counters, no regulars', () => {
+    const data = { days: { [dayKey(T0)]: 30 * MIN }, hours: Array(24).fill(0), chars: { 'A.png': { name: '阿澈', ms: 100 * MIN, last: T0 - 60000 } },
+        tokens: { since: T0 - 86400000, days: { [dayKey(T0)]: { sent: 12345, received: 678 }, [dayKey(T0 - 86400000)]: { sent: 100, received: 0 } } } };
+    const home = usageMarkup(data, { now: T0, zones: [], mode: 'tokens' }), d = new Date(T0), today = `${d.getMonth() + 1}月${d.getDate()}日`;
+    assert.match(home, /<button type="button" data-usage-mode="time" aria-pressed="false">时长<\/button><button type="button" data-usage-mode="tokens" aria-pressed="true">token<\/button>/);
+    assert.match(home, new RegExp(`<p class="qm-usage-day" aria-live="polite"><i data-level="4"></i><span>${today}</span><b>发出 12.3k · 收到 678</b></p>`));
+    assert.match(home, /data-spent="发出 100 · 收到 0"/); assert.match(home, /data-spent="没喝"/);
+    assert.equal((home.match(/class="qm-usage-card"/g) || []).length, 8);
+    assert.match(home, /<em>今日<\/em><strong><i data-count="13">13<\/i><span>k<\/span><\/strong><small>发出 12.3k · 收到 678<\/small>/);
+    assert.match(home, /<em>日均<\/em>/); assert.match(home, /<em>记录天数<\/em><strong><i data-count="2">2<\/i><span>days<\/span><\/strong><small>始于 /); assert.match(home, /<em>最多一天<\/em>/);
+    assert.ok(!home.includes('qm-usage-last') && !home.includes('宿缘') && !home.includes('最常在') && !home.includes('今日来杯'), 'token 模式没有角色名单与时长专属的格子');
+    assert.ok(!usageMarkup(data, { now: T0, zones: [], mode: 'tokens', page: 'chars' }).includes('<h3>宿缘</h3>'));
+    const time = usageMarkup(data, { now: T0, zones: [] });
+    assert.match(time, /data-usage-mode="time" aria-pressed="true"/); assert.match(time, /qm-usage-last/);
+    assert.match(usageMarkup({}, { now: T0, zones: [], mode: 'tokens' }), /<em>最多一天<\/em><strong>—<\/strong>/);
+});
+
+test('heat cells bounce once instead of staying enlarged, and the picked day keeps an outline', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const view = await readFile(new URL('../qianmu-usage-view.js', import.meta.url), 'utf8');
+    assert.ok(!/i\.on \{[^}]*transform: scale/.test(view) && !/i:hover[^{]*\{[^}]*transform: scale/.test(view), '不再停在放大的样子');
+    assert.match(view, /@keyframes qm-usage-tap \{ 0%, 100% \{ scale: 1; \} 40% \{ scale: 1\.5; \} \}/);
+    assert.match(view, /i:is\(:hover, \.on\) \{[^}]*qm-usage-pop[^}]*, qm-usage-tap/, '弹动叠在入场动画后面，取消选中不会重播入场');
+    assert.match(view, /\.qm-usage-grid i\.on \{[^}]*outline: 1\.5px solid/);
 });

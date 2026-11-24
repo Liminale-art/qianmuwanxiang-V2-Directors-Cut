@@ -23,11 +23,25 @@ export function createTextCollectionHost(options) {
         set('--qm-prose-paragraph-gap', layout && style.getPropertyValue('--sd-prose-paragraph-gap')
             || paragraph && doc.defaultView.getComputedStyle(paragraph).marginBottom || '1em');
     }
+    // 收藏条目的楼层：只认当前打开的聊天。来源标识里带着聊天文件的身份与完整性标记，别的聊天、聊天外、
+    // 文件被替换或那一层已删除时都对不上，返回 null。每次调用现算一张表，不缓存。
+    function locateFloor() {
+        const floors = new Map();
+        if (live()) {
+            const context = options.getContext() || {}, chat = Array.isArray(context.chat) ? context.chat : [];
+            const sources = textCollectionFloorSources(context);
+            chat.forEach((message, index) => {
+                const key = collectionSourceKey(sources.get(message));
+                if (key !== null) floors.set(key, index);
+            });
+        }
+        return source => floors.get(collectionSourceKey(source)) ?? null;
+    }
     function ensure() {
         if (!live()) return null;
         if (owner?.disposed) { floor?.dispose(); floor = null; owner = null; warmed = false; }
         if (owner) return owner;
-        owner = createTextCollectionOwner({...options, typography, onChange: () => { if (live()) floor?.refresh(root); }});
+        owner = createTextCollectionOwner({...options, typography, locateFloor, onChange: () => { if (live()) floor?.refresh(root); }});
         floor = createTextCollectionFloor({getContext: options.getContext, getSourceMap: textCollectionFloorSources,
             getItems: () => owner?.floorItems() || [], applyIcons: options.applyIcons,
             onError: () => options.notify?.('收藏未能完成，请重试。', 'warning'),

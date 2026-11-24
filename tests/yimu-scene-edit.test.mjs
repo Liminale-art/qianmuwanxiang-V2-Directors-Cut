@@ -16,8 +16,18 @@ test('one editor exposes every scene and prose while body-only changes retain so
     assert.equal(next.text, '他们约好下周重逢。'); assert.deepEqual(next.scenes, entry.scenes);
 });
 
-test('free changes to a date keep the complete edited text and cannot inject stale structured dates', () => {
+test('a changed date in the scene lines is read back into that scene field, never leaving a stale structured date', () => {
+    // 场景几行被改时按原来的写法读回、只更新改了的那一项（2026-11-24）。
     const entry = sample(), changed = editableMemoryText(entry).replace('五月十日', '五月十一日');
+    const next = editedMemoryValue(changed, entry);
+    assert.equal(next.text, entry.text);
+    assert.deepEqual(next.scenes, [{ ...entry.scenes[0], date: '五月十一日' }, entry.scenes[1]]);
+    assert.doesNotMatch(JSON.stringify(next), /五月十日/);
+    assert.equal(editableMemoryText({ ...entry, ...next }), changed);
+});
+
+test('scene lines that can no longer be read back keep the complete edited text and cannot inject stale structured dates', () => {
+    const entry = sample(), changed = editableMemoryText(entry).replace('五月十日 · 傍晚｜车站', '五月十一日傍晚在车站');
     const next = editedMemoryValue(changed, entry);
     assert.equal(next.text, changed); assert.deepEqual(next.scenes, []);
     assert.match(next.text, /五月十一日/); assert.doesNotMatch(next.text, /五月十日/);

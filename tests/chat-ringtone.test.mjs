@@ -302,7 +302,7 @@ test('toast preview copy', async () => {
 test('index.js passes the duration per call and re-syncs the toast look on theme changes', async () => {
   const entry = await readFile(new URL('index.js', root), 'utf8');
   assert.ok(entry.includes('toastCallOptions(settings?.ringtone)'), 'toast() 按单次调用传入停留时间');
-  assert.ok(entry.includes('getLook:qianmuToastLook'), '提示框读取千幕主题与日夜间');
+  assert.ok(entry.includes('getLook:()=>(ensureToastLiquid(document),qianmuToastLook())'), '提示框读取千幕主题与日夜间（并备好玻璃样式的折射滤镜）');
   assert.ok((entry.match(/chatRingtone\.refreshLook\(\)/g) || []).length >= 3, '经典主题/旧路径/新外观切换后都重同步');
 });
 
@@ -655,8 +655,8 @@ test('玻璃 style: glass pill, fluorescent bell icon with glow behind it, scale
   const iris = css.split('\n').filter(line => line.includes('data-qm-toast="iris"')).join('\n');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-radius: 999px/.test(iris), '玻璃胶囊大圆角');
   assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*backdrop-filter: blur/.test(iris), '玻璃质感');
-  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.11\)/.test(iris) && iris.includes('0 0 9px color-mix(in srgb, var(--qm-toast-status) 32%'), '外框线更细更透明、外发光收窄');
-  assert.ok(/html\[data-qm-toast="iris"\]\[data-qm-toast-mode="dark"\] body #toast-container > div \{[^}]*border-color: rgba\(255, 255, 255, \.045\)/.test(iris) && iris.includes('0 0 10px color-mix(in srgb, var(--qm-toast-status) 42%'), '夜间外框更淡、外发光收窄');
+  assert.ok(/html\[data-qm-toast="iris"\] body #toast-container > div \{[^}]*inset 0 1px \.5px var\(--lq-rim\)[^}]*inset 3px 0 3px -2px var\(--lq-warm\), inset -3px 0 3px -2px var\(--lq-cool\)/.test(iris), '液态玻璃：顶缘镜面高光与两侧细微色散');
+  assert.ok(/html\[data-qm-toast="iris"\]\[data-qm-toast-mode="dark"\] body #toast-container > div \{[^}]*--lq-tint:/.test(iris), '夜间单独一套玻璃底色与高光');
   assert.ok(iris.includes("mask: url(\"data:image/svg+xml") && iris.includes('a7 7 0'), '状态图标为铃铛 SVG');
   assert.ok(/::before \{[^}]*width: 22px[^}]*height: 22px/.test(iris), '标准铃铛尺寸增大到 22px');
   assert.ok(iris.includes('--iris-glow: color-mix(in srgb, var(--qm-toast-status) 90%, white)') && !iris.includes('#9effe6'), '铃铛色只掺少量白提亮，不再掺薄荷发灰');
@@ -701,12 +701,13 @@ test('ring player reports idle → loading → playing → idle once per change'
   player.stop(); assert.equal(player.state(), 'idle');
 });
 
-test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven by setAudio', async () => {
+test('ringtone sub-page carries an audio bar card above the list, driven by the real audition', async () => {
   const view = await readFile(new URL('features/chat/qianmu-chat-ringtone-view.js', root), 'utf8');
   assert.ok(view.includes("el('div', 'qm-ring-eq')") && view.includes('wrap.append(eq, listEl)'), 'C-14：音频条是列表上方的独立条卡');
   assert.ok(!view.includes('wrap.append(listEl, eq)'), '不再尝试贴底');
   assert.ok(!view.includes('listEl.append(eq)'), '音频条不再塞进可滚动列表');
   assert.ok(/render, setAudio, dispose/.test(view), '视图暴露 setAudio');
+  assert.ok(!view.includes('EQ_HEIGHTS'), '不再有写死的假跳动');
   const entry = await readFile(new URL('features/chat/qianmu-chat-ringtone.js', root), 'utf8');
   assert.ok(entry.includes('onChange: next => mounted?.view?.setAudio?.(next)'), '播放器状态驱动音频条');
   const css = await readFile(new URL('style.css', root), 'utf8');
@@ -714,10 +715,112 @@ test('ringtone sub-page carries a dot-matrix audio bar on the base plate driven 
   assert.ok(/\.qm-ring-eq \{[^}]*pointer-events: none/.test(css), '音频条不挡点击');
   assert.ok(/qm-ring-subpage-open \.qm-ring-list \{[^}]*flex: 1 1 auto/.test(css), '列表占满剩余高度');
   assert.ok(/\.qm-ring-eq \{[^}]*border-radius: var\(--qm-card-radius/.test(css) && !css.includes('margin-bottom: calc(-1 * var(--qm-ring-eq-flush'), 'C-14：条卡自成一卡、不再负边距贴底');
-  assert.ok(/\.qm-ring-eq \{[^}]*height: 44px; padding: 4px 16px 1px;/.test(css), 'C-15：点阵落到条卡底边（底内边距 1px）');
   assert.ok(/\.qm-ring-wheel, \.qm-ring-eq,/.test(await readFile(new URL('qianmu-theme-skins.css', root), 'utf8')), '编辑风皮肤条卡同样直角');
-  assert.ok(css.includes('.qm-ring-eq[data-audio="playing"] { --qm-eq-dot: hsl(142'), '播放时淡绿');
-  assert.ok(/\.qm-ring-eq \{ --qm-eq-dot: rgba\(150, 150, 150, \.3\)/.test(css), '空闲浅灰');
+  assert.ok(/\.qm-ring-eq \{[^}]*color: var\(--sd-muted\)/.test(css) && css.includes('.qm-ring-eq[data-audio="playing"] { color: var(--sd-primary); }'), '颜色跟主题：平时淡色，播放时强调色');
+  assert.ok(!css.includes('qm-ring-eq-dance') && !css.includes('qm-ring-eq-wait'), '不再有与播放无关的 CSS 跳动');
+});
+
+// 视图用的最小 DOM：画布记下每一帧画了几根、多高。
+function canvasDom({ reduced = false } = {}) {
+  const frames = [], queue = [];
+  const make = tag => {
+    const node = { tagName: tag, children: [], dataset: {}, attrs: {}, listeners: {}, textContent: '', style: { setProperty() {}, removeProperty() {} },
+      classList: { set: new Set(), add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); }, contains(c) { return this.set.has(c); }, toggle(c, on) { if (on) this.set.add(c); else this.set.delete(c); } },
+      append(...kids) { this.children.push(...kids); }, appendChild(kid) { this.children.push(kid); }, replaceChildren(...kids) { this.children = kids; },
+      setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, addEventListener(type, fn) { this.listeners[type] = fn; },
+      querySelector(sel) { const want = sel.replace(/^\./, ''); const walk = n => { for (const kid of n.children || []) { if (kid.tagName === want || kid.classList?.contains(want)) return kid; const hit = walk(kid); if (hit) return hit; } return null; }; return walk(this); },
+      contains() { return false; }, closest() { return null; } };
+    Object.defineProperty(node, 'className', { get() { return [...node.classList.set].join(' '); }, set(v) { node.classList.set = new Set(String(v).split(' ').filter(Boolean)); } });
+    if (tag === 'canvas') {
+      node.clientWidth = 100; node.clientHeight = 34;
+      node.getContext = () => { const bars = []; frames.push(bars); return { setTransform() {}, clearRect() { bars.length = 0; }, beginPath() {}, roundRect(x, y, w, h) { bars.push(h); }, fill() {}, fillRect(x, y, w, h) { bars.push(h); }, set fillStyle(v) {}, get fillStyle() { return ''; }, globalAlpha: 1 }; };
+    }
+    return node;
+  };
+  const host = make('div');
+  host.ownerDocument = { createElement: make, activeElement: null, defaultView: { devicePixelRatio: 1, getComputedStyle: () => ({ color: 'rgb(1, 2, 3)' }),
+    matchMedia: () => ({ matches: reduced }), requestAnimationFrame: fn => { queue.push(fn); return queue.length; }, cancelAnimationFrame() {} } };
+  const step = () => { const fn = queue.shift(); fn?.(); return Boolean(fn); };
+  return { host, frames, queue, step };
+}
+
+test('the audio bar moves only with real sound data, stays still otherwise, and honours reduced motion', async () => {
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  let data = null;
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 3), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {},
+    toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES, toastDurations: TOAST_DURATIONS, selectPreset: async () => {},
+    audioLevels: out => { if (!data) return false; out.set(data); return true; } };
+  const open = reduced => {
+    const dom = canvasDom({ reduced }), view = mountChatRingtoneView({ root: dom.host, actions });
+    view.render(normalizeRingtone({}));
+    const walk = n => [n, ...(n.children || []).flatMap(walk)];
+    walk(dom.host).find(n => n.classList?.contains('qm-ring-picker')).listeners.click();
+    return { ...dom, view, bar: () => walk(dom.host).find(n => n.classList?.contains('qm-ring-eq')) };
+  };
+  const tall = frame => Math.max(...frame);
+  const a = open(false); await new Promise(r => setTimeout(r, 0));
+  assert.equal(a.bar().dataset.audio, 'idle'); assert.ok(a.frames.length && tall(a.frames.at(-1)) <= 2, '空闲：一排静止的短点');
+  // 在播放、但读不到数据（跨域、没有网页音频）：不启动动画，画静止的一排。
+  a.view.setAudio('playing'); assert.equal(a.bar().dataset.audio, 'playing'); a.step();
+  assert.equal(a.queue.length, 0, '读不到数据就不再请求下一帧'); assert.ok(tall(a.frames.at(-1)) <= 2);
+  // 读到真实频谱：跟着动；播放一结束立刻静止。
+  data = new Uint8Array(128).fill(200); a.view.setAudio('playing'); a.step(); a.step(); a.step();
+  assert.ok(tall(a.frames.at(-1)) > 10, '有声音时条变高'); assert.ok(a.queue.length > 0, '还在播放就继续逐帧画');
+  a.view.setAudio('idle'); assert.ok(tall(a.frames.at(-1)) <= 2, '结束就静'); a.step(); assert.ok(tall(a.frames.at(-1)) <= 2);
+  // 一直是静音数据（浏览器把声音静掉了）：过一会儿放弃，不画假动作。
+  data = new Uint8Array(128); a.view.setAudio('playing'); let guard = 0; while (a.step() && guard++ < 200);
+  assert.ok(guard < 200 && a.queue.length === 0, '始终没有数据就停下');
+  // 减少动态效果：播放时也不逐帧画。
+  data = new Uint8Array(128).fill(200);
+  const b = open(true); await new Promise(r => setTimeout(r, 0)); b.view.setAudio('playing');
+  assert.equal(b.queue.length, 0); assert.ok(tall(b.frames.at(-1)) <= 2);
+  a.view.dispose(); b.view.dispose();
+});
+
+test('the audition player routes only same-origin or local sounds through an analyser, and never one whose context will not start', async () => {
+  const { createRingPlayer } = await import('../features/chat/qianmu-chat-ringtone.js');
+  class FakeAudio { constructor(src) { this.src = src; this.paused = true; this.ended = false; } addEventListener() {} async play() { this.paused = false; } pause() { this.paused = true; } }
+  const made = [];
+  class FakeContext {
+    constructor() { this.state = 'suspended'; this.routed = []; made.push(this); }
+    async resume() { if (FakeContext.allow) this.state = 'running'; }
+    createMediaElementSource(element) { this.routed.push(element.src); return { connect() {}, disconnect() {} }; }
+    createAnalyser() { return { connect() {}, frequencyBinCount: 128, getByteFrequencyData(out) { out.fill(9); } }; }
+    close() {}
+  }
+  FakeContext.allow = true;
+  const player = createRingPlayer({ Audio: FakeAudio, AudioContext: FakeContext, origin: 'http://st.local' });
+  const out = new Uint8Array(128);
+  assert.equal(player.levels(out), false, '没在播放：没有数据');
+  await player.play('http://st.local/assets/ringtones/a.mp3', 50);
+  assert.deepEqual(made[0].routed, ['http://st.local/assets/ringtones/a.mp3']); assert.equal(player.levels(out), true); assert.equal(out[0], 9);
+  await player.play('blob:http://st.local/123', 50); assert.equal(made[0].routed.length, 2, '本地文件也接');
+  await player.play('https://cdn.example/x.mp3', 50);
+  assert.equal(made[0].routed.length, 2, '跨域音频不接：接进去会被浏览器静音'); assert.equal(player.levels(out), false, '跨域：音频条保持静止');
+  player.stop(); assert.equal(player.levels(out), false);
+  FakeContext.allow = false;
+  const blocked = createRingPlayer({ Audio: FakeAudio, AudioContext: FakeContext, origin: 'http://st.local' });
+  assert.equal(await blocked.play('http://st.local/a.mp3', 50), true, '照常播放');
+  assert.equal(made[1].routed.length, 0, '网页音频没能启动就不接，免得没声'); assert.equal(blocked.levels(out), false);
+  player.dispose(); blocked.dispose();
+});
+
+test('returning from the ringtone list shows the pick at once, without reopening the toolkit', async () => {
+  const { mountChatRingtoneView } = await import('../features/chat/qianmu-chat-ringtone-view.js');
+  const owner = {}; normalizeRingtone(owner);
+  const pick = RINGTONE_PRESETS[2];
+  const actions = { presets: RINGTONE_PRESETS.slice(0, 3), limits: RINGTONE_LIMITS, stopSound() {}, iconFrames: () => [], fixedIcon: () => 'logo.png', hasCustomIcons: () => false, pickFixedIcon: async () => {},
+    toastStyles: TOAST_STYLES, toastFontSizes: TOAST_FONT_SIZES, toastDurations: TOAST_DURATIONS,
+    // 与控制器一样：点选只改存着的设置、不重画；每次读设置都会换成一份新的对象。
+    selectPreset: async id => { normalizeRingtone(owner).soundPreset = id; normalizeRingtone(owner); }, current: () => normalizeRingtone(owner) };
+  const dom = canvasDom(), view = mountChatRingtoneView({ root: dom.host, actions });
+  const walk = n => [n, ...(n.children || []).flatMap(walk)], find = cls => walk(dom.host).find(n => n.classList?.contains(cls));
+  view.render(normalizeRingtone(owner));
+  find('qm-ring-picker').listeners.click(); await new Promise(r => setTimeout(r, 0));
+  walk(dom.host).find(n => n.dataset?.id === pick.id).listeners.click(); await new Promise(r => setTimeout(r, 0));
+  find('qm-ring-back').listeners.click(); await new Promise(r => setTimeout(r, 0));
+  assert.ok(walk(find('qm-ring-picker')).some(n => n.textContent === pick.label), '返回时就是新铃声');
+  view.dispose();
 });
 
 import { applyToastTiming } from '../features/chat/qianmu-chat-ringtone.js';

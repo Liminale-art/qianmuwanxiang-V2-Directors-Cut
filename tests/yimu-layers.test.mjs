@@ -68,12 +68,15 @@ test('related specific detail recalls saved fine summaries rather than injecting
     document.entryOrder = document.entryOrder.filter(id => !['fine2', 'fine3'].includes(id));
     const snapshot = { messages: structuredClone(messages), maxContext: 8192 };
     snapshot.messages[15].mes = '还记得当年的红围巾吗？';
-    document.settings.recall = true; // 默认关：开着时才换成细切片
-    let plan = await buildPlan(document, createDefaults(), snapshot);
-    assert.ok(plan.memoryIds.includes('fine0'));
-    assert.ok(!plan.entries.some(e => e.kind === 'stage'));
-    document.settings.recall = false;
-    plan = await buildPlan(document, createDefaults(), snapshot);
+    // 细节顶替与「原文回查」脱钩（2026-11-24）：始终生效，旧资料里存着的 recall 开关也不影响。
+    for (const recall of [undefined, false]) {
+        if (recall === undefined) delete document.settings.recall; else document.settings.recall = recall;
+        const plan = await buildPlan(document, createDefaults(), snapshot);
+        assert.ok(plan.memoryIds.includes('fine0'));
+        assert.ok(!plan.entries.some(e => e.kind === 'stage'));
+    }
+    // 正文没问到细节时仍只带阶段，不把阶段和细切片都带上。
+    const plan = await buildPlan(document, createDefaults(), { messages: structuredClone(messages), maxContext: 8192 });
     assert.ok(plan.entries.some(e => e.kind === 'stage'));
     assert.ok(!plan.memoryIds.includes('fine0') && !plan.memoryIds.includes('fine1'));
 });

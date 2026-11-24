@@ -15,7 +15,8 @@ function fixture(onSave){
 test('each title has check/close controls and only that entry draft is submitted',async()=>{
     const f=fixture(),first=f.get('叙事与依据提示词正文'),second=f.get('叙事质感提示词正文');
     assert.equal(first.value,DEFAULT_PROMPTS.groups.summary[0].text);
-    first.value='只保留明确事实';first.emit('input');second.value='另一条尚未保存';second.emit('input');
+    // 自动保存只在离开编辑区时进行（2026-11-24）：第二条还在输入（焦点在它上面），所以它的草稿留着不交。
+    first.value='只保留明确事实';first.emit('input');second.focus();second.value='另一条尚未保存';second.emit('input');
     f.render({revision:3});assert.equal(f.get('叙事与依据提示词正文'),first);assert.equal(second.value,'另一条尚未保存');
     f.get('保存叙事与依据').click();await f.wait(()=>f.get('保存叙事与依据').disabled);
     assert.equal(f.parent.textContent.includes('提示词已保存'),false);
@@ -57,8 +58,10 @@ test('structural changes, switches and sorting persist directly while text remai
 test('late scope completion does not touch the new scope and detached old row callbacks are ignored',async()=>{
     let release;const f=fixture(()=>new Promise(resolve=>{release=resolve;})),old=f.get('叙事与依据提示词正文'),oldSave=f.get('保存叙事与依据');
     old.value='旧聊天已提交';old.emit('input');oldSave.click();old.value='旧聊天后续草稿';old.emit('input');
-    f.render({scope:'chat-b'});const newer=f.get('叙事与依据提示词正文');newer.value='新聊天草稿';newer.emit('input');
-    release();await f.wait(()=>f.saves.length===1&&f.parent.textContent.includes('有条目草稿'));assert.equal(newer.value,'新聊天草稿');
+    f.render({scope:'chat-b'});const newer=f.get('叙事与依据提示词正文');newer.focus();newer.value='新聊天草稿';newer.emit('input');
+    // 不再显示「有条目草稿」（保存是无感的）：等旧的那次保存完成后再看新聊天的草稿。
+    release();await f.wait(()=>f.saves.length===1);await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(f.saves.length,1,'the new scope draft still being typed is not submitted');assert.equal(f.parent.textContent.includes('有条目草稿'),false);assert.equal(newer.value,'新聊天草稿');
     oldSave.click();assert.equal(f.saves.length,1);f.render();assert.equal(f.get('叙事与依据提示词正文'),old);assert.equal(old.value,'旧聊天后续草稿');f.view.destroy();
 });
 
@@ -94,14 +97,16 @@ test('presets save with an explicit save icon and are editable without a selecte
     assert.equal(f.saves[1][0].presets[0].name,'全局预设');assert.equal(f.saves[1][0].presets[0].groups.summary[0].text,'全局规则');f.view.destroy();
 });
 
-test('recall tab is present only while enabled, with no redundant badge and no lost draft',()=>{
-    const f=fixture();f.render({recallEnabled:true});f.get('原文回查').click();
-    const text=f.get('何时补充提示词正文');text.value='未提交的原文回查草稿';text.emit('input');
-    assert.equal(f.get('原文回查').textContent,'原文回查');assert.equal(f.byClass('ym-prompt-recall-badge'),undefined);
-    f.render({recallEnabled:false});assert.equal(f.get('原文回查').hidden,true);assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true');
-    f.get('原文回查').click();assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true','hidden tab cannot be selected programmatically');
-    f.render({recallEnabled:true});assert.equal(f.get('原文回查').hidden,false);f.get('原文回查').click();assert.equal(f.get('何时补充提示词正文'),text);assert.equal(text.value,'未提交的原文回查草稿');
-    assert.equal(f.saves.length,0,'visibility changes never submit the preserved draft');f.view.destroy();
+test('the removed source recall has no visible or selectable tab, even with an old enabled flag',()=>{
+    // 「原文回查与补充」已去掉（2026-11-24）：它的提示词页签不再显示，旧的开关值也不会让它出现。
+    for(const value of [{recallEnabled:true},{settings:{recall:true}},{}]){
+        const f=fixture();f.render(value);
+        assert.equal(f.get('原文回查').hidden,true);assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true');
+        f.get('原文回查').click();assert.equal(f.get('切片总结').getAttribute('aria-selected'),'true','hidden tab cannot be selected programmatically');
+        assert.equal(f.get('何时补充提示词正文'),undefined,'recall entries are not rendered for editing');
+        assert.equal(f.byClass('ym-prompt-recall-badge'),undefined);
+        assert.equal(f.saves.length,0);f.view.destroy();
+    }
 });
 
 test('a title is renamed in place by double-click and saved on blur; undo sits before delete with the undo arrow',async()=>{
@@ -122,11 +127,11 @@ test('a title is renamed in place by double-click and saved on blur; undo sits b
     f.view.destroy();
 });
 
-test('the heart tab sits between stage and recall and shows its three entries; four visible tabs are counted for the two-row layout',()=>{
+test('the heart tab follows stage as the last visible tab and shows its three entries; three visible tabs are counted for the layout',()=>{
     const f=fixture();f.render({recallEnabled:true});
     const tabs=f.all().filter(node=>node.getAttribute?.('role')==='tab'&&!node.hidden).map(node=>node.textContent);
-    assert.deepEqual(tabs,['切片总结','阶段总结','心迹脉络','原文回查']);
-    const row=f.byClass('ym-prompt-groups');assert.equal(row.dataset.count,'4');
+    assert.deepEqual(tabs,['切片总结','阶段总结','心迹脉络'],'原文回查页签已去掉（2026-11-24）');
+    const row=f.byClass('ym-prompt-groups');assert.equal(row.dataset.count,'3');
     f.get('心迹脉络').click();
     assert.equal(f.get('心迹脉络').getAttribute('aria-selected'),'true');
     for(const name of ['心间存照','关系年表','心迹'])assert.ok(f.get(`${name}提示词正文`),`${name} 这一条可编辑`);

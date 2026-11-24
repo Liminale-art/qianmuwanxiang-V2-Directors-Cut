@@ -1,6 +1,6 @@
 // 心迹页的前端逻辑：日记整理（痕迹归成印象、从记忆里拾出年表节点）的请求与解析，
 // 主模型顺带写的那则心迹的要求与摘取，以及开了注入时带进请求的那一小段。数据规则在 heart-contract.mjs。
-import { composePrompt, heartNotePrompt, heartChroniclePrompt } from './prompt-settings.mjs';
+import { composePrompt, heartNotePrompt, heartChroniclePrompt, heartDiaryPrompt } from './prompt-settings.mjs';
 import { heartOf, gradeOf, SURE_WORDS, HEART_LIMITS } from './heart-contract.mjs';
 
 export const HEART_TAG = '忆幕之心迹';
@@ -77,12 +77,43 @@ export function parseChronicle(response, { start, end }, slices = []) {
     }).slice(0, CHRONICLE_PER_BATCH);
 }
 
+/** 心间存照跟着切片总结走（用户 2026-11-24：分开调用有分裂感，存照读不到原文就像第三方流水账）。
+ *  总结请求里本来就带着这段正文：让模型以 {{char}} 的眼光，把这一批刚留意到的事连同已有印象直接归拢成心间存照。
+ *  返回并进总结请求的两段文字；存照关着、提示词停用或没有角色名时返回 null（那时只记痕迹，等手动合订）。 */
+export function impressionAsk(settings, names, document) {
+    const guide = settings?.diary === false || !String(names?.char || '').trim() ? '' : heartDiaryPrompt(settings);
+    if (!guide) return null;
+    const limit = settings.diaryChars || 60;
+    return {
+        // 衔接语是助手写的（2026-11-24），待用户审；中间接用户可编辑的「心间存照」提示词，末尾是固定的格式。
+        protocol: fill(`另外返回"impressions"字段：读完这段正文，以{{char}}自己的眼光，把上面"traces"里这次留意到的事归进{{char}}心里的印象。\n${guide}\n只列这次有新痕迹归入、或需要改口的印象，没有就返回空数组。每条新痕迹至多归入一条；归不进已有印象的可新开一条。格式：{"id":"沿用已有印象时填它的编号，新印象省略","about":"人名","text":"一句话，不超过${limit}字","traces":[归入这条印象的痕迹在"traces"里的序号，从1数起],"was":"改口时填原先的说法，否则省略"}。`, names),
+        data: `已有印象：${JSON.stringify(heartOf(document).impressions.map(item => ({ id: item.id, about: item.about, text: item.text, days: item.days.length })))}`,
+    };
+}
+/** 从切片总结的返回里读出印象。traces 是这一批刚存下的痕迹（顺序与返回里的 "traces" 一致）。 */
+export function parseImpressions(response, traces, heart) {
+    const parsed = parseJson(response);
+    return parsed && typeof parsed === 'object' ? readImpressions(parsed, { traces, heart }) : [];
+}
 /** 读回整理结果。格式不对的逐条丢掉；整份读不出来才算失败。 */
 export function parseDiary(response, work) {
     const parsed = parseJson(response);
     if (!parsed || typeof parsed !== 'object') throw new Error('日记整理结果不是有效 JSON，未采用');
+    const impressions = readImpressions(parsed, work);
+    const first = work.slices[0]?.source.start ?? 1, last = work.slices.at(-1)?.source.end ?? 0, seen = new Set();
+    const events = (Array.isArray(parsed.events) ? parsed.events : []).flatMap(item => {
+        const title = typeof item?.title === 'string' ? item.title.trim().slice(0, 60) : '', text = typeof item?.text === 'string' ? item.text.trim() : '';
+        const floor = Number.isSafeInteger(item?.floor) && item.floor >= first && item.floor <= last ? item.floor : null;
+        if (!title || !text || text.length > 600 || floor === null || seen.has(`${floor}\n${title}`)) return [];
+        seen.add(`${floor}\n${title}`);
+        const date = work.slices.find(entry => entry.source.start <= floor && entry.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date;
+        return [{ title, text, floor, ...(date ? { date: String(date).slice(0, 60) } : {}) }];
+    }).slice(0, CHRONICLE_ITEMS);
+    return { impressions, events };
+}
+function readImpressions(parsed, work) {
     const known = new Set(work.heart.impressions.map(item => item.id)), taken = new Set();
-    const impressions = (Array.isArray(parsed.impressions) ? parsed.impressions : []).flatMap(item => {
+    return (Array.isArray(parsed.impressions) ? parsed.impressions : []).flatMap(item => {
         const about = typeof item?.about === 'string' ? item.about.trim().slice(0, 120) : '', text = typeof item?.text === 'string' ? item.text.trim() : '';
         if (!about || !text || text.length > 400) return [];
         const traces = (Array.isArray(item.traces) ? item.traces : []).flatMap(n => {
@@ -96,16 +127,6 @@ export function parseDiary(response, work) {
         const was = id && typeof item.was === 'string' && item.was.trim() ? item.was.trim().slice(0, 400) : undefined;
         return [{ ...(id ? { id } : {}), about, text, traces, ...(was ? { was } : {}) }];
     }).slice(0, HEART_LIMITS.batch);
-    const first = work.slices[0]?.source.start ?? 1, last = work.slices.at(-1)?.source.end ?? 0, seen = new Set();
-    const events = (Array.isArray(parsed.events) ? parsed.events : []).flatMap(item => {
-        const title = typeof item?.title === 'string' ? item.title.trim().slice(0, 60) : '', text = typeof item?.text === 'string' ? item.text.trim() : '';
-        const floor = Number.isSafeInteger(item?.floor) && item.floor >= first && item.floor <= last ? item.floor : null;
-        if (!title || !text || text.length > 600 || floor === null || seen.has(`${floor}\n${title}`)) return [];
-        seen.add(`${floor}\n${title}`);
-        const date = work.slices.find(entry => entry.source.start <= floor && entry.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date;
-        return [{ title, text, floor, ...(date ? { date: String(date).slice(0, 60) } : {}) }];
-    }).slice(0, CHRONICLE_ITEMS);
-    return { impressions, events };
 }
 
 /** 这一轮回复要不要顺带写心迹：开关开着、聊天补全、有提示词、离上一则够远（用户 2026-11-21：不再要求期间完成过阶段总结）。

@@ -14,11 +14,53 @@ export function editableMemoryText(entry) {
     return [sceneText(entry), text].filter(Boolean).join('\n\n');
 }
 export function editedMemoryValue(value, entry) {
-    const prefix = sceneText(entry), text = String(value).trim();
+    const prefix = sceneText(entry), text = String(value).trim().replace(/\r\n?/g, '\n');
     if (prefix && text.startsWith(`${prefix}\n\n`)) return { text: text.slice(prefix.length + 2).trim(), scenes: entry.scenes || [] };
-    // A free edit to the scene lines is authoritative prose. Do not re-inject
-    // stale structured dates/places or guess how to split the user's wording.
+    // 场景几行被改过（比如改了地点）：按原来的写法逐段读回来，改了哪项就更新哪项，头段排版照旧。
+    // 读不回来（行数、分隔对不上）才把整段当成用户自己写的正文，不猜。
+    const parsed = prefix ? reparseScenes(text, entry) : null;
+    if (parsed) return parsed;
     return { text, scenes: [] };
+}
+const UNKNOWN_DATE = '日期未注明', UNKNOWN_PERIOD = '时段未注明', UNKNOWN_PLACE = '地点未注明';
+function reparseScenes(text, entry) {
+    const shown = (entry.scenes || []).filter(hasScene);
+    if (!shown.length) return null;
+    const blocks = text.split(/\n{2,}/);
+    if (blocks.length <= shown.length) return null; // 场景之后必须还有正文
+    const scenes = [];
+    for (let index = 0; index < shown.length; index++) {
+        const original = shown[index], [anchor, ...rest] = blocks[index].split('\n');
+        const cut = anchor.indexOf('｜');
+        if (cut < 0) return null;
+        const front = anchor.slice(0, cut).split(' · '), back = anchor.slice(cut + 1).split(' · ');
+        if (front.length < 2) return null;
+        const period = front.pop(), date = front.pop();
+        let place = back.shift() || '', nature = original.nature;
+        if (back.length) {
+            const label = back.join(' · '), found = NATURES.find(([, name]) => name === label);
+            if (!found) return null;
+            nature = found[0];
+        }
+        const next = { ...original, date: date === UNKNOWN_DATE ? '' : date, period: period === UNKNOWN_PERIOD ? '' : period, place: place === UNKNOWN_PLACE ? '' : place,
+            event: rest.join(' ').trim() };
+        // 前面剩下的是「人物」与「世界／时间线」：带「／」或与原来的世界写法相同的是世界，其余是人物。
+        const originalWhere = [original.world, original.timeline].filter(Boolean).join('／');
+        let who = null, where = null;
+        for (const part of front) {
+            const isWhere = part.includes('／') || (originalWhere && part === originalWhere) || (front.length === 1 && originalWhere && !original.characters?.length);
+            if (isWhere && where === null) where = part;
+            else if (!isWhere && who === null) who = part.split('、').map(name => name.trim()).filter(Boolean);
+            else return null;
+        }
+        next.characters = who ?? [];
+        const [world = '', timeline = ''] = String(where ?? '').split('／');
+        if (original.timeline && !original.world && !String(where ?? '').includes('／')) { next.world = ''; next.timeline = world; }
+        else { next.world = world; next.timeline = timeline; }
+        scenes.push(next);
+    }
+    const body = blocks.slice(shown.length).join('\n\n').trim();
+    return body ? { text: body, scenes } : null;
 }
 // Reading view: short labelled chips for the fields that are actually known, in a
 // fixed order (时间 → 地点 → 人物 → 世界 → 性质), then the one-line event. Unknown

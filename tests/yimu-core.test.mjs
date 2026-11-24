@@ -222,8 +222,8 @@ test('generation selects only whole valid slices outside recent raw, with explic
     assert.deepEqual(plan.memoryIds, ['a']);
     assert.equal(plan.estimated, true);
     assert.deepEqual(messages, before);
-    doc.settings.budget = 1;
-    const tinyBudget = await buildPlan(doc, createDefaults(), { messages, maxContext: 8192 });
+    const tiny = createDefaults(); tiny.values.budget = 1; // 设置是账户全局的：预算写在全局默认里
+    const tinyBudget = await buildPlan(doc, tiny, { messages, maxContext: 8192 });
     assert.equal(tinyBudget.settings.budget, 1, 'selection retains complete entries; final-payload admission enforces the actual budget');
     assert.equal(tinyBudget.entries[0].text, doc.entries[0].text);
 });
@@ -462,22 +462,24 @@ test('floor numbers shown to the user follow ST #0 numbering while storage stays
     assert.throws(() => planManualRange(null, live, DEFAULTS, { start: floorValue('0'), end: floorValue('3') }), /有效的起止楼层/);
 });
 
-test('vector similarity only reorders selection when the chat enables it, and a failed lookup falls back quietly', async () => {
+// 设置是账户全局的（2026-11-24）：向量开关写在全局默认里。
+const vectorDefaults = () => { const defaults = createDefaults(); defaults.values.vectorEnabled = true; return defaults; };
+
+test('vector similarity only reorders selection when the account enables it, and a failed lookup falls back quietly', async () => {
     let doc = append(append(append(enable(), await entry('a', 1, 2)), await entry('c', 3, 4)), await entry('d', 5, 6));
     const snapshot = { messages, maxContext: 8192 }, asked = [];
     const semanticScores = async request => { asked.push(request); return new Map([['a', 0.1], ['c', 0.9], ['d', 0.2]]); };
     const plain = await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
     assert.equal(asked.length, 0, 'the provider is not called unless this chat turned vectors on');
     assert.equal(plain.semantic, false);
-    doc.settings.vectorEnabled = true;
-    const ranked = await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
+    const ranked = await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores });
     assert.equal(asked.length, 1); assert.equal(ranked.semantic, true);
     assert.deepEqual(asked[0].candidates.map(item => item.id).sort(), ['a', 'c', 'd']);
     assert.equal(asked[0].query, messages.slice(-DEFAULTS.recent).map(message => message.mes).join('\n'), 'the query is the recent raw text');
     assert.equal(ranked.entries[0].id, 'c', 'the most similar slice is admitted first');
     assert.deepEqual([...ranked.memoryIds].sort(), [...plain.memoryIds].sort(), 'similarity changes order, not which slices are eligible');
     for (const broken of [async () => { throw new Error('offline'); }, async () => null, async () => new Map()]) {
-        const fallback = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: broken });
+        const fallback = await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores: broken });
         assert.equal(fallback.semantic, false); assert.deepEqual(fallback.memoryIds, plain.memoryIds);
     }
 });
@@ -496,10 +498,10 @@ test('a caller query replaces the recent story window for relevance only; withou
     assert.equal(asked.entries[0].id, 'a', 'the query, not the story window, ranks the slices');
     assert.ok(asked.memoryIds.indexOf('a') < asked.memoryIds.indexOf('c'));
     assert.deepEqual(asked.coveredRanges.length, asked.memoryIds.length, 'eligibility rules are untouched');
-    doc.settings.vectorEnabled = true; const requests = [];
+    const requests = [];
     const semanticScores = async request => { requests.push(request.query); return new Map([['a', 0.5]]); };
-    await buildPlan(doc, createDefaults(), snapshot, { semanticScores, queryText: '  lighthouse  ' });
-    await buildPlan(doc, createDefaults(), snapshot, { semanticScores });
+    await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores, queryText: '  lighthouse  ' });
+    await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores });
     assert.deepEqual(requests, ['lighthouse', story.slice(-DEFAULTS.recent).map(message => message.mes).join('\n')]);
 });
 
@@ -615,18 +617,18 @@ test('a reading memory is placed after the slice covering the floor it was share
 
 test('similarity may open a book gate only against real competition, and book slices are offered for scoring', async () => {
     let doc = append(append(append(enable(), await entry('a', 1, 2)), await entry('c', 3, 4)), await entry('d', 5, 6));
-    doc.companion = train(hotel()); doc.settings.vectorEnabled = true;
+    doc.companion = train(hotel());
     const bookId = sourceId => companionEntries(doc.companion).find(item => item.companion.sourceId === sourceId).id, asked = [];
     const scores = values => async request => { asked.push(request); return new Map(values); };
     const snapshot = { messages, maxContext: 8192 };
-    let plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([['a', 0.5], ['c', 0.4], ['d', 0.3], [bookId('h3'), 0.9], [bookId('t1'), 0.1]]) });
+    let plan = await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores: scores([['a', 0.5], ['c', 0.4], ['d', 0.3], [bookId('h3'), 0.9], [bookId('t1'), 0.1]]) });
     assert.deepEqual(asked[0].candidates.map(item => item.id).slice(3), ['h4', 'h3', 'h2', 'h1', 't2', 't1'].map(bookId), 'book slices follow the story candidates, furthest-read first');
     assert.ok(!asked[0].candidates.some(item => [bookId('hd'), bookId('td')].includes(item.id)), 'exchanges are not sent for scoring');
     assert.deepEqual(reading(plan).filter(id => !id.endsWith('d')), ['h3'], 'a leading book slice opens its own book only');
-    plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([['a', 0.9], ['c', 0.8], ['d', 0.7], [bookId('h3'), 0.2]]) });
+    plan = await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores: scores([['a', 0.9], ['c', 0.8], ['d', 0.7], [bookId('h3'), 0.2]]) });
     assert.deepEqual(reading(plan).filter(id => !id.endsWith('d')), [], 'a book slice outside the top three opens nothing');
-    doc = enable(); doc.companion = hotel(); doc.settings.vectorEnabled = true;
-    plan = await buildPlan(doc, createDefaults(), snapshot, { semanticScores: scores([[bookId('h3'), 0.9], [bookId('h1'), 0.8]]) });
+    doc = enable(); doc.companion = hotel();
+    plan = await buildPlan(doc, vectorDefaults(), snapshot, { semanticScores: scores([[bookId('h3'), 0.9], [bookId('h1'), 0.8]]) });
     assert.deepEqual(reading(plan), ['hd'], 'with no scored story memory to beat, similarity alone does not open the gate');
 });
 

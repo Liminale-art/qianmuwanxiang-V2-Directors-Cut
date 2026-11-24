@@ -315,7 +315,7 @@ test('stage selection uses either the stage or its fine details, never both, and
     assert.deepEqual(plan.entries.map(entry => entry.id), [stage.id], 'invalid manually revised stage is not bypassed through its fine parents');
 });
 
-test('on-demand recall reads existing fine detail while disabling recall keeps the stage reading layer', async t => {
+test('a question about stage detail reads existing fine detail instead of the stage, independent of the removed source recall', async t => {
     const f = await fixture(t);
     let saved = await f.read();
     const fine = saved.document.entries.find(entry => entry.id === 'fine_1');
@@ -325,16 +325,18 @@ test('on-demand recall reads existing fine detail while disabling recall keeps t
     f.model(async () => JSON.stringify({text: '彼此建立了信任，并约定未来再次相见。'}));
     await f.controller.startStage({force: true});
     saved = await f.read();
+    let plan = await buildPlan(saved.document, saved.defaults, f.snapshot);
+    assert.deepEqual(plan.entries.map(entry => entry.kind), ['stage'], 'without a detail question only the stage reading layer is used');
     for (let index = 6; index < 10; index++) f.snapshot.messages[index].mes = '窗外阳光明亮。';
     f.snapshot.messages[10].mes = '那条蓝色手链究竟去了哪里？';
-    // 原文回查默认关：开着时才把阶段换成它下面更对题的细切片。
-    const withRecall = clone(saved.defaults); withRecall.values.recall = true;
-    let plan = await buildPlan(saved.document, withRecall, f.snapshot);
-    assert.ok(plan.entries.some(entry => entry.id === fine.id));
-    assert.ok(plan.entries.every(entry => entry.kind !== 'stage'));
-    plan = await buildPlan(saved.document, saved.defaults, f.snapshot);
-    assert.deepEqual(plan.entries.map(entry => entry.kind), ['stage']);
-    assert.equal(f.generated.length, 1, 'recall uses saved entries and does not generate new facts');
+    // 「原文回查」已去掉（2026-11-24）；问到阶段细节时用细切片顶替阶段与它脱钩，始终生效（旧资料里的 recall 开关也不影响）。
+    const legacyOn = clone(saved.defaults); legacyOn.values.recall = true;
+    for (const defaults of [saved.defaults, legacyOn]) {
+        plan = await buildPlan(saved.document, defaults, f.snapshot);
+        assert.ok(plan.entries.some(entry => entry.id === fine.id));
+        assert.ok(plan.entries.every(entry => entry.kind !== 'stage'));
+    }
+    assert.equal(f.generated.length, 1, 'detail reading uses saved entries and does not generate new facts');
 });
 
 test('different manual stage ranges never cause overlapping stage memories in the same prompt', async t => {
