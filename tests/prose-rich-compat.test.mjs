@@ -120,6 +120,17 @@ test('a nested style and custom card container stay outside the prose column',()
   assert.equal(run.childNodes[0],paragraph);
 });
 
+test('a paragraph whose inline annotation carries a style tag stays in the prose run',()=>{
+  const d=dom(),message=d.element('div'),first=d.element('p'),noted=d.element('p'),span=d.element('span','tn'),style=d.element('style'),last=d.element('p');
+  first.appendChild(d.text('first'));noted.appendChild(d.text('lead'));noted.appendChild(span);noted.appendChild(style);noted.appendChild(d.text('tail'));last.appendChild(d.text('last'));
+  [first,noted,last].forEach(node=>message.appendChild(node));
+  const runs=syncRichProseRuns(message);
+  assert.equal(message.dataset.sdProseMixed,'1');
+  assert.equal(runs.length,1);
+  assert.deepEqual(runs[0].childNodes,[first,noted,last]);
+  assert.equal(style.parentNode,noted,'the style tag itself is never moved out of its paragraph');
+});
+
 test('clear restores all original node identities and ordering when layout is disabled',()=>{
   const d=dom(),message=d.element('div'),a=d.text('a'),card=d.element('div','np-min-card'),style=d.element('style'),b=d.element('p');
   [a,card,style,b].forEach(node=>message.appendChild(node));

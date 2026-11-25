@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.602';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.603';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.602';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.603';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.602';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.602';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.602';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.602';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.602';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.602';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.602';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.603';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.603';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.603';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.603';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.603';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.603';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.603';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.602';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.603';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.602';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.603';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.602';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.603';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.602';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.603';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.602';
+const VERSION = '1.59.603';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1036,6 +1036,7 @@ const PROSE_LAYOUT_DEFAULTS = Object.freeze({
   horizontalOffset: 0,
   splitBreaks: false,
   justify: false,
+  dropCap: false,                 // 首字下沉：每层角色回复的第一段
   updatedAt: 0,
 });
 const PROSE_LAYOUT_CONTROLS = Object.freeze([
@@ -5250,7 +5251,7 @@ function bindNotesHiveDetachDrag(button, item, layout) {
   }, true);
 }
 
-const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-split-breaks'];
+const PROSE_LAYOUT_BODY_CLASSES = ['sd-prose-layout', 'sd-prose-justify', 'sd-prose-drop-cap', 'sd-prose-split-breaks'];
 const PROSE_LAYOUT_CSS_VARS = ['--sd-prose-font-size', '--sd-prose-quote-font-size', '--sd-prose-letter-spacing', '--sd-prose-line-height', '--sd-prose-paragraph-gap', '--sd-prose-indent', '--sd-prose-content-width', '--sd-prose-mobile-content-width', '--sd-prose-horizontal-offset', '--sd-prose-side-padding'];
 let proseLayoutObserver = null;
 let proseLayoutWidthObserver = null;
@@ -5266,6 +5267,7 @@ function proseLayoutSettings() {
   layout.active = Boolean(layout.active);
   layout.splitBreaks = Boolean(layout.splitBreaks);
   layout.justify = Boolean(layout.justify);
+  layout.dropCap = Boolean(layout.dropCap);
   layout.updatedAt = Math.max(0, Number(layout.updatedAt) || 0);
   delete layout.sidePadding;
   // 引用字号没设过时跟正文字号一致，观感不变。
@@ -5484,6 +5486,7 @@ function applyProseLayout(refreshBreaks = true) {
   }
   document.body?.classList.add('sd-prose-layout');
   document.body?.classList.toggle('sd-prose-justify', layout.justify);
+  document.body?.classList.toggle('sd-prose-drop-cap', layout.dropCap);
   document.body?.classList.toggle('sd-prose-split-breaks', layout.splitBreaks);
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--sd-prose-font-size', `${layout.fontSize}px`);
@@ -5697,6 +5700,7 @@ function floorProseLayoutMarkup() {
       <label><input type="checkbox" data-prose-toggle="active" ${layout.active ? 'checked' : ''}><span>开启排版</span></label>
       <label><input type="checkbox" data-prose-toggle="splitBreaks" ${layout.splitBreaks ? 'checked' : ''}><span>换行整理为段落</span></label>
       <label><input type="checkbox" data-prose-toggle="justify" ${layout.justify ? 'checked' : ''}><span>两端对齐</span></label>
+      <label><input type="checkbox" data-prose-toggle="dropCap" ${layout.dropCap ? 'checked' : ''}><span>首字下沉</span></label>
     </div>
     <div class="qm-font-entry"><small data-font-library-summary>当前：沿用原生字体</small><button type="button" data-font-library>字库</button></div>
     <div class="sd-prose-controls">${controls}</div>`;

@@ -25,11 +25,19 @@ function isStyledBlock(node) {
     && (node.hasAttribute?.('class') || node.hasAttribute?.('style'));
 }
 
+// A paragraph can only hold inline content, so a <style> inside one comes from
+// an inline decoration (e.g. a regex that renders annotations) and styles just
+// those spans; the paragraph itself is still prose. A <style> inside a bare
+// block container still marks that container as an authored card.
+function hasNestedRich(node) {
+  if (node.querySelector?.('.np-min-card, [data-sd-prose-exempt]')) return true;
+  return tagName(node) !== 'p' && !!node.querySelector?.('style');
+}
+
 function isRichBoundary(node) {
   if (node?.nodeType !== 1 || isProseRun(node)) return false;
   const tag = tagName(node);
-  return tag === 'style' || isStyledBlock(node) || RICH_ELEMENTS.has(tag)
-    || !!node.querySelector?.('style, .np-min-card, [data-sd-prose-exempt]');
+  return tag === 'style' || isStyledBlock(node) || RICH_ELEMENTS.has(tag) || hasNestedRich(node);
 }
 
 export function isRichProse(message) {

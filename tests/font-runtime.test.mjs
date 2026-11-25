@@ -383,7 +383,8 @@ test('ST scope explicitly excludes message/rich prose, icons, code, Qianmu and t
   const prose = fontScopeCss('body', fontPreviewFamily('sample'));
   assert.ok(prose.includes(':not(:has(style, .np-min-card'));
   assert.ok(prose.includes('> .sd-prose-run[data-sd-prose-run="1"]'));
-  assert.ok(prose.includes('> :is(p, div):not([class], [style]):not(:has(style, .np-min-card'));
+  assert.ok(prose.includes('> div:not([class], [style]):not(:has(style, .np-min-card'));
+  assert.ok(prose.includes('> p:not([class], [style]):not(:has(.np-min-card'), 'a <style> from an inline annotation must not drop its paragraph');
 });
 
 test('explicit application has a bounded cascade scope and fonts ordinary descendants directly', () => {
