@@ -9,8 +9,10 @@ document.getElementById('ym-export').addEventListener('click', () => tell('expor
 addEventListener('keydown', event => { if (event.key === 'Escape') { if (YM.open) { YM.open = false; drawDate(); } else tell('exit'); } });
 
 // 删除单条：主题在每条印象、心迹、年表条目里放 rm(kind, id) 给出的小「×」，点一下直接删。
-// 「待凝定的印象」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现。
+// 「待凝定的印象」用 rmq：平时不显，鼠标移上去（触屏点一下那一条）才出现；它旁边的小笔也一样。
 // 在捕获阶段接住点击，条目自己的展开不会跟着触发。
+// 删、存、清空之后，那一条（或那一栏）先进入「处理中」：变淡、不能再点，小叉换成一个小转圈。
+// 面板做完会把数据重新交来（没做成也会原样重交一次），页面整页重画，处理中自然消失。
 const rmq = (kind, id) => id ? `<button type="button" class="ym-rm ym-rmq" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
 const rm = (kind, id) => id ? `<button type="button" class="ym-rm" data-rm-kind="${kind}" data-rm-id="${id}" aria-label="删除">×</button>` : '';
 // 一键清空：顶栏「返回」后面的小字钮，把存照、心迹、年表连同待凝定的印象一起清掉。量大，所以点一下变「再点清空」，几秒内再点才清。
@@ -24,23 +26,62 @@ const clearButton = (() => {
 })();
 let clearTimer = 0;
 const clearDisarm = () => { clearTimeout(clearTimer); if (clearButton?.hasAttribute('data-armed')) { clearButton.removeAttribute('data-armed'); clearButton.textContent = '清空'; } };
-const clearSync = () => { if (!clearButton) return; const raw = YM.raw; clearButton.disabled = !(raw.impressions.length || raw.loose.length || raw.thoughts.length || raw.events.length); if (clearButton.disabled) clearDisarm(); };
+const clearSync = () => {
+    if (!clearButton) return; const raw = YM.raw;
+    clearButton.disabled = YM.busyAll || !(raw.impressions.length || raw.loose.length || raw.thoughts.length || raw.events.length);
+    if (YM.busyAll) clearButton.textContent = '清空中'; else if (clearButton.textContent === '清空中') clearButton.textContent = '清空';
+    if (clearButton.disabled && !YM.busyAll) clearDisarm();
+};
 clearButton?.addEventListener('click', event => {
     event.stopPropagation();
     if (!clearButton.hasAttribute('data-armed')) { clearButton.setAttribute('data-armed', 'true'); clearButton.textContent = '再点清空'; clearTimer = setTimeout(clearDisarm, 4000); return; }
-    clearDisarm(); clearButton.disabled = true;
+    clearDisarm(); YM.busyAll = true; busyNow();
     parent.postMessage({ yimuHeart: 'clear' }, '*');
 });
+// 「待凝定的印象」一栏自己的清空（小标题后面）：只清这一栏，同样点一下变「再点清空」。按钮随重画重建，待确认与否记在这里。
+let looseArmed = false, looseTimer = 0;
+const looseDisarm = () => {
+    clearTimeout(looseTimer); if (!looseArmed) return; looseArmed = false;
+    for (const node of document.querySelectorAll?.('.ym-clear-loose') || []) { node.removeAttribute('data-armed'); if (!node.disabled) node.textContent = '清空'; }
+};
+// —— 处理中 ——
+const busyKey = (kind, id) => `${kind}:${id}`;
+let busyTimer = 0;
+function busyEntry(entry) {
+    if (typeof entry?.setAttribute !== 'function') return;
+    entry.setAttribute('data-ym-busy', ''); entry.setAttribute('aria-busy', 'true');
+    for (const node of entry.querySelectorAll?.('button') || []) node.disabled = true;
+}
+function busyMark(rmButton) {
+    rmButton.disabled = true; rmButton.setAttribute?.('data-busy', ''); rmButton.setAttribute?.('aria-label', '处理中');
+    const box = rmButton.parentElement;
+    busyEntry(box?.classList?.contains('ym-acts') ? box.parentElement : box);
+}
+function busyPaint() {
+    if (typeof document.querySelectorAll !== 'function') return;
+    for (const node of document.querySelectorAll('.ym-rm')) {
+        if (YM.busyAll || YM.busy.has(busyKey(node.dataset?.rmKind, node.dataset?.rmId)) || YM.busyLoose && node.classList?.contains('ym-rmq')) busyMark(node);
+    }
+    if (YM.busyAll || YM.busyLoose) for (const node of document.querySelectorAll('.ym-loose')) busyEntry(node);
+}
+function busyReset() { clearTimeout(busyTimer); YM.busy.clear(); YM.busyAll = YM.busyLoose = false; }
+// 正常情况下面板很快就重交数据；万一一直没回音，过一会儿也恢复成可点，不让页面一直卡在处理中。
+function busyNow() {
+    clearTimeout(busyTimer); busyTimer = setTimeout(() => { busyReset(); repaint(); }, 20000);
+    clearSync(); decorate(); busyPaint();
+}
 document.addEventListener('click', event => {
     const button = event.target.closest?.('.ym-rm');
-    // 触屏没有悬停：点一下「待凝定的印象」那一条，它的小叉才出来；再点别处收回。
+    // 触屏没有悬停：点一下「待凝定的印象」那一条，它的小笔小叉才出来；再点别处收回。
     const loose = event.target.closest?.('.ym-loose');
     for (const node of document.querySelectorAll?.('.ym-loose[data-pick]') || []) if (node !== loose) node.removeAttribute('data-pick');
-    if (loose && !button) loose.toggleAttribute('data-pick');
+    if (loose && !event.target.closest?.('.ym-acts')) loose.toggleAttribute('data-pick');
     if (event.target !== clearButton) clearDisarm();
+    if (!event.target.closest?.('.ym-clear-loose')) looseDisarm();
     if (!button) return;
     event.preventDefault(); event.stopPropagation();
-    button.disabled = true;
+    if (button.disabled) return;
+    YM.busy.add(busyKey(button.dataset.rmKind, button.dataset.rmId)); busyMark(button); busyNow();
     parent.postMessage({ yimuHeart: 'remove', kind: button.dataset.rmKind, id: button.dataset.rmId }, '*');
 }, true);
 
@@ -49,7 +90,8 @@ const DAY = 86400000, WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六
 const dayStart = ms => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const weekStart = ms => { const d = new Date(dayStart(ms)); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.getTime(); }; // 周一起
 const addDays = (ms, n) => { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); };
-const YM = { raw: { impressions: [], loose: [], thoughts: [], events: [] }, mode: 'day', anchor: 0, month: 0, open: false, pick: false };
+const YM = { raw: { impressions: [], loose: [], thoughts: [], events: [] }, mode: 'day', anchor: 0, month: 0, open: false, pick: false,
+    busy: new Set(), busyAll: false, busyLoose: false }; // busy：处理中的单条（「类别:标识」）；busyAll／busyLoose：整页／待凝定一栏在清空
 const stamps = raw => [...raw.loose.map(item => item.at), ...raw.thoughts.map(item => item.at), ...raw.impressions.flatMap(item => [item.at, ...(item.stamps || [])])].filter(Number.isFinite);
 const recordDays = () => [...new Set(stamps(YM.raw).map(dayStart))].sort((a, b) => a - b);
 const span = () => { const from = YM.mode === 'week' ? weekStart(YM.anchor) : YM.anchor; return [from, addDays(from, YM.mode === 'week' ? 7 : 1)]; };
@@ -95,7 +137,7 @@ function drawFloors() {
     const line = document.createElement('span'); line.append('本卷同叙 ', count(floors.chat), ' 节・共织故事 ', count(total), ' 章');
     node.replaceChildren(line);
 }
-function repaint() { drawDate(); drawFloors(); drawTools(); clearSync(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); decorate(); roam(); }
+function repaint() { drawDate(); drawFloors(); drawTools(); clearSync(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); decorate(); busyPaint(); roam(); }
 
 // —— 「待凝定的印象」换位置 ——
 // 每一条淡出到看不见的那一刻换到另一处（尽量不压着别的条），再淡入。只在会飘的主题里（.drift）；
@@ -143,24 +185,36 @@ addEventListener('resize', () => { clearTimeout(roamTimer); roamTimer = setTimeo
 function decorate() {
     if (document.body?.dataset?.standalone || typeof document.querySelectorAll !== 'function') return;
     // 合订：放在「待凝定的印象」这行小标题后面；有还没合订的留意、忆幕开着才出现。
+    // 清空：跟在合订后面，这一栏有条目才出现。
     const tools = YM.raw?.tools || {};
     for (const title of document.querySelectorAll('.drift h4, .strip-label')) {
-        title.querySelector('.ym-bind')?.remove();
-        if (!tools.ready || !(tools.pending > 0) || title.hidden) continue;
-        const bind = document.createElement('button');
-        bind.type = 'button'; bind.className = 'ym-bind'; bind.textContent = bindBusy ? '合订中' : '合订'; bind.disabled = bindBusy; bind.title = '把这些合订成日记';
-        title.append(bind);
+        title.querySelector('.ym-bind')?.remove(); title.querySelector('.ym-clear-loose')?.remove();
+        if (title.hidden) continue;
+        if (tools.ready && tools.pending > 0) {
+            const bind = document.createElement('button');
+            bind.type = 'button'; bind.className = 'ym-bind'; bind.textContent = bindBusy ? '合订中' : '合订'; bind.disabled = bindBusy || YM.busyLoose || YM.busyAll; bind.title = '把这些合订成日记';
+            title.append(bind);
+        }
+        if (!YM.raw?.loose?.length) continue;
+        const wipe = document.createElement('button');
+        wipe.type = 'button'; wipe.className = 'ym-clear-loose'; wipe.setAttribute('aria-label', '清空待凝定的印象');
+        wipe.textContent = YM.busyLoose ? '清空中' : looseArmed ? '再点清空' : '清空'; wipe.disabled = YM.busyLoose || YM.busyAll;
+        if (looseArmed && !wipe.disabled) wipe.setAttribute('data-armed', 'true');
+        title.append(wipe);
     }
     // 笔和叉一起放进一个小框（.ym-acts），由小框占住条目的右上角，两个钮在框里并排。
     // 不能按小叉量出来的宽去摆笔：没切到的版块是隐藏的，量出来是 0，笔就压在叉上。
-    for (const rmButton of document.querySelectorAll('.ym-rm:not(.ym-rmq)')) {
-        if (rmButton.parentElement?.classList?.contains('ym-acts')) continue;
-        const acts = document.createElement('span'), pen = document.createElement('button');
-        acts.className = 'ym-acts';
-        pen.type = 'button'; pen.className = 'ym-ed'; pen.textContent = '✎'; pen.setAttribute('aria-label', '修改');
-        pen.dataset.edKind = rmButton.dataset.rmKind; pen.dataset.edId = rmButton.dataset.rmId;
-        rmButton.before(acts); acts.append(pen, rmButton);
-    }
+    for (const rmButton of document.querySelectorAll('.ym-rm:not(.ym-rmq)')) actsAround(rmButton, 'ym-acts');
+    // 「待凝定的印象」：小框跟在那一条的字后面（.ym-actsq），平时不显。
+    for (const rmButton of document.querySelectorAll('.ym-rmq')) actsAround(rmButton, 'ym-acts ym-actsq');
+}
+function actsAround(rmButton, className) {
+    if (rmButton.parentElement?.classList?.contains('ym-acts')) return;
+    const acts = document.createElement('span'), pen = document.createElement('button');
+    acts.className = className;
+    pen.type = 'button'; pen.className = 'ym-ed'; pen.textContent = '✎'; pen.setAttribute('aria-label', '修改');
+    pen.dataset.edKind = rmButton.dataset.rmKind; pen.dataset.edId = rmButton.dataset.rmId;
+    rmButton.before(acts); acts.append(pen, rmButton);
 }
 // 补记、补全：放在日期条里「日／周」的左边。补全点开一张小纸条：选楼层范围，按钮上写着大约几次请求。
 function drawTools() {
@@ -199,7 +253,14 @@ function openFill() {
 let bindBusy = false;
 document.addEventListener('click', event => {
     const bind = event.target.closest?.('.ym-bind');
-    if (bind) { event.preventDefault(); event.stopPropagation(); if (bindBusy) return; bindBusy = true; decorate(); parent.postMessage({ yimuHeart: 'bind' }, '*'); return; }
+    if (bind) { event.preventDefault(); event.stopPropagation(); if (bindBusy || bind.disabled) return; bindBusy = true; decorate(); parent.postMessage({ yimuHeart: 'bind' }, '*'); return; }
+    const wipe = event.target.closest?.('.ym-clear-loose');
+    if (wipe) {
+        event.preventDefault(); event.stopPropagation(); if (wipe.disabled) return;
+        if (!looseArmed) { looseArmed = true; wipe.setAttribute('data-armed', 'true'); wipe.textContent = '再点清空'; looseTimer = setTimeout(looseDisarm, 4000); return; }
+        looseDisarm(); YM.busyLoose = true; busyNow();
+        parent.postMessage({ yimuHeart: 'clearLoose' }, '*'); return;
+    }
     const pen = event.target.closest?.('.ym-ed');
     if (pen) { event.preventDefault(); event.stopPropagation(); openSheet(pen.dataset.edKind, pen.dataset.edId); return; }
     if (event.target.closest?.('#ym-add')) { event.stopPropagation(); openSheet('impression', ''); return; }
@@ -219,17 +280,26 @@ function sheetFields(kind, item) {
         + (item ? '' : field('floor', '楼层', '', { hint: '写在第几层之后，可不填' }));
     return field('about', '写的是谁', item?.about || '', { hint: '人名' }) + field('text', '内容', item?.say || '', { area: true });
 }
+// 要改的那一条。「待凝定的印象」里的痕迹（trace）和还没凝定的印象（impression）在 loose 里，字段名换成小纸条认的样子。
+function sheetItem(kind, id) {
+    const loose = (kind === 'trace' || kind === 'impression') && YM.raw.loose.find(entry => entry.kind === kind && entry.id === id);
+    if (loose) return { item: { about: loose.about, say: loose.text }, name: '印象' };
+    const item = ({ impression: YM.raw.impressions, thought: YM.raw.thoughts, event: YM.raw.events }[kind] || []).find(entry => entry.id === id);
+    return item ? { item, name: SHEET_KINDS.find(([key]) => key === kind)[1] } : null;
+}
 function openSheet(kind, id) {
     closeSheet();
-    const list = { impression: YM.raw.impressions, thought: YM.raw.thoughts, event: YM.raw.events }[kind] || [];
-    const item = id ? list.find(entry => entry.id === id) : null;
-    if (id && !item) return;
+    const found = id ? sheetItem(kind, id) : null, item = found?.item || null;
+    if (id && !found) return;
     const sheet = document.createElement('div'); sheet.id = 'ym-sheet'; sheet.dataset.kind = kind; sheet.dataset.id = id || '';
     const draw = () => { sheet.innerHTML = `<form class="ym-sheet-card" role="dialog" aria-label="${id ? '修改' : '补记'}">
-        <div class="ym-sheet-head">${id ? `<b>修改这一条${SHEET_KINDS.find(([key]) => key === sheet.dataset.kind)[1]}</b>` : SHEET_KINDS.map(([key, name]) => `<button type="button" data-sheet-kind="${key}" aria-pressed="${key === sheet.dataset.kind}">${name}</button>`).join('')}</div>
+        <div class="ym-sheet-head">${id ? `<b>修改这一条${found.name}</b>` : SHEET_KINDS.map(([key, name]) => `<button type="button" data-sheet-kind="${key}" aria-pressed="${key === sheet.dataset.kind}">${name}</button>`).join('')}</div>
         ${sheetFields(sheet.dataset.kind, item)}
         <div class="ym-sheet-foot"><button type="button" data-sheet-close>算了</button><button type="submit">存下</button></div></form>`; };
     draw(); document.body.append(sheet);
+    const read = () => Object.fromEntries([...sheet.querySelectorAll('input[name], textarea[name]')].map(node => [node.name, node.value]));
+    const same = (a, b) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => String(a[key]).trim() === String(b[key] ?? '').trim());
+    const initial = read();
     sheet.addEventListener('click', event => {
         const pick = event.target.closest?.('[data-sheet-kind]');
         if (pick) { sheet.dataset.kind = pick.dataset.sheetKind; draw(); sheet.querySelector('input, textarea')?.focus(); return; }
@@ -237,11 +307,14 @@ function openSheet(kind, id) {
     });
     sheet.addEventListener('submit', event => {
         event.preventDefault();
-        const fields = Object.fromEntries([...sheet.querySelectorAll('input[name], textarea[name]')].map(node => [node.name, node.value]));
+        const fields = read();
         const main = sheet.dataset.kind === 'event' ? fields.title : fields.about;
         if (!String(fields.text || '').trim() || !String(main || '').trim()) { sheet.querySelector('.ym-sheet-card').dataset.shake = '1'; return; }
-        parent.postMessage({ yimuHeart: id ? 'edit' : 'add', kind: sheet.dataset.kind, id: id || undefined, fields }, '*');
+        // 一个字没改：面板那边数据不变就不会重交，那一条会一直处理中，所以直接收起。
+        if (id && same(fields, initial)) { closeSheet(); return; }
         closeSheet();
+        if (id) { YM.busy.add(busyKey(sheet.dataset.kind, id)); busyNow(); }
+        parent.postMessage({ yimuHeart: id ? 'edit' : 'add', kind: sheet.dataset.kind, id: id || undefined, fields }, '*');
     });
     sheet.querySelector('input, textarea')?.focus();
 }
@@ -263,7 +336,7 @@ document.addEventListener('click', event => {
     YM.month = YM.anchor; repaint();
 });
 window.yimuRender = raw => {
-    bindBusy = false; // 新数据到了：合订那一下已经有了结果
+    bindBusy = false; busyReset(); // 新数据到了：合订、删、存、清空都已经有了结果；没做成的条目重画后照常可点
     const data = raw && typeof raw === 'object' ? raw : {};
     YM.raw = { ...data, impressions: data.impressions || [], loose: data.loose || [], thoughts: data.thoughts || [], events: data.events || [] };
     if (!YM.anchor) { YM.anchor = recordDays().at(-1) ?? dayStart(Date.now()); YM.month = YM.anchor; }

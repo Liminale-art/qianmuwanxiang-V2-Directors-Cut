@@ -142,7 +142,7 @@ test('a heart note is asked for only when it is due, and is lifted out of the re
     assert.deepEqual(takeThought(reply, names), {item: {group: 'you', about: '小满', text: '她比看上去更怕冷场。'}, cleaned: '正文一段。'});
     assert.deepEqual(takeThought(`甲<${HEART_TAG} 对象="自己">我在等。</${HEART_TAG}>`, names).item, {group: 'self', about: '自己', text: '我在等。'});
     assert.deepEqual(takeThought(`甲<${HEART_TAG} 对象="《雪国》">读到这里我想起了她。</${HEART_TAG}>`, names).item.group, 'books');
-    assert.deepEqual(takeThought(`甲<${HEART_TAG} 对象="店主">他记得她的口味。`, names), {item: {group: 'others', about: '店主', text: '他记得她的口味。'}, cleaned: '甲'}, '被截断、没有收尾标签也摘得走');
+    assert.deepEqual(takeThought(`甲<${HEART_TAG} 对象="店主">他记得她的口味。`, names), {item: null, cleaned: '甲'}, '被截断、没有收尾标签：半句不收，正文里照样去掉');
     assert.deepEqual(takeThought('没有这一段。', names), {item: null, cleaned: '没有这一段。'});
     assert.deepEqual(takeThought(`甲<${HEART_TAG}></${HEART_TAG}>`, names), {item: null, cleaned: '甲'}, '空的一段从正文里去掉，但不记');
 });
@@ -260,18 +260,24 @@ test('whole chain: the summary carries only the chronicle; the main model writes
     let page = heartData(f.controller.state);
     assert.equal(page.impressions.length, 1, '主模型给了把握，不必等三个日子就进存照'); assert.equal(page.loose.length, 0);
     assert.equal(f.prompts.get(HEART_PROMPT_KEY), '', '回复结束后注入槽清空');
-    // 同一层重新生成：再要一次；沿用已有印象的编号时改写那一条，不另起一条。
+    // 同一层重新生成：再要一次；这一层上一次写下的那条先撤回，只认最后留下的回复（编号指向的正是被撤回的那条，所以记成新的一条）。
     const id = doc.heart.impressions[0].id;
     const again = await f.round('swipe', `她只是点了点头。\n<忆幕之存照 对象="小满" 把握="我觉得" 沿用="${id}">她不是不饿，是在等我。</忆幕之存照>`);
     assert.ok(again.includes('<忆幕之存照 对象=') && again.includes(id), '已有印象带着编号给主模型');
     doc = await f.read();
-    assert.deepEqual(doc.heart.impressions.map(item => [item.id, item.text, item.sure]), [[id, '她不是不饿，是在等我。', 2]]);
+    assert.deepEqual(doc.heart.impressions.map(item => [item.text, item.sure]), [['她不是不饿，是在等我。', 2]], '重随：上一次的那条撤回，只留这一次的');
     // 间隔拉开后，下一层太近，不再要。
     await f.controller.action('settings', {values: {thoughtCooldown: 30}}); await f.flush();
     f.context.chat.push({name: '小满', is_user: true, mes: '走吧。'});
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);
     assert.equal(page.impressions.length, 1);
+    // 删掉写下它们的那一层（连同之后的）：那一层的心迹与存照一并撤回。
+    const bornAt = (await f.read()).heart.impressions[0].born;
+    f.context.chat.splice(bornAt - 1); await f.controller.event('MESSAGE_DELETED', [bornAt - 1]);
+    for (let waited = 0; waited < 3000 && (await f.read()).heart.impressions.length; waited += 50) { await new Promise(resolve => setTimeout(resolve, 50)); await f.flush(); }
+    doc = await f.read();
+    assert.deepEqual([doc.heart.impressions.length, doc.heart.thoughts.length], [0, 0], '回复删掉了，里面写的心里话不留');
 });
 
 test('whole chain: with 心间存照 switched off the main model is never asked for impressions', async t => {

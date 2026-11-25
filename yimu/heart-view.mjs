@@ -44,13 +44,13 @@ export function heartData(state = {}, floors = null, { fillPer = FILL_BATCH_FLOO
 const THOUGHT_LABELS = { you: name => `对${name}`, self: () => '对自己', others: name => `对${name}`, books: name => `读${/[《》]/.test(name) ? name : `《${name}》`}` };
 
 const REMOVABLE = new Set(['impression', 'thought', 'event', 'trace']);
-const EDITABLE = new Set(['impression', 'thought', 'event']);
+const EDITABLE = new Set(['impression', 'thought', 'event', 'trace']); // trace：待凝定里还没归进印象的痕迹，只能改、不能补记
 const line = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit) : '';
 /** 页面交来的表单：只取认识的字段。楼层在页面上从 0 数，存的时候从 1 数；没填就不带。 */
 function heartFields(kind, raw = {}) {
     const floor = /^\d+$/.test(String(raw.floor ?? '').trim()) ? Number(raw.floor) + 1 : undefined;
     if (kind === 'event') return { title: line(raw.title, 60), text: line(raw.text, 600), date: line(raw.date, 60), ...(floor ? { floor } : {}) };
-    return { about: line(raw.about, 120), text: line(raw.text, kind === 'thought' ? 2000 : 400), ...(kind === 'thought' && floor ? { floor } : {}) };
+    return { about: line(raw.about, 120), text: line(raw.text, kind === 'thought' ? 2000 : kind === 'trace' ? 300 : 400), ...(kind === 'thought' && floor ? { floor } : {}) };
 }
 
 export const HEART_EXPORT_FORMAT = 'yimu-heart';
@@ -95,11 +95,13 @@ export function mountHeartView({ document = globalThis.document, storage = globa
     const current = () => themes.find(theme => theme.id === themeId) || themes[0];
     const fillPer = () => { try { return fillPerOf(storage?.getItem(FILL_PER_KEY)); } catch { return FILL_BATCH_FLOORS; } };
     // 把数据交给页面。changedOnly：只在数据与上次交出去的不同时才交（面板每次刷新都会来问一遍，页面不必跟着重画）。
+    // renders：页面实际重画的次数。动作做完若期间一次都没重画（没删成、改了个寂寞），就补交一次，让页面退出「处理中」。
+    let renders = 0;
     const feed = ({ changedOnly = false } = {}) => {
         try {
             const data = heartData(getState(), floors, { fillPer: fillPer() }), signature = JSON.stringify(data);
             if (changedOnly && signature === fed || typeof frame?.contentWindow?.yimuRender !== 'function') return;
-            frame.contentWindow.yimuRender(data); fed = signature;
+            frame.contentWindow.yimuRender(data); fed = signature; renders++;
         } catch { /* 页面还没准备好：等它的 load */ }
     };
     function show() {
@@ -120,23 +122,26 @@ export function mountHeartView({ document = globalThis.document, storage = globa
             const { kind, id } = event.data;
             if (!REMOVABLE.has(kind) || typeof id !== 'string' || !id) return;
             // 删掉之后把最新的数据交给页面（状态变化时多半已经交过）；没删成就原样重交一次，让页面上那个按钮复原。
+            const drawn = renders;
             Promise.resolve().then(() => onAction('heartRemove', { kind, itemId: id }))
                 .catch(error => { console.warn('[忆幕] 心迹条目没有删掉', error); return false; })
-                .then(done => { if (opened) feed({ changedOnly: done !== false }); });
+                .then(done => { if (done === false) onNotice('没有删掉，请再试一次', 'error'); if (opened && renders === drawn) feed(); });
         }
-        else if (type === 'clear') {
-            Promise.resolve().then(() => onAction('heartClear', {}))
+        else if (type === 'clear' || type === 'clearLoose') {
+            const drawn = renders;
+            Promise.resolve().then(() => onAction('heartClear', type === 'clearLoose' ? { scope: 'loose' } : {}))
                 .catch(error => { console.warn('[忆幕] 心迹页没有清空', error); return false; })
-                .then(done => { if (done === false) onNotice('没有清空，请再试一次', 'error'); if (opened) feed({ changedOnly: done !== false }); });
+                .then(done => { if (done === false) onNotice('没有清空，请再试一次', 'error'); if (opened && renders === drawn) feed(); });
         }
         else if (type === 'edit' || type === 'add') {
             const { kind, id } = event.data;
-            if (!EDITABLE.has(kind) || type === 'edit' && (typeof id !== 'string' || !id)) return;
+            if (!EDITABLE.has(kind) || type === 'add' && kind === 'trace' || type === 'edit' && (typeof id !== 'string' || !id)) return;
             const fields = heartFields(kind, event.data.fields);
-            if (!fields.text || kind === 'event' && !fields.title || kind !== 'event' && !fields.about) { onNotice('还有没填的地方', 'warning'); return; }
+            if (!fields.text || kind === 'event' && !fields.title || kind !== 'event' && !fields.about) { onNotice('还有没填的地方', 'warning'); if (opened) feed(); return; }
+            const drawn = renders;
             Promise.resolve().then(() => type === 'edit' ? onAction('heartEdit', { kind, itemId: id, ...fields }) : onAction('heartAdd', { kind, item: fields }))
                 .catch(error => { console.warn('[忆幕] 心迹条目没有存下', error); return false; })
-                .then(done => { if (done === false) onNotice('没有存下，请再试一次', 'error'); if (opened) feed({ changedOnly: done !== false }); });
+                .then(done => { if (done === false) onNotice('没有存下，请再试一次', 'error'); if (opened && renders === drawn) feed(); });
         }
         else if (type === 'bind') {
             // 「待凝定的印象」旁的合订：把还没看过的留意合订成日记。做不成的原因由面板的提示说明。

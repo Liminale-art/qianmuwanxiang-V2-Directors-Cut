@@ -349,6 +349,12 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     try { await change(snapshot.binding, { id: id(), type: 'invalidate', entries: inspection.invalid }); }
                     catch (error) { state.error = error.message; }
                 }
+                // 回复被删掉了（删楼、重新生成前删掉最后一层）：那些回复里写下的心迹与存照一并撤回，不留下没有出处的心里话。
+                const gone = live.messages.length + 1, heart = state.document?.heart;
+                if (!generating && heart && (heart.thoughts?.some(item => item.floor >= gone) || heart.impressions?.some(item => !item.own && (item.born >= gone || item.rev?.floor >= gone)))) {
+                    try { adopt(snapshot.binding, { ...data, document: (await change(snapshot.binding, { id: id(), type: 'heartRevert', fromFloor: gone, at: Date.now() })).document }); }
+                    catch (error) { console.warn('[忆幕] 删掉的楼层里的心迹没有撤回：', error?.message || error); }
+                }
                 if (!data.sourceAvailable) { host.clear(); offered = false; state.error = '当前聊天原件尚未通过核对；请保存聊天后重新打开忆幕。'; }
                 state.loading = false; restoreRound(snapshot.binding); emit();
                 // 隐藏随原文一起核对：删层、改层、停用之后边界可能变了，这里只做核对与还原。
@@ -917,7 +923,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (ask.impressions) ({ items: impressions, cleaned: text } = takeImpressions(text, ask.names, state.document, { day: storyDay(state.document) }));
         if (text !== reply.text) await host.rewriteReply(ask.binding, reply.floor, text);
         if (ask.thought) await change(ask.binding, { id: id(), type: 'heartThought', floor: reply.floor, at: Date.now(), ...(item ? { item } : {}) });
-        if (ask.impressions) await change(ask.binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions, events: [], used: [], impressionFloor: reply.floor });
+        // replaceFloor：同一层重新生成时，先撤回这一层上一次写下的存照，再记这一次的。
+        if (ask.impressions) await change(ask.binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions, events: [], used: [], impressionFloor: reply.floor, replaceFloor: reply.floor });
     }
     // 存照记在哪一天：最近一条带剧情日期的切片的日期；没有就用今天。
     const storyDay = document => {
@@ -1120,8 +1127,9 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
             return true;
         }
         if (type === 'heartClear') {
-            await change(binding, { id: id(), type: 'heartClear', at: Date.now() });
-            notice('已清空', 'success');
+            const loose = payload.scope === 'loose';
+            await change(binding, { id: id(), type: 'heartClear', at: Date.now(), ...(loose ? { scope: 'loose' } : {}) });
+            notice(loose ? '待凝定的印象已清空' : '已清空', 'success');
             return true;
         }
         if (type === 'heartEdit') {
@@ -1205,6 +1213,8 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (loud) state.busy = true; state.error = ''; emit();
         try {
             const result = await change(binding, operation);
+            // 确认切片：服务端已按现在的原文核过这组指纹，面板手里那份「原文变了」的名单当场去掉它，不用等下一次刷新。
+            if (type === 'entry' && payload.action === 'acceptSource' && isCurrent(binding)) state.invalidSourceIds = (state.invalidSourceIds || []).filter(value => value !== payload.entryId);
             if (type === 'enable' && payload.enabled) localStops.delete(key);
             if (result.outcome === 'conflict') { if (isCurrent(binding)) state.status = '两版修订均已保留，请在条目内选择。'; return false; }
             if (isCurrent(binding)) {

@@ -218,3 +218,96 @@ test('the floor line under the date bar reads 本卷同叙 N 节・共织故事 
     page.yimuRender({});
     assert.equal(placed, null, '没有累计数就不显示这一行');
 });
+
+// 简易页面：元素只认「.类名」「#编号」两种 closest／querySelector；querySelectorAll 由各测试按选择器给。
+function miniPage(source, pick) {
+    const handlers = [], sent = [], timers = [];
+    const element = (tag, className = '') => {
+        const node = { tagName: tag.toUpperCase(), className, id: '', dataset: {}, attrs: {}, children: [], parentElement: null, disabled: false, textContent: '', hidden: false,
+            setAttribute(key, value) { this.attrs[key] = String(value); }, removeAttribute(key) { delete this.attrs[key]; }, hasAttribute(key) { return key in this.attrs; },
+            append(...nodes) { for (const child of nodes) { child.parentElement = this; this.children.push(child); } },
+            remove() { const parent = this.parentElement; if (parent) parent.children.splice(parent.children.indexOf(this), 1); this.parentElement = null; },
+            before(child) { child.remove(); const parent = this.parentElement; child.parentElement = parent; parent.children.splice(parent.children.indexOf(this), 0, child); },
+            matches(selector) { return selector.split(',').map(part => part.trim()).some(part => part.startsWith('#') ? this.id === part.slice(1) : part.startsWith('.') ? this.className.split(' ').includes(part.slice(1)) : this.tagName === part.toUpperCase()); },
+            closest(selector) { for (let at = this; at; at = at.parentElement) if (at.matches(selector)) return at; return null; },
+            querySelector(selector) { for (const child of this.children) { if (child.matches(selector)) return child; const deep = child.querySelector(selector); if (deep) return deep; } return null; },
+            querySelectorAll(selector) { const found = []; for (const child of this.children) { if (child.matches(selector)) found.push(child); found.push(...child.querySelectorAll(selector)); } return found; },
+            classList: null };
+        node.classList = { contains: name => node.className.split(' ').includes(name) };
+        return node;
+    };
+    const stub = () => ({ addEventListener() {}, innerHTML: '' });
+    const fakeDocument = { getElementById: id => id === 'ym-floors' ? null : stub(), createElement: tag => element(tag), querySelectorAll: selector => pick(selector) || [],
+        addEventListener: (type, fn, capture) => handlers.push({ type, fn, capture: capture === true }) };
+    const page = {};
+    new Function('document', 'parent', 'addEventListener', 'window', 'setTimeout', 'clearTimeout', 'matchMedia', source)(fakeDocument, { postMessage: data => sent.push(data) }, () => {}, page,
+        fn => { timers.push(fn); return timers.length; }, () => {}, undefined);
+    // 和浏览器一样：先跑捕获阶段的，再跑冒泡阶段的；同一处的监听都会跑到。
+    const click = target => { const event = { target, stopped: false, preventDefault() {}, stopPropagation() { this.stopped = true; } };
+        for (const { fn } of handlers.filter(item => item.type === 'click' && item.capture)) fn(event);
+        if (!event.stopped) for (const { fn } of handlers.filter(item => item.type === 'click' && !item.capture)) fn(event); return event; };
+    return { page, sent, timers, click, element };
+}
+
+test('after a click on ×, that entry waits (faded, nothing clickable) until the panel hands the data back; other entries stay as they are', async () => {
+    const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
+    let rms = [];
+    const { page, sent, timers, click, element } = miniPage(source, selector => selector === '.ym-rm' ? rms : []);
+    const entry = (kind, id) => { const item = element('article'), acts = element('span', 'ym-acts'), pen = element('button', 'ym-ed'), rm = element('button', 'ym-rm');
+        rm.dataset.rmKind = kind; rm.dataset.rmId = id; rm.textContent = '×'; item.append(acts); acts.append(pen, rm); return { item, pen, rm }; };
+    const first = entry('impression', 'i1'), second = entry('event', 'e1');
+    rms = [first.rm, second.rm];
+    page.yimuRender({ impressions: [{ id: 'i1', at: 1 }], events: [{ id: 'e1', at: 1 }] });
+    click(first.rm);
+    assert.deepEqual(sent, [{ yimuHeart: 'remove', kind: 'impression', id: 'i1' }]);
+    assert.ok('data-ym-busy' in first.item.attrs && first.item.attrs['aria-busy'] === 'true', '那一条进入处理中');
+    assert.ok(first.rm.disabled && first.pen.disabled && 'data-busy' in first.rm.attrs, '笔和叉都不能再点，叉换成等待记号');
+    assert.equal(first.rm.textContent, '×', '叉的字不改（等待记号由样式画），位置不动');
+    assert.ok(!('data-ym-busy' in second.item.attrs) && !second.rm.disabled, '别的条目照常');
+    click(first.rm); assert.equal(sent.length, 1, '处理中再点不会再发');
+    // 面板把数据重交过来（没删成时原样重交）：重画出来的这一条又能点了。
+    const again = entry('impression', 'i1'); rms = [again.rm, second.rm];
+    page.yimuRender({ impressions: [{ id: 'i1', at: 1 }], events: [{ id: 'e1', at: 1 }] });
+    assert.ok(!('data-ym-busy' in again.item.attrs) && !again.rm.disabled);
+    // 一直没有回音：过一会儿也恢复（定时器里重画，不再标处理中）。
+    click(again.rm); const late = entry('impression', 'i1'); rms = [late.rm, second.rm];
+    timers.at(-1)(); assert.ok(!('data-ym-busy' in late.item.attrs) && !late.rm.disabled);
+});
+
+test('「待凝定的印象」: each item gets a pen next to its ×, the title gets 清空 (click twice) that clears only this column, and its items can be edited', async () => {
+    const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
+    let title = null, rmqs = [], looses = [];
+    const pick = selector => ({ '.drift h4, .strip-label': title ? [title] : [], '.ym-rmq': rmqs, '.ym-rm': rmqs, '.ym-loose': looses, '.ym-clear-loose': title ? title.querySelectorAll('.ym-clear-loose') : [] })[selector];
+    const { page, sent, click, element } = miniPage(`${source}\nwindow.sheetItem = sheetItem; window.sheetFields = sheetFields;`, pick);
+    title = element('h4');
+    const loose = (kind, id) => { const item = element('span', 'ym-loose'), rm = element('button', 'ym-rm ym-rmq'); rm.dataset.rmKind = kind; rm.dataset.rmId = id; item.append(rm); return { item, rm }; };
+    const trace = loose('trace', 't1'), unformed = loose('impression', 'i9');
+    rmqs = [trace.rm, unformed.rm]; looses = [trace.item, unformed.item];
+    const data = { tools: { ready: true, pending: 1 }, impressions: [{ id: 'i1', about: '甲', say: '已凝定', at: 1 }],
+        loose: [{ kind: 'trace', id: 't1', about: '乙', text: '她又点了辣的。', at: 2 }, { kind: 'impression', id: 'i9', about: '丙', text: '他好像在等谁。', at: 3 }] };
+    page.yimuRender(data);
+    for (const { item, rm } of [trace, unformed]) {
+        const box = item.children[0];
+        assert.equal(box.className, 'ym-acts ym-actsq', '小笔小叉放进字后面的小框');
+        assert.deepEqual(box.children.map(node => node.className), ['ym-ed', 'ym-rm ym-rmq']);
+        assert.deepEqual(box.children[0].dataset, { edKind: rm.dataset.rmKind, edId: rm.dataset.rmId });
+    }
+    assert.deepEqual(title.children.map(node => [node.className, node.textContent]), [['ym-bind', '合订'], ['ym-clear-loose', '清空']]);
+    // 改：痕迹与还没凝定的印象都按原来的字段（写的是谁、内容）放进小纸条。
+    assert.deepEqual(page.sheetItem('trace', 't1'), { item: { about: '乙', say: '她又点了辣的。' }, name: '印象' });
+    assert.deepEqual(page.sheetItem('impression', 'i9'), { item: { about: '丙', say: '他好像在等谁。' }, name: '印象' });
+    assert.equal(page.sheetItem('impression', 'i1').name, '日记', '存照里的印象照旧');
+    assert.equal(page.sheetItem('trace', 'nope'), null);
+    assert.deepEqual([...page.sheetFields('trace', page.sheetItem('trace', 't1').item).matchAll(/name="(\w+)"/g)].map(match => match[1]), ['about', 'text']);
+    // 清空：点一下变「再点清空」，点别处收回；再点才发，这一栏处理中，存照不动。
+    click(title.children[1]);
+    assert.deepEqual([title.children[1].textContent, sent.length], ['再点清空', 0]);
+    click(element('div')); assert.equal(title.children[1].textContent, '清空', '点别处收回');
+    click(title.children[1]); click(title.children[1]);
+    assert.deepEqual(sent, [{ yimuHeart: 'clearLoose' }]);
+    const [bind, wipe] = title.children;
+    assert.deepEqual([wipe.textContent, wipe.disabled, bind.disabled], ['清空中', true, true]);
+    assert.ok([trace.item, unformed.item].every(item => 'data-ym-busy' in item.attrs), '整栏处理中');
+    page.yimuRender({ ...data, loose: [] });
+    assert.deepEqual(title.children.map(node => node.className), ['ym-bind'], '这一栏没有条目了就不出清空');
+});

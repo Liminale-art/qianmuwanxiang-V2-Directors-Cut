@@ -24,10 +24,12 @@ test('a slice carried a few floors ago is not carried again just for being relat
     const f = await build('我们顺路经过灯塔和码头，再去面包房买点东西。');
     const fresh = pick(f, {}, null);
     for (const id of ['s0', 's1', 's2']) assert.ok(fresh.includes(id), `没有记录时相关的都带：${id}`);
-    // 三条都在 4 层前带过：冷却期内只留本轮最相关的一条，其余两条不再重复带。
+    // 三条都在 4 层前带过：冷却期内最相关的一条照常排前，另两条让位排到最后——名额够时照样带，不够时先被让掉（用户 2026-11-25：冷却是让位，不是拿掉）。
     const recent = new Map([['s0', 36], ['s1', 36], ['s2', 36]]);
-    const cooled = pick(f, {}, recent).filter(id => ['s0', 's1', 's2'].includes(id));
-    assert.equal(cooled.length, 1, '冷却期内只破例带最相关的一条');
+    const order = pick(f, {}, recent), cooled = order.filter(id => ['s0', 's1', 's2'].includes(id));
+    assert.equal(cooled.length, 3, '名额够时冷却中的也带上，注入不断档');
+    const yielded = cooled.slice(1), others = order.filter(id => !yielded.includes(id));
+    assert.ok(yielded.every(id => order.indexOf(id) > Math.max(...others.map(other => order.indexOf(other)))), '冷却中的两条排在所有没冷却的之后');
     // 超过冷却层数就恢复；填 0 关闭冷却。
     const old = new Map([['s0', 30], ['s1', 30], ['s2', 30]]);
     assert.equal(pick(f, {}, old).filter(id => ['s0', 's1', 's2'].includes(id)).length, 3, '过了冷却期照常带');

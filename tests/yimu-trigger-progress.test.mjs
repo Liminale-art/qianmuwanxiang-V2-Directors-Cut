@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDocument, applyOperation, fingerprintMessages } from '../yimu/contract.mjs';
-import { autoProgress, nextBatch, estimateTokens } from '../yimu/core.mjs';
+import { autoProgress, nextBatch, estimateTokens, inspectSources } from '../yimu/core.mjs';
 import { fitMemoryTitle } from '../yimu/timeline.mjs';
 
 const binding = { avatar: 'Hero.png', file: 'story', integrity: 'id-1' };
@@ -52,4 +52,22 @@ test('model titles longer than the limit are cut, never block the batch', () => 
     assert.equal(fitMemoryTitle('第一次一起去海边看日出了'), '第一次一起去海边');
     assert.equal(fitMemoryTitle('两行\n标题'), '两行 标题');
     assert.equal(fitMemoryTitle(undefined), '');
+});
+
+test('confirming stays confirmed: invalidation no longer bumps revisions, so a slice that inherits its scene from the edited one recovers too', async () => {
+    const chat = messages(8), hashes = await fingerprintMessages(chat);
+    let doc = enabled(8);
+    doc = applyOperation(doc, { id: 'a', type: 'append', expectedEpoch: doc.epoch, entry: { id: 'A', kind: 'summary', text: '甲', source: { start: 1, end: 2, hashes: hashes.slice(0, 2) },
+        scenes: [{ place: '车站', evidence: { floors: [1] } }] } }).document;
+    const a = doc.entries.find(entry => entry.id === 'A');
+    doc = applyOperation(doc, { id: 'b', type: 'append', expectedEpoch: doc.epoch, entry: { id: 'B', kind: 'summary', text: '乙', source: { start: 3, end: 4, hashes: hashes.slice(2, 4) },
+        scenes: [{ place: '车站', evidence: { floors: [], inheritedFrom: { id: 'A', revision: a.revision } } }] } }).document;
+    const edited = chat.map((item, i) => i === 0 ? { ...item, mes: '改过的第一层' } : item), now = await fingerprintMessages(edited);
+    // 刷新时的做法：核出失效就记下（A 原文变了；B 继承的 A 不再有效）。
+    for (let round = 0; round < 2; round++) { const { invalid } = await inspectSources(doc, edited); if (invalid.length) doc = applyOperation(doc, { id: `inv${round}`, type: 'invalidate', entries: invalid }).document; }
+    assert.deepEqual(doc.entries.map(entry => [entry.id, entry.status]), [['A', 'invalid'], ['B', 'invalid']]);
+    assert.equal(doc.entries.find(entry => entry.id === 'A').revision, a.revision, 'invalidation is a marker, not a revision');
+    for (const id of ['A', 'B']) { const entry = doc.entries.find(item => item.id === id);
+        doc = applyOperation(doc, { id: `ok${id}`, type: 'entry', action: 'acceptSource', entryId: id, expectedRevision: entry.revision, hashes: now.slice(entry.source.start - 1, entry.source.end) }).document; }
+    assert.deepEqual((await inspectSources(doc, edited)).invalid, [], 'the next refresh finds nothing to flag again');
 });

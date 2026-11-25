@@ -29,6 +29,14 @@ function validateImpression(value) {
     if (value.was !== undefined && value.was !== '') result.was = str(value.was, 400, '原先的印象');
     if (value.own === true) result.own = true; // 用户自己写下或改过：整理时不再改它的说法
     if (value.sure !== undefined) { need([1, 2, 3].includes(value.sure), '印象的把握程度无效'); result.sure = value.sure; }
+    // 主模型在某一层的回复里写下的（born）或改写过的（rev 留着改写前的样子）：那一层被重新生成或删掉时据此撤回。
+    if (value.born !== undefined) result.born = floorOf(value.born);
+    if (value.rev !== undefined) {
+        need(value.rev && typeof value.rev === 'object' && Array.isArray(value.rev.days) && value.rev.days.length >= 1 && value.rev.days.length <= HEART_LIMITS.days, '印象的改写记录无效');
+        result.rev = { floor: floorOf(value.rev.floor), text: str(value.rev.text, 400, '改写前的印象'), days: value.rev.days.map(validateDay),
+            ...(value.rev.sure !== undefined ? { sure: value.rev.sure } : {}), ...(value.rev.was ? { was: str(value.rev.was, 400, '原先的印象') } : {}) };
+        if (result.rev.sure !== undefined) need([1, 2, 3].includes(result.rev.sure), '印象的把握程度无效');
+    }
     return result;
 }
 function validateThought(value) {
@@ -53,7 +61,22 @@ export function validateHeart(value) {
 }
 export const emptyHeart = () => ({ impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 0 });
 export const heartOf = document => document?.heart ? clone(document.heart) : emptyHeart();
-export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport', 'heartEdit', 'heartAdd', 'heartClear']);
+export const HEART_OPERATIONS = Object.freeze(['heartDiary', 'heartThought', 'heartRemove', 'heartImport', 'heartEdit', 'heartAdd', 'heartClear', 'heartRevert']);
+/** 撤回主模型在某层（only）或某层之后写下的存照：新写的删掉，改写过的恢复成改写前。用户改过的（own）不动。 */
+function revertFrom(heart, floor, { only = false } = {}) {
+    const hit = value => Number.isSafeInteger(value) && (only ? value === floor : value >= floor);
+    heart.impressions = heart.impressions.flatMap(item => {
+        if (item.own) return [item];
+        if (hit(item.born)) return [];
+        if (item.rev && hit(item.rev.floor)) {
+            const { rev, ...rest } = item, restored = { ...rest, text: rev.text, days: rev.days };
+            if (rev.sure !== undefined) restored.sure = rev.sure; else delete restored.sure;
+            if (rev.was) restored.was = rev.was; else delete restored.was;
+            return [restored];
+        }
+        return [item];
+    });
+}
 
 /** 应用一次心迹操作，直接改 doc（调用方已复制过）。opId 用来给新条目编号。 */
 export function applyHeartOperation(doc, op, opId) {
@@ -62,6 +85,9 @@ export function applyHeartOperation(doc, op, opId) {
         // 一次日记整理的结果：新痕迹归进印象（沿用已有的，或新开一条），年表添上新的节点。
         need(Array.isArray(op.impressions) && op.impressions.length <= HEART_LIMITS.batch && Array.isArray(op.events) && op.events.length <= HEART_LIMITS.batch, '日记整理结果无效');
         const traces = new Map((doc.observations || []).map(item => [item.id, item])), used = new Set();
+        // 同一层重新生成（重 roll、滑动）：先撤回这一层上一次写下与改写的，再记这一次的——只认最后留下的回复。
+        if (op.replaceFloor !== undefined) revertFrom(heart, floorOf(op.replaceFloor), { only: true });
+        const born = op.replaceFloor !== undefined ? op.replaceFloor : undefined;
         op.impressions.forEach((item, index) => {
             need(item && typeof item === 'object' && (Array.isArray(item.traces) && item.traces.length <= 60 || item.direct), '印象的依据无效');
             // direct：主模型写回复时顺带写下的印象，依据就是这一轮本身（那一天＋它写的这句），不经过痕迹。
@@ -73,7 +99,11 @@ export function applyHeartOperation(doc, op, opId) {
             });
             const existing = typeof item.id === 'string' ? heart.impressions.find(entry => entry.id === item.id) : null;
             if (!existing && !fresh.length) return;
-            const target = existing || { id: `${opId}_i${index}`.slice(0, 100), about: str(item.about, 120, '印象的对象'), text: '', days: [], at, updatedAt: at };
+            if (existing && item.direct && born !== undefined && existing.born !== born && existing.rev?.floor !== born) {
+                existing.rev = { floor: born, text: existing.text, days: clone(existing.days), ...(existing.sure !== undefined ? { sure: existing.sure } : {}), ...(existing.was ? { was: existing.was } : {}) };
+            }
+            const target = existing || { id: `${opId}_i${index}`.slice(0, 100), about: str(item.about, 120, '印象的对象'), text: '', days: [], at, updatedAt: at,
+                ...(item.direct && born !== undefined ? { born } : {}) };
             // 用户改过的印象只添依据，不改说法。
             const text = existing?.own ? existing.text : str(item.text, 400, '印象');
             if (existing && !existing.own && item.was !== undefined && item.was !== '' && text !== existing.text) target.was = str(item.was, 400, '原先的印象');
@@ -111,11 +141,28 @@ export function applyHeartOperation(doc, op, opId) {
         const merged = mergeHeart(heart, op.heart);
         doc.heart = merged;
         return;
-    } else if (op.type === 'heartClear') {
+    } else if (op.type === 'heartClear' && op.scope !== 'loose') {
         // 一键清空：存照、心迹、年表连同待凝定的印象（痕迹）。进度留着，清掉的不会被下一次总结重新拾回；要找回就用「补全」。
         delete doc.observations;
         doc.heart = validateHeart({ ...emptyHeart(), eventFloor: heart.eventFloor, thoughtFloor: heart.thoughtFloor, impressionFloor: heart.impressionFloor || 0 });
         return;
+    } else if (op.type === 'heartClear' && op.scope === 'loose') {
+        // 只清「待凝定的印象」那一栏：没用过的痕迹，以及还没凝定的印象。存照、心迹、年表不动。
+        doc.observations = (doc.observations || []).filter(item => item.used);
+        heart.impressions = heart.impressions.filter(item => gradeOf(item) >= 1);
+    } else if (op.type === 'heartEdit' && op.kind === 'trace') {
+        const trace = (doc.observations || []).find(item => item.id === op.itemId);
+        need(trace, '这一条已经不在了');
+        if (op.about !== undefined) trace.about = str(op.about, 120, '写的是谁');
+        trace.text = str(op.text, 300, '痕迹');
+        return;
+    } else if (op.type === 'heartRevert') {
+        // 某一层起的回复被删掉了：那些回复里写下的心迹与存照一并撤回，问过的进度退回到删掉之前。
+        const from = floorOf(op.fromFloor);
+        revertFrom(heart, from);
+        heart.thoughts = heart.thoughts.filter(entry => entry.floor < from);
+        heart.thoughtFloor = Math.min(heart.thoughtFloor, from - 1);
+        if (heart.impressionFloor) heart.impressionFloor = Math.min(heart.impressionFloor, from - 1);
     } else if (op.type === 'heartRemove' && op.kind === 'trace') {
         // 「还在留意的」里的一条痕迹：直接删掉，不留底。
         const before = (doc.observations || []).length;

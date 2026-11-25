@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.78';
-export const SERVICE_VERSION = '0.8.35';
+export const FRONTEND_VERSION = '0.8.79';
+export const SERVICE_VERSION = '0.8.36';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -529,7 +529,9 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
             const entry = doc.entries.find(e => e.id === record.id);
             if (entry?.source && entry.revision === record.revision && entry.status !== 'invalid') {
                 // User exclusions/deletions remain exclusions/deletions, never auto-return.
-                if (entry.status === 'active') revise(entry, { status: 'invalid', candidate: null });
+                // 失效只是「原文对不上了」的标记，不是内容修订：不升修订号。升了的话，从它继承场景的相邻切片与引用它的阶段
+                // 会因为修订号对不上而跟着失效，用户确认这一条之后它们仍对不上，下一次刷新又被标回来（跨设备也一样）。
+                if (entry.status === 'active') { entry.status = 'invalid'; entry.candidate = null; }
             }
         }
     } else {
@@ -582,6 +584,11 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
                     requireThat(Array.isArray(op.hashes) && op.hashes.length === entry.source.end - entry.source.start + 1 && op.hashes.every(x => typeof x === 'string' && /^[a-f0-9]{64}$/.test(x)), '确认用的原文指纹无效');
                     entry.source = { ...entry.source, hashes: [...op.hashes] };
                     if (entry.status === 'invalid') entry.status = 'active';
+                    // 旧版失效时升过修订号：继承场景的引用对不上了。确认之后把这条自己的、以及继承它的那几条的引用对回现在的修订号。
+                    const relink = (target, parent) => { for (const scene of target.scenes || []) { const ref = scene.evidence?.inheritedFrom;
+                        if (ref && ref.id === parent.id && parent.status === 'active' && ref.revision !== parent.revision) ref.revision = parent.revision; } };
+                    for (const scene of entry.scenes || []) { const ref = scene.evidence?.inheritedFrom, parent = ref && doc.entries.find(item => item.id === ref.id); if (parent) relink(entry, parent); }
+                    for (const other of doc.entries) if (other !== entry) relink(other, entry);
                     break;
                 }
                 case 'delete': revise(entry, { status: 'deleted', candidate: null, deletedRevision: doc.revision + 1 }); break;

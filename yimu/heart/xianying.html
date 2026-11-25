@@ -59,8 +59,8 @@ h2 + .lead { padding: 0 22px 34px; margin: 0; font-size: 12px; color: var(--dim)
 .strip::before, .strip::after { content: ''; position: absolute; left: 0; right: 0; height: 8px; background: repeating-linear-gradient(90deg, var(--fold) 0 10px, transparent 10px 22px); }
 .strip::before { top: 8px; } .strip::after { bottom: 8px; }
 .strip .reel { display: flex; gap: 46px; width: max-content; align-items: baseline; animation: reel 38s linear infinite; }
-.strip .reel:has(.ym-loose:hover), .strip .reel:has(.ym-loose[data-pick]) { animation-play-state: paused; }
-.strip span { white-space: nowrap; color: var(--dim); animation: under 7s ease-in-out infinite; }
+.strip .reel:has(.ym-loose:hover), .strip .reel:has(.ym-loose[data-pick]), .strip .reel:has([data-ym-busy]) { animation-play-state: paused; }
+.strip .ym-loose { white-space: nowrap; color: var(--dim); animation: under 7s ease-in-out infinite; }
 @keyframes reel { to { transform: translateX(-50%); } }
 @keyframes under { 0%, 100% { opacity: .18; } 50% { opacity: .7; } }
 .strip-label { padding: 14px 22px 0; font-size: 11px; letter-spacing: .3em; color: var(--dim); }

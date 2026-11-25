@@ -577,7 +577,9 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
         const last = recalledAt?.get?.(entry.id);
         return Number.isFinite(last) && floorNow - last > 0 && floorNow - last <= cooldown;
     };
-    const ranked = eligible.filter(entry => !cooling(entry));
+    // 冷却＝让位，不是拿掉（用户 2026-11-25：低楼层切片少时，拿掉会让注入断档）。冷却中的排到最后：
+    // 条数上限与 token 预算都放得下时照样带上；只有名额真的不够时，才先让给没冷却的。
+    const ranked = cooldown ? [...eligible.filter(entry => !cooling(entry)), ...eligible.filter(cooling)] : eligible;
     // 设了「每次最多注入切片」时，主干最多占一半名额（按相关度、再按新旧取），并排在细切片之前，
     // 不会被相关度更高的细切片挤掉；剩下的名额留给细切片。0 为不限条数，主干全带。
     const cap = Number.isSafeInteger(settings.maxSlices) && settings.maxSlices > 0 ? settings.maxSlices : 0;

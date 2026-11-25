@@ -151,7 +151,8 @@ export function takeThought(message, names, { books = [] } = {}) {
     if (!match) return { item: null, cleaned: source };
     const cleaned = (source.slice(0, match.index) + source.slice(match.index + match[0].length)).replace(/\s+$/, '');
     const text = match[2].trim();
-    if (!text || text.length > 2000) return { item: null, cleaned };
+    // 回复在这一段中途被截断（没有收尾标签）：半句心里话不收，正文里照样去掉。
+    if (!text || text.length > 2000 || !match[0].includes(`</${HEART_TAG}>`)) return { item: null, cleaned };
     const raw = (match[1].match(/对象\s*=\s*["“']([^"”']*)["”']/)?.[1] || '').trim().slice(0, 120);
     const user = String(names.user || '').trim(), char = String(names.char || '').trim(), key = plain(raw).replace(/[《》]/g, '');
     const group = !raw || key === plain(user) || ['你', '用户', '{{user}}'].includes(key) ? 'you'
@@ -187,8 +188,9 @@ const attribute = (raw, name) => (raw.match(new RegExp(`${name}[^=\\s"“']*\\s*
 /** 从回复里摘出存照。返回 { items, cleaned }：items 为空表示这次没写；cleaned 是去掉这些段后的正文。 */
 export function takeImpressions(message, names, document, { day = '' } = {}) {
     const source = String(message || ''), known = new Set(heartOf(document).impressions.map(item => item.id)), items = [], used = new Set();
-    const cleaned = source.replace(IMPRESSION_BLOCK, (_, raw, body) => {
+    const cleaned = source.replace(IMPRESSION_BLOCK, (whole, raw, body) => {
         const text = String(body || '').trim(), about = attribute(raw, '对象').slice(0, 120) || String(names.user || '').trim();
+        if (!whole.includes(`</${IMPRESSION_TAG}>`)) return ''; // 截断在半句：不收
         const keep = attribute(raw, '沿用'), sure = SURE_OF_WORD[attribute(raw, '把握')];
         if (text && text.length <= 400 && about && items.length < IMPRESSIONS_PER_ROUND) {
             const id = known.has(keep) && !used.has(keep) ? keep : undefined;

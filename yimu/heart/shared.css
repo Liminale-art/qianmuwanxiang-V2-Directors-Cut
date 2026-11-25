@@ -37,17 +37,24 @@
 /* 「待凝定的印象」换位置：各条脱开一行一行的排法，位置由脚本给。 */
 [data-roam] > .ym-loose.ym-loose { position: absolute; left: 0; top: 0; margin: 0; max-width: calc(100% - 26px); }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
-body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-acts, .ym-tools) { display: none !important; }
-/* 「待凝定的印象」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
+body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-acts, .ym-tools, .ym-clear-loose) { display: none !important; }
+/* 「待凝定的印象」的小笔小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。两个钮在字后面的小框（.ym-actsq）里。 */
 .ym-loose { cursor: default; }
 .ym-loose:hover, .ym-loose[data-pick] { animation-play-state: paused !important; opacity: 1 !important; }
-.ym-rm.ym-rmq { position: static; display: inline-block; margin-left: 4px; padding: 2px 6px; vertical-align: middle; font-size: 13px; opacity: 0; pointer-events: none; }
-.ym-loose:hover > .ym-rmq, .ym-loose[data-pick] > .ym-rmq, .ym-rmq:focus-visible { opacity: .9; pointer-events: auto; color: var(--ymd-accent); }
+.ym-acts.ym-actsq { position: static; display: inline-flex; gap: 2px; margin-left: 4px; vertical-align: middle; }
+.ym-rm.ym-rmq, .ym-actsq > .ym-ed { position: static; display: inline-block; padding: 2px 6px; vertical-align: middle; font-size: 13px; opacity: 0; pointer-events: none; }
+.ym-loose:hover .ym-actsq > *, .ym-loose[data-pick] .ym-actsq > *, .ym-loose:hover > .ym-rmq, .ym-loose[data-pick] > .ym-rmq, .ym-rmq:focus-visible, .ym-actsq > .ym-ed:focus-visible { opacity: .9; pointer-events: auto; color: var(--ymd-accent); }
 /* 合订：小标题后面的一个小字钮。 */
 .ym-bind { all: unset; cursor: pointer; margin-left: 12px; padding: 2px 6px; letter-spacing: .2em; color: var(--ymd-accent); border-bottom: 1px dotted var(--ymd-accent); }
 .ym-bind[disabled] { opacity: .5; cursor: default; }
 .ym-bind:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
 body[data-standalone] .ym-bind { display: none !important; }
+/* 「待凝定的印象」一栏的清空：合订后面的淡字，待确认时转强调色。 */
+.ym-clear-loose { all: unset; cursor: pointer; margin-left: 10px; padding: 2px 6px; letter-spacing: .2em; color: var(--ymd-mute); border-bottom: 1px dotted var(--ymd-mute); opacity: .75; }
+.ym-clear-loose:hover, .ym-clear-loose:focus-visible { opacity: 1; }
+.ym-clear-loose:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
+.ym-clear-loose[data-armed] { opacity: 1; color: var(--ymd-accent); border-bottom-color: var(--ymd-accent); }
+.ym-clear-loose[disabled] { opacity: .45; cursor: default; }
 /* 修改：小叉左边的一支小笔，同样很淡。笔和叉并排放在一个小框里，小框占住条目右上角（位置由主题对 .ym-acts 定）。 */
 .ym-acts { position: absolute; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 2px; white-space: nowrap; writing-mode: horizontal-tb; }
 .ym-acts > .ym-rm.ym-rm { position: static; }
@@ -81,3 +88,13 @@ body[data-standalone] .ym-bind { display: none !important; }
 /* 楼层计数：日期条下的一行小字。 */
 #ym-floors { position: relative; z-index: 6; display: flex; gap: 16px; margin: -4px 0 8px; padding: 0 29px; font-size: 11px; letter-spacing: .12em; color: var(--ymd-mute); font-variant-numeric: tabular-nums; }
 #ym-floors b { font-weight: 500; color: var(--ymd-ink); }
+/* 处理中：删、存、清空之后那一条（或那一栏）变淡、不能再点；小叉原地换成一个小转圈（叉的字只是变透明，占的位置不变）。
+   用 filter 变淡，不和条目自己的淡入、飘动动画抢 opacity。「减少动态效果」下不转，换成一个静止的省略号。 */
+[data-ym-busy] { filter: opacity(.45); pointer-events: none; }
+.ym-loose[data-ym-busy] { animation-play-state: paused !important; opacity: 1 !important; }
+.ym-rm.ym-rm[data-busy] { opacity: .9; color: transparent; cursor: default; }
+/* 主题给小框写的 top／right 也落在叉上（:is(.ym-acts, .ym-rm)）：叉改成 relative 时要清掉，不然会挪位置。 */
+.ym-acts > .ym-rm.ym-rm[data-busy], .ym-rm.ym-rmq[data-busy] { position: relative; inset: auto; }
+.ym-rm[data-busy]::after { content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -4.5px 0 0 -4.5px; border: 1px solid var(--ymd-accent); border-right-color: transparent; border-radius: 50%; animation: ym-busy .9s linear infinite; }
+@keyframes ym-busy { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .ym-rm[data-busy]::after { content: '…'; width: auto; height: auto; margin: 0; border: 0; transform: translate(-50%, -50%); animation: none; color: var(--ymd-accent); } }
