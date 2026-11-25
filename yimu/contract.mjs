@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.77';
-export const SERVICE_VERSION = '0.8.34';
+export const FRONTEND_VERSION = '0.8.78';
+export const SERVICE_VERSION = '0.8.35';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -28,7 +28,7 @@ export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: false, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     // 心迹页：观察日记与关系年表跟着整理走（默认开）；心迹由主模型顺带写（默认关）；两处注入都默认关。
-    diary: true, diaryAuto: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 30, thoughtInject: false,
+    diary: true, diaryAuto: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 10, thoughtInject: false,
     contextRules: DEFAULT_CONTEXT_RULES });
 const clone = value => structuredClone(value);
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }

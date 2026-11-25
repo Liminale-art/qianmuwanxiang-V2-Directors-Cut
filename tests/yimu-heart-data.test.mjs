@@ -80,7 +80,7 @@ test('backup merge keeps what is already there; a continued story carries impres
 });
 
 test('the page settings: diary and chronicle on, heart notes and both injections off; numbers are bounded', () => {
-    assert.deepEqual([DEFAULTS.diary, DEFAULTS.chronicle, DEFAULTS.diaryInject, DEFAULTS.thoughts, DEFAULTS.thoughtInject, DEFAULTS.diaryChars, DEFAULTS.thoughtChars, DEFAULTS.thoughtCooldown], [true, true, false, false, false, 60, 200, 30]);
+    assert.deepEqual([DEFAULTS.diary, DEFAULTS.chronicle, DEFAULTS.diaryInject, DEFAULTS.thoughts, DEFAULTS.thoughtInject, DEFAULTS.diaryChars, DEFAULTS.thoughtChars, DEFAULTS.thoughtCooldown], [true, true, false, false, false, 60, 200, 10]);
     assert.deepEqual(validateSettings({thoughts: true, thoughtCooldown: 12, diaryChars: 80}), {thoughts: true, thoughtCooldown: 12, diaryChars: 80});
     assert.throws(() => validateSettings({thoughtCooldown: 0}), /超出范围/);
     assert.throws(() => validateSettings({diary: 'yes'}), /开关/);
@@ -126,13 +126,13 @@ test('a heart note is asked for only when it is due, and is lifted out of the re
     const snapshot = floors => ({mainApi: 'openai', name: '阿澈', userName: '小满', messages: Array.from({length: floors}, () => ({mes: '……'}))});
     const stage = end => ({id: `st${end}`, kind: 'stage', status: 'active', text: '阶段', source: {ranges: [{start: 1, end}], parents: []}});
     const doc = {entries: [stage(20)]};
-    assert.equal(thoughtDue(doc, settings, snapshot(20), 'normal'), null, '离上一则不够远');
-    assert.deepEqual(thoughtDue(doc, settings, snapshot(29), 'normal'), {floor: 30});
+    assert.equal(thoughtDue(doc, settings, snapshot(8), 'normal'), null, '离上一则不够远（默认间隔 10 层）');
+    assert.deepEqual(thoughtDue(doc, settings, snapshot(9), 'normal'), {floor: 10});
     assert.deepEqual(thoughtDue({entries: []}, settings, snapshot(60), 'normal'), {floor: 61}, '不再要求其间完成过阶段总结');
     assert.equal(thoughtDue(doc, {...settings, thoughts: false}, snapshot(60)), null);
     assert.equal(thoughtDue(doc, settings, {...snapshot(60), mainApi: 'textgenerationwebui'}), null, '只支持聊天补全');
     const written = {entries: [stage(20)], heart: {impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 30}};
-    assert.equal(thoughtDue(written, settings, snapshot(45), 'normal'), null);
+    assert.equal(thoughtDue(written, settings, snapshot(38), 'normal'), null);
     assert.deepEqual(thoughtDue(written, settings, snapshot(30), 'swipe'), {floor: 30}, '同一层重新生成时照旧再要一次');
     assert.deepEqual(thoughtDue({...written, entries: [stage(20)]}, settings, snapshot(70), 'normal'), {floor: 71}, '上一则之后没有新的阶段总结也照样到期');
     assert.deepEqual(thoughtDue({...written, entries: [stage(20), stage(55)]}, settings, snapshot(70), 'normal'), {floor: 71});

@@ -137,7 +137,7 @@ export function thoughtDue(document, settings, snapshot, type = '') {
     if (settings.thoughts !== true || snapshot?.mainApi !== 'openai' || !String(snapshot?.name || '').trim() || !heartNotePrompt(settings)) return null;
     const heart = heartOf(document), floor = snapshot.messages.length + (type === 'swipe' ? 0 : 1);
     if (heart.thoughtFloor && floor === heart.thoughtFloor) return { floor };
-    return floor - heart.thoughtFloor < (settings.thoughtCooldown || 30) ? null : { floor };
+    return floor - heart.thoughtFloor < (settings.thoughtCooldown || 10) ? null : { floor };
 }
 export function thoughtRequest(settings, names) {
     const base = heartNotePrompt(settings);
@@ -169,20 +169,21 @@ export function impressionDue(document, settings, snapshot, type = '') {
     if (settings.diary === false || snapshot?.mainApi !== 'openai' || !String(snapshot?.name || '').trim() || !heartDiaryPrompt(settings)) return null;
     const heart = heartOf(document), last = heart.impressionFloor || 0, floor = snapshot.messages.length + (type === 'swipe' ? 0 : 1);
     if (last && floor === last) return { floor };
-    return floor - last < (settings.thoughtCooldown || 30) ? null : { floor };
+    return floor - last < (settings.thoughtCooldown || 10) ? null : { floor };
 }
 /** 给主模型的要求：用户可编辑的「心间存照」提示词，接一段固定的格式与已有印象（好让它延展或改口，而不是另起一条重复的）。
- *  衔接语是助手写的（2026-11-25），待用户审。 */
+ *  衔接语是用户 2026-11-25 的修订稿（已定稿）。 */
 export function impressionRequest(settings, names, document) {
     const base = heartDiaryPrompt(settings);
     if (!base) return '';
     const limit = settings.diaryChars || 60;
     const existing = heartOf(document).impressions.slice(-40).map(item => ({ 编号: item.id, 对象: item.about, 印象: item.text }));
-    return fill(`${base}\n这一轮回复的最末，可另写 0–${IMPRESSIONS_PER_ROUND} 条{{char}}心里对人的印象，每条一段：<${IMPRESSION_TAG} 对象="写的是谁" 把握="也许、我觉得或笃定" 沿用="延展或改口已有印象时填它的编号，新印象不填">不超过 ${limit} 字</${IMPRESSION_TAG}>。只写这一轮里真有新体会的；与已有印象说的是同一件事时沿用它的编号，不另起一条；没有就整段省略。\n已有印象：${JSON.stringify(existing)}`, names);
+    return fill(`${base}\n本轮正文完成后，可追加0–${IMPRESSIONS_PER_ROUND}条以{{char}}内心对{{user}}或其他角色的印象，单条独立成段：<${IMPRESSION_TAG} 对象="对应人物" 把握体察确信层级="也许、我觉得或笃定" 沿用="延展或修正既有印象时填写对应编号，新印象不填">不超过 ${limit} 字</${IMPRESSION_TAG}>。本轮无全新体察则整段省略。与已有印象同源同指的内容，沿用原编号延展表述，不重复增设独立条目。\n已有印象：${JSON.stringify(existing)}`, names);
 }
 const IMPRESSION_BLOCK = new RegExp(`<${IMPRESSION_TAG}([^>]*)>([\\s\\S]*?)(?:</${IMPRESSION_TAG}>|$)`, 'g');
 const SURE_OF_WORD = { '也许': 1, '我觉得': 2, '笃定': 3 };
-const attribute = (raw, name) => (raw.match(new RegExp(`${name}\\s*=\\s*["“']([^"”']*)["”']`))?.[1] || '').trim();
+// 属性名只认开头（「把握」也认「把握体察确信层级」这类写长了的名字）。
+const attribute = (raw, name) => (raw.match(new RegExp(`${name}[^=\\s"“']*\\s*=\\s*["“']([^"”']*)["”']`))?.[1] || '').trim();
 /** 从回复里摘出存照。返回 { items, cleaned }：items 为空表示这次没写；cleaned 是去掉这些段后的正文。 */
 export function takeImpressions(message, names, document, { day = '' } = {}) {
     const source = String(message || ''), known = new Set(heartOf(document).impressions.map(item => item.id)), items = [], used = new Set();
