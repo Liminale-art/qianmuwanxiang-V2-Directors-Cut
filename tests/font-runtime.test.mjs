@@ -385,6 +385,7 @@ test('ST scope explicitly excludes message/rich prose, icons, code, Qianmu and t
   assert.ok(prose.includes('> .sd-prose-run[data-sd-prose-run="1"]'));
   assert.ok(prose.includes('> div:not([class], [style]):not(:has(style, .np-min-card'));
   assert.ok(prose.includes('> p:not([class], [style]):not(:has(.np-min-card'), 'a <style> from an inline annotation must not drop its paragraph');
+  assert.ok(prose.includes(':not(.mes_text :is(label, '), 'regex widgets inside a label keep their own font');
 });
 
 test('explicit application has a bounded cascade scope and fonts ordinary descendants directly', () => {
@@ -397,7 +398,7 @@ test('explicit application has a bounded cascade scope and fonts ordinary descen
   assert.match(prose, /:is\(p, div, span, a, b, strong, em, i, u, s, q,/);
   assert.ok(prose.includes('pre, code, kbd, samp, svg, canvas, .fa'));
   assert.ok(prose.includes('.np-min-card, [data-sd-prose-exempt]'));
-  assert.ok(prose.includes(':not(.mes_text :is(pre, code, kbd, samp,'), 'authored-block ancestor exclusions stay within message content');
+  assert.ok(prose.includes(':not(.mes_text :is(label, pre, code, kbd, samp,'), 'authored-block ancestor exclusions stay within message content');
 });
 
 test('preview text outside declared ranges is reported without an unrelated probe', async () => {

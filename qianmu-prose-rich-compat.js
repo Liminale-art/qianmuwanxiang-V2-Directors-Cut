@@ -34,10 +34,14 @@ function hasNestedRich(node) {
   return tagName(node) !== 'p' && !!node.querySelector?.('style');
 }
 
+// A top-level <style> renders nothing, so it never splits prose: markdown lifts
+// one out of its paragraph when an inline annotation opens a line, and a split
+// there would drop the paragraph gap. A run holding only styles is not created.
 function isRichBoundary(node) {
   if (node?.nodeType !== 1 || isProseRun(node)) return false;
   const tag = tagName(node);
-  return tag === 'style' || isStyledBlock(node) || RICH_ELEMENTS.has(tag) || hasNestedRich(node);
+  if (tag === 'style') return false;
+  return isStyledBlock(node) || RICH_ELEMENTS.has(tag) || hasNestedRich(node);
 }
 
 export function isRichProse(message) {
@@ -48,7 +52,7 @@ export function isRichProse(message) {
 
 function hasProseContent(nodes) {
   return nodes.some((node) => isProseRun(node)
-    || node.nodeType === 1
+    || (node.nodeType === 1 && tagName(node) !== 'style')
     || (node.nodeType === 3 && !!node.textContent?.trim()));
 }
 

@@ -15,7 +15,9 @@ const PROSE_EDIT = '#chat .mes .mes_text textarea.edit_textarea';
 const MIXED_HOST = '#chat .mes .mes_text:not([data-sd-prose-mixed="1"]):has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]))';
 const NESTED_CARD = '.np-min-card, [data-sd-prose-exempt], :is(div, section, article, p):is([class], [style])';
 const PROSE_MIXED_PARAGRAPH = `${MIXED_HOST} > p:not([class], [style]):not(:has(${NESTED_CARD})), ${MIXED_HOST} > div:not([class], [style]):not(:has(style, ${NESTED_CARD}))`;
-const PROSE_TEXT_EXEMPT = 'pre, code, kbd, samp, svg, canvas, .fa, .fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="icon"], .np-min-card, [data-sd-prose-exempt], [id^="story-director-"], :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)';
+// label: regex-made inline widgets (click-to-open annotations use the checkbox
+// trick) carry their own typography and must not take the prose font.
+const PROSE_TEXT_EXEMPT = 'label, pre, code, kbd, samp, svg, canvas, .fa,.fas, .far, .fab, .fal, .fad, [class*="fa-"], [class*="icon"], .np-min-card, [data-sd-prose-exempt], [id^="story-director-"], :is(div, section, article, p):is([class], [style]):not(.sd-prose-run)';
 const PROSE_TEXT_TARGET = `:is(${PROSE_ROOT}, ${PROSE_RUN}, ${PROSE_MIXED_PARAGRAPH}) :is(p, div, span, a, b, strong, em, i, u, s, q, blockquote, ul, ol, li, h1, h2, h3, h4, h5, h6, sub, sup, small):not(:is(${PROSE_TEXT_EXEMPT})):not(.mes_text :is(${PROSE_TEXT_EXEMPT}) *)`;
 // 伴读阅读页的书籍正文跟字体库的「正文」「引用」走；字号、行距、段距等排版仍由伴读自己管。
 const READER_TEXT = '.sd-reader-article, .sd-reader-article :is(h2, p, mark, span)';

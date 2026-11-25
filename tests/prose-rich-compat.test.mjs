@@ -66,8 +66,8 @@ test('plain prose is untouched; mixed prose gets separate runs while card and st
   assert.equal(isRichProse(message),true);
   assert.equal(message.dataset.sdProseMixed,'1');
   assert.equal(runs.length,2);
-  assert.deepEqual(message.childNodes,[runs[0],card,style,runs[1]]);
-  assert.equal(runs[0].childNodes[0],before);assert.equal(runs[1].childNodes[0],after);
+  assert.deepEqual(message.childNodes,[runs[0],card,runs[1]]);
+  assert.equal(runs[0].childNodes[0],before);assert.deepEqual(runs[1].childNodes,[style,after]);
   assert.equal(flatten(message),original);
   assert.equal(runs[0].dataset.sdProseRun,'1');
   const stable=d.mutations();
@@ -129,6 +129,16 @@ test('a paragraph whose inline annotation carries a style tag stays in the prose
   assert.equal(runs.length,1);
   assert.deepEqual(runs[0].childNodes,[first,noted,last]);
   assert.equal(style.parentNode,noted,'the style tag itself is never moved out of its paragraph');
+});
+
+test('a top-level style lifted out by markdown never splits prose, and a style alone is not wrapped',()=>{
+  const d=dom(),message=d.element('div'),first=d.element('p'),lifted=d.element('style'),opened=d.element('p'),lone=d.element('style'),card=d.element('div','np-min-card');
+  first.appendChild(d.text('first'));opened.appendChild(d.text('opened by an annotation'));
+  [first,lifted,opened,card,lone].forEach(node=>message.appendChild(node));
+  const runs=syncRichProseRuns(message);
+  assert.equal(runs.length,1);
+  assert.deepEqual(runs[0].childNodes,[first,lifted,opened]);
+  assert.deepEqual(message.childNodes,[runs[0],card,lone]);
 });
 
 test('clear restores all original node identities and ordering when layout is disabled',()=>{
