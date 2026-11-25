@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {isRichProse, syncRichProseRuns, clearRichProseRuns, proseLayoutTargets, prepareRichProseRuns, clearProseBreakMarks, changedProseRoots} from '../qianmu-prose-rich-compat.js';
+import {isRichProse, syncRichProseRuns, clearRichProseRuns, proseLayoutTargets, prepareRichProseRuns, clearProseBreakMarks, changedProseRoots, syncDropCap} from '../qianmu-prose-rich-compat.js';
 
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 
@@ -28,6 +28,11 @@ function dom() {
         this.childNodes.splice(index,0,child);child.parentNode=this;mutations++;return child;
       },
       remove(){if(!this.parentNode)return;const siblings=this.parentNode.childNodes;siblings.splice(siblings.indexOf(this),1);this.parentNode=null;mutations++;},
+      querySelectorAll(selector){
+        const keys=selector.split(',').map(item=>item.trim().match(/^\[data-([a-z-]+)="1"\]$/)?.[1]).filter(Boolean).map(key=>key.replace(/-([a-z])/g,(_,c)=>c.toUpperCase()));
+        const found=[];const visit=(parent)=>{for(const child of parent.children){if(keys.some(key=>child.dataset[key]==='1'))found.push(child);visit(child);}};
+        visit(this);return found;
+      },
       querySelector(selector){
         const matches=selector.split(',').map(item=>item.trim());
         const visit=(parent)=>{
@@ -139,6 +144,44 @@ test('a top-level style lifted out by markdown never splits prose, and a style a
   assert.equal(runs.length,1);
   assert.deepEqual(runs[0].childNodes,[first,lifted,opened]);
   assert.deepEqual(message.childNodes,[runs[0],card,lone]);
+});
+
+function spacers(d){const gap=d.element('span'),indent=d.element('span');gap.dataset.sdProseGap='1';indent.dataset.sdProseIndent='1';return [gap,indent];}
+
+test('drop cap skips a wrapper tag followed by line breaks and folds those breaks only',()=>{
+  // Shape seen on a real floor: status card, then <p><content><br>…<br>…text</content></p>.
+  const d=dom(),message=d.element('div'),run=d.element('div','sd-prose-run'),style=d.element('style'),first=d.element('p'),content=d.element('content'),second=d.element('p');
+  run.dataset.sdProseRun='1';
+  const br1=d.element('br'),br2=d.element('br'),[g1,i1]=spacers(d),[g2,i2]=spacers(d),midBreak=d.element('br');
+  [d.text('\n'),br1,g1,i1,d.text(' '),br2,g2,i2,d.text('正午的日头'),midBreak,d.text('第二行')].forEach(node=>content.appendChild(node));
+  first.appendChild(content);second.appendChild(d.text('第二段'));
+  [style,first,second].forEach(node=>run.appendChild(node));message.appendChild(run);
+  assert.equal(syncDropCap(message,[run]),first);
+  assert.equal(first.dataset.sdProseDrop,'1');
+  for(const node of [br1,g1,i1,br2,g2,i2]) assert.equal(node.dataset.sdProseLead,'1');
+  assert.equal(midBreak.dataset.sdProseLead,undefined,'a break after the first character is ordinary text flow');
+  assert.equal(second.dataset.sdProseDrop,undefined);
+  assert.equal(syncDropCap(message,null),null);
+  assert.equal(first.dataset.sdProseDrop,undefined);assert.equal(br1.dataset.sdProseLead,undefined);
+});
+
+test('drop cap passes over empty paragraphs and headings, but not body text outside a paragraph',()=>{
+  const d=dom(),message=d.element('div'),heading=d.element('h2'),empty=d.element('p'),body=d.element('p');
+  heading.appendChild(d.text('第一章'));empty.appendChild(d.element('br'));body.appendChild(d.text('正文'));
+  [heading,empty,body].forEach(node=>message.appendChild(node));
+  assert.equal(syncDropCap(message,[message]),body);
+  const loose=d.element('div'),later=d.element('p');later.appendChild(d.text('后一段'));
+  loose.appendChild(d.text('裸露的正文'));loose.appendChild(later);
+  assert.equal(syncDropCap(loose,[loose]),null,'never push the drop cap down to what is really the second paragraph');
+});
+
+test('drop cap mark moves with the first paragraph and is not rewritten when unchanged',()=>{
+  const d=dom(),message=d.element('div'),a=d.element('p'),b=d.element('p');
+  a.appendChild(d.text('甲'));b.appendChild(d.text('乙'));message.appendChild(a);message.appendChild(b);
+  syncDropCap(message,[message]);const stable=d.mutations();
+  assert.equal(syncDropCap(message,[message]),a);assert.equal(d.mutations(),stable);
+  a.remove();
+  assert.equal(syncDropCap(message,[message]),b);assert.equal(b.dataset.sdProseDrop,'1');
 });
 
 test('clear restores all original node identities and ordering when layout is disabled',()=>{

@@ -1457,16 +1457,19 @@ html body.sd-prose-justify #chat .mes .mes_text:not([data-sd-prose-mixed="1"]):n
 html body.sd-prose-justify #chat .mes .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) > p,
 html body.sd-prose-justify #chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"],
 html body.sd-prose-justify #chat .mes .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"] > p { text-align: justify !important; text-justify: inter-character !important; }
-/* 首字下沉：只落在每层角色回复正文的第一段（纯正文看第一个 p；混有卡片时看第一个正文块里的第一个 p），
-   卡片、状态栏、用户楼层和其余段落都不受影响。下沉两行：字身高度 = 两行字的上沿到下沿，随行高与字号自动算。 */
-html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) > p:first-of-type,
-html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"]:not(.sd-prose-run ~ .sd-prose-run) > p:first-of-type {
+/* 首字下沉：脚本在每层角色回复里挑出第一段真有字的正文（跳过空段落；包在 <content> 之类外层标签里的也算），
+   标上 data-sd-prose-drop；卡片、状态栏、用户楼层和其余段落都不受影响。下沉两行：字身高度 = 两行字的上沿到下沿，随行高与字号自动算。 */
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) p[data-sd-prose-drop="1"],
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"] p[data-sd-prose-drop="1"] {
   --sd-prose-drop-lines: 2;
   display: flow-root !important;
   text-indent: 0 !important;
 }
-html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) > p:first-of-type::first-letter,
-html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"]:not(.sd-prose-run ~ .sd-prose-run) > p:first-of-type::first-letter {
+/* 段首、首字之前的换行（及换行整理补的段距与缩进占位）收起，否则首行是空行，::first-letter 落空。 */
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) p[data-sd-prose-drop="1"] [data-sd-prose-lead="1"],
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"] p[data-sd-prose-drop="1"] [data-sd-prose-lead="1"] { display: none !important; }
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text:not([data-sd-prose-mixed="1"]):not(:has(style, .np-min-card, [data-sd-prose-exempt], > :is(div, section, article, p):is([class], [style]):not(.sd-prose-run))) p[data-sd-prose-drop="1"]::first-letter,
+html body.sd-prose-layout.sd-prose-drop-cap #chat .mes:not([is_user="true"]) .mes_text[data-sd-prose-mixed="1"] > .sd-prose-run[data-sd-prose-run="1"] p[data-sd-prose-drop="1"]::first-letter {
   float: left;
   font-size: calc(((var(--sd-prose-drop-lines) - 1) * var(--sd-prose-line-height) + 1) * 1em) !important;
   line-height: 1 !important;

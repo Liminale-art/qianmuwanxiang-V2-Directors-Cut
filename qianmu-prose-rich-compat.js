@@ -134,6 +134,74 @@ export function prepareRichProseRuns(messages, clearExpanded) {
   }
 }
 
+// Drop cap: CSS ::first-letter only looks at a paragraph's first line, so it
+// silently misses when that line is empty (a wrapper tag such as <content>
+// followed by line breaks) or when the first <p> holds no text at all. Pick
+// the first paragraph that really has text, and mark the breaks (plus the
+// split-break spacers after them) that precede its first character so CSS
+// can fold them away. Nothing is moved or rewritten.
+const DROP_IGNORE = new Set(['style', 'script', 'template', 'noscript', 'br']);
+// Not body paragraphs: headings, quotes, lists and the like are passed over.
+const DROP_PASS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'blockquote', 'ul', 'ol', 'table', 'pre', 'details', 'figure', 'img', 'svg', 'iframe']);
+
+function isProseSpacer(node) {
+  return node.dataset?.sdProseGap === '1' || node.dataset?.sdProseIndent === '1';
+}
+
+function leadingBreaks(paragraph) {
+  const lead = [];
+  const visit = (node) => {
+    for (const child of Array.from(node.childNodes || [])) {
+      if (child.nodeType === 3) { if (child.textContent?.trim()) return true; continue; }
+      if (child.nodeType !== 1) continue;
+      const tag = tagName(child);
+      if (tag === 'br' || isProseSpacer(child)) { lead.push(child); continue; }
+      if (DROP_IGNORE.has(tag)) continue;
+      if (visit(child)) return true;
+    }
+    return false;
+  };
+  return visit(paragraph) ? lead : null;
+}
+
+// Returns {p, lead}, 'stop' when visible text comes before any paragraph, or null.
+function findDropCap(node) {
+  for (const child of Array.from(node.childNodes || [])) {
+    if (child.nodeType === 3) { if (child.textContent?.trim()) return 'stop'; continue; }
+    if (child.nodeType !== 1) continue;
+    const tag = tagName(child);
+    if (DROP_IGNORE.has(tag) || DROP_PASS.has(tag) || isProseSpacer(child)) continue;
+    if (tag === 'p') {
+      const lead = leadingBreaks(child);
+      if (lead) return { p: child, lead };
+      continue;
+    }
+    const hit = findDropCap(child);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// targets: the message's prose roots/runs in order, or null to clear.
+export function syncDropCap(message, targets) {
+  let hit = null;
+  for (const target of targets || []) {
+    const found = findDropCap(target);
+    if (found === 'stop') break;
+    if (found) { hit = found; break; }
+  }
+  const keep = new Set(hit ? [hit.p, ...hit.lead] : []);
+  message.querySelectorAll?.('[data-sd-prose-drop="1"], [data-sd-prose-lead="1"]').forEach((element) => {
+    if (keep.has(element)) return;
+    delete element.dataset.sdProseDrop;
+    delete element.dataset.sdProseLead;
+  });
+  if (!hit) return null;
+  if (hit.p.dataset.sdProseDrop !== '1') hit.p.dataset.sdProseDrop = '1';
+  for (const node of hit.lead) if (node.dataset.sdProseLead !== '1') node.dataset.sdProseLead = '1';
+  return hit.p;
+}
+
 export function clearProseBreakMarks(root) {
   root.querySelectorAll?.('[data-sd-prose-gap="1"]').forEach((element) => element.remove());
   root.querySelectorAll?.('[data-sd-prose-indent="1"]').forEach((element) => element.remove());
@@ -148,7 +216,7 @@ export function changedProseRoots(mutations, layout) {
       && (node.dataset?.sdProseGap === '1' || node.dataset?.sdProseIndent === '1'))) continue;
     const owner = mutation.target?.closest?.('.mes_text');
     if (owner) {
-      if (mutation.target === owner || layout.splitBreaks || layout.contentWidth > 80
+      if (mutation.target === owner || layout.splitBreaks || layout.dropCap || layout.contentWidth > 80
         || added.some(isRichBoundary) || removed.some(isRichBoundary)) roots.add(owner);
       continue;
     }
