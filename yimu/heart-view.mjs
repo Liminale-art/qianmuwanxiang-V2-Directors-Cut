@@ -1,5 +1,6 @@
-// 心迹与观察日记：全屏的独立页面。三套主题各是一份完整的页面，放在 iframe 里，
+// 心迹与观察日记：全屏的独立页面。每套主题各是一份完整的页面，放在 iframe 里，
 // 所以不受千幕、忆幕本体主题的影响；左上角退出，右上角换主题，选过的主题记在本机。
+// 记着的主题已经不在了（比如被撤掉的那套），就用排在第一的默认主题。
 // 这里只负责开合、换主题与把数据交给页面；页面长什么样全在 yimu/heart/ 的主题文件里。
 import { HEART_THEMES } from './heart-themes.mjs';
 import { gradeOf, SURE_WORDS } from './heart-contract.mjs';
@@ -14,7 +15,7 @@ const dayOf = item => item.date || realDay(item.at);
 /** 页面要的数据。每一项都带记下的时刻（at，系统时间），页面按它做日期筛选。
  *  impressions：在够多个不同日子里看见过、已成印象的（最近有动静的在前）；
  *  loose：还在留意的——没看过的痕迹，以及日子还不够的印象（新的在前）；
- *  thoughts：心迹（新的在前）；events：关系年表（按剧情先后）。 */
+ *  thoughts：心迹（新的在前）；events：关系年表（按楼层倒着排，最新的在前）。 */
 export function heartData(state = {}, floors = null, { fillPer = FILL_BATCH_FLOORS } = {}) {
     const document = state.document || {}, heart = document.heart || {};
     const observations = Array.isArray(document.observations) ? document.observations : [];
@@ -36,7 +37,8 @@ export function heartData(state = {}, floors = null, { fillPer = FILL_BATCH_FLOO
             days: item.days.map(day => [day.day, day.text]), stamps: item.days.map(day => day.at), ...(item.was ? { was: item.was } : {}), at: item.updatedAt })),
         loose,
         thoughts: [...(heart.thoughts || [])].reverse().map(item => ({ id: item.id, group: item.group, about: THOUGHT_LABELS[item.group](item.about), who: item.about, say: item.text, when: realDay(item.at), floor: item.floor, at: item.at })),
-        events: (heart.events || []).map(item => ({ id: item.id, title: item.title, text: item.text, date: item.date || '', when: realDay(item.at), floor: item.floor, at: item.at })),
+        // 存的时候按楼层从早到晚排好（同层按记下的先后），这里整体倒过来。
+        events: [...(heart.events || [])].reverse().map(item => ({ id: item.id, title: item.title, text: item.text, date: item.date || '', when: realDay(item.at), floor: item.floor, at: item.at })),
     };
 }
 const THOUGHT_LABELS = { you: name => `对${name}`, self: () => '对自己', others: name => `对${name}`, books: name => `读${/[《》]/.test(name) ? name : `《${name}》`}` };

@@ -416,6 +416,21 @@
 .ym-entry-mark.ym-mark-cool { color: var(--ym-accent); }
 .ym-entry-mark.ym-mark-fading { color: var(--ym-muted); }
 .ym-entry-mark.ym-mark-sunken { color: var(--ym-muted); border-style: dashed; opacity: .6; }
+.ym-entry-mark.ym-mark-excluded { color: var(--ym-danger, #b4585e); opacity: .9; }
+/* 更多菜单横向展开时占掉标题那一格：标题与菜单二选一。 */
+.ym-memory.ym-menu-open .ym-memory-head .ym-entry-title { display: none; }
+.ym-memory.ym-menu-open .ym-memory-head .ym-entry-actions { flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+.ym-memory.ym-menu-open .ym-memory-head .ym-more-actions { flex: 1 1 auto; justify-content: flex-end; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+/* 钉子：斜 45 度＝没钉，立起来＝钉住（强调色）。 */
+.ym-memory-head .ym-pin .ym-icon { transform: rotate(45deg); transition: transform .22s cubic-bezier(.34, 1.56, .64, 1); }
+.ym-memory-head .ym-pin[data-ym-pinned="true"] { color: var(--ym-accent); }
+.ym-memory-head .ym-pin[data-ym-pinned="true"] .ym-icon { transform: none; }
+/* 正文变了：切片里第一排的提示条，尾部一个确认按钮。 */
+.ym-source-note { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; padding: 4px 4px 4px 10px; border-radius: var(--ym-control-radius, 8px);
+    background: color-mix(in srgb, var(--ym-warning) 12%, transparent); color: color-mix(in srgb, var(--ym-warning) 70%, var(--ym-ink)); font-size: var(--ym-type-caption); }
+.ym-source-note > span { min-width: 0; overflow-wrap: anywhere; }
+.ym-source-note > .ym-icon-button { flex: 0 0 26px; width: 26px; height: 26px; min-height: 26px; padding: 0; border: 0; background: transparent; color: inherit; }
+@media (prefers-reduced-motion: reduce) { .ym-memory-head .ym-pin .ym-icon { transition: none; } }
 .ym-entry-title.ym-custom-name, .ym-entry-title .ym-custom-name { color: var(--ym-accent); }
 .ym-stage-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ym-stage-actions > .ym-button { width: 100%; min-width: 0; padding-inline: 6px; }

@@ -11,7 +11,7 @@
    千幕是「很多道幕」，忆幕是其中记事的那一道。幕不是墙——它挡着，也随时会被拉开。
    观察日记 = 多重曝光：同一件事每看到一次，就在同一张底片上叠一层；叠得越多，字越清楚。
    心迹 = 幕间：平时合着，滚到那里才拉开一道缝，缝里是 TA 没说出口的话，缝上有一条跳着的线。
-   年表 = 一条印样：一格一格按先后排着，红笔圈出这一段日子里新添的。 */
+   年表 = 一条印样：一格一格倒着排（最新的在上，编号仍从最早那格数起），红笔圈出这一段日子里新添的。 */
 :root { --black: #0b0a09; --cloth: #16130f; --fold: #211c16; --bone: #efe6d6; --dim: #7d7466; --red: #d8402f;
   --ymd-ink: var(--bone); --ymd-mute: var(--dim); --ymd-accent: var(--red); --ymd-paper: var(--cloth); --ymd-line: var(--fold);
   --serif: "KingHwaOldSong", "Songti SC", "Noto Serif SC", "Source Han Serif SC", "STSong", serif; --label: "Sarasa Gothic SC", system-ui, -apple-system, sans-serif; }
@@ -82,7 +82,7 @@ h2 + .lead { padding: 0 22px 34px; margin: 0; font-size: 12px; color: var(--dim)
 @keyframes beat { from { stroke-dashoffset: 630; } to { stroke-dashoffset: 0; } }
 /* ---- 年表：印样 ---- */
 .sheet { padding: 0 22px; counter-reset: cell; }
-.cell { position: relative; display: grid; grid-template-columns: 54px 1fr; gap: 0 16px; padding: 22px 0 24px; border-top: 1px solid var(--fold); counter-increment: cell; }
+.cell { position: relative; display: grid; grid-template-columns: 54px 1fr; gap: 0 16px; padding: 22px 0 24px; border-top: 1px solid var(--fold); counter-increment: cell -1; }
 .cell::before { content: counter(cell, decimal-leading-zero); grid-row: 1 / span 3; font: italic 30px/1 Georgia, serif; color: transparent; -webkit-text-stroke: 1px var(--dim); }
 .cell .on { font-size: 11px; letter-spacing: .24em; color: var(--dim); font-family: var(--label); }
 .cell h3 { margin: 6px 0 6px; font-weight: normal; font-size: 22px; letter-spacing: .06em; }
@@ -101,9 +101,9 @@ body { padding-top: 42px; }
 /*@@HEART_SHARED_CSS@@*/
 /* 删除单条：暗底上的一点灰，待确认时转红。 */
 .ym-rm { font-family: var(--label); letter-spacing: .2em; }
-.plate .ym-rm { top: 6px; right: 14px; }
-.act .ym-rm { top: 10px; right: 10px; }
-.cell .ym-rm { top: 8px; }
+.plate :is(.ym-acts, .ym-rm) { top: 6px; right: 14px; }
+.act :is(.ym-acts, .ym-rm) { top: 10px; right: 10px; }
+.cell :is(.ym-acts, .ym-rm) { top: 8px; }
 </style>
 </head>
 <body>
@@ -134,7 +134,7 @@ body { padding-top: 42px; }
 
   <section id="chron">
     <h2>年 表</h2>
-    <p class="lead sans">一格一格按先后排着。红圈里的，是这段日子新添的。</p>
+    <p class="lead sans">一格一格，最新的在上。红圈里的，是这段日子新添的。</p>
     <div class="sheet" id="sheet"></div>
     <p class="fin">幕 落</p>
   </section>
@@ -193,6 +193,7 @@ window.yimuPaint = D => {
   if (!D.thoughts.length) stage.innerHTML = '<p class="empty">这段日子，幕还没有拉开过。</p>';
   acts = [...document.querySelectorAll('.act')];
 
+  sheet.style.counterReset = `cell ${D.events.length + 1}`; // 倒着排：最上面那格编号最大
   sheet.innerHTML = D.events.length ? D.events.map(item => `<article class="cell${item.now ? ' now' : ''}">${rm('event', item.id)}<span class="on">${item.date || item.when}</span><h3>${item.title}</h3><p>${item.text}</p></article>`).join('')
     : '<p class="empty">还没有值得标一个日子的事。</p>';
   pull();

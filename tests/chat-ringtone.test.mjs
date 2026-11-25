@@ -659,8 +659,8 @@ test('玻璃 style: glass pill, fluorescent bell icon with glow behind it, scale
   assert.ok(/html\[data-qm-toast="iris"\]\[data-qm-toast-mode="dark"\] body #toast-container > div \{[^}]*--lq-tint:/.test(iris), '夜间单独一套玻璃底色与高光');
   assert.ok(iris.includes("mask: url(\"data:image/svg+xml") && iris.includes('a7 7 0'), '状态图标为铃铛 SVG');
   assert.ok(/::before \{[^}]*width: 22px[^}]*height: 22px/.test(iris), '标准铃铛尺寸增大到 22px');
-  assert.ok(iris.includes('--iris-glow: color-mix(in srgb, var(--qm-toast-status) 90%, white)') && !iris.includes('#9effe6'), '铃铛色只掺少量白提亮，不再掺薄荷发灰');
-  assert.ok(/::before \{[^}]*filter: drop-shadow\(0 0 4px color-mix\(in srgb, var\(--iris-glow\)/.test(iris), '铃铛自带一点状态色微光（状态色只在铃铛上）');
+  assert.ok(iris.includes('--iris-glow: var(--iris-neon)') && /\.toast-success \{ --iris-neon: hsl\(/.test(iris) && /\.toast-error \{ --iris-neon: hsl\(/.test(iris) && !iris.split(/\r?\n/).some(line => line.includes('data-qm-toast-mode="dark"') && line.includes('--iris-neon')), '铃铛是高亮荧光色，日夜同一套，不随日间压暗');
+  assert.ok(/::before \{[^}]*filter: drop-shadow\(0 0 2px var\(--iris-glow\)\) drop-shadow\(0 0 7px color-mix\(in srgb, var\(--iris-glow\)/.test(iris), '铃铛自带荧光（状态色只在铃铛上）');
   assert.ok(/::after \{[^}]*animation: qm-toast-bell-glow/.test(iris) && css.includes('@keyframes qm-toast-bell-glow'), '铃铛背后柔光');
   assert.ok(iris.includes('animation: qm-toast-bell') && /@keyframes qm-toast-bell \{ 0% \{[^}]*scale\(\.5\)[^}]*\}[^@]*scale\(1\.22\)[^@]*rotate\(-14deg\)/.test(css), '放大→晃一晃→缩回');
   assert.ok(!css.includes('qm-toast-iris') && !css.includes('--qm-toast-iris'), '旧流动虹彩已移除');

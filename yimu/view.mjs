@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
+import { autoProgress, manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -41,7 +41,7 @@ const SETTINGS = [
     ['chronicle', '关系年表', 'checkbox'],
     ['thoughts', '心迹', 'checkbox'],
     ['thoughtChars', '每则心迹字数上限', 'number', 20],
-    ['thoughtCooldown', '心迹间隔层数', 'number', 1],
+    ['thoughtCooldown', '心迹与存照间隔层数', 'number', 1],
     ['thoughtInject', '心迹随记忆带入', 'checkbox'],
     ['companionShareCustom', '允许伴读使用自定义切片', 'checkbox'],
 ];
@@ -187,7 +187,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     const backButton = iconButton('返回', 'back', () => navigate(pageParents[currentPage] || 'overview'), 'ym-back ym-small');
     backButton.hidden = true;
     const closeButton = iconButton('关闭忆幕', 'close', () => close(), 'ym-close');
-    // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带三套主题，不跟随忆幕的主题）。
+    // 心迹与观察日记的入口：面板右上角、关闭按钮前的一支羽毛笔。点开就是全屏的独立页面（自带两套主题，不跟随忆幕的主题）。
     const heart = mountHeartView({ document, getFloors: floors, getState: () => state, onAction: (type, payload) => dispatch(type, payload), onNotice });
     const heartEntry = iconButton('心迹与心间存照', 'loveletter', () => heart.open(), 'ym-heart-entry');
     const headerActions = el('div', 'ym-actions ym-header-actions');
@@ -374,7 +374,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
 
     const settings = el('section', 'ym-settings');
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
-    const settingGroups = new Map();
+    const settingGroups = new Map(), triggerNotes = new Map();
     for (const [name, title, keys] of [
         ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
@@ -419,7 +419,9 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         settingGroups.get(key).append(row);
         // 这一项的作用一句话写在下面（用户要求）。
         if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内不再重复'));
-        if (key === 'diaryAuto') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', `每次总结后合订；待凝定的印象满 ${DIARY_TRACE_TRIGGER} 条也会合订`));
+        if (key === 'diaryAuto') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', `每次总结后合订；还没归进印象的痕迹满 ${DIARY_TRACE_TRIGGER} 条也会合订`));
+        // 自动总结眼下攒到了多少：只算还没总结的聊天正文（不含预设、角色卡、世界书），与触发判断同一口径。
+        if (key === 'trigger') { const note = el('p', 'ym-muted ym-setting-note ym-trigger-progress', ''); settingGroups.get(key).append(note); triggerNotes.set(key, note); }
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
     async function saveChangedSettings() {
@@ -870,6 +872,12 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         return currentSettings()[key] ?? DEFAULTS[key] ?? '';
     }
     function updateSettings() {
+        const progress = autoProgress(state.document, state.snapshot?.messages);
+        for (const [key, note] of triggerNotes) {
+            const text = progress ? `当前未总结正文约 ${progress.tokens.toLocaleString('en-US')} token` : '';
+            if (note.textContent !== text) note.textContent = text;
+            note.hidden = !text;
+        }
         for (const [key, control] of controls) {
             const value = settingValue(key);
             if (control.type === 'select') {
@@ -926,7 +934,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     function closeMore() {
         if (!openMenuId) return;
         const card = cards.get(openMenuId)?.node;
-        card?.querySelector('.ym-fixed-actions')?.removeAttribute('hidden');
+        if (card) card.className = String(card.className).replace(/\s*\bym-menu-open\b/g, '');
         card?.querySelector('.ym-more-actions')?.setAttribute('hidden', '');
         card?.querySelector('[data-ym-more]')?.setAttribute('aria-expanded', 'false');
         openMenuId = null;
@@ -970,28 +978,19 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     }
     function entryHeading(entry) {
         const heading = el('h3', `ym-entry-title${entry.kind === 'manual' ? ' ym-custom-name' : ''}`);
-        const range = entry.source?.start !== undefined ? `楼层${shownFloor(entry.source.start)}-${shownFloor(entry.source.end)}`
-            : entry.kind === 'stage' ? localSourceLabel(entry).replace('阶段摘要 · 第 ', '楼层').replace(' 层', '') : '';
+        const range = entry.source?.start !== undefined ? `# ${shownFloor(entry.source.start)}-${shownFloor(entry.source.end)}`
+            : entry.kind === 'stage' ? localSourceLabel(entry).replace('阶段摘要 · 第 ', '# ').replace(' 层', '') : '';
         if (range) heading.append(el('small', 'ym-entry-range', range));
         const title = entry.kind === 'excerpt' ? '回查补充' : memoryTitle(entry);
         heading.append(el('span', 'ym-entry-name', title));
+        if (entry.status === 'excluded') heading.append(el('small', 'ym-entry-mark ym-mark-excluded', '屏蔽'));
         const mark = memoryMark(entry);
         if (mark) { const tag = el('small', `ym-entry-mark ym-mark-${mark.id}`, mark.text); heading.append(tag); }
         heading.title = `${sourceLabel(entry)}${title ? ` · ${title}` : ''}${mark ? ` · ${mark.text}` : ''}`;
         return heading;
     }
-    // 「正文发生变化」只在第一次展开那条切片时出现；之后靠卡片左侧的色条提示。按条目与修订记在本机。
-    const SEEN_CHANGES_KEY = 'yimu:seen-source-changes:v1';
-    const seenChanges = (() => { try { return new Set(JSON.parse(globalThis.localStorage?.getItem(SEEN_CHANGES_KEY) || '[]')); } catch { return new Set(); } })();
-    const changeKey = entry => `${entry.id}:${entry.revision}`;
-    function markChangeSeen(entry) {
-        const key = changeKey(entry);
-        if (seenChanges.has(key)) return;
-        seenChanges.add(key);
-        try { globalThis.localStorage?.setItem(SEEN_CHANGES_KEY, JSON.stringify([...seenChanges].slice(-500))); } catch { /* 本机存不了就只在这次打开里记着 */ }
-    }
     function renderCard(entry, existing) {
-        const signature = `${JSON.stringify(entry)}|${memoryMark(entry)?.id || ''}|${seenChanges.has(changeKey(entry)) ? 1 : 0}`;
+        const signature = `${JSON.stringify(entry)}|${memoryMark(entry)?.id || ''}`;
         if (existing?.signature === signature) return existing;
         const card = existing?.node || el('details', 'ym-card ym-memory');
         card.className = `ym-card ym-memory${entry.kind === 'stage' ? ' ym-stage' : ''}${entry.status === 'excluded' ? ' ym-excluded' : ''}${entry.status === 'invalid' ? ' ym-source-stale' : ''}`;
@@ -1005,19 +1004,21 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         const top = el('summary', 'ym-memory-head');
         top.append(entryHeading(entry));
         if (entry.kind === 'manual' && entry.placementVerified === false) content.append(el('p', 'ym-inline-warning', '叙事位置已变化，请重新定位'));
-        if (entry.status === 'excluded') { content.append(el('p', 'ym-muted', '已屏蔽注入')); top.title = '已屏蔽注入'; }
+        if (entry.status === 'excluded') top.title = '已屏蔽注入';
+        // 正文变了：切片里第一排一条提示，带一个确认按钮。确认＝这条切片照旧可用，换上现在的原文指纹，回到正常、不再高亮。
+        if (entry.status === 'invalid' && entry.kind === 'summary' && entry.source && !entry.origin) {
+            const note = el('div', 'ym-source-note');
+            const confirm = iconButton('确认切片仍适用', 'check', () => entryAction(entry, 'acceptSource', {}, confirm));
+            note.append(el('span', '', '正文发生变化，请确认切片'), confirm);
+            content.append(note);
+        }
         if (entry.scenes?.length) { const scenes = el('div', 'ym-scenes'); renderSceneLabels(scenes, entry.scenes, { document }); content.append(scenes); }
         card.insertBefore(content, card.children[0] || null); card.insertBefore(top, content);
         // A stage becomes invalid when its parent slices or their source move;
         // that is dependency state, not a change to the stage text itself.
         // Keep the status border for quiet review, but do not repeat a source
         // warning inside the stage card.
-        if (entry.status === 'invalid' && entry.kind !== 'stage' && !(entry.kind === 'excerpt' && !memoryText(entry).trim()) && !seenChanges.has(changeKey(entry))) {
-            content.append(el('p', 'ym-inline-warning', '正文发生变化'));
-            // 第一次展开时看到它；收起之后就记为看过，下次不再出现。
-            const seen = () => { if (!card.open) { markChangeSeen(entry); card.removeEventListener('toggle', seen); } };
-            card.addEventListener('toggle', seen);
-        }
+        if (entry.status === 'invalid' && entry.kind === 'excerpt' && memoryText(entry).trim()) content.append(el('p', 'ym-inline-warning', '正文发生变化'));
         appendMemoryText(content, entry);
         const actions = el('div', 'ym-actions ym-entry-actions'), fixed = el('div', 'ym-fixed-actions');
         actions.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
@@ -1034,7 +1035,6 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         const edit = iconButton('编辑', 'edit', () => startEdit(entry, card));
         edit.setAttribute('aria-label', `编辑${sourceLabel(entry)}`);
         edit.disabled = entry.kind === 'excerpt' && !memoryText(entry).trim();
-        fixed.append(edit);
         if (entry.source && entry.kind !== 'excerpt' && !entry.origin) {
             const running = state.busy && state.activeEntryId === entry.id;
             const redo = iconButton(running ? '停止总结' : '重新总结', running ? 'stop' : 'refresh', () => {
@@ -1048,12 +1048,13 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
             fixed.append(redo);
         }
         const remove = iconButton('删除', 'trash', () => entryAction(entry, 'delete', {}, remove));
-        remove.setAttribute('aria-label', `删除${sourceLabel(entry)}`); fixed.append(remove);
+        remove.setAttribute('aria-label', `删除${sourceLabel(entry)}`);
         const moreActions = el('div', 'ym-more-actions');
         moreActions.hidden = true;
         const more = iconButton(`更多${sourceLabel(entry)}`, 'more', () => {
             const wasOpen = openMenuId === entry.id; closeMore();
-            if (!wasOpen) { openMenuId = entry.id; fixed.hidden = true; moreActions.hidden = false; more.setAttribute('aria-expanded', 'true'); }
+            // 菜单横向展开时占掉标题的位置：标题与菜单二选一（窄屏一行放不下两样）。
+            if (!wasOpen) { openMenuId = entry.id; card.className = `${card.className} ym-menu-open`; moreActions.hidden = false; more.setAttribute('aria-expanded', 'true'); }
         }); more.dataset.ymMore = ''; more.setAttribute('aria-expanded', 'false');
         const insert = iconButton('插入自定义切片', 'plus', () => openManual(entry.id));
         const use = iconButton(entry.status === 'excluded' ? '取消注入屏蔽' : '将此切片注入屏蔽', entry.status === 'excluded' ? 'eye-off' : 'eye', () => entryAction(entry, entry.status === 'excluded' ? 'restore' : 'exclude', {}, use));
@@ -1066,11 +1067,15 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
             const order = orderedEntries(state.document.entries, state.document.entryOrder).filter(item => item.kind !== 'excerpt');
             const index = order.findIndex(item => item.id === entry.id); if (index > 0) void moveEntry(entry.id, order[index - 1].id);
         });
-        moreActions.append(insert, use);
-        // 钉住：永不沉底、固定在上方；不提高带入优先级。已屏蔽或已删除的不能钉住。
+        moreActions.append(edit, insert, use);
+        // 钉住：永不沉底、固定在上方；不提高带入优先级。已屏蔽或已删除的不能钉住。钉子立起＝钉住，斜 45 度＝没钉。
         if (entry.kind !== 'excerpt' && !['excluded', 'deleted'].includes(entry.status)) {
-            const pin = iconButton(entry.pinned ? '取消钉住' : '钉住这条记忆', 'save', () => entryAction(entry, entry.pinned ? 'unpin' : 'pin', {}, pin));
-            if (entry.pinned) pin.dataset.ymPinned = 'true';
+            const pinning = !entry.pinned;
+            const pin = iconButton(entry.pinned ? '取消钉住' : '钉住这条记忆', 'pin', async () => {
+                const done = await entryAction(entry, pinning ? 'pin' : 'unpin', {}, pin);
+                if (done !== false) onNotice(pinning ? '已钉住，这条记忆常驻为活跃' : '已取消钉住', 'success');
+            });
+            pin.className += ' ym-pin'; if (entry.pinned) pin.dataset.ymPinned = 'true';
             moreActions.append(pin);
         }
         if (entry.kind === 'manual') moreActions.append(up, down);
@@ -1080,6 +1085,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         if (entry.status === 'invalid' && entry.edited) {
             const keep = iconButton('保留为自定义切片', 'book', () => entryAction(entry, 'keepManual', {}, keep)); moreActions.append(keep);
         }
+        moreActions.append(remove);
         actions.append(fixed, moreActions, more); top.append(actions);
         if (editing) {
             card.open = true;

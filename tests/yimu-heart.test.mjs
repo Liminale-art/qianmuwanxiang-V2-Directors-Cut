@@ -6,10 +6,10 @@ import { mountHeartView, heartData } from '../yimu/heart-view.mjs';
 import { renderHeartThemes, HEART_THEME_SOURCES } from '../scripts/generate-yimu-heart.mjs';
 import { readFile } from 'node:fs/promises';
 
-test('the bundled themes are exactly what the theme sources say; the default is 燕尾蝶', async () => {
+test('the bundled themes are exactly what the theme sources say; the default is 素笺', async () => {
     assert.equal(await readFile(new URL('../yimu/heart-themes.mjs', import.meta.url), 'utf8'), await renderHeartThemes(), '改了 yimu/heart/ 要重新运行 scripts/generate-yimu-heart.mjs');
-    assert.deepEqual(HEART_THEMES.map(theme => [theme.id, theme.name]), [['yanweidie', '燕尾蝶'], ['xianying', '显影'], ['sujian', '素笺']]);
-    assert.equal(HEART_THEME_SOURCES.length, 3);
+    assert.deepEqual(HEART_THEMES.map(theme => [theme.id, theme.name]), [['sujian', '素笺'], ['xianying', '显影']]);
+    assert.equal(HEART_THEME_SOURCES.length, 2);
     for (const theme of HEART_THEMES) {
         assert.match(theme.html, /id="ym-exit"[^>]*aria-label="退出"/, `${theme.name}：左上角退出`);
         assert.match(theme.html, /id="ym-theme"[^>]*aria-label="切换主题"/, `${theme.name}：右上角切换主题`);
@@ -30,6 +30,8 @@ test('the bundled themes are exactly what the theme sources say; the default is 
         assert.equal(theme.html.split('${rm(').length, 4, `${theme.name}：别处没有删除入口`);
         assert.match(theme.html, /parent\.postMessage\(\{ yimuHeart: 'remove', kind: button\.dataset\.rmKind, id: button\.dataset\.rmId \}, '\*'\)/);
         assert.match(theme.html, /\.ym-rm \{ all: unset; position: absolute;/);
+        // 笔和叉由同一个小框（.ym-acts）摆位置：主题写位置时连小框一起写。
+        assert.match(theme.html, /:is\(\.ym-acts, \.ym-rm\) \{ top: /, `${theme.name}：位置写给小框`);
     }
 });
 
@@ -43,7 +45,7 @@ test('the page gets what is still being noticed, newest first, each with the mom
     assert.deepEqual(heartData({}).loose, []);
 });
 
-test('impressions show once seen on enough different days; fewer days stay under "still noticing"; notes are newest first and the chronicle is in story order', () => {
+test('impressions show once seen on enough different days; fewer days stay under "still noticing"; notes and the chronicle are newest first', () => {
     const day = n => ({ day: `第${n}天`, text: `第${n}天看见的`, at: n * 1000 });
     const data = heartData({ snapshot: { name: '阿澈', userName: '小满' }, document: { heart: { eventFloor: 0, thoughtFloor: 0,
         impressions: [{ id: 'i1', about: '小满', text: '她离不开辣。', days: [1, 2, 3, 4, 5, 6].map(day), was: '她好像爱吃辣。', at: 1, updatedAt: 6000 },
@@ -54,7 +56,7 @@ test('impressions show once seen on enough different days; fewer days stay under
     assert.deepEqual(data.impressions[1].days[0], ['第1天', '第1天看见的']);
     assert.deepEqual(data.loose.map(item => [item.about, item.text, item.day]), [['店主', '他好像记得熟客。', '第2天']]);
     assert.deepEqual(data.thoughts.map(item => [item.id, item.about, item.when, item.say]), [['t2', '读《雪国》', '11月9日', '乙'], ['t1', '对小满', '11月2日', '甲']]);
-    assert.deepEqual(data.events.map(item => [item.title, item.date, item.floor]), [['相遇', '三月初四', 2], ['约定', '', 40]]);
+    assert.deepEqual(data.events.map(item => [item.title, item.date, item.floor]), [['约定', '', 40], ['相遇', '三月初四', 2]], '年表按楼层倒着排，最新的在上');
 });
 
 function fakeDocument() {
@@ -65,29 +67,31 @@ function fakeDocument() {
     return { body, createElement: make, querySelector: () => null, defaultView: { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) }, listeners };
 }
 
-test('opening goes full screen in its own frame; the top-right button cycles the three themes and the choice is remembered; top-left exits', () => {
+test('opening goes full screen in its own frame; the top-right button cycles the themes and the choice is remembered; top-left exits', () => {
     const document = fakeDocument(), store = new Map();
     const storage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, value) };
     const view = mountHeartView({ document, storage, getState: () => ({ snapshot: { name: '阿澈' }, document: { observations: [] } }) });
-    assert.equal(view.opened, false); assert.equal(view.theme, 'yanweidie');
+    assert.equal(view.opened, false); assert.equal(view.theme, 'sujian');
     view.open(); view.open();
     assert.equal(document.body.children.length, 1, '只开一层');
     const layer = document.body.children[0]; assert.equal(layer.className, 'ym-heart-layer');
     let frame = layer.children[0];
-    assert.equal(frame.tagName, 'IFRAME'); assert.equal(frame.dataset.theme, 'yanweidie'); assert.equal(frame.srcdoc, HEART_THEMES[0].html);
+    assert.equal(frame.tagName, 'IFRAME'); assert.equal(frame.dataset.theme, 'sujian'); assert.equal(frame.srcdoc, HEART_THEMES[0].html);
     frame.listeners.get('load')(); assert.equal(frame.contentWindow.rendered[0].char, '阿澈', '页面加载好后把数据交给它');
     const post = (source, data) => document.listeners.get('message')({ source, data });
     post({}, { yimuHeart: 'exit' }); assert.equal(view.opened, true, '不是这一页发来的消息不理会');
     post(frame.contentWindow, { yimuHeart: 'theme' });
     frame = layer.children[0]; assert.equal(layer.children.length, 1); assert.equal(frame.dataset.theme, 'xianying'); assert.equal(store.get('yimu:heart-theme:v1'), 'xianying');
-    post(frame.contentWindow, { yimuHeart: 'theme' }); frame = layer.children[0]; assert.equal(frame.dataset.theme, 'sujian');
-    post(frame.contentWindow, { yimuHeart: 'theme' }); frame = layer.children[0]; assert.equal(frame.dataset.theme, 'yanweidie', '三套轮着换');
+    post(frame.contentWindow, { yimuHeart: 'theme' }); frame = layer.children[0]; assert.equal(frame.dataset.theme, 'sujian', '两套轮着换');
     post(frame.contentWindow, { yimuHeart: 'theme' }); frame = layer.children[0];
     post(frame.contentWindow, { yimuHeart: 'exit' });
     assert.equal(view.opened, false); assert.equal(document.body.children.length, 0); assert.equal(document.listeners.has('message'), false);
     // 下次打开用上次选的主题；本机存储不可用时用默认的。
     assert.equal(mountHeartView({ document: fakeDocument(), storage }).theme, 'xianying');
-    assert.equal(mountHeartView({ document: fakeDocument(), storage: { getItem() { throw new Error('blocked'); } } }).theme, 'yanweidie');
+    assert.equal(mountHeartView({ document: fakeDocument(), storage: { getItem() { throw new Error('blocked'); } } }).theme, 'sujian');
+    // 记着的是已经撤掉的那套主题：落到默认的素笺，照常打开。
+    const gone = mountHeartView({ document: fakeDocument(), storage: { getItem: () => 'yanweidie', setItem() {} } });
+    assert.equal(gone.theme, 'sujian'); gone.open(); assert.equal(gone.opened, true);
 });
 
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
@@ -110,7 +114,7 @@ test('a remove message from the page deletes that one item through the panel act
     view.open();
     const frame = document.body.children[0].children[0], page = frame.contentWindow;
     frame.listeners.get('load')();
-    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e1', 'e2']]);
+    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e2', 'e1']]);
     const post = (source, data) => document.listeners.get('message')({ source, data });
 
     post({}, { yimuHeart: 'remove', kind: 'event', id: 'e1' }); await flush();
@@ -120,7 +124,7 @@ test('a remove message from the page deletes that one item through the panel act
 
     post(page, { yimuHeart: 'remove', kind: 'event', id: 'e1' }); await flush();
     assert.deepEqual(calls, [['heartRemove', { kind: 'event', itemId: 'e1' }]]);
-    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e1', 'e2'], ['e2']], '状态变了之后页面收到新数据，而且只重画一次');
+    assert.deepEqual(page.rendered.map(data => data.events.map(item => item.id)), [['e2', 'e1'], ['e2']], '状态变了之后页面收到新数据，而且只重画一次');
     post(page, { yimuHeart: 'remove', kind: 'thought', id: 't1' }); post(page, { yimuHeart: 'remove', kind: 'impression', id: 'i9' }); await flush();
     assert.deepEqual(calls.slice(1).map(call => call[1]), [{ kind: 'thought', itemId: 't1' }, { kind: 'impression', itemId: 'i9' }]);
 
@@ -128,18 +132,18 @@ test('a remove message from the page deletes that one item through the panel act
     const before = page.rendered.length;
     view.update(); assert.equal(page.rendered.length, before);
     state = heartState(['e2', 'e3']); view.update();
-    assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e2', 'e3']); assert.equal(page.rendered.length, before + 1);
+    assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e3', 'e2']); assert.equal(page.rendered.length, before + 1);
 
     // 没删成（被拒绝或出错）：数据原样重交一次，让页面上那个按钮复原；出错留一行记录。
     outcome = 'refused'; post(page, { yimuHeart: 'remove', kind: 'event', id: 'e2' }); await flush();
-    assert.equal(page.rendered.length, before + 2); assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e2', 'e3']);
+    assert.equal(page.rendered.length, before + 2); assert.deepEqual(page.rendered.at(-1).events.map(item => item.id), ['e3', 'e2']);
     outcome = 'throw'; post(page, { yimuHeart: 'remove', kind: 'event', id: 'e2' }); await flush();
     assert.equal(page.rendered.length, before + 3); assert.equal(warned.length, 1); assert.match(String(warned[0][1]?.message), /合成故障/);
 
     // 换了主题是一张新页面：加载好后照常收到数据。关掉以后不再理会。
     post(page, { yimuHeart: 'theme' });
     const next = document.body.children[0].children[0]; next.listeners.get('load')();
-    assert.deepEqual(next.contentWindow.rendered.map(data => data.events.map(item => item.id)), [['e2', 'e3']]);
+    assert.deepEqual(next.contentWindow.rendered.map(data => data.events.map(item => item.id)), [['e3', 'e2']]);
     view.close(); state = heartState([]); view.update();
     assert.equal(next.contentWindow.rendered.length, 1);
 });
@@ -164,6 +168,37 @@ test('on the page one click on the small × deletes that entry straight away, wi
     assert.equal(click({ closest: () => null }).stopped, false); assert.equal(sent.length, 1, '点别处什么都不发');
     click(second);
     assert.deepEqual(sent.at(-1), [{ yimuHeart: 'remove', kind: 'event', id: 'e1' }, '*']); assert.equal(second.disabled, true);
+});
+
+test('the pen and the × sit side by side in one small box, also in sections that are hidden when the page is drawn', async () => {
+    const source = await readFile(new URL('../yimu/heart/shared.js', import.meta.url), 'utf8');
+    // 简易元素：没切到的版块是隐藏的，量出来的宽都是 0。
+    const element = (tag, className = '') => ({ tagName: tag.toUpperCase(), className, dataset: {}, attrs: {}, children: [], parentElement: null, offsetWidth: 0, style: {},
+        classList: { contains(name) { return this.owner.className.split(' ').includes(name); } },
+        setAttribute(key, value) { this.attrs[key] = String(value); },
+        append(...nodes) { for (const node of nodes) { node.parentElement?.children.splice(node.parentElement.children.indexOf(node), 1); node.parentElement = this; this.children.push(node); } },
+        before(node) { const parent = this.parentElement; node.parentElement?.children.splice(node.parentElement.children.indexOf(node), 1); node.parentElement = parent; parent.children.splice(parent.children.indexOf(this), 0, node); } });
+    const make = (tag, className) => { const node = element(tag, className); node.classList.owner = node; return node; };
+    const entries = ['impression', 'thought', 'event'].map(kind => { const item = make('article'), rm = make('button', 'ym-rm'); rm.dataset.rmKind = kind; rm.dataset.rmId = `${kind}-1`; item.append(rm); return { item, rm }; });
+    const stub = () => ({ addEventListener() {}, innerHTML: '' });
+    const fakeDocument = { getElementById: id => id === 'ym-floors' ? null : stub(), addEventListener() {}, createElement: tag => make(tag),
+        querySelectorAll: selector => selector === '.ym-rm:not(.ym-rmq)' ? entries.map(entry => entry.rm) : [] };
+    const page = {};
+    new Function('document', 'parent', 'addEventListener', 'window', source)(fakeDocument, { postMessage() {} }, () => {}, page);
+    page.yimuRender({ events: [{ id: 'event-1', at: 1 }] });
+    page.yimuRender({ events: [{ id: 'event-1', at: 1 }] });
+    for (const { item, rm } of entries) {
+        assert.equal(item.children.length, 1, '条目里只有一个小框，重画不会再套一层');
+        const box = item.children[0];
+        assert.equal(box.className, 'ym-acts');
+        assert.deepEqual(box.children.map(node => node.className), ['ym-ed', 'ym-rm'], '笔在左、叉在右，同在一个框里');
+        assert.equal(box.children[1], rm); assert.deepEqual(box.children[0].dataset, { edKind: rm.dataset.rmKind, edId: rm.dataset.rmId });
+        assert.deepEqual(box.children[0].style, {}, '笔的位置不靠量出来的宽');
+    }
+    const css = await readFile(new URL('../yimu/heart/shared.css', import.meta.url), 'utf8');
+    assert.match(css, /\.ym-acts \{ position: absolute;[^}]*display: flex;/);
+    assert.match(css, /\.ym-acts > \.ym-rm\.ym-rm \{ position: static; \}/);
+    assert.ok(!/\.ym-ed \{[^}]*position: absolute/.test(css), '笔自己不再单独定位');
 });
 
 test('the floor line under the date bar reads 本卷同叙 N 节・共织故事 M 章, and goes away when there is no total', async () => {

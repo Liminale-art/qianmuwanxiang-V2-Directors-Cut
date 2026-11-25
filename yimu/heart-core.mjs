@@ -47,14 +47,16 @@ export function diaryPrompt(settings, names, work) {
 
 /** 关系年表跟着每一批切片总结走：总结请求里本来就带着这段正文，顺带让模型直接依据正文拾出节点（用户 2026-11-21）。
  *  返回并进总结请求的两段文字（输出要求、已有年表）；年表关着、提示词停用或没有角色名时返回 null。 */
-export const CHRONICLE_PER_BATCH = 4;
+export const CHRONICLE_PER_BATCH = 2; // 用户 2026-11-25：每批 1–2 条，只留真正的节点
 export function chronicleAsk(settings, names, document) {
     const guide = settings?.chronicle === false || !String(names?.char || '').trim() ? '' : heartChroniclePrompt(settings);
     if (!guide) return null;
     return {
         // 衔接语是用户 2026-11-21 的修订稿；中间接用户可编辑的「关系年表」提示词，末尾是固定的格式。
         protocol: fill(`另外返回"events"字段：从本次正文中提取 0–${CHRONICLE_PER_BATCH} 条关系年表节点。节点覆盖各类具备里程碑意义的首次事件（如首次正式接触、首次进入新环境、确认关系等）与仪式性事件（如婚礼）；仅收录本次正文内明确发生的内容，日常相处不计入；已录入既有年表的节点不再重复输出，无符合条件的节点则返回空数组。\n${guide}\n格式：{"title":"不超过12字的短名","text":"一两句，不超过120字","floor":依据所在楼层整数}。`, names),
-        data: `已有年表：${JSON.stringify(heartOf(document).events.slice(-60).map(item => ({ title: item.title, floor: item.floor })))}`,
+        // 参照最近两段阶段总结：看得到前情，才判断得出这一段算不算关系上的节点。
+        data: [`已有年表：${JSON.stringify(heartOf(document).events.slice(-60).map(item => ({ title: item.title, floor: item.floor })))}`,
+            ...((document?.entries || []).filter(entry => entry.kind === 'stage' && entry.status === 'active').slice(-2).map(entry => `前情（阶段总结）：${JSON.stringify({ title: entry.title || '', text: entry.text })}`))].join('\n'),
     };
 }
 /** 从正文补全：只要痕迹与年表节点，不出切片。observation、chronicle 是切片总结里用的那两段输出要求，原样沿用。 */
@@ -157,6 +159,44 @@ export function takeThought(message, names, { books = [] } = {}) {
         : /[《》]/.test(raw) || books.some(title => plain(title) === key) ? 'books' : 'others';
     const about = group === 'you' ? user || '你' : group === 'self' ? '自己' : raw;
     return { item: { group, about, text }, cleaned };
+}
+
+/** 心间存照改由主模型写回复时顺带写（用户 2026-11-25：总结模型看不到预设与角色卡，写出来与正文割裂）。
+ *  与心迹同一个间隔（「心迹与存照间隔层数」）；同一层重新生成时照旧再要一次，只认最后留下的那条回复。 */
+export const IMPRESSION_TAG = '忆幕之存照';
+export const IMPRESSIONS_PER_ROUND = 2;
+export function impressionDue(document, settings, snapshot, type = '') {
+    if (settings.diary === false || snapshot?.mainApi !== 'openai' || !String(snapshot?.name || '').trim() || !heartDiaryPrompt(settings)) return null;
+    const heart = heartOf(document), last = heart.impressionFloor || 0, floor = snapshot.messages.length + (type === 'swipe' ? 0 : 1);
+    if (last && floor === last) return { floor };
+    return floor - last < (settings.thoughtCooldown || 30) ? null : { floor };
+}
+/** 给主模型的要求：用户可编辑的「心间存照」提示词，接一段固定的格式与已有印象（好让它延展或改口，而不是另起一条重复的）。
+ *  衔接语是助手写的（2026-11-25），待用户审。 */
+export function impressionRequest(settings, names, document) {
+    const base = heartDiaryPrompt(settings);
+    if (!base) return '';
+    const limit = settings.diaryChars || 60;
+    const existing = heartOf(document).impressions.slice(-40).map(item => ({ 编号: item.id, 对象: item.about, 印象: item.text }));
+    return fill(`${base}\n这一轮回复的最末，可另写 0–${IMPRESSIONS_PER_ROUND} 条{{char}}心里对人的印象，每条一段：<${IMPRESSION_TAG} 对象="写的是谁" 把握="也许、我觉得或笃定" 沿用="延展或改口已有印象时填它的编号，新印象不填">不超过 ${limit} 字</${IMPRESSION_TAG}>。只写这一轮里真有新体会的；与已有印象说的是同一件事时沿用它的编号，不另起一条；没有就整段省略。\n已有印象：${JSON.stringify(existing)}`, names);
+}
+const IMPRESSION_BLOCK = new RegExp(`<${IMPRESSION_TAG}([^>]*)>([\\s\\S]*?)(?:</${IMPRESSION_TAG}>|$)`, 'g');
+const SURE_OF_WORD = { '也许': 1, '我觉得': 2, '笃定': 3 };
+const attribute = (raw, name) => (raw.match(new RegExp(`${name}\\s*=\\s*["“']([^"”']*)["”']`))?.[1] || '').trim();
+/** 从回复里摘出存照。返回 { items, cleaned }：items 为空表示这次没写；cleaned 是去掉这些段后的正文。 */
+export function takeImpressions(message, names, document, { day = '' } = {}) {
+    const source = String(message || ''), known = new Set(heartOf(document).impressions.map(item => item.id)), items = [], used = new Set();
+    const cleaned = source.replace(IMPRESSION_BLOCK, (_, raw, body) => {
+        const text = String(body || '').trim(), about = attribute(raw, '对象').slice(0, 120) || String(names.user || '').trim();
+        const keep = attribute(raw, '沿用'), sure = SURE_OF_WORD[attribute(raw, '把握')];
+        if (text && text.length <= 400 && about && items.length < IMPRESSIONS_PER_ROUND) {
+            const id = known.has(keep) && !used.has(keep) ? keep : undefined;
+            if (id) used.add(id);
+            items.push({ ...(id ? { id } : {}), about, text, ...(sure ? { sure } : {}), direct: { day: String(day || '').slice(0, 60) } });
+        }
+        return '';
+    }).replace(/\s+$/, '');
+    return { items: items.filter(item => item.direct.day), cleaned };
 }
 
 /** 开了注入时带进请求的一小段：出场的人的印象最多三条，心迹最多一则（受「刚提过」冷却约束）。 */

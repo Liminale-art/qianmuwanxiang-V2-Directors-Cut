@@ -143,6 +143,10 @@ export function mountManageView({ document = globalThis.document, journal = null
         summary.append(status, el('span', 'ym-log-title', clock(item.at)), el('span', 'ym-log-meta', took), el('span', 'ym-log-kind', item.kind === 'stage' ? '阶段' : item.kind === 'diary' ? '日记' : '切片'));
         const detail = el('div', 'ym-log-detail');
         if (item.error) detail.append(term(item.error, 'ym-term ym-term-error'));
+        // 自动总结是怎么触发的：攒够了楼层，还是未总结正文的 token 先到了触发值。
+        if (item.trigger) detail.append(el('p', 'ym-muted ym-log-trigger', item.trigger.by === 'tokens'
+            ? `自动触发：未总结正文约 ${item.trigger.tokens} token，达到 ${item.trigger.tokensAt}（楼层 ${item.trigger.floors}／${item.trigger.floorsAt}）`
+            : `自动触发：未总结 ${item.trigger.floors} 层，达到 ${item.trigger.floorsAt} 层（正文约 ${item.trigger.tokens}／${item.trigger.tokensAt} token）`));
         const sent = cap('发送'); if (item.request) sent.append(tag(`约 ${Number.isFinite(item.requestTokens) ? item.requestTokens : '—'} token`));
         const back = cap(item.status === 'loading' ? '返回（接收中）' : '返回'); if (item.raw) back.append(tag(`约 ${Number.isFinite(item.responseTokens) ? item.responseTokens : '—'} token`));
         // 没有返回时说明是哪种情况，不笼统写「暂无」。

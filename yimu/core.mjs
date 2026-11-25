@@ -3,7 +3,7 @@ import { sourceRanges, stageDependenciesValid, hasCustomParents } from './stage-
 import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd, hasCompanionBook, COMPANION_BOOK_NOTICE } from './source-scope.mjs';
 import { companionEntries, companionBooks } from './companion-contract.mjs';
-import { orderForInjection, placementMatches, validatePlacement, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
+import { orderForInjection, placementMatches, validatePlacement, validateMemoryTitle, fitMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { validateScenes, sceneProjection, sceneDependenciesValid, validateGeneratedLength, generatedTextLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 import { filterContextText } from './context-filter.mjs';
@@ -56,6 +56,21 @@ export function autoBacklog(document, messages) {
     let count = 0;
     for (let floor = autoFrom(document); floor <= messages.length - REROLL_GUARD; floor++) if (canSummarize(messages[floor - 1]) && !coveredBySummary(document, floor)) count++;
     return count;
+}
+
+/** 自动总结的进度，与 nextBatch 的判断同一口径：
+ *  floors＝从第一层未总结的楼层起、还没被总结的楼层数（最新几层也算）；
+ *  tokens＝其中可以总结的那段（最新 3 层之前）正文的估算 token。只算聊天正文，不含预设、角色卡、世界书。 */
+export function autoProgress(document, messages) {
+    if (!document?.initialRange || !Array.isArray(messages)) return null;
+    const from = autoFrom(document), last = Math.max(0, messages.length - REROLL_GUARD);
+    let floors = 0, tokens = 0;
+    for (let floor = from; floor <= messages.length; floor++) {
+        if (!canSummarize(messages[floor - 1]) || coveredBySummary(document, floor)) continue;
+        floors++;
+        if (floor <= last) tokens += estimateTokens(messages[floor - 1].mes);
+    }
+    return { floors, tokens };
 }
 
 // Each batch is bounded by content, while the model splits it at narrative boundaries.
@@ -394,7 +409,7 @@ export function parseSummary(response, batch, hashes, settings = {}, { coalesce 
         if (slice.start !== next || !Number.isSafeInteger(slice.end) || slice.end < slice.start || slice.end > batch.end
             || typeof slice.text !== 'string' || !slice.text.trim() || slice.text.length > 100000) throw new Error('整理结果的楼层覆盖不完整，未采用');
         next = slice.end + 1;
-        return validateGeneratedLength({ kind: 'summary', title: validateMemoryTitle(slice.title) || memoryTitle({ kind: 'summary', text: slice.text }), text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
+        return validateGeneratedLength({ kind: 'summary', title: fitMemoryTitle(slice.title) || memoryTitle({ kind: 'summary', text: slice.text }), text: slice.text.trim(), scenes: validateScenes(slice.scenes, { start: slice.start, end: slice.end, allowUser: false }),
             source: { start: slice.start, end: slice.end, hashes: hashes.slice(slice.start - 1, slice.end) } }, settings);
     });
     if (next !== batch.end + 1) throw new Error('整理结果未覆盖本次范围，未采用');

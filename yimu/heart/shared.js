@@ -1,4 +1,4 @@
-// 三套主题共用的部分：把数据里的文字转义、退出与换主题、删除单条、日期筛选（日／周，前后翻，月历）。
+// 各套主题共用的部分：把数据里的文字转义、退出与换主题、删除单条、日期筛选（日／周，前后翻，月历）。
 // 主题页面只需提供 window.yimuPaint(D, raw)：D 是按所选日期筛过、已转义的数据，可以反复调用。
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const safe = value => Array.isArray(value) ? value.map(safe) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safe(v)])) : typeof value === 'string' ? esc(value) : value;
@@ -98,7 +98,7 @@ function drawFloors() {
 function repaint() { drawDate(); drawFloors(); drawTools(); clearSync(); window.yimuPaint?.(safe(picked(YM.raw)), YM.raw); decorate(); roam(); }
 
 // —— 「待凝定的印象」换位置 ——
-// 每一条淡出到看不见的那一刻换到另一处（尽量不压着别的条），再淡入。只在会飘的两套主题里（.drift／.loose）；
+// 每一条淡出到看不见的那一刻换到另一处（尽量不压着别的条），再淡入。只在会飘的主题里（.drift）；
 // 「减少动态效果」下不动，仍是一条一行往下排。
 const ROAM_DRIFT = 26, ROAM_GAP = 12;
 function roamPlace(box, node) {
@@ -119,7 +119,7 @@ function roamPlace(box, node) {
 }
 function roam() {
     if (typeof document.querySelectorAll !== 'function' || typeof matchMedia !== 'function' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    for (const box of document.querySelectorAll('.drift, .loose')) {
+    for (const box of document.querySelectorAll('.drift')) {
         const items = [...box.querySelectorAll('.ym-loose')]; if (!items.length || !box.clientWidth) continue;
         // 先按一条一行量出各条的高，再留出一倍多的空，好有地方换。
         box.removeAttribute('data-roam'); box.style.height = '';
@@ -139,25 +139,27 @@ let roamTimer = 0;
 addEventListener('resize', () => { clearTimeout(roamTimer); roamTimer = setTimeout(roam, 200); });
 
 // —— 修改、补记、补全 ——
-// 修改：每条日记、心迹、年表的小「×」旁边再放一支小笔，不用主题各自去摆。
+// 修改：每条日记、心迹、年表的小「×」左边再放一支小笔，不用主题各自去摆。
 function decorate() {
     if (document.body?.dataset?.standalone || typeof document.querySelectorAll !== 'function') return;
     // 合订：放在「待凝定的印象」这行小标题后面；有还没合订的留意、忆幕开着才出现。
     const tools = YM.raw?.tools || {};
-    for (const title of document.querySelectorAll('.drift h4, .loose h4, .strip-label')) {
+    for (const title of document.querySelectorAll('.drift h4, .strip-label')) {
         title.querySelector('.ym-bind')?.remove();
         if (!tools.ready || !(tools.pending > 0) || title.hidden) continue;
         const bind = document.createElement('button');
         bind.type = 'button'; bind.className = 'ym-bind'; bind.textContent = bindBusy ? '合订中' : '合订'; bind.disabled = bindBusy; bind.title = '把这些合订成日记';
         title.append(bind);
     }
+    // 笔和叉一起放进一个小框（.ym-acts），由小框占住条目的右上角，两个钮在框里并排。
+    // 不能按小叉量出来的宽去摆笔：没切到的版块是隐藏的，量出来是 0，笔就压在叉上。
     for (const rmButton of document.querySelectorAll('.ym-rm:not(.ym-rmq)')) {
-        if (rmButton.previousElementSibling?.classList?.contains('ym-ed')) continue;
-        const pen = document.createElement('button');
+        if (rmButton.parentElement?.classList?.contains('ym-acts')) continue;
+        const acts = document.createElement('span'), pen = document.createElement('button');
+        acts.className = 'ym-acts';
         pen.type = 'button'; pen.className = 'ym-ed'; pen.textContent = '✎'; pen.setAttribute('aria-label', '修改');
         pen.dataset.edKind = rmButton.dataset.rmKind; pen.dataset.edId = rmButton.dataset.rmId;
-        rmButton.before(pen);
-        try { const at = getComputedStyle(rmButton); pen.style.top = at.top; pen.style.right = `${(parseFloat(at.right) || 0) + rmButton.offsetWidth + 2}px`; } catch { /* keep the stylesheet position */ }
+        rmButton.before(acts); acts.append(pen, rmButton);
     }
 }
 // 补记、补全：放在日期条里「日／周」的左边。补全点开一张小纸条：选楼层范围，按钮上写着大约几次请求。

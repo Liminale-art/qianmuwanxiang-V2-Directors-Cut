@@ -303,17 +303,19 @@ export function createHost({
     // 回复结束后由 rewriteReply 从正文里真正去掉。
     let heartVeil = null;
     function stopHeartVeil() { if (heartVeil) { heartVeil.disconnect(); heartVeil = null; } }
+    // tag 可以是一个或几个（心迹与存照都放在回复最末）：从最先出现的那一段起往后全部藏起。
     function veilHeart(tag) {
         stopHeartVeil();
         const chat = document?.querySelector?.('#chat');
-        if (!chat || typeof MutationObserver !== 'function' || !tag) return false;
-        const mark = `<${tag}`;
+        const marks = (Array.isArray(tag) ? tag : [tag]).filter(Boolean).map(name => `<${name}`);
+        if (!chat || typeof MutationObserver !== 'function' || !marks.length) return false;
+        const has = text => marks.some(mark => String(text || '').includes(mark));
         const sweep = () => {
             const body = chat.querySelector('.mes.last_mes .mes_text') || [...chat.querySelectorAll('.mes .mes_text')].at(-1);
-            if (!body || !String(body.textContent || '').includes(mark)) return;
+            if (!body || !has(body.textContent)) return;
             let hide = false;
             for (const node of [...body.childNodes]) {
-                if (!hide && String(node.textContent || '').includes(mark)) hide = true;
+                if (!hide && has(node.textContent)) hide = true;
                 if (!hide) continue;
                 if (node.nodeType === 1) node.style.display = 'none';
                 else if (node.nodeType === 3 && node.textContent.trim()) { const span = document.createElement('span'); span.style.display = 'none'; node.replaceWith(span); span.append(node); }

@@ -939,7 +939,7 @@ test('trigger floor count sits right after the token trigger, carries no hover h
     // 设置页各项不再带悬停提示。
     for (const key of ['自动总结触发', '正文保留层数', '关系年表', '心间存照', '自动合订为存照', '每次最多注入切片']) assert.equal(f.get(key).closest('.ym-setting-row').title || '', '', key);
     assert.match(f.get('自动合订为存照').closest('.ym-settings-group').textContent, /心迹脉络.*每条印象字数上限/s);
-    assert.match(f.get('自动合订为存照').closest('.ym-settings-group').textContent, /每次总结后合订；待凝定的印象满 12 条也会合订/);
+    assert.match(f.get('自动合订为存照').closest('.ym-settings-group').textContent, /每次总结后合订；还没归进印象的痕迹满 12 条也会合订/);
     assert.equal(floors.value, '10');
     f.render({ document: { ...f.state.document, configRevision: 1, settings: { triggerFloors: 12 } } }); assert.equal(floors.value, '12');
     f.render({ document: { ...f.state.document, configRevision: 2, settings: { triggerFloors: 0 } } }); assert.equal(floors.value, '0');
@@ -1393,7 +1393,7 @@ test('the paired update notice is visible in settings without leaking a memory n
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     d.get('设置').click();const notice=d.document.querySelector('.ym-status');assert.equal(notice.hidden,true);
     d.document.querySelector('.ym-version-tag').click();await d.flush();
-    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.76 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
+    assert.equal(notice.hidden,false);assert.equal(notice.textContent,'忆幕前端 v0.8.77 的修订请使用忆幕安装器落盘；服务端未变更时无需单独升级服务端功能。');assert.equal(requests.length,0);assert.deepEqual(actions,[]);
     d.get('记忆').click();assert.equal(notice.hidden,true);d.get('设置').click();assert.equal(notice.hidden,false);
     view.render(state({document:{...state().document,entries:[entry({candidate:{text:'新稿'}})]},status:'两版记忆，请确认采用哪一版'}));
     assert.equal(notice.hidden,true);assert.doesNotMatch(notice.textContent,/两版/);
@@ -1513,7 +1513,7 @@ test('slice headings have short names, custom accent class and at most ten recov
     const marker=entry({id:'discarded',text:'已删除',status:'deleted',discarded:true});
     const replaced=entry({id:'internal-stage',kind:'stage',status:'deleted',replacedBy:'new-stage',deletedRevision:999,history:[{status:'active'}]});
     const f=fixture({document:{...state().document,entries:[summary,custom,...removed,marker,replaced]}});t.after(()=>f.view.destroy());
-    const first=f.document.querySelector('[data-entry-id="slice-a"]');assert.equal(first.querySelector('.ym-entry-range').textContent,'楼层0-2');assert.equal(first.querySelector('.ym-entry-name').textContent,'雨夜重逢');
+    const first=f.document.querySelector('[data-entry-id="slice-a"]');assert.equal(first.querySelector('.ym-entry-range').textContent,'# 0-2');assert.equal(first.querySelector('.ym-entry-name').textContent,'雨夜重逢');
     assert.ok(f.document.querySelector('[data-entry-id="custom"]').querySelector('.ym-custom-name'));
     const rows=f.document.querySelector('.ym-deleted-body').children;assert.equal(rows.length,10);assert.equal(rows[0].dataset.entryId,'removed11');
     assert.equal(f.document.querySelector('[data-entry-id="discarded"]'),null);assert.equal(rows[0].querySelector('.ym-undo-tag').textContent,'撤回');
@@ -1526,7 +1526,7 @@ test('standalone manifest and styles stay within Yimu and include narrow-screen 
     const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
     const css = await readFile(new URL('style.css', root), 'utf8');
     assert.equal(manifest.generate_interceptor, 'yimuGenerationInterceptor');
-    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.76'); assert.equal(pkg.version, '0.8.33');
+    assert.equal(manifest.js, `index.bundle.mjs?v=${manifest.version}`); assert.equal(manifest.css, `style.css?v=${manifest.version}`); assert.equal(manifest.version, '0.8.77'); assert.equal(pkg.version, '0.8.34');
     assert.match(css, /max-width: 480px/); assert.match(css, /100dvh/); assert.match(css, /overflow-wrap: anywhere/); assert.match(css, /prefers-reduced-motion/);
     assert.doesNotMatch(css, /(?:^|\n)(?:body|html|#chat|#send_form)\s*[{,]/);
     assert.match(css, /url\('\.\/logo\.svg'\)/);
@@ -1838,11 +1838,11 @@ test('the heart page opened from the panel deletes one item through the panel ac
     f.get('心迹与心间存照').click();
     const frame = f.all().find(node => node.tagName === 'IFRAME');
     frame.contentWindow = { rendered: [], yimuRender(data) { this.rendered.push(data.events.map(item => item.id)); } }; frame.emit('load');
-    assert.deepEqual(frame.contentWindow.rendered, [['e1', 'e2']]);
+    assert.deepEqual(frame.contentWindow.rendered, [['e2', 'e1']], '年表最新的在上');
     listeners.get('message')({ source: frame.contentWindow, data: { yimuHeart: 'remove', kind: 'event', id: 'e1' } });
     await f.flush(); await f.flush();
     assert.deepEqual(f.calls.at(-1), { type: 'heartRemove', payload: { kind: 'event', itemId: 'e1' } });
-    assert.deepEqual(frame.contentWindow.rendered, [['e1', 'e2'], ['e2']], '面板状态变了，开着的页面跟着拿到新数据');
+    assert.deepEqual(frame.contentWindow.rendered, [['e2', 'e1'], ['e2']], '面板状态变了，开着的页面跟着拿到新数据');
     f.render({ status: '别处的变化' }); assert.equal(frame.contentWindow.rendered.length, 2, '心迹的数据没变就不重画');
 });
 

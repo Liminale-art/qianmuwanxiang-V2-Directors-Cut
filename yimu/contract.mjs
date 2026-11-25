@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.76';
-export const SERVICE_VERSION = '0.8.33';
+export const FRONTEND_VERSION = '0.8.77';
+export const SERVICE_VERSION = '0.8.34';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -575,6 +575,15 @@ export function applyOperation(current, operation, {excerpt = null} = {}) {
                     revise(entry, { pinned: true }); break;
                 }
                 case 'unpin': revise(entry, { pinned: undefined }); break;
+                case 'acceptSource': {
+                    // 用户确认「正文变了也照旧用这条切片」：把来源指纹换成现在的原文，切片恢复正常。不改内容、不升条目修订号，
+                    // 所以引用它的阶段总结也不会因此失效。服务端会按现在的聊天核对这组新指纹。
+                    requireThat(entry.source && Array.isArray(entry.source.hashes) && entry.kind === 'summary' && !entry.origin, '这条记忆没有可确认的原文来源');
+                    requireThat(Array.isArray(op.hashes) && op.hashes.length === entry.source.end - entry.source.start + 1 && op.hashes.every(x => typeof x === 'string' && /^[a-f0-9]{64}$/.test(x)), '确认用的原文指纹无效');
+                    entry.source = { ...entry.source, hashes: [...op.hashes] };
+                    if (entry.status === 'invalid') entry.status = 'active';
+                    break;
+                }
                 case 'delete': revise(entry, { status: 'deleted', candidate: null, deletedRevision: doc.revision + 1 }); break;
                 case 'undoText': {
                     const previous = entry.history.slice().reverse().find(version => (version.text !== entry.text || (version.title || '') !== (entry.title || '')) && version.revision < (entry.textUndoRevision ?? Infinity));

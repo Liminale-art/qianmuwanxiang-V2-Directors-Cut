@@ -1,6 +1,6 @@
 import { estimateTokens } from './core.mjs';
 import { sourceRanges, stageSourceFromParents, hasCustomParents, recentStageEntryIds } from './stage-contract.mjs';
-import { orderedEntries, validateMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
+import { orderedEntries, validateMemoryTitle, fitMemoryTitle, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { validateScenes, validateGeneratedLength, SCENE_PROMPT } from './scene-contract.mjs';
 import { composePrompt } from './prompt-settings.mjs';
 
@@ -119,6 +119,6 @@ export function parseStage(response, parents, settings = {}, { includeCustom = t
     try { result = JSON.parse(String(response).trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/, '$1')); }
     catch { throw new Error('阶段整理结果不是有效 JSON，原记忆未改变'); }
     if (typeof result?.text !== 'string' || !result.text.trim() || result.text.length > 100000) throw new Error('阶段整理没有返回有效正文，原记忆未改变');
-    return validateGeneratedLength({ kind: 'stage', title: validateMemoryTitle(result.title) || memoryTitle({ kind: 'summary', text: result.text }), text: result.text.trim(), scenes: validateScenes(result.scenes, { allowUser: false }),
+    return validateGeneratedLength({ kind: 'stage', title: fitMemoryTitle(result.title) || memoryTitle({ kind: 'summary', text: result.text }), text: result.text.trim(), scenes: validateScenes(result.scenes, { allowUser: false }),
         source: { parents: parents.map(e => ({ id: e.id, revision: e.revision })), ranges: parents.flatMap(sourceRanges), ...(!includeCustom ? { includeCustom: false } : {}) } }, settings);
 }

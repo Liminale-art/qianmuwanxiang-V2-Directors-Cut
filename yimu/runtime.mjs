@@ -1,5 +1,5 @@
 import { SERVICE_VERSION, DEFAULTS, shownFloor, bindingKey, effectiveSettings, fingerprintMessages, sourceMatches, parseObservations } from './contract.mjs';
-import { buildPlan, inspectSources, nextBatch, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS, fillPlan, sourceRows, observationProtocol } from './core.mjs';
+import { buildPlan, inspectSources, nextBatch, autoProgress, parseSummary, summaryPrompt, planManualRange, manualBatchFloors, initialRangePreview, estimateTokens, hiddenFloorsFor, autoBacklog, BACKLOG_ASK_FLOORS, fillPlan, sourceRows, observationProtocol } from './core.mjs';
 import { nextStage, parseStage, stagePrompt, planStageRange } from './layers.mjs';
 import { stageSourceFromParents } from './stage-contract.mjs';
 import { recallCandidates } from './recall.mjs';
@@ -14,7 +14,7 @@ import { isNewerYimuVersion } from './release-version.mjs';
 import { buildRetrievalCandidates, retrievalContext } from './retrieval-contract.mjs';
 import { discoverVectorCandidates, discoverRerankCandidates } from './vector-contract.mjs';
 import { completedSlices } from './stream-slices.mjs';
-import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, impressionAsk, parseImpressions, fillPrompt, realDay, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
+import { diaryWork, diaryPrompt, parseDiary, thoughtDue, thoughtRequest, takeThought, heartInjection, chronicleAsk, parseChronicle, impressionDue, impressionRequest, takeImpressions, IMPRESSION_TAG, fillPrompt, realDay, DIARY_TRACE_TRIGGER, HEART_TAG } from './heart-core.mjs';
 
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `ym_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const equalBinding = (a, b) => !!a && !!b && bindingKey(a) === bindingKey(b);
@@ -554,20 +554,19 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     && !entry.origin && entry.source.end < batch.start && sourceMatches(entry.source, hashes) && entry.scenes?.length)
                     .sort((a, b) => b.source.end - a.source.end).slice(0, 1).map(entry => ({ id: entry.id, revision: entry.revision, scenes: entry.scenes }));
                 if (controller.signal.aborted) break;
-                // 痕迹（观察日记的原料）跟着切片总结一起要；整段重做某一条时不要。
-                let names = batch.redo ? null : { char: snapshot.name, user: snapshot.userName };
-                // 关系年表的节点也跟着这一批要：直接依据这段正文拾。
-                let chronicle = names ? chronicleAsk(settings, names, jobDocument) : null;
-                // 心间存照也在这一次里写（用户 2026-11-24）：读着正文，把刚留意到的事直接归进 {{char}} 心里的印象。
-                let impressions = names ? impressionAsk(settings, names, jobDocument) : null;
-                let prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle, impressions });
-                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { names, chronicle, impressions }); }
-                // 痕迹、存照与年表是顺带要的：连接容量放不下时先让路，不能因为它们让切片总结做不成。
-                if (!run.fitsPrompt(prompt) && impressions) { impressions = null; prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, names, chronicle }); }
-                if (!run.fitsPrompt(prompt) && names) { names = null; chronicle = null; impressions = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
+                // 心间存照改由主模型写回复时顺带写（用户 2026-11-25），切片总结不再要痕迹与印象。
+                // 关系年表的节点仍跟着这一批要：直接依据这段正文拾（整段重做某一条时不要）。
+                let chronicle = batch.redo ? null : chronicleAsk(settings, { char: snapshot.name, user: snapshot.userName }, jobDocument);
+                let prompt = summaryPrompt(snapshot.messages, batch, settings, { previousContext, chronicle });
+                if (!run.fitsPrompt(prompt) && previousContext.length) { previousContext = []; prompt = summaryPrompt(snapshot.messages, batch, settings, { chronicle }); }
+                // 年表是顺带要的：连接容量放不下时先让路，不能因为它让切片总结做不成。
+                if (!run.fitsPrompt(prompt) && chronicle) { chronicle = null; prompt = summaryPrompt(snapshot.messages, batch, settings); }
                 if (!run.fitsPrompt(prompt)) throw new Error('完整切片与总结提示词超过此连接的可用输入容量，请选择容量足够的连接');
+                // 自动总结记下是怎么触发的（攒够楼层还是正文 token 先到），日志里可以核对。只记一轮的第一批。
+                const progress0 = !force && !manualPlan && !entryId && !processed && !batch.redo ? autoProgress(jobDocument, snapshot.messages) : null;
                 batchLog = openLog({ kind: 'summary', chat: chatLabel(binding), range: { start: batch.start, end: batch.end },
-                    manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length), prompt });
+                    manual: Boolean(manualPlan), batch: manualPlan ? `${manualIndex + 1}/${manualPlan.batches.length}` : '', redo: Boolean(batch.redo || batch.replaces?.length), prompt,
+                    ...(progress0 ? { trigger: { by: settings.triggerFloors > 0 && progress0.floors >= settings.triggerFloors ? 'floors' : 'tokens', floors: progress0.floors, tokens: progress0.tokens, floorsAt: settings.triggerFloors, tokensAt: settings.trigger } } : {}) });
                 const response = await generateWithRetries(prompt, { ...run.options, signal: controller.signal, onChunk: streamChunk(binding) },
                     { binding, label: '切片总结', start: batch.start, end: batch.end, retryState });
                 if (batchLog?.id) note(() => journal.update(batchLog.id, { raw: response, responseTokens: estimateTokens(response), durationMs: Date.now() - batchLog.started }));
@@ -608,30 +607,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                         return;
                     }
                 }
-                // 痕迹单独存一笔：存不上只记进日志，切片已经入库，不受影响。同一段楼层重新总结时由新的一批替换旧的。
-                let observed = [], stored = [];
-                if (names?.char && !controller.signal.aborted && !disposed && !localStops.has(key)) {
-                    try {
-                        const dateOf = floor => slices.find(slice => slice.source.start <= floor && slice.source.end >= floor)?.scenes?.find(scene => scene?.date)?.date || '';
-                        const read = parseObservations(response, { start: batch.start, end: batch.end });
-                        observed = read.map(({ n, ...item }) => { const date = dateOf(item.floor); return date ? { ...item, date: date.slice(0, 60) } : item; });
-                        const stale = (jobDocument.observations || []).some(item => item.floor >= batch.start && item.floor <= batch.end);
-                        if (observed.length || stale) {
-                            const opId = id(), at = Date.now();
-                            const result = await change(binding, { id: opId, type: 'observe', items: observed, range: { start: batch.start, end: batch.end }, at }); jobDocument = result.document;
-                            // 存下的痕迹按模型返回时的序号排好（中间丢掉的格式不对的留空），存照里的序号才对得上。
-                            read.forEach((item, index) => { const saved = jobDocument.observations?.find(trace => trace.id === `${opId}_${index}`.slice(0, 100)); if (saved) stored[item.n - 1] = saved; });
-                        }
-                    } catch (error) { observed = []; stored = []; console.warn('[忆幕] 痕迹未存入：', error?.message || error); }
-                }
-                // 这一批直接归成的心间存照。归不进印象的痕迹仍留在「待凝定的印象」里，攒够了再合订。
-                let impressed = [];
-                if (impressions && stored.length && !controller.signal.aborted && !disposed && !localStops.has(key)) {
-                    try {
-                        impressed = parseImpressions(response, stored, heartOf(jobDocument));
-                        if (impressed.length) { const result = await change(binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions: impressed, events: [], used: [] }); jobDocument = result.document; }
-                    } catch (error) { impressed = []; console.warn('[忆幕] 心间存照未存入：', error?.message || error); }
-                }
+                const observed = []; // 痕迹不再随切片总结记（心间存照改由主模型写）；旧痕迹仍可在心迹页手动合订。
                 // 年表节点同样单独存一笔，存不上只记一句，不影响已入库的切片。这一批之前没有年表还没读过的切片时，把年表进度推到这一批末尾。
                 let chronicled = [];
                 if (chronicle && !controller.signal.aborted && !disposed && !localStops.has(key)) {
@@ -643,7 +619,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
                     } catch (error) { chronicled = []; console.warn('[忆幕] 年表节点未存入：', error?.message || error); }
                 }
                 failedBatch = null; failedSource = null;
-                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}), ...(impressed.length ? { impressions: impressed.length } : {}), ...(chronicled.length ? { events: chronicled.length } : {}) }); batchLog = null;
+                closeLog(batchLog, { status: 'success', slices: slices.map(slice => ({ start: slice.source.start, end: slice.source.end, title: slice.title || '' })), ...(observed.length ? { observations: observed.map(item => ({ about: item.about, text: item.text, floor: item.floor })) } : {}), ...(chronicled.length ? { events: chronicled.length } : {}) }); batchLog = null;
                 notice(`本次总结已存至记忆，总结范围：${shownFloor(batch.start)}–${shownFloor(batch.end)}`, 'success');
                 failures.delete(key);
                 if (manualPlan) { manualIndex++; controller.manual.done = manualIndex; emit(); }
@@ -925,6 +901,7 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
 
     // 心迹：这一轮向主模型要过一则时，回复落定后从最后一条回复里摘走那一段，正文里不留。
     // 只认最终留下的回复：同一层重新生成，新的顶掉旧的；模型这次没写也记一笔，不必每轮都问。
+    // 心间存照同样：这一轮要过时，摘走那几段，按「把握」直接存进存照（不再等三个日子）。
     let thoughtAsk = null;
     async function finishThought() {
         const ask = thoughtAsk; thoughtAsk = null;
@@ -932,11 +909,22 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         if (!ask || disposed || !isCurrent(ask.binding) || typeof host.lastReply !== 'function') return;
         const reply = host.lastReply(ask.binding);
         if (!reply || reply.floor !== ask.floor) return; // 这一轮没有留下回复（被中止、报错）：下次再问。
-        const books = (state.document?.companion?.books || []).map(book => book?.title).filter(Boolean);
-        const { item, cleaned } = takeThought(reply.text, ask.names, { books });
-        if (cleaned !== reply.text) await host.rewriteReply(ask.binding, reply.floor, cleaned);
-        await change(ask.binding, { id: id(), type: 'heartThought', floor: reply.floor, at: Date.now(), ...(item ? { item } : {}) });
+        let text = reply.text, item = null, impressions = [];
+        if (ask.thought) {
+            const books = (state.document?.companion?.books || []).map(book => book?.title).filter(Boolean);
+            ({ item, cleaned: text } = takeThought(text, ask.names, { books }));
+        }
+        if (ask.impressions) ({ items: impressions, cleaned: text } = takeImpressions(text, ask.names, state.document, { day: storyDay(state.document) }));
+        if (text !== reply.text) await host.rewriteReply(ask.binding, reply.floor, text);
+        if (ask.thought) await change(ask.binding, { id: id(), type: 'heartThought', floor: reply.floor, at: Date.now(), ...(item ? { item } : {}) });
+        if (ask.impressions) await change(ask.binding, { id: id(), type: 'heartDiary', at: Date.now(), impressions, events: [], used: [], impressionFloor: reply.floor });
     }
+    // 存照记在哪一天：最近一条带剧情日期的切片的日期；没有就用今天。
+    const storyDay = document => {
+        const dated = (document?.entries || []).filter(entry => entry.kind === 'summary' && entry.status === 'active' && entry.source)
+            .sort((a, b) => b.source.end - a.source.end).map(entry => entry.scenes?.find(scene => scene?.date)?.date).find(Boolean);
+        return String(dated || realDay(Date.now())).slice(0, 60);
+    };
 
     async function executeAction(type, payload = {}) {
         if (disposed) return false;
@@ -1206,6 +1194,11 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         else if (type === 'edit' || type === 'entry') {
             const entry = doc.entries.find(e => e.id === payload.entryId);
             if (!entry) throw new Error('记忆条目不存在');
+            if (type === 'entry' && payload.action === 'acceptSource') {
+                if (!entry.source?.hashes || entry.source.end > snapshot.messages.length) throw new Error('这段楼层已不在了，请删除或重新总结这条切片');
+                const hashes = await fingerprintMessages(snapshot.messages);
+                payload = { ...payload, hashes: hashes.slice(entry.source.start - 1, entry.source.end) };
+            }
             operation = { ...operation, ...payload, id: operation.id, type, expectedRevision: payload.expectedRevision ?? entry.revision };
         } else throw new Error('未知的忆幕操作');
         const loud = !(type === 'settings' && payload.quiet === true);
@@ -1380,12 +1373,16 @@ export function createController({ host, api, onChange = () => {}, onNotice = ()
         try {
             const settings = effectiveSettings(doc, defaults), names = { char: String(snapshot.name || '').trim(), user: String(snapshot.userName || '').trim() };
             const carried = heartInjection(doc, settings, snapshot, { type, recalledAt: recallAtMap(snapshot.binding) });
-            const due = ['', 'normal', 'swipe', 'regenerate'].includes(type || '') ? thoughtDue(doc, settings, snapshot, type) : null;
-            const ask = due ? thoughtRequest(settings, names) : '';
-            const text = [carried.text, ask].filter(Boolean).join('\n\n');
+            const plain = ['', 'normal', 'swipe', 'regenerate'].includes(type || '');
+            const due = plain ? thoughtDue(doc, settings, snapshot, type) : null, ask = due ? thoughtRequest(settings, names) : '';
+            const dueImpressions = plain ? impressionDue(doc, settings, snapshot, type) : null, askImpressions = dueImpressions ? impressionRequest(settings, names, doc) : '';
+            const text = [carried.text, ask, askImpressions].filter(Boolean).join('\n\n');
             if (!text || !host.offerHeart(text)) return;
             if (carried.ids.length) rememberRecall(snapshot.binding, carried.ids.map(value => ({ id: value })));
-            if (ask) { thoughtAsk = { binding: clone(snapshot.binding), floor: due.floor, names, generation: ticket }; host.veilHeart?.(HEART_TAG); }
+            if (ask || askImpressions) {
+                thoughtAsk = { binding: clone(snapshot.binding), floor: (due || dueImpressions).floor, names, generation: ticket, thought: Boolean(ask), impressions: Boolean(askImpressions) };
+                host.veilHeart?.([ask ? HEART_TAG : '', askImpressions ? IMPRESSION_TAG : ''].filter(Boolean));
+            }
         } catch (error) { console.warn('[忆幕] 心迹这一轮未带入：', error?.message || error); }
     }
 

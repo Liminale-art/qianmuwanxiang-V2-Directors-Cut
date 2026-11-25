@@ -46,7 +46,8 @@ test('generated summaries request source-faithful short names and validate Unico
     const response = title => JSON.stringify({ slices: [{ start: 1, end: 2, title, text: '桥边一起等信。' }] });
     assert.equal(parseSummary(response('桥边等信'), batch, hashes)[0].title, '桥边等信');
     assert.equal(validateMemoryTitle('𠮷'.repeat(8)), '𠮷'.repeat(8));
-    assert.throws(() => parseSummary(response('𠮷'.repeat(9)), batch, hashes), /最多 8 字/);
+    // 模型起的名字超了字数不拦整批，截到上限（用户 2026-11-25）；手填的名字仍按上限校验。
+    assert.equal(parseSummary(response('𠮷'.repeat(9)), batch, hashes)[0].title, '𠮷'.repeat(8));
     assert.throws(() => validateMemoryTitle('两行\n标题'), /最多 8 字/);
     const legacy = { kind: 'summary', text: '桥边重逢。后续情节', history: [] }, before = structuredClone(legacy);
     assert.equal(memoryTitle(legacy), '桥边重逢'); assert.deepEqual(legacy, before);
@@ -88,7 +89,7 @@ test('manual stages exclude custom by default, include only in-range custom when
         entry: { id: 'bad', kind: 'stage', text: '不能伪造选项', source: { parents: refs(f.doc, ['fine_1', 'fine_2']), includeCustom: 'false' } } }), /选项无效/);
     assert.match(stagePrompt(included.parents, DEFAULTS), /"title"/);
     assert.match(stagePrompt(included.parents, DEFAULTS), /不超过8/);
-    assert.throws(() => parseStage(JSON.stringify({title:'𠮷'.repeat(9),text:'相遇与约定'}), included.parents, DEFAULTS), /最多 8 字/);
+    assert.equal(parseStage(JSON.stringify({title:'𠮷'.repeat(9),text:'相遇与约定'}), included.parents, DEFAULTS).title, '𠮷'.repeat(8));
     const automatic = nextStage(addCustom(f.doc, f.hashes), { ...DEFAULTS, stageAuto: true, stageRecent: 0, stageThreshold: 1 });
     assert.ok(automatic.parents.some(entry => entry.id === 'custom'), 'automatic custom preservation stays unchanged');
 });

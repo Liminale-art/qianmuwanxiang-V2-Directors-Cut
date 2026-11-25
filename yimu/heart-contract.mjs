@@ -13,8 +13,9 @@ export const THOUGHT_GROUPS = Object.freeze(['you', 'self', 'others', 'books']);
 /** 把握程度只看「在几个不同的日子里看见过」：3 个日子起步，6 个日子笃定。不到 3 个的还只是留意，不算印象。 */
 export const sureOf = days => days >= 6 ? 3 : days >= 4 ? 2 : days >= 3 ? 1 : 0;
 export const SURE_WORDS = Object.freeze(['待凝定', '也许', '我觉得', '笃定']);
-/** 一条印象的把握程度。用户自己写下或改过的（own）是他认定的，直接算笃定，不再数日子。 */
-export const gradeOf = item => item?.own === true ? 3 : sureOf(item?.days?.length || 0);
+/** 一条印象的把握程度。用户自己写下或改过的（own）是他认定的，直接算笃定；主模型写下时自己给的把握（sure）直接算数，
+ *  不必再等三个日子（用户 2026-11-25）；两者都没有的旧印象仍按日子数。 */
+export const gradeOf = item => item?.own === true ? 3 : Math.max(sureOf(item?.days?.length || 0), Number.isSafeInteger(item?.sure) ? item.sure : 0);
 
 function validateDay(value) {
     need(value && typeof value === 'object' && !Array.isArray(value), '印象的依据无效');
@@ -27,6 +28,7 @@ function validateImpression(value) {
     need(new Set(result.days.map(item => item.day)).size === result.days.length, '印象的日子重复');
     if (value.was !== undefined && value.was !== '') result.was = str(value.was, 400, '原先的印象');
     if (value.own === true) result.own = true; // 用户自己写下或改过：整理时不再改它的说法
+    if (value.sure !== undefined) { need([1, 2, 3].includes(value.sure), '印象的把握程度无效'); result.sure = value.sure; }
     return result;
 }
 function validateThought(value) {
@@ -47,7 +49,7 @@ export function validateHeart(value) {
     const list = (key, check, label) => { const items = value[key] ?? []; need(Array.isArray(items) && items.length <= HEART_LIMITS[key], `${label}数量无效`); return unique(items.map(check), label); };
     const mark = key => { const number = value[key] ?? 0; need(Number.isSafeInteger(number) && number >= 0, '心迹的进度无效'); return number; };
     return { impressions: list('impressions', validateImpression, '印象'), thoughts: list('thoughts', validateThought, '心迹'), events: list('events', validateEvent, '年表'),
-        eventFloor: mark('eventFloor'), thoughtFloor: mark('thoughtFloor') };
+        eventFloor: mark('eventFloor'), thoughtFloor: mark('thoughtFloor'), ...(value.impressionFloor ? { impressionFloor: mark('impressionFloor') } : {}) };
 }
 export const emptyHeart = () => ({ impressions: [], thoughts: [], events: [], eventFloor: 0, thoughtFloor: 0 });
 export const heartOf = document => document?.heart ? clone(document.heart) : emptyHeart();
@@ -61,8 +63,9 @@ export function applyHeartOperation(doc, op, opId) {
         need(Array.isArray(op.impressions) && op.impressions.length <= HEART_LIMITS.batch && Array.isArray(op.events) && op.events.length <= HEART_LIMITS.batch, '日记整理结果无效');
         const traces = new Map((doc.observations || []).map(item => [item.id, item])), used = new Set();
         op.impressions.forEach((item, index) => {
-            need(item && typeof item === 'object' && Array.isArray(item.traces) && item.traces.length <= 60, '印象的依据无效');
-            const fresh = item.traces.flatMap(ref => {
+            need(item && typeof item === 'object' && (Array.isArray(item.traces) && item.traces.length <= 60 || item.direct), '印象的依据无效');
+            // direct：主模型写回复时顺带写下的印象，依据就是这一轮本身（那一天＋它写的这句），不经过痕迹。
+            const fresh = item.direct ? [{ day: str(item.direct.day, 60, '印象的日子'), text: str(item.text, 300, '印象的依据'), at }] : item.traces.flatMap(ref => {
                 const trace = traces.get(ref?.id);
                 if (!trace) return []; // 整理期间这条痕迹已被重新总结换掉：跳过，不让整次结果作废。
                 used.add(trace.id);
@@ -75,6 +78,7 @@ export function applyHeartOperation(doc, op, opId) {
             const text = existing?.own ? existing.text : str(item.text, 400, '印象');
             if (existing && !existing.own && item.was !== undefined && item.was !== '' && text !== existing.text) target.was = str(item.was, 400, '原先的印象');
             target.text = text;
+            if (!existing?.own && item.sure !== undefined) { need([1, 2, 3].includes(item.sure), '印象的把握程度无效'); target.sure = item.sure; }
             const days = new Map(target.days.map(day => [day.day, day]));
             for (const day of fresh) if (!days.has(day.day)) days.set(day.day, day);
             // 只留最近的十二个日子作依据；笃定只要六个，够用。
@@ -90,6 +94,8 @@ export function applyHeartOperation(doc, op, opId) {
         });
         heart.events.sort((a, b) => a.floor - b.floor || a.at - b.at);
         if (op.eventFloor !== undefined) { need(Number.isSafeInteger(op.eventFloor) && op.eventFloor >= 0, '年表进度无效'); heart.eventFloor = Math.max(heart.eventFloor, op.eventFloor); }
+        // 问过主模型要存照的那一层：不论这次写没写都记下，间隔从这里算起（同一层重新生成时会再问）。
+        if (op.impressionFloor !== undefined) heart.impressionFloor = floorOf(op.impressionFloor);
     } else if (op.type === 'heartThought') {
         // 一则心迹。同一楼层重新生成时，新的顶掉旧的；模型这次没写（item 为空）也记下问过，不必每轮都问。
         const floor = floorOf(op.floor);
@@ -108,7 +114,7 @@ export function applyHeartOperation(doc, op, opId) {
     } else if (op.type === 'heartClear') {
         // 一键清空：存照、心迹、年表连同待凝定的印象（痕迹）。进度留着，清掉的不会被下一次总结重新拾回；要找回就用「补全」。
         delete doc.observations;
-        doc.heart = validateHeart({ ...emptyHeart(), eventFloor: heart.eventFloor, thoughtFloor: heart.thoughtFloor });
+        doc.heart = validateHeart({ ...emptyHeart(), eventFloor: heart.eventFloor, thoughtFloor: heart.thoughtFloor, impressionFloor: heart.impressionFloor || 0 });
         return;
     } else if (op.type === 'heartRemove' && op.kind === 'trace') {
         // 「还在留意的」里的一条痕迹：直接删掉，不留底。

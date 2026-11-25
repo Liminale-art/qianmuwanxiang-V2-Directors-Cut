@@ -232,96 +232,56 @@ async function fixture(t) {
     return {api, chats, context, controller, prompts, sent, flush, round, onNotice: fn => { noticed = fn; }, model: value => { model = value; }, read: async () => (await api.read(binding)).document};
 }
 
-test('whole chain: traces and chronicle entries ride on a summary → the diary turns the traces into an impression → a heart note written by the main model is lifted out of the reply', async t => {
+test('whole chain: the summary carries only the chronicle; the main model writes heart notes and 心间存照 at the end of its reply and both are lifted out', async t => {
     const f = await fixture(t);
-    // 关系年表随批次：切片总结请求里多带「另外返回"events"字段」与「已有年表」，节点直接从这段正文里拾。
+    // 关系年表随批次：切片总结请求里多带「另外返回"events"字段」与「已有年表」，节点直接从这段正文里拾。痕迹与存照不再随切片总结要。
     f.model(async prompt => { assert.ok(prompt.includes('另外返回"events"字段') && prompt.includes('已有年表：[]'), '年表要求随切片总结一起发');
-        assert.ok(prompt.includes('另外返回"impressions"字段') && prompt.includes('已有印象：[]'), '心间存照随切片总结一起要；这次模型没给，行为与以前一样');
+        assert.ok(!prompt.includes('另外返回"impressions"字段') && !prompt.includes('另外返回 "traces"'), '存照改由主模型写，总结里不要痕迹与印象');
         return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}],
-            traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
-            events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}, {title: '批次之外', text: '楼层不在这一批里，不采用。', floor: 5}]}); });
+            traces: [{about: '小满', text: '模型多给的痕迹不再收。', floor: 1}],
+            events: [{title: '第一次同桌', text: '两人第一次一起吃饭。', floor: 1}, {title: '第二个节点', text: '每批最多两条。', floor: 2}, {title: '第三个', text: '超出的丢掉。', floor: 2}]}); });
     await f.controller.refresh();
     await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}});
     await f.controller.action('autoSummary', {value: true}); await f.flush();
-    await f.controller.action('settings', {values: {diaryAuto: false}}); await f.flush();
     await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}, batchFloors: 10}); await f.flush();
     let doc = await f.read();
-    assert.equal(doc.observations.length, 2, '痕迹随切片总结记下');
-    assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]], '年表节点随切片总结存入，楼层不在这一批里的丢掉');
-    assert.equal(doc.heart.eventFloor, 2, '年表进度推到这一批末尾');
-    assert.deepEqual(doc.heart.impressions, []); assert.ok(doc.observations.every(item => !item.used), '关了自动合订：总结之后不自动整理日记');
+    assert.deepEqual(doc.observations || [], [], '不再记痕迹');
+    assert.deepEqual(doc.heart.events.map(item => item.title), ['第一次同桌', '第二个节点'], '年表每批最多两条');
     assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹：')), '没有发过日记整理请求');
-    // 手动整理一次日记：这两条切片年表已经读过，不再为年表重读它们，只整理痕迹。
-    const before = f.sent.length;
-    f.model(async prompt => { assert.ok(prompt.includes('新痕迹：') && prompt.includes('为阿澈专属的私人手记')); assert.ok(!prompt.includes('记忆：[') && !prompt.includes('已有年表'), '已读过的切片不再随日记整理发出');
-        return JSON.stringify({impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}], events: [{title: '不该出现', text: '这次没有请它拾年表。', floor: 1}]}); });
-    await f.controller.action('heartDiary');
-    assert.equal(f.sent.length, before + 1, '一次请求');
-    doc = await f.read();
-    assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text, item.days.length]), [['小满', '她好像离不开辣。', 1]]);
-    assert.deepEqual(doc.heart.events.map(item => [item.title, item.floor]), [['第一次同桌', 1]]); assert.equal(doc.heart.eventFloor, 2);
-    assert.ok(doc.observations.every(item => item.used));
-    await assert.rejects(f.controller.action('heartDiary'), /没有新留意到的事或新记忆可合订/);
-    // 页面拿到的数据：只看见一个日子的还在「留意」里，不算印象；年表有一条。
-    let page = heartData(f.controller.state);
-    assert.deepEqual([page.impressions.length, page.loose.length, page.events.map(item => item.title)], [0, 1, ['第一次同桌']]);
-    // 心迹：开关开着、其间有过阶段总结、离上一则够远 → 这一轮向主模型要一则。
-    f.model(async () => JSON.stringify({text: '相遇之后，她把辣椒挑到了他的碗里。'}));
-    await f.controller.action('stage', {start: 1, end: 2}); await f.flush();
-    assert.equal(await f.round('normal', '不该被要求写心迹的一轮。'), '', '开关关着时不要');
+    // 主模型这一轮：间隔到了，同时要一则心迹与存照；回复末尾的几段都被摘走，正文只留回复本身。
     await f.controller.action('settings', {values: {thoughts: true, thoughtCooldown: 1}}); await f.flush();
-    const asked = await f.round('normal', `她笑了一下。\n\n<${HEART_TAG} 对象="小满">她比看上去更怕冷场。</${HEART_TAG}>`);
-    assert.ok(asked.includes(`<${HEART_TAG} 对象=`) && asked.includes('可围绕小满'));
-    assert.equal(f.context.chat.at(-1).mes, '她笑了一下。', '那一段从正文里去掉了');
+    const asked = await f.round('normal', `她笑了一下。\n\n<${HEART_TAG} 对象="小满">她比看上去更怕冷场。</${HEART_TAG}>\n<忆幕之存照 对象="小满" 把握="笃定">她嘴上说不饿，其实一直在等我先动筷子。</忆幕之存照>`);
+    assert.ok(asked.includes(`<${HEART_TAG} 对象=`) && asked.includes('<忆幕之存照 对象=') && asked.includes('为阿澈专属的私人手记') && asked.includes('已有印象：[]'));
+    assert.equal(f.context.chat.at(-1).mes, '她笑了一下。', '那几段从正文里去掉了');
     doc = await f.read();
-    assert.deepEqual(doc.heart.thoughts.map(item => [item.group, item.about, item.text, item.floor]), [['you', '小满', '她比看上去更怕冷场。', f.context.chat.length]]);
+    assert.deepEqual(doc.heart.thoughts.map(item => [item.group, item.about, item.text]), [['you', '小满', '她比看上去更怕冷场。']]);
+    assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text, item.sure]), [['小满', '她嘴上说不饿，其实一直在等我先动筷子。', 3]]);
+    assert.equal(doc.heart.impressionFloor, f.context.chat.length);
+    let page = heartData(f.controller.state);
+    assert.equal(page.impressions.length, 1, '主模型给了把握，不必等三个日子就进存照'); assert.equal(page.loose.length, 0);
     assert.equal(f.prompts.get(HEART_PROMPT_KEY), '', '回复结束后注入槽清空');
-    // 同一层重新生成：再要一次，新的顶掉旧的；这次模型没写，旧的那则也不留（只认最终留下的回复）。
-    const again = await f.round('swipe', '她只是点了点头。');
-    assert.ok(again.includes(`<${HEART_TAG} 对象=`));
+    // 同一层重新生成：再要一次；沿用已有印象的编号时改写那一条，不另起一条。
+    const id = doc.heart.impressions[0].id;
+    const again = await f.round('swipe', `她只是点了点头。\n<忆幕之存照 对象="小满" 把握="我觉得" 沿用="${id}">她不是不饿，是在等我。</忆幕之存照>`);
+    assert.ok(again.includes('<忆幕之存照 对象=') && again.includes(id), '已有印象带着编号给主模型');
     doc = await f.read();
-    // next round is too close to the last note once the gap is widened: not asked again
+    assert.deepEqual(doc.heart.impressions.map(item => [item.id, item.text, item.sure]), [[id, '她不是不饿，是在等我。', 2]]);
+    // 间隔拉开后，下一层太近，不再要。
     await f.controller.action('settings', {values: {thoughtCooldown: 30}}); await f.flush();
     f.context.chat.push({name: '小满', is_user: true, mes: '走吧。'});
     assert.equal(await f.round('normal', '好。'), '');
     page = heartData(f.controller.state);
-    assert.deepEqual(page.thoughts, []);
+    assert.equal(page.impressions.length, 1);
 });
 
-// 心间存照并进切片总结那一次调用（用户 2026-11-24）：模型在总结里同时给出 impressions，不必另发日记整理请求。
-async function summarizeWithImpressions(f, reply, settings = null) {
-    f.model(async prompt => {
-        if (prompt.includes('新痕迹：')) throw new Error('不该另发日记整理请求');
-        return JSON.stringify({slices: [{start: 1, end: 1, text: '两人第一次一起吃饭。' + '甲'.repeat(1200)}, {start: 2, end: 2, text: '她把辣椒挑到了他的碗里。' + '乙'.repeat(1200)}], ...reply});
-    });
+test('whole chain: with 心间存照 switched off the main model is never asked for impressions', async t => {
+    const f = await fixture(t);
     await f.controller.refresh();
-    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}});
-    await f.controller.action('autoSummary', {value: true}); await f.flush();
-    if (settings) { await f.controller.action('settings', {values: settings}); await f.flush(); }
-    await f.controller.action('summarizeRange', {range: {start: 1, end: 2}, expectedRange: {start: 1, end: 2}, batchFloors: 10}); await f.flush();
-    return f.read();
-}
-
-test('whole chain: impressions returned with the slice summary become heart impressions in the same request and use up their traces', async t => {
-    const f = await fixture(t);
-    const doc = await summarizeWithImpressions(f, {traces: [{about: '小满', text: '她又点了辣的。', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}],
-        impressions: [{about: '小满', text: '她好像离不开辣。', traces: [1, 2]}]});
-    const summaries = f.sent.filter(prompt => prompt.includes('完整覆盖第'));
-    assert.equal(f.sent.length, 1, '只有切片总结这一次请求'); assert.equal(summaries.length, 1);
-    assert.ok(summaries[0].includes('另外返回"impressions"字段') && summaries[0].includes('已有印象：[]'));
-    assert.ok(!f.sent.some(prompt => prompt.includes('新痕迹：')), '没有另外的日记请求');
-    assert.deepEqual(doc.heart.impressions.map(item => [item.about, item.text]), [['小满', '她好像离不开辣。']]);
-    assert.equal(doc.observations.length, 2); assert.ok(doc.observations.every(item => item.used === true), '归入印象的两条痕迹都已用掉');
-    assert.equal(f.controller.state.error, '');
-});
-
-test('whole chain: an impression refers to traces by their position in the returned list, even when an earlier trace is dropped as malformed', async t => {
-    const f = await fixture(t);
-    const doc = await summarizeWithImpressions(f, {traces: [{about: '', text: '格式不对：没有写是谁', floor: 1}, {about: '小满', text: '她把辣椒挑给了我。', floor: 2}, {about: '小满', text: '她又点了辣的。', floor: 1}],
-        impressions: [{about: '小满', text: '她会把辣椒挑给别人。', traces: [2]}]}, {diaryAuto: false}); // 留下的那条照旧等合订；这里关掉自动合订，只看序号
-    assert.deepEqual(doc.observations.map(item => [item.text, Boolean(item.used)]).sort(), [['她又点了辣的。', false], ['她把辣椒挑给了我。', true]],
-        '序号 2 仍指原来的第二条；没归进印象的那条留在待凝定里');
-    assert.deepEqual(doc.heart.impressions.map(item => item.text), ['她会把辣椒挑给别人。']);
+    await f.controller.action('enable', {enabled: true, range: {start: 1, end: 7, total: 7}}); await f.flush();
+    await f.controller.action('settings', {values: {diary: false, thoughtCooldown: 1}}); await f.flush();
+    const asked = await f.round('normal', '好。<忆幕之存照 对象="小满">不该被收下</忆幕之存照>');
+    assert.ok(!asked.includes('<忆幕之存照'));
+    assert.deepEqual((await f.read()).heart?.impressions || [], []);
 });
 
 test('whole chain: 带入本聊天 with 连同日记心迹 goes panel action → runtime → client → server and lands in the open chat; without it the heart stays behind', async t => {

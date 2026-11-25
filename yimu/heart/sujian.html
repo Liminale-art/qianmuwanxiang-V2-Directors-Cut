@@ -108,8 +108,10 @@ body { padding-top: 42px; }
 .mark p { margin: 6px 0 0; font-size: 15px; line-height: 1.85; color: var(--faint); }
 /*@@HEART_SHARED_CSS@@*/
 /* 删除单条：纸上很淡的一笔，待确认时转朱。 */
-.slip .ym-rm { top: 4px; }
-.knot .ym-rm, .mark .ym-rm { top: -4px; }
+.slip :is(.ym-acts, .ym-rm) { top: 4px; }
+.knot :is(.ym-acts, .ym-rm), .mark :is(.ym-acts, .ym-rm) { top: -4px; }
+/* 第一行字长了会钻到笔和叉底下：笔和叉改为靠右浮着，第一行的字绕开它们。 */
+.knot .ym-acts, .mark .ym-acts { position: relative; float: right; margin: 0 0 -8px 6px; }
 </style>
 </head>
 <body data-view="diary">

@@ -1,4 +1,4 @@
-/* 三套主题共用的日期条与月历。颜色取各主题给的五个变量：--ymd-ink / --ymd-mute / --ymd-accent / --ymd-paper / --ymd-line。 */
+/* 各套主题共用的日期条与月历。颜色取各主题给的五个变量：--ymd-ink / --ymd-mute / --ymd-accent / --ymd-paper / --ymd-line。 */
 #ym-date { position: relative; z-index: 7; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 22px 10px; font-size: 12px; letter-spacing: .1em; color: var(--ymd-mute); }
 #ym-date button { all: unset; cursor: pointer; padding: 5px 7px; }
 #ym-date button:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
@@ -23,7 +23,7 @@
 #ym-date .ym-cal-grid button.on { background: var(--ymd-accent); color: var(--ymd-paper); }
 .ym-cal-grid button.on.has::after { background: var(--ymd-paper); }
 .ym-cal-grid button.today { outline: 1px dashed var(--ymd-mute); outline-offset: -2px; }
-/* 删除单条：条目右上角很淡的「×」，点一下直接删。位置各主题自己定（条目须是定位容器）。 */
+/* 删除单条：条目右上角很淡的「×」，点一下直接删。位置各主题自己定（对 .ym-acts 与 .ym-rm 一起写；条目须是定位容器）。 */
 .ym-rm { all: unset; position: absolute; right: 0; top: 0; z-index: 6; cursor: pointer; padding: 6px 8px; font-size: 12px; line-height: 1; letter-spacing: .1em; white-space: nowrap; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
 .ym-rm:hover, .ym-rm:focus-visible { opacity: .85; }
 .ym-rm:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
@@ -37,7 +37,7 @@
 /* 「待凝定的印象」换位置：各条脱开一行一行的排法，位置由脚本给。 */
 [data-roam] > .ym-loose.ym-loose { position: absolute; left: 0; top: 0; margin: 0; max-width: calc(100% - 26px); }
 /* 导出成单独的网页后只用来看：退出、换主题、导出与删除都收起。 */
-body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-tools) { display: none !important; }
+body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .ym-ed, .ym-acts, .ym-tools) { display: none !important; }
 /* 「待凝定的印象」的小叉：平时不显，鼠标移上去或点中那一条才出现；这时那一条停住不飘。 */
 .ym-loose { cursor: default; }
 .ym-loose:hover, .ym-loose[data-pick] { animation-play-state: paused !important; opacity: 1 !important; }
@@ -48,8 +48,10 @@ body[data-standalone] :is(#ym-exit, #ym-clear, #ym-theme, #ym-export, .ym-rm, .y
 .ym-bind[disabled] { opacity: .5; cursor: default; }
 .ym-bind:focus-visible { outline: 1px solid currentColor; outline-offset: 2px; }
 body[data-standalone] .ym-bind { display: none !important; }
-/* 修改：小叉左边的一支小笔，同样很淡。 */
-.ym-ed { all: unset; position: absolute; right: 26px; top: 0; z-index: 6; cursor: pointer; padding: 6px 6px; font-size: 12px; line-height: 1; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
+/* 修改：小叉左边的一支小笔，同样很淡。笔和叉并排放在一个小框里，小框占住条目右上角（位置由主题对 .ym-acts 定）。 */
+.ym-acts { position: absolute; right: 0; top: 0; z-index: 6; display: flex; align-items: center; gap: 2px; white-space: nowrap; writing-mode: horizontal-tb; }
+.ym-acts > .ym-rm.ym-rm { position: static; }
+.ym-ed { all: unset; cursor: pointer; padding: 6px 6px; font-size: 12px; line-height: 1; writing-mode: horizontal-tb; color: var(--ymd-mute); opacity: .35; }
 .ym-ed:hover, .ym-ed:focus-visible { opacity: .9; color: var(--ymd-accent); }
 .ym-ed:focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
 /* 补记、补全：日期条里的两个小字钮。 */
