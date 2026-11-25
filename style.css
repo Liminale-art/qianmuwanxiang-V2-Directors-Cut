@@ -1400,8 +1400,10 @@ html[data-qm-toast-stack="8"] body #toast-container > div:nth-child(n+9) { displ
   #story-director-floor-nav .sd-floor-shell { padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   #story-director-floor-nav .sd-floor-panel { --qm-floor-pad: 12px; border-radius: 18px; }
   #story-director-floor-nav .sd-prose-control { grid-template-columns: 56px minmax(70px, 1fr) 58px 24px; gap: 6px; padding-inline: 8px; }
-  #story-director-floor-nav .sd-prose-checks { gap: 5px; }
-  #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 9px; }
+  /* 窄屏：三个短开关一行等分，「换行整理为段落」单独占第二行。 */
+  #story-director-floor-nav .sd-prose-checks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  #story-director-floor-nav .sd-prose-checks label { min-height: 39px; gap: 5px; padding-inline: 6px; }
+  #story-director-floor-nav .sd-prose-checks .sd-prose-check-wide { grid-column: 1 / -1; }
 }
 
 /* 富卡保留整条消息的原生宽度，正文只在各自的段落区域内套用排版。 */
