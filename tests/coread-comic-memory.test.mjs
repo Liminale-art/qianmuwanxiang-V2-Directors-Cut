@@ -396,10 +396,7 @@ test('follow-reading describes only pages already read, one batch per trigger, a
   assert.deepEqual(e.record().cast, [{ name: '甲', look: '黑色短发' }]);
   assert.deepEqual(e.state.stored.segments, JSON.parse(JSON.stringify(e.record().segments)), 'what is in memory is what was saved');
   assert.deepEqual(e.puts, ['comic::book']);
-  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2]]);
-  const slice = e.dialog().slices[0];
-  assert.equal(slice.summary, '总结1-3'); assert.equal(slice.src, 'text'); assert.equal(slice.provenance.source, 'book');
-  assert.deepEqual([slice.coveredFrom, slice.coveredTo], [0, '⟦img:1⟧⟦img:2⟧⟦img:3⟧'.length]);
+  assert.deepEqual(sliceRanges(e.dialog()), [], 'one memory covers about 10 pages: three described pages wait (用户 11-26)');
   assert.deepEqual(e.record().lastBatch.images, 3); assert.equal(e.record().lastBatch.input, 900); assert.equal(e.record().lastBatch.output, 120);
   assert.equal(e.toasts.length, 0, 'the background run is silent when it works');
   // 跳到很后面：每次触发仍只做一批，且从最早的缺口开始，永不越过当前页。
@@ -409,6 +406,11 @@ test('follow-reading describes only pages already read, one batch per trigger, a
   await e.c.coreadComicAuto(); await e.c.coreadComicAuto(); await e.c.coreadComicAuto();
   assert.deepEqual(pagesSent(e.calls), [[1, 2, 3], [4, 5, 6], [7, 8, 9]], 'pages 10–11 wait for page 12');
   for (const sent of pagesSent(e.calls)) for (const page of sent) assert.ok(page <= 11);
+  // 三批 9 页：再加一批就超过 10 页，于是并成一条记忆落下，不调模型。
+  assert.deepEqual(sliceRanges(e.dialog()), [[0, 8]]);
+  const slice = e.dialog().slices[0];
+  assert.equal(slice.summary, '总结1-3\n总结4-6\n总结7-9'); assert.equal(slice.src, 'text'); assert.equal(slice.provenance.source, 'book');
+  assert.deepEqual([slice.coveredFrom, slice.coveredTo], [0, Array.from({ length: 9 }, (_, i) => `⟦img:${i + 1}⟧`).join('').length]);
   // 每次请求都带人物表与上一段的结尾。
   assert.match(e.calls[1].user, /【人物表】\n- 甲：黑色短发/); assert.match(e.calls[1].user, /【上文】\n总结1-3/);
   assert.match(e.calls[0].system, /日漫，右到左/);
@@ -492,12 +494,12 @@ test('a failed save rolls back: no description without a stored record, no slice
   // 页稿存住了、伴读档案没存住：切片还原并如实报错；页稿保留，下次直接补切片，不再花钱识别。
   const f = comicFixture({ current: 2 });
   await f.open(); f.state.saveOk = false;
-  const result = await f.c.coreadComicDescribe({ from: 0, to: 2 });
-  assert.equal(result.ok, false); assert.match(result.reason, /记忆未能保存，请重试/);
+  await f.c.coreadComicFillMissing();
+  assert.match(f.toasts.at(-1).message, /漫画记忆没能存进本机/); assert.equal(f.toasts.filter((t) => t.level === 'success').length, 0, 'no success toast after a failed save');
   assert.equal(f.dialog().slices.length, 0); assert.equal(f.c.coreadVectorStates.size, 0); assert.equal(f.c.coreadMemoryWrites, 0);
   assert.equal(f.record().segments.length, 1); assert.equal(f.state.stored.segments.length, 1);
   f.state.saveOk = true;
-  await f.c.coreadComicAuto();
+  await f.c.coreadComicFillMissing();
   assert.equal(f.calls.length, 1, 'no second model call'); assert.deepEqual(sliceRanges(f.dialog()), [[0, 2]]);
 });
 
@@ -515,7 +517,7 @@ test('fill-missing works batch by batch, stops at the first failure and keeps wh
   await e.c.coreadComicFillMissing();
   assert.deepEqual(pagesSent(e.calls).slice(2), [[4, 5, 6], [7, 8]]);
   assert.deepEqual(e.record().segments.map((item) => [item.fromPage, item.toPage]), [[1, 3], [4, 6], [7, 8]]);
-  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2], [3, 5], [6, 7]]);
+  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2], [3, 7]], 'the new pages 4–8 become one memory; the earlier one is left as it was');
   assert.equal(e.toasts.at(-1).level, 'success');
   await e.c.coreadComicFillMissing();
   assert.equal(e.calls.length, 4, 'nothing left: no request'); assert.match(e.toasts.at(-1).message, /已读的页都识别过了/);
@@ -539,64 +541,66 @@ test('a second bucket gets its slices from the stored summaries without a model 
   const e = comicFixture({ current: 5 });
   await e.open();
   await e.c.coreadComicFillMissing();
-  assert.equal(e.calls.length, 2); assert.equal(e.dialog().slices.length, 2);
+  assert.equal(e.calls.length, 2); assert.deepEqual(sliceRanges(e.dialog()), [[0, 5]], 'two batches, one memory');
   // 换一位书友（另一个记忆桶）：同一本书、同一份页稿。
   e.c.readerDialog = { bookId: 'book', bucket: 'B::book', loaded: true, cursor: 0, summaryFloor: 0, slices: [], messages: [] };
   e.go(3);
   await e.c.coreadComicAuto();
-  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2]], 'only segments inside this reader\'s read range');
+  assert.deepEqual(sliceRanges(e.dialog()), [], 'following along, a memory waits for about 10 pages');
   e.go(5);
-  await e.c.coreadComicAuto();
-  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2], [3, 5]]);
+  await e.c.coreadComicFillMissing();
+  assert.deepEqual(sliceRanges(e.dialog()), [[0, 5]]);
   assert.equal(e.calls.length, 2, 'no model call for the second bucket');
-  assert.deepEqual(e.dialog().slices.map((slice) => slice.summary), ['总结1-3', '总结4-6']);
-  assert.deepEqual(e.dialog().slices.map((slice) => slice.provenance.bucket), ['B::book', 'B::book']);
+  assert.deepEqual(e.dialog().slices.map((slice) => slice.summary), ['总结1-3\n总结4-6']);
+  assert.deepEqual(e.dialog().slices.map((slice) => slice.provenance.bucket), ['B::book']);
   await e.c.coreadComicAuto();
-  assert.equal(e.dialog().slices.length, 2, 'not created twice');
+  assert.equal(e.dialog().slices.length, 1, 'not created twice');
   // 另一台设备／重开：页稿从存储读回，旧版写在书籍记录上的文字稿也照常并入。
   const again = comicFixture({ current: 8, stored: e.state.stored, legacy: { '7-9': { fromPage: 7, toPage: 9, summary: '旧稿', keywords: [] } } });
   await again.c.coreadComicLoad('book');   // 不按住：载入后自动补建
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(again.calls.length, 0); assert.deepEqual(sliceRanges(again.dialog()), [[0, 2], [3, 5], [6, 8]]);
+  assert.equal(again.calls.length, 0); assert.deepEqual(sliceRanges(again.dialog()), [[0, 8]]);
+  assert.match(again.dialog().slices[0].summary, /旧稿/);
   assert.equal(await again.c.coreadComicVisibleText('book', 8, {}), reader.comicVisibleText(again.record(), 8, 6000));
   assert.match(await again.c.coreadComicVisibleText('book', 8, {}), /旧稿/);
 });
 
 test('a slice the user deleted, or cleared, is not brought back; re-describing on request brings it back', async () => {
-  const e = comicFixture({ current: 5 });
+  const e = comicFixture({ current: 11 });
   await e.open();
   await e.c.coreadComicFillMissing();
+  assert.deepEqual(sliceRanges(e.dialog()), [[0, 8], [9, 11]], 'twelve pages: 1–9 and 10–12');
   const [first, second] = e.dialog().slices;
   assert.equal((await e.c.coreadDeleteSlice(first.id)).ok, true);
   await e.c.coreadComicAuto();
-  assert.deepEqual(sliceRanges(e.dialog()), [[3, 5]]);
-  assert.deepEqual(e.dialog().comicDismissed, [[0, 2]]);
-  assert.equal(e.record().segments.length, 2, 'the paid description itself stays for the companion and for other buckets');
+  assert.deepEqual(sliceRanges(e.dialog()), [[9, 11]]);
+  assert.deepEqual(e.dialog().comicDismissed, [[0, 8]]);
+  assert.equal(e.record().segments.length, 4, 'the paid descriptions themselves stay for the companion and for other buckets');
   // 删除没存住→连「不再补回」一起还原。
   e.state.saveOk = false;
   assert.equal((await e.c.coreadDeleteSlice(second.id)).ok, false);
-  assert.deepEqual(e.dialog().comicDismissed, [[0, 2]]); assert.equal(e.dialog().slices.length, 1);
+  assert.deepEqual(e.dialog().comicDismissed, [[0, 8]]); assert.equal(e.dialog().slices.length, 1);
   e.state.saveOk = true;
   assert.equal((await e.c.coreadClearAllSlices()).ok, true);
   await e.c.coreadComicAuto();
-  assert.equal(e.dialog().slices.length, 0); assert.equal(e.calls.length, 2);
-  // 在已建稿的页上点识图钮：确认后重新识别那一段，并重新写入记忆。
+  assert.equal(e.dialog().slices.length, 0); assert.equal(e.calls.length, 4);
+  // 在已建稿的页上点识图钮：确认后重新识别那一段，并马上重新写入记忆（不等凑满 10 页）。
   e.state.confirm = false;
   await e.c.coreadAnalyzeComicPages();
-  assert.equal(e.calls.length, 2, 'declined: no request');
-  e.state.confirm = true; e.state.reply = reply(3, 5, { summary: '重识别' });
+  assert.equal(e.calls.length, 4, 'declined: no request');
+  e.state.confirm = true; e.state.reply = reply(9, 11, { summary: '重识别' });
   await e.c.coreadAnalyzeComicPages();
-  assert.deepEqual(pagesSent(e.calls).at(-1), [4, 5, 6]);
-  assert.equal(e.record().segments.find((item) => item.fromPage === 4).summary, '重识别'); assert.equal(e.record().segments.length, 2);
-  assert.deepEqual(sliceRanges(e.dialog()), [[3, 5]]); assert.equal(e.dialog().slices[0].summary, '重识别');
+  assert.deepEqual(pagesSent(e.calls).at(-1), [10, 11, 12]);
+  assert.equal(e.record().segments.find((item) => item.fromPage === 10).summary, '重识别'); assert.equal(e.record().segments.length, 4);
+  assert.deepEqual(sliceRanges(e.dialog()), [[9, 11]]); assert.equal(e.dialog().slices[0].summary, '重识别');
 });
 
-test('the reader button describes up to the current page now, and re-describing rewrites the existing slice', async () => {
+test('the reader button describes up to the current page now, and re-describing rewrites the memory that holds it', async () => {
   const e = comicFixture({ current: 3 });
   await e.open();
   await e.c.coreadAnalyzeComicPages();
   assert.deepEqual(pagesSent(e.calls), [[1, 2, 3], [4]], 'the partial batch is not left waiting');
-  assert.deepEqual(sliceRanges(e.dialog()), [[0, 2], [3, 3]]);
+  assert.deepEqual(sliceRanges(e.dialog()), [[0, 3]], 'pressed by hand: the four pages become one memory right away');
   // 当前页在一段中间：不重识别（否则要么越过当前页，要么拆段）。
   e.go(1);
   await e.c.coreadAnalyzeComicPages();
@@ -605,12 +609,18 @@ test('the reader button describes up to the current page now, and re-describing 
   const sliceId = e.dialog().slices[0].id;
   await e.c.coreadAnalyzeComicPages();
   assert.deepEqual(pagesSent(e.calls).at(-1), [1, 2, 3]);
-  assert.equal(e.dialog().slices.length, 2, 'no duplicate slice');
-  assert.equal(e.dialog().slices.find((slice) => slice.id === sliceId).summary, '第二版');
+  assert.equal(e.dialog().slices.length, 1, 'no duplicate slice');
+  assert.equal(e.dialog().slices[0].summary, '第二版\n总结4-4', 'the memory is rebuilt from every segment it covers');
   assert.equal(e.record().segments[0].summary, '第二版');
-  // 在切片管理里手改这条切片：同一段的分段总结跟着改。
+  // 手改一条并了几段的记忆：分段各自的总结不跟着改（拆不开），记忆照常保存。
   assert.equal((await e.c.coreadSaveSliceEdit(sliceId, '手改', '关键')).ok, true);
-  assert.equal(e.record().segments[0].summary, '手改'); assert.deepEqual(e.record().segments[0].keywords, ['关键']); assert.equal(e.state.stored.segments[0].summary, '手改');
+  assert.equal(e.dialog().slices[0].summary, '手改'); assert.equal(e.record().segments[0].summary, '第二版');
+  // 只盖一段的记忆：手改后那一段的总结跟着改。
+  const single = comicFixture({ current: 2 });
+  await single.open(); await single.c.coreadComicFillMissing();
+  assert.deepEqual(sliceRanges(single.dialog()), [[0, 2]]);
+  assert.equal((await single.c.coreadSaveSliceEdit(single.dialog().slices[0].id, '手改', '关键')).ok, true);
+  assert.equal(single.record().segments[0].summary, '手改'); assert.deepEqual(single.record().segments[0].keywords, ['关键']); assert.equal(single.state.stored.segments[0].summary, '手改');
 });
 
 test('a batch in flight is discarded when the reader moves to another book', async () => {

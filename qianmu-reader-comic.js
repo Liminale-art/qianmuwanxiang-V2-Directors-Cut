@@ -343,6 +343,35 @@ export function comicSegmentsNeedingSlices(record, slices, current, dismissed = 
     && !within(covered, segment.fromPage - 1, segment.toPage - 1) && !within(skipped, segment.fromPage - 1, segment.toPage - 1));
 }
 
+/** 漫画记忆一条最多几页（用户 2026-11-26 定 10）：识图仍按批，记忆把相邻的分段并起来，不调模型。 */
+export const COMIC_SLICE_PAGES = 10;
+
+/** 页范围内各分段的总结按页序接起来，关键词去重（最多 8 个）。合并的切片与重新识别后改写切片都用它。 */
+export function comicSliceText(record, fromPage, toPage) {
+  const parts = (record?.segments || []).filter(segment => segment.fromPage >= fromPage && segment.toPage <= toPage).sort((a, b) => a.fromPage - b.fromPage);
+  return { summary: parts.map(segment => segment.summary).filter(Boolean).join('\n'), keywords: [...new Set(parts.flatMap(segment => segment.keywords || []))].slice(0, 8),
+    updatedAt: Math.max(0, ...parts.map(segment => Number(segment.updatedAt) || 0)) };
+}
+
+/**
+ * 把还没有切片的分段并成一条条记忆：页连续的相邻分段合在一起，合起来不超过 pages 页（单段本身超过的单独一条）。
+ * final=false（跟读时）：末尾那组若还放得下下一段就先不落，等读到更多页；final=true（手动补齐）全部落下。
+ * 返回 [{ fromPage, toPage, summary, keywords, updatedAt }]。
+ */
+export function planComicSlices(record, segments, { pages = COMIC_SLICE_PAGES, final = false } = {}) {
+  const limit = Math.max(1, Math.floor(Number(pages) || COMIC_SLICE_PAGES));
+  const span = item => item.toPage - item.fromPage + 1;
+  const groups = [];
+  let current = null;
+  for (const segment of [...(segments || [])].sort((a, b) => a.fromPage - b.fromPage)) {
+    if (current && segment.fromPage === current.toPage + 1 && span(current) + span(segment) <= limit) { current.toPage = segment.toPage; current.last = segment; continue; }
+    if (current) groups.push(current);
+    current = { fromPage: segment.fromPage, toPage: segment.toPage, last: segment };
+  }
+  if (current && (final || span(current) + span(current.last) > limit)) groups.push(current);
+  return groups.map(group => ({ fromPage: group.fromPage, toPage: group.toPage, ...comicSliceText(record, group.fromPage, group.toPage) }));
+}
+
 /** 用户删掉了一条漫画切片：记下它盖住的页范围，之后不再自动补回。 */
 export function comicDismissRange(dismissed, slice) {
   const ranges = cleanRanges(dismissed), range = sliceRange(slice);

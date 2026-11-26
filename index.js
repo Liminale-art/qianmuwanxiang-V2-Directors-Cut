@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.614';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.615';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.614';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.615';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.614';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.614';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.614';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.614';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.614';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.614';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.614';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.615';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.615';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.615';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.615';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.615';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.615';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.615';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.614';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.615';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.614';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.615';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.614';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.615';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.614';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.615';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.614';
+const VERSION = '1.59.615';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -28625,11 +28625,12 @@ function coreadComicSyncStatus() {
 }
 
 // 当前书友对「已建稿、已读到」的分段还没有切片时，用存好的分段总结补建，不调模型。
+// 相邻分段并成一条，最多 10 页（reader.planComicSlices）；跟读时末尾那组放得下下一段就先等，final（手动补齐）时全部落下。
 // 返回补建条数；伴读档案存不进去时还原并返回 -1。
-async function coreadComicBackfill() {
+async function coreadComicBackfill({ final = false } = {}) {
   const bookId = readerView?.bookId, record = coreadComicRecord(bookId), chapters = readerContentCache?.chapters || [];
   if (!record || coreadDistilling || coreadMemoryWrites || !readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(bookId)) return 0;
-  const missing = reader.comicSegmentsNeedingSlices(record, readerDialog.slices, readerView.chapterIndex, readerDialog.comicDismissed);
+  const missing = reader.planComicSlices(record, reader.comicSegmentsNeedingSlices(record, readerDialog.slices, readerView.chapterIndex, readerDialog.comicDismissed), { final });
   if (!missing.length) return 0;
   coreadMemoryWrites++;
   try {
@@ -28683,13 +28684,17 @@ async function coreadComicDescribe(batch, { review = coreadComicConfig().reviewE
     if (stale()) return { ok: false, aborted: true };
     if (redo && readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(bookId)) {
       readerDialog.comicDismissed = reader.comicUndismiss(readerDialog.comicDismissed, batch.from, batch.to);
-      const old = (readerDialog.slices || []).find((slice) => !slice.compressed && slice.provenance?.chapterFrom === batch.from && slice.provenance?.chapterTo === batch.to);
+      // 这一段所在的那条记忆（可能并了好几段）：按它覆盖的各段重新接一遍
+      const old = (readerDialog.slices || []).find((slice) => !slice.compressed && Number.isFinite(slice.provenance?.chapterFrom)
+        && slice.provenance.chapterFrom <= batch.from && (slice.provenance.chapterTo ?? slice.provenance.chapterFrom) >= batch.to);
       if (old) {
-        const saved = await coreadSaveSliceEdit(old.id, result.summary, result.keywords.join('、'));
+        const text = reader.comicSliceText(cache.comic, old.provenance.chapterFrom + 1, (old.provenance.chapterTo ?? old.provenance.chapterFrom) + 1);
+        const saved = await coreadSaveSliceEdit(old.id, text.summary || result.summary, (text.keywords.length ? text.keywords : result.keywords).join('、'));
         return saved.ok ? { ok: true } : { ok: false, reason: saved.reason };
       }
     }
-    return await coreadComicBackfill() < 0 ? { ok: false, reason: COREAD_SAVE_FAILED } : { ok: true };
+    // 用户主动重新识别：这一段的记忆马上落下，不等凑满 10 页
+    return await coreadComicBackfill({ final: redo }) < 0 ? { ok: false, reason: COREAD_SAVE_FAILED } : { ok: true };
   } catch (error) {
     return error?.name === 'AbortError' || controller.signal.aborted ? { ok: false, aborted: true } : { ok: false, reason: coreadExplainError(error) };
   } finally {
@@ -28734,6 +28739,8 @@ async function coreadComicFillMissing() {
       made++;
     }
   } finally { coreadComicFill = null; coreadComicSyncStatus(); }
+  // 手动补齐：末尾不满 10 页的那组也落成记忆
+  if (readerView === view && await coreadComicBackfill({ final: true }) < 0) { toast('漫画记忆没能存进本机，请重新打开这本书。', 'warning'); return; }
   const done = made ? `已识别 ${made} 批` : '';
   if (result.ok && !fill.stop) toast(done ? `${done}，已读的页都识别好了。` : '已读的页都识别过了。', made ? 'success' : 'info');
   else if (result.ok || result.aborted) toast(done ? `已停止，${done}。` : '已停止。', 'info');
