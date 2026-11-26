@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.613';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.614';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.613';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.614';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.613';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.613';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.613';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.613';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.613';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.613';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.613';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.614';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.614';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.614';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.614';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.614';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.614';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.614';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.613';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.614';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.613';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.614';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.613';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.614';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.613';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.614';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.613';
+const VERSION = '1.59.614';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1323,7 +1323,7 @@ const DEFAULT_SETTINGS = Object.freeze({
       summaryProfiles: [],          // 总结接口预设 [{id,name,apiUrl,apiKey,model}]
       summaryTemperature: 1,        // 蒸馏温度（默认1）
       summaryMaxTokens: 30000,      // 最大输出（默认30000·0=不限）
-      summaryContextChars: 100000,  // 送模型的对话字符上限（默认100000·0=不限·超限截尾）
+      summaryContextChars: 100000,  // 每批送去总结的字数上限，含提示词（默认100000·0=不限·非 0 时不低于 2000；只会让批次变多，不截断）
       summaryStream: false,         // 流式（后台蒸馏体感有限·供代理兼容）
       // 记忆蒸馏（1C·关键词档全链路）
       // 总结提示词：三组可编辑条目 { dialog, book, stage }，各组 [{id,builtin,order,title,text}]；缺组由归一器填内置默认。
@@ -25307,7 +25307,7 @@ function coreadMemory() {
   if (!Number.isFinite(m.summaryMaxTokens)) m.summaryMaxTokens = 30000;
   m.summaryMaxTokens = Math.max(0, Math.round(m.summaryMaxTokens));
   if (!Number.isFinite(m.summaryContextChars)) m.summaryContextChars = 100000;
-  m.summaryContextChars = Math.max(0, Math.round(m.summaryContextChars));
+  m.summaryContextChars = coreadClampBatchChars(m.summaryContextChars);
   m.summaryStream = !!m.summaryStream;
   m.readDateInSummary = !!m.readDateInSummary;
   for (const k of ['vectorModels', 'rerankModels', 'summaryModels', 'vectorProfiles', 'rerankProfiles', 'summaryProfiles']) {
@@ -26089,16 +26089,48 @@ function coreadTranscriptLine(msg, names) {
   return `${msg.role === 'user' ? names.user : names.char}：${msg.text}`;
 }
 
-// 把对话下标区间 [fromIdx, toIdx] 按「上下文」字数上限分成连续批次（下标闭区间）。
-// 上限只会让批次变多：单条超限的消息独占一批、原样送出，不截断。
-function coreadDialogBatches(msgs, fromIdx, toIdx, m, names) {
-  const lengths = [];
+// 「每批字数上限」非 0 时不低于 2000，免得误填一个小数让每条气泡各成一批。
+function coreadClampBatchChars(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.max(2000, n);
+}
+
+// 一批送去总结的正文字数额度：「每批字数上限」减去这一组提示词的长度与固定前缀（提示词保持完整不削）；0 为不限。
+function coreadBatchBudget(m, kind, meta, names) {
+  const cap = Number(m.summaryContextChars) || 0;
+  if (cap <= 0) return 0;
+  const prompt = coreadSummarySystemPrompt(kind, m, meta || {}, names || {}, { part: 999, total: 999, count: 999, progress: '读至第 999 章 · 100%' }).length;
+  return Math.max(1000, cap - prompt - 200);
+}
+
+// 把对话下标区间 [fromIdx, toIdx] 分成连续批次（下标闭区间）。手动与自动同一把尺（用户 2026-11-26 定）：
+// 每「对话每多少条总结一次」条有字的气泡一批；一批的字数超过额度时再拆开（单条超额独占一批、原样送出，不截断）。
+// fullOnly：自动总结只做凑满的批次，末尾不满一批的留到下次。
+function coreadDialogBatches(msgs, fromIdx, toIdx, m, names, { budget = Number(m.summaryContextChars) || 0, fullOnly = false } = {}) {
+  const per = Math.max(2, Math.floor(Number(m.distillEvery) || 30));
+  const groups = [];
+  let start = fromIdx, count = 0;
   for (let i = fromIdx; i <= toIdx; i++) {
-    const msg = msgs[i];
-    lengths.push(String(msg?.text || '').trim() ? coreadTranscriptLine(msg, names).length : 0);
+    if (String(msgs[i]?.text || '').trim()) count++;
+    if (count >= per) { groups.push({ from: start, to: i }); start = i + 1; count = 0; }
   }
-  return reader.planCoreadBatches(lengths, Number(m.summaryContextChars) || 0, 1)
-    .map((batch) => ({ from: fromIdx + batch.from, to: fromIdx + batch.to }));
+  if (start <= toIdx) {
+    if (!count && groups.length) groups[groups.length - 1].to = toIdx;   // 末尾只剩空气泡：并进上一批
+    else if (count && !fullOnly) groups.push({ from: start, to: toIdx });
+  }
+  return groups.flatMap((group) => {
+    const lengths = [];
+    for (let i = group.from; i <= group.to; i++) lengths.push(String(msgs[i]?.text || '').trim() ? coreadTranscriptLine(msgs[i], names).length : 0);
+    return reader.planCoreadBatches(lengths, budget, 1).map((batch) => ({ from: group.from + batch.from, to: group.from + batch.to }));
+  });
+}
+
+// 正文一批多少字：与自动总结同一把尺（「正文每多少字总结一次」），「每批字数上限」只作安全上限。
+function coreadTextSpanSize(m, meta, names) {
+  const every = Math.max(1000, Math.floor(Number(m.distillTextEvery) || 8000));
+  const budget = coreadBatchBudget(m, 'book', meta, names);
+  return budget > 0 ? Math.min(every, budget) : every;
 }
 
 // 记忆改动前的现场：存档写不进去时整份还原，内存里不留下没落盘的进度。
@@ -26285,13 +26317,15 @@ async function coreadForgetSliceRuntime(sliceIds, persist = true) {
 // 按「上下文」字数上限分成连续批次，每批一条切片、各自登记真实覆盖的消息区间；
 // 没有旧切片要替换时逐批落盘，某批失败就停在那里，之前的批次保留、进度只推进到已保存处；
 // 与旧切片重叠（重新总结）时全部批次成功后才一并替换，中途失败旧记忆原样保留。
-async function coreadReplaceDialogRange(fromIdx, toIdx, m, meta, names) {
+async function coreadReplaceDialogRange(fromIdx, toIdx, m, meta, names, { fullOnly = false } = {}) {
   const msgs = readerDialog.messages || [];
   const expanded = reader.expandCoreadDialogRange(readerDialog.slices || [], fromIdx, toIdx);
   if (expanded.to >= msgs.length) return { made: 0, reason: '重叠的旧切片对应对话已不完整，请先在切片管理中编辑或删除该条记忆' };
   const replacedIds = new Set(expanded.overlaps.map((slice) => slice.id));
   const mode = replacedIds.size ? 'resummarize' : 'incremental';
-  const batches = coreadDialogBatches(msgs, expanded.from, expanded.to, m, names);
+  // 自动总结只做凑满的批次；要替换旧切片时整段都得重新覆盖，不能留尾巴。
+  const batches = coreadDialogBatches(msgs, expanded.from, expanded.to, m, names, { budget: coreadBatchBudget(m, 'dialog', meta, names), fullOnly: fullOnly && !replacedIds.size });
+  if (!batches.length) return { made: 0, reason: '没有凑满一批的新对话', mode, from: expanded.from, to: expanded.to, replaced: 0 };
   const staged = [];
   let made = 0, salvaged = false, last = null, failure = null;
   for (const batch of batches) {
@@ -26462,9 +26496,9 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
     const pendingChars = gaps.reduce((sum, gap) => sum + gap.to - gap.from, 0);
     if (!pendingChars && readPos > 0) return { ok: false, reason: '已读内容都已总结过了' };
     if (pendingChars <= 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
-    const cap = Number(m.summaryContextChars) > 0 ? Number(m.summaryContextChars) : 30000;
-    const spans = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, cap)).slice(0, maxBatches);
     const names = { char: companionCharName(), user: coreadUserName() };
+    const cap = coreadTextSpanSize(m, meta, names);
+    const spans = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, cap)).slice(0, maxBatches);
     let made = 0, salvaged = false;
     const finish = async (result) => ({ ...result, made, salvaged });
     for (const [si, span] of spans.entries()) {
@@ -26523,10 +26557,9 @@ async function coreadDistillFullBook(m) {
     if (!Array.isArray(chapters) || !chapters.length) return { ok: false, reason: '正文为空' };
     const full = chapters.map((ch) => String(ch?.content || '')).join('');
     if (!full.trim()) return { ok: false, reason: '正文为空' };
-    // 每段字数不超过「上下文」上限（不限时每段 30000、最多 60000），分好的段原样送出，不再二次截断。
-    const ctxCap = Number(m.summaryContextChars) || 0;
-    const chunkSize = ctxCap > 0 ? Math.min(60000, ctxCap) : 30000;
+    // 与「总结已读」、自动总结同一把尺：每「正文每多少字总结一次」字一段，「每批字数上限」只作安全上限；分好的段原样送出，不再二次截断。
     const names = { char: companionCharName(), user: coreadUserName() };
+    const chunkSize = coreadTextSpanSize(m, meta, names);
     // 划分段落（每段至多 chunkSize 字·首尾相接不重叠·优先在换行处分段）
     // 只整理还没被正文切片覆盖的部分：连点两次、或中途停下后再点，都不会生成重复切片，只补缺口。
     const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], full.length);
@@ -26598,7 +26631,7 @@ async function coreadDistill(manual = false) {
   try {
     const meta = coreadBookMeta(readerDialog.bookId) || {};
     const names = { char: companionCharName(), user: coreadUserName() };
-    const r = await coreadReplaceDialogRange(from, msgs.length - 1, m, meta, names);
+    const r = await coreadReplaceDialogRange(from, msgs.length - 1, m, meta, names, { fullOnly: !manual });
     if (r.failed || !r.made) {
       const reason = r.reason || '模型没有返回有效总结';
       if (r.error) toast(`伴读记忆：第 ${nextBatch + r.made} 批总结失败（${reason}）。`, 'error');
@@ -26776,7 +26809,7 @@ async function coreadMaybeStage({ retry = false } = {}) {
   const boundary = owner.readBoundary || coreadCurrentReadBoundarySync(owner.bookId);
   const [group] = reader.planCoreadStages(owner.slices || [], owner.stages || [], {
     trigger: m.stageTrigger, keep: m.stageKeep, boundary, protection: m.spoilerProtection !== false,
-    cap: Number(m.summaryContextChars) || 0, joinCost: 6,
+    cap: coreadBatchBudget(m, 'stage', coreadBookMeta(owner.bookId), { char: companionCharName(), user: coreadUserName() }), joinCost: 6,
   });
   if (!group) {
     if (retry && owner.stageFailure) { owner.stageFailure = null; await coreadSaveDialog(); }
@@ -27498,6 +27531,7 @@ async function coreadClearAllSlices() {
 // 列出本书在其他聊天的可迁移会话（排除当前聊天·按更新时间新→旧）。返回 [{bucket, chatKey, rec}]。
 async function coreadListMigratableChats(bookId) {
   const out = [];
+  let failed = false;
   try {
     const curBucket = coreadDialogBucket(bookId);
     const keys = await blobStore.listReaderChatKeys();
@@ -27506,12 +27540,13 @@ async function coreadListMigratableChats(bookId) {
       const key = String(k);
       if (!key.endsWith(suffix) || key === curBucket) continue;
       let rec = null;
-      try { rec = await blobStore.getReaderChat(key); } catch (_) {}
+      try { rec = await blobStore.getReaderChat(key); } catch (_) { failed = true; }
       if (!rec || !Array.isArray(rec.messages) || !rec.messages.length) continue;   // 空会话不列
       out.push({ bucket: key, chatKey: key.slice(0, -suffix.length), rec });
     }
-  } catch (_) {}
+  } catch (_) { failed = true; }
   out.sort((a, b) => (Number(b.rec?.updatedAt) || 0) - (Number(a.rec?.updatedAt) || 0));
+  out.failed = failed;   // 有记录读不出来：调用方据此说「读取失败」，而不是「没有找到」
   return out;
 }
 
@@ -27552,7 +27587,8 @@ async function coreadOpenMigrateDialog() {
   const bookId = readerDialog.bookId;
   if (!bookId) { toast('请先在阅读器里打开一本书。', 'warning'); return; }
   const list = await coreadListMigratableChats(bookId);
-  if (!list.length) { toast('没有找到这本书在其他聊天的伴读记录。', 'info'); return; }
+  if (!list.length) { toast(list.failed ? '读取其他聊天的伴读记录失败，请重试。' : '没有找到这本书在其他聊天的伴读记录。', list.failed ? 'warning' : 'info'); return; }
+  if (list.failed) toast('有几份伴读记录读不出来，下面只列出读到的。', 'warning');
   const context = ctx();
   const Popup = context.Popup;
   const rows = list.map((item, i) => {
@@ -27948,7 +27984,12 @@ async function coreadSaveDialog() {
       names: { char: companionCharName(), user: coreadUserName() },
     });
     return true;
-  } catch (error) { console.warn(`[${MODULE_NAME}] save reader dialog failed`, error); return false; }
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] save reader dialog failed`, error);
+    // 每次打开这本书只提示一次，免得每条消息都弹
+    if (!readerDialog.saveWarned) { readerDialog.saveWarned = true; toast('伴读对话没能存进本机，这次打开期间的改动可能会丢；请检查浏览器存储空间后重新打开这本书。', 'warning'); }
+    return false;
+  }
 }
 
 // 渲染对话消息流（user 右 / friend 左·气泡跟随主题·预留 bubbleCustom DIY 于 1B 后续接线）
@@ -28534,7 +28575,11 @@ async function coreadComicLoad(bookId) {
     const record = reader.normalizeComicRecord(await readerChatSync.get(reader.comicRecordKey(bookId)), bookId, cache.comicDescriptions);
     if (readerContentCache !== cache) return;
     cache.comic = record;
-  } catch (error) { console.warn(`[${MODULE_NAME}] load comic record failed`, error); return; }
+  } catch (error) {
+    console.warn(`[${MODULE_NAME}] load comic record failed`, error);
+    if (readerContentCache === cache) cache.comicLoadFailed = true;   // 识图钮据此提示重开，而不是一直说「正在载入」
+    return;
+  }
   coreadComicSyncStatus();
   rerenderMoreIfOpen();
   void coreadComicAuto();
@@ -28630,7 +28675,7 @@ async function coreadComicDescribe(batch, { review = coreadComicConfig().reviewE
     if (!result) return { ok: false, reason: '识图模型没有返回有效内容' };
     if (review) {
       const reviewed = await coreadConfirmComicSummary(`第 ${batch.from + 1}${batch.to > batch.from ? `–${batch.to + 1}` : ''} 页`, result.summary, result.keywords);
-      if (!reviewed || stale()) return { ok: false, aborted: true };
+      if (!reviewed || stale()) return { ok: false, aborted: true, cancelled: !reviewed };
       result = { ...result, ...reviewed };
     }
     const now = Date.now();
@@ -28658,12 +28703,18 @@ async function coreadComicDescribe(batch, { review = coreadComicConfig().reviewE
 async function coreadComicAuto() {
   const view = readerView;
   if (!view || !coreadComicRecord() || coreadDistilling || coreadMemoryWrites || coreadComicVisionBusy || coreadComicFill) return;
-  if (await coreadComicBackfill() < 0 || readerView !== view || view.comicAutoOff || !coreadComicConfig().autoFollow) return;
+  if (await coreadComicBackfill() < 0) {
+    if (readerView === view && !view.comicSaveWarned) { view.comicSaveWarned = true; toast('漫画记忆没能存进本机，已读页的记忆这次没补上；请重新打开这本书。', 'warning'); }
+    return;
+  }
+  if (readerView !== view || view.comicAutoOff || !coreadComicConfig().autoFollow) return;
   const batch = reader.nextComicAutoBatch(coreadComicPlanInput());
   if (!batch || coreadDistilling || coreadMemoryWrites || coreadComicVisionBusy) return;
   if (!coreadVisionApiConn()) { if (!view.comicHinted) { view.comicHinted = true; toast('漫画跟读需要先选识图模型。', 'info'); } return; }
   const result = await coreadComicDescribe(batch);
   if (!result.ok && !result.aborted) { view.comicAutoOff = true; toast(`漫画识图失败：${result.reason}`, 'warning'); }
+  // 校对时点了取消：本次打开不再自动识别，免得下次存进度又对同一批发请求（每次都要花钱）；手动「补齐」照常可用。
+  else if (result.cancelled) { view.comicAutoOff = true; toast('已跳过这一批，本次打开不再自动识图；需要时用「补齐」继续。', 'info'); }
 }
 
 // 把读到当前页为止还没建稿的页逐批补齐：遇到第一批失败就停，已成功的保留；可随时停止。
@@ -28698,6 +28749,7 @@ function coreadComicStop() {
 async function coreadAnalyzeComicPages() {
   const record = coreadComicRecord();
   if (!readerView || coreadComicVisionBusy || coreadComicFill) return;
+  if (!record && readerContentCache?.comicLoadFailed) { toast('这本漫画的页稿没读出来，请关掉这本书再打开。', 'warning'); return; }
   if (!record || !readerDialog.loaded || readerDialog.bookId !== readerView.bookId) { toast('伴读档案正在载入，请稍候。', 'info'); return; }
   const page = readerView.chapterIndex + 1;
   const segment = record.segments.find((item) => item.fromPage <= page && item.toPage >= page);
@@ -28764,11 +28816,22 @@ async function coreadGenerateReply(isReroll = false) {
   const portal = document.getElementById('sd-reader-portal');
   const body = portal?.querySelector('.sd-reader-dtab-chat');
 
-  // 重roll：先移除最新一批 friend 气泡，露出其前的 user 群
+  // 重roll：先移除最新一批 friend 气泡，露出其前的 user 群。移走的留一份：没生成出新回复（失败、停止、没法组装）时放回原处。
+  let rerolled = null;
+  const redraw = () => { if (body && readerDialog === preparingDialog) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); } };
+  const putBack = () => {
+    if (!rerolled || readerDialog !== preparingDialog) return false;
+    preparingDialog.messages.splice(Math.min(rerolled.start, preparingDialog.messages.length), 0, ...rerolled.removed);
+    rerolled = null; redraw(); return true;
+  };
   if (isReroll) {
     const batch = lastFriendBatchRange(readerDialog.messages);
-    if (batch) readerDialog.messages.splice(batch.start, batch.end - batch.start + 1);
-    if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
+    // 这批回复已经总结进记忆：重新生成后那条记忆仍是旧回复的内容，先问一声。
+    if (batch && reader.expandCoreadDialogRange(readerDialog.slices || [], batch.start, batch.end).overlaps.length
+      && !await confirmDialog('重新生成', '这批回复已经总结进记忆。重新生成后，那条记忆还是旧回复的内容，需要时可在「管理记忆」里重新总结。继续？')) return;
+    if (readerDialog !== preparingDialog || readerView !== preparingView || dialogGenToken !== preparingToken || dialogBusy) return;
+    if (batch) rerolled = { start: batch.start, removed: readerDialog.messages.splice(batch.start, batch.end - batch.start + 1) };
+    redraw();
   }
 
   // 取末尾连续的 user 消息（本轮待回复的输入）；没有就提示
@@ -28776,15 +28839,15 @@ async function coreadGenerateReply(isReroll = false) {
   let s = msgs.length - 1;
   while (s >= 0 && msgs[s].role === 'user') s--;
   const pendingUsers = msgs.slice(s + 1);   // 末尾连续 user 群
-  if (!pendingUsers.length) { toast(isReroll ? '这批回复前没有你的消息，无法重新生成。' : '先发一句话，再点生成让书友回复。', 'info'); return; }
+  if (!pendingUsers.length) { putBack(); toast(isReroll ? '这批回复前没有你的消息，无法重新生成。' : '先发一句话，再点生成让书友回复。', 'info'); return; }
 
   // 组装上下文（防剧透滑窗 + 取材 + 身份人设 + 记忆召回）
   // 召回查询＝本轮 user 消息 + 用户设定数量的近期对话（伴读/主线共用同一扫描窗口）。
   const recallScanN = Math.max(1, Number(coreadMemory().recallScanMessages) || 8);
   const recallQuery = [...pendingUsers, ...msgs.slice(Math.max(0, s + 1 - recallScanN), s + 1)].map((x) => x.text || '').join(' ');
   const assembled = await buildCompanionContext(bookId, recallQuery);
-  if (readerView !== preparingView || readerDialog !== preparingDialog || dialogGenToken !== preparingToken) return;
-  if (!assembled) { toast('无法读取正文，先在阅读器打开这本书。', 'warning'); return; }
+  if (readerView !== preparingView || readerDialog !== preparingDialog || dialogGenToken !== preparingToken) { putBack(); return; }
+  if (!assembled) { putBack(); toast('无法读取正文，先在阅读器打开这本书。', 'warning'); return; }
 
   const token = ++dialogGenToken;
   dialogBusy = true;
@@ -28882,6 +28945,7 @@ async function coreadGenerateReply(isReroll = false) {
       if (token !== dialogGenToken) { clearTyping(); return; }
       clearTyping();
       readerDialog.messages.push({ id: uid('rdm'), role: 'friend', text: finalSentences[i].trim(), thought: i === 0 ? thought : '', ts: Date.now() });
+      rerolled = null;   // 新回复已经出来了，旧的不再放回
       if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }   // 新气泡为 :last-child → CSS 单独淡入上滑
       await coreadSaveDialog();
     }
@@ -28889,11 +28953,17 @@ async function coreadGenerateReply(isReroll = false) {
     if (token === dialogGenToken) {
       console.warn(`[${MODULE_NAME}] reader dialog gen failed`, error);
       readerDialog.messages = readerDialog.messages.filter((m) => m.id !== friendMsg.id);
+      const kept = putBack();
       if (body) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
-      toast(`伴读对话生成失败：${coreadExplainError(error)}`, 'warning');
+      toast(`伴读对话生成失败：${coreadExplainError(error)}${kept ? '；原回复已放回' : ''}`, 'warning');
       await coreadSaveDialog();
     }
   } finally {
+    // 中途停止、一句都还没出来：占位气泡拿掉，原回复放回
+    if (rerolled && readerDialog === preparingDialog) {
+      preparingDialog.messages = preparingDialog.messages.filter((m) => m.id !== friendMsg.id);
+      if (putBack()) void coreadSaveDialog();
+    }
     if (token === dialogGenToken) {
       dialogBusy = false;
       dialogAbort = null;
@@ -30662,7 +30732,7 @@ function renderSummaryApiCard(m) {
       <div class="sd-reader-mrow-triple">
         <label class="sd-reader-mlab-inline">温度<input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-sum-temp" min="0" max="2" step="0.05" value="${m.summaryTemperature}"></label>
         <label class="sd-reader-mlab-inline">最大输出<input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-sum-maxtok" min="0" step="500" value="${m.summaryMaxTokens}" placeholder="0=不限"></label>
-        <label class="sd-reader-mlab-inline">上下文<input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-sum-ctx" min="0" step="10000" value="${m.summaryContextChars}" placeholder="0=不限"></label>
+        <label class="sd-reader-mlab-inline">每批字数上限<input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-sum-ctx" min="0" step="10000" value="${m.summaryContextChars}" placeholder="0=不限"></label>
       </div>
       ${renderMemApiActions('summary')}
     </div>`;
@@ -33151,7 +33221,7 @@ function bindReaderStageEvents(stageRoot) {
     // 总结 API gen-params（数字框·不重渲）
     if (e.target.closest('.sd-reader-sum-temp')) { m.summaryTemperature = Math.max(0, Math.min(2, Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-maxtok')) { m.summaryMaxTokens = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
-    if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
+    if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = coreadClampBatchChars(e.target.value); saveSettings(); return; }
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
     if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 30); saveSettings(); return; }
     // 切片字数上限与阶段总结三个数：输入中只存不重绘；清空时不改原值，填小了由归一器夹到下限

@@ -462,9 +462,12 @@ test('with the review switch on, each batch goes through the dialog before anyth
   await e.c.coreadComicAuto();
   assert.equal(e.calls.length, 1); assert.equal(e.reviews.length, 1); assert.equal(e.reviews[0].label, '第 1–3 页'); assert.equal(e.reviews[0].summary, '总结1-3');
   assert.deepEqual(e.record().segments, [], 'cancelled: nothing saved'); assert.equal(e.dialog().slices.length, 0); assert.equal(e.puts.length, 0);
-  assert.equal(e.toasts.length, 0, 'a cancelled review is not a failure');
-  e.state.review = { summary: '我改过的', keywords: ['改'] };
+  // 取消校对不算失败，但本次打开不再自动识图：不然下次存进度又对同一批发请求，每次都花钱。
+  assert.equal(e.toasts.length, 1);assert.equal(e.toasts[0].level ?? e.toasts[0][1], 'info');assert.match(String(e.toasts[0].message ?? e.toasts[0][0]), /不再自动识图/);
   await e.c.coreadComicAuto();
+  assert.equal(e.calls.length, 1, 'no second request for the same batch after a cancel');
+  e.state.review = { summary: '我改过的', keywords: ['改'] };
+  await e.c.coreadComicFillMissing();
   assert.equal(e.record().segments[0].summary, '我改过的'); assert.deepEqual(e.record().segments[0].keywords, ['改']);
   assert.equal(e.dialog().slices[0].summary, '我改过的'); assert.deepEqual(Object.keys(e.record().pages), ['1', '2', '3'], 'page detail is kept as transcribed');
 });

@@ -15,7 +15,7 @@ test('every toast uses a level the toast library actually has', () => {
 
 test('a failed companion reply says why', () => {
     const reply = between('async function coreadGenerateReply', '\nasync function ');
-    assert.match(reply, /toast\(`伴读对话生成失败：\$\{coreadExplainError\(error\)\}`, 'warning'\)/);
+    assert.match(reply, /toast\(`伴读对话生成失败：\$\{coreadExplainError\(error\)\}\$\{kept \? '；原回复已放回' : ''\}`, 'warning'\)/);
     assert.match(between('function coreadExplainError', '\n}'), /HTTP\\s\*400[^\n]+msg\.slice\(0, 120\)/, 'a 400 keeps the provider wording: it is not always the model name');
 });
 

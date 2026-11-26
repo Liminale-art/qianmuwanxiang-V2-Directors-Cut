@@ -97,7 +97,7 @@ test('slice creation time prefers provenance and falls back to ts', () => {
 });
 
 // ── 真实函数：伴读对话总结 ──
-const DIALOG_FUNCTIONS = ['coreadExplainError', 'coreadTranscriptLine', 'coreadDialogBatches', 'coreadMemorySnapshot', 'coreadMemoryRestore',
+const DIALOG_FUNCTIONS = ['coreadExplainError', 'coreadTranscriptLine', 'coreadClampBatchChars', 'coreadBatchBudget', 'coreadDialogBatches', 'coreadTextSpanSize', 'coreadMemorySnapshot', 'coreadMemoryRestore',
   'coreadNextBatch', 'coreadRecalculateDialogCursor', 'coreadReplaceDialogRange', 'coreadCommitDialogSlices', 'coreadPersistSlice',
   'coreadDistill', 'coreadManualSummarize', 'coreadRenumberSlices', 'coreadRegenSlice', 'coreadSaveSliceEdit', 'coreadDeleteSlice',
   'coreadClearAllSlices', 'coreadMergeSynonyms', 'coreadSummarizeStage', 'coreadStageFromResult', 'coreadSaveStageEdit', 'coreadRegenStage', 'coreadDeleteStage', 'coreadMaybeStage', 'coreadSummarySystemPrompt', 'coreadDistillText', 'coreadTooLongReason',
@@ -167,12 +167,35 @@ test('a long pending dialogue becomes several slices whose ranges tile the pendi
 });
 
 test('a single message longer than the cap is sent whole in its own slice', async () => {
-  const e = dialogFixture({messages: 3, cap: 50});
-  e.dialog().messages[1].text = '长'.repeat(400);
+  const e = dialogFixture({messages: 3, cap: 1300});
+  e.state.memory.distillEvery = 3;   // 按条数是一批；按字数额度（至少 1000）拆成三批
+  e.dialog().messages[1].text = '长'.repeat(1200);
   assert.equal((await e.c.coreadDistill(true)).ok, true);
   assert.deepEqual(ranges(e.dialog()), [[0, 0], [1, 1], [2, 2]]);
-  assert.equal(e.sent[1], `友：${'长'.repeat(400)}`);
+  assert.equal(e.sent[1], `友：${'长'.repeat(1200)}`);
   assert.ok(!e.sent.some((text) => text.includes('较早内容略')));
+});
+
+test('dialogue batches follow 对话每多少条总结一次 for manual and automatic runs; automatic leaves a partial tail for later', async () => {
+  const e = dialogFixture({messages: 7, cap: 0});
+  e.state.memory.distillEvery = 3;
+  assert.equal((await e.c.coreadDistill(false)).ok, true);
+  assert.deepEqual(ranges(e.dialog()), [[0, 2], [3, 5]], 'the seventh message waits until a full batch of three');
+  assert.equal(e.dialog().cursor, 6);
+  const m = dialogFixture({messages: 7, cap: 0});
+  m.state.memory.distillEvery = 3;
+  assert.equal((await m.c.coreadManualSummarize(0, 6)).ok, true);
+  assert.deepEqual(ranges(m.dialog()), [[0, 2], [3, 5], [6, 6]], 'a manual run takes the partial tail too');
+});
+
+test('a non-zero batch limit never drops below 2000, and the prompt is counted inside it', () => {
+  const e = dialogFixture({messages: 2});
+  assert.deepEqual([0, -5, '', 1, 1999, 2000, 50000].map((v) => e.c.coreadClampBatchChars(v)), [0, 0, 0, 2000, 2000, 2000, 50000]);
+  const memory = {...e.state.memory, summaryContextChars: 50000};
+  const budget = e.c.coreadBatchBudget(memory, 'dialog', {title: '书'}, {user: '我', char: '友'});
+  const prompt = e.c.coreadSummarySystemPrompt('dialog', memory, {title: '书'}, {user: '我', char: '友'}, {progress: '读至第 999 章 · 100%'}).length;
+  assert.ok(budget < 50000 - prompt && budget >= 50000 - prompt - 400, String(budget));
+  assert.equal(e.c.coreadBatchBudget({...memory, summaryContextChars: 0}, 'dialog', {}, {}), 0, '0 is unlimited');
 });
 
 test('a failed batch stops the run: earlier slices stay and the cursor stops before the failure', async () => {
@@ -423,7 +446,7 @@ function textFixture({cap = 100, readPos = 250, slices = [], length = 400} = {})
       return {summary: `正文${sent.length}`, keywords: ['k'], synonyms: {}};
     },
   });
-  vm.runInContext(['coreadExplainError', 'coreadDialogBatches', 'coreadMemorySnapshot', 'coreadMemoryRestore', 'coreadNextBatch', 'coreadTextRangeMeta',
+  vm.runInContext(['coreadExplainError', 'coreadClampBatchChars', 'coreadBatchBudget', 'coreadDialogBatches', 'coreadTextSpanSize', 'coreadMemorySnapshot', 'coreadMemoryRestore', 'coreadNextBatch', 'coreadTextRangeMeta',
     'coreadPersistSlice', 'coreadDistillReadText', 'coreadDistillFullBook', 'coreadMaybeAutoDistillText'].map(section).join('\n'), c);
   return {c, sent, toasts, saves, state, full, dialog: () => c.readerDialog};
 }
@@ -436,24 +459,24 @@ function assertTextTiles(e, from, to) {
 }
 
 test('read-text distill covers the whole unread span in batches that each record exactly what was sent', async () => {
-  const e = textFixture({cap: 100, readPos: 250});
+  const e = textFixture({cap: 0, readPos: 2500, length: 4000});
   const result = await e.c.coreadDistillReadText(e.state.memory);
   assert.equal(result.ok, true);
-  const covered = assertTextTiles(e, 0, 250);
+  const covered = assertTextTiles(e, 0, 2500);
   assert.ok(covered.length > 1);assert.equal(result.made, covered.length);
   // 送出的各批（模型侧会去首尾空白）与登记范围一一对应，合起来就是 0–250 的全部正文。
   e.dialog().slices.forEach((slice, i) => {
     assert.equal(e.sent[i], e.full.slice(slice.coveredFrom, slice.coveredTo));
-    assert.ok(e.sent[i].length <= 100);
+    assert.ok(e.sent[i].length <= 1000, 'one batch is at most 正文每多少字总结一次 characters');
     assert.equal(slice.provenance.charFrom, slice.coveredFrom);assert.equal(slice.provenance.charTo, slice.coveredTo);
     assert.equal(slice.provenance.readTo, slice.coveredTo);
   });
-  assert.equal(e.sent.join(''), e.full.slice(0, 250));
+  assert.equal(e.sent.join(''), e.full.slice(0, 2500));
   assert.equal(e.saves.length, covered.length);
 });
 
 test('read-text distill stops at a failed batch or a failed save without claiming the rest', async () => {
-  const e = textFixture({cap: 100, readPos: 250});
+  const e = textFixture({cap: 0, readPos: 2500, length: 4000});
   e.state.failAt = 1;
   const failed = await e.c.coreadDistillReadText(e.state.memory);
   assert.equal(failed.ok, false);assert.equal(failed.made, 1);
@@ -465,7 +488,7 @@ test('read-text distill stops at a failed batch or a failed save without claimin
   assert.equal(e.dialog().slices.length, 1);
   e.state.saveOk = true;
   assert.equal((await e.c.coreadDistillReadText(e.state.memory)).ok, true);
-  assert.equal(assertTextTiles(e, 0, 250)[1][0], firstEnd, 'the next run resumes exactly where the saved coverage ends');
+  assert.equal(assertTextTiles(e, 0, 2500)[1][0], firstEnd, 'the next run resumes exactly where the saved coverage ends');
 });
 
 test('after a full-book pass the incremental distill says there is nothing to do, and still fills uncovered ranges', async () => {
@@ -485,26 +508,28 @@ test('after a full-book pass the incremental distill says there is nothing to do
   assert.equal(holed.sent.length, 1, 'nothing uncovered: automatic distill stays idle');
   const auto = textFixture({cap: 0, readPos: 1500, length: 2000, slices: [covered(0, 400)]});
   await auto.c.coreadMaybeAutoDistillText();
-  assert.deepEqual(textSlices(auto.dialog()), [[0, 400], [400, 1500]]);
+  const autoTiles = textSlices(auto.dialog());
+  assert.equal(autoTiles.length, 3, 'same ruler as manual: the 1100 new characters become two batches of at most 1000');
+  assert.deepEqual([autoTiles[1][0], autoTiles.at(-1)[1]], [400, 1500]);assert.equal(autoTiles[2][0], autoTiles[1][1]);
   assert.equal(auto.c.coreadAutoTextInFlight, false);
 });
 
-test('full-book distill never cuts a chunk after sizing it, even under a small context cap', async () => {
-  const e = textFixture({cap: 120, length: 400});
+test('full-book distill uses the same ruler as reading, never cuts a chunk after sizing it, even under a small cap', async () => {
+  const e = textFixture({cap: 1200, length: 4000});
   const result = await e.c.coreadDistillFullBook(e.state.memory, false);
   assert.equal(result.ok, true);
-  const covered = assertTextTiles(e, 0, 400);
-  assert.equal(result.made, covered.length);
+  const covered = assertTextTiles(e, 0, 4000);
+  assert.equal(result.made, covered.length);assert.ok(covered.length >= 4);
   e.dialog().slices.forEach((slice, i) => {
     assert.equal(e.sent[i], e.full.slice(slice.coveredFrom, slice.coveredTo));
-    assert.ok(e.sent[i].length <= 120);
+    assert.ok(e.sent[i].length <= 1000);
   });
   assert.equal(e.sent.join(''), e.full);
   assert.equal(e.saves.length, covered.length, 'each chunk is saved as it is made');
 });
 
 test('full-book distill stops and reports when a chunk cannot be saved', async () => {
-  const e = textFixture({cap: 120, length: 400});
+  const e = textFixture({cap: 1200, length: 4000});
   e.state.saveOk = false;
   const result = await e.c.coreadDistillFullBook(e.state.memory, false);
   assert.equal(result.ok, false);assert.match(result.reason, /记忆未能保存，请重试/);assert.equal(result.made, 0);
@@ -536,7 +561,7 @@ test('automatic text distill handles at most two batches per trigger; a manual r
 });
 
 test('running full-book distill twice makes no duplicate slices, and a later run only fills what is missing', async () => {
-  const e = textFixture({cap: 120, length: 400});
+  const e = textFixture({cap: 1200, length: 4000});
   assert.equal((await e.c.coreadDistillFullBook(e.state.memory)).ok, true);
   const first = e.dialog().slices.length, sentBefore = e.sent.length;
   const again = await e.c.coreadDistillFullBook(e.state.memory);
@@ -547,5 +572,5 @@ test('running full-book distill twice makes no duplicate slices, and a later run
   const refill = await e.c.coreadDistillFullBook(e.state.memory);
   assert.equal(refill.ok, true); assert.equal(refill.made, 1);
   assert.equal(e.sent.at(-1), e.full.slice(removed.coveredFrom, removed.coveredTo));
-  assertTextTiles(e, 0, 400);
+  assertTextTiles(e, 0, 4000);
 });
