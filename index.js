@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.610';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.611';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.610';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.611';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.610';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.610';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.610';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.610';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.610';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.610';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.610';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.611';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.611';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.611';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.611';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.611';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.611';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.611';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.610';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.611';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.610';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.611';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.610';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.611';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.610';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.611';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -124,7 +124,7 @@ import { renderCoreadIdentityView, renderCoreadIdentityChoicesView } from './qia
 import { renderCoreadVoicePanelView, renderCoreadNotesPanelView, renderCoreadMarksPanelView, coreadNoteMatches } from './qianmu-reader-panel-view.js';
 import { renderCoreadLibraryBookView, renderCoreadLibraryCollectionView } from './qianmu-reader-library-view.js';
 import { renderCoreadCenterStatusView, renderCoreadSpoilerGuardView, renderCoreadGuideView, renderCoreadPackBarView,
-  renderCoreadSummaryItemsView, renderCoreadMemoryOverviewView,
+  renderCoreadSummaryItemsView, renderCoreadPromptTabsView, renderCoreadMemoryOverviewView,
   renderCoreadSwitchView, renderCoreadModelRowView, renderCoreadProfileRowView, renderCoreadApiActionsView,
   renderCoreadInjectionRowsView, renderCoreadInjectionAnchorsView, renderCoreadInjectionDictionaryView, renderCoreadInjectionPanelView } from './qianmu-reader-center-view.js';
 import {
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.610';
+const VERSION = '1.59.611';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1326,7 +1326,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       summaryContextChars: 100000,  // 送模型的对话字符上限（默认100000·0=不限·超限截尾）
       summaryStream: false,         // 流式（后台蒸馏体感有限·供代理兼容）
       // 记忆蒸馏（1C·关键词档全链路）
-      summaryItems: [],             // 条目式总结提示词 [{id,builtin,order,title,text}]·空则归一器填内置默认
+      // 总结提示词：三组可编辑条目 { dialog, book, stage }，各组 [{id,builtin,order,title,text}]；缺组由归一器填内置默认。
+      // 开头说明、日期、输出格式与字数上限在 qianmu-reader.js 的 buildCoreadSummaryPrompt 里，不在条目中。
+      summaryPrompts: null,
       readDateInSummary: false,     // 总结时是否记录「阅读/对话的年月日」（默认关·用户按需开）
       autoDistill: true,            // 自动蒸馏总开关
       distillEvery: 30,             // 每积累 N 条新的双方对话气泡触发一次自动蒸馏（用户已定：按气泡数计·默认30）
@@ -1337,18 +1339,15 @@ const DEFAULT_SETTINGS = Object.freeze({
       recallCount: 2,               // 每次「检索命中」注入的记忆切片数（默认2·用户可改）
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
       recallScanMessages: 8,        // 召回查询扫描最近 N 条对话（默认8）
-      sliceMaxChars: 300,           // 单条切片总结的字数上限（默认300·松紧刚好）
+      sliceChars: 300,              // 每条切片字数上限（超过 1.5 倍整条不收）
       spoilerProtection: true,      // 共读记忆防剧透：按每条切片形成时的阅读水位过滤后文章节（默认开）
       rerankTopN: 4,               // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
       // 哪份伴读档案用哪些词册，记在档案自己的 dictBound 里（见 coreadBoundDicts），随档案走。
       dictBooks: [],
-      // 书籍蒸馏提示词（「整理要求」段·空=用内置默认 DEFAULT_DISTILL_TEXT_PROMPT）。
-      // 不同文体题材精炼方式不同·用户可按在读书籍调整（如议论文重观点、小说重情节转折）。
-      distillTextPrompt: '',
-      // 总结提示词预设：整套（伴读条目 + 蒸馏书籍）打包保存/切换。[{id,name,items,distillTextPrompt}]
-      summaryPresets: [],
-      summaryPresetSel: '',   // 当前选中的预设 ID（重渲后固定显示）
+      // 总结提示词预设：三组整套保存／切换。[{id,name,prompts}]
+      promptPresets: [],
+      promptPresetSel: '',   // 当前选中的预设 ID（重渲后固定显示）
       guideSeen: false,       // 首次打开伴读中心进入引导态；可从记忆档案末尾再次查看
     },
   },
@@ -25329,8 +25328,8 @@ function coreadMemory() {
   const defIdx = m.dictBooks.findIndex((d) => d.id === COREAD_DEFAULT_DICT);
   if (defIdx < 0) m.dictBooks.unshift({ id: COREAD_DEFAULT_DICT, name: '默认词典', pairs: {} });
   else if (defIdx > 0) m.dictBooks.unshift(m.dictBooks.splice(defIdx, 1)[0]);   // 确保置顶
-  if (!Number.isFinite(m.sliceMaxChars)) m.sliceMaxChars = 300;
-  m.sliceMaxChars = Math.max(50, Math.round(m.sliceMaxChars));
+  if (!Number.isFinite(m.sliceChars)) m.sliceChars = reader.COREAD_SLICE_CHARS;
+  m.sliceChars = Math.max(50, Math.round(m.sliceChars));
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
   m.rerankTopN = Math.max(1, Math.round(m.rerankTopN));
   if (!Number.isFinite(m.recallScanMessages)) m.recallScanMessages = 8;
@@ -25339,30 +25338,16 @@ function coreadMemory() {
   m.autoDistillText = !!m.autoDistillText;
   if (!Number.isFinite(m.distillTextEvery)) m.distillTextEvery = 8000;
   m.distillTextEvery = Math.max(1000, Math.round(m.distillTextEvery));
-  // 条目式总结提示词：空则填内置默认；归一每条字段（builtin 标记不可删·可改·可恢复默认）
-  if (!Array.isArray(m.summaryItems) || !m.summaryItems.length) m.summaryItems = clone(DEFAULT_SUMMARY_ITEMS);
-  m.summaryItems = m.summaryItems
-    .filter((it) => isPlainObject(it))
-    .map((it, i) => ({
-      id: String(it.id || uid('sum')),
-      builtin: !!it.builtin,
-      order: Number.isFinite(it.order) ? it.order : i,
-      title: String(it.title || '未命名提示词'),
-      text: String(it.text || ''),
-    }))
-    .sort((a, b) => a.order - b.order)
-    .map((it, i) => ({ ...it, order: i }));   // 重排后 order 规整为连续
-  // 书籍蒸馏提示词：空串＝用内置默认（DEFAULT_DISTILL_TEXT_PROMPT），非空＝用户自定义
-  if (typeof m.distillTextPrompt !== 'string') m.distillTextPrompt = '';
-  // 总结提示词预设：整套（伴读条目 items + 蒸馏书籍 distillTextPrompt）打包
-  if (!Array.isArray(m.summaryPresets)) m.summaryPresets = [];
-  m.summaryPresets = m.summaryPresets.map((p) => ({
-    id: String(p.id || uid('spreset')),
+  // 总结提示词三组（旧版的 summaryItems／distillTextPrompt／summaryPresets 用户 2026-11-26 定弃用，读到即丢）。
+  for (const key of ['summaryItems', 'distillTextPrompt', 'summaryPresets', 'summaryPresetSel', 'sliceMaxChars']) delete m[key];
+  m.summaryPrompts = reader.normalizeCoreadSummaryPrompts(m.summaryPrompts, () => uid('sum'));
+  if (!Array.isArray(m.promptPresets)) m.promptPresets = [];
+  m.promptPresets = m.promptPresets.filter(isPlainObject).map((p) => ({
+    id: String(p.id || uid('sumpre')),
     name: String(p.name || '未命名预设'),
-    items: Array.isArray(p.items) ? p.items : [],
-    distillTextPrompt: String(p.distillTextPrompt || ''),
+    prompts: reader.normalizeCoreadSummaryPrompts(p.prompts, () => uid('sum')),
   }));
-  if (typeof m.summaryPresetSel !== 'string') m.summaryPresetSel = '';
+  if (typeof m.promptPresetSel !== 'string' || !m.promptPresets.some((p) => p.id === m.promptPresetSel)) m.promptPresetSel = '';
   if (typeof m.guideSeen !== 'boolean') m.guideSeen = false;
   return m;
 }
@@ -25370,16 +25355,6 @@ function coreadMemory() {
 // 内置总结提示词（用户可改·可恢复默认·不可删；自定义条目排在其后）。
 // ① 硬格式=标准输出结构(时间/进度锚点·客观第三人称·重要原话保留·深谈vs随口区分·专名保留)；② 记录侧重维度。
 // 注意：真正不可破坏的 JSON 输出契约由蒸馏代码在末尾强制追加，此处提示词只管「写什么/怎么写」，用户改坏也不影响解析。
-const DEFAULT_SUMMARY_ITEMS = [
-  { id: 'sum-format', builtin: true, order: 0, title: '总结要求与输出格式', text: '将读者与书友的共读对话，蒸馏为可复用的客观记忆文本，全程以第三人称事实陈述呈现，不加入主观评判。\n\n【核心规则】\n1. 身份边界严格隔离：对话方为现实中的「读者」「书友」，书籍角色仅为讨论对象。严禁将读者/书友的评论、推测、感想等同于书中角色的实际言行；书中角色不视为对话参与者。\n2. 内容记录规范：① 专名保留，人名、地名、作品名、专有概念沿用原文完整表述，不缩写、不泛化、不意译；② 原话摘引，对话中的核心论断、关键观点、原文摘句以双引号直引，句数按需适配总篇幅；③ 变化标注，态度转向、认知更新、共识达成等关键转变统一以「原状态 变为 新状态」格式标注。\n3. 详略尺度控制：深度对谈（剧情分析、人物解读、观点交锋）完整记录核心逻辑与结论；闲聊寒暄、过渡性表述仅记核心意图与结论；不遗漏影响后续共读理解的关键信息。正文篇幅控制在 200 至 300 字。\n4. 行文禁用破折号（——），不以破折号补充说明或制造停顿；改用逗号、句号或直接陈述。\n\n【输出要求】\n输出为纯 JSON，不含额外说明：{"summary": "符合上述要求的第三人称客观记忆正文", "keywords": ["3 至 10 个高辨识度检索关键词，优先人名 / 核心事件 / 关键概念 / 核心情节点，保障召回精准"]}' },
-];
-
-// 书籍蒸馏内置默认整理要求。
-// 用户可在「书籍蒸馏·蒸馏提示词」卡片里覆盖此项，按在读书籍的文体/题材定制精炼方式，空则回落这里。
-const DEFAULT_DISTILL_TEXT_PROMPT = `只记正文中确实发生的情节、人物、场景、关键转折，全程第三人称客观陈述，不加评论、不作书评。
-专名（人名/地名/作品内概念）沿用原文完整表述，不缩写、不意译。
-篇幅控制在 200 至 300 字。行文禁用破折号（——）。`;
-
 // 经 ST 后端 custom 渠道调用外部接口（绕浏览器 CORS）：地址、鉴权回退、回复解析统一在 qianmu-st-model-proxy.js。
 // 非流式；失败文字为「HTTP 状态 · 详情」，调用方据此决定是否回落浏览器直连。
 const stModelProxy = createStModelProxy({ headers: () => ctx().getRequestHeaders?.() || {} });
@@ -26041,14 +26016,15 @@ async function callCoreadVisionModel(systemPrompt, userPrompt, imageUrls, opts =
 }
 
 // 拼总结提示词：全部条目（含内置格式+JSON 契约+用户自定义）按 order 拼；末尾仅补一句「纯 JSON」硬提醒兜底解析（不再重述格式/字数，交给可见的内置条掌管）。
-function coreadBuildDistillPrompt(m, meta, names, progressHint) {
-  const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
-  const itemText = items.length
-    ? items.map((it, i) => `${i + 1}. ${it.title}：${it.text}`).join('\n')
-    : '记录我对角色/情节的看法、对后续的猜测、被触动的点、疑问。';
-  const anchor = progressHint ? `（${progressHint}）` : '';
-  const dateRule = progressHint ? '\n- 本段对话/阅读发生于上述括号内标注的时间，请在总结开头自然带出该年月日与读至进度。' : '';
-  return `你是伴读记忆整理助手。下面是「${names.user}」在伴读《${meta.title || '未命名'}》${anchor}时与书友「${names.char}」的一段讨论这本书的对话。请站在「${names.user}」的视角把这段对话蒸馏成记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${itemText}${dateRule}\n\n【底线】务必只输出纯 JSON：{"summary": "第三人称客观记忆正文", "keywords": ["高辨识度检索关键词"], "synonyms": {"标准词": ["别称/简称/指代词"]}}。\n- synonyms：为 keywords 里的关键人物 / 概念补上本段出现过的别称、简称、指代（如外号、全名与简称的对应、「他 / 她」在此处具体指谁），用于提升日后检索命中；没有可补的就给空对象 {}，不要硬凑。\n不要代码块标记、不要任何额外解释文字。`;
+// 组出某一组总结的系统提示词：条目取自「总结提示词」里这一组，开头、日期、输出格式与字数上限由协议补上。
+function coreadSummarySystemPrompt(kind, m, meta, names, extra = {}) {
+  return reader.buildCoreadSummaryPrompt(kind, {
+    items: m.summaryPrompts?.[kind] || [],
+    user: names?.user, char: names?.char, title: meta?.title,
+    date: m.readDateInSummary ? coreadDateHint() : '',
+    chars: kind === 'stage' ? m.stageChars : m.sliceChars,
+    ...extra,
+  });
 }
 
 // 阅读进度锚点提示（读到哪·供总结定位）。
@@ -26139,15 +26115,12 @@ async function coreadDistillSegment(segMsgs, m, meta, names) {
   if (!seg.length) return null;
   // 不在这里截断：字数上限由调用方分批落实（coreadDialogBatches），送出的就是切片登记覆盖的全部对话。
   const transcript = seg.map((x) => coreadTranscriptLine(x, names)).join('\n');
-  const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
-  const sysPrompt = coreadBuildDistillPrompt(m, meta, names, dateHint);
+  const sysPrompt = coreadSummarySystemPrompt('dialog', m, meta, names, { progress: coreadProgressHint(meta) });
 
-  let lastRaw = '';
+  let lastRaw = '', retry = '';
   for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
-    // 闸3：重试轮在 user 侧追加更硬的纯 JSON 提醒（不改可见的系统提示词）
-    const userMsg = attempt === 0
-      ? `【对话】\n${transcript}`
-      : `【对话】\n${transcript}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出形如 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要任何解释、不要代码块标记。`;
+    // 闸3：重试轮在 user 侧追加提醒（格式没解析出来，或 summary 超出上限），不改可见的系统提示词
+    const userMsg = `【对话】\n${transcript}${retry ? reader.coreadSummaryRetryNote(retry, m.sliceChars) : ''}`;
     let raw = '';
     try {
       raw = String(await callCoreadModel(sysPrompt, userMsg) || '');
@@ -26165,17 +26138,28 @@ async function coreadDistillSegment(segMsgs, m, meta, names) {
     try { parsed = extractJson(raw); } catch (_) { parsed = null; }
     // 闸2 本地修复
     const built = parsed ? coreadBuildSliceFromParsed(parsed, meta) : null;
+    // 超过字数上限 1.5 倍整条不收、不截断：重问让它压短，问完还超就算这一批失败。
+    if (built && reader.coreadSummaryTooLong(built.summary, m.sliceChars)) {
+      if (attempt < COREAD_DISTILL_RETRY) { retry = 'long'; toast(`伴读记忆：总结超出字数上限，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info'); continue; }
+      throw new Error(coreadTooLongReason(built.summary, m.sliceChars));
+    }
     if (built) return built;
     // summary 抠不出来 → 进入下一轮重问（闸3·格式重试提示，与网络重试区分）
+    retry = 'format';
     if (attempt < COREAD_DISTILL_RETRY) toast(`伴读记忆：输出格式异常，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info');
   }
-  // 闸4 保底落地：从最后一次原始文本抢救
+  // 闸4 保底落地：从最后一次原始文本抢救（抢救出来的也受字数上限约束）
   const salvaged = coreadSalvageSummary(lastRaw);
+  if (salvaged && reader.coreadSummaryTooLong(salvaged, m.sliceChars)) throw new Error(coreadTooLongReason(salvaged, m.sliceChars));
   if (salvaged) {
     console.warn(`[${MODULE_NAME}] 蒸馏解析多次失败，已保底落地（关键词可能缺失）`);
     return { summary: salvaged, keywords: [meta.title || '伴读'], synonyms: {}, salvaged: true };
   }
   return null;   // 连保底文本都没有（模型完全空返回）
+}
+
+function coreadTooLongReason(summary, chars) {
+  return `总结超出字数上限（${String(summary || '').length} 字，上限 ${chars} 字），未保存`;
 }
 
 // 闸2：从已解析对象组装切片，字段缺失/类型错都本地修复；summary 实在抠不出返回 null 触发重问。
@@ -26403,12 +26387,11 @@ async function coreadPersistSlice(res, meta, extra = {}) {
 async function coreadDistillText(bodyText, sysPrompt, m, opts = {}) {
   const text = String(bodyText || '').trim();
   if (!text) return null;
-  let lastRaw = '';
+  const chars = opts.chars || m.sliceChars;
+  let lastRaw = '', retry = '';
   for (let attempt = 0; attempt <= COREAD_DISTILL_RETRY; attempt++) {
     if (opts.signal?.aborted) throw new DOMException('用户已停止', 'AbortError');
-    const userMsg = attempt === 0
-      ? `【待整理内容】\n${text}`
-      : `【待整理内容】\n${text}\n\n【重要】上一次输出无法解析为 JSON。请严格只输出 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要解释、不要代码块标记。`;
+    const userMsg = `${opts.label || '【待整理内容】'}\n${text}${retry ? reader.coreadSummaryRetryNote(retry, chars) : ''}`;
     let raw = '';
     try { raw = String(await callCoreadModel(sysPrompt, userMsg, { signal: opts.signal }) || ''); }
     catch (err) {
@@ -26419,10 +26402,17 @@ async function coreadDistillText(bodyText, sysPrompt, m, opts = {}) {
     let parsed = null;
     try { parsed = extractJson(raw); } catch (_) { parsed = null; }
     const built = parsed ? coreadBuildSliceFromParsed(parsed, { title: '伴读' }) : null;
+    // 超过字数上限 1.5 倍整条不收、不截断：重问让它压短，问完还超就算失败。
+    if (built && reader.coreadSummaryTooLong(built.summary, chars)) {
+      if (attempt < COREAD_DISTILL_RETRY) { retry = 'long'; toast(`伴读记忆：总结超出字数上限，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info'); continue; }
+      throw new Error(coreadTooLongReason(built.summary, chars));
+    }
     if (built) return built;
+    retry = 'format';
     if (attempt < COREAD_DISTILL_RETRY) toast(`伴读记忆：输出格式异常，正在重新生成（${attempt + 2}/${COREAD_DISTILL_RETRY + 1}）…`, 'info');
   }
   const salvaged = coreadSalvageSummary(lastRaw);
+  if (salvaged && reader.coreadSummaryTooLong(salvaged, chars)) throw new Error(coreadTooLongReason(salvaged, chars));
   return salvaged ? { summary: salvaged, keywords: ['伴读'], synonyms: {}, salvaged: true } : null;
 }
 
@@ -26459,15 +26449,12 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
     if (pendingChars <= 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
     const cap = Number(m.summaryContextChars) > 0 ? Number(m.summaryContextChars) : 30000;
     const spans = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, cap)).slice(0, maxBatches);
-    const dateHint = m.readDateInSummary ? [coreadDateHint(), coreadProgressHint(meta)].filter(Boolean).join(' · ') : '';
-    const anchor = dateHint ? `（${dateHint}）` : '';
-    // 整理要求：用户在「蒸馏提示词」卡片自定义→用其覆盖，否则回落内置默认（按文体/题材对症下药）
-    const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
-    const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》${anchor}中「读者刚读过」的一段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词·优先人名/事件/概念"],"synonyms":{"标准词":["别称/指代"]}}。没有可补的别称就给 {}。不要代码块标记、不要额外解释。`;
+    const names = { char: companionCharName(), user: coreadUserName() };
     let made = 0, salvaged = false;
     const finish = async (result) => ({ ...result, made, salvaged });
-    for (const span of spans) {
+    for (const [si, span] of spans.entries()) {
       if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
+      const sysPrompt = coreadSummarySystemPrompt('book', m, meta, names, { part: si + 1, total: spans.length });
       const body = full.slice(span.from, span.to);
       if (!body.trim()) continue;
       coreadDistillCtl = new AbortController();
@@ -26524,7 +26511,7 @@ async function coreadDistillFullBook(m) {
     // 每段字数不超过「上下文」上限（不限时每段 30000、最多 60000），分好的段原样送出，不再二次截断。
     const ctxCap = Number(m.summaryContextChars) || 0;
     const chunkSize = ctxCap > 0 ? Math.min(60000, ctxCap) : 30000;
-    const rule = String(m.distillTextPrompt || '').trim() || DEFAULT_DISTILL_TEXT_PROMPT;
+    const names = { char: companionCharName(), user: coreadUserName() };
     // 划分段落（每段至多 chunkSize 字·首尾相接不重叠·优先在换行处分段）
     // 只整理还没被正文切片覆盖的部分：连点两次、或中途停下后再点，都不会生成重复切片，只补缺口。
     const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], full.length);
@@ -26538,7 +26525,7 @@ async function coreadDistillFullBook(m) {
       const { from, to } = chunks[ci];
       const body = full.slice(from, to);
       if (!body.trim()) continue;
-      const sysPrompt = `你是伴读记忆整理助手。下面是《${meta.title || '未命名'}》第 ${ci + 1}/${chunks.length} 段正文原文。请把它蒸馏成第三人称客观的情节记忆，供日后回顾与主线剧情引用。\n\n【整理要求】\n${rule}\n\n【底线】只输出纯 JSON：{"summary":"第三人称情节记忆正文","keywords":["高辨识度检索词"],"synonyms":{}}。不要代码块标记、不要额外解释。`;
+      const sysPrompt = coreadSummarySystemPrompt('book', m, meta, names, { part: ci + 1, total: chunks.length });
       let res = null;
       coreadDistillCtl = new AbortController();
       try { res = await coreadDistillText(body, sysPrompt, m, { signal: coreadDistillCtl.signal }); }
@@ -26672,14 +26659,14 @@ async function coreadCompressSlices(lo, hi) {
     const names = { char: companionCharName(), user: coreadUserName() };
     inRange.sort((a, b) => (Number(a.batch) || 0) - (Number(b.batch) || 0));
     const merged = inRange.map((s, i) => `${i + 1}. ${s.summary}`).join('\n');
-    const sysPrompt = `你是伴读记忆整理助手。下面是「${names.user}」伴读《${meta.title || ''}》时的多条历史记忆，请把它们压缩合并成一条更凝练的记忆，保留关键人物/情节/态度变化，去除重复。只输出纯 JSON：{"summary":"不超过${Math.max(m.sliceMaxChars, 400)}字的第三人称合并总结","keywords":["3-8个检索关键词"]}`;
+    const sysPrompt = `你是伴读记忆整理助手。下面是「${names.user}」伴读《${meta.title || ''}》时的多条历史记忆，请把它们压缩合并成一条更凝练的记忆，保留关键人物/情节/态度变化，去除重复。只输出纯 JSON：{"summary":"不超过${Math.max(m.sliceChars, 400)}字的第三人称合并总结","keywords":["3-8个检索关键词"]}`;
     const raw = String(await callCoreadModel(sysPrompt, `【多条历史记忆】\n${merged}`) || '');
     let parsed = null;
     try { parsed = extractJson(raw); } catch (_) { parsed = null; }
     // 宽松解析失败→保底抢救 summary（压缩是手动操作·抢救不出才报失败让用户重试·绝不误删旧切片）
     let summary = String((isPlainObject(parsed) && parsed.summary) || '').trim() || coreadSalvageSummary(raw);
     if (!summary) return { ok: false, reason: '模型没有返回有效结果' };
-    const cap = Math.max(m.sliceMaxChars, 400);
+    const cap = Math.max(m.sliceChars, 400);
     if (summary.length > cap) summary = summary.slice(0, cap);
     let keywords = uniqueClean((isPlainObject(parsed) && Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
     if (!keywords.length) keywords = inRange.flatMap((s) => s.keywords || []).slice(0, 6);
@@ -27600,21 +27587,35 @@ async function coreadOpenSliceManagerDialog() {
   rerenderMoreIfOpen();
 }
 
-// 导出总结提示词为 JSON：含两块（伴读总结条目 + 蒸馏书籍提示词）·便于跨端还原。
+// 总结提示词卡：当前看的是哪一组、卡片是否展开（重绘整页时保持）。
+let coreadPromptTab = 'dialog';
+let coreadPromptCardOpen = false;
+// 某条提示词所在的那一组（三组的条目编号互不重复）。
+function coreadPromptGroupOf(m, id) {
+  return reader.COREAD_PROMPT_KINDS.map((kind) => m.summaryPrompts?.[kind]).find((group) => group?.some((it) => it.id === id)) || null;
+}
+
+// 总结提示词三组的可携带快照（不带 id，导入或套用时重新编号）。
+function coreadPortableSummaryPrompts(prompts) {
+  return Object.fromEntries(reader.COREAD_PROMPT_KINDS.map((kind) => [kind,
+    (prompts?.[kind] || []).map((it) => ({ builtin: !!it.builtin, order: it.order, title: it.title, text: it.text }))]));
+}
+
+// 导出总结提示词为 JSON：三组（对话总结、正文总结、阶段总结）一起，便于跨端还原。
 function coreadExportSummaryItems() {
   const m = coreadMemory();
-  const items = (m.summaryItems || []).map((it) => ({ builtin: !!it.builtin, title: it.title, text: it.text }));
-  const payload = { type: 'qianmu-coread-summary', version: 3, items, distillTextPrompt: m.distillTextPrompt || '' };
+  const prompts = coreadPortableSummaryPrompts(m.summaryPrompts);
+  const payload = { type: 'qianmu-coread-summary', version: 4, prompts };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `qianmu-伴读总结提示词-${fileStamp()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  toast(`已导出 ${items.length} 条提示词。`, 'success');
+  toast('已导出总结提示词。', 'success');
 }
 
-// 导入总结提示词（覆盖现有·带确认）：兼容 v2（仅条目）与 v3（含蒸馏书籍提示词）。
+// 导入总结提示词（覆盖现有·带确认）。只认三组格式（version 4）；旧版文件用户 2026-11-26 定弃用。
 function coreadImportSummaryItems() {
   const input = document.createElement('input');
   input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
@@ -27624,40 +27625,31 @@ function coreadImportSummaryItems() {
     if (!file) return;
     let data;
     try { data = JSON.parse(await file.text()); } catch (_) { toast('导入失败：不是有效的 JSON。', 'error'); return; }
-    const arr = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : null);
-    if (!arr || !arr.length) { toast('导入失败：没有可用的提示词。', 'error'); return; }
-    const hasExtra = typeof data?.distillTextPrompt === 'string';
-    if (!await confirmDialog('导入总结提示词', `将用导入的 ${arr.length} 条伴读总结提示词${hasExtra ? '（含蒸馏书籍提示词）' : ''}覆盖当前，确定继续？`)) return;
+    const prompts = isPlainObject(data) && data.type === 'qianmu-coread-summary' && isPlainObject(data.prompts) ? data.prompts : null;
+    if (!prompts) { toast('导入失败：不是这一版的伴读总结提示词文件。', 'error'); return; }
+    if (!reader.COREAD_PROMPT_KINDS.some((kind) => Array.isArray(prompts[kind]) && prompts[kind].length)) { toast('导入失败：没有可用的提示词。', 'error'); return; }
+    if (!await confirmDialog('导入总结提示词', '将用导入的提示词覆盖当前的对话总结、正文总结与阶段总结（文件里缺的组用内置默认），确定继续？')) return;
     const m = coreadMemory();
-    m.summaryItems = arr.filter((it) => isPlainObject(it)).map((it, i) => ({
-      id: uid('sum'), builtin: !!it.builtin, order: i, title: String(it.title || '未命名提示词'), text: String(it.text || ''),
-    }));
-    if (typeof data.distillTextPrompt === 'string') m.distillTextPrompt = data.distillTextPrompt;
+    m.summaryPrompts = reader.normalizeCoreadSummaryPrompts(coreadPortableSummaryPrompts(prompts), () => uid('sum'));
     saveSettings();
     rerenderMoreIfOpen();
-    toast(`已导入 ${arr.length} 条提示词。`, 'success');
+    toast('已导入总结提示词。', 'success');
   });
   input.click();
 }
 
-// 总结提示词预设：把当前两块（伴读条目 + 蒸馏书籍）整套打包命名保存，可切换/删除。
-// 预设只存内容快照，套用时整套覆盖当前——切换不同书籍/文体的总结风格用。
+// 总结提示词预设：三组整套命名保存，可切换／删除。预设只存内容快照，套用时整套覆盖当前。
 async function coreadSaveSummaryPreset() {
   const m = coreadMemory();
   const name = await coreadPromptText('存为预设', '给这套总结提示词起个名（如「小说·细节流」「论文·观点流」）：', '');
   if (name == null) return;
   const nm = String(name).trim();
   if (!nm) { toast('预设名不能为空。', 'warning'); return; }
-  const snapshot = {
-    id: uid('sumpre'),
-    name: nm,
-    items: (m.summaryItems || []).map((it) => ({ builtin: !!it.builtin, order: it.order, title: it.title, text: it.text })),
-    distillTextPrompt: m.distillTextPrompt || '',
-  };
+  const prompts = reader.normalizeCoreadSummaryPrompts(coreadPortableSummaryPrompts(m.summaryPrompts), () => uid('sum'));
   // 同名覆盖（避免堆重名），否则新增
-  const exist = (m.summaryPresets || []).find((p) => p.name === nm);
-  if (exist) { exist.items = snapshot.items; exist.distillTextPrompt = snapshot.distillTextPrompt; m.summaryPresetSel = exist.id; }
-  else { m.summaryPresets = [...(m.summaryPresets || []), snapshot]; m.summaryPresetSel = snapshot.id; }
+  const exist = (m.promptPresets || []).find((p) => p.name === nm);
+  if (exist) { exist.prompts = prompts; m.promptPresetSel = exist.id; }
+  else { const id = uid('sumpre'); m.promptPresets = [...(m.promptPresets || []), { id, name: nm, prompts }]; m.promptPresetSel = id; }
   saveSettings(); rerenderMoreIfOpen();
   toast(`已${exist ? '覆盖' : '保存'}预设「${nm}」。`, 'success');
 }
@@ -27665,15 +27657,14 @@ async function coreadSaveSummaryPreset() {
 // 套用预设：整套覆盖当前内容（带确认·避免误覆盖手改）。
 async function coreadApplySummaryPreset(id) {
   const m = coreadMemory();
-  const p = (m.summaryPresets || []).find((x) => x.id === id);
-  if (!p) { m.summaryPresetSel = ''; saveSettings(); rerenderMoreIfOpen(); return; }
-  if (!await confirmDialog('套用预设', `将用预设「${p.name}」整套覆盖当前的总结提示词（伴读条目 + 蒸馏书籍），确定？`)) {
+  const p = (m.promptPresets || []).find((x) => x.id === id);
+  if (!p) { m.promptPresetSel = ''; saveSettings(); rerenderMoreIfOpen(); return; }
+  if (!await confirmDialog('套用预设', `将用预设「${p.name}」整套覆盖当前的总结提示词（对话、正文、阶段三组），确定？`)) {
     // 用户取消：下拉选择回退到当前实际选中项
     rerenderMoreIfOpen(); return;
   }
-  m.summaryItems = (p.items || []).map((it, i) => ({ id: uid('sum'), builtin: !!it.builtin, order: i, title: String(it.title || '未命名提示词'), text: String(it.text || '') }));
-  m.distillTextPrompt = String(p.distillTextPrompt || '');
-  m.summaryPresetSel = id;
+  m.summaryPrompts = reader.normalizeCoreadSummaryPrompts(coreadPortableSummaryPrompts(p.prompts), () => uid('sum'));
+  m.promptPresetSel = id;
   saveSettings(); rerenderMoreIfOpen();
   toast(`已套用预设「${p.name}」。`, 'success');
 }
@@ -27681,12 +27672,12 @@ async function coreadApplySummaryPreset(id) {
 // 删除选中预设（不动当前编辑中的内容·只删预设槽）。
 async function coreadDeleteSummaryPreset() {
   const m = coreadMemory();
-  const id = m.summaryPresetSel;
-  const p = (m.summaryPresets || []).find((x) => x.id === id);
+  const id = m.promptPresetSel;
+  const p = (m.promptPresets || []).find((x) => x.id === id);
   if (!p) { toast('请先在下拉里选中要删除的预设。', 'warning'); return; }
   if (!await confirmDialog('删除预设', `删除预设「${p.name}」？当前编辑中的提示词不受影响。`)) return;
-  m.summaryPresets = (m.summaryPresets || []).filter((x) => x.id !== id);
-  m.summaryPresetSel = '';
+  m.promptPresets = (m.promptPresets || []).filter((x) => x.id !== id);
+  m.promptPresetSel = '';
   saveSettings(); rerenderMoreIfOpen();
   toast('已删除预设。', 'info');
 }
@@ -30697,8 +30688,9 @@ function renderCompanionMoreBody() {
 function renderMemRecordsTab(m) {
   // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId), comicRecord = coreadComicRecord(readerDialog.bookId);
-  const items = (m.summaryItems || []).slice().sort((a, b) => a.order - b.order);
-  const promptItems = renderCoreadSummaryItemsView(items, htmlEscape);
+  const promptTab = reader.COREAD_PROMPT_KINDS.includes(coreadPromptTab) ? coreadPromptTab : 'dialog';
+  const promptItems = renderCoreadSummaryItemsView((m.summaryPrompts?.[promptTab] || []).slice().sort((a, b) => a.order - b.order), htmlEscape);
+  const promptTabs = renderCoreadPromptTabsView(reader.COREAD_PROMPT_KINDS.map((kind) => [kind, reader.COREAD_PROMPT_LABELS[kind]]), promptTab, htmlEscape);
 
   // 切片：折叠只显主按钮（批次号+摘要首句），展开看全文可编辑可删
   const slices = (readerDialog.slices || []).slice().sort((a, b) => (Number(b.batch) || 0) - (Number(a.batch) || 0));
@@ -30724,10 +30716,10 @@ function renderMemRecordsTab(m) {
 
   return `
     ${archiveOverview}
-    <details class="sd-reader-mcard">
+    <details class="sd-reader-mcard sd-reader-sumcard"${coreadPromptCardOpen ? ' open' : ''}>
       <summary class="sd-reader-mcard-head"><i class="fa-solid fa-pen-nib"></i> 总结提示词</summary>
         <span class="sd-reader-mhead-acts" style="justify-content:flex-end">
-          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-add" title="给伴读总结加一条自定义提示词"><i class="fa-solid fa-plus"></i></button>
+          <button type="button" class="sd-reader-mbtn sd-reader-sumitem-add" title="给这一组加一条自定义提示词"><i class="fa-solid fa-plus"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-restore" title="恢复内置默认"><i class="fa-solid fa-rotate-left"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-import" title="导入"><i class="fa-solid fa-file-import"></i></button>
           <button type="button" class="sd-reader-mbtn sd-reader-sumitem-export" title="导出"><i class="fa-solid fa-file-export"></i></button>
@@ -30735,21 +30727,14 @@ function renderMemRecordsTab(m) {
       <div class="sd-reader-promptpreset">
         <select class="sd-reader-minput sd-reader-sumpreset-sel">
           <option value="">默认方案</option>
-          ${(m.summaryPresets || []).map((p) => `<option value="${htmlEscape(p.id)}"${m.summaryPresetSel === p.id ? ' selected' : ''}>${htmlEscape(p.name)}</option>`).join('')}
+          ${(m.promptPresets || []).map((p) => `<option value="${htmlEscape(p.id)}"${m.promptPresetSel === p.id ? ' selected' : ''}>${htmlEscape(p.name)}</option>`).join('')}
         </select>
         <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-save" title="把当前提示词存为预设"><i class="fa-solid fa-floppy-disk"></i>存为预设</button>
-        <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-del"${m.summaryPresetSel ? '' : ' disabled'} title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
+        <button type="button" class="sd-reader-mbtn sd-reader-sumpreset-del"${m.promptPresetSel ? '' : ' disabled'} title="删除选中预设"><i class="fa-solid fa-trash"></i></button>
       </div>
-      <div class="sd-reader-sumitems">${promptItems}</div>
-      <details class="sd-reader-promptblock">
-        <summary class="sd-reader-promptblock-lab">
-          <i class="fa-solid fa-flask-vial"></i> 蒸馏书籍提示词
-          <span class="sd-reader-promptblock-acts" onclick="event.preventDefault()">
-            <button type="button" class="sd-reader-mbtn sd-reader-distillprompt-save" title="保存"><i class="fa-solid fa-check"></i></button>
-          </span>
-        </summary>
-        <div class="sd-reader-promptedit"><textarea class="sd-reader-mtextarea sd-reader-distillprompt-text" rows="8">${htmlEscape(m.distillTextPrompt || DEFAULT_DISTILL_TEXT_PROMPT)}</textarea></div>
-      </details>
+      ${promptTabs}
+      <div class="sd-reader-sumitems" data-kind="${promptTab}">${promptItems}</div>
+    </details>
     </details>
     <div class="sd-reader-mcard${coreadGuideTargetClass('dialog-summary')}">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
@@ -32663,17 +32648,28 @@ function bindReaderStageEvents(stageRoot) {
     }
     // ── 记忆记录 tab：提示词增删排序/恢复默认 + 总结 + 切片操作 ──
     const m = coreadMemory();
+    // 总结提示词的组页签：只换这一块，不重绘整页（重绘会收起卡片、打断编辑）。
+    const promptTabBtn = e.target.closest('.sd-reader-sumtab');
+    if (promptTabBtn) {
+      coreadPromptTab = promptTabBtn.dataset.kind;
+      const card = promptTabBtn.closest('.sd-reader-sumcard');
+      for (const btn of card.querySelectorAll('.sd-reader-sumtab')) { const on = btn === promptTabBtn; btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on)); }
+      const list = card.querySelector('.sd-reader-sumitems');
+      list.dataset.kind = coreadPromptTab;
+      list.innerHTML = renderCoreadSummaryItemsView((m.summaryPrompts[coreadPromptTab] || []).slice().sort((a, b) => a.order - b.order), htmlEscape);
+      applyQianmuIcons(list);
+      return;
+    }
     if (e.target.closest('.sd-reader-sumitem-add')) {
-      const maxOrder = (m.summaryItems || []).reduce((mx, it) => Math.max(mx, it.order), -1);
-      m.summaryItems.push({ id: uid('sum'), builtin: false, order: maxOrder + 1, title: '自定义提示词', text: '' });
+      const group = m.summaryPrompts[coreadPromptTab];
+      const maxOrder = group.reduce((mx, it) => Math.max(mx, it.order), -1);
+      group.push({ id: uid('sum'), builtin: false, order: maxOrder + 1, title: '自定义提示词', text: '' });
       saveSettings(); rerenderMore(); return;
     }
     if (e.target.closest('.sd-reader-sumitem-restore')) {
-      confirmDialog('恢复默认方案', '将恢复伴读总结和蒸馏书籍的默认提示词；已有自定义伴读条目会保留。确定？').then((yes) => {
+      confirmDialog('恢复默认方案', '将恢复对话总结、正文总结、阶段总结三组的内置提示词；自定义条目会保留。确定？').then((yes) => {
         if (!yes) return;
-        const custom = (m.summaryItems || []).filter((it) => !it.builtin);
-        m.summaryItems = [...clone(DEFAULT_SUMMARY_ITEMS), ...custom.map((it, i) => ({ ...it, order: DEFAULT_SUMMARY_ITEMS.length + i }))];
-        m.distillTextPrompt = '';        // 蒸馏书籍：清空→回落 DEFAULT_DISTILL_TEXT_PROMPT
+        m.summaryPrompts = reader.restoreCoreadSummaryPrompts(m.summaryPrompts);
         saveSettings(); rerenderMore();
       });
       return;
@@ -32681,17 +32677,11 @@ function bindReaderStageEvents(stageRoot) {
     // 总结提示词预设：存为预设 / 删除选中预设（切换在 change 事件里处理）
     if (e.target.closest('.sd-reader-sumpreset-save')) { coreadSaveSummaryPreset(); return; }
     if (e.target.closest('.sd-reader-sumpreset-del')) { coreadDeleteSummaryPreset(); return; }
-    // 蒸馏书籍提示词：单独保存；恢复统一走卡头的总恢复按钮。
-    if (e.target.closest('.sd-reader-distillprompt-save')) {
-      const ta = morePage.querySelector('.sd-reader-distillprompt-text');
-      m.distillTextPrompt = String(ta?.value || '').trim();
-      saveSettings(); toast('已保存蒸馏书籍提示词。', 'success'); return;
-    }
     const upBtn = e.target.closest('.sd-reader-sumitem-up');
     const downBtn = e.target.closest('.sd-reader-sumitem-down');
     if (upBtn || downBtn) {
       const id = (upBtn || downBtn).dataset.id;
-      const arr = m.summaryItems.slice().sort((a, b) => a.order - b.order);
+      const arr = (coreadPromptGroupOf(m, id) || []).slice().sort((a, b) => a.order - b.order);
       const i = arr.findIndex((it) => it.id === id);
       const j = upBtn ? i - 1 : i + 1;
       if (i >= 0 && j >= 0 && j < arr.length) {
@@ -32702,7 +32692,8 @@ function bindReaderStageEvents(stageRoot) {
     }
     const sumDel = e.target.closest('.sd-reader-sumitem-del');
     if (sumDel) {
-      m.summaryItems = m.summaryItems.filter((it) => it.id !== sumDel.dataset.id);   // 内置无删除钮·此处只会删自定义
+      const kind = reader.COREAD_PROMPT_KINDS.find((k) => m.summaryPrompts[k].some((it) => it.id === sumDel.dataset.id));
+      if (kind) m.summaryPrompts[kind] = m.summaryPrompts[kind].filter((it) => it.id !== sumDel.dataset.id || it.builtin);   // 内置无删除钮·此处只会删自定义
       saveSettings(); rerenderMore(); return;
     }
     if (e.target.closest('.sd-reader-sumitem-export')) { coreadExportSummaryItems(); return; }
@@ -33019,9 +33010,8 @@ function bindReaderStageEvents(stageRoot) {
       const id = e.target.value || '';
       if (id) coreadApplySummaryPreset(id);
       else {
-        m.summaryItems = clone(DEFAULT_SUMMARY_ITEMS);
-        m.distillTextPrompt = '';
-        m.summaryPresetSel = '';
+        m.summaryPrompts = reader.defaultCoreadSummaryPrompts();
+        m.promptPresetSel = '';
         saveSettings(); rerenderMore();
       }
       return;
@@ -33044,13 +33034,17 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
   });
+  // 总结提示词卡展开与否记下来：卡内的增删排序会重绘整页，重绘后保持展开。toggle 不冒泡，用捕获。
+  morePage?.addEventListener('toggle', (e) => {
+    if (e.target?.classList?.contains('sd-reader-sumcard')) coreadPromptCardOpen = e.target.open;
+  }, true);
   morePage?.addEventListener('input', (e) => {
     const m = coreadMemory();
     // 总结维度标题/内容（不重渲·避免打断输入）
     const sumTitle = e.target.closest('.sd-reader-sumitem-title');
-    if (sumTitle) { const it = (m.summaryItems || []).find((x) => x.id === sumTitle.dataset.id); if (it) { it.title = e.target.value; saveSettings(); } return; }
+    if (sumTitle) { const it = (coreadPromptGroupOf(m, sumTitle.dataset.id) || []).find((x) => x.id === sumTitle.dataset.id); if (it) { it.title = e.target.value; saveSettings(); } return; }
     const sumText = e.target.closest('.sd-reader-sumitem-text');
-    if (sumText) { const it = (m.summaryItems || []).find((x) => x.id === sumText.dataset.id); if (it) { it.text = e.target.value; saveSettings(); } return; }
+    if (sumText) { const it = (coreadPromptGroupOf(m, sumText.dataset.id) || []).find((x) => x.id === sumText.dataset.id); if (it) { it.text = e.target.value; saveSettings(); } return; }
     // 总结 API gen-params（数字框·不重渲）
     if (e.target.closest('.sd-reader-sum-temp')) { m.summaryTemperature = Math.max(0, Math.min(2, Number(e.target.value) || 0)); saveSettings(); return; }
     if (e.target.closest('.sd-reader-sum-maxtok')) { m.summaryMaxTokens = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }

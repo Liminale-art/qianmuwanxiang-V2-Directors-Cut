@@ -677,6 +677,98 @@ export function buildCoreadStage(parents, result, context = {}) {
   }, context);
 }
 
+/* ============================================================
+   九、总结提示词（三组可编辑条目 ＋ 代码里的固定协议）
+   条目只写「怎么整理」；开头说明、日期、输出格式与字数上限由协议补上，不出现在可编辑条目里。
+   默认文本为用户 2026-11-26 审定稿。
+   ============================================================ */
+
+export const COREAD_PROMPT_KINDS = Object.freeze(['dialog', 'book', 'stage']);
+export const COREAD_PROMPT_LABELS = Object.freeze({ dialog: '对话总结', book: '正文总结', stage: '阶段总结' });
+// 每条切片字数上限的出厂值；阶段的见 COREAD_STAGE_DEFAULTS.chars。超过上限 1.5 倍整条不收。
+export const COREAD_SLICE_CHARS = 300;
+export const COREAD_OVER_LIMIT = 1.5;
+
+const DIALOG_RULE = '将读者与书友的共读对话，蒸馏为可复用的客观记忆文本，全程以第三人称事实陈述呈现，不加入主观评判。\n\n【核心规则】\n1. 身份边界严格隔离：对话方为现实中的「读者」「书友」，书籍角色仅为讨论对象。严禁将读者/书友的评论、推测、感想等同于书中角色的实际言行；书中角色不视为对话参与者。\n2. 内容记录规范：① 专名保留，人名、地名、作品名、专有概念沿用原文完整表述，不缩写、不泛化、不意译；② 原话摘引，对话中的核心论断、关键观点、原文摘句以双引号直引，句数按需适配总篇幅；③ 变化标注，态度转向、认知更新、共识达成等关键转变统一以「原状态 变为 新状态」格式标注。\n3. 详略尺度控制：深度对谈（剧情分析、人物解读、观点交锋）完整记录核心逻辑与结论；闲聊寒暄、过渡性表述仅记核心意图与结论；不遗漏影响后续共读理解的关键信息。\n4. 行文禁用破折号（——），不以破折号补充说明或制造停顿；改用逗号、句号或直接陈述。';
+const BOOK_RULE = '只记正文中确实发生的情节、人物、场景、关键转折，全程第三人称客观陈述，不加评论、不作书评。\n专名（人名/地名/作品内概念）沿用原文完整表述，不缩写、不意译。\n未完结的情节与伏笔保持开放，不替原作下结论。\n行文禁用破折号（——）。';
+const STAGE_RULE = '把按顺序排列的多条伴读记忆整理为一条阶段记忆，供日后快速回顾这一段；原记忆保留不删。\n1. 只依据给出的记忆，不补写后文，不推测尚未读到的情节。\n2. 留住因果骨架：书中情节写清前因、转折与结果；共读交流写清聊过的话题、双方的看法与态度变化，变化沿用「原状态 变为 新状态」的写法。\n3. 书中角色的言行与读者、书友的评论和推测分开叙述，不混写。\n4. 专名沿用原文完整表述；关键原话可保留双引号直引，择要而取。\n5. 尚未解开的疑问、猜测与伏笔保留下来，写明仍未确定。\n6. 行文禁用破折号（——）。';
+
+const PROMPT_DEFAULTS = Object.freeze({
+  dialog: [{ id: 'sum-format', builtin: true, order: 0, title: '总结要求', text: DIALOG_RULE }],
+  book: [{ id: 'book-rule', builtin: true, order: 0, title: '整理要求', text: BOOK_RULE }],
+  stage: [{ id: 'stage-rule', builtin: true, order: 0, title: '阶段整理', text: STAGE_RULE }],
+});
+
+export function defaultCoreadSummaryPrompts() {
+  return Object.fromEntries(COREAD_PROMPT_KINDS.map((kind) => [kind, PROMPT_DEFAULTS[kind].map((item) => ({ ...item }))]));
+}
+
+// 三组各自归一：缺组或空组填内置默认；条目字段补齐、按 order 排好并规整成连续序号。
+export function normalizeCoreadSummaryPrompts(raw, makeId = () => `sum-${Math.random().toString(36).slice(2, 10)}`) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const defaults = defaultCoreadSummaryPrompts();
+  return Object.fromEntries(COREAD_PROMPT_KINDS.map((kind) => {
+    const list = (Array.isArray(source[kind]) ? source[kind] : []).filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    if (!list.length) return [kind, defaults[kind]];
+    const items = list.map((item, i) => ({
+      id: String(item.id || makeId()),
+      builtin: item.builtin === true,
+      order: Number.isFinite(item.order) ? item.order : i,
+      title: String(item.title || '未命名提示词'),
+      text: String(item.text || ''),
+    })).sort((a, b) => a.order - b.order).map((item, i) => ({ ...item, order: i }));
+    return [kind, items];
+  }));
+}
+
+// 恢复内置默认：三组的内置条目换回出厂文本，自定义条目保留在后面。
+export function restoreCoreadSummaryPrompts(prompts) {
+  const current = normalizeCoreadSummaryPrompts(prompts);
+  const defaults = defaultCoreadSummaryPrompts();
+  return Object.fromEntries(COREAD_PROMPT_KINDS.map((kind) => {
+    const custom = current[kind].filter((item) => !item.builtin);
+    return [kind, [...defaults[kind], ...custom].map((item, i) => ({ ...item, order: i }))];
+  }));
+}
+
+// 组出发给总结模型的系统提示词。ctx: items（这一组的条目）、user、char、title、progress（读至进度）、
+// date（开了「记下日期」时的年月日）、part／total（正文第几段）、count／source（阶段合了几条、哪种来源）、chars（字数上限）。
+export function buildCoreadSummaryPrompt(kind, ctx = {}) {
+  if (!COREAD_PROMPT_KINDS.includes(kind)) throw new Error(`未知的总结种类：${kind}`);
+  const title = String(ctx.title || '未命名');
+  const user = String(ctx.user || '读者');
+  const char = String(ctx.char || '书友');
+  const progress = String(ctx.progress || '');
+  const date = String(ctx.date || '');
+  const chars = Math.max(1, Math.floor(Number(ctx.chars) || (kind === 'stage' ? COREAD_STAGE_DEFAULTS.chars : COREAD_SLICE_CHARS)));
+  const items = (Array.isArray(ctx.items) ? ctx.items : []).slice().sort((a, b) => a.order - b.order)
+    .filter((item) => String(item.text || '').trim());
+  let head;
+  if (kind === 'dialog') head = `下面是「${user}」伴读《${title}》${progress ? `（${progress}）` : ''}时与书友「${char}」讨论这本书的一段对话。请把这段对话整理成记忆。`;
+  else if (kind === 'book') head = `下面是《${title}》中已读过的一段正文原文${Number(ctx.total) > 1 ? `（第 ${ctx.part}／${ctx.total} 段）` : ''}。请把它整理成第三人称客观的情节记忆。`;
+  else head = `下面是「${user}」伴读《${title}》时按顺序排列的 ${Math.max(0, Math.floor(Number(ctx.count) || 0))} 条${ctx.source === 'book' ? '书中内容' : '共读交流'}记忆。请把它们整理成一条阶段记忆。`;
+  const parts = [`你是伴读记忆整理助手。${head}`];
+  if (items.length) parts.push(`【整理要求】\n${items.map((item, i) => `${i + 1}. ${item.title}：${item.text}`).join('\n')}`);
+  if (date && kind !== 'stage') {
+    parts.push(kind === 'dialog'
+      ? `这段对话发生于${date}${progress ? `，${progress}` : ''}；请在总结开头自然带出年月日与读至进度。`
+      : `这段阅读发生于${date}；请在总结开头自然带出该年月日。`);
+  }
+  parts.push(`【输出】只输出纯 JSON：{"summary": "不超过 ${chars} 字的第三人称记忆正文", "keywords": ["3 至 10 个高辨识度检索词，优先人名、核心事件、关键概念"], "synonyms": {"标准词": ["本段出现过的别称、简称、指代"]}}。\n- synonyms：为 keywords 里的关键人物、概念补上这里出现过的别称、简称、指代（如外号、全名与简称的对应、「他／她」在此处具体指谁），用于日后检索；没有可补的给 {}，不要硬凑。\n不要代码块标记，不要额外解释。`);
+  return parts.join('\n\n');
+}
+
+// 重试时追加在用户消息末尾的提醒：格式没解析出来，或 summary 超出上限 1.5 倍。
+export function coreadSummaryRetryNote(reason, chars) {
+  if (reason === 'long') return `\n\n【重要】上一次的 summary 超出字数上限。请压到 ${chars} 字以内，仍只输出 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON。`;
+  return '\n\n【重要】上一次输出无法解析为 JSON。请严格只输出 {"summary":"...","keywords":["..."],"synonyms":{}} 的纯 JSON，不要解释、不要代码块标记。';
+}
+
+export function coreadSummaryTooLong(summary, chars) {
+  const limit = Math.max(1, Math.floor(Number(chars) || 0));
+  return String(summary || '').length > limit * COREAD_OVER_LIMIT;
+}
+
 // 召回用的记忆池：当前读位下可见的有效阶段，加上没被这些阶段盖住的可见细切片。
 // 阶段因读位回退被隔离时，它的父切片里仍可见的那些回到池里。
 export function coreadRecallPool(slices, stages, boundary, protection = true) {

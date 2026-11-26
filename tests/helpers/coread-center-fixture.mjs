@@ -1,6 +1,6 @@
 import vm from 'node:vm';
 import * as centerView from '../../qianmu-reader-center-view.js';
-import {normalizeCoreadSource} from '../../qianmu-reader.js';
+import {normalizeCoreadSource,COREAD_PROMPT_KINDS,COREAD_PROMPT_LABELS} from '../../qianmu-reader.js';
 import {uniqueClean} from '../../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './storyboard-form-fixture.mjs';
 
@@ -22,11 +22,11 @@ export const coreadRecordsFunctions=['renderMemRecordsTab'].map(section).join('\
 export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
   inputs.linkAvailable=false;inputs.linked=false;c.yimuCompanionBridge={linkAvailable:()=>inputs.linkAvailable};c.coreadLinkLinked=()=>inputs.linked;
-  c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;
-  c.DEFAULT_DISTILL_TEXT_PROMPT='fixture distill';
+  c.reader={normalizeCoreadSource,COREAD_PROMPT_KINDS,COREAD_PROMPT_LABELS};c.coreadComicRecord=()=>null;
+  c.coreadPromptTab='dialog';c.coreadPromptCardOpen=false;
   Object.assign(c.readerDialog,{messages:Array.from({length:8},()=>({text:'fixture'})),cursor:3});
   c.coreadGuideTargetClass=target=>{trace.push(['guide',target]);return target==='records'?' sd-reader-tour-target':'';};
-  const m={summaryItems:[],summaryPresets:[],spoilerProtection:true};
+  const m={summaryPrompts:{dialog:[],book:[],stage:[]},promptPresets:[],spoilerProtection:true};
   vm.runInContext(coreadRecordsFunctions,c);return {...f,m};
 }
 

@@ -105,7 +105,7 @@ const DIALOG_FUNCTIONS = ['coreadExplainError', 'coreadTranscriptLine', 'coreadD
 function dialogFixture({messages = 12, cap = 100, slices = []} = {}) {
   const sent = [], toasts = [], saves = [];
   let id = 0, clock = 1000;
-  const state = {saveOk: true, failAt: -1, memory: {summaryContextChars: cap, distillEvery: 2, vectorEnabled: false, sliceMaxChars: 400}};
+  const state = {saveOk: true, failAt: -1, memory: {summaryContextChars: cap, distillEvery: 2, vectorEnabled: false, sliceChars: 400}};
   const c = vm.createContext({
     reader, console, MODULE_NAME: 'fixture', Date: {now: () => ++clock},
     readerDialog: {
@@ -302,7 +302,7 @@ function textFixture({cap = 100, readPos = 250, slices = [], length = 400} = {})
     readerDialog: {bookId: 'book', bucket: 'A::book', loaded: true, cursor: 0, summaryFloor: 0, slices, messages: []},
     readerView: {bookId: 'book', chapterIndex: 0, scrollRatio: 0}, readerContentCache: {bookId: 'book', chapters},
     coreadDistilling: false, coreadDistillAbort: false, coreadDistillCtl: null, coreadMemoryWrites: 0, coreadAutoTextInFlight: false,
-    coreadVectorStates: new Map(), DEFAULT_DISTILL_TEXT_PROMPT: '规则',
+    coreadVectorStates: new Map(), companionCharName: () => '书友', coreadUserName: () => '我', coreadSummarySystemPrompt: () => '规则',
     coreadMemory: () => state.memory, coreadBookMeta: () => ({title: '书', mode: 'text'}), coreadDialogBucket: () => 'A::book',
     computeVisibleWindow: () => ({readPos: state.readPos}),
     coreadCurrentReadBoundarySync: () => ({bookId: 'book', readTo: state.readPos, chapterIndex: 0, progress: 10}),

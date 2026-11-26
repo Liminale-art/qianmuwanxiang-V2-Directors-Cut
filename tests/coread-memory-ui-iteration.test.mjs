@@ -19,7 +19,9 @@ assert.doesNotMatch(records, /开发测试|sd-reader-test-selftest|sd-reader-tes
 assert.doesNotMatch(records, /世界书|sd-reader-storagemode|renderCoreadMemoryStorageView/, '记忆档案不再提供世界书同步设置');
 assert.match(records, /默认方案/, '总结预设默认项必须命名为默认方案');
 assert.doesNotMatch(records, /\$\{items\.length\} 条规则/, '总结提示词标题不得再显示规则数量标签');
-assert.match(records, /DEFAULT_DISTILL_TEXT_PROMPT/, '蒸馏提示词必须显示内置默认');
+// 2026-11-26：正文提示词并进三组页签，不再单独一个文本框。
+assert.match(records, /renderCoreadPromptTabsView\(reader\.COREAD_PROMPT_KINDS/, '总结提示词按对话／正文／阶段三组分页签');
+assert.doesNotMatch(records, /DEFAULT_DISTILL_TEXT_PROMPT|sd-reader-distillprompt/, '正文提示词不再是单独的文本框');
 assert.doesNotMatch(records, /mainlineSummaryPrompt|sd-reader-mainlineprompt/, '主线选择总结提示词已移除');
 assert.doesNotMatch(records, /sd-reader-distillprompt-restore|sd-reader-sumitem-badge/, '提示词只保留整体恢复且不再突出内置标签');
 assert.match(records, /sd-reader-guide-replay/, '记忆档案末尾必须提供重看引导入口');

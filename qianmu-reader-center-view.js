@@ -65,6 +65,11 @@ export function renderCoreadSummaryItemsView(items, htmlEscape) {
   }).join('');
 }
 
+// 总结提示词卡里的组页签：对话总结／正文总结／阶段总结。tabs: [[kind, label]]。
+export function renderCoreadPromptTabsView(tabs, active, htmlEscape) {
+  return `<div class="sd-reader-sumtabs" role="group" aria-label="提示词分组">${tabs.map(([kind, label]) => `<button type="button" class="sd-reader-sumtab${kind === active ? ' active' : ''}" data-kind="${htmlEscape(kind)}" aria-pressed="${kind === active}">${htmlEscape(label)}</button>`).join('')}</div>`;
+}
+
 export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, blockedN, linkAvailable, linked, targetClass}, htmlEscape) {
   return `
     <section class="sd-reader-memory-overview${targetClass}">

@@ -7,7 +7,7 @@ import {coreadCenterFunctions,coreadRecordsFunctions,coreadApiFunctions,coreadIn
 import {uniqueClean,isPlainObject} from '../qianmu-storyboard-utils.js';
 import {checkDictionaryMutationBrowser} from '../tests/helpers/coread-dictionary-browser.mjs';
 import {storyboardFunctionSource} from '../tests/helpers/storyboard-form-fixture.mjs';
-import {normalizeCoreadSource} from '../qianmu-reader.js';
+import {normalizeCoreadSource,COREAD_PROMPT_KINDS,COREAD_PROMPT_LABELS} from '../qianmu-reader.js';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.QIANMU_PLAYWRIGHT_MODULE||'playwright');
 const source=await readFile(new URL('../index.js',import.meta.url),'utf8');
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
@@ -17,7 +17,7 @@ function between(start,end){const a=source.indexOf(start),b=source.indexOf(end,a
 const click=between("    if (e.target.closest('.sd-reader-tour-skip'))", "    if (e.target.closest('.sd-reader-guide-replay'))");
 const fileChange=between("    const packInput = e.target.closest('.sd-reader-pack-import-input');",'    const m = coreadMemory();');
 const guardChange=between("    if (e.target.closest('.sd-reader-spoiler-filter'))",'\n');
-const recordClick=between("    if (e.target.closest('.sd-reader-distillprompt-save'))", "    if (e.target.closest('.sd-reader-sumitem-export'))");
+const recordClick=between("    // 总结提示词的组页签", "    if (e.target.closest('.sd-reader-sumitem-export'))");
 const archiveClick=between("    if (e.target.closest('.sd-reader-slice-clear'))",'    // 词典册：新建词册');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true});
@@ -79,38 +79,41 @@ try{
     await page.locator('.sd-reader-tour-skip').tap();assert.deepEqual(await page.evaluate(()=>[coreadGuideStep,memory.guideSeen]),[null,true]);
     layouts.push({width,boxes,nativeInputHit:hit});
   }
-  await page.evaluate(({functions,normalize,handler})=>{
-    coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')')};
+  await page.evaluate(({functions,normalize,handler,kinds,labels})=>{
+    coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')'),COREAD_PROMPT_KINDS:kinds,COREAD_PROMPT_LABELS:labels};
+    window.coreadPromptTab='dialog';window.coreadPromptCardOpen=false;window.uid=()=>'new-item';
     window.yimuCompanionBridge={linkAvailable:()=>window.yimuAttached===true};
-    window.DEFAULT_DISTILL_TEXT_PROMPT='fixture';
     window.toast=()=>{};readerDialog.messages=[];readerDialog.cursor=0;
     window.eval(functions);
     window.rerenderMore=()=>{const root=document.getElementById('center');root.innerHTML=`<div class="sd-reader-mtab-body">${renderMemRecordsTab(memory)}</div>`;root.querySelectorAll('details').forEach(n=>n.open=true);applyQianmuIcons(document.getElementById('sd-reader-portal'));};
-    window.resetRecords=()=>{memory={summaryItems:[{id:'fixed',title:'内置条目',text:'fixed',order:1,builtin:true},{id:'custom',title:'自定义<&',text:'custom',order:2}]};calls.save=0;rerenderMore();};
+    window.resetRecords=()=>{coreadPromptTab='dialog';memory={summaryPrompts:{dialog:[{id:'fixed',title:'内置条目',text:'fixed',order:1,builtin:true},{id:'custom',title:'自定义<&',text:'custom',order:2}],
+      book:[{id:'book-rule',title:'整理要求',text:'book',order:0,builtin:true}],stage:[{id:'stage-rule',title:'阶段整理',text:'stage',order:0,builtin:true}]}};calls.save=0;rerenderMore();};
     document.getElementById('center').addEventListener('click',new Function('e','const m=coreadMemory(),morePage=document.getElementById("center");'+handler));
     resetRecords();
-  },{functions:coreadRecordsFunctions,normalize:normalizeCoreadSource.toString(),handler:recordClick});
+  },{functions:coreadRecordsFunctions+';'+storyboardFunctionSource('coreadPromptGroupOf'),normalize:normalizeCoreadSource.toString(),handler:recordClick,kinds:COREAD_PROMPT_KINDS,labels:COREAD_PROMPT_LABELS});
   const recordActions=[];
   for(const width of [320,360,430,1100])for(const action of ['click','tap','keyboard']){
     await page.setViewportSize({width,height:850});await page.evaluate(()=>resetRecords());
     const activate=async selector=>{const n=page.locator(selector);if(action==='keyboard'){await n.focus();await n.press('Enter');}else await n[action]();};
     assert.equal(await page.locator('.sd-reader-sumitem-del[data-id="fixed"]').count(),0);
     await activate('.sd-reader-sumitem-up[data-id="custom"]');
-    assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[1,1]);
+    assert.deepEqual(await page.evaluate(()=>[memory.summaryPrompts.dialog.find(x=>x.id==='custom').order,calls.save]),[1,1]);
     await activate('.sd-reader-sumitem-down[data-id="custom"]');
-    assert.deepEqual(await page.evaluate(()=>[memory.summaryItems.find(x=>x.id==='custom').order,calls.save]),[2,2]);
-    for(const [selector,key,value]of [['distillprompt','distillTextPrompt','new distill']]){
-      await page.locator(`.sd-reader-${selector}-text`).fill('  '+value+'  ');
-      const saves=await page.evaluate(()=>calls.save);await activate(`.sd-reader-${selector}-save`);
-      assert.equal(await page.evaluate(key=>memory[key],key),value);assert.equal(await page.evaluate(()=>calls.save),saves+1);
-      assert.equal(await page.locator(`.sd-reader-${selector}-save`).evaluate(n=>n.closest('details').open),true);
+    assert.deepEqual(await page.evaluate(()=>[memory.summaryPrompts.dialog.find(x=>x.id==='custom').order,calls.save]),[2,2]);
+    // 组页签只换列表、不重绘：卡片保持展开，不存设置。
+    for(const kind of ['stage','book','dialog']){
+      const saves=await page.evaluate(()=>calls.save);await activate(`.sd-reader-sumtab[data-kind="${kind}"]`);
+      assert.deepEqual(await page.evaluate(()=>[coreadPromptTab,document.querySelector('.sd-reader-sumitems').dataset.kind,document.querySelector('.sd-reader-sumcard').open,calls.save]),[kind,kind,true,saves]);
+      assert.equal(await page.locator('.sd-reader-sumtab.active').getAttribute('data-kind'),kind);
+      assert.equal(await page.locator(`.sd-reader-sumitem[data-id="${kind==='dialog'?'fixed':kind+'-rule'}"]`).count(),1);
     }
+    assert.equal(await page.locator('.sd-reader-distillprompt-text').count(),0);
     const idle=await page.evaluate(()=>calls.save);
     await page.locator('.sd-reader-sumitem[data-id="custom"] .sd-reader-promptblock-acts').evaluate(n=>n.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})));
     assert.equal(await page.locator('.sd-reader-sumitem[data-id="custom"]').evaluate(n=>n.open),true);
     assert.equal(await page.evaluate(()=>calls.save),idle);
     await activate('.sd-reader-sumitem-del[data-id="custom"]');
-    assert.deepEqual(await page.evaluate(()=>memory.summaryItems.map(x=>x.id)),['fixed']);assert.equal(await page.evaluate(()=>calls.save),idle+1);
+    assert.deepEqual(await page.evaluate(()=>memory.summaryPrompts.dialog.map(x=>x.id)),['fixed']);assert.equal(await page.evaluate(()=>calls.save),idle+1);
     recordActions.push({width,action,once:true});
   }
   await page.evaluate(({archiveClick})=>{
@@ -126,7 +129,7 @@ try{
   for(const width of [320,360,430,1100]){
     await page.setViewportSize({width,height:850});
     await page.evaluate(()=>{readerDialog.slices=[{id:1},{id:2}];confirmAnswer=false;Object.assign(calls,{managers:[],confirmations:[],notices:[],clears:0});window.yimuAttached=false;resetRecords();});
-    const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-sumitem').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
+    const boxes=await page.locator('.sd-reader-memory-overview,.sd-reader-sumitem,.sd-reader-sumtabs').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {kind:n.className,x:r.x,right:r.right,width:r.width,overflow:n.scrollWidth-n.clientWidth};}));
     for(const box of boxes)assert.ok(box.x>=0&&box.right<=width+1&&box.width>0&&box.overflow<=1,JSON.stringify({width,box}));
     assert.equal(await page.locator('.sd-reader-storagemode').count(),0);
     assert.equal(await page.locator('.sd-reader-arch-manage,.sd-reader-yimu-link').count(),0,'without Yimu the link entry is absent');

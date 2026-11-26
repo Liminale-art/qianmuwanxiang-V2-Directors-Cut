@@ -4,9 +4,9 @@ import {createCoreadRecordsFixture} from './helpers/coread-center-fixture.mjs';
 
 const overview=html=>html.slice(html.indexOf('<section class="sd-reader-memory-overview'),html.indexOf('</section>')+10);
 test('summary tools suppress native collapse but allow delegated save and reorder clicks to reach the page',()=>{
-  const {c,m}=createCoreadRecordsFixture();m.summaryItems=[{id:'custom',title:'Title',text:'text',order:1}];
+  const {c,m}=createCoreadRecordsFixture();m.summaryPrompts.dialog=[{id:'custom',title:'Title',text:'text',order:1}];
   const html=c.renderMemRecordsTab(m),tools=[...html.matchAll(/<span class="sd-reader-promptblock-acts"[^>]*>/g)].map(x=>x[0]);
-  assert.equal(tools.length,2);
+  assert.equal(tools.length,1);
   for(const tool of tools){assert.match(tool,/onclick="event.preventDefault\(\)"/);assert.doesNotMatch(tool,/stopPropagation/);}
 });
 
@@ -28,9 +28,9 @@ test('records render keeps the safety-read order without altering reader history
 
 test('summary item order, escaping and built-in deletion protection do not mutate stored prompts',()=>{
   const {c,m}=createCoreadRecordsFixture();
-  m.summaryItems=Object.freeze([
+  m.summaryPrompts=Object.freeze({book:[],stage:[],dialog:Object.freeze([
     Object.freeze({id:'custom"',title:'Title<&',text:'</textarea><script>bad</script>',order:2}),
-    Object.freeze({id:'builtin',title:'Built in',text:'fixed',order:1,builtin:true})]);
+    Object.freeze({id:'builtin',title:'Built in',text:'fixed',order:1,builtin:true})])});
   const before=JSON.stringify(m),html=c.renderMemRecordsTab(m);
   const items=[...html.matchAll(/<details class="sd-reader-promptblock sd-reader-sumitem"[\s\S]*?<\/details>/g)].map(x=>x[0]);
   assert.equal(items.length,2);assert.match(items[0],/data-id="builtin"/);
@@ -38,6 +38,20 @@ test('summary item order, escaping and built-in deletion protection do not mutat
   assert.match(items[1],/sd-reader-sumitem-down"[^>]* disabled/);assert.match(items[1],/sd-reader-sumitem-del/);
   assert.match(items[1],/data-id="custom&quot;"/);assert.match(items[1],/Title&lt;&amp;/);
   assert.doesNotMatch(items[1],/<script>/);assert.match(items[1],/&lt;\/textarea>/);assert.equal(JSON.stringify(m),before);
+});
+
+test('the prompt card shows one group at a time behind 对话总结／正文总结／阶段总结 tabs, with no separate book prompt box',()=>{
+  const {c,m}=createCoreadRecordsFixture();
+  m.summaryPrompts={dialog:[{id:'d1',title:'对话条',text:'a',order:0}],book:[{id:'b1',title:'正文条',text:'b',order:0}],stage:[{id:'s1',title:'阶段条',text:'c',order:0}]};
+  let html=c.renderMemRecordsTab(m);
+  const tabs=[...html.matchAll(/<button type="button" class="sd-reader-sumtab( active)?" data-kind="(\w+)" aria-pressed="(\w+)">([^<]+)<\/button>/g)].map(x=>[x[2],!!x[1],x[3],x[4]]);
+  assert.deepEqual(tabs,[['dialog',true,'true','对话总结'],['book',false,'false','正文总结'],['stage',false,'false','阶段总结']]);
+  assert.match(html,/data-id="d1"/);assert.doesNotMatch(html,/data-id="b1"|data-id="s1"/);
+  assert.doesNotMatch(html,/sd-reader-distillprompt|蒸馏书籍提示词/);
+  assert.match(html,/<details class="sd-reader-mcard sd-reader-sumcard">/,'collapsed until the reader opens it');
+  c.coreadPromptTab='stage';c.coreadPromptCardOpen=true;html=c.renderMemRecordsTab(m);
+  assert.match(html,/data-id="s1"/);assert.doesNotMatch(html,/data-id="d1"/);assert.match(html,/sd-reader-sumcard" open>/);
+  assert.match(html,/class="sd-reader-sumtab active" data-kind="stage"/);
 });
 
 test('the storage-mode control is gone, including for settings saved with an old worldbook mode',()=>{

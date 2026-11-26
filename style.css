@@ -6153,6 +6153,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-promptpreset { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
 .sd-reader-promptpreset .sd-reader-sumpreset-sel { flex: 1 1 auto; min-width: 0; }
 .sd-reader-promptpreset .sd-reader-mbtn { flex: 0 0 auto; padding: 4px 9px; font-size: .82em; display: inline-flex; align-items: center; gap: 4px; }
+/* 总结提示词的组页签：与伴读中心主页签同一套下划线写法，缩小一号 */
+.sd-reader-sumtabs { display: flex; border-bottom: 1px solid var(--sd-hairline); margin: 0 0 10px; }
+.sd-reader-sumtab { flex: 1; min-width: 0; padding: 7px 4px; background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--sd-muted); cursor: pointer; font: inherit; font-size: .86em; white-space: nowrap; transition: color .16s; }
+.sd-reader-sumtab:hover { color: var(--sd-text); }
+.sd-reader-sumtab.active { color: var(--sd-accent); border-bottom-color: var(--sd-accent); font-weight: 600; }
 /* 停止按钮（书籍蒸馏生成中态） */
 .sd-btn-danger { background: color-mix(in srgb, var(--sd-bad, #d9534f) 82%, transparent) !important; color: #fff !important; border-color: var(--sd-bad, #d9534f) !important; }
 .sd-reader-dictbooks { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
