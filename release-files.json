@@ -26,6 +26,7 @@
     "features/chat/qianmu-chat-recovery-view.js",
     "features/chat/qianmu-chat-backup-catalog.js",
     "features/chat/qianmu-chat-ringtone.js",
+    "features/chat/qianmu-chat-api-switch.js",
     "features/chat/qianmu-chat-ringtone-view.js",
     "features/chat/qianmu-chat-regex.js",
     "features/chat/qianmu-chat-regex-view.js",

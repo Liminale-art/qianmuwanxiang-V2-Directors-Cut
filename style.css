@@ -737,7 +737,7 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav .sd-floor-close { width: 30px; height: 30px; flex: 0 0 30px; margin: -2px -4px -2px 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--sd-muted); display: inline-flex; align-items: center; justify-content: center; }
 #story-director-floor-nav .sd-floor-close:hover { color: var(--sd-text); background: var(--sd-glass-weak); }
 #story-director-floor-nav .sd-floor-collections { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 1px solid var(--sd-hairline); border-radius: var(--qm-button-radius, 8px); background: var(--sd-glass-weak); color: inherit; }
-#story-director-floor-nav .sd-floor-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); }
+#story-director-floor-nav .sd-floor-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--sd-hairline); border-radius: 999px; background: var(--sd-glass-weak); }
 #story-director-floor-nav .sd-floor-tabs button { min-height: 36px; border: 0; border-radius: 999px; background: transparent; color: var(--sd-muted); font-size: 13.5px; transition: color .18s ease, font-weight .18s ease; }
 #story-director-floor-nav .sd-floor-tabs button.is-active { background: transparent; color: var(--sd-text); box-shadow: none; font-weight: 600; }
 #story-director-floor-nav .sd-floor-view { display: flex; flex-direction: column; gap: var(--qm-floor-gap); }
@@ -858,6 +858,35 @@ html body #zmer-universal-toast-theme-layer { z-index: 2147483646 !important; }
 #story-director-floor-nav[data-qm-theme] .qm-ring-head h4 { color: var(--qm-ink, var(--sd-text)) !important; }
 #story-director-floor-nav .qm-ring-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 #story-director-floor-nav .qm-ring-head h4 { margin: 0; color: var(--sd-text); font-size: var(--qm-type-label); font-weight: 600; }
+/* 聊天工具包 · API 快切：卡片同铃声页；一行＝名字＋来源／模型／预设小标签＋置顶＋更多 */
+#story-director-floor-nav .qm-api-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: var(--qm-floor-card-pad); border: 1px solid var(--sd-hairline); border-radius: var(--qm-card-radius, 13px); background: var(--sd-card); }
+#story-director-floor-nav[data-qm-theme] .qm-api-card { background: var(--qm-skin-material, var(--sd-card)) !important; border-color: var(--qm-line, var(--sd-hairline)) !important; box-shadow: var(--qm-skin-shadow, none) !important; backdrop-filter: var(--qm-skin-filter, none) !important; -webkit-backdrop-filter: var(--qm-skin-filter, none) !important; }
+#story-director-floor-nav .qm-api-group { display: flex; flex-direction: column; gap: 6px; }
+#story-director-floor-nav .qm-api-group + .qm-api-group { padding-top: 8px; border-top: 1px solid var(--sd-hairline); }
+#story-director-floor-nav .qm-api-group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#story-director-floor-nav .qm-api-group-head h4 { margin: 0; color: var(--qm-ink, var(--sd-text)); font-size: var(--qm-type-label); font-weight: 600; }
+#story-director-floor-nav .qm-api-tools, #story-director-floor-nav .qm-api-group-acts { display: inline-flex; gap: 4px; }
+#story-director-floor-nav .qm-api-row { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 2px 2px 0; border-radius: var(--qm-button-radius, 8px); }
+#story-director-floor-nav .qm-api-row.is-active:not(.qm-api-row-current) { background: color-mix(in srgb, var(--sd-accent) 8%, transparent); }
+#story-director-floor-nav .qm-api-pick { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 6px 8px; border: 0; background: transparent; color: var(--sd-text); text-align: left; cursor: pointer; border-radius: var(--qm-button-radius, 8px); }
+#story-director-floor-nav .qm-api-name { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-size: var(--qm-type-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-floor-nav .qm-api-name i { color: var(--sd-accent); font-size: .9em; }
+#story-director-floor-nav .qm-api-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; }
+#story-director-floor-nav .qm-api-tag { max-width: 100%; padding: 1px 7px; border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-muted); font-size: var(--qm-type-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#story-director-floor-nav .qm-api-icon { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--sd-muted); cursor: pointer; }
+#story-director-floor-nav .qm-api-pin i { transform: rotate(45deg); transition: transform .16s ease; }
+#story-director-floor-nav .qm-api-pin.is-on { color: var(--sd-accent); }
+#story-director-floor-nav .qm-api-pin.is-on i { transform: none; }
+#story-director-floor-nav .qm-api-text { min-height: 30px; padding: 4px 10px; border: 1px solid var(--sd-border); border-radius: 999px; background: var(--sd-glass-weak); color: var(--sd-text); font-size: var(--qm-type-caption); cursor: pointer; }
+#story-director-floor-nav .qm-api-text.is-primary { background: var(--sd-primary); border-color: transparent; color: var(--sd-primary-text, #fff); }
+#story-director-floor-nav .qm-api-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px 8px; }
+#story-director-floor-nav .qm-api-move { display: inline-flex; align-items: center; gap: 6px; color: var(--sd-muted); font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-api-edit-panel { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--sd-hairline); border-radius: var(--qm-button-radius, 8px); }
+#story-director-floor-nav .qm-api-field { display: flex; flex-direction: column; gap: 4px; color: var(--sd-muted); font-size: var(--qm-type-caption); }
+#story-director-floor-nav [data-floor-view="api"] :is(select, input[type="text"]) { box-sizing: border-box; min-width: 0; width: 100%; min-height: 34px; padding: 6px 10px; border: 1px solid var(--sd-border); border-radius: var(--qm-button-radius, 8px); background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: var(--qm-type-body); }
+#story-director-floor-nav .qm-api-move select { width: auto !important; min-height: 30px !important; }
+#story-director-floor-nav .qm-api-note, #story-director-floor-nav .qm-api-empty { margin: 0; color: var(--sd-muted); font-size: var(--qm-type-caption); }
+#story-director-floor-nav .qm-api-edit-acts { display: flex; justify-content: flex-end; gap: 6px; }
 /* 胶囊开关 */
 #story-director-floor-nav .qm-ring-cap { display: inline-flex; align-items: center; gap: 8px; color: var(--sd-text); font-size: var(--qm-type-caption); cursor: pointer; }
 #story-director-floor-nav .qm-ring-cap-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }

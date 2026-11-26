@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.616';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.617';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.616';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.617';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.616';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.616';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.616';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.616';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.616';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.616';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.616';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.617';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.617';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.617';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.617';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.617';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.617';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.617';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.616';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.617';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -67,9 +67,10 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.616';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.617';
+import { createChatApiSwitch } from './features/chat/qianmu-chat-api-switch.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.616';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.617';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -99,7 +100,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.616';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.617';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -342,7 +343,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.616';
+const VERSION = '1.59.617';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -387,6 +388,8 @@ function regexGroupsWrite(value) {
   saveSettings();
 }
 const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
+// 聊天工具包 · API 快切：ST 原生连接配置的快切；千幕只存置顶、分组与最近使用（settings.apiSwitch），密钥不经千幕。
+const chatApiSwitch=createChatApiSwitch({getContext:ctx,getOwner:()=>settings,save:()=>saveSettings(),notify:toast,confirm:(title,message)=>confirmDialog(title,message),prompt:(title,label,value)=>coreadPromptText(title,label,value)});
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:()=>(ensureToastLiquid(document),qianmuToastLook())});
 const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record),delete:async key=>{await blobStore.deleteReaderChat(key);await blobStore.deleteReaderVectors(key);}},onRemoved:keys=>coreadAccountRemovedChats(keys),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const readerCoverSync=createReaderCoverSync({blobStore,onDownloaded:ids=>coreadAccountCovers(ids,true),onRemoved:ids=>coreadAccountCovers(ids,false),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
@@ -5826,14 +5829,14 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   closeQuickWheel();
   closeFloorNavigator();
   const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
-  floorNavigatorView = ['layout', 'recovery', 'ring', 'regex'].includes(initialView) ? initialView : 'jump';
+  floorNavigatorView = ['layout', 'recovery', 'ring', 'regex', 'api'].includes(initialView) ? initialView : 'jump';
   const root = document.createElement('div');
   root.id = FLOOR_NAV_ID;
   root.className = `sd-theme-${THEME_KEYS.includes(settings.theme) ? settings.theme : 'light'}`;
   root.innerHTML = `<div class="sd-floor-backdrop"></div>
     <div class="sd-floor-shell"><section class="sd-floor-panel" role="dialog" aria-modal="true" aria-label="聊天工具包">
         <header><h3>聊天工具包</h3><button type="button" class="sd-floor-close" aria-label="关闭"><i class="fa-solid fa-xmark"></i></button></header>
-        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button><button type="button" role="tab" data-floor-tab="regex">快切</button></nav>
+        <nav class="sd-floor-tabs" role="tablist"><button type="button" role="tab" data-floor-tab="jump">跳层</button><button type="button" role="tab" data-floor-tab="layout">排版</button><button type="button" role="tab" data-floor-tab="recovery">备份</button><button type="button" role="tab" data-floor-tab="ring">通知</button><button type="button" role="tab" data-floor-tab="regex">快切</button><button type="button" role="tab" data-floor-tab="api">API</button></nav>
         <section class="sd-floor-view" data-floor-view="jump">
           <p class="sd-floor-chat-count">${chat.length ? `当前聊天共 ${chat.length} 层` : '当前没有打开聊天'}</p>
           <div class="sd-floor-search"><span>第</span><input class="sd-floor-input" type="number" min="0" max="${Math.max(0, chat.length - 1)}" inputmode="numeric" placeholder="0–${Math.max(0, chat.length - 1)}"><span>层</span><button type="button" class="sd-floor-jump">跳转</button></div>
@@ -5843,6 +5846,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
         <section class="sd-floor-view" data-floor-view="recovery"></section>
         <section class="sd-floor-view" data-floor-view="ring"></section>
         <section class="sd-floor-view" data-floor-view="regex"></section>
+        <section class="sd-floor-view" data-floor-view="api"></section>
       </section></div>`;
   document.body.appendChild(root);
   // Like the notes panel: ST closes its open drawers (user settings etc.) on
@@ -5879,7 +5883,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
   root.querySelector('.sd-floor-backdrop')?.addEventListener('click', close);
   root.querySelector('.sd-floor-close')?.addEventListener('click', close);
   const setView = (view) => {
-    floorNavigatorView = ['layout', 'recovery', 'ring', 'regex'].includes(view) ? view : 'jump';
+    floorNavigatorView = ['layout', 'recovery', 'ring', 'regex', 'api'].includes(view) ? view : 'jump';
     root.querySelectorAll('[data-floor-tab]').forEach((button) => {
       const active = button.dataset.floorTab === floorNavigatorView;
       button.classList.toggle('is-active', active);
@@ -5898,6 +5902,7 @@ function openFloorNavigator(initialView = floorNavigatorView) {
     };
     if (floorNavigatorView === 'recovery') { const done = pending(root.querySelector('[data-floor-view="recovery"]'), '正在准备备份列表…'); void mountFloorChatRecovery(root).finally(done); }
     if (floorNavigatorView === 'ring') { const done = pending(root.querySelector('[data-floor-view="ring"]'), '正在加载铃声…'); void chatRingtone.mount(root.querySelector('[data-floor-view="ring"]')).catch(error => toast(error?.message || '铃声面板加载失败', 'warning')).finally(done); }
+    if (floorNavigatorView === 'api') chatApiSwitch.mount(root.querySelector('[data-floor-view="api"]'));
     if (floorNavigatorView === 'regex') { const done = pending(root.querySelector('[data-floor-view="regex"]'), '正在读取正则…'); void chatRegex.mount(root.querySelector('[data-floor-view="regex"]')).catch(error => toast(error?.message || '正则面板加载失败', 'warning')).finally(done); }
   };
   root.querySelectorAll('[data-floor-tab]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.floorTab)));
@@ -35176,7 +35181,9 @@ function bindEvents() {
     [types.GROUP_UPDATED || 'group_updated', rerenderHandler],
     [types.CHARACTER_SELECTED || 'character_selected', rerenderHandler],
     ...[['GENERATION_STARTED', 'generation_started', 'generationStarted'], ['GENERATION_STOPPED', 'generation_stopped', 'generationStopped'], ['MESSAGE_RECEIVED', 'message_received', 'messageReceived'], ['CHAT_CHANGED', 'chat_id_changed', 'chatChanged']].map(([key, fallback, name]) => [types[key] || fallback, chatRingtone.events[name]]),   // 聊天工具包·铃声：仅成功回复响铃／后台闪烁
-    [types.CHAT_CHANGED || 'chat_changed', chatRegex.events.chatChanged],   // C-11d/C-12：进聊天先切本聊天绑定的预设再套正则（未启用绑定时整条空转）
+    [types.CHAT_CHANGED || 'chat_changed', chatRegex.events.chatChanged],
+    [types.CONNECTION_PROFILE_LOADED || 'connection_profile_loaded', chatApiSwitch.events.profileLoaded],   // API 快切：原生里切了连接也记最近使用
+    ...['CONNECTION_PROFILE_CREATED', 'CONNECTION_PROFILE_UPDATED', 'CONNECTION_PROFILE_DELETED'].filter(key => types[key]).map(key => [types[key], chatApiSwitch.events.profilesChanged]),   // C-11d/C-12：进聊天先切本聊天绑定的预设再套正则（未启用绑定时整条空转）
     ...['PRESET_CHANGED', 'PRESET_RENAMED', 'PRESET_DELETED', 'MAIN_API_CHANGED'].filter(key => types[key]).map(key => [types[key], chatRegex.events.presetChanged]),   // C-12：预设快切下拉跟随原生（旧 ST 无此事件则不接）
   ];
   for (const [type, handler] of pairs) {
