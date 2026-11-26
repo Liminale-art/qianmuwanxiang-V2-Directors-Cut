@@ -6,7 +6,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 const defer=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {resolve,promise};};
 function vectors(){
-  const writes=[],c=vm.createContext({readerDialog:{bucket:'A::book',slices:[{id:'same',summary:'A memory'}]},coreadVecCache:null,
+  const writes=[],c=vm.createContext({reader,readerDialog:{bucket:'A::book',slices:[{id:'same',summary:'A memory'}]},coreadVecCache:null,
     coreadVectorStates:new Map(),isPlainObject:o=>o&&typeof o==='object',rerenderMoreIfOpen:()=>{},
     blobStore:{getReaderVectors:async()=>null,putReaderVectors:async(...args)=>writes.push(structuredClone(args))},
     coreadWithRetry:async(_,task)=>task(),coreadEmbed:async()=>[[1,0]]});

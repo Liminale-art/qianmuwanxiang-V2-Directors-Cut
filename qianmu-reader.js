@@ -497,6 +497,196 @@ export function coreadSliceCreatedAt(slice) {
   return finiteOrNull(slice?.provenance?.createdAt) ?? finiteOrNull(slice?.ts) ?? 0;
 }
 
+/* ============================================================
+   八、阶段总结（纯数据层）
+   细切片之上加一层，原切片不删。对话与书中内容分开合，各按自己的坐标判连续：
+   对话是消息下标（闭区间），正文是字符位（半开区间），漫画字符位为空时退回页下标。
+   ============================================================ */
+
+// 出厂默认（用户 2026-11-26 定）：每 100 条合一条阶段，最近 20 条不合，每条阶段 800 字以内。
+export const COREAD_STAGE_DEFAULTS = Object.freeze({ trigger: 100, keep: 20, chars: 800 });
+
+// 切片内容指纹：summary + keywords。阶段记下每条父切片的指纹，父切片被改过就对不上。
+export function coreadSliceFingerprint(slice) {
+  const text = `${slice?.summary || ''}\u0001${(slice?.keywords || []).join(',')}`;
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return `${text.length}_${h.toString(36)}`;
+}
+
+// 能进阶段的切片来源与坐标；不能进的返回 null（旧的合并切片、融合记忆、正文回响、已归档对谈、坐标缺失）。
+export function coreadStagePosition(rawSlice) {
+  if (!rawSlice || typeof rawSlice !== 'object' || rawSlice.compressed === true || rawSlice.stage === true) return null;
+  const slice = normalizeCoreadSlice(rawSlice);
+  const p = slice.provenance;
+  if (p.source === 'dialog') {
+    if (p.dialogArchived || p.dialogFrom == null || p.dialogTo == null) return null;
+    return { source: 'dialog', from: Math.min(p.dialogFrom, p.dialogTo), to: Math.max(p.dialogFrom, p.dialogTo) };
+  }
+  if (p.source !== 'book' || p.sources.length !== 1) return null;
+  if (p.charFrom != null && p.charTo != null && p.charTo > p.charFrom) {
+    return { source: 'book', from: p.charFrom, to: p.charTo, chapterFrom: p.chapterFrom, chapterTo: p.chapterTo };
+  }
+  if (p.chapterFrom != null) {
+    const to = p.chapterTo ?? p.chapterFrom;
+    return { source: 'book', pages: true, from: Math.min(p.chapterFrom, to), to: Math.max(p.chapterFrom, to), chapterFrom: p.chapterFrom, chapterTo: to };
+  }
+  return null;
+}
+
+function coreadStageContiguous(prev, next) {
+  if (prev.source !== next.source || !!prev.pages !== !!next.pages) return false;
+  if (prev.source === 'dialog' || prev.pages) return next.from <= prev.to + 1;
+  return next.from <= prev.to;
+}
+
+const STAGE_STATUSES = new Set(['active', 'invalid', 'deleted']);
+
+// 读档时补齐阶段字段；缺 stages 的旧档读成空数组。阶段的形状与切片相同（带 stage: true），召回与防剧透函数可以直接用。
+export function normalizeCoreadStage(rawStage, context = {}) {
+  const raw = rawStage && typeof rawStage === 'object' ? rawStage : {};
+  const parents = (Array.isArray(raw.parents) ? raw.parents : [])
+    .filter((item) => item && typeof item.id === 'string' && item.id)
+    .map((item) => ({ id: item.id, fp: String(item.fp || '') }));
+  const slice = normalizeCoreadSlice({ ...raw, stage: true }, context);
+  return {
+    ...slice,
+    keywords: Array.isArray(raw.keywords) ? raw.keywords.map(String).filter(Boolean) : [],
+    synonyms: raw.synonyms && typeof raw.synonyms === 'object' && !Array.isArray(raw.synonyms) ? raw.synonyms : {},
+    parents,
+    status: STAGE_STATUSES.has(raw.status) ? raw.status : 'active',
+    edited: raw.edited === true,
+  };
+}
+
+export function normalizeCoreadStages(stages, context = {}) {
+  return (Array.isArray(stages) ? stages : []).filter((stage) => stage && typeof stage === 'object' && typeof stage.id === 'string' && stage.id)
+    .map((stage) => normalizeCoreadStage(stage, context));
+}
+
+// 阶段此刻的状态：用户删过的是 deleted；父切片缺了或内容变了是 invalid（不再注入，没被用户改过的会自动重建）。
+export function coreadStageStatus(stage, slices) {
+  if (!stage || stage.status === 'deleted') return 'deleted';
+  const byId = new Map((Array.isArray(slices) ? slices : []).map((slice) => [slice?.id, slice]));
+  if (!stage.parents?.length) return 'invalid';
+  for (const parent of stage.parents) {
+    const slice = byId.get(parent.id);
+    if (!slice || coreadSliceFingerprint(slice) !== parent.fp) return 'invalid';
+  }
+  return 'active';
+}
+
+// 规划这一轮要合的阶段。返回 [{ source, parents: [切片], replaces: [被顶替的失效阶段 id] }]。
+// opts: trigger（几条合一条）、keep（每个来源最近几条不合）、boundary／protection（只合当前读位下可见的）、
+// cap（一组送去总结的切片字数上限，0 不限；超了只取放得下的前段，剩下的等下一次）、joinCost（每条之间的分隔字数）。
+export function planCoreadStages(slices, stages, opts = {}) {
+  const trigger = Math.max(2, Math.floor(Number(opts.trigger) || COREAD_STAGE_DEFAULTS.trigger));
+  const keep = Math.max(0, Math.floor(Number(opts.keep ?? COREAD_STAGE_DEFAULTS.keep) || 0));
+  const cap = Math.max(0, Math.floor(Number(opts.cap) || 0));
+  const join = Math.max(0, Math.floor(Number(opts.joinCost) || 0));
+  const list = Array.isArray(slices) ? slices : [];
+  // 有效阶段、用户删过的阶段、用户改过的失效阶段都占住自己的切片；没改过的失效阶段让出切片，等着被重建顶替。
+  const locked = new Set(), freed = new Map();
+  for (const stage of Array.isArray(stages) ? stages : []) {
+    const status = coreadStageStatus(stage, list);
+    const ids = (stage.parents || []).map((parent) => parent.id);
+    if (status === 'invalid' && !stage.edited) { for (const id of ids) freed.set(id, [...(freed.get(id) || []), stage.id]); }
+    else for (const id of ids) locked.add(id);
+  }
+  const visible = new Set(filterCoreadSlicesAtBoundary(list, opts.boundary, opts.protection !== false));
+  const bySource = new Map();
+  for (const slice of list) {
+    if (!visible.has(slice)) continue;
+    const position = coreadStagePosition(slice);
+    if (!position) continue;
+    const key = `${position.source}${position.pages ? ':pages' : ''}`;
+    if (!bySource.has(key)) bySource.set(key, []);
+    bySource.get(key).push({ slice, position });
+  }
+  const groups = [];
+  for (const items of bySource.values()) {
+    items.sort((a, b) => (a.position.from - b.position.from) || (a.position.to - b.position.to));
+    const older = items.slice(0, Math.max(0, items.length - keep));
+    const runs = [];
+    let run = [];
+    for (const item of older) {
+      if (locked.has(item.slice.id)) { if (run.length) runs.push(run); run = []; continue; }
+      if (run.length && !coreadStageContiguous(run[run.length - 1].position, item.position)) { runs.push(run); run = []; }
+      run.push(item);
+    }
+    if (run.length) runs.push(run);
+    for (let rest of runs) {
+      while (rest.length >= trigger) {
+        let take = trigger;
+        if (cap > 0) {
+          let used = 0, fit = 0;
+          for (const item of rest.slice(0, trigger)) {
+            const cost = String(item.slice.summary || '').length + (fit ? join : 0);
+            if (used + cost > cap) break;
+            used += cost; fit++;
+          }
+          take = fit;
+        }
+        if (take < 2) break;
+        const parents = rest.slice(0, take).map((item) => item.slice);
+        const replaces = [...new Set(parents.flatMap((slice) => freed.get(slice.id) || []))];
+        groups.push({ source: rest[0].position.source, parents, replaces });
+        rest = rest.slice(take);
+      }
+    }
+  }
+  return groups;
+}
+
+// 由一组父切片与模型结果组出阶段记录。坐标取父切片的首尾，知情水位取父切片里最晚的。
+export function buildCoreadStage(parents, result, context = {}) {
+  const list = (Array.isArray(parents) ? parents : []).map((slice) => normalizeCoreadSlice(slice));
+  if (!list.length) throw new Error('阶段没有父切片');
+  const positions = list.map(coreadStagePosition);
+  if (positions.some((position) => !position)) throw new Error('阶段的父切片不能合并');
+  const source = positions[0].source;
+  const nums = (key) => list.map((slice) => slice.provenance[key]).filter((value) => value != null);
+  const min = (key) => (nums(key).length ? Math.min(...nums(key)) : null);
+  const max = (key) => (nums(key).length ? Math.max(...nums(key)) : null);
+  if (!context.id) throw new Error('阶段缺少编号');
+  const createdAt = finiteOrNull(context.now) ?? Date.now();
+  const from = Math.min(...positions.map((position) => position.from));
+  const to = Math.max(...positions.map((position) => position.to));
+  // 书中内容的 coveredTo 同时是防剧透硬边界，必须是字符位（漫画按页判连续，但边界仍按字符位）。
+  return normalizeCoreadStage({
+    id: String(context.id),
+    src: source === 'book' ? 'text' : 'dialog',
+    summary: String(result?.summary || ''),
+    keywords: Array.isArray(result?.keywords) ? result.keywords : [],
+    synonyms: result?.synonyms || {},
+    ts: createdAt,
+    coveredFrom: source === 'book' ? min('charFrom') : from,
+    coveredTo: source === 'book' ? max('charTo') : to,
+    parents: list.map((slice) => ({ id: slice.id, fp: coreadSliceFingerprint(slice) })),
+    status: 'active',
+    provenance: {
+      source, sources: [source], createdAt,
+      bookId: list[0].provenance.bookId, bucket: list[0].provenance.bucket,
+      readTo: max('readTo'),
+      readChapter: max('readChapter'), readProgress: max('readProgress'),
+      charFrom: min('charFrom'), charTo: max('charTo'),
+      chapterFrom: min('chapterFrom'), chapterTo: max('chapterTo'),
+      dialogFrom: source === 'dialog' ? from : null, dialogTo: source === 'dialog' ? to : null,
+      dialogMessageIds: [...new Set(list.flatMap((slice) => slice.provenance.dialogMessageIds))],
+    },
+  }, context);
+}
+
+// 召回用的记忆池：当前读位下可见的有效阶段，加上没被这些阶段盖住的可见细切片。
+// 阶段因读位回退被隔离时，它的父切片里仍可见的那些回到池里。
+export function coreadRecallPool(slices, stages, boundary, protection = true) {
+  const list = Array.isArray(slices) ? slices : [];
+  const live = (Array.isArray(stages) ? stages : []).filter((stage) => coreadStageStatus(stage, list) === 'active');
+  const shown = filterCoreadSlicesAtBoundary(live, boundary, protection);
+  const covered = new Set(shown.flatMap((stage) => stage.parents.map((parent) => parent.id)));
+  return [...shown, ...filterCoreadSlicesAtBoundary(list, boundary, protection).filter((slice) => !covered.has(slice.id))];
+}
+
 // 全书绝对字符位 → 章节下标；offset 视为字符位置，超界时夹到首尾章节。
 export function chapterIndexAtOffset(chapters, offset) {
   const list = Array.isArray(chapters) ? chapters : [];
