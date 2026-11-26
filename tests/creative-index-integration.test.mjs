@@ -721,6 +721,8 @@ test('model schema uses the actual world merge enums and story time remains a di
 // fixtures, not examples of acceptable literary quality or production padding.
 function fourthWallPlan(form, marker = 'FOURTH_WALL_ONLY') {
   const plan = fullPlan({ parallelSceneEnabled: false });
+  // 'vignette'＝人间小传（2026-11-26 起替代第四面墙的旁观一幕）
+  if (form === 'vignette') { plan.interlude = { type: 'vignette', title: `${marker}_TITLE`, character: '老周', content: `${marker}：老周把仍未拆封的信留在窗边，转身到门口等下一班送货车。` }; return plan; }
   plan.interlude = { type: 'fourth_wall', form, title: `${marker}_TITLE`, character: '老周',
     ...(form === 'diary' ? { entries: ['甲', '乙', '丙', '丁', '戊'].map((letter, index) => ({
       time: `第${index + 1}日`, content: letter + '界'.repeat(398) + '𠀀' + ` ${marker}_${index} 0123456789 !?`,
@@ -732,11 +734,11 @@ test('actual input composition samples each eligible leaf with one draw, without
   const leaves = [
     ['forum', null, null, null], ['phone', 'chat', 'direct', null], ['phone', 'chat', 'group', null],
     ['phone', 'moments', null, null], ['phone', 'microblog', null, null],
-    ['fourth_wall', null, null, 'diary'], ['fourth_wall', null, null, 'scene'],
+    ['fourth_wall', null, null, 'diary'], ['vignette', null, null, null],
   ];
   for (let index = 0; index < leaves.length; index++) {
     const e = fixture({ random: () => (index + .5) / 7 });
-    e.store.plan = fourthWallPlan(index % 2 ? 'diary' : 'scene', 'OLD_FOURTH_WALL');
+    e.store.plan = fourthWallPlan(index % 2 ? 'diary' : 'vignette', 'OLD_FOURTH_WALL');
     const before = JSON.stringify(e.store), run = {};
     await e.c.buildPrompt(run);
     assert.deepEqual(['interludeType', 'phoneViewType', 'phoneConversationKind', 'fourthWallForm'].map(key => run.creativeOptions[key]), leaves[index]);
@@ -755,30 +757,30 @@ test('actual prompt admission uses selected narrative or valid memory, never set
       memoryResult: { text: scenario === 'memory-only' ? '老周上周搬去了河岸边。' : '', status: scenario === 'memory-only' ? 'ready' : 'empty' },
       settings: { contextOptions: { contextDepth: 5, includeChatHistory: !['unselected', 'memory-only'].includes(scenario) } } });
     e.store.plan = fourthWallPlan('diary', 'OLD_SIDE_PAGE');
-    e.store.history = [{ plan: fourthWallPlan('scene', 'ARCHIVED_SIDE_PAGE') }];
+    e.store.history = [{ plan: fourthWallPlan('vignette', 'ARCHIVED_SIDE_PAGE') }];
     if (scenario === 'empty-speakers') e.context.chat.forEach(message => { message.mes = '  \n\t '; });
     if (scenario === 'injected-only') e.context.chat.forEach(message => { message.extra = { qianmu_injected: true }; });
     const run = {}, before = JSON.stringify(e.store);
     await e.c.buildPrompt(run);
-    assert.equal(run.creativeOptions.interludeType, hasNarrative ? 'fourth_wall' : 'forum', scenario);
-    assert.equal(run.creativeOptions.fourthWallForm, hasNarrative ? 'scene' : null, scenario);
+    assert.equal(run.creativeOptions.interludeType, hasNarrative ? 'vignette' : 'forum', scenario);
+    assert.equal(run.creativeOptions.fourthWallForm, null, scenario);
     assert.equal(e.randomCount, hasNarrative ? 1 : 0, scenario);
     assert.equal(JSON.stringify(e.store), before, 'preparation cannot write a rotation cursor or alter archives');
   }
 });
 
 test('both real transports receive a frozen fourth-wall form and save it once without old candidates or mainline injection leakage', async () => {
-  for (const providerMode of ['external', 'sillytavern']) for (const form of ['diary', 'scene']) {
-    const candidate = fourthWallPlan(form), raw = JSON.stringify(candidate);
+  for (const providerMode of ['external', 'sillytavern']) for (const form of ['diary', 'vignette']) {
+    const candidate = fourthWallPlan(form), raw = JSON.stringify(candidate), wall = form === 'diary';
     const e = fixture({ settings: { providerMode, parallelSceneEnabled: false }, random: () => (form === 'diary' ? 5.5 : 6.5) / 7 });
-    e.store.plan = fourthWallPlan(form === 'diary' ? 'scene' : 'diary', 'OLD_SIDE_PAGE');
+    e.store.plan = fourthWallPlan(form === 'diary' ? 'vignette' : 'diary', 'OLD_SIDE_PAGE');
     e.store.planAtLen = e.context.chat.length;
     e.store.history = Array.from({ length: 4 }, (_, i) => ({ id: `old-${i}`, plan: fourthWallPlan('diary', `HISTORY_SIDE_PAGE_${i}`) }));
     e.settings.logHistory.push({ status: 'error', response: 'FAILED_SIDE_PAGE' });
     const fetchFixture = async (_url, options) => {
       const body = JSON.parse(options.body); e.requests.push({ body });
       assert.ok(Object.isFrozen(e.c.directorRun.creativeOptions));
-      assert.equal(e.c.directorRun.creativeOptions.fourthWallForm, form);
+      assert.equal(e.c.directorRun.creativeOptions.fourthWallForm, wall ? form : null);
       return new Response(JSON.stringify({ choices: [{ message: { content: raw }, finish_reason: 'stop' }] }), { headers: { 'content-type': 'application/json' } });
     };
     e.c.callExternalApi = (messages, delta, config, controller) => callExternalModel(messages, delta,
@@ -796,17 +798,17 @@ test('both real transports receive a frozen fourth-wall form and save it once wi
     assert.equal(e.selectionCount, 1); assert.equal(e.randomCount, 1);
     assert.equal(log.status, 'success', log.error); assert.equal(e.saves, 1); assert.equal(e.injects, 1);
     assert.deepEqual(plain(e.store.plan.interlude), candidate.interlude);
-    assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: false, interludeEnabled: true, interludeType: 'fourth_wall',
-      phoneViewType: null, phoneConversationKind: null, fourthWallForm: form, worldChatterEnabled: false, geopoliticsEnabled: false });
+    assert.deepEqual(plain(log.creativeOptions), { parallelSceneEnabled: false, interludeEnabled: true, interludeType: wall ? 'fourth_wall' : 'vignette',
+      phoneViewType: null, phoneConversationKind: null, fourthWallForm: wall ? form : null, worldChatterEnabled: false, geopoliticsEnabled: false });
     assert.equal(log.response, raw); assert.equal(log.repairResponse, undefined);
-    assert.match(sent, /HISTORY_SOURCE|MEMORY_SOURCE/); assert.match(sent, /fourth_wall/);
-    assert.ok(sent.includes(`form is exactly ${form}`));
+    assert.match(sent, /HISTORY_SOURCE|MEMORY_SOURCE/); assert.match(sent, wall ? /fourth_wall/ : /vignette/);
+    assert.ok(sent.includes(wall ? `form is exactly ${form}` : 'Vignette form (人间小传)'));
     assert.doesNotMatch(sent, /OLD_SIDE_PAGE|HISTORY_SIDE_PAGE|FAILED_SIDE_PAGE/);
     assert.doesNotMatch(JSON.stringify(log), /OFFLINE_SECRET/);
-    assert.doesNotMatch(JSON.stringify(projectCreativeContinuity(e.store.plan)), /FOURTH_WALL_ONLY|fourth_wall/);
+    assert.doesNotMatch(JSON.stringify(projectCreativeContinuity(e.store.plan)), /FOURTH_WALL_ONLY|fourth_wall|vignette/);
     Object.assign(e.c, { INJ_LEN: {}, snip: value => String(value || '') });
     vm.runInContext(between('function buildPlanDigest(', 'function getInjectApi('), e.c);
-    assert.doesNotMatch(e.c.currentDirectorInjectionText(), /FOURTH_WALL_ONLY|fourth_wall/);
+    assert.doesNotMatch(e.c.currentDirectorInjectionText(), /FOURTH_WALL_ONLY|fourth_wall|vignette/);
     // On a later real floor only side-page metadata may discourage repetition;
     // diary/scene prose and its title never become prior narrative evidence.
     e.context.chat.push({ name: '阿岚', is_user: false, mes: '第二天，送货车到了另一条街。' });
@@ -848,22 +850,22 @@ test('diary acceptance counts only Han characters in entry bodies, requires five
 
 test('fourth-wall characters reject USER aliases and the returned form cannot replace the once-selected form', async () => {
   for (const providerMode of ['external', 'sillytavern']) for (const defect of ['访客', '@访客', 'ＵＳＥＲ', '{{user}}', '<user>', 'wrong-form']) {
-    const candidate = fourthWallPlan(defect === 'wrong-form' ? 'diary' : 'scene');
+    const candidate = fourthWallPlan(defect === 'wrong-form' ? 'diary' : 'vignette');
     if (defect !== 'wrong-form') candidate.interlude.character = defect;
     const raw = JSON.stringify(candidate), e = fixture({ settings: { providerMode, parallelSceneEnabled: false }, random: () => 6.5 / 7, responses: [raw] });
     await e.c.generateDirectorPlan();
     const log = e.settings.logHistory[0];
     assert.equal(e.requests.length, 1); assert.equal(e.randomCount, 1); assert.equal(e.saves, 0); assert.equal(e.injects, 0);
-    assert.equal(e.store.plan.original, true); assert.equal(log.creativeOptions.fourthWallForm, 'scene');
+    assert.equal(e.store.plan.original, true); assert.equal(log.creativeOptions.interludeType, 'vignette');
     assert.equal(log.status, 'error'); assert.equal(log.response, raw);
     assert.ok(log.quality.issues.some(issue => issue.field === 'interlude'));
-    assert.match(validateCreativePlan(candidate, { parallelSceneEnabled: false, interludeType: 'fourth_wall', fourthWallForm: 'scene', personaNames: ['访客'] })
+    assert.match(validateCreativePlan(candidate, { parallelSceneEnabled: false, interludeType: 'vignette', personaNames: ['访客'] })
       .find(issue => issue.field === 'interlude').reason, defect === 'wrong-form' ? /形式.*不符/ : /USER.*别名/);
   }
 });
 
 test('a streamed fourth-wall card becomes readable only at its closing brace and cancellation or interruption never saves it', async () => {
-  for (const providerMode of ['external', 'sillytavern']) for (const form of ['diary', 'scene']) for (const failure of ['cancelled', 'interrupted']) {
+  for (const providerMode of ['external', 'sillytavern']) for (const form of ['diary', 'vignette']) for (const failure of ['cancelled', 'interrupted']) {
     const card = fourthWallPlan(form).interlude, open = '{"interlude":' + JSON.stringify(card).slice(0, -1), closed = open + '}';
     const partial = closed + ',"quests":[{"title":"unfinished';
     const e = fixture({ settings: { providerMode, streamEnabled: true, parallelSceneEnabled: false }, random: () => (form === 'diary' ? 5.5 : 6.5) / 7,
@@ -899,7 +901,7 @@ test('fourth-wall generation preserves the 457 world checkpoint policy across re
       plan.world_events = Array.from({ length: 2 }, (_, i) => ({ id: `${tag}-e${i}`, title: `${tag}_EVENT_${i}`, essence: `第${i}条运输线路调整。`, stage: '展开' }));
       return plan;
     };
-    const candidates = [worldPlan('scene', 'A'), worldPlan('diary', 'B'), worldPlan('scene', 'C'), worldPlan('diary', 'D')];
+    const candidates = [worldPlan('vignette', 'A'), worldPlan('diary', 'B'), worldPlan('vignette', 'C'), worldPlan('diary', 'D')];
     candidates[3].interlude.entries.pop();
     let draw = 0;
     const e = fixture({ settings: { providerMode, parallelSceneEnabled: false, geopoliticsEnabled: true }, responses: candidates.map(JSON.stringify),

@@ -9,7 +9,7 @@ import { createCreativeSchema, projectCreativeContinuity } from '../qianmu-creat
 
 const input = { sourceText: '这个世界使用手机。', narrativeText: '店主陈青收起当晚未寄出的信。', characterName: '陈青', personaNames: ['访客'] };
 const key = value => [value.interludeType, value.phoneViewType, value.phoneConversationKind, value.fourthWallForm].filter(Boolean).join('/');
-const leaves = ['forum', 'phone/chat/direct', 'phone/chat/group', 'phone/moments', 'phone/microblog', 'fourth_wall/diary', 'fourth_wall/scene'];
+const leaves = ['forum', 'phone/chat/direct', 'phone/chat/group', 'phone/moments', 'phone/microblog', 'fourth_wall/diary', 'vignette'];
 
 test('all seven applicable leaves have equal nonzero intervals and one frozen draw per request', () => {
   const counts = new Map();
@@ -32,9 +32,11 @@ test('the selected guide and schema require exactly that leaf, not a model-selec
     assert.equal(card.type, value.interludeType);
     if (value.interludeType === 'fourth_wall') {
       assert.equal(card.form, value.fourthWallForm);
-      assert.equal(Object.hasOwn(card, 'entries'), value.fourthWallForm === 'diary');
-      assert.equal(Object.hasOwn(card, 'content'), value.fourthWallForm === 'scene');
+      assert.equal(Object.hasOwn(card, 'entries'), true);
+      assert.equal(Object.hasOwn(card, 'content'), false);
       assert.ok(!Object.hasOwn(card, 'posts') && !Object.hasOwn(card, 'messages'));
+    } else if (value.interludeType === 'vignette') {
+      assert.deepEqual(Object.keys(card), ['type', 'title', 'character', 'content']);
     } else if (value.interludeType === 'phone') {
       assert.equal(card.view_type, value.phoneViewType);
       if (value.phoneViewType === 'chat') assert.equal(card.conversation_kind, value.phoneConversationKind);
@@ -45,7 +47,7 @@ test('the selected guide and schema require exactly that leaf, not a model-selec
 test('era and selected narrative govern eligibility without treating settings or raw speaker labels as appeared cast', () => {
   for (let i = 0; i < 3; i++) assert.equal(key(selectCreativeOptions({}, {
     ...input, sourceText: '旧时客栈', random: () => (i + .5) / 3,
-  })), ['forum', 'fourth_wall/diary', 'fourth_wall/scene'][i]);
+  })), ['forum', 'fourth_wall/diary', 'vignette'][i]);
   for (let i = 0; i < 5; i++) assert.equal(key(selectCreativeOptions({}, {
     ...input, narrativeText: '', chat: [{ name: '陈青', mes: '未选入的正文不可作为第四墙来源。' }], random: () => (i + .5) / 5,
   })), leaves[i]);
@@ -67,12 +69,12 @@ test('history does not impose a fixed rotation or alter selection probabilities 
   }
 });
 
-test('fourth-wall words never become future continuity or variety excerpts; read-only metadata stays bounded', () => {
-  for (const form of ['diary', 'scene']) {
-    const card = { type: 'fourth_wall', form, character: '陈青'.repeat(100), title: 'META_SECRET_TITLE', content: 'META_SECRET_SCENE',
+test('fourth-wall and 人间小传 words never become future continuity or variety excerpts; read-only metadata stays bounded', () => {
+  for (const form of ['diary', 'scene', 'vignette']) {
+    const card = { type: form === 'vignette' ? 'vignette' : 'fourth_wall', ...(form === 'vignette' ? {} : { form }), character: '陈青'.repeat(100), title: 'META_SECRET_TITLE', content: 'META_SECRET_SCENE',
       entries: [{ time: 'META_SECRET_TIME', content: 'META_SECRET_DIARY' }] };
     const original = structuredClone(card), hint = recentInterludeHint(card);
-    assert.deepEqual(Object.keys(JSON.parse(hint)), ['type', 'form', 'character']);
+    assert.deepEqual(Object.keys(JSON.parse(hint)), form === 'vignette' ? ['type', 'character'] : ['type', 'form', 'character']);
     assert.equal(JSON.parse(hint).character.length, 60); assert.doesNotMatch(hint, /META_SECRET/);
     assert.ok(!Object.hasOwn(projectCreativeContinuity({ interlude: card }), 'interlude'));
     assert.deepEqual(card, original);

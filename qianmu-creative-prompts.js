@@ -103,7 +103,7 @@ Cover every section enabled for this run and meet the minimum counts below. Thes
 - 尘寰群生: ${CREATIVE_COUNTS.world_chatter.min}–${CREATIVE_COUNTS.world_chatter.max} brief human voices: conversation, self-talk, calls, complaints, jokes, or other situated speech. Let a small moment convey everyday interests and differences in outlook; it need not offer a clue or advance a plot. Context supports the voice. Pure weather, scenery, ambient noise, or an animal's reaction does not count.
 - 世界格局: ${CREATIVE_COUNTS.factions.min}–${CREATIVE_COUNTS.factions.max} factions or organizations and ${CREATIVE_COUNTS.world_events.min}–${CREATIVE_COUNTS.world_events.max} ongoing situations. Organizations and events that remain relevant and in force may count; these are not quotas for new additions. At least one ongoing situation must belong to a non-USER, non-CHAR layer such as an institution, trade, neighborhood, public service, or regional group. Treat world events as structural or collective pressure with its own scope and actors, not as a duplicate of either 命运之脉 trajectory or a protagonist's next beat. Maintain organizational relationships according to actual connections.
 - 未映之幕: exactly ${CREATIVE_COUNTS.parallel_scene.min} independently readable scene when enabled; no title is required, and its emotional register is unrestricted by a fixed quota.
-- 幕间拾趣: exactly ${CREATIVE_COUNTS.interlude.min} card when enabled, using only the specified forum, phone or fourth_wall form. A forum contains at least ${CREATIVE_DETAIL_COUNTS.forumPosts.min} posts, each with ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} replies. A phone shows only its selected view: chat, moments or microblog. Chat contains at least ${CREATIVE_DETAIL_COUNTS.phoneMessages.min} messages, with exactly ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} speakers for direct or at least ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} for group. Moments or microblog contains at least ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} posts with ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} replies each; at least ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} posts have replies. A fourth_wall card uses exactly the selected diary or scene form. Diary contains at least ${CREATIVE_DETAIL_COUNTS.fourthWallEntries.min} first-person entries across time and at least ${CREATIVE_DETAIL_COUNTS.fourthWallHanChars.min} Chinese Han characters in their combined content, not per entry; titles, time labels, punctuation, Latin letters and digits do not count. Let entry lengths vary with the writing, without an upper limit or repeated padding. Scene is third-person prose and does not inherit diary quotas. Do not omit or mix forms or phone views. 未映之幕 does not count toward this quota. Forum and phone titles identify a lived-in community, actual group, direct contact or phone page, not a chapter heading. Vary viewpoints, topics, and voices beyond the main cast's latest affairs; conspiracies, scandals, trending news, or work reports are not a required template.
+- 幕间拾趣: exactly ${CREATIVE_COUNTS.interlude.min} card when enabled, using only the specified forum, phone, fourth_wall or vignette form. A forum contains at least ${CREATIVE_DETAIL_COUNTS.forumPosts.min} posts, each with ${CREATIVE_DETAIL_COUNTS.forumReplies.min}–${CREATIVE_DETAIL_COUNTS.forumReplies.max} replies. A phone shows only its selected view: chat, moments or microblog. Chat contains at least ${CREATIVE_DETAIL_COUNTS.phoneMessages.min} messages, with exactly ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} speakers for direct or at least ${CREATIVE_DETAIL_COUNTS.phoneSpeakers.min} for group. Moments or microblog contains at least ${CREATIVE_DETAIL_COUNTS.phoneFeedPosts.min} posts with ${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.min}–${CREATIVE_DETAIL_COUNTS.phoneFeedReplies.max} replies each; at least ${CREATIVE_DETAIL_COUNTS.phoneCommentedPosts.min} posts have replies. A fourth_wall card uses the diary form. Diary contains at least ${CREATIVE_DETAIL_COUNTS.fourthWallEntries.min} first-person entries across time and at least ${CREATIVE_DETAIL_COUNTS.fourthWallHanChars.min} Chinese Han characters in their combined content, not per entry; titles, time labels, punctuation, Latin letters and digits do not count. Let entry lengths vary with the writing, without an upper limit or repeated padding. A vignette (人间小传) is one third-person short story about an already encountered person other than USER and CHAR; it does not inherit diary quotas. Do not omit or mix forms or phone views. 未映之幕 does not count toward this quota. Forum and phone titles identify a lived-in community, actual group, direct contact or phone page, not a chapter heading. Vary viewpoints, topics, and voices beyond the main cast's latest affairs; conspiracies, scandals, trending news, or work reports are not a required template.
 
 An effective entry must be concrete and recognizable and fulfill its own section's purpose. Narrative trajectories, encounters, character affairs, and ripples contribute a new action, consequence, connection, or usable condition beyond the source recap. Situated human speech in 尘寰群生 may instead reveal temperament, an ordinary concern, or a way of living, without supplying a clue or new plot condition. An enduring state may be retained where the section calls for it, with its current practical effect made specific; retention does not replace the progression required of encounters, CHAR affairs, and ripples.
 
@@ -183,7 +183,7 @@ export const CREATIVE_GUIDES = Object.freeze({
 
 番外与主线有可辨认的物件、决定、关系或后果相连，但不复述正文梗概，不承担主线解释或替读者揭谜。相连也可以是同一地点的另一段生活、某项行动的日常余波或彼此映照的选择；当前谜团未解时，不借回溯补齐未获来源支持的身份、责任与事件起因，也不把主角的籍贯、职业或手艺倒填进事件源头。结尾停在已经发生的动作、对话、物件或新处境上，让余味来自具体生活；不要用抽象升华、未来预告或“命运会继续”“一切终将……”之类的总结句收尾。情绪由内容决定，轻快、平静、遗憾、热烈或荒诞都可成立；无须标题，不追踪分支，不反写主线。番外事实仅在此幕内成立。`,
 
-  interlude: `幕间拾趣每轮按指定的世界论坛、角色手机或第四面墙形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。各形式只采用本轮指定的结构，不混写；新增内容仅在这张旁页内成立，不冒充已知来源，不进入主线记忆、连续性参照或叙事注入，也不承担主线进度通报或揭开谜底。
+  interlude: `幕间拾趣每轮按指定的世界论坛、角色手机、第四面墙或人间小传形式生成一张独立趣味卡，所有字段只写安全纯文本，不输出 HTML。各形式只采用本轮指定的结构，不混写；新增内容仅在这张旁页内成立，不冒充已知来源，不进入主线记忆、连续性参照或叙事注入，也不承担主线进度通报或揭开谜底。
 
 论坛和手机取景这个世界里不同人的生活圈，换话题也换观看位置，不默认从主角身边或当前主线事务取材，不固定围绕阴谋、热搜或主角点评。主要话题从说话者自己的生活需求、闲趣和分歧中取材，而不是把 USER 的职业、来历、能力改成多个匿名话题；主线相关的交流须有真实传播路径，角色私密人设不自动成为公共知识。让交流本身有趣：错频的回答、熟人默契、小小争执、意外同好、认真求助都能成篇，无须每次制造笑点。遵守世界的时代与明确人物边界，论坛和手机允许创作有自身生活的旁页人物，不套用第四面墙的已登场人物限制。
 
@@ -211,7 +211,12 @@ export const CREATIVE_GUIDES = Object.freeze({
 
   fourth_wall_diary: `本轮固定为 diary：由选定角色以第一人称写跨时间的个人日记，至少 ${CREATIVE_DETAIL_COUNTS.fourthWallEntries.min} 则以上；整组 entries 中 content 的正文合计至少 ${CREATIVE_DETAIL_COUNTS.fourthWallHanChars.min} 个中文汉字，不是每则 ${CREATIVE_DETAIL_COUNTS.fourthWallHanChars.min} 字。标题、时间、角色名字段以及标点、英文、数字均不计入正文汉字数。每则分别提供 time 与 content，日期或相对时间贴合世界。从第一则就进入破墙后的个人记录，沿时间让他怎样理解你、表达或有所保留、据此行动发生有价值的变化，不把同一感受换句话记满五次。日记仍是写给自己的记录，未必每则都直接呼告“你”。篇幅依创作自然分配，长短不均也可，没有上限，不均分配额、不重复铺陈或拆篇凑数。选择其表达方式容得下这种记录的合理作者；没有既定日记习惯不等于不能偶然记录，但不得为满足格式强造固定习惯或篡改人格，可换另一位合适的已登场角色。固定排版由界面承担，不在 content 重复标题和日期，不混入第三人称正文、论坛帖子或手机消息。`,
 
-  fourth_wall_scene: `本轮固定为 scene：直接以千幕第三人称呈现一位已登场角色在本篇破墙前提下，怎样从自身生活与 USER 的实际关系面对墙外的“你”。用符合其人格的言行、保留、选择及改变的处境承载这次相对，不先叙述发现或验证那道墙的过程。俯瞰是构思与观察位置，偶尔拨动一个条件，不把人物变成全知助手或只会独白的机关。正文自然成段，停在已经发生的行动、物件、对话或新处境；不替读者总结意义、升华结局，也不宣判墙外读者应有什么感受。只输出 content，不混入日记 entries、日期模板、论坛帖子或手机消息；不套用日记则数与字数要求。`,
+  // 人间小传（用户 2026-11-26 修订稿，替代原第四面墙的「旁观一幕」）：主角之外的已出场人物各自的独立短篇。
+  vignette: `从本轮正文与有效记忆中选取一位已出场人物，创作其专属独立叙事短篇。人物须在主线正文或有效记忆中有实际登场内容，排除{{char}}、{{user}}及其别名、身份映射；未在叙事中落地的人物不选用。
+
+人物拥有完整独立的生活脉络、心念与抉择，是自成一体的鲜活个体。叙事以人物自身为核心，不以主角为中心展开，不承载主线剧情线索或主角评判。选取与主线时间相邻或错位的日常片段、人生选择或转折时刻，呈现他的欲求、顾虑、困境与应对；风格不作限定，荒诞戏谑、温情细碎、沉郁遗憾、现实冷峻皆可，以鲜活有趣为核心准则，小人物的悲欢自有其分量，无需依附强情节事件。
+
+恪守人物已知事实，未知处的合理延展仅在本篇内成立，不并入主线事实、记忆与世界观设定。正文以第三人称自然成段，收束于人物已完成的行动、出口的话语或落定的处境，不做意义总结与结局升华。只输出 content ，不混入其他体裁。`,
 
   newcomer: `本轮新角入场已开启：在已启用栏目中明确引入此前尚未出现的全新人物，使其通过已有线索、事务、人物关系或行动后果进入故事，写清自己的动因和具体关联，不仅给旧角色加个别称。新角可以参与普通生活与局部事务，不要求世界级大事件。若明确封闭设定或人物禁限使新增必然越界，则保留有效内容并准确说明限制，不强塞陌生人。`,
 });
@@ -221,7 +226,7 @@ export const CREATIVE_SECTION_LABELS = Object.freeze({
   chain_reactions: '世事相牵', relation_undercurrents: '关系暗涌', world_chatter: '尘寰群生',
   geopolitics: '世界格局', parallel_scene: '未映之幕', interlude: '幕间拾趣',
   forum: '论坛', phone: '角色手机', phone_chat: '手机聊天', moments: '朋友圈', microblog: '短博',
-  fourth_wall: '第四面墙', fourth_wall_diary: '跨时日记', fourth_wall_scene: '旁观一幕', newcomer: '新角入场',
+  fourth_wall: '第四面墙', fourth_wall_diary: '跨时日记', vignette: '人间小传', newcomer: '新角入场',
 });
 
 const CORE_GUIDES = Object.freeze(['story_status', 'character_dynamics', 'npc_updates', 'quests', 'chain_reactions', 'relation_undercurrents']);
@@ -238,13 +243,13 @@ export function creativeSectionGuidance(options = {}, guides = CREATIVE_GUIDES) 
   if (options.geopoliticsEnabled === true) keys.push('geopolitics');
   if (options.parallelSceneEnabled !== false) keys.push('parallel_scene');
   if (options.interludeEnabled !== false) {
-    if (!['forum', 'phone', 'fourth_wall'].includes(options.interludeType)) {
+    if (!['forum', 'phone', 'fourth_wall', 'vignette'].includes(options.interludeType)) {
       throw Object.assign(new Error('幕间拾趣缺少本轮已选定的形式'), { code: 'creative_interlude_type_required' });
     }
-    keys.push('interlude', options.interludeType);
+    keys.push('interlude', options.interludeType);   // vignette 的指引就是它自己这一段
     if (options.interludeType === 'phone') keys.push(['moments', 'microblog'].includes(options.phoneViewType) ? options.phoneViewType : 'phone_chat');
     if (options.interludeType === 'fourth_wall') {
-      if (!['diary', 'scene'].includes(options.fourthWallForm)) throw Object.assign(new Error('第四面墙缺少本轮已选定的形式'), { code: 'creative_fourth_wall_form_required' });
+      if (options.fourthWallForm !== 'diary') throw Object.assign(new Error('第四面墙缺少本轮已选定的形式'), { code: 'creative_fourth_wall_form_required' });
       keys.push(`fourth_wall_${options.fourthWallForm}`);
     }
   }

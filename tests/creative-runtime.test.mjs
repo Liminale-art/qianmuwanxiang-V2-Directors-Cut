@@ -16,10 +16,13 @@ test('exact shipped v463 relationship defaults migrate without overwriting DIY p
   const previous = {
     systemPrompt: next.systemPrompt
       .replace(CREATIVE_IDENTITY, CREATIVE_IDENTITY.replaceAll('我', '你'))
+      .replace('using only the specified forum, phone, fourth_wall or vignette form.', 'using only the specified forum, phone or fourth_wall form.')
+      .replace('A fourth_wall card uses the diary form. Diary contains', 'A fourth_wall card uses exactly the selected diary or scene form. Diary contains')
+      .replace('A vignette (人间小传) is one third-person short story about an already encountered person other than USER and CHAR; it does not inherit diary quotas.', 'Scene is third-person prose and does not inherit diary quotas.')
       .replace(
         'named participants each. Choose participants for the relationship and its narrative value; do not add people merely to vary group sizes.',
         'named participants each; use a mixed set with at least one two-person relation and one three-person relation, rather than producing three entries of the same shape.'),
-    outputSchemaText: next.outputSchemaText.replace(
+    outputSchemaText: next.outputSchemaText.replace('Selected for this run: forum, phone, fourth_wall or vignette', 'Selected for this run: forum, phone or fourth_wall').replace(
       'Every relation uses an array of 2–3 exact participant names, chosen for the relationship and its narrative value rather than a required mix of group sizes; at least two relations include neither USER nor CHAR.',
       'Every relation uses an array of 2–3 exact participant names; across the three minimum relations include both a two-person and a three-person relation, and at least two relations include neither USER nor CHAR.'),
   };

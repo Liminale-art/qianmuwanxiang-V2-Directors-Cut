@@ -20,9 +20,11 @@ function normalizedItem(value) {
     entries: list(item.entries).map(record).filter(entry => text(entry.content))
       .map(entry => ({ time: text(entry.time), content: text(entry.content) })),
   };
+  // 旧的「旁观一幕」照常能读；新的独立短篇是人间小传。
   if (item.type === 'fourth_wall' && item.form === 'scene') return {
     type: 'fourth_wall', form: 'scene', title: text(item.title), character: text(item.character), content: text(item.content),
   };
+  if (item.type === 'vignette') return { type: 'vignette', title: text(item.title), character: text(item.character), content: text(item.content) };
   if (item.type === 'forum') return {
     type: 'forum', title: text(item.title),
     posts: list(item.posts).slice(0, 50).map(record).filter(post => text(post.author) && text(post.content)).map(post => ({
@@ -141,17 +143,18 @@ function phoneFeedBody(item, key, state) {
 }
 
 function fourthWallBody(item) {
-  const diary = item.form === 'diary', label = diary ? '日记' : '旁观';
+  const diary = item.form === 'diary', vignette = item.type === 'vignette', label = diary ? '日记' : vignette ? '小传' : '旁观';
+  const kicker = vignette ? '人间小传 · 独立番外' : '一幕之遥 · 独立番外', region = vignette ? '人间小传' : `一幕之遥${label}`;
   if (diary ? !item.entries.length : !item.content) return '<p class="sd-muted sd-social-empty">尚未生成</p>';
   const prose = content => content.replace(/\r\n?/g, '\n').split(/\n[\t ]*\n+/)
     .map(paragraph => `<p>${htmlEscape(paragraph)}</p>`).join('');
-  return `<div class="sd-social-panel sd-fourth-wall sd-fourth-wall-${item.form}">
+  return `<div class="sd-social-panel sd-fourth-wall sd-fourth-wall-${vignette ? 'scene sd-vignette' : item.form}">
     <header class="sd-fourth-wall-head">
-      <span class="sd-fourth-wall-kicker">一幕之遥 · 独立番外</span>
+      <span class="sd-fourth-wall-kicker">${kicker}</span>
       ${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}
       <div class="sd-fourth-wall-byline">${item.character ? `<span>${htmlEscape(item.character)}</span><span aria-hidden="true">·</span>` : ''}<span>${label}</span></div>
     </header>
-    <div class="sd-fourth-wall-reading sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="一幕之遥${label}">
+    <div class="sd-fourth-wall-reading sd-social-scroll" data-qm-social-scroll tabindex="0" role="region" aria-label="${region}">
       ${diary ? item.entries.map(entry => `<article class="sd-fourth-wall-entry">
         ${entry.time ? `<header class="sd-fourth-wall-time"><time>${htmlEscape(entry.time)}</time></header>` : ''}
         <div class="sd-fourth-wall-prose">${prose(entry.content)}</div>
@@ -166,7 +169,7 @@ export function renderCreativeSocialCard(value, { notice = '' } = {}) {
   const state = item.type === 'forum' || item.type === 'phone' ? session(key) : null;
   const body = item.type === 'forum' ? forumBody(item, key, state)
     : item.type === 'phone' ? item.view_type ? phoneFeedBody(item, key, state) : phoneBody(item, key)
-      : item.type === 'fourth_wall' ? fourthWallBody(item)
+      : item.type === 'fourth_wall' || item.type === 'vignette' ? fourthWallBody(item)
       : item.type === 'legacy' ? `<div class="sd-social-legacy">${item.title ? `<h4>${htmlEscape(item.title)}</h4>` : ''}<p>${htmlEscape(item.content)}</p></div>`
         : notice ? '' : '<p class="sd-muted sd-social-empty">尚未生成</p>';
   return `<section class="sd-card sd-director-extra-card sd-director-extra-interlude sd-creative-social" data-qm-social="${key}">

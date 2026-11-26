@@ -65,8 +65,8 @@ export function completeDirectorCards(source) {
     let value; try { value = JSON.parse(raw); } catch (_) { return; }
     if (key === 'parallel_scene' && (!value || typeof value.content !== 'string' || !value.content.trim())) return;
     if (key === 'interlude') {
-      if (!value || !['forum', 'theater', 'phone', 'fourth_wall'].includes(value.type)) return;
-      if (value.type === 'fourth_wall' && !['diary', 'scene'].includes(value.form)) return;
+      if (!value || !['forum', 'theater', 'phone', 'fourth_wall', 'vignette'].includes(value.type)) return;
+      if (value.type === 'fourth_wall' && value.form !== 'diary') return;
       const entries = interludeEntries(value);
       if (!(typeof value.content === 'string' && value.content.trim()) &&
         !(Array.isArray(entries) && entries.some(item => typeof item?.content === 'string' && item.content.trim()))) return;

@@ -14,44 +14,52 @@ const diary = (lengths = [450, 250, 300, 600, 400]) => ({
   type: 'fourth_wall', form: 'diary', title: '墙外没有回信', character: '阿岚',
   entries: lengths.map((length, index) => ({ time: `第${index + 1}日`, content: String.fromCodePoint(0x4e00 + index).repeat(length) })),
 });
-const scene = () => ({ type: 'fourth_wall', form: 'scene', title: '留一扇窗', character: '阿岚', content: '她把纸条留在窗沿，收回手时，窗外传来另一声轻叩。' });
-const problems = (card, options = selected(card.form)) => validateCreativePlan({ interlude: card }, options).filter(issue => issue.field === 'interlude');
+// 人间小传（2026-11-26 起替代第四面墙的「旁观一幕」）：主角之外的已出场人物的独立短篇。
+const vselected = () => ({ interludeType: 'vignette', personaNames: ['访客', 'Guest'], characterNames: ['阿岚'], parallelSceneEnabled: false });
+const vignette = () => ({ type: 'vignette', title: '收摊以后', character: '老周', content: '老周把铁皮棚子的最后一根撑杆放倒，数了三遍零钱，还是差两块。他想了想，把那两块记在了自己账上。' });
+const legacyScene = () => ({ type: 'fourth_wall', form: 'scene', title: '留一扇窗', character: '阿岚', content: '她把纸条留在窗沿，收回手时，窗外传来另一声轻叩。' });
+const problems = (card, options = card.type === 'vignette' ? vselected() : selected(card.form)) => validateCreativePlan({ interlude: card }, options).filter(issue => issue.field === 'interlude');
 const parseShape = schema => {
   const start = schema.indexOf('{\n'), end = schema.indexOf('\n\n', start);
   return JSON.parse(schema.slice(start, end));
 };
 
-test('fourth-wall forms retain the one-card quota and have independent selected structures', () => {
+test('fourth wall keeps the one-card quota with diary as its only form; 人间小传 has its own structure', () => {
   assert.equal(CREATIVE_COUNTS.interlude.min, 1);
   assert.equal(CREATIVE_COUNTS.interlude.max, 1);
   assert.deepEqual(CREATIVE_DETAIL_COUNTS.fourthWallEntries, { min: 5 });
   assert.deepEqual(CREATIVE_DETAIL_COUNTS.fourthWallHanChars, { min: 2000 });
-  for (const form of ['diary', 'scene']) {
-    const schema = createCreativeSchema(selected(form)), card = parseShape(schema).interlude;
-    assert.equal(card.type, 'fourth_wall');
-    assert.equal(card.form, form);
-    assert.deepEqual(Object.keys(card), ['type', 'form', 'title', 'character', form === 'diary' ? 'entries' : 'content']);
-    assert.match(schema, /non-canonical/);
-    assert.match(schema, /already encountered mainline character/);
-    assert.match(schema, /USER and every alias/);
-    assert.doesNotMatch(schema, /Forum form:|Phone form:|Phone moments form:/);
-  }
-  const schema = createCreativeSchema(selected('diary'));
+  const schema = createCreativeSchema(selected('diary')), card = parseShape(schema).interlude;
+  assert.equal(card.type, 'fourth_wall');assert.equal(card.form, 'diary');
+  assert.deepEqual(Object.keys(card), ['type', 'form', 'title', 'character', 'entries']);
+  assert.match(schema, /non-canonical/);assert.match(schema, /already encountered mainline character/);assert.match(schema, /USER and every alias/);
+  assert.doesNotMatch(schema, /Forum form:|Phone form:|Phone moments form:|Vignette form/);
   assert.match(schema, /at least 5 entries across time/);
   assert.match(schema, /combined content must contain at least 2000 Chinese Han characters, not 2000 per entry/);
   assert.match(schema, /No upper limit or equal-length requirement/);
-  assert.match(createCreativeSchema(selected('scene')), /Diary entry and character-count quotas do not apply/);
+  assert.throws(() => createCreativeSchema(selected('scene')), { code: 'creative_fourth_wall_form_required' }, 'the old scene form is no longer offered');
+  const vschema = createCreativeSchema(vselected()), vcard = parseShape(vschema).interlude;
+  assert.deepEqual(Object.keys(vcard), ['type', 'title', 'character', 'content']);
+  assert.equal(vcard.type, 'vignette');
+  assert.match(vschema, /Vignette form \(人间小传\)/);
+  assert.match(vschema, /excluding CHAR names \["阿岚"\] and USER with every alias \["访客","Guest"\]/);
+  assert.doesNotMatch(vschema, /Fourth-wall form:|entries across time/);
 });
 
-test('only the chosen fourth-wall guide is included and absent selections cannot silently become diary', () => {
-  for (const form of ['diary', 'scene']) {
-    const guide = creativeSectionGuidance(selected(form));
-    assert.ok(guide.includes(CREATIVE_GUIDES.fourth_wall));
-    assert.ok(guide.includes(CREATIVE_GUIDES[`fourth_wall_${form}`]));
-    assert.ok(!guide.includes(CREATIVE_GUIDES[`fourth_wall_${form === 'diary' ? 'scene' : 'diary'}`]));
-    for (const key of ['forum', 'phone', 'phone_chat', 'moments', 'microblog']) assert.ok(!guide.includes(CREATIVE_GUIDES[key]), key);
-  }
-  for (const form of [undefined, '', 'chat', 'DIARY']) {
+test('only the chosen guide is included; 人间小传 uses the user-approved text and never the fourth-wall premise', () => {
+  const guide = creativeSectionGuidance(selected('diary'));
+  assert.ok(guide.includes(CREATIVE_GUIDES.fourth_wall));assert.ok(guide.includes(CREATIVE_GUIDES.fourth_wall_diary));
+  assert.ok(!guide.includes(CREATIVE_GUIDES.vignette));
+  for (const key of ['forum', 'phone', 'phone_chat', 'moments', 'microblog']) assert.ok(!guide.includes(CREATIVE_GUIDES[key]), key);
+  assert.equal(CREATIVE_GUIDES.fourth_wall_scene, undefined);
+  const vguide = creativeSectionGuidance(vselected());
+  assert.match(vguide, /### 人间小传\n\n从本轮正文与有效记忆中选取一位已出场人物，创作其专属独立叙事短篇。/);
+  assert.ok(!vguide.includes(CREATIVE_GUIDES.fourth_wall), 'no wall-breaking premise');
+  assert.match(CREATIVE_GUIDES.vignette, /排除\{\{char\}\}、\{\{user\}\}及其别名、身份映射/);
+  assert.match(CREATIVE_GUIDES.vignette, /小人物的悲欢自有其分量/);
+  assert.match(CREATIVE_GUIDES.vignette, /只输出 content ，不混入其他体裁。$/);
+  assert.match(CREATIVE_GUIDES.interlude, /世界论坛、角色手机、第四面墙或人间小传形式/);
+  for (const form of [undefined, '', 'chat', 'DIARY', 'scene']) {
     const options = { ...selected('diary'), fourthWallForm: form };
     assert.throws(() => creativeSectionGuidance(options), { code: 'creative_fourth_wall_form_required' });
     assert.throws(() => createCreativeSchema(options), { code: 'creative_fourth_wall_form_required' });
@@ -76,8 +84,8 @@ test('writing boundaries preserve personality, equal cast opportunity and privat
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /至少 5 则以上/);
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /正文合计至少 2000 个中文汉字，不是每则 2000 字/);
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /不得为满足格式强造固定习惯或篡改人格/);
-  assert.match(CREATIVE_GUIDES.fourth_wall_scene, /不替读者总结意义、升华结局/);
-  const hintGuide = creativeSectionGuidance({ ...selected('scene'), recentInterludeHint: '{"type":"fourth_wall","form":"diary","character":"阿岚"}' });
+  assert.match(CREATIVE_GUIDES.vignette, /不做意义总结与结局升华/);
+  const hintGuide = creativeSectionGuidance({ ...selected('diary'), recentInterludeHint: '{"type":"fourth_wall","form":"diary","character":"阿岚"}' });
   assert.match(hintGuide, /第四面墙只参考形式与人物元信息，不以此证明角色在主线有过觉察/);
   assert.match(hintGuide, /不因上轮人物的主配角地位增加或减少机会，也不硬性换人/);
 });
@@ -89,10 +97,9 @@ test('fourth-wall guidance starts inside the premise and carries the same relati
   assert.match(CREATIVE_GUIDES.fourth_wall, /已有的相识与关系在此延续，而不是另立一个陌生旁观者/);
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /从第一则就进入破墙后的个人记录/);
   assert.match(CREATIVE_GUIDES.fourth_wall_diary, /日记仍是写给自己的记录，未必每则都直接呼告/);
-  assert.match(CREATIVE_GUIDES.fourth_wall_scene, /不先叙述发现或验证那道墙的过程/);
-  for (const form of ['diary', 'scene']) {
+  for (const form of ['diary']) {
     const schema = createCreativeSchema(selected(form)), card = parseShape(schema).interlude;
-    const prose = form === 'diary' ? card.entries[0].content : card.content;
+    const prose = card.entries[0].content;
     assert.match(prose, /premise (?:is |already )?in effect/);
     assert.match(schema, /through USER with any existing relationship preserved, not as a new outside stranger/);
     assert.doesNotMatch(prose, /notice the invisible wall|Let awareness, choices/);
@@ -111,7 +118,7 @@ test('fourth-wall closeness is grounded without forcing acquaintance, intimacy o
   assert.match(CREATIVE_GUIDES.fourth_wall, /不强求感动、恋爱、表白/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /猜想保留不确定/);
   assert.match(CREATIVE_GUIDES.fourth_wall, /也不替你回应或决定/);
-  for (const form of ['diary', 'scene']) {
+  for (const form of ['diary']) {
     const schema = createCreativeSchema(selected(form));
     assert.match(schema, /preserves personality, relationship stage and USER agency/);
     assert.match(schema, /grants neither private knowledge nor mainline facts/);
@@ -138,7 +145,7 @@ test('diary admits unequal entry lengths and applies its floor to all body conte
   assert.deepEqual(problems(diary([5000, 20, 30, 50, 100, 200])), []);
   const partial = diary([1500, 100, 100, 100, 199]);
   assert.ok(problems(partial).some(issue => /整组正文.*2000/.test(issue.reason)));
-  assert.deepEqual(problems(scene()), [], 'scene does not inherit diary length or entry counts');
+  assert.deepEqual(problems(vignette()), [], '人间小传 does not inherit diary length or entry counts');
 });
 
 test('diary counts only Han codepoints in entry content, including supplementary Han', () => {
@@ -174,41 +181,44 @@ test('diary rejects insufficient entries, placeholders and duplicate bodies with
   assert.deepEqual(problems(relative), [], 'repeated relative time labels do not prove the entries share one instant');
 });
 
-test('fresh fourth-wall output cannot mix forms or smuggle phone/forum fields', () => {
-  for (const form of ['diary', 'scene']) {
-    const make = form === 'diary' ? diary : scene;
-    assert.ok(problems(make(), selected(form === 'diary' ? 'scene' : 'diary')).some(issue => /本轮指定形式/.test(issue.reason)));
-    for (const [key, value] of Object.entries({ posts: [], messages: [], owner: '阿岚', view_type: 'chat', conversation_kind: 'direct', [form === 'diary' ? 'content' : 'entries']: form === 'diary' ? '' : [] })) {
-      const card = make(); card[key] = value;
-      assert.ok(problems(card).some(issue => /混入/.test(issue.reason)), `${form}: ${key}`);
-    }
-    for (const key of ['title', 'character', form === 'diary' ? 'entries' : 'content']) {
-      const card = make(); delete card[key];
-      assert.ok(problems(card).length, `${form}: missing ${key}`);
-    }
+test('fresh fourth-wall and 人间小传 output cannot mix forms or smuggle other fields', () => {
+  assert.ok(problems(diary(), vselected()).some(issue => /本轮指定形式/.test(issue.reason)));
+  assert.ok(problems(vignette(), selected('diary')).some(issue => /本轮指定形式/.test(issue.reason)));
+  for (const [key, value] of Object.entries({ posts: [], messages: [], owner: '阿岚', view_type: 'chat', conversation_kind: 'direct', content: '' })) {
+    const card = diary(); card[key] = value;
+    assert.ok(problems(card).some(issue => /混入/.test(issue.reason)), `diary: ${key}`);
+  }
+  for (const [key, value] of Object.entries({ posts: [], messages: [], entries: [], form: 'scene', owner: '老周' })) {
+    const card = vignette(); card[key] = value;
+    assert.ok(problems(card).some(issue => /混入/.test(issue.reason)), `vignette: ${key}`);
+  }
+  for (const [make, keys] of [[diary, ['title', 'character', 'entries']], [vignette, ['title', 'character', 'content']]]) {
+    for (const key of keys) { const card = make(); delete card[key]; assert.ok(problems(card).length, `missing ${key}`); }
     assert.ok(problems(make(), { interludeType: 'forum' }).some(issue => /本轮指定形式/.test(issue.reason)));
-    assert.ok(problems(make(), { ...selected(form), interludeEnabled: false }).some(issue => issue.disabled));
+    const card = make();
+    assert.ok(problems(card, { ...(card.type === 'vignette' ? vselected() : selected('diary')), interludeEnabled: false }).some(issue => issue.disabled));
   }
   const card = diary(); card.entries[0].author = '访客';
   assert.ok(problems(card).some(issue => /混入其他字段/.test(issue.reason)));
 });
 
-test('USER and aliases are excluded as fourth-wall subjects without scanning their prose mentions', () => {
-  for (const form of ['diary', 'scene']) {
-    for (const name of ['USER', '{{user}}', '<user>', '用户', '访 客', '@Guest', 'Ｇｕｅｓｔ']) {
-      const card = form === 'diary' ? diary() : scene(); card.character = name;
-      assert.ok(problems(card).some(issue => /USER/.test(issue.reason)), `${form}: ${name}`);
+test('USER and aliases are excluded as fourth-wall subjects; 人间小传 also excludes CHAR', () => {
+  for (const name of ['USER', '{{user}}', '<user>', '用户', '访 客', '@Guest', 'Ｇｕｅｓｔ']) {
+    for (const make of [diary, vignette]) {
+      const card = make(); card.character = name;
+      assert.ok(problems(card).some(issue => /USER/.test(issue.reason)), `${card.type}: ${name}`);
     }
   }
-  const card = scene(); card.character = '@Guest';
-  assert.ok(problems(card, { ...selected('scene'), personaNames: ['@Guest'] }).some(issue => /USER/.test(issue.reason)));
-  card.character = '阿岚'; card.content = '阿岚在页角写下访客的名字，没有替墙外的人作答。';
-  assert.deepEqual(problems(card), [], 'mentions do not silently change the structured subject');
-  assert.deepEqual(problems(scene(), { ...selected('scene'), characterNames: ['阿岚'] }), [], 'CHAR is not excluded for being the protagonist');
+  const card = vignette(); card.character = '阿岚';
+  assert.ok(problems(card).some(issue => /CHAR/.test(issue.reason)), 'CHAR is the protagonist, not a 人间小传 subject');
+  const ok = vignette(); ok.content = '老周想起访客说过的话，没有替任何人作答。';
+  assert.deepEqual(problems(ok), [], 'mentions do not silently change the structured subject');
+  const wall = diary(); wall.character = '阿岚';
+  assert.deepEqual(problems(wall, { ...selected('diary'), characterNames: ['阿岚'] }), [], 'the fourth wall may still choose CHAR');
 });
 
 test('legacy and new history remain lossless while invalid fresh cards stay in removed diagnostics', () => {
-  for (const card of [diary([1, 2, 3, 4]), scene(), { type: 'theater', title: '旧趣味', content: '旧文本', custom: { kept: true } }]) {
+  for (const card of [diary([1, 2, 3, 4]), legacyScene(), vignette(), { type: 'theater', title: '旧趣味', content: '旧文本', custom: { kept: true } }]) {
     const snapshot = structuredClone(card), plan = { interlude: card };
     assert.deepEqual(normalizeCreativeSections(plan).interlude, snapshot);
     assert.deepEqual(card, snapshot);

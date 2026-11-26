@@ -8,7 +8,7 @@ export const PROMPT_CARD_TABS = Object.freeze([
   { id: 'laws', label: '剧组之律', keys: ['systemPrompt', 'outputSchema'] },
   { id: 'core', label: '推演核心', keys: ['story_status', 'character_dynamics', 'npc_updates', 'quests', 'chain_reactions', 'relation_undercurrents'] },
   { id: 'derived', label: '衍生栏目', keys: ['world_chatter', 'geopolitics', 'parallel_scene', 'newcomer'] },
-  { id: 'interlude', label: '幕间拾趣', keys: ['interlude', 'forum', 'phone', 'phone_chat', 'moments', 'microblog', 'fourth_wall', 'fourth_wall_diary', 'fourth_wall_scene'] },
+  { id: 'interlude', label: '幕间拾趣', keys: ['interlude', 'forum', 'phone', 'phone_chat', 'moments', 'microblog', 'fourth_wall', 'fourth_wall_diary', 'vignette'] },
 ]);
 
 const GUIDE_KEYS = new Set(Object.keys(CREATIVE_GUIDES));

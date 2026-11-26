@@ -6,8 +6,8 @@ import { validateCreativePlan } from './qianmu-creative-contract.js?v=1.59.484';
 // Exact defaults through v1.59.463 are included so this release can migrate prior
 // built-in prose while preserving any text the author actually edited.
 const LEGACY_DEFAULT_HASHES = Object.freeze({
-  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb', 'c7c6f33d', 'b7f8c92b', 'e2441079', 'c3b76978', 'dd2092c1', '355e4aed', '24243610', '04b8c901', '473373cb', '1052677d']),
-  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf', '2776c64f', 'f57a17f7', '2705ca8b', '8c9d7978']),
+  systemPrompt: Object.freeze(['2045b006', '91ad6303', 'a4c1bafd', '39271a80', 'bba2effb', 'c7c6f33d', 'b7f8c92b', 'e2441079', 'c3b76978', 'dd2092c1', '355e4aed', '24243610', '04b8c901', '473373cb', '1052677d', '5cd1c2ae']),
+  outputSchemaText: Object.freeze(['05c30a9e', '1bc3cd38', '241c5ebc', '3826d107', '51ab8d18', 'e8981ef7', '5e96c8fa', 'd3522824', '2013edaf', '2776c64f', 'f57a17f7', '2705ca8b', '8c9d7978', '823d8563']),
   blueprint: Object.freeze(['4c919687', '1d95c305', '261d4a1a', '1d8cdeb6', 'af9d17bf', '352d7c3f', '321cc304', '87904bd2', '40c652ba', '370762df', 'e8c57aa2']),
 });
 const unchangedDefault = (value, current, legacyHashes, appliedHash) => {
@@ -50,6 +50,8 @@ export function recentInterludeHint(card) {
   // A meta-fictional experience must not become a later narrative reference.
   // Only form and cast metadata may identify a recent side page, never its words.
   if (card.type === 'fourth_wall') return JSON.stringify({ type: 'fourth_wall', form: short(card.form, 16), character: short(card.character, 60) });
+  // 人间小传：和第四面墙一样只给形式与写的是谁（用来换一个人写），标题与正文都不带
+  if (card.type === 'vignette') return JSON.stringify({ type: 'vignette', character: short(card.character, 60) });
   const first = card.type === 'forum' || (card.type === 'phone' && ['moments', 'microblog'].includes(card.view_type))
     ? card.posts?.[0]?.content : card.type === 'phone' ? card.messages?.[0]?.content : card.content;
   const hint = { type: short(card.type, 16), title: short(card.title, 80), first_excerpt: short(first, 180) };
@@ -77,7 +79,7 @@ export function selectCreativeOptions(settings = {}, { chat = [], personaNames =
   // Settings alone do not establish anyone's actual appearance in the mainline.
   if (String(narrativeText || '').trim()) pool.push(
     { interludeType: 'fourth_wall', fourthWallForm: 'diary' },
-    { interludeType: 'fourth_wall', fourthWallForm: 'scene' },
+    { interludeType: 'vignette' },   // 人间小传：要写的人须在正文里出场过，没有正文时不抽
   );
   const selected = !interludeEnabled ? {} : pool[pool.length === 1 ? 0 : Math.min(pool.length - 1, Math.max(0, Math.floor(random() * pool.length)))];
   const { interludeType = null, phoneViewType = null, phoneConversationKind = null, fourthWallForm = null } = selected;
