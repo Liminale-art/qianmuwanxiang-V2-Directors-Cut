@@ -19,7 +19,9 @@ assert.match(css, /\.sd-derivative-card > h3[\s\S]*background-clip:\s*text/);
 assert.doesNotMatch(source, /checkbox_label sd-inject-section/);
 assert.match(source, /<h3>衍生模块<\/h3>[\s\S]*sd-derivative-options[\s\S]*<span>尘寰群生<\/span>[\s\S]*<span>世界格局<\/span>/);
 assert.doesNotMatch(source, /sd-livestage-enabled|<span>伏笔显影<\/span>/);
-assert.match(source, /data-acc="director-law"[\s\S]*<b>剧组之律<\/b>[\s\S]*一般无需改动[\s\S]*sd-system-prompt[\s\S]*sd-output-schema[\s\S]*sd-save-director-settings/);
+// 2026-11-26：剧组之律并进「提示词」卡（同一折叠位），各条失焦即存，不再有「保存幕后」按钮。
+assert.match(source, /data-acc="director-law"[\s\S]*<b>提示词<\/b>[\s\S]*一般无需改动[\s\S]*renderPromptCard\(\)/);
+assert.doesNotMatch(source, /sd-save-director-settings|sd-reset-system/);
 
 // 幕外：设置可折叠、预设不再提供低频刷新按钮，指令与剧札独立；剧札数量紧随标题。
 assert.match(source, /sd-theater-settings-fold[\s\S]*番外小剧场栏目组/);

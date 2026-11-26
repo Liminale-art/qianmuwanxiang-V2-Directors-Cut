@@ -1,11 +1,13 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.484';
+import { renderPromptCardBody, effectiveGuides, effectiveTheaterContinuity, withPromptValue, promptChanged, promptSnapshot, applyPromptSnapshot,
+  promptFile, readPromptFile, normalizePromptPresets, PROMPT_CARD_TABS } from './qianmu-prompt-card.js';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.460';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.484';
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.615';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.616';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.615';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.616';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.615';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.615';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.615';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.615';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.615';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.615';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.615';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.616';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.616';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.616';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.616';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.616';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.616';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.616';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.615';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.616';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +67,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.615';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.616';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.615';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.616';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +99,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.615';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.616';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +342,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.615';
+const VERSION = '1.59.616';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1111,6 +1113,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaHash: '',
   systemPromptBackup: null,       // 「恢复上次」：模板更新覆盖前，自动备份用户上一份幕后提示词
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
+  // 幕后「提示词」卡：用户改过的栏目指引与幕外衔接说明（只存覆盖，内置原文在 qianmu-creative-prompts.js），以及整套预设
+  promptOverrides: {},
+  creativePromptPresets: [],      // [{ id, name, prompts }]
+  creativePromptPresetSel: '',
   logHistory: [],
   logOpenState: {},               // API 与日志：按日志 ID 记忆展开状态，默认折叠
   videoH3: {
@@ -3383,7 +3389,7 @@ async function buildPrompt(run = {}) {
     const geo = buildGeopoliticsArchiveSegment(run.world.reference);
     if (geo) segments.push(geo);
   }
-  segments.push(creativeSectionGuidance(run.creativeOptions));
+  segments.push(creativeSectionGuidance(run.creativeOptions, effectiveGuides(settings.promptOverrides)));
   if (settings.outputSchemaText && settings.outputSchemaText !== JSON_SCHEMA_TEXT) {
     segments.push('[User-defined format preferences]\n' + settings.outputSchemaText + '\nPreserve these presentation preferences while retaining the required fields in the output contract below so that the interface can read the result.');
   }
@@ -4025,13 +4031,12 @@ async function commitEditorValue(target, val) {
     getChatStore().blueprint = val || DEFAULT_BLUEPRINT;
     getChatStore().blueprintEdited = true;
     await saveMetadata();
-  } else if (target === 'sd-system-prompt') {
-    settings.systemPrompt = val || DEFAULT_SYSTEM_PROMPT;
-    settings.systemPromptHash = settings.systemPrompt === DEFAULT_SYSTEM_PROMPT ? hashText(DEFAULT_SYSTEM_PROMPT) : '';
-    saveSettings();
-  } else if (target === 'sd-output-schema') {
-    settings.outputSchemaText = val || JSON_SCHEMA_TEXT;
-    saveSettings();
+  } else if (target === 'sd-system-prompt' || target === 'sd-output-schema' || target.startsWith('sd-prompt-ta-')) {
+    // 幕后「提示词」卡的条目：与卡内失焦保存同一口径
+    const key = target === 'sd-system-prompt' ? 'systemPrompt' : target === 'sd-output-schema' ? 'outputSchema' : target.slice('sd-prompt-ta-'.length).replace(/-/g, '_');
+    applyPromptSettings(withPromptValue(settings, key, val, promptCardDefaults()));
+    if (key === 'systemPrompt') await applyDirectorInjection();
+    refreshPromptCard();
   } else if (target === 'sd-inject-preview') {
     getChatStore().injectOverride = String(val ?? '').trim();
     await saveMetadata();
@@ -9165,18 +9170,36 @@ function renderDirectorSettingsTab() {
       </div>
     </section>
     ${renderBackstageBlueprintCard()}
-    <section class="sd-card sd-director-law-card">
+    <section class="sd-card sd-director-law-card sd-prompt-card">
       <details class="sd-plain-fold sd-director-title-fold sd-director-law-fold" data-acc="director-law">
-        <summary><b>剧组之律</b><span class="sd-summary-note">一般无需改动</span></summary>
-        <div class="sd-director-law-body">
-          <div class="sd-field-head"><label>提示词</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-system-prompt" data-title="剧组之律" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
-          <textarea class="text_pole sd-textarea sd-system-prompt" spellcheck="false">${htmlEscape(settings.systemPrompt || DEFAULT_SYSTEM_PROMPT)}</textarea>
-          <div class="sd-field-head sd-output-schema-head"><label>输出格式</label><button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="sd-output-schema" data-title="输出格式" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></div>
-          <textarea class="text_pole sd-textarea sd-output-schema" spellcheck="false">${htmlEscape(settings.outputSchemaText || JSON_SCHEMA_TEXT)}</textarea>
-          <div class="sd-button-row"><button class="sd-btn sd-save-director-settings">保存幕后</button><button class="sd-btn sd-restore-system" title="找回更新前你上一次使用的提示词与输出格式" ${(settings.systemPromptBackup || settings.outputSchemaBackup) ? '' : 'disabled'}>恢复上次</button><button class="sd-btn sd-reset-system">恢复默认</button></div>
-        </div>
+        <summary><b>提示词</b><span class="sd-summary-note">一般无需改动</span></summary>
+        <div class="sd-director-law-body sd-prompt-card-body">${renderPromptCard()}</div>
       </details>
     </section>`;
+}
+
+// 幕后「提示词」卡（qianmu-prompt-card.js）：剧组之律／推演核心／衍生栏目／幕间拾趣／幕外，改完离开输入框即存。
+let promptCardTab = 'core';
+const promptCardDefaults = () => ({ systemPrompt: DEFAULT_SYSTEM_PROMPT, outputSchema: JSON_SCHEMA_TEXT });
+function renderPromptCard() {
+  settings.creativePromptPresets = normalizePromptPresets(settings.creativePromptPresets, () => uid('prompt'));
+  if (!settings.creativePromptPresets.some((item) => item.id === settings.creativePromptPresetSel)) settings.creativePromptPresetSel = '';
+  return renderPromptCardBody({ settings, defaults: promptCardDefaults(), tab: promptCardTab, presets: settings.creativePromptPresets,
+    selected: settings.creativePromptPresetSel, backup: !!(settings.systemPromptBackup || settings.outputSchemaBackup) }, htmlEscape);
+}
+// 写回一份提示词设置；剧组之律／输出格式沿用原来的「与默认一致存哈希」口径（模板更新时据此判断是否跟着更新）。
+function applyPromptSettings(patch) {
+  Object.assign(settings, patch);
+  if ('systemPrompt' in patch) settings.systemPromptHash = settings.systemPrompt === DEFAULT_SYSTEM_PROMPT ? hashText(DEFAULT_SYSTEM_PROMPT) : '';
+  if ('outputSchemaText' in patch) settings.outputSchemaHash = settings.outputSchemaText === JSON_SCHEMA_TEXT ? hashText(JSON_SCHEMA_TEXT) : '';
+  saveSettings();
+}
+// 只重画卡片主体，不重画整页（不收起卡片、不打断别处的编辑）。
+function refreshPromptCard(root = document.getElementById('story-director-modal')) {
+  const body = root?.querySelector('.sd-prompt-card-body');
+  if (!body) return;
+  body.innerHTML = renderPromptCard();
+  applyQianmuIcons(body);
 }
 
 const LOG_STATUS_LABELS = Object.freeze({ success: '成功', error: '失败', blocked: '已拦截', cancelled: '已取消', loading: '生成中', none: '状态未知' });
@@ -24355,6 +24378,102 @@ function bindDirectorReadingEvents(root) {
   }));
 }
 
+// 提示词卡的事件都委托在卡片上（页签切换会换掉卡片主体）。
+function bindPromptCardEvents(root) {
+  const card = root.querySelector('.sd-prompt-card');
+  if (!card) return;
+  const defaults = promptCardDefaults();
+  card.addEventListener('click', async (e) => {
+    const tab = e.target.closest('.sd-prompt-tab');
+    if (tab) { promptCardTab = tab.dataset.tab; refreshPromptCard(root); return; }
+    const expand = e.target.closest('.sd-expand-editor');
+    if (expand && !expand.dataset.bound) {   // 页签切进来的条目没有逐个绑定的监听，这里接住
+      e.preventDefault(); e.stopPropagation();
+      const ta = card.querySelector(`.${expand.dataset.target}`);
+      if (ta) openTextEditor({ target: expand.dataset.target, title: expand.dataset.title || '编辑', value: ta.value, placeholder: ta.placeholder || '' });
+      return;
+    }
+    const reset = e.target.closest('.sd-prompt-reset');
+    if (reset) {
+      e.preventDefault();
+      applyPromptSettings(withPromptValue(settings, reset.dataset.key, '', defaults));
+      if (reset.dataset.key === 'systemPrompt') await applyDirectorInjection();
+      refreshPromptCard(root); return;
+    }
+    if (e.target.closest('.sd-prompt-preset-save')) {
+      const name = await coreadPromptText('存为预设', '给这套提示词起个名：', '');
+      if (name == null) return;
+      const nm = String(name).trim();
+      if (!nm) { toast('预设名不能为空。', 'warning'); return; }
+      const prompts = promptSnapshot(settings, defaults), list = settings.creativePromptPresets || [];
+      const exist = list.find((item) => item.name === nm);
+      if (exist) { exist.prompts = prompts; settings.creativePromptPresetSel = exist.id; }
+      else { const id = uid('prompt'); settings.creativePromptPresets = [...list, { id, name: nm, prompts }]; settings.creativePromptPresetSel = id; }
+      saveSettings(); refreshPromptCard(root);
+      toast(`已${exist ? '覆盖' : '保存'}预设「${nm}」。`, 'success'); return;
+    }
+    if (e.target.closest('.sd-prompt-preset-del')) {
+      const preset = (settings.creativePromptPresets || []).find((item) => item.id === settings.creativePromptPresetSel);
+      if (!preset || !await confirmDialog('删除预设', `删除预设「${preset.name}」？当前使用中的提示词不受影响。`)) return;
+      settings.creativePromptPresets = settings.creativePromptPresets.filter((item) => item.id !== preset.id);
+      settings.creativePromptPresetSel = '';
+      saveSettings(); refreshPromptCard(root); toast('已删除预设。', 'info'); return;
+    }
+    if (e.target.closest('.sd-prompt-export')) {
+      const blob = new Blob([JSON.stringify(promptFile(promptSnapshot(settings, defaults)), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = `qianmu-千幕提示词-${fileStamp()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      toast('已导出提示词。', 'success'); return;
+    }
+    if (e.target.closest('.sd-prompt-import')) {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
+      document.body.appendChild(input);
+      input.addEventListener('change', async () => {
+        const file = input.files?.[0]; input.remove();
+        if (!file) return;
+        let snapshot = null;
+        try { snapshot = readPromptFile(JSON.parse(await file.text())); } catch (_) { snapshot = null; }
+        if (!snapshot) { toast('导入失败：不是千幕提示词文件。', 'error'); return; }
+        if (!await confirmDialog('导入提示词', '将用导入的提示词整套覆盖当前（文件里没有的条目回到内置默认），确定继续？')) return;
+        applyPromptSettings(applyPromptSnapshot(snapshot, defaults));
+        settings.creativePromptPresetSel = ''; saveSettings();
+        await applyDirectorInjection(); refreshPromptCard(root); toast('已导入提示词。', 'success');
+      });
+      input.click();
+    }
+  });
+  card.addEventListener('change', async (e) => {
+    const select = e.target.closest('.sd-prompt-preset-sel');
+    if (select) {
+      const id = select.value || '';
+      const preset = (settings.creativePromptPresets || []).find((item) => item.id === id);
+      const name = preset ? `预设「${preset.name}」` : '内置默认';
+      if (!await confirmDialog('切换提示词', `将用${name}整套覆盖当前的提示词，确定？`)) { refreshPromptCard(root); return; }
+      applyPromptSettings(applyPromptSnapshot(preset ? preset.prompts : {}, defaults));
+      settings.creativePromptPresetSel = preset ? id : ''; saveSettings();
+      await applyDirectorInjection(); refreshPromptCard(root); return;
+    }
+    // 改完离开输入框（change 在失焦时触发）即存；清空或改回原文即回到内置默认。
+    const ta = e.target.closest('.sd-prompt-text');
+    if (ta) {
+      const key = ta.dataset.key;
+      applyPromptSettings(withPromptValue(settings, key, ta.value, defaults));
+      if (key === 'systemPrompt') await applyDirectorInjection();
+      const entry = ta.closest('.sd-prompt-entry'), changed = promptChanged(key, settings, defaults);
+      entry?.classList.toggle('is-changed', changed);
+      const reset = entry?.querySelector('.sd-prompt-reset'); if (reset) reset.disabled = !changed;
+      if (!changed && ta.value !== ta.defaultValue) refreshPromptCard(root);   // 清空了：把内置原文显示回来
+      else {
+        const tabs = PROMPT_CARD_TABS.find((item) => item.keys.includes(key));
+        const dot = tabs && card.querySelector(`.sd-prompt-tab[data-tab="${tabs.id}"]`);
+        if (dot) { const n = tabs.keys.filter((k) => promptChanged(k, settings, defaults)).length; dot.querySelector('.sd-prompt-tab-dot')?.remove(); if (n) dot.insertAdjacentHTML('beforeend', `<span class="sd-prompt-tab-dot" title="改过 ${n} 条"></span>`); }
+      }
+    }
+  });
+}
+
 function bindActiveTabEvents(root) {
   bindDirectorWorldEntryLinks(root);
   // 行内全屏编辑视图：返回 / 保存（保存直写数据模型，再退回原标签）
@@ -24414,7 +24533,7 @@ function bindActiveTabEvents(root) {
     });
   });
   // 展开编辑：把目标 textarea 拉进行内全屏编辑视图，保存时按 target 直写数据模型
-  root.querySelectorAll('.sd-expand-editor').forEach((el) => el.addEventListener('click', (e) => {
+  root.querySelectorAll('.sd-expand-editor').forEach((el) => { el.dataset.bound = '1'; el.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();   // 按钮可能位于 <summary> 内，阻止顺带折叠
     const ta = root.querySelector(`.${el.dataset.target}`);
     if (!ta) return;
@@ -24424,7 +24543,7 @@ function bindActiveTabEvents(root) {
       value: ta.value,
       placeholder: ta.placeholder || '',
     });
-  }));
+  }); });
   bindDirectorReadingEvents(root);
 
   root.querySelector('.sd-save-blueprint')?.addEventListener('click', async () => {
@@ -24671,24 +24790,6 @@ function bindActiveTabEvents(root) {
     saveSettings();
     if (settings.autoRefresh) toast(`已设为每 ${settings.autoRefreshEvery} 层角色回复自动推演。`, 'info');
   });
-  root.querySelector('.sd-save-director-settings')?.addEventListener('click', async () => {
-    settings.autoRefresh = !!root.querySelector('.sd-auto-refresh')?.checked;
-    settings.autoRefreshEvery = Math.max(2, Math.min(50, Number(root.querySelector('.sd-auto-every')?.value || 10)));
-    settings.injectEnabled = !!root.querySelector('.sd-inject-enabled')?.checked;
-    settings.injectDepth = Math.max(0, Math.min(20, Number(root.querySelector('.sd-inject-depth')?.value ?? 2)));
-    if (root.querySelector('.sd-worldchatter-enabled')) settings.worldChatterEnabled = !!root.querySelector('.sd-worldchatter-enabled').checked;
-    if (root.querySelector('.sd-parallel-scene-enabled')) settings.parallelSceneEnabled = !!root.querySelector('.sd-parallel-scene-enabled').checked;
-    if (root.querySelector('.sd-interlude-enabled')) settings.interludeEnabled = !!root.querySelector('.sd-interlude-enabled').checked;
-    if (root.querySelector('.sd-geopolitics-enabled')) settings.geopoliticsEnabled = !!root.querySelector('.sd-geopolitics-enabled').checked;
-    settings.systemPrompt = root.querySelector('.sd-system-prompt')?.value || DEFAULT_SYSTEM_PROMPT;
-    settings.outputSchemaText = root.querySelector('.sd-output-schema')?.value || JSON_SCHEMA_TEXT;
-    // 与默认一致存哈希（未改动，随迭代更新），不一致清空（已 DIY，保留记忆）
-    settings.systemPromptHash = settings.systemPrompt === DEFAULT_SYSTEM_PROMPT ? hashText(DEFAULT_SYSTEM_PROMPT) : '';
-    settings.outputSchemaHash = settings.outputSchemaText === JSON_SCHEMA_TEXT ? hashText(JSON_SCHEMA_TEXT) : '';
-    saveSettings();
-    await applyDirectorInjection();
-    toast('设置已保存。', 'success');
-  });
   root.querySelector('.sd-restore-system')?.addEventListener('click', async () => {
     if (!settings.systemPromptBackup && !settings.outputSchemaBackup) { toast('没有可恢复的上一份幕后设置。', 'info'); return; }
     const yes = await confirmDialog('恢复上次幕后', '将幕后提示词与输出格式替换为更新前你上一次使用的那一份？当前内容会被覆盖。');
@@ -24702,15 +24803,7 @@ function bindActiveTabEvents(root) {
     toast('已恢复上一份幕后设置。', 'success');
     renderModal();
   });
-  root.querySelector('.sd-reset-system')?.addEventListener('click', () => {
-    settings.systemPrompt = DEFAULT_SYSTEM_PROMPT;
-    settings.outputSchemaText = JSON_SCHEMA_TEXT;
-    settings.promptRevision = PROMPT_REVISION;
-    settings.systemPromptHash = hashText(DEFAULT_SYSTEM_PROMPT);
-    settings.outputSchemaHash = hashText(JSON_SCHEMA_TEXT);
-    saveSettings();
-    renderModal();
-  });
+  bindPromptCardEvents(root);
 
   root.querySelector('.sd-provider-select')?.addEventListener('change', (event) => {
     settings.providerMode = event.target.value === 'external' ? 'external' : 'sillytavern';
@@ -34266,7 +34359,7 @@ async function stageTheaterScene() {
     }
     segments.push(`【此幕指令】\n${await resolveMacro(instruction)}`);
     if (useHistory) {
-      segments.push('以上正文片段是衔接背景，请据此保持人物口吻、关系与既有事实一致；番外可自由延展想象，但不要与正文已发生的事实冲突。');
+      segments.push(effectiveTheaterContinuity(settings.promptOverrides));   // 幕后「提示词」卡的「幕外 · 正文衔接说明」
     }
     // 思维链隔离：要求把最终番外正文用 <幕外正文> 包裹，模型的推理/思考一律放在标签外。
     // 阅读页只取标签内正文，裸思维链不再泄漏；日志仍存完整原文便于调试。

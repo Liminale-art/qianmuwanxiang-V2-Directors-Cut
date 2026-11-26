@@ -24,7 +24,7 @@ function fixture(plan, settings = {}) {
     getContextItemId: item => item.title || item.name || 'one', injectSelection: new Map(),
     renderHistorySection: () => '<div>history</div>', renderHeroActions: () => '', renderGenerateRow: () => '',
     renderDirectorWorldEntryLink: (field, index) => { links.push({ field, index }); return '<span class="sd-world-media-entry"></span>'; },
-    renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
+    renderInjectPreview: () => '', renderBackstageBlueprintCard: () => '', renderPromptCard: () => '<div class="prompt-card-fixture"></div>', DEFAULT_SYSTEM_PROMPT: '', JSON_SCHEMA_TEXT: '',
   });
   vm.runInContext(['directorDisplayPlan', 'renderDirectorSectionNotice', 'renderDashboardTab', 'renderDirectorExtraCard', 'renderChainReactionsCard', 'renderTasksNodesTab',
     'renderCastWorldFront', 'renderWorldChatterCard', 'renderRelationUndercurrentsCard', 'renderPlanSectionFold', 'renderNoPlan', 'renderItemList', 'directorItemParagraphs', 'directorSelectionOrder', 'renderDirectorParagraph', 'renderItemCard', 'renderItemChips', 'collectDirectorSelectedText',

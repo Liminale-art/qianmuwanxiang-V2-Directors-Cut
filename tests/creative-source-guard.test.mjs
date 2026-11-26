@@ -42,7 +42,7 @@ function fixture() {
         buildWorldContextText: async () => { await state.onWorld?.(); return '世界资料'; },
         buildPresetContextText: async () => { await state.onPreset?.(); return '预设资料'; },
         buildGeopoliticsArchiveSegment: () => '有效组织延续资料', estimateTokens: value => value.length,
-        creativeSectionGuidance: () => '栏目引导', createCreativeSchema: () => '当前输出协议',
+        creativeSectionGuidance: () => '栏目引导', effectiveGuides: () => ({}), createCreativeSchema: () => '当前输出协议',
         DEFAULT_BLUEPRINT: '默认剧本', JSON_SCHEMA_TEXT: 'default schema', console,
     };
     vm.createContext(c); vm.runInContext(itemIdentitySource + '\n' + rerollSource + '\n' + fingerprintSource + '\n' + promptSource, c);

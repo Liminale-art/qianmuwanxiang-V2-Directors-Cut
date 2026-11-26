@@ -111,7 +111,7 @@ try {
             await page.evaluate(async ({ family, mode, tab }) => { await setAppearance(family, mode); renderFixture(tab); }, { family, mode, tab });
             ok(label + ' actual source or backstage controls remain available', await page.evaluate(tab => tab === 'context'
                 ? document.querySelectorAll('.sd-context-item').length === 64 && document.querySelectorAll('.sd-refresh-presets,.sd-refresh-worldbooks').length === 0
-                : document.querySelectorAll('.sd-save-blueprint,.sd-save-director-settings,.sd-edit-injection,.sd-lib-import').length === 4 && document.querySelectorAll('.sd-lib-row').length === 32, tab));
+                : document.querySelectorAll('.sd-save-blueprint,.sd-prompt-card,.sd-edit-injection,.sd-lib-import').length === 4 && document.querySelectorAll('.sd-lib-row').length === 32, tab));
             await page.evaluate(tab => {
                 if (tab === 'context') {
                     document.querySelectorAll('.sd-dropdown').forEach(node => { node.open = true; });

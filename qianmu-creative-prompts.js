@@ -227,12 +227,12 @@ export const CREATIVE_SECTION_LABELS = Object.freeze({
 const CORE_GUIDES = Object.freeze(['story_status', 'character_dynamics', 'npc_updates', 'quests', 'chain_reactions', 'relation_undercurrents']);
 
 /**
- * Return only enabled approved guides. The caller chooses and freezes the
+ * Return only enabled guides (the approved built-in text unless the user overrode a section in the prompt card). The caller chooses and freezes the
  * interlude type once per run; this pure helper never samples or starts work.
  * New parallel/interlude sections default on. Existing optional world sections
  * remain opt-in, so an omitted option cannot change a user's previous setting.
  */
-export function creativeSectionGuidance(options = {}) {
+export function creativeSectionGuidance(options = {}, guides = CREATIVE_GUIDES) {
   const keys = [...CORE_GUIDES];
   if (options.worldChatterEnabled === true) keys.push('world_chatter');
   if (options.geopoliticsEnabled === true) keys.push('geopolitics');
@@ -249,7 +249,8 @@ export function creativeSectionGuidance(options = {}) {
     }
   }
   if (options.newcomerMode === true) keys.push('newcomer');
-  let guide = keys.map(key => `### ${CREATIVE_SECTION_LABELS[key]}\n\n${CREATIVE_GUIDES[key]}`).join('\n\n');
+  // guides：幕后「提示词」卡里用户改过的栏目指引（qianmu-prompt-card.js 的 effectiveGuides），缺的用内置原文。
+  let guide = keys.map(key => `### ${CREATIVE_SECTION_LABELS[key]}\n\n${guides?.[key] || CREATIVE_GUIDES[key]}`).join('\n\n');
   if (options.interludeEnabled !== false && options.interludeType === 'phone' && !['moments', 'microblog'].includes(options.phoneViewType) && ['direct', 'group'].includes(options.phoneConversationKind)) {
     guide += `\n\n本轮手机会话形式固定为 ${options.phoneConversationKind}（${options.phoneConversationKind === 'direct' ? '双人私聊' : '群聊'}），不改成另一形式。`;
   }

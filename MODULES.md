@@ -504,6 +504,7 @@
 | `qianmu-film-editor-save.js` | 是 | One immutable, explicitly requested film save. Validation performs no writes. |
 | `qianmu-plan-archive-write.js` | 是 | Immutable plan and recipe archive variants. Hashing finishes before the IndexedDB transaction. |
 | `qianmu-production-packet.js` | 是 | 千幕·共享片场制片包。纯数据适配器：不读写 DOM、设置、聊天元数据或媒体二进制。 |
+| `qianmu-prompt-card.js` | 是 | 幕后「提示词」卡：各版块提示词的覆盖、预设、导入导出 |
 | `qianmu-prompt-formats.js` | 是 |  |
 | `qianmu-still-frame-instructions.js` | 是 |  |
 | `qianmu-tag-complete.js` | 是 |  |

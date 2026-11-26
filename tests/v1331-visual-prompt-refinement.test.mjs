@@ -27,7 +27,7 @@ assert.match(css, /\.sd-inject-subfold \+ \.sd-inject-subfold\s*\{[^}]*margin-to
 assert.match(source, /sd-inject-title[\s\S]*token[^<]*<\/span><span class="sd-inject-meta">[\s\S]*sd-edit-injection/);
 
 // 剧组之律默认只露出单一折叠标题，展开后才包含两份文本与操作按钮。
-assert.match(source, /data-acc="director-law">\s*<summary><b>剧组之律<\/b><span class="sd-summary-note">一般无需改动<\/span><\/summary>[\s\S]*sd-system-prompt[\s\S]*sd-output-schema[\s\S]*sd-save-director-settings/);
+assert.match(source, /data-acc="director-law">\s*<summary><b>提示词<\/b><span class="sd-summary-note">一般无需改动<\/span><\/summary>[\s\S]*renderPromptCard\(\)/);
 assert.doesNotMatch(source, /data-acc="director-law"[^>]*\sopen(?:\s|>)/);
 
 // 星核不再缩放位移：只用原位描边、辉光与虚线外环表达聚焦。
@@ -42,7 +42,7 @@ assert.doesNotMatch(css, /@keyframes sd-geo-focus-ring/);
 const systemPrompt = CREATIVE_SYSTEM_PROMPT;
 const schemaPrompt = createCreativeSchema({ interludeType: 'theater' });
 assert.match(source, /const DEFAULT_SYSTEM_PROMPT = CREATIVE_SYSTEM_PROMPT;/);
-assert.match(source, /segments\.push\(creativeSectionGuidance\(run\.creativeOptions\)\)/);
+assert.match(source, /segments\.push\(creativeSectionGuidance\(run\.creativeOptions, effectiveGuides\(settings\.promptOverrides\)\)\)/);
 assert.match(source, /segments\.push\(createCreativeSchema\(run\.creativeOptions\)\)/);
 assert.equal(CREATIVE_COUNTS.quests.min, 5);
 assert.match(systemPrompt, /Do not decide \{\{user\}\}'s thoughts, emotions, positions, or actions/);

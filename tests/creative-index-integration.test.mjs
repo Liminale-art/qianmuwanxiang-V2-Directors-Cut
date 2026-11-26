@@ -6,6 +6,7 @@ import { parseDirectorFinal, paintModelLog, renderDirectorLive, directorPreviewP
 import { callExternalModel } from '../qianmu-model-external.js';
 import { callHostChatModel } from '../qianmu-model-host.js';
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, CREATIVE_GUIDES, CREATIVE_DETAIL_COUNTS, creativeSectionGuidance } from '../qianmu-creative-prompts.js';
+import { effectiveGuides } from '../qianmu-prompt-card.js';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from '../qianmu-creative-contract.js';
 import { selectCreativeOptions, upgradeCreativeDefaults, upgradeCreativeBlueprint, recentInterludeHint } from '../qianmu-creative-runtime.js';
 import { hashText, isPlainObject, mergeDefaults, uniqueClean, sanitizeEventStage, advanceEventStage } from '../qianmu-storyboard-utils.js';
@@ -92,7 +93,7 @@ function fixture({ settings: overrides = {}, responses = [], duringWorldRead, me
     readGagaMemoryContext: options => { assert.equal(options.pluginAvailable, true); return { text: memoryText, status: memoryResult.status || 'ready', diagnostics: [], snapshot: { production: 'layered', summaryMode: 'mixed', fingerprint: memoryFingerprint } }; },
     htmlEscape: value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]),
     estimateTokens: value => Math.ceil(String(value).length / 4), hashText, isPlainObject, mergeDefaults, uniqueClean,
-    creativeSectionGuidance, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, recentInterludeHint,
+    creativeSectionGuidance, effectiveGuides, createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity, recentInterludeHint,
     selectCreativeOptions: (value, options) => { selectionCount++; return selectCreativeOptions(value, { ...options, random: () => { randomCount++; return random(); } }); },
     busy: false, cancelRequested: false, abortController: null, directorRun: null, directorLiveLog: null, activeTab: 'dashboard', MODAL_ID: 'panel',
     directorLeaveGuard: null, directorHostState: directorHostFixture().state, directorAutoRefresh: null, directorNavigation: null, createDirectorNavigation,

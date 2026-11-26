@@ -37,7 +37,7 @@ function fixture() {
     saveSettings:()=>state.saved++,rerenderIfOpen:()=>{},toast:()=>{},resolveMacro:async text=>text,cleanContextText:text=>String(text||''),
     getCharacterName:()=> 'CHAR',getPersonaName:()=> 'USER',getCharacterDescription:()=> 'CHAR_DESCRIPTION',getPersonaDescription:()=> 'USER_DESCRIPTION',
     prepareDirectorMemoryHost:async()=>{},directorSourceFingerprint:()=> 'unchanged',getChatStore:()=>store,
-    directorMemorySnapshot:()=>({text:'',status:'empty'}),selectCreativeOptions:()=>({}),creativeSectionGuidance:()=> 'SECTION_GUIDANCE',createCreativeSchema:()=> 'SCHEMA',
+    directorMemorySnapshot:()=>({text:'',status:'empty'}),selectCreativeOptions:()=>({}),creativeSectionGuidance:()=> 'SECTION_GUIDANCE',effectiveGuides:()=>({}),createCreativeSchema:()=> 'SCHEMA',
     JSON_SCHEMA_TEXT:'SCHEMA',DEFAULT_SYSTEM_PROMPT:'OWN_SYSTEM',DEFAULT_BLUEPRINT:'OWN_BLUEPRINT',estimateTokens:text=>String(text).length,
     htmlEscape:text=>String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
   });

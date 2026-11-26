@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import * as utils from '../qianmu-storyboard-utils.js';
 import * as contract from '../qianmu-creative-contract.js';
 import * as creative from '../qianmu-creative-prompts.js';
+import * as promptCard from '../qianmu-prompt-card.js';
 import * as runtime from '../qianmu-creative-runtime.js';
 import * as live from '../qianmu-director-live.js';
 import { migrateQianmuChatStoreV2 } from '../qianmu-data-migrations.js';
@@ -78,7 +79,7 @@ function fixture({ responses = [], providerMode = 'external', persisted } = {}) 
     contextOptions: { contextDepth: 5, includeChatHistory: true }, contextBudget: 100000,
     logHistory: [{ status: 'error', response: 'FAILED_LOG_ONLY', request: 'FAILED_LOG_ONLY_REQUEST' }] };
   const c = vm.createContext({
-    ...utils, ...contract, ...creative, ...runtime, ...live,
+    ...utils, ...contract, ...creative, ...promptCard, ...runtime, ...live,
     settings, MODULE_NAME: 'fixture', BLUEPRINT_REVISION: 453, DEFAULT_BLUEPRINT: creative.CREATIVE_BLUEPRINT,
     DEFAULT_SYSTEM_PROMPT: creative.CREATIVE_SYSTEM_PROMPT, JSON_SCHEMA_TEXT: contract.createCreativeSchema(),
     ctx: () => context, getChatKey: () => 'chat-one', migrateQianmuChatStoreV2, acceptMigrationResult: (_scope, result) => result.value,
