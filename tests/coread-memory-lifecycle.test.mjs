@@ -54,9 +54,11 @@ assert.match(replace, /coreadRecalculateDialogCursor/, '替换完成后必须按
 const auto = source.slice(source.indexOf('async function coreadDistill(manual'), source.indexOf('// 手动总结'));
 assert.match(auto, /coreadReplaceDialogRange/, '自动总结也必须安全替换后段手动切片，不能生成重叠记忆');
 
-const compress = source.slice(source.indexOf('async function coreadCompressSlices'), source.indexOf('// 重新生成某条已有切片'));
-assert.ok(compress.indexOf('coreadPersistSlice') < compress.indexOf('coreadForgetSliceRuntime'), '二次总结也必须先写新切片再清旧切片');
-assert.match(compress, /dialogFrom:[\s\S]*dialogTo:/, '融合切片必须保存对谈来源的独立覆盖范围');
+// 手动二次总结（会删原切片）已由自动阶段总结取代（2026-11-26）：阶段只在上面加一层，原切片不删。
+assert.doesNotMatch(source, /coreadCompressSlices|sd-reader-compress-go/, '手动二次总结已移除');
+const stage = source.slice(source.indexOf('async function coreadMaybeStage'), source.indexOf('// 重新生成某条已有切片'));
+assert.doesNotMatch(stage, /readerDialog\.slices\s*=|owner\.slices\s*=|\.slices\.splice/, '阶段总结不得改动细切片');
+assert.ok(stage.indexOf('coreadSaveDialog') < stage.indexOf('coreadForgetSliceRuntime'), '阶段存档成功后才清掉被顶替阶段的向量');
 
 const vector = source.slice(source.indexOf('async function coreadEnsureVectors'), source.indexOf('// 向量召回'));
 assert.match(vector, /coreadWithRetry\(`vector:\$\{item\.s\.id\}`/, '每条切片必须使用独立向量重试与熔断键');

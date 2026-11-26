@@ -339,6 +339,7 @@ function comicFixture({ pages = 12, current = 0, pagesPerBatch = 3, stored = nul
   const state = { saveOk: true, recordOk: true, failAt: -1, conn: { model: 'vision' }, review: undefined, confirm: true, reply: null, usage: { prompt_tokens: 900, completion_tokens: 120 },
     cfg: { pagesPerBatch, autoFollow: true, reviewEachBatch: false, sendCurrentPage: false }, stored };
   const c = vm.createContext({
+    coreadScheduleStage: () => {},
     reader, console, MODULE_NAME: 'fixture', AbortController, Date: { now: () => ++clock }, Promise,
     COREAD_SAVE_FAILED: '记忆未能保存，请重试', COREAD_MEMORY_BUSY: '正在整理记忆，请稍候',
     readerView: { bookId: 'book', chapterIndex: current, scrollRatio: 0 },
@@ -652,5 +653,5 @@ test('the memory-archive tab shows the comic cards instead of text distill for a
   assert.doesNotMatch(html, /书籍蒸馏|sd-reader-distill-text/);
   assert.match(html, /漫画识图/); assert.match(html, /阅读方向/); assert.match(html, /已建稿 <b>3<\/b> \/ 已读 6 页/); assert.match(html, /补齐未识别的 3 页/);
   assert.match(html, /人物表/); assert.match(html, /class="sd-reader-minput sd-reader-comic-cast-name" placeholder="称呼" maxlength="40" value="甲"/);
-  assert.match(html, /对切片进行二次总结/, 'the cards after it are still rendered');
+  assert.match(html, /sd-reader-stagecard/, 'the cards after it are still rendered');
 });

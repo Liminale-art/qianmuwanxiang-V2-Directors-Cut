@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.611';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.612';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.611';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.612';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.611';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.611';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.611';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.611';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.611';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.611';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.611';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.612';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.612';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.612';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.612';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.612';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.612';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.612';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.611';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.612';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.611';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.612';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.611';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.612';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.611';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.612';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.611';
+const VERSION = '1.59.612';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1340,6 +1340,11 @@ const DEFAULT_SETTINGS = Object.freeze({
       recentInject: 1,              // 近景切片注入数：最近 N 条切片无条件注入（不参与检索·防漏掉刚聊的·默认1·0=关）
       recallScanMessages: 8,        // 召回查询扫描最近 N 条对话（默认8）
       sliceChars: 300,              // 每条切片字数上限（超过 1.5 倍整条不收）
+      // 阶段总结（细切片之上加一层，原切片不删；用户 2026-11-26 定 100／20／800）
+      stageAuto: true,              // 自动阶段总结
+      stageTrigger: 100,            // 攒够多少条连续的切片合成一条阶段
+      stageKeep: 20,                // 每种来源最近多少条不合
+      stageChars: 800,              // 每条阶段总结字数上限（超过 1.5 倍整条不收）
       spoilerProtection: true,      // 共读记忆防剧透：按每条切片形成时的阅读水位过滤后文章节（默认开）
       rerankTopN: 4,               // 开重排档时召回候选重排后保留数（用户可改）
       // 词典册（手动别称词典·全局·可编辑·空也能建）：[{id,name,pairs:{标准词:[别称...]}}]。
@@ -8439,7 +8444,7 @@ function reconcileClearedStorageItems(selected) {
     if (cleared.has('reader_images')) for (const book of coread().books || []) book.imageCount = 0;
   }
   if (cleared.has('reader_chats')) {
-    readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
+    readerDialog = { bucket: '', bookId: '', messages: [], slices: [], stages: [], stageFailure: null, cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
     readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
     readerAssistantSessions.clear();
     if (readerContentCache) delete readerContentCache.comic;   // 漫画页稿同仓，一并清掉
@@ -25330,6 +25335,11 @@ function coreadMemory() {
   else if (defIdx > 0) m.dictBooks.unshift(m.dictBooks.splice(defIdx, 1)[0]);   // 确保置顶
   if (!Number.isFinite(m.sliceChars)) m.sliceChars = reader.COREAD_SLICE_CHARS;
   m.sliceChars = Math.max(50, Math.round(m.sliceChars));
+  m.stageAuto = m.stageAuto !== false;
+  const stageInt = (key, min, fallback) => { const value = Math.round(Number(m[key])); m[key] = Number.isFinite(value) ? Math.max(min, value) : fallback; };
+  stageInt('stageTrigger', 2, reader.COREAD_STAGE_DEFAULTS.trigger);
+  stageInt('stageKeep', 0, reader.COREAD_STAGE_DEFAULTS.keep);
+  stageInt('stageChars', 100, reader.COREAD_STAGE_DEFAULTS.chars);
   if (!Number.isFinite(m.rerankTopN)) m.rerankTopN = 4;
   m.rerankTopN = Math.max(1, Math.round(m.rerankTopN));
   if (!Number.isFinite(m.recallScanMessages)) m.recallScanMessages = 8;
@@ -25777,9 +25787,10 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   if (recallQuery && ((mem.recallCount || 0) > 0 || (mem.recentInject || 0) > 0)) {
     const boundary = coreadBoundaryFromChapters(id, chapters, chapterIndex, scrollRatio);
     if (readerDialog.bookId === id) readerDialog.readBoundary = boundary;
-    const recallPool = coreadSafeSlices(readerDialog.slices || [], boundary, mem);
+    // 检索池：有效阶段顶替它盖住的细切片；近景仍取最近的细切片。
+    const recallPool = coreadRecallPoolFor(boundary, mem);
     // 近景保底：最近 N 条无条件带上，且从检索候选剔除（防重复）
-    const recent = coreadRecentSlices(mem.recentInject || 0, recallPool);
+    const recent = coreadRecentSlices(mem.recentInject || 0, coreadSafeSlices(readerDialog.slices || [], boundary, mem));
     const excludeIds = new Set(recent.map((h) => h.slice.id));
     let hits = [];
     if ((mem.recallCount || 0) > 0) {
@@ -26096,6 +26107,8 @@ const COREAD_MEMORY_BUSY = '正在整理记忆，请稍候';
 function coreadMemorySnapshot() {
   return {
     slices: (readerDialog.slices || []).map((slice) => ({ ...slice })),
+    stages: (readerDialog.stages || []).map((stage) => ({ ...stage })),
+    stageFailure: readerDialog.stageFailure || null,
     cursor: readerDialog.cursor,
     summaryFloor: readerDialog.summaryFloor,
     comicDismissed: readerDialog.comicDismissed,
@@ -26105,6 +26118,7 @@ function coreadMemoryRestore(snapshot) {
   const kept = new Set(snapshot.slices.map((slice) => slice.id));
   for (const slice of (readerDialog.slices || [])) if (!kept.has(slice.id)) coreadVectorStates.delete(slice.id);
   readerDialog.slices = snapshot.slices;
+  if (Array.isArray(snapshot.stages)) { readerDialog.stages = snapshot.stages; readerDialog.stageFailure = snapshot.stageFailure || null; }
   readerDialog.cursor = snapshot.cursor;
   readerDialog.summaryFloor = snapshot.summaryFloor;
   readerDialog.comicDismissed = snapshot.comicDismissed;
@@ -26377,6 +26391,7 @@ async function coreadPersistSlice(res, meta, extra = {}) {
     boundary,
   });
   readerDialog.slices.push(normalizedSlice);
+  coreadScheduleStage();   // 落盘之后在后台看一次要不要合阶段（防抖，存档失败还原后规划不到新组）
   coreadVectorStates.set(sliceId, { state: 'pending', attempt: 0, fingerprint: coreadSliceFingerprint(normalizedSlice), updatedAt: Date.now() });
   if (coreadMemory().vectorEnabled) queueMicrotask(() => { void coreadSyncSliceVector(sliceId, { announce: false }).then(() => rerenderMoreIfOpen?.()); });
   return { ok: true, batch, sliceId, slice: normalizedSlice };
@@ -26647,80 +26662,81 @@ function coreadRenumberSlices() {
     .forEach((s, i) => { s.batch = i + 1; });
 }
 
-// 二次总结：把 batch 号在 [lo,hi] 的切片压缩成一条（省上下文/清理过早历史）。手动触发。
-async function coreadCompressSlices(lo, hi) {
-  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: '正在处理中' };
-  const inRange = (readerDialog.slices || []).filter((s) => { const b = Number(s.batch) || 0; return b >= lo && b <= hi; });
-  if (inRange.length < 2) return { ok: false, reason: '该范围内不足两条切片，无需压缩' };
+/* ── 阶段总结（细切片之上加一层，原切片不删）──
+   规划、有效性与召回池在 qianmu-reader.js（planCoreadStages／buildCoreadStage／coreadRecallPool）。
+   这里只管时机与落盘：切片落盘后防抖看一次；正在总结、改切片时稍后再看；一次合一组，合完再看下一组。
+   失败提示一次、原记忆不动；切片条数没变之前不自动重试（stageFailure 记着当时的条数）。 */
+let coreadStageTimer = null;
+function coreadScheduleStage(delay = 1500) {
+  clearTimeout(coreadStageTimer);
+  coreadStageTimer = setTimeout(() => { coreadStageTimer = null; void coreadMaybeStage(); }, delay);
+}
+
+// 向量要覆盖的条目：细切片加上没被用户删掉的阶段。
+function coreadVectorItems() {
+  return [...(readerDialog.slices || []), ...(readerDialog.stages || []).filter((stage) => stage.status !== 'deleted')];
+}
+
+// 召回池：有效阶段顶替它盖住的细切片（读位回退隔离了阶段时，退回它仍可见的细切片）。
+function coreadRecallPoolFor(boundary, m = coreadMemory()) {
+  return reader.coreadRecallPool(readerDialog.slices || [], readerDialog.stages || [], boundary, m.spoilerProtection !== false);
+}
+
+// retry=true：用户点「重试阶段总结」，不看上次失败记录、开关关着也照做。
+async function coreadMaybeStage({ retry = false } = {}) {
+  const m = coreadMemory();
+  if (!COREAD_MEMORY_ENABLED || (!m.stageAuto && !retry)) return { ok: false, reason: 'off' };
+  const owner = readerDialog;
+  if (!owner.loaded || !owner.bucket) return { ok: false, reason: 'not-loaded' };
+  if (coreadDistilling || coreadMemoryWrites) { if (!retry) coreadScheduleStage(5000); return { ok: false, reason: COREAD_MEMORY_BUSY }; }
+  const sliceCount = (owner.slices || []).length;
+  if (!retry && owner.stageFailure && owner.stageFailure.sliceCount === sliceCount) return { ok: false, reason: 'waiting' };
+  const boundary = owner.readBoundary || coreadCurrentReadBoundarySync(owner.bookId);
+  const [group] = reader.planCoreadStages(owner.slices || [], owner.stages || [], {
+    trigger: m.stageTrigger, keep: m.stageKeep, boundary, protection: m.spoilerProtection !== false,
+    cap: Number(m.summaryContextChars) || 0, joinCost: 6,
+  });
+  if (!group) {
+    if (retry && owner.stageFailure) { owner.stageFailure = null; await coreadSaveDialog(); }
+    return { ok: false, reason: 'nothing' };
+  }
+  const label = group.source === 'book' ? '书中内容' : '共读交流';
+  const fail = async (reason) => {
+    if (readerDialog !== owner) return { ok: false, reason: 'stale' };
+    owner.stageFailure = { sliceCount, reason, at: Date.now() };
+    await coreadSaveDialog();
+    toast(`伴读记忆：阶段总结没有完成（${reason}），原记忆不动。`, 'warning');
+    rerenderMoreIfOpen?.();
+    return { ok: false, failed: true, reason };
+  };
   coreadDistilling = true;
   try {
-    const m = coreadMemory();
-    const meta = coreadBookMeta(readerDialog.bookId) || {};
+    const meta = coreadBookMeta(owner.bookId) || {};
     const names = { char: companionCharName(), user: coreadUserName() };
-    inRange.sort((a, b) => (Number(a.batch) || 0) - (Number(b.batch) || 0));
-    const merged = inRange.map((s, i) => `${i + 1}. ${s.summary}`).join('\n');
-    const sysPrompt = `你是伴读记忆整理助手。下面是「${names.user}」伴读《${meta.title || ''}》时的多条历史记忆，请把它们压缩合并成一条更凝练的记忆，保留关键人物/情节/态度变化，去除重复。只输出纯 JSON：{"summary":"不超过${Math.max(m.sliceChars, 400)}字的第三人称合并总结","keywords":["3-8个检索关键词"]}`;
-    const raw = String(await callCoreadModel(sysPrompt, `【多条历史记忆】\n${merged}`) || '');
-    let parsed = null;
-    try { parsed = extractJson(raw); } catch (_) { parsed = null; }
-    // 宽松解析失败→保底抢救 summary（压缩是手动操作·抢救不出才报失败让用户重试·绝不误删旧切片）
-    let summary = String((isPlainObject(parsed) && parsed.summary) || '').trim() || coreadSalvageSummary(raw);
-    if (!summary) return { ok: false, reason: '模型没有返回有效结果' };
-    const cap = Math.max(m.sliceChars, 400);
-    if (summary.length > cap) summary = summary.slice(0, cap);
-    let keywords = uniqueClean((isPlainObject(parsed) && Array.isArray(parsed.keywords) ? parsed.keywords : []).map((k) => String(k || '').trim()).filter(Boolean)).slice(0, 8);
-    if (!keywords.length) keywords = inRange.flatMap((s) => s.keywords || []).slice(0, 6);
-    // 合并子切片的同义词表（并集·压缩不重新问模型也不丢别称知识）
-    const synonyms = coreadMergeSynonyms(inRange.map((s) => s.synonyms));
-    // 先完整计算融合来源，再写入新切片；新切片成功后才清理旧数据。
-    // 这样本地落地异常时，原有记忆仍然可恢复、不会出现半完成状态。
-    const coveredFrom = Math.min(...inRange.map((s) => Number(s.coveredFrom) || 0));
-    const coveredTo = Math.max(...inRange.map((s) => Number(s.coveredTo) || 0));
-    const bookId = readerDialog.bookId || 'unknown';
-    const normalizedParts = coreadNormalizeSlices(inRange, bookId, readerDialog.bucket, coreadCurrentReadBoundarySync(bookId));
-    const partSources = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.sources || [s.provenance?.source || s.src]));
-    const compressedSource = partSources.length === 1 ? reader.normalizeCoreadSource(partSources[0]) : 'mixed';
-    const finiteValues = (values) => values.filter((value) => value != null && value !== '').map(Number).filter(Number.isFinite);
-    const readEnds = finiteValues(normalizedParts.map((s) => s.provenance?.readTo));
-    const chapterStarts = finiteValues(normalizedParts.map((s) => s.provenance?.chapterFrom));
-    const chapterEnds = finiteValues(normalizedParts.map((s) => s.provenance?.chapterTo));
-    const charStarts = finiteValues(normalizedParts.map((s) => s.provenance?.charFrom));
-    const charEnds = finiteValues(normalizedParts.map((s) => s.provenance?.charTo));
-    const dialogStarts = finiteValues(normalizedParts.map((s) => s.provenance?.dialogFrom));
-    const dialogEnds = finiteValues(normalizedParts.map((s) => s.provenance?.dialogTo));
-    const dialogIds = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.dialogMessageIds || []));
-    const mainlineFloors = uniqueClean(normalizedParts.flatMap((s) => s.provenance?.mainlineFloors || []));
+    const body = group.parents.map((slice, i) => `${i + 1}. ${slice.summary || ''}`).join('\n');
+    const sysPrompt = coreadSummarySystemPrompt('stage', m, meta, names, { count: group.parents.length, source: group.source });
+    let res = null;
+    try { res = await coreadDistillText(body, sysPrompt, m, { chars: m.stageChars, label: '【记忆】' }); }
+    catch (error) { return await fail(coreadExplainError(error)); }
+    if (readerDialog !== owner) return { ok: false, reason: 'stale' };
+    if (!res) return await fail('模型没有返回有效总结');
     const snapshot = coreadMemorySnapshot();
-    const persisted = await coreadPersistSlice({ summary, keywords, synonyms }, meta, {
-      src: compressedSource === 'book' ? 'text' : compressedSource,
-      sources: partSources,
-      coveredFrom,
-      coveredTo,
-      compressed: true,
-      createdAt: Math.max(...normalizedParts.map((s) => reader.coreadSliceCreatedAt(s))),   // 合并不是新近讨论：沿用原切片里最晚的形成时间
-      readTo: readEnds.length ? Math.max(...readEnds) : coreadCurrentReadBoundarySync(bookId).readTo,
-      chapterFrom: chapterStarts.length ? Math.min(...chapterStarts) : null,
-      chapterTo: chapterEnds.length ? Math.max(...chapterEnds) : null,
-      charFrom: charStarts.length ? Math.min(...charStarts) : null,
-      charTo: charEnds.length ? Math.max(...charEnds) : null,
-      dialogFrom: dialogStarts.length ? Math.min(...dialogStarts) : null,
-      dialogTo: dialogEnds.length ? Math.max(...dialogEnds) : null,
-      dialogMessageIds: dialogIds,
-      mainlineFloors,
-    });
-    const rangeIds = new Set(inRange.map((s) => s.id));
-    readerDialog.slices = (readerDialog.slices || []).filter((s) => !rangeIds.has(s.id));
-    coreadRenumberSlices();
-    coreadRecalculateDialogCursor();
-    // 存档成功后才清旧切片的向量与漫画文字稿指向；存不进去就整份还原。
-    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return { ok: false, reason: COREAD_SAVE_FAILED }; }
-    for (const old of inRange) {
-      await coreadUpdateComicDescriptionForSlice(old.id, { sliceId: persisted.sliceId, summary, keywords });
-    }
-    await coreadForgetSliceRuntime(rangeIds);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: e?.message || '压缩失败' };
+    const keywords = res.keywords?.length && !res.salvaged ? res.keywords : uniqueClean(group.parents.flatMap((slice) => slice.keywords || [])).slice(0, 8);
+    const stage = reader.buildCoreadStage(group.parents, {
+      summary: res.summary, keywords,
+      synonyms: coreadMergeSynonyms([...group.parents.map((slice) => slice.synonyms), res.synonyms]),   // 别称表合并不丢
+    }, { id: uid('stage'), bookId: owner.bookId, bucket: owner.bucket, now: Date.now() });
+    if (res.salvaged) stage.salvaged = true;
+    const replaced = new Set(group.replaces);
+    owner.stages = [...(owner.stages || []).filter((item) => !replaced.has(item.id)), stage];
+    owner.stageFailure = null;
+    if (!await coreadSaveDialog()) { coreadMemoryRestore(snapshot); return await fail(COREAD_SAVE_FAILED); }
+    if (replaced.size) await coreadForgetSliceRuntime(replaced);
+    toast(`伴读记忆：已把 ${group.parents.length} 条${label}合成一条阶段总结。`, 'success');
+    if (m.vectorEnabled) queueMicrotask(() => { void coreadSyncSliceVector(stage.id, { announce: false }); });
+    rerenderMoreIfOpen?.();
+    coreadScheduleStage();   // 可能还有下一组
+    return { ok: true, stage };
   } finally {
     coreadDistilling = false;
   }
@@ -27090,7 +27106,7 @@ async function coreadEnsureVectors(m, onlySlices = null) {
   const bucket = readerDialog.bucket;
   const owner = readerDialog, model = m.vectorModel;
   const current = () => readerDialog === owner && readerDialog.bucket === bucket && m.vectorModel === model;
-  const slices = Array.isArray(onlySlices) ? onlySlices : (readerDialog.slices || []);
+  const slices = Array.isArray(onlySlices) ? onlySlices : coreadVectorItems();
   if (!bucket || !slices.length) return null;
   // 载入持久化缓存（换 bucket / 换模型则重置）
   if (!coreadVecCache || coreadVecCache.bucket !== bucket || coreadVecCache.model !== m.vectorModel) {
@@ -27124,7 +27140,7 @@ async function coreadEnsureVectors(m, onlySlices = null) {
         });
         if (!current()) return null;
         // 请求返回前用户可能再次编辑；旧指纹结果不得覆盖新文本状态。
-        const live = (readerDialog.slices || []).find((slice) => slice.id === item.s.id);
+        const live = coreadVectorItems().find((slice) => slice.id === item.s.id);
         if (!vector || !live || coreadSliceFingerprint(live) !== item.fp) {
           coreadVectorStates.set(item.s.id, { state: 'pending', attempt: 0, fingerprint: live ? coreadSliceFingerprint(live) : '', updatedAt: Date.now() });
           continue;
@@ -27142,7 +27158,7 @@ async function coreadEnsureVectors(m, onlySlices = null) {
       }
     }
     // 清理已删切片的残留向量
-    const liveIds = new Set((readerDialog.slices || []).map((s) => s.id));
+    const liveIds = new Set(coreadVectorItems().map((s) => s.id));
     for (const id of Object.keys(cache.vecs)) if (!liveIds.has(id)) { delete cache.vecs[id]; delete cache.fps[id]; }
     for (const id of Object.keys(cache.errors)) if (!liveIds.has(id)) delete cache.errors[id];
     try { await blobStore.putReaderVectors(bucket, { dim: cache.dim, model: cache.model, vecs: cache.vecs, fps: cache.fps, errors: cache.errors }); } catch (_) {}
@@ -27156,7 +27172,7 @@ async function coreadSyncSliceVector(sliceId, { announce = false } = {}) {
   const owner = readerDialog;
   const m = coreadMemory();
   if (!m.vectorEnabled) return { ok: false, skipped: true };
-  const slice = (readerDialog.slices || []).find((item) => item.id === sliceId);
+  const slice = coreadVectorItems().find((item) => item.id === sliceId);
   if (!slice) return { ok: false, reason: '切片不存在' };
   if (announce) {
     coreadPipelineCircuits.delete('vector');
@@ -27390,6 +27406,8 @@ async function coreadClearAllSlices() {
   try {
     const snapshot = coreadMemorySnapshot();
     readerDialog.slices = [];
+    readerDialog.stages = [];
+    readerDialog.stageFailure = null;
     readerDialog.summaryFloor = (readerDialog.messages || []).length;
     readerDialog.cursor = readerDialog.summaryFloor;   // 已聊的都视作「不再总结」，避免立刻又重蒸
     if (coreadComicRecord(readerDialog.bookId)) readerDialog.comicDismissed = reader.comicDismissAll(coreadComicRecord(readerDialog.bookId));   // 清空后不从漫画页稿补回
@@ -27427,6 +27445,7 @@ async function coreadListMigratableChats(bookId) {
 
 // 执行迁移：把源桶的会话复制进当前 readerDialog，落盘 + 重建容器。
 async function coreadMigrateFromChat(sourceRec) {
+  if (coreadDistilling || coreadMemoryWrites) return { ok: false, reason: COREAD_MEMORY_BUSY };   // 正在总结时不迁移，免得迟到的结果写进新档
   coreadMemoryWrites++;
   try {
     if (!sourceRec) return { ok: false, reason: '源会话为空' };
@@ -27438,6 +27457,8 @@ async function coreadMigrateFromChat(sourceRec) {
     const boundary = sourceRec.readBoundary?.bookId === bookId ? sourceRec.readBoundary : readerDialog.readBoundary || coreadCurrentReadBoundarySync(bookId);
     readerDialog.slices = coreadNormalizeSlices(Array.isArray(sourceRec.slices) ? clone(sourceRec.slices) : [], bookId, readerDialog.bucket, boundary)
       .map(slice => ({ ...slice, ownerBucket: readerDialog.bucket }));
+    readerDialog.stages = reader.normalizeCoreadStages(Array.isArray(sourceRec.stages) ? clone(sourceRec.stages) : [], { bookId, bucket: readerDialog.bucket });
+    readerDialog.stageFailure = null;
     const progress = coreadSummaryProgressFromRecord(sourceRec, readerDialog.slices, readerDialog.messages.length);
     readerDialog.summaryFloor = progress.summaryFloor;
     readerDialog.cursor = progress.cursor;
@@ -27702,7 +27723,7 @@ function coreadDialogBucket(bookId) {
 }
 
 // 模块级对话缓存：避免每次渲染都读 IndexedDB。{ bucket, bookId, messages:[{id,role,text,at}], cursor, loaded }
-let readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
+let readerDialog = { bucket: '', bookId: '', messages: [], slices: [], stages: [], stageFailure: null, cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
 const readerAssistantSessions = new Map();
 let readerAssistant = { bucket: '', bookId: '', messages: [], quote: '', loaded: false };
 let readerAssistantBusy = false;
@@ -27723,7 +27744,7 @@ async function coreadLoadDialog(bookId) {
   const boundary = coreadCurrentReadBoundarySync(bookId);
   coreadVectorStates.clear();
   coreadVecCache = null;
-  readerDialog = { bucket, bookId, messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: boundary, loaded: false };
+  readerDialog = { bucket, bookId, messages: [], slices: [], stages: [], stageFailure: null, cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: boundary, loaded: false };
   const target = readerDialog, view = readerView;
   const current = () => readerDialog === target && readerView === view && coreadDialogBucket(bookId) === bucket;
   let needsMigration = false;
@@ -27743,6 +27764,8 @@ async function coreadLoadDialog(bookId) {
         || rawSlices.some((slice) => Number(slice?.provenance?.version) !== reader.COREAD_SLICE_SCHEMA_VERSION);
       const archivedBoundary = rec.readBoundary && rec.readBoundary.bookId === bookId ? rec.readBoundary : boundary;
       readerDialog.slices = coreadNormalizeSlices(rawSlices, bookId, bucket, archivedBoundary);   // 旧档优先使用原读位，不以另一书友的新进度改写记忆形成阶段
+      readerDialog.stages = reader.normalizeCoreadStages(rec.stages, { bookId, bucket });   // 没有 stages 的旧档读成空
+      readerDialog.stageFailure = isPlainObject(rec.stageFailure) ? rec.stageFailure : null;
       // v2 及更早版本“删书但保留记忆”会留下空对话 + 对谈切片 + cursor=0。
       // 将其迁为归档对谈，继续参与召回但不占用重新导入后的新对话下标。
       if (rec.summaryFloor == null && !readerDialog.messages.length && !(Number(rec.cursor) || 0) && readerDialog.slices.length) {
@@ -27779,6 +27802,7 @@ async function coreadLoadDialog(bookId) {
   readerDialog.loaded = true;
   if (needsMigration) await coreadSaveDialog();
   if (!current()) return;
+  coreadScheduleStage();   // 打开时补看一次：上次关书前攒够的还没合
   // 若对话抽屉正开在对话 tab，载入后补渲消息
   const body = document.querySelector('#sd-reader-portal .sd-reader-dtab-chat');
   if (body && !readerView?.assistantOpen) { body.innerHTML = renderReaderDialogMessages(); applyQianmuIcons(body); scrollDialogToBottom(); }
@@ -27794,6 +27818,8 @@ async function coreadSaveDialog() {
       bookId: readerDialog.bookId,
       messages: readerDialog.messages,
       slices: readerDialog.slices,
+      stages: readerDialog.stages || [],
+      ...(readerDialog.stageFailure ? { stageFailure: readerDialog.stageFailure } : {}),
       cursor: readerDialog.cursor,
       summaryFloor: readerDialog.summaryFloor,
       lastInjected: readerDialog.lastInjected,
@@ -29159,7 +29185,7 @@ function coreadAccountRemovedChats(keys) {
   coreadEchoTtl.clear();
   const bookId = readerDialog.bookId;
   if (readerView?.bookId === bookId) { void coreadLoadDialog(bookId).then(() => rerenderMoreIfOpen()); return; }
-  readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
+  readerDialog = { bucket: '', bookId: '', messages: [], slices: [], stages: [], stageFailure: null, cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false };
 }
 
 /* ── 导入（一期：上传文件，集成在导入按钮；TXT 走编码嗅探，其余格式后续接） ── */
@@ -29637,7 +29663,7 @@ async function coreadDeleteBook(bookId, options = {}) {
     if (readerContentCache?.bookId === bookId) readerContentCache = null;
     if (readerDialog?.bookId === bookId) {
       dialogGenToken++; dialogAbort?.abort(); dialogAbort = null;
-      readerDialog = { bucket: '', bookId: '', messages: [], slices: [], cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear();
+      readerDialog = { bucket: '', bookId: '', messages: [], slices: [], stages: [], stageFailure: null, cursor: 0, summaryFloor: 0, lastInjected: null, pipelineStatus: null, readBoundary: null, loaded: false }; coreadEchoTtl.clear();
     }
     if (readerAssistant?.bookId === bookId) {
       readerAssistantToken++; readerAssistantAbort?.abort(); readerAssistantAbort = null;
@@ -30684,7 +30710,21 @@ function renderCompanionMoreBody() {
   return renderCoreadCenterStatus(m) + tabBar + renderCoreadGuide() + `<div class="sd-reader-mtab-body">${panel}</div>`;
 }
 
-// 记忆记录 tab：①总结提示词(条目式·内置硬格式+自定义) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④切片二次总结。
+// 阶段总结卡：自动开关、三个数；上次没合成时写明原因，可手动重试。
+function renderCoreadStageCard(m) {
+  const failure = readerDialog.stageFailure;
+  const num = (key, label, min) => `<div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">${label}</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-stage-num" data-key="${key}" min="${min}" step="1" value="${m[key]}"${m.stageAuto ? '' : ' disabled'}></div>`;
+  return `<div class="sd-reader-mcard sd-reader-stagecard">
+      <div class="sd-reader-mcard-head"><i class="fa-solid fa-layer-group"></i> 阶段总结</div>
+      <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">自动阶段总结</span>${renderMemSwitch('sd-reader-stage-en', m.stageAuto)}</div>
+      ${num('stageTrigger', '每多少条记忆合成一条', 2)}
+      ${num('stageKeep', '最近多少条不合', 0)}
+      ${num('stageChars', '每条阶段总结字数上限', 100)}
+      ${failure ? `<div class="sd-reader-mrow sd-reader-stage-failure"><span class="sd-reader-mrow-lab">上次没有完成：${htmlEscape(failure.reason || '')}</span><button type="button" class="sd-reader-textbtn sd-reader-stage-retry">重试阶段总结</button></div>` : ''}
+    </div>`;
+}
+
+// 记忆记录 tab：①总结提示词(三组页签) ②自动/手动总结设置 ③切片列表(折叠·可编辑) ④阶段总结。
 function renderMemRecordsTab(m) {
   // 当前书用于档案总览标题。
   const curBook = coreadBookMeta(readerDialog.bookId), comicRecord = coreadComicRecord(readerDialog.bookId);
@@ -30735,7 +30775,6 @@ function renderMemRecordsTab(m) {
       ${promptTabs}
       <div class="sd-reader-sumitems" data-kind="${promptTab}">${promptItems}</div>
     </details>
-    </details>
     <div class="sd-reader-mcard${coreadGuideTargetClass('dialog-summary')}">
       <div class="sd-reader-mcard-head"><i class="fa-solid fa-robot"></i> 伴读对话·自动总结</div>
       <div class="sd-reader-mrow">
@@ -30778,16 +30817,7 @@ function renderMemRecordsTab(m) {
       </div>
       <div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">每往后读多少字自动总结</span><input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-distill-textevery" min="1000" step="500" value="${m.distillTextEvery}"${m.autoDistillText ? '' : ' disabled'}></div>
     </div>`}
-    <details class="sd-reader-mcard">
-      <summary class="sd-reader-mcard-head"><i class="fa-solid fa-compress"></i> 对切片进行二次总结</summary>
-      <div class="sd-reader-mrow sd-reader-mrow-resum">
-        <span class="sd-reader-mrow-lab">批次</span>
-        <input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-compress-lo" min="1" max="${lastBatch}" value="1">
-        <span class="sd-reader-mrow-lab">到</span>
-        <input type="number" class="sd-reader-minput sd-reader-num-narrow sd-reader-compress-hi" min="1" max="${lastBatch}" value="${Math.min(lastBatch, 10) || 1}">
-        <button type="button" class="sd-reader-textbtn sd-reader-compress-go"${lastBatch >= 2 ? '' : ' disabled'}>执行总结</button>
-      </div>
-    </details>
+    ${renderCoreadStageCard(m)}
     <button type="button" class="sd-reader-guide-replay"><i class="fa-solid fa-circle-question"></i>再看一次引导教程</button>`;
 }
 
@@ -30796,21 +30826,22 @@ function renderMemRecordsTab(m) {
 function renderMemInjectTab(m) {
   const allSlices = readerDialog.slices || [];
   const boundary = readerDialog.readBoundary || coreadCurrentReadBoundarySync(readerDialog.bookId);
-  const slices = coreadSafeSlices(allSlices, boundary, m);
-  const blockedCount = Math.max(0, allSlices.length - slices.length);
+  const visible = coreadSafeSlices(allSlices, boundary, m);
+  const blockedCount = Math.max(0, allSlices.length - visible.length);
+  const slices = coreadRecallPoolFor(boundary, m);   // 与生成时同一个检索池（阶段顶替细切片）
   const msgs = readerDialog.messages || [];
   const scanN = Math.max(1, Number(m.recallScanMessages) || 8);
   const recentTxt = msgs.slice(-scanN).map((x) => x.text || '').join('\n');
   const scanText = recentTxt || '（还没有对话）';
   // 「召回管线」预览：镜像 buildCompanionContext 的召回逻辑（近景保底剔出检索池 + 检索命中）算候选池。
   // 注意：这里是「如果现在生成会召回什么」的预览，不等于实际注入（实际注入见下方 lastInjected 回放）。
-  const recent = coreadRecentSlices(m.recentInject || 0, slices);
+  const recent = coreadRecentSlices(m.recentInject || 0, visible);
   const excludeIds = new Set(recent.map((h) => h.slice.id));
   const recall = coreadRecallSlices(scanText, Math.max(slices.length, 1), excludeIds, slices);   // 全量算命中（候选池·已排除近景）
 
   // #7 实际注入：只回放「最近一次真实生成时确实注入的切片」（readerDialog.lastInjected），绝不用当前语境预览。
   // 存的是切片 id 快照·此处按 id 回查当前切片拿最新全文（切片被编辑过则显示新文本·未找到＝已删则跳过）。
-  const byId = new Map(slices.map((s) => [s.id, s]));
+  const byId = new Map([...visible, ...slices].map((s) => [s.id, s]));
   const li = readerDialog.lastInjected;
   const injected = (li && Array.isArray(li.items))
     ? li.items.map((it) => {
@@ -32793,19 +32824,13 @@ function bindReaderStageEvents(stageRoot) {
       }
       return;
     }
-    if (e.target.closest('.sd-reader-compress-go')) {
-      const btn = e.target.closest('.sd-reader-compress-go');
-      const lo = Math.max(1, Number(morePage.querySelector('.sd-reader-compress-lo')?.value) || 1);
-      const hi = Math.max(lo, Number(morePage.querySelector('.sd-reader-compress-hi')?.value) || lo);
-      confirmDialog('切片二次总结', `将把批次 ${lo}–${hi} 的原切片替换为一条合并切片。是否继续？`).then((yes) => {
-        if (!yes) return;
-        const icon = btn.querySelector('i'); const prev = icon?.className;
-        btn.disabled = true; setQianmuIconClass(icon, 'fa-solid fa-spinner fa-spin');
-        coreadCompressSlices(lo, hi).then((r) => {
-          if (r?.ok) toast('已压缩合并。', 'success');
-          else toast(r?.reason || '压缩失败。', 'warning');
-          rerenderMore();
-        }).finally(() => { if (prev) setQianmuIconClass(icon, prev); });
+    const stageRetry = e.target.closest('.sd-reader-stage-retry');
+    if (stageRetry) {
+      stageRetry.disabled = true;
+      void coreadMaybeStage({ retry: true }).then((r) => {
+        if (r.reason === 'nothing') toast('现在没有攒够可合的记忆。', 'info');
+        else if (r.reason === COREAD_MEMORY_BUSY) toast(COREAD_MEMORY_BUSY, 'info');
+        rerenderMore();
       });
       return;
     }
@@ -33000,6 +33025,7 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-rerank-en')) { m.rerankEnabled = e.target.checked; if (!m.rerankEnabled) coreadSetPipelineStatus('rerank', 'ok'); saveSettings(); rerenderMore(); return; }
     if (e.target.closest('.sd-reader-autodistill-en')) { m.autoDistill = e.target.checked; saveSettings(); return; }
     if (e.target.closest('.sd-reader-autotext-en')) { m.autoDistillText = e.target.checked; saveSettings(); rerenderMore(); return; }
+    if (e.target.closest('.sd-reader-stage-en')) { m.stageAuto = e.target.checked; saveSettings(); rerenderMore(); if (m.stageAuto) coreadScheduleStage(); return; }
     // 词典下拉：切换当前查看/编辑的词册
     if (e.target.closest('.sd-reader-dict-booksel')) {
       coreadCurrentDictId = e.target.value || '';
@@ -33051,6 +33077,9 @@ function bindReaderStageEvents(stageRoot) {
     if (e.target.closest('.sd-reader-sum-ctx')) { m.summaryContextChars = Math.max(0, Math.round(Number(e.target.value) || 0)); saveSettings(); return; }
     // 自动/手动总结数值 + 注入设置（数字框·不重渲）
     if (e.target.closest('.sd-reader-distill-every')) { m.distillEvery = Math.max(2, Number(e.target.value) || 30); saveSettings(); return; }
+    // 阶段总结三个数：输入中只存不重绘；清空时不改原值，填小了由归一器夹到下限
+    const stageField = e.target.closest('.sd-reader-stage-num');
+    if (stageField) { if (String(e.target.value).trim() === '') return; m[stageField.dataset.key] = Number(e.target.value); coreadMemory(); saveSettings(); return; }
     if (e.target.closest('.sd-reader-distill-textevery')) { m.distillTextEvery = Math.max(1000, Number(e.target.value) || 8000); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recall')) { m.recallCount = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }
     if (e.target.closest('.sd-reader-inj-recent')) { m.recentInject = Math.max(0, Number(e.target.value) || 0); saveSettings(); return; }

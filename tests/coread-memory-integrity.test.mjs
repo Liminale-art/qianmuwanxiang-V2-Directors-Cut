@@ -100,16 +100,20 @@ test('slice creation time prefers provenance and falls back to ts', () => {
 const DIALOG_FUNCTIONS = ['coreadExplainError', 'coreadTranscriptLine', 'coreadDialogBatches', 'coreadMemorySnapshot', 'coreadMemoryRestore',
   'coreadNextBatch', 'coreadRecalculateDialogCursor', 'coreadReplaceDialogRange', 'coreadCommitDialogSlices', 'coreadPersistSlice',
   'coreadDistill', 'coreadManualSummarize', 'coreadRenumberSlices', 'coreadRegenSlice', 'coreadSaveSliceEdit', 'coreadDeleteSlice',
-  'coreadClearAllSlices', 'coreadCompressSlices', 'coreadMergeSynonyms'];
+  'coreadClearAllSlices', 'coreadMergeSynonyms', 'coreadMaybeStage', 'coreadSummarySystemPrompt', 'coreadDistillText', 'coreadTooLongReason',
+  'coreadBuildSliceFromParsed', 'coreadNormalizeSynonyms', 'coreadIsTransientError'];
 
 function dialogFixture({messages = 12, cap = 100, slices = []} = {}) {
   const sent = [], toasts = [], saves = [];
   let id = 0, clock = 1000;
-  const state = {saveOk: true, failAt: -1, memory: {summaryContextChars: cap, distillEvery: 2, vectorEnabled: false, sliceChars: 400}};
+  const state = {saveOk: true, failAt: -1, modelCalls: [], memory: {summaryContextChars: cap, distillEvery: 2, vectorEnabled: false, sliceChars: 400,
+    stageAuto: true, stageTrigger: 3, stageKeep: 1, stageChars: 800, summaryPrompts: reader.defaultCoreadSummaryPrompts()}};
+  state.model = async () => JSON.stringify({summary: '合并', keywords: ['k']});
   const c = vm.createContext({
+    coreadScheduleStage: () => {},
     reader, console, MODULE_NAME: 'fixture', Date: {now: () => ++clock},
     readerDialog: {
-      bookId: 'book', bucket: 'A::book', loaded: true, cursor: 0, summaryFloor: 0, slices,
+      bookId: 'book', bucket: 'A::book', loaded: true, cursor: 0, summaryFloor: 0, slices, stages: [], stageFailure: null,
       messages: Array.from({length: messages}, (_, i) => ({id: `m${i}`, role: i % 2 ? 'friend' : 'user', text: `第${String(i).padStart(2, '0')}句`.padEnd(30, '话')})),
     },
     coreadDistilling: false, coreadMemoryWrites: 0, coreadVecCache: null,
@@ -121,7 +125,9 @@ function dialogFixture({messages = 12, cap = 100, slices = []} = {}) {
     coreadForgetSliceRuntime: async () => {}, coreadUpdateComicDescriptionForSlice: async () => {}, coreadComicRecord: () => null,
     blobStore: {deleteReaderVectors: async () => {}}, rerenderMoreIfOpen: () => {},
     uid: (prefix) => `${prefix}-${++id}`, uniqueClean: (list) => [...new Set(list)], isPlainObject: (value) => !!value && typeof value === 'object' && !Array.isArray(value),
-    extractJson: JSON.parse, coreadSalvageSummary: () => '', callCoreadModel: async () => JSON.stringify({summary: '合并', keywords: ['k']}),
+    extractJson: JSON.parse, coreadSalvageSummary: () => '',
+    callCoreadModel: async (system, user) => { state.modelCalls.push({system, user}); return state.model(system, user); },
+    COREAD_MEMORY_ENABLED: true, COREAD_DISTILL_RETRY: 2, coreadDateHint: () => '', DOMException,
     toast: (message, level) => toasts.push({message, level}),
     coreadSaveDialog: async () => { saves.push(c.readerDialog.slices.length); return state.saveOk; },
     coreadDistillSegment: async (segMsgs, m, meta, names) => {
@@ -223,27 +229,27 @@ test('slice mutations are refused while a distill runs, and distills wait for a 
   const e = dialogFixture({messages: 4, slices: [slice(), {...slice(), id: 's2', batch: 2, coveredFrom: 2, coveredTo: 3}]});
   e.c.coreadDistilling = true;
   for (const run of [() => e.c.coreadRegenSlice('s1'), () => e.c.coreadSaveSliceEdit('s1', '改', 'x'), () => e.c.coreadDeleteSlice('s1'),
-    () => e.c.coreadClearAllSlices(), () => e.c.coreadCompressSlices(1, 2)]) {
+    () => e.c.coreadClearAllSlices(), () => e.c.coreadMaybeStage({retry: true})]) {
     const result = await run();
     assert.equal(result.ok, false);assert.ok(result.reason);
   }
   assert.deepEqual(e.dialog().slices.map((item) => [item.id, item.summary]), [['s1', '原'], ['s2', '原']]);
   assert.equal(e.c.coreadMemoryWrites, 0);assert.equal(e.saves.length, 0);assert.equal(e.sent.length, 0);
   e.c.coreadDistilling = false;e.c.coreadMemoryWrites = 1;
-  for (const run of [() => e.c.coreadDistill(true), () => e.c.coreadManualSummarize(0, 1), () => e.c.coreadCompressSlices(1, 2), () => e.c.coreadDeleteSlice('s1')]) {
+  for (const run of [() => e.c.coreadDistill(true), () => e.c.coreadManualSummarize(0, 1), () => e.c.coreadMaybeStage({retry: true}), () => e.c.coreadDeleteSlice('s1')]) {
     assert.equal((await run()).ok, false);
   }
-  assert.equal(e.sent.length, 0);assert.equal(e.c.coreadDistilling, false);assert.equal(e.dialog().slices.length, 2);
+  assert.equal(e.sent.length, 0);assert.equal(e.state.modelCalls.length, 0);assert.equal(e.c.coreadDistilling, false);assert.equal(e.dialog().slices.length, 2);
 });
 
-test('edit, regenerate, delete, clear and merge roll back when the archive cannot be saved', async () => {
+test('edit, regenerate, delete and clear roll back when the archive cannot be saved', async () => {
   const make = () => [1, 2].map((n) => reader.normalizeCoreadSlice({id: `s${n}`, batch: n, src: 'dialog', summary: `原${n}`, keywords: ['a'], coveredFrom: (n - 1) * 2, coveredTo: n * 2 - 1, ts: n}));
   const e = dialogFixture({messages: 4, slices: make()});
   e.dialog().cursor = 4;
   e.state.saveOk = false;
   const before = JSON.stringify(e.dialog().slices);
   for (const run of [() => e.c.coreadSaveSliceEdit('s1', '改', 'x'), () => e.c.coreadRegenSlice('s1'), () => e.c.coreadDeleteSlice('s1'),
-    () => e.c.coreadClearAllSlices(), () => e.c.coreadCompressSlices(1, 2)]) {
+    () => e.c.coreadClearAllSlices()]) {
     const result = await run();
     assert.equal(result.ok, false);assert.match(result.reason, /记忆未能保存，请重试/);
     assert.equal(JSON.stringify(e.dialog().slices), before);
@@ -278,15 +284,75 @@ test('recent slices are ordered by creation time across kinds, array order break
   assert.equal(c.coreadRecentSlices(0, pool).length, 0);
 });
 
-test('merged slices keep the latest creation time of their parts instead of becoming the newest memory', async () => {
-  const parts = [1, 2].map((n) => reader.normalizeCoreadSlice({id: `s${n}`, batch: n, src: 'dialog', summary: `原${n}`, keywords: ['a'], coveredFrom: (n - 1) * 2, coveredTo: n * 2 - 1, ts: n * 10}));
-  const later = reader.normalizeCoreadSlice({id: 'later', batch: 3, src: 'text', summary: '后来', keywords: [], coveredFrom: 0, coveredTo: 50, ts: 500});
-  const e = dialogFixture({messages: 4, slices: [...parts, later]});
-  assert.equal((await e.c.coreadCompressSlices(1, 2)).ok, true);
-  const merged = e.dialog().slices.find((item) => item.compressed);
-  assert.equal(merged.provenance.createdAt, 20);
-  vm.runInContext(section('coreadRecentSlices'), e.c);
-  assert.equal(e.c.coreadRecentSlices(1)[0].slice.id, 'later');
+// ── 真实函数：阶段总结 ──
+const stageSlices = (n) => Array.from({length: n}, (_, i) => reader.normalizeCoreadSlice({id: `s${i + 1}`, batch: i + 1, src: 'dialog', summary: `原${i + 1}`,
+  keywords: [`k${i + 1}`], synonyms: i === 0 ? {甲: ['阿甲']} : {}, coveredFrom: i * 2, coveredTo: i * 2 + 1, ts: i + 1}));
+
+test('a stage is added on top of the oldest run of slices; the slices themselves stay untouched', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(5)});
+  const before = JSON.stringify(e.dialog().slices);
+  e.state.model = async () => JSON.stringify({summary: '这一段', keywords: ['阶段词'], synonyms: {乙: ['阿乙']}});
+  const result = await e.c.coreadMaybeStage();
+  assert.equal(result.ok, true);
+  assert.equal(JSON.stringify(e.dialog().slices), before, 'slices are never rewritten or removed');
+  const [stage] = e.dialog().stages;
+  assert.deepEqual(stage.parents.map((parent) => parent.id), ['s1', 's2', 's3'], 'trigger 3, the newest one kept out');
+  assert.equal(stage.summary, '这一段');assert.deepEqual(stage.keywords, ['阶段词']);
+  assert.deepEqual({...stage.synonyms}, {甲: ['阿甲'], 乙: ['阿乙']}, 'synonym tables are merged, not lost');
+  assert.deepEqual([stage.provenance.dialogFrom, stage.provenance.dialogTo], [0, 5]);
+  const [call] = e.state.modelCalls;
+  assert.match(call.system, /按顺序排列的 3 条共读交流记忆/);assert.match(call.system, /不超过 800 字/);assert.match(call.system, /【阶段整理】\n把按顺序排列/);
+  assert.equal(call.user, '【记忆】\n1. 原1\n2. 原2\n3. 原3');
+  assert.equal(e.dialog().stageFailure, null);
+  assert.ok(e.toasts.some((t) => /已把 3 条共读交流合成一条阶段总结/.test(t.message)));
+  assert.equal((await e.c.coreadMaybeStage()).reason, 'nothing', 's4 alone is not enough; s5 is kept');
+  assert.equal(e.state.modelCalls.length, 1);
+});
+
+test('a stage whose archive cannot be saved is rolled back and reported', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  e.state.saveOk = false;
+  const result = await e.c.coreadMaybeStage();
+  assert.equal(result.ok, false);assert.match(result.reason, /记忆未能保存，请重试/);
+  assert.equal(e.dialog().stages.length, 0);assert.equal(e.dialog().slices.length, 4);
+  assert.equal(e.c.coreadDistilling, false);
+});
+
+test('a failed stage is reported once and not retried until the slice count changes; the retry button forces it', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  e.state.model = async () => { throw new Error('HTTP 401'); };
+  const first = await e.c.coreadMaybeStage();
+  assert.equal(first.failed, true);assert.match(first.reason, /鉴权失败/);
+  assert.equal(e.dialog().stageFailure.sliceCount, 4);
+  assert.equal(e.toasts.filter((t) => /阶段总结没有完成/.test(t.message)).length, 1);
+  const calls = e.state.modelCalls.length;
+  assert.equal((await e.c.coreadMaybeStage()).reason, 'waiting');
+  assert.equal(e.state.modelCalls.length, calls, 'no new request while nothing changed');
+  e.state.model = async () => JSON.stringify({summary: '好了', keywords: ['k']});
+  assert.equal((await e.c.coreadMaybeStage({retry: true})).ok, true);
+  assert.equal(e.dialog().stageFailure, null);
+  // 条数变了自动再看：这里没有新的一组，规划为空。
+  e.dialog().slices.push(reader.normalizeCoreadSlice({id: 's5', src: 'dialog', summary: '原5', keywords: [], coveredFrom: 8, coveredTo: 9, ts: 9}));
+  assert.equal((await e.c.coreadMaybeStage()).reason, 'nothing');
+});
+
+test('the automatic stage switch stops it, and a running summary makes it wait', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  e.state.memory.stageAuto = false;
+  assert.equal((await e.c.coreadMaybeStage()).reason, 'off');
+  e.state.memory.stageAuto = true;e.c.coreadDistilling = true;
+  assert.equal((await e.c.coreadMaybeStage()).ok, false);
+  assert.equal(e.state.modelCalls.length, 0);assert.equal(e.dialog().stages.length, 0);
+});
+
+test('a stage summary far over its limit is asked again and then refused, never cut', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  e.state.memory.stageChars = 100;
+  e.state.model = async () => JSON.stringify({summary: '长'.repeat(151), keywords: ['k']});
+  const result = await e.c.coreadMaybeStage();
+  assert.equal(result.failed, true);assert.match(result.reason, /超出字数上限（151 字，上限 100 字）/);
+  assert.equal(e.state.modelCalls.length, 3);assert.match(e.state.modelCalls[1].user, /请压到 100 字以内/);
+  assert.equal(e.dialog().stages.length, 0);
 });
 
 // ── 真实函数：正文蒸馏 ──
@@ -298,6 +364,7 @@ function textFixture({cap = 100, readPos = 250, slices = [], length = 400} = {})
   const chapters = [{content: full.slice(0, 150)}, {content: full.slice(150)}];
   const state = {saveOk: true, failAt: -1, readPos, memory: {summaryContextChars: cap, autoDistillText: true, distillTextEvery: 1000, vectorEnabled: false}};
   const c = vm.createContext({
+    coreadScheduleStage: () => {},
     reader, console, MODULE_NAME: 'fixture', AbortController, DOMException,
     readerDialog: {bookId: 'book', bucket: 'A::book', loaded: true, cursor: 0, summaryFloor: 0, slices, messages: []},
     readerView: {bookId: 'book', chapterIndex: 0, scrollRatio: 0}, readerContentCache: {bookId: 'book', chapters},

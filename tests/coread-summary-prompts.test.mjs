@@ -50,8 +50,8 @@ test('the protocol adds the opening line, date rule and output format with the l
   const items = [{ id: '2', order: 1, title: '二', text: '第二条' }, { id: '1', order: 0, title: '一', text: '第一条' }, { id: '3', order: 2, title: '空', text: '  ' }];
   const dialog = buildCoreadSummaryPrompt('dialog', { items, user: '我', char: '书友甲', title: '某书', progress: '读至第 3 章 · 40%', chars: 300 });
   assert.match(dialog, /^你是伴读记忆整理助手。下面是「我」伴读《某书》（读至第 3 章 · 40%）时与书友「书友甲」讨论这本书的一段对话。/);
-  assert.match(dialog, /【整理要求】\n1\. 一：第一条\n2\. 二：第二条\n\n/);
-  assert.doesNotMatch(dialog, /空：/, 'blank items are left out');
+  assert.match(dialog, /【一】\n第一条\n\n【二】\n第二条\n\n/, 'each item is its own titled block, no outer numbering');
+  assert.doesNotMatch(dialog, /【空】|【整理要求】/, 'blank items are left out');
   assert.match(dialog, /"summary": "不超过 300 字的第三人称记忆正文"/);
   assert.doesNotMatch(dialog, /站在|主线剧情|发生于/, 'dropped sentences; no date rule unless asked');
   assert.match(buildCoreadSummaryPrompt('dialog', { items, date: '2026年11月26日', progress: '读至 40%' }), /这段对话发生于2026年11月26日，读至 40%；请在总结开头自然带出年月日与读至进度。/);
@@ -96,7 +96,7 @@ test('a dialog summary over the limit is asked again to shorten, and kept once i
   assert.equal(res.summary, '短一些');
   assert.equal(calls.length, 2);
   assert.match(calls[0].system, /不超过 10 字/);
-  assert.match(calls[0].system, /【整理要求】\n1\. 总结要求：将读者与书友/);
+  assert.match(calls[0].system, /【总结要求】\n将读者与书友/);
   assert.doesNotMatch(calls[0].user, /【重要】/);
   assert.match(calls[1].user, /^【对话】\n我：你好\n书友：在读\n\n【重要】上一次的 summary 超出字数上限。请压到 10 字以内/);
 });

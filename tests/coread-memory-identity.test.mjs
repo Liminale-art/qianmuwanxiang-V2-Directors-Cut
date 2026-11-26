@@ -10,7 +10,7 @@ function vectors(){
     coreadVectorStates:new Map(),isPlainObject:o=>o&&typeof o==='object',rerenderMoreIfOpen:()=>{},
     blobStore:{getReaderVectors:async()=>null,putReaderVectors:async(...args)=>writes.push(structuredClone(args))},
     coreadWithRetry:async(_,task)=>task(),coreadEmbed:async()=>[[1,0]]});
-  vm.runInContext(['coreadSliceFingerprint','coreadEnsureVectors'].map(section).join('\n'),c);
+  vm.runInContext(['coreadSliceFingerprint','coreadVectorItems','coreadEnsureVectors'].map(section).join('\n'),c);
   return {c,writes,m:{vectorModel:'model'}};
 }
 test('late vector storage reads cannot replace the new companion cache',async()=>{
@@ -40,7 +40,7 @@ test('unchanged vectors are reused within their owner without unnecessary reques
 test('explicit copies keep their source provenance, tolerate old worldbook pointers and write no world book',async()=>{
   const source={messages:[{text:'source'}],slices:[{id:'shared',src:'dialog',summary:'Original',loreUid:42,loreBook:'source world',provenance:{bucket:'A::book',bookId:'book',readTo:100}}],readBoundary:{bookId:'book',readTo:100}};
   const before=structuredClone(source),c=vm.createContext({readerDialog:{bookId:'book',bucket:'B::book',readBoundary:{bookId:'book',readTo:800}},
-    coreadMemoryWrites:0,coreadBookMeta:()=>({}),clone:structuredClone,reader,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0}),
+    coreadMemoryWrites:0,coreadDistilling:false,COREAD_MEMORY_BUSY:'busy',coreadBookMeta:()=>({}),clone:structuredClone,reader,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0}),
     coreadEchoTtl:new Map(),coreadVecCache:null,coreadVectorStates:new Map(),COREAD_SAVE_FAILED:'save failed',
     coreadSaveDialog:async()=>true});
   vm.runInContext(['coreadNormalizeSlices','coreadMemorySnapshot','coreadMemoryRestore','coreadMigrateFromChat'].map(section).join('\n'),c);
@@ -60,7 +60,7 @@ test('slice formation records the reading boundary at persist time and writes no
   let boundary={bookId:'book',readTo:100,chapterIndex:0,progress:10};
   const c=vm.createContext({reader,readerDialog:{bookId:'book',bucket:'A::book',slices:[]},coreadNextBatch:()=>1,uid:()=>'s',
     coreadCurrentReadBoundarySync:()=>boundary,coreadMemory:()=>({vectorEnabled:false}),
-    coreadVectorStates:new Map(),coreadSliceFingerprint:()=>'',console,MODULE_NAME:'fixture'});
+    coreadVectorStates:new Map(),coreadSliceFingerprint:()=>'',console,MODULE_NAME:'fixture',coreadScheduleStage:()=>{}});
   vm.runInContext(section('coreadPersistSlice'),c);
   const run=c.coreadPersistSlice({summary:'formed at 10%',keywords:[]},{},{src:'dialog'});
   boundary={bookId:'book',readTo:800,chapterIndex:2,progress:80};const result=await run;

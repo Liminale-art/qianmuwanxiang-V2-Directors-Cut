@@ -310,3 +310,13 @@ test('book terms come from the dictionaries of the archive being linked, not fro
     assert.deepEqual(Object.keys(c.coreadActiveDict([])),['月球'],'while the reader itself keeps using the open archive\'s list');
     c.readerDialog={bucket:'',loaded:false};assert.deepEqual(Object.keys(c.coreadActiveDict([])),['结局']);
 });
+
+test('stage summaries stay in the reader: Yimu still gets the fine slices, and an archive with stages hashes the same',async()=>{
+    const plain=fixture(), base=await plain.bridge.api.readSnapshot(consent);
+    const f=fixture();f.record={...f.record,slices:f.record.slices,stages:[{id:'stage-1',stage:true,summary:'这一段的阶段总结。',keywords:['阶段'],status:'active',
+        parents:[{id:'dialog',fp:'x'}],provenance:{source:'dialog',sources:['dialog'],bookId:'book',bucket:key,readTo:80,dialogFrom:0,dialogTo:1,dialogMessageIds:['d1','d2']}}]};
+    const result=await f.bridge.api.readSnapshot(consent);
+    assert.deepEqual(result.entries.map(e=>e.id),['dialog','book']);
+    assert.doesNotMatch(JSON.stringify(result),/阶段总结|stage-1/);
+    assert.equal(result.hash,base.hash);
+});

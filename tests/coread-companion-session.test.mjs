@@ -10,7 +10,7 @@ function fixture(){
   const host={chatId:'old-chat',characterId:0,characters:[{name:'同名',avatar:'a.png',description:'A {{char}}'},{name:'同名',avatar:'b.png',description:'B {{char}}'}]};
   const books=[{id:'book',title:'Book',lastChapterIndex:1,lastScrollRatio:.2},{id:'other',title:'Other'}],state={books};
   const legacy={coreadCompanionWb:{worldBooks:['A world'],worldItems:{}}},notices=[],writes=[],frames=[];
-  const context=vm.createContext({...identityView,ctx:()=>host,coread:()=>state,getChatKey:()=>host.chatId||String(host.characterId??'default'),getChatStore:()=>legacy,
+  const context=vm.createContext({...identityView,coreadScheduleStage:()=>{},ctx:()=>host,coread:()=>state,getChatKey:()=>host.chatId||String(host.characterId??'default'),getChatStore:()=>legacy,
     clone:structuredClone,isPlainObject:x=>!!x&&typeof x==='object'&&!Array.isArray(x),coreadBookMeta:id=>books.find(b=>b.id===id),
     getPersonaName:()=>host.name1 || 'User',getPersonaDescription:()=>host.persona_description || 'User desc',coreadPersonaAvatarRaw:'',URL,
     htmlEscape:x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),

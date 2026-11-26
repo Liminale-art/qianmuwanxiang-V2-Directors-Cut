@@ -54,6 +54,19 @@ test('the prompt card shows one group at a time behind 对话总结／正文总�
   assert.match(html,/class="sd-reader-sumtab active" data-kind="stage"/);
 });
 
+test('the stage card shows the switch and three numbers, greys them out when off, and offers a retry only after a failure',()=>{
+  const {c,m}=createCoreadRecordsFixture();Object.assign(m,{stageAuto:true,stageTrigger:100,stageKeep:20,stageChars:800});
+  let card=c.renderCoreadStageCard(m);
+  assert.match(card,/class="sd-reader-stage-en" checked/);
+  for(const [key,value]of [['stageTrigger',100],['stageKeep',20],['stageChars',800]])assert.match(card,new RegExp(`data-key="${key}"[^>]*value="${value}">`));
+  assert.doesNotMatch(card,/sd-reader-stage-retry/);
+  m.stageAuto=false;card=c.renderCoreadStageCard(m);
+  assert.equal((card.match(/sd-reader-stage-num"[^>]* disabled>/g)||[]).length,3);
+  c.readerDialog.stageFailure={sliceCount:3,reason:'API 鉴权失败<'};card=c.renderCoreadStageCard(m);
+  assert.match(card,/上次没有完成：API 鉴权失败&lt;/);assert.match(card,/sd-reader-stage-retry/);
+  assert.match(c.renderMemRecordsTab(m),/sd-reader-stagecard/);
+});
+
 test('the storage-mode control is gone, including for settings saved with an old worldbook mode',()=>{
   const {c,m}=createCoreadRecordsFixture();
   for(const mode of [undefined,'none','dedicated','shared']){
@@ -82,7 +95,7 @@ test('empty archive keeps management entry points without enabling destructive o
   c.readerDialog.slices=[];c.readerDialog.messages=[];c.readerDialog.cursor=0;
   const html=c.renderMemRecordsTab(m),card=overview(html);
   assert.match(card,/当前伴读档案/);assert.match(card,/sd-reader-slice-manage/);assert.doesNotMatch(card,/sd-reader-arch-manage/);
-  assert.match(card,/sd-reader-slice-clear" disabled/);assert.match(html,/sd-reader-manual-go" disabled/);assert.match(html,/sd-reader-compress-go" disabled/);
+  assert.match(card,/sd-reader-slice-clear" disabled/);assert.match(html,/sd-reader-manual-go" disabled/);assert.doesNotMatch(html,/sd-reader-compress|二次总结/);
   assert.doesNotMatch(html,/sd-reader-batchrow/);assert.doesNotMatch(html,/<b>-\d/);
   inputs.meta={title:''};assert.match(c.renderMemRecordsTab(m),/《未命名》/);
 });

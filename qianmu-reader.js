@@ -748,7 +748,8 @@ export function buildCoreadSummaryPrompt(kind, ctx = {}) {
   else if (kind === 'book') head = `下面是《${title}》中已读过的一段正文原文${Number(ctx.total) > 1 ? `（第 ${ctx.part}／${ctx.total} 段）` : ''}。请把它整理成第三人称客观的情节记忆。`;
   else head = `下面是「${user}」伴读《${title}》时按顺序排列的 ${Math.max(0, Math.floor(Number(ctx.count) || 0))} 条${ctx.source === 'book' ? '书中内容' : '共读交流'}记忆。请把它们整理成一条阶段记忆。`;
   const parts = [`你是伴读记忆整理助手。${head}`];
-  if (items.length) parts.push(`【整理要求】\n${items.map((item, i) => `${i + 1}. ${item.title}：${item.text}`).join('\n')}`);
+  // 每条一个带标题的段落：条目正文自带 1. 2. 3.，外面再编号会出现两层「1.」。
+  if (items.length) parts.push(items.map((item) => `【${item.title}】\n${item.text}`).join('\n\n'));
   if (date && kind !== 'stage') {
     parts.push(kind === 'dialog'
       ? `这段对话发生于${date}${progress ? `，${progress}` : ''}；请在总结开头自然带出年月日与读至进度。`

@@ -8,13 +8,14 @@ test('injection display keeps safety filtering before recent exclusion and candi
   const safe=[{id:'recent'},{id:'match'}];inputs.safe=safe;inputs.recent=[{slice:safe[0]}];
   c.readerDialog.messages=[{text:'old'},{text:'one'},{text:'two'}];
   const before=JSON.stringify(c.readerDialog);c.renderMemInjectTab(m);
-  assert.deepEqual(trace.map(x=>x[0]),['safe','recent','recall','dict','bound']);
+  assert.deepEqual(trace.map(x=>x[0]),['safe','pool','recent','recall','dict','bound']);
   assert.equal(trace[0][1],c.readerDialog.slices);assert.equal(trace[0][2],c.readerDialog.readBoundary);assert.equal(trace[0][3],m);
-  assert.equal(trace[1][1],1);assert.equal(trace[1][2],safe);
-  assert.equal(trace[2][1],'one\ntwo');assert.equal(trace[2][2],2);assert.deepEqual(Array.from(trace[2][3]),['recent']);assert.equal(trace[2][4],safe);
-  assert.equal(trace[3][1],safe);assert.equal(JSON.stringify(c.readerDialog),before);
+  assert.equal(trace[1][1],c.readerDialog.readBoundary);assert.equal(trace[1][2],m,'the same recall pool as generation');
+  assert.equal(trace[2][1],1);assert.equal(trace[2][2],safe,'recent memories come from the visible fine slices');
+  assert.equal(trace[3][1],['one','two'].join(String.fromCharCode(10)));assert.equal(trace[3][2],2);assert.deepEqual(Array.from(trace[3][3]),['recent']);assert.equal(trace[3][4],safe);
+  assert.equal(trace[4][1],safe);assert.equal(JSON.stringify(c.readerDialog),before);
   trace.length=0;c.readerDialog.readBoundary=null;c.renderMemInjectTab(m);
-  assert.deepEqual(trace.map(x=>x[0]),['boundary','safe','recent','recall','dict','bound']);assert.equal(trace[1][2],inputs.fallback);
+  assert.deepEqual(trace.map(x=>x[0]),['boundary','safe','pool','recent','recall','dict','bound']);assert.equal(trace[1][2],inputs.fallback);
 });
 
 test('actual injection replays recorded IDs only, omits deleted or progress-blocked rows, and retains latest safe text',()=>{

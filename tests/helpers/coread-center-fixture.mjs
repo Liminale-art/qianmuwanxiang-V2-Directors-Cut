@@ -18,7 +18,7 @@ export function createCoreadCenterFixture(){
   vm.runInContext(coreadCenterFunctions,c);return {c,trace,inputs};
 }
 
-export const coreadRecordsFunctions=['renderMemRecordsTab'].map(section).join('\n');
+export const coreadRecordsFunctions=['renderCoreadStageCard','renderMemRecordsTab'].map(section).join('\n');
 export function createCoreadRecordsFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
   inputs.linkAvailable=false;inputs.linked=false;c.yimuCompanionBridge={linkAvailable:()=>inputs.linkAvailable};c.coreadLinkLinked=()=>inputs.linked;
@@ -40,6 +40,8 @@ export function createCoreadInjectFixture(){
   const f=createCoreadCenterFixture(),{c,trace,inputs}=f;
   c.reader={normalizeCoreadSource};c.coreadComicRecord=()=>null;c.uniqueClean=uniqueClean;c.COREAD_DEFAULT_DICT='default';c.coreadCurrentDictId='';
   Object.assign(inputs,{recent:[],recall:[],dict:{},bound:[]});
+  // 检索池（阶段顶替细切片）的组装在 qianmu-reader.js 另有测试；这里只记调用顺序，池默认等于可见切片。
+  c.coreadRecallPoolFor=(boundary,memory)=>{trace.push(['pool',boundary,memory]);return inputs.pool||inputs.safe;};
   c.coreadRecentSlices=(n,pool)=>{trace.push(['recent',n,pool]);return inputs.recent;};
   c.coreadRecallSlices=(query,n,exclude,pool)=>{trace.push(['recall',query,n,exclude,pool]);return inputs.recall;};
   c.coreadActiveDict=pool=>{trace.push(['dict',pool]);return inputs.dict;};
