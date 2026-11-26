@@ -4214,7 +4214,6 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 #story-director-modal .sd-prompt-entry.is-changed .sd-prompt-entry-mark { display: inline-block; }
 #story-director-modal .sd-prompt-entry[open] > summary { margin-bottom: 8px; }
 #story-director-modal .sd-prompt-entry > .sd-textarea { width: 100% !important; margin: 0; min-height: 160px; }
-#story-director-modal .sd-prompt-entry-acts { display: flex; justify-content: flex-end; margin-top: 6px; }
 #story-director-modal .sd-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 #story-director-modal .sd-card-title-row > h3,
 #story-director-modal .sd-card-title-row > p { margin: 0 !important; }

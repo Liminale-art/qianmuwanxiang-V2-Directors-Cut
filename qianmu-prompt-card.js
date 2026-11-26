@@ -1,22 +1,18 @@
 // 幕后「提示词」卡：千幕各版块的提示词在前端可见、可改（用户 2026-11-26 定，形式照忆幕的总结提示词）。
-// 内置默认原文不动，用户改的是自己的一份覆盖：存在 settings.promptOverrides（栏目指引、幕外衔接说明），
+// 内置默认原文不动，用户改的是自己的一份覆盖：栏目指引存在 settings.promptOverrides.guides，
 // 剧组之律与输出格式沿用原来的 settings.systemPrompt／outputSchemaText。改完离开输入框即存，清空或改回原文即回到内置默认。
-// 预设把这四类整套存下，可切换、导入、导出、删除；「内置默认」整套恢复出厂。
+// 预设把这三类整套存下，可切换、导入、导出、删除；「内置默认」整套恢复出厂。幕外的固定句不放进卡里（用户 2026-11-26）。
 import { CREATIVE_GUIDES, CREATIVE_SECTION_LABELS } from './qianmu-creative-prompts.js?v=1.59.484';
-
-// 幕外：正文片段之后那句衔接说明（输出格式标签是解析协议，不放出来改）。
-export const THEATER_CONTINUITY_DEFAULT = '以上正文片段是衔接背景，请据此保持人物口吻、关系与既有事实一致；番外可自由延展想象，但不要与正文已发生的事实冲突。';
 
 export const PROMPT_CARD_TABS = Object.freeze([
   { id: 'laws', label: '剧组之律', keys: ['systemPrompt', 'outputSchema'] },
   { id: 'core', label: '推演核心', keys: ['story_status', 'character_dynamics', 'npc_updates', 'quests', 'chain_reactions', 'relation_undercurrents'] },
   { id: 'derived', label: '衍生栏目', keys: ['world_chatter', 'geopolitics', 'parallel_scene', 'newcomer'] },
   { id: 'interlude', label: '幕间拾趣', keys: ['interlude', 'forum', 'phone', 'phone_chat', 'moments', 'microblog', 'fourth_wall', 'fourth_wall_diary', 'fourth_wall_scene'] },
-  { id: 'theater', label: '幕外', keys: ['theaterContinuity'] },
 ]);
 
 const GUIDE_KEYS = new Set(Object.keys(CREATIVE_GUIDES));
-const LABELS = { systemPrompt: '剧组之律', outputSchema: '输出格式', theaterContinuity: '正文衔接说明', ...CREATIVE_SECTION_LABELS };
+const LABELS = { systemPrompt: '剧组之律', outputSchema: '输出格式', ...CREATIVE_SECTION_LABELS };
 export const promptEntryLabel = key => LABELS[key] || key;
 
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -28,8 +24,7 @@ export function normalizePromptOverrides(raw) {
   for (const [key, value] of Object.entries(plain(source.guides) ? source.guides : {})) {
     if (GUIDE_KEYS.has(key) && text(value).trim() && value !== CREATIVE_GUIDES[key]) guides[key] = value;
   }
-  const continuity = text(source.theaterContinuity);
-  return { guides, theaterContinuity: continuity.trim() && continuity !== THEATER_CONTINUITY_DEFAULT ? continuity : '' };
+  return { guides };
 }
 
 // 本轮实际用的栏目指引：有覆盖用覆盖，否则用内置原文。交给 creativeSectionGuidance 的第二个参数。
@@ -38,22 +33,17 @@ export function effectiveGuides(overrides) {
   return Object.fromEntries(Object.keys(CREATIVE_GUIDES).map(key => [key, guides[key] ?? CREATIVE_GUIDES[key]]));
 }
 
-export const effectiveTheaterContinuity = overrides => normalizePromptOverrides(overrides).theaterContinuity || THEATER_CONTINUITY_DEFAULT;
-
 // defaults：{ systemPrompt, outputSchema }（这两份默认在 index.js）。
 export function promptDefault(key, defaults = {}) {
   if (key === 'systemPrompt') return text(defaults.systemPrompt);
   if (key === 'outputSchema') return text(defaults.outputSchema);
-  if (key === 'theaterContinuity') return THEATER_CONTINUITY_DEFAULT;
   return CREATIVE_GUIDES[key] ?? '';
 }
 
 export function promptValue(key, settings = {}, defaults = {}) {
   if (key === 'systemPrompt') return text(settings.systemPrompt) || promptDefault(key, defaults);
   if (key === 'outputSchema') return text(settings.outputSchemaText) || promptDefault(key, defaults);
-  const overrides = normalizePromptOverrides(settings.promptOverrides);
-  if (key === 'theaterContinuity') return overrides.theaterContinuity || THEATER_CONTINUITY_DEFAULT;
-  return overrides.guides[key] ?? promptDefault(key, defaults);
+  return normalizePromptOverrides(settings.promptOverrides).guides[key] ?? promptDefault(key, defaults);
 }
 
 export const promptChanged = (key, settings, defaults) => promptValue(key, settings, defaults) !== promptDefault(key, defaults);
@@ -64,7 +54,6 @@ export function withPromptValue(settings = {}, key, value, defaults = {}) {
   if (key === 'systemPrompt') return { systemPrompt: useDefault ? promptDefault(key, defaults) : raw };
   if (key === 'outputSchema') return { outputSchemaText: useDefault ? promptDefault(key, defaults) : raw };
   const overrides = normalizePromptOverrides(settings.promptOverrides);
-  if (key === 'theaterContinuity') return { promptOverrides: { ...overrides, theaterContinuity: useDefault ? '' : raw } };
   if (!GUIDE_KEYS.has(key)) throw new Error(`未知的提示词：${key}`);
   const guides = { ...overrides.guides };
   if (useDefault) delete guides[key]; else guides[key] = raw;
@@ -73,8 +62,7 @@ export function withPromptValue(settings = {}, key, value, defaults = {}) {
 
 // 一整套的快照（预设、导出用）：只记与内置不同的部分。
 export function promptSnapshot(settings = {}, defaults = {}) {
-  const overrides = normalizePromptOverrides(settings.promptOverrides), out = { guides: overrides.guides };
-  if (overrides.theaterContinuity) out.theaterContinuity = overrides.theaterContinuity;
+  const out = { guides: normalizePromptOverrides(settings.promptOverrides).guides };
   if (promptChanged('systemPrompt', settings, defaults)) out.systemPrompt = promptValue('systemPrompt', settings, defaults);
   if (promptChanged('outputSchema', settings, defaults)) out.outputSchema = promptValue('outputSchema', settings, defaults);
   return out;
@@ -84,7 +72,7 @@ export function promptSnapshot(settings = {}, defaults = {}) {
 export function applyPromptSnapshot(snapshot, defaults = {}) {
   const data = plain(snapshot) ? snapshot : {};
   return {
-    promptOverrides: normalizePromptOverrides({ guides: data.guides, theaterContinuity: data.theaterContinuity }),
+    promptOverrides: normalizePromptOverrides({ guides: data.guides }),
     systemPrompt: text(data.systemPrompt).trim() ? data.systemPrompt : promptDefault('systemPrompt', defaults),
     outputSchemaText: text(data.outputSchema).trim() ? data.outputSchema : promptDefault('outputSchema', defaults),
   };
@@ -96,7 +84,7 @@ export const promptFile = snapshot => ({ type: PROMPT_FILE_TYPE, version: 1, pro
 export function readPromptFile(data) {
   if (!plain(data) || data.type !== PROMPT_FILE_TYPE || !plain(data.prompts)) return null;
   const p = data.prompts;
-  return { guides: plain(p.guides) ? p.guides : {}, theaterContinuity: text(p.theaterContinuity), systemPrompt: text(p.systemPrompt), outputSchema: text(p.outputSchema) };
+  return { guides: plain(p.guides) ? p.guides : {}, systemPrompt: text(p.systemPrompt), outputSchema: text(p.outputSchema) };
 }
 
 export function normalizePromptPresets(list, makeId) {
@@ -134,8 +122,8 @@ export function renderPromptEntry(key, settings, defaults, esc) {
   const changed = promptChanged(key, settings, defaults), cls = promptTextareaClass(key), label = promptEntryLabel(key);
   return `<details class="sd-prompt-entry${changed ? ' is-changed' : ''}" data-key="${esc(key)}">
       <summary><span class="sd-prompt-entry-title">${esc(label)}</span><span class="sd-prompt-entry-mark">已改</span>
+        ${changed ? `<button type="button" class="sd-icon-btn sd-icon-sm sd-prompt-reset" data-key="${esc(key)}" title="恢复默认" aria-label="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
         <button type="button" class="sd-icon-btn sd-icon-sm sd-expand-editor" data-target="${cls}" data-title="${esc(label)}" title="展开编辑" aria-label="展开编辑"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button></summary>
       <textarea class="text_pole sd-textarea sd-prompt-text ${cls}" data-key="${esc(key)}" spellcheck="false">${esc(promptValue(key, settings, defaults))}</textarea>
-      <div class="sd-prompt-entry-acts"><button type="button" class="sd-btn sd-prompt-reset" data-key="${esc(key)}"${changed ? '' : ' disabled'}>恢复默认</button></div>
     </details>`;
 }

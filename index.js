@@ -1,13 +1,13 @@
 // 千幕 (Qianmu) - SillyTavern third-party UI extension
 import { CREATIVE_SYSTEM_PROMPT, CREATIVE_BLUEPRINT, creativeSectionGuidance } from './qianmu-creative-prompts.js?v=1.59.484';
-import { renderPromptCardBody, effectiveGuides, effectiveTheaterContinuity, withPromptValue, promptChanged, promptSnapshot, applyPromptSnapshot,
+import { renderPromptCardBody, effectiveGuides, withPromptValue, promptValue, promptChanged, promptSnapshot, applyPromptSnapshot,
   promptFile, readPromptFile, normalizePromptPresets, PROMPT_CARD_TABS } from './qianmu-prompt-card.js';
 import { renderCreativeSocialCard, bindCreativeSocialEvents, resetCreativeSocialState } from './qianmu-creative-social.js?v=1.59.460';
 import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, pruneInvalidCreativeItems, projectCreativeContinuity } from './qianmu-creative-contract.js?v=1.59.484';
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.617';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.618';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.617';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.618';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.617';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.617';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.617';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.617';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.617';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.617';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.617';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.618';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.618';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.618';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.618';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.618';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.618';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.618';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.617';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.618';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -67,10 +67,10 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.617';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.618';
 import { createChatApiSwitch } from './features/chat/qianmu-chat-api-switch.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.617';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.618';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -100,7 +100,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.617';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.618';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -343,7 +343,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.617';
+const VERSION = '1.59.618';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1116,7 +1116,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   outputSchemaHash: '',
   systemPromptBackup: null,       // 「恢复上次」：模板更新覆盖前，自动备份用户上一份幕后提示词
   outputSchemaBackup: null,       // 「恢复上次」：同上，备份用户上一份输出格式
-  // 幕后「提示词」卡：用户改过的栏目指引与幕外衔接说明（只存覆盖，内置原文在 qianmu-creative-prompts.js），以及整套预设
+  // 幕后「提示词」卡：用户改过的栏目指引（只存覆盖，内置原文在 qianmu-creative-prompts.js），以及整套预设
   promptOverrides: {},
   creativePromptPresets: [],      // [{ id, name, prompts }]
   creativePromptPresetSel: '',
@@ -24466,15 +24466,15 @@ function bindPromptCardEvents(root) {
       const key = ta.dataset.key;
       applyPromptSettings(withPromptValue(settings, key, ta.value, defaults));
       if (key === 'systemPrompt') await applyDirectorInjection();
+      // 就地更新（不重画，免得点进下一条时丢了焦点）：「已改」、右上角恢复图标、页签小点；清空了就把内置原文显示回来
       const entry = ta.closest('.sd-prompt-entry'), changed = promptChanged(key, settings, defaults);
       entry?.classList.toggle('is-changed', changed);
-      const reset = entry?.querySelector('.sd-prompt-reset'); if (reset) reset.disabled = !changed;
-      if (!changed && ta.value !== ta.defaultValue) refreshPromptCard(root);   // 清空了：把内置原文显示回来
-      else {
-        const tabs = PROMPT_CARD_TABS.find((item) => item.keys.includes(key));
-        const dot = tabs && card.querySelector(`.sd-prompt-tab[data-tab="${tabs.id}"]`);
-        if (dot) { const n = tabs.keys.filter((k) => promptChanged(k, settings, defaults)).length; dot.querySelector('.sd-prompt-tab-dot')?.remove(); if (n) dot.insertAdjacentHTML('beforeend', `<span class="sd-prompt-tab-dot" title="改过 ${n} 条"></span>`); }
-      }
+      const summary = entry?.querySelector('summary'), icon = summary?.querySelector('.sd-prompt-reset');
+      if (changed && !icon) { summary?.querySelector('.sd-expand-editor')?.insertAdjacentHTML('beforebegin', `<button type="button" class="sd-icon-btn sd-icon-sm sd-prompt-reset" data-key="${key}" title="恢复默认" aria-label="恢复默认"><i class="fa-solid fa-rotate-left"></i></button>`); applyQianmuIcons(summary); }
+      if (!changed) { icon?.remove(); if (!ta.value.trim()) ta.value = promptValue(key, settings, defaults); }
+      const tabs = PROMPT_CARD_TABS.find((item) => item.keys.includes(key));
+      const dot = tabs && card.querySelector(`.sd-prompt-tab[data-tab="${tabs.id}"]`);
+      if (dot) { const n = tabs.keys.filter((k) => promptChanged(k, settings, defaults)).length; dot.querySelector('.sd-prompt-tab-dot')?.remove(); if (n) dot.insertAdjacentHTML('beforeend', `<span class="sd-prompt-tab-dot" title="改过 ${n} 条"></span>`); }
     }
   });
 }
@@ -34364,7 +34364,7 @@ async function stageTheaterScene() {
     }
     segments.push(`【此幕指令】\n${await resolveMacro(instruction)}`);
     if (useHistory) {
-      segments.push(effectiveTheaterContinuity(settings.promptOverrides));   // 幕后「提示词」卡的「幕外 · 正文衔接说明」
+      segments.push('以上正文片段是衔接背景，请据此保持人物口吻、关系与既有事实一致；番外可自由延展想象，但不要与正文已发生的事实冲突。');
     }
     // 思维链隔离：要求把最终番外正文用 <幕外正文> 包裹，模型的推理/思考一律放在标签外。
     // 阅读页只取标签内正文，裸思维链不再泄漏；日志仍存完整原文便于调试。
