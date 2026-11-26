@@ -100,7 +100,7 @@ test('slice creation time prefers provenance and falls back to ts', () => {
 const DIALOG_FUNCTIONS = ['coreadExplainError', 'coreadTranscriptLine', 'coreadDialogBatches', 'coreadMemorySnapshot', 'coreadMemoryRestore',
   'coreadNextBatch', 'coreadRecalculateDialogCursor', 'coreadReplaceDialogRange', 'coreadCommitDialogSlices', 'coreadPersistSlice',
   'coreadDistill', 'coreadManualSummarize', 'coreadRenumberSlices', 'coreadRegenSlice', 'coreadSaveSliceEdit', 'coreadDeleteSlice',
-  'coreadClearAllSlices', 'coreadMergeSynonyms', 'coreadMaybeStage', 'coreadSummarySystemPrompt', 'coreadDistillText', 'coreadTooLongReason',
+  'coreadClearAllSlices', 'coreadMergeSynonyms', 'coreadSummarizeStage', 'coreadStageFromResult', 'coreadSaveStageEdit', 'coreadRegenStage', 'coreadDeleteStage', 'coreadMaybeStage', 'coreadSummarySystemPrompt', 'coreadDistillText', 'coreadTooLongReason',
   'coreadBuildSliceFromParsed', 'coreadNormalizeSynonyms', 'coreadIsTransientError'];
 
 function dialogFixture({messages = 12, cap = 100, slices = []} = {}) {
@@ -353,6 +353,46 @@ test('a stage summary far over its limit is asked again and then refused, never 
   assert.equal(result.failed, true);assert.match(result.reason, /超出字数上限（151 字，上限 100 字）/);
   assert.equal(e.state.modelCalls.length, 3);assert.match(e.state.modelCalls[1].user, /请压到 100 字以内/);
   assert.equal(e.dialog().stages.length, 0);
+});
+
+test('editing a stage marks it edited; deleting it keeps its slices and stops that run from being merged again', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  assert.equal((await e.c.coreadMaybeStage()).ok, true);
+  const id = e.dialog().stages[0].id;
+  const edited = await e.c.coreadSaveStageEdit(id, '  我改的  ', '甲，乙');
+  assert.equal(edited.ok, true);
+  assert.deepEqual([e.dialog().stages[0].summary, e.dialog().stages[0].edited, [...e.dialog().stages[0].keywords]], ['我改的', true, ['甲', '乙']]);
+  assert.equal((await e.c.coreadSaveStageEdit(id, '   ', '')).ok, false, 'empty text is refused');
+  e.state.saveOk = false;
+  assert.match((await e.c.coreadSaveStageEdit(id, '另一版', '')).reason, /记忆未能保存/);
+  assert.equal(e.dialog().stages[0].summary, '我改的', 'a failed save rolls back');
+  e.state.saveOk = true;
+  assert.equal((await e.c.coreadDeleteStage(id)).ok, true);
+  assert.equal(e.dialog().stages[0].status, 'deleted');assert.equal(e.dialog().slices.length, 4);
+  const calls = e.state.modelCalls.length;
+  assert.equal((await e.c.coreadMaybeStage()).reason, 'nothing', 'a deleted stage keeps its run from being merged again');
+  assert.equal(e.state.modelCalls.length, calls);
+  assert.equal((await e.c.coreadDeleteStage(id)).ok, false);
+});
+
+test('regenerating a stage rewrites it from its current slices under the same id and clears the edited mark', async () => {
+  const e = dialogFixture({messages: 10, slices: stageSlices(4)});
+  await e.c.coreadMaybeStage();
+  const id = e.dialog().stages[0].id;
+  await e.c.coreadSaveStageEdit(id, '我改的', '');
+  e.dialog().slices[1].summary = '原2·改';   // 父切片改过 → 阶段停用；重新总结用改后的内容
+  assert.equal(reader.coreadStageStatus(e.dialog().stages[0], e.dialog().slices), 'invalid');
+  e.state.model = async () => JSON.stringify({summary: '重新合', keywords: ['新']});
+  const result = await e.c.coreadRegenStage(id);
+  assert.equal(result.ok, true);
+  const [stage] = e.dialog().stages;
+  assert.deepEqual([stage.id, stage.summary, stage.edited], [id, '重新合', false]);
+  assert.equal(reader.coreadStageStatus(stage, e.dialog().slices), 'active');
+  assert.match(e.state.modelCalls.at(-1).user, /2\. 原2·改/);
+  e.dialog().slices = e.dialog().slices.filter((slice) => slice.id !== 's2' && slice.id !== 's3');
+  assert.match((await e.c.coreadRegenStage(id)).reason, /不足两条/);
+  e.c.coreadDistilling = true;
+  assert.equal((await e.c.coreadRegenStage(id)).ok, false);
 });
 
 // ── 真实函数：正文蒸馏 ──

@@ -33,8 +33,8 @@ test('automatic text summaries report a real failure once and stop for this read
 test('summarizing the whole book stops at an error that will not fix itself and never reports success with nothing made', () => {
     const book = between('async function coreadDistillFullBook', '\nasync function ');
     assert.match(book, /if \(!coreadIsTransientError\(e\)\) \{ stopped = true; break; \}/);
-    assert.match(book, /if \(stopped\) return \{ ok: false, reason: `蒸馏全书已停下：/);
-    assert.match(book, /if \(!ok && fail && !aborted\) return \{ ok: false, reason: `蒸馏全书没有成功：/);
+    assert.match(book, /if \(stopped\) return \{ ok: false, reason: `总结全书已停下：/);
+    assert.match(book, /if \(!ok && fail && !aborted\) return \{ ok: false, reason: `总结全书没有成功：/);
 });
 
 test('the two text summary buttons answer when another summary is already running', () => {

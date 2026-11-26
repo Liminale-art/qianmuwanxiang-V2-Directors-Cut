@@ -5997,13 +5997,20 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-memory-title > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sd-reader-memory-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sd-text); font-size: .98em; }
 .sd-reader-memory-title small { color: var(--sd-muted); font-size: .72em; }
-.sd-reader-memory-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
-.sd-reader-memory-stats.is-linkable { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.sd-reader-memory-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px,1fr)); gap: 6px; }
 .sd-reader-memory-stats > span { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--sd-pre); text-align: center; }
 .sd-reader-memory-stats b { color: var(--sd-accent); font-size: 1em; font-variant-numeric: tabular-nums; }
 .sd-reader-memory-stats small { color: var(--sd-muted); font-size: .64em; white-space: nowrap; }
 .sd-reader-memory-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px,1fr)); gap: 6px; }
 .sd-reader-memory-actions .sd-reader-mbtn { width: 100%; }
+/* 总览里的两个自动开关；页尾「管理记忆／清空记忆」 */
+.sd-reader-memory-switches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 0 14px; }
+.sd-reader-memory-switches .sd-reader-mrow { padding: 2px 0; }
+.sd-reader-memory-foot { margin-top: 2px; }
+.sd-reader-stage-failure { flex-wrap: wrap; gap: 6px; }
+.sd-reader-stage-failure .sd-reader-mrow-lab { color: var(--sd-muted); font-size: .84em; }
+.sd-reader-mrow-text .sd-reader-mactions { margin-left: auto; }
+.sd-reader-mrow-divide { border-top: 1px solid var(--sd-hairline); margin-top: 6px; padding-top: 10px; }
 /* 卡片 */
 .sd-reader-mcard { background: var(--sd-glass-weak); border: 1px solid var(--sd-hairline); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .sd-reader-mcard-head { display: flex; align-items: center; gap: 8px; font-size: 1em; font-weight: 600; color: var(--sd-text); }
@@ -6111,11 +6118,6 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-textbtn:disabled { opacity: .45; cursor: default; }
 /* 手动总结提示小字 + 批次参考表 */
 .sd-reader-mhint { font-size: .76em; color: var(--sd-muted); line-height: 1.55; }
-.sd-reader-batchtable { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
-.sd-reader-batchrow { display: flex; align-items: center; gap: 10px; padding: 5px 9px; border-radius: 7px; background: var(--sd-glass-weak); font-size: .78em; }
-.sd-reader-batchrow-no { font-variant-numeric: tabular-nums; padding: 1px 8px; border-radius: 20px; background: var(--sd-accent); color: var(--sd-primary-text); flex: 0 0 auto; }
-.sd-reader-batchrow-start { color: var(--sd-text); }
-.sd-reader-batchrow-count { color: var(--sd-muted); margin-left: auto; flex: 0 0 auto; }
 /* 卡头计数小标签（实际注入 / 召回候选） */
 .sd-reader-inj-tag { font-size: .68em; padding: 1px 9px; border-radius: 20px; background: var(--sd-accent); color: var(--sd-primary-text); font-style: normal; font-variant-numeric: tabular-nums; }
 .sd-reader-inj-tag.on { background: var(--sd-good, #3fae6b); }
@@ -6243,6 +6245,11 @@ details.sd-reader-mcard > summary.sd-reader-mcard-head .sd-reader-inj-tag { marg
 .sd-reader-slice-page > .sd-reader-subpage-head { position: relative; top: auto; flex: 0 0 auto; }
 .sd-reader-slice-page > .sd-reader-sm-list { max-height: none; flex: 1 1 auto; min-height: 0; }
 .sd-reader-sm-row.vec-error { border-color: color-mix(in srgb, #d45555 76%, var(--sd-hairline)); background: color-mix(in srgb, #d45555 8%, var(--sd-glass-weak)); }
+/* 阶段总结行：嵌着它合并的细切片；停用时整行变淡 */
+.sd-reader-stage-badge { background: color-mix(in srgb, var(--sd-accent) 18%, transparent); color: var(--sd-accent); }
+.sd-reader-st-row.is-invalid .sd-reader-sm-sum { opacity: .66; }
+.sd-reader-st-children { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-left: 10px; border-left: 2px solid color-mix(in srgb, var(--sd-accent) 30%, var(--sd-hairline)); }
+.sd-reader-smtabs { flex-wrap: wrap; }
 .sd-reader-sm-row.vec-retrying { border-color: color-mix(in srgb, #d08a2e 65%, var(--sd-hairline)); }
 .sd-reader-src-badge.vec-pending { background: var(--sd-pre); color: var(--sd-muted); }
 .sd-reader-src-badge.vec-retrying { color: #c97820; background: color-mix(in srgb, #d08a2e 18%, transparent); }

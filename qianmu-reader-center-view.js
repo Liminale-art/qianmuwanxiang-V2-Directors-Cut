@@ -70,21 +70,28 @@ export function renderCoreadPromptTabsView(tabs, active, htmlEscape) {
   return `<div class="sd-reader-sumtabs" role="group" aria-label="提示词分组">${tabs.map(([kind, label]) => `<button type="button" class="sd-reader-sumtab${kind === active ? ' active' : ''}" data-kind="${htmlEscape(kind)}" aria-pressed="${kind === active}">${htmlEscape(label)}</button>`).join('')}</div>`;
 }
 
-export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, sliceCount, pendingN, blockedN, linkAvailable, linked, targetClass}, htmlEscape) {
+// 记忆档案页顶部：书名、数字（记忆／待总结对话／待总结字；有隔离时多一格）、两个自动开关、关联伴读，阶段总结没合成时写明原因并可重试。
+// pendingChars 为 null（漫画）时不显示待总结字；autoText 为 null（漫画）时不显示「自动总结正文」。
+export function renderCoreadMemoryOverviewView({curBook, msgsLen, cursor, memoryCount, pendingN, pendingChars = null, blockedN = 0,
+  linkAvailable, linked, targetClass, autoDialog, autoText = null, stageFailure = ''}, htmlEscape) {
+  const stat = (value, label, cls = '') => `<span${cls ? ` class="${cls}"` : ''}><b>${value}</b><small>${label}</small></span>`;
+  const toggle = (cls, label, on) => `<div class="sd-reader-mrow"><span class="sd-reader-mrow-lab">${label}</span>${renderCoreadSwitchView(cls, on)}</div>`;
   return `
     <section class="sd-reader-memory-overview${targetClass}">
       <div class="sd-reader-memory-title"><span><i class="fa-solid fa-book-bookmark"></i></span><div><b>${curBook ? `《${htmlEscape(curBook.title || '未命名')}》` : '当前伴读档案'}</b><small>${msgsLen} 条对话 · 已整理 ${cursor} 条</small></div></div>
-      <div class="sd-reader-memory-stats${linkAvailable ? ' is-linkable' : ''}">
-        <span><b>${sliceCount}</b><small>记忆切片</small></span>
-        <span><b>${pendingN}</b><small>待整理对话</small></span>
-        <span><b>${blockedN}</b><small>进度外隔离</small></span>
-        ${linkAvailable ? `<span class="sd-reader-yimu-linkstat"><b>${linked ? '已关联' : '未关联'}</b><small>关联伴读</small></span>` : ''}
+      <div class="sd-reader-memory-stats">
+        ${stat(memoryCount, '记忆')}
+        ${stat(pendingN, '待总结对话')}
+        ${pendingChars == null ? '' : stat(pendingChars, '待总结字')}
+        ${blockedN ? stat(blockedN, '进度外隔离') : ''}
+        ${linkAvailable ? stat(linked ? '已关联' : '未关联', '关联伴读', 'sd-reader-yimu-linkstat') : ''}
       </div>
-      <div class="sd-reader-memory-actions">
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-manage"><i class="fa-solid fa-table-list"></i>管理切片</button>
-        ${linkAvailable ? '<button type="button" class="sd-reader-mbtn sd-reader-yimu-link"><i class="fa-solid fa-link"></i>关联伴读</button>' : ''}
-        <button type="button" class="sd-reader-mbtn sd-reader-slice-clear"${sliceCount ? '' : ' disabled'}><i class="fa-solid fa-trash-can"></i>清空切片</button>
+      <div class="sd-reader-memory-switches">
+        ${toggle('sd-reader-autodistill-en', '自动总结对话', autoDialog)}
+        ${autoText == null ? '' : toggle('sd-reader-autotext-en', '自动总结正文', autoText)}
       </div>
+      ${linkAvailable ? `<div class="sd-reader-memory-actions"><button type="button" class="sd-reader-mbtn sd-reader-yimu-link"><i class="fa-solid fa-link"></i>${linked ? '更新关联伴读' : '关联伴读'}</button></div>` : ''}
+      ${stageFailure ? `<div class="sd-reader-mrow sd-reader-stage-failure"><span class="sd-reader-mrow-lab">阶段总结没有完成：${htmlEscape(stageFailure)}</span><button type="button" class="sd-reader-textbtn sd-reader-stage-retry">重试阶段总结</button></div>` : ''}
     </section>`;
 }
 

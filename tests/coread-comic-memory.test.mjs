@@ -638,20 +638,20 @@ test('wiring: progress saves trigger follow-reading, the reply can carry the cur
   assert.match(index, /跟读时自动识图<\/span>\$\{renderMemSwitch\('sd-reader-comic-auto', comicCfg\.autoFollow\)\}/);
   assert.match(index, /每批先让我看一眼<\/span>\$\{renderMemSwitch\('sd-reader-comic-review-en', comicCfg\.reviewEachBatch\)\}/);
   assert.match(index, /class="sd-reader-mstate sd-reader-comic-stat" data-usage="1"/);
-  assert.match(section('renderMemRecordsTab'), /curBook\?\.mode === 'comic' \? \(comicRecord \? reader\.renderComicMemoryCards\(/);
+  assert.match(section('renderMemRecordsTab'), /comic && comicRecord \? reader\.renderComicMemoryCards\(/);
 });
 
 test('the memory-archive tab shows the comic cards instead of text distill for a comic, and nothing extra for a text book', () => {
   const { c, m, inputs } = createCoreadRecordsFixture();
   const textHtml = c.renderMemRecordsTab(m);
-  assert.match(textHtml, /书籍蒸馏/); assert.doesNotMatch(textHtml, /漫画识图|人物表/);
+  assert.match(textHtml, /总结已读/); assert.doesNotMatch(textHtml, /漫画识图|人物表/);
   inputs.meta.mode = 'comic';
-  assert.doesNotMatch(c.renderMemRecordsTab(m), /书籍蒸馏|漫画识图/, 'a comic whose record is not loaded shows neither card');
+  assert.doesNotMatch(c.renderMemRecordsTab(m), /总结已读|漫画识图/, 'a comic whose record is not loaded shows neither card');
   const record = comic.comicRecordWithSheet(described([0, 2]), { cast: [{ name: '甲', look: '黑色短发' }] });
   Object.assign(c, { reader, coreadComicRecord: () => record, readerView: { chapterIndex: 5 }, coreadComicFill: null, coreadComicPlanInput: () => ({ hasImage: () => true }) });
   const html = c.renderMemRecordsTab(m);
-  assert.doesNotMatch(html, /书籍蒸馏|sd-reader-distill-text/);
+  assert.doesNotMatch(html, /总结已读|sd-reader-distill-text|正文每多少字/);
   assert.match(html, /漫画识图/); assert.match(html, /阅读方向/); assert.match(html, /已建稿 <b>3<\/b> \/ 已读 6 页/); assert.match(html, /补齐未识别的 3 页/);
   assert.match(html, /人物表/); assert.match(html, /class="sd-reader-minput sd-reader-comic-cast-name" placeholder="称呼" maxlength="40" value="甲"/);
-  assert.match(html, /sd-reader-stagecard/, 'the cards after it are still rendered');
+  assert.match(html, /sd-reader-setcard/, 'the cards after it are still rendered');
 });

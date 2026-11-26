@@ -15,15 +15,33 @@ test('records render keeps the safety-read order without altering reader history
   const before=JSON.stringify(c.readerDialog),html=c.renderMemRecordsTab(m),card=overview(html);
   assert.deepEqual(trace.map(x=>x[0]),['meta','safe','guide','guide']);
   const safe=trace.find(x=>x[0]==='safe');assert.equal(safe[2],c.readerDialog.readBoundary);assert.equal(safe[3],m);
-  assert.notEqual(safe[1],c.readerDialog.slices,'display sorting must use a copy');
   assert.equal(JSON.stringify(c.readerDialog),before);
   assert.match(card,/Book&lt;&amp;/);assert.match(card,/8 条对话 · 已整理 3 条/);
-  for(const [n,label]of [[3,'记忆切片'],[5,'待整理对话'],[2,'进度外隔离']])assert.ok(card.includes(`<b>${n}</b><small>${label}</small>`));
+  for(const [n,label]of [[3,'记忆'],[5,'待总结对话'],[0,'待总结字'],[2,'进度外隔离']])assert.ok(card.includes(`<b>${n}</b><small>${label}</small>`),label);
   assert.doesNotMatch(card,/绑定档案|管理档案|sd-reader-arch-/);
   assert.match(card,/sd-reader-tour-target/);
   trace.length=0;c.readerDialog.readBoundary=null;c.renderMemRecordsTab(m);
   assert.deepEqual(trace.map(x=>x[0]),['meta','boundary','safe','guide','guide']);
   assert.equal(trace.find(x=>x[0]==='safe')[2],inputs.fallback);
+});
+
+test('the overview carries both automatic switches; a comic drops the text switch and the pending characters',()=>{
+  const {c,m,inputs}=createCoreadRecordsFixture();Object.assign(m,{autoDistill:true,autoDistillText:false});
+  let card=overview(c.renderMemRecordsTab(m));
+  assert.match(card,/自动总结对话<\/span><label class="sd-reader-mtoggle"><input type="checkbox" class="sd-reader-autodistill-en" checked>/);
+  assert.match(card,/自动总结正文<\/span><label class="sd-reader-mtoggle"><input type="checkbox" class="sd-reader-autotext-en">/);
+  inputs.safe=[{id:1},{id:2},{id:3}];card=overview(c.renderMemRecordsTab(m));
+  assert.doesNotMatch(card,/进度外隔离/,'no isolation cell when nothing is isolated');
+  inputs.meta={...inputs.meta,mode:'comic'};card=overview(c.renderMemRecordsTab(m));
+  assert.doesNotMatch(card,/自动总结正文|待总结字/);assert.match(card,/自动总结对话/);
+});
+
+test('a failed stage summary shows its reason in the overview with a retry button',()=>{
+  const {c,m}=createCoreadRecordsFixture();
+  assert.doesNotMatch(c.renderMemRecordsTab(m),/sd-reader-stage-retry/);
+  c.readerDialog.stageFailure={sliceCount:3,reason:'API 鉴权失败<'};
+  const card=overview(c.renderMemRecordsTab(m));
+  assert.match(card,/阶段总结没有完成：API 鉴权失败&lt;/);assert.match(card,/sd-reader-stage-retry/);
 });
 
 test('summary item order, escaping and built-in deletion protection do not mutate stored prompts',()=>{
@@ -48,23 +66,28 @@ test('the prompt card shows one group at a time behind 对话总结／正文总�
   assert.deepEqual(tabs,[['dialog',true,'true','对话总结'],['book',false,'false','正文总结'],['stage',false,'false','阶段总结']]);
   assert.match(html,/data-id="d1"/);assert.doesNotMatch(html,/data-id="b1"|data-id="s1"/);
   assert.doesNotMatch(html,/sd-reader-distillprompt|蒸馏书籍提示词/);
-  assert.match(html,/<details class="sd-reader-mcard sd-reader-sumcard">/,'collapsed until the reader opens it');
-  c.coreadPromptTab='stage';c.coreadPromptCardOpen=true;html=c.renderMemRecordsTab(m);
-  assert.match(html,/data-id="s1"/);assert.doesNotMatch(html,/data-id="d1"/);assert.match(html,/sd-reader-sumcard" open>/);
+  assert.match(html,/<details class="sd-reader-mcard sd-reader-sumcard" data-keep-open="prompts">/,'collapsed until the reader opens it');
+  c.coreadPromptTab='stage';c.coreadOpenCards.add('prompts');html=c.renderMemRecordsTab(m);
+  assert.match(html,/data-id="s1"/);assert.doesNotMatch(html,/data-id="d1"/);assert.match(html,/sd-reader-sumcard" data-keep-open="prompts" open>/);
   assert.match(html,/class="sd-reader-sumtab active" data-kind="stage"/);
 });
 
-test('the stage card shows the switch and three numbers, greys them out when off, and offers a retry only after a failure',()=>{
-  const {c,m}=createCoreadRecordsFixture();Object.assign(m,{stageAuto:true,stageTrigger:100,stageKeep:20,stageChars:800});
-  let card=c.renderCoreadStageCard(m);
-  assert.match(card,/class="sd-reader-stage-en" checked/);
-  for(const [key,value]of [['stageTrigger',100],['stageKeep',20],['stageChars',800]])assert.match(card,new RegExp(`data-key="${key}"[^>]*value="${value}">`));
-  assert.doesNotMatch(card,/sd-reader-stage-retry/);
-  m.stageAuto=false;card=c.renderCoreadStageCard(m);
-  assert.equal((card.match(/sd-reader-stage-num"[^>]* disabled>/g)||[]).length,3);
-  c.readerDialog.stageFailure={sliceCount:3,reason:'API 鉴权失败<'};card=c.renderCoreadStageCard(m);
-  assert.match(card,/上次没有完成：API 鉴权失败&lt;/);assert.match(card,/sd-reader-stage-retry/);
-  assert.match(c.renderMemRecordsTab(m),/sd-reader-stagecard/);
+test('summary settings gather the frequencies, the length limits, the date switch and the stage numbers in one folded card',()=>{
+  const {c,m,inputs}=createCoreadRecordsFixture();
+  Object.assign(m,{autoDistill:true,autoDistillText:false,distillEvery:30,distillTextEvery:8000,sliceChars:300,readDateInSummary:false,stageAuto:true,stageTrigger:100,stageKeep:20,stageChars:800});
+  let html=c.renderMemRecordsTab(m);
+  const card=html.slice(html.indexOf('<details class="sd-reader-mcard sd-reader-setcard"'),html.indexOf('</details>',html.indexOf('sd-reader-setcard')));
+  const labels=[...card.matchAll(/<span class="sd-reader-mrow-lab">([^<]+)<\/span>/g)].map(x=>x[1]);
+  assert.deepEqual(labels,['对话每多少条总结一次','正文每多少字总结一次','每条切片字数上限','记下日期','自动阶段总结','阶段总结触发（条）','保留最近切片','每条阶段总结字数上限']);
+  for(const [key,value]of [['distillEvery',30],['distillTextEvery',8000],['sliceChars',300],['stageTrigger',100],['stageKeep',20],['stageChars',800]])
+    assert.match(card,new RegExp(`data-key="${key}"[^>]*value="${value}"`),key);
+  assert.match(card,/data-key="distillTextEvery"[^>]*disabled/,'text frequency greys out while automatic text summary is off');
+  assert.doesNotMatch(card,/data-key="distillEvery"[^>]*disabled/);
+  assert.match(html,/<details class="sd-reader-mcard sd-reader-setcard" data-keep-open="settings">/,'folded until opened');
+  m.stageAuto=false;c.coreadOpenCards.add('settings');html=c.renderMemRecordsTab(m);
+  assert.match(html,/sd-reader-setcard" data-keep-open="settings" open>/);
+  assert.equal((html.match(/data-key="stage\w+"[^>]* disabled>/g)||[]).length,3);
+  inputs.meta={...inputs.meta,mode:'comic'};assert.doesNotMatch(c.renderMemRecordsTab(m),/正文每多少字总结一次/);
 });
 
 test('the storage-mode control is gone, including for settings saved with an old worldbook mode',()=>{
@@ -76,27 +99,25 @@ test('the storage-mode control is gone, including for settings saved with an old
   }
 });
 
-test('manual batch rows exclude book offsets and archived dialogue while preserving active dialogue order',()=>{
-  const {c,m}=createCoreadRecordsFixture();c.readerDialog.slices=[
-    {id:'second',batch:3,src:'dialog',coveredFrom:4,coveredTo:6,compressed:true},
-    {id:'book',batch:7,src:'text',coveredFrom:1000,coveredTo:5000},
-    {id:'archived',batch:8,src:'dialog',coveredFrom:50,coveredTo:99,provenance:{dialogArchived:true}},
-    {id:'first',batch:2,src:'dialog',coveredFrom:0,coveredTo:3},
-    {id:'mainline',batch:9,src:'dialog',provenance:{source:'mainline'},coveredFrom:9000,coveredTo:9999}];
+test('manual summary is one card: a dialogue range and, for text books, 总结已读／总结全书; no batch table or old merge card',()=>{
+  const {c,m}=createCoreadRecordsFixture();c.readerDialog.slices=[{id:'first',batch:2,src:'dialog',coveredFrom:0,coveredTo:3},{id:'book',batch:7,src:'text',coveredFrom:1000,coveredTo:5000}];
   const before=JSON.stringify(c.readerDialog.slices),html=c.renderMemRecordsTab(m);
-  const rows=[...html.matchAll(/<div class="sd-reader-batchrow">[\s\S]*?<\/div>/g)].map(x=>x[0]);
-  assert.equal(rows.length,2);assert.match(rows[0],/>#2</);assert.match(rows[0],/起始 1/);assert.match(rows[0],/>4 条</);
-  assert.match(rows[1],/>#合并</);assert.match(rows[1],/起始 5/);assert.match(rows[1],/>3 条</);
-  assert.equal(JSON.stringify(c.readerDialog.slices),before);assert.match(html,/最新批次 <b>#9<\/b>/,'overall last batch remains distinct from the dialogue-only table');
+  const card=html.slice(html.indexOf('手动总结'),html.indexOf('sd-reader-setcard'));
+  assert.match(card,/对话 第[\s\S]*sd-reader-manual-from[\s\S]*sd-reader-manual-to[\s\S]*>开始<\/button>/);
+  assert.match(card,/正文[\s\S]*sd-reader-distill-text">总结已读<\/button><button type="button" class="sd-reader-mbtn sd-reader-distill-fullbook">总结全书<\/button>/);
+  assert.doesNotMatch(html,/batchrow|batchtable|最新批次|蒸馏|二次总结|书籍蒸馏|伴读对话·自动总结/);
+  assert.equal(JSON.stringify(c.readerDialog.slices),before);
 });
 
 test('empty archive keeps management entry points without enabling destructive or impossible operations',()=>{
   const {c,m,inputs}=createCoreadRecordsFixture();inputs.meta=null;inputs.safe=[];
   c.readerDialog.slices=[];c.readerDialog.messages=[];c.readerDialog.cursor=0;
   const html=c.renderMemRecordsTab(m),card=overview(html);
-  assert.match(card,/当前伴读档案/);assert.match(card,/sd-reader-slice-manage/);assert.doesNotMatch(card,/sd-reader-arch-manage/);
-  assert.match(card,/sd-reader-slice-clear" disabled/);assert.match(html,/sd-reader-manual-go" disabled/);assert.doesNotMatch(html,/sd-reader-compress|二次总结/);
-  assert.doesNotMatch(html,/sd-reader-batchrow/);assert.doesNotMatch(html,/<b>-\d/);
+  assert.match(card,/当前伴读档案/);assert.doesNotMatch(card,/sd-reader-arch-manage/);
+  assert.match(html,/sd-reader-slice-manage"><i class="fa-solid fa-table-list"><\/i>管理记忆/);
+  assert.match(html,/sd-reader-slice-clear" disabled><i class="fa-solid fa-trash-can"><\/i>清空记忆/);
+  assert.match(html,/sd-reader-manual-go" disabled/);assert.doesNotMatch(html,/sd-reader-compress|二次总结/);
+  assert.doesNotMatch(html,/<b>-\d/);
   inputs.meta={title:''};assert.match(c.renderMemRecordsTab(m),/《未命名》/);
 });
 
@@ -105,7 +126,8 @@ test('the 关联伴读 entry appears only while Yimu is attached',()=>{
   assert.doesNotMatch(overview(c.renderMemRecordsTab(m)),/sd-reader-yimu-link|关联伴读/);
   inputs.linkAvailable=true;
   const card=overview(c.renderMemRecordsTab(m));
-  assert.equal((card.match(/class="sd-reader-mbtn sd-reader-yimu-link"/g)||[]).length,1);assert.match(card,/关联伴读<\/button>/);
-  assert.match(card,/sd-reader-memory-stats is-linkable/);assert.match(card,/<b>未关联<\/b><small>关联伴读<\/small>/);
-  inputs.linked=true;assert.match(overview(c.renderMemRecordsTab(m)),/<b>已关联<\/b><small>关联伴读<\/small>/);
+  assert.equal((card.match(/class="sd-reader-mbtn sd-reader-yimu-link"/g)||[]).length,1);assert.match(card,/><\/i>关联伴读<\/button>/);
+  assert.match(card,/<b>未关联<\/b><small>关联伴读<\/small>/);
+  inputs.linked=true;const linked=overview(c.renderMemRecordsTab(m));
+  assert.match(linked,/<b>已关联<\/b><small>关联伴读<\/small>/);assert.match(linked,/更新关联伴读<\/button>/);
 });

@@ -52,7 +52,7 @@ test('reader and story meet only through the Yimu bridge, named 关联伴读', (
   assert.match(source, /linkAvailable: yimuCompanionBridge\.linkAvailable\(\)/);
   assert.match(source, /closest\('\.sd-reader-yimu-link'\)\) \{\s*const captured = coreadCaptureLink\(readerDialog\.bookId\);\s*if \(captured\) void coreadOfferLinkUpdate\(captured, \{ always: true \}\);/);
   assert.doesNotMatch(source, /在忆幕的导览页点/);
-  assert.match(centerView, /\$\{linkAvailable \? '<button type="button" class="sd-reader-mbtn sd-reader-yimu-link">[^']*关联伴读<\/button>' : ''\}/);
+  assert.match(centerView, /\$\{linkAvailable \? `<div class="sd-reader-memory-actions"><button type="button" class="sd-reader-mbtn sd-reader-yimu-link">[^`]*关联伴读'\}<\/button><\/div>` : ''\}/);
   assert.doesNotMatch(bridge, /filterMainline|mainline|companionOwner/);
   assert.match(bridge, /linkAvailable: \(\) => !!link/);
   assert.doesNotMatch(yimuRuntime, /mainline/);

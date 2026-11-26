@@ -71,7 +71,7 @@ assert.match(analyze, /reader\.nextComicAutoBatch\(coreadComicPlanInput\(\)\)/, 
 assert.doesNotMatch(analyze, /chapterIndex\s*\+\s*(?:cfg\.|coreadComicConfig\(\)\.)pagesPerBatch/, '漫画识图不得向未来页面扩展');
 assert.match(analyze, /review = coreadComicConfig\(\)\.reviewEachBatch/, '校对弹窗由设置决定，默认关闭');
 assert.match(analyze, /coreadConfirmComicSummary[\s\S]*coreadComicCommit[\s\S]*coreadComicBackfill/, '开启校对时必须先校对再保存页稿与记忆切片');
-assert.match(source, /if \(meta\.mode === 'comic'\) return \{ ok: false, reason: '漫画不走正文蒸馏' \};/, '漫画不得误走正文占位符蒸馏');
+assert.match(source, /if \(meta\.mode === 'comic'\) return \{ ok: false, reason: '漫画不走正文总结' \};/, '漫画不得误走正文占位符蒸馏');
 assert.match(source, /if \(coreadBookMeta\(id\)\?\.mode === 'comic'\) return;/, '漫画不得触发自动正文蒸馏');
 
 // 图片对话：本地存储、可移除预览，书友与幕伴助手共用视觉模型但消息池仍隔离。

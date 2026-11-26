@@ -80,8 +80,8 @@ try{
     layouts.push({width,boxes,nativeInputHit:hit});
   }
   await page.evaluate(({functions,normalize,handler,kinds,labels})=>{
-    coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')'),COREAD_PROMPT_KINDS:kinds,COREAD_PROMPT_LABELS:labels};
-    window.coreadPromptTab='dialog';window.coreadPromptCardOpen=false;window.uid=()=>'new-item';
+    coreadGuideStep=null;window.reader={normalizeCoreadSource:window.eval('('+normalize+')'),COREAD_PROMPT_KINDS:kinds,COREAD_PROMPT_LABELS:labels,coreadUncoveredTextRanges:()=>[]};
+    window.coreadPromptTab='dialog';window.coreadOpenCards=new Set();window.uid=()=>'new-item';
     window.yimuCompanionBridge={linkAvailable:()=>window.yimuAttached===true};
     window.toast=()=>{};readerDialog.messages=[];readerDialog.cursor=0;
     window.eval(functions);
