@@ -3,7 +3,7 @@ import { stageGroups, planStageRange } from './layers.mjs';
 import { createStoryView } from './story-view.mjs';
 import { mountCompanionView } from './companion-view.mjs';
 import { createBackupView } from './backup-view.mjs';
-import { autoProgress, manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
+import { manualRangeDefault, planManualRange, summaryCoverage, manualBatchFloors, MANUAL_BATCH_FLOORS, MANUAL_BATCH_LIMIT } from './core.mjs';
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
@@ -17,7 +17,6 @@ import { renderSceneLabels, editableMemoryText, editedMemoryValue } from './scen
 import { mountRetrievalView } from './retrieval-view.mjs';
 import { mountManageView } from './manage-view.mjs';
 import { mountHeartView } from './heart-view.mjs';
-import { DIARY_TRACE_TRIGGER } from './heart-core.mjs';
 import { memoryWarmth, FADING, SUNKEN } from './decay.mjs';
 
 const SETTINGS = [
@@ -375,7 +374,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
 
     const settings = el('section', 'ym-settings');
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
-    const settingGroups = new Map(), triggerNotes = new Map();
+    const settingGroups = new Map();
     for (const [name, title, keys] of [
         ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldownEnabled', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
@@ -418,12 +417,8 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         if (key === 'budget') labelNode.children[0].textContent = '最大注入Token值';
         row.append(labelNode);
         // 心迹脉络卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
+        // 设置页不带说明小字（用户 2026-11-26：前端保持精简，作用写进说明书）。
         settingGroups.get(key).append(row);
-        // 这一项的作用一句话写在下面（用户要求）。
-        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内让位给别的记忆。推荐楼层较高后启用'));
-        if (key === 'diaryAuto') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', `每次总结后合订；还没归进印象的痕迹满 ${DIARY_TRACE_TRIGGER} 条也会合订`));
-        // 自动总结眼下攒到了多少：只算还没总结的聊天正文（不含预设、角色卡、世界书），与触发判断同一口径。
-        if (key === 'trigger') { const note = el('p', 'ym-muted ym-setting-note ym-trigger-progress', ''); settingGroups.get(key).append(note); triggerNotes.set(key, note); }
         controls.set(key, { input, type, min, label: labelNode.children[0] });
     }
     async function saveChangedSettings() {
@@ -875,12 +870,6 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         return currentSettings()[key] ?? DEFAULTS[key] ?? '';
     }
     function updateSettings() {
-        const progress = autoProgress(state.document, state.snapshot?.messages);
-        for (const [key, note] of triggerNotes) {
-            const text = progress ? `当前未总结正文约 ${progress.tokens.toLocaleString('en-US')} token` : '';
-            if (note.textContent !== text) note.textContent = text;
-            note.hidden = !text;
-        }
         for (const [key, control] of controls) {
             const value = settingValue(key);
             if (control.type === 'select') {
