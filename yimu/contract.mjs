@@ -14,8 +14,8 @@ export {recallBlockReason, excerptDependenciesValid} from './recall-contract.mjs
 // Shared contract file is copied to both sides. Keep VERSION as the legacy
 // service alias for existing data/tests; UI and packaging use the explicit
 // FRONTEND_VERSION/SERVICE_VERSION names below.
-export const FRONTEND_VERSION = '0.8.79';
-export const SERVICE_VERSION = '0.8.36';
+export const FRONTEND_VERSION = '0.8.80';
+export const SERVICE_VERSION = '0.8.37';
 export const VERSION = SERVICE_VERSION;
 // Floors are 1-based internally and in storage (floor N = messages[N - 1]); ST numbers
 // its messages from #0. Every floor number shown to the user goes through shownFloor so
@@ -24,13 +24,15 @@ export const shownFloor = floor => floor - 1;
 export const floorField = floor => Number.isSafeInteger(floor) && floor >= 1 ? String(floor - 1) : '';
 export const floorValue = text => String(text ?? '').trim() === '' ? 0 : Number(text) + 1;
 export const SCHEMA = 8;
-export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, recallCooldown: 6, summarySlices: 4, preference: '', profileId: '', model: '',
+export const DEFAULTS = Object.freeze({ recent: 5, trigger: 50000, triggerFloors: 10, batch: 6000, budget: 0, maxSlices: 12, recallCooldownEnabled: false, recallCooldown: 6, summarySlices: 4, preference: '', profileId: '', model: '',
     stageAuto: true, stageBasis: 'tokens', stageThreshold: 20000, stageRecent: 10, sliceChars: 2000, stageChars: 3000,
     recall: false, companionShareCustom: false, vectorEnabled: false, rerankEnabled: false, prompts: DEFAULT_PROMPTS,
     // 心迹页：观察日记与关系年表跟着整理走（默认开）；心迹由主模型顺带写（默认关）；两处注入都默认关。
     diary: true, diaryAuto: true, chronicle: true, diaryChars: 60, diaryInject: false, thoughts: false, thoughtChars: 200, thoughtCooldown: 10, thoughtInject: false,
     contextRules: DEFAULT_CONTEXT_RULES });
 const clone = value => structuredClone(value);
+// 召回冷却有自己的开关（用户 2026-11-26，默认关）：关着时间隔层数照存不用，一律按 0 算。
+export const recallCooldownOf = settings => settings?.recallCooldownEnabled === true && Number.isSafeInteger(settings.recallCooldown) && settings.recallCooldown > 0 ? settings.recallCooldown : 0;
 export function failure(message, status = 400) { return Object.assign(new Error(message), { status, statusCode: status }); }
 function requireThat(ok, message) { if (!ok) throw failure(message); }
 export function normalizeBinding(value) {
@@ -53,7 +55,7 @@ export function validateSettings(input, partial = true) {
     for (const [key, value] of Object.entries(input)) {
         requireThat(Object.hasOwn(DEFAULTS, key), '未知的忆幕设置');
         if (value === null && partial) { result[key] = null; continue; }
-        if (['stageAuto', 'recall', 'companionShareCustom', 'vectorEnabled', 'rerankEnabled', 'diary', 'diaryAuto', 'chronicle', 'diaryInject', 'thoughts', 'thoughtInject'].includes(key)) requireThat(typeof value === 'boolean', '忆幕开关设置无效');
+        if (['stageAuto', 'recall', 'recallCooldownEnabled', 'companionShareCustom', 'vectorEnabled', 'rerankEnabled', 'diary', 'diaryAuto', 'chronicle', 'diaryInject', 'thoughts', 'thoughtInject'].includes(key)) requireThat(typeof value === 'boolean', '忆幕开关设置无效');
         else if (key === 'stageBasis') requireThat(['tokens', 'floors', 'slices'].includes(value), '阶段整理依据无效');
         else if (key === 'prompts') { result[key] = validatePromptConfig(value); continue; }
         else if (key === 'contextRules') { result[key] = validateContextRules(value); continue; }

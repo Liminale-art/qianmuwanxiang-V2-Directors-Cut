@@ -88,7 +88,7 @@ function fixture() {
 
 function realMigrationFixture() {
   const e=fixture();Object.assign(e.c,utilities,ttsProviders,{normalizeQianmuStructuredOutputMode,upgradeCreativeDefaults,
-    DEFAULT_SETTINGS:{tts:{},quickWheelCustomEnabled:['dashboard','notes']},DEFAULT_SYSTEM_PROMPT:'fixture system',DEFAULT_BLUEPRINT:'fixture blueprint',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10});
+    DEFAULT_SETTINGS:{tts:{},quickWheelCustomEnabled:['dashboard','notes']},DEFAULT_SYSTEM_PROMPT:'fixture system',DEFAULT_BLUEPRINT:'fixture blueprint',JSON_SCHEMA_TEXT:'{}',PROMPT_REVISION:1,LOG_LIMIT:10,THEATER_RECENT_LIMIT:5});
   // Production functions live in an ES module: match its strict assignment semantics.
   vm.runInContext('"use strict";\n'+['migrateWidgetSettings','migrateTtsProviderSettings','migrateSettings'].map(section).join('\n'),e.c);
   return e;

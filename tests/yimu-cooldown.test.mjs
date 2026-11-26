@@ -1,7 +1,7 @@
 // 「刚提过」冷却：一条细切片被带入后的若干层内，不再仅因沾边就又被带一次。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOperation, createDocument, fingerprintMessages, DEFAULTS, validateSettings } from '../yimu/contract.mjs';
+import { applyOperation, createDocument, fingerprintMessages, DEFAULTS, validateSettings, recallCooldownOf } from '../yimu/contract.mjs';
 import { selectMemories } from '../yimu/core.mjs';
 
 const binding = { avatar: 'Cool.png', file: 'cooldown', integrity: 'cool-id' };
@@ -18,7 +18,8 @@ const build = async last => {
     });
     return { doc, messages, hashes };
 };
-const pick = (f, settings, recalledAt) => selectMemories(f.doc, { messages: f.messages }, { ...DEFAULTS, ...settings }, f.hashes, '', null, '', recalledAt).map(entry => entry.id);
+// 冷却默认关（用户 2026-11-26）；下面这组按「打开冷却」来测，关着的情形单独一例。
+const pick = (f, settings, recalledAt) => selectMemories(f.doc, { messages: f.messages }, { ...DEFAULTS, recallCooldownEnabled: true, ...settings }, f.hashes, '', null, '', recalledAt).map(entry => entry.id);
 
 test('a slice carried a few floors ago is not carried again just for being related; the most relevant one and a direct question still are', async () => {
     const f = await build('我们顺路经过灯塔和码头，再去面包房买点东西。');
@@ -42,7 +43,19 @@ test('a slice carried a few floors ago is not carried again just for being relat
     assert.equal(pick(asked, {}, recent).filter(id => ['s0', 's1', 's2'].includes(id)).length, 3, '被问到时照常带');
 });
 
-test('the cooldown is an ordinary bounded setting, on by default', () => {
+test('with the switch off (the default) the interval is kept but nothing yields', async () => {
+    const f = await build('我们顺路经过灯塔和码头，再去面包房买点东西。');
+    const recent = new Map([['s0', 36], ['s1', 36], ['s2', 36]]);
+    assert.deepEqual(pick(f, { recallCooldownEnabled: false }, recent), pick(f, {}, null), '关着时与没有带入记录一样');
+    assert.equal(recallCooldownOf(DEFAULTS), 0);
+    assert.equal(recallCooldownOf({ recallCooldownEnabled: true, recallCooldown: 6 }), 6);
+    assert.equal(recallCooldownOf({ recallCooldownEnabled: true, recallCooldown: 0 }), 0);
+});
+
+test('the cooldown switch is off by default and the interval stays an ordinary bounded setting', () => {
+    assert.equal(DEFAULTS.recallCooldownEnabled, false);
+    assert.deepEqual(validateSettings({ recallCooldownEnabled: true }), { recallCooldownEnabled: true });
+    assert.throws(() => validateSettings({ recallCooldownEnabled: 1 }));
     assert.equal(DEFAULTS.recallCooldown, 6);
     assert.deepEqual(validateSettings({ recallCooldown: 0 }), { recallCooldown: 0 });
     assert.throws(() => validateSettings({ recallCooldown: -1 }));

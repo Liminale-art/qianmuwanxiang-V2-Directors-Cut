@@ -2,6 +2,7 @@
 // 主模型顺带写的那则心迹的要求与摘取，以及开了注入时带进请求的那一小段。数据规则在 heart-contract.mjs。
 import { composePrompt, heartNotePrompt, heartChroniclePrompt, heartDiaryPrompt } from './prompt-settings.mjs';
 import { heartOf, gradeOf, SURE_WORDS, HEART_LIMITS } from './heart-contract.mjs';
+import { recallCooldownOf } from './contract.mjs';
 
 export const HEART_TAG = '忆幕之心迹';
 /** 攒够这么多条没看过的痕迹，就值得单独整理一次日记（阶段总结完成时不论多少都整理）。 */
@@ -211,7 +212,7 @@ export function heartInjection(document, settings, snapshot, { type = '', recall
     const impressions = settings.diaryInject !== true ? [] : heart.impressions.map(item => ({ item, sure: gradeOf(item) }))
         .filter(({ item, sure }) => sure >= 1 && present(item.about))
         .sort((a, b) => b.sure - a.sure || b.item.updatedAt - a.item.updatedAt).slice(0, 3);
-    const cooldown = settings.recallCooldown || 0;
+    const cooldown = recallCooldownOf(settings);
     const thought = settings.thoughtInject !== true ? null : [...heart.thoughts].reverse().find(item => {
         if (!['you', 'self'].includes(item.group) && !present(item.about)) return false;
         const last = recalledAt?.get?.(`heart:${item.id}`);

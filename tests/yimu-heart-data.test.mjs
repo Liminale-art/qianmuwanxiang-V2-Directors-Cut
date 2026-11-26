@@ -161,9 +161,11 @@ test('injection is off unless switched on; it brings at most three impressions o
     assert.ok(carried.text.startsWith('<yimu_heart>') && carried.text.includes('她离不开辣。') && carried.text.includes('"sure":"笃定"'));
     assert.ok(!carried.text.includes('还只看见两次') && !carried.text.includes('熟客'), '不成印象的、没出场的人不带');
     assert.ok(carried.text.includes('她比看上去更怕冷场。')); assert.deepEqual(carried.ids, ['heart:t2']);
-    // 刚带过的那一则在冷却里：这一轮不带；也没有别的合适的，就只剩印象。
-    const cooled = heartInjection({heart}, on, snapshot, {recalledAt: new Map([['heart:t2', 2]])});
+    // 刚带过的那一则在冷却里（冷却开着时）：这一轮不带；也没有别的合适的，就只剩印象。冷却关着（默认）时照带。
+    const recalledAt = new Map([['heart:t2', 2]]);
+    const cooled = heartInjection({heart}, {...on, recallCooldownEnabled: true}, snapshot, {recalledAt});
     assert.ok(!cooled.text.includes('怕冷场') && cooled.text.includes('离不开辣')); assert.deepEqual(cooled.ids, []);
+    assert.deepEqual(heartInjection({heart}, on, snapshot, {recalledAt}).ids, ['heart:t2']);
 });
 
 test('buildPlan hands the per-memory recall floors to selection (callback cooldown and warm-up run in the real chain)', async () => {

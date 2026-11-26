@@ -8,7 +8,7 @@ function fixture() {
   let saves=0;
   const c=vm.createContext({...utilities,settings:{theater:{scripts:[{id:'sd-bt-0',title:'old'}],favorites:[{id:'fav'}]}},
     theaterCatalogReady:false,BUILTIN_THEATERS:[],QIANMU_THEATERS:[],
-    BUILTIN_THEATER_FOLDER:'builtin',QIANMU_THEATER_FOLDER:'qianmu',BUILTIN_THEATER_REVISION:6,QIANMU_THEATER_REVISION:5,
+    BUILTIN_THEATER_FOLDER:'builtin',QIANMU_THEATER_FOLDER:'qianmu',THEATER_RECENT_LIMIT:5,BUILTIN_THEATER_REVISION:6,QIANMU_THEATER_REVISION:5,
     saveSettings(){saves++;}});
   vm.runInContext('"use strict";\n'+['getTheater','isOrphanBuiltinCopy','seedBuiltinTheaters'].map(section).join('\n'),c);
   const load=()=>Object.assign(c,{theaterCatalogReady:true,BUILTIN_THEATERS:[{title:'base',instruction:'original'}],QIANMU_THEATERS:[{title:'q',instruction:'q'}]});

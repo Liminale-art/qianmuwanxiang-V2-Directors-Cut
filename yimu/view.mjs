@@ -7,7 +7,7 @@ import { autoProgress, manualRangeDefault, planManualRange, summaryCoverage, man
 import { mountTheme } from './theme.mjs';
 import { createYimuIcon } from './icons.mjs';
 import { mountApiView } from './api-view.mjs';
-import { FRONTEND_VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText, shownFloor, floorField, floorValue } from './contract.mjs';
+import { FRONTEND_VERSION, DEFAULTS, effectiveSettings, validateSettings, canUndoText, shownFloor, floorField, floorValue, recallCooldownOf } from './contract.mjs';
 import { orderedEntries as timelineEntries, memoryTitle, MEMORY_TITLE_LIMIT } from './timeline.mjs';
 import { mountYimuNavigation } from './nav.mjs';
 import { mountYimuVersionBadge } from './release-version.mjs';
@@ -23,6 +23,7 @@ import { memoryWarmth, FADING, SUNKEN } from './decay.mjs';
 const SETTINGS = [
     ['budget', '记忆注入上限', 'number', 0],
     ['maxSlices', '每次最多注入切片', 'number', 0],
+    ['recallCooldownEnabled', '召回冷却', 'checkbox'],
     ['recallCooldown', '召回冷却间隔层', 'number', 0],
     ['recent', '正文保留层数', 'number', 0],
     ['trigger', '自动总结触发', 'number', 0],
@@ -376,7 +377,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
     const settingsForm = el('form', 'ym-settings-form'), controls = new Map();
     const settingGroups = new Map(), triggerNotes = new Map();
     for (const [name, title, keys] of [
-        ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldown']],
+        ['budget', '记忆注入上限', ['budget', 'maxSlices', 'recallCooldownEnabled', 'recallCooldown']],
         ['basic', '切片总结', ['recent', 'trigger', 'triggerFloors', 'summarySlices', 'sliceChars']],
         ['stage', '阶段总结', ['stageAuto', 'stageBasis', 'stageThreshold', 'stageRecent', 'stageChars']],
         ['heart', '心迹脉络', ['diary', 'diaryAuto', 'diaryChars', 'diaryInject', 'chronicle', 'thoughts', 'thoughtChars', 'thoughtCooldown', 'thoughtInject']],
@@ -403,6 +404,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
             settingDraft.set(key, value);
             localError = ''; updateStatus();
             if (key === 'stageBasis') updateSettings();
+            if (key === 'recallCooldownEnabled') updateControls();
             clearTimeout(settingsTimer);
             if (event.type === 'change' || type === 'select' || type === 'checkbox') void saveChangedSettings();
             else settingsTimer = setTimeout(() => { settingsTimer = null; void saveChangedSettings(); }, saveDelayMs);
@@ -418,7 +420,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         // 心迹脉络卡里三块各管各的：观察日记、关系年表、心迹之间用一道线隔开（见上面的类名）。
         settingGroups.get(key).append(row);
         // 这一项的作用一句话写在下面（用户要求）。
-        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内不再重复'));
+        if (key === 'recallCooldown') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', '一条记忆刚被注入后，冷却层数内让位给别的记忆。推荐楼层较高后启用'));
         if (key === 'diaryAuto') settingGroups.get(key).append(el('p', 'ym-muted ym-setting-note', `每次总结后合订；还没归进印象的痕迹满 ${DIARY_TRACE_TRIGGER} 条也会合订`));
         // 自动总结眼下攒到了多少：只算还没总结的聊天正文（不含预设、角色卡、世界书），与触发判断同一口径。
         if (key === 'trigger') { const note = el('p', 'ym-muted ym-setting-note ym-trigger-progress', ''); settingGroups.get(key).append(note); triggerNotes.set(key, note); }
@@ -851,7 +853,8 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         addManual.disabled = !available;
         search.disabled = filter.disabled = !available; heartEntry.hidden = !state.snapshot; // 打开了聊天就在：读不到记忆（服务端待更新等）时页面是空的，但入口不该跟着消失
         selectToggle.disabled = !available || Boolean(state.busy) && !selecting;
-        for (const control of controls.values()) control.input.disabled = !available;
+        // 冷却开关关着时，间隔层数那一格变灰（值照存）。
+        for (const [key, control] of controls) control.input.disabled = !available || key === 'recallCooldown' && settingValue('recallCooldownEnabled') !== true;
         for (const redo of list.querySelectorAll('[data-ym-redo]')) {
             const active = state.activeEntryId === redo.dataset.ymRedo && state.busy;
             redo.disabled = !active && (!canSummarize || Boolean(state.busy));
@@ -971,7 +974,7 @@ export function createView({ onAction, connectionApi, journal = null, floors = (
         const total = state.snapshot?.messages?.length || 0;
         if (!total) return null;
         const settings = currentSettings(), last = Number(state.recalledAt?.[entry.id]), used = Number.isFinite(last) && last > 0;
-        const cooldown = Number.isSafeInteger(settings.recallCooldown) ? settings.recallCooldown : 0;
+        const cooldown = recallCooldownOf(settings);
         if (cooldown > 0 && used && total - last > 0 && total - last <= cooldown) return { id: 'cool', text: '冷却' };
         const warmth = memoryWarmth(entry, { floor: total, lastUsedFloor: used ? last : null, settings });
         return warmth === FADING ? { id: 'fading', text: '淡去' } : warmth === SUNKEN ? { id: 'sunken', text: '沉底' } : null;

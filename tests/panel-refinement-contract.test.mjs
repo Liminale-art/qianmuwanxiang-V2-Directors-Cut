@@ -24,7 +24,9 @@ assert.match(source, /data-acc="director-law"[\s\S]*<b>剧组之律<\/b>[\s\S]*�
 // 幕外：设置可折叠、预设不再提供低频刷新按钮，指令与剧札独立；剧札数量紧随标题。
 assert.match(source, /sd-theater-settings-fold[\s\S]*番外小剧场栏目组/);
 assert.doesNotMatch(source, /sd-theater-refresh-preset/);
-assert.match(source, /recentOutputs[\s\S]*slice\(0, 3\)/);
+assert.match(source, /const THEATER_RECENT_LIMIT = 5;/);
+assert.match(source, /recentOutputs[\s\S]*slice\(0, THEATER_RECENT_LIMIT\)/);
+assert.doesNotMatch(source, /recentOutputs[^\n]*slice\(0, 3\)/);
 assert.doesNotMatch(source, /最近一幕：/);
 assert.match(source, /sd-theater-command-card[\s\S]*此幕指令/);
 assert.match(source, /inlineCount:\s*true/);

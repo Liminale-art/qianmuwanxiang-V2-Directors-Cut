@@ -1,6 +1,6 @@
 // 数据管理卡：占用总览（按类别分色块）＋「备份：导出／导入」＋「清理：扫描并清理／按聊天清理」。
 // 只负责生成标记与就地更新；按钮由入口文件绑定。卡片主体是静态的，扫描进度与占用只改写顶部两块，不整卡重画。
-import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.607';
+import { STORAGE_CATEGORY_LABELS, STORAGE_CATEGORY_COLORS } from './qianmu-storage-backup-view.js?v=1.59.608';
 
 // 扫描各步的名称，顺序与入口文件 collectStorageInventory 的任务表一致；只用于进度文字。
 export const STORAGE_SCAN_LABELS = Object.freeze(['浏览器空间', '本机资料', '伴读插图', '生图记录', '连接记录', '领取记录', 'Comfy 记录', 'Comfy 资料', 'Vibe 素材', '恢复记录',

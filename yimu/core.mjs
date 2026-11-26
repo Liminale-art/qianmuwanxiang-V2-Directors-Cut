@@ -1,4 +1,4 @@
-import { DEFAULTS, shownFloor, effectiveSettings, fingerprintMessages, sourceMatches } from './contract.mjs';
+import { DEFAULTS, shownFloor, effectiveSettings, fingerprintMessages, sourceMatches, recallCooldownOf } from './contract.mjs';
 import { sourceRanges, stageDependenciesValid, hasCustomParents } from './stage-contract.mjs';
 import { excerptDependenciesValid } from './recall-contract.mjs';
 import { inheritedSourceValid, sourceLabel, sourceTimelineEnd, hasCompanionBook, COMPANION_BOOK_NOTICE } from './source-scope.mjs';
@@ -569,7 +569,7 @@ export function selectMemories(document, snapshot, settings, hashes, type = '', 
     // 「刚提过」冷却：一条细切片被带入后的若干层内，不再仅因沾边就又被带一次（推进主线时，相关的正文本来就近，
     // 模型自己会接上，忆幕再重复带就成了过度回扣）。破例：正文在问「还记得吗」这类话，或它是这一轮最相关的那一条。
     // 不受冷却的：阶段主干、人工内容、整组顶替阶段的细切片、最近两条背景。同一楼层重新生成时不算冷却（重随要带同样的记忆）。
-    const cooldown = Number.isSafeInteger(settings.recallCooldown) && settings.recallCooldown > 0 ? settings.recallCooldown : 0;
+    const cooldown = recallCooldownOf(settings);
     const coolable = entry => !backbone(entry) && !protectedContent(entry) && !detailGroup.has(entry.id) && !currentBackground.has(entry.id);
     const mostRelevant = cooldown ? eligible.find(entry => coolable(entry) && relevance(entry) > 0) : null;
     const cooling = entry => {

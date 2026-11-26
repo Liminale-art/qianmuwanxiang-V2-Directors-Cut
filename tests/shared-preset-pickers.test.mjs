@@ -6,7 +6,7 @@ import { groupPresetNames } from '../qianmu-st-context-sources.js';
 import { installPresetPickerFixture, presetPickerSource } from './helpers/preset-picker-fixture.mjs';
 
 function fixture() {
-  const sandbox = vm.createContext({ ...utils, groupPresetNames });
+  const sandbox = vm.createContext({ ...utils, groupPresetNames, THEATER_RECENT_LIMIT: 5 });
   installPresetPickerFixture(sandbox);
   vm.runInContext(presetPickerSource, sandbox);
   return sandbox;

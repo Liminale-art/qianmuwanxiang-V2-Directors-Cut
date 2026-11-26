@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.607';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.608';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.607';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.608';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -28,15 +28,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.607';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.607';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.607';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.607';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.607';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.607';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.607';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.608';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.608';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.608';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.608';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.608';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.608';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.608';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.607';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.608';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.607';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.608';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.607';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.608';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.607';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.608';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.607';
+const VERSION = '1.59.608';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1001,6 +1001,8 @@ const FOCUS_CLOCK_STOCK_LINES = Object.freeze({
 
 const DEFAULT_BLUEPRINT = CREATIVE_BLUEPRINT;
 const DEFAULT_SYSTEM_PROMPT = CREATIVE_SYSTEM_PROMPT;
+// 幕外「最近几幕」留多少（用户 11-26 定 5）；以后的番外续写跟着这一幕的去留走。
+const THEATER_RECENT_LIMIT = 5;
 const JSON_SCHEMA_TEXT = createCreativeSchema();
 
 const THEATER_INSTRUCTION_PLACEHOLDER = '在此撰写剧场指令';
@@ -1838,13 +1840,12 @@ function migrateSettings(s) {
     }
     s._presetGlobalMigrated = true;
   }
-  if (!isPlainObject(s.theater)) s.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null, recentOutputs: [] };
-  if (!Array.isArray(s.theater.scripts)) s.theater.scripts = [];
+  if (!isPlainObject(s.theater)) s.theater = { instruction: '', apiProfileId: '', presetName: '', presetItems: {}, scripts: [], favorites: [], lastOutput: null, recentOutputs: [] };  if (!Array.isArray(s.theater.scripts)) s.theater.scripts = [];
   if (!Array.isArray(s.theater.favorites)) s.theater.favorites = [];
   if (!isPlainObject(s.theater.presetItems)) s.theater.presetItems = {};
   if (!Array.isArray(s.theater.recentOutputs)) s.theater.recentOutputs = s.theater.lastOutput ? [s.theater.lastOutput] : [];
   if (s.theater.lastOutput && !s.theater.recentOutputs.some((item) => item?.id === s.theater.lastOutput.id)) s.theater.recentOutputs.unshift(s.theater.lastOutput);
-  s.theater.recentOutputs = s.theater.recentOutputs.filter(Boolean).slice(0, 3);
+  s.theater.recentOutputs = s.theater.recentOutputs.filter(Boolean).slice(0, THEATER_RECENT_LIMIT);
   if (!Array.isArray(s.templates)) s.templates = [];
   // tags → folder：取首个旧标签作为文件夹，移除 tags 字段
   s.templates = s.templates.map((tpl) => {
@@ -33702,7 +33703,7 @@ function getTheater() {
   if (!isPlainObject(t.presetItems)) t.presetItems = {};
   if (!Array.isArray(t.recentOutputs)) t.recentOutputs = t.lastOutput ? [t.lastOutput] : [];
   if (t.lastOutput && !t.recentOutputs.some((item) => item?.id === t.lastOutput.id)) t.recentOutputs.unshift(t.lastOutput);
-  t.recentOutputs = t.recentOutputs.filter(Boolean).slice(0, 3);
+  t.recentOutputs = t.recentOutputs.filter(Boolean).slice(0, THEATER_RECENT_LIMIT);
   if (typeof t.useChatHistory === 'undefined') t.useChatHistory = true;
   if (typeof t.historyDepth === 'undefined') t.historyDepth = 5;
   return t;
@@ -33874,7 +33875,7 @@ function renderTheaterTab() {
   const t = getTheater();
   const profiles = Array.isArray(settings.apiProfiles) ? settings.apiProfiles : [];
   if (t.presetName) initTheaterPresetSelection(t.presetName);
-  const recentOutputs = (t.recentOutputs || (t.lastOutput ? [t.lastOutput] : [])).slice(0, 3);
+  const recentOutputs = (t.recentOutputs || (t.lastOutput ? [t.lastOutput] : [])).slice(0, THEATER_RECENT_LIMIT);
   return `
     <section class="sd-card">
       <details class="sd-plain-fold sd-theater-settings-fold" data-acc="theater-settings" open>
@@ -33902,7 +33903,7 @@ function renderTheaterTab() {
         <button class="sd-btn sd-theater-save-script"><i class="fa-solid fa-bookmark"></i>保存到剧札</button>
         <button class="sd-icon-btn sd-theater-open-favorites" title="收藏夹 (${t.favorites.length})" aria-label="收藏夹"><i class="fa-solid fa-star"></i></button>
       </div>
-      ${recentOutputs.length ? `<div class="sd-theater-latest-list" aria-label="最近三幕">${recentOutputs.map((scene) => `<button type="button" class="sd-theater-latest sd-theater-latest-preview" data-id="${htmlEscape(scene.id || '')}" title="点此阅读">
+      ${recentOutputs.length ? `<div class="sd-theater-latest-list" aria-label="最近几幕">${recentOutputs.map((scene) => `<button type="button" class="sd-theater-latest sd-theater-latest-preview" data-id="${htmlEscape(scene.id || '')}" title="点此阅读">
         ${htmlEscape(theaterOpening(scene, 72))}
       </button>`).join('')}</div>` : ''}
     </section>
@@ -34110,7 +34111,7 @@ async function stageTheaterScene() {
     log.response = content;
     if (!content) throw new Error('模型返回为空');
     t.lastOutput = { id: uid('scene'), source: theaterScriptSource || '', instruction, content, isHtml: looksLikeHtml(extractTheaterBody(content)), createdAt: new Date().toISOString() };
-    t.recentOutputs = [t.lastOutput, ...(t.recentOutputs || [])].filter((scene, index, list) => scene?.id && list.findIndex((item) => item?.id === scene.id) === index).slice(0, 3);
+    t.recentOutputs = [t.lastOutput, ...(t.recentOutputs || [])].filter((scene, index, list) => scene?.id && list.findIndex((item) => item?.id === scene.id) === index).slice(0, THEATER_RECENT_LIMIT);
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
     saveSettings();
