@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
-import {isRichProse, syncRichProseRuns, clearRichProseRuns, proseLayoutTargets, prepareRichProseRuns, clearProseBreakMarks, changedProseRoots, syncDropCap} from '../qianmu-prose-rich-compat.js';
+import {isRichProse, syncRichProseRuns, clearRichProseRuns, proseLayoutTargets, prepareRichProseRuns, clearProseBreakMarks, changedProseRoots, syncDropCap, dropCapStart} from '../qianmu-prose-rich-compat.js';
 
 const css=await readFile(new URL('../style.css',import.meta.url),'utf8');
 
@@ -173,6 +173,17 @@ test('drop cap passes over empty paragraphs and headings, but not body text outs
   const loose=d.element('div'),later=d.element('p');later.appendChild(d.text('后一段'));
   loose.appendChild(d.text('裸露的正文'));loose.appendChild(later);
   assert.equal(syncDropCap(loose,[loose]),null,'never push the drop cap down to what is really the second paragraph');
+});
+
+test('drop cap start finds the first visible character, the glyph past quotes, and where the first visual paragraph ends',()=>{
+  const d=dom(),p=d.element('p'),content=d.element('content'),lead=d.element('br'),q=d.element('q'),text=d.text('“你来晚了。”'),stop=d.element('br');
+  q.appendChild(text);[d.text('\n'),lead,q,stop,d.text('她没有回头。')].forEach(node=>content.appendChild(node));p.appendChild(content);
+  const start=dropCapStart(p);
+  assert.equal(start.node,text);assert.equal(start.offset,0);assert.equal(start.letter,'你');assert.equal(start.stop,stop);
+  const plain=d.element('p');plain.appendChild(d.text('  雨。'));
+  assert.deepEqual([dropCapStart(plain).offset,dropCapStart(plain).letter,dropCapStart(plain).stop],[2,'雨',null]);
+  const empty=d.element('p');empty.appendChild(d.element('br'));
+  assert.equal(dropCapStart(empty),null);
 });
 
 test('drop cap mark moves with the first paragraph and is not rewritten when unchanged',()=>{

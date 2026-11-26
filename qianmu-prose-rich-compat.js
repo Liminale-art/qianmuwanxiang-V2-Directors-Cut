@@ -194,12 +194,68 @@ export function syncDropCap(message, targets) {
   message.querySelectorAll?.('[data-sd-prose-drop="1"], [data-sd-prose-lead="1"]').forEach((element) => {
     if (keep.has(element)) return;
     delete element.dataset.sdProseDrop;
+    delete element.dataset.sdProseDropLine;
     delete element.dataset.sdProseLead;
   });
+  if (!hit) clearDropCapRaise(message);
   if (!hit) return null;
   if (hit.p.dataset.sdProseDrop !== '1') hit.p.dataset.sdProseDrop = '1';
   for (const node of hit.lead) if (node.dataset.sdProseLead !== '1') node.dataset.sdProseLead = '1';
   return hit.p;
+}
+
+// The single-line raise lives on the message element and is inherited: an
+// inline style on the paragraph itself would make it look like an authored
+// card (see isStyledBlock) and push it out of the prose run.
+export function setDropCapRaise(message, value) {
+  if (message.style?.getPropertyValue?.('--sd-prose-drop-raise') !== value) message.style?.setProperty?.('--sd-prose-drop-raise', value);
+}
+
+export function clearDropCapRaise(message) {
+  if (!message.style?.getPropertyValue?.('--sd-prose-drop-raise')) return;
+  message.style.removeProperty('--sd-prose-drop-raise');
+  if (!message.getAttribute?.('style')?.trim()) message.removeAttribute?.('style');
+}
+
+// First visible character of the drop paragraph and the first ordinary line
+// break after it (the end of the first visual paragraph under split breaks).
+export function dropCapStart(paragraph) {
+  let start = null, stop = null;
+  const visit = (node) => {
+    for (const child of Array.from(node.childNodes || [])) {
+      if (child.nodeType === 3) {
+        if (!start) { const at = child.textContent.search(/\S/); if (at >= 0) start = { node: child, offset: at }; }
+        continue;
+      }
+      if (child.nodeType !== 1) continue;
+      const tag = tagName(child);
+      if (tag === 'br') { if (start) { stop = child; return true; } continue; }
+      if (DROP_IGNORE.has(tag) || isProseSpacer(child)) continue;
+      if (visit(child)) return true;
+    }
+    return false;
+  };
+  visit(paragraph);
+  if (!start) return null;
+  const text = start.node.textContent.slice(start.offset);
+  // The glyph whose ink decides bottom alignment: skip leading quotes.
+  const letter = (text.match(/[\p{L}\p{N}]/u) || [text[0]])[0];
+  return { ...start, stop, letter };
+}
+
+// Lines of the first visual paragraph in the current layout. The cap's own
+// large box is ignored; small boxes are grouped by line.
+export function dropCapLines(paragraph, start, fontSize) {
+  const range = paragraph.ownerDocument.createRange();
+  range.selectNodeContents(paragraph);
+  range.setStart(start.node, start.offset);
+  if (start.stop) range.setEndBefore(start.stop);
+  const tops = [];
+  for (const rect of range.getClientRects()) {
+    if (!rect.width || !rect.height || rect.height > fontSize * 2) continue;
+    if (!tops.some((top) => Math.abs(top - rect.top) < fontSize * 0.6)) tops.push(rect.top);
+  }
+  return tops.length;
 }
 
 export function clearProseBreakMarks(root) {

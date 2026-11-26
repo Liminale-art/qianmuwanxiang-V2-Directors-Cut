@@ -5,7 +5,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.606';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.607';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -18,7 +18,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.606';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.607';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -26,17 +26,17 @@ blobStore.configureBlobStoreAccount({ resolveNamespace: resolveImageAccountNames
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
-import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap} from './qianmu-prose-rich-compat.js?v=1.59.414';
+import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.606';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.606';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.606';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.606';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.606';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.606';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.606';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.607';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.607';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.607';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.607';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.607';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.607';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.607';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.606';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.607';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -65,9 +65,9 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.606';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.607';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.606';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.607';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -97,7 +97,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.606';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.607';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -340,7 +340,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.606';
+const VERSION = '1.59.607';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -5376,12 +5376,57 @@ function proseLayoutMarkBreaks(root = document) {
 }
 
 // 首字下沉落在每层角色回复第一段真有字的正文上；段首的空行交给 CSS 收起。须在换行整理之后跑。
+// 首段（到第一个换行为止）在当前屏宽只排一行时，下沉两行会在下面空出一行：改为坐在这一行上、
+// 字底与小字字底对齐。行数随屏宽、字号、字体变化，所以每次排版、尺寸变化、字体载入后重新量。
 function proseLayoutMarkDropCap(root = document) {
-  const layout = proseLayoutSettings();
+  const layout = proseLayoutSettings(), marked = [];
   for (const message of proseLayoutMessageRoots(root)) {
     const on = layout.active && layout.dropCap && message.closest('.mes')?.getAttribute('is_user') !== 'true';
-    syncDropCap(message, on ? proseLayoutTargets(message) : null);
+    const paragraph = syncDropCap(message, on ? proseLayoutTargets(message) : null);
+    if (paragraph) marked.push({ message, paragraph });
   }
+  // 先量完全部，再统一写，避免逐段读写交替。抬高量写在楼层的 .mes_text 上由段落继承——
+  // 段落自己带 style 属性会被当成正则作者的卡片挤出正文块。
+  const rows = marked.map(({ message, paragraph }) => {
+    const start = dropCapStart(paragraph);
+    if (!start) return { message, paragraph, single: false, raise: 0 };
+    const size = Number.parseFloat(getComputedStyle(paragraph).fontSize) || 16;
+    const single = dropCapLines(paragraph, start, size) <= 1;
+    return { message, paragraph, single, raise: single ? proseDropCapRaise(paragraph, start.letter, size) : 0 };
+  });
+  for (const { message, paragraph, single, raise } of rows) {
+    if (single) {
+      if (paragraph.dataset.sdProseDropLine !== '1') paragraph.dataset.sdProseDropLine = '1';
+      setDropCapRaise(message, `${raise.toFixed(2)}px`);
+    } else {
+      if (paragraph.dataset.sdProseDropLine === '1') delete paragraph.dataset.sdProseDropLine;
+      clearDropCapRaise(message);
+    }
+  }
+}
+
+// 汉字字形比基线往下伸，字越大伸得越多；按基线对齐时大字底会比小字底低。用画布量出这个字在当前字体里
+// 伸到基线下的比例，把大字抬回 (大字号 − 正文字号) × 比例。字体载入后清缓存重量。
+const proseDropInk = { context: null, cache: new Map() };
+function proseDropCapRaise(paragraph, letter, size) {
+  const capSize = Number.parseFloat(getComputedStyle(paragraph, '::first-letter').fontSize) || 0;
+  if (!letter || capSize <= size) return 0;
+  const style = getComputedStyle(paragraph), font = `${style.fontStyle} ${style.fontWeight} 100px ${style.fontFamily}`, key = `${font}\n${letter}`;
+  let ratio = proseDropInk.cache.get(key);
+  if (ratio === undefined) {
+    proseDropInk.context ||= document.createElement('canvas').getContext('2d');
+    if (!proseDropInk.context) return 0;
+    proseDropInk.context.font = font;
+    ratio = Math.min(0.4, Math.max(0, Number(proseDropInk.context.measureText(letter).actualBoundingBoxDescent) || 0) / 100);
+    if (proseDropInk.cache.size > 200) proseDropInk.cache.clear();
+    proseDropInk.cache.set(key, ratio);
+  }
+  return ratio * (capSize - size);
+}
+
+function proseLayoutFontsLoaded() {
+  proseDropInk.cache.clear();
+  proseLayoutSchedule(document);
 }
 
 function proseLayoutSchedule(root) {
@@ -5402,9 +5447,10 @@ function proseLayoutStartObserver() {
   const layout = proseLayoutSettings();
   const chat = document.getElementById('chat');
   if (!layout.active || !chat) return;
-  if(layout.contentWidth>80&&typeof ResizeObserver==='function'){
+  if((layout.contentWidth>80||layout.dropCap)&&typeof ResizeObserver==='function'){
     proseLayoutWidthObserver=new ResizeObserver(()=>proseLayoutSchedule(chat));proseLayoutWidthObserver.observe(chat);
   }
+  if (layout.dropCap) document.fonts?.addEventListener?.('loadingdone', proseLayoutFontsLoaded);
   proseLayoutObserver = new MutationObserver((mutations) => changedProseRoots(mutations,layout).forEach(proseLayoutSchedule));
   proseLayoutObserver.observe(chat, { childList: true, subtree: true });
 }
@@ -5470,6 +5516,7 @@ function stopProseLayout(cleanDom = true) {
   proseLayoutObserver?.disconnect();
   proseLayoutObserver = null;
   proseLayoutWidthObserver?.disconnect();proseLayoutWidthObserver=null;
+  document.fonts?.removeEventListener?.('loadingdone', proseLayoutFontsLoaded);
   proseLayoutClearExpandedWidth(document);
   if (proseLayoutFrame) cancelAnimationFrame(proseLayoutFrame);
   proseLayoutFrame = 0;
