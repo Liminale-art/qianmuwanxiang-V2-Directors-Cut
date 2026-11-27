@@ -57,7 +57,7 @@ export function normalizeProps(raw) {
     const number = (key, min, max) => { if (raw[key] !== undefined && raw[key] !== null && Number.isFinite(Number(raw[key]))) props[key] = round(clamp(raw[key], min, max, min)); };
     number('size', 6, 400); number('lh', 0.6, 5); number('ls', -0.5, 3); number('indent', 0, 8); number('gap', 0, 6);
     number('opacity', 0, 1); number('strokeWidth', 0, 60); number('radius', 0, 540); number('rotate', -180, 180);
-    for (const key of ['color', 'stroke']) { const hex = normalizeHex(raw[key]); if (hex) props[key] = hex; }
+    for (const key of ['color', 'stroke', 'nameColor']) { const hex = normalizeHex(raw[key]); if (hex) props[key] = hex; }
     if (raw.fill === 'none') props.fill = 'none'; else { const hex = normalizeHex(raw.fill); if (hex) props.fill = hex; }
     if (ALIGNS.has(raw.align)) props.align = raw.align;
     if (WEIGHTS.has(Number(raw.weight))) props.weight = Number(raw.weight);
@@ -71,6 +71,14 @@ function normalizeImage(raw) {
     const w = clamp(raw.w, 1, 20000, 0), h = clamp(raw.h, 1, 20000, 0);
     if (!w || !h) return null;
     return {id: raw.id, w, h, cx: clamp(raw.cx, 0, 1, 0.5), cy: clamp(raw.cy, 0, 1, 0.5), zoom: round(clamp(raw.zoom, 1, 8, 1))};
+}
+
+// 书友对话的一句：who 是 user（你）或 friend（书友）；id 是伴读对话里那条消息的编号（用来在挑选时打勾）。
+export function normalizeLines(raw) {
+    return (Array.isArray(raw) ? raw : []).slice(0, 40).filter(isRecord).map(line => ({
+        id: typeof line.id === 'string' ? line.id.slice(0, 64) : '', who: line.who === 'user' ? 'user' : 'friend',
+        name: shortString(line.name, 40), text: shortString(line.text, 2000),
+    })).filter(line => line.text.trim());
 }
 
 export function normalizeElement(raw, pageH = 1440) {
@@ -91,7 +99,8 @@ export function normalizeElement(raw, pageH = 1440) {
         element.src = typeof raw.src === 'string' ? raw.src.slice(0, 2000) : null;
         if (typeof raw.field === 'string' && /^[a-z]{1,32}$/.test(raw.field)) element.field = raw.field;
     }
-    if (element.kind === 'text' || element.kind === 'body') element.vertical = raw.vertical === true;
+    if (element.kind === 'text' || element.kind === 'body' || element.kind === 'dialog') element.vertical = raw.vertical === true;
+    if (element.kind === 'dialog') { element.look = raw.look === 'bubble' ? 'bubble' : 'script'; element.lines = normalizeLines(raw.lines); }
     if (element.kind === 'body') element.flow = Math.round(clamp(raw.flow, 0, 999, 0));
     if (element.kind === 'line') element.dir = raw.dir === -1 ? -1 : 1;
     if (element.kind === 'image') element.image = normalizeImage(raw.image);
@@ -139,8 +148,11 @@ export function normalizeDoc(raw) {
     return doc;
 }
 
+// 占位都没值时剩下的只有这些连接符，这样的文本框不出现。
+const EMPTY_FIELD_MARKS = /[\s·｜|/、，,第层《》“”]/g;
+
 // 模板里的一页 → 稿里的一页：给元素编号、填占位字段、按页高缩放纵向位置。
-function instantiateLayout(layout, fields, scaleY) {
+function instantiateLayout(layout, fields, scaleY, lines = []) {
     const elements = [];
     let flow = 0;
     for (const source of layout?.elements || []) {
@@ -152,10 +164,11 @@ function instantiateLayout(layout, fields, scaleY) {
                 element.src = src;
                 element.text = resolveFields(src, fields);
                 // 占位全是空值（比如不在当前聊天、没有楼层号）时，这个文本框就不出现。
-                if (hasFieldToken(src) && !element.text.replace(/[\s·｜|/、，,第层]/g, '')) continue;
+                if (hasFieldToken(src) && !element.text.replace(EMPTY_FIELD_MARKS, '')) continue;
             } else element.text = String(source.text ?? '');
         }
         if (element.kind === 'body') element.flow = flow++;
+        if (element.kind === 'dialog') { element.lines = normalizeLines(lines); if (!element.lines.length) continue; }
         elements.push(element);
     }
     return {decor: layout?.decor || '', elements};
@@ -167,12 +180,12 @@ export function builtinTemplate(id) {
 }
 
 // 用模板起一份新稿。
-export function createDoc({template, templateId, body, fields = {}, ratio = 'tpl'}) {
+export function createDoc({template, templateId, body, fields = {}, ratio = 'tpl', lines = []}) {
     const doc = {v: 1, templateId, template: {name: template.name, css: template.css, height: template.height}, ratio: RATIO_KEYS.has(ratio) ? ratio : 'tpl',
         paper: template.paper, ink: template.ink, bg: {image: '', opacity: 1, w: 0, h: 0}, body: normalizeBody(body), fields: {...fields}};
     const scale = pageHeight(doc) / template.height;
-    doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...instantiateLayout(template.first, fields, scale)}];
-    doc.restLayout = instantiateLayout(template.rest || template.first, fields, scale);
+    doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...instantiateLayout(template.first, fields, scale, lines)}];
+    doc.restLayout = instantiateLayout(template.rest || template.first, fields, scale, lines);
     return doc;
 }
 
@@ -181,6 +194,7 @@ function schemeLayout(page) {
     return {decor: page.decor, elements: page.elements.map(element => {
         const copy = structuredClone(element);
         if (copy.kind === 'text' && copy.src !== null) delete copy.text;
+        if (copy.kind === 'dialog') copy.lines = [];   // 对话是内容，方案只记它的位置与样式
         return copy;
     })};
 }
@@ -215,27 +229,28 @@ export function normalizeScheme(raw) {
     return scheme;
 }
 
-function layoutFromScheme(layout, fields) {
+function layoutFromScheme(layout, fields, lines = []) {
     const elements = [];
     for (const source of layout.elements) {
         const element = {...structuredClone(source), id: newId()};
         if (element.kind === 'text') {
             if (typeof element.text !== 'string') {
                 element.text = resolveFields(element.src || '', fields);
-                if (hasFieldToken(element.src) && !element.text.replace(/[\s·｜|/、，,第层]/g, '')) continue;
+                if (hasFieldToken(element.src) && !element.text.replace(EMPTY_FIELD_MARKS, '')) continue;
             }
         }
+        if (element.kind === 'dialog') { element.lines = normalizeLines(lines); if (!element.lines.length) continue; }
         elements.push(element);
     }
     return {decor: layout.decor, elements};
 }
 
 // 用方案（含「上次的设置」）起一份新稿。
-export function createDocFromScheme(scheme, {body, fields = {}}) {
+export function createDocFromScheme(scheme, {body, fields = {}, lines = []}) {
     const doc = {v: 1, templateId: scheme.templateId, template: structuredClone(scheme.template), ratio: scheme.ratio, paper: scheme.paper, ink: scheme.ink,
         bg: structuredClone(scheme.bg), body: normalizeBody(body), fields: {...fields}};
-    doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...layoutFromScheme(scheme.first, fields)}];
-    doc.restLayout = layoutFromScheme(scheme.rest, fields);
+    doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...layoutFromScheme(scheme.first, fields, lines)}];
+    doc.restLayout = layoutFromScheme(scheme.rest, fields, lines);
     return doc;
 }
 
@@ -263,11 +278,11 @@ export function makeContinuationPage(doc) {
 
 export function cloneDoc(doc) { return structuredClone(doc); }
 
-// ── 设置里的书摘成图资料（随账户）──────────────────────────────────────────
+// ── 设置里的书摘成图资料（随账户）：上次的版式按入口分开（正文收藏 last／伴读 lastReader），方案与自建模板共用 ──
 export const SCHEME_LIMIT = 50, TEMPLATE_LIMIT = 30;
 export function normalizeStudioSettings(raw) {
     const value = isRecord(raw) ? raw : {};
-    const last = normalizeScheme(value.last);
+    const last = normalizeScheme(value.last), lastReader = normalizeScheme(value.lastReader);
     const schemes = (Array.isArray(value.schemes) ? value.schemes : []).slice(0, SCHEME_LIMIT).map(item => {
         const scheme = isRecord(item) && normalizeScheme(item.scheme);
         return scheme && {id: typeof item.id === 'string' && /^[\w-]{1,48}$/.test(item.id) ? item.id : newId('s'), name: shortString(item.name, 40).trim() || '未命名方案', scheme};
@@ -276,5 +291,5 @@ export function normalizeStudioSettings(raw) {
         if (!isRecord(item) || typeof item.source !== 'string' || !parseExcerptTemplate(item.source).ok) return null;
         return {id: typeof item.id === 'string' && /^[\w-]{1,48}$/.test(item.id) ? item.id : newId('t'), source: item.source.slice(0, 200_000), updatedAt: Number(item.updatedAt) || 0};
     }).filter(Boolean);
-    return {last, schemes, templates};
+    return {last, lastReader, schemes, templates};
 }

@@ -16,7 +16,21 @@
       "Bash(cat)",
       "Bash(git commit *)",
       "Bash(git commit -m 'refactor: extract 6 more utility functions to utils module *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(ls C:/Users/ggnin/.claude/ | head -30; ls C:/Users/ggnin/.claude/file-history 2>/dev/null | head -3; find C:/Users/ggnin/.claude -name \"settings*.json*\" -newer C:/Users/ggnin/.claude/projects 2>/dev/null | head; find /d/ST -maxdepth 3 -path \"*claude*\" -name \"settings*\" 2>/dev/null | head)",
+      "Read(//c/Users/ggnin/.claude/**)",
+      "Read(//c/Users/ggnin/.claude/file-history/**)",
+      "Read(//d/ST/**)",
+      "Bash(cd C:/Users/ggnin/ego/ym-e2e-20261119 && ls | grep -i \"reader\\\\|coread\" ; sed -n 1,40p reader-font-01.mjs 2>/dev/null | cut -c1-220)",
+      "Read(//c/Users/ggnin/ego/ym-e2e-20261119/**)",
+      "Bash(timeout 400 ego-browser nodejs -e \"await import\\('file:///C:/Users/ggnin/ego/ym-e2e-20261119/xs-reader-01.mjs'\\)\")",
+      "Bash(cd C:/Users/ggnin/ego && grep -rhn \"sd-reader-card\\\\|sd-reader-open\\\\|data-reader-panel\\\\|notes\" ym-e2e-20261119/coread-ui-01.mjs ym-e2e-20261119/reader-font-01.mjs dm-20261117/l1.mjs 2>/dev/null | cut -c1-260 | head -12; cd /d/ST/Omniscene && grep -n \"data-reader-panel=\\\\\"notes\\\\\"\\\\|sd-reader-notes-btn\\\\|data-panel=\\\\\"notes\\\\\"\\\\|data-open-panel\" index.js | head -5)",
+      "Read(//c/Users/ggnin/ego/**)",
+      "Bash(python -)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ggnin\\ego\\ym-e2e-20261119",
+      "C:\\Users\\ggnin\\AppData\\Local\\Temp"
     ]
   }
 }

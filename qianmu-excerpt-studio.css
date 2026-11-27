@@ -159,6 +159,14 @@
 .qm-xs-ask input { height: 32px; padding: 0 10px; border: 1px solid var(--xs-line); border-radius: 8px; background: var(--xs-soft); }
 .qm-xs-ask-row { display: flex; justify-content: flex-end; gap: 6px; }
 
+.qm-xs-pick { display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 48px)); }
+.qm-xs-pick-list { display: flex; flex-direction: column; gap: 2px; max-height: min(52vh, 420px); overflow: auto; overscroll-behavior: contain; }
+.qm-xs-pick-row { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.qm-xs-pick-row:hover { background: var(--xs-soft); }
+.qm-xs-pick-row.is-user { background: color-mix(in srgb, var(--xs-accent) 6%, transparent); }
+.qm-xs-pick-row input { flex: none; margin-top: 3px; accent-color: var(--xs-accent); }
+.qm-xs-pick-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; }
+.qm-xs-pick-text b { margin-right: 4px; color: var(--xs-accent); font-weight: 600; }
 .qm-xs-picker { display: flex; flex-direction: column; gap: 10px; width: 236px; }
 .qm-xs-sv { position: relative; height: 148px; border-radius: 8px; cursor: crosshair; touch-action: none; }
 .qm-xs-sv i { position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); transform: translate(-50%, -50%); pointer-events: none; }

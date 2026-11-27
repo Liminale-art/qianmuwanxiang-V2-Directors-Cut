@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.622';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.623';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.622';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.623';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.622';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.622';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.622';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.622';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.622';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.622';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.622';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.623';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.623';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.623';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.623';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.623';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.623';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.623';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.622';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.623';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -67,10 +67,10 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.622';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.623';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.622';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.623';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -100,7 +100,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.622';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.623';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -343,7 +343,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.622';
+const VERSION = '1.59.623';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1261,19 +1261,6 @@ const DEFAULT_SETTINGS = Object.freeze({
     dialogHeight: 300,              // 伴读对话抽屉高度(px)，独立记忆
     dialogTipSeen: false,           // 首次打开对话抽屉时显示发送键手势提示
     retainedMemoryBooks: [],        // 已删正文但由用户选择保留的长期记忆书目轻档案
-    excerptCard: {                  // 摘录图片卡：少量内置方案 + 用户微调，随伴读数据打包迁移
-      preset: 'paper',              // paper | night | mist | custom
-      ratio: 'portrait',            // square | portrait | story
-      background: '#f2ede3',
-      textColor: '#302c2a',
-      accentColor: '#b37d6b',
-      fontSize: 16,
-      fontId: 'zeo-376',            // CSS 字体项；仅用于摘录 Canvas
-      customFonts: [],              // [{id,name,css,family}] 用户命名并保存的摘录 CSS 字体
-      showAnnotation: true,
-      showSource: true,
-      savedPresets: [],             // [{id,name,...当前摘录图片设置}]，用户自存方案
-    },
     // 幕伴小助手：独立于角色书友的工具型问答；默认只在本次 ST 页面会话保留历史。
     assistant: {
       apiProfileId: '',             // 千幕 API 预设；空则跟随伴读对话 API
@@ -30171,7 +30158,6 @@ async function coreadMaybeAutoDistillText() {
 
 // 阅读器选区监听句柄（document 级·portal 每次重建都会重绑·此处存旧句柄以便先摘再挂·防泄漏）
 let readerSelChangeHandler = null;
-let readerExcerptResizeObserver = null;
 let readerPortalNode = null;
 let readerPanelObserver = null;
 let readerPanelObservedPortal = null;
@@ -30234,8 +30220,6 @@ function unmountReaderPortal() {
   inlineImageUrls.clear();
   inlineImageSmall.clear();
   detachReaderSelListener();
-  readerExcerptResizeObserver?.disconnect?.();
-  readerExcerptResizeObserver = null;
   readerPanelObserver?.disconnect?.();
   readerPanelObserver = null;
   readerPanelObservedPortal = null;
@@ -30582,9 +30566,6 @@ function buildReaderStage() {
   const assistantMode = !!readerView.assistantOpen;
   const comicMode = meta.mode === 'comic';
   const comicPageAnalyzed = comicMode && !!cache.comic && reader.comicStatus(cache.comic, ci).currentDescribed;
-  const excerptCfg = coreadExcerptConfig();
-  const excerptPresetOptions = (excerptCfg.savedPresets || []).map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('');
-  const excerptFontOptions = coreadExcerptFontOptions(excerptCfg);
   const focusState = focusClockState();
   const focusLinkedHere = focusState.activity === 'reading'
     && (focusState.status === 'idle' ? focusState.bookId === meta.id : focusState.sessionBookId === meta.id);
@@ -30742,39 +30723,6 @@ function buildReaderStage() {
           <div class="sd-reader-noteedit-actions">
             <button class="sd-btn sd-reader-noteedit-cancel">取消</button>
             <button class="sd-btn sd-primary sd-reader-noteedit-ok">保存</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 摘录图片：功能优先的原生画布导出，模板与微调随伴读设置记忆 -->
-      <div class="sd-reader-excerptoverlay" hidden>
-        <div class="sd-reader-excerptoverlay-card">
-          <button class="sd-reader-excerpt-close" title="关闭"><i class="fa-solid fa-xmark"></i></button>
-          <div class="sd-reader-excerpt-preview">
-            <div class="sd-reader-excerpt-canvas-wrap"></div>
-            <div class="sd-reader-excerpt-viewbar">
-              <div class="sd-reader-excerpt-pages" hidden><button type="button" class="sd-reader-excerpt-page-prev" title="上一张"><i class="fa-solid fa-chevron-left"></i></button><span></span><button type="button" class="sd-reader-excerpt-page-next" title="下一张"><i class="fa-solid fa-chevron-right"></i></button></div>
-              <div class="sd-reader-excerpt-zoom"><button type="button" class="sd-reader-excerpt-zoom-out" title="缩小"><i class="fa-solid fa-minus"></i></button><span class="sd-reader-excerpt-zoomval">适应</span><button type="button" class="sd-reader-excerpt-zoom-in" title="放大"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-reader-excerpt-zoom-fit" title="完整适应"><i class="fa-solid fa-expand"></i></button></div>
-            </div>
-          </div>
-          <div class="sd-reader-excerpt-panel">
-            <div class="sd-reader-excerpt-controls">
-              <label class="sd-reader-excerpt-scheme"><span>样式</span><span class="sd-reader-excerpt-scheme-pick"><select class="sd-reader-excerpt-preset"><option value="paper">米纸</option><option value="night">夜墨</option><option value="mist">雾蓝</option><option value="custom">临时自定义</option>${excerptPresetOptions}</select><button type="button" class="sd-reader-excerpt-preset-save" title="保存当前为自定义样式"><i class="fa-solid fa-bookmark"></i></button><button type="button" class="sd-reader-excerpt-preset-del" title="删除当前自定义样式"><i class="fa-solid fa-trash"></i></button></span></label>
-              <label>比例<select class="sd-reader-excerpt-ratio"><option value="square">1 : 1</option><option value="portrait">4 : 5</option><option value="story">9 : 16</option></select></label>
-              <label>字号<input type="range" class="sd-reader-excerpt-font" min="10" max="20" step="1"><b class="sd-reader-excerpt-fontval"></b></label>
-              <label class="sd-reader-excerpt-fontface"><span>字体</span><span class="sd-reader-excerpt-fontpick"><select class="sd-reader-excerpt-fontfamily">${excerptFontOptions}</select><button type="button" class="sd-reader-excerpt-font-add" title="添加 CSS 字体"><i class="fa-solid fa-plus"></i></button><button type="button" class="sd-reader-excerpt-font-del" title="删除当前自定义字体"><i class="fa-solid fa-trash"></i></button></span></label>
-              <label title="背景色">底色<input type="color" class="sd-reader-excerpt-bg"></label>
-              <label title="文字颜色">字色<input type="color" class="sd-reader-excerpt-fg"></label>
-              <label title="页眉颜色">页眉<input type="color" class="sd-reader-excerpt-accent"></label>
-            </div>
-            <div class="sd-reader-excerpt-checks">
-              <label><span>显示笔记</span>${renderMemSwitch('sd-reader-excerpt-note', excerptCfg.showAnnotation)}</label>
-              <label><span>显示出处</span>${renderMemSwitch('sd-reader-excerpt-source', excerptCfg.showSource)}</label>
-            </div>
-            <div class="sd-reader-excerpt-actions">
-              <button class="sd-btn sd-reader-excerpt-copy"><i class="fa-solid fa-copy"></i> 复制文字</button>
-              <button class="sd-btn sd-primary sd-reader-excerpt-save"><i class="fa-solid fa-download"></i> 保存图片</button>
-            </div>
           </div>
         </div>
       </div>
@@ -31360,155 +31308,6 @@ function renderReaderMarks(meta) {
   return renderCoreadMarksPanelView(meta.notes, htmlEscape);
 }
 
-const COREAD_EXCERPT_PRESETS = {
-  paper: { background: '#f2ede3', textColor: '#302c2a', accentColor: '#b37d6b' },
-  night: { background: '#20242c', textColor: '#ece7dc', accentColor: '#c99a73' },
-  mist: { background: '#dfe7e9', textColor: '#26363b', accentColor: '#6f929b' },
-};
-
-const COREAD_EXCERPT_FONT_FALLBACK = '"Noto Serif SC", "Songti SC", "SimSun", serif';
-const COREAD_EXCERPT_BUILTIN_FONTS = [
-  { id: 'zeo-376', name: '文津宋体', family: 'WenJin Mincho Plane 0', css: '@import url("https://fontsapi.zeoseven.com/376/main/result.css");' },
-  { id: 'zeo-292', name: '霞鹜文楷', family: 'LXGW WenKai', css: '@import url("https://fontsapi.zeoseven.com/292/main/result.css");' },
-  { id: 'zeo-285', name: '思源宋', family: 'Noto Serif CJK', css: '@import url("https://fontsapi.zeoseven.com/285/main/result.css");' },
-  { id: 'zeo-69', name: '思源黑', family: 'Noto Sans CJK', css: '@import url("https://fontsapi.zeoseven.com/69/main/result.css");' },
-  { id: 'zeo-416', name: '普利世', family: 'Plix', css: '@import url("https://fontsapi.zeoseven.com/416/main/result.css");' },
-];
-
-function coreadExcerptFonts(cfg = coreadExcerptConfig()) {
-  return [...COREAD_EXCERPT_BUILTIN_FONTS, ...(cfg.customFonts || [])];
-}
-
-function coreadExcerptFontOptions(cfg) {
-  const custom = (cfg.customFonts || []).map((font) => `<option value="${htmlEscape(font.id)}">${htmlEscape(font.name)}</option>`).join('');
-  return `<optgroup label="内置字体">${COREAD_EXCERPT_BUILTIN_FONTS.map((font) => `<option value="${font.id}">${htmlEscape(font.name)}</option>`).join('')}</optgroup>${custom ? `<optgroup label="我的字体">${custom}</optgroup>` : ''}`;
-}
-
-function coreadExcerptConfig() {
-  const c = coread();
-  if (!isPlainObject(c.excerptCard)) c.excerptCard = clone(DEFAULT_SETTINGS.coread.excerptCard);
-  mergeDefaults(c.excerptCard, DEFAULT_SETTINGS.coread.excerptCard);
-  const cfg = c.excerptCard;
-  if (!Array.isArray(cfg.savedPresets)) cfg.savedPresets = [];
-  cfg.savedPresets = cfg.savedPresets.filter((item) => item && item.id && item.name).slice(0, 30);
-  if (!Array.isArray(cfg.customFonts)) cfg.customFonts = [];
-  cfg.customFonts = cfg.customFonts.map((font) => {
-    if (!font || typeof font !== 'object') return null;
-    const css = String(font.css || (font.url ? `@import url("${font.url}");` : '')).trim();
-    return { ...font, css };
-  }).filter((font) => font && font.id && font.name && font.css && font.family).slice(0, 30);
-  if (!['paper', 'night', 'mist', 'custom'].includes(cfg.preset) && !cfg.savedPresets.some((item) => item.id === cfg.preset)) cfg.preset = 'paper';
-  if (!['square', 'portrait', 'story'].includes(cfg.ratio)) cfg.ratio = 'portrait';
-  cfg.background = sanitizeHexColor(cfg.background) || '#f2ede3';
-  cfg.textColor = sanitizeHexColor(cfg.textColor) || '#302c2a';
-  cfg.accentColor = sanitizeHexColor(cfg.accentColor) || '#b37d6b';
-  cfg.fontSize = Math.max(10, Math.min(20, Number(cfg.fontSize) || 16));
-  // v1.21.2 及更早的本机字体设置迁移到隔离 CSS 字体体系。
-  if (!cfg.fontId) {
-    const legacy = { sans: 'zeo-69', kai: 'zeo-292', serif: 'zeo-376', fang: 'zeo-376', custom: 'zeo-376' };
-    cfg.fontId = legacy[cfg.fontFamily] || 'zeo-376';
-  }
-  if (!coreadExcerptFonts(cfg).some((font) => font.id === cfg.fontId)) cfg.fontId = 'zeo-376';
-  delete cfg.fontFamily;
-  delete cfg.customFont;
-  cfg.showAnnotation = cfg.showAnnotation !== false;
-  cfg.showSource = cfg.showSource !== false;
-  return cfg;
-}
-
-function coreadExcerptFontStack(cfg) {
-  const font = coreadExcerptFonts(cfg).find((item) => item.id === cfg.fontId);
-  return font?.family ? `"${String(font.family).replace(/["\\\r\n]/g, '')}", ${COREAD_EXCERPT_FONT_FALLBACK}` : COREAD_EXCERPT_FONT_FALLBACK;
-}
-
-function coreadNormalizeZeoFontUrl(value) {
-  const raw = String(value || '').trim();
-  const importMatch = raw.match(/https:\/\/fontsapi\.zeoseven\.com\/\d+\/[^'"\s)]+\/result\.css/i);
-  const candidate = importMatch?.[0] || raw;
-  let url;
-  try { url = new URL(candidate); } catch (_) { return null; }
-  const host = url.hostname.toLowerCase();
-  const item = host === 'fonts.zeoseven.com' ? url.pathname.match(/^\/items\/(\d+)\/?$/) : null;
-  if (item) return { fontNo: item[1], url: `https://fontsapi.zeoseven.com/${item[1]}/main/result.css` };
-  const api = host === 'fontsapi.zeoseven.com' ? url.pathname.match(/^\/(\d+)\/[^/]+\/result\.css$/) : null;
-  return api ? { fontNo: api[1], url: `https://fontsapi.zeoseven.com${url.pathname}` } : null;
-}
-
-function coreadAttachExcerptFont(font) {
-  if (!font?.css) return false;
-  const styleId = `sd-coread-font-${String(font.id).replace(/[^a-z0-9_-]/gi, '-')}`;
-  let style = document.getElementById(styleId);
-  if (!style) {
-    style = document.createElement('style');
-    style.id = styleId;
-    style.dataset.coreadFont = String(font.id);
-    style.textContent = String(font.css);
-    document.head.appendChild(style);
-  }
-  return true;
-}
-
-async function coreadEnsureExcerptFont(cfg = coreadExcerptConfig()) {
-  const font = coreadExcerptFonts(cfg).find((item) => item.id === cfg.fontId);
-  if (!font) return false;
-  if (!coreadAttachExcerptFont(font)) return false;
-  if (document.fonts?.load) {
-    const family = String(font.family).replace(/["\\\r\n]/g, '');
-    // @import 先交给 CSSOM 解析，再由 FontFaceSet 等待真实字体；不再预先 fetch 同一份 CSS。
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    try {
-      const loaded = await Promise.race([
-        document.fonts.load(`16px "${family}"`),
-        new Promise((resolve) => setTimeout(() => resolve([]), 6000)),
-      ]);
-      return Array.isArray(loaded) ? loaded.length > 0 || document.fonts.check(`16px "${family}"`) : true;
-    } catch (_) { return false; }
-  }
-  return true;
-}
-
-function coreadCreateExcerptCssFont(name, cssText) {
-  const displayName = String(name || '').replace(/[<>\r\n]/g, '').trim().slice(0, 40);
-  const rawCss = String(cssText || '').trim();
-  if (!displayName) throw new Error('请填写字体名称');
-  const normalized = coreadNormalizeZeoFontUrl(rawCss);
-  if (!normalized) throw new Error('CSS 中未找到有效的 ZeoSeven 字体 API 地址');
-  const familyMatch = rawCss.match(/font-family\s*:\s*(['"])([^'"\r\n;]+)\1/i) || rawCss.match(/font-family\s*:\s*([^;\r\n}]+)/i);
-  const family = String(familyMatch?.[2] || familyMatch?.[1] || '').replace(/["'\\\r\n]/g, '').trim().slice(0, 80);
-  if (!family) throw new Error('CSS 中未找到 font-family，请粘贴网站提供的完整 CSS 用法');
-  const font = {
-    id: `zeo-custom-${normalized.fontNo}-${uid('font').replace(/[^a-z0-9]/gi, '').slice(-8)}`,
-    name: displayName,
-    family,
-    css: `@import url("${normalized.url}");`,
-  };
-  const cfg = coreadExcerptConfig();
-  cfg.customFonts.push(font);
-  cfg.fontId = font.id;
-  saveSettings();
-  return font;
-}
-
-async function coreadPromptExcerptCssFont() {
-  const context = ctx();
-  const Popup = context.Popup;
-  if (Popup && context.POPUP_TYPE) {
-    const wrap = document.createElement('div');
-    wrap.className = 'sd-reader-fontcss-form';
-    wrap.innerHTML = `
-      <label><span>字体名称</span><input type="text" class="sd-reader-fontcss-name" maxlength="40" placeholder="显示在下拉框中的名称"></label>
-      <label><span>CSS</span><textarea class="sd-reader-fontcss-code" rows="7" placeholder='粘贴网站提供的完整 CSS，例如：\n@import url("https://fontsapi.zeoseven.com/…/result.css");\n.demo { font-family: "字体族名称"; }'></textarea></label>`;
-    const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '添加', cancelButton: '取消', wide: true });
-    const result = await popup.show();
-    if (result !== true && String(result) !== '1') return null;
-    return coreadCreateExcerptCssFont(wrap.querySelector('.sd-reader-fontcss-name')?.value, wrap.querySelector('.sd-reader-fontcss-code')?.value);
-  }
-  const name = await promptInput('添加摘录字体', '字体名称：', '');
-  if (!name) return null;
-  const css = await promptInput('添加摘录字体', '粘贴完整 CSS：', '');
-  return css ? coreadCreateExcerptCssFont(name, css) : null;
-}
-
 function coreadFindReaderNote(noteId) {
   return coreadBookMeta(readerView?.bookId)?.notes?.find((n) => n.id === noteId && n.kind === 'highlight') || null;
 }
@@ -31550,227 +31349,64 @@ async function coreadCopyText(text) {
   toast('已复制摘录文字。', 'success');
 }
 
-function coreadExcerptPresetOptions(cfg) {
-  return `<option value="paper">米纸</option><option value="night">夜墨</option><option value="mist">雾蓝</option><option value="custom">临时自定义</option>${(cfg.savedPresets || []).map((item) => `<option value="${htmlEscape(item.id)}">${htmlEscape(item.name)}</option>`).join('')}`;
-}
-
-function coreadRefreshExcerptPresetSelect(stageRoot) {
-  const select = stageRoot?.querySelector('.sd-reader-excerpt-preset');
-  if (!select) return;
-  const cfg = coreadExcerptConfig();
-  select.innerHTML = coreadExcerptPresetOptions(cfg);
-  select.value = cfg.preset;
-}
-
-function coreadRefreshExcerptFontSelect(stageRoot) {
-  const select = stageRoot?.querySelector('.sd-reader-excerpt-fontfamily');
-  if (!select) return;
-  const cfg = coreadExcerptConfig();
-  select.innerHTML = coreadExcerptFontOptions(cfg);
-  select.value = cfg.fontId;
-  const del = stageRoot.querySelector('.sd-reader-excerpt-font-del');
-  if (del) del.hidden = !cfg.customFonts.some((font) => font.id === cfg.fontId);
-}
-
-function coreadCanvasWrap(ctx, text, maxWidth) {
-  const lines = [];
-  for (const paragraph of String(text || '').split(/\n/)) {
-    if (!paragraph) { lines.push(''); continue; }
-    let line = '';
-    for (const char of [...paragraph]) {
-      const next = line + char;
-      if (line && ctx.measureText(next).width > maxWidth) { lines.push(line); line = char; }
-      else line = next;
-    }
-    if (line) lines.push(line);
-  }
-  return lines;
-}
-
-function coreadBuildExcerptCanvases(note, cfg) {
-  const source = coreadNoteSource(note);
-  const fontStack = coreadExcerptFontStack(cfg);
-  const [w, h] = cfg.ratio === 'square' ? [1080, 1080] : (cfg.ratio === 'story' ? [1080, 1920] : [1080, 1350]);
-  const measure = document.createElement('canvas').getContext('2d');
-  if (!measure) return [];
-  const pad = 124;
-  const top = 230;
-  const bottom = cfg.showSource ? 220 : 105;
-  const contentHeight = Math.max(240, h - top - bottom);
-  const quoteSize = Math.round(cfg.fontSize * 3);
-  const quoteLine = Math.round(quoteSize * 1.62);
-  const noteSize = Math.max(24, Math.round(quoteSize * .64));
-  const noteLine = Math.round(noteSize * 1.58);
-  measure.font = `400 ${quoteSize}px ${fontStack}`;
-  const quoteLines = coreadCanvasWrap(measure, `“${note.text || ''}”`, w - pad * 2);
-  measure.font = `400 ${noteSize}px ${fontStack}`;
-  const annotationLines = cfg.showAnnotation && String(note.annotation || '').trim()
-    ? coreadCanvasWrap(measure, note.annotation, w - pad * 2)
-    : [];
-  const pages = [];
-  const quoteCapacity = Math.max(1, Math.floor(contentHeight / quoteLine));
-  for (let offset = 0; offset < quoteLines.length; offset += quoteCapacity) pages.push({ quote: quoteLines.slice(offset, offset + quoteCapacity), annotation: [] });
-  if (!pages.length) pages.push({ quote: ['“”'], annotation: [] });
-  let remainingNotes = annotationLines.slice();
-  while (remainingNotes.length) {
-    let page = pages[pages.length - 1];
-    const used = page.quote.length * quoteLine + (page.quote.length ? 54 : 0);
-    let capacity = Math.max(0, Math.floor((contentHeight - used) / noteLine));
-    if (!capacity) { page = { quote: [], annotation: [] }; pages.push(page); capacity = Math.max(1, Math.floor(contentHeight / noteLine)); }
-    page.annotation.push(...remainingNotes.splice(0, capacity));
-  }
-  return pages.map((page, pageIndex) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const g = canvas.getContext('2d');
-    if (!g) return null;
-    g.fillStyle = cfg.background; g.fillRect(0, 0, w, h);
-    g.fillStyle = cfg.accentColor; g.fillRect(86, 86, 8, 116);
-    g.fillStyle = cfg.textColor; g.globalAlpha = .68;
-    g.font = `500 28px ${fontStack}`;
-    g.fillText('千幕 · 伴读摘录', 124, 126);
-    if (pages.length > 1) { g.textAlign = 'right'; g.fillText(`${pageIndex + 1} / ${pages.length}`, w - pad, 126); g.textAlign = 'left'; }
-    g.globalAlpha = 1;
-    let y = top;
-    if (page.quote.length) {
-      g.fillStyle = cfg.textColor;
-      g.font = `400 ${quoteSize}px ${fontStack}`;
-      for (const line of page.quote) { g.fillText(line, pad, y); y += quoteLine; }
-    }
-    if (page.annotation.length) {
-      if (page.quote.length) { g.fillStyle = cfg.accentColor; g.fillRect(pad, y - 9, 54, 4); y += 38; }
-      g.fillStyle = cfg.textColor; g.globalAlpha = .82;
-      g.font = `400 ${noteSize}px ${fontStack}`;
-      for (const line of page.annotation) { g.fillText(line, pad, y); y += noteLine; }
-      g.globalAlpha = 1;
-    }
-    if (cfg.showSource) {
-      g.fillStyle = cfg.textColor; g.globalAlpha = .78;
-      g.font = `500 31px ${fontStack}`;
-      g.fillText(`《${source.book}》`, pad, h - 128);
-      g.globalAlpha = .55; g.font = `400 25px ${fontStack}`;
-      g.fillText(source.author, pad, h - 84);
-      g.globalAlpha = 1;
-    }
-    return canvas;
-  }).filter(Boolean);
-}
-
-function coreadApplyExcerptZoom(stageRoot, requestedScale, fit = false) {
-  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
-  const wrap = overlay?.querySelector('.sd-reader-excerpt-canvas-wrap');
-  const canvas = wrap?.querySelector('canvas');
-  const canvasStage = wrap?.querySelector('.sd-reader-excerpt-canvas-stage');
-  if (!wrap || !canvas || !canvasStage) return;
-  const availableW = Math.max(120, wrap.clientWidth - 8);
-  const availableH = Math.max(120, wrap.clientHeight - 8);
-  const fitted = Math.min(availableW / canvas.width, availableH / canvas.height);
-  const scale = Math.max(.08, Math.min(2.5, fit ? fitted : (Number(requestedScale) || fitted)));
-  readerView.excerptPreviewZoom = scale;
-  readerView.excerptPreviewZoomMode = fit ? 'fit' : 'manual';
-  const displayW = Math.max(1, Math.round(canvas.width * scale));
-  const displayH = Math.max(1, Math.round(canvas.height * scale));
-  canvas.style.width = `${displayW}px`;
-  canvas.style.height = `${displayH}px`;
-  canvasStage.style.width = `${Math.max(wrap.clientWidth, displayW)}px`;
-  canvasStage.style.height = `${Math.max(wrap.clientHeight, displayH)}px`;
-  const label = overlay.querySelector('.sd-reader-excerpt-zoomval');
-  if (label) label.textContent = `${Math.round(scale * 100)}%`;
-  wrap.classList.toggle('can-pan', displayW > wrap.clientWidth + 2 || displayH > wrap.clientHeight + 2);
-  wrap.scrollLeft = Math.max(0, (wrap.scrollWidth - wrap.clientWidth) / 2);
-  wrap.scrollTop = Math.max(0, (wrap.scrollHeight - wrap.clientHeight) / 2);
-}
-
-function coreadStepExcerptZoom(stageRoot, direction) {
-  const current = Number(readerView?.excerptPreviewZoom) || .4;
-  const step = current < .5 ? .05 : .1;
-  coreadApplyExcerptZoom(stageRoot, current + (direction * step), false);
-}
-
-function coreadRenderExcerptPreviewPage(stageRoot) {
-  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
-  const wrap = overlay?.querySelector('.sd-reader-excerpt-canvas-wrap');
-  const pager = overlay?.querySelector('.sd-reader-excerpt-pages');
-  const canvases = readerView?.excerptCanvases || [];
-  if (!wrap || !pager || !canvases.length) return;
-  const index = Math.max(0, Math.min(canvases.length - 1, Number(readerView.excerptPreviewPage) || 0));
-  readerView.excerptPreviewPage = index;
-  const canvasStage = document.createElement('div');
-  canvasStage.className = 'sd-reader-excerpt-canvas-stage';
-  canvasStage.appendChild(canvases[index]);
-  wrap.replaceChildren(canvasStage);
-  pager.hidden = canvases.length <= 1;
-  const label = pager.querySelector('span'); if (label) label.textContent = `${index + 1} / ${canvases.length}`;
-  const prev = pager.querySelector('.sd-reader-excerpt-page-prev'); if (prev) prev.disabled = index <= 0;
-  const next = pager.querySelector('.sd-reader-excerpt-page-next'); if (next) next.disabled = index >= canvases.length - 1;
-  requestAnimationFrame(() => coreadApplyExcerptZoom(stageRoot, readerView?.excerptPreviewZoom, readerView?.excerptPreviewZoomMode !== 'manual'));
-}
-
-function coreadSyncExcerptPreview(stageRoot) {
-  const note = coreadFindReaderNote(readerView?.sharingNoteId);
-  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
-  if (!note || !overlay) return;
-  const cfg = coreadExcerptConfig();
-  readerView.excerptCanvases = coreadBuildExcerptCanvases(note, cfg);
-  readerView.excerptPreviewPage = Math.min(Number(readerView.excerptPreviewPage) || 0, Math.max(0, readerView.excerptCanvases.length - 1));
-  readerView.excerptPreviewZoomMode = 'fit';
-  coreadRenderExcerptPreviewPage(stageRoot);
-  const fontVal = overlay.querySelector('.sd-reader-excerpt-fontval');
-  if (fontVal) fontVal.textContent = `${cfg.fontSize}`;
-}
-
-async function coreadOpenExcerptDialog(noteId, stageRoot) {
-  const note = coreadFindReaderNote(noteId);
-  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
-  if (!note || !overlay) return;
-  readerView.sharingNoteId = noteId;
-  readerView.excerptPreviewPage = 0;
-  readerView.excerptPreviewZoomMode = 'fit';
-  const cfg = coreadExcerptConfig();
-  coreadRefreshExcerptPresetSelect(stageRoot);
-  coreadRefreshExcerptFontSelect(stageRoot);
-  overlay.querySelector('.sd-reader-excerpt-preset').value = cfg.preset;
-  overlay.querySelector('.sd-reader-excerpt-ratio').value = cfg.ratio;
-  overlay.querySelector('.sd-reader-excerpt-font').value = String(cfg.fontSize);
-  overlay.querySelector('.sd-reader-excerpt-fontfamily').value = cfg.fontId;
-  overlay.querySelector('.sd-reader-excerpt-bg').value = cfg.background;
-  overlay.querySelector('.sd-reader-excerpt-fg').value = cfg.textColor;
-  overlay.querySelector('.sd-reader-excerpt-accent').value = cfg.accentColor;
-  overlay.querySelector('.sd-reader-excerpt-note').checked = cfg.showAnnotation;
-  overlay.querySelector('.sd-reader-excerpt-source').checked = cfg.showSource;
-  overlay.hidden = false;
-  // 先用备用字体即时出预览，远程 CSS 字体就绪后再无感重绘，避免空等网络。
-  coreadSyncExcerptPreview(stageRoot);
-  const fontId = cfg.fontId;
-  void coreadEnsureExcerptFont(cfg).then((loaded) => {
-    if (loaded && coreadExcerptConfig().fontId === fontId && readerView?.sharingNoteId === noteId) coreadSyncExcerptPreview(stageRoot);
+// 伴读书摘成图：与正文收藏同一张排版台（qianmu-excerpt-studio.js），多一个可选入的「书友对话」元素。
+// 排版台按 ST 账户各一份；成图稿以「书 + 这条划线」为键存在本机，笔记或原文改了就按新内容重新起稿。
+let coreadExcerptStudioState = null;
+async function coreadExcerptStudio() {
+  const namespace = await resolveImageAccountNamespace();
+  if (coreadExcerptStudioState?.namespace === namespace) return coreadExcerptStudioState;
+  coreadDisposeExcerptStudio();
+  const module = await loadLocalChunk('./qianmu-excerpt-studio.js');
+  const portal = document.createElement('section');
+  portal.className = 'qm-excerpt-portal';
+  document.body.append(portal);
+  const unmount = appearanceSession.mountPortal(portal, { inheritTheme: true });
+  const studio = module.createExcerptStudio({
+    parent: portal, namespace, download: ttsDownloadBlob, isCurrent: () => initialized && isRuntimeOwner(),
+    settings: { read: () => settings.excerptStudio, write: (value) => { settings.excerptStudio = value; saveSettings(); } },
+    fonts: async () => ((await fontFaces.ready(settings)) ? fontLibrary.excerptFonts() : null),
   });
+  coreadExcerptStudioState = { namespace, module, studio, portal, unmount };
+  return coreadExcerptStudioState;
 }
-
-function coreadCloseExcerptDialog(stageRoot) {
-  if (readerView) { readerView.sharingNoteId = ''; readerView.excerptCanvases = []; readerView.excerptPreviewPage = 0; readerView.excerptPreviewZoomMode = 'fit'; }
-  const overlay = stageRoot?.querySelector('.sd-reader-excerptoverlay');
-  if (overlay) overlay.hidden = true;
+function coreadDisposeExcerptStudio() {
+  const state = coreadExcerptStudioState;
+  coreadExcerptStudioState = null;
+  if (!state) return;
+  try { state.studio.dispose(); } catch (_) {}
+  try { state.unmount?.(); } catch (_) {}
+  state.portal.remove();
 }
-
-async function coreadSaveExcerptImage(stageRoot) {
-  const note = coreadFindReaderNote(readerView?.sharingNoteId);
-  if (!note) return;
-  const cfg = coreadExcerptConfig();
-  await coreadEnsureExcerptFont(cfg);
-  const source = coreadNoteSource(note);
-  const canvases = readerView?.excerptCanvases?.length ? readerView.excerptCanvases : coreadBuildExcerptCanvases(note, cfg);
-  if (!canvases.length) { toast('当前浏览器无法生成图片。', 'error'); return; }
-  const base = ttsSafeFilenamePart(source.book, '伴读摘录').slice(0, 36);
-  const stamp = fileStamp();
-  for (let index = 0; index < canvases.length; index++) {
-    const blob = await new Promise((resolve) => canvases[index].toBlob(resolve, 'image/png'));
-    if (!blob) continue;
-    const seq = canvases.length > 1 ? `-${String(index + 1).padStart(2, '0')}` : '';
-    ttsDownloadBlob(blob, `${base}-摘录-${stamp}${seq}.png`);
-    if (canvases.length > 1) await new Promise((resolve) => setTimeout(resolve, 80));
+// 这本书的书友对话（只取你和书友的话），供选入成图；默认配上划线之后的头四句。
+function coreadExcerptDialogue(bookId, note) {
+  if (!readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(bookId)) return { messages: [], lines: [] };
+  const friend = companionCharName() || '书友', me = coreadUserName();
+  const messages = (readerDialog.messages || []).filter((m) => (m.role === 'user' || m.role === 'friend') && String(m.text || '').trim())
+    .map((m) => ({ id: String(m.id || ''), who: m.role === 'user' ? 'user' : 'friend', name: m.role === 'user' ? me : friend, text: String(m.text).trim(), ts: Number(m.ts) || 0 }));
+  const after = Number(note?.at) || 0;
+  const lines = after ? messages.filter((m) => m.ts >= after).slice(0, 4) : [];
+  return { messages: messages.map(({ ts, ...m }) => m), lines: lines.map(({ ts, ...m }) => m) };
+}
+function coreadExcerptStamp(note) {
+  let hash = 2166136261;
+  for (const char of `${note.text || ''}\u0000${note.annotation || ''}`) { hash ^= char.codePointAt(0); hash = Math.imul(hash, 16777619) >>> 0; }
+  return hash.toString(36);
+}
+async function coreadOpenExcerptDialog(noteId) {
+  const note = coreadFindReaderNote(noteId), bookId = readerView?.bookId;
+  if (!note || !bookId) return;
+  try {
+    const state = await coreadExcerptStudio();
+    if (coreadFindReaderNote(noteId) !== note) return;
+    const source = coreadNoteSource(note), dialogue = coreadExcerptDialogue(bookId, note);
+    const fields = state.module.excerptFields({ charName: companionCharName() || '书友', userName: coreadUserName(), sentAt: note.at ? new Date(Number(note.at)).toISOString() : '',
+      book: source.book, author: source.author === '未知作者' ? '' : source.author, note: note.annotation || '' });
+    await state.studio.open({ key: `reader:${bookId}:${note.id}`, stamp: coreadExcerptStamp(note), body: String(note.text || ''), fields, scope: 'reader',
+      dialogue: { messages: dialogue.messages }, lines: dialogue.lines, filename: ttsSafeFilenamePart(source.book, '伴读摘录').slice(0, 36) });
+  } catch (error) {
+    console.warn('[千幕] 伴读书摘成图打开失败', error);
+    toast('书摘成图没能打开，请重试。', 'warning');
   }
-  toast(canvases.length > 1 ? `长摘录已自动分页并保存 ${canvases.length} 张图片。` : '摘录图片已保存。', 'success');
 }
 
 /* ── 事件绑定 ─────────────────────────────────────────── */
@@ -32142,7 +31778,7 @@ function bindReaderStageEvents(stageRoot) {
       return;
     }
     if (copy) { e.stopPropagation(); void coreadCopyText(coreadNotePlainText(coreadFindReaderNote(copy.dataset.note))); return; }
-    if (image) { e.stopPropagation(); coreadOpenExcerptDialog(image.dataset.note, stageRoot); return; }
+    if (image) { e.stopPropagation(); void coreadOpenExcerptDialog(image.dataset.note); return; }
     if (edit) { e.stopPropagation(); openReaderNoteDialog(edit.dataset.note); return; }
     if (del) { e.stopPropagation(); coreadDeleteNote(del.dataset.note); del.closest('.sd-reader-note-item')?.remove(); updateReaderArticle(stageRoot); return; }
   }));
@@ -32181,147 +31817,6 @@ function bindReaderStageEvents(stageRoot) {
   q('.sd-reader-noteedit-ok')?.addEventListener('click', () => saveNoteEdit(stageRoot));
   q('.sd-reader-noteoverlay')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) exitNoteEdit(stageRoot);   // 仅点遮罩本身关闭，点卡片内不关
-  });
-  const excerptOverlay = q('.sd-reader-excerptoverlay');
-  q('.sd-reader-excerpt-close')?.addEventListener('click', () => coreadCloseExcerptDialog(stageRoot));
-  excerptOverlay?.addEventListener('click', (e) => { if (e.target === e.currentTarget) coreadCloseExcerptDialog(stageRoot); });
-  q('.sd-reader-excerpt-copy')?.addEventListener('click', () => void coreadCopyText(coreadNotePlainText(coreadFindReaderNote(readerView?.sharingNoteId))));
-  q('.sd-reader-excerpt-save')?.addEventListener('click', () => void coreadSaveExcerptImage(stageRoot).catch((error) => toast(`图片生成失败：${error?.message || error}`, 'error')));
-  const fillExcerptControls = (cfg) => {
-    const setValue = (selector, value) => { const el = q(selector); if (el) el.value = String(value); };
-    setValue('.sd-reader-excerpt-preset', cfg.preset);
-    setValue('.sd-reader-excerpt-ratio', cfg.ratio);
-    setValue('.sd-reader-excerpt-font', cfg.fontSize);
-    coreadRefreshExcerptFontSelect(stageRoot);
-    setValue('.sd-reader-excerpt-fontfamily', cfg.fontId);
-    setValue('.sd-reader-excerpt-bg', cfg.background);
-    setValue('.sd-reader-excerpt-fg', cfg.textColor);
-    setValue('.sd-reader-excerpt-accent', cfg.accentColor);
-    const noteToggle = q('.sd-reader-excerpt-note'); if (noteToggle) noteToggle.checked = cfg.showAnnotation;
-    const sourceToggle = q('.sd-reader-excerpt-source'); if (sourceToggle) sourceToggle.checked = cfg.showSource;
-  };
-  const syncExcerptControls = async (changed) => {
-    const cfg = coreadExcerptConfig();
-    if (changed === 'preset') {
-      cfg.preset = q('.sd-reader-excerpt-preset')?.value || 'paper';
-      const preset = COREAD_EXCERPT_PRESETS[cfg.preset] || cfg.savedPresets.find((item) => item.id === cfg.preset);
-      if (preset) {
-        cfg.ratio = preset.ratio || cfg.ratio;
-        cfg.fontSize = Number(preset.fontSize) || cfg.fontSize;
-        cfg.fontId = preset.fontId || cfg.fontId;
-        cfg.background = sanitizeHexColor(preset.background) || cfg.background;
-        cfg.textColor = sanitizeHexColor(preset.textColor) || cfg.textColor;
-        cfg.accentColor = sanitizeHexColor(preset.accentColor) || cfg.accentColor;
-        if ('showAnnotation' in preset) cfg.showAnnotation = preset.showAnnotation !== false;
-        if ('showSource' in preset) cfg.showSource = preset.showSource !== false;
-      }
-      fillExcerptControls(cfg);
-    } else {
-      cfg.ratio = q('.sd-reader-excerpt-ratio')?.value || 'portrait';
-      cfg.fontSize = Math.max(10, Math.min(20, Number(q('.sd-reader-excerpt-font')?.value) || 16));
-      cfg.fontId = q('.sd-reader-excerpt-fontfamily')?.value || 'zeo-376';
-      cfg.background = sanitizeHexColor(q('.sd-reader-excerpt-bg')?.value) || cfg.background;
-      cfg.textColor = sanitizeHexColor(q('.sd-reader-excerpt-fg')?.value) || cfg.textColor;
-      cfg.accentColor = sanitizeHexColor(q('.sd-reader-excerpt-accent')?.value) || cfg.accentColor;
-      cfg.showAnnotation = !!q('.sd-reader-excerpt-note')?.checked;
-      cfg.showSource = !!q('.sd-reader-excerpt-source')?.checked;
-      cfg.preset = 'custom';
-      const presetSelect = q('.sd-reader-excerpt-preset'); if (presetSelect) presetSelect.value = 'custom';
-    }
-    saveSettings();
-    coreadRefreshExcerptFontSelect(stageRoot);
-    coreadSyncExcerptPreview(stageRoot);
-    if (changed === 'preset' || changed === 'fontfamily') {
-      const loaded = await coreadEnsureExcerptFont(cfg);
-      if (!loaded) toast('字体资源暂时无法载入，已使用本机备用字体。', 'warning');
-      else coreadSyncExcerptPreview(stageRoot);
-    }
-  };
-  q('.sd-reader-excerpt-preset')?.addEventListener('change', () => void syncExcerptControls('preset'));
-  q('.sd-reader-excerpt-ratio')?.addEventListener('change', () => void syncExcerptControls('ratio'));
-  q('.sd-reader-excerpt-font')?.addEventListener('input', () => void syncExcerptControls('font'));
-  q('.sd-reader-excerpt-fontfamily')?.addEventListener('change', () => void syncExcerptControls('fontfamily'));
-  stageRoot.querySelectorAll('.sd-reader-excerpt-bg, .sd-reader-excerpt-fg, .sd-reader-excerpt-accent').forEach((el) => el.addEventListener('input', () => void syncExcerptControls('color')));
-  stageRoot.querySelectorAll('.sd-reader-excerpt-note, .sd-reader-excerpt-source').forEach((el) => el.addEventListener('change', () => void syncExcerptControls('check')));
-  q('.sd-reader-excerpt-font-add')?.addEventListener('click', async () => {
-    try {
-      const font = await coreadPromptExcerptCssFont();
-      if (!font) return;
-      const cfg = coreadExcerptConfig(); cfg.fontId = font.id; cfg.preset = 'custom'; saveSettings();
-      coreadRefreshExcerptFontSelect(stageRoot); fillExcerptControls(cfg);
-      coreadSyncExcerptPreview(stageRoot);
-      if (await coreadEnsureExcerptFont(cfg)) coreadSyncExcerptPreview(stageRoot);
-      toast(`已添加字体「${font.name}」。`, 'success');
-    } catch (error) { toast(error?.message || '字体添加失败。', 'error'); }
-  });
-  q('.sd-reader-excerpt-font-del')?.addEventListener('click', async () => {
-    const cfg = coreadExcerptConfig();
-    const font = cfg.customFonts.find((item) => item.id === cfg.fontId);
-    if (!font) { toast('内置字体不能删除。', 'warning'); return; }
-    if (!await confirmDialog('删除自定义字体', `确定删除「${font.name}」吗？`)) return;
-    cfg.customFonts = cfg.customFonts.filter((item) => item.id !== font.id); cfg.fontId = 'zeo-376'; cfg.preset = 'custom';
-    saveSettings(); coreadRefreshExcerptFontSelect(stageRoot); fillExcerptControls(cfg);
-    await coreadEnsureExcerptFont(cfg); coreadSyncExcerptPreview(stageRoot);
-  });
-  q('.sd-reader-excerpt-page-prev')?.addEventListener('click', () => { readerView.excerptPreviewPage = Math.max(0, (Number(readerView.excerptPreviewPage) || 0) - 1); coreadRenderExcerptPreviewPage(stageRoot); });
-  q('.sd-reader-excerpt-page-next')?.addEventListener('click', () => { readerView.excerptPreviewPage = Math.min((readerView.excerptCanvases?.length || 1) - 1, (Number(readerView.excerptPreviewPage) || 0) + 1); coreadRenderExcerptPreviewPage(stageRoot); });
-  q('.sd-reader-excerpt-zoom-out')?.addEventListener('click', () => coreadStepExcerptZoom(stageRoot, -1));
-  q('.sd-reader-excerpt-zoom-in')?.addEventListener('click', () => coreadStepExcerptZoom(stageRoot, 1));
-  q('.sd-reader-excerpt-zoom-fit')?.addEventListener('click', () => coreadApplyExcerptZoom(stageRoot, 0, true));
-  const excerptCanvasWrap = q('.sd-reader-excerpt-canvas-wrap');
-  if (excerptCanvasWrap && typeof ResizeObserver === 'function') {
-    readerExcerptResizeObserver?.disconnect?.();
-    readerExcerptResizeObserver = new ResizeObserver(() => {
-      if (!excerptOverlay?.hidden && readerView?.excerptPreviewZoomMode !== 'manual') coreadApplyExcerptZoom(stageRoot, 0, true);
-    });
-    readerExcerptResizeObserver.observe(excerptCanvasWrap);
-  }
-  excerptCanvasWrap?.addEventListener('wheel', (event) => {
-    if (!(event.ctrlKey || event.metaKey)) return;
-    event.preventDefault();
-    coreadStepExcerptZoom(stageRoot, event.deltaY < 0 ? 1 : -1);
-  }, { passive: false });
-  if (excerptCanvasWrap) {
-    let dragging = false; let startX = 0; let startY = 0; let startLeft = 0; let startTop = 0;
-    excerptCanvasWrap.addEventListener('pointerdown', (event) => {
-      if (!excerptCanvasWrap.classList.contains('can-pan') || event.button > 0) return;
-      dragging = true; startX = event.clientX; startY = event.clientY; startLeft = excerptCanvasWrap.scrollLeft; startTop = excerptCanvasWrap.scrollTop;
-      excerptCanvasWrap.classList.add('is-dragging'); excerptCanvasWrap.setPointerCapture?.(event.pointerId); event.preventDefault();
-    });
-    excerptCanvasWrap.addEventListener('pointermove', (event) => {
-      if (!dragging) return;
-      excerptCanvasWrap.scrollLeft = startLeft - (event.clientX - startX);
-      excerptCanvasWrap.scrollTop = startTop - (event.clientY - startY);
-    });
-    const stopPan = (event) => { if (!dragging) return; dragging = false; excerptCanvasWrap.classList.remove('is-dragging'); excerptCanvasWrap.releasePointerCapture?.(event.pointerId); };
-    excerptCanvasWrap.addEventListener('pointerup', stopPan); excerptCanvasWrap.addEventListener('pointercancel', stopPan);
-  }
-  q('.sd-reader-excerpt-preset-save')?.addEventListener('click', async () => {
-    const cfg = coreadExcerptConfig();
-    const name = String(await promptInput('保存摘录样式', '样式名称：', '') || '').trim();
-    if (!name) return;
-    const existing = cfg.savedPresets.find((item) => item.name === name);
-    const snapshot = {
-      id: existing?.id || uid('excerpt'), name, ratio: cfg.ratio, fontSize: cfg.fontSize,
-      fontId: cfg.fontId,
-      background: cfg.background, textColor: cfg.textColor, accentColor: cfg.accentColor,
-      showAnnotation: cfg.showAnnotation, showSource: cfg.showSource,
-    };
-    if (existing) Object.assign(existing, snapshot);
-    else cfg.savedPresets.push(snapshot);
-    cfg.preset = snapshot.id;
-    saveSettings(); coreadRefreshExcerptPresetSelect(stageRoot); fillExcerptControls(cfg); coreadSyncExcerptPreview(stageRoot);
-    toast(existing ? '摘录样式已更新。' : '摘录样式已保存。', 'success');
-  });
-  q('.sd-reader-excerpt-preset-del')?.addEventListener('click', async () => {
-    const cfg = coreadExcerptConfig();
-    const preset = cfg.savedPresets.find((item) => item.id === cfg.preset);
-    if (!preset) { toast('内置样式与临时自定义不能删除。', 'warning'); return; }
-    if (!await confirmDialog('删除摘录样式', `确定删除「${preset.name}」吗？`)) return;
-    cfg.savedPresets = cfg.savedPresets.filter((item) => item.id !== preset.id);
-    cfg.preset = 'custom';
-    saveSettings(); coreadRefreshExcerptPresetSelect(stageRoot); fillExcerptControls(cfg); coreadSyncExcerptPreview(stageRoot);
-    toast('摘录样式已删除。', 'success');
   });
   // 书签开关（顶栏）
   q('.sd-reader-mark-btn')?.addEventListener('click', () => coreadToggleBookmark(stageRoot));
@@ -33534,7 +33029,7 @@ function bindReaderStageEvents(stageRoot) {
     };
     lvMain.querySelector('[data-act="image"]').onclick = () => {
       const text = pendingText; const segments = pendingSegments.slice(); hideTools(); window.getSelection?.()?.removeAllRanges?.();
-      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) coreadOpenExcerptDialog(id, stageRoot); }
+      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) void coreadOpenExcerptDialog(id); }
     };
     lvMain.querySelector('[data-act="assistant"]').onclick = (event) => {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation?.();
@@ -33558,7 +33053,7 @@ function bindReaderStageEvents(stageRoot) {
     // 已划线级：笔记 / 取消划线
     lvExist.querySelector('[data-act="note"]').onclick = () => { const id = pendingMark; hideTools(); if (id) openReaderNoteDialog(id); };
     lvExist.querySelector('[data-act="copy"]').onclick = () => { const note = coreadFindReaderNote(pendingMark); hideTools(); if (note) void coreadCopyText(coreadNotePlainText(note)); };
-    lvExist.querySelector('[data-act="image"]').onclick = () => { const id = pendingMark; hideTools(); if (id) coreadOpenExcerptDialog(id, stageRoot); };
+    lvExist.querySelector('[data-act="image"]').onclick = () => { const id = pendingMark; hideTools(); if (id) void coreadOpenExcerptDialog(id); };
     lvExist.querySelector('[data-act="assistant"]').onclick = (event) => {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation?.();
       const note = coreadFindReaderNote(pendingMark);
@@ -35305,6 +34800,7 @@ function cleanupRuntime(resetSettings = false) {
   initialized = false;
   disposeChatWriteGuard();
   apiQuick.detach();
+  coreadDisposeExcerptStudio();
   stopUsageTracking?.(); stopUsageTracking = null; usageTracker = null; floorCounter = null; tokenMeter = null;
   stopSharpAvatars?.(); stopSharpAvatars = null;
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;

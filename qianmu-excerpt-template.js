@@ -4,7 +4,7 @@
 
 export const PAGE_WIDTH = 1080;
 export const TEMPLATE_SOURCE_LIMIT = 200_000;
-export const ELEMENT_KINDS = Object.freeze(['text', 'body', 'image', 'rect', 'ellipse', 'line']);
+export const ELEMENT_KINDS = Object.freeze(['text', 'body', 'image', 'rect', 'ellipse', 'line', 'dialog']);
 const KIND_SET = new Set(ELEMENT_KINDS);
 
 const VOID = new Set(['br', 'hr', 'wbr', 'meta', 'link', 'img', 'input', 'source', 'col', 'area', 'base', 'embed', 'param', 'track']);
@@ -189,7 +189,8 @@ function readElement(node, kind, height) {
         element.src = plainText(node.children).replace(/^\s*\n|\n\s*$/g, '').replace(/[ \t]*\n[ \t]*/g, '\n').trim();
         if (node.attrs['data-field']) element.field = String(node.attrs['data-field']).slice(0, 32);
     }
-    if (kind === 'text' || kind === 'body') element.vertical = 'data-vertical' in node.attrs || /writing-mode\s*:\s*vertical/i.test(base);
+    if (kind === 'text' || kind === 'body' || kind === 'dialog') element.vertical = 'data-vertical' in node.attrs || /writing-mode\s*:\s*vertical/i.test(base);
+    if (kind === 'dialog' && node.attrs['data-look'] === 'bubble') element.look = 'bubble';
     if (kind === 'line') element.dir = node.attrs['data-dir'] === 'up' ? -1 : 1;
     return element;
 }
@@ -255,7 +256,7 @@ export function parseExcerptTemplate(source) {
 }
 
 // ── 占位字段 ────────────────────────────────────────────────────────────────
-export const FIELD_TOKENS = Object.freeze(['char', 'user', 'pair', 'floor', 'date', 'md', 'time', 'weekday', 'lunar', 'year']);
+export const FIELD_TOKENS = Object.freeze(['char', 'user', 'pair', 'floor', 'date', 'md', 'time', 'weekday', 'lunar', 'year', 'book', 'author', 'note']);
 
 function parseHostDate(value) {
     if (typeof value !== 'string' || !value.trim()) return null;
@@ -285,7 +286,8 @@ function lunarDay(day) {
 }
 
 // 收藏的来源标识里记着那一层第一次生成的时刻（[角色, 时刻]）；楼层号只在当前聊天里能对上。
-export function excerptFields({charName = '', userName = '', floor = null, sentAt = '', createdAt = ''} = {}) {
+// 伴读里另有书名、作者与这条摘录的笔记。
+export function excerptFields({charName = '', userName = '', floor = null, sentAt = '', createdAt = '', book = '', author = '', note = ''} = {}) {
     const char = String(charName || '').trim(), user = String(userName || '').trim();
     const date = parseHostDate(sentAt) || parseHostDate(createdAt);
     const pad = value => String(value).padStart(2, '0');
@@ -309,6 +311,7 @@ export function excerptFields({charName = '', userName = '', floor = null, sentA
         weekday: date ? ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][date.getDay()] : '',
         lunar,
         year: date ? String(date.getFullYear()) : '',
+        book: String(book || '').trim(), author: String(author || '').trim(), note: String(note || '').trim(),
     };
 }
 
@@ -422,6 +425,37 @@ const POEM = `<style>
   <div data-qm="body" class="verse" style="left:596px;top:220px;width:380px;height:1080px"></div>
 </section>`;
 
+// 伴读：摘录、笔记与书友对话一页，出处在底部。
+const COREAD = `<style>
+.page { font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif; }
+.bar { background: #b37d6b; border: 0; border-radius: 4px; }
+.label { font-size: 26px; letter-spacing: .06em; opacity: .7; }
+.quote { font-size: 42px; line-height: 1.72; text-indent: 0; text-align: justify; --qm-gap: .6em; }
+.note { font-size: 27px; line-height: 1.7; opacity: .82; }
+.rule { color: #b37d6b; }
+.talk { font-size: 25px; line-height: 1.6; --qm-gap: .55em; --qm-who: #b37d6b; }
+.book { font-size: 31px; font-weight: 600; }
+.author { font-size: 24px; opacity: .6; }
+</style>
+<section data-page="first" data-name="书摘 · 共读" data-height="1440" data-paper="#f2ede3" data-ink="#302c2a">
+  <div data-qm="rect" class="bar" style="left:86px;top:86px;width:8px;height:110px"></div>
+  <div data-qm="text" data-field="pair" class="label" style="left:122px;top:96px;width:820px;height:36px">共读 · {{pair}}</div>
+  <div data-qm="text" data-field="date" class="label" style="left:122px;top:146px;width:820px;height:36px">{{date}}</div>
+  <div data-qm="body" class="quote" style="left:122px;top:250px;width:836px;height:560px"></div>
+  <div data-qm="line" class="rule" style="left:122px;top:846px;width:54px;height:0px"></div>
+  <div data-qm="text" data-field="note" class="note" style="left:122px;top:880px;width:836px;height:120px">{{note}}</div>
+  <div data-qm="dialog" class="talk" style="left:122px;top:1030px;width:836px;height:230px"></div>
+  <div data-qm="text" data-field="book" class="book" style="left:122px;top:1300px;width:836px;height:42px">《{{book}}》</div>
+  <div data-qm="text" data-field="author" class="author" style="left:122px;top:1352px;width:836px;height:32px">{{author}}</div>
+</section>
+<section data-page="rest" data-height="1440">
+  <div data-qm="rect" class="bar" style="left:86px;top:86px;width:8px;height:60px"></div>
+  <div data-qm="text" data-field="pair" class="label" style="left:122px;top:96px;width:820px;height:36px">共读 · {{pair}}</div>
+  <div data-qm="body" class="quote" style="left:122px;top:200px;width:836px;height:1060px"></div>
+  <div data-qm="text" data-field="book" class="book" style="left:122px;top:1300px;width:836px;height:42px">《{{book}}》</div>
+  <div data-qm="text" data-field="author" class="author" style="left:122px;top:1352px;width:836px;height:32px">{{author}}</div>
+</section>`;
+
 const NIGHT = `<style>
 .page { font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif; }
 .v-title { font-size: 40px; letter-spacing: .08em; }
@@ -455,6 +489,7 @@ export const BUILTIN_TEMPLATES = Object.freeze([
     Object.freeze({id: 'builtin:feature', source: FEATURE}),
     Object.freeze({id: 'builtin:poem', source: POEM}),
     Object.freeze({id: 'builtin:night', source: NIGHT}),
+    Object.freeze({id: 'builtin:coread', source: COREAD, scope: 'reader'}),
 ]);
 
 // 交给自建模板的人（或交给 AI 代写）的说明与底版。
@@ -467,10 +502,13 @@ export const TEMPLATE_GUIDE = `千幕书摘模板说明（可以整段交给 AI 
 3. section 里带 data-qm 的元素可在成图页上拖动、缩放、改样式，必须用行内 style 写 left/top/width/height（px）：
    data-qm="body"     正文框。正文按出现顺序依次流入各个正文框，排不下自动加页。加 data-vertical 为竖排（从右往左读）。
    data-qm="text"     文本框。可写占位：{{char}} 角色名、{{user}} 用户名、{{pair}} 两人名、{{floor}} 楼层号、
-                      {{date}} 日期、{{md}} 月/日、{{time}} 时刻、{{weekday}} 星期、{{lunar}} 农历、{{year}} 年份。
+                      {{date}} 日期、{{md}} 月/日、{{time}} 时刻、{{weekday}} 星期、{{lunar}} 农历、{{year}} 年份；
+                      伴读里另有 {{book}} 书名、{{author}} 作者、{{note}} 这条摘录的笔记（{{char}} 是书友）。
    data-qm="image"    图片框，留空时是叉线框，点一下选图。
    data-qm="rect" / data-qm="ellipse"   矩形、圆形。
    data-qm="line"     线条：从框的左上连到右下；高为 0 是横线，宽为 0 是竖线；加 data-dir="up" 改为左下连到右上。
+   data-qm="dialog"   书友对话（伴读）：选入的对话一句一行；加 data-look="bubble" 为气泡样式，默认是「名字：话」。
+                      每句是 .qm-say（书友 .is-friend／你 .is-user），名字 .qm-who，话 .qm-line，句距用变量 --qm-gap。
    这些元素可以带 class，用 <style> 里的类来定字号、字体、颜色、行距等；用户在成图页上改的会盖在上面。
    正文框的段首缩进用 text-indent（默认 2em），段距用变量 --qm-gap（默认 .55em）。
 4. 不带 data-qm 的元素是固定装饰（线、色块、SVG 纹样、固定文字），照原样画在最底层。

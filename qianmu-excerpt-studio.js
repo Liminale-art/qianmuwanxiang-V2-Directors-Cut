@@ -1,7 +1,7 @@
 // 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响），
 // 选中框、手柄与小工具条在外层。所有改动只作用于这份成图稿，不回写收藏原文。
 import {PAGE_WIDTH, RATIOS, PAGE_BREAK, pageHeight, normalizeDoc, normalizeBody, normalizeElement, createDoc, createDocFromScheme,
-    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, SCHEME_LIMIT, TEMPLATE_LIMIT} from './qianmu-excerpt-doc.js';
+    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, SCHEME_LIMIT, TEMPLATE_LIMIT} from './qianmu-excerpt-doc.js';
 import {BUILTIN_TEMPLATES, parseExcerptTemplate, TEMPLATE_GUIDE, TEMPLATE_STARTER, normalizeHex} from './qianmu-excerpt-template.js';
 import {BASE_CSS, FONT_STACKS, buildPage, buildElement, fillParagraphs, shiftFor, createMeasurer, layoutDoc, embedFonts, pageSvg, svgToPng,
     blobToDataUrl, imageGeometry} from './qianmu-excerpt-render.js';
@@ -33,6 +33,7 @@ const ICONS = {
     line: '<path d="M5 19 19 5"/>',
     rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
     ellipse: '<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>',
+    talk: '<path d="M4 5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     page: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
     top: '<path d="M5 4h14M12 20V9M7 13l5-5 5 5"/>',
     up: '<path d="M12 19V6M7 11l5-5 5 5"/>',
@@ -52,7 +53,8 @@ const ICONS = {
     chevron: '<path d="m6 9 6 6 6-6"/>',
     more: '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>',
 };
-const KIND_LABEL = {text: '文本框', body: '正文框', image: '图片框', line: '线条', rect: '矩形', ellipse: '圆形'};
+const KIND_LABEL = {text: '文本框', body: '正文框', image: '图片框', line: '线条', rect: '矩形', ellipse: '圆形', dialog: '书友对话'};
+const EDITABLE = new Set(['text', 'body', 'dialog']);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const round = value => Math.round(value * 100) / 100;
 
@@ -144,9 +146,11 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     main.append(stageWrap, panel);
     const strip = make('nav', 'qm-xs-pages'); strip.setAttribute('aria-label', '页面');
     const dock = make('footer', 'qm-xs-dock');
+    const dialogueButton = button('书友对话', 'talk', () => addElement('dialog'), {text: '对话'});
+    dialogueButton.hidden = true;
     dock.append(button('文本框', 'text', () => addElement('text'), {text: '文本'}), button('图片框', 'image', () => addElement('image'), {text: '图框'}),
         button('线条', 'line', () => addElement('line'), {text: '线条'}), button('矩形', 'rect', () => addElement('rect'), {text: '矩形'}),
-        button('圆形', 'ellipse', () => addElement('ellipse'), {text: '圆形'}), make('i', 'qm-xs-sep'),
+        button('圆形', 'ellipse', () => addElement('ellipse'), {text: '圆形'}), dialogueButton, make('i', 'qm-xs-sep'),
         button('页面设置', 'page', () => { commitEditing(); select(null); panel.classList.remove('is-collapsed'); }, {text: '页面'}));
     const pop = make('div', 'qm-xs-pop'); pop.hidden = true;
     const editor = make('section', 'qm-xs-tpl-editor'); editor.hidden = true;
@@ -213,7 +217,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         clearTimeout(lastTimer); lastTimer = null;
         if (!doc || !dirtyLast) return;
         dirtyLast = false;
-        writeSettings(state => { state.last = schemeFromDoc(doc); });
+        writeSettings(state => { state[content?.scope === 'reader' ? 'lastReader' : 'last'] = schemeFromDoc(doc); });
     }
     function updateTop() {
         undoButton.disabled = !history.length || !!exportJob; redoButton.disabled = !future.length || !!exportJob;
@@ -342,7 +346,8 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             if (element.kind === 'body') items.push(button('在此分页', 'breakpage', insertBreak, {keepFocus: true, text: '分页'}));
             items.push(button('完成', 'check', () => commitEditing(), {keepFocus: true}));
         } else {
-            if (element.kind === 'text' || element.kind === 'body') items.push(button('编辑文字', 'edit', () => startEdit(element.id)));
+            if (EDITABLE.has(element.kind)) items.push(button('编辑文字', 'edit', () => startEdit(element.id)));
+            if (element.kind === 'dialog') items.push(button('选择对话', 'talk', event => openDialoguePicker(event.currentTarget, element.id)));
             if (element.kind === 'image') {
                 items.push(button(element.image ? '换图' : '选图', 'image', () => pickImage(element.id)));
                 if (element.image) items.push(button(cropping ? '完成裁切' : '裁切', cropping ? 'check' : 'crop', () => toggleCrop(element.id)));
@@ -509,14 +514,14 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         renderOverlay();
         if (!element || cancelled) return;
         if (element.kind === 'image' && !element.image) { pickImage(element.id); return; }
-        if (state.wasSelected && (element.kind === 'text' || element.kind === 'body')) startEdit(element.id);
+        if (state.wasSelected && EDITABLE.has(element.kind)) startEdit(element.id);
     }
     canvas.addEventListener('pointerup', event => endDrag(event, false));
     canvas.addEventListener('pointercancel', event => endDrag(event, true));
     canvas.addEventListener('dblclick', event => {
         const id = hit(event), element = id && findElement(id);
         if (!element || exportJob) return;
-        if ((element.kind === 'text' || element.kind === 'body') && editing?.id !== id) startEdit(id);
+        if (EDITABLE.has(element.kind) && editing?.id !== id) startEdit(id);
         else if (element.kind === 'image' && element.image) toggleCrop(id);
     });
     canvas.addEventListener('wheel', event => {
@@ -561,7 +566,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (!element || exportJob) return;
         if (key === 'delete' || key === 'backspace') { event.preventDefault(); removeSelected(); }
         else if (mod && key === 'd') { event.preventDefault(); duplicate(); }
-        else if (key === 'enter' && (element.kind === 'text' || element.kind === 'body')) { event.preventDefault(); startEdit(element.id); }
+        else if (key === 'enter' && EDITABLE.has(element.kind)) { event.preventDefault(); startEdit(element.id); }
         else if (key.startsWith('arrow')) {
             event.preventDefault();
             const step = event.shiftKey ? 10 : 1, id = element.id;
@@ -590,6 +595,11 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         walk(node); lines.push(line);
         return lines.join('\n').replace(/​/g, '');
     }
+    // 就地改对话后读回：每句按原来的序号对回，删掉的句子就不在了。
+    function dialogTexts(node) {
+        return [...node.querySelectorAll('.qm-say')].map(say => ({index: Number(say.dataset.index), text: (say.querySelector('.qm-line')?.textContent || say.textContent.replace(say.querySelector('.qm-who')?.textContent || '', '')).replace(/\u200b/g, '')}))
+            .filter(item => Number.isInteger(item.index));
+    }
     function insertText(text) {
         let done = false;
         try { done = document.execCommand?.('insertText', false, text) === true; } catch { done = false; }
@@ -607,14 +617,17 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     const onEditBlur = event => { if (editing && !(event.relatedTarget && editing.node.contains(event.relatedTarget))) commitEditing(); };
     function startEdit(id) {
         const element = findElement(id);
-        if (!element || (element.kind !== 'text' && element.kind !== 'body') || exportJob) return;
+        if (!element || !EDITABLE.has(element.kind) || exportJob) return;
         if (editing) commitEditing();
         if (pageOf(id) !== currentPage()) return;
         if (selected !== id) select(id);
         const node = nodeOf(id);
         if (!node) return;
         const slice = element.kind === 'body' ? currentLayout().slices[id] || {start: doc.body.length, end: doc.body.length} : null;
-        editing = {id, kind: element.kind, node, slice, before: snapshot(), original: slice ? doc.body.slice(slice.start, slice.end) : element.text};
+        const readLines = element.kind === 'dialog' ? () => JSON.stringify(dialogTexts(node)) : null;
+        editing = {id, kind: element.kind, node, slice, before: snapshot(), original: slice ? doc.body.slice(slice.start, slice.end) : readLines ? readLines() : element.text};
+        // 对话里名字不可改，只改每一句的话。
+        if (element.kind === 'dialog') for (const who of node.querySelectorAll('.qm-who')) who.setAttribute('contenteditable', 'false');
         if (slice && slice.end <= slice.start) fillParagraphs(document, node, [''], false);
         node.setAttribute('contenteditable', 'true'); node.spellcheck = false;
         node.classList.add('qm-editing');
@@ -634,11 +647,14 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const {node} = state;
         node.removeEventListener('focusout', onEditBlur); node.removeEventListener('paste', onEditPaste); node.removeEventListener('beforeinput', onEditBeforeInput);
         node.removeAttribute('contenteditable'); node.classList.remove('qm-editing');
-        const text = readEditable(node), element = findElement(state.id);
+        const text = state.kind === 'dialog' ? JSON.stringify(dialogTexts(node)) : readEditable(node), element = findElement(state.id);
         if (element && text !== state.original) {
             pushHistory(state.before);
             if (state.kind === 'text') { element.text = text.slice(0, 5000); element.src = null; }
-            else {
+            else if (state.kind === 'dialog') {
+                const kept = dialogTexts(node);
+                element.lines = kept.map(({index, text: words}) => ({...element.lines[index], text: words})).filter(line => line.who && line.text.trim());
+            } else {
                 const {start, end} = state.slice;
                 doc.body = `${doc.body.slice(0, start)}${text}${doc.body.slice(end)}`.replace(/\n*\f\n*/g, PAGE_BREAK).replace(/\f{2,}/g, PAGE_BREAK);
             }
@@ -657,13 +673,15 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         line: {w: 420, h: 0, props: {strokeWidth: 2}},
         rect: {w: 340, h: 220},
         ellipse: {w: 280, h: 280},
+        dialog: {w: 760, h: 260, props: {size: 26}},
     };
     function addElement(kind) {
         if (!doc || exportJob) return;
         commitEditing();
         const page = currentPage(), base = DEFAULTS[kind];
         const visibleTop = stage.scrollTop / scale, visibleH = Math.min(pageH, stage.clientHeight / scale);
-        const element = normalizeElement({kind, ...structuredClone(base), src: null, x: (PAGE_WIDTH - base.w) / 2, y: clamp(visibleTop + (visibleH - base.h) / 2, 0, pageH - base.h)}, pageH);
+        const element = normalizeElement({kind, ...structuredClone(base), src: null, x: (PAGE_WIDTH - base.w) / 2, y: clamp(visibleTop + (visibleH - base.h) / 2, 0, pageH - base.h),
+            ...(kind === 'dialog' ? {lines: content?.lines?.length ? content.lines : (content?.dialogue?.messages || []).slice(-4)} : {})}, pageH);
         if (kind === 'line') element.h = 0;
         change(() => { page.elements.push(element); }, {reflow: false});
         select(element.id);
@@ -914,7 +932,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             gap: round((Number.parseFloat(style?.getPropertyValue('--qm-gap')) || 0.55)),
             stroke: cssColorHex(style?.borderTopColor) || doc.ink, strokeWidth: Number.parseFloat(style?.borderTopWidth) || 0,
             radius: Number.parseFloat(style?.borderTopLeftRadius) || 0, fill: cssColorHex(style?.backgroundColor) || 'none',
-            opacity: style ? Number(style.opacity) : 1,
+            opacity: style ? Number(style.opacity) : 1, nameColor: cssColorHex(style?.getPropertyValue('--qm-who')) || '',
         };
     }
     const setProp = (element, key, reflow) => value => edit(element.id, item => { item.props[key] = value; }, {key: `${element.id}:${key}`, reflow});
@@ -925,6 +943,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         panelTitle.textContent = element ? KIND_LABEL[element.kind] : '页面';
         if (!element) { pagePanel(); return; }
         if (element.kind === 'text' || element.kind === 'body') textPanel(element);
+        else if (element.kind === 'dialog') dialogPanel(element);
         else if (element.kind === 'image') imagePanel(element);
         else if (element.kind === 'line') linePanel(element);
         else shapePanel(element);
@@ -976,6 +995,50 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         row('方向', segmented([{value: false, label: '横排'}, {value: true, label: '竖排'}], element.vertical === true,
             value => edit(element.id, item => { item.vertical = value; }, {reflow: true})));
         row('透明度', slider({value: Math.round((p.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
+    }
+    function dialogPanel(element) {
+        const c = computedOf(element), p = element.props;
+        row('对话', textButton(`选择对话（${element.lines.length} 句）`, event => openDialoguePicker(event.currentTarget, element.id)));
+        row('样式', segmented([{value: 'script', label: '名字：话'}, {value: 'bubble', label: '气泡'}], element.look === 'bubble' ? 'bubble' : 'script',
+            value => edit(element.id, item => { item.look = value; }, {reflow: false})));
+        row('字体', fontSelect(element));
+        row('字号', slider({value: p.size ?? c.size, min: 8, max: 160, step: 1, unit: 'px'}, setProp(element, 'size', false)));
+        row('行高', slider({value: p.lh ?? c.lh, min: 0.8, max: 3, step: 0.05, unit: '倍', digits: 2}, setProp(element, 'lh', false)));
+        row('句距', slider({value: p.gap ?? c.gap, min: 0, max: 3, step: 0.05, unit: 'em', digits: 2}, setProp(element, 'gap', false)));
+        row('字距', slider({value: p.ls ?? c.ls, min: -0.2, max: 1.5, step: 0.01, unit: 'em', digits: 2}, setProp(element, 'ls', false)));
+        row('文字色', colorControl(p.color || c.color, setProp(element, 'color', false)));
+        row('名字色', colorControl(p.nameColor || c.nameColor || p.color || c.color, setProp(element, 'nameColor', false)));
+        row('方向', segmented([{value: false, label: '横排'}, {value: true, label: '竖排'}], element.vertical === true,
+            value => edit(element.id, item => { item.vertical = value; }, {reflow: false})));
+        row('透明度', slider({value: Math.round((p.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
+    }
+    // 从伴读对话里挑句子：按时间顺序，打勾的进图。
+    function openDialoguePicker(anchor, id) {
+        const element = findElement(id), messages = content?.dialogue?.messages || [];
+        if (!element) return;
+        const chosen = new Set(element.lines.map(line => line.id).filter(Boolean));
+        const box = make('div', 'qm-xs-pick');
+        const list = make('div', 'qm-xs-pick-list');
+        if (!messages.length) list.append(make('div', 'qm-xs-menu-empty', '这本书还没有对话'));
+        for (const message of messages) {
+            const label = make('label', `qm-xs-pick-row is-${message.who}`), check = make('input');
+            check.type = 'checkbox'; check.checked = chosen.has(message.id);
+            check.addEventListener('change', () => { if (check.checked) chosen.add(message.id); else chosen.delete(message.id); });
+            const words = make('span', 'qm-xs-pick-text');
+            words.append(make('b', '', message.name || (message.who === 'user' ? '我' : '书友')), document.createTextNode(` ${message.text}`));
+            label.append(check, words);
+            list.append(label);
+        }
+        const foot = make('div', 'qm-xs-ask-row');
+        foot.append(textButton('取消', () => closePop()), textButton('确定', () => {
+            const kept = element.lines.filter(line => !line.id);   // 手动改过来源的句子（没有编号）留着
+            const picked = messages.filter(message => chosen.has(message.id)).map(message => ({id: message.id, who: message.who, name: message.name, text: message.text}));
+            closePop();
+            edit(id, item => { item.lines = normalizeLines([...picked, ...kept]); }, {reflow: false}).then(() => { renderPanel(); renderMini(); });
+        }, 'is-primary'));
+        box.append(make('div', 'qm-xs-ask-title', '选择书友对话'), list, foot);
+        openPop(anchor, box);
+        list.querySelector('input:checked')?.closest('label')?.scrollIntoView?.({block: 'center'});
     }
     function strokeRows(element, c, {fill = false, radius = false} = {}) {
         const p = element.props;
@@ -1053,10 +1116,16 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
 
     // ── 模板 ──────────────────────────────────────────────────────────────
     function templateEntries() {
-        const builtins = BUILTIN_TEMPLATES.map(item => ({id: item.id, source: item.source, builtin: true, name: parseExcerptTemplate(item.source).template.name}));
+        const scope = content?.scope === 'reader' ? 'reader' : 'collection';
+        const builtins = BUILTIN_TEMPLATES.filter(item => !item.scope || item.scope === scope).map(item => ({id: item.id, source: item.source, builtin: true, name: parseExcerptTemplate(item.source).template.name}));
         const customs = readSettings().templates.map(item => ({id: `custom:${item.id}`, raw: item, source: item.source, builtin: false,
             name: parseExcerptTemplate(item.source).template?.name || '未命名模板'}));
         return [...builtins, ...customs];
+    }
+    // 换模板或方案时沿用稿里已选的对话；稿里没有就用这条摘录默认配的。
+    function currentLines(value) {
+        for (const page of value.pages) { const dialog = page.elements.find(item => item.kind === 'dialog' && item.lines.length); if (dialog) return dialog.lines; }
+        return content?.lines || [];
     }
     function applyTemplate(entry) {
         const parsed = parseExcerptTemplate(entry.source);
@@ -1064,7 +1133,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         commitEditing(); closePop();
         selected = null; cropping = null; pageIndex = 0;
         change(value => {
-            const next = createDoc({template: parsed.template, templateId: entry.id, body: value.body, fields: value.fields, ratio: value.ratio});
+            const next = createDoc({template: parsed.template, templateId: entry.id, body: value.body, fields: value.fields, ratio: value.ratio, lines: currentLines(value)});
             next.bg = value.bg;
             for (const key of Object.keys(value)) delete value[key];
             Object.assign(value, next);
@@ -1140,7 +1209,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         commitEditing(); closePop();
         selected = null; cropping = null; pageIndex = 0;
         change(value => {
-            const next = createDocFromScheme(scheme, {body: value.body, fields: value.fields});
+            const next = createDocFromScheme(scheme, {body: value.body, fields: value.fields, lines: currentLines(value)});
             for (const key of Object.keys(value)) delete value[key];
             Object.assign(value, next);
         }).then(() => { zoom = 0; fit(); renderPanel(); });
@@ -1214,7 +1283,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             }
             const context = {families: embedded.families, imageSrc: id => images.get(id) || ''};
             const css = `${embedded.css}\n${BASE_CSS}\n${doc.template.css}`;
-            const base = safeName(content.fields.char || content.fields.pair || '书摘');
+            const base = safeName(content.filename || content.fields.char || content.fields.pair || '书摘');
             for (let index = 0; index < doc.pages.length; index++) {
                 stopped();
                 setStatus(`正在导出 ${index + 1}/${doc.pages.length}`, true);
@@ -1271,21 +1340,27 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     function freshDoc() {
         const state = readSettings();
-        if (state.last) return createDocFromScheme(state.last, content);
-        return createDoc({template: builtinTemplate('builtin:book'), templateId: 'builtin:book', body: content.body, fields: content.fields});
+        const reader = content.scope === 'reader', last = reader ? state.lastReader : state.last;
+        if (last) return createDocFromScheme(last, content);
+        const templateId = reader ? 'builtin:coread' : 'builtin:book';
+        return createDoc({template: builtinTemplate(templateId), templateId, body: content.body, fields: content.fields, lines: content.lines});
     }
     async function sweep() {
         try {
             const state = readSettings();
-            const keep = [...imageIdsOf(state.last), ...state.schemes.flatMap(item => imageIdsOf(item.scheme)), ...imageIdsOf(doc)];
+            const keep = [...imageIdsOf(state.last), ...imageIdsOf(state.lastReader), ...state.schemes.flatMap(item => imageIdsOf(item.scheme)), ...imageIdsOf(doc)];
             await store.sweepImages(keep);
         } catch { /* 清理失败不影响编辑，下次打开再清 */ }
     }
-    // input：{key 收藏条目 id, stamp 条目更新时刻, body 原文, fields 占位字段}
+    // input：{key 稿件键, stamp 原文更新标记, body 原文, fields 占位字段, scope, dialogue, lines, filename}
     async function open(input) {
         if (!current() || typeof input?.key !== 'string' || typeof input.body !== 'string' || !input.body.trim()) return false;
         if (visible) close();
-        content = {key: input.key, stamp: String(input.stamp ?? ''), body: input.body, fields: {...(input.fields || {})}};
+        // scope：collection 正文收藏／reader 伴读；dialogue：伴读里这本书的对话（可选入图）；lines：这条摘录默认配的几句。
+        const messages = (Array.isArray(input.dialogue?.messages) ? input.dialogue.messages : []).slice(-200).flatMap(message => normalizeLines([message]));
+        content = {key: input.key, stamp: String(input.stamp ?? ''), body: input.body, fields: {...(input.fields || {})}, scope: input.scope === 'reader' ? 'reader' : 'collection',
+            dialogue: messages.length ? {messages} : null, lines: normalizeLines(input.lines || []), filename: typeof input.filename === 'string' ? input.filename : ''};
+        dialogueButton.hidden = !content.dialogue;
         visible = true;
         try { await ensureStyles(); } catch (error) { visible = false; content = null; throw error; }
         if (!visible || !current()) return false;

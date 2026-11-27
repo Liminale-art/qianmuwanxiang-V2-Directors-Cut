@@ -23,6 +23,13 @@ export const BASE_CSS = `
 .qm-ellipse{border-radius:50%}
 .qm-line{overflow:visible}
 .qm-line>svg{position:absolute;left:0;top:0;overflow:visible}
+.qm-dialog{overflow:visible;display:flex;flex-direction:column;gap:var(--qm-gap,.55em)}
+.qm-say{margin:0;white-space:pre-wrap;overflow-wrap:break-word;line-break:strict}
+.qm-who{font-weight:600;color:var(--qm-who,inherit)}
+.qm-dialog.is-script .qm-who::after{content:"："}
+.qm-dialog.is-bubble .qm-say{max-width:84%;align-self:flex-start;padding:.45em .8em;border-radius:.9em;background:color-mix(in srgb,currentColor 8%,transparent)}
+.qm-dialog.is-bubble .qm-say.is-user{align-self:flex-end}
+.qm-dialog.is-bubble .qm-who{display:block;margin-bottom:.15em;font-size:.72em;opacity:.75}
 `;
 
 export const FONT_STACKS = Object.freeze({
@@ -62,6 +69,7 @@ export function elementCss(element, {families, dy = 0, dh = 0, z = 1} = {}) {
     if (p.italic !== undefined) parts.push(`font-style:${p.italic ? 'italic' : 'normal'}`);
     if (p.indent !== undefined) parts.push(`text-indent:${p.indent}em`);
     if (p.gap !== undefined) parts.push(`--qm-gap:${p.gap}em`);
+    if (p.nameColor) parts.push(`--qm-who:${p.nameColor}`);
     if (p.opacity !== undefined) parts.push(`opacity:${p.opacity}`);
     if (p.rotate) parts.push(`transform:rotate(${p.rotate}deg)`);
     if (element.kind === 'rect' || element.kind === 'ellipse' || element.kind === 'image') {
@@ -110,11 +118,21 @@ export function buildElement(document, doc, page, element, layoutPage, ctx, z) {
     const node = document.createElement('div');
     const vertical = element.vertical ? ' qm-v' : '';
     const empty = element.kind === 'image' && !element.image ? ' qm-empty' : '';
-    node.className = `qm-el qm-${element.kind}${vertical}${empty}${element.cls ? ` ${element.cls}` : ''}`;
+    const look = element.kind === 'dialog' ? (element.look === 'bubble' ? ' is-bubble' : ' is-script') : '';
+    node.className = `qm-el qm-${element.kind}${vertical}${empty}${look}${element.cls ? ` ${element.cls}` : ''}`;
     node.dataset.id = element.id;
     node.setAttribute('style', elementCss(element, {families: ctx.families, dy, dh, z}));
     if (element.kind === 'text') node.textContent = element.text;
-    else if (element.kind === 'body') {
+    else if (element.kind === 'dialog') {
+        (element.lines || []).forEach((line, index) => {
+            const say = document.createElement('p'), who = document.createElement('span'), words = document.createElement('span');
+            say.className = `qm-say is-${line.who === 'user' ? 'user' : 'friend'}`; say.dataset.index = String(index);
+            who.className = 'qm-who'; who.textContent = line.name;
+            words.className = 'qm-line'; words.textContent = line.text;
+            say.append(...(line.name ? [who] : []), words);
+            node.append(say);
+        });
+    } else if (element.kind === 'body') {
         const slice = layoutPage?.slices?.[element.id];
         if (slice) { const {paragraphs, cont} = bodyParagraphs(doc.body, slice.start, slice.end); if (slice.end > slice.start) fillParagraphs(document, node, paragraphs, cont); }
     } else if (element.kind === 'image') {
