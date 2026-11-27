@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { sourceOptions, secretKeyFor, buildProfile, quickList } from '../qianmu-api-quick.js';
+import { sourceOptions, secretKeyFor, buildProfile, quickList, rowHtml } from '../qianmu-api-quick.js';
 
 const KEYS = { CUSTOM: 'api_key_custom', OPENAI: 'api_key_openai', MAKERSUITE: 'api_key_makersuite', CLAUDE: 'api_key_claude' };
 
@@ -41,7 +41,20 @@ test('the entry sits next to ST’s test-message button; the toolkit no longer h
   assert.match(source, /apiQuick\.attach\(\)/);
   assert.match(source, /CONNECTION_PROFILE_LOADED \|\| 'connection_profile_loaded', apiQuick\.events\.profileLoaded/);
   assert.match(quick, /getElementById\('test_api_button'\)/);
-  assert.match(quick, /千幕快切/);
+  assert.match(quick, /label.textContent = 'API快切'/);
   const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
   assert.match(css, /\.sd-floor-tabs \{ display: grid; grid-template-columns: repeat\(5,/);
+});
+
+test('rows: the fold-out list shows only the model with pin / edit / delete; the panel folds edit and delete behind ⋯', () => {
+  const item = { id: 'a', name: '甲<x>', api: 'custom', model: 'm-1', preset: '长文' };
+  const tools = html => [...html.matchAll(/class="qm-apiq-icon ([\w-]+)/g)].map(match => match[1]);
+  const drop = rowHtml(item, { where: 'drop', pinned: true });
+  assert.match(drop, /<span class="qm-apiq-model">m-1<\/span>/); assert.doesNotMatch(drop, /qm-apiq-tag/);
+  assert.deepEqual(tools(drop), ['qm-apiq-pin', 'qm-apiq-edit', 'qm-apiq-del']);
+  assert.match(drop, /甲&lt;x&gt;/);
+  assert.deepEqual(tools(rowHtml(item, { where: 'panel' })), ['qm-apiq-pin', 'qm-apiq-more']);
+  assert.deepEqual(tools(rowHtml(item, { where: 'panel', open: true })), ['qm-apiq-pin', 'qm-apiq-edit', 'qm-apiq-del', 'qm-apiq-more']);
+  assert.match(rowHtml(item, { where: 'panel' }), /qm-apiq-tag">自定义[\s\S]*预设 长文/);
+  assert.deepEqual(tools(rowHtml(item, { where: 'current', active: true })), []);
 });

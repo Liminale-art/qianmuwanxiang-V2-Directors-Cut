@@ -1,6 +1,6 @@
 // 「微醺记录」面板：现实里在酒馆待了多久。上面一张热力格（一列一周，越深待得越久），紧跟着最近聊过的那位（点进去是常客名单），
 // 下面是一格一格的计数。经典与极简是微微内发光的卡片；纸间是书页式（界行、朱砂）。颜色全取当前主题的变量，不自带配色。
-import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift, normalizeUsage, tokenSummary, tokenTotals, compactTokens, tokenText } from './qianmu-usage-tracker.js?v=1.59.621';
+import { usageSummary, heatCells, quarterRange, compactTime, durationText, dayKey, zoneShift, normalizeUsage, tokenSummary, tokenTotals, compactTokens, tokenText } from './qianmu-usage-tracker.js?v=1.59.622';
 
 const ROOT_ID = 'qianmu-usage';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));

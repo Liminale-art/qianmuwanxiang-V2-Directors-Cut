@@ -4,20 +4,20 @@
     --qa-text: var(--qm-apiq-text, #2a2522);
     --qa-bg: var(--qm-apiq-sticky-bg, #f7f3ec);
     --qa-line: var(--qm-apiq-hairline, rgba(120, 100, 90, .3));
-    display: inline-flex; align-items: stretch; flex: none; height: 30px; margin: 2px 0 2px 6px; vertical-align: middle;
+    display: inline-flex; align-items: stretch; align-self: center; flex: none; height: 34px; margin: 0 0 0 6px; vertical-align: middle;
     border: 1px solid var(--qa-line); border-radius: 999px; background: var(--qa-bg); color: var(--qa-text);
-    font: 500 12px/1 var(--qm-apiq-font, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif);
+    font: 500 13px/1 var(--qm-apiq-font, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif);
     box-shadow: 0 1px 4px rgba(0, 0, 0, .12); overflow: hidden; box-sizing: border-box;
 }
 .qm-apiq-entry button {
     all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 5px; height: 100%; cursor: pointer;
     color: inherit; font: inherit; -webkit-tap-highlight-color: transparent;
 }
-.qm-apiq-entry .qm-apiq-fold { width: 24px; justify-content: center; border-right: 1px solid var(--qa-line); }
-.qm-apiq-entry .qm-apiq-fold svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
+.qm-apiq-entry .qm-apiq-fold { width: 28px; justify-content: center; border-right: 1px solid var(--qa-line); }
+.qm-apiq-entry .qm-apiq-fold svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .16s ease; }
 .qm-apiq-entry .qm-apiq-fold[aria-expanded="true"] svg { transform: rotate(180deg); }
-.qm-apiq-entry .qm-apiq-open { padding: 0 11px 0 7px; white-space: nowrap; }
-.qm-apiq-entry .qm-apiq-open img { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+.qm-apiq-entry .qm-apiq-open { gap: 6px; padding: 0 13px 0 8px; white-space: nowrap; }
+.qm-apiq-entry .qm-apiq-open img { width: 19px; height: 19px; border-radius: 4px; object-fit: contain; }
 .qm-apiq-entry button:hover { background: color-mix(in srgb, var(--qa-accent) 12%, transparent); color: var(--qa-accent); }
 .qm-apiq-entry button:focus-visible { outline: 2px solid var(--qa-accent); outline-offset: -2px; }
 
@@ -38,7 +38,6 @@
 .qm-apiq-drop.is-busy, .qm-apiq-panel.is-busy .qm-apiq-body { opacity: .6; pointer-events: none; }
 /* 约六条的高度，多了在框里滚动 */
 .qm-apiq-drop-list { max-height: 264px; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 2px; }
-.qm-apiq-drop-foot { display: flex; justify-content: flex-end; padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--qa-line); }
 
 .qm-apiq-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; }
 .qm-apiq-row:hover { background: var(--qa-soft); }
@@ -48,7 +47,10 @@
 .qm-apiq-name i { color: var(--qa-accent); }
 .qm-apiq-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 100%; }
 .qm-apiq-tag { max-width: 100%; padding: 1px 7px; border-radius: 999px; background: var(--qa-soft); color: var(--qa-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.qm-apiq-pinmark { flex: none; width: 24px; color: var(--qa-accent); font-size: 11px; text-align: center; }
+.qm-apiq-model { max-width: 100%; color: var(--qa-muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qm-apiq-row-tools { display: inline-flex; align-items: center; flex: none; gap: 0; padding-right: 2px; }
+.qm-apiq-drop .qm-apiq-icon { width: 28px; height: 28px; font-size: 12px; }
+.qm-apiq-more.is-on { color: var(--qa-text); background: var(--qa-soft); }
 .qm-apiq-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--qa-muted); cursor: pointer; }
 .qm-apiq-icon:hover { background: var(--qa-soft); color: var(--qa-text); }
 .qm-apiq-pin i { transform: rotate(45deg); transition: transform .16s ease; }
@@ -76,19 +78,17 @@
 .qm-apiq-current { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--qa-line); border-radius: 12px; }
 .qm-apiq-current h4, .qm-apiq-group-head h4 { margin: 0 0 0 4px; color: var(--qa-muted); font-size: 12px; font-weight: 600; }
 .qm-apiq-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.qm-apiq-tools .qm-apiq-snapshot { white-space: normal; text-align: left; line-height: 1.35; }
 .qm-apiq-group { display: flex; flex-direction: column; gap: 2px; }
 .qm-apiq-group + .qm-apiq-group { padding-top: 8px; border-top: 1px solid var(--qa-line); }
 .qm-apiq-group-head { display: flex; align-items: center; justify-content: space-between; min-height: 30px; }
 .qm-apiq-acts { display: inline-flex; gap: 2px; }
-.qm-apiq-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 10px 10px; }
-.qm-apiq-move { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--qa-muted); font-size: 12px; }
 .qm-apiq-panel select, .qm-apiq-panel input {
     width: 100%; min-height: 34px; padding: 4px 10px; border: 1px solid var(--qa-line); border-radius: 9px; background: var(--qa-soft); outline: none; box-shadow: none;
 }
 .qm-apiq-panel select:focus, .qm-apiq-panel input:focus { border-color: var(--qa-accent); }
 .qm-apiq-panel select option { background: var(--qa-bg); color: var(--qa-text); }
-.qm-apiq-move select { width: auto; }
-.qm-apiq-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.qm-apiq-form { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 8px; padding: 12px; border: 1px solid var(--qa-line); border-radius: 12px; background: color-mix(in srgb, var(--qa-accent) 4%, transparent); }
 .qm-apiq-field { display: flex; flex-direction: column; gap: 5px; margin: 0; }
 .qm-apiq-field > span:first-child { color: var(--qa-muted); font-size: 12px; }
 .qm-apiq-inline { display: flex; gap: 6px; }
@@ -96,6 +96,10 @@
 .qm-apiq-error { margin: 0; color: #d0453b; }
 .qm-apiq-form-acts { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
 
-@media (max-width: 520px) {
-    .qm-apiq-panel { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+/* 窄屏与千幕主面板同尺寸：左右各留 16px，上下露出 ST 顶栏与输入框 */
+@media (max-width: 760px) {
+    .qm-apiq-panel { width: calc(100vw - 32px); height: calc(100dvh - 108px); border-radius: 16px; }
+}
+@media (max-height: 620px) {
+    .qm-apiq-panel { height: calc(100dvh - 12px); }
 }

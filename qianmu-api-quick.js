@@ -53,20 +53,25 @@ export function quickList(profiles, rawState) {
 function tagsOf(item) {
     return [item.api && sourceLabel(item.api), item.model, item.preset && `预设 ${item.preset}`].filter(Boolean);
 }
-function rowHtml(item, {active = false, pinned = false, open = false, compact = false} = {}) {
-    const tags = tagsOf(item).map(tag => `<span class="qm-apiq-tag">${esc(tag)}</span>`).join('');
-    const tools = compact ? (pinned ? '<i class="fa-solid fa-thumbtack qm-apiq-pinmark" aria-hidden="true"></i>' : '')
-        : `<button type="button" class="qm-apiq-icon qm-apiq-pin${pinned ? ' is-on' : ''}" aria-pressed="${pinned}" title="${pinned ? '取消置顶' : '置顶'}" aria-label="${pinned ? '取消置顶' : '置顶'}"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i></button>
-           <button type="button" class="qm-apiq-icon qm-apiq-more" aria-expanded="${open}" title="更多" aria-label="更多"><i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>`;
+const iconButton = (cls, label, fa, extra = '') => `<button type="button" class="qm-apiq-icon ${cls}" title="${label}" aria-label="${label}"${extra}><i class="fa-solid ${fa}" aria-hidden="true"></i></button>`;
+// where：drop 折叠快选、panel 面板列表、current 面板顶部的当前连接。
+export function rowHtml(item, {active = false, pinned = false, open = false, where = 'panel'} = {}) {
+    const sub = where === 'drop' ? (item.model ? `<span class="qm-apiq-model">${esc(item.model)}</span>` : '')
+        : `<span class="qm-apiq-tags">${tagsOf(item).map(tag => `<span class="qm-apiq-tag">${esc(tag)}</span>`).join('')}</span>`;
+    const pin = iconButton(`qm-apiq-pin${pinned ? ' is-on' : ''}`, pinned ? '取消置顶' : '置顶', 'fa-thumbtack', ` aria-pressed="${pinned}"`);
+    const edit = iconButton('qm-apiq-edit', '编辑', 'fa-pen'), del = iconButton('qm-apiq-del', '删除', 'fa-trash');
+    const tools = where === 'current' ? ''
+        : where === 'drop' ? pin + edit + del
+        : `${pin}${open ? edit + del : ''}${iconButton(`qm-apiq-more${open ? ' is-on' : ''}`, open ? '收起' : '更多', 'fa-ellipsis', ` aria-expanded="${open}"`)}`;
     return `<div class="qm-apiq-row${active ? ' is-active' : ''}" data-id="${esc(item.id)}">
-        <button type="button" class="qm-apiq-pick" aria-pressed="${active}" title="${active ? '当前连接' : '切换到这条连接'}"><span class="qm-apiq-name">${active ? '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>' : ''}${esc(item.name)}</span><span class="qm-apiq-tags">${tags}</span></button>${tools}
+        <button type="button" class="qm-apiq-pick" aria-pressed="${active}" title="${active ? '当前连接' : '切换到这条连接'}"><span class="qm-apiq-name">${active ? '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>' : ''}${esc(item.name)}</span>${sub}</button>${tools ? `<span class="qm-apiq-row-tools">${tools}</span>` : ''}
     </div>`;
 }
 // getContext：ST 上下文；getOwner/save：千幕设置；loadSecrets：载入 ST 的密钥模块；mountPortal：套千幕主题；logoUrl：千幕图标。
 export function createApiQuick({getContext, getOwner, save, notify = () => {}, confirm = async () => true, prompt = async () => null,
     loadSecrets, mountPortal, logoUrl: logoSource = '', doc = globalThis.document, fetchImpl = (...args) => globalThis.fetch(...args)} = {}) {
     let portal = null, unmountPortal = null, panel = null, drop = null, dropAnchor = null, stylesheet = null, attached = false;
-    let view = 'list', openId = '', formState = null, busy = false;
+    let openId = '', formState = null, busy = false;
     const entries = new Set();
     const logoUrl = () => { try { return String(typeof logoSource === 'function' ? logoSource() : logoSource || ''); } catch { return ''; } };
     const ctx = () => getContext?.() || {};
@@ -84,6 +89,7 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
             doc.head.append(stylesheet);
         }
         portal = make('section', 'qm-apiq-portal');
+        for (const type of ['mousedown', 'touchstart', 'pointerdown', 'mouseup', 'touchend', 'click']) portal.addEventListener(type, event => event.stopPropagation());
         doc.body.append(portal);
         try { unmountPortal = mountPortal?.(portal) || null; } catch { unmountPortal = null; }
         return portal;
@@ -107,9 +113,9 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         fold.title = '快速切换连接'; fold.setAttribute('aria-label', '快速切换连接'); fold.setAttribute('aria-expanded', 'false');
         fold.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>';
         const open = make('button', 'qm-apiq-open'); open.type = 'button';
-        open.title = '千幕 API 快切'; open.setAttribute('aria-label', '千幕 API 快切');
+        open.title = 'API快切'; open.setAttribute('aria-label', 'API快切');
         if (logoUrl()) { const img = make('img'); img.src = logoUrl(); img.alt = ''; img.draggable = false; open.append(img); }
-        const label = make('span'); label.textContent = '千幕快切'; open.append(label);
+        const label = make('span'); label.textContent = 'API快切'; open.append(label);
         fold.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); toggleDrop(entry); });
         open.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); closeDrop(); openPanel(); });
         entry.append(fold, open);
@@ -171,9 +177,8 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         const data = readProfiles(ctx());
         if (!data.available) { drop.innerHTML = '<p class="qm-apiq-empty">请先在 ST 的扩展里启用 Connection Profiles。</p>'; return; }
         const list = quickList(data.profiles, state());
-        drop.innerHTML = `<div class="qm-apiq-drop-list">${list.length ? list.map(({item, pinned}) => rowHtml(item, {active: item.id === data.selected, pinned, compact: true})).join('')
-            : '<p class="qm-apiq-empty">还没有连接</p>'}</div>
-            <div class="qm-apiq-drop-foot"><button type="button" class="qm-apiq-text qm-apiq-drop-manage">管理连接</button></div>`;
+        drop.innerHTML = `<div class="qm-apiq-drop-list">${list.length ? list.map(({item, pinned}) => rowHtml(item, {active: item.id === data.selected, pinned, where: 'drop'})).join('')
+            : '<p class="qm-apiq-empty">还没有连接</p>'}</div>`;
         drop.classList.toggle('is-busy', busy);
     }
     function placeDrop() {
@@ -199,9 +204,12 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         renderDrop(); placeDrop();
         entry.querySelector('.qm-apiq-fold')?.setAttribute('aria-expanded', 'true');
         drop.addEventListener('click', event => {
-            const row = event.target.closest('.qm-apiq-row');
-            if (row && event.target.closest('.qm-apiq-pick')) { const id = row.dataset.id; closeDrop(); void pick(id); return; }
-            if (event.target.closest('.qm-apiq-drop-manage')) { closeDrop(); openPanel(); }
+            const row = event.target.closest('.qm-apiq-row'), id = row?.dataset.id;
+            if (!id || busy) return;
+            if (event.target.closest('.qm-apiq-pick')) { closeDrop(); void pick(id); return; }
+            if (event.target.closest('.qm-apiq-pin')) { write(togglePinned(state(), id)); renderDrop(); return; }
+            if (event.target.closest('.qm-apiq-edit')) { closeDrop(); openPanel(); void secrets().then(() => startForm(id)); return; }
+            if (event.target.closest('.qm-apiq-del')) { void deleteProfile(id).then(() => { if (drop) renderDrop(); }); }
         });
         doc.addEventListener('pointerdown', outside, true);
         doc.addEventListener('keydown', onKey, true);
@@ -224,39 +232,31 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         if (!data.available) return '<p class="qm-apiq-empty">没有找到 ST 的「连接配置」。请在 ST 的扩展里启用 Connection Profiles 后再来。</p>';
         const s = state(), arranged = arrangeProfiles(data.profiles, s), pinnedIds = new Set(s.pinned);
         const current = data.profiles.find(item => item.id === data.selected);
-        const row = item => rowHtml(item, {active: item.id === data.selected, pinned: pinnedIds.has(item.id), open: item.id === openId}) + (item.id === openId ? moreHtml(item, s) : '');
+        const form = id => (formState && formState.id === id ? formHtml(formState, s) : '');
+        const row = item => rowHtml(item, {active: item.id === data.selected, pinned: pinnedIds.has(item.id), open: item.id === openId && formState?.id !== item.id}) + form(item.id);
         const block = (id, title, items, head = '') => `<section class="qm-apiq-group" data-group="${esc(id)}"><div class="qm-apiq-group-head"><h4>${esc(title)}</h4>${head}</div>${items.length ? items.map(row).join('') : '<p class="qm-apiq-empty">空</p>'}</section>`;
-        const groupHead = group => `<span class="qm-apiq-acts"><button type="button" class="qm-apiq-icon qm-apiq-group-rename" data-group="${esc(group.id)}" title="改组名" aria-label="改组名"><i class="fa-solid fa-pen" aria-hidden="true"></i></button><button type="button" class="qm-apiq-icon qm-apiq-group-del" data-group="${esc(group.id)}" title="删除分组" aria-label="删除分组"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></span>`;
-        return `<section class="qm-apiq-current"><h4>当前连接</h4>${current ? rowHtml(current, {active: true, pinned: pinnedIds.has(current.id), compact: true}) : '<p class="qm-apiq-empty">ST 现在没有选中连接</p>'}</section>
-            <div class="qm-apiq-tools"><button type="button" class="qm-apiq-text is-primary qm-apiq-new">＋ 新建连接</button><button type="button" class="qm-apiq-text qm-apiq-snapshot" title="把 ST 现在的连接设置（含预设、代理等）存成一条">存下当前设置</button><button type="button" class="qm-apiq-text qm-apiq-group-add">＋ 分组</button></div>
+        const groupHead = group => `<span class="qm-apiq-acts">${iconButton('qm-apiq-group-rename', '改组名', 'fa-pen', ` data-group="${esc(group.id)}"`)}${iconButton('qm-apiq-group-del', '删除分组', 'fa-trash', ` data-group="${esc(group.id)}"`)}</span>`;
+        return `<section class="qm-apiq-current"><h4>当前连接</h4>${current ? rowHtml(current, {active: true, where: 'current'}) : '<p class="qm-apiq-empty">ST 现在没有选中连接</p>'}</section>
+            <div class="qm-apiq-tools"><button type="button" class="qm-apiq-text is-primary qm-apiq-new">＋ 新建连接</button><button type="button" class="qm-apiq-text qm-apiq-group-add">＋ 分组</button><button type="button" class="qm-apiq-text qm-apiq-snapshot">将当前ST（预设绑定、代理等）设置存为方案</button></div>
+            ${form('')}
             ${arranged.pinned.length ? block('pinned', '置顶', arranged.pinned) : ''}
             ${arranged.groups.map(group => block(group.id, group.name, group.items, groupHead(group))).join('')}
             ${block('others', '最近使用', arranged.others)}`;
     }
-    function moreHtml(item, s) {
-        const inGroup = s.groups.find(group => group.ids.includes(item.id))?.id || '';
-        const options = [`<option value=""${inGroup ? '' : ' selected'}>不放进分组</option>`, ...s.groups.map(group => `<option value="${esc(group.id)}"${group.id === inGroup ? ' selected' : ''}>${esc(group.name)}</option>`)].join('');
-        return `<div class="qm-apiq-menu" data-id="${esc(item.id)}">
-            ${item.mode === 'cc' ? '<button type="button" class="qm-apiq-text qm-apiq-edit">编辑</button>' : ''}
-            <label class="qm-apiq-move"><span>分组</span><select class="qm-apiq-group-pick" aria-label="移到分组">${options}</select></label>
-            <button type="button" class="qm-apiq-text is-danger qm-apiq-del">删除</button>
-        </div>`;
-    }
-    function formHtml(f, secrets) {
-        const sources = sourceOptions(doc), key = secretKeyFor(f.source, secrets?.SECRET_KEYS);
-        const saved = key && Array.isArray(secrets?.secret_state?.[key]) ? secrets.secret_state[key] : [];
+    function formHtml(f, s) {
+        const sources = sourceOptions(doc), key = secretKeyFor(f.source, secretsModule?.SECRET_KEYS);
         const presets = presetNames(ctx(), 'cc');
         const option = (value, label, selected) => `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(label)}</option>`;
-        const field = (label, body, cls = '') => `<label class="qm-apiq-field${cls ? ` ${cls}` : ''}"><span>${label}</span>${body}</label>`;
+        const field = (label, body) => `<label class="qm-apiq-field"><span>${label}</span>${body}</label>`;
         const models = f.models.length ? `<select class="qm-apiq-f-modelpick" aria-label="选择模型">${option('', `从 ${f.models.length} 个模型中选`, !f.models.includes(f.model))}${f.models.map(id => option(id, id, id === f.model)).join('')}</select>` : '';
-        return `<form class="qm-apiq-form" novalidate>
+        return `<form class="qm-apiq-form" novalidate data-id="${esc(f.id)}">
             ${field('名称', `<input class="qm-apiq-f-name" value="${esc(f.name)}" maxlength="80" autocomplete="off" spellcheck="false">`)}
             ${field('来源', `<select class="qm-apiq-f-source">${sources.map(item => option(item.value, item.label, item.value === f.source)).join('')}</select>`)}
             ${f.source === 'custom' ? field('服务地址', `<input class="qm-apiq-f-url" value="${esc(f.url)}" placeholder="https://…/v1" autocomplete="off" spellcheck="false" inputmode="url">`) : ''}
-            ${key ? field('密钥', `<input class="qm-apiq-f-key" type="password" value="${esc(f.key)}" placeholder="${saved.length || f.secretId ? '留空沿用下面选的' : '粘贴密钥'}" autocomplete="new-password" spellcheck="false">
-                ${saved.length ? `<select class="qm-apiq-f-secret" aria-label="已存的密钥">${option('', '不指定（用 ST 当前的）', !f.secretId)}${saved.map(item => option(item.id, `${item.label || '未命名'}${item.value ? ` · ${item.value}` : ''}`, item.id === f.secretId)).join('')}</select>` : ''}`) : ''}
+            ${key ? field('密钥', `<input class="qm-apiq-f-key" type="password" value="${esc(f.key)}" placeholder="${f.secretId ? '留空不改' : '粘贴密钥'}" autocomplete="new-password" spellcheck="false">`) : ''}
             ${field('模型', `<span class="qm-apiq-inline"><input class="qm-apiq-f-model" value="${esc(f.model)}" placeholder="可留空" autocomplete="off" spellcheck="false"><button type="button" class="qm-apiq-text qm-apiq-fetch"${f.fetching ? ' disabled' : ''}>${f.fetching ? '获取中…' : '获取模型'}</button></span>${models}`)}
             ${field('预设', `<select class="qm-apiq-f-preset">${option('', '不切换预设', !f.preset)}${[...new Set([...(f.preset ? [f.preset] : []), ...presets])].map(name => option(name, name, name === f.preset)).join('')}</select>`)}
+            ${field('分组', `<select class="qm-apiq-f-group">${option('', '不放进分组', !f.group)}${s.groups.map(group => option(group.id, group.name, group.id === f.group)).join('')}</select>`)}
             ${f.error ? `<p class="qm-apiq-error" role="alert">${esc(f.error)}</p>` : ''}
             <div class="qm-apiq-form-acts"><button type="button" class="qm-apiq-text qm-apiq-cancel">取消</button><button type="button" class="qm-apiq-text qm-apiq-save">保存</button><button type="button" class="qm-apiq-text is-primary qm-apiq-save-use">保存并切换</button></div>
         </form>`;
@@ -269,35 +269,28 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
     }
     function renderPanel() {
         if (!panel) return;
-        const body = panel.querySelector('.qm-apiq-body'), title = panel.querySelector('.qm-apiq-title'), back = panel.querySelector('.qm-apiq-back');
-        back.hidden = view !== 'form';
-        if (view === 'form' && formState) {
-            title.textContent = formState.id ? '编辑连接' : '新建连接';
-            body.innerHTML = formHtml(formState, secretsModule);
-        } else {
-            title.textContent = 'API 快切';
-            body.innerHTML = listHtml();
-        }
+        const body = panel.querySelector('.qm-apiq-body'), scroll = body.scrollTop;
+        body.innerHTML = listHtml();
+        body.scrollTop = scroll;
         panel.classList.toggle('is-busy', busy);
     }
     function openPanel() {
         const root = ensurePortal();
         if (!panel) {
             panel = make('dialog', 'qm-apiq-panel');
-            panel.setAttribute('aria-label', 'API 快切');
-            panel.innerHTML = `<header class="qm-apiq-head"><button type="button" class="qm-apiq-icon qm-apiq-back" aria-label="返回" title="返回" hidden><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
-                <img class="qm-apiq-logo" alt="" draggable="false"${logoUrl() ? ` src="${esc(logoUrl())}"` : ' hidden'}><b class="qm-apiq-title">API 快切</b>
+            panel.setAttribute('aria-label', 'API快切');
+            panel.innerHTML = `<header class="qm-apiq-head"><img class="qm-apiq-logo" alt="" draggable="false"${logoUrl() ? ` src="${esc(logoUrl())}"` : ' hidden'}><b class="qm-apiq-title">API快切</b>
                 <button type="button" class="qm-apiq-icon qm-apiq-close" aria-label="关闭" title="关闭"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
                 <div class="qm-apiq-body"></div>`;
             panel.addEventListener('click', event => { void onPanelClick(event); });
             panel.addEventListener('change', onPanelChange);
             panel.addEventListener('input', onPanelInput);
-            panel.addEventListener('cancel', event => { event.preventDefault(); if (view === 'form') void leaveForm(); else closePanel(); });
+            panel.addEventListener('cancel', event => { event.preventDefault(); if (formState) void leaveForm(); else closePanel(); });
             for (const type of ['keydown', 'keyup', 'keypress']) panel.addEventListener(type, event => event.stopPropagation());
-            panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); if (view === 'form') void leaveForm(); else closePanel(); } });
+            panel.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); if (formState) void leaveForm(); else closePanel(); } });
         }
         if (!panel.isConnected) root.append(panel);
-        view = 'list'; openId = ''; formState = null;
+        openId = ''; formState = null;
         renderPanel();
         if (!panel.open) panel.showModal();
         void secrets();
@@ -306,18 +299,23 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         if (!panel) return;
         void discardPending();
         if (panel.open) panel.close();
-        panel.remove(); view = 'list'; openId = ''; formState = null;
+        panel.remove(); openId = ''; formState = null;
     }
 
     // ── 新建与编辑 ────────────────────────────────────────────────────────
     function startForm(id = '') {
+        if (!panel?.open) return;
+        void discardPending();
         const raw = id ? (manager()?.profiles || []).find(item => item?.id === id) : null;
-        const sources = sourceOptions(doc);
+        if (id && !raw) return;
+        const sources = sourceOptions(doc), group = id ? state().groups.find(item => item.ids.includes(id))?.id || '' : '';
         formState = raw
-            ? {id, name: raw.name || '', source: text(raw.api) === 'google' ? 'makersuite' : text(raw.api) || 'custom', url: raw['api-url'] || '', key: '', secretId: raw['secret-id'] || '', model: raw.model || '', preset: raw.preset || '', models: [], pending: null, error: ''}
-            : {id: '', name: '', source: sources.some(item => item.value === 'custom') ? 'custom' : sources[0]?.value || 'custom', url: '', key: '', secretId: '', model: '', preset: '', models: [], pending: null, error: ''};
-        view = 'form'; openId = ''; renderPanel();
-        panel.querySelector('.qm-apiq-f-name')?.focus();
+            ? {id, name: raw.name || '', source: text(raw.api) === 'google' ? 'makersuite' : text(raw.api) || 'custom', url: raw['api-url'] || '', key: '', secretId: raw['secret-id'] || '', model: raw.model || '', preset: raw.preset || '', group, models: [], pending: null, error: ''}
+            : {id: '', name: '', source: sources.some(item => item.value === 'custom') ? 'custom' : sources[0]?.value || 'custom', url: '', key: '', secretId: '', model: '', preset: '', group: '', models: [], pending: null, error: ''};
+        openId = ''; renderPanel();
+        const form = panel.querySelector('.qm-apiq-form');
+        form?.scrollIntoView?.({block: 'nearest'});
+        form?.querySelector('.qm-apiq-f-name')?.focus({preventScroll: true});
     }
     function readForm() {
         const form = panel?.querySelector('.qm-apiq-form');
@@ -329,6 +327,7 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         formState.secretId = value('.qm-apiq-f-secret') ?? formState.secretId;
         formState.model = value('.qm-apiq-f-model') ?? formState.model;
         formState.preset = value('.qm-apiq-f-preset') ?? formState.preset;
+        formState.group = value('.qm-apiq-f-group') ?? formState.group;
     }
     // 新填的密钥写进 ST 的密钥库（ST 会把它设为这一类的当前密钥）。同一次填写只写一次。
     async function writePendingKey() {
@@ -361,7 +360,7 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
         try {
             const module = await secrets(), key = secretKeyFor(formState.source, module?.SECRET_KEYS);
             if (text(formState.key)) await writePendingKey();
-            else if (key && formState.secretId && typeof module?.rotateSecret === 'function') {
+            else if (key && formState.secretId && typeof module?.rotateSecret === 'function') {   // 编辑时沿用这条连接原来的密钥
                 const active = (module.secret_state?.[key] || []).find(item => item.active)?.id || '';
                 if (active !== formState.secretId) await module.rotateSecret(key, formState.secretId);
             }
@@ -403,7 +402,8 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
             }
             context.saveSettingsDebounced?.();
             const id = profile.id, wasCurrent = readProfiles(ctx()).selected === id;
-            view = 'list'; formState = null;
+            write(moveToGroup(state(), id, formState.group));
+            formState = null;
             if (andSwitch || wasCurrent) await apply(id);
             notify(andSwitch ? `已保存并切换到「${profile.name}」` : `已保存「${profile.name}」`, 'success');
         } catch (error) {
@@ -411,39 +411,42 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
             else notify(error?.message || '切换没有完成', 'warning');
         } finally { busy = false; renderPanel(); }
     }
-    async function leaveForm() { await discardPending(); view = 'list'; formState = null; renderPanel(); }
+    async function leaveForm() { await discardPending(); formState = null; renderPanel(); }
+    // 直接删除 ST 里的这条连接配置（密钥仍留在 ST 的密钥库）。
+    async function deleteProfile(id) {
+        const store = manager(), index = store?.profiles?.findIndex(profile => profile?.id === id) ?? -1;
+        if (index < 0) return;
+        const [removed] = store.profiles.splice(index, 1);
+        if (store.selectedProfile === id) { store.selectedProfile = null; const node = nativeSelect(); if (node) node.value = ''; }
+        syncOption(id, null);
+        write({...moveToGroup(state(), id, ''), pinned: state().pinned.filter(item => item !== id)});
+        ctx().saveSettingsDebounced?.();
+        if (formState?.id === id) formState = null;
+        if (openId === id) openId = '';
+        await ctx().eventSource?.emit?.(ctx().eventTypes?.CONNECTION_PROFILE_DELETED || 'connection_profile_deleted', removed);
+        notify(`已删除「${removed?.name || ''}」`, 'info');
+        if (panel?.open) renderPanel();
+    }
 
     async function onPanelClick(event) {
         const target = event.target;
         if (busy && !target.closest('.qm-apiq-close')) return;
-        const row = target.closest('.qm-apiq-row, .qm-apiq-menu');
+        const row = target.closest('.qm-apiq-row');
         const id = row?.dataset.id || '';
         try {
             if (target.closest('.qm-apiq-close')) { closePanel(); return; }
-            if (target.closest('.qm-apiq-back') || target.closest('.qm-apiq-cancel')) { await leaveForm(); return; }
+            if (target.closest('.qm-apiq-cancel')) { await leaveForm(); return; }
             if (target.closest('.qm-apiq-fetch')) { await fetchModels(); return; }
             if (target.closest('.qm-apiq-save-use')) { await saveForm(true); return; }
             if (target.closest('.qm-apiq-save')) { await saveForm(false); return; }
             if (target.closest('.qm-apiq-pick')) { await pick(id); return; }
-            if (target.closest('.qm-apiq-pin')) { write(togglePinned(state(), id)); renderPanel(); return; }
-            if (target.closest('.qm-apiq-more')) { openId = openId === id ? '' : id; renderPanel(); return; }
+            if (target.closest('.qm-apiq-pin')) { readForm(); write(togglePinned(state(), id)); renderPanel(); return; }
+            if (target.closest('.qm-apiq-more')) { readForm(); openId = openId === id ? '' : id; renderPanel(); return; }
             if (target.closest('.qm-apiq-new')) { await secrets(); startForm(); return; }
             if (target.closest('.qm-apiq-edit')) { await secrets(); startForm(id); return; }
-            if (target.closest('.qm-apiq-del')) {
-                const item = readProfiles(ctx()).profiles.find(profile => profile.id === id);
-                if (!item || !await confirm('删除连接', `删除 ST 里的连接配置「${item.name}」？不可恢复。`)) return;
-                const store = manager(), index = store.profiles.findIndex(profile => profile?.id === id);
-                if (index < 0) return;
-                const [removed] = store.profiles.splice(index, 1);
-                if (store.selectedProfile === id) { store.selectedProfile = null; const node = nativeSelect(); if (node) node.value = ''; }
-                syncOption(id, null);
-                write({...moveToGroup(state(), id, ''), pinned: state().pinned.filter(item2 => item2 !== id)});
-                ctx().saveSettingsDebounced?.();
-                await ctx().eventSource?.emit?.(ctx().eventTypes?.CONNECTION_PROFILE_DELETED || 'connection_profile_deleted', removed);
-                openId = ''; notify('已删除。', 'info'); renderPanel(); return;
-            }
+            if (target.closest('.qm-apiq-del')) { await deleteProfile(id); return; }
             if (target.closest('.qm-apiq-snapshot')) {
-                const name = text(await prompt('存下当前设置', '用 ST 现在的连接设置存一条，起个名：', '') || '');
+                const name = text(await prompt('存为方案', '把 ST 现在的连接设置（含预设绑定、代理等）存成一条，起个名：', '') || '');
                 if (!name) return;
                 const problem = checkProfileName(name, readProfiles(ctx()).profiles);
                 if (problem) { notify(problem, 'warning'); return; }
@@ -455,6 +458,7 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
                 write(markUsed(state(), made.id)); notify(`已存下「${made.name}」`, 'success'); renderPanel(); return;
             }
             if (target.closest('.qm-apiq-group-add')) {
+                readForm();
                 const name = text(await prompt('新建分组', '分组名：', '') || '');
                 if (!name) return;
                 write({...state(), groups: [...state().groups, {id: `grp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, ids: []}]}); renderPanel(); return;
@@ -476,7 +480,6 @@ export function createApiQuick({getContext, getOwner, save, notify = () => {}, c
     }
     function onPanelChange(event) {
         const target = event.target;
-        if (target.closest('.qm-apiq-group-pick')) { write(moveToGroup(state(), target.closest('.qm-apiq-menu').dataset.id, target.value)); openId = ''; renderPanel(); return; }
         if (!formState) return;
         if (target.matches('.qm-apiq-f-source')) { readForm(); void discardPending(); formState.source = target.value; formState.secretId = ''; formState.key = ''; formState.models = []; renderPanel(); return; }
         if (target.matches('.qm-apiq-f-modelpick') && target.value) { readForm(); formState.model = target.value; panel.querySelector('.qm-apiq-f-model').value = target.value; }
