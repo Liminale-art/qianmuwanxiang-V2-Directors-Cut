@@ -8,7 +8,7 @@ function fixture(){
   const e=focusFixture({activity:'reading',bookId:'book'}),{c}=e;
   Object.assign(c,{MODAL_ID:'modal',coreadOpenRequestId:0,focusClockCloseVoiceDrawer:()=>{},unmountTheaterFullscreen:()=>{},
     coreadMemoryWrites:0,coreadIdentitySwitchBusy:false,coreadDistilling:false,coreadAutoTextInFlight:false,
-    coreadStopDialog:()=>{},coreadStopAssistant:()=>{},coreadComicStop:()=>{},coreadClearPendingChatImages:()=>{},coreadComicVisionAbort:null,
+    readerLog:null,coreadStopDialog:()=>{},coreadStopAssistant:()=>{},coreadComicStop:()=>{},coreadClearPendingChatImages:()=>{},coreadComicVisionAbort:null,
     coreadComicVisionBusy:false,coreadAssistantConfig:()=>({historyMode:'session'}),coreadStoreAssistantHistory:()=>{},storyboardWorldbookController:null});
   c.document.getElementById=()=>({classList:{remove:()=>{}}});c.document.body={classList:{remove:()=>{}}};
   vm.runInContext(['closeModal','coreadCloseReader'].map(section).join('\n'),c);return e;

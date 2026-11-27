@@ -65,6 +65,8 @@
     "features/excerpt/qianmu-excerpt-template.js",
     "qianmu-api-quick.js",
     "features/theater/qianmu-theater-continue.js",
+    "features/reader/qianmu-reader-log.js",
+    "features/reader/qianmu-reader-home-view.js",
     "qianmu-api-quick.css",
     "features/excerpt/qianmu-excerpt-doc.js",
     "features/excerpt/qianmu-excerpt-render.js",

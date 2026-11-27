@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.625';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.626';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.625';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.626';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,20 +30,22 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.625';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.625';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.625';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.625';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.625';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.625';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.625';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.626';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.626';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.626';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.626';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.626';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.626';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.626';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.625';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.626';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
+import { createReaderLog, readerSummary } from './features/reader/qianmu-reader-log.js';
+import { renderReaderShell, renderReaderHome, renderReaderStats, readerPageOf } from './features/reader/qianmu-reader-home-view.js';
 import {summarizeGalleryRecords} from './features/gallery/qianmu-gallery-summary.js?v=1.59.441';
 import {captureGalleryViewGuard} from './features/gallery/qianmu-gallery-inspector.js?v=1.59.440';
 import {openImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from './features/gallery/qianmu-image-info-view.js?v=1.59.441';
@@ -67,11 +69,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.625';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.626';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.625';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.626';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -101,7 +103,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.625';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.626';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -344,7 +346,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.625';
+const VERSION = '1.59.626';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1243,6 +1245,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     books: [],                      // 轻量书目索引：[{ id, title, author, addedAt, chapterCount, charCount, tags:[], boundChar, progress, lastChapterIndex, lastScrollRatio, ragEnabled }]，正文在 IndexedDB
     collections: [],                // 书架合集：[{id,name,bookIds:[],createdAt,updatedAt}]；正文仍按书独立存储
     libCollectionId: '',            // 当前打开的合集；空=书架根层
+    page: 'home',                   // 伴读面板停在哪一页：home | shelf | stats
+    readLog: null,                  // 阅读记录（features/reader/qianmu-reader-log.js）：时长、读过的字、读完、最近的书友对话
     libViewMode: 'grid',            // 书架视图：grid | list
     libSort: 'addedAt-desc',        // 排序：title/author/progress/addedAt × asc/desc
     libTags: [],                    // 当前标签筛选
@@ -1362,6 +1366,7 @@ const configUndo = createConfigUndoSlot();
 let configUndoAction = null;
 let activeTab = 'dashboard';
 let storyboardReturnTab = 'dashboard';
+let coreadReturnTab = 'dashboard';   // 伴读面板占满千幕面板，「返回千幕」回到进来前的页签
 const storyboardPageScrolls = new Map();
 let storyboardPendingRestoreScroll = null;
 let storyboardPresetUndo = null;
@@ -5939,7 +5944,7 @@ async function runQuickWheelCommand(id) {
   }
   if (id === 'floor') return openFloorNavigator();
   if (id === 'notes') return openNotesPanel();
-  if (id === 'usage') return openUsagePanel({ getData: () => { usageTracker?.tick(); return usageTracker?.data; }, setZone: zone => usageTracker?.setZone(zone), getFloors: () => { floorCounter?.touch(); return floorCounter ? floorRanking(floorCounter.store()) : []; }, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
+  if (id === 'usage') return openUsagePanel({ getData: () => { usageTracker?.tick(); return usageTracker?.data; }, setZone: zone => { usageTracker?.setZone(zone); readerLog?.setZone(zone); }, getFloors: () => { floorCounter?.touch(); return floorCounter ? floorRanking(floorCounter.store()) : []; }, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
   if (id === 'assistant') {
     const timed = globalThis.qianmuPerf?.start('场外特助'), opening = proseFloorTools.openAssistant();
     void Promise.resolve(opening).then(() => timed?.('面板就绪'), () => {});
@@ -7024,6 +7029,7 @@ function renderModal() {
   const tabHtml = () => { if (!laps) return renderActiveTab(); const from = globalThis.performance.now(), html = renderActiveTab(); tabMs = globalThis.performance.now() - from; return html; };
   // 记录当前 tab 供下次打开恢复。只在真变化且非临时视图时落盘，避免每次静默重渲染都写。
   // theater 的阅读/收藏子视图（theaterView）是临时态，仍记 tab='theater' 无妨；editorView 是行内编辑、不改 activeTab。
+  if (activeTab === 'coread' && settings.lastTab && settings.lastTab !== 'coread') coreadReturnTab = settings.lastTab;   // 从哪一页进的伴读，「返回千幕」就回哪
   if (activeTab && !['imagegen', 'geopolitics'].includes(activeTab) && settings.lastTab !== activeTab) {
     settings.lastTab = activeTab;
     saveSettings();
@@ -7051,13 +7057,14 @@ function renderModal() {
   const themeKey = THEME_KEYS.includes(settings.theme) ? settings.theme : 'light';
   const editorLayout = !!editorView || (activeTab === 'theater' && !!theaterView);
   const storyboardLayout = activeTab === 'imagegen';
+  const coreadLayout = activeTab === 'coread' && COREAD_ENABLED && !editorView;
   const restoreStoryboardNav = preserveQianmuStoryboardNav(modal, storyboardLayout);
-  const restoreMainTabs = preserveQianmuMainTabs(modal, !storyboardLayout);
-  modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}${storyboardLayout ? ' sd-storyboard-mode' : ''}`;
+  const restoreMainTabs = preserveQianmuMainTabs(modal, !storyboardLayout && !coreadLayout);
+  modal.className = `sd-theme-${themeKey}${wasOpen ? ' open' : ''}${animIn ? ' sd-anim-in' : ''}${storyboardLayout ? ' sd-storyboard-mode' : ''}${coreadLayout ? ' sd-coread-mode' : ''}`;
   modal.innerHTML = `
     <div class="sd-backdrop"></div>
     <section class="sd-window" role="dialog" aria-label="${EXTENSION_NAME}">
-      ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${tabHtml()}</main>` : `
+      ${storyboardLayout ? `<main class="sd-body sd-storyboard-body">${tabHtml()}</main>` : coreadLayout ? renderReaderShell(coreadPage(), tabHtml()) : `
       <header class="sd-header">
         <div class="sd-titlebox">
           <h2>${EXTENSION_NAME}</h2>
@@ -8450,6 +8457,7 @@ function reconcileClearedStorageItems(selected) {
   if (cleared.has('reader_books')) {
     coread().books = [];
     coread().collections = [];
+    readerLog?.close();
     readerView = null;
     readerContentCache = null;
   } else {
@@ -28060,6 +28068,17 @@ async function coreadLoadDialog(bookId) {
   coreadSyncDialogButtons();
 }
 
+// 首页「最近的书友对话」：只留最后几句（截短），存进阅读记录；最后一句没变就不重写。
+function coreadNoteTalk() {
+  const lines = (readerDialog.messages || []).filter((m) => m && (m.role === 'user' || m.role === 'friend') && String(m.text || '').trim());
+  const last = lines[lines.length - 1];
+  if (!readerLog || !last) return;
+  const prev = readerLog.data.talk;
+  if (prev && prev.bookId === readerDialog.bookId && prev.at === (last.ts || 0)) return;
+  readerLog.talk({ bookId: readerDialog.bookId, at: last.ts, pal: { key: readerView?.companionAvatar || '', name: companionCharName() }, user: coreadUserName(),
+    lines: lines.slice(-4).map((m) => ({ who: m.role === 'user' ? 'user' : 'pal', text: m.text })) });
+}
+
 // 持久化当前会话（防抖交给 IndexedDB 本身足够快·每轮收发后调）
 async function coreadSaveDialog() {
   if (!readerDialog.bucket || !readerDialog.loaded) return false;
@@ -28084,13 +28103,14 @@ async function coreadSaveDialog() {
       updatedAt: Date.now(),
       names: { char: companionCharName(), user: coreadUserName() },
     });
-    return true;
   } catch (error) {
     console.warn(`[${MODULE_NAME}] save reader dialog failed`, error);
     // 每次打开这本书只提示一次，免得每条消息都弹
     if (!readerDialog.saveWarned) { readerDialog.saveWarned = true; toast('伴读对话没能存进本机，这次打开期间的改动可能会丢；请检查浏览器存储空间后重新打开这本书。', 'warning'); }
     return false;
   }
+  coreadNoteTalk();   // 存进本机以后再记首页的「最近的书友对话」；它出错不该让这次保存算作失败
+  return true;
 }
 
 // 渲染对话消息流（user 右 / friend 左·气泡跟随主题·预留 bubbleCustom DIY 于 1B 后续接线）
@@ -29949,7 +29969,7 @@ async function coreadDeleteBook(bookId, options = {}) {
     // 只卸载这一本书的阅读状态，不经过会再次保存旧会话的通用关闭路径。
     if (readerView?.bookId === bookId) {
       focusClockCancelEntry(); focusClockPauseForReadingExit(); coreadClearPendingChatImages();
-      unmountReaderPortal(); readerView = null;
+      readerLog?.close(); unmountReaderPortal(); readerView = null;
     }
     if (readerContentCache?.bookId === bookId) readerContentCache = null;
     if (readerDialog?.bookId === bookId) {
@@ -30040,6 +30060,7 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
     sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0, returnTab,
   };
   saveSettings();
+  readerLog?.open(bookId, { pal: ch && avatar ? { key: avatar, name: ch.name || ch.data?.name || '' } : null, pos: coreadReadPos() });
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
   activeTab = 'coread';
@@ -30073,6 +30094,7 @@ function coreadCloseReader() {
     void coreadStoreAssistantHistory();
   }
   coreadSaveProgress({ summarize: false });   // 退出时只保存，不新启动记忆任务
+  readerLog?.close();
   let linkCapture = null;                     // 阅读状态清掉之前记下「谁、哪本书、读到哪」；取不到不影响退出
   try { linkCapture = coreadCaptureLink(); } catch (_) {}
   unmountReaderPortal();
@@ -30129,6 +30151,15 @@ function nowMs() {
   try { return Date.now(); } catch (_) { return Math.floor(performance.now()); }
 }
 
+// 此刻读到全书第几个字（章内按滚动比例折算）；漫画没有字，记 0。
+function coreadReadPos() {
+  if (!readerView || !readerContentCache || coreadBookMeta(readerView.bookId)?.mode === 'comic') return 0;
+  const chapters = readerContentCache.chapters || [], ci = Math.max(0, Math.min(readerView.chapterIndex || 0, chapters.length - 1));
+  let pos = 0;
+  for (let i = 0; i < ci; i++) pos += String(chapters[i]?.content || '').length;
+  return pos + Math.round(String(chapters[ci]?.content || '').length * Math.max(0, Math.min(1, Number(readerView.scrollRatio) || 0)));
+}
+
 // 保存阅读进度（章节 + 滚动比例 + 累计阅读时长 → 轻量索引）。
 function coreadSaveProgress({ summarize = true } = {}) {
   if (!readerView || !readerContentCache) return;
@@ -30139,6 +30170,7 @@ function coreadSaveProgress({ summarize = true } = {}) {
   meta.lastReadAt = Date.now();
   const total = readerContentCache.chapters.length || 1;
   meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
+  if (readerLog?.reading === readerView.bookId) readerLog.progress(coreadReadPos(), { done: meta.progress >= 100 });
   if (readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(readerView.bookId)) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
   // 累计本书阅读总时长（毫秒）；分段结算，避免长时间挂着算一坨
   if (readerView.sessionStart) {
@@ -30363,8 +30395,21 @@ function renderCoreadTab() {
   if (readerView) {
     return `<div class="sd-reader-fs-placeholder"><i class="fa-solid fa-book-open-reader"></i><p>阅读中…<br><button class="sd-reader-resume sd-btn">回到阅读</button></p></div>`;
   }
-  return renderLibraryView();
+  const page = coreadPage();
+  if (page === 'shelf') return renderLibraryView();
+  const now = Date.now(), log = readerLog?.data || coread().readLog || null, books = coread().books || [];
+  const summary = readerSummary(log, books, now);
+  const options = { time: log?.time || null, now, esc: htmlEscape, avatarUrl: coreadAvatarUrl };
+  if (page === 'stats') return renderReaderStats(summary, options);
+  const current = [...books].filter((book) => book.lastReadAt).sort((a, b) => b.lastReadAt - a.lastReadAt)[0] || null;
+  return renderReaderHome(summary, { ...options, current, cover: (book) => book.hasCover
+    ? `<img class="sd-reader-cover-img" data-cover="${htmlEscape(book.id)}" alt="" loading="lazy">${readerCoverPlaceholder(book.title, book.author)}`
+    : readerCoverPlaceholder(book.title, book.author) });
 }
+
+// 伴读面板当前在哪一页（首页／书架／统计），存在设置里，下次进来接着看。
+function coreadPage() { return readerPageOf(coread().page); }
+function coreadAvatarUrl(key) { return `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}`; }
 
 function sortedLibraryBooks() {
   const books = [...(coread().books || [])];
@@ -30377,6 +30422,7 @@ function sortedLibraryBooks() {
       case 'progress': return b.progress || 0;
       case 'lastReadAt': return b.lastReadAt || 0;
       case 'length': return b.charCount || 0;
+      case 'together': return readerLog?.data.books[b.id]?.ms || 0;
       default: return b.addedAt || 0;
     }
   };
@@ -30398,6 +30444,7 @@ function allLibraryTags() {
 // 书架排序选项（下拉用）
 const LIBRARY_SORTS = [
   { key: 'lastReadAt-desc', name: '最近阅读' },
+  { key: 'together-desc', name: '共读时长' },
   { key: 'addedAt-desc', name: '最近添加' },
   { key: 'addedAt-asc', name: '最早添加' },
   { key: 'title-asc', name: '书名 A→Z' },
@@ -31431,6 +31478,7 @@ async function coreadOpenExcerptDialog(noteId) {
 
 function bindCoreadTabEvents(root) {
   if (activeTab !== 'coread') { unmountReaderPortal(); return; }
+  bindCoreadShellNav(root);
   if (!reader) return;
   if (readerView) {
     // portal 由 coreadOpenBook/refreshReaderPortal 维护；切回 tab 时确保它在
@@ -31439,7 +31487,24 @@ function bindCoreadTabEvents(root) {
     return;
   }
   unmountReaderPortal();
-  bindLibraryViewEvents(root);
+  if (coreadPage() === 'shelf') bindLibraryViewEvents(root);
+  else {
+    loadShelfCovers(root);
+    root.querySelectorAll('.sd-coread-open').forEach((el) => el.addEventListener('click', () => coreadOpenBook(el.dataset.book)));
+  }
+  root.querySelectorAll('.sd-coread-face img').forEach((img) => img.addEventListener('error', () => img.remove(), { once: true }));
+}
+
+// 伴读面板的导航：换页、返回千幕、关闭。阅读器开着、伴读还没载入时也要能用。
+function bindCoreadShellNav(root) {
+  root.querySelectorAll('[data-coread-page]:is(button)').forEach((el) => el.addEventListener('click', () => {
+    if (coreadPage() === el.dataset.coreadPage) return;
+    coread().page = readerPageOf(el.dataset.coreadPage); saveSettings(); renderModal();
+  }));
+  root.querySelector('.sd-coread-back')?.addEventListener('click', () => {
+    activeTab = coreadReturnTab && coreadReturnTab !== 'coread' ? coreadReturnTab : 'dashboard'; renderModal();
+  });
+  root.querySelector('.sd-coread-close')?.addEventListener('click', () => closeModal());
 }
 
 // 封面视图长按拖书：鼠标与触摸屏统一走 Pointer Events；短按/滚动仍保持原交互。
@@ -34858,7 +34923,7 @@ function bindEvents() {
 }
 
 // 使用时长：只数现实里真正在用的时间（可见且两分钟内有过操作，或正在等回复），按天与按角色各记一份，存在千幕设置里。
-let usageTracker = null, stopUsageTracking = null, stopSharpAvatars = null, floorCounter = null, tokenMeter = null;
+let usageTracker = null, stopUsageTracking = null, stopSharpAvatars = null, floorCounter = null, tokenMeter = null, readerLog = null, stopReaderLog = null;
 function startUsage() {
   if (usageTracker) return;
   usageTracker = createUsageTracker({
@@ -34869,6 +34934,18 @@ function startUsage() {
   stopUsageTracking = startUsageTracking(usageTracker);
   tokenMeter = createTokenMeter({ getContext: () => ctx(), record: counts => usageTracker?.addTokens(counts) });
   floorCounter = createFloorCounter({ getContext: () => ctx() });   // 楼层计数：只数数，与忆幕共用同一份
+  if (COREAD_ENABLED) {
+    // 伴读的阅读记录：与上面同一套计时规则，只在阅读层开着时算；按书、按书友、按天记时长与读过的字。
+    readerLog = createReaderLog({
+      load: () => coread().readLog, save: data => { coread().readLog = data; saveSettings(); },
+      visible: () => document.visibilityState === 'visible' && !!document.getElementById('sd-reader-portal'),
+      busy: () => dialogBusy || readerAssistantBusy, focused: () => windowFocused(),
+    });
+    coread().readLog = readerLog.data;
+    const zone = usageTracker.data.zone || '';
+    if ((readerLog.data.time.zone || '') !== zone) readerLog.setZone(zone);   // 日子按微醺记录选的时区算
+    stopReaderLog = startUsageTracking(readerLog);
+  }
 }
 
 function init() {
@@ -34974,6 +35051,7 @@ function cleanupRuntime(resetSettings = false) {
   apiQuick.detach();
   coreadDisposeExcerptStudio();
   stopUsageTracking?.(); stopUsageTracking = null; usageTracker = null; floorCounter = null; tokenMeter = null;
+  stopReaderLog?.(); stopReaderLog = null; readerLog = null;
   stopSharpAvatars?.(); stopSharpAvatars = null;
   chatRecoveryPanel?.view.dispose(); chatRecoveryPanel = null;
   chatRecoveryClient?.dispose(); chatRecoveryClient = null;

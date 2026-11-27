@@ -115,7 +115,7 @@ function host({linked = true, busy = false} = {}) {
   const trace = [], prompts = [], toasts = [];
   const bridge = {linkAvailable: () => linked, linkStatus: async () => null};
   const c = vm.createContext({trace, prompts, toasts, formatReadLabel, Number, Date,
-    focusClockBlockExit: () => false, focusClockCancelEntry() {}, focusClockPauseForReadingExit() {},
+    focusClockBlockExit: () => false, readerLog: null, focusClockCancelEntry() {}, focusClockPauseForReadingExit() {},
     coreadMemoryWrites: busy ? 1 : 0, coreadIdentitySwitchBusy: false, coreadDistilling: false, coreadAutoTextInFlight: false, coreadOpenRequestId: 0,
     coreadStopDialog() {}, coreadStopAssistant() {}, coreadClearPendingChatImages() {}, coreadComicStop() {}, coreadComicVisionAbort: null, coreadComicVisionBusy: false,
     coreadAssistantConfig: () => ({historyMode: 'session'}), coreadStoreAssistantHistory: async () => {}, coreadSaveProgress: () => trace.push('saved'),

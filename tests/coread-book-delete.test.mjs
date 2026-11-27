@@ -15,7 +15,7 @@ function fixture() {
     coreadSaveDialog:()=>new Promise(resolve=>{calls.push('save-dialog');saveAnswer=resolve;}),unmountReaderPortal:()=>calls.push('unmount'),saveSettings:()=>calls.push('save-settings'),
     
     reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
-    focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,
+    focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,readerLog:null,
     readerChatSync:{remove:async keys=>{account.push(['chat-remove',[...keys]]);return {registered:answer.registered,synced:answer.registered?keys.filter(key=>!answer.pending.includes(key)):[],pending:answer.registered?answer.pending.filter(key=>keys.includes(key)):[...keys]};},
       request:(...args)=>account.push(['chat-request',...args])},
     readerCoverSync:{remove:async ids=>{account.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}},

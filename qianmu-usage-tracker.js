@@ -56,8 +56,9 @@ export function windowFocused({ document = globalThis.document, window = globalT
     return typeof document?.hasFocus === 'function' ? document.hasFocus() !== false : true;
 }
 
+// onBook(add)：每记一笔时长都告诉调用方（伴读的阅读记录用它再按书记一份）。
 export function createUsageTracker({ load = () => null, save = () => {}, now = () => Date.now(), character = () => null, visible = () => true, busy = () => false, focused = () => true,
-    idleMs = 120000, tickMs = 15000, saveEveryMs = 180000 } = {}) {
+    onBook = null, idleMs = 120000, tickMs = 15000, saveEveryMs = 180000 } = {}) {
     const data = normalizeUsage(load());
     // 一段「在用」：从一次操作起，之后每次操作离上一次不超过 idleMs 就连上；booked 是这段里已经记到账上的位置。
     // 账只记到最后一次操作为止，所以停下来以后的空闲尾巴自然不算。
@@ -86,6 +87,7 @@ export function createUsageTracker({ load = () => null, save = () => {}, now = (
             const item = data.chars[who.key] ||= { name: '', ms: 0, last: 0 };
             item.ms += add; if (who.name) item.name = String(who.name).slice(0, 120); if (who.avatar) item.avatar = String(who.avatar).slice(0, 600);
         }
+        onBook?.(add, upTo);
         dirty = true; unsaved += add;
         return add;
     }
