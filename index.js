@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.628';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.629';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.628';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.629';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,22 +30,22 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.628';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.628';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.628';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.628';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.628';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.628';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.628';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.629';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.629';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.629';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.629';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.629';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.629';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.629';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.628';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.629';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
 import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardProseAnchor,insertStoryboardProseImage} from './qianmu-storyboard-inline-reading.js?v=1.59.440';
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
 import { createReaderLog, readerSummary } from './features/reader/qianmu-reader-log.js';
-import { renderReaderShell, renderReaderHome, renderReaderStats, readerPageOf } from './features/reader/qianmu-reader-home-view.js';
+import { renderReaderShell, renderReaderHome, renderReaderStats, readerPageOf, moveHomeCard, toggleHomeCard } from './features/reader/qianmu-reader-home-view.js';
 import { READER_PAPERS, readerPaperOf, readerPaperVars, normalizeReaderThemes, applyReaderTheme, sameReaderTheme, saveReaderTheme } from './features/reader/qianmu-reader-theme.js';
 import { SHELF_SORTS, SHELF_SEARCH_FIELDS, parseShelfSort, shelfSortFor, flipShelfSort, sortShelfBooks, normalizeTags, shelfTags, tagColor, applyTagEdits, bookSearchFields, matchBook, searchCounts } from './features/reader/qianmu-reader-shelf.js';
 import {summarizeGalleryRecords} from './features/gallery/qianmu-gallery-summary.js?v=1.59.441';
@@ -71,11 +71,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.628';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.629';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.628';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.629';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -105,7 +105,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.628';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.629';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -348,7 +348,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.628';
+const VERSION = '1.59.629';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1248,6 +1248,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     collections: [],                // 书架合集：[{id,name,bookIds:[],createdAt,updatedAt}]；正文仍按书独立存储
     libCollectionId: '',            // 当前打开的合集；空=书架根层
     page: 'home',                   // 伴读面板停在哪一页：home | shelf | stats
+    homeCards: null,                // 首页几块的顺序与藏起来的 [{ id, hidden }]；空＝默认顺序全显示
     readLog: null,                  // 阅读记录（features/reader/qianmu-reader-log.js）：时长、读过的字、读完、最近的书友对话
     libViewMode: 'grid',            // 书架视图：grid | list
     tagColors: {},                  // 标签自选的颜色 { 标签: '#rrggbb' }；没选的按名字取色
@@ -30447,14 +30448,15 @@ function renderCoreadTab() {
   if (page === 'shelf') return renderLibraryView();
   const now = Date.now(), log = readerLog?.data || coread().readLog || null, books = coread().books || [];
   const summary = readerSummary(log, books, now);
-  const options = { time: log?.time || null, now, esc: htmlEscape, avatarUrl: coreadAvatarUrl };
+  const options = { time: log?.time || null, days: log?.days || {}, now, esc: htmlEscape, avatarUrl: coreadAvatarUrl };
   if (page === 'stats') return renderReaderStats(summary, options);
   const current = [...books].filter((book) => book.lastReadAt).sort((a, b) => b.lastReadAt - a.lastReadAt)[0] || null;
-  return renderReaderHome(summary, { ...options, current, cover: (book) => book.hasCover
+  return renderReaderHome(summary, { ...options, current, cards: coread().homeCards, editing: coreadHomeEditing, cover: (book) => book.hasCover
     ? `<img class="sd-reader-cover-img" data-cover="${htmlEscape(book.id)}" alt="" loading="lazy">${readerCoverPlaceholder(book.title, book.author)}`
     : readerCoverPlaceholder(book.title, book.author) });
 }
 
+let coreadHomeEditing = false;   // 首页「整理」开着：每块上面有前移、后移、显示与否
 // 伴读面板当前在哪一页（首页／书架／统计），存在设置里，下次进来接着看。
 function coreadPage() { return readerPageOf(coread().page); }
 function coreadAvatarUrl(key) { return `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}`; }
@@ -31593,6 +31595,24 @@ function bindCoreadTabEvents(root) {
   else {
     loadShelfCovers(root);
     root.querySelectorAll('.sd-coread-open').forEach((el) => el.addEventListener('click', () => coreadOpenBook(el.dataset.book)));
+    root.querySelector('.sd-coread-home-edit')?.addEventListener('click', () => { coreadHomeEditing = !coreadHomeEditing; renderModal(); });
+    root.querySelectorAll('[data-home-move]').forEach((el) => el.addEventListener('click', () => {
+      coread().homeCards = moveHomeCard(coread().homeCards, el.dataset.card, Number(el.dataset.homeMove)); saveSettings(); renderModal();
+    }));
+    root.querySelectorAll('[data-home-toggle]').forEach((el) => el.addEventListener('click', () => {
+      coread().homeCards = toggleHomeCard(coread().homeCards, el.dataset.card); saveSettings(); renderModal();
+    }));
+    // 阅读日历：点一格（或回车），下面那一行换成那一天
+    root.querySelectorAll('.sd-coread-heat').forEach((grid) => {
+      const pick = (cell) => {
+        if (!cell?.dataset.day) return;
+        grid.querySelectorAll('i.on').forEach((item) => item.classList.remove('on'));
+        cell.classList.add('on');
+        const line = grid.nextElementSibling; if (line?.classList.contains('sd-coread-heat-day')) line.textContent = cell.dataset.text || '';
+      };
+      grid.addEventListener('click', (event) => pick(event.target.closest('i[data-day]')));
+      grid.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(event.target.closest('i[data-day]')); } });
+    });
   }
   root.querySelectorAll('.sd-coread-face img').forEach((img) => img.addEventListener('error', () => img.remove(), { once: true }));
 }
@@ -31601,6 +31621,7 @@ function bindCoreadTabEvents(root) {
 function bindCoreadShellNav(root) {
   root.querySelectorAll('[data-coread-page]:is(button)').forEach((el) => el.addEventListener('click', () => {
     if (coreadPage() === el.dataset.coreadPage) return;
+    coreadHomeEditing = false;
     coread().page = readerPageOf(el.dataset.coreadPage); saveSettings(); renderModal();
   }));
   root.querySelector('.sd-coread-back')?.addEventListener('click', () => {

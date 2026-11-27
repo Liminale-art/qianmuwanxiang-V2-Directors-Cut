@@ -5353,6 +5353,25 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 #story-director-modal .sd-coread-heat i[data-level="3"] { background: color-mix(in srgb, var(--sd-accent) 74%, transparent); }
 #story-director-modal .sd-coread-heat i[data-level="4"] { background: var(--sd-accent); }
 #story-director-modal .sd-coread-heat i[data-today] { outline: 1.5px solid var(--sd-accent); outline-offset: 1px; }
+#story-director-modal .sd-coread-heat i[data-day] { cursor: pointer; }
+#story-director-modal .sd-coread-heat i.on { outline: 2px solid var(--sd-text); outline-offset: 1px; }
+#story-director-modal .sd-coread-heat-day { margin: 2px 0 0; min-height: 1.4em; font-size: 12.5px; color: var(--sd-muted); font-variant-numeric: tabular-nums; }
+/* 首页整理：右上角一个笔形按钮；整理时每块上面一条工具，藏起来的块变淡 */
+#story-director-modal .sd-coread-home-head { grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-bottom: -6px; }
+#story-director-modal .sd-coread-home-edit, #story-director-modal .sd-coread-card-tools button {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 28px; padding: 0 !important; margin: 0 !important;
+  border: 1px solid var(--sd-hairline) !important; border-radius: 9px !important; background: transparent !important; color: var(--sd-muted) !important; cursor: pointer; box-shadow: none !important; font-size: 12px;
+}
+#story-director-modal .sd-coread-home-edit:hover, #story-director-modal .sd-coread-card-tools button:hover:not(:disabled) { color: var(--sd-text) !important; background: var(--sd-glass) !important; }
+#story-director-modal .sd-coread-home-edit.active { color: var(--sd-accent) !important; border-color: var(--sd-accent) !important; }
+#story-director-modal .sd-coread-card-tools button:disabled { opacity: .3; cursor: default; }
+#story-director-modal .sd-coread-slot { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+#story-director-modal .sd-coread-slot-continue, #story-director-modal .sd-coread-slot-calendar { grid-column: 1 / -1; }
+#story-director-modal .sd-coread-card-tools { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sd-muted); }
+#story-director-modal .sd-coread-card-tools span { flex: 1 1 auto; }
+#story-director-modal .sd-coread-slot.is-hidden > .sd-coread-card { opacity: .35; }
+#story-director-modal .sd-coread-placeholder { min-height: 64px; border-style: dashed; background: transparent; }
+#story-director-modal .sd-coread-home.is-editing .sd-coread-card { pointer-events: none; }
 #story-director-modal .sd-coread-statspage { display: flex; flex-direction: column; gap: 14px; }
 #story-director-modal .sd-coread-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 #story-director-modal .sd-coread-stat {
