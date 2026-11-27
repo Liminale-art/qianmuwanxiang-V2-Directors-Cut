@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {createCoreadPanelFixture} from './helpers/coread-panel-fixture.mjs';
@@ -24,7 +25,7 @@ assert.doesNotMatch(source, /text:\s*String\(text \|\| ''\)\.slice\(/, '新建�
 assert.match(source, /selectionSegments[\s\S]*segments:\s*\(Array\.isArray\(segments\)/, '跨段长文本必须保留完整摘录并记录逐段划线片段');
 
 const library = source.slice(source.indexOf('function sortedLibraryBooks'), source.indexOf('function bindReaderStageEvents'));
-assert.match(library, /lastReadAt-desc[^]*最近阅读/, '书架必须提供最近阅读排序');
+assert.match(readFileSync(new URL('../features/reader/qianmu-reader-shelf.js', import.meta.url), 'utf8'), /field: 'lastReadAt', name: '最近阅读'/, '书架必须提供最近阅读排序');
 assert.match(source, /async function coreadOpenBook[^]*meta\.lastReadAt = Date\.now\(\)/, '成功打开书籍时必须更新最近阅读时间');
 assert.match(library, /sd-reader-card-edit/, '书架必须提供书名与作者编辑按钮');
 assert.match(library, /coreadEditBookInfo\(el\.dataset\.book\)/, '书架编辑按钮必须接通书名与作者保存逻辑');

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {htmlEscape} from '../qianmu-storyboard-utils.js';
+import {normalizeTags,shelfTags} from '../features/reader/qianmu-reader-shelf.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
 
 function fixture(mode='popup') {
@@ -10,14 +11,14 @@ function fixture(mode='popup') {
   const fields={title:{value:' New '},author:{value:' Author '},collection:{value:'folder'}};
   let answer,finish,guard;const writes=[],notices=[],saves=[];
   const c=vm.createContext({settings:{enabled:true,coread:data},MODAL_ID:'modal',RUNTIME_LOCK_KEY:'runtime',runtime:{},coreadOpenRequestId:0,
-    htmlEscape,MODULE_NAME:'fixture',console:{warn:()=>{}},toast:(...args)=>notices.push(args),saveSettings:()=>saves.push('save'),
+    htmlEscape,normalizeTags,shelfTags,MODULE_NAME:'fixture',console:{warn:()=>{}},toast:(...args)=>notices.push(args),saveSettings:()=>saves.push('save'),
     document:{getElementById:()=>modal,createElement:()=>({querySelector:s=>fields[s.split('-').at(-1)]})},
     ctx:()=>mode==='popup'?{POPUP_TYPE:{CONFIRM:1},Popup:class{show(){return new Promise(r=>answer=r);}}}:{},
     promptInput:()=>new Promise(r=>answer=r),
     blobStore:{updateBookMetadata:(id,patch,options)=>{writes.push({id,patch});guard=options.isCurrent;return new Promise((resolve,reject)=>finish={resolve,reject});}}
   });
   c.coread=()=>c.settings.coread;
-  vm.runInContext(['coreadBookMeta','coreadCollections','coreadCollectionForBook','coreadMoveBooksToCollection','coreadCaptureCollectionMutation','coreadEditBookInfo'].map(section).join('\n'),c);
+  vm.runInContext(['coreadBookMeta','coreadCollections','coreadCollectionForBook','coreadMoveBooksToCollection','coreadCaptureCollectionMutation','allLibraryTags','coreadEditBookInfo'].map(section).join('\n'),c);
   return {c,data,page,fields,writes,notices,saves,answer:v=>answer(v),get finish(){return finish;},get guard(){return guard;}};
 }
 const tick=async()=>{await Promise.resolve();await Promise.resolve();};

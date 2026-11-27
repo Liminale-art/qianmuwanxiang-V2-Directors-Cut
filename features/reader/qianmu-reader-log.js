@@ -3,10 +3,10 @@
 // 只在一本书打开着的时候算。按天、按钟点、按书友由它记，这里再按书记一份。
 // 读过的字：读位往前走了多少字；往回翻不扣，回翻后重读到原处之前不重复算；一下跳得太远（目录、拖进度）不算。
 // 只存数字和最近对话的几句摘录，不存书的正文；不发任何请求。
-import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.626';
+import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.627';
 
 export const READ_JUMP_CHARS = 12000;
-const BOOK_LIMIT = 600, DAY_LIMIT = 800, PAL_LIMIT = 400, TALK_LINES = 4, TALK_CHARS = 160;
+const PALS_PER_BOOK = 12, BOOK_LIMIT = 600, DAY_LIMIT = 800, PAL_LIMIT = 400, TALK_LINES = 4, TALK_CHARS = 160;
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const num = value => Number.isFinite(value) && value > 0 ? value : 0;
 const entries = value => Object.entries(value && typeof value === 'object' ? value : {});
@@ -24,7 +24,8 @@ export function normalizeReaderLog(value) {
     const out = { time: normalizeUsage(value?.time), books: {}, days: {}, pals: {}, talk: normalizeTalk(value?.talk) };
     for (const [id, item] of entries(value?.books)) {
         if (!id || id.length > 120 || !item || typeof item !== 'object') continue;
-        out.books[id] = { ms: Math.round(num(item.ms)), chars: Math.round(num(item.chars)), mark: Math.round(num(item.mark)), last: num(item.last), ...(num(item.done) ? { done: num(item.done) } : {}) };
+        const pals = Array.isArray(item.pals) ? [...new Set(item.pals.filter(key => typeof key === 'string' && key && key.length <= 240))].slice(0, PALS_PER_BOOK) : [];
+        out.books[id] = { ms: Math.round(num(item.ms)), chars: Math.round(num(item.chars)), mark: Math.round(num(item.mark)), last: num(item.last), ...(num(item.done) ? { done: num(item.done) } : {}), ...(pals.length ? { pals } : {}) };
     }
     for (const [key, chars] of entries(value?.days)) if (DAY_KEY.test(key) && num(chars)) out.days[key] = Math.round(chars);
     for (const [key, item] of entries(value?.pals)) {
@@ -73,6 +74,7 @@ export function createReaderLog({ load = () => null, save = () => {}, now = () =
             open = { bookId: String(bookId), pal: key ? { key, name: String(pal.name || ''), ...(pal.avatar ? { avatar: String(pal.avatar) } : {}) } : null, last: Math.max(0, Math.round(Number(pos) || 0)) };
             const at = now(), book = bookOf(open.bookId);
             book.last = at;
+            if (key) book.pals = [key, ...(book.pals || []).filter(item => item !== key)].slice(0, PALS_PER_BOOK);   // 这本书和谁读过（最近的在前）
             if (key) { const item = data.pals[key] ||= { name: '', chars: 0, last: 0 }; item.last = at; if (open.pal.name) item.name = clip(open.pal.name, 120); if (open.pal.avatar) item.avatar = clip(open.pal.avatar, 600); }
             tracker.touch();
             persist();

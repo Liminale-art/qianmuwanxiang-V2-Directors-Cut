@@ -1,5 +1,10 @@
 // Shelf cards only. Collection ownership, current metadata resolution, sorting and cover loading stay with the caller.
-export function renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlEscape, readerCoverPlaceholder}) {
+export function renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlEscape, readerCoverPlaceholder, tagColor = () => ''}) {
+  const tags = Array.isArray(book.tags) ? book.tags.slice(0, 12) : [];
+  // 标签：列表里写出名字，封面视图只点几个色点（名字在 title 里）。
+  const tagLine = viewMode === 'list'
+    ? (tags.length ? `<span class="sd-reader-row-tags">${tags.map((tag) => `<em style="--tag:${htmlEscape(tagColor(tag))}">${htmlEscape(tag)}</em>`).join('')}</span>` : '')
+    : (tags.length ? `<span class="sd-reader-card-tags" title="${htmlEscape(tags.join(' · '))}">${tags.slice(0, 5).map((tag) => `<i style="--tag:${htmlEscape(tagColor(tag))}"></i>`).join('')}</span>` : '');
   const prog = Math.max(0, Math.min(100, book.progress || 0));
   const bookStat = book.mode === 'comic' ? `${book.pageCount || book.chapterCount || 0}页 · 漫画` : `${book.chapterCount || 0}章 · ${(book.charCount || 0).toLocaleString()}字`;
   if (viewMode === 'list') {
@@ -9,6 +14,7 @@ export function renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlE
         <div class="sd-reader-row-main">
           <span class="sd-reader-row-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</span>
           <span class="sd-reader-row-sub">${book.author ? htmlEscape(book.author) + ' · ' : ''}${bookStat}</span>
+          ${tagLine}
         </div>
         <span class="sd-reader-row-prog">${prog}%</span>
         <button class="sd-reader-card-edit" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
@@ -27,7 +33,7 @@ export function renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlE
       <div class="sd-reader-card-meta${collectionId ? ' sd-reader-card-meta-tools' : ''}">
         <div class="sd-reader-card-title" title="${htmlEscape(book.title)}">${htmlEscape(book.title)}</div>
         ${book.author ? `<div class="sd-reader-card-author" title="${htmlEscape(book.author)}">${htmlEscape(book.author)}</div>` : ''}
-        <div class="sd-reader-card-sub">${bookStat}</div>
+        <div class="sd-reader-card-sub">${bookStat}${tagLine}</div>
         <div class="sd-reader-card-grid-tools">
           <button class="sd-reader-card-edit" data-book="${htmlEscape(book.id)}" title="编辑书籍信息"><i class="fa-solid fa-pen"></i></button>
           ${collectionId ? `<button class="sd-reader-collection-remove-book" data-book="${htmlEscape(book.id)}" title="移出当前合集"><i class="fa-solid fa-folder-minus"></i></button>` : ''}

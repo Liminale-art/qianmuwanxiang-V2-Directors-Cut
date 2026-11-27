@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.626';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.627';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.626';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.627';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.626';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.626';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.626';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.626';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.626';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.626';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.626';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.627';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.627';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.627';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.627';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.627';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.627';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.627';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.626';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.627';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -46,6 +46,7 @@ import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardP
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
 import { createReaderLog, readerSummary } from './features/reader/qianmu-reader-log.js';
 import { renderReaderShell, renderReaderHome, renderReaderStats, readerPageOf } from './features/reader/qianmu-reader-home-view.js';
+import { SHELF_SORTS, SHELF_SEARCH_FIELDS, parseShelfSort, shelfSortFor, flipShelfSort, sortShelfBooks, normalizeTags, shelfTags, tagColor, applyTagEdits, bookSearchFields, matchBook, searchCounts } from './features/reader/qianmu-reader-shelf.js';
 import {summarizeGalleryRecords} from './features/gallery/qianmu-gallery-summary.js?v=1.59.441';
 import {captureGalleryViewGuard} from './features/gallery/qianmu-gallery-inspector.js?v=1.59.440';
 import {openImageInfo,imageInfoFinalPrompts,imageInfoParameterMarkup} from './features/gallery/qianmu-image-info-view.js?v=1.59.441';
@@ -69,11 +70,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.626';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.627';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.626';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.627';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -103,7 +104,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.626';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.627';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -346,7 +347,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.626';
+const VERSION = '1.59.627';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1248,6 +1249,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     page: 'home',                   // 伴读面板停在哪一页：home | shelf | stats
     readLog: null,                  // 阅读记录（features/reader/qianmu-reader-log.js）：时长、读过的字、读完、最近的书友对话
     libViewMode: 'grid',            // 书架视图：grid | list
+    tagColors: {},                  // 标签自选的颜色 { 标签: '#rrggbb' }；没选的按名字取色
     libSort: 'addedAt-desc',        // 排序：title/author/progress/addedAt × asc/desc
     libTags: [],                    // 当前标签筛选
     // 阅读排版（阅读器跟随千幕主题与字体，不单选）
@@ -29768,6 +29770,7 @@ async function coreadEditBookInfo(bookId) {
   let title = meta.title || '';
   let author = meta.author || '';
   let collectionId = coreadCollectionForBook(bookId)?.id || '';
+  let tags = normalizeTags(meta.tags || []);
   const mutation = coreadCaptureCollectionMutation('', [bookId]);
   const canSave = () => {
     if (!mutation.booksAreCurrent()) return false;
@@ -29786,13 +29789,15 @@ async function coreadEditBookInfo(bookId) {
       wrap.innerHTML = `
         <label><span>书名</span><input type="text" class="sd-reader-bookedit-title" maxlength="120" value="${htmlEscape(title)}"></label>
         <label><span>作者</span><input type="text" class="sd-reader-bookedit-author" maxlength="80" value="${htmlEscape(author)}" placeholder="可留空"></label>
-        <label><span>归入合集</span><select class="text_pole sd-reader-bookedit-collection"><option value="">未分类</option>${coreadCollections().map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === collectionId ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>`;
+        <label><span>归入合集</span><select class="text_pole sd-reader-bookedit-collection"><option value="">未分类</option>${coreadCollections().map((item) => `<option value="${htmlEscape(item.id)}" ${item.id === collectionId ? 'selected' : ''}>${htmlEscape(item.name)}</option>`).join('')}</select></label>
+        <label><span>标签</span><input type="text" class="sd-reader-bookedit-tags" maxlength="240" value="${htmlEscape(tags.join('，'))}" list="sd-reader-bookedit-taglist"><datalist id="sd-reader-bookedit-taglist">${allLibraryTags().filter((tag) => !tags.includes(tag)).map((tag) => `<option value="${htmlEscape(tag)}"></option>`).join('')}</datalist></label>`;
       const popup = new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '保存', cancelButton: '取消' });
       const result = await popup.show();
       if ((result !== true && String(result) !== '1') || !mutation.booksAreCurrent()) return false;
       title = String(wrap.querySelector('.sd-reader-bookedit-title')?.value || '').trim();
       author = String(wrap.querySelector('.sd-reader-bookedit-author')?.value || '').trim();
       collectionId = String(wrap.querySelector('.sd-reader-bookedit-collection')?.value || '');
+      tags = normalizeTags(wrap.querySelector('.sd-reader-bookedit-tags')?.value || '');
     } else {
       const nextTitle = await promptInput('编辑书籍信息', '书名：', title);
       if (nextTitle == null || !canSave()) return false;
@@ -29820,7 +29825,8 @@ async function coreadEditBookInfo(bookId) {
   }
   // 上面的等待可能重建书架对象；只修改当前记录，不覆盖阅读进度和笔记。
   const current = coreadBookMeta(bookId);
-  current.title = patch.title; current.author = patch.author;
+  current.title = patch.title; current.author = patch.author; current.tags = tags;
+  coread().libTags = (coread().libTags || []).filter((tag) => allLibraryTags().includes(tag));   // 筛选里的标签已没有书时不再留着
   try { coreadMoveBooksToCollection([bookId], collectionId); }
   catch (error) {
     console.warn(`[${MODULE_NAME}] schedule book metadata settings failed`, error);
@@ -29828,6 +29834,44 @@ async function coreadEditBookInfo(bookId) {
   }
   toast(result.status === 'missing' ? '仅更新书架信息；本机尚无该书正文。' : '书籍信息已更新。', result.status === 'missing' ? 'info' : 'success');
   return mutation.isCurrent();
+}
+
+// 管理标签：每个标签可改名（与已有的同名就并进去）、换颜色、删除；确定后一次改完。
+async function coreadManageTags() {
+  const list = shelfTags(coread().books || []);
+  if (!list.length) return false;
+  const context = ctx(), Popup = context.Popup;
+  if (!Popup || !context.POPUP_TYPE) return false;
+  const wrap = document.createElement('div');
+  wrap.className = 'sd-reader-tagedit';
+  wrap.innerHTML = list.map(({ tag, count }) => `<div class="sd-reader-tagedit-row" data-tag="${htmlEscape(tag)}">
+      <input type="color" class="sd-reader-tagedit-color" value="${coreadTagColor(tag)}" aria-label="颜色">
+      <input type="text" class="text_pole sd-reader-tagedit-name" maxlength="20" value="${htmlEscape(tag)}" aria-label="名字">
+      <small>${count} 本</small>
+      <button type="button" class="sd-reader-tagedit-del" title="删除" aria-label="删除" aria-pressed="false"><i class="fa-solid fa-trash"></i></button>
+    </div>`).join('');
+  wrap.querySelectorAll('.sd-reader-tagedit-del').forEach((button) => button.addEventListener('click', () => {
+    const row = button.closest('.sd-reader-tagedit-row'), removed = !row.classList.contains('is-removed');
+    row.classList.toggle('is-removed', removed); button.setAttribute('aria-pressed', String(removed));
+    button.innerHTML = `<i class="fa-solid ${removed ? 'fa-rotate-left' : 'fa-trash'}"></i>`;
+  }));
+  const before = JSON.stringify(list.map(({ tag }) => [tag, coreadTagColor(tag)]));
+  let result;
+  try { result = await new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '确定', cancelButton: '取消' }).show(); }
+  catch (error) { console.warn(`[${MODULE_NAME}] tag manager failed`, error); return false; }
+  if (result !== true && String(result) !== '1') return false;
+  const edits = [...wrap.querySelectorAll('.sd-reader-tagedit-row')].map((row) => ({
+    from: row.dataset.tag, to: row.querySelector('.sd-reader-tagedit-name').value, color: row.querySelector('.sd-reader-tagedit-color').value, remove: row.classList.contains('is-removed'),
+  }));
+  const changed = edits.some((edit) => edit.remove || normalizeTags([edit.to])[0] !== edit.from) || JSON.stringify(edits.map((edit) => [edit.from, edit.color])) !== before;
+  if (!changed) return false;
+  // 只给改过颜色的记颜色；没改的仍按名字取色，改名后颜色跟着名字走。
+  const auto = new Map(list.map(({ tag }) => [tag, coreadTagColor(tag)]));
+  const picked = edits.map((edit) => ({ ...edit, color: edit.color !== auto.get(edit.from) || coread().tagColors?.[edit.from] ? edit.color : '' }));
+  coread().tagColors = applyTagEdits(coread().books || [], coread().tagColors || {}, picked);
+  coread().libTags = (coread().libTags || []).filter((tag) => allLibraryTags().includes(tag));
+  saveSettings();
+  return true;
 }
 
 async function coreadChooseDeleteMemory(label, { isCurrent = () => true } = {}) {
@@ -30412,47 +30456,34 @@ function coreadPage() { return readerPageOf(coread().page); }
 function coreadAvatarUrl(key) { return `/characters/${String(key).split('/').map(encodeURIComponent).join('/')}`; }
 
 function sortedLibraryBooks() {
-  const books = [...(coread().books || [])];
-  const [field, dir] = String(coread().libSort || 'addedAt-desc').split('-');
-  const mul = dir === 'asc' ? 1 : -1;
-  const val = (b) => {
-    switch (field) {
-      case 'title': return b.title || '';
-      case 'author': return b.author || '';
-      case 'progress': return b.progress || 0;
-      case 'lastReadAt': return b.lastReadAt || 0;
-      case 'length': return b.charCount || 0;
-      case 'together': return readerLog?.data.books[b.id]?.ms || 0;
-      default: return b.addedAt || 0;
-    }
-  };
-  books.sort((a, b) => {
-    const va = val(a), vb = val(b);
-    if (typeof va === 'string') return mul * va.localeCompare(vb, 'zh');
-    return mul * (va - vb);
-  });
+  const books = sortShelfBooks(coread().books || [], coread().libSort, { together: (book) => readerLog?.data.books[book.id]?.ms || 0 });
   const tags = coread().libTags || [];
   return tags.length ? books.filter((b) => tags.every((t) => (b.tags || []).includes(t))) : books;
 }
 
 function allLibraryTags() {
-  const set = new Set();
-  for (const b of coread().books || []) for (const t of (b.tags || [])) set.add(t);
-  return [...set];
+  return shelfTags(coread().books || []).map((item) => item.tag);
 }
 
-// 书架排序选项（下拉用）
-const LIBRARY_SORTS = [
-  { key: 'lastReadAt-desc', name: '最近阅读' },
-  { key: 'together-desc', name: '共读时长' },
-  { key: 'addedAt-desc', name: '最近添加' },
-  { key: 'addedAt-asc', name: '最早添加' },
-  { key: 'title-asc', name: '书名 A→Z' },
-  { key: 'progress-desc', name: '进度高→低' },
-];
+const coreadTagColor = (tag) => tagColor(tag, coread().tagColors);
+
+// 书架搜索用的索引：每本书可搜的几项、每个合集里有哪些书。每次画书架时重建。
+let shelfSearchIndex = { books: new Map(), collections: new Map() };
+let shelfSearchField = 'all';
+function coreadBookPalNames(bookId) {
+  const log = readerLog?.data;
+  return (log?.books[bookId]?.pals || []).map((key) => log.pals[key]?.name || log.time.chars[key]?.name || '').filter(Boolean);
+}
+function buildShelfSearchIndex(collections) {
+  const owner = new Map();
+  for (const collection of collections) for (const id of collection.bookIds) owner.set(id, collection.name);
+  const books = new Map();
+  for (const book of coread().books || []) books.set(book.id, bookSearchFields(book, { collection: owner.get(book.id) || '', pals: coreadBookPalNames(book.id) }));
+  shelfSearchIndex = { books, collections: new Map(collections.map((collection) => [collection.id, collection.bookIds])) };
+}
 
 function renderLibraryBookItem(book, viewMode, collectionId = '') {
-  return renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlEscape, readerCoverPlaceholder});
+  return renderCoreadLibraryBookView(book, viewMode, collectionId, {htmlEscape, readerCoverPlaceholder, tagColor: coreadTagColor});
 }
 
 function renderLibraryCollectionItem(collection, viewMode) {
@@ -30474,9 +30505,10 @@ function renderLibraryView() {
     .filter((collection) => !(c.libTags || []).length || collection.bookIds.some((id) => filteredBookIds.has(id)))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const tags = allLibraryTags();
+  buildShelfSearchIndex(collections);
   const viewMode = c.libViewMode === 'list' ? 'list' : 'grid';
   const items = `${visibleCollections.map((collection) => renderLibraryCollectionItem(collection, viewMode)).join('')}${books.map((book) => renderLibraryBookItem(book, viewMode, activeCollection?.id || '')).join('')}`;
-  const curSort = LIBRARY_SORTS.find((s) => s.key === c.libSort) || LIBRARY_SORTS[0];
+  const curSort = parseShelfSort(c.libSort);
   const batchControls = viewMode === 'list'
     ? `<button type="button" class="sd-reader-batch-mode" title="多选" aria-label="多选" aria-expanded="false"><i class="fa-solid fa-check-double"></i></button>
        <button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>`
@@ -30504,17 +30536,19 @@ function renderLibraryView() {
       <div class="sd-reader-lib-bar">
         <button class="sd-reader-view-toggle" title="切换视图"><i class="fa-solid ${viewMode === 'grid' ? 'fa-list' : 'fa-table-cells-large'}"></i></button>
         <div class="sd-reader-sort-pick">
-          <button type="button" class="sd-reader-sort-toggle sd-reader-sort-icononly" title="排序：${htmlEscape(curSort.name)}" aria-haspopup="true"><i class="fa-solid fa-arrow-down-wide-short"></i></button>
+          <button type="button" class="sd-reader-sort-toggle sd-reader-sort-icononly${curSort.dir === 'asc' ? ' is-asc' : ''}" title="排序：${htmlEscape(curSort.name)}（${curSort.dir === 'asc' ? '升序' : '降序'}）" aria-haspopup="true"><i class="fa-solid fa-arrow-down-wide-short"></i></button>
           <div class="sd-reader-sort-menu" role="menu" hidden>
-            ${LIBRARY_SORTS.map((s) => `<button type="button" class="sd-reader-sort-opt ${c.libSort === s.key ? 'active' : ''}" role="menuitemradio" aria-checked="${c.libSort === s.key}" data-sort="${s.key}">${htmlEscape(s.name)}</button>`).join('')}
+            ${SHELF_SORTS.map((s) => `<button type="button" class="sd-reader-sort-opt ${curSort.field === s.field ? 'active' : ''}" role="menuitemradio" aria-checked="${curSort.field === s.field}" data-sort="${s.field}">${htmlEscape(s.name)}</button>`).join('')}
+            <button type="button" class="sd-reader-sort-dir${curSort.dir === 'asc' ? ' is-asc' : ''}" data-dir="${curSort.dir}"><i class="fa-solid fa-arrow-down-wide-short"></i>${curSort.dir === 'asc' ? '升序' : '降序'}</button>
           </div>
         </div>
         ${viewMode === 'grid' && !activeCollection ? '<button class="sd-reader-collection-create" title="新建合集"><i class="fa-solid fa-folder-plus"></i></button>' : ''}
-        <input type="search" class="sd-reader-search" placeholder="搜索书名 / 作者 / 合集" />
+        <input type="search" class="sd-reader-search" placeholder="搜索" />
         ${batchControls}
       </div>
+      <div class="sd-reader-search-fields" role="group" aria-label="搜索范围" hidden>${SHELF_SEARCH_FIELDS.map((f) => `<button type="button" class="sd-reader-search-field${f.field === shelfSearchField ? ' active' : ''}" data-field="${f.field}">${htmlEscape(f.name)}<b>0</b></button>`).join('')}</div>
       ${batchActions}
-      ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}">${htmlEscape(t)}</button>`).join('')}</div>` : ''}
+      ${tags.length ? `<div class="sd-reader-tags">${tags.map((t) => `<button class="sd-reader-tag ${(c.libTags || []).includes(t) ? 'active' : ''}" data-tag="${htmlEscape(t)}" style="--tag:${coreadTagColor(t)}">${htmlEscape(t)}</button>`).join('')}<button type="button" class="sd-reader-tag-manage" title="管理标签" aria-label="管理标签"><i class="fa-solid fa-tags"></i></button></div>` : ''}
       ${items ? `<div class="sd-reader-grid">${items}</div>` : `<div class="sd-reader-empty"><p>${htmlEscape(emptyText)}${!activeCollection && !(c.libTags || []).length ? '<small>支持 EPUB、MOBI、TXT 与 CBZ</small>' : ''}</p></div>`}
       <label class="sd-reader-import sd-reader-import-fab" title="导入书籍或漫画" aria-label="导入书籍或漫画">
         <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -31661,8 +31695,15 @@ function bindLibraryViewEvents(root) {
     }
   });
   root.querySelectorAll('.sd-reader-sort-opt').forEach((el) => el.addEventListener('click', () => {
-    coread().libSort = el.dataset.sort; saveSettings(); renderModal();
+    if (parseShelfSort(coread().libSort).field === el.dataset.sort) return;
+    coread().libSort = shelfSortFor(el.dataset.sort); saveSettings(); renderModal();
   }));
+  root.querySelector('.sd-reader-sort-dir')?.addEventListener('click', () => {
+    coread().libSort = flipShelfSort(coread().libSort); saveSettings(); renderModal();
+  });
+  root.querySelector('.sd-reader-tag-manage')?.addEventListener('click', async () => {
+    if (await coreadManageTags()) renderModal();
+  });
   root.querySelectorAll('.sd-reader-tag').forEach((el) => el.addEventListener('click', () => {
     const t = el.dataset.tag;
     const arr = coread().libTags || (coread().libTags = []);
@@ -31675,18 +31716,31 @@ function bindLibraryViewEvents(root) {
   if (search) {
     ['focusin', 'focus', 'click', 'pointerdown', 'mousedown', 'touchstart', 'keydown', 'keyup', 'keypress', 'input'].forEach((ev) =>
       search.addEventListener(ev, (e) => e.stopPropagation()));
-    search.addEventListener('input', (e) => {
-      const q = String(e.target.value || '').trim().toLowerCase();
-      root.querySelectorAll('.sd-reader-card, .sd-reader-row').forEach((card) => {
-        const b = coreadBookMeta(card.dataset.book);
-        const hit = !q || (b && ((b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q)));
-        card.style.display = hit ? '' : 'none';
-      });
+    // 只在一项里找：书名、作者、标签、合集、书友；每项后面是这一项命中几本（当前这一层的书，合集里的也算）。
+    const fieldBar = root.querySelector('.sd-reader-search-fields');
+    const apply = () => {
+      const q = String(search.value || '').trim().toLowerCase(), field = shelfSearchField, index = shelfSearchIndex;
+      const hit = (id) => { const fields = index.books.get(id); return !!fields && matchBook(fields, q, field); };
+      root.querySelectorAll('.sd-reader-card, .sd-reader-row').forEach((card) => { card.style.display = !q || hit(card.dataset.book) ? '' : 'none'; });
       root.querySelectorAll('.sd-reader-collection-card, .sd-reader-collection-row').forEach((item) => {
-        item.style.display = !q || String(item.dataset.search || '').includes(q) ? '' : 'none';
+        const ids = index.collections.get(item.dataset.collection) || [];
+        const own = (field === 'all' || field === 'collection') && String(coreadCollections().find((c) => c.id === item.dataset.collection)?.name || '').toLowerCase().includes(q);
+        item.style.display = !q || own || ids.some(hit) ? '' : 'none';
       });
+      if (fieldBar) {
+        fieldBar.hidden = !q;
+        const scope = [...root.querySelectorAll('.sd-reader-card, .sd-reader-row')].map((card) => card.dataset.book)
+          .concat([...root.querySelectorAll('.sd-reader-collection-card, .sd-reader-collection-row')].flatMap((item) => index.collections.get(item.dataset.collection) || []));
+        const counts = searchCounts([...new Set(scope)].map((id) => index.books.get(id)).filter(Boolean), q);
+        fieldBar.querySelectorAll('.sd-reader-search-field').forEach((button) => {
+          button.querySelector('b').textContent = String(counts[button.dataset.field] || 0);
+          button.classList.toggle('active', button.dataset.field === field);
+        });
+      }
       updateBatchBtn();
-    });
+    };
+    search.addEventListener('input', apply);
+    fieldBar?.querySelectorAll('.sd-reader-search-field').forEach((button) => button.addEventListener('click', () => { shelfSearchField = button.dataset.field; apply(); }));
   }
   // 网格卡（封面视图）：单击开书，去掉删除功能（P1 优化·删除功能只留给列表视图）
   root.querySelectorAll('.sd-reader-card').forEach((card) => {
