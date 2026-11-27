@@ -1,7 +1,7 @@
 import { bindingKey, fingerprintMessages } from './contract.mjs';
 import { validateCompanion, validateBookSnapshot, mergeCompanionBook, removeCompanionBook, linkedBook, sameCompanionContext } from './companion-contract.mjs';
-import { memoryMessage, byteBudget } from './budget.mjs';
-import { buildPlan, filterCompanionEntries } from './core.mjs';
+import { memoryMessage, byteBudget, sourceRanges } from './budget.mjs';
+import { buildPlan, filterCompanionEntries, renderMemoryPrompt } from './core.mjs';
 
 export const COMPANION_BRIDGE = Symbol.for('qianmu.yimu.companion.v1');
 export const COMPANION_BRIDGE_VERSION = 2;
@@ -56,11 +56,36 @@ export function createCompanionActions({ state, api, change, emit, lifecycle, br
         return { active: true, text: entries.length ? linkedMessage(entries).content : '',
             consumedSliceIds };
     };
+    // 千幕幕外「联动忆幕」：只读当前打开的故事聊天的记忆，选法与生成前注入正文时相同（同一份设置、同一个预算）。
+    // excludeFrom：千幕自己带上的参考楼层从第几层起；与这些楼层有重叠的切片不带，以那几层的原文为准。不写入任何东西。
+    const story = async context => {
+        if (destroyed || lifecycle().disposed || lifecycle().paused || !state.document?.enabled || !state.sourceAvailable || !state.snapshot?.binding) return empty();
+        const binding = structuredClone(state.snapshot.binding), snapshot = structuredClone(state.snapshot);
+        if (state.document.movedTo || bindingKey(state.document.binding) !== bindingKey(binding)) return empty();
+        let timer;
+        const fresh = await Promise.race([Promise.resolve().then(() => api.read(binding)).catch(() => null), new Promise(resolve => {timer = setTimeout(() => resolve(null), 2000);})]);
+        clearTimeout(timer);
+        if (!fresh?.sourceAvailable || !fresh.document.enabled || fresh.document.movedTo || bindingKey(fresh.document.binding) !== bindingKey(binding)) return empty();
+        if (!state.snapshot || bindingKey(state.snapshot.binding) !== bindingKey(binding)) return empty();
+        const document = structuredClone(fresh.document), invalid = new Set(fresh.invalidSourceIds || []);
+        for (const entry of document.entries) if (invalid.has(entry.id) && entry.status === 'active') entry.status = 'invalid';
+        const plan = await buildPlan(document, fresh.defaults, snapshot, { queryText: typeof context.query === 'string' ? context.query.slice(0, 2000) : '' });
+        const from = Number.isInteger(context.excludeFrom) && context.excludeFrom > 0 ? context.excludeFrom : Infinity;
+        const overlaps = entry => sourceRanges(entry).some(range => range.end >= from);
+        const kept = [];
+        for (const entry of plan.entries) {
+            if (entry.kind === 'excerpt') { if (kept.some(parent => parent.id === entry.parent?.id)) kept.push(entry); continue; }
+            if (!entry.origin && overlaps(entry)) continue;
+            kept.push(entry);
+        }
+        return { active: true, text: kept.length ? renderMemoryPrompt(kept, { entryOrder: document.entryOrder }) : '', consumedSliceIds: [] };
+    };
     // Bound the entire optional read/selection step, not only its server read.
     // A late result has no write or publication path after the caller continues.
     const consumer = async context => {
         let timer;
-        try { return await Promise.race([consume(context).catch(empty), new Promise(resolve => {timer = setTimeout(() => resolve(empty()), 500);})]); }
+        const work = context?.purpose === 'story' ? story(context) : consume(context);
+        try { return await Promise.race([work.catch(empty), new Promise(resolve => {timer = setTimeout(() => resolve(empty()), context?.purpose === 'story' ? 3000 : 500);})]); }
         finally { clearTimeout(timer); }
     };
     // Only Yimu knows where in the story a reading memory belongs: the last floor at this moment.

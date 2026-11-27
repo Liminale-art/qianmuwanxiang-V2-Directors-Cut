@@ -547,3 +547,19 @@ test('an older Qianmu bridge is not attached, so neither side offers a half-work
     assert.equal(consumers,0,'a version-2 object without link support is not a usable bridge either');
     assert.equal(f.bridge.linkAvailable(),false,'detaching withdrew the link handlers from the real bridge');
 });
+
+test('theater story read: off without a consumer, reads the open story like injection, drops slices overlapping the referenced floors, writes nothing',async t=>{
+    const f=await fixture(t);
+    f.state.document.entries=[entry('early','早先的故事总结',{start:1,end:3,hashes:f.hashes.slice(0,3)}),entry('late','近处的故事总结',{start:4,end:6,hashes:f.hashes.slice(3,6)}),entry('manual','人工写的关系记忆')];
+    const writes=f.writes;
+    const all=await f.bridge.consumeStory({query:'故事'});
+    // Same selection as injection: the recent raw floors (4-8 here) are not summarised in, so only the early slice and the manual memory come.
+    assert.equal(all.active,true);assert.match(all.text,/早先的故事总结/);assert.match(all.text,/人工写的关系记忆/);assert.doesNotMatch(all.text,/近处的故事总结/);
+    const cut=await f.bridge.consumeStory({query:'故事',excludeFrom:2});
+    assert.doesNotMatch(cut.text,/早先的故事总结/,'the referenced floors win over a slice that overlaps them');assert.match(cut.text,/人工写的关系记忆/);
+    assert.equal(f.writes,writes);
+    f.state.document.enabled=false;assert.equal((await f.bridge.consumeStory({})).active,false);
+    f.attached(null);f.state.document.enabled=true;
+    const lone=createYimuCompanionBridge({getState:()=>f.sourceState,resolveAccount:async()=>'st-user:fixture',hash,listKeys:async()=>[],readRecord:async()=>null});
+    assert.deepEqual(await lone.consumeStory({}),{active:false,text:''});
+});

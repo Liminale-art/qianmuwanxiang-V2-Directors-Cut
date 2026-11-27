@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.624';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.625';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.624';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.625';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.624';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.624';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.624';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.624';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.624';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.624';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.624';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.625';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.625';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.625';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.625';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.625';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.625';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.625';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.624';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.625';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -67,11 +67,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.624';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.625';
 import { createApiQuick } from './qianmu-api-quick.js';
-import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
+import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.624';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.625';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -101,7 +101,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.624';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.625';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -344,7 +344,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.624';
+const VERSION = '1.59.625';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1234,7 +1234,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     lastOutput: null,
     readerFontScale: 'medium',
     useChatHistory: true,
-    historyDepth: 5,
+    historyDepth: 4,
   },
   // 伴读电子书模块：与推演主体无关的独立模块，命名空间隔离在此，零侵入主流程。
   // 重数据（书正文/封面/会话/检索日志）在 IndexedDB(qianmu-blobstore)，此处只存轻量书目索引 + 阅读偏好。
@@ -1373,6 +1373,7 @@ let readerView = null;  // 伴读：null=书架；{ bookId, fullscreen, chapterI
 let editorView = null;  // null=常规；{target, title, value, returnTab}=行内全屏编辑（沿用阅读页逻辑，不另开 body 窗口）
 let ttsEditorReturnScroll = null;  // 进入行内编辑器前的正文滚动位，关闭后恢复（防弹回顶部）
 let theaterScriptSource = '';   // 当前此幕指令来自哪个剧札标题；空=即兴（手动输入/未保存）
+let theaterScriptId = '';       // 同一个剧札的 id（字数可绑定在剧札上）
 let chatterExpanded = false;       // 尘寰群生：false=动态浮现舞台，true=展开完整台本列表
 let contextScanCache = { presets: {}, worldBooks: {}, presetNames: [], worldBookNames: [], currentPresetName: '', boundWorldBookNames: [], presetScannedAt: '', worldScannedAt: '' };
 let contextAutoScanned = false;    // 保留旧状态字段，实际刷新由时间戳与 in-flight 守卫共同决定
@@ -2051,10 +2052,23 @@ function capByBudget(lines) {
 
 // 幕外专用：取最近 N 层「可见」楼层原文（过滤被记忆/隐藏插件标记的 is_system 楼），再走全局上下文长度软裁剪。
 // 与推演 getChatHistoryText 完全独立：自己的楼层数，互不污染。
+// 参考楼层里最早那一层（从 1 数，与忆幕的楼层号一致）；没有就是 0。
+function theaterHistoryFirstFloor() {
+  const chat = Array.isArray(ctx().chat) ? ctx().chat : [];
+  const depth = Math.max(1, Math.min(200, Number(getTheater().historyDepth || 4)));
+  const recent = chat.filter((m) => m && m.is_system !== true).slice(-depth);
+  return recent.length ? chat.indexOf(recent[0]) + 1 : 0;
+}
+// 字数：这一幕来自的剧札绑了字数就用剧札的，否则用页上的。
+function theaterWordCount(scriptId = theaterScriptId) {
+  const t = getTheater(), script = scriptId ? (t.scripts || []).find((item) => item.id === scriptId && item.wordCount) : null;
+  return normalizeWordCount(script ? script.wordCount : t.wordCount);
+}
+
 function getTheaterChatHistoryText() {
   const context = ctx();
   const chat = Array.isArray(context.chat) ? context.chat : [];
-  const depth = Math.max(1, Math.min(200, Number(getTheater().historyDepth || 5)));
+  const depth = Math.max(1, Math.min(200, Number(getTheater().historyDepth || 4)));
   const visible = chat.filter((m) => m && m.is_system !== true);
   const recent = visible.slice(-depth);
   const lines = recent.map((m) => {
@@ -4037,6 +4051,7 @@ async function commitEditorValue(target, val) {
   } else if (target === 'sd-theater-instruction') {
     getTheater().instruction = val || '';
     theaterScriptSource = '';   // 手动改动即视为即兴，脱离剧札来源
+    theaterScriptId = '';
     saveSettings();
   } else if (target.startsWith('ttsscheme:')) {
     const id = target.slice('ttsscheme:'.length);
@@ -33473,7 +33488,9 @@ function getTheater() {
   if (t.lastOutput && !t.recentOutputs.some((item) => item?.id === t.lastOutput.id)) t.recentOutputs.unshift(t.lastOutput);
   t.recentOutputs = t.recentOutputs.filter(Boolean).slice(0, THEATER_RECENT_LIMIT);
   if (typeof t.useChatHistory === 'undefined') t.useChatHistory = true;
-  if (typeof t.historyDepth === 'undefined') t.historyDepth = 5;
+  if (typeof t.historyDepth === 'undefined') t.historyDepth = 4;
+  t.wordCount = normalizeWordCount(t.wordCount);
+  if (typeof t.yimuLink !== 'boolean') t.yimuLink = false;
   return t;
 }
 
@@ -33627,6 +33644,37 @@ function theaterScriptLibraryCfg() {
   };
 }
 
+function renderTheaterWordRow(t) {
+  const script = theaterScriptId ? (t.scripts || []).find((item) => item.id === theaterScriptId) : null;
+  const bound = !!script?.wordCount, words = theaterWordCount();
+  const field = (kind, label) => `<label class="sd-depth-field"><span>${label}</span><input class="text_pole sd-theater-words" data-kind="${kind}" type="number" min="0" max="20000" step="50" placeholder="不限" value="${words[kind] || ''}"></label>`;
+  return `<div class="sd-theater-history-row sd-theater-words-row">${field('stage', '上演字数')}${field('turn', '续写字数')}${script ? `<label class="checkbox_label"><input type="checkbox" class="sd-theater-words-bind" ${bound ? 'checked' : ''}> 绑定剧札「${htmlEscape(script.title || '')}」</label>` : ''}</div>`;
+}
+
+// 字数一行：改的是剧札上绑的（若已绑定）或页上的；载入剧札、勾选绑定时只换这一行，不重画整页。
+function bindTheaterWordRow(root) {
+  root.querySelectorAll('.sd-theater-words').forEach((el) => el.addEventListener('change', () => {
+    const t = getTheater(), script = theaterScriptId ? (t.scripts || []).find((item) => item.id === theaterScriptId && item.wordCount) : null;
+    const target = script ? script : t, next = normalizeWordCount({ ...(target.wordCount || {}), [el.dataset.kind]: el.value });
+    target.wordCount = next; el.value = next[el.dataset.kind] || '';
+    saveSettings();
+  }));
+  root.querySelector('.sd-theater-words-bind')?.addEventListener('change', (e) => {
+    const t = getTheater(), script = (t.scripts || []).find((item) => item.id === theaterScriptId);
+    if (!script) return;
+    if (e.target.checked) script.wordCount = theaterWordCount(''); else delete script.wordCount;
+    saveSettings(); refreshTheaterWordRow(root);
+  });
+}
+function refreshTheaterWordRow(root) {
+  const row = root.querySelector('.sd-theater-words-row');
+  if (!row) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = renderTheaterWordRow(getTheater());
+  row.replaceWith(holder.firstElementChild);
+  bindTheaterWordRow(root);
+}
+
 function renderTheaterTab() {
   requestPresetRefreshIfStale();
   if (!theaterCatalogReady) {
@@ -33658,8 +33706,10 @@ function renderTheaterTab() {
           ${t.presetName ? renderTheaterPresetEntries(t.presetName) : ''}
           <div class="sd-theater-history-row">
             <label class="checkbox_label"><input type="checkbox" class="sd-theater-use-history" ${t.useChatHistory !== false ? 'checked' : ''}> 衔接当前正文</label>
-            <label class="sd-depth-field"><span>参考楼层</span><input class="text_pole sd-theater-history-depth" type="number" min="1" max="200" value="${htmlEscape(t.historyDepth || 5)}" ${t.useChatHistory !== false ? '' : 'disabled'}></label>
+            <label class="sd-depth-field"><span>参考楼层</span><input class="text_pole sd-theater-history-depth" type="number" min="1" max="200" value="${htmlEscape(t.historyDepth || 4)}" ${t.useChatHistory !== false ? '' : 'disabled'}></label>
+            <label class="checkbox_label"><input type="checkbox" class="sd-theater-yimu" ${t.yimuLink === true ? 'checked' : ''}> 联动忆幕</label>
           </div>
+          ${renderTheaterWordRow(t)}
         </div>
       </details>
     </section>
@@ -33828,12 +33878,16 @@ function renderTheaterPresetEntries(presetName) {
 }
 
 // 幕外的背景：始终注入当前聊天的角色设定 + 用户人设 + 绑定世界书（独立于推演链路），预设条目作为额外叠加，可选衔接正文片段。
-async function buildTheaterBackgroundSegments() {
+async function buildTheaterBackgroundSegments(query = '') {
   const segments = [];
   const defaultText = await buildTheaterDefaultText();
   if (defaultText) segments.push(defaultText);
   const presetText = await buildTheaterPresetText();
   if (presetText) segments.push(presetText);
+  if (getTheater().yimuLink === true) {
+    const memory = await yimuCompanionBridge.consumeStory({ query, excludeFrom: getTheater().useChatHistory !== false ? theaterHistoryFirstFloor() : 0 });
+    if (memory.active && memory.text.trim()) segments.push(`【故事记忆】（人设质地、故事风格与人物关系、情感的依据）\n${memory.text.trim()}`);
+  }
   if (getTheater().useChatHistory !== false) {
     const history = getTheaterChatHistoryText();
     if (history) segments.push(`【当前正文片段】（衔接背景：人物当前状态、关系与口吻锚点，并非要你续写正文）\n${history}`);
@@ -33881,8 +33935,8 @@ async function continueTheaterScene(scene, input, { redo = false } = {}) {
   const startedAt = Date.now();
   const log = pushLog({ id: uid('log'), kind: 'theater', status: 'loading', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '' });
   try {
-    const background = (await buildTheaterBackgroundSegments()).join('\n\n');
-    const messages = buildContinueMessages({ background, scene: base, input: words, userName: await resolveMacro(getPersonaName()) || '用户', extract: extractTheaterBody });
+    const background = (await buildTheaterBackgroundSegments(`${scene.instruction || ''}\n${words}`)).join('\n\n');
+    const messages = buildContinueMessages({ background, scene: base, input: words, userName: await resolveMacro(getPersonaName()) || '用户', extract: extractTheaterBody, length: theaterWordCount(scene.scriptId).turn });
     log.request = JSON.stringify(messages, null, 2);
     saveSettings();
     const logDelta = settings.streamEnabled ? makeStreamLogUpdater(log) : null;
@@ -33946,9 +34000,11 @@ async function stageTheaterScene() {
   const startedAt = Date.now();
   const log = pushLog({ id: uid('log'), kind: 'theater', status: 'loading', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '' });
   try {
-    const segments = await buildTheaterBackgroundSegments();
+    const segments = await buildTheaterBackgroundSegments(instruction);
     const useHistory = getTheater().useChatHistory !== false;
     segments.push(`【此幕指令】\n${await resolveMacro(instruction)}`);
+    const stageLength = lengthLine(theaterWordCount().stage, 'stage');
+    if (stageLength) segments.push(stageLength);
     if (useHistory) {
       segments.push('以上正文片段是衔接背景，请据此保持人物口吻、关系与既有事实一致；番外可自由延展想象，但不要与正文已发生的事实冲突。');
     }
@@ -33968,7 +34024,7 @@ async function stageTheaterScene() {
     const content = String(raw || '').trim();
     log.response = content;
     if (!content) throw new Error('模型返回为空');
-    t.lastOutput = { id: uid('scene'), source: theaterScriptSource || '', instruction, content, isHtml: looksLikeHtml(extractTheaterBody(content)), createdAt: new Date().toISOString() };
+    t.lastOutput = { id: uid('scene'), source: theaterScriptSource || '', scriptId: theaterScriptId || '', instruction, content, isHtml: looksLikeHtml(extractTheaterBody(content)), createdAt: new Date().toISOString() };
     t.recentOutputs = [t.lastOutput, ...(t.recentOutputs || [])].filter((scene, index, list) => scene?.id && list.findIndex((item) => item?.id === scene.id) === index).slice(0, THEATER_RECENT_LIMIT);
     log.status = 'success';
     log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -34213,13 +34269,16 @@ function bindTheaterTabEvents(root) {
     saveSettings();
     renderModal();
   });
+  root.querySelector('.sd-theater-yimu')?.addEventListener('change', (e) => { getTheater().yimuLink = e.target.checked; saveSettings(); });
+  bindTheaterWordRow(root);
   root.querySelector('.sd-theater-history-depth')?.addEventListener('change', (e) => {
-    getTheater().historyDepth = Math.max(1, Math.min(200, Number(e.target.value || 5)));
+    getTheater().historyDepth = Math.max(1, Math.min(200, Number(e.target.value || 4)));
     saveSettings();
   });
   root.querySelector('.sd-theater-instruction')?.addEventListener('change', (e) => {
     getTheater().instruction = e.target.value || '';
     theaterScriptSource = '';   // 手动改动指令即视为即兴，脱离剧札来源
+    theaterScriptId = '';
     saveSettings();
   });
   root.querySelector('.sd-theater-stage')?.addEventListener('click', () => {
@@ -34255,9 +34314,11 @@ function bindTheaterTabEvents(root) {
       const t = getTheater();
       t.instruction = s.instruction || '';
       theaterScriptSource = s.title || '';   // 记录来源剧札名，供阅读页副标题显示
+      theaterScriptId = s.id || '';
       saveSettings();
       const ta = root.querySelector('.sd-theater-instruction');
       if (ta) ta.value = t.instruction;
+      refreshTheaterWordRow(root);
       toast('已载入到此幕指令。', 'success');
     },
     onEdit: async (id) => {

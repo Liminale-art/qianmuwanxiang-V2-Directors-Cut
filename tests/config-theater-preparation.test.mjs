@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import * as utilities from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+import {normalizeWordCount} from '../features/theater/qianmu-theater-continue.js';
 
 function fixture() {
   let saves=0;
-  const c=vm.createContext({...utilities,settings:{theater:{scripts:[{id:'sd-bt-0',title:'old'}],favorites:[{id:'fav'}]}},
+  const c=vm.createContext({...utilities,normalizeWordCount,settings:{theater:{scripts:[{id:'sd-bt-0',title:'old'}],favorites:[{id:'fav'}]}},
     theaterCatalogReady:false,BUILTIN_THEATERS:[],QIANMU_THEATERS:[],
     BUILTIN_THEATER_FOLDER:'builtin',QIANMU_THEATER_FOLDER:'qianmu',THEATER_RECENT_LIMIT:5,BUILTIN_THEATER_REVISION:6,QIANMU_THEATER_REVISION:5,
     saveSettings(){saves++;}});

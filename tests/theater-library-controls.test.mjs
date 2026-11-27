@@ -9,7 +9,7 @@ function fixture() {
     const context = vm.createContext({
         htmlEscape, groupByFolder, getTheater: () => theater,
         theaterExportMode: true, theaterExportSelection: new Set(['one']),
-        theaterCatalogReady: true, theaterView: null, bindTheaterPresetPicker() {}, importTheaterScripts() {},
+        theaterCatalogReady: true, theaterView: null, bindTheaterPresetPicker() {}, bindTheaterWordRow() {}, importTheaterScripts() {},
         renderModal: () => calls.push('render'), bindLibraryEvents: (_root, _cfg, handlers) => { context.handlers = handlers; },
     });
     vm.runInContext(['renderLibraryRow', 'renderLibraryListBody', 'renderLibrarySection', 'theaterScriptLibraryCfg', 'bindTheaterTabEvents'].map(storyboardFunctionSource).join('\n'), context);

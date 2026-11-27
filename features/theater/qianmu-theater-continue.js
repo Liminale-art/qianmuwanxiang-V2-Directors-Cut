@@ -23,20 +23,32 @@ export function canContinue(scene) {
     return !!scene && !scene.isHtml && turnChars(sceneTurns(scene)) < THEATER_TURN_CHARS_LIMIT;
 }
 
-// 续写的固定句（创作层；改动要先给用户审）。
-export const THEATER_CONTINUE_GUIDE = '这是主线之外的一段番外支线。请顺着这一幕接着往下写：承接已经写出的情节、人物状态与口吻，回应用户这一回写下的内容（可能是用户角色的言行、想让剧情发生的事，或一句旁白式的指引），让这一幕自然地往前推进。只写新的部分，不要复述或改写前文；番外可以自由延展，但不要与正文已发生的事实冲突。';
+// 续写要求（创作层；用户 2026-11-28 修订稿，逐字照用；{{user}} 在拼装时换成用户名）。
+export const THEATER_CONTINUE_GUIDE = '此为主线叙事之外的番外支线创作。\n严格承袭番外已有的情节脉络、人物状态与口吻调性，紧扣本轮{{user}}提交的内容，推动场景自然延展推进。\n仅输出新增叙事内容，不复述、不改写既有前文；番外可自主拓展剧情边界，所有延展内容均不得与正文既定事实、核心人物设定相冲突。';
+// 篇幅（0 为不指定）：上演一幕与续写一回各自的字数，可绑定在剧札上。
+export function lengthLine(count, kind) {
+    const n = Math.round(Number(count) || 0);
+    if (n <= 0) return '';
+    return kind === 'turn' ? `【篇幅】这一回新写的部分约 ${n} 字。` : `【篇幅】本幕正文约 ${n} 字。`;
+}
+export function normalizeWordCount(raw) {
+    const value = plain(raw) ? raw : {};
+    const clampCount = v => Math.max(0, Math.min(20000, Math.round(Number(v) || 0)));
+    return {stage: clampCount(value.stage), turn: clampCount(value.turn)};
+}
 export const THEATER_CONTINUE_FORMAT = '【输出格式】请把新写出的正文完整包裹在 <幕外正文> 与 </幕外正文> 标签之间。任何思考、分析、自我提示都放在标签之外，标签内只保留纯净的正文本身。';
 
 // 消息：缘起（背景＋最初的此幕指令）→ 这一幕正文 → 每一回的用户与续写 → 这一回的用户输入＋要求。
 // body 取 <幕外正文> 里的部分；extract 由调用方传入（与阅读页同一个函数）。
-export function buildContinueMessages({background = '', scene, input, userName = '用户', extract = value => value}) {
+export function buildContinueMessages({background = '', scene, input, userName = '用户', extract = value => value, length = 0}) {
     const opening = [background.trim(), `【此幕指令】\n${text(scene?.instruction).trim() || '（即兴）'}`].filter(Boolean).join('\n\n');
     const messages = [{role: 'user', content: opening}, {role: 'assistant', content: extract(text(scene?.content)).trim()}];
     for (const turn of sceneTurns(scene)) {
         const content = turn.role === 'user' ? `【${userName}这一回】\n${turn.content.trim()}` : extract(turn.content).trim();
         messages.push({role: turn.role, content});
     }
-    messages.push({role: 'user', content: `【${userName}这一回】\n${text(input).trim()}\n\n${THEATER_CONTINUE_GUIDE}\n\n${THEATER_CONTINUE_FORMAT}`});
+    const guide = THEATER_CONTINUE_GUIDE.replaceAll('{{user}}', userName);
+    messages.push({role: 'user', content: [`【${userName}这一回】\n${text(input).trim()}`, guide, lengthLine(length, 'turn'), THEATER_CONTINUE_FORMAT].filter(Boolean).join('\n\n')});
     return messages;
 }
 

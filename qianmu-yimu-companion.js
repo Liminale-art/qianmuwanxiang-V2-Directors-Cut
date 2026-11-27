@@ -185,6 +185,20 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         try { return await Promise.race([read().catch(emptyUse), new Promise(resolve => {timer = setTimeout(() => {expired = true;resolve(emptyUse());}, 500);})]); }
         finally { clearTimeout(timer); }
     }
+    // 幕外「联动忆幕」：向忆幕要当前故事聊天的记忆（只读）。没装、没开或超时都当作没有，不挡住生成。
+    async function consumeStory({query = '', excludeFrom = 0} = {}) {
+        const none = {active: false, text: ''};
+        if (!consumer) return none;
+        const callback = consumer;
+        let timer;
+        try {
+            return await Promise.race([
+                Promise.resolve().then(() => callback({version: 2, purpose: 'story', query: String(query || '').slice(0, 2000), excludeFrom: integer(excludeFrom) ? excludeFrom : 0}))
+                    .then(result => (result?.active === true ? {active: true, text: text(result.text)} : none)).catch(() => none),
+                new Promise(resolve => {timer = setTimeout(() => resolve(none), 3500);}),
+            ]);
+        } finally { clearTimeout(timer); }
+    }
     // 忆幕 registers how to look up and change the open story's link. The reader
     // never writes a story document itself.
     function setLink(handlers) {
@@ -252,7 +266,7 @@ export function createYimuCompanionBridge({getState, resolveAccount, listKeys, r
         return {linked: false};
     }
     const api = Object.freeze({version: 2, list, readSnapshot, setConsumer, clearConsumer, setLink, clearLink});
-    return Object.freeze({api, consume, linkAvailable: () => !!link, linkStatus, snapshot, linkUpdate, unlink,
+    return Object.freeze({api, consume, consumeStory, linkAvailable: () => !!link, linkStatus, snapshot, linkUpdate, unlink,
         mount(target = globalThis) {
             if (target[YIMU_COMPANION_KEY] && target[YIMU_COMPANION_KEY] !== api) return false;
             mounted = target; target[YIMU_COMPANION_KEY] = api;

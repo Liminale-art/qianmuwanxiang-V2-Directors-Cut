@@ -3,7 +3,7 @@ import { storyboardFunctionSource } from './storyboard-form-fixture.mjs';
 
 export const presetPickerSource = [
   'badge', 'getContextItemId', 'renderPresetSourcePanel', 'renderTheaterPresetPicker', 'renderTheaterPresetEntries',
-  'renderContextTab', 'renderSelectedPresetEntries', 'renderContextEntry', 'renderTheaterTab',
+  'renderContextTab', 'renderSelectedPresetEntries', 'renderContextEntry', 'renderTheaterTab', 'renderTheaterWordRow', 'theaterWordCount',
   'bindTheaterPresetPicker', 'initTheaterPresetSelection', 'isTheaterPresetItemSelected', 'setTheaterPresetItemSelected', 'renderCompanionSetupBody',
   'coreadEnsurePresetEntries', 'coreadToggleCompanionPreset', 'isCompanionPresetItemSelected',
   'setCompanionPresetItemSelected', 'coreadSetupScanPresets',
@@ -32,7 +32,8 @@ export function installPresetPickerFixture(target) {
     settings: { contextOptions: {} }, companionPresetView: '', companionWorldView: '', cleanContextText: value => value,
     maybeAutoScanContext() {}, getCharacterName: () => '角色', getPersonaName: () => '用户', renderTagRules: () => '', renderWorldBookSourcePanel: () => '',
     isPresetItemSelected: () => true, renderContextSelectionReview: () => '',
-    requestPresetRefreshIfStale() {}, theaterCatalogReady: true, theaterView: null, theaterBusy: false,
+    requestPresetRefreshIfStale() {}, theaterCatalogReady: true, theaterView: null, theaterBusy: false, theaterScriptId: '',
+    normalizeWordCount: value => ({ stage: Number(value?.stage) || 0, turn: Number(value?.turn) || 0 }),
     THEATER_INSTRUCTION_PLACEHOLDER: '', renderLibrarySection: () => '', theaterScriptLibraryCfg: () => ({}),
     getCurrentPresetName: () => current, listPresetNames: () => names,
     getSelectedPresetNames: () => [current],
