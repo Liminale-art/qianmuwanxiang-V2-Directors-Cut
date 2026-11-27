@@ -64,3 +64,11 @@
 /* 极简／纸间外观会给面板内所有文字指定外观自带字体；阅读页与编辑页的正文必须仍跟随字体库的正文字体。 */
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))) !important; }
 :is(#story-director-modal, [data-qm-theme])[data-qm-theme] .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) :not(:is(i, svg, svg *, code, pre)) { font-family: inherit !important; }
+.qm-collection-panel .qm-collection-switch { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 36px; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.qm-collection-panel .qm-collection-switch > input { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; clip-path: inset(50%); overflow: hidden; pointer-events: none; }
+.qm-collection-panel .qm-collection-switch > span { position: relative; box-sizing: border-box; width: 40px; height: 22px; border: 1px solid var(--sd-hairline, #8886); border-radius: 999px; background: var(--sd-glass-weak, #8881); transition: background .18s ease, border-color .18s ease; }
+.qm-collection-panel .qm-collection-switch > span::before { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: color-mix(in srgb, var(--sd-muted, #888) 56%, var(--sd-card, #fff)); box-shadow: 0 2px 7px rgba(0, 0, 0, .14); transition: transform .18s ease, background .18s ease; }
+.qm-collection-panel .qm-collection-switch > input:checked + span { border-color: color-mix(in srgb, var(--sd-accent, #6a8fd0) 66%, var(--sd-hairline, #8886)); background: color-mix(in srgb, var(--sd-accent, #6a8fd0) 16%, var(--sd-card, transparent)); }
+.qm-collection-panel .qm-collection-switch > input:checked + span::before { transform: translateX(18px); background: var(--sd-accent, #6a8fd0); }
+.qm-collection-panel .qm-collection-switch > input:focus-visible + span { outline: 2px solid var(--sd-accent, #6a8fd0); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .qm-collection-panel .qm-collection-switch > span, .qm-collection-panel .qm-collection-switch > span::before { transition: none; } }

@@ -8,7 +8,7 @@ import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {QIANMU_HIVE_COMMANDS, upgradeProseHiveCommands} from '../qianmu-hive-commands.js';
 
 const turn = () => new Promise(resolve => setImmediate(resolve));
-function fixture(t) {
+function fixture(t, extra = {}) {
     const dom = textCollectionDom(), root = dom.parent, window = new EventTarget();
     let live = true, reads = 0, writes = 0, stores = 0, view, context;
     const jumps = [];
@@ -30,7 +30,7 @@ function fixture(t) {
     renderFloor();
     const host = createTextCollectionHost({getContext: () => context, names: () => ({charName: '角色', userName: '用户'}),
         document: dom.doc, window, isCurrent: () => live, resolveNamespace: async () => 'st-user:test', headers: () => ({}),
-        jumpToFloor: floor => { jumps.push(floor); return true; },
+        jumpToFloor: floor => { jumps.push(floor); return true; }, ...extra,
         async storeFactory() {
             stores++; return {
                 async read(_slot, {guard}) { reads++; guard(); return structuredClone(remote); },
@@ -41,12 +41,12 @@ function fixture(t) {
                 }, close() {},
             };
         },
-        async viewFactory({collection, isCurrent, typography, locateFloor, jumpToFloor}) {
+        async viewFactory({collection, isCurrent, typography, locateFloor, jumpToFloor, collectionEnabled}) {
             const parent = dom.doc.createElement('section'); dom.doc.body.append(parent);
             parent.style.setProperty = (key, value) => { parent.style[key] = value; };
             parent.style.removeProperty = key => { delete parent.style[key]; };
             typography(parent);
-            const panel = createTextCollectionPanel({parent, collection, isCurrent, locateFloor, onJumpFloor: jumpToFloor});
+            const panel = createTextCollectionPanel({parent, collection, isCurrent, locateFloor, onJumpFloor: jumpToFloor, enabled: collectionEnabled});
             const capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, scope) => panel.collect(input, scope)});
             view = {parent, collection, panel, capture, dispose() { capture.dispose(); panel.dispose(); parent.remove(); }};
             return view;
@@ -201,4 +201,20 @@ test('a saved passage shows its floor only while its own chat is open and the fl
     f.context = {characters: [], chat: [], chatMetadata: {}};
     f.action('关闭收藏'); await f.host.open(); assert.deepEqual(visibleTags(), [], 'no chat open: no tag');
     assert.deepEqual(f.jumps, [1]);
+});
+
+test('collection switch off: no floor stars or pre-read; the panel switch turns stars back on and saves the choice', async t => {
+    let enabled = false; const saved = [];
+    const f = fixture(t, {collectionEnabled: {read: () => enabled, write: value => { enabled = value; saved.push(value); }}});
+    f.host.refresh(f.root); await turn();
+    assert.equal(f.star(), null); assert.equal(f.reads, 0);
+    assert.equal(f.click(), false);
+    await f.host.open();
+    const toggle = f.dom.get('启用正文收藏');
+    assert.ok(toggle); assert.equal(toggle.checked, false);
+    toggle.click();
+    assert.deepEqual(saved, [true]);
+    assert.ok(f.star(), 'stars return on the current chat');
+    toggle.click();
+    assert.deepEqual(saved, [true, false]); assert.equal(f.star(), null);
 });

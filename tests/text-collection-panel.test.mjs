@@ -218,7 +218,7 @@ test('view disposal detaches one subscription but leaves the page document usabl
 test('local control icons carry their intended glyph instead of an unresolved fallback', async t => {
     const f = fixture(t, [entry('one')]); await f.view.open();
     const expected = {
-        '关闭收藏': 'x', '刷新收藏': 'arrows-clockwise', '多选收藏': 'list-checks', '删除选中收藏': 'trash',
+        '关闭收藏': 'x', '多选收藏': 'list-checks', '删除选中收藏': 'trash',
         '返回收藏列表': 'arrow-left', '管理文件夹': 'folder-plus', '整理收藏': 'tag',
         '复制收藏正文': 'copy', '编辑收藏': 'pencil-simple', '取消编辑': 'arrow-left', '保存收藏': 'check',
     };
@@ -248,7 +248,7 @@ test('cold read failure stays retryable and never masquerades as an empty saved 
     assert.match(f.dom.status().textContent, /无法读取|读取失败/);
     assert.doesNotMatch(f.dom.status().textContent, /PRIVATE/);
     assert.doesNotMatch(list(f).textContent, /还没有收藏/);
-    f.readHook(null); click(f, '刷新收藏'); await waitReady(f);
+    f.readHook(null); click(f, '关闭收藏'); await f.view.open(); await waitReady(f);
     assert.ok(f.dom.get('阅读收藏：one')); assert.equal(f.reads, 2); assert.equal(f.writes, 0);
 });
 

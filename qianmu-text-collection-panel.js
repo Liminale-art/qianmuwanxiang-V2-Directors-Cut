@@ -13,7 +13,7 @@ const titleFor = item => `${item.charName || '未命名角色'} & ${item.userNam
 
 // locateFloor() 每次调用都按当前打开的聊天现算一张对照表，返回「来源 → 楼层号或 null」；只有来源确实落在当前聊天、
 // 且那一层还在时才有楼层号。onJumpFloor(楼层号) 沿用聊天工具包的跳层。两者缺省时不显示楼层标签。
-export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage, locateFloor, onJumpFloor} = {}) {
+export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage, locateFloor, onJumpFloor, enabled} = {}) {
     const doc = parent?.ownerDocument;
     if (!doc || !collection || typeof isCurrent !== 'function') throw new TypeError('Collection panel requires its owner');
     const make = (tag, className, text) => {
@@ -57,7 +57,6 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (!current()) return;
         query = search.value; listScroll = 0; endSelection(); render();
     });
-    const refreshButton = button('刷新收藏', 'arrows-clockwise', refresh);
     const multiButton = button('多选收藏', 'list-checks', () => {
         if (!multi) { multi = true; selection.clear(); }
         else for (const item of loadedItems()) selection.add(item.id);
@@ -67,9 +66,16 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     const organizeView = createTextCollectionOrganizationView({parent, collection, isCurrent,
         onComplete: () => { endSelection(); render(); }});
     const organizeSelected = button('整理选中收藏', 'folder', () => organizeView.organize(selectedLoadedIds()));
-    toolbar.append(search, refreshButton, multiButton, organizeSelected, deleteButton);
     const foldersButton = button('管理文件夹', 'folder-plus', () => organizeView.folders());
-    headerTools.insertBefore(foldersButton, closeButton);
+    toolbar.append(search, foldersButton, multiButton, organizeSelected, deleteButton);
+    // 启用开关：关掉后楼层上不再出现收藏星标，已有收藏照常可看可用。
+    const enabledSwitch = make('label', 'qm-collection-switch'), enabledInput = make('input');
+    enabledInput.type = 'checkbox'; enabledInput.setAttribute('role', 'switch'); enabledInput.setAttribute('aria-label', '启用正文收藏');
+    enabledInput.title = '启用正文收藏';
+    enabledInput.addEventListener('change', () => { if (!current()) return; try { enabled?.write?.(enabledInput.checked); } catch (error) { console.warn('[Qianmu] Collection switch failed', error); enabledInput.checked = !enabledInput.checked; } });
+    enabledSwitch.append(enabledInput, make('span'));
+    enabledSwitch.hidden = typeof enabled?.write !== 'function';
+    headerTools.insertBefore(enabledSwitch, closeButton);
     const resumeDraft = button('继续未保存的编辑', 'pencil-simple', () => { if (draft) startEditor(); });
     resumeDraft.className = 'qm-collection-resume';
     resumeDraft.append(make('span', '', '继续未保存的编辑'));
@@ -147,7 +153,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (!text && snapshot?.error) {
             text = /capacity/.test(snapshot.error.code) && !snapshot.needsRefresh
                 ? snapshot.loaded ? '收藏超过存储上限，本次未保存，修改已保留。' : '收藏文件过大，暂时无法读取。原件未改动。'
-                : !snapshot.loaded ? '收藏暂时无法读取，请刷新重试。'
+                : !snapshot.loaded ? '收藏暂时无法读取，请关闭后重新打开。'
                 : snapshot.needsRefresh ? '保存未完成，修改已保留。请刷新核对后重试。'
                     : /conflict/.test(snapshot.error.code) ? '收藏已有更新，修改已保留。'
                         : '操作未完成，请重试。';
@@ -161,7 +167,6 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     function updateControls() {
         const waiting = busy(), writable = snapshot?.loaded && !snapshot.needsRefresh;
         dialog.setAttribute('aria-busy', String(waiting));
-        refreshButton.disabled = waiting;
         multiButton.disabled = waiting || !snapshot?.loaded || !filteredItems().length;
         multiButton.setAttribute('aria-pressed', String(multi));
         multiButton.title = multi ? '全选已加载收藏' : '多选收藏';
@@ -290,6 +295,8 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         editButton.hidden = route !== 'read'; saveButton.hidden = route !== 'edit';
         copyButton.hidden = organizeButton.hidden = route !== 'read';
         foldersButton.hidden = route !== 'list';
+        enabledSwitch.hidden = route !== 'list' || typeof enabled?.write !== 'function';
+        enabledInput.checked = enabled?.read?.() !== false;
         imageButton.hidden = route !== 'read' || typeof onExportImage !== 'function';
         if (route === 'list') renderList();
         if (route === 'read') {

@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 442 个，其中 `qianmu-*` 模块 425 个。
+根目录文件 446 个，其中 `qianmu-*` 模块 429 个。
 
 ## 入口、宿主与安装
 
@@ -34,10 +34,10 @@
 | `assets/tab-icons/` | 2 |
 | `bundle/` | 199 |
 | `evaluation/` | 2 |
-| `features/` | 191 |
+| `features/` | 192 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1020 |
+| `tests/` | 1028 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -299,7 +299,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（64）
+## 专注／阅读／文本（61）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -355,9 +355,6 @@
 | `qianmu-text-collection-floor.css` | 是 | Only the collection's own message control. Inherit the ST toolbar theme. |
 | `qianmu-text-collection-floor.js` | 是 |  |
 | `qianmu-text-collection-host.js` | 是 |  |
-| `qianmu-text-collection-image-dialog.css` | 是 |  |
-| `qianmu-text-collection-image-dialog.js` | 是 |  |
-| `qianmu-text-collection-images.js` | 是 | Plain-text image export. No storage, HTML rendering, object URLs or network. |
 | `qianmu-text-collection-organization-view.css` | 是 |  |
 | `qianmu-text-collection-organization-view.js` | 是 |  |
 | `qianmu-text-collection-organization.js` | 是 | Classification is part of the collection document, not a second index or |
@@ -491,7 +488,7 @@
 | `qianmu-storage-transfer.js` | 是 | 数据管理的统一导出／导入。 |
 | `qianmu-yimu-companion.js` | 是 | Optional, explicit companion sharing. This bridge never owns or migrates a reader archive. |
 
-## 提示词、美术方向与剧场（13）
+## 提示词、美术方向与剧场（14）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -504,7 +501,7 @@
 | `qianmu-film-editor-save.js` | 是 | One immutable, explicitly requested film save. Validation performs no writes. |
 | `qianmu-plan-archive-write.js` | 是 | Immutable plan and recipe archive variants. Hashing finishes before the IndexedDB transaction. |
 | `qianmu-production-packet.js` | 是 | 千幕·共享片场制片包。纯数据适配器：不读写 DOM、设置、聊天元数据或媒体二进制。 |
-| `qianmu-prompt-card.js` | 是 | 幕后「提示词」卡：各版块提示词的覆盖、预设、导入导出 |
+| `qianmu-prompt-card.js` | 是 | 幕后「提示词」卡：千幕各版块的提示词在前端可见、可改（用户 2026-11-26 定，形式照忆幕的总结提示词）。 |
 | `qianmu-prompt-formats.js` | 是 |  |
 | `qianmu-still-frame-instructions.js` | 是 |  |
 | `qianmu-tag-complete.js` | 是 |  |
@@ -537,11 +534,17 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（11）
+## 其他模块（17）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-browser-credentials.js` | 是 | API keys that must stay readable in the browser. |
+| `qianmu-excerpt-doc.js` | 是 | 书摘成图 · 稿件模型：一份稿 = 模板样式 + 若干页（每页一组可编辑元素）+ 一段正文（在各页正文框里依次流动）。 |
+| `qianmu-excerpt-render.js` | 是 | 书摘成图 · 排版与出图。编辑页与导出用同一个 buildPage：编辑页把它放进影子根（样式与 ST 互不影响）， |
+| `qianmu-excerpt-store.js` | 是 | 书摘成图 · 本机存储：每条收藏一份成图稿、插图与背景图原图。只在这台设备的浏览器里，按 ST 账户分开。 |
+| `qianmu-excerpt-studio.css` | 是 | 书摘成图 · 排版台。颜色跟随千幕当前主题；页面本身的样式在影子根里，与这里无关。 |
+| `qianmu-excerpt-studio.js` | 是 | 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响）， |
+| `qianmu-excerpt-template.js` | 是 | 书摘成图 · 模板：HTML＋CSS 写成的页面底版。内置模板与用户自建模板走同一套格式与同一个解析器。 |
 | `qianmu-floor-count.js` | 是 | 楼层计数：和每个角色一共聊了多少层。只做计数，不读消息内容、不碰记忆与聊天本身。 |
 | `qianmu-log-bodies-sidecar.js` | 是 | Full request/response text of Qianmu's recent API logs, kept out of ST's settings file. |
 | `qianmu-pending-panel.js` | 是 | A small stand-in window shown the moment an entry is clicked, while the real panel's code, styles or |

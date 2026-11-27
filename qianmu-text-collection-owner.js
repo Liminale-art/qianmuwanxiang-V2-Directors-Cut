@@ -14,7 +14,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
     viewFactory = async options => (await loadLocalChunk('./qianmu-text-collection-view.js?v=1.59.419')).createTextCollectionView(options),
     document = globalThis.document, window = document?.defaultView,
     mountPortal, onChange = () => {}, notify = () => {}, typography = () => {},
-    origin = globalThis.location?.origin, confirm, download, locateFloor, jumpToFloor,
+    origin = globalThis.location?.origin, confirm, download, locateFloor, jumpToFloor, excerpt, collectionEnabled,
 } = {}) {
     if (typeof resolveNamespace !== 'function' || typeof isCurrent !== 'function' || typeof headers !== 'function') {
         throw new TypeError('Collection owner requires the ST account and page lifetime');
@@ -77,7 +77,8 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
         if (!record.viewPromise) {
             record.viewPromise = (async () => {
                 const view = await viewFactory({document, collection: record.collection, isCurrent: record.valid,
-                    signal: record.controller.signal, mountPortal, typography, verifyAccount: record.verifyAccount, download, locateFloor, jumpToFloor});
+                    signal: record.controller.signal, mountPortal, typography, verifyAccount: record.verifyAccount, download, locateFloor, jumpToFloor,
+                    excerpt, namespace: record.namespace, notify, collectionEnabled});
                 if (!record.valid()) { view.dispose(); throw expired(); }
                 record.view = view; return view;
             })().finally(() => { record.viewPromise = null; });

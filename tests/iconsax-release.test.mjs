@@ -7,7 +7,7 @@ import {qianmuIconMarkup} from '../qianmu-icon-renderer.js';
 const root = new URL('../', import.meta.url);
 const ICONSAX_RELEASE = '1.59.419';
 // The installed entry/style follow the current release.
-const CURRENT_RELEASE = '1.59.619';
+const CURRENT_RELEASE = '1.59.620';
 const localLoaderClosure = new Set(['index.js', 'qianmu-feature-runtime.js', 'qianmu-focus-library-runtime.js',
   'qianmu-idle-preload.js', 'qianmu-prose-assistant-floor.js', 'qianmu-prose-floor-tools.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-host.js']);
@@ -43,7 +43,7 @@ const changedNodes = new Set([
   'qianmu-prose-assistant-conversation-list.js', 'qianmu-prose-assistant-floor.js',
   'qianmu-prose-assistant-panel.js', 'qianmu-prose-floor-tools.js', 'qianmu-prose-hive.js',
   'qianmu-text-collection-capture.js', 'qianmu-text-collection-host.js',
-  'qianmu-text-collection-image-dialog.js', 'qianmu-text-collection-organization-view.js',
+  'qianmu-text-collection-organization-view.js',
   'qianmu-text-collection-owner.js', 'qianmu-text-collection-panel.js',
   'qianmu-text-collection-view.js', 'qianmu-prose-floor-entries.js',
   'qianmu-text-collection-floor.js', 'features/tts/qianmu-tts-floor-ui.js',

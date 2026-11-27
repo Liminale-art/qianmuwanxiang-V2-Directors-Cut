@@ -9,6 +9,12 @@ export function createTextCollectionHost(options) {
     const window = options.window || options.document?.defaultView || globalThis.window;
     let root = null, owner = null, floor = null, chat = null, metadata = null, location = null, disposed = false, warmed = false;
     const live = () => !disposed && options.isCurrent() === true;
+    // 正文收藏的启用开关（账户设置）。关着时楼层上不放星标、也不预读收藏；收藏面板照常能开。
+    const enabled = () => { try { return options.collectionEnabled?.read?.() !== false; } catch { return true; } };
+    const collectionEnabled = Object.freeze({read: enabled, write: value => {
+        options.collectionEnabled?.write?.(value === true);
+        if (root && live()) refresh(root);
+    }});
     function typography(parent) {
         if (!parent) return;
         const doc = parent.ownerDocument, prose = root?.querySelector('.sd-prose-run') || root?.querySelector('.mes_text');
@@ -41,7 +47,7 @@ export function createTextCollectionHost(options) {
         if (!live()) return null;
         if (owner?.disposed) { floor?.dispose(); floor = null; owner = null; warmed = false; }
         if (owner) return owner;
-        owner = createTextCollectionOwner({...options, typography, locateFloor, onChange: () => { if (live()) floor?.refresh(root); }});
+        owner = createTextCollectionOwner({...options, typography, locateFloor, collectionEnabled, onChange: () => { if (live() && enabled()) floor?.refresh(root); }});
         floor = createTextCollectionFloor({getContext: options.getContext, getSourceMap: textCollectionFloorSources,
             getItems: () => owner?.floorItems() || [], applyIcons: options.applyIcons,
             onError: () => options.notify?.('收藏未能完成，请重试。', 'warning'),
@@ -64,6 +70,7 @@ export function createTextCollectionHost(options) {
         if (chat !== context.chat || metadata !== context.chatMetadata || location !== nextLocation) {
             current.chatChanged(); chat = context.chat; metadata = context.chatMetadata; location = nextLocation;
         }
+        if (!enabled()) { floor.refresh(null); return; }
         floor.refresh(root);
         if (!warmed && root?.querySelector('.mes')) { warmed = true; void current.warm(); }
     }
@@ -81,7 +88,7 @@ export function createTextCollectionHost(options) {
         catch (error) { if (live()) options.notify?.(error?.message || '收藏操作未完成，请重试。', 'warning'); return {status: 'failed'}; }
         finally { if (button?.isConnected) button.disabled = false; }
     }
-    return Object.freeze({refresh, handleClick: event => live() && !!floor?.handleClick(event),
+    return Object.freeze({refresh, handleClick: event => live() && enabled() && !!floor?.handleClick(event),
         open: () => ensure()?.open() ?? Promise.resolve(false), dispose,
         exportBackup: button => transfer('exportBackup', undefined, button),
         importBackup: (file, button) => transfer('importBackup', file, button),

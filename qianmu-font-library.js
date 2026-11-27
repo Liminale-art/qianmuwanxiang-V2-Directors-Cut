@@ -447,5 +447,24 @@ export function createFontLibrary({ getOwner, save, resolveNamespace, isCurrent,
   function detach() { close(); removeEntry?.(); removeEntry = null; attached = null; }
   function dispose() { disposed = true; lifecycle++; operation++; detach(); release(); busy = false; }
   function activate() { if (disposed) { disposed = false; lifecycle++; } }
-  return { attach, detach, sync, dispose, activate, action, read };
+  // 书摘成图的字体来源：列字体库里的字体，按需注册（只给成图页用，不改正文与界面的字体）。
+  function excerptFonts() {
+    const used = new Set();
+    const fontOf = id => { try { return read().fonts.find(font => font.id === id) || null; } catch { return null; } };
+    return Object.freeze({
+      list: () => { try { return read().fonts.map(font => ({ id: font.id, name: font.name })); } catch { return []; } },
+      async family(id) {
+        const token = await ensure(), font = fontOf(id);
+        if (!font || !current(token)) return null;
+        used.add(id); runtime.hold([...used]);
+        return runtime.use(font, read().previewText);
+      },
+      async faces(id) {
+        if (!used.has(id) && !(await this.family(id))) return [];
+        return runtime?.exportFaces(id) || [];
+      },
+      release() { used.clear(); runtime?.hold([]); if (runtime && !disposed) void sync().catch(() => {}); },
+    });
+  }
+  return { attach, detach, sync, dispose, activate, action, read, excerptFonts };
 }

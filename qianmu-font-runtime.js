@@ -151,6 +151,8 @@ export function detectLayerSupport(scope = globalThis) {
 
 export function createFontRuntime({ document = globalThis.document, readLocal = async () => null, readBuiltin = async () => null, onStatus = () => {}, accountKey = '', beforeApply = () => {}, afterApply = () => {}, FontFace: FontFaceClass = globalThis.FontFace, Blob: BlobClass = globalThis.Blob, URL: UrlApi = globalThis.URL, loadTimeout = 12000, supportsLayer } = {}) {
   const slots = new Map(), applied = new Map(), retired = new Set(), probes = new Set();
+  // 书摘成图用到的字体：只注册字形、不写进任何应用样式，正文与界面不受影响；成图页关闭时放掉。
+  const held = new Set();
   let generation = 0, revision = 0, disposed = false, styleElement = null, layerOk;
   const notify = (id, status, message = '', detail = '') => { try { onStatus(id, { status, message, detail }); } catch (_) {} };
   // The browser's font sanitizer rejects a structurally-valid file with an
@@ -230,7 +232,7 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
         const builtin = await readBuiltin(font.source.key);
         if (disposed || slots.get(font.id) !== slot) return null;
         if (!builtin) throw new Error('内置字体未随当前版本提供');
-        if (typeof builtin === 'string') localSource = `url(${quoted(builtin)})`;
+        if (typeof builtin === 'string') { localSource = `url(${quoted(builtin)})`; slot.sourceUrl = builtin; }
         else {
           const bytes = BlobClass && builtin instanceof BlobClass ? builtin : BlobClass ? new BlobClass([builtin], { type: 'font/woff2' }) : null;
           if (!bytes?.size) throw new Error('内置字体原件为空');
@@ -356,10 +358,32 @@ export function createFontRuntime({ document = globalThis.document, readLocal = 
       if (disposed || generation !== turn) return;
       paint();
       for (const entry of applied.values()) needed.add(entry.id);
+      for (const id of held) needed.add(id);
       for (const [id, slot] of slots) if (!needed.has(id)) { removeSlot(slot); slots.delete(id); }
       const retained = new Set([...applied.values()].map(entry => entry.slot));
       for (const slot of retired) if (!retained.has(slot)) { removeSlot(slot); retired.delete(slot); }
     },
+    // 书摘成图：注册并加载一款字体，返回字体名；失败返回 null。
+    async use(font, sample) {
+      if (disposed || !font?.id) return null;
+      held.add(font.id);
+      const slot = await ensure(font);
+      if (!slot || disposed) return null;
+      const face = font.faces?.[0] || {};
+      try { await load(slot, { weight: face.weight, style: String(face.style || '').startsWith('oblique') ? 'oblique' : face.style }, sample, true); }
+      catch (_) { return null; }
+      return slot.family;
+    },
+    // 导出时内嵌字体用：每个字面的来源地址（本机原件是页面内的临时地址）与描述。
+    exportFaces(id) {
+      const slot = slots.get(id);
+      if (!slot || slot.released) return [];
+      return (Array.isArray(slot.specs) ? slot.specs : []).map((face) => ({
+        url: slot.objectUrl || slot.sourceUrl || (Array.isArray(face?.urls) ? face.urls.map((item) => webUrl(item?.url)).find(Boolean) : '') || '',
+        weight: selectedWeight(face?.weight), style: styleValue(face?.style), unicodeRange: typeof face?.unicodeRange === 'string' ? face.unicodeRange : '',
+      })).filter((face) => face.url);
+    },
+    hold(ids = []) { held.clear(); for (const id of ids || []) if (typeof id === 'string') held.add(id); },
     dispose() {
       disposed = true; generation++;
       applied.clear(); paint();
