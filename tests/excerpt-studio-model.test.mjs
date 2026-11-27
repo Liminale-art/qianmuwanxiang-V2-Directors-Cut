@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BUILTIN_TEMPLATES, parseExcerptTemplate, sanitizeCss, sanitizeDecor, excerptFields, resolveFields, TEMPLATE_STARTER} from '../qianmu-excerpt-template.js';
+import {BUILTIN_TEMPLATES, parseExcerptTemplate, sanitizeCss, sanitizeDecor, excerptFields, resolveFields, TEMPLATE_STARTER} from '../features/excerpt/qianmu-excerpt-template.js';
 import {createDoc, createDocFromScheme, schemeFromDoc, normalizeScheme, normalizeDoc, setRatio, pageHeight, normalizeBody,
-    makeContinuationPage, normalizeStudioSettings, builtinTemplate, PAGE_BREAK} from '../qianmu-excerpt-doc.js';
-import {layoutDoc, adjustBreak, shiftFor, embedFonts, elementCss, imageGeometry} from '../qianmu-excerpt-render.js';
+    makeContinuationPage, normalizeStudioSettings, builtinTemplate, PAGE_BREAK} from '../features/excerpt/qianmu-excerpt-doc.js';
+import {layoutDoc, adjustBreak, shiftFor, embedFonts, elementCss, imageGeometry} from '../features/excerpt/qianmu-excerpt-render.js';
 
 const fields = excerptFields({charName: '沈砚', userName: '阿遥', floor: 42, sentAt: '2023-5-20 @21h 05m 10s 1ms'});
 

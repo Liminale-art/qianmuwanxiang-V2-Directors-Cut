@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 448 个，其中 `qianmu-*` 模块 431 个。
+根目录文件 444 个，其中 `qianmu-*` 模块 427 个。
 
 ## 入口、宿主与安装
 
@@ -34,7 +34,7 @@
 | `assets/tab-icons/` | 2 |
 | `bundle/` | 200 |
 | `evaluation/` | 2 |
-| `features/` | 192 |
+| `features/` | 196 |
 | `scripts/` | 159 |
 | `server/` | 66 |
 | `tests/` | 1030 |
@@ -536,17 +536,13 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（17）
+## 其他模块（13）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-browser-credentials.js` | 是 | API keys that must stay readable in the browser. |
-| `qianmu-excerpt-doc.js` | 是 | 书摘成图 · 稿件模型：一份稿 = 模板样式 + 若干页（每页一组可编辑元素）+ 一段正文（在各页正文框里依次流动）。 |
-| `qianmu-excerpt-render.js` | 是 | 书摘成图 · 排版与出图。编辑页与导出用同一个 buildPage：编辑页把它放进影子根（样式与 ST 互不影响）， |
-| `qianmu-excerpt-store.js` | 是 | 书摘成图 · 本机存储：每条收藏一份成图稿、插图与背景图原图。只在这台设备的浏览器里，按 ST 账户分开。 |
 | `qianmu-excerpt-studio.css` | 是 | 书摘成图 · 排版台。颜色跟随千幕当前主题；页面本身的样式在影子根里，与这里无关。 |
 | `qianmu-excerpt-studio.js` | 是 | 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响）， |
-| `qianmu-excerpt-template.js` | 是 | 书摘成图 · 模板：HTML＋CSS 写成的页面底版。内置模板与用户自建模板走同一套格式与同一个解析器。 |
 | `qianmu-floor-count.js` | 是 | 楼层计数：和每个角色一共聊了多少层。只做计数，不读消息内容、不碰记忆与聊天本身。 |
 | `qianmu-log-bodies-sidecar.js` | 是 | Full request/response text of Qianmu's recent API logs, kept out of ST's settings file. |
 | `qianmu-pending-panel.js` | 是 | A small stand-in window shown the moment an entry is clicked, while the real panel's code, styles or |

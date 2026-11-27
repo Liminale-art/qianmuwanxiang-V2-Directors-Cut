@@ -1,13 +1,13 @@
 // 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响），
 // 选中框、手柄与小工具条在外层。所有改动只作用于这份成图稿，不回写收藏原文。
 import {PAGE_WIDTH, RATIOS, PAGE_BREAK, pageHeight, normalizeDoc, normalizeBody, normalizeElement, createDoc, createDocFromScheme,
-    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, SCHEME_LIMIT, TEMPLATE_LIMIT} from './qianmu-excerpt-doc.js';
-import {BUILTIN_TEMPLATES, parseExcerptTemplate, TEMPLATE_GUIDE, TEMPLATE_STARTER, normalizeHex} from './qianmu-excerpt-template.js';
+    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, SCHEME_LIMIT, TEMPLATE_LIMIT} from './features/excerpt/qianmu-excerpt-doc.js';
+import {BUILTIN_TEMPLATES, parseExcerptTemplate, TEMPLATE_GUIDE, TEMPLATE_STARTER, normalizeHex} from './features/excerpt/qianmu-excerpt-template.js';
 import {BASE_CSS, FONT_STACKS, buildPage, buildElement, fillParagraphs, shiftFor, createMeasurer, layoutDoc, embedFonts, pageSvg, svgToPng,
-    blobToDataUrl, imageGeometry} from './qianmu-excerpt-render.js';
-import {createExcerptStore, prepareImage, imageIdsOf} from './qianmu-excerpt-store.js';
+    blobToDataUrl, imageGeometry} from './features/excerpt/qianmu-excerpt-render.js';
+import {createExcerptStore, prepareImage, imageIdsOf} from './features/excerpt/qianmu-excerpt-store.js';
 
-export {excerptFields} from './qianmu-excerpt-template.js';
+export {excerptFields} from './features/excerpt/qianmu-excerpt-template.js';
 export const EXCERPT_STUDIO_STYLESHEET = new URL('./qianmu-excerpt-studio.css', import.meta.url);
 
 const EDITOR_CSS = `
