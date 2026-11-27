@@ -63,6 +63,8 @@
     "qianmu-text-collection-editor.js",
     "qianmu-text-collection-backup.js",
     "qianmu-excerpt-template.js",
+    "qianmu-api-quick.js",
+    "qianmu-api-quick.css",
     "qianmu-excerpt-doc.js",
     "qianmu-excerpt-render.js",
     "qianmu-excerpt-store.js",

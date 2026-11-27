@@ -495,11 +495,11 @@ test('view renders both sections, grouped headers and a not-supported notice', a
 test('chat toolkit has a lazily mounted 5th 快切 tab', async () => {
   const index = await readFile(new URL('index.js', root), 'utf8');
   assert.ok(index.includes('data-floor-tab="regex">快切</button>') && index.includes('data-floor-view="regex"></section>'));
-  assert.equal(index.split("['layout', 'recovery', 'ring', 'regex', 'api'].includes(").length - 1, 2, '初始视图与 setView 都认 regex（2026-11-26 起多一个 API 页）');
+  assert.equal(index.split("['layout', 'recovery', 'ring', 'regex'].includes(").length - 1, 2, '初始视图与 setView 都认 regex（API 页 2026-11-27 起挪到 ST 的 API 连接面板）');
   assert.ok(index.includes(`if (floorNavigatorView === 'regex') { const done = pending(`), '切到正则才挂载（并带加载占位）');
   assert.ok(index.includes('chatRegex.unmount();') && index.includes('chatRegex.dispose();'), '关闭工具包卸载，运行时销毁');
   const css = await readFile(new URL('style.css', root), 'utf8');
-  assert.ok(css.includes('.sd-floor-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));'), '六个页签等分（跳层／排版／备份／通知／快切／API）');
+  assert.ok(css.includes('.sd-floor-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));'), '五个页签等分（跳层／排版／备份／通知／快切）');
 });
 
 test('chat toolkit pages share one spacing scale and inner scrollers never reserve a one-sided gutter', async () => {

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   readProfiles, normalizeSwitchState, arrangeProfiles, togglePinned, moveToGroup, markUsed, checkProfileName, patchProfile,
-  renderSwitchPage, renderProfileRow, createChatApiSwitch,
 } from '../features/chat/qianmu-chat-api-switch.js';
 
 const raw = () => ({ profiles: [
@@ -66,53 +65,4 @@ test('editing writes ST’s own fields; an empty address or preset removes the f
   assert.equal(ctx.saved, 2);
   assert.throws(() => patchProfile(ctx, 'a', { name: '乙 新名' }), /同名/);
   assert.throws(() => patchProfile(ctx, 'zz', { name: 'x' }), /不存在/);
-});
-
-test('the page shows the current connection, tags mirroring ST, and the arranged list', () => {
-  const data = readProfiles(ctxWith());
-  const html = renderSwitchPage({ data, state: { pinned: ['a'], groups: [{ id: 'g', name: '备用<组>', ids: ['c'] }] } });
-  assert.match(html, /当前连接[\s\S]*qm-api-row qm-api-row-current is-active" data-id="b"/);
-  assert.match(html, /<h4>置顶<\/h4>[\s\S]*data-id="a"[\s\S]*<h4>备用&lt;组&gt;<\/h4>[\s\S]*data-id="c"[\s\S]*<h4>最近使用<\/h4>[\s\S]*data-id="b"/);
-  assert.match(renderProfileRow(data.profiles[0]), /<span class="qm-api-tag">Claude<\/span><span class="qm-api-tag">模型 claude-x<\/span><span class="qm-api-tag">预设 长文<\/span>/);
-  assert.match(renderProfileRow({ id: 'd', name: '丁', api: '', model: '', preset: '' }), /未记预设与模型/);
-  const edit = renderSwitchPage({ data, state: {}, openId: 'b', openKind: 'edit', presets: ['长文', '短文'] });
-  assert.match(edit, /qm-api-f-url" value="https:\/\/x.example\/v1"/);assert.match(edit, /<option value="短文">短文<\/option>/);
-  assert.match(edit, /密钥：跟随 ST 当前/);
-  const claude = renderSwitchPage({ data, state: {}, openId: 'a', openKind: 'edit', presets: [] });
-  assert.doesNotMatch(claude, /qm-api-f-url/, 'no address field for a built-in source');
-  assert.match(claude, /<option value="长文" selected>长文<\/option>/);assert.match(claude, /密钥：ST 已为这条连接存好/);
-  assert.match(renderSwitchPage({ data: readProfiles({}), state: {} }), /没有找到 ST 的「连接配置」/);
-});
-
-test('picking a row switches through ST’s own profile dropdown and records the use', async () => {
-  const handlers = new Map(), toasts = [], owner = {};
-  const ctx = { ...ctxWith(), eventTypes: { CONNECTION_PROFILE_LOADED: 'loaded' }, eventSource: { once: (type, run) => handlers.set(type, run), emit: async () => {} } };
-  const options = ['', 'a', 'b', 'c'].map((value) => ({ value }));
-  const select = { options, value: 'b', dispatchEvent: (event) => { assert.equal(event.type, 'change'); ctx.extensionSettings.connectionManager.selectedProfile = select.value; handlers.get('loaded')?.(); } };
-  let host = null;
-  const doc = { getElementById: (id) => (id === 'connection_profiles' ? select : null) };
-  const sw = createChatApiSwitch({ getContext: () => ctx, getOwner: () => owner, save: () => {}, notify: (m, l) => toasts.push([m, l]), doc });
-  const listeners = {};
-  host = { isConnected: true, innerHTML: '', addEventListener: (type, run) => { listeners[type] = run; }, querySelector: () => null };
-  sw.mount(host);
-  assert.match(host.innerHTML, /当前连接/);
-  const pick = { disabled: false };
-  const target = { closest: (sel) => (sel === '.qm-api-pick' ? pick : sel.startsWith('.qm-api-row') ? { dataset: { id: 'a' } } : null) };
-  await listeners.click({ target });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(select.value, 'a');assert.equal(ctx.extensionSettings.connectionManager.selectedProfile, 'a');
-  assert.ok(owner.apiSwitch.recent.a > 0);
-  assert.deepEqual(toasts.at(-1), ['已切换到「甲 Claude」', 'success']);
-  // 在 ST 原生里切换：也记最近使用
-  sw.events.profileLoaded('丙');
-  assert.ok(owner.apiSwitch.recent.c > 0);
-});
-
-test('the toolkit gets an API tab that mounts the page and follows ST’s profile events', async () => {
-  const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(source, /data-floor-tab="regex">快切<\/button><button type="button" role="tab" data-floor-tab="api">API<\/button>/);
-  assert.match(source, /if \(floorNavigatorView === 'api'\) chatApiSwitch\.mount\(/);
-  assert.match(source, /CONNECTION_PROFILE_LOADED \|\| 'connection_profile_loaded', chatApiSwitch\.events\.profileLoaded/);
-  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
-  assert.match(css, /\.sd-floor-tabs \{ display: grid; grid-template-columns: repeat\(6,/);
 });

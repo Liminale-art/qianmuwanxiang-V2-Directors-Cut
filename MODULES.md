@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 446 个，其中 `qianmu-*` 模块 429 个。
+根目录文件 448 个，其中 `qianmu-*` 模块 431 个。
 
 ## 入口、宿主与安装
 
@@ -32,12 +32,12 @@
 | `assets/logos/` | 5 |
 | `assets/ringtones/` | 49 |
 | `assets/tab-icons/` | 2 |
-| `bundle/` | 199 |
+| `bundle/` | 200 |
 | `evaluation/` | 2 |
 | `features/` | 192 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1028 |
+| `tests/` | 1030 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -450,7 +450,7 @@
 | `qianmu-theme-skins.css` | 是 | Optional skins over the real renderers. Load after style.css. |
 | `qianmu-theme-surfaces.js` | 是 |  |
 
-## 模型、配置与账户（33）
+## 模型、配置与账户（35）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -458,6 +458,8 @@
 | `qianmu-account-identity.js` | 是 | Account identity is shared by ordinary tools as well as image generation. |
 | `qianmu-account-local-store.js` | 是 | Shared lazy IndexedDB account-document transactions. Callers own schema, namespace and database. |
 | `qianmu-account-mirror.js` | 是 | Mirrors a set of records kept in this browser to ST account files, so they follow the ST account to other |
+| `qianmu-api-quick.css` | 是 | 千幕 API 快切。入口在 ST 的 API 面板里，颜色由脚本从千幕主题抄来（--qm-apiq-*），不跟 ST 主题；面板与快选列表在千幕主题根里。 |
+| `qianmu-api-quick.js` | 是 | 千幕 API 快切：入口放在 ST「API 连接」面板的「发送测试消息」旁（千幕图标＋小字），前面一个折叠小箭头展开快速切换； |
 | `qianmu-config-apply.js` | 是 | Synchronous configuration handoff only; independent originals are never read/deleted. |
 | `qianmu-config-connections.js` | 是 | Configuration-package policy only. Never scan/rewrite user prose, prompt text or media. |
 | `qianmu-config-export.js` | 是 |  |
