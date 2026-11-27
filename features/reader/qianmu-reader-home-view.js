@@ -1,5 +1,5 @@
 // 伴读面板（占满千幕面板）的外框、首页与统计页的标记。只拼字符串，数据与事件都在调用方。
-import { heatCells, quarterRange, durationText, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.627';
+import { heatCells, quarterRange, durationText, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.628';
 
 export const READER_PAGES = Object.freeze([
     { id: 'home', name: '首页', icon: 'fa-house' },

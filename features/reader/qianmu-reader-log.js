@@ -3,7 +3,7 @@
 // 只在一本书打开着的时候算。按天、按钟点、按书友由它记，这里再按书记一份。
 // 读过的字：读位往前走了多少字；往回翻不扣，回翻后重读到原处之前不重复算；一下跳得太远（目录、拖进度）不算。
 // 只存数字和最近对话的几句摘录，不存书的正文；不发任何请求。
-import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.627';
+import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.628';
 
 export const READ_JUMP_CHARS = 12000;
 const PALS_PER_BOOK = 12, BOOK_LIMIT = 600, DAY_LIMIT = 800, PAL_LIMIT = 400, TALK_LINES = 4, TALK_CHARS = 160;

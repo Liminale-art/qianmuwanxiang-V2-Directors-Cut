@@ -68,6 +68,7 @@
     "features/reader/qianmu-reader-log.js",
     "features/reader/qianmu-reader-home-view.js",
     "features/reader/qianmu-reader-shelf.js",
+    "features/reader/qianmu-reader-theme.js",
     "qianmu-api-quick.css",
     "features/excerpt/qianmu-excerpt-doc.js",
     "features/excerpt/qianmu-excerpt-render.js",

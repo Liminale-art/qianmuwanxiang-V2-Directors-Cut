@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.627';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.628';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.627';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.628';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.627';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.627';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.627';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.627';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.627';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.627';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.627';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.628';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.628';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.628';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.628';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.628';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.628';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.628';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.627';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.628';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -46,6 +46,7 @@ import {buildStoryboardReadingShots,storyboardProseParagraphs,resolveStoryboardP
 import {selectedGalleryKeywords,galleryTagsMatch,toggleGalleryTag} from './features/gallery/qianmu-gallery-keywords.js';
 import { createReaderLog, readerSummary } from './features/reader/qianmu-reader-log.js';
 import { renderReaderShell, renderReaderHome, renderReaderStats, readerPageOf } from './features/reader/qianmu-reader-home-view.js';
+import { READER_PAPERS, readerPaperOf, readerPaperVars, normalizeReaderThemes, applyReaderTheme, sameReaderTheme, saveReaderTheme } from './features/reader/qianmu-reader-theme.js';
 import { SHELF_SORTS, SHELF_SEARCH_FIELDS, parseShelfSort, shelfSortFor, flipShelfSort, sortShelfBooks, normalizeTags, shelfTags, tagColor, applyTagEdits, bookSearchFields, matchBook, searchCounts } from './features/reader/qianmu-reader-shelf.js';
 import {summarizeGalleryRecords} from './features/gallery/qianmu-gallery-summary.js?v=1.59.441';
 import {captureGalleryViewGuard} from './features/gallery/qianmu-gallery-inspector.js?v=1.59.440';
@@ -70,11 +71,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.627';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.628';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.627';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.628';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -104,7 +105,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.627';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.628';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -347,7 +348,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.627';
+const VERSION = '1.59.628';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1260,6 +1261,9 @@ const DEFAULT_SETTINGS = Object.freeze({
     justify: false,                 // 两端对齐
     spacingPreset: 'normal',        // 间距预设：compact | normal | loose | custom
     hlColor: '',                    // 划线颜色（空＝跟随主题强调色）；新划线快照此色
+    readerPaper: 'follow',          // 阅读页配色：follow（跟随千幕）| white | cream | green | mist | night | custom
+    readerPaperCustom: null,        // 自定配色 { paper, ink }
+    readerThemes: [],               // 主题方案：配色＋字号行距段距页宽两端对齐存成一套（features/reader/qianmu-reader-theme.js）
     fallbackChapterChars: 2400,     // 分章失败时的字数兜底
     voiceCacheLimit: 100,           // 伴读语音条缓存上限（条），用户可自定义
     bgCustom: '',                   // 阅读背景自定义 CSS（DIY，1B 接线）
@@ -30658,6 +30662,7 @@ function buildReaderStage() {
   const preset = c.spacingPreset || 'normal';
   const customOpen = preset === 'custom' ? ' open' : '';
   const hlColor = sanitizeHexColor(c.hlColor) || '#d8a657';
+  const paperTone = readerPaperOf(c);
   const listDrawerH = Math.max(220, Math.min(620, c.drawerHeight || 320));
   const drawerH = Math.max(180, Math.min(520, c.dialogHeight || 300));
   const pinned = readerView.dialogPinned ? ' sd-reader-dialog-pinned' : '';
@@ -30671,7 +30676,7 @@ function buildReaderStage() {
   const focusMiniText = focusLinkedHere && focusState.status !== 'idle' ? focusClockFormat(focusClockRemainingMs(focusState)) : '专注';
 
   return `
-    <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" data-reader-panel="${activePanel || 'none'}" style="--sd-rd-dialogh:${drawerH}px">
+    <div class="sd-reader-stage${barHidden}${pinned}${comicMode ? ' sd-reader-comic-mode' : ''}" data-reader-panel="${activePanel || 'none'}"${paperTone ? ` data-paper="${paperTone.id}"` : ''} style="--sd-rd-dialogh:${drawerH}px;${readerPaperVars(c)}">
       <!-- 顶栏（固定不抽回）：书签 / 书名 / 返回(右) -->
       <div class="sd-reader-topbar">
         <button class="sd-reader-mark-btn ${bookmarked ? 'active' : ''}" title="书签"><i class="fa-${bookmarked ? 'solid' : 'regular'} fa-bookmark" data-qm-icon="${bookmarked ? 'bookmarks' : 'qm-regular-bookmark'}"></i></button>
@@ -30793,6 +30798,7 @@ function buildReaderStage() {
       <div class="sd-reader-panel sd-reader-typo${activePanel === 'typo' ? ' open' : ''}" data-reader-panel="typo"${activePanel === 'typo' ? ' aria-hidden="false"' : ' hidden inert aria-hidden="true"'}>
         <div class="sd-reader-panel-grip"></div>
         <div class="sd-reader-typo-inner">
+          ${renderReaderThemeRows(c)}
           <div class="sd-reader-typo-row"><span>字号</span><input type="range" class="sd-reader-font" min="14" max="30" step="1" value="${c.fontSizePx || 19}"><b class="sd-reader-font-val">${c.fontSizePx || 19}</b></div>
           <div class="sd-reader-typo-row sd-reader-preset-row">
             <span>间距</span>
@@ -30835,6 +30841,68 @@ function buildReaderStage() {
         <div class="sd-reader-morepage-body sd-reader-more-body">${renderCompanionMoreBody()}</div>
       </div>
     </div>`;
+}
+
+// 阅读设置里的配色与方案两行。配色：跟随千幕、几种纸色、自定（展开纸色与字色）；方案：存着的整套，点一下换上，＋存当前。
+function renderReaderThemeRows(c) {
+  const tone = readerPaperOf(c), current = tone?.id || 'follow';
+  const swatch = (item) => {
+    const active = item.id === current ? ' active' : '';
+    const face = item.paper ? `<span class="sd-reader-paper-face" style="background:${item.paper};color:${item.ink}">文</span>`
+      : item.id === 'custom' ? '<span class="sd-reader-paper-face is-icon"><i class="fa-solid fa-palette"></i></span>' : '<span class="sd-reader-paper-face is-icon">幕</span>';
+    return `<button type="button" class="sd-reader-paper-opt${active}" data-paper="${item.id}" title="${htmlEscape(item.name)}" aria-label="${htmlEscape(item.name)}" aria-pressed="${!!active}">${face}<small>${htmlEscape(item.name)}</small></button>`;
+  };
+  const custom = readerPaperOf({ ...c, readerPaper: 'custom' });
+  const themes = normalizeReaderThemes(c.readerThemes);
+  return `<div class="sd-reader-typo-row sd-reader-paper-row"><span>配色</span><div class="sd-reader-paper-list">${READER_PAPERS.map(swatch).join('')}</div></div>
+          <div class="sd-reader-typo-row sd-reader-paper-custom"${current === 'custom' ? '' : ' hidden'}><span></span>
+            <label>纸<input type="color" class="sd-reader-paper-color" data-part="paper" value="${custom.paper}"></label>
+            <label>字<input type="color" class="sd-reader-paper-color" data-part="ink" value="${custom.ink}"></label></div>
+          <div class="sd-reader-typo-row sd-reader-theme-row"><span>方案</span><div class="sd-reader-theme-list">${themes.map((t) => `<button type="button" class="sd-reader-theme-opt${sameReaderTheme(c, t) ? ' active' : ''}" data-theme="${htmlEscape(t.id)}"${t.paper !== 'follow' ? ` style="--rd-chip:${readerPaperOf({ readerPaper: t.paper, readerPaperCustom: t.custom })?.paper}"` : ''}>${htmlEscape(t.name)}</button>`).join('')}
+            <button type="button" class="sd-reader-theme-save" title="存为方案" aria-label="存为方案"><i class="fa-solid fa-plus"></i></button>
+            ${themes.length ? '<button type="button" class="sd-reader-theme-manage" title="管理方案" aria-label="管理方案"><i class="fa-solid fa-pen"></i></button>' : ''}</div></div>`;
+}
+
+// 配色就地换：只改阅读层根节点上的标记与两个颜色变量，不重画、不动滚动位置。
+function applyReaderPaperInPlace(stageRoot) {
+  const stage = stageRoot.querySelector('.sd-reader-stage') || stageRoot, tone = readerPaperOf(coread());
+  if (tone) { stage.dataset.paper = tone.id; stage.style.setProperty('--rd-paper', tone.paper); stage.style.setProperty('--rd-ink', tone.ink); }
+  else { delete stage.dataset.paper; stage.style.removeProperty('--rd-paper'); stage.style.removeProperty('--rd-ink'); }
+  stageRoot.querySelectorAll('.sd-reader-paper-opt').forEach((b) => { const on = b.dataset.paper === (tone?.id || 'follow'); b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
+  const customRow = stageRoot.querySelector('.sd-reader-paper-custom'); if (customRow) customRow.hidden = tone?.id !== 'custom';
+}
+
+// 排版或配色变了以后，哪个方案正好对得上就点亮哪个。
+function syncReaderThemeChips(stageRoot) {
+  const themes = normalizeReaderThemes(coread().readerThemes);
+  stageRoot.querySelectorAll('.sd-reader-theme-opt').forEach((b) => b.classList.toggle('active', !!themes.find((t) => t.id === b.dataset.theme && sameReaderTheme(coread(), t))));
+}
+
+// 管理方案：改名、删除（再点撤回），确定后一次改完。
+async function coreadManageReaderThemes() {
+  const themes = normalizeReaderThemes(coread().readerThemes);
+  const context = ctx(), Popup = context.Popup;
+  if (!themes.length || !Popup || !context.POPUP_TYPE) return false;
+  const wrap = document.createElement('div');
+  wrap.className = 'sd-reader-tagedit';
+  wrap.innerHTML = themes.map((t) => `<div class="sd-reader-tagedit-row sd-reader-themeedit-row" data-theme="${htmlEscape(t.id)}">
+      <input type="text" class="text_pole sd-reader-tagedit-name" maxlength="16" value="${htmlEscape(t.name)}" aria-label="名字">
+      <button type="button" class="sd-reader-tagedit-del" title="删除" aria-label="删除" aria-pressed="false"><i class="fa-solid fa-trash"></i></button>
+    </div>`).join('');
+  wrap.querySelectorAll('.sd-reader-tagedit-del').forEach((button) => button.addEventListener('click', () => {
+    const row = button.closest('.sd-reader-tagedit-row'), removed = !row.classList.contains('is-removed');
+    row.classList.toggle('is-removed', removed); button.setAttribute('aria-pressed', String(removed));
+    button.innerHTML = `<i class="fa-solid ${removed ? 'fa-rotate-left' : 'fa-trash'}"></i>`;
+  }));
+  let result;
+  try { result = await new Popup(wrap, context.POPUP_TYPE.CONFIRM, '', { okButton: '确定', cancelButton: '取消' }).show(); }
+  catch (error) { console.warn(`[${MODULE_NAME}] reader theme manager failed`, error); return false; }
+  if (result !== true && String(result) !== '1') return false;
+  const rows = new Map([...wrap.querySelectorAll('.sd-reader-tagedit-row')].map((row) => [row.dataset.theme, row]));
+  coread().readerThemes = normalizeReaderThemes(themes.filter((t) => !rows.get(t.id)?.classList.contains('is-removed'))
+    .map((t) => ({ ...t, name: String(rows.get(t.id)?.querySelector('.sd-reader-tagedit-name')?.value || '').trim() || t.name })));
+  saveSettings();
+  return true;
 }
 
 // 胶囊左右滑开关（替代方框勾选）：checkbox + 轨道 + 滑块，纯 CSS 动画。
@@ -32020,6 +32088,36 @@ function bindReaderStageEvents(stageRoot) {
     if (!open) applySpacingPreset(coread().spacingPreset, stageRoot);
     saveSettings();
   });
+  // 配色与方案
+  stageRoot.querySelectorAll('.sd-reader-paper-opt').forEach((btn) => btn.addEventListener('click', () => {
+    const c = coread();
+    if (btn.dataset.paper === 'custom' && !c.readerPaperCustom) { const tone = readerPaperOf(c) || readerPaperOf({ readerPaper: 'custom' }); c.readerPaperCustom = { paper: tone.paper, ink: tone.ink }; }
+    c.readerPaper = btn.dataset.paper; saveSettings(); applyReaderPaperInPlace(stageRoot);
+    stageRoot.querySelectorAll('.sd-reader-paper-color').forEach((input) => { input.value = readerPaperOf({ ...c, readerPaper: 'custom' })[input.dataset.part]; });
+  }));
+  stageRoot.querySelectorAll('.sd-reader-paper-color').forEach((input) => {
+    input.addEventListener('input', () => {
+      const c = coread(), base = readerPaperOf({ ...c, readerPaper: 'custom' });
+      c.readerPaperCustom = { paper: base.paper, ink: base.ink, [input.dataset.part]: input.value };
+      c.readerPaper = 'custom'; applyReaderPaperInPlace(stageRoot);
+    });
+    input.addEventListener('change', () => { saveSettings(); syncReaderThemeChips(stageRoot); });
+  });
+  stageRoot.querySelectorAll('.sd-reader-theme-opt').forEach((btn) => btn.addEventListener('click', () => {
+    const theme = normalizeReaderThemes(coread().readerThemes).find((t) => t.id === btn.dataset.theme);
+    if (!theme || sameReaderTheme(coread(), theme)) return;
+    applyReaderTheme(coread(), theme); saveSettings(); refreshReaderPortal();
+  }));
+  q('.sd-reader-theme-save')?.addEventListener('click', async () => {
+    const c = coread(), list = normalizeReaderThemes(c.readerThemes);
+    const name = await coreadPromptText('存为方案', '方案名字', `方案 ${list.length + 1}`, { okButton: '保存' });
+    if (name == null || !String(name).trim() || !readerView) return;
+    c.readerThemes = saveReaderTheme(list, c, name, uid('rdt')); saveSettings(); refreshReaderPortal();
+  });
+  q('.sd-reader-theme-manage')?.addEventListener('click', async () => { if (await coreadManageReaderThemes() && readerView) refreshReaderPortal(); });
+  // 字号、间距、页宽、对齐动过以后，重新看哪个方案对得上
+  q('.sd-reader-typo-inner')?.addEventListener('input', () => syncReaderThemeChips(stageRoot));
+  q('.sd-reader-typo-inner')?.addEventListener('click', () => setTimeout(() => syncReaderThemeChips(stageRoot), 0));
   // 对话抽屉：开合 + 拖拽调高 + 图钉固定（占位·1B 接入对话内容）
   q('.sd-reader-dialog-btn')?.addEventListener('click', () => togglePanel('.sd-reader-dialog'));
   bindDialogGrip(q('.sd-reader-dialog'), q('.sd-reader-dialog-grip'));

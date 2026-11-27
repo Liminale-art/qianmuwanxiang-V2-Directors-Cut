@@ -5694,6 +5694,45 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   background: var(--sd-folder-head, #f5f1e8); color: var(--sd-text); font-family: var(--sd-font, inherit);
 }
 
+/* 阅读页配色：只给纸色与字色，其余从这两样调出来，顶栏、底栏、抽屉一起换，按钮与分隔线跟着字色深浅 */
+.sd-reader-stage[data-paper] {
+  --sd-folder-head: var(--rd-paper);
+  --sd-portal-bg: var(--rd-paper);
+  --sd-text: var(--rd-ink);
+  --sd-muted: color-mix(in srgb, var(--rd-ink) 58%, var(--rd-paper));
+  --sd-hairline: color-mix(in srgb, var(--rd-ink) 12%, transparent);
+  --sd-border: color-mix(in srgb, var(--rd-ink) 18%, transparent);
+  --sd-glass-weak: color-mix(in srgb, var(--rd-ink) 5%, transparent);
+  --sd-glass: color-mix(in srgb, var(--rd-ink) 9%, transparent);
+  --sd-input-bg: color-mix(in srgb, var(--rd-ink) 6%, var(--rd-paper));
+  --sd-card: color-mix(in srgb, var(--rd-ink) 4%, var(--rd-paper));
+  --sd-pre: color-mix(in srgb, var(--rd-ink) 7%, var(--rd-paper));
+  background: var(--rd-paper); color: var(--rd-ink);
+}
+.sd-reader-paper-list, .sd-reader-theme-list { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sd-reader-paper-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--sd-muted); cursor: pointer; font: inherit;
+}
+.sd-reader-paper-opt small { font-size: 10.5px; line-height: 1.2; white-space: nowrap; }
+.sd-reader-paper-face {
+  width: 30px; height: 30px; border-radius: 50%; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; border: 1px solid var(--sd-border); box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+.sd-reader-paper-face.is-icon { background: var(--sd-glass); color: var(--sd-text); }
+.sd-reader-paper-opt.active { color: var(--sd-accent); }
+.sd-reader-paper-opt.active .sd-reader-paper-face { outline: 2px solid var(--sd-accent); outline-offset: 2px; }
+.sd-reader-paper-custom[hidden] { display: none !important; }
+.sd-reader-paper-custom label { display: inline-flex; align-items: center; gap: 6px; color: var(--sd-muted); font-size: .86em; margin-right: 10px; }
+.sd-reader-paper-color { width: 30px; height: 26px; padding: 0; border: 1px solid var(--sd-border); border-radius: 7px; background: none; cursor: pointer; }
+.sd-reader-theme-opt, .sd-reader-theme-save, .sd-reader-theme-manage {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--sd-border); background: var(--sd-glass-weak); color: var(--sd-text); font: inherit; font-size: .84em;
+}
+.sd-reader-theme-opt[style*="--rd-chip"]::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--rd-chip); border: 1px solid var(--sd-border); }
+.sd-reader-theme-opt.active { border-color: var(--sd-accent); color: var(--sd-accent); background: var(--sd-glass); }
+.sd-reader-theme-save, .sd-reader-theme-manage { width: 28px; padding: 0; justify-content: center; color: var(--sd-muted); }
+.sd-reader-themeedit-row { grid-template-columns: minmax(0, 1fr) 34px; }
+
 /* 阅读器按钮：portal 挂在 body 上、不在 #story-director-modal 作用域内，故 .sd-btn 那套主样式够不着→
    会回落浏览器默认(浅字浅底/看不清)。这里把同款规则镜像到 portal 作用域，复用 portal 已复制的主题变量，
    与千幕主题恒一致。后续阅读器内任何 .sd-btn / .sd-primary / .sd-danger 自动联动，不必再单独配色。 */
