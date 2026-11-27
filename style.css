@@ -4328,6 +4328,21 @@ html[data-qm-theme-switching] [data-qm-theme] * {
 }
 #story-director-modal .sd-theater-reader-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
 #story-director-modal .sd-theater-reader-scroll-fill { display: flex; flex-direction: column; }
+/* 幕外续写：用户这一回带左侧色条，续写段落与正文同字号；输入框贴在阅读区底部 */
+#story-director-modal .sd-theater-turns { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+#story-director-modal .sd-theater-turns:empty { display: none; }
+#story-director-modal .sd-theater-turn.is-user { padding: 8px 12px; border-left: 3px solid var(--sd-accent); border-radius: 8px; background: color-mix(in srgb, var(--sd-accent) 7%, transparent); }
+#story-director-modal .sd-theater-turn-who { display: block; margin-bottom: 2px; color: var(--sd-muted); font-size: 12px; }
+#story-director-modal .sd-theater-turn-text { white-space: normal; overflow-wrap: anywhere; }
+#story-director-modal .sd-theater-turn-tools { display: flex; justify-content: flex-end; gap: 4px; margin-top: 4px; }
+#story-director-modal .sd-theater-turn-wait { color: var(--sd-muted); font-size: 12px; }
+#story-director-modal .sd-theater-turn-live { white-space: pre-wrap; opacity: .85; }
+#story-director-modal .sd-theater-composer { position: sticky; bottom: 0; display: flex; align-items: flex-end; gap: 8px; margin-top: 16px; padding: 8px 0 2px; background: linear-gradient(transparent, var(--sd-sticky-bg, var(--sd-card)) 30%); }
+#story-director-modal .sd-theater-turn-input { flex: 1; min-height: 46px; max-height: 32vh; margin: 0 !important; resize: vertical; }
+#story-director-modal .sd-theater-turn-full { margin: 14px 0 0; text-align: center; }
+.sd-theater-portal .sd-theater-turns { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.sd-theater-portal .sd-theater-turn.is-user { padding: 8px 12px; border-left: 3px solid var(--sd-accent); border-radius: 8px; background: color-mix(in srgb, var(--sd-accent) 7%, transparent); }
+.sd-theater-portal .sd-theater-turn-who { display: block; margin-bottom: 2px; opacity: .65; font-size: 12px; }
 #story-director-modal .sd-theater-reader-scroll-fill > .sd-reader-frame,
 #story-director-modal .sd-theater-reader-scroll-fill > .sd-reader-edit-area {
   flex: 1 1 0;

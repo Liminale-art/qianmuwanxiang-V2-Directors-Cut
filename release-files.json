@@ -64,6 +64,7 @@
     "qianmu-text-collection-backup.js",
     "features/excerpt/qianmu-excerpt-template.js",
     "qianmu-api-quick.js",
+    "features/theater/qianmu-theater-continue.js",
     "qianmu-api-quick.css",
     "features/excerpt/qianmu-excerpt-doc.js",
     "features/excerpt/qianmu-excerpt-render.js",

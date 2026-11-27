@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.623';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.624';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.623';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.624';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.623';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.623';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.623';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.623';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.623';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.623';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.623';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.624';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.624';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.624';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.624';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.624';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.624';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.624';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.623';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.624';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -67,10 +67,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.623';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.624';
 import { createApiQuick } from './qianmu-api-quick.js';
+import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.623';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.624';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -100,7 +101,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.623';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.624';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -343,7 +344,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.623';
+const VERSION = '1.59.624';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -1390,6 +1391,8 @@ let abortController = null;         // 推演中止句柄
 let cancelRequested = false;       // 推演取消标记
 let theaterBusy = false;           // 幕外忙碌态（与推演独立，允许并发）
 let theaterAbort = null;           // 幕外中止句柄
+let theaterContinuing = null;      // 正在续写的一幕：{ sceneId, pendingId }；与上演共用 theaterBusy，一次只跑一个请求
+const theaterTurnDrafts = new Map(); // 续写输入框里还没发出去的字（按幕，仅本次页面）
 let theaterCancel = false;         // 幕外取消标记
 let focusClockRuntime = null;      // Only owns the display ticker/listeners; endsAt remains authoritative.
 let focusClockSessionController = null;
@@ -33764,6 +33767,8 @@ function renderTheaterReadView(scene) {
           <p class="sd-reader-subtitle">${htmlEscape(theaterSubtitle(scene))}</p>
         </div>
         ${bodyHtml}
+        ${editing ? '' : renderTheaterTurns(scene, { busy: theaterBusy && theaterContinuing?.sceneId === scene.id, pendingId: theaterContinuing?.sceneId === scene.id ? theaterContinuing.pendingId : '',
+          userName: getPersonaName() || '我', esc: htmlEscape, markdown: renderTheaterMarkdown, extract: extractTheaterBody, draft: theaterTurnDrafts.get(scene.id) || '', scale })}
       </div>
     </section>`;
 }
@@ -33822,6 +33827,103 @@ function renderTheaterPresetEntries(presetName) {
   return `<details class="sd-dropdown sd-context-block sd-unified-source-block" data-acc="theater-preset-entries" open><summary class="sd-dropdown-head"><span>预设条目</span><b>${htmlEscape(presetName)}</b></summary><div class="sd-dropdown-body sd-entry-scroll sd-scroll">${rows || '<p class="sd-muted">暂无条目</p>'}</div></details>`;
 }
 
+// 幕外的背景：始终注入当前聊天的角色设定 + 用户人设 + 绑定世界书（独立于推演链路），预设条目作为额外叠加，可选衔接正文片段。
+async function buildTheaterBackgroundSegments() {
+  const segments = [];
+  const defaultText = await buildTheaterDefaultText();
+  if (defaultText) segments.push(defaultText);
+  const presetText = await buildTheaterPresetText();
+  if (presetText) segments.push(presetText);
+  if (getTheater().useChatHistory !== false) {
+    const history = getTheaterChatHistoryText();
+    if (history) segments.push(`【当前正文片段】（衔接背景：人物当前状态、关系与口吻锚点，并非要你续写正文）\n${history}`);
+  }
+  return segments;
+}
+
+// 同一幕在「最近几幕」「上一幕」「收藏」里各有一份（同 id）：续写要三处一起改，收藏的才能连同续写一直留。
+function theaterSceneCopies(scene) {
+  const t = getTheater(), id = scene?.id;
+  if (!id) return scene ? [scene] : [];
+  return [...new Set([scene, t.lastOutput, ...(t.recentOutputs || []), ...(t.favorites || [])].filter((item) => item && item.id === id))];
+}
+function setTheaterSceneTurns(scene, turns) {
+  for (const copy of theaterSceneCopies(scene)) copy.turns = turns.map((turn) => ({ ...turn }));
+}
+
+// 续写一回：redo 为真时重写最后一段（不加新的用户输入）。
+async function continueTheaterScene(scene, input, { redo = false } = {}) {
+  if (!settings.enabled) return toast('千幕已关闭。', 'warning');
+  if (theaterBusy || !scene || !canContinue(scene)) return;
+  const previous = sceneTurns(scene);
+  let turns = previous;
+  let words = String(input || '').trim().slice(0, THEATER_TURN_INPUT_LIMIT);
+  if (redo) {
+    const last = turns.at(-1), prev = turns.at(-2);
+    if (last?.role !== 'assistant' || prev?.role !== 'user') return;
+    words = prev.content; turns = turns.slice(0, -2);
+  }
+  if (!words) return toast('先写下这一回。', 'warning');
+  const cfg = theaterApiConfig();
+  const useExternal = settings.providerMode === 'external' || cfg;
+  if (useExternal) {
+    const eff = cfg || { apiUrl: settings.apiUrl, apiKey: settings.apiKey, model: settings.model };
+    if (!(normalizeUrl(eff.apiUrl) && eff.apiKey && eff.model)) { apiToast(); return; }
+  } else if (!getGenerateRaw()) { apiToast(); return; }
+  theaterBusy = true; theaterCancel = false; theaterAbort = new AbortController();
+  theaterContinuing = { sceneId: scene.id, pendingId: uid('turn') };
+  const userTurn = { id: uid('turn'), role: 'user', content: words, createdAt: new Date().toISOString() };
+  const base = { ...scene, turns };
+  setTheaterSceneTurns(scene, [...turns, userTurn]);
+  theaterTurnDrafts.delete(scene.id);
+  if (activeTab === 'theater') renderModal();
+  renderBusyState();
+  const startedAt = Date.now();
+  const log = pushLog({ id: uid('log'), kind: 'theater', status: 'loading', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '' });
+  try {
+    const background = (await buildTheaterBackgroundSegments()).join('\n\n');
+    const messages = buildContinueMessages({ background, scene: base, input: words, userName: await resolveMacro(getPersonaName()) || '用户', extract: extractTheaterBody });
+    log.request = JSON.stringify(messages, null, 2);
+    saveSettings();
+    const logDelta = settings.streamEnabled ? makeStreamLogUpdater(log) : null;
+    let lastPaint = 0;
+    const onDelta = logDelta ? (full) => {
+      logDelta(full);
+      const now = Date.now(); if (now - lastPaint < 120) return; lastPaint = now;
+      const live = document.querySelector(`#${MODAL_ID} .sd-theater-turn.is-pending[data-pending="${theaterContinuing?.pendingId}"] .sd-theater-turn-live`);
+      if (live) live.textContent = extractTheaterBody(String(full || ''));
+    } : null;
+    const raw = (settings.providerMode === 'sillytavern' && !cfg)
+      ? await callSillyTavernModel(flattenContinueMessages(messages), '', onDelta)
+      : await callExternalApi(messages, onDelta, cfg, theaterAbort);
+    if (theaterCancel) throw new Error('USER_CANCELLED');
+    const content = String(raw || '').trim();
+    log.response = content;
+    if (!extractTheaterBody(content).trim()) throw new Error('模型返回为空');
+    setTheaterSceneTurns(scene, [...turns, userTurn, { id: uid('turn'), role: 'assistant', content, createdAt: new Date().toISOString() }]);
+    log.status = 'success';
+    log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+    saveSettings();
+  } catch (error) {
+    // 没写出来：这一幕恢复原样（重写时原来那一段还在），新写的字放回输入框。
+    setTheaterSceneTurns(scene, previous);
+    if (!redo) theaterTurnDrafts.set(scene.id, words);
+    const msg = error?.name === 'AbortError' ? 'USER_CANCELLED' : (error?.message || String(error));
+    log.status = msg === 'USER_CANCELLED' ? 'cancelled' : 'error';
+    log.error = msg === 'INVALID_API_SETTINGS' ? '请检查API设置' : msg === 'USER_CANCELLED' ? '已中断。' : msg;
+    log.duration = `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+    saveSettings();
+    if (isModalOpen()) {
+      if (msg === 'USER_CANCELLED') toast('已停止续写。', 'warning');
+      else if (msg === 'INVALID_API_SETTINGS') apiToast();
+      else toast(`续写失败：${log.error}`, 'error');
+    }
+  } finally {
+    theaterAbort = null; theaterCancel = false; theaterBusy = false; theaterContinuing = null;
+    if (activeTab === 'theater') renderModal();
+    renderFloatButton();
+  }
+}
 async function stageTheaterScene() {
   if (!settings.enabled) return toast('千幕已关闭。', 'warning');
   if (theaterBusy) return;
@@ -33844,17 +33946,8 @@ async function stageTheaterScene() {
   const startedAt = Date.now();
   const log = pushLog({ id: uid('log'), kind: 'theater', status: 'loading', time: new Date().toLocaleString(), duration: '', request: '', response: '', error: '' });
   try {
-    const segments = [];
-    // 幕外始终注入当前聊天的角色设定 + 用户人设 + 绑定世界书（独立于推演链路），预设条目作为额外叠加
-    const defaultText = await buildTheaterDefaultText();
-    if (defaultText) segments.push(defaultText);
-    const presetText = await buildTheaterPresetText();
-    if (presetText) segments.push(presetText);
+    const segments = await buildTheaterBackgroundSegments();
     const useHistory = getTheater().useChatHistory !== false;
-    if (useHistory) {
-      const history = getTheaterChatHistoryText();
-      if (history) segments.push(`【当前正文片段】（衔接背景：人物当前状态、关系与口吻锚点，并非要你续写正文）\n${history}`);
-    }
     segments.push(`【此幕指令】\n${await resolveMacro(instruction)}`);
     if (useHistory) {
       segments.push('以上正文片段是衔接背景，请据此保持人物口吻、关系与既有事实一致；番外可自由延展想象，但不要与正文已发生的事实冲突。');
@@ -33940,7 +34033,7 @@ function toggleTheaterFavorite(scene) {
     t.favorites = t.favorites.filter((f) => f.id !== scene.id);
     toast('已取消收藏。', 'info');
   } else {
-    t.favorites.unshift({ id: scene.id, source: scene.source || '', instruction: scene.instruction, content: scene.content, isHtml: scene.isHtml, createdAt: scene.createdAt || new Date().toISOString() });
+    t.favorites.unshift({ id: scene.id, source: scene.source || '', instruction: scene.instruction, content: scene.content, isHtml: scene.isHtml, createdAt: scene.createdAt || new Date().toISOString(), turns: sceneTurns(scene) });
     t.favorites = t.favorites.slice(0, 50);
     toast('已收藏这一幕。', 'success');
   }
@@ -33963,7 +34056,7 @@ function openTheaterFullscreen(scene) {
   const scale = getTheater().readerFontScale || 'medium';
   const bodyHtml = (scene.isHtml || looksLikeHtml(cleaned))
     ? `<iframe class="sd-theater-fs-frame" sandbox="allow-scripts allow-popups allow-forms" srcdoc="${htmlEscape(withHiddenScrollbar(cleaned))}"></iframe>`
-    : `<div class="sd-theater-fs-prose sd-reader-prose" data-scale="${scale}">${renderTheaterMarkdown(cleaned)}</div>`;
+    : `<div class="sd-theater-fs-prose sd-reader-prose" data-scale="${scale}">${renderTheaterMarkdown(cleaned)}${renderTheaterTurns(scene, { readonly: true, userName: getPersonaName() || '我', esc: htmlEscape, markdown: renderTheaterMarkdown, extract: extractTheaterBody })}</div>`;
 
   unmountTheaterFullscreen();
   const modal = document.getElementById(MODAL_ID);
@@ -34028,6 +34121,25 @@ function bindTheaterTabEvents(root) {
     if (theaterView.mode === 'read') {
       const scene = theaterView.scene;
       root.querySelector('.sd-reader-fullscreen')?.addEventListener('click', () => openTheaterFullscreen(scene));
+      const turnInput = root.querySelector('.sd-theater-turn-input');
+      turnInput?.addEventListener('input', () => { if (turnInput.value) theaterTurnDrafts.set(scene.id, turnInput.value); else theaterTurnDrafts.delete(scene.id); });
+      turnInput?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void continueTheaterScene(scene, turnInput.value); }
+      });
+      root.querySelector('.sd-theater-turn-send')?.addEventListener('click', () => {
+        if (theaterBusy) { if (theaterContinuing?.sceneId === scene.id) stopTheater(); else toast('上一个请求还在进行。', 'info'); return; }
+        void continueTheaterScene(scene, turnInput?.value || '');
+      });
+      root.querySelector('.sd-theater-turn-redo')?.addEventListener('click', () => { void continueTheaterScene(scene, '', { redo: true }); });
+      root.querySelector('.sd-theater-turn-drop')?.addEventListener('click', () => {
+        // 撤回最后一回：去掉最后一段续写与它前面的那句；那句放回输入框，方便改了再写。
+        const turns = sceneTurns(scene), last = turns.at(-1), prev = turns.at(-2);
+        if (last?.role !== 'assistant') return;
+        const keep = prev?.role === 'user' ? turns.slice(0, -2) : turns.slice(0, -1);
+        if (prev?.role === 'user') theaterTurnDrafts.set(scene.id, prev.content);
+        setTheaterSceneTurns(scene, keep); saveSettings(); renderModal();
+      });
+      if (theaterBusy && theaterContinuing?.sceneId === scene.id) root.querySelector('.sd-theater-turn.is-pending')?.scrollIntoView?.({ block: 'nearest' });
       root.querySelector('.sd-reader-edit')?.addEventListener('click', () => { theaterView.editing = true; renderModal(); });
       root.querySelector('.sd-reader-save')?.addEventListener('click', () => {
         const area = root.querySelector('.sd-reader-edit-area');
@@ -34064,8 +34176,7 @@ function bindTheaterTabEvents(root) {
         const next = el.dataset.scale;
         getTheater().readerFontScale = next;
         saveSettings();
-        const prose = root.querySelector('.sd-reader-prose');
-        if (prose) prose.dataset.scale = next;
+        root.querySelectorAll('.sd-reader-prose').forEach((prose) => { prose.dataset.scale = next; });
         root.querySelectorAll('.sd-reader-font-opt').forEach((b) => {
           const on = b.dataset.scale === next;
           b.classList.toggle('active', on);
