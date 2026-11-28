@@ -32,10 +32,10 @@ test('one folder per book, the manifest first and stored, preferences and shared
     skipped:[{id:'remote',title:'乙书',part:'text'},{id:'bare',title:'丙书',part:'cover'}]});
   assert.deepEqual(await zip.json('prefs.json'),e.options.prefs);
   const index=await zip.json('books/1/index.json');
-  assert.deepEqual(index,{id:'book',meta:'books/1/meta.json',book:'books/1/book.json',cover:{file:'books/1/cover.png',mime:'image/png'},
+  assert.deepEqual(index,{id:'book',meta:'books/1/meta.json',book:'books/1/book.json',cover:{file:'books/1/cover.png',mime:'image/png'},annotations:null,
     images:[{key:'book::1',file:'books/1/images/1.png',mime:'image/png'}],chats:[{key:'role::book',file:'books/1/chats/1.json'},{key:'comic::book',file:'books/1/chats/2.json'}],
     vectors:[{key:'role::book',file:'books/1/vectors/1.json'}]});
-  assert.deepEqual(await zip.json('books/1/meta.json'),e.bookMetas[0],'the current shelf entry, notes included');
+  assert.deepEqual(await zip.json('books/1/meta.json'),e.bookMetas[0],'not converted yet: the shelf entry keeps its old notes');
   assert.equal(await zip.text('books/1/images/1.png'),'illustration','media are the original bytes, not base64');
   assert.equal(zip.entry('books/1/images/1.png').method,0);
   const shared=await zip.json('shared/index.json');
@@ -43,6 +43,17 @@ test('one folder per book, the manifest first and stored, preferences and shared
   assert.deepEqual(shared.audio,[{key:'voice',file:'shared/audio/1.mp3',mime:'audio/mpeg',meta:{source:'coread'},createdAt:9}]);
   assert.deepEqual(await zip.json('shared/retlog.json'),[{id:2,at:8,query:'fixture'}]);
   assert.deepEqual(pack.counts,{books:2,chats:2,images:2,vectors:1,audio:1},'the comic page record is not counted as a conversation');
+});
+
+test('a book whose notes have their own record carries it as annotations.json, and its shelf entry drops the frozen copy',async()=>{
+  const e=fixture(),record={v:1,notes:[{id:'n1',kind:'highlight',from:3,to:8,ch:0,text:'划线'}],updatedAt:5};
+  e.blobStore.getReaderNotes=async id=>(id==='book'?record:undefined);
+  const zip=await unpack((await buildCoreadPackage(e.options)).blob),index=await zip.json('books/1/index.json');
+  assert.equal(index.annotations,'books/1/annotations.json');assert.deepEqual(await zip.json('books/1/annotations.json'),record);
+  const {notes,...rest}=e.bookMetas[0];assert.deepEqual(await zip.json('books/1/meta.json'),rest);
+  assert.equal((await zip.json('books/2/index.json')).annotations,null);
+  e.blobStore.getReaderNotes=async()=>{throw Error('sensitive fixture detail');};
+  await assert.rejects(()=>buildCoreadPackage(e.options),error=>/未能完整读取伴读笔记/.test(error.message));
 });
 
 test('the book record keeps its own fields but not the import-time metadata or save stamp',async()=>{

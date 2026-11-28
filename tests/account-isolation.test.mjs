@@ -20,7 +20,7 @@ test('local store: the first account keeps the existing database, every other ac
 
 test('the entry injects the account before any use, and an unconfigured store behaves as before', async () => {
   const entry = await readFile(new URL('../index.js', import.meta.url), 'utf8');
-  assert.match(entry, /blobStore\.configureBlobStoreAccount\(\{ resolveNamespace: resolveImageAccountNamespace \}\);/);
+  assert.match(entry, /blobStore\.configureBlobStoreAccount\(\{ resolveNamespace: resolveImageAccountNamespace, onBlocked: /);
   const store = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
   assert.match(store, /const name = accountResolver \? blobStoreDatabaseName\(await accountResolver\(\)\) : DB_NAME;/);
   assert.doesNotMatch(store, /indexedDB\.open\(DB_NAME/, 'the database is always opened by the resolved name');

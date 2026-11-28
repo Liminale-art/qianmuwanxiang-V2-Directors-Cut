@@ -1,7 +1,7 @@
 // 书摘成图稿的备份：当前账户的成图稿、插图与背景原图，加上设置里的方案与自建模板（它们引用同一批图）。
 // 文件是 zip：manifest.json（第一个条目，不压缩，带类型标记）、drafts/<n>.json、images/<n>、studio.json。
 // 恢复按条合并：同键的稿只有备份里更新（savedAt 更晚）才替换；图按编号补缺；方案与模板补进本机没有的。
-import {buildZip, readZipDirectory, zipEntryBlob} from './qianmu-storage-transfer.js?v=1.59.630';
+import {buildZip, readZipDirectory, zipEntryBlob} from './qianmu-storage-transfer.js?v=1.59.631';
 import {parseBoundedJson} from './qianmu-json-input.js';
 import {createExcerptStore} from './features/excerpt/qianmu-excerpt-store.js';
 

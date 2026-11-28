@@ -65,7 +65,11 @@ export function normalizeBody(text) {
 const FONT_KEYS = new Set(['serif', 'sans', 'kai', 'mono']);
 const ALIGNS = new Set(['left', 'center', 'right', 'justify']);
 const WEIGHTS = new Set([300, 400, 500, 600, 700, 900]);
-// 用户在成图页上改的样式。没写的项沿用模板的类样式。
+// 图层混合模式（CSS mix-blend-mode 的取值）；没写时跟模板，写 normal 可以盖掉模板里的混合。
+export const BLEND_MODES = Object.freeze(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn',
+    'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']);
+const BLEND_SET = new Set(BLEND_MODES);
+// 用户在成图页上改的样式。没写的项沿用模板的类样式。图层的不透明度与混合也是样式（opacity、blend），「恢复模板样式」一并清掉。
 export function normalizeProps(raw) {
     const props = {};
     if (!isRecord(raw)) return props;
@@ -79,7 +83,13 @@ export function normalizeProps(raw) {
     if (WEIGHTS.has(Number(raw.weight))) props.weight = Number(raw.weight);
     if (typeof raw.italic === 'boolean') props.italic = raw.italic;
     if (typeof raw.dash === 'boolean') props.dash = raw.dash;
+    if (BLEND_SET.has(raw.blend)) props.blend = raw.blend;
     return props;
+}
+
+// 图层锁：pos 锁住位置与大小，style 锁住样式。旧稿没有这一项时两样都不锁。
+export function normalizeLock(raw) {
+    return {pos: raw?.pos === true, style: raw?.style === true};
 }
 
 function normalizeImage(raw) {
@@ -109,6 +119,8 @@ export function normalizeElement(raw, pageH = 1440) {
         cls: sanitizeClass(raw.cls),
         base: sanitizeCss(shortString(raw.base, 4000), 4000).replace(/[{}]/g, ''),
         props: normalizeProps(raw.props),
+        hidden: raw.hidden === true,
+        lock: normalizeLock(raw.lock),
     };
     if (element.kind === 'text') {
         element.text = shortString(raw.text, 5000);

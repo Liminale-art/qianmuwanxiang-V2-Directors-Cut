@@ -306,5 +306,15 @@ export function createAccountMirror({
     cancel(handle);
     return { registered: true, synced, pending: ids.filter(id => !synced.includes(id)) };
   }
-  return Object.freeze({ request, refresh, run, remove, slotOf, dispose() { disposed = true; cancel(timer); timer = null; } });
+  /** True when the last round this device took part in left the account holding this record as it is here now. */
+  async function synced(key) {
+    if (!key) return false;
+    const id = String(key), record = await store.get(id);
+    if (record === undefined || record === null) return false;
+    const row = (await readManifest()).get(id);
+    if (!row || row.dismissed || row.deleted || row.pendingDelete) return false;
+    const tokens = rowTokens(row);
+    return tokens.remote !== null && tokens.local === token(record);
+  }
+  return Object.freeze({ request, refresh, run, remove, synced, slotOf, dispose() { disposed = true; cancel(timer); timer = null; } });
 }

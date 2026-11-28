@@ -19,6 +19,7 @@ function fixture() {
     readerChatSync:{remove:async keys=>{account.push(['chat-remove',[...keys]]);return {registered:answer.registered,synced:answer.registered?keys.filter(key=>!answer.pending.includes(key)):[],pending:answer.registered?answer.pending.filter(key=>keys.includes(key)):[...keys]};},
       request:(...args)=>account.push(['chat-request',...args])},
     readerCoverSync:{remove:async ids=>{account.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}},
+    readerNotesSync:{remove:async ids=>{account.push(['notes-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}},
     blobStore:{deleteReaderBookData:async(id,options)=>{calls.push('delete-body');return {status:'committed',chatKeys:options.deleteMemory?[`chat::${id}`,`other::${id}`,`comic::${id}`]:[]};}},toast:(...args)=>notices.push(args),console:{warn:()=>{}},MODULE_NAME:'fixture'});
   c.coread=()=>c.settings.coread;
   const names=['coreadBookMeta','coreadCollections','coreadCaptureCollectionMutation','coreadReportAccountRemoval','coreadDeleteBook','coreadCanDeleteBooks','coreadRequestDeleteBooks'];
@@ -175,10 +176,10 @@ test('a changed collection during the memory choice cancels the entire mixed bat
 
 test('deleting memory asks the account to drop exactly the archives the local transaction removed; keeping it uploads the rewritten ones',async()=>{
   const gone=fixture(),first=gone.c.coreadDeleteBook('a',{deleteMemory:true});gone.answerSave(true);assert.equal(await first,true);
-  assert.deepEqual(gone.account,[['chat-remove',['chat::a','other::a','comic::a']],['cover-remove',['a']]]);
+  assert.deepEqual(gone.account,[['chat-remove',['chat::a','other::a','comic::a']],['cover-remove',['a']],['notes-remove',['a']]]);
   assert.equal(gone.notices.some(notice=>/账户/.test(notice[0])),false,'a deletion that reached the account needs no extra notice');
   const kept=fixture(),second=kept.c.coreadDeleteBook('a',{deleteMemory:false});kept.answerSave(true);assert.equal(await second,true);
-  assert.deepEqual(kept.account,[['chat-request'],['cover-remove',['a']]],'the cover goes with the book either way');
+  assert.deepEqual(kept.account,[['chat-request'],['cover-remove',['a']],['notes-remove',['a']]],'the cover and the notes go with the book either way');
   const failed=fixture();failed.c.blobStore.deleteReaderBookData=async()=>{throw Error('local failure');};
   const third=failed.c.coreadDeleteBook('a',{deleteMemory:true});failed.answerSave(true);assert.equal(await third,false);
   assert.deepEqual(failed.account,[],'nothing is asked of the account when the local transaction did not commit');
@@ -212,11 +213,11 @@ test('a committed deletion also drops the book’s excerpt drafts; a stopped one
   assert.equal(await g.c.coreadDeleteBook('a',{deleteMemory:true}),false);assert.equal(g.drafts.length,0);
 });
 
-test('deleting one note drops only that note’s excerpt draft after the shelf entry is saved',()=>{
-  const events=[],meta={id:'a',notes:[{id:'n1'},{id:'n2'}]};
-  const c=vm.createContext({readerView:{bookId:'a'},coreadBookMeta:id=>id==='a'?meta:null,saveSettings:()=>events.push('save'),coreadDropExcerptDrafts:options=>events.push(JSON.stringify(options))});
+test('deleting one note drops only that note’s excerpt draft after the notes are committed',()=>{
+  const events=[],view={bookId:'a',notes:{v:1,notes:[{id:'n1'},{id:'n2'}],updatedAt:1}};
+  const c=vm.createContext({readerView:view,coreadNotesCommit:v=>events.push(['commit',v.notes.notes.map(n=>n.id)]),coreadDropExcerptDrafts:options=>events.push(JSON.stringify(options))});
   vm.runInContext(section('coreadDeleteNote'),c);
   c.coreadDeleteNote('n1');
-  assert.deepEqual(meta.notes.map(n=>n.id),['n2']);
-  assert.deepEqual(events,['save',JSON.stringify({keys:['reader:a:n1']})]);
+  assert.deepEqual(view.notes.notes.map(n=>n.id),['n2']);
+  assert.deepEqual(events,[['commit',['n2']],JSON.stringify({keys:['reader:a:n1']})]);
 });

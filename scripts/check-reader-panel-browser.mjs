@@ -11,7 +11,7 @@ const view=await readFile(new URL('../qianmu-reader-panel-view.js',import.meta.u
 const between=(a,b)=>{const start=source.indexOf(a),end=source.indexOf(b,start+a.length);assert.ok(start>=0&&end>start);return source.slice(start,end);};
 const shell=between('      <!-- 目录 / 笔记 / 书签 抽屉','      <!-- 对话抽屉');
 const events=between('  // 抽屉内 目录/笔记/书签 切页','  // 笔记编辑浮层：');
-const functions=coreadPanelFunctions+'\n'+['coreadFindReaderNote','coreadNoteSource','coreadNotePlainText','coreadDeleteNote','updateReaderArticle'].map(section).join('\n');
+const functions=coreadPanelFunctions+'\n'+['coreadReaderNotes','coreadFindReaderNote','coreadNoteSource','coreadNotePlainText','coreadDeleteNote','updateReaderArticle'].map(section).join('\n');
 await mkdir(new URL('../dist/local-qa/',import.meta.url),{recursive:true});
 const browser=await chromium.launch({channel:process.env.QIANMU_BROWSER_CHANNEL||undefined,headless:true}),context=await browser.newContext({hasTouch:true});
 const errors=[];let external=0;await context.route('**/*',route=>{external++;return route.abort();});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
@@ -22,20 +22,22 @@ try{
     const theme=getComputedStyle(document.getElementById('story-director-modal')),portal=document.getElementById('sd-reader-portal');for(const key of theme)if(key.startsWith('--sd-'))portal.style.setProperty(key,theme.getPropertyValue(key));
     window.htmlEscape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
     window.coreadBookMeta=id=>id===readerView.bookId?panelMeta:null;window.saveSettings=()=>panelCalls.push(['save']);
+    window.coreadNotesCommit=()=>panelCalls.push(['save']);window.nowMs=()=>Date.now();window.coreadChapterMarks=()=>[];window.coreadPaintBookmark=()=>{};window.coreadDropExcerptDrafts=()=>{};
     window.coreadSaveProgress=()=>panelCalls.push(['progress',readerView.chapterIndex,readerView.scrollRatio]);window.refreshReaderPortal=()=>panelCalls.push(['refresh']);
     window.exitNoteEdit=()=>{};window.loadInlineImages=()=>{};window.buildReaderParagraphs=text=>'<p>'+htmlEscape(text)+'</p>';
     window.coreadCopyText=text=>panelCalls.push(['copy',text]);window.coreadOpenExcerptDialog=id=>panelCalls.push(['image',id]);window.openReaderNoteDialog=id=>panelCalls.push(['edit',id]);
-    window.eval(functions);window.renderPanelShell=new Function('meta','cache','ci','activePanel','listDrawerH','return `'+shell+'`');
+    window.eval(functions);window.renderPanelShell=new Function('meta','cache','ci','activePanel','listDrawerH','notesSource','return `'+shell+'`');
     window.bindPanelEvents=new Function('stageRoot','const q=sel=>stageRoot.querySelector(sel);\n'+events);
     window.resetPanelFixture=()=>{
       window.panelCalls=[];window.readerView={bookId:'book',chapterIndex:0,scrollRatio:.42,noteSearch:'',noteFilter:'all'};
-      window.panelMeta={title:'测试书',author:'作者',notes:[
-        {id:'one',kind:'highlight',chapterIndex:0,text:'湖边 <img src=x> 湖边 '.repeat(15),annotation:'湖边想法',at:100,tags:['蓝色']},
-        {id:'two',kind:'highlight',chapterIndex:1,text:'雨中的树',annotation:'',at:200,tags:['green']},
-        {id:'mark',kind:'bookmark',chapterIndex:1,text:'第二章'}]};
+      window.panelMeta={title:'测试书',author:'作者'};
+      readerView.notes={v:1,updatedAt:1,notes:[
+        {id:'one',kind:'highlight',from:0,to:3,ch:0,text:'湖边 <img src=x> 湖边 '.repeat(15),annotation:'湖边想法',at:100,tags:['蓝色']},
+        {id:'two',kind:'highlight',from:3,to:5,ch:1,text:'雨中的树',annotation:'',at:200,tags:['green']},
+        {id:'mark',kind:'bookmark',from:3,ch:1,text:'第二章'}]};readerView.notesLoaded=true;
       window.readerContentCache={chapters:[{title:'第一章',content:'原正文'},{title:'第二章',content:'后文'}]};
       window.readerDialog={messages:[{id:'voice',role:'friend',voiced:true,text:'已配音 <voice>',ts:1},{id:'unvoiced',role:'friend',text:'未生成语音'}]};
-      const stage=document.querySelector('.sd-reader-stage');stage.dataset.readerPanel='toc';stage.innerHTML='<article class="sd-reader-article">原正文</article>'+renderPanelShell(panelMeta,readerContentCache,0,'toc',500);
+      const stage=document.querySelector('.sd-reader-stage');stage.dataset.readerPanel='toc';stage.innerHTML='<article class="sd-reader-article">原正文</article>'+renderPanelShell(panelMeta,readerContentCache,0,'toc',500,readerView.notes);
       bindPanelEvents(stage);applyQianmuIcons(stage);
     };resetPanelFixture();
   },{view,icons,functions,shell,events});
@@ -49,7 +51,7 @@ try{
       await input.fill(search);
       const same=await page.evaluate(()=>{
         const now=[...document.querySelectorAll('.sd-reader-ptab-notes article')].filter(el=>!el.hidden).map(el=>el.dataset.note);
-        const fresh=document.createElement('div');fresh.innerHTML=renderReaderNotes(panelMeta);
+        const fresh=document.createElement('div');fresh.innerHTML=renderReaderNotes(readerView.notes);
         const reopened=[...fresh.querySelectorAll('article')].filter(el=>!el.hidden).map(el=>el.dataset.note);
         return JSON.stringify(now)===JSON.stringify(reopened);
       });
@@ -74,7 +76,7 @@ try{
     assert.equal(await page.evaluate(()=>readerView.scrollRatio),.42);assert.equal(await page.evaluate(()=>panelCalls.filter(x=>x[0]==='save').length),1);
     await row.locator('.sd-reader-note-tools-toggle').focus();await row.locator('.sd-reader-note-tools-toggle').press('Enter');
     await row.locator('.sd-reader-note-del').click();assert.equal(await row.count(),0);
-    assert.deepEqual(await page.evaluate(()=>panelMeta.notes.map(n=>n.id)),['two','mark']);
+    assert.deepEqual(await page.evaluate(()=>readerView.notes.notes.map(n=>n.id)),['two','mark']);
     await page.locator('[data-ptab="marks"]').tap();await page.locator('.sd-reader-ptab-marks .sd-reader-note-jump').tap();
     assert.deepEqual(await page.evaluate(()=>panelCalls.filter(x=>x[0]==='progress')),[['progress',1,0]]);
     await page.locator('.sd-reader-ptab-marks .sd-reader-note-del').tap();assert.equal(await page.locator('.sd-reader-ptab-marks .sd-reader-panel-empty').isVisible(),true);

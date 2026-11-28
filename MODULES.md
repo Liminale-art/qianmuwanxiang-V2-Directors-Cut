@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 445 个，其中 `qianmu-*` 模块 429 个。
+根目录文件 446 个，其中 `qianmu-*` 模块 430 个。
 
 ## 入口、宿主与安装
 
@@ -33,10 +33,10 @@
 | `assets/tab-icons/` | 2 |
 | `bundle/` | 201 |
 | `evaluation/` | 2 |
-| `features/` | 201 |
+| `features/` | 203 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1037 |
+| `tests/` | 1042 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -298,7 +298,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（62）
+## 专注／阅读／文本（63）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -344,6 +344,7 @@
 | `qianmu-reader-cover-sync.js` | 是 | 伴读封面跟随 ST 账户走（只同步缩略图；书籍正文不同步）。 |
 | `qianmu-reader-identity-view.js` | 是 | Display-only inputs. Identity ownership, ST access and persistence stay with the caller. |
 | `qianmu-reader-library-view.js` | 是 | Shelf cards only. Collection ownership, current metadata resolution, sorting and cover loading stay with the caller. |
+| `qianmu-reader-notes-sync.js` | 是 | 伴读笔记（划线、批注、书签）跟随 ST 账户走。 |
 | `qianmu-reader-package.js` | 是 | Reader packs contain original media, unlike the smaller configuration-only package. |
 | `qianmu-reader-panel-view.js` | 是 | Display-only reading sidebars. Caller owns book, companion and search state; no persistence or DOM access. |
 | `qianmu-reader.js` | 是 | 千幕 · 伴读模块纯逻辑层（解析 / 分章 / 切片） |

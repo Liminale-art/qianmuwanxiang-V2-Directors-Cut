@@ -26,7 +26,7 @@ export function focusFixture(overrides={}){
     focusClockAttachLock:()=>calls.push('attach'),focusClockOwnerId:()=> 'device',confirmDialog:async()=>true,
     isModalOpen:()=>true,renderModal:()=>calls.push('render'),toast:message=>notices.push(message),
     ensureCoreadReaderRuntime:async()=>{},refreshReaderPortal:()=>{},openModal:()=>calls.push('open'),
-    coreadSaveProgress:()=>calls.push('progress'),coreadPendingChatImages:()=>[],unmountReaderPortal:()=>calls.push('unmount'),
+    coreadSaveProgress:()=>calls.push('progress'),coreadFlushSave:()=>{},coreadPendingChatImages:()=>[],unmountReaderPortal:()=>calls.push('unmount'),
     coreadOpenBook:async()=>{},console});
   vm.runInContext(focusFunctions,c);
   return {c,f,notices,calls,setNow:value=>now=value};

@@ -26,7 +26,7 @@ await assert.rejects(deleteQianmuNote(draft.id), /账户尚未就绪/);
 assert.doesNotMatch(notesSource, /const temporaryNotes|temporaryNotes\.set|if \(note\.pinned/);
 assert.match(notesSource,/current\.runtime\.save\(note\)/,'all notes delegate to the durable account runtime regardless of prominence');
 
-assert.match(storeSource, /DB_VERSION = 15[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
+assert.match(storeSource, /DB_VERSION = 16[\s\S]*STORE_NOTES = 'notes'/, 'notes keep an isolated database store');
 assert.match(storeSource, /STORE_NOTES.*recoverable: false/, 'unowned legacy originals must not enter safe cleanup');
 assert.match(await readFile(new URL('../qianmu-hive-commands.js',import.meta.url),'utf8'), /id: 'notes', label: '便笺'[^\n]*glyph: 'notes'/, 'the hive owns the dedicated local note entry icon');
 assert.match(source, /sd-detached-notes-entry[^\n]*data-qm-icon="notes"/, 'the detached note entry keeps the same semantic as its hive source');

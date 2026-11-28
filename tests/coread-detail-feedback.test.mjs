@@ -22,7 +22,8 @@ assert.match(createCoreadPanelFixture().renderReaderVoiceClips(), /声音抽屉�
 assert.match(source, /支持 EPUB、MOBI、TXT/, '空书架必须提示可导入格式');
 assert.match(source, /sd-reader-noteedit-quote'\)\.textContent = text;/, '长笔记摘录必须完整显示，不得按字符截断');
 assert.doesNotMatch(source, /text:\s*String\(text \|\| ''\)\.slice\(/, '新建摘录不得截断用户选择的长文本');
-assert.match(source, /selectionSegments[\s\S]*segments:\s*\(Array\.isArray\(segments\)/, '跨段长文本必须保留完整摘录并记录逐段划线片段');
+assert.match(source, /const pointOffset = [\s\S]*const selectionRange = [\s\S]*coreadAddHighlight\(text, 'mark', range\)/, '跨段长文本必须保留完整摘录，并按选区两端的位置划线');
+assert.doesNotMatch(source, /selectionSegments/, '划线不再按逐段文字匹配');
 
 const library = source.slice(source.indexOf('function sortedLibraryBooks'), source.indexOf('function bindReaderStageEvents'));
 assert.match(readFileSync(new URL('../features/reader/qianmu-reader-shelf.js', import.meta.url), 'utf8'), /field: 'lastReadAt', name: '最近阅读'/, '书架必须提供最近阅读排序');

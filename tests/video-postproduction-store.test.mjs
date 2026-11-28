@@ -69,7 +69,7 @@ test('the additive store is separately auditable, left out of data-management cl
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(storage, /const DB_VERSION = 15/);
+  assert.match(storage, /const DB_VERSION = 16/);
   assert.match(storage, /STORE_VIDEO_POSTPRODUCTION = 'video_postproduction'/);
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoPostproduction'), storage.indexOf('export const VIDEO_MEDIA_MAX_BYTES'));
   assert.match(persistence, /schema: 'qianmu\.video-postproduction\.v1'/);

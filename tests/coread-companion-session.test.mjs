@@ -19,7 +19,7 @@ function fixture(){
     focusClockActiveLock:()=>null,focusClockBlockExit:()=>false,readerLog:null,coreadNoteTalk:()=>{},focusClockRememberLockedReader:()=>{},focusClockResumeReading:()=>{},focusClockPauseForReadingExit:()=>{},
     toast:text=>notices.push(text),saveSettings:()=>{},renderModal:()=>{},refreshReaderPortal:()=>{},nowMs:()=>1,
     coreadStopDialog:()=>{},coreadStopAssistant:()=>{},ttsStopPlayback:()=>{},coreadPendingChatImages:()=>[],coreadSaveProgress:()=>{},coreadShowRefillChooser:id=>notices.push('refill:'+id),
-    coreadLoadDialog:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},
+    coreadLoadDialog:()=>{},coreadLoadReaderNotes:()=>{},document:{querySelector:()=>null},applyQianmuIcons:()=>{},scrollDialogToBottom:()=>{},coreadRefreshAssistantPanel:()=>{},coreadSyncDialogButtons:()=>{},
     coreadCurrentReadBoundarySync:bookId=>({bookId,readTo:100,chapterIndex:1,progress:10}),coreadAssistantConfig:()=>({historyMode:'session'}),repairLegacyCoreadDialogMessages:messages=>({messages,changed:false}),
     coreadNormalizeSlices:rows=>rows,coreadSummaryProgressFromRecord:()=>({cursor:0,summaryFloor:0,migrated:false}),
     blobStore:{getBook:async()=>({chapters:[{content:'one'},{content:'two'},{content:'three'}]}),getReaderChat:async()=>null,putReaderChat:async(...args)=>writes.push(args)},
@@ -27,7 +27,9 @@ function fixture(){
   });
   const names=['coreadPersonaChoices','coreadHostPersona','coreadPersona','coreadUserName','coreadApplyIdentityChoice','renderCoreadIdentityChoices',
     'coreadCompanionChoices','coreadCompanionCharacter','coreadCompanionSession','coreadEnsureCompanionSession','coreadSelectCompanion',
-    'coreadCompanionMatchesChat','coreadResolveCompanionMacro','companionCharName','coreadDialogBucket','coreadOpenBook','coreadSaveProgress','coreadSaveDialog'];
+    'coreadCompanionMatchesChat','coreadResolveCompanionMacro','companionCharName','coreadDialogBucket','coreadOpenBook','coreadSaveProgress','coreadSaveDialog',
+    'coreadProjectionOf','coreadReadAt'];
+  context.coreadQueueSave=context.coreadFlushSave=()=>{};
   // The reader reaches its conversations through the sync layer; here it passes straight to whatever the test put on blobStore.
   context.readerChatSync={get:key=>context.blobStore.getReaderChat(key),put:(key,record)=>context.blobStore.putReaderChat(key,record)};
   vm.runInContext(names.map(section).join('\n'),context);

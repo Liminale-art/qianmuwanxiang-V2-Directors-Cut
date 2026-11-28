@@ -1,8 +1,10 @@
 // 千幕 · 伴读模块纯逻辑层（解析 / 分章 / 切片）
 // 类比 features/tts/qianmu-tts.js：不碰 DOM、不读 settings、不依赖 index.js，纯函数 + 数据。
 // 仅负责把「一段文本/一个文件」变成可阅读的章节结构 + 可召回的切片，召回打分另由调用方组合。
-// 漫画识图的纯逻辑单独成文件，随本模块一并按需载入。
+// 漫画识图的纯逻辑单独成文件，随本模块一并按需载入；坐标投影与笔记形状也一样。
 export * from './qianmu-reader-comic.js';
+export * from './features/reader/qianmu-reader-model.js';
+export * from './features/reader/qianmu-reader-notes.js';
 
 /* ============================================================
    一、TXT 编码嗅探

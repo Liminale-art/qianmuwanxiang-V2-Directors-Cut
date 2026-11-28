@@ -22,7 +22,18 @@
     overflow: hidden;
     overscroll-behavior: contain;
 }
-.qm-xs[open] { display: flex; flex-direction: column; }
+/* 宽屏：顶栏；左工具条｜画面（下面是页面条）｜右属性／图层。窄屏的排法在文末。 */
+.qm-xs[open] {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "top top top" "tools stage panel" "tools pages panel";
+}
+.qm-xs-top { grid-area: top; }
+.qm-xs-tools { grid-area: tools; }
+.qm-xs-stagewrap { grid-area: stage; }
+.qm-xs-panel { grid-area: panel; }
+.qm-xs-pages { grid-area: pages; }
 .qm-xs::backdrop { background: rgba(0, 0, 0, .5); }
 .qm-xs.is-full { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
 .qm-xs *, .qm-xs *::before, .qm-xs *::after { box-sizing: border-box; min-width: 0; }
@@ -56,8 +67,7 @@
 .qm-xs-top { display: flex; align-items: center; gap: 2px; flex: none; height: 50px; padding: 0 8px; border-bottom: 1px solid var(--xs-line); }
 .qm-xs-status { flex: 1; padding: 0 10px; text-align: right; color: var(--xs-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.qm-xs-main { display: flex; flex: 1; min-height: 0; }
-.qm-xs-stagewrap { position: relative; display: flex; flex: 1; min-height: 0; }
+.qm-xs-stagewrap { position: relative; display: flex; min-height: 0; min-width: 0; }
 .qm-xs-stage {
     display: flex; flex: 1; min-height: 0; padding: 20px; overflow: auto;
     background: color-mix(in srgb, var(--sd-text, #ddd) 7%, transparent);
@@ -72,6 +82,10 @@
 .qm-xs-host { display: block; width: 1080px; }
 .qm-xs-overlay { position: absolute; left: 0; top: 0; width: 1080px; pointer-events: none; }
 .qm-xs-sel { position: absolute; outline: calc(1.5px / var(--s, 1)) solid var(--xs-accent); }
+.qm-xs-sel.is-member { outline-width: calc(1px / var(--s, 1)); outline-offset: calc(2px / var(--s, 1)); }
+.qm-xs-sel.is-group { outline-style: dashed; outline-offset: calc(6px / var(--s, 1)); }
+.qm-xs-sel.is-locked { outline-style: dotted; outline-color: var(--xs-muted); }
+.qm-xs-sel.is-hidden { outline-style: dashed; opacity: .6; }
 .qm-xs-handle {
     position: absolute; width: calc(12px / var(--s, 1)); height: calc(12px / var(--s, 1));
     transform: translate(-50%, -50%); border: calc(1.5px / var(--s, 1)) solid var(--xs-accent); border-radius: calc(3px / var(--s, 1));
@@ -98,12 +112,47 @@
 }
 .qm-xs-zoom .qm-xs-btn { height: 30px; min-width: 30px; padding: 0 6px; }
 .qm-xs.is-busy .qm-xs-canvas { pointer-events: none; }
-.qm-xs.is-busy :is(.qm-xs-dock, .qm-xs-panel, .qm-xs-pages) { opacity: .5; pointer-events: none; }
+.qm-xs.is-busy :is(.qm-xs-tools, .qm-xs-panel, .qm-xs-pages) { opacity: .5; pointer-events: none; }
+.qm-xs.is-multi .qm-xs-canvas { cursor: copy; }
+
+/* 左工具条：纯图标，选中的工具亮起。 */
+.qm-xs-tools { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 0; padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px)); border-right: 1px solid var(--xs-line); overflow: auto; }
+.qm-xs-tools .qm-xs-btn { width: 38px; height: 38px; min-width: 38px; padding: 0; }
+.qm-xs-tools .qm-xs-icon { width: 20px; height: 20px; }
+.qm-xs-tools .qm-xs-sep { width: 22px; height: 1px; margin: 4px 0; }
+.qm-xs-tool[aria-pressed="true"] { background: color-mix(in srgb, var(--xs-accent) 18%, transparent); color: var(--xs-accent); }
+.qm-xs-tool-group { display: contents; }
+.qm-xs-tool-end { margin-top: auto; }
 
 .qm-xs-panel { display: flex; flex-direction: column; flex: none; width: 304px; border-left: 1px solid var(--xs-line); min-height: 0; }
-.qm-xs-panel-head { display: flex; align-items: center; justify-content: space-between; flex: none; height: 42px; padding: 0 8px 0 14px; font-weight: 600; }
+.qm-xs-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; height: 42px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--xs-line); }
+.qm-xs-tabs { display: flex; gap: 2px; }
+.qm-xs-tab { height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--xs-muted); font-weight: 600; }
+.qm-xs-tab[aria-selected="true"] { background: var(--xs-soft); color: inherit; }
 .qm-xs-collapse { display: none; }
 .qm-xs-panel-body { flex: 1; min-height: 0; padding: 0 14px 18px; overflow: auto; overscroll-behavior: contain; }
+.qm-xs-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.qm-xs-group:disabled { opacity: .45; }
+.qm-xs-props-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; font-weight: 600; }
+.qm-xs-props-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qm-xs-flags { display: flex; flex: none; gap: 1px; }
+.qm-xs-flag { width: 30px; min-width: 30px; height: 30px; padding: 0; color: var(--xs-muted); }
+.qm-xs-flag .qm-xs-icon { width: 16px; height: 16px; }
+.qm-xs-flag.is-on { color: var(--xs-accent); background: color-mix(in srgb, var(--xs-accent) 14%, transparent); }
+
+/* 图层：上面是混合与不透明度，中间每层一行（最上层在前），下面是层级。 */
+.qm-xs-layers { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
+.qm-xs-layer-bar { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.qm-xs-layer-list { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
+.qm-xs-layer { display: flex; align-items: center; gap: 2px; padding-right: 2px; border-radius: 8px; }
+.qm-xs-layer:hover { background: var(--xs-soft); }
+.qm-xs-layer.is-on { background: color-mix(in srgb, var(--xs-accent) 16%, transparent); }
+.qm-xs-layer.is-hidden .qm-xs-layer-main { opacity: .45; }
+.qm-xs-layer-main { display: flex; align-items: center; gap: 8px; flex: 1; min-height: 34px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.qm-xs-layer-main .qm-xs-icon { width: 16px; height: 16px; color: var(--xs-muted); }
+.qm-xs-layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qm-xs-layer .qm-xs-flag:not(.is-on) { opacity: .55; }
+.qm-xs-layer-foot { display: flex; justify-content: center; gap: 4px; flex: none; padding-top: 6px; border-top: 1px solid var(--xs-line); }
 .qm-xs-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 38px; padding: 3px 0; }
 .qm-xs-row-label { color: var(--xs-muted); font-size: 12px; }
 .qm-xs-inline { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -140,9 +189,6 @@
 .qm-xs-thumb-tool .qm-xs-icon { width: 14px; height: 14px; }
 .qm-xs-thumb-add { align-self: center; width: 40px; height: 40px; border: 1px dashed var(--xs-line); }
 
-.qm-xs-dock { display: flex; align-items: center; justify-content: center; gap: 2px; flex: none; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--xs-line); }
-.qm-xs-dock .qm-xs-btn { flex-direction: column; gap: 2px; height: 48px; min-width: 54px; padding: 0 8px; font-size: 11px; }
-.qm-xs-dock .qm-xs-icon { width: 20px; height: 20px; }
 
 .qm-xs-pop {
     position: absolute; z-index: 10; min-width: 220px; max-width: min(360px, calc(100% - 16px)); max-height: min(70%, 520px);
@@ -208,19 +254,20 @@
 @media (max-width: 760px) {
     .qm-xs { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
     .qm-xs-top { height: 46px; padding: 0 4px; }
-    .qm-xs-top .qm-xs-btn.has-label:not(.qm-xs-primary) .qm-xs-label { display: none; }
-    .qm-xs-top .qm-xs-btn.has-label:not(.qm-xs-primary) { padding: 0 8px; }
-    .qm-xs-main { flex-direction: column; }
+    /* 窄屏：画面、属性／图层抽屉、页面条、底部工具条，上下排。 */
+    .qm-xs[open] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto auto auto; grid-template-areas: "top" "stage" "panel" "pages" "tools"; }
     .qm-xs-stage { padding: 12px; }
     .qm-xs-panel { width: auto; max-height: 38dvh; border-left: 0; border-top: 1px solid var(--xs-line); }
     .qm-xs-panel.is-collapsed .qm-xs-panel-body { display: none; }
     .qm-xs-panel.is-collapsed .qm-xs-collapse { transform: rotate(180deg); }
-    .qm-xs-panel-head { height: 36px; }
     .qm-xs-collapse { display: inline-flex; }
     .qm-xs-pages { max-height: 96px; padding: 6px 10px; gap: 8px; }
     .qm-xs-thumb-add { width: 32px; height: 32px; }
-    .qm-xs-dock { justify-content: space-around; }
-    .qm-xs-dock .qm-xs-btn { min-width: 44px; padding: 0 4px; }
-    .qm-xs-dock .qm-xs-sep { display: none; }
+    .qm-xs-tools { flex-direction: row; justify-content: space-between; padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); border-right: 0; border-top: 1px solid var(--xs-line); overflow-x: auto; overflow-y: hidden; }
+    .qm-xs-tools .qm-xs-btn { width: 40px; min-width: 40px; height: 40px; }
+    .qm-xs-tools .qm-xs-sep { width: 1px; height: 22px; margin: 0 2px; }
+    .qm-xs-tool-end { margin-top: 0; }
+    .qm-xs-panel-head { height: 40px; }
+    .qm-xs-panel.is-collapsed .qm-xs-panel-head { border-bottom: 0; }
     .qm-xs-zoom { display: none; }
 }

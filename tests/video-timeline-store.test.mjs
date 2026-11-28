@@ -93,7 +93,7 @@ test('the additive timeline store is idle, left out of data-management cleanup a
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(storage, /const DB_VERSION = 15/);
+  assert.match(storage, /const DB_VERSION = 16/);
   assert.match(storage, /STORE_VIDEO_TIMELINES = 'video_timelines'/);
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoTimeline'), storage.indexOf('// ── 动态镜头：本地成片仓'));
   assert.match(persistence, /schema: 'qianmu\.video-timeline\.v1'/);

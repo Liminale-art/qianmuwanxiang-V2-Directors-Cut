@@ -4,7 +4,8 @@
 // localStorage 存不下二进制大对象，故独立走 IndexedDB；存 Blob，播放时再 createObjectURL。
 
 const DB_NAME = 'qianmu-blobstore';
-const DB_VERSION = 15;
+// 16 起不能回退：IndexedDB 不允许以更低版本号打开（会报 VersionError，本机资料全打不开）。回退只能是保留 16 与建仓代码的新提交。
+const DB_VERSION = 16;
 const STORE_AUDIO = 'audio';         // key: 缓存键   value: { blob, meta, createdAt }
 const STORE_FAVORITES = 'favorites'; // key: 收藏 id  value: { blob, meta, label, createdAt }
 // ── 伴读模块（v2 新增）──
@@ -33,6 +34,11 @@ const STORE_VIDEO_MEDIA = 'video_media'; // key: assetId value: 本地成片 Blo
 const STORE_VIDEO_DRAFTS = 'video_drafts'; // key: draftId value: 动态镜头本地编辑草稿；只含稳定引用与配置
 const STORE_VIDEO_TIMELINES = 'video_timelines'; // key: timelineId value: 完整影片顺序草稿；只含稳定媒体引用与播放配置
 const STORE_VIDEO_POSTPRODUCTION = 'video_postproduction'; // key: timelineId value: 完整影片字幕/声轨/转场决策；不含媒体本体
+// ── 伴读新内容模型（v16 新增，一次建齐）。除 reader_notes 外，S2 起才有数据 ──
+const STORE_READER_DOCS = 'reader_docs';       // key: `${bookId}::d${i}` / `${bookId}::notes` / `${bookId}::legacy` value: 净化后的文档、脚注表、重新导入前的旧记录
+const STORE_READER_ASSETS = 'reader_assets';   // key: `${bookId}::css::${n}` / `${bookId}::font::${n}` value: 书内样式 {text} / 字体 {blob, family, weight, style}
+const STORE_READER_SOURCES = 'reader_sources'; // key: bookId value: { blob, name, type, size, sha256, importedAt } 原书文件
+const STORE_READER_NOTES = 'reader_notes';     // key: bookId value: { v:1, notes:[…], updatedAt } 划线、批注、书签（随账户镜像）
 
 const STORAGE_STORE_INFO = Object.freeze({
   [STORE_AUDIO]: { label: '语音缓存', category: 'audio', recoverable: true },
@@ -55,6 +61,10 @@ const STORAGE_STORE_INFO = Object.freeze({
   [STORE_VIDEO_DRAFTS]: { label: '动态镜头草稿', category: 'video', recoverable: false },
   [STORE_VIDEO_TIMELINES]: { label: '影片时间线', category: 'video', recoverable: false },
   [STORE_VIDEO_POSTPRODUCTION]: { label: '影片后期分层', category: 'video', recoverable: false },
+  [STORE_READER_DOCS]: { label: '书籍排版', category: 'reader', recoverable: false },
+  [STORE_READER_ASSETS]: { label: '书内样式与字体', category: 'reader', recoverable: false },
+  [STORE_READER_SOURCES]: { label: '原书文件', category: 'reader', recoverable: false },
+  [STORE_READER_NOTES]: { label: '伴读笔记', category: 'reader', recoverable: false },
 });
 
 // ── 按 ST 账户隔离 ───────────────────────────────────────────────────────────────────────────────
@@ -66,10 +76,12 @@ const STORAGE_STORE_INFO = Object.freeze({
 // 没有注入解析器的环境（单元测试、独立脚本）沿用原库名，行为不变。认领记录放在本浏览器的 localStorage，
 // 与 IndexedDB 同属一个浏览器配置；若它被单独清掉，下一个打开的账户会重新认领。
 const OWNER_KEY = 'qianmu.blobstore.owner.v1';
-let accountResolver = null, ownerStorage = null;
-export function configureBlobStoreAccount({ resolveNamespace, storage } = {}) {
+let accountResolver = null, ownerStorage = null, blockedHandler = null;
+// onBlocked：升级库版本时别的标签页还开着旧版本连接，打开会一直等到它们关掉；宿主借此提示用户。
+export function configureBlobStoreAccount({ resolveNamespace, storage, onBlocked } = {}) {
   accountResolver = typeof resolveNamespace === 'function' ? resolveNamespace : null;
   ownerStorage = storage || null;
+  blockedHandler = typeof onBlocked === 'function' ? onBlocked : null;
   dbPromises.clear();
 }
 export function blobStoreDatabaseName(namespace, storage = ownerStorage ?? globalThis.localStorage) {
@@ -117,8 +129,21 @@ async function openDB() {
       if (!db.objectStoreNames.contains(STORE_VIDEO_DRAFTS)) db.createObjectStore(STORE_VIDEO_DRAFTS);
       if (!db.objectStoreNames.contains(STORE_VIDEO_TIMELINES)) db.createObjectStore(STORE_VIDEO_TIMELINES);
       if (!db.objectStoreNames.contains(STORE_VIDEO_POSTPRODUCTION)) db.createObjectStore(STORE_VIDEO_POSTPRODUCTION);
+      for (const name of [STORE_READER_DOCS, STORE_READER_ASSETS, STORE_READER_SOURCES, STORE_READER_NOTES]) {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+      }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // 以后别的标签页要升级时，这边主动让出连接，免得挡住它；下次用到时按新版本重开。
+      db.onversionchange = () => { db.close(); if (dbPromises.get(name) === dbPromise) dbPromises.delete(name); };
+      resolve(db);
+    };
+    // 被挡住时请求仍在等，其他标签页关掉后会自己继续；这里只通知宿主。
+    req.onblocked = () => {
+      if (!blockedHandler) { console.warn('[千幕] 本机资料库升级被其他标签页挡住，关掉或刷新它们后会继续。'); return; }
+      try { blockedHandler(); } catch (error) { console.warn('[千幕] 资料库升级提示失败', error); }
+    };
     req.onerror = () => { dbPromises.delete(name); reject(req.error); };
   });
   dbPromises.set(name, dbPromise);
@@ -396,6 +421,7 @@ export function createReaderPackageReader({check = () => {}} = {}) {
     listReaderChatKeys: () => scan(STORE_CHATS, key => key, true),
     listReaderImages: () => scan(STORE_IMAGES, (key, blob) => ({key:String(key), blob})),
     listReaderVectorKeys: () => scan(STORE_VECTORS, key => key, true),
+    getReaderNotes: key => get(STORE_READER_NOTES, key),
     listAudio: () => scan(STORE_AUDIO, (key, value) => ({key,blob:value?.blob,meta:value?.meta || {},createdAt:value?.createdAt || 0})),
     listRetLog: async () => (await scan(STORE_RETLOG, (id, value) => ({id,...(value || {})}))).sort((a,b)=>(b.at || 0)-(a.at || 0)),
   };
@@ -438,6 +464,8 @@ export function createReaderPackageWriter({check = () => {}} = {}) {
     putReaderChat: (key, record) => put(STORE_CHATS, key, {...record, updatedAt:Date.now()}),
     putReaderImageByKey: (key, blob) => put(STORE_IMAGES, String(key), blob),
     putReaderVectors: (key, record) => put(STORE_VECTORS, key, {...record, updatedAt:Date.now()}),
+    // 恢复出来的笔记算作此刻写入：账户里较旧的一份进冲突留底，不把刚恢复的覆盖掉。
+    putReaderNotes: (key, record) => put(STORE_READER_NOTES, String(key), {...record, updatedAt:Date.now()}),
     async bulkPutAudio(entries, {onProgress = () => {}} = {}) {
       check();
       if (!blobStoreAvailable()) throw new Error('伴读存储不可用，未导入音频。');
@@ -579,11 +607,11 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
   if (!isCurrent()) return { status: 'stale' };
   const db = await openDB();
   if (!isCurrent()) return { status: 'stale' };
-  const stores = [STORE_BOOKS, STORE_COVERS, STORE_IMAGES, STORE_CHATS, ...(deleteMemory ? [STORE_VECTORS] : [])];
+  const stores = [STORE_BOOKS, STORE_COVERS, STORE_IMAGES, STORE_CHATS, STORE_READER_DOCS, STORE_READER_ASSETS, STORE_READER_SOURCES, STORE_READER_NOTES, ...(deleteMemory ? [STORE_VECTORS] : [])];
   const tx = db.transaction(stores, 'readwrite');
   return new Promise((resolve, reject) => {
     let stale = false, failure;
-    const counts = { books: 0, covers: 0, images: 0, conversations: 0, buckets: 0, vectors: 0 };
+    const counts = { books: 0, covers: 0, images: 0, conversations: 0, buckets: 0, vectors: 0, docs: 0, assets: 0, sources: 0, notes: 0 };
     // 删除记忆时实际删掉的档案键（含 comic::书），供账户端一并删除。
     const chatKeys = [];
     const error = () => failure || tx.error || new Error('书籍资源清理未提交');
@@ -606,7 +634,7 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
     const scan = (storeName, field, matches) => {
       // Key cursors avoid loading image Blobs and vector arrays merely to delete them.
       const target = tx.objectStore(storeName);
-      const range = storeName === STORE_IMAGES ? IDBKeyRange.bound(`${bookId}::`, `${bookId}::\uffff`) : undefined;
+      const range = [STORE_IMAGES, STORE_READER_DOCS, STORE_READER_ASSETS].includes(storeName) ? IDBKeyRange.bound(`${bookId}::`, `${bookId}::\uffff`) : undefined;
       const request = target.openKeyCursor(range);
       request.onsuccess = () => {
         try {
@@ -637,7 +665,10 @@ export async function deleteReaderBookData(bookId, { deleteMemory = false, archi
     };
     try {
       exact(STORE_BOOKS, 'books'); exact(STORE_COVERS, 'covers');
+      exact(STORE_READER_SOURCES, 'sources'); exact(STORE_READER_NOTES, 'notes');
       scan(STORE_IMAGES, 'images', key => key.startsWith(`${bookId}::`));
+      scan(STORE_READER_DOCS, 'docs', key => key.startsWith(`${bookId}::`));
+      scan(STORE_READER_ASSETS, 'assets', key => key.startsWith(`${bookId}::`));
       scan(STORE_CHATS, 'buckets', key => key.endsWith(`::${bookId}`));
       if (deleteMemory) scan(STORE_VECTORS, 'vectors', key => key.endsWith(`::${bookId}`));
     } catch (cause) { abort(cause); }
@@ -731,6 +762,30 @@ export async function deleteReaderImages(bookId) {
     };
     cur.onerror = () => reject(cur.error);
   });
+}
+
+// ── 伴读：笔记（一本书一条，键＝书的编号）────────────────────
+// 原样存取，不改 updatedAt：它是账户镜像判断「哪边改过」的依据，由调用方在改动时写。
+
+export async function getReaderNotes(bookId) {
+  const s = await store(STORE_READER_NOTES, 'readonly');
+  return reqP(s.get(String(bookId)));
+}
+
+export async function putReaderNotes(bookId, record) {
+  const s = await store(STORE_READER_NOTES, 'readwrite');
+  await reqP(s.put(record, String(bookId)));
+  return bookId;
+}
+
+export async function deleteReaderNotes(bookId) {
+  const s = await store(STORE_READER_NOTES, 'readwrite');
+  await reqP(s.delete(String(bookId)));
+}
+
+export async function listReaderNoteKeys() {
+  const s = await store(STORE_READER_NOTES, 'readonly');
+  return (await reqP(s.getAllKeys())).map(String);
 }
 
 // ── 伴读：陪读会话 bucket（消息/总结/游标）──────────────────
@@ -1838,20 +1893,26 @@ async function auditOrphanedStore(name, kind, bookIdForKey, books) {
   return records;
 }
 
-// 仅将“已无 reader_books 主体”的封面和书内插图判为孤儿。
+// 仅将“已无 reader_books 主体”的封面、书内插图、排版文档、样式字体、原书文件与笔记判为孤儿。
 // 伴读会话/向量可以在删书后作为用户保留的记忆继续存在，故绝不自动判孤。
-// shelfBookIds：书架里仍有的书。封面随账户同步，另一台设备上只有封面没有正文，这些封面不算孤儿。
+// shelfBookIds：书架里仍有的书。封面与笔记随账户同步，另一台设备上只有它们没有正文，这些不算孤儿。
+const readerDocBookId = (key) => { const value = String(key ?? ''), at = value.indexOf('::'); return at > 0 ? value.slice(0, at) : ''; };
 const shelfBookSet = (shelfBookIds) => new Set(Array.from(shelfBookIds || [], (value) => String(value ?? '')).filter(Boolean));
 export async function auditOrphanedReaderBlobs({shelfBookIds = []} = {}) {
   if (!blobStoreAvailable()) return { available: false, records: [], count: 0, bytes: 0, scannedAt: Date.now() };
   const bookIds = await listBookIds();
   const books = new Set(bookIds.map((value) => String(value)));
   const shelf = shelfBookSet(shelfBookIds);
-  const [covers, images] = await Promise.all([
-    auditOrphanedStore(STORE_COVERS, 'cover', (key) => String(key ?? ''), new Set([...books, ...shelf])),
+  const withShelf = new Set([...books, ...shelf]);
+  const groups = await Promise.all([
+    auditOrphanedStore(STORE_COVERS, 'cover', (key) => String(key ?? ''), withShelf),
     auditOrphanedStore(STORE_IMAGES, 'image', readerImageBookId, books),
+    auditOrphanedStore(STORE_READER_DOCS, 'doc', readerDocBookId, books),
+    auditOrphanedStore(STORE_READER_ASSETS, 'asset', readerDocBookId, books),
+    auditOrphanedStore(STORE_READER_SOURCES, 'source', (key) => String(key ?? ''), books),
+    auditOrphanedStore(STORE_READER_NOTES, 'notes', (key) => String(key ?? ''), withShelf),
   ]);
-  const records = [...covers, ...images];
+  const records = groups.flat();
   return {
     available: true,
     records,
@@ -1865,7 +1926,7 @@ export async function auditOrphanedReaderBlobs({shelfBookIds = []} = {}) {
 // must not slip between a separate readonly check and the resource deletion.
 async function deleteOrphanedReaderBlob(item, check, shelf = new Set()) {
   check();
-  if (item.store === STORE_COVERS && item.bookId && shelf.has(String(item.bookId))) return false;
+  if ((item.store === STORE_COVERS || item.store === STORE_READER_NOTES) && item.bookId && shelf.has(String(item.bookId))) return false;
   const db = await openDB();
   check();
   return new Promise((resolve, reject) => {

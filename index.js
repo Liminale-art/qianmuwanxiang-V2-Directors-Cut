@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.630';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.631';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,25 +20,27 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.630';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.631';
+import {createReaderNotesSync} from './qianmu-reader-notes-sync.js';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
-blobStore.configureBlobStoreAccount({ resolveNamespace: resolveImageAccountNamespace });
+let blobStoreBlockedShown = false;
+blobStore.configureBlobStoreAccount({ resolveNamespace: resolveImageAccountNamespace, onBlocked: () => { if (blobStoreBlockedShown) return; blobStoreBlockedShown = true; toast('千幕本机资料正在升级，请关掉或刷新其他开着千幕的标签页。', 'warning'); } });
 import {createFontLibrary} from './qianmu-font-library.js?v=1.59.507';
 import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.630';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.630';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.630';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.630';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.630';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.630';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.630';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.631';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.631';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.631';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.631';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.631';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.631';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.631';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.630';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.631';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -71,11 +73,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.630';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.631';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.630';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.631';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -106,7 +108,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.630';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.631';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -349,7 +351,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.630';
+const VERSION = '1.59.631';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -399,6 +401,7 @@ const apiQuick=createApiQuick({getContext:ctx,getOwner:()=>settings,save:()=>sav
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:()=>(ensureToastLiquid(document),qianmuToastLook())});
 const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record),delete:async key=>{await blobStore.deleteReaderChat(key);await blobStore.deleteReaderVectors(key);}},onRemoved:keys=>coreadAccountRemovedChats(keys),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const readerCoverSync=createReaderCoverSync({blobStore,onDownloaded:ids=>coreadAccountCovers(ids,true),onRemoved:ids=>coreadAccountCovers(ids,false),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
+const readerNotesSync=createReaderNotesSync({store:{listKeys:()=>blobStore.listReaderNoteKeys(),get:key=>blobStore.getReaderNotes(key),put:(key,record)=>blobStore.putReaderNotes(key,record),delete:key=>blobStore.deleteReaderNotes(key)},onDownloaded:ids=>coreadAccountNotes(ids),onRemoved:ids=>coreadAccountNotes(ids),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const ttsFavoritesSync=createTtsFavoritesSync({blobStore,resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const sidecars=createSettingsSidecars({resolveNamespace:resolveImageAccountNamespace,requestSave:()=>saveSettings(),notify:message=>toast(message,'info'),onRestored:()=>rerenderIfOpen()}),fontFaces=sidecars.fontFaces;
 const fontLibrary=fontFaces.gate(createFontLibrary({getOwner:()=>settings,save:()=>saveSettings(),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner(),builtinReader:readBuiltinFont,notify:toast,download:ttsDownloadBlob,confirm:confirmDialog,closePanel:()=>closeFloorNavigator(),beforeApply:()=>initialized?proseLayoutCaptureViewport():null,afterApply:snapshot=>{if(initialized)proseLayoutScheduleViewportRestore(snapshot);}}),()=>settings);
@@ -5652,6 +5655,7 @@ function scheduleExtraPreload() {
       quiet(() => COREAD_ENABLED ? featureRuntime.load('readerCore') : null),
       quiet(() => COREAD_ENABLED ? readerChatSync.run() : null),
       quiet(() => COREAD_ENABLED ? readerCoverSync.run() : null),
+      quiet(() => COREAD_ENABLED ? readerNotesSync.run() : null),
       quiet(() => ttsFavoritesSync.run()),
       // 正文收藏：首开要现场下载 7 个脚本（3 层）＋4 个样式（2 层），全部到齐才出面板——这里提前暖好。
       quiet(async () => {
@@ -25172,10 +25176,9 @@ function coreadYimuState() {
   const boundaries = {};
   if (readerView && readerContentCache?.bookId === readerView.bookId) {
     // Lengths are enough to describe the already displayed position; no new book read.
-    const chapters = readerContentCache.chapters || [], at = Math.max(0, Math.min(chapters.length - 1, readerView.chapterIndex || 0));
-    const prefix = chapters.slice(0, at).reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
-    const readTo = prefix + Math.round(String(chapters[at]?.content || '').length * Math.max(0, Math.min(1, readerView.scrollRatio || 0)));
-    const total = chapters.reduce((sum, chapter) => sum + String(chapter?.content || '').length, 0);
+    const projection = coreadProjectionOf(readerView.bookId, readerContentCache.chapters || []);
+    const at = Math.max(0, Math.min(projection.starts.length - 1, readerView.chapterIndex || 0));
+    const readTo = coreadReadAt(readerView.bookId, projection), total = projection.total;
     boundaries[readerView.bookId] = {readTo, label:formatReadLabel({chapterIndex:at, progress:total ? readTo / total * 100 : NaN,
       comic:(settings?.coread?.books || []).find(book => book?.id === readerView.bookId)?.mode === 'comic'})};
   }
@@ -25676,18 +25679,42 @@ async function coreadComicVisibleText(bookId, chapterIndex, legacy) {
   return reader.comicVisibleText(record, chapterIndex, coreadCompanion().visibleCharsBefore);
 }
 
+// 一本书的投影（qianmu-reader-model.js）：打开着的书开书时建一次放在 readerContentCache，其余按传入的 chapters 现建。
+// 只算各章长度的前缀和，要正文时再按区间切，不把全书拼成一个字符串。
+function coreadProjectionOf(bookId, chapters) {
+  const cache = readerContentCache;
+  if (cache?.bookId === bookId && cache.chapters === chapters && cache.projection) return cache.projection;
+  return reader.createProjection(chapters);
+}
+
+// 读位（全局字符位）。打开着的书取当前章与滚动比例；其余取书架里存的章号与章内偏移，
+// 旧书只存了比例时按 round(本章长度 × 比例) 折算——与从前 computeVisibleWindow 的读位逐字相同。
+function coreadReadAt(bookId, projection) {
+  const open = readerView?.bookId === bookId;
+  const meta = coreadBookMeta(bookId) || (coread().retainedMemoryBooks || []).find((book) => book.id === bookId) || {};
+  const ci = Math.max(0, Math.min(Number(open ? readerView.chapterIndex : meta.lastChapterIndex) || 0, Math.max(0, projection.starts.length - 1)));
+  const length = projection.lengthOf(ci);
+  const offset = open ? reader.offsetFromRatio(length, readerView.scrollRatio)
+    : Number.isFinite(meta.lastOffset) ? meta.lastOffset : reader.offsetFromRatio(length, meta.lastScrollRatio);
+  return reader.positionAt(projection, ci, offset);
+}
+
+// 正文 [gap.from, gap.to) 分批（planCoreadTextSpans 的规则）：只切这一段，返回的仍是全局位。
+function coreadTextSpans(projection, gap, cap) {
+  const text = projection.slice(gap.from, gap.to);
+  return reader.planCoreadTextSpans(text, 0, text.length, cap).map(({ from, to }) => ({ from: gap.from + from, to: gap.from + to }));
+}
+
 // 当前书的统一阅读水位。伴读对话与记忆过滤都只认这一份绝对字符坐标，
 // 防止正文窗口安全、记忆召回却越过进度的“双重口径”。
-function coreadBoundaryFromChapters(bookId, chapters, chapterIndex, scrollRatio) {
-  const list = Array.isArray(chapters) ? chapters : [];
-  const fullLength = reader.totalChars(list);
-  const win = computeVisibleWindow(list, chapterIndex, scrollRatio, 100, Math.max(fullLength, 200));
+function coreadBoundaryAt(bookId, projection, readTo, chapterIndex) {
+  const total = projection.total;
   return {
     bookId: String(bookId || ''),
-    readTo: win.readPos,
-    totalChars: fullLength,
+    readTo,
+    totalChars: total,
     chapterIndex: Math.max(0, Number(chapterIndex) || 0),
-    progress: fullLength ? Math.round((win.readPos / fullLength) * 100) : 0,
+    progress: total ? Math.round((readTo / total) * 100) : 0,
     exact: true,
   };
 }
@@ -25697,8 +25724,8 @@ function coreadCurrentReadBoundarySync(bookId) {
   const meta = coreadBookMeta(id) || (coread().retainedMemoryBooks || []).find((book) => book.id === id) || {};
   if (readerContentCache?.bookId === id && Array.isArray(readerContentCache.chapters)) {
     const chapterIndex = readerView?.bookId === id ? readerView.chapterIndex : (meta.lastChapterIndex || 0);
-    const scrollRatio = readerView?.bookId === id ? readerView.scrollRatio : (meta.lastScrollRatio || 0);
-    return coreadBoundaryFromChapters(id, readerContentCache.chapters, chapterIndex, scrollRatio);
+    const projection = coreadProjectionOf(id, readerContentCache.chapters);
+    return coreadBoundaryAt(id, projection, coreadReadAt(id, projection), chapterIndex);
   }
   const total = Math.max(0, Number(meta.charCount) || 0);
   const progress = Math.max(0, Math.min(100, Number(meta.progress) || 0));
@@ -25719,7 +25746,8 @@ async function coreadResolveReadBoundary(bookId) {
   try {
     const rec = await blobStore.getBook(id);
     if (rec && Array.isArray(rec.chapters)) {
-      return coreadBoundaryFromChapters(id, rec.chapters, meta.lastChapterIndex || 0, meta.lastScrollRatio || 0);
+      const projection = reader.createProjection(rec.chapters);
+      return coreadBoundaryAt(id, projection, coreadReadAt(id, projection), meta.lastChapterIndex || 0);
     }
   } catch (_) {}
   return coreadCurrentReadBoundarySync(id);
@@ -25823,12 +25851,11 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   if (!meta) return null;
 
   // 正文来源：当前打开的书走内存缓存，否则回落 IndexedDB
-  let chapters = null, chapterIndex = 0, scrollRatio = 0, comicDescriptions = {};
+  let chapters = null, chapterIndex = 0, comicDescriptions = {};
   if (readerContentCache && readerContentCache.bookId === id) {
     chapters = readerContentCache.chapters;
     comicDescriptions = readerContentCache.comicDescriptions || {};
     chapterIndex = readerView?.chapterIndex || 0;
-    scrollRatio = readerView?.scrollRatio || 0;
   } else {
     let rec = null;
     try { rec = await blobStore.getBook(id); } catch (_) {}
@@ -25836,10 +25863,10 @@ async function buildCompanionContext(bookId, recallQuery = '') {
     chapters = rec.chapters;
     comicDescriptions = rec.comicDescriptions || {};
     chapterIndex = meta.lastChapterIndex || 0;
-    scrollRatio = meta.lastScrollRatio || 0;
   }
 
-  const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, cp.visiblePercent, cp.visibleCharsBefore);
+  const projection = coreadProjectionOf(id, chapters), readTo = coreadReadAt(id, projection);
+  const win = reader.visibleWindowAt(projection, readTo, cp.visiblePercent, cp.visibleCharsBefore);
   const visibleText = meta.mode === 'comic'
     ? (await coreadComicVisibleText(id, chapterIndex, comicDescriptions) || '（当前已读漫画页尚未生成视觉文字稿）')
     : win.visibleText;
@@ -25903,7 +25930,7 @@ async function buildCompanionContext(bookId, recallQuery = '') {
   let recallCount = 0;
   const mem = coreadMemory();
   if (recallQuery && ((mem.recallCount || 0) > 0 || (mem.recentInject || 0) > 0)) {
-    const boundary = coreadBoundaryFromChapters(id, chapters, chapterIndex, scrollRatio);
+    const boundary = coreadBoundaryAt(id, projection, readTo, chapterIndex);
     if (readerDialog.bookId === id) readerDialog.readBoundary = boundary;
     // 检索池：有效阶段顶替它盖住的细切片；近景仍取最近的细切片。
     const recallPool = coreadRecallPoolFor(boundary, mem);
@@ -26596,33 +26623,32 @@ async function coreadDistillReadText(m, { maxBatches = Infinity } = {}) {
     if (!meta) return { ok: false, reason: '未打开书目' };
     if (meta.mode === 'comic') return { ok: false, reason: '漫画不走正文总结' };
     // 取正文：当前打开走内存缓存，否则回落 IndexedDB
-    let chapters = null, chapterIndex = 0, scrollRatio = 0;
+    let chapters = null;
     if (readerContentCache && readerContentCache.bookId === id) {
-      chapters = readerContentCache.chapters; chapterIndex = readerView?.chapterIndex || 0; scrollRatio = readerView?.scrollRatio || 0;
+      chapters = readerContentCache.chapters;
     } else {
       let rec = null; try { rec = await blobStore.getBook(id); } catch (_) {}
       if (!rec || !Array.isArray(rec.chapters)) return { ok: false, reason: '取不到正文' };
-      chapters = rec.chapters; chapterIndex = meta.lastChapterIndex || 0; scrollRatio = meta.lastScrollRatio || 0;
+      chapters = rec.chapters;
     }
     if (!Array.isArray(chapters) || !chapters.length) return { ok: false, reason: '正文为空' };
     // 覆盖「已读范围内还没被正文切片覆盖」的正文（首次则从头）。读位用全文绝对偏移。
     // 按字数上限分成连续批次，每批一条切片、只登记自己真正送出的那段；逐批落盘，失败即停。
-    const full = chapters.map((ch) => String(ch?.content || '')).join('');
-    const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, 100, full.length);   // percent=100 拿到 readPos/totalLen
-    const readPos = win.readPos;
+    const projection = coreadProjectionOf(id, chapters);
+    const readPos = coreadReadAt(id, projection);
     const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], readPos);
     const pendingChars = gaps.reduce((sum, gap) => sum + gap.to - gap.from, 0);
     if (!pendingChars && readPos > 0) return { ok: false, reason: '已读内容都已总结过了' };
     if (pendingChars <= 20) return { ok: false, reason: '没有新读的正文可总结（先往后读一些）' };
     const names = { char: companionCharName(), user: coreadUserName() };
     const cap = coreadTextSpanSize(m, meta, names);
-    const spans = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, cap)).slice(0, maxBatches);
+    const spans = gaps.flatMap((gap) => coreadTextSpans(projection, gap, cap)).slice(0, maxBatches);
     let made = 0, salvaged = false;
     const finish = async (result) => ({ ...result, made, salvaged });
     for (const [si, span] of spans.entries()) {
       if (coreadDistillAbort) return finish({ ok: false, aborted: true, reason: '已停止' });
       const sysPrompt = coreadSummarySystemPrompt('book', m, meta, names, { part: si + 1, total: spans.length });
-      const body = full.slice(span.from, span.to);
+      const body = projection.slice(span.from, span.to);
       if (!body.trim()) continue;
       coreadDistillCtl = new AbortController();
       let res;
@@ -26673,15 +26699,15 @@ async function coreadDistillFullBook(m) {
       chapters = rec.chapters;
     }
     if (!Array.isArray(chapters) || !chapters.length) return { ok: false, reason: '正文为空' };
-    const full = chapters.map((ch) => String(ch?.content || '')).join('');
-    if (!full.trim()) return { ok: false, reason: '正文为空' };
+    if (!chapters.some((ch) => String(ch?.content || '').trim())) return { ok: false, reason: '正文为空' };
+    const projection = coreadProjectionOf(id, chapters);
     // 与「总结已读」、自动总结同一把尺：每「正文每多少字总结一次」字一段，「每批字数上限」只作安全上限；分好的段原样送出，不再二次截断。
     const names = { char: companionCharName(), user: coreadUserName() };
     const chunkSize = coreadTextSpanSize(m, meta, names);
     // 划分段落（每段至多 chunkSize 字·首尾相接不重叠·优先在换行处分段）
     // 只整理还没被正文切片覆盖的部分：连点两次、或中途停下后再点，都不会生成重复切片，只补缺口。
-    const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], full.length);
-    const chunks = gaps.flatMap((gap) => reader.planCoreadTextSpans(full, gap.from, gap.to, chunkSize)).filter(({ from, to }) => full.slice(from, to).trim());
+    const gaps = reader.coreadUncoveredTextRanges(readerDialog.slices || [], projection.total);
+    const chunks = gaps.flatMap((gap) => coreadTextSpans(projection, gap, chunkSize)).filter(({ from, to }) => projection.slice(from, to).trim());
     if (!chunks.length) return { ok: false, reason: '全书都已总结过了' };
     toast(`总结全书：共 ${chunks.length} 段，开始逐段处理…`, 'info');
     let ok = 0, fail = 0, aborted = false, saveFailed = false, stopped = false, lastFailure = '';
@@ -26689,7 +26715,7 @@ async function coreadDistillFullBook(m) {
       // 用户中途按「停止」：保留已生成的切片，剩余段不再处理
       if (coreadDistillAbort) { aborted = true; break; }
       const { from, to } = chunks[ci];
-      const body = full.slice(from, to);
+      const body = projection.slice(from, to);
       if (!body.trim()) continue;
       const sysPrompt = coreadSummarySystemPrompt('book', m, meta, names, { part: ci + 1, total: chunks.length });
       let res = null;
@@ -28423,8 +28449,8 @@ async function coreadAssistantReadingContext(bookId) {
   if (!Array.isArray(chapters) || !chapters.length) return null;
   const cp = coreadCompanion();
   const chapterIndex = readerView?.bookId === bookId ? readerView.chapterIndex : (meta.lastChapterIndex || 0);
-  const scrollRatio = readerView?.bookId === bookId ? (readerView.scrollRatio || 0) : (meta.lastScrollRatio || 0);
-  const win = computeVisibleWindow(chapters, chapterIndex, scrollRatio, cp.visiblePercent, cp.visibleCharsBefore);
+  const projection = coreadProjectionOf(bookId, chapters);
+  const win = reader.visibleWindowAt(projection, coreadReadAt(bookId, projection), cp.visiblePercent, cp.visibleCharsBefore);
   const visibleText = meta.mode === 'comic' ? await coreadComicVisibleText(bookId, chapterIndex, comicDescriptions) : win.visibleText;
   return { meta, visibleText: visibleText || '', chapterIndex, progress: Number(meta.progress) || 0 };
 }
@@ -29553,7 +29579,7 @@ async function coreadImportText(rawText, title = '', author = '', preChapters = 
   coread().books.unshift({
     id: bookId, title: finalTitle, author: String(author || ''),
     addedAt: Date.now(), lastReadAt: 0, chapterCount: finalChapters.length, charCount,
-    tags: [], boundChar: '', progress: 0, lastChapterIndex: 0, lastScrollRatio: 0, ragEnabled: false, hasCover, imageCount,
+    tags: [], boundChar: '', progress: 0, lastChapterIndex: 0, lastOffset: 0, lastScrollRatio: 0, noteCount: 0, ragEnabled: false, hasCover, imageCount,
     mode: bookOptions.mode || 'text', pageCount: Number(bookOptions.pageCount) || 0,
   });
   // 在合集内点「＋」导入时，新书留在当前合集；根层导入仍保持未分类。
@@ -30017,6 +30043,7 @@ async function coreadDeleteBook(bookId, options = {}) {
     // 账户端：删记忆时让其他设备一并删除；保留记忆时把改写后的档案传上去。封面跟书走，两种都删。结果在书架状态落定后再看。
     const accountRemoval = deleteMemory ? readerChatSync.remove(result.chatKeys || []) : (readerChatSync.request(), null);
     void readerCoverSync.remove([bookId]);
+    void readerNotesSync.remove([bookId]);   // 笔记跟书走，两种都删
     if (!current()) { toast('本机资源已清理，但书架已变化，未覆盖新状态，请重新打开核对。', 'warning'); return false; }
     // 只卸载这一本书的阅读状态，不经过会再次保存旧会话的通用关闭路径。
     if (readerView?.bookId === bookId) {
@@ -30045,6 +30072,7 @@ async function coreadDeleteBook(bookId, options = {}) {
         id: bookId, title: meta.title || '未命名书籍', author: meta.author || '', deletedAt: Date.now(),
         charCount: Number(meta.charCount) || 0, progress: Number(meta.progress) || 0,
         lastChapterIndex: Number(meta.lastChapterIndex) || 0, lastScrollRatio: Number(meta.lastScrollRatio) || 0,
+        ...(Number.isFinite(meta.lastOffset) ? { lastOffset: meta.lastOffset } : {}),
       };
       if (retainedIndex >= 0) retained[retainedIndex] = snapshot;
       else retained.push(snapshot);
@@ -30100,18 +30128,27 @@ async function coreadOpenBook(bookId, { isCurrent = () => true } = {}) {
     return;
   }
   meta.lastReadAt = Date.now();
-  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadComicStop(); coreadSaveProgress({ summarize: false }); }
+  if (readerView) { coreadStopDialog(); coreadStopAssistant(false); coreadComicStop(); coreadSaveProgress({ summarize: false, flush: true }); }
   saveSettings();
-  readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, sig: rec.sig || '', comicDescriptions: isPlainObject(rec.comicDescriptions) ? rec.comicDescriptions : {} };
+  readerContentCache = { bookId, fullText: rec.fullText || '', chapters: rec.chapters, projection: reader.createProjection(rec.chapters), sig: rec.sig || '', comicDescriptions: isPlainObject(rec.comicDescriptions) ? rec.comicDescriptions : {} };
   void coreadComicLoad(bookId);
   const startCh = Number.isInteger(meta.lastChapterIndex) ? meta.lastChapterIndex : 0;
+  const chapterIndex = Math.max(0, Math.min(startCh, rec.chapters.length - 1)), chapterLength = readerContentCache.projection.lengthOf(chapterIndex);
+  // 读位以章内偏移为准。旧书只存了滚动比例：开书时按本章长度折一次写回（一次性换算，比例仍一并存着）。
+  if (meta.mode !== 'comic' && !Number.isFinite(meta.lastOffset)) meta.lastOffset = reader.offsetFromRatio(chapterLength, meta.lastScrollRatio);
+  // 旧渲染器按比例落位：存着的比例与偏移对得上就照用比例（像素级不变），对不上（别处只改了偏移）才由偏移折回比例。
+  const storedRatio = Math.max(0, Math.min(1, Number(meta.lastScrollRatio) || 0));
+  const scrollRatio = meta.mode === 'comic' || !chapterLength || !Number.isFinite(meta.lastOffset) || reader.offsetFromRatio(chapterLength, storedRatio) === meta.lastOffset
+    ? storedRatio : Math.max(0, Math.min(1, meta.lastOffset / chapterLength));
   readerView = {
-    bookId, chapterIndex: Math.max(0, Math.min(startCh, rec.chapters.length - 1)),
-    scrollRatio: Math.max(0, Math.min(1, Number(meta.lastScrollRatio) || 0)), barHidden: false, activePanel: '', dialogPinned: false,
+    bookId, chapterIndex,
+    scrollRatio, barHidden: false, activePanel: '', dialogPinned: false,
     companionAvatar: session.avatar, companionScope: session.scope, userPersona: { ...persona },
     sessionStart: nowMs(), assistantOpen: false, pendingChatImages: [], panelInputBlockedUntil: 0, returnTab,
+    notes: null, notesLoaded: false,
   };
   saveSettings();
+  void coreadLoadReaderNotes(readerView);
   readerLog?.open(bookId, { pal: ch && avatar ? { key: avatar, name: ch.name || ch.data?.name || '' } : null, pos: coreadReadPos() });
   readerAssistant = { bucket: coreadDialogBucket(bookId), bookId, messages: [], quote: '', loaded: false };
   // 阅读器始终走 body portal（逃离模态 backdrop-filter 包含块；窄屏/移动端真·全页，不被 .sd-window 裁切）
@@ -30147,6 +30184,7 @@ function coreadCloseReader() {
   }
   coreadSaveProgress({ summarize: false });   // 退出时只保存，不新启动记忆任务
   readerLog?.close();
+  coreadFlushSave();                          // 读位与阅读记录攒着的那次立刻写掉
   let linkCapture = null;                     // 阅读状态清掉之前记下「谁、哪本书、读到哪」；取不到不影响退出
   try { linkCapture = coreadCaptureLink(); } catch (_) {}
   unmountReaderPortal();
@@ -30206,22 +30244,44 @@ function nowMs() {
 // 此刻读到全书第几个字（章内按滚动比例折算）；漫画没有字，记 0。
 function coreadReadPos() {
   if (!readerView || !readerContentCache || coreadBookMeta(readerView.bookId)?.mode === 'comic') return 0;
-  const chapters = readerContentCache.chapters || [], ci = Math.max(0, Math.min(readerView.chapterIndex || 0, chapters.length - 1));
-  let pos = 0;
-  for (let i = 0; i < ci; i++) pos += String(chapters[i]?.content || '').length;
-  return pos + Math.round(String(chapters[ci]?.content || '').length * Math.max(0, Math.min(1, Number(readerView.scrollRatio) || 0)));
+  return coreadReadAt(readerView.bookId, coreadProjectionOf(readerView.bookId, readerContentCache.chapters || []));
 }
 
-// 保存阅读进度（章节 + 滚动比例 + 累计阅读时长 → 轻量索引）。
-function coreadSaveProgress({ summarize = true } = {}) {
+// 阅读中写设置（读位、阅读记录）：每 5 秒最多交给 ST 一次——每次都会上传整份设置。
+// 关书、换书时立刻写；页面藏到后台时把攒着的那次立刻写掉。
+const COREAD_SAVE_EVERY_MS = 5000;
+let coreadSaveTimer = null, coreadSaveAt = 0;
+const coreadSaveOnHide = () => { if (document.visibilityState === 'hidden') coreadFlushSave(); };
+function coreadQueueSave() {
+  if (coreadSaveTimer) return;
+  const wait = coreadSaveAt + COREAD_SAVE_EVERY_MS - nowMs();
+  if (wait <= 0) { coreadSaveAt = nowMs(); saveSettings(); return; }
+  coreadSaveTimer = setTimeout(coreadFlushSave, wait);
+  document.addEventListener('visibilitychange', coreadSaveOnHide);
+}
+function coreadFlushSave() {
+  if (coreadSaveTimer) { clearTimeout(coreadSaveTimer); coreadSaveTimer = null; document.removeEventListener('visibilitychange', coreadSaveOnHide); }
+  coreadSaveAt = nowMs();
+  saveSettings();
+}
+
+// 保存阅读进度（章节 + 章内偏移 + 累计阅读时长 → 轻量索引）。滚动比例照旧一并存着（旧渲染器按它落位）。
+// flush：立刻写设置（关书）；否则按上面的节流。
+function coreadSaveProgress({ summarize = true, flush = false } = {}) {
   if (!readerView || !readerContentCache) return;
   const meta = coreadBookMeta(readerView.bookId);
   if (!meta) return;
+  const projection = coreadProjectionOf(readerView.bookId, readerContentCache.chapters || []), readTo = coreadReadAt(readerView.bookId, projection);
+  const ci = Math.max(0, Math.min(readerView.chapterIndex || 0, Math.max(0, projection.starts.length - 1)));
   meta.lastChapterIndex = readerView.chapterIndex;
   meta.lastScrollRatio = readerView.scrollRatio || 0;
+  meta.lastOffset = readTo - (projection.starts[ci] || 0);
   meta.lastReadAt = Date.now();
   const total = readerContentCache.chapters.length || 1;
-  meta.progress = Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100);
+  // 进度按字数算，与防剧透水位同一把尺；漫画没有字，仍按页折算。
+  meta.progress = meta.mode === 'comic' || !projection.total
+    ? Math.round(((readerView.chapterIndex + (readerView.scrollRatio || 0)) / total) * 100)
+    : Math.round((readTo / projection.total) * 100);
   if (readerLog?.reading === readerView.bookId) readerLog.progress(coreadReadPos(), { done: meta.progress >= 100 });
   if (readerDialog.loaded && readerDialog.bucket === coreadDialogBucket(readerView.bookId)) readerDialog.readBoundary = coreadCurrentReadBoundarySync(readerView.bookId);
   // 累计本书阅读总时长（毫秒）；分段结算，避免长时间挂着算一坨
@@ -30230,7 +30290,7 @@ function coreadSaveProgress({ summarize = true } = {}) {
     if (delta > 0 && delta < 6 * 3600 * 1000) meta.readMs = (meta.readMs || 0) + delta;
     readerView.sessionStart = nowMs();
   }
-  saveSettings();
+  if (flush) coreadFlushSave(); else coreadQueueSave();
   if (summarize) { coreadMaybeAutoDistillText(); void coreadComicAuto(); }
 }
 
@@ -30245,9 +30305,8 @@ async function coreadMaybeAutoDistillText() {
   if (coreadBookMeta(id)?.mode === 'comic') return;
   if (!readerDialog.loaded || readerDialog.bucket !== coreadDialogBucket(id)) return;
   try {
-    const full = readerContentCache.chapters.map((ch) => String(ch?.content || '')).join('');
-    const win = computeVisibleWindow(readerContentCache.chapters, readerView.chapterIndex, readerView.scrollRatio || 0, 100, full.length);
-    const pendingChars = reader.coreadUncoveredTextRanges(readerDialog.slices || [], win.readPos).reduce((sum, gap) => sum + gap.to - gap.from, 0);
+    const readPos = coreadReadAt(id, coreadProjectionOf(id, readerContentCache.chapters));
+    const pendingChars = reader.coreadUncoveredTextRanges(readerDialog.slices || [], readPos).reduce((sum, gap) => sum + gap.to - gap.from, 0);
     if (pendingChars < Math.max(1000, m.distillTextEvery || 8000)) return;   // 已读而未总结的正文不足阈值（全书蒸过的部分不算）
     coreadAutoTextInFlight = true;
     const r = await coreadDistillReadText(m, { maxBatches: 2 });
@@ -30586,51 +30645,41 @@ function readerTextHtml(text, start, end, quotes) {
   }
   return html + htmlEscape(text.slice(cursor, end));
 }
+// 一章正文 → 段落 HTML。一行一段，空行只是分隔（从前只要有一处空行，整章的单换行就都并成了空格）。
+// 每段带 data-off：它在本章正文里的起点，选区据此换回位置。划线 hiList 是章内区间 [{id, from, to, hlStyle, color}]，
+// 按区间包 <mark>，所以同一句话出现几次也只亮划过的那一处；pick 是旧划线另外几处待挑的位置，只画虚线。
+const READER_HL_STYLES = new Set(['mark', 'wavy', 'underline']);
 function buildReaderParagraphs(text, hiList) {
   const s = String(text || '');
-  const hasBlankLines = /\n\s*\n/.test(s);
-  const blocks = hasBlankLines
-    ? s.split(/\n\s*\n/).map((b) => b.replace(/\n+/g, ' ').trim())
-    : s.split('\n').map((l) => l.trim());
-  // 长文本优先，避免短串先命中把长串切断
-  const hi = (hiList || [])
-    .filter(Boolean)
-    .flatMap((h) => {
-      const parts = Array.isArray(h.segments) && h.segments.length ? h.segments : [h.text];
-      return parts.map((part) => String(part || '').trim()).filter((part) => part.length >= 2).map((part) => ({
-        id: h.id, text: part, style: h.hlStyle || 'mark', color: sanitizeHexColor(h.color),
-      }));
-    })
-    .sort((a, b) => b.text.length - a.text.length);
-  const out = blocks.filter(Boolean).map((p) => {
+  const marks = (hiList || [])
+    .filter((h) => h && Number.isFinite(h.from) && Number.isFinite(h.to) && h.to > h.from)
+    .sort((a, b) => a.from - b.from || (b.to - b.from) - (a.to - a.from));
+  let out = '', lineStart = 0;
+  for (const line of s.split('\n')) {
+    const p = line.trim(), off = lineStart + (line.length - line.trimStart().length);
+    lineStart += line.length + 1;
+    if (!p) continue;
     // 书内插图占位符 ⟦img:n⟧ → 图片位（懒加载 IndexedDB blob·失败静默移除）
-    const imgM = /^⟦img:(\d+)⟧$/.exec(p.trim());
-    if (imgM) return `<figure class="sd-reader-inline-fig"><img class="sd-reader-inline-img" data-img="${htmlEscape(imgM[1])}" alt="插图" loading="lazy"></figure>`;
+    const imgM = /^⟦img:(\d+)⟧$/.exec(p);
+    if (imgM) { out += `<figure class="sd-reader-inline-fig" data-off="${off}"><img class="sd-reader-inline-img" data-img="${htmlEscape(imgM[1])}" alt="插图" loading="lazy"></figure>`; continue; }
     const quotes = readerQuoteRanges(p);
-    if (!hi.length) return `<p>${readerTextHtml(p, 0, p.length, quotes)}</p>`;
-    // 在「纯文本」上定位匹配区间（绝不在已注入的 HTML 标签/属性里误命中）；
-    // 长串优先占位、贪心跳过重叠 → 杜绝嵌套 <mark> 与属性串被短划线击穿。
-    const ranges = [];
-    for (const h of hi) {
-      let from = 0, idx;
-      while ((idx = p.indexOf(h.text, from)) !== -1) {
-        ranges.push({ start: idx, end: idx + h.text.length, h });
-        from = idx + h.text.length;
-      }
-    }
-    if (!ranges.length) return `<p>${readerTextHtml(p, 0, p.length, quotes)}</p>`;
-    ranges.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+    // 重叠的划线：先开始的占位，后一条从它结束处接着画，不嵌套 <mark>。
     let cursor = 0, html = '';
-    for (const r of ranges) {
-      if (r.start < cursor) continue;   // 与已占位区间重叠 → 跳过
-      html += readerTextHtml(p, cursor, r.start, quotes);
-      const styleAttr = r.h.color ? ` style="--hl-color:${r.h.color}"` : '';
-      html += `<mark class="sd-reader-hl sd-reader-hl-${r.h.style}" data-note="${htmlEscape(r.h.id)}"${styleAttr}>${readerTextHtml(p, r.start, r.end, quotes)}</mark>`;
-      cursor = r.end;
+    for (const h of marks) {
+      const a = Math.max(h.from - off, cursor), b = Math.min(h.to - off, p.length);
+      if (b <= a) continue;
+      html += readerTextHtml(p, cursor, a, quotes);
+      if (Number.isInteger(h.pick)) {
+        html += `<mark class="sd-reader-hl-pick" data-note="${htmlEscape(h.id)}" data-pick="${h.pick}">${readerTextHtml(p, a, b, quotes)}</mark>`;
+      } else {
+        const color = sanitizeHexColor(h.color), style = READER_HL_STYLES.has(h.hlStyle) ? h.hlStyle : 'mark';
+        html += `<mark class="sd-reader-hl sd-reader-hl-${style}" data-note="${htmlEscape(h.id)}"${color ? ` style="--hl-color:${color}"` : ''}>${readerTextHtml(p, a, b, quotes)}</mark>`;
+      }
+      cursor = b;
     }
     html += readerTextHtml(p, cursor, p.length, quotes);
-    return `<p>${html}</p>`;
-  }).join('');
+    out += `<p data-off="${off}">${html}</p>`;
+  }
   return out || '<p class="sd-reader-blank">（本章无正文）</p>';
 }
 
@@ -30653,9 +30702,9 @@ function buildReaderStage() {
   const ci = Math.max(0, Math.min(readerView.chapterIndex, total - 1));
   const chapter = cache.chapters[ci] || { title: '', content: '' };
   const c = coread();
-  const notes = Array.isArray(meta.notes) ? meta.notes : [];
-  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, segments: n.segments, hlStyle: n.hlStyle, color: n.color }));
-  const bookmarked = notes.some((n) => n.kind === 'bookmark' && n.chapterIndex === ci);
+  const notesSource = coreadReaderNotes();
+  const chHi = coreadChapterMarks(ci);
+  const bookmarked = notesSource.notes.some((n) => n.kind === 'bookmark' && n.ch === ci);
   const bodyStyle = `font-size:${c.fontSizePx || 19}px;line-height:${c.lineHeight || 1.9};text-align:${c.justify ? 'justify' : 'left'};--sd-rd-para:${c.paraSpacing || 1}em;--sd-rd-px:${widthToPad(Math.max(28, Math.min(66, c.contentWidthRem || 42)))}%;`;
   const paras = buildReaderParagraphs(chapter.content, chHi);
   const widthRem = Math.max(28, Math.min(66, c.contentWidthRem || 42));
@@ -30749,9 +30798,9 @@ function buildReaderStage() {
             ${cache.chapters.map((ch, i) => `<button class="sd-reader-toc-item ${i === ci ? 'active' : ''}" data-ch="${i}">${htmlEscape(ch.title || ('第 ' + (i + 1) + ' 节'))}</button>`).join('')}
           </div>
           <div class="sd-reader-ptab sd-reader-ptab-notes" hidden>
-            <div class="sd-reader-notes-view">${renderReaderNotes(meta)}</div>
+            <div class="sd-reader-notes-view">${renderReaderNotes(notesSource)}</div>
           </div>
-          <div class="sd-reader-ptab sd-reader-ptab-marks" hidden>${renderReaderMarks(meta)}</div>
+          <div class="sd-reader-ptab sd-reader-ptab-marks" hidden>${renderReaderMarks(notesSource)}</div>
         </div>
       </div>
 
@@ -31470,18 +31519,105 @@ function renderReaderVoiceClips() {
   return renderCoreadVoicePanelView(readerDialog.messages, htmlEscape);
 }
 
-// 笔记列表。meta.notes=[{id,chapterIndex,text,annotation,kind,hlStyle,at}]，kind: highlight | bookmark
+// 笔记列表。source 是这本书的笔记记录 { notes:[{id,kind,from,to,ch,text,annotation,hlStyle,at}] }，kind: highlight | bookmark
 // 划线有批注 → 「笔记」标签；仅划线无批注 → 「摘录」标签。点条目可定位回正文。
-function renderReaderNotes(meta) {
-  return renderCoreadNotesPanelView(meta.notes, {noteSearch: readerView?.noteSearch, noteFilter: readerView?.noteFilter}, htmlEscape);
+function renderReaderNotes(source) {
+  return renderCoreadNotesPanelView(source?.notes, {noteSearch: readerView?.noteSearch, noteFilter: readerView?.noteFilter}, htmlEscape);
 }
 
-function renderReaderMarks(meta) {
-  return renderCoreadMarksPanelView(meta.notes, htmlEscape);
+function renderReaderMarks(source) {
+  return renderCoreadMarksPanelView(source?.notes, htmlEscape);
+}
+
+// 打开着的书的笔记（reader_notes 那一条，开书时读进 readerView.notes）。还在读取时是空的。
+function coreadReaderNotes() {
+  return readerView?.notes || { notes: [] };
 }
 
 function coreadFindReaderNote(noteId) {
-  return coreadBookMeta(readerView?.bookId)?.notes?.find((n) => n.id === noteId && n.kind === 'highlight') || null;
+  return coreadReaderNotes().notes.find((n) => n.id === noteId && n.kind === 'highlight') || null;
+}
+
+// 开书时读一次这本书的笔记。旧笔记还在设置里（meta.notes）且没换算过时，这里是唯一的换算点：
+// 先向账户取一次（别的设备可能已换好），取到就用那份；没有才由本机换算、写入，确认上传后才记 notesAt。
+// 旧的 meta.notes 原样冻结，新代码不再读写它。读取期间新划的线先留在内存，读完与读到的合在一起再存。
+async function coreadLoadReaderNotes(view) {
+  const bookId = view.bookId, meta = coreadBookMeta(bookId);
+  const current = () => readerView === view && coreadBookMeta(bookId) === meta;
+  const legacy = !!meta && Array.isArray(meta.notes) && meta.notes.length > 0 && !meta.notesAt;
+  let record = null, failed = false;
+  try {
+    record = reader.normalizeNotesRecord(await blobStore.getReaderNotes(bookId));
+    if (!record && legacy) {
+      await readerNotesSync.refresh(bookId);
+      record = reader.normalizeNotesRecord(await blobStore.getReaderNotes(bookId));
+      if (!record && current()) {
+        record = reader.convertLegacyNotes(meta.notes, readerContentCache.projection);
+        await blobStore.putReaderNotes(bookId, record);
+        readerNotesSync.request(bookId);
+      }
+    } else void readerNotesSync.refresh(bookId);   // 别的设备改过的一份取回后由 coreadAccountNotes 换上
+  } catch (error) {
+    failed = true;
+    console.warn(`[${MODULE_NAME}] reader notes load failed`, error);
+  }
+  if (!current()) return;
+  const added = view.notes?.notes || [];
+  const base = record || reader.emptyNotesRecord(), known = new Set(base.notes.map((note) => note.id));
+  view.notes = { ...base, notes: [...base.notes, ...added.filter((note) => !known.has(note.id))] };
+  view.notesLoaded = !failed;
+  if (failed) toast('这本书的笔记没能读出来，新划的线暂不保存，请重新打开这本书。', 'warning');
+  else if (added.some((note) => !known.has(note.id))) coreadNotesCommit(view);
+  else coreadSyncNoteCount(view);
+  if (record && legacy) void coreadConfirmNotes(bookId, meta);
+  updateReaderArticle();
+}
+
+// 账户里确认已是本机这一份之后，才算旧笔记换算完成。
+async function coreadConfirmNotes(bookId, meta) {
+  if (!await readerNotesSync.confirm(bookId)) return;
+  if (coreadBookMeta(bookId) !== meta || meta.notesAt) return;
+  meta.notesAt = Date.now();
+  saveSettings();
+}
+
+function coreadSyncNoteCount(view) {
+  const meta = coreadBookMeta(view.bookId), count = view.notes?.notes?.length || 0;
+  if (!meta || meta.noteCount === count) return;
+  meta.noteCount = count;
+  saveSettings();
+}
+
+// 笔记改动后：记下修改时间、写本机并排一轮上传；书架上只留条数。
+function coreadNotesCommit(view = readerView) {
+  if (!view?.notes) return;
+  view.notes = { ...view.notes, v: 1, updatedAt: nowMs() };
+  coreadSyncNoteCount(view);
+  if (!view.notesLoaded) return;   // 还在读取或换算：读完后合并再存
+  const bookId = view.bookId, record = view.notes;
+  void readerNotesSync.put(bookId, record).catch((error) => {
+    console.warn(`[${MODULE_NAME}] reader notes save failed`, error);
+    toast('笔记没能存进本机，请重试。', 'warning');
+  });
+}
+
+// 账户取回或删掉了某几本书的笔记：打开着的那本重新读一次。
+function coreadAccountNotes(ids) {
+  const view = readerView;
+  if (!view?.notesLoaded || !ids.map(String).includes(view.bookId)) return;
+  void blobStore.getReaderNotes(view.bookId).then((raw) => {
+    if (readerView !== view) return;
+    view.notes = reader.normalizeNotesRecord(raw) || reader.emptyNotesRecord();
+    coreadSyncNoteCount(view);
+    updateReaderArticle();
+  }).catch((error) => console.warn(`[${MODULE_NAME}] reader notes reload failed`, error));
+}
+
+// 当前章要画的划线（章内区间），以及旧划线另外几处待挑的位置。
+function coreadChapterMarks(ci) {
+  const projection = readerContentCache?.projection;
+  if (!projection) return [];
+  return reader.chapterMarks(coreadReaderNotes().notes, projection.starts[ci] || 0, projection.lengthOf(ci));
 }
 
 function coreadNoteSource(note) {
@@ -31996,6 +32132,9 @@ function bindReaderStageEvents(stageRoot) {
     const edit = e.target.closest('.sd-reader-note-edit');
     const del = e.target.closest('.sd-reader-note-del');
     if (jump) { readerView.chapterIndex = Number(jump.dataset.ch) || 0; readerView.scrollRatio = 0; coreadSaveProgress(); refreshReaderPortal(); return; }
+    // 「未定位」里旧划线另外几处：定位过去看一眼、留下成一条划线、或不要。
+    const pickBtn = e.target.closest('.sd-reader-note-pickjump, .sd-reader-note-keep, .sd-reader-note-drop');
+    if (pickBtn) { e.stopPropagation(); coreadPickCandidate(stageRoot, pickBtn); return; }
     if (toolsToggle) {
       e.stopPropagation();
       const card = toolsToggle.closest('.sd-reader-note-item');
@@ -32008,7 +32147,7 @@ function bindReaderStageEvents(stageRoot) {
     if (favorite) {
       e.stopPropagation();
       const note = coreadFindReaderNote(favorite.dataset.note);
-      if (note) { note.favorite = !note.favorite; saveSettings(); updateReaderArticle(stageRoot); }
+      if (note) { note.favorite = !note.favorite; note.updatedAt = nowMs(); coreadNotesCommit(); updateReaderArticle(stageRoot); }
       return;
     }
     if (copy) { e.stopPropagation(); void coreadCopyText(coreadNotePlainText(coreadFindReaderNote(copy.dataset.note))); return; }
@@ -32032,7 +32171,7 @@ function bindReaderStageEvents(stageRoot) {
     readerView.noteSearch = notesPanel.querySelector('.sd-reader-notes-search input')?.value || '';
     readerView.noteFilter = kind;
     let visible = 0;
-    const notesById = new Map((coreadBookMeta(readerView.bookId)?.notes || []).map(note => [String(note.id), note]));
+    const notesById = new Map(coreadReaderNotes().notes.map(note => [String(note.id), note]));
     notesPanel.querySelectorAll('.sd-reader-note-item').forEach((item) => {
       item.hidden = !coreadNoteMatches(notesById.get(item.dataset.note), key, kind);
       if (!item.hidden) visible++;
@@ -33201,7 +33340,7 @@ function bindReaderStageEvents(stageRoot) {
   const anyPanelOpen = () => !!stageRoot.querySelector('.sd-reader-panel.open');
   const hideTools = () => { if (tools) tools.hidden = true; };
   let pendingText = '';   // 新选区文本
-  let pendingSegments = []; // 跨段选区按正文段保存，既保留完整摘录也能逐段正确划线
+  let pendingRange = null; // 新选区在本章正文里的区间 {from, to}，划线按它存位置
   let pendingMark = '';   // 已划线 noteId
   let toolInteracting = false;
   if (bodyEl && tools) {
@@ -33226,22 +33365,31 @@ function bindReaderStageEvents(stageRoot) {
         tools.style.left = `${left}px`; tools.style.top = `${Math.max(8, top)}px`;
       });
     };
-    const selectionSegments = (range) => {
-      const parts = [];
-      const article = bodyEl.querySelector('.sd-reader-article');
-      if (!article || !range) return parts;
-      for (const paragraph of article.querySelectorAll('p')) {
-        try {
-          if (!range.intersectsNode(paragraph)) continue;
-          const piece = document.createRange();
-          piece.selectNodeContents(paragraph);
-          if (paragraph.contains(range.startContainer)) piece.setStart(range.startContainer, range.startOffset);
-          if (paragraph.contains(range.endContainer)) piece.setEnd(range.endContainer, range.endOffset);
-          const text = piece.toString().trim();
-          if (text) parts.push(text);
-        } catch (_) {}
+    // 选区一端 → 本章正文里的偏移：每段 [data-off] 记着自己的起点，段内再数到这一点为止的字。
+    // 落在段与段之间或标题上时，起点取后一段的开头，终点取前一段的末尾。换不出时返回 null。
+    const pointOffset = (article, node, offset, atEnd) => {
+      const el = node?.nodeType === 1 ? node : node?.parentElement;
+      const para = el?.closest?.('[data-off]');
+      if (para && article.contains(para)) {
+        const piece = document.createRange();
+        piece.selectNodeContents(para); piece.setEnd(node, offset);
+        return Number(para.dataset.off) + piece.toString().length;
       }
-      return parts;
+      const probe = document.createRange();
+      probe.setStart(node, offset);
+      const paras = [...article.querySelectorAll('[data-off]')];
+      if (!atEnd) { const next = paras.find((item) => probe.comparePoint(item, 0) >= 0); return next ? Number(next.dataset.off) : null; }
+      const prev = paras.filter((item) => probe.comparePoint(item, item.childNodes.length) <= 0).pop();
+      return prev ? Number(prev.dataset.off) + prev.textContent.length : null;
+    };
+    const selectionRange = (range) => {
+      const article = bodyEl.querySelector('.sd-reader-article'), content = String(readerContentCache?.chapters?.[readerView?.chapterIndex]?.content || '');
+      if (!article || !range) return null;
+      let from = pointOffset(article, range.startContainer, range.startOffset, false), to = pointOffset(article, range.endContainer, range.endOffset, true);
+      if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+      while (from < to && /\s/.test(content[from])) from++;   // 与选区文字一样去掉首尾空白
+      while (to > from && /\s/.test(content[to - 1])) to--;
+      return to > from ? { from, to } : null;
     };
     // 选中正文 → 父级。移动端长按选字往往只触发 selectionchange（不必有 touchend/mouseup 落在正文上），
     // 故三路监听（selectionchange 兜底 + touchend/mouseup 提速）合流到一个去抖的 onSelect，避免移动端选完不弹窗。
@@ -33250,7 +33398,7 @@ function bindReaderStageEvents(stageRoot) {
       if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
         if (toolInteracting) return;
         // 新选区被用户取消时立即收起；已划线菜单由正文点击逻辑独立管理。
-        if (!pendingMark) { pendingText = ''; pendingSegments = []; hideTools(); }
+        if (!pendingMark) { pendingText = ''; pendingRange = null; hideTools(); }
         return;
       }
       let range;
@@ -33260,8 +33408,10 @@ function bindReaderStageEvents(stageRoot) {
       if (anchorEl && anchorEl.closest('.sd-reader-hltools')) return;
       if (anchorEl && !anchorEl.closest('.sd-reader-body')) return;
       const text = String(sel).trim();
-      if (!text) { if (!pendingMark) { pendingText = ''; pendingSegments = []; hideTools(); } return; }
-      pendingText = text; pendingSegments = selectionSegments(range); pendingMark = '';
+      if (!text) { if (!pendingMark) { pendingText = ''; pendingRange = null; hideTools(); } return; }
+      try { pendingRange = selectionRange(range); }
+      catch (error) { pendingRange = null; console.warn(`[${MODULE_NAME}] selection offset failed`, error); }
+      pendingText = text; pendingMark = '';
       // getClientRects 末段更贴合多行选区尾部；退回 getBoundingClientRect
       const rects = range.getClientRects();
       const rect = rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
@@ -33283,17 +33433,17 @@ function bindReaderStageEvents(stageRoot) {
     // 父级：划线 → 展开样式级；笔记 → 建划线(荧光默认)并即开笔记
     lvMain.querySelector('[data-act="highlight"]').onclick = () => showLevel('styles');
     lvMain.querySelector('[data-act="note"]').onclick = () => {
-      const text = pendingText; const segments = pendingSegments.slice(); hideTools();
+      const text = pendingText; const range = pendingRange; hideTools();
       window.getSelection?.()?.removeAllRanges?.();
-      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) openReaderNoteDialog(id); }
+      if (text) { const id = coreadAddHighlight(text, 'mark', range); updateReaderArticle(stageRoot); if (id) openReaderNoteDialog(id); }
     };
     lvMain.querySelector('[data-act="copy"]').onclick = () => {
       const text = pendingText; hideTools(); window.getSelection?.()?.removeAllRanges?.();
       if (text) void coreadCopyText(text);
     };
     lvMain.querySelector('[data-act="image"]').onclick = () => {
-      const text = pendingText; const segments = pendingSegments.slice(); hideTools(); window.getSelection?.()?.removeAllRanges?.();
-      if (text) { const id = coreadAddHighlight(text, 'mark', segments); updateReaderArticle(stageRoot); if (id) void coreadOpenExcerptDialog(id); }
+      const text = pendingText; const range = pendingRange; hideTools(); window.getSelection?.()?.removeAllRanges?.();
+      if (text) { const id = coreadAddHighlight(text, 'mark', range); updateReaderArticle(stageRoot); if (id) void coreadOpenExcerptDialog(id); }
     };
     lvMain.querySelector('[data-act="assistant"]').onclick = (event) => {
       event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation?.();
@@ -33309,10 +33459,10 @@ function bindReaderStageEvents(stageRoot) {
       const sw = lvStyles.querySelector('.sd-reader-hlcolor span'); if (sw) sw.style.background = col || '#d8a657';
     });
     lvStyles.querySelectorAll('button[data-style]').forEach((btn) => btn.addEventListener('click', () => {
-      const text = pendingText; const segments = pendingSegments.slice(); hideTools();
+      const text = pendingText; const range = pendingRange; hideTools();
       window.getSelection?.()?.removeAllRanges?.();
       showLevel('main');   // 划线后自动返回上一级
-      if (text) { coreadAddHighlight(text, btn.dataset.style || 'mark', segments); updateReaderArticle(stageRoot); }
+      if (text) { coreadAddHighlight(text, btn.dataset.style || 'mark', range); updateReaderArticle(stageRoot); }
     }));
     // 已划线级：笔记 / 取消划线
     lvExist.querySelector('[data-act="note"]').onclick = () => { const id = pendingMark; hideTools(); if (id) openReaderNoteDialog(id); };
@@ -33333,7 +33483,7 @@ function bindReaderStageEvents(stageRoot) {
       const mark = e.target.closest('.sd-reader-hl');
       if (!mark) return;
       e.stopPropagation();
-      pendingMark = mark.dataset.note; pendingText = ''; pendingSegments = [];
+      pendingMark = mark.dataset.note; pendingText = ''; pendingRange = null;
       showTools(mark.getBoundingClientRect(), 'exist');
     });
   }
@@ -33478,61 +33628,96 @@ function updateReaderArticle(stageRoot) {
   if (!meta) return;
   const ci = Math.max(0, Math.min(readerView.chapterIndex, readerContentCache.chapters.length - 1));
   const chapter = readerContentCache.chapters[ci] || { title: '', content: '' };
-  const notes = Array.isArray(meta.notes) ? meta.notes : [];
-  const chHi = notes.filter((n) => n.kind === 'highlight' && n.chapterIndex === ci).map((n) => ({ id: n.id, text: n.text, segments: n.segments, hlStyle: n.hlStyle, color: n.color }));
+  const notesSource = coreadReaderNotes();
   const article = root.querySelector('.sd-reader-article');
-  if (article) { article.innerHTML = `<h2 class="sd-reader-h2">${htmlEscape(chapter.title || '')}</h2>${buildReaderParagraphs(chapter.content, chHi)}`; loadInlineImages(root); }
+  if (article) { article.innerHTML = `<h2 class="sd-reader-h2">${htmlEscape(chapter.title || '')}</h2>${buildReaderParagraphs(chapter.content, coreadChapterMarks(ci))}`; loadInlineImages(root); }
   // 笔记/书签列表同步（若抽屉开着，内容不至于过时）
   const nv = root.querySelector('.sd-reader-notes-view');
-  if (nv) { nv.innerHTML = renderReaderNotes(meta); applyQianmuIcons(nv); }
+  if (nv) { nv.innerHTML = renderReaderNotes(notesSource); applyQianmuIcons(nv); }
   const mk = root.querySelector('.sd-reader-ptab-marks');
-  if (mk) { mk.innerHTML = renderReaderMarks(meta); applyQianmuIcons(mk); }
+  if (mk) { mk.innerHTML = renderReaderMarks(notesSource); applyQianmuIcons(mk); }
+  coreadPaintBookmark(root);
 }
 
-// 新增划线（带样式 + 颜色快照）。text + style:'mark'|'wavy'|'underline'。返回新 noteId（供「笔记」接力打开批注）。
+// 新增划线（带样式 + 颜色快照）。text + style:'mark'|'wavy'|'underline'；range 是选区在本章正文里的区间 {from, to}。
+// 存全局位置；选区换不出位置时（极少见）退回在本章找这段字，仍找不到就进「未定位」。返回新 noteId（供「笔记」接力打开批注）。
 // 不在此重建/更新 DOM，由调用方 updateReaderArticle 原地刷新（不跳动）。
-function coreadAddHighlight(text, style, segments = []) {
-  const meta = coreadBookMeta(readerView.bookId);
-  if (!meta) return '';
-  if (!Array.isArray(meta.notes)) meta.notes = [];
-  const id = uid('note');
-  meta.notes.push({
-    id, kind: 'highlight', chapterIndex: readerView.chapterIndex,
-    text: String(text || ''), segments: (Array.isArray(segments) ? segments : []).map((part) => String(part || '').trim()).filter(Boolean), hlStyle: style || 'mark',
-    color: sanitizeHexColor(coread().hlColor), annotation: '', at: nowMs(),
+function coreadAddHighlight(text, style, range = null) {
+  const view = readerView, meta = coreadBookMeta(view?.bookId), projection = readerContentCache?.projection;
+  if (!meta || !projection) return '';
+  view.notes ||= reader.emptyNotesRecord();   // 还在读取：先记在内存，读完与读到的合并后再存
+  const ci = Math.max(0, Math.min(view.chapterIndex || 0, Math.max(0, projection.starts.length - 1))), start = projection.starts[ci] || 0;
+  const place = range && range.to > range.from ? range
+    : reader.locateLegacyText(String(readerContentCache.chapters[ci]?.content || ''), [String(text || '')])[0] || null;
+  const id = uid('note'), now = nowMs();
+  view.notes.notes.push({
+    id, kind: 'highlight', from: place ? start + place.from : null, to: place ? start + place.to : null, ch: ci,
+    text: String(text || ''), hlStyle: style || 'mark', color: sanitizeHexColor(coread().hlColor), annotation: '', at: now, updatedAt: now,
   });
-  saveSettings();
+  coreadNotesCommit(view);
   toast('已划线', 'success');
   return id;
 }
 
 function coreadDeleteNote(noteId) {
-  const meta = coreadBookMeta(readerView.bookId);
-  if (!meta || !Array.isArray(meta.notes)) return;
-  meta.notes = meta.notes.filter((n) => n.id !== noteId);
-  saveSettings();
-  coreadDropExcerptDrafts({ keys: [`reader:${meta.id}:${noteId}`] });
+  const view = readerView;
+  if (!view?.notes) return;
+  view.notes.notes = view.notes.notes.filter((n) => n.id !== noteId);
+  coreadNotesCommit(view);
+  coreadDropExcerptDrafts({ keys: [`reader:${view.bookId}:${noteId}`] });
+}
+
+// 「未定位」里旧划线另外几处：定位（跳到那一章并把那处滚到眼前）、留下（另成一条划线）、不要。
+function coreadPickCandidate(stageRoot, button) {
+  const view = readerView, projection = readerContentCache?.projection;
+  const note = coreadFindReaderNote(button.dataset.note), index = Number(button.dataset.pick);
+  const place = note?.candidates?.[index];
+  if (!view?.notes || !projection || !place) return;
+  if (button.classList.contains('sd-reader-note-pickjump')) {
+    const ci = projection.unitAt(place.from) ?? 0, length = projection.lengthOf(ci);
+    view.chapterIndex = ci; view.scrollRatio = length ? Math.max(0, Math.min(1, (place.from - projection.starts[ci]) / length)) : 0;
+    coreadSaveProgress(); refreshReaderPortal();
+    requestAnimationFrame(() => document.querySelector(`#sd-reader-portal .sd-reader-hl-pick[data-note="${CSS.escape(note.id)}"][data-pick="${index}"]`)?.scrollIntoView({ block: 'center' }));
+    return;
+  }
+  const now = nowMs();
+  view.notes = button.classList.contains('sd-reader-note-keep')
+    ? reader.keepCandidate(view.notes, note.id, index, { id: uid('note'), now, chapterOf: (pos) => projection.unitAt(pos) ?? 0 })
+    : reader.dropCandidate(view.notes, note.id, index, { now });
+  coreadNotesCommit(view);
+  updateReaderArticle(stageRoot);
+}
+
+// 顶栏书签图标跟当前章走。
+function coreadPaintBookmark(stageRoot) {
+  const btn = stageRoot?.querySelector('.sd-reader-mark-btn');
+  if (!btn || !readerView) return;
+  const ci = readerView.chapterIndex, on = coreadReaderNotes().notes.some((n) => n.kind === 'bookmark' && n.ch === ci);
+  btn.classList.toggle('active', on);
+  const icon = btn.querySelector('i');
+  icon?.setAttribute('data-qm-icon', on ? 'bookmarks' : 'qm-regular-bookmark');
+  setQianmuIconClass(icon, `fa-${on ? 'solid' : 'regular'} fa-bookmark`);
 }
 
 // 切换当前章书签。
 function coreadToggleBookmark(stageRoot) {
-  const meta = coreadBookMeta(readerView.bookId);
-  if (!meta) return;
-  if (!Array.isArray(meta.notes)) meta.notes = [];
-  const ci = readerView.chapterIndex;
-  const existing = meta.notes.find((n) => n.kind === 'bookmark' && n.chapterIndex === ci);
+  const view = readerView;
+  if (!view) return;
+  view.notes ||= reader.emptyNotesRecord();
+  const ci = view.chapterIndex;
+  const existing = view.notes.notes.find((n) => n.kind === 'bookmark' && n.ch === ci);
   if (existing) {
-    meta.notes = meta.notes.filter((n) => n !== existing);
+    view.notes.notes = view.notes.notes.filter((n) => n !== existing);
     toast('已移除书签', 'info');
   } else {
-    const ch = readerContentCache?.chapters[ci];
-    meta.notes.push({ id: uid('mark'), kind: 'bookmark', chapterIndex: ci, text: ch?.title || '', at: nowMs() });
+    const ch = readerContentCache?.chapters[ci], now = nowMs();
+    view.notes.notes.push({ id: uid('mark'), kind: 'bookmark', from: readerContentCache?.projection?.starts[ci] ?? null, ch: ci, text: ch?.title || '', at: now, updatedAt: now });
     toast('已添加书签', 'success');
   }
-  saveSettings();
+  coreadNotesCommit(view);
   // 原地更新顶栏书签图标 + 书签列表，不重渲染
   const btn = stageRoot.querySelector('.sd-reader-mark-btn');
-  const on = meta.notes.some((n) => n.kind === 'bookmark' && n.chapterIndex === ci);
+  const on = view.notes.notes.some((n) => n.kind === 'bookmark' && n.ch === ci);
   if (btn) {
     btn.classList.toggle('active', on);
     const icon = btn.querySelector('i');
@@ -33540,13 +33725,12 @@ function coreadToggleBookmark(stageRoot) {
     setQianmuIconClass(icon, `fa-${on ? 'solid' : 'regular'} fa-bookmark`);
   }
   const mk = stageRoot.querySelector('.sd-reader-ptab-marks');
-  if (mk) { mk.innerHTML = renderReaderMarks(meta); applyQianmuIcons(mk); }
+  if (mk) { mk.innerHTML = renderReaderMarks(view.notes); applyQianmuIcons(mk); }
 }
 
 // 笔记批注：复用「目录」抽屉的「笔记」页·list↔edit 内部切换（窄屏移动端不出界·不叠层）。
 function openReaderNoteDialog(noteId) {
-  const meta = coreadBookMeta(readerView.bookId);
-  const note = meta?.notes?.find((n) => n.id === noteId);
+  const note = coreadReaderNotes().notes.find((n) => n.id === noteId);
   const portal = document.getElementById('sd-reader-portal');
   const overlay = portal?.querySelector('.sd-reader-noteoverlay');
   if (!note || !overlay) return;
@@ -33572,14 +33756,14 @@ function exitNoteEdit(stageRoot) {
 
 // 保存笔记编辑
 function saveNoteEdit(stageRoot) {
-  const meta = coreadBookMeta(readerView.bookId);
-  const note = meta?.notes?.find((n) => n.id === readerView.editingNoteId);
+  const note = coreadReaderNotes().notes.find((n) => n.id === readerView.editingNoteId);
   const ta = stageRoot.querySelector('.sd-reader-noteedit-input');
   if (note && ta) {
     note.annotation = String(ta.value || '').trim();
     const rawTags = stageRoot.querySelector('.sd-reader-noteedit-tags')?.value || '';
     note.tags = uniqueClean(String(rawTags).split(/[,，、;；]+/).map((tag) => tag.trim())).slice(0, 8);
-    saveSettings();
+    note.updatedAt = nowMs();
+    coreadNotesCommit();
     toast(note.annotation ? '已记笔记' : '已保存', 'success');
   }
   exitNoteEdit(stageRoot);
@@ -33686,15 +33870,30 @@ async function coreadImportDataFile(file, origin) {
     if (!blobStore.blobStoreAvailable()) { toast('当前环境不支持本地存储，无法导入。', 'error'); return; }
     if (await confirmDialog('恢复伴读数据', coreadPackageRestoreMessage(data)) !== true) return;
     checkBeforeWrite();
-    await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, onBookIndexed:saveSettings, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error)});
+    // 旧包（v1–v5，或换算前导出的 v6）的笔记还在书架条目里：恢复时与开书时同一个换算。
+    const notesBooks = [];
+    const notesFromLegacy = async (notes, chapters) => { const model = await ensureCoreadReaderRuntime(); return model.convertLegacyNotes(notes, model.createProjection(chapters)); };
+    await applyCoreadPackageData(data, {blobStore:blobStore.createReaderPackageWriter({check}), coread:()=>reader, isPlainObject, base64ToBlob, check, progress, onBookIndexed:saveSettings, warn:(message,error)=>console.warn(`[${MODULE_NAME}] ${message}`,error), notesFromLegacy, onNotesRestored:id=>notesBooks.push(id)});
     check();
     readerCoverSync.request();   // 包里带来的封面一并送上账户
+    for (const id of notesBooks) void coreadRestoredNotes(id);   // 笔记一并送上账户，确认后记 notesAt、补条数
     finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,
       preparePrefs:()=>coreadMergePackageValue(clone(reader), omitConfigConnections({coread:data.prefs}).coread),
       reload:()=>readerLog?.reload(),
       refresh:()=>{renderModal();rerenderMoreIfOpen();}});
     } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }
     finally { viewGuard?.release(); coreadImportDataFile.busy = false; }
+}
+
+async function coreadRestoredNotes(bookId) {
+  try {
+    const record = reader?.normalizeNotesRecord?.(await blobStore.getReaderNotes(bookId));
+    const meta = coreadBookMeta(bookId);
+    if (!record || !meta) return;
+    if (meta.noteCount !== record.notes.length) { meta.noteCount = record.notes.length; saveSettings(); }
+    if (Array.isArray(meta.notes)) await coreadConfirmNotes(bookId, meta);
+    else readerNotesSync.request(bookId);
+  } catch (error) { console.warn(`[${MODULE_NAME}] restored reader notes follow-up failed`, error); }
 }
 
 function coreadImportData() {
@@ -35108,7 +35307,7 @@ function startUsage() {
   if (COREAD_ENABLED) {
     // 伴读的阅读记录：与上面同一套计时规则，只在阅读层开着时算；按书、按书友、按天记时长与读过的字。
     readerLog = createReaderLog({
-      load: () => coread().readLog, save: data => { coread().readLog = data; saveSettings(); },
+      load: () => coread().readLog, save: data => { coread().readLog = data; if (readerView) coreadQueueSave(); else saveSettings(); },
       visible: () => document.visibilityState === 'visible' && !!document.getElementById('sd-reader-portal'),
       busy: () => dialogBusy || readerAssistantBusy, focused: () => windowFocused(),
     });

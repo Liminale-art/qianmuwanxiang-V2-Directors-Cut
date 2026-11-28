@@ -34,7 +34,32 @@ assert.doesNotMatch(source, /COREAD_EXCERPT_PRESETS|coreadBuildExcerptCanvases|f
 assert.match(source, /powerUserSettings[\s\S]*await import\(stMainScriptUrl\(\)\)[\s\S]*user_avatar/, '冷启动必须从 ST 模块读取当前人设头像');
 assert.match(source, /PERSONA_CHANGED[\s\S]*personaChangedHandler/, '切换人设后必须同步刷新伴读头像');
 
+// S1：笔记离开设置，存在 reader_notes（一本书一条记录），开书时读进 readerView.notes；设置里只留条数。
+const noteFns = ['coreadAddHighlight', 'coreadDeleteNote', 'coreadToggleBookmark', 'coreadFindReaderNote', 'saveNoteEdit', 'openReaderNoteDialog', 'updateReaderArticle', 'coreadPickCandidate']
+  .map(name => [name, source.slice(source.indexOf(`function ${name}(`), source.indexOf('\n}\n', source.indexOf(`function ${name}(`)))]);
+for (const [name, body] of noteFns) {
+  assert.ok(body.length > 40, name);
+  assert.doesNotMatch(body, /meta\??\.notes/, `${name} no longer reads or writes the frozen meta.notes`);
+}
+assert.match(noteFns.find(([n]) => n === 'coreadAddHighlight')[1], /from: place \? start \+ place\.from : null, to: place \? start \+ place\.to : null[\s\S]*coreadNotesCommit\(view\)/, '新划线按选区存全局位置');
+assert.match(stage, /const chHi = coreadChapterMarks\(ci\);[\s\S]*renderReaderNotes\(notesSource\)[\s\S]*renderReaderMarks\(notesSource\)/, '阅读台从笔记记录取划线与列表');
+const commit = source.slice(source.indexOf('function coreadNotesCommit'), source.indexOf('// 账户取回或删掉了某几本书的笔记'));
+assert.match(commit, /meta\.noteCount = count|coreadSyncNoteCount\(view\)/);assert.doesNotMatch(commit, /saveSettings\(\)/, '改一条笔记不再上传整份设置（条数变了才由 coreadSyncNoteCount 存）');
+
+// 「未定位」一组：找不到原处的旧划线照常能编辑、删除，但没有定位；同一句话的另外几处各一张卡，可定位、留下、不要。
+const loose = createCoreadPanelFixture().renderReaderNotes({notes:[
+  {id:'placed',kind:'highlight',from:3,to:7,ch:1,text:'有位置',at:2,candidates:[{from:40,to:44},{from:90,to:94}]},
+  {id:'lost',kind:'highlight',from:null,to:null,ch:4,text:'找不到',at:1}]});
+assert.match(loose, /sd-reader-notes-list">[\s\S]*data-note="placed"[\s\S]*<\/div><div class="sd-reader-notes-group">未定位<\/div><div class="sd-reader-notes-list sd-reader-notes-loose">/);
+const looseGroup = loose.slice(loose.indexOf('sd-reader-notes-loose'));
+assert.match(looseGroup, /data-note="lost"[\s\S]*sd-reader-note-where">第5节[\s\S]*sd-reader-note-edit[\s\S]*sd-reader-note-del/);
+assert.doesNotMatch(looseGroup.slice(0, looseGroup.indexOf('sd-reader-note-pick')), /sd-reader-note-jump/, '未定位的划线没有定位按钮');
+assert.equal((looseGroup.match(/sd-reader-note-item sd-reader-note-pick/g) || []).length, 2);
+assert.match(looseGroup, /data-pick="1"[\s\S]*sd-reader-note-pickjump[\s\S]*sd-reader-note-keep[\s\S]*fa-check[\s\S]*sd-reader-note-drop[\s\S]*fa-xmark/);
+assert.doesNotMatch(createCoreadPanelFixture().renderReaderNotes({notes:[{id:'old',kind:'highlight',chapterIndex:2,text:'旧形状'}]}), /未定位/, '还没换算的旧形状不算未定位');
+
 const binding = source.slice(source.indexOf('function bindReaderStageEvents'), source.indexOf('// 目录 / 笔记 / 书签共用固定高度'));
+assert.match(binding, /sd-reader-note-pickjump, \.sd-reader-note-keep, \.sd-reader-note-drop[\s\S]*coreadPickCandidate\(stageRoot, pickBtn\)/, '未定位里的三个按钮接通');
 assert.match(binding, /bindReaderListGrip[\s\S]*sd-reader-note-favorite[\s\S]*sd-reader-note-copy[\s\S]*sd-reader-note-image/, '阅读器必须接通抽屉高度记忆与笔记操作');
 assert.match(binding, /stageRoot\.addEventListener\('click'[\s\S]*sd-reader-note-tools-toggle[\s\S]*row\.hidden = true/, '点笔记菜单外任意位置必须自动收起菜单');
 assert.match(binding, /sel\.isCollapsed[\s\S]*!pendingMark[\s\S]*hideTools\(\)/, '用户取消正文选区时必须立即收起划线工具');

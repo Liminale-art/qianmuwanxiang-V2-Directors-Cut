@@ -71,7 +71,7 @@ test('the additive draft store is idle and included in the release', async () =>
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
   const release = JSON.parse(await readFile(new URL('../release-files.json', import.meta.url), 'utf8'));
-  assert.match(storage, /const DB_VERSION = 15/);
+  assert.match(storage, /const DB_VERSION = 16/);
   assert.match(storage, /STORE_VIDEO_DRAFTS = 'video_drafts'/);
   const persistence = storage.slice(storage.indexOf('function normalizeStoredVideoDraft'), storage.indexOf('// ── 完整影片：时间线草稿'));
   assert.match(persistence, /schema: 'qianmu\.video-draft\.v1'/);

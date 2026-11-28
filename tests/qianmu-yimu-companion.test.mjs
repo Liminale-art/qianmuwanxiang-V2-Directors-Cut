@@ -4,6 +4,10 @@ import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {createYimuCompanionBridge, YIMU_COMPANION_KEY, YIMU_COMPANION_READY, formatReadLabel, offerLinkUpdate, runLink, LINK_TEXT} from '../qianmu-yimu-companion.js';
+import * as reader from '../qianmu-reader.js';
+import {storyboardFunctionSource as section} from './helpers/storyboard-form-fixture.mjs';
+// 读位由投影算（qianmu-reader-model.js）；这两段宿主函数随正文一起放进夹具。
+const readPositionSource = ['coreadProjectionOf', 'coreadReadAt', 'coreadBoundaryAt'].map(section).join('\n');
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const clone = value => structuredClone(value);
@@ -169,8 +173,8 @@ test('host metadata view uses the current settings owner and does not open books
     const c=vm.createContext({settings,initialized:true,MODULE_NAME:'fixture',ctx:()=>host,isRuntimeOwner:()=>true,
         formatReadLabel,coreadPersonaChoices:()=>[{key:'user',name:'USER'}],coreadHostPersona:()=>({key:'user',name:'USER'}),
         readerView:{bookId:'book',companionScope:'scope',chapterIndex:1,scrollRatio:0.5},readerContentCache:{bookId:'book',chapters:[{content:'12345'},{content:'1234567890'}]},
-        blobStore:{getBook(){throw Error('must not open a book');}}});
-    vm.runInContext(body,c);
+        blobStore:{getBook(){throw Error('must not open a book');}},reader,coread:()=>settings.coread,coreadBookMeta:()=>null});
+    vm.runInContext(body+'\n'+readPositionSource,c);
     let state=c.coreadYimuState();assert.equal(state.boundaries.book.readTo,10);assert.equal(state.boundaries.book.label,'第2章 · 67%');assert.equal(state.currentKey,'scope::book');assert.equal(state.available,true);
     host.chatMetadata.integrity='';assert.equal(c.coreadYimuState().story,null);
     host.extensionSettings.fixture={enabled:true};assert.equal(c.coreadYimuState().available,false);
@@ -183,11 +187,11 @@ test('native companion generation consumes an optional link but never persists i
     const calls=[], extra=[], c=vm.createContext({coreadCompanion:()=>({chatCtxEnabled:false,presets:[],visiblePercent:15,visibleCharsBefore:6000}),
         coreadCompanionCharacter:()=>({avatar:'A.png',name:'Alice'}),coreadPersona:()=>({key:'user',name:'Reader'}),
         coreadResolveCompanionMacro:async text=>text||'',coreadBookMeta:()=>({title:'Book'}),readerContentCache:{bookId:'book',chapters:[]},
-        readerView:{bookId:'book',chapterIndex:0,scrollRatio:0,companionScope:'scope'},computeVisibleWindow:()=>({visibleText:'already visible'}),
+        readerView:{bookId:'book',chapterIndex:0,scrollRatio:0,companionScope:'scope'},reader,coread:()=>({}),
         coreadChatCompanionWb:()=>({worldBooks:[]}),cleanContextText:text=>text,coreadMemory:()=>({}),coreadDialogBucket:()=> 'scope::book',
         yimuCompanionBridge:{consume:async(request,...rest)=>{calls.push(request);extra.push(rest);return {active:true,text:'Bound story memory'};}},
         blobStore:{putReaderChat(){throw Error('a consumed link cannot create companion memories');},getBook(){throw Error('unexpected book read');}}});
-    vm.runInContext(body,c);const result=await c.buildCompanionContext('book');
+    vm.runInContext(body+'\n'+readPositionSource,c);const result=await c.buildCompanionContext('book');
     assert.match(result.systemPrompt,/主动关联的故事记忆/);assert.match(result.systemPrompt,/Bound story memory/);
     assert.deepEqual(JSON.parse(JSON.stringify(calls)),[{key:'scope::book',bookId:'book',scope:'scope',persona:'user',avatar:'A.png'}]);
     assert.deepEqual(JSON.parse(JSON.stringify(extra)),[['companion',{query:''}]]);

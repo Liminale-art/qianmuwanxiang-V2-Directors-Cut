@@ -2,9 +2,9 @@
 // 选中框、手柄与小工具条在外层。所有改动只作用于这份成图稿，不回写收藏原文。
 import {PAGE_WIDTH, RATIOS, PAGE_BREAK, pageHeight, normalizeDoc, normalizeBody, normalizeElement, createDoc, createDocFromScheme,
     schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, normalizeCustomRatio, GRAIN_SIZES,
-    SCHEME_LIMIT, TEMPLATE_LIMIT} from './features/excerpt/qianmu-excerpt-doc.js';
+    SCHEME_LIMIT, TEMPLATE_LIMIT, BLEND_MODES} from './features/excerpt/qianmu-excerpt-doc.js';
 import {BUILTIN_TEMPLATES, parseExcerptTemplate, TEMPLATE_GUIDE, TEMPLATE_STARTER, normalizeHex} from './features/excerpt/qianmu-excerpt-template.js';
-import {BASE_CSS, FONT_STACKS, buildPage, buildElement, buildGrain, pageStyle, createGrainTiles, fillParagraphs, createMeasurer, layoutDoc, embedFonts,
+import {BASE_CSS, FONT_STACKS, buildPage, buildElement, buildGrain, pageStyle, elementCss, createGrainTiles, fillParagraphs, createMeasurer, layoutDoc, embedFonts,
     pageSvg, svgToPng, blobToDataUrl, imageGeometry} from './features/excerpt/qianmu-excerpt-render.js';
 import {createExcerptStore, prepareImage, imageIdsOf} from './features/excerpt/qianmu-excerpt-store.js';
 
@@ -56,8 +56,19 @@ const ICONS = {
     check: '<path d="m5 12 5 5 9-10"/>',
     chevron: '<path d="m6 9 6 6 6-6"/>',
     more: '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>',
+    pointer: '<path d="M6 3.5 18.5 12l-5.6 1.2 3.1 6.1-2.4 1.2-3.1-6.1L6 18.3z"/>',
+    multi: '<rect x="3.5" y="3.5" width="10" height="10" rx="1.5" stroke-dasharray="2.2 2.2"/><rect x="10.5" y="10.5" width="10" height="10" rx="1.5"/>',
+    eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="M4 4l16 16"/><path d="M9.9 5.8A9.8 9.8 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.4M6.4 7.3C3.9 9 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    move: '<path d="M12 3v18M3 12h18M9.5 5.5 12 3l2.5 2.5M9.5 18.5 12 21l2.5-2.5M5.5 9.5 3 12l2.5 2.5M18.5 9.5 21 12l-2.5 2.5"/>',
+    drop: '<path d="M12 3.5s6 6.3 6 10.4a6 6 0 0 1-12 0C6 9.8 12 3.5 12 3.5z"/>',
+    body: '<path d="M5 6h14M5 10h14M5 14h14M5 18h9"/>',
 };
 const KIND_LABEL = {text: '文本框', body: '正文框', image: '图片框', line: '线条', rect: '矩形', ellipse: '圆形', dialog: '书友对话'};
+const KIND_ICON = {text: 'text', body: 'body', image: 'image', line: 'line', rect: 'rect', ellipse: 'ellipse', dialog: 'talk'};
+const TEXT_KINDS = new Set(['text', 'body', 'dialog']);
+const BLEND_LABEL = {normal: '正常', multiply: '正片叠底', screen: '滤色', overlay: '叠加', darken: '变暗', lighten: '变亮', 'color-dodge': '颜色减淡',
+    'color-burn': '颜色加深', 'hard-light': '强光', 'soft-light': '柔光', difference: '差值', exclusion: '排除', hue: '色相', saturation: '饱和度', color: '颜色', luminosity: '明度'};
 const EDITABLE = new Set(['text', 'body', 'dialog']);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const round = value => Math.round(value * 100) / 100;
@@ -91,7 +102,9 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     let content = null, doc = null, layout = {pages: [], remaining: 0, stuck: false}, pageIndex = 0, pageNode = null, pageH = 1440;
     let statusMessage = '', exportShown = null, miniKey = '', miniSize = null, sheetOffset = null, preview = null, panelShows = null;
     const layoutHints = new Map(), overlayNodes = new Map(), grainTiles = createGrainTiles(document);
-    let selected = null, editing = null, cropping = null, drag = null, guides = [];
+    // picks：当前页上选中的元素（按点选先后），selected 是最后点的那个（单选时就是它）。tool：select 单选／multi 多选（点一下加减）。
+    let selected = null, picks = [], tool = 'select', editing = null, cropping = null, drag = null, guides = [];
+    let panelTab = 'props', propsDirty = false, layersKey = '';
     let history = [], future = [], lastKey = '', lastAt = 0, dirtyLast = false;
     let scale = 1, zoom = 0, measurer = null, measurerCss = null, relayoutToken = 0;
     let fontProvider = null, fontList = [], exportJob = null, pickTarget = null, popClose = null, swept = false;
@@ -129,15 +142,15 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     dialog.setAttribute('aria-label', '书摘成图');
     const top = make('header', 'qm-xs-top');
     const undoButton = button('撤销', 'undo', () => undo()), redoButton = button('重做', 'redo', () => redo());
-    const templateButton = button('模板', 'template', event => openTemplateMenu(event.currentTarget), {text: true});
-    const schemeButton = button('方案', 'scheme', event => openSchemeMenu(event.currentTarget), {text: true});
+    const templateButton = button('模板', 'template', event => openTemplateMenu(event.currentTarget));
+    const schemeButton = button('方案', 'scheme', event => openSchemeMenu(event.currentTarget));
     const status = make('span', 'qm-xs-status'); status.setAttribute('role', 'status');
     const fullButton = button('全屏', 'full', () => onFullButton());
-    const exportButton = button('导出图片', 'download', () => exportJob ? exportJob.controller.abort() : void startExport(), {className: 'qm-xs-primary', text: '导出'});
+    const exportButton = button('导出图片', 'download', () => exportJob ? exportJob.controller.abort() : void startExport(), {className: 'qm-xs-primary'});
     top.append(button('关闭', 'close', () => close()), make('i', 'qm-xs-sep'), undoButton, redoButton, make('i', 'qm-xs-sep'),
         templateButton, schemeButton, status, fullButton, exportButton);
 
-    const main = make('div', 'qm-xs-main');
+    // 排布：宽屏左侧竖排工具条、中间画面与页面条、右侧「属性／图层」；窄屏依次是画面、属性抽屉、页面条、底部工具条（见样式表）。
     const stageWrap = make('div', 'qm-xs-stagewrap'), stage = make('div', 'qm-xs-stage'), sheet = make('div', 'qm-xs-sheet');
     const canvas = make('div', 'qm-xs-canvas'), host = make('div', 'qm-xs-host'), overlay = make('div', 'qm-xs-overlay'), mini = make('div', 'qm-xs-mini');
     const shadow = host.attachShadow({mode: 'open'});
@@ -145,24 +158,39 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     const zoomBar = make('div', 'qm-xs-zoom');
     zoomBar.append(button('缩小', 'minus', () => zoomBy(0.8)), button('适应窗口', 'fit', () => { zoom = 0; fit(); }), button('放大', 'plus', () => zoomBy(1.25)));
     stageWrap.append(stage, zoomBar);
-    const panel = make('aside', 'qm-xs-panel'), panelHead = make('div', 'qm-xs-panel-head'), panelTitle = make('span', 'qm-xs-panel-title', '页面');
-    const panelBody = make('div', 'qm-xs-panel-body');
-    const collapseButton = button('收起', 'chevron', () => { panel.classList.toggle('is-collapsed'); requestAnimationFrame(fit); }, {className: 'qm-xs-collapse'});
-    panelHead.append(panelTitle, collapseButton); panel.append(panelHead, panelBody);
-    main.append(stageWrap, panel);
-    const strip = make('nav', 'qm-xs-pages'); strip.setAttribute('aria-label', '页面');
-    const dock = make('footer', 'qm-xs-dock');
-    const dialogueButton = button('书友对话', 'talk', () => addElement('dialog'), {text: '对话'});
+    // 工具条：选择与多选是两种点选方式，其余按一下就在画面里加一个元素。以后的形状、取色等工具接在插入组后面。
+    const tools = make('nav', 'qm-xs-tools'); tools.setAttribute('aria-label', '工具');
+    const selectTool = button('选择', 'pointer', () => setTool('select'), {className: 'qm-xs-tool'});
+    const multiTool = button('多选', 'multi', () => setTool(tool === 'multi' ? 'select' : 'multi'), {className: 'qm-xs-tool'});
+    multiTool.title = '多选（Shift＋点选）';
+    const dialogueButton = button('书友对话', 'talk', () => addElement('dialog'));
     dialogueButton.hidden = true;
-    dock.append(button('文本框', 'text', () => addElement('text'), {text: '文本'}), button('图片框', 'image', () => addElement('image'), {text: '图框'}),
-        button('线条', 'line', () => addElement('line'), {text: '线条'}), button('矩形', 'rect', () => addElement('rect'), {text: '矩形'}),
-        button('圆形', 'ellipse', () => addElement('ellipse'), {text: '圆形'}), dialogueButton, make('i', 'qm-xs-sep'),
-        button('页面设置', 'page', () => { commitEditing(); select(null); panel.classList.remove('is-collapsed'); }, {text: '页面'}));
+    const insertGroup = make('div', 'qm-xs-tool-group');
+    insertGroup.append(button('文本框', 'text', () => addElement('text')), button('图片框', 'image', () => addElement('image')),
+        button('线条', 'line', () => addElement('line')), button('矩形', 'rect', () => addElement('rect')),
+        button('圆形', 'ellipse', () => addElement('ellipse')), dialogueButton);
+    const pageTool = button('页面设置', 'page', () => { commitEditing(); select(null); showTab('props', true); }, {className: 'qm-xs-tool-end'});
+    tools.append(selectTool, multiTool, make('i', 'qm-xs-sep'), insertGroup, pageTool);
+    const panel = make('aside', 'qm-xs-panel'), panelHead = make('div', 'qm-xs-panel-head'), tabList = make('div', 'qm-xs-tabs');
+    tabList.setAttribute('role', 'tablist');
+    const tabButton = (key, label) => {
+        const node = make('button', 'qm-xs-tab', label); node.type = 'button';
+        node.setAttribute('role', 'tab'); node.dataset.tab = key;
+        node.addEventListener('click', () => showTab(key, true));
+        return node;
+    };
+    const propsTab = tabButton('props', '属性'), layersTab = tabButton('layers', '图层');
+    tabList.append(propsTab, layersTab);
+    const panelBody = make('div', 'qm-xs-panel-body'), layersBody = make('div', 'qm-xs-panel-body qm-xs-layers');
+    panelBody.setAttribute('role', 'tabpanel'); layersBody.setAttribute('role', 'tabpanel');
+    const collapseButton = button('收起', 'chevron', () => { panel.classList.toggle('is-collapsed'); requestAnimationFrame(fit); }, {className: 'qm-xs-collapse'});
+    panelHead.append(tabList, collapseButton); panel.append(panelHead, panelBody, layersBody);
+    const strip = make('nav', 'qm-xs-pages'); strip.setAttribute('aria-label', '页面');
     const pop = make('div', 'qm-xs-pop'); pop.hidden = true;
     const editor = make('section', 'qm-xs-tpl-editor'); editor.hidden = true;
     const imageInput = make('input'); imageInput.type = 'file'; imageInput.accept = 'image/*'; imageInput.hidden = true;
     const templateInput = make('input'); templateInput.type = 'file'; templateInput.accept = '.html,.htm,.txt,text/html,text/plain'; templateInput.hidden = true;
-    dialog.append(top, main, strip, dock, pop, editor, imageInput, templateInput);
+    dialog.append(top, tools, stageWrap, panel, strip, pop, editor, imageInput, templateInput);
     // 编辑页里的按键与输入不传给 ST（免得触发 ST 的快捷键）。
     for (const type of ['keyup', 'keypress', 'beforeinput', 'input', 'change', 'paste', 'cut', 'copy', 'click', 'wheel']) dialog.addEventListener(type, event => event.stopPropagation());
     // ── 状态、撤销与保存 ──────────────────────────────────────────────────
@@ -196,16 +224,20 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (doc && !keepName) doc.name = '';
         dirtyLast = true; scheduleSave(); updateTop(); paintStatus();
     }
-    // paint：不重排时只重画受影响的部分——{element: id} 只换这一个框，'paper' 只改纸色、文字色、杂色与背景透明度。
+    // paint：不重排时只重画受影响的部分——{element: id} 或 {elements: [id…]} 只换这几个框（restyle 时连框也不换，只改它的行内样式），
+    // 'paper' 只改纸色、文字色、杂色与背景透明度。
     function change(mutate, {key = '', reflow = true, keepName = false, paint = null} = {}) {
         if (!doc || exportJob) return Promise.resolve();
         remember(key); mutate(doc); changed({keepName});
         if (reflow) return relayout();
         if (paint === 'paper') { paintPaper(); scheduleThumbs(); }
-        else if (paint?.element) {
-            const element = findElement(paint.element), page = pageOf(paint.element);
-            if (element && page === currentPage() && nodeOf(element.id)) { refreshNode(element); renderOverlay(); positionMini(); }
-            else if (page === currentPage()) renderStage();
+        else if (paint?.element || paint?.elements) {
+            const ids = paint.elements || [paint.element], page = pageOf(ids[0]);
+            const elements = ids.map(findElement).filter(Boolean);
+            if (page === currentPage() && elements.every(element => nodeOf(element.id))) {
+                for (const element of elements) { if (paint.restyle) restyleNode(element); else refreshNode(element); }
+                renderOverlay(); positionMini();
+            } else if (page === currentPage()) renderStage();
             scheduleThumbs(page?.id);
         } else { renderStage(); scheduleThumbs(); }
         return Promise.resolve();
@@ -220,8 +252,9 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         {reflow: findElement(id)?.kind === 'body', paint: {element: id}, ...options});
     function restore(value) {
         doc = JSON.parse(value); lastKey = ''; cropping = null;
-        if (selected && !findElement(selected)) selected = null;
-        changed({keepName: true}); void relayout().then(() => { renderPanel(); renderMini(); });
+        const page = currentPage();
+        picks = picks.filter(id => page?.elements.some(item => item.id === id)); selected = picks.at(-1) ?? null;
+        changed({keepName: true}); void relayout().then(() => { renderPanel(); renderMini(); renderLayers(); });
     }
     function undo() { if (!history.length || exportJob) return; commitEditing(); future.push(snapshot()); const value = history.pop(); restore(value); }
     function redo() { if (!future.length || exportJob) return; commitEditing(); history.push(snapshot()); restore(future.pop()); }
@@ -249,7 +282,6 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const label = busy ? '停止导出' : '导出图片';
         exportButton.title = label; exportButton.setAttribute('aria-label', label);
         exportButton.querySelector('.qm-xs-icon').replaceWith(icon(busy ? 'stop' : 'download'));
-        exportButton.querySelector('.qm-xs-label').textContent = busy ? '停止' : '导出';
         dialog.classList.toggle('is-busy', busy);
     }
 
@@ -310,13 +342,16 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     function renderStage() {
         if (!doc) return;
         const page = currentPage(), info = currentLayout();
+        const pruned = picks.length > 0 && !picks.every(id => page?.elements.some(item => item.id === id));
+        if (pruned) { picks = picks.filter(id => page?.elements.some(item => item.id === id)); selected = picks.at(-1) ?? null; }
         const style = make('style'); style.textContent = `${BASE_CSS}\n${doc.template.css}\n${EDITOR_CSS}`;
         pageNode = buildPage(document, doc, page, info, editorContext());
         shadow.replaceChildren(style, pageNode);
         pageH = info.h;
         canvas.style.height = overlay.style.height = `${pageH}px`;
         if (cropping) nodeOf(cropping)?.classList.add('qm-cropping');
-        fit(); renderOverlay(); renderMini();
+        fit(); renderOverlay(); renderMini(); renderLayers();
+        if (pruned) renderPanel();
         if (preview) renderPreview();
     }
     // 纸色、文字色、杂色、背景透明度：只改页面根节点与杂色层，不重建整页。
@@ -357,43 +392,83 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         node.dataset.handle = name; node.style.left = `${x}px`; node.style.top = `${y}px`;
         return node;
     }
+    const pickedElements = () => picks.map(findElement).filter(Boolean);
+    const isMulti = () => picks.length > 1;
+    const posLocked = element => element?.lock?.pos === true;
+    const styleLocked = element => element?.lock?.style === true;
+    // 一组框的外接矩形。
+    function boundsOf(elements) {
+        if (!elements.length) return null;
+        let left = Infinity, topAt = Infinity, right = -Infinity, bottom = -Infinity;
+        for (const element of elements) {
+            const box = renderedBox(element);
+            left = Math.min(left, box.x); topAt = Math.min(topAt, box.y); right = Math.max(right, box.x + box.w); bottom = Math.max(bottom, box.y + box.h);
+        }
+        return {x: left, y: topAt, w: right - left, h: bottom - topAt};
+    }
+    const selectionBox = () => boundsOf(pickedElements());
+    const frameStyle = box => `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px`;
+    const HANDLE_SPOTS = {nw: [0, 0], n: [.5, 0], ne: [1, 0], e: [1, .5], se: [1, 1], s: [.5, 1], sw: [0, 1], w: [0, .5]};
     function overlayParts() {
         const parts = guides.map((guide, index) => {
             const line = overlayNode(`g:${index}`, `qm-xs-guide is-${guide.axis}`);
             line.style.left = guide.axis === 'x' ? `${guide.at}px` : ''; line.style.top = guide.axis === 'x' ? '' : `${guide.at}px`;
             return line;
         });
-        const element = selected && findElement(selected);
-        if (!element || pageOf(selected) !== currentPage()) return parts;
-        const box = renderedBox(element);
-        if (element.kind === 'line') {
+        const elements = pickedElements();
+        if (!elements.length || pageOf(elements[0].id) !== currentPage()) return parts;
+        if (elements.length > 1) {
+            // 多选：每个元素一个细框，可移动的那几个外面一个组框带八个手柄（整组缩放）。
+            for (const element of elements) {
+                const frame = overlayNode(`m:${element.id}`, `qm-xs-sel is-member${posLocked(element) ? ' is-locked' : ''}${element.hidden ? ' is-hidden' : ''}`);
+                frame.style.cssText = frameStyle(renderedBox(element));
+                parts.push(frame);
+            }
+            const movable = elements.filter(element => !posLocked(element)), box = boundsOf(movable);
+            if (!box || editing) return parts;
+            const group = overlayNode('group', 'qm-xs-sel is-group');
+            group.style.cssText = frameStyle(box);
+            parts.push(group);
+            for (const [name, [fx, fy]] of Object.entries(HANDLE_SPOTS)) parts.push(handleNode(name, box.x + box.w * fx, box.y + box.h * fy));
+            return parts;
+        }
+        const element = elements[0], box = renderedBox(element), locked = posLocked(element);
+        if (element.kind === 'line' && !locked && !element.hidden) {
             const [y1, y2] = element.dir === -1 ? [box.y + box.h, box.y] : [box.y, box.y + box.h];
             if (!editing) parts.push(handleNode('a', box.x, y1), handleNode('b', box.x + box.w, y2));
             return parts;
         }
-        const frame = overlayNode('sel', 'qm-xs-sel');
-        frame.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px`;
+        const frame = overlayNode('sel', `qm-xs-sel${locked ? ' is-locked' : ''}${element.hidden ? ' is-hidden' : ''}`);
+        frame.style.cssText = frameStyle(box);
         parts.push(frame);
-        if (editing || cropping) return parts;
-        const spots = {nw: [0, 0], n: [.5, 0], ne: [1, 0], e: [1, .5], se: [1, 1], s: [.5, 1], sw: [0, 1], w: [0, .5]};
-        for (const [name, [fx, fy]] of Object.entries(spots)) parts.push(handleNode(name, box.x + box.w * fx, box.y + box.h * fy));
+        if (editing || cropping || locked) return parts;
+        for (const [name, [fx, fy]] of Object.entries(HANDLE_SPOTS)) parts.push(handleNode(name, box.x + box.w * fx, box.y + box.h * fy));
         return parts;
     }
     function renderOverlay() {
         const parts = overlayParts(), now = overlay.children;
-        if (parts.length !== now.length || parts.some((node, index) => now[index] !== node)) overlay.replaceChildren(...parts);
+        if (parts.length !== now.length || parts.some((node, index) => now[index] !== node)) {
+            overlay.replaceChildren(...parts);
+            // 多选的细框按元素记着，用不上的丢掉。
+            const used = new Set(parts);
+            for (const [key, node] of overlayNodes) if (key.startsWith('m:') && !used.has(node)) overlayNodes.delete(key);
+        }
     }
     // 选中元素上方的小工具条（不随页面缩放）。
     function renderMini() {
         const element = selected && findElement(selected);
-        const key = element && !exportJob && pageOf(selected) === currentPage() ? [element.id, element.kind, !!element.image, editing?.id, cropping].join('|') : '';
+        const multi = isMulti();
+        const key = element && !exportJob && pageOf(selected) === currentPage()
+            ? multi ? `multi|${picks.length}` : [element.id, element.kind, !!element.image, editing?.id, cropping].join('|') : '';
         // 工具条内容只随选中、编辑、裁切变；没变时只挪位置。
         if (key === miniKey && (key ? !mini.hidden : mini.hidden)) { positionMini(); return; }
         miniKey = key; miniSize = null;
         mini.replaceChildren();
         if (!key) { mini.hidden = true; return; }
         const items = [];
-        if (editing) {
+        if (multi) {
+            items.push(button('层级', 'layers', event => openLayerMenu(event.currentTarget)), button('复制', 'copy', duplicate), button('删除', 'trash', removeSelected));
+        } else if (editing) {
             if (element.kind === 'body') items.push(button('在此分页', 'breakpage', insertBreak, {keepFocus: true, text: '分页'}));
             items.push(button('完成', 'check', () => commitEditing(), {keepFocus: true}));
         } else {
@@ -410,9 +485,8 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     // 工具条尺寸与画纸位置记一次，拖动时不再每步强制浏览器重新排版去读。
     function positionMini() {
-        const element = selected && findElement(selected);
-        if (mini.hidden || !element) return;
-        const box = renderedBox(element);
+        const box = !mini.hidden && selectionBox();
+        if (!box) return;
         miniSize ??= {width: mini.offsetWidth || 160, height: mini.offsetHeight || 36};
         sheetOffset ??= {left: sheet.offsetLeft, top: sheet.offsetTop};
         const {width, height} = miniSize, sheetWidth = PAGE_WIDTH * scale;
@@ -430,18 +504,28 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         }
         return null;
     }
-    function select(id) {
-        if (selected === id) return;
-        if (cropping && cropping !== id) { const was = cropping; cropping = null; nodeOf(was)?.classList.remove('qm-cropping'); }
-        selected = id;
-        renderOverlay(); renderMini(); renderPanel();
+    // 换选中：ids 只留当前页上的；与原来一样就什么都不做。
+    function setPicks(ids) {
+        const page = currentPage();
+        const next = [...new Set(ids)].filter(id => id && page?.elements.some(item => item.id === id));
+        if (next.length === picks.length && next.every((id, index) => picks[index] === id)) return;
+        if (cropping && !(next.length === 1 && next[0] === cropping)) { const was = cropping; cropping = null; nodeOf(was)?.classList.remove('qm-cropping'); }
+        picks = next; selected = next.at(-1) ?? null;
+        renderOverlay(); renderMini(); renderPanel(); renderLayers();
     }
-    function snapMove(element, x, y) {
-        const page = currentPage(), threshold = 7 / scale, box = renderedBox(element);
-        const offsetY = box.y - element.y;
+    function select(id) { setPicks(id ? [id] : []); }
+    function togglePick(id) { setPicks(picks.includes(id) ? picks.filter(item => item !== id) : [...picks, id]); }
+    function setTool(next) {
+        tool = next === 'multi' ? 'multi' : 'select';
+        selectTool.setAttribute('aria-pressed', String(tool === 'select')); multiTool.setAttribute('aria-pressed', String(tool === 'multi'));
+        dialog.classList.toggle('is-multi', tool === 'multi');
+    }
+    // 吸附：box 是正在拖的框（或一组框的外接矩形），对齐页面中线、边缘与其余可见元素的边。
+    function snapMove(box, x, y, exclude) {
+        const page = currentPage(), threshold = 7 / scale;
         const xs = [0, PAGE_WIDTH / 2, PAGE_WIDTH], ys = [0, pageH / 2, pageH];
         for (const other of page.elements) {
-            if (other.id === element.id) continue;
+            if (exclude.has(other.id) || other.hidden) continue;
             const b = renderedBox(other);
             xs.push(b.x, b.x + b.w / 2, b.x + b.w); ys.push(b.y, b.y + b.h / 2, b.y + b.h);
         }
@@ -454,7 +538,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             }
             return found;
         };
-        const sx = best([x, x + box.w / 2, x + box.w], xs), sy = best([y + offsetY, y + offsetY + box.h / 2, y + offsetY + box.h], ys);
+        const sx = best([x, x + box.w / 2, x + box.w], xs), sy = best([y, y + box.h / 2, y + box.h], ys);
         if (sx) { x += sx.distance; guides.push({axis: 'x', at: sx.target}); }
         if (sy) { y += sy.distance; guides.push({axis: 'y', at: sy.target}); }
         return {x, y};
@@ -509,30 +593,74 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (cropping === element.id) next.classList.add('qm-cropping');
         node.replaceWith(next);
     }
+    // 只改样式、不动内容时（字号、颜色、透明度、混合……）：换掉框的行内样式即可，不重建框里的字。
+    function restyleNode(element) {
+        const node = nodeOf(element.id), page = currentPage();
+        if (!node || !page) return;
+        node.setAttribute('style', elementCss(element, {families, z: page.elements.indexOf(element) + 1}));
+    }
+    // 整组缩放：各元素在组框里的相对位置与大小按组框的伸缩换算（字号不变，与单个框缩放一样）。
+    function scaleGroup(origs, from, to) {
+        const sx = from.w > 0 ? to.w / from.w : 1, sy = from.h > 0 ? to.h / from.h : 1;
+        for (const [id, o] of origs) {
+            const element = findElement(id);
+            if (!element) continue;
+            const min = element.kind === 'line' ? 0 : 4;
+            element.x = round(to.x + (o.x - from.x) * sx); element.y = round(to.y + (o.y - from.y) * sy);
+            element.w = round(Math.max(min, o.w * sx)); element.h = round(Math.max(min, o.h * sy));
+        }
+    }
+    const touchScroll = event => ({type: 'scroll', sx: event.clientX, sy: event.clientY, left: stage.scrollLeft, top: stage.scrollTop, pointer: event.pointerId});
     canvas.addEventListener('pointerdown', event => {
         if (!doc || event.button > 0 || exportJob) return;
         closePop();
         const handle = event.target.closest?.('[data-handle]');
+        const additive = event.shiftKey || event.ctrlKey || event.metaKey || tool === 'multi';
         const id = handle ? selected : hit(event);
         if (editing) {
             if (id === editing.id && !handle) return;      // 编辑中的框里点按交给浏览器放光标
             commitEditing();
         }
+        const capture = () => { try { canvas.setPointerCapture(event.pointerId); } catch { /* 指针已结束 */ } };
         if (!id) {
             if (cropping) toggleCrop(cropping);
-            select(null);
+            if (!additive) select(null);
             // 触屏在空白处拖动等于滚动画面（画布关掉了浏览器自带的触摸滚动）。
-            drag = event.pointerType === 'touch' ? {type: 'scroll', sx: event.clientX, sy: event.clientY, left: stage.scrollLeft, top: stage.scrollTop, pointer: event.pointerId} : null;
-            if (drag) canvas.setPointerCapture(event.pointerId);
+            drag = event.pointerType === 'touch' ? touchScroll(event) : null;
+            if (drag) capture();
             return;
         }
         const element = findElement(id);
         if (!element) return;
-        const wasSelected = selected === id;
-        if (!wasSelected) select(id);
-        const type = handle ? (element.kind === 'line' ? 'line' : 'resize') : cropping === id ? 'pan' : 'move';
-        drag = {type, id, handle: handle?.dataset.handle, start: point(event), orig: structuredClone(element), before: snapshot(), moved: false, wasSelected, pointer: event.pointerId};
-        try { canvas.setPointerCapture(event.pointerId); } catch { /* 指针已结束 */ }
+        const wasSelected = picks.length === 1 && selected === id;
+        if (handle && isMulti()) {
+            const movable = pickedElements().filter(item => !posLocked(item));
+            drag = {type: 'group', handle: handle.dataset.handle, start: point(event), box: boundsOf(movable), origs: new Map(movable.map(item => [item.id, renderedBox(item)])),
+                before: snapshot(), moved: false, pointer: event.pointerId};
+            capture(); event.preventDefault();
+            return;
+        }
+        if (!handle) {
+            if (additive) {
+                // 多选点到已选的就从组里去掉（不拖），点到没选的就加进来，可以接着拖整组。
+                const had = picks.includes(id);
+                togglePick(id);
+                if (had) { event.preventDefault(); return; }
+            } else if (!picks.includes(id)) select(id);
+        }
+        if (!handle && cropping === id) {
+            drag = {type: 'pan', id, start: point(event), orig: structuredClone(element), before: snapshot(), moved: false, wasSelected, pointer: event.pointerId};
+        } else if (handle) {
+            drag = {type: element.kind === 'line' ? 'line' : 'resize', id, handle: handle.dataset.handle, start: point(event), orig: structuredClone(element),
+                before: snapshot(), moved: false, wasSelected, pointer: event.pointerId};
+        } else {
+            // 拖动：选中的里面位置没锁的一起走；都锁住时触屏上当作滚动画面。
+            const movable = pickedElements().filter(item => !posLocked(item));
+            drag = movable.length ? {type: 'move', id, start: point(event), box: boundsOf(movable), origs: new Map(movable.map(item => [item.id, {x: item.x, y: item.y}])),
+                exclude: new Set(picks), before: snapshot(), moved: false, wasSelected, additive, pointer: event.pointerId}
+                : event.pointerType === 'touch' ? touchScroll(event) : {type: 'click', id, start: point(event), moved: false, wasSelected, additive, pointer: event.pointerId};
+        }
+        capture();
         event.preventDefault();
     });
     canvas.addEventListener('pointermove', event => {
@@ -540,16 +668,34 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (drag.type === 'scroll') { stage.scrollLeft = drag.left - (event.clientX - drag.sx); stage.scrollTop = drag.top - (event.clientY - drag.sy); return; }
         const p = point(event), dx = p.x - drag.start.x, dy = p.y - drag.start.y;
         if (!drag.moved && Math.hypot(dx * scale, dy * scale) < 4) return;
+        if (drag.type === 'click') return;
         drag.moved = true;
+        if (drag.type === 'move') {
+            const box = drag.box, snapped = snapMove(box, box.x + dx, box.y + dy, drag.exclude);
+            const mx = snapped.x - box.x, my = snapped.y - box.y;
+            // 只挪位置：改这几个框的 left/top，不重建（重建要重新排它里面的字）。
+            for (const [id, o] of drag.origs) {
+                const element = findElement(id);
+                if (!element) continue;
+                element.x = round(o.x + mx); element.y = round(o.y + my);
+                const node = nodeOf(id);
+                if (node) { node.style.left = `${element.x}px`; node.style.top = `${element.y}px`; }
+            }
+            renderOverlay(); positionMini();
+            return;
+        }
+        if (drag.type === 'group') {
+            const to = {...drag.box};
+            resizeTo(to, drag.box, drag.handle, dx, dy, event.shiftKey);
+            scaleGroup(drag.origs, drag.box, to);
+            for (const id of drag.origs.keys()) { const element = findElement(id); if (element) refreshNode(element); }
+            renderOverlay(); positionMini();
+            return;
+        }
         const element = findElement(drag.id);
         if (!element) return;
         const o = drag.orig;
-        if (drag.type === 'move') {
-            const snapped = snapMove(element, o.x + dx, o.y + dy); element.x = round(snapped.x); element.y = round(snapped.y);
-            // 只挪位置：改这个框的 left/top，不重建（重建要重新排它里面的字）。
-            const node = nodeOf(element.id);
-            if (node) { node.style.left = `${element.x}px`; node.style.top = `${element.y}px`; renderOverlay(); positionMini(); return; }
-        } else if (drag.type === 'resize') resizeTo(element, o, drag.handle, dx, dy, event.shiftKey || element.kind === 'image' && !!element.image && drag.handle.length === 2 && event.altKey);
+        if (drag.type === 'resize') resizeTo(element, o, drag.handle, dx, dy, event.shiftKey || element.kind === 'image' && !!element.image && drag.handle.length === 2 && event.altKey);
         else if (drag.type === 'line') lineTo(element, o, drag.handle, p, event.shiftKey);
         else if (drag.type === 'pan') panTo(element, o, dx, dy);
         refreshNode(element); renderOverlay(); positionMini();
@@ -560,16 +706,22 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         drag = null; guides = [];
         try { canvas.releasePointerCapture(event.pointerId); } catch { /* 已释放 */ }
         if (state.type === 'scroll') return;
-        const element = findElement(state.id);
         if (cancelled && state.moved) { restore(state.before); return; }
         if (state.moved) {
             pushHistory(state.before); changed();
-            if (element?.kind === 'body') void relayout(); else { renderOverlay(); positionMini(); scheduleThumbs(pageOf(state.id)?.id); }
+            // 改了正文框的大小才要重排；只是挪动不影响分页。
+            const ids = state.origs ? [...state.origs.keys()] : [state.id];
+            const resized = state.type !== 'move' && ids.some(id => findElement(id)?.kind === 'body');
+            if (resized) void relayout(); else { renderOverlay(); positionMini(); scheduleThumbs(currentPage()?.id); }
             renderPanelGeometry();
             return;
         }
         renderOverlay();
-        if (!element || cancelled) return;
+        const element = state.id && findElement(state.id);
+        if (!element || cancelled || state.type === 'group') return;
+        // 在多选里点一下（没拖）其中一个：只留它。
+        if (!state.additive && isMulti()) { select(element.id); return; }
+        if (state.additive) return;
         if (element.kind === 'image' && !element.image) { pickImage(element.id); return; }
         if (state.wasSelected && EDITABLE.has(element.kind)) startEdit(element.id);
     }
@@ -594,7 +746,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (event.target !== stage && event.target !== sheet) return;
         commitEditing(); closePop();
         if (cropping) toggleCrop(cropping);
-        select(null);
+        if (tool !== 'multi' && !event.shiftKey) select(null);
     });
     stage.addEventListener('scroll', () => { sheetOffset = null; positionMini(); }, {passive: true});
     let fitFrame = 0;
@@ -625,16 +777,19 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const key = event.key.toLowerCase(), mod = event.ctrlKey || event.metaKey;
         if (mod && key === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
         if (mod && key === 'y') { event.preventDefault(); redo(); return; }
+        if (mod && key === 'a' && !exportJob) { event.preventDefault(); setPicks(currentPage()?.elements.map(item => item.id) || []); return; }
         const element = selected && findElement(selected);
         if (!element || exportJob) return;
         if (key === 'delete' || key === 'backspace') { event.preventDefault(); removeSelected(); }
         else if (mod && key === 'd') { event.preventDefault(); duplicate(); }
-        else if (key === 'enter' && EDITABLE.has(element.kind)) { event.preventDefault(); startEdit(element.id); }
+        else if (key === 'enter' && EDITABLE.has(element.kind) && !isMulti()) { event.preventDefault(); startEdit(element.id); }
         else if (key.startsWith('arrow')) {
             event.preventDefault();
-            const step = event.shiftKey ? 10 : 1, id = element.id;
+            const step = event.shiftKey ? 10 : 1, ids = pickedElements().filter(item => !posLocked(item)).map(item => item.id);
+            if (!ids.length) return;
             const [mx, my] = {arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step]}[key];
-            edit(id, item => { item.x = round(item.x + mx); item.y = round(item.y + my); }, {key: `${id}:nudge`});
+            change(value => { for (const id of ids) { const item = findIn(value, id); if (item) { item.x = round(item.x + mx); item.y = round(item.y + my); } } },
+                {key: `${ids.join(',')}:nudge`, reflow: false, paint: {elements: ids, restyle: true}});
             renderPanelGeometry();
         }
     });
@@ -680,10 +835,10 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     const onEditBlur = event => { if (editing && !(event.relatedTarget && editing.node.contains(event.relatedTarget))) commitEditing(); };
     function startEdit(id) {
         const element = findElement(id);
-        if (!element || !EDITABLE.has(element.kind) || exportJob) return;
+        if (!element || !EDITABLE.has(element.kind) || element.hidden || exportJob) return;
         if (editing) commitEditing();
         if (pageOf(id) !== currentPage()) return;
-        if (selected !== id) select(id);
+        if (picks.length !== 1 || selected !== id) select(id);
         const node = nodeOf(id);
         if (!node) return;
         const slice = element.kind === 'body' ? currentLayout().slices[id] || {start: doc.body.length, end: doc.body.length} : null;
@@ -750,35 +905,58 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         select(element.id);
         if (kind === 'text') startEdit(element.id);
     }
+    // 清空选中而不重画（随后的 change 会整页重画）。
+    function dropPicks() { picks = []; selected = null; cropping = null; }
     function removeSelected() {
-        const id = selected, page = pageOf(id);
-        if (!page) return;
-        commitEditing(); selected = null; cropping = null;
-        change(() => { page.elements = page.elements.filter(item => item.id !== id); }, {reflow: true});
-        renderPanel(); renderMini();
+        const page = currentPage(), ids = new Set(picks);
+        if (!page || !ids.size) return;
+        commitEditing();
+        const reflow = pickedElements().some(item => item.kind === 'body');
+        dropPicks();
+        change(() => { page.elements = page.elements.filter(item => !ids.has(item.id)); }, {reflow});
+        renderPanel(); renderMini(); renderLayers();
     }
     function duplicate() {
-        const element = selected && findElement(selected), page = pageOf(selected);
-        if (!element) return;
+        const page = currentPage(), elements = pickedElements();
+        if (!page || !elements.length) return;
         commitEditing();
-        const copy = {...structuredClone(element), id: newId(), x: element.x + 24, y: element.y + 24};
-        if (copy.kind === 'body') copy.flow = Math.max(...page.elements.filter(item => item.kind === 'body').map(item => item.flow)) + 1;
-        change(() => { page.elements.splice(page.elements.indexOf(element) + 1, 0, copy); }, {reflow: copy.kind === 'body'});
-        select(copy.id);
+        let flow = Math.max(-1, ...page.elements.filter(item => item.kind === 'body').map(item => item.flow));
+        const copies = elements.map(element => {
+            const copy = {...structuredClone(element), id: newId(), x: element.x + 24, y: element.y + 24};
+            if (copy.kind === 'body') copy.flow = ++flow;
+            return [element, copy];
+        });
+        // 按页面上的先后插回去，每个副本紧跟在原件上面一层。
+        copies.sort((a, b) => page.elements.indexOf(b[0]) - page.elements.indexOf(a[0]));
+        change(() => { for (const [element, copy] of copies) page.elements.splice(page.elements.indexOf(element) + 1, 0, copy); },
+            {reflow: copies.some(([, copy]) => copy.kind === 'body')});
+        setPicks(copies.reverse().map(([, copy]) => copy.id));
+    }
+    // 层级：多选时各自上移／下移一层（相对次序不变），置顶／置底整组一起。
+    function arrangeList(list, ids, where) {
+        const chosen = list.filter(item => ids.has(item.id));
+        if (!chosen.length) return false;
+        const before = list.map(item => item.id).join();
+        if (where === 'top' || where === 'bottom') {
+            const rest = list.filter(item => !ids.has(item.id));
+            list.splice(0, list.length, ...(where === 'top' ? [...rest, ...chosen] : [...chosen, ...rest]));
+        } else if (where === 'up') {
+            for (let index = list.length - 2; index >= 0; index--) if (ids.has(list[index].id) && !ids.has(list[index + 1].id)) [list[index], list[index + 1]] = [list[index + 1], list[index]];
+        } else {
+            for (let index = 1; index < list.length; index++) if (ids.has(list[index].id) && !ids.has(list[index - 1].id)) [list[index], list[index - 1]] = [list[index - 1], list[index]];
+        }
+        return list.map(item => item.id).join() !== before;
     }
     function arrange(where) {
-        const page = pageOf(selected), element = selected && findElement(selected);
-        if (!page || !element) return;
-        change(() => {
-            const list = page.elements, index = list.indexOf(element);
-            list.splice(index, 1);
-            const at = where === 'top' ? list.length : where === 'bottom' ? 0 : where === 'up' ? Math.min(list.length, index + 1) : Math.max(0, index - 1);
-            list.splice(at, 0, element);
-        }, {reflow: false});
+        const page = currentPage(), ids = new Set(picks);
+        if (!page || !ids.size) return;
+        const probe = [...page.elements];
+        if (!arrangeList(probe, ids, where)) return;
+        change(() => { arrangeList(page.elements, ids, where); }, {reflow: false});
     }
     function goPage(index) {
         if (!doc || index === pageIndex) return;
-        commitEditing(); cropping = null; selected = null;
+        commitEditing(); dropPicks();
         pageIndex = clamp(index, 0, doc.pages.length - 1);
         // 翻页不改页面设置：面板本来就是「页面」时不重建（滑杆控件重建很费）。
         stage.scrollTop = 0; renderStage(); markCurrentThumb();
@@ -786,21 +964,36 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     function addPage() {
         if (!doc || doc.pages.length >= 60) return;
-        commitEditing();
+        commitEditing(); dropPicks();
         change(value => { const page = makeContinuationPage(value); page.auto = false; value.pages.splice(pageIndex + 1, 0, page); pageIndex++; });
-        selected = null; renderPanel();
+        renderPanel();
     }
     function deletePage(index) {
         if (!doc || doc.pages.length <= 1) return;
-        commitEditing(); selected = null; cropping = null;
+        commitEditing(); dropPicks();
         change(value => { value.pages.splice(index, 1); pageIndex = clamp(pageIndex, 0, value.pages.length - 1); });
         renderPanel();
     }
     function toggleCrop(id) {
         const element = findElement(id);
         if (cropping === id || !element?.image) { const was = cropping; cropping = null; if (was) nodeOf(was)?.classList.remove('qm-cropping'); }
-        else { commitEditing(); if (selected !== id) select(id); cropping = id; nodeOf(id)?.classList.add('qm-cropping'); }
+        else { commitEditing(); if (picks.length !== 1 || selected !== id) select(id); cropping = id; nodeOf(id)?.classList.add('qm-cropping'); }
         renderOverlay(); renderMini(); renderPanel();
+    }
+    // 图层开关：隐藏（正文框隐藏后字流到别的框）、锁位置、锁样式。都进撤销记录；锁不算改版式。
+    function setLayerFlag(ids, flag, value) {
+        const elements = ids.map(findElement).filter(Boolean);
+        if (!elements.length) return;
+        if (flag === 'hidden' && editing && ids.includes(editing.id)) commitEditing();
+        if (flag === 'hidden' && cropping && ids.includes(cropping)) toggleCrop(cropping);
+        const reflow = flag === 'hidden' && elements.some(item => item.kind === 'body');
+        change(next => {
+            for (const id of ids) {
+                const item = findIn(next, id);
+                if (!item) continue;
+                if (flag === 'hidden') item.hidden = value; else item.lock = {...item.lock, [flag]: value};
+            }
+        }, {reflow, keepName: flag !== 'hidden', paint: {elements: elements.map(item => item.id)}}).then(() => { renderPanel(); renderMini(); renderLayers(); });
     }
     function pickImage(target) {
         if (exportJob) return;
@@ -936,16 +1129,26 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         });
     }
     // ── 属性面板 ──────────────────────────────────────────────────────────
+    // 行加到 rowTarget：平时是面板本身，样式、位置两组各在一个 fieldset 里，锁住时整组停用。
+    let rowTarget = panelBody;
     function row(label, ...controls) {
         const node = make('div', 'qm-xs-row');
         node.append(make('span', 'qm-xs-row-label', label), ...controls);
-        panelBody.append(node);
+        rowTarget.append(node);
         return node;
     }
-    function slider({value, min, max, step, unit = '', digits = 0}, onValue) {
+    function group(disabled) {
+        const node = make('fieldset', 'qm-xs-group');
+        node.disabled = disabled;
+        panelBody.append(node);
+        rowTarget = node;
+        return node;
+    }
+    function slider({value, min, max, step, unit = '', digits = 0, label = ''}, onValue) {
         const wrap = make('div', 'qm-xs-slider'), range = make('input'), number = make('input');
         range.type = 'range'; range.min = String(min); range.max = String(max); range.step = String(step);
         number.type = 'number'; number.min = String(min); number.max = String(max); number.step = String(step);
+        if (label) { range.setAttribute('aria-label', label); number.setAttribute('aria-label', label); }
         const set = next => { range.value = String(next); number.value = Number(next).toFixed(digits); };
         set(clamp(Number(value) || 0, min, max));
         range.addEventListener('input', () => { number.value = Number(range.value).toFixed(digits); onValue(Number(range.value)); });
@@ -997,25 +1200,68 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             gap: round((Number.parseFloat(style?.getPropertyValue('--qm-gap')) || 0.55)),
             stroke: cssColorHex(style?.borderTopColor) || doc.ink, strokeWidth: Number.parseFloat(style?.borderTopWidth) || 0,
             radius: Number.parseFloat(style?.borderTopLeftRadius) || 0, fill: cssColorHex(style?.backgroundColor) || 'none',
-            opacity: style ? Number(style.opacity) : 1, nameColor: cssColorHex(style?.getPropertyValue('--qm-who')) || '',
+            // 隐藏的元素读不到样式，按它自己记的值或 1。
+            opacity: style && !element.hidden ? Number(style.opacity) : element.props?.opacity ?? 1, nameColor: cssColorHex(style?.getPropertyValue('--qm-who')) || '',
+            blend: style && !element.hidden && BLEND_MODES.includes(style.mixBlendMode) ? style.mixBlendMode : element.props?.blend || 'normal',
         };
     }
-    const setProp = (element, key, reflow) => value => edit(element.id, item => { item.props[key] = value; }, {key: `${element.id}:${key}`, reflow});
+    // 改样式：ids 里样式没锁的一起改。只改样式的项（不改框里内容）只换行内样式；线条的样子画在 SVG 里，要重建。
+    const CONTENT_PROPS = new Set(['stroke', 'strokeWidth', 'dash']);
+    function setStyle(ids, key, value, reflow) {
+        const targets = ids.map(findElement).filter(item => item && !styleLocked(item));
+        if (!targets.length) return Promise.resolve();
+        const restyle = targets.every(item => item.kind !== 'line' || !CONTENT_PROPS.has(key));
+        const apply = item => { if (value === undefined) delete item.props[key]; else item.props[key] = value; };
+        return change(next => { for (const target of targets) { const item = findIn(next, target.id); if (item) apply(item); } },
+            {key: `${targets.map(item => item.id).join(',')}:${key}`, reflow, paint: {elements: targets.map(item => item.id), restyle}});
+    }
+    const setProp = (element, key, reflow) => value => setStyle([element.id], key, value, reflow);
     function renderPanel() {
-        panelBody.replaceChildren(); panelShows = null;
+        if (panelTab !== 'props') { propsDirty = true; panelShows = null; return; }
+        propsDirty = false;
+        panelBody.replaceChildren(); panelShows = null; rowTarget = panelBody;
         if (!doc) return;
-        const element = selected && findElement(selected);
+        const elements = pickedElements();
+        if (elements.length > 1) { panelShows = `multi:${picks.join(',')}`; multiPanel(elements); rowTarget = panelBody; return; }
+        const element = elements[0];
         panelShows = element ? element.id : 'page';
-        panelTitle.textContent = element ? KIND_LABEL[element.kind] : '页面';
         if (!element) { pagePanel(); return; }
+        propsHead(KIND_LABEL[element.kind], [element]);
+        // 内容（选图、裁切、选对话）不受样式锁；样式与位置各一组。
+        if (element.kind === 'image') imageContent(element);
+        if (element.kind === 'dialog') row('对话', textButton(`选择对话（${element.lines.length} 句）`, event => openDialoguePicker(event.currentTarget, element.id)));
+        group(styleLocked(element));
         if (element.kind === 'text' || element.kind === 'body') textPanel(element);
         else if (element.kind === 'dialog') dialogPanel(element);
-        else if (element.kind === 'image') imagePanel(element);
+        else if (element.kind === 'image') strokeRows(element, computedOf(element), {radius: true});
         else if (element.kind === 'line') linePanel(element);
         else shapePanel(element);
+        row('', textButton('恢复模板样式', () => edit(element.id, item => { item.props = {}; }).then(renderPanel), 'is-wide'));
+        group(posLocked(element));
         geometryPanel(element);
-        const reset = textButton('恢复模板样式', () => edit(element.id, item => { item.props = {}; }).then(renderPanel), 'is-wide');
-        row('', reset);
+        rowTarget = panelBody;
+    }
+    // 属性页顶上一行：选了什么，以及它的三个图层开关（隐藏、锁位置、锁样式），多选时对整组。
+    function propsHead(title, elements) {
+        const head = make('div', 'qm-xs-props-head'), tools = make('div', 'qm-xs-flags');
+        head.append(make('span', 'qm-xs-props-title', title), tools);
+        tools.append(...layerFlags(elements));
+        panelBody.append(head);
+    }
+    function layerFlags(elements) {
+        const ids = elements.map(item => item.id);
+        const all = test => elements.every(test);
+        const flag = (on, onLabel, offLabel, onIcon, offIcon, action) => {
+            const node = button(on ? onLabel : offLabel, on ? onIcon : offIcon, action, {className: `qm-xs-flag${on ? ' is-on' : ''}`});
+            node.setAttribute('aria-pressed', String(on));
+            return node;
+        };
+        const hidden = all(item => item.hidden), pos = all(posLocked), style = all(styleLocked);
+        return [
+            flag(hidden, '显示', '隐藏', 'eyeOff', 'eye', () => setLayerFlag(ids, 'hidden', !hidden)),
+            flag(pos, '解锁位置', '锁定位置', 'move', 'move', () => setLayerFlag(ids, 'pos', !pos)),
+            flag(style, '解锁样式', '锁定样式', 'drop', 'drop', () => setLayerFlag(ids, 'style', !style)),
+        ];
     }
     // 第一次选自定义时，从当前页的比例起步（约不成两位数以内的整数比就用 3:4）。
     function startingCustomRatio() {
@@ -1046,6 +1292,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         return wrap;
     }
     function pagePanel() {
+        panelBody.append(make('div', 'qm-xs-props-head', '页面'));
         row('比例', segmented(RATIOS.map(ratio => ({value: ratio.key, label: ratio.label})), doc.ratio, value => {
             if (value === doc.ratio) return;
             applyRatio(value, value === 'custom' ? startingCustomRatio() : undefined);
@@ -1068,17 +1315,19 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const original = normalizeBody(content?.body);
         if (doc.body !== original) row('正文', textButton('恢复收藏原文', () => { commitEditing(); change(item => { item.body = original; }, {keepName: true}).then(renderPanel); }));
     }
-    function fontSelect(element) {
+    function fontSelect(value, onValue) {
         const select = make('select', 'qm-xs-select');
         const options = [['', '跟随模板'], ['serif', '宋体'], ['sans', '黑体'], ['kai', '楷体'], ...fontList.map(font => [font.id, font.name])];
-        for (const [value, label] of options) { const option = make('option', '', label); option.value = value; select.append(option); }
-        select.value = element.props.font || '';
-        select.addEventListener('change', () => edit(element.id, item => { if (select.value) item.props.font = select.value; else delete item.props.font; }, {reflow: true}));
+        for (const [key, label] of options) { const option = make('option', '', label); option.value = key; select.append(option); }
+        select.value = value || '';
+        select.addEventListener('change', () => onValue(select.value || undefined));
         return select;
     }
+    // 换字体总要走一次重排：字体库里的字体在那里注册。
+    const fontRow = (ids, value) => row('字体', fontSelect(value, next => setStyle(ids, 'font', next, true)));
     function textPanel(element) {
         const c = computedOf(element), p = element.props, body = element.kind === 'body', reflow = body;
-        row('字体', fontSelect(element));
+        fontRow([element.id], p.font);
         row('字号', slider({value: p.size ?? c.size, min: 8, max: 240, step: 1, unit: 'px'}, setProp(element, 'size', reflow)));
         row('字距', slider({value: p.ls ?? c.ls, min: -0.2, max: 1.5, step: 0.01, unit: 'em', digits: 2}, setProp(element, 'ls', reflow)));
         row('行高', slider({value: p.lh ?? c.lh, min: 0.8, max: 3.2, step: 0.05, unit: '倍', digits: 2}, setProp(element, 'lh', reflow)));
@@ -1088,19 +1337,17 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         }
         row('颜色', colorControl(p.color || c.color, setProp(element, 'color', false)));
         row('对齐', segmented([{value: 'left', label: '左'}, {value: 'center', label: '中'}, {value: 'right', label: '右'}, {value: 'justify', label: '两端'}],
-            p.align || c.align, value => edit(element.id, item => { item.props.align = value; }, {reflow})));
+            p.align || c.align, setProp(element, 'align', reflow)));
         row('粗细', segmented([{value: 300, label: '细'}, {value: 400, label: '常规'}, {value: 500, label: '中'}, {value: 700, label: '粗'}],
-            p.weight ?? [300, 400, 500, 700].reduce((a, b) => Math.abs(b - c.weight) < Math.abs(a - c.weight) ? b : a), value => edit(element.id, item => { item.props.weight = value; }, {reflow})));
+            p.weight ?? [300, 400, 500, 700].reduce((a, b) => Math.abs(b - c.weight) < Math.abs(a - c.weight) ? b : a), setProp(element, 'weight', reflow)));
         row('方向', segmented([{value: false, label: '横排'}, {value: true, label: '竖排'}], element.vertical === true,
             value => edit(element.id, item => { item.vertical = value; }, {reflow: true})));
-        row('透明度', slider({value: Math.round((p.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
     }
     function dialogPanel(element) {
         const c = computedOf(element), p = element.props;
-        row('对话', textButton(`选择对话（${element.lines.length} 句）`, event => openDialoguePicker(event.currentTarget, element.id)));
         row('样式', segmented([{value: 'script', label: '名字：话'}, {value: 'bubble', label: '气泡'}], element.look === 'bubble' ? 'bubble' : 'script',
             value => edit(element.id, item => { item.look = value; }, {reflow: false})));
-        row('字体', fontSelect(element));
+        fontRow([element.id], p.font);
         row('字号', slider({value: p.size ?? c.size, min: 8, max: 160, step: 1, unit: 'px'}, setProp(element, 'size', false)));
         row('行高', slider({value: p.lh ?? c.lh, min: 0.8, max: 3, step: 0.05, unit: '倍', digits: 2}, setProp(element, 'lh', false)));
         row('句距', slider({value: p.gap ?? c.gap, min: 0, max: 3, step: 0.05, unit: 'em', digits: 2}, setProp(element, 'gap', false)));
@@ -1109,7 +1356,31 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         row('名字色', colorControl(p.nameColor || c.nameColor || p.color || c.color, setProp(element, 'nameColor', false)));
         row('方向', segmented([{value: false, label: '横排'}, {value: true, label: '竖排'}], element.vertical === true,
             value => edit(element.id, item => { item.vertical = value; }, {reflow: false})));
-        row('透明度', slider({value: Math.round((p.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
+    }
+    // 多选：全是文字类（文本框、正文框、对话）时一起改字体、字号、行高、字距、颜色；混着的只改颜色（文字色、填充、描边）。位置是整组的外接框。
+    function multiPanel(elements) {
+        propsHead(`${elements.length} 个元素`, elements);
+        const ids = elements.map(item => item.id), primary = findElement(selected) || elements[0];
+        const texts = elements.filter(item => TEXT_KINDS.has(item.kind)), allText = texts.length === elements.length;
+        group(elements.every(styleLocked));
+        if (allText) {
+            const c = computedOf(primary), p = primary.props, reflow = texts.some(item => item.kind === 'body');
+            const same = key => texts.every(item => item.props[key] === p[key]) ? p[key] : undefined;
+            fontRow(ids, same('font'));
+            row('字号', slider({value: p.size ?? c.size, min: 8, max: 240, step: 1, unit: 'px'}, value => setStyle(ids, 'size', value, reflow)));
+            row('行高', slider({value: p.lh ?? c.lh, min: 0.8, max: 3.2, step: 0.05, unit: '倍', digits: 2}, value => setStyle(ids, 'lh', value, reflow)));
+            row('字距', slider({value: p.ls ?? c.ls, min: -0.2, max: 1.5, step: 0.01, unit: 'em', digits: 2}, value => setStyle(ids, 'ls', value, reflow)));
+            row('颜色', colorControl(p.color || c.color, value => setStyle(ids, 'color', value, false)));
+        } else {
+            if (texts.length) { const first = texts[0]; row('文字色', colorControl(first.props.color || computedOf(first).color, value => setStyle(texts.map(item => item.id), 'color', value, false))); }
+            const shapes = elements.filter(item => item.kind === 'rect' || item.kind === 'ellipse');
+            if (shapes.length) row('填充', colorControl(shapes[0].props.fill || computedOf(shapes[0]).fill, value => setStyle(shapes.map(item => item.id), 'fill', value, false), {allowNone: true}));
+            const stroked = elements.filter(item => item.kind === 'rect' || item.kind === 'ellipse' || item.kind === 'image' || item.kind === 'line');
+            if (stroked.length) { const first = stroked[0]; row('描边', colorControl(first.props.stroke || (first.kind === 'line' ? doc.ink : computedOf(first).stroke), value => setStyle(stroked.map(item => item.id), 'stroke', value, false))); }
+        }
+        const movable = elements.filter(item => !posLocked(item));
+        group(!movable.length);
+        groupGeometry(movable);
     }
     // 从伴读对话里挑句子：按时间顺序，打勾的进图。
     function openDialoguePicker(anchor, id) {
@@ -1145,10 +1416,9 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         row('描边', colorControl(p.stroke || c.stroke, setProp(element, 'stroke', false)));
         row('粗细', slider({value: p.strokeWidth ?? c.strokeWidth, min: 0, max: 40, step: 0.5, unit: 'px', digits: 1}, setProp(element, 'strokeWidth', false)));
         if (radius) row('圆角', slider({value: p.radius ?? c.radius, min: 0, max: 400, step: 1, unit: 'px'}, setProp(element, 'radius', false)));
-        row('虚线', segmented([{value: false, label: '实线'}, {value: true, label: '虚线'}], p.dash === true, value => edit(element.id, item => { item.props.dash = value; }, {reflow: false})));
-        row('透明度', slider({value: Math.round((p.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
+        row('虚线', segmented([{value: false, label: '实线'}, {value: true, label: '虚线'}], p.dash === true, setProp(element, 'dash', false)));
     }
-    function imagePanel(element) {
+    function imageContent(element) {
         const buttons = make('div', 'qm-xs-inline');
         buttons.append(textButton(element.image ? '换图' : '选图', () => pickImage(element.id)));
         if (element.image) {
@@ -1158,35 +1428,112 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         row('图片', buttons);
         if (element.image) row('缩放', slider({value: element.image.zoom, min: 1, max: 6, step: 0.01, unit: '倍', digits: 2},
             value => edit(element.id, item => { item.image.zoom = value; }, {key: `${element.id}:zoom`, reflow: false})));
-        strokeRows(element, computedOf(element), {radius: true});
     }
     function shapePanel(element) { strokeRows(element, computedOf(element), {fill: true, radius: element.kind === 'rect'}); }
     function linePanel(element) {
         const p = element.props;
         row('颜色', colorControl(p.stroke || doc.ink, setProp(element, 'stroke', false)));
         row('粗细', slider({value: p.strokeWidth ?? 1.5, min: 0.5, max: 30, step: 0.5, unit: 'px', digits: 1}, setProp(element, 'strokeWidth', false)));
-        row('虚线', segmented([{value: false, label: '实线'}, {value: true, label: '虚线'}], p.dash === true, value => edit(element.id, item => { item.props.dash = value; }, {reflow: false})));
-        row('透明度', slider({value: Math.round((p.opacity ?? 1) * 100), min: 0, max: 100, step: 1, unit: '%'}, value => setProp(element, 'opacity', false)(value / 100)));
+        row('虚线', segmented([{value: false, label: '实线'}, {value: true, label: '虚线'}], p.dash === true, setProp(element, 'dash', false)));
     }
-    function geometryPanel(element) {
+    function geoFields(read, onValue) {
         const grid = make('div', 'qm-xs-geo');
         for (const [key, label] of [['x', 'X'], ['y', 'Y'], ['w', '宽'], ['h', '高']]) {
             const field = make('label', 'qm-xs-geo-field'), input = make('input');
-            input.type = 'number'; input.step = '1'; input.dataset.geo = key; input.value = String(Math.round(element[key]));
+            input.type = 'number'; input.step = '1'; input.dataset.geo = key; input.value = String(Math.round(read()?.[key] ?? 0)); input.setAttribute('aria-label', label);
             input.addEventListener('change', () => {
                 const value = Number(input.value);
-                if (!Number.isFinite(value)) { input.value = String(Math.round(element[key])); return; }
-                edit(element.id, item => { item[key] = round(key === 'w' || key === 'h' ? Math.max(item.kind === 'line' ? 0 : 12, value) : value); });
+                if (!Number.isFinite(value)) { input.value = String(Math.round(read()?.[key] ?? 0)); return; }
+                onValue(key, value);
             });
             field.append(make('span', '', label), input);
             grid.append(field);
         }
-        row('位置', grid);
+        return grid;
+    }
+    function geometryPanel(element) {
+        row('位置', geoFields(() => findElement(element.id), (key, value) =>
+            edit(element.id, item => { item[key] = round(key === 'w' || key === 'h' ? Math.max(item.kind === 'line' ? 0 : 12, value) : value); })));
+    }
+    // 整组的位置：改 X / Y 平移，改宽 / 高按比例缩放组里各元素。
+    function groupGeometry(movable) {
+        const ids = movable.map(item => item.id);
+        row('位置', geoFields(() => boundsOf(ids.map(findElement).filter(Boolean)), (key, value) => {
+            const elements = ids.map(findElement).filter(Boolean), from = boundsOf(elements);
+            if (!from) return;
+            const to = {...from, [key]: key === 'w' || key === 'h' ? Math.max(12, value) : value};
+            const origs = new Map(elements.map(item => [item.id, renderedBox(item)]));
+            const reflow = (key === 'w' || key === 'h') && elements.some(item => item.kind === 'body');
+            change(() => scaleGroup(origs, from, to), {reflow, paint: {elements: ids}}).then(renderPanelGeometry);
+        }));
     }
     function renderPanelGeometry() {
-        const element = selected && findElement(selected);
-        if (!element) return;
-        for (const input of panelBody.querySelectorAll('[data-geo]')) if (view.document.activeElement !== input) input.value = String(Math.round(element[input.dataset.geo]));
+        const box = selectionBox();
+        if (!box) return;
+        const source = isMulti() ? boundsOf(pickedElements().filter(item => !posLocked(item))) || box : findElement(selected);
+        for (const input of panelBody.querySelectorAll('[data-geo]')) if (view.document.activeElement !== input) input.value = String(Math.round(source[input.dataset.geo]));
+    }
+    // ── 图层 ──────────────────────────────────────────────────────────────
+    // 当前页的元素，最上层在最前。点一行选中（Shift／Ctrl 或多选模式下加减），行尾是隐藏、锁位置、锁样式；
+    // 上面是选中元素的混合与不透明度，下面是层级。只在图层页看得见时才画，内容没变就不重画。
+    function showTab(key, fromUser = false) {
+        panelTab = key === 'layers' ? 'layers' : 'props';
+        propsTab.setAttribute('aria-selected', String(panelTab === 'props')); layersTab.setAttribute('aria-selected', String(panelTab === 'layers'));
+        panelBody.hidden = panelTab !== 'props'; layersBody.hidden = panelTab !== 'layers';
+        if (fromUser && panel.classList.contains('is-collapsed')) { panel.classList.remove('is-collapsed'); requestAnimationFrame(fit); }
+        if (panelTab === 'props' && (propsDirty || panelShows === null)) renderPanel();
+        if (panelTab === 'layers') renderLayers();
+    }
+    function layerName(element, page) {
+        if (element.kind === 'text') return element.text.replace(/\s+/g, ' ').trim().slice(0, 24) || KIND_LABEL.text;
+        if (element.kind === 'body') {
+            const bodies = page.elements.filter(item => item.kind === 'body');
+            return bodies.length > 1 ? `${KIND_LABEL.body} ${element.flow + 1}` : KIND_LABEL.body;
+        }
+        return KIND_LABEL[element.kind];
+    }
+    function renderLayers() {
+        if (panelTab !== 'layers' || !doc) { layersKey = ''; return; }
+        const page = currentPage();
+        if (!page) { layersBody.replaceChildren(); layersKey = ''; return; }
+        const elements = pickedElements();
+        const key = JSON.stringify([page.id, picks, exportJob ? 1 : 0, page.elements.map(item => [item.id, item.kind, item.hidden, item.lock.pos, item.lock.style,
+            item.kind === 'text' ? item.text.slice(0, 24) : item.flow ?? 0, item.props.opacity ?? null, item.props.blend ?? null])]);
+        if (key === layersKey) return;
+        layersKey = key;
+        const bar = make('div', 'qm-xs-layer-bar'), primary = findElement(selected);
+        const styleTargets = elements.filter(item => !styleLocked(item)), ids = styleTargets.map(item => item.id);
+        const c = primary ? computedOf(primary) : {opacity: 1, blend: 'normal'};
+        const blend = make('select', 'qm-xs-select'); blend.setAttribute('aria-label', '混合模式'); blend.title = '混合模式';
+        for (const mode of BLEND_MODES) { const option = make('option', '', BLEND_LABEL[mode]); option.value = mode; blend.append(option); }
+        blend.value = primary?.props.blend || c.blend || 'normal';
+        blend.addEventListener('change', () => setStyle(ids, 'blend', blend.value === 'normal' && c.blend === 'normal' ? undefined : blend.value, false));
+        const opacity = slider({value: Math.round((primary?.props.opacity ?? c.opacity) * 100), min: 0, max: 100, step: 1, unit: '%', label: '不透明度'},
+            value => setStyle(ids, 'opacity', round(value / 100), false));
+        const disabled = !ids.length;
+        blend.disabled = disabled; for (const input of opacity.querySelectorAll('input')) input.disabled = disabled;
+        bar.append(blend, opacity);
+        const list = make('div', 'qm-xs-layer-list'); list.setAttribute('role', 'list'); list.setAttribute('aria-label', '图层');
+        for (const element of [...page.elements].reverse()) {
+            const on = picks.includes(element.id);
+            const item = make('div', `qm-xs-layer${on ? ' is-on' : ''}${element.hidden ? ' is-hidden' : ''}`);
+            const main = make('button', 'qm-xs-layer-main'); main.type = 'button';
+            item.setAttribute('role', 'listitem'); main.setAttribute('aria-pressed', String(on));
+            main.append(icon(KIND_ICON[element.kind]), make('span', 'qm-xs-layer-name', layerName(element, page)));
+            main.addEventListener('click', event => {
+                commitEditing();
+                if (event.shiftKey || event.ctrlKey || event.metaKey || tool === 'multi') togglePick(element.id); else select(element.id);
+            });
+            item.append(main, ...layerFlags([element]));
+            list.append(item);
+        }
+        const foot = make('div', 'qm-xs-layer-foot');
+        for (const [where, label, name] of [['top', '置于顶层', 'top'], ['up', '上移一层', 'up'], ['down', '下移一层', 'down'], ['bottom', '置于底层', 'bottom']]) {
+            const node = button(label, name, () => arrange(where));
+            node.disabled = !elements.length;
+            foot.append(node);
+        }
+        layersBody.replaceChildren(bar, list, foot);
     }
     // ── 页面条 ────────────────────────────────────────────────────────────
     // 页数、分页处与条宽都没变时，只重画改过的那几页缩略图（影子根里换页面节点），外层按钮不动。
@@ -1261,7 +1608,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const parsed = parseExcerptTemplate(entry.source);
         if (!parsed.ok) { setStatus(parsed.error); return false; }
         commitEditing(); closePop();
-        selected = null; cropping = null; pageIndex = 0;
+        dropPicks(); pageIndex = 0;
         change(value => {
             const next = createDoc({template: parsed.template, templateId: entry.id, body: value.body, fields: value.fields, ratio: value.ratio,
                 customRatio: value.customRatio, grain: value.grain, lines: currentLines(value)});
@@ -1338,7 +1685,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     // ── 方案 ──────────────────────────────────────────────────────────────
     function applyScheme(item) {
         commitEditing(); closePop();
-        selected = null; cropping = null; pageIndex = 0;
+        dropPicks(); pageIndex = 0;
         change(value => {
             const next = createDocFromScheme(item.scheme, {body: value.body, fields: value.fields, lines: currentLines(value), name: item.name});
             for (const key of Object.keys(value)) delete value[key];
@@ -1422,7 +1769,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
                 if (record?.blob) images.set(id, await blobToDataUrl(record.blob));
                 stopped();
             }
-            const context = {families: embedded.families, imageSrc: id => images.get(id) || '', grainTile};
+            const context = {families: embedded.families, imageSrc: id => images.get(id) || '', grainTile, omitHidden: true};
             const css = `${embedded.css}\n${BASE_CSS}\n${doc.template.css}`;
             const base = safeName(content.filename || content.fields.char || content.fields.pair || '书摘');
             for (let index = 0; index < doc.pages.length; index++) {
@@ -1470,6 +1817,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     previewBox.append(previewStage, previewPrev, previewNext, previewCount, button('关闭预览', 'close', () => closePreview(), {className: 'qm-xs-preview-close'}));
     previewBox.hidden = true;
     dialog.append(previewBox);
+    setTool('select'); showTab('props');
     function openPreview() {
         if (!doc || exportJob || preview) return;
         commitEditing(); closePop();
@@ -1588,12 +1936,12 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             try { saved = await store.loadDraft(content.key); } catch { saved = null; }
             if (!visible) return false;
             doc = (saved && saved.stamp === content.stamp && normalizeDoc(saved.doc)) || freshDoc();
-            history = []; future = []; pageIndex = 0; selected = null; editing = null; cropping = null; zoom = 0; dirtyLast = false;
+            history = []; future = []; pageIndex = 0; picks = []; selected = null; editing = null; cropping = null; layersKey = ''; zoom = 0; dirtyLast = false;
             layoutHints.clear(); miniKey = ''; setFullIcon(false);
             setStatus('');
             await relayout();
             if (!visible) return false;
-            renderPanel(); renderStrip(); updateTop();
+            renderPanel(); renderLayers(); renderStrip(); updateTop();
             if (!swept) { swept = true; void sweep(); }
             return true;
         } catch (error) {
@@ -1620,8 +1968,8 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         fontProvider = null; fontList = [];
         clearTimeout(thumbTimer); clearTimeout(statusTimer);
         doc = null; content = null; layout = {pages: [], remaining: 0, stuck: false}; pageNode = null;
-        history = []; future = []; selected = null; drag = null; guides = [];
-        shadow.replaceChildren(); overlay.replaceChildren(); strip.replaceChildren(); panelBody.replaceChildren(); mini.replaceChildren();
+        history = []; future = []; picks = []; selected = null; drag = null; guides = [];
+        shadow.replaceChildren(); overlay.replaceChildren(); strip.replaceChildren(); panelBody.replaceChildren(); layersBody.replaceChildren(); mini.replaceChildren(); layersKey = '';
         thumbs = []; thumbDirty = null; miniKey = ''; miniSize = null; panelShows = null; sheetOffset = null; layoutHints.clear(); grainTiles.clear();
         statusMessage = ''; status.textContent = ''; status.title = '';
     }

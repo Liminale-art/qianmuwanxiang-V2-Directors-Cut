@@ -4,8 +4,9 @@
 import {PAGE_WIDTH, MAX_PAGES, PAGE_BREAK, pageHeight} from './qianmu-excerpt-doc.js';
 
 export const BASE_CSS = `
-.page{position:relative;width:${PAGE_WIDTH}px;margin:0;overflow:hidden;background:var(--paper);color:var(--ink);font-size:24px;line-height:1.6;box-sizing:border-box;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-kerning:normal}
+.page{position:relative;width:${PAGE_WIDTH}px;margin:0;overflow:hidden;background:var(--paper);color:var(--ink);font-size:24px;line-height:1.6;box-sizing:border-box;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-kerning:normal;isolation:isolate}
 .page *{box-sizing:border-box}
+.qm-hidden{display:none!important}
 .qm-bg{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none;max-width:none}
 .qm-grain{position:absolute;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;background-repeat:repeat;background-position:0 0}
 .qm-el{position:absolute;margin:0;padding:0}
@@ -64,6 +65,7 @@ export function elementCss(element, {families, z = 1} = {}) {
     if (p.gap !== undefined) parts.push(`--qm-gap:${p.gap}em`);
     if (p.nameColor) parts.push(`--qm-who:${p.nameColor}`);
     if (p.opacity !== undefined) parts.push(`opacity:${p.opacity}`);
+    if (p.blend) parts.push(`mix-blend-mode:${p.blend}`);
     if (p.rotate) parts.push(`transform:rotate(${p.rotate}deg)`);
     if (element.kind === 'rect' || element.kind === 'ellipse' || element.kind === 'image') {
         if (p.fill) parts.push(`background:${p.fill === 'none' ? 'transparent' : p.fill}`);
@@ -111,7 +113,7 @@ export function buildElement(document, doc, page, element, layoutPage, ctx, z) {
     const vertical = element.vertical ? ' qm-v' : '';
     const empty = element.kind === 'image' && !element.image ? ' qm-empty' : '';
     const look = element.kind === 'dialog' ? (element.look === 'bubble' ? ' is-bubble' : ' is-script') : '';
-    node.className = `qm-el qm-${element.kind}${vertical}${empty}${look}${element.cls ? ` ${element.cls}` : ''}`;
+    node.className = `qm-el qm-${element.kind}${vertical}${empty}${look}${element.cls ? ` ${element.cls}` : ''}${element.hidden ? ' qm-hidden' : ''}`;
     node.dataset.id = element.id;
     node.setAttribute('style', elementCss(element, {families: ctx.families, z}));
     if (element.kind === 'text') node.textContent = element.text;
@@ -171,7 +173,8 @@ export function buildGrain(document, doc, ctx) {
     return node;
 }
 
-// 一页的节点树。ctx：families（字体库 id → 已注册的字体名）、imageSrc（图片 id → 地址）、grainTile（纸色, 颗粒 → {src, size}）。
+// 一页的节点树。ctx：families（字体库 id → 已注册的字体名）、imageSrc（图片 id → 地址）、grainTile（纸色, 颗粒 → {src, size}）、
+// omitHidden（导出时隐藏的元素不进图；编辑页里留着节点、只是不显示，好在图层里点选）。
 export function buildPage(document, doc, page, layoutPage, ctx = {}) {
     const height = layoutPage?.h || pageHeight(doc);
     const root = document.createElement('div');
@@ -193,7 +196,7 @@ export function buildPage(document, doc, page, layoutPage, ctx = {}) {
         holder.innerHTML = page.decor;
         root.append(holder.content);
     }
-    page.elements.forEach((element, index) => root.append(buildElement(document, doc, page, element, layoutPage, ctx, index + 1)));
+    page.elements.forEach((element, index) => { if (!(element.hidden && ctx.omitHidden)) root.append(buildElement(document, doc, page, element, layoutPage, ctx, index + 1)); });
     return root;
 }
 
@@ -413,7 +416,8 @@ export function layoutDoc(doc, {measurer, ctx = {}, makePage, hints = null}) {
             doc.pages.push(next);
         }
         const page = doc.pages[index];
-        const bodies = page.elements.filter(element => element.kind === 'body').sort((a, b) => a.flow - b.flow);
+        // 隐藏的正文框不分正文，字流到下一个框。
+        const bodies = page.elements.filter(element => element.kind === 'body' && !element.hidden).sort((a, b) => a.flow - b.flow);
         const breakAt = body.indexOf(PAGE_BREAK, pos);
         const segmentEnd = breakAt < 0 ? body.length : breakAt;
         const startedAt = pos;

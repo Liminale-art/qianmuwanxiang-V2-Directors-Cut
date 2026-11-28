@@ -118,7 +118,7 @@ function host({linked = true, busy = false} = {}) {
     focusClockBlockExit: () => false, readerLog: null, focusClockCancelEntry() {}, focusClockPauseForReadingExit() {},
     coreadMemoryWrites: busy ? 1 : 0, coreadIdentitySwitchBusy: false, coreadDistilling: false, coreadAutoTextInFlight: false, coreadOpenRequestId: 0,
     coreadStopDialog() {}, coreadStopAssistant() {}, coreadClearPendingChatImages() {}, coreadComicStop() {}, coreadComicVisionAbort: null, coreadComicVisionBusy: false,
-    coreadAssistantConfig: () => ({historyMode: 'session'}), coreadStoreAssistantHistory: async () => {}, coreadSaveProgress: () => trace.push('saved'),
+    coreadAssistantConfig: () => ({historyMode: 'session'}), coreadStoreAssistantHistory: async () => {}, coreadSaveProgress: () => trace.push('saved'), coreadFlushSave: () => {},
     unmountReaderPortal: () => trace.push('unmounted'), renderModal: () => trace.push('rendered'), rerenderMoreIfOpen: () => trace.push('rerender'),
     readerView: {bookId: 'book', companionScope: 'scope', chapterIndex: 2, returnTab: 'coread'}, readerContentCache: {bookId: 'book', chapters: []}, readerDialog: {bookId: 'book'}, activeTab: 'coread',
     coreadCompanionCharacter: () => c.readerView ? {avatar: 'Char.png'} : null, coreadPersona: () => ({key: 'Persona.png'}), coreadCompanionSession: () => null,

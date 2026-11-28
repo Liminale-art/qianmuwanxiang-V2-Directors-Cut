@@ -108,7 +108,7 @@ test('delete requests are bounded and deduplicated before reaching storage', asy
 
 test('IndexedDB adds task, budget, local media, draft and timeline stores without changing old store names', async () => {
   const source = await readFile(new URL('../qianmu-blobstore.js', import.meta.url), 'utf8');
-  assert.match(source, /const DB_VERSION = 15/);
+  assert.match(source, /const DB_VERSION = 16/);
   assert.match(source, /STORE_VIDEO_TASKS = 'video_tasks'/);
   assert.match(source, /STORE_VIDEO_BUDGET = 'video_budget'/);
   assert.match(source, /STORE_VIDEO_MEDIA = 'video_media'/);

@@ -434,7 +434,7 @@ function textFixture({cap = 100, readPos = 250, slices = [], length = 400} = {})
     coreadDistilling: false, coreadDistillAbort: false, coreadDistillCtl: null, coreadMemoryWrites: 0, coreadAutoTextInFlight: false,
     coreadVectorStates: new Map(), companionCharName: () => '书友', coreadUserName: () => '我', coreadSummarySystemPrompt: () => '规则',
     coreadMemory: () => state.memory, coreadBookMeta: () => ({title: '书', mode: 'text'}), coreadDialogBucket: () => 'A::book',
-    computeVisibleWindow: () => ({readPos: state.readPos}),
+    coreadReadAt: () => state.readPos,
     coreadCurrentReadBoundarySync: () => ({bookId: 'book', readTo: state.readPos, chapterIndex: 0, progress: 10}),
     coreadSliceFingerprint: () => 'fp', coreadSyncSliceVector: async () => ({}), rerenderMoreIfOpen: () => {},
     blobStore: {getBook: async () => null}, uid: (prefix) => `${prefix}-${++id}`,
@@ -447,7 +447,7 @@ function textFixture({cap = 100, readPos = 250, slices = [], length = 400} = {})
     },
   });
   vm.runInContext(['coreadExplainError', 'coreadClampBatchChars', 'coreadBatchBudget', 'coreadDialogBatches', 'coreadTextSpanSize', 'coreadMemorySnapshot', 'coreadMemoryRestore', 'coreadNextBatch', 'coreadTextRangeMeta',
-    'coreadPersistSlice', 'coreadDistillReadText', 'coreadDistillFullBook', 'coreadMaybeAutoDistillText'].map(section).join('\n'), c);
+    'coreadPersistSlice', 'coreadDistillReadText', 'coreadDistillFullBook', 'coreadMaybeAutoDistillText', 'coreadProjectionOf', 'coreadTextSpans'].map(section).join('\n'), c);
   return {c, sent, toasts, saves, state, full, dialog: () => c.readerDialog};
 }
 const textSlices = (dialog) => dialog.slices.filter((slice) => slice.src === 'text').map((slice) => [slice.coveredFrom, slice.coveredTo]).sort((a, b) => a[0] - b[0]);
@@ -554,7 +554,7 @@ test('automatic text distill handles at most two batches per trigger; a manual r
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
   assert.match(source, /async function coreadDistillReadText\(m, \{ maxBatches = Infinity \} = \{\}\) \{/);
-  assert.match(source, /planCoreadTextSpans\(full, gap\.from, gap\.to, cap\)\)\.slice\(0, maxBatches\);/);
+  assert.match(source, /gaps\.flatMap\(\(gap\) => coreadTextSpans\(projection, gap, cap\)\)\.slice\(0, maxBatches\);/);
   const auto = source.slice(source.indexOf('async function coreadMaybeAutoDistillText'));
   assert.match(auto.slice(0, 1500), /coreadDistillReadText\(m, \{ maxBatches: 2 \}\)/);
   assert.match(source, /coreadDistillReadText\(m\)\.then\(/, 'the manual button distills everything that is pending');

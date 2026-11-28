@@ -1,8 +1,9 @@
 // Reader packs contain original media, unlike the smaller configuration-only package.
-// v6（现行）：zip，每本书一个目录（书架条目、正文记录、封面、插图、对话与记忆、检索资料），另有 prefs.json 与 shared/（语音、
-// 认不出属于哪本书的条目、检索记录）。逐条以 Blob 写入，不拼成一份大 JSON，也不转 base64。v1–v5 的单个 JSON 照常能恢复。
+// v6（现行）：zip，每本书一个目录（书架条目、正文记录、封面、插图、对话与记忆、检索资料、笔记 annotations.json），另有 prefs.json
+// 与 shared/（语音、认不出属于哪本书的条目、检索记录）。逐条以 Blob 写入，不拼成一份大 JSON，也不转 base64。v1–v5 的单个 JSON
+// 照常能恢复；它们的笔记还在书架条目的 notes 里，恢复时经 notesFromLegacy 换成笔记记录（与开书时的一次性换算同一条路）。
 import {parseBoundedJson,base64DecodedLength} from './qianmu-json-input.js';
-import {buildZip,isStoragePack,readZipDirectory,zipEntryBlob} from './qianmu-storage-transfer.js?v=1.59.630';
+import {buildZip,isStoragePack,readZipDirectory,zipEntryBlob} from './qianmu-storage-transfer.js?v=1.59.631';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
 // v6 每个条目各自的上限（JSON 解析前按目录里记的大小先拦）。向量条目数字多，节点上限放宽，字节上限不变。
 export const COREAD_ZIP_LIMITS = Object.freeze({json:64*1048576,media:512*1048576,depth:40,nodes:8000000});
@@ -60,9 +61,17 @@ export async function buildCoreadPackage({bookMetas, prefs, blobStore, check = (
       category = '书籍原件';
       if (!meta?.id) throw Error('missing book identity');
       const dir = `books/${index + 1}/`, title = String(meta.title || '未命名书籍');
-      const entry = {id:meta.id, meta:`${dir}meta.json`, book:null, cover:null, images:[], chats:[], vectors:[]};
+      const entry = {id:meta.id, meta:`${dir}meta.json`, book:null, cover:null, annotations:null, images:[], chats:[], vectors:[]};
       const rec = await read(() => blobStore.getBook(meta.id));
-      put(entry.meta, asJson(meta), true);
+      category = '伴读笔记';
+      const annotations = typeof blobStore.getReaderNotes === 'function' ? await read(() => blobStore.getReaderNotes(meta.id)) : undefined;
+      if (isRecord(annotations) && Array.isArray(annotations.notes)) {
+        entry.annotations = `${dir}annotations.json`; put(entry.annotations, asJson(annotations), true);
+      }
+      category = '书籍原件';
+      // 笔记已有自己的一份时，书架条目里冻结的旧 notes 不再带上。
+      const {notes:_frozen, ...shelfEntry} = meta;
+      put(entry.meta, asJson(entry.annotations ? shelfEntry : meta), true);
       if (isRecord(rec) && typeof rec.fullText === 'string') {
         const {meta:_meta, savedAt:_saved, ...body} = rec;
         entry.book = `${dir}book.json`;
@@ -191,6 +200,7 @@ export async function openCoreadZipPackage(file) {
     if (!isRecord(book) || book.id !== ref.id || !present(book.meta, limits.json)) fail('书目信息缺失');
     if (book.book != null && !present(book.book, limits.json)) fail('正文原件缺失');
     if (book.cover != null && (!isRecord(book.cover) || !present(book.cover.file, limits.media) || typeof book.cover.mime !== 'string' || !mediaPattern('image').test(book.cover.mime))) fail('封面缺失或媒体类型无效');
+    if (book.annotations != null && !present(book.annotations, limits.json)) fail('笔记缺失');
     checkList(book.images, 'images', 'image', fail);
     checkList(book.chats, 'chats', '', fail);
     checkList(book.vectors, 'vectors', '', fail);
@@ -279,7 +289,17 @@ function indexRestoredBook(coread, meta, cover) {
 
 // v6：一本书一本书恢复，每本按「插图、对话、检索资料 → 正文记录与封面 → 书架条目」写；任何一条失败只记一笔，接着下一条。
 // 页面或状态变化（check 抛错）照旧立刻停下，已写入的保留。
-async function applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress}) {
+// 笔记：包里有 annotations.json 就照它；没有而书架条目里还有旧 notes（导出时还没换算过）、又有正文时，换算后写入。
+async function restoreBookNotes({bookId, record, legacy, chapters, blobStore, notesFromLegacy, onNotesRestored, isPlainObject}) {
+  let next = isPlainObject(record) && Array.isArray(record.notes) ? record : null;
+  if (!next && Array.isArray(legacy) && legacy.length && Array.isArray(chapters) && typeof notesFromLegacy === 'function') next = await notesFromLegacy(legacy, chapters);
+  if (!next || typeof blobStore.putReaderNotes !== 'function') return false;
+  await blobStore.putReaderNotes(bookId, next);
+  onNotesRestored(bookId);
+  return true;
+}
+
+async function applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress, notesFromLegacy, onNotesRestored}) {
   const {readJson, readMedia, sliceMedia} = data.zip;
   const attempt = async (label, work) => {
     check();
@@ -316,12 +336,19 @@ async function applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, wa
         progress.ok++;
         if (cover) progress.coverOk++;
         check();
+        await attempt('import reader notes failed', async () => {
+          const record = book.annotations ? await readJson(book.annotations, '伴读笔记') : null;
+          await restoreBookNotes({bookId:book.id, record, legacy:meta.notes, chapters:rec.chapters, blobStore, notesFromLegacy, onNotesRestored, isPlainObject});
+        });
         indexRestoredBook(coread, meta, cover);
         indexed = true;
       } else {
         // 导出时这本书就没有正文：本机没有这本时只补书架条目（之后可补正文），本机已有的不动。
         check();
         progress.noText++;
+        if (book.annotations) await attempt('import reader notes failed', async () => {
+          await restoreBookNotes({bookId:book.id, record:await readJson(book.annotations, '伴读笔记'), blobStore, onNotesRestored, isPlainObject});
+        });
         if (!(coread().books || []).some((x) => x.id === book.id)) { coread().books.unshift({...meta, hasCover:false}); indexed = true; }
       }
     } catch (e) { check(); progress.failed++; warn('import book failed', e); }
@@ -366,8 +393,8 @@ async function applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, wa
   return progress;
 }
 
-export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, onBookIndexed = () => {}, progress = createCoreadImportProgress()}) {
-  if (data?.version === 6 && data.zip) return applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress});
+export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, onBookIndexed = () => {}, progress = createCoreadImportProgress(), notesFromLegacy = null, onNotesRestored = () => {}}) {
+  if (data?.version === 6 && data.zip) return applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress, notesFromLegacy, onNotesRestored});
   check();
   for (const b of data.books) {
     check();
@@ -381,6 +408,8 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
       progress.ok++;
       if (cover) progress.coverOk++;
       check();
+      try { await restoreBookNotes({bookId:b.meta.id, legacy:b.meta.notes, chapters:b.chapters, blobStore, notesFromLegacy, onNotesRestored, isPlainObject}); check(); }
+      catch (e) { check(); progress.failed++; warn('import reader notes failed', e); }
       // A book-only legacy pack preserves the already indexed local cover, not the old reading progress.
       indexRestoredBook(coread, b.meta, cover);
       indexed = true;

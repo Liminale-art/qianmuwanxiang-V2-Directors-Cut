@@ -10,7 +10,7 @@ const galleryArchive = readFileSync(new URL('../features/gallery/qianmu-gallery-
 const galleryRecord = readFileSync(new URL('../features/gallery/qianmu-gallery-archive-record.js', import.meta.url), 'utf8');
 
 test('storyboard redraw snapshots use an additive private IndexedDB store', () => {
-assert.match(store, /const DB_VERSION = 15/);
+assert.match(store, /const DB_VERSION = 16/);
   assert.match(store, /STORE_STORYBOARD_SNAPSHOTS = 'storyboard_snapshots'/);
   assert.match(store, /if \(!db\.objectStoreNames\.contains\(STORE_STORYBOARD_SNAPSHOTS\)\) db\.createObjectStore\(STORE_STORYBOARD_SNAPSHOTS\)/);
   assert.match(store, /STORE_STORYBOARD_SNAPSHOTS\]: \{[^}]*recoverable: false/);

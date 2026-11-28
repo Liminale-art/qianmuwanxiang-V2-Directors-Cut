@@ -5916,6 +5916,8 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
   text-underline-offset: 3px !important;
   text-decoration-skip-ink: none !important;
 }
+/* 旧划线另外几处待挑的位置（笔记「未定位」一组）：只画虚线，不当划线点 */
+.sd-reader-hl-pick { color: inherit; background: transparent; text-decoration: underline dashed var(--sd-muted); text-underline-offset: 3px; }
 
 /* 抽屉顶部抓手 */
 .sd-reader-panel-grip { width: 36px; height: 4px; border-radius: 3px; background: var(--sd-hairline); margin: 8px auto 2px; flex: 0 0 auto; }
@@ -5971,6 +5973,11 @@ body.sd-qm-modal-open #qr--buttons { display: none !important; }
 .sd-reader-notes-search input { box-sizing: border-box; min-width: 0; width: 100%; border: 0; outline: 0; border-radius: 9px; padding: 7px 10px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: .78em; }
 .sd-reader-notes-filter { min-width: 78px; border: 1px solid var(--sd-border); border-radius: 9px; padding: 6px 8px; background: var(--sd-input-bg); color: var(--sd-text); font: inherit; font-size: .76em; }
 .sd-reader-notes-none { padding: 25px 12px; text-align: center; color: var(--sd-muted); font-size: .82em; }
+.sd-reader-notes-group { margin: 14px 4px 2px; color: var(--sd-muted); font-size: .74em; letter-spacing: .08em; }
+.sd-reader-note-where, .sd-reader-note-pickjump { color: var(--sd-muted); font-size: .76em; }
+.sd-reader-note-pickjump { background: transparent; border: 0; cursor: pointer; padding: 0; margin-right: auto; }
+.sd-reader-note-keep, .sd-reader-note-drop { width: 29px; height: 29px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 7px; color: var(--sd-muted); cursor: pointer; font-size: .82em; padding: 0; }
+.sd-reader-note-keep:hover, .sd-reader-note-drop:hover { color: var(--sd-accent); }
 
 /* 语音条列表 */
 .sd-reader-voice-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--sd-hairline); }
