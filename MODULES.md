@@ -3,14 +3,13 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 446 个，其中 `qianmu-*` 模块 429 个。
+根目录文件 445 个，其中 `qianmu-*` 模块 429 个。
 
 ## 入口、宿主与安装
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `LICENSE` | 是 |  |
-| `_tmp_f.mjs` | 否 |  |
 | `index.js` | 是 | 千幕 (Qianmu) - SillyTavern third-party UI extension |
 | `install-server-plugin.ps1` | 是 |  |
 | `install-server-plugin.sh` | 是 |  |
@@ -32,7 +31,7 @@
 | `assets/logos/` | 5 |
 | `assets/ringtones/` | 49 |
 | `assets/tab-icons/` | 2 |
-| `bundle/` | 200 |
+| `bundle/` | 201 |
 | `evaluation/` | 2 |
 | `features/` | 201 |
 | `scripts/` | 159 |
