@@ -79,3 +79,26 @@ test('focus rows stay closed while another data task holds the voice library', a
   assert.equal(f.notes.length, 2); for (const [, text] of f.notes) assert.match(text, /请先结束当前任务/);
   assert.deepEqual(f.saved, []);
 });
+
+test('excerpt drafts export and import through the real store for the current account only, with the studio settings', async t => {
+  const { installMemoryIndexedDB } = await import('./helpers/reader-idb-fixture.mjs');
+  const { createExcerptStore } = await import('../features/excerpt/qianmu-excerpt-store.js');
+  const idb = installMemoryIndexedDB(); t.after(() => idb.restore());
+  const seed = createExcerptStore({ namespace: 'st-user:a' }), other = createExcerptStore({ namespace: 'st-user:b' });
+  await seed.saveDraft('item-1', { doc: {} }); await seed.putImage('img-1', new Blob(['png'], { type: 'image/png' }), 2, 3); await other.saveDraft('theirs', { doc: {} });
+  let studio = { schemes: [], templates: [] };
+  const f = fixture({ excerptSettings: { read: () => studio, write: value => { studio = value; } } });
+  await f.transfer.exports.excerpt();
+  assert.equal(f.saved.length, 1); assert.match(f.saved[0][0], /^qianmu-excerpt-drafts-\d+\.zip$/);
+  assert.deepEqual(f.notes.at(-1), ['success', '已导出 1 份成图稿、1 张图。']);
+  f.setNamespace('st-user:c');
+  await f.transfer.imports.excerpt(new File([f.saved[0][1]], f.saved[0][0]));
+  assert.deepEqual(f.confirms.at(-1), ['导入书摘成图稿', '将导入 1 份成图稿和 1 张图，同一条的稿保留较新的一份。']);
+  assert.deepEqual(f.notes.at(-1), ['success', '已导入 1 份成图稿、1 张图。']);
+  const target = createExcerptStore({ namespace: 'st-user:c' });
+  assert.ok(await target.loadDraft('item-1')); assert.equal(await target.loadDraft('theirs'), null);
+  assert.equal(await (await target.getImage('img-1')).blob.text(), 'png');
+  const empty = fixture({ excerptSettings: { read: () => ({}), write() {} } }); empty.setNamespace('st-user:empty');
+  await empty.transfer.exports.excerpt(); assert.deepEqual(empty.notes, [['info', '还没有成图稿。']]); assert.equal(empty.saved.length, 0);
+  for (const store of [seed, other, target]) store.close();
+});

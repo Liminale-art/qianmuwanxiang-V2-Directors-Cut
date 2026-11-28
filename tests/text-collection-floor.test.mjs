@@ -83,7 +83,7 @@ test('toolbar fallback and malformed floor IDs never point at another message', 
     assert.equal(f.button(1).parentNode.className, 'mes_buttons');
 });
 
-test('confirmed same-source entries fill a heart; a click removes all IDs of that floor only', async t => {
+test('confirmed same-source entries fill a heart; the click reports this floor only and the heart follows confirmed items', async t => {
     const f = fixture(t);
     f.items = [{id: 'a', source: source('chat-one', 'message-0')},
         {id: 'b', source: source('chat-one', 'message-0')}, {id: 'other-chat', source: source('chat-two', 'message-0')},
@@ -91,7 +91,7 @@ test('confirmed same-source entries fill a heart; a click removes all IDs of tha
     f.floor.refresh(f.root);
     assert.equal(f.button().getAttribute('aria-pressed'), 'true');
     assert.equal(f.button().firstChild.getAttribute('fill'), 'currentColor');
-    assert.equal(f.button().getAttribute('aria-label'), '取消本层收藏');
+    assert.equal(f.button().getAttribute('aria-label'), '收藏正文', 'a filled heart still opens the chooser');
     f.setToggle(({ids}) => { f.items = f.items.filter(item => !ids.includes(item.id)); });
     const action = f.click(f.button().firstChild);
     assert.deepEqual([action.handled, action.event.prevented, action.event.stopped], [true, true, true]);

@@ -45,6 +45,16 @@
 .qm-collection-panel .qm-collection-preview { font-size: .88em; color: var(--sd-muted, #999); }
 .qm-collection-panel .qm-collection-tags { font-size: .85em; color: var(--sd-accent, #8aafcf); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qm-collection-panel .qm-collection-more { width: 100%; gap: 8px; }
+.qm-collection-panel .qm-collection-delete { color: var(--sd-muted, #999); }
+.qm-collection-panel .qm-collection-toolbar button[aria-pressed="true"] { background: var(--sd-input-bg, #8882); }
+/* 标签规则卡片：工具栏下方，与取材同样的一行一条。 */
+.qm-collection-panel .qm-collection-rules { display: flex; flex: none; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--sd-hairline, #8886); border-radius: 10px; }
+.qm-collection-panel .qm-collection-rule-list { display: flex; flex-direction: column; gap: 6px; }
+.qm-collection-panel .qm-collection-rule { display: flex; align-items: center; gap: 6px; }
+.qm-collection-panel .qm-collection-rule input { flex: 1; width: 0; padding: 7px 10px; font-size: 13px; }
+.qm-collection-panel .qm-collection-rule select { flex: none; padding: 7px 8px; font-size: 13px; }
+.qm-collection-panel .qm-collection-rule button { min-width: 32px; min-height: 32px; padding: 6px; }
+.qm-collection-panel .qm-collection-rule-add { align-self: flex-start; gap: 6px; min-height: 32px; padding: 6px 10px; font-size: 13px; }
 .qm-collection-panel .qm-collection-empty { margin: 20px 12px; }
 /* 楼层小标签：收藏来自当前聊天且那一层还在时才出现，点一下跳到该层。 */
 .qm-collection-panel .qm-collection-floor { min-width: 0; min-height: 28px; padding: 2px 9px; border-radius: 999px; background: color-mix(in srgb, var(--sd-accent, #8aafcf) 13%, transparent); color: color-mix(in srgb, var(--sd-accent, #8aafcf) 72%, var(--sd-text, currentColor)); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; }
@@ -52,6 +62,8 @@
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) { flex: 1; width: 100%; min-height: 0; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; white-space: pre-wrap; font-family: var(--qm-body-font, var(--qm-prose-font, var(--sd-font, inherit))); font-size: var(--sd-prose-font-size, var(--qm-prose-size, 1em)); letter-spacing: var(--qm-prose-letter-spacing, normal); line-height: 1.55; text-align: justify; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div) { margin: 0 0 .75em; padding: 0; font: inherit; line-height: inherit; white-space: pre-wrap; text-align: justify; text-indent: 2em; }
 .qm-collection-panel :is(.qm-collection-text, .qm-collection-editor) > :is(p, div):last-child { margin-bottom: 0; }
+/* 带原文的条目：ST 格式化后的楼层内容，交给 ST 自己的 .mes_text 样式，不套阅读页的段落缩进与保留空白。 */
+.qm-collection-panel .qm-collection-text > .qm-collection-raw { margin: 0; padding: 0; white-space: normal; text-align: start; text-indent: 0; }
 .qm-collection-panel .qm-collection-editor { display: block; border: 0; border-radius: 8px; background: var(--sd-input-bg, #8881); outline: none; box-shadow: none; }
 .qm-collection-panel .qm-collection-editor:focus { outline: none; box-shadow: none; }
 .qm-collection-panel .qm-collection-editor > :is(p, div) { min-height: 1.55em; }

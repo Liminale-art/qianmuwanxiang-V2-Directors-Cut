@@ -34,7 +34,8 @@ export function textCollectionDom() {
         }
         get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
         set innerHTML(value) {
-            if (this.tagName !== 'SVG') throw Error('Collection test prohibits HTML rendering outside static SVG icons');
+            // Only static SVG icons and the reader's ST-formatted floor container may receive markup.
+            if (this.tagName !== 'SVG' && !this.classList.contains('qm-collection-raw')) throw Error('Collection test prohibits HTML rendering outside static SVG icons and the formatted floor container');
             this._markup = String(value);
         }
         get innerHTML() { return this._markup; }

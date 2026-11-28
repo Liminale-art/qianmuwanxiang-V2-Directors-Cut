@@ -5,7 +5,7 @@ import {storyboardFunctionSource as section} from './helpers/storyboard-form-fix
 
 function fixture() {
   const data={books:[{id:'a',title:'Alpha',progress:45},{id:'b',title:'Beta'}],collections:[{id:'folder',name:'Folder',bookIds:['a','b'],createdAt:1,updatedAt:1}]};
-  const page={isConnected:true,hidden:false},modal={classList:{contains:()=>true},querySelector:()=>page},calls=[],notices=[],account=[];
+  const page={isConnected:true,hidden:false},modal={classList:{contains:()=>true},querySelector:()=>page},calls=[],notices=[],account=[],drafts=[];
   // The account side of a deletion: what the reader asked the two mirrors to do, and what the chat mirror answers.
   const answer={registered:true,pending:[]};
   let saveAnswer;
@@ -15,7 +15,7 @@ function fixture() {
     coreadSaveDialog:()=>new Promise(resolve=>{calls.push('save-dialog');saveAnswer=resolve;}),unmountReaderPortal:()=>calls.push('unmount'),saveSettings:()=>calls.push('save-settings'),
     
     reader:{COREAD_SLICE_SCHEMA_VERSION:3},readerContentCache:null,readerAssistant:null,readerAssistantSessions:new Map(),dialogGenToken:0,dialogAbort:null,
-    focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,readerLog:null,
+    focusClockActiveLock:()=>null,coreadArchiveDialogSlices:s=>s,readerLog:null,coreadDropExcerptDrafts:options=>drafts.push(options),
     readerChatSync:{remove:async keys=>{account.push(['chat-remove',[...keys]]);return {registered:answer.registered,synced:answer.registered?keys.filter(key=>!answer.pending.includes(key)):[],pending:answer.registered?answer.pending.filter(key=>keys.includes(key)):[...keys]};},
       request:(...args)=>account.push(['chat-request',...args])},
     readerCoverSync:{remove:async ids=>{account.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}},
@@ -23,7 +23,7 @@ function fixture() {
   c.coread=()=>c.settings.coread;
   const names=['coreadBookMeta','coreadCollections','coreadCaptureCollectionMutation','coreadReportAccountRemoval','coreadDeleteBook','coreadCanDeleteBooks','coreadRequestDeleteBooks'];
   vm.runInContext(names.map(section).join('\n'),c);
-  return {c,data,page,calls,notices,account,answer,answerSave:value=>saveAnswer(value)};
+  return {c,data,page,calls,notices,account,answer,drafts,answerSave:value=>saveAnswer(value)};
 }
 
 test('failed dialogue preservation stops before removing any book, cache or in-memory slices',async()=>{
@@ -202,4 +202,21 @@ test('an account copy that could not be deleted is reported as such, once per ba
   const alone=fixture();alone.answer.pending=['chat::a'];
   const third=alone.c.coreadDeleteBook('a',{deleteMemory:true});alone.answerSave(true);assert.equal(await third,true);
   assert.match(alone.notices.at(-1)[0],/暂时没删掉/,'a single deletion outside a batch reports for itself');
+});
+
+test('a committed deletion also drops the book’s excerpt drafts; a stopped one leaves them',async()=>{
+  const f=fixture();f.c.readerDialog={bookId:'',loaded:false};
+  assert.equal(await f.c.coreadDeleteBook('a',{deleteMemory:true}),true);
+  assert.equal(JSON.stringify(f.drafts),JSON.stringify([{startsWith:'reader:a:'}]));
+  const g=fixture();g.c.readerDialog={bookId:'',loaded:false};g.c.blobStore.deleteReaderBookData=async()=>({status:'stale'});
+  assert.equal(await g.c.coreadDeleteBook('a',{deleteMemory:true}),false);assert.equal(g.drafts.length,0);
+});
+
+test('deleting one note drops only that note’s excerpt draft after the shelf entry is saved',()=>{
+  const events=[],meta={id:'a',notes:[{id:'n1'},{id:'n2'}]};
+  const c=vm.createContext({readerView:{bookId:'a'},coreadBookMeta:id=>id==='a'?meta:null,saveSettings:()=>events.push('save'),coreadDropExcerptDrafts:options=>events.push(JSON.stringify(options))});
+  vm.runInContext(section('coreadDeleteNote'),c);
+  c.coreadDeleteNote('n1');
+  assert.deepEqual(meta.notes.map(n=>n.id),['n2']);
+  assert.deepEqual(events,['save',JSON.stringify({keys:['reader:a:n1']})]);
 });

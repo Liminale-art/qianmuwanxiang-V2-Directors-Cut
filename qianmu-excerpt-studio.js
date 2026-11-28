@@ -1,10 +1,11 @@
 // 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响），
 // 选中框、手柄与小工具条在外层。所有改动只作用于这份成图稿，不回写收藏原文。
 import {PAGE_WIDTH, RATIOS, PAGE_BREAK, pageHeight, normalizeDoc, normalizeBody, normalizeElement, createDoc, createDocFromScheme,
-    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, SCHEME_LIMIT, TEMPLATE_LIMIT} from './features/excerpt/qianmu-excerpt-doc.js';
+    schemeFromDoc, setRatio, makeContinuationPage, normalizeStudioSettings, builtinTemplate, newId, normalizeLines, normalizeCustomRatio, GRAIN_SIZES,
+    SCHEME_LIMIT, TEMPLATE_LIMIT} from './features/excerpt/qianmu-excerpt-doc.js';
 import {BUILTIN_TEMPLATES, parseExcerptTemplate, TEMPLATE_GUIDE, TEMPLATE_STARTER, normalizeHex} from './features/excerpt/qianmu-excerpt-template.js';
-import {BASE_CSS, FONT_STACKS, buildPage, buildElement, fillParagraphs, shiftFor, createMeasurer, layoutDoc, embedFonts, pageSvg, svgToPng,
-    blobToDataUrl, imageGeometry} from './features/excerpt/qianmu-excerpt-render.js';
+import {BASE_CSS, FONT_STACKS, buildPage, buildElement, buildGrain, pageStyle, createGrainTiles, fillParagraphs, createMeasurer, layoutDoc, embedFonts,
+    pageSvg, svgToPng, blobToDataUrl, imageGeometry} from './features/excerpt/qianmu-excerpt-render.js';
 import {createExcerptStore, prepareImage, imageIdsOf} from './features/excerpt/qianmu-excerpt-store.js';
 
 export {excerptFields} from './features/excerpt/qianmu-excerpt-template.js';
@@ -25,6 +26,9 @@ const ICONS = {
     template: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 10v10"/>',
     scheme: '<path d="M6 4h12v16l-6-4-6 4z"/>',
     full: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+    preview: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    prev: '<path d="m15 5-7 7 7 7"/>',
+    next: '<path d="m9 5 7 7-7 7"/>',
     unfull: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
@@ -85,6 +89,8 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     if (!document || typeof download !== 'function') throw new TypeError('书摘成图缺少宿主');
     let disposed = false, visible = false, stylesheet = null, store = null;
     let content = null, doc = null, layout = {pages: [], remaining: 0, stuck: false}, pageIndex = 0, pageNode = null, pageH = 1440;
+    let statusMessage = '', exportShown = null, miniKey = '', miniSize = null, sheetOffset = null, preview = null, panelShows = null;
+    const layoutHints = new Map(), overlayNodes = new Map(), grainTiles = createGrainTiles(document);
     let selected = null, editing = null, cropping = null, drag = null, guides = [];
     let history = [], future = [], lastKey = '', lastAt = 0, dirtyLast = false;
     let scale = 1, zoom = 0, measurer = null, measurerCss = null, relayoutToken = 0;
@@ -126,7 +132,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     const templateButton = button('模板', 'template', event => openTemplateMenu(event.currentTarget), {text: true});
     const schemeButton = button('方案', 'scheme', event => openSchemeMenu(event.currentTarget), {text: true});
     const status = make('span', 'qm-xs-status'); status.setAttribute('role', 'status');
-    const fullButton = button('全屏', 'full', () => toggleFull());
+    const fullButton = button('全屏', 'full', () => onFullButton());
     const exportButton = button('导出图片', 'download', () => exportJob ? exportJob.controller.abort() : void startExport(), {className: 'qm-xs-primary', text: '导出'});
     top.append(button('关闭', 'close', () => close()), make('i', 'qm-xs-sep'), undoButton, redoButton, make('i', 'qm-xs-sep'),
         templateButton, schemeButton, status, fullButton, exportButton);
@@ -167,12 +173,17 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (mutate(next) === false) return false;
         try { settings?.write?.(next); return true; } catch (error) { console.warn('[千幕] 书摘设置未保存', error); setStatus('设置未能保存'); return false; }
     }
+    // 状态栏平时显示这份稿的版式名（模板名或方案名，改过版式就是「未命名」）；临时消息过几秒退回版式名。
     function setStatus(text, sticky = false) {
-        status.textContent = text || ''; status.title = text || '';
+        statusMessage = text || '';
         clearTimeout(statusTimer);
-        if (text && !sticky) statusTimer = setTimeout(() => { if (status.textContent === text) { status.textContent = ''; overflowStatus(); } }, 4000);
+        if (text && !sticky) statusTimer = setTimeout(() => { if (statusMessage === text) { statusMessage = ''; paintStatus(); } }, 4000);
+        paintStatus();
     }
-    function overflowStatus() { if (!status.textContent && layout.remaining) status.textContent = `还有 ${layout.remaining} 字没排进去`; }
+    function paintStatus() {
+        const text = statusMessage || (doc ? doc.name || '未命名' : '');
+        if (status.textContent !== text) { status.textContent = text; status.title = text; }
+    }
     const snapshot = () => JSON.stringify(doc);
     function remember(key = '') {
         const now = Date.now();
@@ -180,12 +191,23 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         pushHistory(snapshot()); lastKey = key; lastAt = now;
     }
     function pushHistory(value) { history.push(value); if (history.length > 50) history.shift(); future = []; lastKey = ''; }
-    function changed() { dirtyLast = true; scheduleSave(); updateTop(); }
-    function change(mutate, {key = '', reflow = true} = {}) {
+    // keepName：只改了文字内容（或换模板、方案时由它们自己定名），版式名不变；其余改动都让版式变成「未命名」。
+    function changed({keepName = false} = {}) {
+        if (doc && !keepName) doc.name = '';
+        dirtyLast = true; scheduleSave(); updateTop(); paintStatus();
+    }
+    // paint：不重排时只重画受影响的部分——{element: id} 只换这一个框，'paper' 只改纸色、文字色、杂色与背景透明度。
+    function change(mutate, {key = '', reflow = true, keepName = false, paint = null} = {}) {
         if (!doc || exportJob) return Promise.resolve();
-        remember(key); mutate(doc); changed();
+        remember(key); mutate(doc); changed({keepName});
         if (reflow) return relayout();
-        renderStage(); scheduleThumbs();
+        if (paint === 'paper') { paintPaper(); scheduleThumbs(); }
+        else if (paint?.element) {
+            const element = findElement(paint.element), page = pageOf(paint.element);
+            if (element && page === currentPage() && nodeOf(element.id)) { refreshNode(element); renderOverlay(); positionMini(); }
+            else if (page === currentPage()) renderStage();
+            scheduleThumbs(page?.id);
+        } else { renderStage(); scheduleThumbs(); }
         return Promise.resolve();
     }
     const findIn = (value, id) => {
@@ -195,11 +217,11 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     const findElement = id => findIn(doc, id);
     const pageOf = id => doc?.pages.find(page => page.elements.some(item => item.id === id)) || null;
     const edit = (id, mutate, options = {}) => change(value => { const element = findIn(value, id); if (element) mutate(element); },
-        {reflow: findElement(id)?.kind === 'body' || doc?.ratio === 'auto', ...options});
+        {reflow: findElement(id)?.kind === 'body', paint: {element: id}, ...options});
     function restore(value) {
         doc = JSON.parse(value); lastKey = ''; cropping = null;
         if (selected && !findElement(selected)) selected = null;
-        changed(); void relayout().then(() => { renderPanel(); renderMini(); });
+        changed({keepName: true}); void relayout().then(() => { renderPanel(); renderMini(); });
     }
     function undo() { if (!history.length || exportJob) return; commitEditing(); future.push(snapshot()); const value = history.pop(); restore(value); }
     function redo() { if (!future.length || exportJob) return; commitEditing(); history.push(snapshot()); restore(future.pop()); }
@@ -221,11 +243,14 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     function updateTop() {
         undoButton.disabled = !history.length || !!exportJob; redoButton.disabled = !future.length || !!exportJob;
-        const label = exportJob ? '停止导出' : '导出图片';
+        const busy = !!exportJob;
+        if (exportShown === busy) return;
+        exportShown = busy;
+        const label = busy ? '停止导出' : '导出图片';
         exportButton.title = label; exportButton.setAttribute('aria-label', label);
-        exportButton.querySelector('.qm-xs-icon').replaceWith(icon(exportJob ? 'stop' : 'download'));
-        exportButton.querySelector('.qm-xs-label').textContent = exportJob ? '停止' : '导出';
-        dialog.classList.toggle('is-busy', !!exportJob);
+        exportButton.querySelector('.qm-xs-icon').replaceWith(icon(busy ? 'stop' : 'download'));
+        exportButton.querySelector('.qm-xs-label').textContent = busy ? '停止' : '导出';
+        dialog.classList.toggle('is-busy', busy);
     }
 
     // ── 字体与图片 ────────────────────────────────────────────────────────
@@ -255,7 +280,8 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             catch { imageUrls.set(id, ''); }
         }));
     }
-    const editorContext = () => ({families, imageSrc: id => imageUrls.get(id) || ''});
+    const grainTile = (paper, size) => grainTiles.get(paper, size);
+    const editorContext = () => ({families, imageSrc: id => imageUrls.get(id) || '', grainTile});
     // ── 排版与画面 ────────────────────────────────────────────────────────
     function measurerFor(value) {
         const css = value.template.css;
@@ -272,13 +298,13 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             // 字体刚注册时可能还在解码：等它就绪再量，免得按后备字体分页。
             await document.fonts?.ready;
             if (token !== relayoutToken || !doc) return;
-            layout = layoutDoc(doc, {measurer, ctx: editorContext(), makePage: () => makeContinuationPage(doc)});
+            layout = layoutDoc(doc, {measurer, ctx: editorContext(), makePage: () => makeContinuationPage(doc), hints: layoutHints});
         } catch (error) { console.warn('[千幕] 书摘排版失败', error); setStatus('排版失败，请重试'); }
         pageIndex = clamp(pageIndex, 0, doc.pages.length - 1);
-        renderStage(); scheduleThumbs(); overflowStatus();
+        renderStage(); scheduleThumbs();
     }
     const currentPage = () => doc?.pages[pageIndex] || null;
-    const layoutFor = page => layout.pages.find(item => item.id === page?.id) || {h: pageHeight(doc), delta: 0, slices: {}, breakBefore: -1};
+    const layoutFor = page => layout.pages.find(item => item.id === page?.id) || {h: pageHeight(doc), slices: {}, breakBefore: -1};
     const currentLayout = () => layoutFor(currentPage());
     function nodeOf(id) { return pageNode?.querySelector(`[data-id="${CSS.escape(id)}"]`) || null; }
     function renderStage() {
@@ -291,6 +317,18 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         canvas.style.height = overlay.style.height = `${pageH}px`;
         if (cropping) nodeOf(cropping)?.classList.add('qm-cropping');
         fit(); renderOverlay(); renderMini();
+        if (preview) renderPreview();
+    }
+    // 纸色、文字色、杂色、背景透明度：只改页面根节点与杂色层，不重建整页。
+    function paintPaper() {
+        if (!pageNode) { renderStage(); return; }
+        pageNode.setAttribute('style', pageStyle(doc, pageH));
+        const old = pageNode.querySelector(':scope > .qm-grain'), next = buildGrain(document, doc, editorContext());
+        if (old && next) old.setAttribute('style', next.getAttribute('style'));
+        else if (old) old.remove();
+        else if (next) { const bg = pageNode.querySelector(':scope > .qm-bg'); if (bg) bg.after(next); else pageNode.prepend(next); }
+        const bg = pageNode.querySelector(':scope > .qm-bg');
+        if (bg) bg.style.opacity = String(doc.bg.opacity ?? 1);
     }
     function fit() {
         if (!doc) return;
@@ -302,45 +340,58 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         canvas.style.transform = `scale(${scale})`;
         sheet.style.width = `${PAGE_WIDTH * scale}px`; sheet.style.height = `${pageH * scale}px`;
         sheet.style.setProperty('--s', String(scale));
+        sheetOffset = null;
         positionMini();
     }
     function zoomBy(factor) { zoom = clamp((zoom || scale) * factor, 0.08, 3); fit(); }
-    function renderedBox(element, page = currentPage()) {
-        const {dy, dh} = shiftFor(page, element, layoutFor(page).delta);
-        return {x: element.x, y: element.y + dy, w: element.w, h: element.h + dh};
+    const renderedBox = element => ({x: element.x, y: element.y, w: element.w, h: element.h});
+    // 选框、手柄与参考线的节点重复使用：拖动时只改位置，不反复增删（增删节点会惊动宿主页对整页的监听）。
+    function overlayNode(key, className) {
+        let node = overlayNodes.get(key);
+        if (!node) { node = make('div', className); overlayNodes.set(key, node); }
+        else if (node.className !== className) node.className = className;
+        return node;
     }
     function handleNode(name, x, y) {
-        const node = make('div', `qm-xs-handle is-${name}`);
+        const node = overlayNode(`h:${name}`, `qm-xs-handle is-${name}`);
         node.dataset.handle = name; node.style.left = `${x}px`; node.style.top = `${y}px`;
         return node;
     }
-    function renderOverlay() {
-        overlay.replaceChildren();
-        for (const guide of guides) {
-            const line = make('div', `qm-xs-guide is-${guide.axis}`);
-            if (guide.axis === 'x') line.style.left = `${guide.at}px`; else line.style.top = `${guide.at}px`;
-            overlay.append(line);
-        }
+    function overlayParts() {
+        const parts = guides.map((guide, index) => {
+            const line = overlayNode(`g:${index}`, `qm-xs-guide is-${guide.axis}`);
+            line.style.left = guide.axis === 'x' ? `${guide.at}px` : ''; line.style.top = guide.axis === 'x' ? '' : `${guide.at}px`;
+            return line;
+        });
         const element = selected && findElement(selected);
-        if (!element || pageOf(selected) !== currentPage()) return;
+        if (!element || pageOf(selected) !== currentPage()) return parts;
         const box = renderedBox(element);
         if (element.kind === 'line') {
             const [y1, y2] = element.dir === -1 ? [box.y + box.h, box.y] : [box.y, box.y + box.h];
-            if (!editing) overlay.append(handleNode('a', box.x, y1), handleNode('b', box.x + box.w, y2));
-            return;
+            if (!editing) parts.push(handleNode('a', box.x, y1), handleNode('b', box.x + box.w, y2));
+            return parts;
         }
-        const frame = make('div', 'qm-xs-sel');
+        const frame = overlayNode('sel', 'qm-xs-sel');
         frame.style.cssText = `left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px`;
-        overlay.append(frame);
-        if (editing || cropping) return;
+        parts.push(frame);
+        if (editing || cropping) return parts;
         const spots = {nw: [0, 0], n: [.5, 0], ne: [1, 0], e: [1, .5], se: [1, 1], s: [.5, 1], sw: [0, 1], w: [0, .5]};
-        for (const [name, [fx, fy]] of Object.entries(spots)) overlay.append(handleNode(name, box.x + box.w * fx, box.y + box.h * fy));
+        for (const [name, [fx, fy]] of Object.entries(spots)) parts.push(handleNode(name, box.x + box.w * fx, box.y + box.h * fy));
+        return parts;
+    }
+    function renderOverlay() {
+        const parts = overlayParts(), now = overlay.children;
+        if (parts.length !== now.length || parts.some((node, index) => now[index] !== node)) overlay.replaceChildren(...parts);
     }
     // 选中元素上方的小工具条（不随页面缩放）。
     function renderMini() {
-        mini.replaceChildren();
         const element = selected && findElement(selected);
-        if (!element || exportJob || pageOf(selected) !== currentPage()) { mini.hidden = true; return; }
+        const key = element && !exportJob && pageOf(selected) === currentPage() ? [element.id, element.kind, !!element.image, editing?.id, cropping].join('|') : '';
+        // 工具条内容只随选中、编辑、裁切变；没变时只挪位置。
+        if (key === miniKey && (key ? !mini.hidden : mini.hidden)) { positionMini(); return; }
+        miniKey = key; miniSize = null;
+        mini.replaceChildren();
+        if (!key) { mini.hidden = true; return; }
         const items = [];
         if (editing) {
             if (element.kind === 'body') items.push(button('在此分页', 'breakpage', insertBreak, {keepFocus: true, text: '分页'}));
@@ -357,15 +408,17 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         mini.append(...items); mini.hidden = false;
         positionMini();
     }
+    // 工具条尺寸与画纸位置记一次，拖动时不再每步强制浏览器重新排版去读。
     function positionMini() {
         const element = selected && findElement(selected);
         if (mini.hidden || !element) return;
         const box = renderedBox(element);
-        const width = mini.offsetWidth || 160, height = mini.offsetHeight || 36;
-        const sheetWidth = PAGE_WIDTH * scale;
+        miniSize ??= {width: mini.offsetWidth || 160, height: mini.offsetHeight || 36};
+        sheetOffset ??= {left: sheet.offsetLeft, top: sheet.offsetTop};
+        const {width, height} = miniSize, sheetWidth = PAGE_WIDTH * scale;
         let left = (box.x + box.w / 2) * scale - width / 2, topAt = box.y * scale - height - 10;
-        if (topAt < -sheet.offsetTop + 4) topAt = (box.y + box.h) * scale + 10;
-        left = clamp(left, -sheet.offsetLeft + 4, Math.max(4, sheetWidth + sheet.offsetLeft - width - 4));
+        if (topAt < -sheetOffset.top + 4) topAt = (box.y + box.h) * scale + 10;
+        left = clamp(left, -sheetOffset.left + 4, Math.max(4, sheetWidth + sheetOffset.left - width - 4));
         mini.style.left = `${left}px`; mini.style.top = `${topAt}px`;
     }
     // ── 拖动、缩放、端点、取景 ────────────────────────────────────────────
@@ -442,7 +495,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         element.dir = (p2.x - p1.x) * (p2.y - p1.y) < 0 ? -1 : 1;
     }
     function panTo(element, o, dx, dy) {
-        const {dh} = shiftFor(currentPage(), o, currentLayout().delta), frameH = o.h + dh;
+        const frameH = o.h;
         const before = imageGeometry(o.w, frameH, o.image);
         element.image.cx = clamp(o.image.cx - dx / before.w, 0, 1); element.image.cy = clamp(o.image.cy - dy / before.h, 0, 1);
         const after = imageGeometry(o.w, frameH, element.image);
@@ -491,8 +544,12 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const element = findElement(drag.id);
         if (!element) return;
         const o = drag.orig;
-        if (drag.type === 'move') { const snapped = snapMove(element, o.x + dx, o.y + dy); element.x = round(snapped.x); element.y = round(snapped.y); }
-        else if (drag.type === 'resize') resizeTo(element, o, drag.handle, dx, dy, event.shiftKey || element.kind === 'image' && !!element.image && drag.handle.length === 2 && event.altKey);
+        if (drag.type === 'move') {
+            const snapped = snapMove(element, o.x + dx, o.y + dy); element.x = round(snapped.x); element.y = round(snapped.y);
+            // 只挪位置：改这个框的 left/top，不重建（重建要重新排它里面的字）。
+            const node = nodeOf(element.id);
+            if (node) { node.style.left = `${element.x}px`; node.style.top = `${element.y}px`; renderOverlay(); positionMini(); return; }
+        } else if (drag.type === 'resize') resizeTo(element, o, drag.handle, dx, dy, event.shiftKey || element.kind === 'image' && !!element.image && drag.handle.length === 2 && event.altKey);
         else if (drag.type === 'line') lineTo(element, o, drag.handle, p, event.shiftKey);
         else if (drag.type === 'pan') panTo(element, o, dx, dy);
         refreshNode(element); renderOverlay(); positionMini();
@@ -507,7 +564,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (cancelled && state.moved) { restore(state.before); return; }
         if (state.moved) {
             pushHistory(state.before); changed();
-            if (element?.kind === 'body' || doc.ratio === 'auto') void relayout(); else { renderOverlay(); positionMini(); scheduleThumbs(); }
+            if (element?.kind === 'body') void relayout(); else { renderOverlay(); positionMini(); scheduleThumbs(pageOf(state.id)?.id); }
             renderPanelGeometry();
             return;
         }
@@ -539,15 +596,21 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (cropping) toggleCrop(cropping);
         select(null);
     });
-    stage.addEventListener('scroll', () => positionMini(), {passive: true});
+    stage.addEventListener('scroll', () => { sheetOffset = null; positionMini(); }, {passive: true});
     let fitFrame = 0;
     const resizeObserver = view?.ResizeObserver ? new view.ResizeObserver(() => { cancelAnimationFrame(fitFrame); fitFrame = requestAnimationFrame(() => fit()); }) : null;
     resizeObserver?.observe(stage);
 
-    dialog.addEventListener('cancel', event => event.preventDefault());
+    // 关闭请求（Esc、手机返回手势）不直接关掉排版台；开着预览时先退出预览。
+    dialog.addEventListener('cancel', event => { event.preventDefault(); if (preview) closePreview(); });
     dialog.addEventListener('keydown', event => {
         event.stopPropagation();
         if (!visible || !doc) return;
+        if (preview) {
+            if (event.key === 'Escape') { event.preventDefault(); closePreview(); }
+            else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); turnPreview(event.key === 'ArrowLeft' ? -1 : 1); }
+            return;
+        }
         if (event.key === 'Escape') {
             event.preventDefault();
             if (!pop.hidden) closePop();
@@ -658,13 +721,13 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
                 const {start, end} = state.slice;
                 doc.body = `${doc.body.slice(0, start)}${text}${doc.body.slice(end)}`.replace(/\n*\f\n*/g, PAGE_BREAK).replace(/\f{2,}/g, PAGE_BREAK);
             }
-            changed();
+            changed({keepName: true});
         }
         void relayout();
         renderMini();
     }
     function insertBreak() { if (editing?.kind !== 'body') return; insertText(PAGE_BREAK); commitEditing(); }
-    function removeBreak(at) { if (doc?.body[at] === PAGE_BREAK) change(value => { value.body = `${value.body.slice(0, at)}\n${value.body.slice(at + 1)}`; }); }
+    function removeBreak(at) { if (doc?.body[at] === PAGE_BREAK) change(value => { value.body = `${value.body.slice(0, at)}\n${value.body.slice(at + 1)}`; }, {keepName: true}); }
 
     // ── 元素与页面操作 ────────────────────────────────────────────────────
     const DEFAULTS = {
@@ -717,7 +780,9 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         if (!doc || index === pageIndex) return;
         commitEditing(); cropping = null; selected = null;
         pageIndex = clamp(index, 0, doc.pages.length - 1);
-        stage.scrollTop = 0; renderStage(); renderStrip(); renderPanel();
+        // 翻页不改页面设置：面板本来就是「页面」时不重建（滑杆控件重建很费）。
+        stage.scrollTop = 0; renderStage(); markCurrentThumb();
+        if (panelShows !== 'page') renderPanel();
     }
     function addPage() {
         if (!doc || doc.pages.length >= 60) return;
@@ -937,9 +1002,10 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     const setProp = (element, key, reflow) => value => edit(element.id, item => { item.props[key] = value; }, {key: `${element.id}:${key}`, reflow});
     function renderPanel() {
-        panelBody.replaceChildren();
+        panelBody.replaceChildren(); panelShows = null;
         if (!doc) return;
         const element = selected && findElement(selected);
+        panelShows = element ? element.id : 'page';
         panelTitle.textContent = element ? KIND_LABEL[element.kind] : '页面';
         if (!element) { pagePanel(); return; }
         if (element.kind === 'text' || element.kind === 'body') textPanel(element);
@@ -951,23 +1017,56 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         const reset = textButton('恢复模板样式', () => edit(element.id, item => { item.props = {}; }).then(renderPanel), 'is-wide');
         row('', reset);
     }
+    // 第一次选自定义时，从当前页的比例起步（约不成两位数以内的整数比就用 3:4）。
+    function startingCustomRatio() {
+        if (normalizeCustomRatio(doc.customRatio)) return doc.customRatio;
+        if (normalizeCustomRatio(doc.ratio)) return doc.ratio;
+        const height = pageHeight(doc), gcd = (a, b) => b ? gcd(b, a % b) : a, d = gcd(PAGE_WIDTH, height);
+        return normalizeCustomRatio(`${PAGE_WIDTH / d}:${height / d}`) || '3:4';
+    }
+    function applyRatio(ratio, custom) {
+        commitEditing();
+        change(item => setRatio(item, ratio, custom)).then(() => { zoom = 0; fit(); renderPanel(); });
+    }
+    function customRatioFields() {
+        const wrap = make('div', 'qm-xs-ratio'), [w, h] = (normalizeCustomRatio(doc.customRatio) || '3:4').split(':');
+        const inputs = [['宽', w], ['高', h]].map(([label, value]) => {
+            const field = make('label', 'qm-xs-geo-field'), input = make('input');
+            input.type = 'number'; input.min = '1'; input.max = '99'; input.step = '1'; input.value = value; input.setAttribute('aria-label', label);
+            field.append(make('span', '', label), input);
+            return {field, input};
+        });
+        const commit = () => {
+            const next = normalizeCustomRatio(inputs.map(({input}) => String(Math.round(Number(input.value)))).join(':'));
+            if (!next) { const [a, b] = (doc.customRatio || '3:4').split(':'); inputs[0].input.value = a; inputs[1].input.value = b; return; }
+            if (next !== doc.customRatio) applyRatio('custom', next);
+        };
+        for (const {input} of inputs) input.addEventListener('change', commit);
+        wrap.append(inputs[0].field, make('span', 'qm-xs-ratio-sep', ':'), inputs[1].field);
+        return wrap;
+    }
     function pagePanel() {
         row('比例', segmented(RATIOS.map(ratio => ({value: ratio.key, label: ratio.label})), doc.ratio, value => {
-            commitEditing(); change(item => setRatio(item, value)).then(() => { zoom = 0; fit(); });
+            if (value === doc.ratio) return;
+            applyRatio(value, value === 'custom' ? startingCustomRatio() : undefined);
         }));
-        row('纸色', colorControl(doc.paper, value => change(item => { item.paper = value; }, {key: 'paper', reflow: false})));
-        row('文字色', colorControl(doc.ink, value => change(item => { item.ink = value; }, {key: 'ink', reflow: false})));
+        if (doc.ratio === 'custom') row('', customRatioFields());
+        const paper = {reflow: false, paint: 'paper'};
+        row('纸色', colorControl(doc.paper, value => change(item => { item.paper = value; }, {key: 'paper', ...paper})));
+        row('杂色', slider({value: doc.grain.amount, min: 0, max: 100, step: 1, unit: '%'}, value => change(item => { item.grain.amount = value; }, {key: 'grain-amount', ...paper})));
+        row('颗粒', slider({value: doc.grain.size, min: GRAIN_SIZES.min, max: GRAIN_SIZES.max, step: 1}, value => change(item => { item.grain.size = value; }, {key: 'grain-size', ...paper})));
+        row('文字色', colorControl(doc.ink, value => change(item => { item.ink = value; }, {key: 'ink', ...paper})));
         const bgButtons = make('div', 'qm-xs-inline');
         bgButtons.append(textButton(doc.bg.image ? '换背景图' : '选背景图', () => pickImage('bg')));
         if (doc.bg.image) bgButtons.append(textButton('移除', () => change(item => { item.bg = {image: '', opacity: 1, w: 0, h: 0}; }, {reflow: false}).then(renderPanel)));
         row('背景图', bgButtons);
-        if (doc.bg.image) row('透明度', slider({value: Math.round(doc.bg.opacity * 100), min: 0, max: 100, step: 1, unit: '%'}, value => change(item => { item.bg.opacity = value / 100; }, {key: 'bg-opacity', reflow: false})));
+        if (doc.bg.image) row('透明度', slider({value: Math.round(doc.bg.opacity * 100), min: 0, max: 100, step: 1, unit: '%'}, value => change(item => { item.bg.opacity = value / 100; }, {key: 'bg-opacity', ...paper})));
         const pageButtons = make('div', 'qm-xs-inline');
         pageButtons.append(textButton('加一页', addPage));
         if (doc.pages.length > 1) pageButtons.append(textButton('删除本页', () => deletePage(pageIndex), 'is-danger'));
         row('页', pageButtons);
         const original = normalizeBody(content?.body);
-        if (doc.body !== original) row('正文', textButton('恢复收藏原文', () => { commitEditing(); change(item => { item.body = original; }).then(renderPanel); }));
+        if (doc.body !== original) row('正文', textButton('恢复收藏原文', () => { commitEditing(); change(item => { item.body = original; }, {keepName: true}).then(renderPanel); }));
     }
     function fontSelect(element) {
         const select = make('select', 'qm-xs-select');
@@ -978,7 +1077,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         return select;
     }
     function textPanel(element) {
-        const c = computedOf(element), p = element.props, body = element.kind === 'body', reflow = body || doc.ratio === 'auto';
+        const c = computedOf(element), p = element.props, body = element.kind === 'body', reflow = body;
         row('字体', fontSelect(element));
         row('字号', slider({value: p.size ?? c.size, min: 8, max: 240, step: 1, unit: 'px'}, setProp(element, 'size', reflow)));
         row('字距', slider({value: p.ls ?? c.ls, min: -0.2, max: 1.5, step: 0.01, unit: 'em', digits: 2}, setProp(element, 'ls', reflow)));
@@ -1034,7 +1133,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             const kept = element.lines.filter(line => !line.id);   // 手动改过来源的句子（没有编号）留着
             const picked = messages.filter(message => chosen.has(message.id)).map(message => ({id: message.id, who: message.who, name: message.name, text: message.text}));
             closePop();
-            edit(id, item => { item.lines = normalizeLines([...picked, ...kept]); }, {reflow: false}).then(() => { renderPanel(); renderMini(); });
+            edit(id, item => { item.lines = normalizeLines([...picked, ...kept]); }, {reflow: false, keepName: true}).then(() => { renderPanel(); renderMini(); });
         }, 'is-primary'));
         box.append(make('div', 'qm-xs-ask-title', '选择书友对话'), list, foot);
         openPop(anchor, box);
@@ -1077,7 +1176,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             input.addEventListener('change', () => {
                 const value = Number(input.value);
                 if (!Number.isFinite(value)) { input.value = String(Math.round(element[key])); return; }
-                edit(element.id, item => { item[key] = round(key === 'w' || key === 'h' ? Math.max(item.kind === 'line' ? 0 : 12, value) : value); }, {reflow: element.kind === 'body' || doc.ratio === 'auto'});
+                edit(element.id, item => { item[key] = round(key === 'w' || key === 'h' ? Math.max(item.kind === 'line' ? 0 : 12, value) : value); });
             });
             field.append(make('span', '', label), input);
             grid.append(field);
@@ -1090,28 +1189,59 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         for (const input of panelBody.querySelectorAll('[data-geo]')) if (view.document.activeElement !== input) input.value = String(Math.round(element[input.dataset.geo]));
     }
     // ── 页面条 ────────────────────────────────────────────────────────────
-    function scheduleThumbs() { clearTimeout(thumbTimer); thumbTimer = setTimeout(renderStrip, 220); }
+    // 页数、分页处与条宽都没变时，只重画改过的那几页缩略图（影子根里换页面节点），外层按钮不动。
+    let thumbs = [], thumbDirty = null;
+    function scheduleThumbs(pageId) {
+        if (pageId === undefined || pageId === null) thumbDirty = 'all';
+        else if (thumbDirty !== 'all') (thumbDirty ??= new Set()).add(pageId);
+        clearTimeout(thumbTimer); thumbTimer = setTimeout(renderStrip, 220);
+    }
+    function markCurrentThumb() { thumbs.forEach((thumb, index) => thumb.item.classList.toggle('is-current', index === pageIndex)); }
+    function thumbShape() {
+        const narrow = view.innerWidth <= 760;
+        return {narrow, width: narrow ? 36 : 48, maxHeight: narrow ? 64 : 96};
+    }
+    function paintThumb(thumb, page, info, shape) {
+        const factor = shape.width / PAGE_WIDTH;
+        thumb.frame.style.height = `${Math.min(shape.maxHeight, Math.round(info.h * factor))}px`;
+        const css = `${BASE_CSS}\n${doc.template.css}\n.page{transform:scale(${factor});transform-origin:0 0}`;
+        if (thumb.style.textContent !== css) thumb.style.textContent = css;
+        const next = buildPage(document, doc, page, info, editorContext());
+        if (thumb.page) thumb.page.replaceWith(next); else thumb.root.append(next);
+        thumb.page = next;
+    }
     function renderStrip() {
         clearTimeout(thumbTimer); thumbTimer = null;
-        strip.replaceChildren();
-        if (!doc) return;
-        const narrow = view.innerWidth <= 760, thumbWidth = narrow ? 36 : 48, factor = thumbWidth / PAGE_WIDTH, maxHeight = narrow ? 64 : 96;
-        doc.pages.forEach((page, index) => {
+        const dirty = thumbDirty; thumbDirty = null;
+        if (!doc) { strip.replaceChildren(); thumbs = []; return; }
+        const shape = thumbShape();
+        const same = thumbs.length === doc.pages.length && doc.pages.every((page, index) => {
+            const thumb = thumbs[index];
+            return thumb.id === page.id && thumb.breakBefore === layoutFor(page).breakBefore && thumb.narrow === shape.narrow;
+        });
+        if (same) {
+            doc.pages.forEach((page, index) => { if (dirty === 'all' || dirty?.has(page.id)) paintThumb(thumbs[index], page, layoutFor(page), shape); });
+            markCurrentThumb();
+            return;
+        }
+        thumbs = doc.pages.map((page, index) => {
             const info = layoutFor(page);
             const item = make('div', `qm-xs-thumb${index === pageIndex ? ' is-current' : ''}`);
-            const open = make('button', 'qm-xs-thumb-open'); open.type = 'button'; open.title = `第 ${index + 1} 页`;
+            const open = make('button', 'qm-xs-thumb-open'); open.type = 'button'; open.title = `第 ${index + 1} 页`; open.setAttribute('aria-label', open.title);
+            // 缩略图只是画面，不进无障碍树：按钮用「第 N 页」作名字，不必每次翻页从整页文字里重算。
             const frame = make('div', 'qm-xs-thumb-frame');
-            frame.style.width = `${thumbWidth}px`; frame.style.height = `${Math.min(maxHeight, Math.round(info.h * factor))}px`;
+            frame.style.width = `${shape.width}px`; frame.setAttribute('aria-hidden', 'true');
             const root = frame.attachShadow({mode: 'open'}), style = make('style');
-            style.textContent = `${BASE_CSS}\n${doc.template.css}\n.page{transform:scale(${factor});transform-origin:0 0}`;
-            root.append(style, buildPage(document, doc, page, info, editorContext()));
+            root.append(style);
+            const thumb = {id: page.id, breakBefore: info.breakBefore, narrow: shape.narrow, item, frame, root, style, page: null};
+            paintThumb(thumb, page, info, shape);
             open.append(frame, make('span', 'qm-xs-thumb-no', String(index + 1)));
             open.addEventListener('click', () => goPage(index));
             item.append(open);
             if (info.breakBefore >= 0) item.append(button('取消这一处分页', 'merge', () => removeBreak(info.breakBefore), {className: 'qm-xs-thumb-tool'}));
-            strip.append(item);
+            return thumb;
         });
-        strip.append(button('加一页', 'plus', addPage, {className: 'qm-xs-thumb-add'}));
+        strip.replaceChildren(...thumbs.map(thumb => thumb.item), button('加一页', 'plus', addPage, {className: 'qm-xs-thumb-add'}));
     }
 
     // ── 模板 ──────────────────────────────────────────────────────────────
@@ -1133,11 +1263,12 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         commitEditing(); closePop();
         selected = null; cropping = null; pageIndex = 0;
         change(value => {
-            const next = createDoc({template: parsed.template, templateId: entry.id, body: value.body, fields: value.fields, ratio: value.ratio, lines: currentLines(value)});
+            const next = createDoc({template: parsed.template, templateId: entry.id, body: value.body, fields: value.fields, ratio: value.ratio,
+                customRatio: value.customRatio, grain: value.grain, lines: currentLines(value)});
             next.bg = value.bg;
             for (const key of Object.keys(value)) delete value[key];
             Object.assign(value, next);
-        }).then(() => { zoom = 0; fit(); renderPanel(); });
+        }, {keepName: true}).then(() => { zoom = 0; fit(); renderPanel(); });
         return true;
     }
     function openTemplateMenu(anchor) {
@@ -1205,14 +1336,19 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         setStatus('模板已导入');
     });
     // ── 方案 ──────────────────────────────────────────────────────────────
-    function applyScheme(scheme) {
+    function applyScheme(item) {
         commitEditing(); closePop();
         selected = null; cropping = null; pageIndex = 0;
         change(value => {
-            const next = createDocFromScheme(scheme, {body: value.body, fields: value.fields, lines: currentLines(value)});
+            const next = createDocFromScheme(item.scheme, {body: value.body, fields: value.fields, lines: currentLines(value), name: item.name});
             for (const key of Object.keys(value)) delete value[key];
             Object.assign(value, next);
-        }).then(() => { zoom = 0; fit(); renderPanel(); });
+        }, {keepName: true}).then(() => { zoom = 0; fit(); renderPanel(); });
+    }
+    // 存成方案或覆盖方案后，这份稿就叫这个方案名（不进撤销记录）。
+    function nameDoc(name) {
+        if (!doc) return;
+        doc.name = name; dirtyLast = true; scheduleSave(); paintStatus();
     }
     function openSchemeMenu(anchor) {
         if (!doc || exportJob) return;
@@ -1221,30 +1357,35 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             const extra = [
                 button('改名', 'edit', async () => {
                     const name = await askText(schemeButton, '方案名称', item.name);
-                    if (name) writeSettings(next => { const found = next.schemes.find(entry => entry.id === item.id); if (found) found.name = name; });
+                    if (name && writeSettings(next => { const found = next.schemes.find(entry => entry.id === item.id); if (found) found.name = name; }) && doc?.name === item.name) nameDoc(name);
                 }),
                 button('用当前版式覆盖', 'check', async () => {
                     if (!await askConfirm(schemeButton, `用当前版式覆盖「${item.name}」？`, '覆盖')) return;
-                    writeSettings(next => { const found = next.schemes.find(entry => entry.id === item.id); if (found) found.scheme = schemeFromDoc(doc); });
-                    setStatus('方案已更新');
+                    if (!doc) return;
+                    const before = doc.name;
+                    doc.name = item.name;
+                    if (writeSettings(next => { const found = next.schemes.find(entry => entry.id === item.id); if (found) found.scheme = schemeFromDoc(doc); })) { nameDoc(item.name); setStatus('方案已更新'); }
+                    else doc.name = before;
                 }),
                 button('删除', 'trash', async () => {
                     if (!await askConfirm(schemeButton, `删除方案「${item.name}」？`, '删除')) return;
                     writeSettings(next => { next.schemes = next.schemes.filter(entry => entry.id !== item.id); });
                 }),
             ];
-            list.append(menuRow(item.name, () => applyScheme(item.scheme), {extra}));
+            list.append(menuRow(item.name, () => applyScheme(item), {extra}));
         }
         if (!state.schemes.length) list.append(make('div', 'qm-xs-menu-empty', '还没有方案'));
         const foot = make('div', 'qm-xs-menu-foot');
         foot.append(textButton('存为方案', async () => {
             const name = await askText(schemeButton, '方案名称', `方案 ${state.schemes.length + 1}`);
             if (!name || !doc) return;
+            const before = doc.name;
+            doc.name = name;
             const ok = writeSettings(next => {
                 if (next.schemes.length >= SCHEME_LIMIT) { setStatus(`方案最多 ${SCHEME_LIMIT} 个`); return false; }
                 next.schemes.push({id: newId('s'), name, scheme: schemeFromDoc(doc)});
             });
-            if (ok) setStatus('已存为方案');
+            if (ok) { nameDoc(name); setStatus('已存为方案'); } else doc.name = before;
         }, 'is-primary'));
         list.append(foot);
         openPop(anchor, list);
@@ -1281,7 +1422,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
                 if (record?.blob) images.set(id, await blobToDataUrl(record.blob));
                 stopped();
             }
-            const context = {families: embedded.families, imageSrc: id => images.get(id) || ''};
+            const context = {families: embedded.families, imageSrc: id => images.get(id) || '', grainTile};
             const css = `${embedded.css}\n${BASE_CSS}\n${doc.template.css}`;
             const base = safeName(content.filename || content.fields.char || content.fields.pair || '书摘');
             for (let index = 0; index < doc.pages.length; index++) {
@@ -1309,11 +1450,83 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         }
     }
 
-    // ── 全屏 ──────────────────────────────────────────────────────────────
+    // ── 全屏与预览 ────────────────────────────────────────────────────────
+    // 窄屏（与样式表的手机排布同一断点）上这个按钮是「预览」：只看成图，铺满屏幕，左右滑或点箭头翻页，轻点、关闭、返回退出。
+    const narrowQuery = view?.matchMedia?.('(max-width: 760px)') || null;
+    const isNarrow = () => narrowQuery?.matches === true;
     function setFullIcon(on) {
-        fullButton.querySelector('.qm-xs-icon').replaceWith(icon(on ? 'unfull' : 'full'));
-        fullButton.title = on ? '退出全屏' : '全屏'; fullButton.setAttribute('aria-label', fullButton.title);
+        const narrow = isNarrow();
+        fullButton.querySelector('.qm-xs-icon').replaceWith(icon(narrow ? 'preview' : on ? 'unfull' : 'full'));
+        fullButton.title = narrow ? '预览' : on ? '退出全屏' : '全屏'; fullButton.setAttribute('aria-label', fullButton.title);
     }
+    const onNarrowChange = () => { if (!isNarrow() && dialog.classList.contains('is-full')) toggleFull(false); setFullIcon(dialog.classList.contains('is-full')); };
+    narrowQuery?.addEventListener?.('change', onNarrowChange);
+    function onFullButton() { if (isNarrow()) openPreview(); else toggleFull(); }
+    const previewBox = make('div', 'qm-xs-preview'), previewStage = make('div', 'qm-xs-preview-stage'), previewHost = make('div', 'qm-xs-preview-host');
+    const previewShadow = previewHost.attachShadow({mode: 'open'}), previewCount = make('span', 'qm-xs-preview-count');
+    const previewPrev = button('上一页', 'prev', () => turnPreview(-1), {className: 'qm-xs-preview-turn is-prev'});
+    const previewNext = button('下一页', 'next', () => turnPreview(1), {className: 'qm-xs-preview-turn is-next'});
+    previewStage.append(previewHost);
+    previewBox.append(previewStage, previewPrev, previewNext, previewCount, button('关闭预览', 'close', () => closePreview(), {className: 'qm-xs-preview-close'}));
+    previewBox.hidden = true;
+    dialog.append(previewBox);
+    function openPreview() {
+        if (!doc || exportJob || preview) return;
+        commitEditing(); closePop();
+        preview = {index: pageIndex, swipe: null, pushed: false};
+        previewBox.hidden = false;
+        // 手机的返回键先退出预览：压一条同址的历史记录，退出时收回。
+        try { view.history.pushState({...(view.history.state || {}), qmExcerptPreview: true}, ''); preview.pushed = true; }
+        catch (error) { console.warn('[千幕] 预览没能接管返回键', error); }
+        view.addEventListener('popstate', onPreviewPop);
+        renderPreview();
+    }
+    function closePreview(fromHistory = false) {
+        if (!preview) return;
+        const {pushed} = preview;
+        preview = null;
+        previewBox.hidden = true; previewShadow.replaceChildren();
+        view.removeEventListener('popstate', onPreviewPop);
+        if (pushed && !fromHistory && view.history.state?.qmExcerptPreview) view.history.back();
+    }
+    function onPreviewPop() { closePreview(true); }
+    function turnPreview(step) {
+        if (!preview || !doc) return;
+        const next = clamp(preview.index + step, 0, doc.pages.length - 1);
+        if (next !== preview.index) { preview.index = next; renderPreview(); }
+    }
+    function renderPreview() {
+        if (!preview || !doc) return;
+        preview.index = clamp(preview.index, 0, doc.pages.length - 1);
+        const page = doc.pages[preview.index], info = layoutFor(page);
+        const style = make('style'); style.textContent = `${BASE_CSS}\n${doc.template.css}`;
+        previewShadow.replaceChildren(style, buildPage(document, doc, page, info, editorContext()));
+        const many = doc.pages.length > 1;
+        previewPrev.hidden = !many || preview.index === 0; previewNext.hidden = !many || preview.index === doc.pages.length - 1;
+        previewCount.hidden = !many; previewCount.textContent = `${preview.index + 1} / ${doc.pages.length}`;
+        fitPreview(info.h);
+    }
+    function fitPreview(height = layoutFor(doc?.pages[preview?.index]).h) {
+        if (!preview) return;
+        const width = previewStage.clientWidth - 16, room = previewStage.clientHeight - 16;
+        if (width <= 0 || room <= 0) return;
+        const factor = Math.min(width / PAGE_WIDTH, room / height);
+        previewHost.style.width = `${PAGE_WIDTH}px`; previewHost.style.height = `${height}px`;
+        previewHost.style.transform = `translate(-50%, -50%) scale(${factor})`;
+    }
+    // 轻点退出，横向滑动翻页。
+    previewStage.addEventListener('pointerdown', event => { if (preview) preview.swipe = {x: event.clientX, y: event.clientY, id: event.pointerId}; });
+    previewStage.addEventListener('pointerup', event => {
+        const swipe = preview?.swipe;
+        if (!swipe || swipe.id !== event.pointerId) return;
+        preview.swipe = null;
+        const dx = event.clientX - swipe.x, dy = event.clientY - swipe.y;
+        if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.2) turnPreview(dx < 0 ? 1 : -1);
+        else if (Math.hypot(dx, dy) < 10) closePreview();
+    });
+    previewStage.addEventListener('pointercancel', () => { if (preview) preview.swipe = null; });
+    const previewResize = view?.ResizeObserver ? new view.ResizeObserver(() => fitPreview()) : null;
+    previewResize?.observe(previewStage);
     function toggleFull(force) {
         const on = force ?? !dialog.classList.contains('is-full');
         dialog.classList.toggle('is-full', on); setFullIcon(on);
@@ -1376,6 +1589,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
             if (!visible) return false;
             doc = (saved && saved.stamp === content.stamp && normalizeDoc(saved.doc)) || freshDoc();
             history = []; future = []; pageIndex = 0; selected = null; editing = null; cropping = null; zoom = 0; dirtyLast = false;
+            layoutHints.clear(); miniKey = ''; setFullIcon(false);
             setStatus('');
             await relayout();
             if (!visible) return false;
@@ -1390,7 +1604,7 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
     }
     function close() {
         if (!visible) return;
-        commitEditing(); closePop();
+        commitEditing(); closePop(); closePreview();
         exportJob?.controller.abort(); exportJob = null;
         flushSave(); flushLast();
         visible = false;
@@ -1408,12 +1622,14 @@ export function createExcerptStudio({parent, settings, fonts, download, verifyAc
         doc = null; content = null; layout = {pages: [], remaining: 0, stuck: false}; pageNode = null;
         history = []; future = []; selected = null; drag = null; guides = [];
         shadow.replaceChildren(); overlay.replaceChildren(); strip.replaceChildren(); panelBody.replaceChildren(); mini.replaceChildren();
-        status.textContent = '';
+        thumbs = []; thumbDirty = null; miniKey = ''; miniSize = null; panelShows = null; sheetOffset = null; layoutHints.clear(); grainTiles.clear();
+        statusMessage = ''; status.textContent = ''; status.title = '';
     }
     function dispose() {
         if (disposed) return;
         close(); disposed = true;
-        resizeObserver?.disconnect();
+        resizeObserver?.disconnect(); previewResize?.disconnect();
+        narrowQuery?.removeEventListener?.('change', onNarrowChange);
         document.removeEventListener('fullscreenchange', onFullscreenChange);
         stylesheet?.link.remove(); stylesheet = null;
         store?.close(); store = null;

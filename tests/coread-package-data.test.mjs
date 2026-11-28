@@ -16,7 +16,7 @@ function fixture(fail=''){
 }
 test('the extracted writer retains store order, overwrite semantics, metadata and counts',async()=>{
   const e=fixture(),result=await applyCoreadPackageData(e.data,e.options);
-  assert.deepEqual(result,{ok:2,coverOk:1,chatOk:1,imageOk:1,vectorOk:1,audioOk:1,logOk:2,failed:0,invalid:0,skipped:0});
+  assert.deepEqual(result,{ok:2,coverOk:1,chatOk:1,imageOk:1,vectorOk:1,audioOk:1,logOk:2,failed:0,invalid:0,skipped:0,noText:0,prefsUnreadable:0});
   assert.deepEqual(e.calls.map(c=>c[0]),['putBookWithCover','putBookWithCover','putReaderChat','putReaderImageByKey','putReaderVectors','bulkPutAudio','pushRetLog','pushRetLog']);
   assert.deepEqual(e.state.books.map(b=>b.id),['new','old','untouched']);assert.equal(e.state.books[1].title,'updated');assert.equal(e.state.books[1].hasCover,true);
   assert.equal(e.calls[0][2].fullText,'new content');assert.deepEqual(e.calls[0][3],{data:'cover',mime:'image/jpeg'});assert.equal(e.calls[1][3],null);assert.equal(e.calls[5][1][0].meta.source,'coread');

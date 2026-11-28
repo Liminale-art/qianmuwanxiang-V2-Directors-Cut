@@ -353,3 +353,17 @@ test('native classification stays on the same snapshot with one write and warm r
     f.reset(); await f.owner.open(); await f.owner.open(); assert.deepEqual(f.requests, []);
     assert.deepEqual(f.collection.state().organization, value.organization);
 });
+
+test('backup and restore keep a full-text item’s raw source and tell it apart from a plain copy', async () => {
+    const full = {...row('full', '状态 HP 10'), raw: '<status>HP 10</status>'};
+    const value = document(row('plain'), full), restored = await readTextCollectionBackup(file(backup(value)));
+    assert.deepEqual(restored.document, value);
+    const prepared = await prepareTextCollectionRestore(restored, document(), {origin, scope});
+    assert.deepEqual(prepared.document.items, value.items);
+    assert.equal(Object.hasOwn(prepared.document.items[0], 'raw'), false);
+    assert.equal((await prepareTextCollectionRestore(restored, prepared.combined, {origin, scope})).count, 0, 'repeat import is a no-op');
+    const changed = await prepareTextCollectionRestore(restored, document(row('plain'), {...full, raw: '<status>HP 9</status>'}), {origin, scope});
+    assert.equal(changed.count, 1); assert.match(changed.document.items[0].id, /^import-/);
+    assert.equal(changed.document.items[0].raw, '<status>HP 10</status>');
+    await assert.rejects(readTextCollectionBackup(file({...backup(), document: document({...row(), raw: ''})})));
+});

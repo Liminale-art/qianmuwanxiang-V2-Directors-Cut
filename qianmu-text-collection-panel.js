@@ -3,6 +3,7 @@ import {createTextCollectionEditor} from './qianmu-text-collection-editor.js';
 import {sameTextCollectionItem} from './qianmu-text-collection.js';
 import {createTextCollectionOrganizationView} from './qianmu-text-collection-organization-view.js?v=1.59.419';
 import {filterTextCollectionItems, textCollectionItemOrganization} from './qianmu-text-collection-organization.js';
+import {normalizeTextCollectionTagRules, textCollectionPlainText} from './qianmu-text-collection-markup.js';
 
 // Isolated candidate: the caller owns the account lifetime, themed parent and
 // stylesheet. Closing this view does not dispose the collection's data session.
@@ -13,7 +14,9 @@ const titleFor = item => `${item.charName || '未命名角色'} & ${item.userNam
 
 // locateFloor() 每次调用都按当前打开的聊天现算一张对照表，返回「来源 → 楼层号或 null」；只有来源确实落在当前聊天、
 // 且那一层还在时才有楼层号。onJumpFloor(楼层号) 沿用聊天工具包的跳层。两者缺省时不显示楼层标签。
-export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage, locateFloor, onJumpFloor, enabled} = {}) {
+// tagRules {read, write}：正文收藏的标签规则（工具栏里的规则卡片）。formatRaw(原文, {charName, source}) 返回 ST 格式化后的 HTML，
+// 带原文的条目用它显示成楼层的样子；缺省或失败时照旧按纯文本段落显示。
+export function createTextCollectionPanel({parent, collection, isCurrent, copyText, onExportImage, locateFloor, onJumpFloor, enabled, tagRules, formatRaw} = {}) {
     const doc = parent?.ownerDocument;
     if (!doc || !collection || typeof isCurrent !== 'function') throw new TypeError('Collection panel requires its owner');
     const make = (tag, className, text) => {
@@ -57,8 +60,10 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (!current()) return;
         query = search.value; listScroll = 0; endSelection(); render();
     });
+    // 多选按钮三态：进入多选 → 全选已加载 → 清空并退出。
     const multiButton = button('多选收藏', 'list-checks', () => {
         if (!multi) { multi = true; selection.clear(); }
+        else if (allSelected()) endSelection();
         else for (const item of loadedItems()) selection.add(item.id);
         render();
     });
@@ -67,7 +72,46 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         onComplete: () => { endSelection(); render(); }});
     const organizeSelected = button('整理选中收藏', 'folder', () => organizeView.organize(selectedLoadedIds()));
     const foldersButton = button('管理文件夹', 'folder-plus', () => organizeView.folders());
-    toolbar.append(search, foldersButton, multiButton, organizeSelected, deleteButton);
+    const rulesButton = button('标签规则', 'funnel', () => { rulesOpen = !rulesOpen; if (rulesOpen) { ruleRows = []; paintRules(); } render(); });
+    toolbar.append(search, foldersButton, multiButton, rulesButton, organizeSelected, deleteButton);
+    // 标签规则卡片：与取材同一套（标签名 + 屏蔽／提取 + 删除），只作用在「全文」收藏上。
+    let rulesOpen = false, ruleRows = [];
+    const rulesSheet = make('div', 'qm-collection-rules'); rulesSheet.setAttribute('aria-label', '收藏标签规则');
+    const ruleList = make('div', 'qm-collection-rule-list');
+    const addRule = button('添加标签', 'plus', () => { ruleRows.push({name: '', action: 'remove'}); paintRules(); });
+    addRule.className = 'qm-collection-rule-add'; addRule.append(make('span', '', '添加标签'));
+    rulesSheet.append(ruleList, addRule);
+    function readRules() {
+        try { return normalizeTextCollectionTagRules(tagRules?.read?.()); }
+        catch (error) { console.warn('[Qianmu] Collection tag rules unavailable', error); return normalizeTextCollectionTagRules(undefined); }
+    }
+    function writeRules() {
+        try { tagRules?.write?.(ruleRows.filter(rule => rule.name).map(rule => ({name: rule.name, action: rule.action}))); }
+        catch (error) { console.warn('[Qianmu] Collection tag rules save failed', error); notice = '标签规则未保存，请重试。'; renderStatus(); }
+    }
+    function paintRules() {
+        if (!ruleRows.length) ruleRows = readRules().filter(rule => rule.name);
+        // 没有规则时留一行空白可填，与取材一致。
+        if (!ruleRows.length) ruleRows = [{name: '', action: 'remove'}];
+        ruleList.replaceChildren(...ruleRows.map((rule, index) => {
+            const row = make('div', 'qm-collection-rule');
+            const name = make('input'); name.type = 'text'; name.value = rule.name;
+            name.placeholder = '标签名，如 thinking'; name.setAttribute('aria-label', `标签名 ${index + 1}`);
+            name.addEventListener('change', () => {
+                if (!current()) return;
+                rule.name = normalizeTextCollectionTagRules([{name: name.value}])[0].name; name.value = rule.name; writeRules();
+            });
+            const action = make('select'); action.setAttribute('aria-label', `标签处理 ${index + 1}`);
+            for (const [value, label] of [['remove', '屏蔽'], ['extract', '提取']]) {
+                const option = make('option', '', label); option.value = value; action.append(option);
+            }
+            action.value = rule.action;
+            action.addEventListener('change', () => { if (!current()) return; rule.action = action.value === 'extract' ? 'extract' : 'remove'; writeRules(); });
+            const remove = button('删除', 'x', () => { ruleRows.splice(index, 1); writeRules(); paintRules(); });
+            remove.setAttribute('aria-label', `删除标签 ${index + 1}`);
+            row.append(name, action, remove); return row;
+        }));
+    }
     // 启用开关：关掉后楼层上不再出现收藏星标，已有收藏照常可看可用。
     const enabledSwitch = make('label', 'qm-collection-switch'), enabledInput = make('input');
     enabledInput.type = 'checkbox'; enabledInput.setAttribute('role', 'switch'); enabledInput.setAttribute('aria-label', '启用正文收藏');
@@ -88,12 +132,12 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     });
     const moreButton = button('显示更多收藏', 'arrow-down', loadMore);
     moreButton.className = 'qm-collection-more'; moreButton.append(make('span', '', '显示更多'));
-    listView.append(toolbar, resumeDraft, list);
+    listView.append(toolbar, rulesSheet, resumeDraft, list);
     const reader = make('article', 'qm-collection-text');
     reader.addEventListener('scroll', () => { if (route === 'read') readScroll = reader.scrollTop; });
     const editorControl = createTextCollectionEditor({document: doc, onChange: text => {
         if (!current() || !draft || busy()) return;
-        draft.text = text;
+        if (hasRaw(draft)) draft.raw = text; else draft.text = text;
         updateControls();
     }});
     const editor = editorControl.element;
@@ -116,7 +160,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         if (draft && draft.item.id !== item.id) {
             notice = '还有未保存的编辑，请返回列表继续或取消。'; renderStatus(); return;
         }
-        if (!draft) draft = {item: structuredClone(item), text: item.text, fingerprint: snapshot.fingerprint, isNew: false};
+        if (!draft) draft = {item: structuredClone(item), text: item.text, ...hasRaw(item) ? {raw: item.raw} : {}, fingerprint: snapshot.fingerprint, isNew: false};
         startEditor();
     });
     const organizeButton = button('整理收藏', 'tag', () => { if (activeItem() && !busy()) organizeView.organize([selectedId]); });
@@ -128,6 +172,15 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     const statusText = make('span'), reconcileButton = button('核对保存结果', 'arrows-clockwise', refresh);
     status.append(statusText, reconcileButton);
     dialog.append(header, listView, reader, editor, status, footer);
+    // 多选时点列表或面板的空白处（不是条目、也不是工具栏的控件）退出多选。
+    dialog.addEventListener('click', event => {
+        if (!multi || route !== 'list' || busy() || !current()) return;
+        for (let node = event.target; node && node !== dialog; node = node.parentNode) {
+            if (['BUTTON', 'INPUT', 'SELECT', 'LABEL', 'OPTION', 'A'].includes(node.tagName)
+                || node.classList?.contains('qm-collection-row') || node === rulesSheet) return;
+        }
+        endSelection(); render();
+    });
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     // Native close events are queued. An old close must not dismiss a dialog
     // that has already been reopened by the time that event is delivered.
@@ -139,11 +192,25 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
 
     function activeItem() { return snapshot?.items.find(item => item.id === selectedId); }
+    function hasRaw(value) { return typeof value?.raw === 'string'; }
+    // 保存回执只认这条草稿自己的编号和确切内容（含原文）。
+    function sameSaved(item, edit) { return item.id === edit.item.id && item.text === edit.text && item.raw === edit.raw; }
+    function allSelected() { const items = loadedItems(); return items.length > 0 && items.every(item => selection.has(item.id)); }
+    function formatted(raw, item) {
+        if (typeof formatRaw !== 'function') return null;
+        try {
+            const html = formatRaw(raw, {charName: item.charName, source: item.source ?? null});
+            return typeof html === 'string' ? html : null;
+        } catch (error) { console.warn('[Qianmu] Collection formatting failed', error); return null; }
+    }
+    function plainParagraphs(text) {
+        return displayText(text).split(/\n[\t ]*\n/).filter(value => value.trim()).map(value => make('p', '', value));
+    }
     function endSelection() { multi = false; selection.clear(); }
     function busy() { return pending || ['loading', 'refreshing', 'saving'].includes(snapshot?.phase); }
     // focus=false：只把正文摆进编辑区，不抢焦点；用户点到文字才开始编辑（手机上不会一进来就弹输入法）。
     function startEditor(focus = true) {
-        route = 'edit'; notice = ''; editorControl.setText(draft.text); editor.scrollTop = 0;
+        route = 'edit'; notice = ''; editorControl.setText(hasRaw(draft) ? draft.raw : draft.text); editor.scrollTop = 0;
         render();
         if (focus) editor.focus();
     }
@@ -169,7 +236,10 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         dialog.setAttribute('aria-busy', String(waiting));
         multiButton.disabled = waiting || !snapshot?.loaded || !filteredItems().length;
         multiButton.setAttribute('aria-pressed', String(multi));
-        multiButton.title = multi ? '全选已加载收藏' : '多选收藏';
+        multiButton.title = !multi ? '多选收藏' : allSelected() ? '取消多选' : '全选已加载收藏';
+        rulesButton.setAttribute('aria-pressed', String(rulesOpen));
+        rulesButton.hidden = typeof tagRules?.write !== 'function';
+        for (const node of list.querySelectorAll('.qm-collection-delete')) node.disabled = waiting || !writable;
         deleteButton.hidden = !multi;
         deleteButton.disabled = waiting || !writable || !selection.size;
         organizeSelected.hidden = !multi;
@@ -179,7 +249,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         editButton.disabled = waiting || !writable || !activeItem();
         imageButton.disabled = waiting || !activeItem();
         cancelButton.disabled = waiting;
-        saveButton.disabled = waiting || !writable || !draft?.text.trim();
+        saveButton.disabled = waiting || !writable || !(hasRaw(draft) ? draft.raw : draft?.text)?.trim();
         editorControl.setReadOnly(waiting);
         search.disabled = !snapshot?.loaded;
         resumeDraft.hidden = !draft;
@@ -231,9 +301,17 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                         if (!selection.size) endSelection();
                         renderList(); updateControls(); return;
                     }
-                    selectedId = item.id; route = 'read'; readScroll = 0; notice = ''; render();
+                    // 每次打开都重新排版：当前聊天、楼层与正则可能已经变了。
+                    selectedId = item.id; route = 'read'; readScroll = 0; readKey = null; notice = ''; render();
                 });
-                row.append(link); return row;
+                row.append(link);
+                // 行尾删除：直接删，与多选删除一致；多选时不显示。
+                if (!multi) {
+                    const remove = button('删除收藏', 'trash', () => removeIds([item.id]));
+                    remove.classList.add('qm-collection-delete'); remove.setAttribute('aria-label', `删除收藏：${item.id}`);
+                    row.append(remove);
+                }
+                return row;
             });
         list.append(...rows);
         if (!visibleItems.length && !list.children.length) list.append(make('p', 'qm-collection-empty', snapshot?.loaded
@@ -273,7 +351,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             if (!tag) {
                 tag = make('button', 'qm-collection-floor'); tag.type = 'button';
                 tag.addEventListener('click', () => { if (current()) jumpToFloor(id); });
-                row.append(tag);
+                row.insertBefore(tag, row.querySelector('.qm-collection-delete'));
             }
             paintFloorTag(tag, floor);
         }
@@ -295,16 +373,23 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         editButton.hidden = route !== 'read'; saveButton.hidden = route !== 'edit';
         copyButton.hidden = organizeButton.hidden = route !== 'read';
         foldersButton.hidden = route !== 'list';
+        if (route !== 'list') rulesOpen = false;
+        rulesSheet.hidden = !rulesOpen;
         enabledSwitch.hidden = route !== 'list' || typeof enabled?.write !== 'function';
         enabledInput.checked = enabled?.read?.() !== false;
         imageButton.hidden = route !== 'read' || typeof onExportImage !== 'function';
         if (route === 'list') renderList();
         if (route === 'read') {
-            const key = `${item.id}\0${item.text}`;
+            const key = JSON.stringify([item.id, item.text, item.raw ?? null]);
             if (key !== readKey) {
                 readKey = key;
-                reader.replaceChildren(...displayText(item.text).split(/\n[\t ]*\n/).filter(text => text.trim())
-                    .map(text => make('p', '', text)));
+                // 带原文的条目按楼层的样子显示：ST 格式化结果放进 mes_text 容器，让正则自带的样式照样生效。
+                const html = hasRaw(item) ? formatted(item.raw, item) : null;
+                if (html !== null) {
+                    const body = make('div', 'mes_text qm-collection-raw');
+                    body.innerHTML = html;
+                    reader.replaceChildren(body);
+                } else reader.replaceChildren(...plainParagraphs(item.text));
             }
             reader.scrollTop = readScroll;
         }
@@ -322,7 +407,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             endSelection();
             // Reconcile only the captured ID and exact desired text, never a
             // similar-looking entry. An unknown write is not replayed.
-            if (draft && refreshed.items.some(item => item.id === draft.item.id && item.text === draft.text)) {
+            if (draft && refreshed.items.some(item => sameSaved(item, draft))) {
                 selectedId = draft.item.id; draft = null; route = 'read';
             }
         } catch { /* The model supplies a sanitized actionable status below. */ }
@@ -330,13 +415,19 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
     }
     async function save() {
         if (!current() || busy() || !draft) return;
-        draft.text = editorControl.getText();
+        if (hasRaw(draft)) {
+            // 编辑的是原文（与 ST 的楼层编辑一样）；纯文本按格式化结果重新得到。
+            draft.raw = editorControl.getText();
+            const html = formatted(draft.raw, draft.item);
+            draft.text = textCollectionPlainText(html ?? draft.raw);
+        } else draft.text = editorControl.getText();
         const edit = draft, saveOpening = opening; pending = true; notice = ''; updateControls();
         try {
             const options = {expectedFingerprint: edit.fingerprint};
+            const raw = hasRaw(edit) ? {raw: edit.raw} : {};
             if (edit.isNew) await collection.add({id: edit.item.id, text: edit.text,
-                charName: edit.item.charName, userName: edit.item.userName, source: edit.item.source ?? null}, options);
-            else await collection.edit(edit.item.id, edit.text, options);
+                charName: edit.item.charName, userName: edit.item.userName, source: edit.item.source ?? null, ...raw}, options);
+            else await collection.edit(edit.item.id, hasRaw(edit) ? {text: edit.text, raw: edit.raw} : edit.text, options);
             if (!current()) return;
             draft = null;
             if (opening === saveOpening) { selectedId = edit.item.id; route = 'read'; readScroll = 0; }
@@ -344,13 +435,18 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
             if (draft === edit) draft.receiptUnknown = collection.state().needsRefresh === true;
             if (current()) notice = snapshot?.needsRefresh || /capacity/.test(snapshot?.error?.code || '') ? ''
                 : /conflict|missing/.test(error?.code || '') ? '收藏已有更新，修改已保留。'
-                    : '保存未完成，修改已保留。';
+                    : /capacity/.test(error?.code || '') ? '收藏超过存储上限，本次未保存，修改已保留。'
+                        : '保存未完成，修改已保留。';
         } finally { pending = false; render(); }
     }
     async function removeSelected() {
         if (!current() || busy() || !selection.size) return;
         const ids = selectedLoadedIds();
         if (!ids.length) { endSelection(); render(); return; }
+        await removeIds(ids);
+    }
+    async function removeIds(ids) {
+        if (!current() || busy() || !snapshot?.loaded || snapshot.needsRefresh) return;
         pending = true; notice = ''; updateControls();
         try {
             await collection.remove(ids, {expectedFingerprint: snapshot.fingerprint});
@@ -371,7 +467,7 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
                 // A floor action can reconcile the shared document while this
                 // view is closed. Adopt only this draft's exact receipt.
                 if (draft?.receiptUnknown && !value.needsRefresh && value.loaded
-                    && value.items.some(item => item.id === draft.item.id && item.text === draft.text)) {
+                    && value.items.some(item => sameSaved(item, draft))) {
                     selectedId = draft.item.id; draft = null;
                     if (route === 'edit') route = 'read';
                 }
@@ -417,10 +513,11 @@ export function createTextCollectionPanel({parent, collection, isCurrent, copyTe
         // The capture keeps its ID through retries, including a lost receipt.
         let source;
         try { source = structuredClone(input.source ?? null); } catch { return false; }
+        const raw = typeof input.raw === 'string' && input.raw.trim() ? {raw: input.raw} : {};
         const item = {text: input.text, charName: input.charName, userName: input.userName, source,
-            id: crypto.randomUUID(), createdAt: new Date().toISOString()};
+            id: crypto.randomUUID(), createdAt: new Date().toISOString(), ...raw};
         selectedId = null;
-        draft = {item, text: input.text, fingerprint: snapshot.fingerprint, isNew: true};
+        draft = {item, text: input.text, ...raw, fingerprint: snapshot.fingerprint, isNew: true};
         startEditor(false);
         if (immediate) {
             await save();

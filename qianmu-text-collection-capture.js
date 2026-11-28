@@ -16,7 +16,28 @@ function paragraphRanges(text) {
     return ranges;
 }
 
-export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) {
+const sameSource = (a, b) => !!a && !!b && a.chatId === b.chatId && a.messageId === b.messageId;
+
+// 选择框下方「本层已有的收藏」：只读当前确认的收藏；删除走同一份文档的指纹校验，失败不报成功。
+export function textCollectionCaptureEntries(collection) {
+    return Object.freeze({
+        listEntries(source) {
+            const state = collection.state();
+            if (!state.loaded || !source) return [];
+            return state.items.filter(item => sameSource(item.source, source)).map(({id, text}) => ({id, text}));
+        },
+        async onRemove(id) {
+            const state = collection.state();
+            if (!state.loaded || state.needsRefresh || ['loading', 'refreshing', 'saving'].includes(state.phase)) {
+                throw Object.assign(new Error('请等待当前收藏操作完成。'), {code: 'text_collection_busy'});
+            }
+            await collection.remove([id], {expectedFingerprint: state.fingerprint});
+            return true;
+        },
+    });
+}
+
+export function createTextCollectionCapture({parent, isCurrent, onSelect, listEntries, onRemove} = {}) {
     const doc = parent?.ownerDocument;
     if (!doc || typeof isCurrent !== 'function' || typeof onSelect !== 'function') {
         throw new TypeError('Collection capture requires its owner and selection callback');
@@ -56,8 +77,11 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         mode = 'paragraphs'; status.textContent = ''; prepareParagraphs(); render();
         paragraphs.querySelector('button')?.focus();
     });
-    fullButton.addEventListener('click', () => { if (current() && !pending && visible) submit(input.text); });
+    fullButton.addEventListener('click', () => {
+        if (current() && !pending && visible) submit(input.full ? input.full.text : input.text, input.full?.raw);
+    });
     choices.append(partialButton, fullButton);
+    const entries = make('div', 'qm-collection-capture-entries');
     const paragraphs = make('div', 'qm-collection-capture-paragraphs');
     const footer = make('footer'), count = make('span');
     count.setAttribute('aria-live', 'polite');
@@ -66,7 +90,7 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
     });
     footer.append(count, confirmButton);
     const status = make('p', 'qm-collection-capture-status'); status.setAttribute('role', 'status');
-    dialog.append(header, choices, paragraphs, status, footer);
+    dialog.append(header, choices, entries, paragraphs, status, footer);
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     dialog.addEventListener('close', () => { if (!dialog.open) close(); });
     for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut']) {
@@ -86,12 +110,44 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         dialog.setAttribute('aria-busy', String(pending));
         heading.textContent = mode === 'paragraphs' ? '选择段落' : '收藏正文';
         choices.hidden = mode !== 'choice';
+        entries.hidden = mode !== 'choice' || !entries.children.length;
+        for (const button of entries.querySelectorAll('button')) button.disabled = pending;
         paragraphs.hidden = footer.hidden = backButton.hidden = mode !== 'paragraphs';
         partialButton.disabled = fullButton.disabled = backButton.disabled = pending;
         confirmButton.disabled = pending || !selected.size;
         count.textContent = selected.size ? `已选 ${selected.size} 段` : '点击段落选择';
         status.hidden = !status.textContent;
         for (const button of paragraphs.querySelectorAll('button')) button.disabled = pending;
+    }
+    function renderEntries() {
+        let list = [];
+        if (typeof listEntries === 'function') {
+            try { list = listEntries(input.source) || []; } catch (error) { console.warn('[Qianmu] Collection floor entries failed', error); list = []; }
+        }
+        entries.replaceChildren(...list.map(entry => {
+            const row = make('div', 'qm-collection-capture-entry');
+            row.append(make('span', '', entry.text.replace(/\s+/g, ' ').trim()));
+            if (typeof onRemove === 'function') {
+                const remove = iconButton('删除收藏', 'trash', () => removeEntry(entry.id));
+                remove.setAttribute('aria-label', `删除收藏：${entry.id}`);
+                row.append(remove);
+            }
+            return row;
+        }));
+    }
+    async function removeEntry(id) {
+        if (!visible || pending || mode !== 'choice') return;
+        pending = true; status.textContent = ''; render();
+        const capturedGeneration = generation;
+        const active = () => capturedGeneration === generation && visible && current();
+        try {
+            await onRemove(id);
+        } catch (error) {
+            console.warn('[Qianmu] Collection floor removal failed', error);
+            if (active()) status.textContent = '删除未完成，请重试。';
+        } finally {
+            if (active()) { pending = false; renderEntries(); render(); }
+        }
     }
     function prepareParagraphs() {
         if (ranges) return;
@@ -119,12 +175,13 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
             return separator + input.text.slice(range.start, range.end);
         }).join('');
     }
-    async function submit(text) {
+    async function submit(text, raw) {
         if (!visible || !current() || pending || !text.trim()) return;
         pending = true; status.textContent = ''; controller = new AbortController(); render();
         const capturedGeneration = generation, attemptController = controller;
         const active = () => !attemptController.signal.aborted && capturedGeneration === generation && visible && current();
-        const payload = structuredClone({...input, text});
+        const {full: _full, ...base} = input;
+        const payload = structuredClone({...base, text, ...typeof raw === 'string' ? {raw} : {}});
         try {
             const accepted = await onSelect(payload, {signal: attemptController.signal, isCurrent: active,
                 saveImmediately: mode === 'paragraphs'});
@@ -144,11 +201,16 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         if (typeof value?.text !== 'string' || !value.text.trim()
             || typeof value.charName !== 'string' || typeof value.userName !== 'string') return false;
         let copy;
-        try { copy = structuredClone({text: value.text, charName: value.charName, userName: value.userName, source: value.source ?? null}); }
-        catch { return false; }
+        const full = value.full && typeof value.full.text === 'string' && value.full.text.trim() && typeof value.full.raw === 'string'
+            ? {text: value.full.text, raw: value.full.raw} : null;
+        try {
+            copy = structuredClone({text: value.text, charName: value.charName, userName: value.userName, source: value.source ?? null});
+            if (full) copy.full = structuredClone(full);
+        } catch { return false; }
         if (!visible) returnFocus = doc.activeElement;
         generation++; input = copy; ranges = null; selected.clear(); mode = 'choice';
         status.textContent = ''; paragraphs.replaceChildren(); paragraphs.scrollTop = 0;
+        renderEntries();
         visible = true; parent.append(dialog); render();
         if (!dialog.open) dialog.showModal();
         partialButton.focus(); return true;
@@ -157,7 +219,7 @@ export function createTextCollectionCapture({parent, isCurrent, onSelect} = {}) 
         if (!visible) return;
         const ownedFocus = dialog.contains(doc.activeElement);
         visible = false; generation++; controller?.abort(); controller = null; pending = false;
-        input = null; ranges = null; selected.clear(); paragraphs.replaceChildren(); status.textContent = '';
+        input = null; ranges = null; selected.clear(); paragraphs.replaceChildren(); entries.replaceChildren(); status.textContent = '';
         dialog.close(); dialog.remove();
         if (restoreFocus && ownedFocus && returnFocus?.isConnected) returnFocus.focus({preventScroll: true});
         returnFocus = null;

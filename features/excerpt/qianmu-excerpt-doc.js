@@ -6,14 +6,15 @@ import {PAGE_WIDTH, ELEMENT_KINDS, BUILTIN_TEMPLATES, parseExcerptTemplate, reso
 export {PAGE_WIDTH};
 export const MAX_PAGE_HEIGHT = 15000;       // iOS 画布面积上限约 1678 万像素，1080 宽时留一点余量
 export const MAX_PAGES = 60;
+export const MIN_PAGE_HEIGHT = 300;
 export const RATIOS = Object.freeze([
     Object.freeze({key: 'tpl', label: '原版'}),
-    Object.freeze({key: 'auto', label: '自适应'}),
     Object.freeze({key: '1:1', label: '1:1'}),
     Object.freeze({key: '4:5', label: '4:5'}),
     Object.freeze({key: '3:4', label: '3:4'}),
     Object.freeze({key: '2:3', label: '2:3'}),
     Object.freeze({key: '9:16', label: '9:16'}),
+    Object.freeze({key: 'custom', label: '自定义'}),
 ]);
 const RATIO_KEYS = new Set(RATIOS.map(ratio => ratio.key));
 const KIND_SET = new Set(ELEMENT_KINDS);
@@ -32,12 +33,27 @@ const round = value => Math.round(value * 100) / 100;
 const isRecord = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const shortString = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : '';
 
-// 页高：原版 = 模板设计高；自适应以模板设计高为基准，渲染时按正文伸缩；其余按宽 1080 换算。
+// 自定义比例「宽:高」，各取 1–99 的整数；不合规的返回空串。
+export function normalizeCustomRatio(value) {
+    const match = /^(\d{1,2}):(\d{1,2})$/.exec(String(value ?? ''));
+    if (!match) return '';
+    const w = Number(match[1]), h = Number(match[2]);
+    return w >= 1 && h >= 1 ? `${w}:${h}` : '';
+}
+// 页高：原版 = 模板设计高；其余按宽 1080 换算（自定义比例限在页高上下限之间）。
 export function pageHeight(doc) {
     const ratio = doc?.ratio;
-    if (!ratio || ratio === 'tpl' || ratio === 'auto') return doc?.template?.height || 1440;
-    const [a, b] = ratio.split(':').map(Number);
-    return Math.round(PAGE_WIDTH * b / a);
+    if (!ratio || ratio === 'tpl' || !RATIO_KEYS.has(ratio)) return doc?.template?.height || 1440;
+    const custom = ratio === 'custom' ? normalizeCustomRatio(doc.customRatio) : ratio;
+    if (!custom) return doc?.template?.height || 1440;
+    const [a, b] = custom.split(':').map(Number);
+    return Math.round(clamp(PAGE_WIDTH * b / a, MIN_PAGE_HEIGHT, MAX_PAGE_HEIGHT, 1440));
+}
+// 纸面杂色：amount 0–100（0 为关），size 1–8（颗粒大小）。
+export const GRAIN_SIZES = Object.freeze({min: 1, max: 8});
+export function normalizeGrain(raw) {
+    const value = isRecord(raw) ? raw : {};
+    return {amount: Math.round(clamp(value.amount, 0, 100, 0)), size: Math.round(clamp(value.size, GRAIN_SIZES.min, GRAIN_SIZES.max, 3))};
 }
 
 // 正文副本：统一换行，空行并为段落分隔（段距由排版控制），保留分页符。
@@ -127,15 +143,23 @@ function normalizeBackground(raw) {
         w: clamp(bg.w, 0, 20000, 0), h: clamp(bg.h, 0, 20000, 0)};
 }
 
+// 比例：认不出的（含已去掉的旧选项）回到原版；自定义比例坏了也回到原版。
+function ratioOf(raw) {
+    const customRatio = normalizeCustomRatio(raw.customRatio);
+    const ratio = RATIO_KEYS.has(raw.ratio) && (raw.ratio !== 'custom' || customRatio) ? raw.ratio : 'tpl';
+    return customRatio ? {ratio, customRatio} : {ratio};
+}
+
 // 从存储读回的稿件一律重新校验：任何一项坏了只丢那一项，整份坏了返回 null（照新稿开）。
 export function normalizeDoc(raw) {
     if (!isRecord(raw) || raw.v !== 1) return null;
     const template = normalizeTemplateInfo(raw.template);
     if (!template) return null;
-    const doc = {v: 1, templateId: shortString(raw.templateId, 80), template, ratio: RATIO_KEYS.has(raw.ratio) ? raw.ratio : 'tpl'};
+    const doc = {v: 1, templateId: shortString(raw.templateId, 80), template, name: shortString(raw.name, 40), ...ratioOf(raw)};
     const height = pageHeight(doc);
     doc.paper = normalizeHex(raw.paper, '#ffffff');
     doc.ink = normalizeHex(raw.ink, '#222222');
+    doc.grain = normalizeGrain(raw.grain);
     doc.bg = normalizeBackground(raw.bg);
     doc.pages = (Array.isArray(raw.pages) ? raw.pages : []).slice(0, MAX_PAGES).map(page => {
         const layout = normalizeLayout(page, height);
@@ -180,16 +204,17 @@ export function builtinTemplate(id) {
 }
 
 // 用模板起一份新稿。
-export function createDoc({template, templateId, body, fields = {}, ratio = 'tpl', lines = []}) {
-    const doc = {v: 1, templateId, template: {name: template.name, css: template.css, height: template.height}, ratio: RATIO_KEYS.has(ratio) ? ratio : 'tpl',
-        paper: template.paper, ink: template.ink, bg: {image: '', opacity: 1, w: 0, h: 0}, body: normalizeBody(body), fields: {...fields}};
+export function createDoc({template, templateId, body, fields = {}, ratio = 'tpl', customRatio = '', grain = null, lines = []}) {
+    const doc = {v: 1, templateId, template: {name: template.name, css: template.css, height: template.height}, name: template.name,
+        ...ratioOf({ratio, customRatio}), paper: template.paper, ink: template.ink, grain: normalizeGrain(grain), bg: {image: '', opacity: 1, w: 0, h: 0},
+        body: normalizeBody(body), fields: {...fields}};
     const scale = pageHeight(doc) / template.height;
     doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...instantiateLayout(template.first, fields, scale, lines)}];
     doc.restLayout = instantiateLayout(template.rest || template.first, fields, scale, lines);
     return doc;
 }
 
-// 方案 = 稿件去掉内容：保留模板样式、比例、纸色、背景、首页与续页的元素（文本框记占位原样，没改过的跟着新收藏换名字）。
+// 方案 = 稿件去掉内容：保留名称、模板样式、比例、纸色与杂色、背景、首页与续页的元素（文本框记占位原样，没改过的跟着新收藏换名字）。
 function schemeLayout(page) {
     return {decor: page.decor, elements: page.elements.map(element => {
         const copy = structuredClone(element);
@@ -200,15 +225,15 @@ function schemeLayout(page) {
 }
 export function schemeFromDoc(doc) {
     const rest = doc.pages.find(page => page.kind === 'rest');
-    return {v: 1, templateId: doc.templateId, template: structuredClone(doc.template), ratio: doc.ratio, paper: doc.paper, ink: doc.ink,
-        bg: structuredClone(doc.bg), first: schemeLayout(doc.pages[0]), rest: schemeLayout(rest || doc.restLayout)};
+    return {v: 1, templateId: doc.templateId, template: structuredClone(doc.template), name: doc.name || '', ...ratioOf(doc), paper: doc.paper, ink: doc.ink,
+        grain: normalizeGrain(doc.grain), bg: structuredClone(doc.bg), first: schemeLayout(doc.pages[0]), rest: schemeLayout(rest || doc.restLayout)};
 }
 
 export function normalizeScheme(raw) {
     if (!isRecord(raw) || raw.v !== 1) return null;
     const template = normalizeTemplateInfo(raw.template);
     if (!template) return null;
-    const scheme = {v: 1, templateId: shortString(raw.templateId, 80), template, ratio: RATIO_KEYS.has(raw.ratio) ? raw.ratio : 'tpl'};
+    const scheme = {v: 1, templateId: shortString(raw.templateId, 80), template, name: shortString(raw.name, 40), ...ratioOf(raw)};
     const height = pageHeight(scheme);
     const keepSrc = layout => {
         // normalizeElement 会给缺 text 的文本框补空串；方案里要分清「跟字段走」与「写死的字」。
@@ -225,6 +250,7 @@ export function normalizeScheme(raw) {
     scheme.rest = keepSrc(raw.rest) || {decor: '', elements: []};
     scheme.paper = normalizeHex(raw.paper, '#ffffff');
     scheme.ink = normalizeHex(raw.ink, '#222222');
+    scheme.grain = normalizeGrain(raw.grain);
     scheme.bg = normalizeBackground(raw.bg);
     return scheme;
 }
@@ -245,20 +271,24 @@ function layoutFromScheme(layout, fields, lines = []) {
     return {decor: layout.decor, elements};
 }
 
-// 用方案（含「上次的设置」）起一份新稿。
-export function createDocFromScheme(scheme, {body, fields = {}, lines = []}) {
-    const doc = {v: 1, templateId: scheme.templateId, template: structuredClone(scheme.template), ratio: scheme.ratio, paper: scheme.paper, ink: scheme.ink,
+// 用方案（含「上次的设置」）起一份新稿；name 是方案在列表里的名字（不给就用方案里记的）。
+export function createDocFromScheme(scheme, {body, fields = {}, lines = [], name}) {
+    const doc = {v: 1, templateId: scheme.templateId, template: structuredClone(scheme.template), name: shortString(name ?? scheme.name, 40),
+        ...ratioOf(scheme), paper: scheme.paper, ink: scheme.ink, grain: normalizeGrain(scheme.grain),
         bg: structuredClone(scheme.bg), body: normalizeBody(body), fields: {...fields}};
     doc.pages = [{id: newId('p'), kind: 'first', auto: false, ...layoutFromScheme(scheme.first, fields, lines)}];
     doc.restLayout = layoutFromScheme(scheme.rest, fields, lines);
     return doc;
 }
 
-// 换比例：各页元素的纵向位置与高度按页高等比换算，字号不动。
-export function setRatio(doc, ratio) {
-    if (!RATIO_KEYS.has(ratio) || doc.ratio === ratio) return false;
+// 换比例：各页元素的纵向位置与高度按页高等比换算，字号不动。自定义比例要给出「宽:高」。
+export function setRatio(doc, ratio, customRatio = doc.customRatio) {
+    const custom = normalizeCustomRatio(customRatio);
+    if (!RATIO_KEYS.has(ratio) || ratio === 'custom' && !custom) return false;
+    if (doc.ratio === ratio && (ratio !== 'custom' || doc.customRatio === custom)) return false;
     const before = pageHeight(doc);
     doc.ratio = ratio;
+    if (custom) doc.customRatio = custom;
     const factor = pageHeight(doc) / before;
     if (factor !== 1) {
         for (const layout of [...doc.pages, doc.restLayout]) {

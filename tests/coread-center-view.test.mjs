@@ -44,7 +44,7 @@ test('guided steps respect the memory gate, first/last controls and absent-step 
 
 test('transfer entry keeps the iOS native file input and tour highlighting without initiating data work',()=>{
   const {c}=createCoreadCenterFixture();const normal=c.renderCoreadPackBar();
-  assert.match(normal,/<label class="sd-reader-pack-import"[^>]*>[\s\S]*<input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application\/json,\.json"><\/label>/);
+  assert.match(normal,/<label class="sd-reader-pack-import"[^>]*>[\s\S]*<input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application\/zip,\.zip,application\/json,\.json"><\/label>/);
   assert.match(normal,/不含 API 密钥/);assert.doesNotMatch(normal,/sd-reader-tour-target/);
   c.coreadGuideStep=c.coreadGuideSteps().findIndex(x=>x.target==='transfer');assert.match(c.renderCoreadPackBar(),/sd-reader-packbar sd-reader-tour-target/);
 });

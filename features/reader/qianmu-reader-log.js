@@ -3,7 +3,7 @@
 // 只在一本书打开着的时候算。按天、按钟点、按书友由它记，这里再按书记一份。
 // 读过的字：读位往前走了多少字；往回翻不扣，回翻后重读到原处之前不重复算；一下跳得太远（目录、拖进度）不算。
 // 只存数字和最近对话的几句摘录，不存书的正文；不发任何请求。
-import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.629';
+import { createUsageTracker, normalizeUsage, usageSummary, dayKey, zoneShift } from '../../qianmu-usage-tracker.js?v=1.59.630';
 
 export const READ_JUMP_CHARS = 12000;
 const PALS_PER_BOOK = 12, BOOK_LIMIT = 600, DAY_LIMIT = 800, PAL_LIMIT = 400, TALK_LINES = 4, TALK_CHARS = 160;
@@ -45,7 +45,7 @@ export function readAdvance({ mark = 0, last = null, pos, limit = READ_JUMP_CHAR
 }
 
 export function createReaderLog({ load = () => null, save = () => {}, now = () => Date.now(), visible = () => true, focused = () => true, busy = () => false, ...timing } = {}) {
-    const data = normalizeReaderLog(load());
+    let data = normalizeReaderLog(load()), tracker = null;
     let open = null;   // { bookId, pal: {key,name,avatar}|null, last }
     const persist = () => save(data);
     const bookOf = id => data.books[id] ||= { ms: 0, chars: 0, mark: 0, last: 0 };
@@ -57,15 +57,20 @@ export function createReaderLog({ load = () => null, save = () => {}, now = () =
         const pals = Object.entries(data.pals).sort((a, b) => b[1].last - a[1].last);
         for (const [key] of pals.slice(PAL_LIMIT)) delete data.pals[key];
     };
-    const tracker = createUsageTracker({
-        load: () => data.time, save: () => { trim(); persist(); }, now, focused, busy,
-        visible: () => !!open && visible(),
-        character: () => open?.pal || null,
-        onBook: add => { if (!open) return; const book = bookOf(open.bookId); book.ms += add; book.last = now(); },
-        ...timing,
-    });
-    data.time = tracker.data;
+    const track = () => {
+        tracker = createUsageTracker({
+            load: () => data.time, save: () => { trim(); persist(); }, now, focused, busy,
+            visible: () => !!open && visible(),
+            character: () => open?.pal || null,
+            onBook: add => { if (!open) return; const book = bookOf(open.bookId); book.ms += add; book.last = now(); },
+            ...timing,
+        });
+        data.time = tracker.data;
+    };
+    track();
     return {
+        /** 设置里的记录被整份换掉（导入伴读整包）之后重新读一次。不先存：存了就会把旧记录写回去。开着的一段就此丢掉。 */
+        reload() { const value = load(); open = null; data = normalizeReaderLog(value); track(); },
         /** 打开一本书。pos：此刻的读位（字），作为算字的起点。 */
         open(bookId, { pal = null, pos = 0 } = {}) {
             if (open) this.close();

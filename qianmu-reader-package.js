@@ -1,76 +1,116 @@
 // Reader packs contain original media, unlike the smaller configuration-only package.
-import {parseBoundedJson,assertJsonInputBounds,base64DecodedLength} from './qianmu-json-input.js';
+// v6（现行）：zip，每本书一个目录（书架条目、正文记录、封面、插图、对话与记忆、检索资料），另有 prefs.json 与 shared/（语音、
+// 认不出属于哪本书的条目、检索记录）。逐条以 Blob 写入，不拼成一份大 JSON，也不转 base64。v1–v5 的单个 JSON 照常能恢复。
+import {parseBoundedJson,base64DecodedLength} from './qianmu-json-input.js';
+import {buildZip,isStoragePack,readZipDirectory,zipEntryBlob} from './qianmu-storage-transfer.js?v=1.59.630';
 export const COREAD_PACKAGE_LIMITS = Object.freeze({bytes:256*1048576,depth:40,nodes:500000});
+// v6 每个条目各自的上限（JSON 解析前按目录里记的大小先拦）。向量条目数字多，节点上限放宽，字节上限不变。
+export const COREAD_ZIP_LIMITS = Object.freeze({json:64*1048576,media:512*1048576,depth:40,nodes:8000000});
 
-// The caller constructs the v5 envelope. Its serialized text is valid JSON;
-// reuse import limits without parsing another full copy of the media payload.
-export function prepareCoreadPackageExport(payload) {
-  const text = JSON.stringify(payload), blob = new Blob([text], {type:'application/json'});
-  let preservationOnly = blob.size > COREAD_PACKAGE_LIMITS.bytes;
-  if (!preservationOnly) {
-    try {
-      assertJsonInputBounds(text, {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'});
-      inspectCoreadPackage(payload);
-    }
-    catch (_) { preservationOnly = true; }
-  }
-  return {blob,preservationOnly};
-}
+const isRecord = value => !!value && typeof value === 'object' && !Array.isArray(value);
+const isBlob = value => !!value && typeof value.slice === 'function' && Number.isSafeInteger(value.size);
+const asJson = value => new Blob([JSON.stringify(value)], {type:'application/json'});
+const MEDIA_EXT = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif','audio/mpeg':'mp3','audio/wav':'wav','audio/ogg':'ogg','audio/webm':'webm','audio/mp4':'m4a'};
+const mediaName = (base, type) => `${base}.${MEDIA_EXT[String(type || '').split(';')[0].toLowerCase()] || 'bin'}`;
+const mediaPattern = kind => new RegExp(`^${kind}/[a-z0-9.+*-]+(?:;[^\\r\\n]*)?$`, 'i');
 
-export async function collectCoreadPackageData({bookMetas,blobStore,blobToBase64,check = () => {}}) {
+// 对话、检索资料的键是「…::书」，漫画页稿是「comic::书」；插图是「书::n」。认不出的放进 shared/。
+const ownerOfBucket = (key, ids) => { const at = String(key).lastIndexOf('::'); const id = at >= 0 ? String(key).slice(at + 2) : ''; return ids.has(id) ? id : ''; };
+const ownerOfImage = (key, ids) => { const at = String(key).lastIndexOf('::'); const id = at >= 0 ? String(key).slice(0, at) : ''; return ids.has(id) ? id : ''; };
+
+// 导出 v6。缺正文的书（另一台设备同步来、还没补正文）只导出书架条目与附属资料；声明有封面却找不到的，跳过封面。
+// 这两种都记进 skipped，不中止。其余读取失败仍整份停下，不把不完整的备份当成完整的。
+export async function buildCoreadPackage({bookMetas, prefs, blobStore, check = () => {}, now = () => new Date()}) {
   let category = '书籍原件';
-  const record = value => value && typeof value === 'object' && !Array.isArray(value);
   const read = async load => { check(); const value = await load(); check(); return value; };
   const list = async load => { const items = await read(load); if (!Array.isArray(items)) throw Error('invalid inventory'); return items; };
-  const encode = async blob => { const value = await read(() => blobToBase64(blob)); if (typeof value !== 'string' || !value) throw Error('invalid media'); return value; };
+  const files = [], skipped = [], books = [], counts = {books:0, chats:0, images:0, vectors:0, audio:0};
+  const shared = {images:[], chats:[], vectors:[], audio:[], retrievalLogs:null};
   try {
-  const books = [];
-  for (const meta of bookMetas) {
-    category = '书籍原件';
-    if (!meta?.id) throw Error('missing book identity');
-    const rec = await read(() => blobStore.getBook(meta.id));
-    if (!record(rec) || typeof rec.fullText !== 'string') throw Error('missing book original');
-    let coverB64 = '', coverMime = '';
-    category = '书籍封面';
-      const cover = await read(() => blobStore.getCover(meta.id));
-      if (!cover && meta.hasCover) throw Error('missing declared cover');
-      if (cover) { coverB64 = await encode(cover); coverMime = cover.type || 'image/jpeg'; }
-    books.push({ meta, fullText: rec?.fullText || '', chapters: rec?.chapters || [], sig: rec?.sig || '', comicDescriptions: rec?.comicDescriptions || {}, coverB64, coverMime });
-  }
-  // 伴读对话 + 记忆切片：存 IndexedDB reader_chats（bucketKey=chatKey::bookId·含 messages/slices/cursor/names）。
-  // 全量导出所有 bucket——换端后对话与蒸馏出的记忆切片可整体复原（语音条文本随 messages 走·音频可重生成）。
-  const chats = [];
-  category = '伴读对话与记忆';
-    for (const key of await list(() => blobStore.listReaderChatKeys())) {
+    const ids = new Set(bookMetas.map(meta => meta?.id).filter(id => typeof id === 'string' && id));
+    category = '伴读对话与记忆';
+    const chatKeys = await list(() => blobStore.listReaderChatKeys());
+    category = '伴读检索资料';
+    const vectorKeys = await list(() => blobStore.listReaderVectorKeys());
+    category = '伴读插图';
+    const images = await list(() => blobStore.listReaderImages());
+    const put = (name, blob, deflate = false) => files.push({name, blob, deflate});
+    const addChat = async (key, target, dir) => {
+      category = '伴读对话与记忆';
       const rec = await read(() => blobStore.getReaderChat(key));
-      if (!key || !record(rec)) throw Error('missing listed chat');
-      chats.push({ key, rec });
-    }
-  const images = [];
-  category = '伴读插图';
-    for (const item of await list(() => blobStore.listReaderImages())) {
-      if (!item?.key || !item.blob) throw Error('missing listed image');
-      images.push({ key: item.key, b64: await encode(item.blob), mime: item.blob.type || 'image/*' });
-    }
-  const vectors = [];
-  category = '伴读检索资料';
-    for (const key of await list(() => blobStore.listReaderVectorKeys())) {
+      if (!key || !isRecord(rec)) throw Error('missing listed chat');
+      const file = `${dir}chats/${target.length + 1}.json`;
+      target.push({key, file}); put(file, asJson(rec), true);
+      if (!String(key).startsWith('comic::')) counts.chats++;
+    };
+    const addVectors = async (key, target, dir) => {
+      category = '伴读检索资料';
       const rec = await read(() => blobStore.getReaderVectors(key));
-      if (!key || !record(rec)) throw Error('missing listed vectors');
-      vectors.push({ key, rec });
+      if (!key || !isRecord(rec)) throw Error('missing listed vectors');
+      const file = `${dir}vectors/${target.length + 1}.json`;
+      target.push({key, file}); put(file, asJson(rec), true); counts.vectors++;
+    };
+    const addImage = (item, target, dir) => {
+      category = '伴读插图';
+      if (!item?.key || !isBlob(item.blob)) throw Error('missing listed image');
+      const mime = item.blob.type || 'image/*', file = mediaName(`${dir}images/${target.length + 1}`, mime);
+      target.push({key:String(item.key), file, mime}); put(file, item.blob); counts.images++;
+    };
+    for (const [index, meta] of bookMetas.entries()) {
+      category = '书籍原件';
+      if (!meta?.id) throw Error('missing book identity');
+      const dir = `books/${index + 1}/`, title = String(meta.title || '未命名书籍');
+      const entry = {id:meta.id, meta:`${dir}meta.json`, book:null, cover:null, images:[], chats:[], vectors:[]};
+      const rec = await read(() => blobStore.getBook(meta.id));
+      put(entry.meta, asJson(meta), true);
+      if (isRecord(rec) && typeof rec.fullText === 'string') {
+        const {meta:_meta, savedAt:_saved, ...body} = rec;
+        entry.book = `${dir}book.json`;
+        put(entry.book, asJson({...body, fullText:rec.fullText, chapters:Array.isArray(rec.chapters) ? rec.chapters : [], sig:rec.sig || '', comicDescriptions:isRecord(rec.comicDescriptions) ? rec.comicDescriptions : {}}), true);
+        counts.books++;
+        category = '书籍封面';
+        const cover = await read(() => blobStore.getCover(meta.id));
+        if (isBlob(cover)) {
+          const mime = cover.type || 'image/jpeg';
+          entry.cover = {file:mediaName(`${dir}cover`, mime), mime}; put(entry.cover.file, cover);
+        } else if (meta.hasCover) skipped.push({id:meta.id, title, part:'cover'});
+      } else skipped.push({id:meta.id, title, part:'text'});
+      for (const item of images) if (ownerOfImage(item?.key, ids) === meta.id) addImage(item, entry.images, dir);
+      for (const key of chatKeys) if (ownerOfBucket(key, ids) === meta.id) await addChat(key, entry.chats, dir);
+      for (const key of vectorKeys) if (ownerOfBucket(key, ids) === meta.id) await addVectors(key, entry.vectors, dir);
+      put(`${dir}index.json`, asJson(entry), true);
+      books.push({id:meta.id, dir});
     }
-  const audio = [];
-  category = '伴读语音';
-    const allAudio = await list(() => blobStore.listAudio());
-    for (const item of allAudio.filter((entry) => entry?.meta?.source === 'coread')) {
-      if (!item?.key || !item.blob) throw Error('missing listed audio');
-      audio.push({ key: item.key, b64: await encode(item.blob), mime: item.blob.type || 'audio/mpeg', meta: item.meta || {}, createdAt: item.createdAt || 0 });
+    for (const item of images) if (!ownerOfImage(item?.key, ids)) addImage(item, shared.images, 'shared/');
+    for (const key of chatKeys) if (!ownerOfBucket(key, ids)) await addChat(key, shared.chats, 'shared/');
+    for (const key of vectorKeys) if (!ownerOfBucket(key, ids)) await addVectors(key, shared.vectors, 'shared/');
+    category = '伴读语音';
+    for (const item of (await list(() => blobStore.listAudio())).filter(entry => entry?.meta?.source === 'coread')) {
+      if (!item?.key || !isBlob(item.blob)) throw Error('missing listed audio');
+      const mime = item.blob.type || 'audio/mpeg', file = mediaName(`shared/audio/${shared.audio.length + 1}`, mime);
+      shared.audio.push({key:item.key, file, mime, meta:item.meta || {}, createdAt:item.createdAt || 0}); put(file, item.blob); counts.audio++;
     }
-  category = '伴读检索记录';
-  const retrievalLogs = await list(() => blobStore.listRetLog());
-  if (retrievalLogs.some(item => !record(item))) throw Error('invalid retrieval log');
-  check(); return {books,chats,images,vectors,audio,retrievalLogs};
+    category = '伴读检索记录';
+    const retrievalLogs = await list(() => blobStore.listRetLog());
+    if (retrievalLogs.some(item => !isRecord(item))) throw Error('invalid retrieval log');
+    shared.retrievalLogs = 'shared/retlog.json'; put(shared.retrievalLogs, asJson(retrievalLogs), true);
+    put('shared/index.json', asJson(shared), true);
+    check();
   } catch (_) { check(); throw Error(`未能完整读取${category}，未导出备份。请保留本机资料，检查后重试。`); }
+  const manifest = {type:'qianmu-coread', version:6, exportedAt:now().toISOString(), credentialsIncluded:false, prefs:'prefs.json', shared:'shared/index.json', books, skipped};
+  const blob = await buildZip([{name:'manifest.json', blob:asJson(manifest)}, {name:'prefs.json', blob:asJson(isRecord(prefs) ? prefs : {}), deflate:true}, ...files]);
+  check();
+  return {blob, skipped, counts};
+}
+
+// 导出后的提示：成功时一句数目，有跳过的另起一句列书名。
+export function coreadPackageExportText({counts, skipped}) {
+  const titles = list => list.slice(0, 5).map(item => `《${item.title}》`).join('') + (list.length > 5 ? '等' : '');
+  const text = skipped.filter(item => item.part === 'text'), cover = skipped.filter(item => item.part === 'cover');
+  const notes = [`伴读数据已打包导出：${counts.books} 本书 · ${counts.chats} 段对话 · ${counts.images} 张插图 · ${counts.audio} 条语音。`];
+  if (text.length) notes.push(`有 ${text.length} 本书在这台设备上没有正文，未导出：${titles(text)}`);
+  if (cover.length) notes.push(`有 ${cover.length} 本书的封面不在这台设备上，未导出封面：${titles(cover)}`);
+  return notes.join(' ');
 }
 export const coreadPackageSafeKey = key => !['__proto__','prototype','constructor'].includes(key);
 // The file input may be hidden; watch its owning page, not the file chooser itself.
@@ -96,12 +136,84 @@ export function createCoreadImportViewGuard(origin, action = '导入', subject =
   return {check, release(){observer.disconnect();view.removeEventListener('pagehide', onPageHide);}};
 }
 export async function readCoreadPackageFile(file) {
+  if (typeof file?.slice === 'function' && Number.isSafeInteger(file.size) && file.size >= 4 && await isStoragePack(file)) return openCoreadZipPackage(file);
   if (!file || typeof file.text !== 'function' || (file.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 1 || file.size > COREAD_PACKAGE_LIMITS.bytes))) {
     throw new Error('伴读整包须在256 MiB以内；请保留原包，大包暂不直接恢复。');
   }
   const data = parseBoundedJson(await file.text(), {maxBytes:COREAD_PACKAGE_LIMITS.bytes,maxDepth:COREAD_PACKAGE_LIMITS.depth,maxNodes:COREAD_PACKAGE_LIMITS.nodes,label:'伴读整包'});
   inspectCoreadPackage(data);
   return data;
+}
+
+// v6 预检：只读目录、manifest 与各书的 index.json，核对条目都在、编号不重复、媒体类型对、大小在上限内；有一处不对就整包不写。
+// 正文与对话等内容在恢复时逐条读，坏了只算那一条失败。prefs.json 读不出不拦整包：书照常恢复，偏好另报。
+export async function openCoreadZipPackage(file) {
+  const limits = COREAD_ZIP_LIMITS;
+  const entries = new Map((await readZipDirectory(file, {invalid:'不是有效的千幕阅读数据文件。', broken:'伴读整包已损坏，请保留原包。', incomplete:'伴读整包不完整，请保留原包。'})).map(entry => [entry.name, entry]));
+  const readJson = async (name, label = '伴读整包') => {
+    const entry = entries.get(name);
+    if (!entry) throw Error(`${label}缺少条目`);
+    const blob = await zipEntryBlob(file, entry, {maxBytes:limits.json});
+    return parseBoundedJson(await blob.text(), {maxBytes:limits.json, maxDepth:limits.depth, maxNodes:limits.nodes, label});
+  };
+  const readMedia = (name, type) => zipEntryBlob(file, entries.get(name), {type, maxBytes:limits.media});
+  // 语音写入是同步取下一条的；语音一律不压缩存，直接切片。
+  const sliceMedia = (name, type) => {
+    const entry = entries.get(name);
+    if (!entry || entry.method !== 0 || entry.size !== entry.compressedSize || entry.size > limits.media) throw Error('媒体条目无效');
+    return file.slice(entry.offset, entry.offset + entry.size, type);
+  };
+  let manifest;
+  try { manifest = await readJson('manifest.json', '伴读整包目录'); }
+  catch (_) { throw Error('不是有效的千幕阅读数据文件。'); }
+  if (!isRecord(manifest) || manifest.type !== 'qianmu-coread' || !Array.isArray(manifest.books)) throw Error('不是有效的千幕阅读数据文件。');
+  if (manifest.version !== 6) throw Error('暂不支持此伴读整包版本，请保留原包。');
+  const present = (name, maxBytes) => typeof name === 'string' && entries.has(name) && entries.get(name).size <= maxBytes;
+  const seen = {books:new Set(), images:new Set(), chats:new Set(), vectors:new Set(), audio:new Set()};
+  const checkList = (list, store, kind, fail) => {
+    if (!Array.isArray(list)) fail('条目格式无效');
+    for (const item of list) {
+      if (!isRecord(item) || typeof item.key !== 'string' || !item.key.trim()) fail('编号无效');
+      if (seen[store].has(item.key)) fail('编号重复，无法确定应恢复哪一份');
+      seen[store].add(item.key);
+      if (!present(item.file, kind ? limits.media : limits.json)) fail('条目缺失或过大');
+      if (kind && (typeof item.mime !== 'string' || !mediaPattern(kind).test(item.mime))) fail('媒体类型无效');
+    }
+  };
+  const books = [];
+  for (const [index, ref] of manifest.books.entries()) {
+    const fail = message => { throw Error(`伴读书籍第 ${index + 1} 项${message}；未写入内容，请保留原包。`); };
+    if (!isRecord(ref) || typeof ref.id !== 'string' || !ref.id.trim() || typeof ref.dir !== 'string') fail('编号无效');
+    if (seen.books.has(ref.id)) fail('编号重复，无法确定应恢复哪一份');
+    seen.books.add(ref.id);
+    let book;
+    try { book = await readJson(`${ref.dir}index.json`, '伴读书籍目录'); } catch (_) { fail('目录无法读取'); }
+    if (!isRecord(book) || book.id !== ref.id || !present(book.meta, limits.json)) fail('书目信息缺失');
+    if (book.book != null && !present(book.book, limits.json)) fail('正文原件缺失');
+    if (book.cover != null && (!isRecord(book.cover) || !present(book.cover.file, limits.media) || typeof book.cover.mime !== 'string' || !mediaPattern('image').test(book.cover.mime))) fail('封面缺失或媒体类型无效');
+    checkList(book.images, 'images', 'image', fail);
+    checkList(book.chats, 'chats', '', fail);
+    checkList(book.vectors, 'vectors', '', fail);
+    books.push(book);
+  }
+  let shared = {images:[], chats:[], vectors:[], audio:[], retrievalLogs:null};
+  if (manifest.shared !== undefined) {
+    const fail = message => { throw Error(`伴读共用资料${message}；未写入内容，请保留原包。`); };
+    try { shared = await readJson(manifest.shared, '伴读共用资料'); } catch (_) { fail('无法读取'); }
+    if (!isRecord(shared)) fail('格式无效');
+    checkList(shared.images, 'images', 'image', fail);
+    checkList(shared.chats, 'chats', '', fail);
+    checkList(shared.vectors, 'vectors', '', fail);
+    checkList(shared.audio, 'audio', 'audio', fail);
+    if (shared.audio.some(item => item.meta !== undefined && !isRecord(item.meta))) fail('媒体信息格式无效');
+    if (shared.retrievalLogs != null && !present(shared.retrievalLogs, limits.json)) fail('检索记录缺失');
+  }
+  let prefs, prefsUnreadable = false;
+  if (manifest.prefs !== undefined) {
+    try { prefs = await readJson(manifest.prefs, '伴读设置'); if (!isRecord(prefs)) throw Error('invalid prefs'); }
+    catch (_) { prefs = undefined; prefsUnreadable = true; }
+  }
+  return {type:'qianmu-coread', version:6, books, prefs, prefsUnreadable, shared, skipped:Array.isArray(manifest.skipped) ? manifest.skipped : [], zip:{readJson, readMedia, sliceMedia}};
 }
 
 // Read-only structural preflight. Reject a broken later entry before any overwrite.
@@ -158,7 +270,104 @@ export function coreadPackageRestoreMessage(data) {
   return `将恢复 ${count('books')} 本书及其对话、插图、语音，同编号内容会被覆盖。`;
 }
 
+// 书架条目：已有的替换，新书放最前；本机已有封面而包里没带时，保留本机封面标记。
+function indexRestoredBook(coread, meta, cover) {
+  const idx = (coread().books || []).findIndex((x) => x.id === meta.id);
+  const next = {...meta, hasCover:!!cover || !!(idx >= 0 && coread().books[idx].hasCover)};
+  if (idx >= 0) coread().books[idx] = next; else coread().books.unshift(next);
+}
+
+// v6：一本书一本书恢复，每本按「插图、对话、检索资料 → 正文记录与封面 → 书架条目」写；任何一条失败只记一笔，接着下一条。
+// 页面或状态变化（check 抛错）照旧立刻停下，已写入的保留。
+async function applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress}) {
+  const {readJson, readMedia, sliceMedia} = data.zip;
+  const attempt = async (label, work) => {
+    check();
+    try { await work(); check(); } catch (e) { check(); progress.failed++; warn(label, e); }
+  };
+  const restoreBuckets = async ({images = [], chats = [], vectors = []}) => {
+    for (const item of images) await attempt('import reader image failed', async () => { await blobStore.putReaderImageByKey(item.key, await readMedia(item.file, item.mime)); progress.imageOk++; });
+    for (const item of chats) await attempt('import chat failed', async () => {
+      const rec = await readJson(item.file, '伴读对话');
+      if (!isPlainObject(rec)) throw TypeError('chat record is not an object');
+      await blobStore.putReaderChat(item.key, rec);
+      if (!item.key.startsWith('comic::')) progress.chatOk++;
+    });
+    for (const item of vectors) await attempt('import vectors failed', async () => {
+      const rec = await readJson(item.file, '伴读检索资料');
+      if (!isPlainObject(rec)) throw TypeError('vector record is not an object');
+      await blobStore.putReaderVectors(item.key, rec); progress.vectorOk++;
+    });
+  };
+  check();
+  for (const book of data.books) {
+    check();
+    await restoreBuckets(book);
+    let indexed = false;
+    try {
+      const meta = await readJson(book.meta, '伴读书目');
+      if (!isPlainObject(meta) || meta.id !== book.id) throw TypeError('book meta does not match its folder');
+      if (book.book) {
+        const rec = await readJson(book.book, '伴读正文');
+        if (!isPlainObject(rec) || typeof rec.fullText !== 'string' || (rec.chapters !== undefined && !Array.isArray(rec.chapters)) || (rec.comicDescriptions !== undefined && !isPlainObject(rec.comicDescriptions))) throw TypeError('book record is invalid');
+        const cover = book.cover ? await readMedia(book.cover.file, book.cover.mime) : null;
+        check();
+        await blobStore.putBookWithCover(book.id, {...rec, meta:{...meta, mode:meta.mode || 'text'}, chapters:rec.chapters || [], sig:typeof rec.sig === 'string' ? rec.sig : '', comicDescriptions:rec.comicDescriptions || {}}, cover);
+        progress.ok++;
+        if (cover) progress.coverOk++;
+        check();
+        indexRestoredBook(coread, meta, cover);
+        indexed = true;
+      } else {
+        // 导出时这本书就没有正文：本机没有这本时只补书架条目（之后可补正文），本机已有的不动。
+        check();
+        progress.noText++;
+        if (!(coread().books || []).some((x) => x.id === book.id)) { coread().books.unshift({...meta, hasCover:false}); indexed = true; }
+      }
+    } catch (e) { check(); progress.failed++; warn('import book failed', e); }
+    if (indexed) {
+      check();
+      try { onBookIndexed(); } catch (_) { check(); throw Error('书目保存请求未确认，后续恢复已停止；原件与本页书目保留，请先导出备份。'); }
+      check();
+    }
+  }
+  const shared = data.shared || {};
+  await restoreBuckets(shared);
+  if (Array.isArray(shared.audio) && shared.audio.length) {
+    let decodeFailures = 0;
+    function* entries() {
+      for (const item of shared.audio) {
+        check();
+        try { yield {key:item.key, blob:sliceMedia(item.file, item.mime), meta:{...(item.meta || {}), source:'coread'}, createdAt:item.createdAt || Date.now()}; }
+        catch (e) { check(); decodeFailures++; progress.failed++; warn('read coread audio failed', e); }
+      }
+    }
+    const failedBeforeAudio = progress.failed;
+    const onProgress = result => {
+      progress.audioOk = result.added;
+      progress.skipped = result.skipped || 0;
+      progress.failed = failedBeforeAudio + decodeFailures + (result.failed || 0);
+    };
+    check();
+    try { const result = await blobStore.bulkPutAudio(entries(), {onProgress}); onProgress(result); check(); } catch (e) { check(); progress.failed++; warn('import coread audio failed', e); }
+  }
+  if (shared.retrievalLogs) {
+    let logs = [];
+    await attempt('read retrieval logs failed', async () => { logs = await readJson(shared.retrievalLogs, '伴读检索记录'); if (!Array.isArray(logs)) { logs = []; throw TypeError('retrieval logs are not a list'); } });
+    for (const item of logs.slice().sort((a, b) => (a?.at || 0) - (b?.at || 0))) {
+      check();
+      if (!isPlainObject(item)) { progress.invalid++; continue; }
+      const rec = {...item}; delete rec.id;
+      await attempt('import retrieval log failed', async () => { await blobStore.pushRetLog(rec, 50); progress.logOk++; });
+    }
+  }
+  if (data.prefsUnreadable) progress.prefsUnreadable = 1;
+  check();
+  return progress;
+}
+
 export async function applyCoreadPackageData(data, {blobStore, coread, isPlainObject, base64ToBlob, warn, check = () => {}, onBookIndexed = () => {}, progress = createCoreadImportProgress()}) {
+  if (data?.version === 6 && data.zip) return applyCoreadZipPackage(data, {blobStore, coread, isPlainObject, warn, check, onBookIndexed, progress});
   check();
   for (const b of data.books) {
     check();
@@ -172,10 +381,8 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
       progress.ok++;
       if (cover) progress.coverOk++;
       check();
-      const idx = (coread().books || []).findIndex((x) => x.id === b.meta.id);
       // A book-only legacy pack preserves the already indexed local cover, not the old reading progress.
-      const meta = {...b.meta, hasCover:!!cover || !!(idx >= 0 && coread().books[idx].hasCover)};
-      if (idx >= 0) coread().books[idx] = meta; else coread().books.unshift(meta);
+      indexRestoredBook(coread, b.meta, cover);
       indexed = true;
     } catch (e) { check(); progress.failed++; warn(`import book failed`, e); }
     // Request host persistence before waiting on the next original/category. This callback is synchronous.
@@ -250,19 +457,22 @@ export async function applyCoreadPackageData(data, {blobStore, coread, isPlainOb
 }
 
 export function createCoreadImportProgress() {
-  return {ok:0, coverOk:0, chatOk:0, imageOk:0, vectorOk:0, audioOk:0, logOk:0, failed:0, invalid:0, skipped:0};
+  return {ok:0, coverOk:0, chatOk:0, imageOk:0, vectorOk:0, audioOk:0, logOk:0, failed:0, invalid:0, skipped:0, noText:0, prefsUnreadable:0};
 }
 
 export function coreadImportProgressText(p) {
-  return `已导入 ${p.ok} 本书原件 · ${p.coverOk} 张封面 · ${p.chatOk} 段对话 · ${p.imageOk} 张插图 · ${p.vectorOk} 组向量 · ${p.audioOk} 条语音 · ${p.logOk} 条检索记录；失败 ${p.failed} 项，格式无效 ${p.invalid} 项，已存在音频跳过 ${p.skipped} 项。`;
+  return `已导入 ${p.ok} 本书原件 · ${p.coverOk} 张封面 · ${p.chatOk} 段对话 · ${p.imageOk} 张插图 · ${p.vectorOk} 组向量 · ${p.audioOk} 条语音 · ${p.logOk} 条检索记录；失败 ${p.failed} 项，格式无效 ${p.invalid} 项，已存在音频跳过 ${p.skipped} 项${p.noText ? `；${p.noText} 本书包里没有正文` : ''}。`;
 }
 
 // Originals are already committed. Compensate preferences only; never roll back book indexes or stores.
 // `save` requests the host's debounced persistence, not a durable-write acknowledgement.
-export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePrefs, check, save, refresh, notify}) {
+// 偏好与书各自恢复：有书失败时包里的偏好照样应用（阅读记录、主题方案、合集、标签色、首页布局等），只是各自报结果。
+// reload：偏好换过之后让运行中的阅读记录重新读一次设置，免得它把内存里的旧记录写回去。
+export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePrefs, check, save, refresh, notify, reload = () => {}}) {
   check();
   const partial = !!(progress.failed || progress.invalid);
-  let previous, touched = false, prefsFailed = false, saveFailed = false, compensationFailed = false;
+  let previous, touched = false, prefsFailed = false, saveFailed = false, compensationFailed = false, reloadFailed = false;
+  const reloadLive = () => { try { reload(); } catch (_) { reloadFailed = true; } };
   const mutable = key => key !== 'books' && key !== 'enabled' && coreadPackageSafeKey(key);
   const restore = () => {
     let complete = true;
@@ -274,7 +484,7 @@ export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePr
     }
     return complete;
   };
-  if (hasPrefs && !partial) {
+  if (hasPrefs) {
     previous = {...reader};
     try {
       const prepared = preparePrefs(); // Caller merges only into a detached copy, retaining connection policy.
@@ -285,12 +495,13 @@ export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePr
       check(); prefsFailed = true;
       if (touched) compensationFailed = !restore();
     }
+    if (touched) reloadLive();
   }
   if (!compensationFailed) {
     try { check(); save(); }
     catch (_) {
       check(); saveFailed = true;
-      if (touched) { prefsFailed = true; compensationFailed = !restore(); }
+      if (touched && !prefsFailed) { prefsFailed = true; compensationFailed = !restore(); reloadLive(); }
       // A throwing save may have queued a write. Request the compensated state once, never loop.
       if (!compensationFailed) { try { check(); save(); } catch (_) { check(); } }
     }
@@ -300,9 +511,12 @@ export function finishCoreadPackageImport({reader, progress, hasPrefs, preparePr
   if (!compensationFailed) { try { refresh(); } catch (_) { viewFailed = true; } }
   const notes = [coreadImportProgressText(progress)];
   if (compensationFailed) notes.push('阅读偏好还原未完成，请保留当前页面并先导出备份，不要再次覆盖。');
-  else if (prefsFailed || hasPrefs && partial) notes.push('包内阅读偏好未应用，已保留本机偏好及已恢复书目。');
+  else if (prefsFailed) notes.push('包内阅读偏好未应用，已保留本机偏好及已恢复书目。');
+  else if (hasPrefs) notes.push('阅读偏好已恢复。');
+  if (progress.prefsUnreadable) notes.push('包内阅读偏好无法读取，未应用。');
+  if (reloadFailed) notes.push('阅读记录未能刷新，请刷新页面后再看统计。');
   if (saveFailed) notes.push('设置保存结果未确认，请保留当前页面并先导出备份；已写入原件保留。');
   if (viewFailed) notes.push('原件写入结果不变，但页面更新未完成，请重新打开千幕检查，不必重复导入。');
-  notify(notes.join(' '), compensationFailed || saveFailed ? 'error' : partial || prefsFailed || viewFailed ? 'warning' : 'success');
-  return {preferences:compensationFailed ? 'incomplete' : prefsFailed || partial ? 'retained' : hasPrefs ? 'applied' : 'unchanged', persistence:compensationFailed ? 'uncertain' : saveFailed ? 'uncertain' : 'requested', view:compensationFailed ? 'skipped' : viewFailed ? 'incomplete' : 'updated'};
+  notify(notes.join(' '), compensationFailed || saveFailed ? 'error' : partial || prefsFailed || viewFailed || reloadFailed || progress.prefsUnreadable ? 'warning' : 'success');
+  return {preferences:compensationFailed ? 'incomplete' : prefsFailed ? 'retained' : hasPrefs ? 'applied' : 'unchanged', persistence:compensationFailed ? 'uncertain' : saveFailed ? 'uncertain' : 'requested', view:compensationFailed ? 'skipped' : viewFailed ? 'incomplete' : 'updated'};
 }

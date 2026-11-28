@@ -1,72 +1,97 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectCoreadPackageData} from '../qianmu-reader-package.js';
+import {buildCoreadPackage,coreadPackageExportText} from '../qianmu-reader-package.js';
+import {readZipDirectory,zipEntryBlob} from '../qianmu-storage-transfer.js';
+
+const png = text => new Blob([text], {type:'image/png'});
 function fixture(){
-  const calls=[],warnings=[],bookMetas=[{id:'book',title:'fixture'}];
-  const original={fullText:'original prose',chapters:[{start:0}],sig:'signature',comicDescriptions:{page1:'description'}};
-  const data={getBook:original,getCover:{type:'image/png',kind:'cover'},listReaderChatKeys:['chat::book'],getReaderChat:{messages:['chat'],slices:['memory'],cursor:5},
-    listReaderImages:[{key:'book::1',blob:{type:'image/png',kind:'image'}}],listReaderVectorKeys:['chat::book'],getReaderVectors:{model:'fixture',vecs:{v:[1,2]}},
-    listAudio:[{key:'reader-voice',blob:{type:'audio/mpeg',kind:'voice'},meta:{source:'coread'},createdAt:9},{key:'unrelated',blob:{kind:'unrelated'},meta:{source:'tts'}}],listRetLog:[{id:2,at:8,query:'fixture'}]};
-  const blobStore=Object.fromEntries(Object.entries(data).map(([name,result])=>[name,async(...args)=>{calls.push([name,...args]);return result;}]));
-  return {calls,warnings,original,data,options:{bookMetas,blobStore,blobToBase64:async blob=>blob.kind,warn:(...args)=>warnings.push(args)}};
+  const calls=[];
+  const bookMetas=[{id:'book',title:'甲书',hasCover:true,notes:[{id:'n1',text:'划线'}]},{id:'remote',title:'乙书'},{id:'bare',title:'丙书',hasCover:true}];
+  const records={book:{fullText:'original prose',chapters:[{title:'一',content:'original prose'}],sig:'signature',comicDescriptions:{page1:'description'},meta:{title:'import-time'},savedAt:7,extra:'kept'},bare:{fullText:'',chapters:[]}};
+  const data={getBook:id=>records[id],getCover:id=>id==='book'?png('cover'):undefined,
+    listReaderChatKeys:()=>['role::book','comic::book','role::gone'],getReaderChat:key=>({messages:[key],slices:['memory']}),
+    listReaderImages:()=>[{key:'book::1',blob:png('illustration')},{key:'gone::1',blob:png('orphan')}],
+    listReaderVectorKeys:()=>['role::book'],getReaderVectors:()=>({model:'fixture',vecs:{v:[1,2]}}),
+    listAudio:()=>[{key:'voice',blob:new Blob(['voice'],{type:'audio/mpeg'}),meta:{source:'coread'},createdAt:9},{key:'other',blob:new Blob(['x']),meta:{source:'tts'}}],
+    listRetLog:()=>[{id:2,at:8,query:'fixture'}]};
+  const blobStore=Object.fromEntries(Object.entries(data).map(([name,fn])=>[name,async(...args)=>{calls.push([name,...args]);return fn(...args);}]));
+  return {calls,bookMetas,records,blobStore,options:{bookMetas,prefs:{fontSize:18,readLog:{books:{book:{ms:5}}}},blobStore,now:()=>new Date('2026-11-29T00:00:00.000Z')}};
 }
-test('the extracted collector retains book originals and each supported media category without unrelated audio',async()=>{
-  const e=fixture(),result=await collectCoreadPackageData(e.options);
-  assert.deepEqual(result.books,[{meta:e.options.bookMetas[0],...e.original,coverB64:'cover',coverMime:'image/png'}]);
-  assert.deepEqual(result.chats,[{key:'chat::book',rec:e.data.getReaderChat}]);
-  assert.deepEqual(result.images,[{key:'book::1',b64:'image',mime:'image/png'}]);
-  assert.deepEqual(result.vectors,[{key:'chat::book',rec:e.data.getReaderVectors}]);
-  assert.deepEqual(result.audio,[{key:'reader-voice',b64:'voice',mime:'audio/mpeg',meta:{source:'coread'},createdAt:9}]);
-  assert.deepEqual(result.retrievalLogs,e.data.listRetLog);assert.deepEqual(e.warnings,[]);
-});
-test('books without an optional cover still retain their original text and chapter data',async()=>{
-  const e=fixture();e.options.blobStore.getCover=async()=>undefined;
-  const result=await collectCoreadPackageData(e.options);
-  assert.equal(result.books[0].coverB64,'');assert.equal(result.books[0].fullText,e.original.fullText);
-  assert.deepEqual(result.books[0].chapters,e.original.chapters);
+async function unpack(blob){
+  const entries=await readZipDirectory(blob),byName=new Map(entries.map(entry=>[entry.name,entry]));
+  return {names:entries.map(entry=>entry.name),json:async name=>JSON.parse(await (await zipEntryBlob(blob,byName.get(name))).text()),
+    text:async name=>(await zipEntryBlob(blob,byName.get(name))).text(),entry:name=>byName.get(name)};
+}
+
+test('one folder per book, the manifest first and stored, preferences and shared parts beside them',async()=>{
+  const e=fixture(),pack=await buildCoreadPackage(e.options),zip=await unpack(pack.blob);
+  assert.equal(zip.names[0],'manifest.json');assert.equal(zip.entry('manifest.json').method,0);
+  const manifest=await zip.json('manifest.json');
+  assert.deepEqual(manifest,{type:'qianmu-coread',version:6,exportedAt:'2026-11-29T00:00:00.000Z',credentialsIncluded:false,prefs:'prefs.json',shared:'shared/index.json',
+    books:[{id:'book',dir:'books/1/'},{id:'remote',dir:'books/2/'},{id:'bare',dir:'books/3/'}],
+    skipped:[{id:'remote',title:'乙书',part:'text'},{id:'bare',title:'丙书',part:'cover'}]});
+  assert.deepEqual(await zip.json('prefs.json'),e.options.prefs);
+  const index=await zip.json('books/1/index.json');
+  assert.deepEqual(index,{id:'book',meta:'books/1/meta.json',book:'books/1/book.json',cover:{file:'books/1/cover.png',mime:'image/png'},
+    images:[{key:'book::1',file:'books/1/images/1.png',mime:'image/png'}],chats:[{key:'role::book',file:'books/1/chats/1.json'},{key:'comic::book',file:'books/1/chats/2.json'}],
+    vectors:[{key:'role::book',file:'books/1/vectors/1.json'}]});
+  assert.deepEqual(await zip.json('books/1/meta.json'),e.bookMetas[0],'the current shelf entry, notes included');
+  assert.equal(await zip.text('books/1/images/1.png'),'illustration','media are the original bytes, not base64');
+  assert.equal(zip.entry('books/1/images/1.png').method,0);
+  const shared=await zip.json('shared/index.json');
+  assert.deepEqual(shared.chats,[{key:'role::gone',file:'shared/chats/1.json'}]);assert.deepEqual(shared.images,[{key:'gone::1',file:'shared/images/1.png',mime:'image/png'}]);
+  assert.deepEqual(shared.audio,[{key:'voice',file:'shared/audio/1.mp3',mime:'audio/mpeg',meta:{source:'coread'},createdAt:9}]);
+  assert.deepEqual(await zip.json('shared/retlog.json'),[{id:2,at:8,query:'fixture'}]);
+  assert.deepEqual(pack.counts,{books:2,chats:2,images:2,vectors:1,audio:1},'the comic page record is not counted as a conversation');
 });
 
-test('export uses the current shelf rather than replaying import-time metadata from the original',async()=>{
-  const e=fixture();e.options.bookMetas[0]={id:'book',title:'Current',progress:85};
-  e.options.blobStore.getBook=async()=>({...e.original,meta:{id:'book',title:'Imported',progress:12,custom:'old'}});
-  const result=await collectCoreadPackageData(e.options);
-  assert.deepEqual(result.books[0].meta,{id:'book',title:'Current',progress:85});
-  assert.equal(result.books[0].fullText,e.original.fullText);
-});
-test('an empty library exports empty category arrays without requesting a nonexistent book',async()=>{
-  const e=fixture();e.options.bookMetas=[];
-  for(const name of ['listReaderChatKeys','listReaderImages','listReaderVectorKeys','listAudio','listRetLog'])e.options.blobStore[name]=async()=>[];
-  const result=await collectCoreadPackageData(e.options);
-  assert.deepEqual(result,{books:[],chats:[],images:[],vectors:[],audio:[],retrievalLogs:[]});assert.deepEqual(e.calls,[]);
+test('the book record keeps its own fields but not the import-time metadata or save stamp',async()=>{
+  const e=fixture(),zip=await unpack((await buildCoreadPackage(e.options)).blob);
+  assert.deepEqual(await zip.json('books/1/book.json'),{fullText:'original prose',chapters:[{title:'一',content:'original prose'}],sig:'signature',comicDescriptions:{page1:'description'},extra:'kept'});
+  assert.deepEqual(await zip.json('books/3/book.json'),{fullText:'',chapters:[],sig:'',comicDescriptions:{}},'an intentionally empty text is still a text');
 });
 
-test('every failed original or category read stops the complete collector without leaking underlying error text',async()=>{
+test('a book without local text is listed and skipped, its shelf entry and companions still exported',async()=>{
+  const e=fixture();e.records.book=undefined;
+  const pack=await buildCoreadPackage(e.options),zip=await unpack(pack.blob),index=await zip.json('books/1/index.json');
+  assert.equal(index.book,null);assert.equal(index.cover,null);assert.equal(index.chats.length,2);assert.ok(zip.names.includes('books/1/meta.json'));
+  assert.equal(zip.names.includes('books/1/book.json'),false);
+  assert.deepEqual(pack.skipped.map(item=>[item.id,item.part]),[['book','text'],['remote','text'],['bare','cover']]);
+  assert.equal(e.calls.some(call=>call[0]==='getCover'&&call[1]==='book'),false,'no cover read for a book that has no text here');
+});
+
+test('the export notice names what was skipped in one short sentence each',()=>{
+  const counts={books:3,chats:2,images:4,audio:1};
+  assert.equal(coreadPackageExportText({counts,skipped:[]}),'伴读数据已打包导出：3 本书 · 2 段对话 · 4 张插图 · 1 条语音。');
+  assert.equal(coreadPackageExportText({counts,skipped:[{title:'甲',part:'text'},{title:'乙',part:'text'},{title:'丙',part:'cover'}]}),
+    '伴读数据已打包导出：3 本书 · 2 段对话 · 4 张插图 · 1 条语音。 有 2 本书在这台设备上没有正文，未导出：《甲》《乙》 有 1 本书的封面不在这台设备上，未导出封面：《丙》');
+  const many=Array.from({length:7},(_,i)=>({title:`书${i}`,part:'text'}));
+  assert.match(coreadPackageExportText({counts,skipped:many}),/有 7 本书[^《]*《书0》《书1》《书2》《书3》《书4》等$/);
+});
+
+test('an unexpected read failure still stops the whole export without leaking the underlying error',async()=>{
   for(const method of ['getBook','getCover','listReaderChatKeys','getReaderChat','listReaderImages','listReaderVectorKeys','getReaderVectors','listAudio','listRetLog']){
-    const e=fixture();e.options.blobStore[method]=async()=>{throw Error('sensitive fixture detail');};
-    await assert.rejects(()=>collectCoreadPackageData(e.options),error=>/未能完整读取/.test(error.message)&&!error.message.includes('sensitive'));
+    const e=fixture();e.blobStore[method]=async()=>{throw Error('sensitive fixture detail');};
+    await assert.rejects(()=>buildCoreadPackage(e.options),error=>/未能完整读取/.test(error.message)&&!error.message.includes('sensitive'),method);
   }
-});
-test('missing required originals or malformed inventory cannot silently become empty exported data',async()=>{
-  const cases=[['getBook',undefined],['getBook',{}],['getReaderChat',null],['getReaderVectors',null],['listReaderImages',[{key:'missing'}]],
-    ['listAudio',[{key:'missing',meta:{source:'coread'}}]],['listRetLog',[null]]];
-  for(const method of ['listReaderChatKeys','listReaderImages','listReaderVectorKeys','listAudio','listRetLog'])cases.push([method,undefined]);
-  for(const [method,value] of cases){const e=fixture();e.options.blobStore[method]=async()=>value;await assert.rejects(()=>collectCoreadPackageData(e.options),/未能完整读取/);}
-  const e=fixture();e.options.bookMetas[0].hasCover=true;e.options.blobStore.getCover=async()=>undefined;
-  await assert.rejects(()=>collectCoreadPackageData(e.options),/书籍封面/);
-});
-test('a failed or empty media encoding prevents a misleading partial backup',async()=>{
-  for(const kind of ['cover','image','voice'])for(const fail of [true,false]){
-    const e=fixture();e.options.blobToBase64=async blob=>{if(blob.kind!==kind)return blob.kind;if(fail)throw Error('encode failed');return '';};
-    await assert.rejects(()=>collectCoreadPackageData(e.options),/未能完整读取/);
+  for(const [method,value] of [['getReaderChat',null],['getReaderVectors',null],['listReaderImages',[{key:'book::1'}]],['listAudio',[{key:'x',meta:{source:'coread'}}]],['listRetLog',[null]],['listReaderChatKeys',undefined]]){
+    const e=fixture();e.blobStore[method]=async()=>value;await assert.rejects(()=>buildCoreadPackage(e.options),/未能完整读取/,method);
   }
 });
 
-test('every awaited collection stage rechecks ownership before reading more or returning a package',async()=>{
-  for(const method of ['getBook','getCover','listReaderChatKeys','getReaderChat','listReaderImages','listReaderVectorKeys','getReaderVectors','listAudio','listRetLog','encode'])for(const fail of [false,true]){
+test('every awaited read rechecks ownership before reading more or building the file',async()=>{
+  for(const method of ['getBook','getCover','listReaderChatKeys','getReaderChat','listReaderImages','listReaderVectorKeys','getReaderVectors','listAudio','listRetLog']){
     const e=fixture();let current=true,at=-1;e.options.check=()=>{if(!current)throw Error('owner changed');};
-    const target=method==='encode'?e.options:e.options.blobStore,key=method==='encode'?'blobToBase64':method,original=target[key];
-    target[key]=async(...args)=>{const value=await original(...args);current=false;at=e.calls.length;if(fail)throw Error('late read error');return value;};
-    await assert.rejects(()=>collectCoreadPackageData(e.options),/owner changed/);
-    assert.equal(e.calls.length,at,'no further inventory or original read after invalidation');
+    const original=e.blobStore[method];e.blobStore[method]=async(...args)=>{const value=await original(...args);current=false;at=e.calls.length;return value;};
+    await assert.rejects(()=>buildCoreadPackage(e.options),/owner changed/,method);
+    assert.equal(e.calls.length,at,'no further read after invalidation');
   }
+});
+
+test('an empty library still writes a restorable manifest and empty shared lists',async()=>{
+  const e=fixture();e.options.bookMetas=[];
+  for(const name of ['listReaderChatKeys','listReaderImages','listReaderVectorKeys','listAudio','listRetLog'])e.blobStore[name]=async()=>[];
+  const pack=await buildCoreadPackage(e.options),zip=await unpack(pack.blob);
+  assert.deepEqual((await zip.json('manifest.json')).books,[]);assert.deepEqual(await zip.json('shared/index.json'),{images:[],chats:[],vectors:[],audio:[],retrievalLogs:'shared/retlog.json'});
+  assert.deepEqual(pack.skipped,[]);
 });

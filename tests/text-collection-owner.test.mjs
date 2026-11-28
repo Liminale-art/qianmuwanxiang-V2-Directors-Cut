@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTextCollectionOwner} from '../qianmu-text-collection-owner.js';
+import {textCollectionCaptureEntries} from '../qianmu-text-collection-capture.js';
 
 const gate = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return {promise, resolve}; };
 const turn = () => new Promise(resolve => setImmediate(resolve));
@@ -12,11 +13,11 @@ const item = (id, origin = source) => ({...input, id, source: origin, createdAt:
 function fixture(t, items = []) {
     let namespace = 'st-user:a', live = true, reads = 0, writes = 0, stores = 0, closed = 0, views = 0;
     let readHook, writeHook, createHook, viewHook, acknowledgementHook;
-    const records = new Map(), presentations = [], notifications = [], window = new EventTarget();
+    const records = new Map(), presentations = [], notifications = [], dropped = [], window = new EventTarget();
     const initial = list => ({exists: true, fingerprint: '1'.repeat(64), value: {version: 1, items: structuredClone(list)}});
     records.set(namespace, initial(items));
     const owner = createTextCollectionOwner({resolveNamespace: async () => namespace, isCurrent: () => live,
-        headers: () => ({}), window, notify: (...args) => notifications.push(args),
+        headers: () => ({}), window, notify: (...args) => notifications.push(args), dropDrafts: async options => { dropped.push(options); },
         async storeFactory(options) {
             stores++; const account = await options.resolveNamespace(); await createHook?.();
             const check = async request => { request.guard(); await options.resolveNamespace(); request.guard(); };
@@ -45,7 +46,7 @@ function fixture(t, items = []) {
         },
     });
     t.after(() => owner.dispose());
-    return {owner, window, records, presentations, notifications,
+    return {owner, window, records, presentations, notifications, dropped,
         get reads() { return reads; }, get writes() { return writes; }, get stores() { return stores; },
         get views() { return views; }, get closed() { return closed; },
         account(value) { namespace = value; }, inactive() { live = false; },
@@ -65,11 +66,14 @@ test('page pre-read and repeated opens share one document; chat change closes ca
     f.owner.state().items[0].text = 'outside'; assert.equal(f.owner.state().items[0].text, '原文');
 });
 
-test('solid star removes all captures of this floor in one write, not another floor', async t => {
+test('a filled heart opens the chooser again and never removes anything', async t => {
     const f = fixture(t, [item('a'), item('b'), item('other', {...source, messageId: 'other'})]);
-    assert.equal(await f.owner.toggle(input, undefined, 'remove'), true);
-    assert.equal(f.writes, 1); assert.equal(f.views, 0);
-    assert.deepEqual(f.owner.state().items.map(item => item.id), ['other']);
+    assert.equal(await f.owner.toggle(input), true);
+    assert.equal(f.writes, 0); assert.equal(f.presentations[0].captures.length, 1);
+    assert.deepEqual(f.owner.state().items.map(item => item.id), ['a', 'b', 'other']);
+    const entries = textCollectionCaptureEntries(f.presentations[0].options.collection);
+    assert.deepEqual(entries.listEntries(source).map(entry => entry.id), ['a', 'b'], 'only this floor is listed');
+    assert.deepEqual(entries.listEntries(null), [], 'an unlinked floor lists nothing');
 });
 
 test('empty star captures a full text snapshot; it does not write until the editor saves', async t => {
@@ -102,11 +106,18 @@ test('explicit account change retires the old panel/session and never presents o
     assert.equal(f.stores, 2); assert.deepEqual(f.owner.state().items, []);
 });
 
-test('write failure keeps confirmed stars, makes no retry, and reports once', async t => {
-    const f = fixture(t, [item('a')]); f.writeHook(() => { throw Error('offline'); });
-    assert.equal(await f.owner.toggle(input, undefined, 'remove'), false); await turn();
-    assert.equal(f.writes, 1); assert.equal(f.owner.state().items.length, 1);
-    assert.equal(f.owner.state().needsRefresh, true); assert.equal(f.notifications.length, 1);
+test('a failed chooser deletion keeps the entry, makes no retry and is never reported as done', async t => {
+    const f = fixture(t, [item('a'), item('b')]); await f.owner.toggle(input);
+    const entries = textCollectionCaptureEntries(f.presentations[0].options.collection);
+    f.writeHook(() => { throw Error('offline'); });
+    await assert.rejects(entries.onRemove('a')); await turn();
+    assert.equal(f.writes, 1); assert.equal(f.owner.state().items.length, 2);
+    assert.equal(f.owner.state().needsRefresh, true);
+    await assert.rejects(entries.onRemove('a'), /等待/, 'an unknown receipt blocks another write until reconciled');
+    assert.equal(f.writes, 1);
+    f.writeHook(null); await f.owner.toggle(input);
+    await entries.onRemove('b');
+    assert.equal(f.writes, 2); assert.deepEqual(f.owner.state().items.map(entry => entry.id), ['a']);
 });
 
 test('a failed cold read is retryable on explicit open, not cached as an empty library', async t => {
@@ -141,22 +152,41 @@ test('an empty-star click after a lost add receipt confirms the add and never de
     await assert.rejects(f.presentations[0].options.collection.add(input, {expectedFingerprint: '1'.repeat(64)}));
     assert.equal(f.owner.state().items.length, 0); assert.equal(f.owner.state().needsRefresh, true);
     f.acknowledgementHook(null);
-    assert.equal(await f.owner.toggle(input, undefined, 'collect'), true);
+    assert.equal(await f.owner.toggle(input), true);
     assert.equal(f.owner.state().items.length, 1); assert.equal(f.writes, 1);
-    assert.equal(f.presentations[0].captures.length, 0);
+    assert.equal(f.presentations[0].captures.length, 1, 'the chooser opens with the confirmed entry listed');
+    assert.equal(textCollectionCaptureEntries(f.presentations[0].options.collection).listEntries(source).length, 1);
 });
 
-test('a solid-star click after a lost remove receipt ends the removal without reopening capture', async t => {
-    const f = fixture(t, [item('a')]); f.acknowledgementHook(() => { throw Error('receipt lost'); });
-    assert.equal(await f.owner.toggle(input, undefined, 'remove'), false);
+test('a heart click after a lost removal receipt reconciles it once and lists what is really left', async t => {
+    const f = fixture(t, [item('a')]); await f.owner.toggle(input);
+    const entries = textCollectionCaptureEntries(f.presentations[0].options.collection);
+    f.acknowledgementHook(() => { throw Error('receipt lost'); });
+    await assert.rejects(entries.onRemove('a'));
     assert.equal(f.owner.state().items.length, 1); f.acknowledgementHook(null);
-    assert.equal(await f.owner.toggle(input, undefined, 'remove'), true);
-    assert.equal(f.owner.state().items.length, 0); assert.equal(f.writes, 1); assert.equal(f.views, 0);
+    assert.equal(await f.owner.toggle(input), true);
+    assert.equal(f.owner.state().items.length, 0); assert.equal(f.writes, 1);
+    assert.deepEqual(entries.listEntries(source), []);
 });
 
-test('an account change between visible star and click does not remove the new account collection', async t => {
+test('an account change between visible heart and click opens nothing for the new account', async t => {
     const f = fixture(t, [item('a')]); await f.owner.warm();
     f.records.set('st-user:b', structuredClone(f.records.get('st-user:a'))); f.account('st-user:b');
-    assert.equal(await f.owner.toggle(input, undefined, 'remove'), false);
+    assert.equal(await f.owner.toggle(input), false); assert.equal(f.views, 0);
     assert.equal(f.writes, 0); assert.equal(f.records.get('st-user:b').value.items.length, 1);
+});
+
+test('deleting collection items, or clearing them, also drops their excerpt drafts for the same account', async t => {
+    const f = fixture(t, [item('a'), item('b'), item('c')]);
+    assert.equal(await f.owner.open(), true);
+    const collection = f.presentations[0].options.collection;
+    await collection.remove(['a'], {expectedFingerprint: collection.state().fingerprint});
+    await turn();
+    assert.deepEqual(f.dropped, [{namespace: 'st-user:a', keys: ['a']}]);
+    await assert.rejects(collection.remove(['missing'], {expectedFingerprint: collection.state().fingerprint}));
+    await turn();
+    assert.equal(f.dropped.length, 1, 'a refused removal leaves drafts alone');
+    assert.equal((await f.owner.clear({confirmed: true})).status, 'cleared');
+    await turn();
+    assert.deepEqual(f.dropped.at(-1), {namespace: 'st-user:a', keys: ['b', 'c']});
 });

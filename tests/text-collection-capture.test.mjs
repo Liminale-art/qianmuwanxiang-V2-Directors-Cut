@@ -227,3 +227,35 @@ test('long full captures are not truncated or subject to an invented paragraph l
     f.view.open(input(raw)); click(f, '全文收藏'); await turn();
     assert.equal(f.calls[0][0].text, raw);
 });
+
+test('full text submits the tag-ruled raw source with its derived text; a selection never carries raw', async t => {
+    const f = fixture(t), value = {...input(), full: {text: '整层文字', raw: '<b>整层</b>文字'}};
+    f.view.open(value); click(f, '全文收藏'); await turn();
+    assert.deepEqual(f.calls[0][0], {text: '整层文字', raw: '<b>整层</b>文字', charName: '角色甲', userName: '用户乙', source: input().source});
+    f.view.open(value); click(f, '选段收藏'); click(f, '选择第 2 段'); click(f, '确认选段'); await turn();
+    assert.deepEqual(f.calls[1][0], {...input(), text: '第二段'});
+});
+
+test('the chooser lists this floor’s collections under the buttons; each deletes directly and the list follows', async t => {
+    const dom = textCollectionDom(), removed = [];
+    let items = [{id: 'a', text: '第一条\n\n很长的正文'}, {id: 'b', text: '第二条'}], fail = false;
+    const view = createTextCollectionCapture({parent: dom.parent, isCurrent: () => true, onSelect: async () => true,
+        listEntries: source => source?.messageId === 'message-one' ? items : [],
+        onRemove: async id => { if (fail) throw Error('offline'); removed.push(id); items = items.filter(item => item.id !== id); return true; }});
+    t.after(() => view.dispose());
+    const f = {dom};
+    view.open(input());
+    const list = dom.byClass('qm-collection-capture-entries');
+    assert.ok(dom.visible(list)); assert.equal(list.children.length, 2);
+    assert.equal(list.children[0].children[0].textContent, '第一条 很长的正文');
+    click(f, '删除收藏：a'); await turn(); await turn();
+    assert.deepEqual(removed, ['a']); assert.equal(list.children.length, 1);
+    assert.ok(dom.visible(dom.get('全文收藏')), 'the chooser stays open');
+    fail = true; click(f, '删除收藏：b'); await turn(); await turn();
+    assert.equal(list.children.length, 1); assert.equal(dom.status().textContent, '删除未完成，请重试。');
+    fail = false; click(f, '删除收藏：b'); await turn(); await turn();
+    assert.equal(dom.visible(list), false, 'no entries: the list hides');
+    click(f, '选段收藏'); assert.equal(dom.visible(list), false, 'the paragraph picker does not show the list');
+    view.close(); view.open({...input(), source: null});
+    assert.equal(dom.byClass('qm-collection-capture-entries').children.length, 0);
+});

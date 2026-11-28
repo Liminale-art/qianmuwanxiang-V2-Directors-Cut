@@ -2,6 +2,8 @@ import {createTextCollectionOwner} from './qianmu-text-collection-owner.js?v=1.5
 import {createTextCollectionFloor} from './qianmu-text-collection-floor.js?v=1.59.419';
 import {textCollectionFloorSources, collectionSourceKey} from './qianmu-text-collection-source.js';
 import {floorProseText} from './qianmu-prose-floor-entries.js?v=1.59.440';
+import {applyTextCollectionTagRules, normalizeTextCollectionTagRules, textCollectionPlainText} from './qianmu-text-collection-markup.js';
+import {TEXT_COLLECTION_RAW_LIMIT} from './qianmu-text-collection.js';
 
 // This is the entire ST seam: existing host events call refresh/handleClick.
 // No mutation observer, settings save, message mutation or render replacement.
@@ -15,6 +17,28 @@ export function createTextCollectionHost(options) {
         options.collectionEnabled?.write?.(value === true);
         if (root && live()) refresh(root);
     }});
+    // 正文收藏自己的标签规则（与取材分开存）：只作用在「全文」收藏的楼层原文上。
+    const collectionTagRules = Object.freeze({
+        read: () => normalizeTextCollectionTagRules(options.collectionTagRules?.read?.()),
+        write: value => { options.collectionTagRules?.write?.(normalizeTextCollectionTagRules(value)); },
+    });
+    // 原文交给 ST 自己的格式化（与楼层同一套正则、Markdown 与净化）。第 0 层不传楼层号：ST 会在那里改写 chat[0]。
+    function formatRaw(raw, {charName = '', source = null, floor} = {}) {
+        const context = options.getContext?.();
+        if (typeof context?.messageFormatting !== 'function') return null;
+        const at = floor !== undefined ? floor : locateFloor()(source);
+        return context.messageFormatting(raw, charName, false, false, Number.isSafeInteger(at) && at > 0 ? at : undefined);
+    }
+    // 「全文」：当前这一页回复的原文（message.mes）按标签规则处理后保留标记；纯文本由格式化结果去掉标签得到。
+    function fullCapture(message, context, charName) {
+        const raw = applyTextCollectionTagRules(typeof message.mes === 'string' ? message.mes : '', collectionTagRules.read());
+        if (!raw.trim() || raw.length > TEXT_COLLECTION_RAW_LIMIT) return null;
+        let html = null;
+        try { html = formatRaw(raw, {charName, floor: Array.isArray(context.chat) ? context.chat.indexOf(message) : undefined}); }
+        catch (error) { console.warn('[Qianmu] Collection formatting failed', error); }
+        const text = textCollectionPlainText(typeof html === 'string' ? html : raw);
+        return text.trim() ? {text, raw} : null;
+    }
     function typography(parent) {
         if (!parent) return;
         const doc = parent.ownerDocument, prose = root?.querySelector('.sd-prose-run') || root?.querySelector('.mes_text');
@@ -47,17 +71,19 @@ export function createTextCollectionHost(options) {
         if (!live()) return null;
         if (owner?.disposed) { floor?.dispose(); floor = null; owner = null; warmed = false; }
         if (owner) return owner;
-        owner = createTextCollectionOwner({...options, typography, locateFloor, collectionEnabled, onChange: () => { if (live() && enabled()) floor?.refresh(root); }});
+        owner = createTextCollectionOwner({...options, typography, locateFloor, collectionEnabled, collectionTagRules, formatRaw, onChange: () => { if (live() && enabled()) floor?.refresh(root); }});
         floor = createTextCollectionFloor({getContext: options.getContext, getSourceMap: textCollectionFloorSources,
             getItems: () => owner?.floorItems() || [], applyIcons: options.applyIcons,
             onError: () => options.notify?.('收藏未能完成，请重试。', 'warning'),
-            onToggle: ({message, element, source, ids}) => {
+            onToggle: ({message, element, source}) => {
                 const context = options.getContext(), messages = context.chat, text = message.mes, swipe = message.swipe_id;
                 const input = {text: floorProseText(element.querySelector('.mes_text')), ...options.names(), source};
+                const full = fullCapture(message, context, input.charName);
+                if (full) input.full = full;
                 const valid = () => live() && options.getContext().chat === messages && messages.includes(message)
                     && message.mes === text && message.swipe_id === swipe && root?.contains(element)
                     && collectionSourceKey(textCollectionFloorSources(options.getContext()).get(message)) === collectionSourceKey(source);
-                return owner.toggle(input, valid, ids.length ? 'remove' : 'collect');
+                return owner.toggle(input, valid);
             },
         });
         return owner;

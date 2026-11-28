@@ -45,9 +45,9 @@ export function createTextCollectionFloor({getContext, getSourceMap, getItems, o
         const busy = pending.has(record.message);
         if (record.collected !== collected) {
             record.collected = collected;
-            const label = collected ? '取消本层收藏' : '收藏正文';
-            record.button.title = label;
-            record.button.setAttribute('aria-label', label);
+            // 点心形总是打开选段／全文选择框；实心只表示本层已有收藏。
+            record.button.title = '收藏正文';
+            record.button.setAttribute('aria-label', '收藏正文');
             record.button.setAttribute('aria-pressed', String(collected));
             record.glyph.setAttribute('fill', collected ? 'currentColor' : 'none');
         }

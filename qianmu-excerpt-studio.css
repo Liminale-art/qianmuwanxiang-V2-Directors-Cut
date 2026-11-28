@@ -126,6 +126,9 @@
 .qm-xs-geo-field { display: flex; align-items: center; gap: 6px; margin: 0; }
 .qm-xs-geo-field span { width: 14px; color: var(--xs-muted); font-size: 11px; }
 .qm-xs-geo input { width: 100%; }
+.qm-xs-ratio { display: flex; align-items: center; gap: 6px; }
+.qm-xs-ratio .qm-xs-geo-field input { width: 52px; height: 28px; padding: 0 4px; border: 1px solid var(--xs-line); border-radius: 6px; background: var(--xs-soft); text-align: right; }
+.qm-xs-ratio-sep { color: var(--xs-muted); }
 .qm-xs-pages { display: flex; align-items: flex-end; gap: 10px; flex: none; min-height: 0; max-height: 130px; padding: 8px 12px; border-top: 1px solid var(--xs-line); overflow-x: auto; overflow-y: hidden; }
 .qm-xs-thumb { position: relative; flex: none; }
 .qm-xs-thumb-open { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; }
@@ -191,6 +194,16 @@
     flex: 1; min-height: 0; margin: 12px; padding: 12px; border: 1px solid var(--xs-line); border-radius: 10px; background: var(--xs-soft);
     font: 12.5px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; resize: none; tab-size: 2;
 }
+
+.qm-xs-preview { position: absolute; inset: 0; z-index: 30; background: #111; color: #eee; }
+.qm-xs-preview-stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.qm-xs-preview-host { position: absolute; left: 50%; top: 50%; display: block; transform-origin: 50% 50%; box-shadow: 0 6px 30px rgba(0, 0, 0, .5); }
+.qm-xs-preview-close { position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); right: 8px; background: rgba(0, 0, 0, .45); }
+.qm-xs-preview-turn { position: absolute; top: 50%; width: 40px; height: 56px; transform: translateY(-50%); background: rgba(0, 0, 0, .35); }
+.qm-xs-preview-turn.is-prev { left: 4px; }
+.qm-xs-preview-turn.is-next { right: 4px; }
+.qm-xs-preview-count { position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 2px 10px; border-radius: 10px; background: rgba(0, 0, 0, .45); font-size: 12px; }
+.qm-xs-preview .qm-xs-btn:hover:not(:disabled) { background: rgba(0, 0, 0, .6); }
 
 @media (max-width: 760px) {
     .qm-xs { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }

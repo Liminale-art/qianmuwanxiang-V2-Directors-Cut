@@ -52,8 +52,8 @@ export function installMemoryIndexedDB(target = globalThis) {
         delete: key => request(() => { rows().delete(key); }),
         clear: () => request(() => { rows().clear(); }),
         count: () => request(() => rows().size),
-        getAll: () => request(() => sorted(rows()).map(key => rows().get(key))),
-        getAllKeys: () => request(() => sorted(rows())),
+        getAll: range => request(() => sorted(rows()).filter(key => inRange(key, range)).map(key => rows().get(key))),
+        getAllKeys: range => request(() => sorted(rows()).filter(key => inRange(key, range))),
         openCursor: range => cursor(range, true),
         openKeyCursor: range => cursor(range, false),
       };

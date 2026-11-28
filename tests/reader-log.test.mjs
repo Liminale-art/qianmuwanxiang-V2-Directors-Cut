@@ -84,3 +84,29 @@ test('normalizeReaderLog drops malformed parts without throwing', () => {
   assert.equal(data.talk, null);
   assert.doesNotThrow(() => normalizeReaderLog('nope'));
 });
+
+// 导入伴读整包会把 coread.readLog 换成一份新对象；运行中的阅读记录如果还拿着旧的那份，下一次存就把导入的统计写回旧值。
+test('an import that replaces the stored record is not overwritten by the live copy after reload', () => {
+  const c = clock(), host = { readLog: { books: { local: { ms: 1000, chars: 10, mark: 10, last: 1 } }, days: {}, pals: {} } };
+  const options = { load: () => host.readLog, save: data => { host.readLog = data; }, now: c.now };
+  const stale = createReaderLog(options);
+  host.readLog = stale.data;
+  host.readLog = { books: { imported: { ms: 90000, chars: 3400, mark: 3400, last: 2 } }, days: { '2026-11-24': 3400 }, pals: {} };
+  stale.open('local'); stale.close();
+  assert.equal(host.readLog.books.imported, undefined, 'without reload the live copy writes the old record back');
+
+  const c2 = clock(), host2 = { readLog: { books: { local: { ms: 1000, chars: 10, mark: 10, last: 1 } }, days: {}, pals: {} } };
+  const log = createReaderLog({ load: () => host2.readLog, save: data => { host2.readLog = data; }, now: c2.now });
+  host2.readLog = log.data;
+  const before = log.data;
+  host2.readLog = { books: { imported: { ms: 90000, chars: 3400, mark: 3400, last: 2 } }, days: { '2026-11-24': 3400 }, pals: {} };
+  log.reload();
+  assert.equal(before.books.local.ms, 1000, 'reload does not rewrite the previous object (a compensating restore can still put it back)');
+  log.open('imported'); log.progress(3400); log.progress(3500); log.close();
+  assert.equal(host2.readLog.books.imported.chars, 3500);
+  assert.equal(host2.readLog.days['2026-11-24'], 3400);
+  assert.equal(host2.readLog.books.local, undefined);
+  read(c2, log, MIN);
+  log.reload();
+  assert.equal(log.reading, '', 'reload ends an open session without writing it over the reloaded record');
+});

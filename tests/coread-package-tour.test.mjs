@@ -10,10 +10,10 @@ const packageData = await readFile(new URL('../qianmu-reader-package.js', import
 assert.match(css, /@media \(max-width: 620px\)[\s\S]*\.sd-reader-lib-grid \.sd-reader-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/, '移动端和窄屏书架必须固定一行三本');
 
 const exportBlock = source.slice(source.indexOf('async function coreadExportData'), source.indexOf('async function coreadImportDataFile'));
-assert.match(exportBlock, /version: 5[\s\S]*credentialsIncluded: false/, '伴读整包必须使用 v5 且声明不含凭据');
-assert.match(exportBlock, /await collectCoreadPackageData/, '伴读整包调用独立资料收集模块');
+assert.match(packageData, /type:'qianmu-coread', version:6[\s\S]*credentialsIncluded:false/, '伴读整包必须使用 v6 且声明不含凭据');
+assert.match(exportBlock, /await buildCoreadPackage/, '伴读整包调用独立资料收集模块');
 assert.match(packageData, /comicDescriptions/, '伴读整包必须保存漫画视觉文字稿');
-assert.match(packageData, /listReaderImages[\s\S]*listReaderVectorKeys[\s\S]*meta\?\.source === 'coread'[\s\S]*listRetLog/, '整包必须包含插图、向量、伴读语音和检索记录');
+assert.match(packageData, /listReaderVectorKeys[\s\S]*listReaderImages[\s\S]*meta\?\.source === 'coread'[\s\S]*listRetLog/, '整包必须包含插图、向量、伴读语音和检索记录');
 assert.match(exportBlock, /qianmu-coread-pack-/, '整包文件名必须与旧阅读数据包明确区分');
 
 const packageHelpers = source.slice(source.indexOf('function coreadIsCredentialKey'), source.indexOf('async function coreadExportData'));

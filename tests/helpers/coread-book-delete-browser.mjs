@@ -18,6 +18,7 @@ export async function checkBookDeleteBrowser(page) {
       window.reader={COREAD_SLICE_SCHEMA_VERSION:3};window.coreadArchiveDialogSlices=s=>s;window.focusClockActiveLock=()=>null;
       window.accountCalls=[];window.readerChatSync={remove:async keys=>{accountCalls.push(['chat-remove',[...keys]]);return {registered:true,synced:[...keys],pending:[]};},request:()=>accountCalls.push(['chat-request'])};
       window.readerCoverSync={remove:async ids=>{accountCalls.push(['cover-remove',[...ids]]);return {registered:true,synced:[...ids],pending:[]};}};
+      window.coreadDropExcerptDrafts=()=>{};
       window.readerContentCache=null;window.readerAssistant=null;window.readerAssistantSessions=new Map();window.dialogGenToken=0;window.dialogAbort=null;
       for(const id of ['a','b'])await nativeBooks.putBook(id,{meta:{title:id},fullText:'Synthetic body',chapters:[{}]});
       window.blobStore={...blobStore,deleteReaderBookData:async (id,options)=>{

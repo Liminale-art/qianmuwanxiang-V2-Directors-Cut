@@ -38,6 +38,53 @@ export function createExcerptStore({namespace, indexedDB = globalThis.indexedDB}
         async loadDraft(key) { return (await run(DRAFTS, 'readonly', store => request(store.get(prefix + key)))) || null; },
         async saveDraft(key, value) { await run(DRAFTS, 'readwrite', store => request(store.put({...value, savedAt: Date.now()}, prefix + key))); },
         async deleteDraft(key) { await run(DRAFTS, 'readwrite', store => request(store.delete(prefix + key))); },
+        // 删笔记、删收藏、删书时一并删掉它们的稿。keys：稿的键；startsWith：按开头删（如 `reader:<书>:`）。图留给 sweepImages。
+        async deleteDrafts({keys = [], startsWith = ''} = {}) {
+            const exact = keys.filter(key => typeof key === 'string' && key).map(key => prefix + key);
+            const range = startsWith ? IDBKeyRange.bound(prefix + startsWith, `${prefix}${startsWith}￿`) : null;
+            if (!exact.length && !range) return 0;
+            return run(DRAFTS, 'readwrite', async store => {
+                const matched = range ? await request(store.getAllKeys(range)) : [];
+                const doomed = [...new Set([...exact, ...matched])];
+                await Promise.all(doomed.map(key => request(store.delete(key))));
+                return doomed.length;
+            });
+        },
+        // 备份：逐份取出，不一次读进全部。键去掉账户前缀。
+        async *exportDrafts() {
+            const keys = await run(DRAFTS, 'readonly', store => request(store.getAllKeys(IDBKeyRange.bound(prefix, `${prefix}￿`))));
+            for (const key of keys) {
+                const value = await run(DRAFTS, 'readonly', store => request(store.get(key)));
+                if (value) yield {key: String(key).slice(prefix.length), value};
+            }
+        },
+        async *exportImages() {
+            const keys = await run(IMAGES, 'readonly', store => request(store.getAllKeys(IDBKeyRange.bound(prefix, `${prefix}￿`))));
+            for (const key of keys) {
+                const value = await run(IMAGES, 'readonly', store => request(store.get(key)));
+                if (value?.blob) yield {id: String(key).slice(prefix.length), blob: value.blob, w: value.w, h: value.h};
+            }
+        },
+        // 恢复一份稿：本机已有同键的稿时，只有备份里的更新（savedAt 更晚）才替换。保留备份里的 savedAt。
+        // 返回 'added' | 'replaced' | 'kept'。
+        async importDraft(key, value) {
+            if (typeof key !== 'string' || !key || !value || typeof value !== 'object') throw new TypeError('成图稿格式无效');
+            return run(DRAFTS, 'readwrite', async store => {
+                const current = await request(store.get(prefix + key));
+                if (current && !(Number(value.savedAt) > Number(current.savedAt || 0))) return 'kept';
+                await request(store.put({...value, savedAt: Number(value.savedAt) || Date.now()}, prefix + key));
+                return current ? 'replaced' : 'added';
+            });
+        },
+        // 恢复一张图：图的编号不重复，本机已有同号的就不动。返回 true 表示写入了。
+        async importImage(id, {blob, w, h} = {}) {
+            if (typeof id !== 'string' || !id || !(blob instanceof Blob)) throw new TypeError('成图图片格式无效');
+            return run(IMAGES, 'readwrite', async store => {
+                if (await request(store.getKey(prefix + id)) !== undefined) return false;
+                await request(store.put({blob, w: Number(w) || 0, h: Number(h) || 0}, prefix + id));
+                return true;
+            });
+        },
         async putImage(id, blob, w, h) { await run(IMAGES, 'readwrite', store => request(store.put({blob, w, h}, prefix + id))); },
         async getImage(id) { return (await run(IMAGES, 'readonly', store => request(store.get(prefix + id)))) || null; },
         // 清掉这个账户下哪份稿、哪个方案都不再用到的图。

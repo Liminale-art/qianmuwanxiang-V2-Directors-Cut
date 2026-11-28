@@ -2,23 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {BUILTIN_TEMPLATES, parseExcerptTemplate, sanitizeCss, sanitizeDecor, excerptFields, resolveFields, TEMPLATE_STARTER} from '../features/excerpt/qianmu-excerpt-template.js';
 import {createDoc, createDocFromScheme, schemeFromDoc, normalizeScheme, normalizeDoc, setRatio, pageHeight, normalizeBody,
-    makeContinuationPage, normalizeStudioSettings, builtinTemplate, PAGE_BREAK} from '../features/excerpt/qianmu-excerpt-doc.js';
-import {layoutDoc, adjustBreak, shiftFor, embedFonts, elementCss, imageGeometry} from '../features/excerpt/qianmu-excerpt-render.js';
+    makeContinuationPage, normalizeStudioSettings, builtinTemplate, normalizeCustomRatio, normalizeGrain, PAGE_BREAK, MAX_PAGE_HEIGHT, MIN_PAGE_HEIGHT} from '../features/excerpt/qianmu-excerpt-doc.js';
+import {layoutDoc, adjustBreak, embedFonts, elementCss, imageGeometry, grainColors, grainStyle} from '../features/excerpt/qianmu-excerpt-render.js';
 
 const fields = excerptFields({charName: '沈砚', userName: '阿遥', floor: 42, sentAt: '2023-5-20 @21h 05m 10s 1ms'});
 
 // 假测量：按框宽 / 字号算每行字数、框高 / 行高算行数；每段至少一行。只验分页逻辑，不代表真实字形排版。
 function fakeMeasurer() {
-    let box = null, lines = 0;
+    let box = null, lines = 0, probes = 0;
     const geometry = element => {
         const size = element.props?.size || 20, lineHeight = size * 1.5;
         return {perLine: Math.max(1, Math.floor(element.w / size)), lineHeight};
     };
     return {
-        prepare(doc, element, ctx, dh) { box = {element, h: element.h + dh, ...geometry(element)}; lines = 0; },
-        fill(paragraphs) { lines = paragraphs.reduce((sum, text) => sum + Math.max(1, Math.ceil(Array.from(text).length / box.perLine)), 0); },
+        prepare(doc, element) { box = {element, h: element.h, ...geometry(element)}; lines = 0; },
+        fill(paragraphs) { probes++; lines = paragraphs.reduce((sum, text) => sum + Math.max(1, Math.ceil(Array.from(text).length / box.perLine)), 0); },
         fits() { return lines * box.lineHeight <= box.h; },
-        naturalHeight() { return lines * box.lineHeight; },
+        get probes() { return probes; },
         dispose() {},
     };
 }
@@ -30,7 +30,7 @@ const flowDoc = (body, options = {}) => {
     </section><section data-page="rest"><div data-qm="body" style="left:0px;top:0px;width:200px;height:600px"></div></section>`).template;
     return createDoc({template, templateId: 'custom:t', body, fields: options.fields || fields, ratio: options.ratio || 'tpl'});
 };
-const layout = doc => layoutDoc(doc, {measurer: fakeMeasurer(), makePage: () => makeContinuationPage(doc)});
+const layout = (doc, options = {}) => layoutDoc(doc, {measurer: fakeMeasurer(), makePage: () => makeContinuationPage(doc), ...options});
 
 test('all built-in templates parse in the same format users write, with flow boxes and a continuation page', () => {
     for (const item of BUILTIN_TEMPLATES) {
@@ -109,6 +109,67 @@ test('ratio change rescales vertical positions only', () => {
     assert.equal(body.y, 108); assert.equal(body.h, 324); assert.equal(body.x, 0); assert.equal(body.w, 200);
 });
 
+test('custom ratio: integer W:H, width stays 1080, height clamped; removed or broken ratios fall back to the template', () => {
+    assert.equal(normalizeCustomRatio('5:7'), '5:7');
+    for (const bad of ['0:3', '3:0', '1.5:2', '100:1', 'a:b', '', null, '4:5:6']) assert.equal(normalizeCustomRatio(bad), '', String(bad));
+    const doc = flowDoc('正文');
+    assert.equal(setRatio(doc, 'custom', 'x'), false);
+    assert.equal(setRatio(doc, 'custom', '5:7'), true);
+    assert.equal(pageHeight(doc), Math.round(1080 * 7 / 5));
+    assert.equal(setRatio(doc, 'custom', '5:7'), false, 'same custom ratio is not a change');
+    setRatio(doc, 'custom', '1:99');
+    assert.equal(pageHeight(doc), MAX_PAGE_HEIGHT);
+    setRatio(doc, 'custom', '99:1');
+    assert.equal(pageHeight(doc), MIN_PAGE_HEIGHT);
+    setRatio(doc, 'custom', '4:3');
+    const stored = normalizeDoc(JSON.parse(JSON.stringify(doc)));
+    assert.equal(stored.ratio, 'custom'); assert.equal(stored.customRatio, '4:3'); assert.equal(pageHeight(stored), 810);
+    const scheme = normalizeScheme(JSON.parse(JSON.stringify(schemeFromDoc(doc))));
+    assert.equal(pageHeight(createDocFromScheme(scheme, {body: 'x'})), 810);
+    const old = JSON.parse(JSON.stringify(flowDoc('正文')));
+    old.ratio = 'auto';
+    assert.equal(normalizeDoc(old).ratio, 'tpl');
+    assert.equal(normalizeScheme({...JSON.parse(JSON.stringify(schemeFromDoc(flowDoc('x')))), ratio: 'auto'}).ratio, 'tpl');
+    assert.equal(normalizeDoc({...old, ratio: 'custom', customRatio: 'bad'}).ratio, 'tpl');
+    assert.equal(pageHeight({ratio: 'auto', template: {height: 1234}}), 1234);
+});
+
+test('paper grain is stored with the doc and scheme, clamped, and its colour follows the paper', () => {
+    assert.deepEqual(normalizeGrain(undefined), {amount: 0, size: 3});
+    assert.deepEqual(normalizeGrain({amount: 140, size: 0.2}), {amount: 100, size: 1});
+    const doc = flowDoc('正文');
+    assert.deepEqual(doc.grain, {amount: 0, size: 3});
+    doc.grain = {amount: 35, size: 5};
+    assert.deepEqual(normalizeDoc(JSON.parse(JSON.stringify(doc))).grain, {amount: 35, size: 5});
+    const scheme = normalizeScheme(JSON.parse(JSON.stringify(schemeFromDoc(doc))));
+    assert.deepEqual(createDocFromScheme(scheme, {body: 'x'}).grain, {amount: 35, size: 5});
+    const light = grainColors('#f2ede3'), dark = grainColors('#121010');
+    const lightness = value => Number(/(\d+(?:\.\d+)?)%\)$/.exec(value)[1]);
+    assert.ok(lightness(light.main) < 50, 'darker specks on light paper');
+    assert.ok(lightness(dark.main) > 30, 'lighter specks on dark paper');
+    assert.match(light.main, /^hsl\(4\d\.\d /, 'specks keep the paper hue');
+    const calls = [];
+    const ctx = {grainTile: (paper, size) => { calls.push([paper, size]); return {src: 'data:image/png;base64,AA', size: 300}; }};
+    assert.equal(grainStyle({...doc, grain: {amount: 0, size: 3}}, ctx), '');
+    assert.match(grainStyle(doc, ctx), /background-size:300px 300px;opacity:0.35/);
+    assert.deepEqual(calls, [[doc.paper, 5]]);
+});
+
+test('layout name: template name on a new doc, scheme name when started from a scheme, kept through storage', () => {
+    const doc = flowDoc('正文');
+    assert.equal(doc.name, doc.template.name);
+    doc.name = '我的方案';
+    const scheme = normalizeScheme(JSON.parse(JSON.stringify(schemeFromDoc(doc))));
+    assert.equal(scheme.name, '我的方案');
+    assert.equal(createDocFromScheme(scheme, {body: 'x'}).name, '我的方案');
+    assert.equal(createDocFromScheme(scheme, {body: 'x', name: '列表里的名字'}).name, '列表里的名字');
+    doc.name = '';
+    assert.equal(normalizeDoc(JSON.parse(JSON.stringify(doc))).name, '');
+    const legacy = JSON.parse(JSON.stringify(doc)); delete legacy.name; delete legacy.grain;
+    const reopened = normalizeDoc(legacy);
+    assert.equal(reopened.name, ''); assert.deepEqual(reopened.grain, {amount: 0, size: 3});
+});
+
 test('stored drafts are revalidated: bad pieces are dropped, unsafe styles and decorations cleaned', () => {
     assert.equal(normalizeDoc({v: 2}), null);
     const doc = JSON.parse(JSON.stringify(flowDoc('正文')));
@@ -151,17 +212,39 @@ test('a box too small for any text stops instead of adding pages forever', () =>
     assert.ok(doc.pages.length <= 2);
 });
 
-test('adaptive ratio grows or shrinks the page with the text and moves what sits below the body', () => {
-    const long = flowDoc('字'.repeat(600), {ratio: 'auto'});
-    const result = layout(long);
-    assert.equal(long.pages.length, 1);
-    assert.ok(result.pages[0].delta > 0);
-    const page = long.pages[0], body = page.elements.find(element => element.kind === 'body'), note = page.elements.at(-1);
-    assert.equal(shiftFor(page, body, 50).dh, 50);
-    assert.equal(shiftFor(page, note, 50).dy, 50);
-    assert.equal(shiftFor(page, page.elements[0], 50).dy, 0);
-    const short = flowDoc('字', {ratio: 'auto'});
-    assert.ok(layout(short).pages[0].delta < 0);
+// 逐个二分作对照：从剩下的全部开始。新的试排从估计值起步，结果须与之相同。
+function referenceCount(measurer, doc, element, start, limit) {
+    const total = limit - start;
+    if (total <= 0) return 0;
+    measurer.prepare(doc, element);
+    const fits = count => { measurer.fill(doc.body.slice(start, start + count).split('\n')); return measurer.fits(); };
+    if (fits(total)) return total;
+    let low = 0, high = total - 1;
+    while (low < high) { const middle = Math.ceil((low + high) / 2); if (fits(middle)) low = middle; else high = middle - 1; }
+    return adjustBreak(doc.body, start, low);
+}
+
+test('fitting from an estimate gives the same cuts as plain bisection, and reusing hints needs fewer probes', () => {
+    const paragraph = '他说完了。然后走了，风很大'.repeat(4);
+    for (const hint of [undefined, 1, 37, 5000]) {
+        const doc = flowDoc(Array.from({length: 9}, () => paragraph).join('\n'));
+        const hints = new Map(hint === undefined ? [] : doc.pages.flatMap(page => page.elements).filter(item => item.kind === 'body').map(item => [item.id, hint]));
+        const result = layout(doc, {hints});
+        const reference = fakeMeasurer();
+        for (const entry of result.pages) {
+            const page = doc.pages.find(item => item.id === entry.id);
+            for (const element of page.elements.filter(item => item.kind === 'body')) {
+                const slice = entry.slices[element.id];
+                assert.equal(slice.end - slice.start, referenceCount(reference, doc, element, slice.start, doc.body.length), `hint ${hint}`);
+            }
+        }
+    }
+    const doc = flowDoc(Array.from({length: 9}, () => paragraph).join('\n'));
+    const hints = new Map(), first = fakeMeasurer();
+    layoutDoc(doc, {measurer: first, makePage: () => makeContinuationPage(doc), hints});
+    const second = fakeMeasurer();
+    layoutDoc(doc, {measurer: second, makePage: () => makeContinuationPage(doc), hints});
+    assert.ok(second.probes < first.probes, `${second.probes} < ${first.probes}`);
 });
 
 test('page cuts avoid starting a box with closing punctuation or splitting a Latin word', () => {
@@ -172,8 +255,8 @@ test('page cuts avoid starting a box with closing punctuation or splitting a Lat
 });
 
 test('style output maps user props onto inline CSS; image framing never leaves gaps', () => {
-    const css = elementCss({kind: 'text', x: 1, y: 2, w: 3, h: 4, base: 'color:red', props: {size: 30, ls: 0.1, color: '#000000', align: 'justify', font: 'kai'}}, {dy: 10, z: 3});
-    assert.match(css, /top:12px/); assert.match(css, /font-size:30px/); assert.match(css, /letter-spacing:0.1em/);
+    const css = elementCss({kind: 'text', x: 1, y: 2, w: 3, h: 4, base: 'color:red', props: {size: 30, ls: 0.1, color: '#000000', align: 'justify', font: 'kai'}}, {z: 3});
+    assert.match(css, /top:2px/); assert.match(css, /font-size:30px/); assert.match(css, /letter-spacing:0.1em/);
     assert.ok(css.indexOf('color:red') < css.indexOf('color:#000000'), 'user colour overrides the template');
     const g = imageGeometry(100, 100, {w: 200, h: 100, cx: 0, cy: 0.5, zoom: 1});
     assert.deepEqual([g.w, g.h, g.left, g.top], [200, 100, 0, 0]);

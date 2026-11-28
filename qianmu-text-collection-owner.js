@@ -3,9 +3,9 @@ import {createDocumentSession} from './qianmu-document-session.js';
 import {createTextCollection, documentFromTextCollectionState} from './qianmu-text-collection.js';
 import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.425';
 import {createTextCollectionBackup, readTextCollectionBackup, prepareTextCollectionRestore} from './qianmu-text-collection-backup.js';
+import {dropExcerptDrafts} from './qianmu-excerpt-backup.js';
 
 const expired = () => Object.assign(new Error('收藏操作已结束，请重新打开。'), {code: 'text_collection_owner'});
-const sameSource = (a, b) => !!a && !!b && a.chatId === b.chatId && a.messageId === b.messageId;
 
 // One account document per page. Hiding a view, changing a chat, and opening the
 // hive do not retire it. No outbox, directory cache, retry loop or host writes.
@@ -15,6 +15,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
     document = globalThis.document, window = document?.defaultView,
     mountPortal, onChange = () => {}, notify = () => {}, typography = () => {},
     origin = globalThis.location?.origin, confirm, download, locateFloor, jumpToFloor, excerpt, collectionEnabled,
+    collectionTagRules, formatRaw, dropDrafts = dropExcerptDrafts,
 } = {}) {
     if (typeof resolveNamespace !== 'function' || typeof isCurrent !== 'function' || typeof headers !== 'function') {
         throw new TypeError('Collection owner requires the ST account and page lifetime');
@@ -22,6 +23,20 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
     let active = null, preparing = null, disposed = false, action = 0, transferring = false;
     const live = () => !disposed && isCurrent() === true;
     const check = () => { if (!live()) throw expired(); };
+    // 删收藏（含清空）成功后，一并删掉它们的书摘成图稿（键就是收藏的编号）。删不掉只记一笔，不影响删除本身。
+    function withDraftCleanup(collection, namespace) {
+        const drop = ids => {
+            if (!ids.length) return;
+            Promise.resolve().then(() => dropDrafts({namespace, keys: ids}))
+                .catch(error => console.warn('[Qianmu] Collection draft cleanup failed', error));
+        };
+        return Object.freeze({...collection,
+            async remove(ids, options) { const result = await collection.remove(ids, options); drop(Array.isArray(ids) ? ids : []); return result; },
+            async clear(options) {
+                const ids = collection.state().items.map(item => item.id), result = await collection.clear(options);
+                drop(ids); return result;
+            }});
+    }
     const publish = () => { try { onChange(active?.snapshot ?? null); } catch (error) { console.error('Collection presentation failed', error); } };
     function retire(record) {
         if (!record || record.closed) return;
@@ -54,7 +69,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
                 record.store = await storeFactory({resolveNamespace: resolveOwned, isCurrent: record.valid, headers, documentLayout: 'snapshot'});
                 if (!record.valid()) { record.store.close(); throw expired(); }
                 record.session = createDocumentSession({store: record.store, slot: 'text-collection', isCurrent: record.valid});
-                record.collection = createTextCollection({session: record.session});
+                record.collection = withDraftCleanup(createTextCollection({session: record.session}), namespace);
                 record.unsubscribe = record.collection.subscribe(value => {
                     if (!record.valid()) return;
                     record.snapshot = value;
@@ -78,7 +93,7 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
             record.viewPromise = (async () => {
                 const view = await viewFactory({document, collection: record.collection, isCurrent: record.valid,
                     signal: record.controller.signal, mountPortal, typography, verifyAccount: record.verifyAccount, download, locateFloor, jumpToFloor,
-                    excerpt, namespace: record.namespace, notify, collectionEnabled});
+                    excerpt, namespace: record.namespace, notify, collectionEnabled, collectionTagRules, formatRaw});
                 if (!record.valid()) { view.dispose(); throw expired(); }
                 record.view = view; return view;
             })().finally(() => { record.viewPromise = null; });
@@ -102,33 +117,22 @@ export function createTextCollectionOwner({resolveNamespace, isCurrent, headers,
             return await view.panel.open();
         } catch (error) { report(error); return false; }
     }
-    async function toggle(input, validCapture = () => true, intent = 'collect') {
+    // 楼层上的心形：每次都打开选段／全文的选择框（本层已有的收藏列在下面，可逐条删除），从不直接删除。
+    async function toggle(input, validCapture = () => true) {
         // Freeze the visible text and names at the explicit click, not after I/O.
         const captured = structuredClone(input), request = ++action, expectedNamespace = active?.namespace;
         try {
             if (transferring) throw busyError();
-            if (!['collect', 'remove'].includes(intent)) throw new TypeError('Collection intent is required');
             const record = await ensure();
             if (expectedNamespace && record.namespace !== expectedNamespace) return false;
             await record.collection.open();
             if (!record.valid() || request !== action || !validCapture()) return false;
-            const snapshot = record.collection.state();
-            if (snapshot.needsRefresh) {
+            if (record.collection.state().needsRefresh) {
                 // Unknown acknowledgement is reconciled only on this explicit
                 // action. Never replay the old write automatically.
                 await record.collection.refresh();
                 if (!record.valid() || request !== action || !validCapture()) return false;
             }
-            const current = record.collection.state();
-            const ids = current.items.filter(item => sameSource(item.source, captured.source)).map(item => item.id);
-            if (intent === 'remove') {
-                if (ids.length) await record.collection.remove(ids, {expectedFingerprint: current.fingerprint});
-                return record.valid();
-            }
-            // Reconciliation confirms a previous add, never turns an empty-star
-            // click into a deletion. Likewise, an already-completed removal
-            // above cannot reopen the capture chooser.
-            if (snapshot.needsRefresh && ids.length) return record.valid();
             const view = await viewFor(record);
             if (!record.valid() || request !== action || !validCapture()) return false;
             return view.capture.open(captured);

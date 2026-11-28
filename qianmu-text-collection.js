@@ -18,6 +18,12 @@ function timestamp(value) {
 function validSource(value) {
     return value === null || fields(value, ['chatId', 'messageId']) && nonempty(value.chatId) && nonempty(value.messageId);
 }
+// 「全文」收藏另存楼层原文（标签规则处理后、保留标记），阅读时交给 ST 自己的格式化；没有它的条目照旧按纯文本显示。
+// 上限只拦新写入（收藏、编辑），读取已存的文档不因它失败。
+export const TEXT_COLLECTION_RAW_LIMIT = 200000;
+const ITEM_FIELDS = ['id', 'text', 'charName', 'userName', 'createdAt', 'updatedAt', 'source'];
+const validRaw = value => nonempty(value);
+const rawFits = value => validRaw(value) && value.length <= TEXT_COLLECTION_RAW_LIMIT;
 export function validateTextCollectionDocument(value) {
     if (!(value?.version === 1 && fields(value, ['version', 'items'])
         || value?.version === 2 && fields(value, ['version', 'items', 'organization'])) || !Array.isArray(value.items)) {
@@ -25,7 +31,7 @@ export function validateTextCollectionDocument(value) {
     }
     const ids = new Set();
     for (const item of value.items) {
-        if (!fields(item, ['id', 'text', 'charName', 'userName', 'createdAt', 'updatedAt', 'source'])
+        if (!(fields(item, ITEM_FIELDS) || fields(item, [...ITEM_FIELDS, 'raw']) && validRaw(item.raw))
             || !nonempty(item.id) || ids.has(item.id) || !nonempty(item.text)
             || typeof item.charName !== 'string' || typeof item.userName !== 'string'
             || !timestamp(item.createdAt) || !timestamp(item.updatedAt) || !validSource(item.source)) {
@@ -37,7 +43,7 @@ export function validateTextCollectionDocument(value) {
     return value;
 }
 const validate = validateTextCollectionDocument;
-const sameItem = (left, right) => left.id === right.id && left.text === right.text
+const sameItem = (left, right) => left.id === right.id && left.text === right.text && left.raw === right.raw
     && left.charName === right.charName && left.userName === right.userName
     && left.createdAt === right.createdAt && left.updatedAt === right.updatedAt
     && (left.source === null && right.source === null || left.source !== null && right.source !== null
@@ -147,29 +153,41 @@ export function createTextCollection({session, now = () => new Date().toISOStrin
         },
         add(input, options) {
             return mutate(options, withItems(items => {
-                if (!record(input) || Object.keys(input).some(key => !['id', 'text', 'charName', 'userName', 'source'].includes(key))
+                if (!record(input) || Object.keys(input).some(key => !['id', 'text', 'charName', 'userName', 'source', 'raw'].includes(key))
                     || !nonempty(input.text) || typeof input.charName !== 'string' || typeof input.userName !== 'string'
                     || own(input, 'id') && !nonempty(input.id)
+                    || own(input, 'raw') && !validRaw(input.raw)
                     || !validSource(input.source === undefined ? null : input.source)) {
                     throw failure('input', '请填写要收藏的正文');
                 }
+                if (own(input, 'raw') && !rawFits(input.raw)) throw failure('capacity', '原文过长，未保存');
                 const time = now(), id = own(input, 'id') ? input.id : createId();
                 if (!timestamp(time) || !nonempty(id) || items.some(item => item.id === id)) throw failure('input', '未能新建收藏，请重试');
                 return [...items, {
                     id, text: input.text, charName: input.charName, userName: input.userName,
                     createdAt: time, updatedAt: time, source: input.source === undefined ? null : structuredClone(input.source),
+                    ...own(input, 'raw') ? {raw: input.raw} : {},
                 }];
             }));
         },
-        edit(id, text, options) {
+        // change：纯文本字符串，或 {text, raw}（带原文的条目编辑原文后连同重新得到的纯文本一起存）。
+        // 只给字符串时条目不再带原文，以免原文与纯文本对不上。
+        edit(id, change, options) {
             return mutate(options, withItems(items => {
-                if (!nonempty(id) || !nonempty(text)) throw failure('input', '请填写要保存的正文');
+                const next = typeof change === 'string' ? {text: change} : change;
+                if (!nonempty(id) || !record(next) || Object.keys(next).some(key => !['text', 'raw'].includes(key))
+                    || !nonempty(next.text) || own(next, 'raw') && !validRaw(next.raw)) throw failure('input', '请填写要保存的正文');
+                if (own(next, 'raw') && !rawFits(next.raw)) throw failure('capacity', '原文过长，未保存');
                 const item = items.find(item => item.id === id);
                 if (!item) throw failure('missing', '这条收藏已不存在');
-                if (item.text === text) return items;
+                if (item.text === next.text && item.raw === next.raw) return items;
                 const updatedAt = now();
                 if (!timestamp(updatedAt)) throw failure('input', '未能保存收藏，请重试');
-                return items.map(item => item.id === id ? {...item, text, updatedAt} : item);
+                return items.map(entry => {
+                    if (entry.id !== id) return entry;
+                    const {raw: _previous, ...rest} = entry;
+                    return {...rest, text: next.text, updatedAt, ...own(next, 'raw') ? {raw: next.raw} : {}};
+                });
             }));
         },
         remove(ids, options) {

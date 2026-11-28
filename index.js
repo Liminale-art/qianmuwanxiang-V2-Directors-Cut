@@ -7,7 +7,7 @@ import { createCreativeSchema, normalizeCreativeSections, validateCreativePlan, 
 import { upgradeCreativeDefaults, upgradeCreativeBlueprint, selectCreativeOptions, recentInterludeHint } from './qianmu-creative-runtime.js?v=1.59.484';
 import { readGagaMemoryContext } from './qianmu-memory-context.js?v=1.59.448';
 import {resolveImageAccountNamespace} from './qianmu-account-identity.js';
-import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.629';
+import { inspectAccountFiles, cleanAccountFiles } from './qianmu-account-file-cleanup.js?v=1.59.630';
 import {createYimuCompanionBridge, offerLinkUpdate, runLink, formatReadLabel} from './qianmu-yimu-companion.js';
 import {captureForeignAccountOriginals,persistStoryboardGatewayImage,storyboardImageExtension} from './qianmu-storyboard-result-inbox.js';
 import {drainStoryboardDeliveries} from './qianmu-storyboard-delivery-drain.js';
@@ -20,7 +20,7 @@ import {attachSettingsPersistence} from './qianmu-settings-persistence.js?v=1.59
 import {createSettingsSidecars} from './qianmu-settings-sidecars.js?v=1.59.529';
 import {createReaderChatSync} from './qianmu-reader-chat-sync.js?v=1.59.531';
 import {createTtsFavoritesSync} from './qianmu-tts-favorites-sync.js?v=1.59.531';
-import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.629';
+import {createReaderCoverSync} from './qianmu-reader-cover-sync.js?v=1.59.630';
 import {scheduleQianmuIdlePreload} from './qianmu-idle-preload.js?v=1.59.484';
 globalThis.qianmuPerf ||= createPerfProbe();
 // 本机大文件库按 ST 账户隔离（规则见 qianmu-blobstore.js）。须在任何读写之前注入。
@@ -30,15 +30,15 @@ import {readBuiltinFont} from './qianmu-font-builtins.js';
 import {scanTtsFloor,followTextOrder} from './features/tts/qianmu-tts-floor-ui.js?v=1.59.484';
 import {clearRichProseRuns,proseLayoutTargets,prepareRichProseRuns,clearProseBreakMarks,changedProseRoots,syncDropCap,dropCapStart,dropCapLines,setDropCapRaise,clearDropCapRaise} from './qianmu-prose-rich-compat.js?v=1.59.414';
 import {QIANMU_HIVE_COMMANDS,upgradeProseHiveCommands} from './qianmu-hive-commands.js?v=1.59.477';
-import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.629';
-import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.629';
-import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.629';
-import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.629';
-import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.629';
-import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.629';
-import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.629';
+import { createUsageTracker, startUsageTracking, createTokenMeter, windowFocused } from './qianmu-usage-tracker.js?v=1.59.630';
+import { openUsagePanel } from './qianmu-usage-view.js?v=1.59.630';
+import { startSharpAvatars } from './qianmu-sharp-avatars.js?v=1.59.630';
+import { createFloorCounter, floorRanking } from './qianmu-floor-count.js?v=1.59.630';
+import { createQuickDial, bindQuickDialReorder, bindQuickCellLayout } from './qianmu-quick-dial.js?v=1.59.630';
+import { renderStorageCard, paintStorageCard, exportItemsFile, readItemsFile } from './qianmu-storage-card.js?v=1.59.630';
+import { createStorageDialogs, runStorageExport, runStorageImport } from './qianmu-storage-transfer.js?v=1.59.630';
 import { modelCacheText } from './qianmu-model-response.js?v=1.59.452';
-import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.629';
+import { createStorageLibraryTransfer } from './qianmu-storage-library-transfer.js?v=1.59.630';
 import {renderQianmuStMenuEntry} from './qianmu-st-menu-entry.js?v=1.59.484';
 import {QIANMU_DETACHED_OWNED_SELECTOR,isQianmuOwnedDockDescriptor} from './qianmu-hive-ownership.js';
 import {completeStoryboardParagraphs} from './qianmu-storyboard-complete-context.js';
@@ -71,11 +71,11 @@ import { captureDirectorSaveSnapshot, confirmDirectorSave } from './qianmu-direc
 import { createChatWriteGuard } from './features/chat/qianmu-chat-write-guard.js?v=1.59.477';
 import { forgetChatSettings, renameChatSettings } from './features/chat/qianmu-chat-scoped-settings.js?v=1.59.527';
 import { createChatSaveFollowup } from './features/chat/qianmu-chat-save-followup.js?v=1.59.521';
-import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.629';
+import { createChatRingtone, toastCallOptions } from './features/chat/qianmu-chat-ringtone.js?v=1.59.630';
 import { createApiQuick } from './qianmu-api-quick.js';
 import { sceneTurns, canContinue, buildContinueMessages, flattenContinueMessages, renderTheaterTurns, lengthLine, normalizeWordCount, THEATER_TURN_INPUT_LIMIT } from './features/theater/qianmu-theater-continue.js';
 import { ensureToastLiquid } from './qianmu-toast-liquid.js';
-import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.629';
+import { createChatRegex } from './features/chat/qianmu-chat-regex.js?v=1.59.630';
 // Refresh only pure world labels; stateful helpers (notably uid) retain their shared module identity.
 import { heatTier, geoRelationLabel } from './qianmu-storyboard-utils.js?v=1.59.456';
 import { stCurrentPresetName, stCurrentPresetEntries, stPresetNames, stPresetEntries, stWorldBookEntries, stWorldBookNames, groupPresetNames } from './qianmu-st-context-sources.js?v=1.59.450';
@@ -92,7 +92,8 @@ import {renderEnsembleRoutePanel,ensembleRouteTargets} from './qianmu-ensemble-r
 import { omitConfigConnections, prepareConfigRestore, readConfigEnvelope, readConfigFile, configRestoreGate, configRestoreGuard, configRestoreSummary, resetConfigConnectionSession } from './qianmu-config-connections.js';
 import { finishConfigRestore } from './qianmu-config-apply.js';
 import { isFilmEditorSaving, saveFilmEditorSnapshot, deleteFilmTimelineSnapshot } from './qianmu-film-editor-save.js';
-import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, collectCoreadPackageData, prepareCoreadPackageExport, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
+import { readCoreadPackageFile, coreadPackageSafeKey, coreadPackageRestoreMessage, applyCoreadPackageData, buildCoreadPackage, coreadPackageExportText, createCoreadImportProgress, coreadImportProgressText, createCoreadImportViewGuard, finishCoreadPackageImport } from './qianmu-reader-package.js';
+import { dropExcerptDrafts } from './qianmu-excerpt-backup.js';
 import { exportConfiguration } from './qianmu-config-export.js';
 import { exportLibraryBackup, readLibraryBackupFile, confirmLibraryRestore, FAVORITES_BACKUP_LIMITS, FAVORITE_TEXT_LIMITS } from './qianmu-library-backup.js';
 import { receiveComfyImage, resolveComfyRecoveryKey, resolveComfyCloudRecoveryKey } from './qianmu-comfy-recovery-action.js?v=1.59.440';
@@ -105,7 +106,7 @@ import { createConfigUndoAction } from './qianmu-config-undo-action.js';
 import { preserveCapturedPlanArchives, preserveCapturedSnapshotArchives } from './qianmu-plan-archive-write.js';
 import {migrateGallerySnapshots} from './features/gallery/qianmu-gallery-snapshot-migration.js';
 import {createGalleryShotReader} from './features/gallery/qianmu-gallery-shot-reader.js';
-import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.629';
+import { bindStorageCleanupLifetime, storageCleanupOptions, storageDiagnosticSnapshot, storageSettingsSnapshotWithoutDiagnostics, runStorageInventoryJobs } from './qianmu-storage-backup-view.js?v=1.59.630';
 import { createStorageCleanupSession } from './qianmu-storage-cleanup-session.js';
 import { readQianmuLatestRelease, showQianmuUpdateGuide } from './qianmu-release-version.js';
 import { storyboardTagContent, storyboardTagText, validateStoryboardTagContent, createStoryboardTagIndex, searchStoryboardTags } from './qianmu-tags.js';
@@ -348,7 +349,7 @@ import {
 const MODULE_EXECUTION_STARTED_AT = globalThis.performance?.now?.() ?? Date.now();
 const MODULE_NAME = 'story_director_liminale';
 const EXTENSION_NAME = '千幕';
-const VERSION = '1.59.629';
+const VERSION = '1.59.630';
 let storyboardVibeLibraryController=null,storyboardVibeControllerContext=null,storyboardVibeSelection=null;
 let storyboardEnsembleController=null,storyboardEnsembleContext=null,storyboardEnsembleRevision=0;
 let storyboardBundleReview = null;
@@ -358,7 +359,7 @@ let reader = null;
 function pendingPanel(title, label, until) {
   return showPendingPanel({ title, label, until, themeClass: `sd-theme-${currentHiveThemeKey()}`, mount: root => appearanceSession.mountPortal(root, { inheritTheme: true }) });
 }
-const proseFloorTools=createProseFloorTools({pending:pendingPanel,getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,jumpToFloor:floor=>jumpToChatFloor(floor),collectionEnabled:{read:()=>settings.textCollectionEnabled!==false,write:value=>{settings.textCollectionEnabled=value===true;saveSettings();}},excerpt:{read:()=>settings.excerptStudio,write:value=>{settings.excerptStudio=value;saveSettings();},fonts:async()=>(await fontFaces.ready(settings))?fontLibrary.excerptFonts():null},assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
+const proseFloorTools=createProseFloorTools({pending:pendingPanel,getContext:ctx,getChatKey,names:()=>({charName:getCharacterName(),userName:getPersonaName()}),resolveNamespace:resolveImageAccountNamespace,headers:storyboardRequestHeaders,applyIcons:applyQianmuIcons,mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),notify:toast,download:ttsDownloadBlob,isCurrent:()=>initialized&&isRuntimeOwner(),confirm:confirmDialog,jumpToFloor:floor=>jumpToChatFloor(floor),collectionEnabled:{read:()=>settings.textCollectionEnabled!==false,write:value=>{settings.textCollectionEnabled=value===true;saveSettings();}},collectionTagRules:{read:()=>settings.textCollectionTagRules,write:value=>{settings.textCollectionTagRules=value;saveSettings();}},excerpt:{read:()=>settings.excerptStudio,write:value=>{settings.excerptStudio=value;saveSettings();},fonts:async()=>(await fontFaces.ready(settings))?fontLibrary.excerptFonts():null},assistantConfig:()=>({...settings.proseAssistant,profiles:settings.apiProfiles}),assistantSettings:()=>settings,saveAssistantSettings:()=>ctx().saveSettingsDebounced()});
 // 聊天工具包的独立蜂巢入口，沿用便笺/特助的拖出底子，为正则快切打底。与特助互不干扰：独立存储 key 与命令 id。
 let floorHive=null;
 // 正则绑定存取（C-11d）：本聊天覆盖存 chat_metadata.story_director_liminale.regexBinding（随分支/千幕备份跟随），
@@ -393,8 +394,8 @@ function regexGroupsWrite(value) {
   saveSettings();
 }
 const chatRegex=createChatRegex({getContext:ctx,notify:toast,canReload:()=>{const host=directorHostRuntime(),state=host.read();if(!state.known)void host.ready().catch(()=>{});return !state.known||state.idle;},readBinding:regexBindingRead,writeBinding:regexBindingWrite,readDefaults:regexBindingDefaultsRead,writeDefaults:regexBindingDefaultsWrite,readGroups:regexGroupsRead,writeGroups:regexGroupsWrite});   // 正则开关写回后重载聊天：生成/保存中顺延；绑定：本聊天覆盖存 chat_metadata，全局默认存 settings；手动分组存 settings
-// API 快切：入口在 ST 的 API 连接面板「发送测试消息」旁；连接是 ST 原生连接配置，密钥写进 ST 密钥库；千幕只存置顶、分组与最近使用（settings.apiSwitch）。
-const apiQuick=createApiQuick({getContext:ctx,getOwner:()=>settings,save:()=>saveSettings(),notify:toast,confirm:(title,message)=>confirmDialog(title,message),prompt:(title,label,value)=>coreadPromptText(title,label,value),loadSecrets:()=>storyboardSecretModule(),mountPortal:root=>appearanceSession.mountPortal(root,{inheritTheme:true}),logoUrl:()=>FLOAT_LOGO_URL});
+// API 快切：入口在 ST 的 API 连接面板「发送测试消息」旁；连接是 ST 原生连接配置，密钥写进 ST 密钥库；千幕只存置顶、分组、最近使用与获取到的模型列表（settings.apiSwitch）；外观取 ST 主题色，不跟千幕主题。
+const apiQuick=createApiQuick({getContext:ctx,getOwner:()=>settings,save:()=>saveSettings(),notify:toast,confirm:(title,message)=>confirmDialog(title,message),prompt:(title,label,value)=>coreadPromptText(title,label,value),loadSecrets:()=>storyboardSecretModule(),logoUrl:()=>FLOAT_LOGO_URL});
 const chatRingtone=createChatRingtone({getOwner:()=>settings,save:()=>saveSettings(),getContext:ctx,resolveNamespace:resolveImageAccountNamespace,notify:toast,isCurrent:()=>initialized&&isRuntimeOwner(),getLook:()=>(ensureToastLiquid(document),qianmuToastLook())});
 const readerChatSync=createReaderChatSync({store:{listKeys:()=>blobStore.listReaderChatKeys(),get:key=>blobStore.getReaderChat(key),put:(key,record)=>blobStore.putReaderChat(key,record),delete:async key=>{await blobStore.deleteReaderChat(key);await blobStore.deleteReaderVectors(key);}},onRemoved:keys=>coreadAccountRemovedChats(keys),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
 const readerCoverSync=createReaderCoverSync({blobStore,onDownloaded:ids=>coreadAccountCovers(ids,true),onRemoved:ids=>coreadAccountCovers(ids,false),resolveNamespace:resolveImageAccountNamespace,isCurrent:()=>initialized&&isRuntimeOwner()});
@@ -8597,11 +8598,12 @@ function bindStorageManagementEvents(root) {
   undoButton?.addEventListener('click', () => void undoConfigRestore());
   const lib=createStorageLibraryTransfer({resolveNamespace:resolveImageAccountNamespace,confirm:(t,m)=>confirmDialog(t,htmlEscape(m)),download:ttsDownloadBlob,notify:toast,headers:storyboardRequestHeaders,fonts:fontLibrary,
     vibe:async()=>({call:(await featureRuntime.load('vibeAssets')).callVibeAsset,storage:await featureRuntime.load('vibeStorage'),items:()=>storyboardState().vibeLibrary||[]}),
-    focusFree:()=>!focusClockLibrary().busy&&!Object.values(configRestoreActivity(true,focusLibraryRuntime)).some(Boolean)});
-  const exports={config:()=>exportConfig(),notes:exportPinnedNotesBackup,collection:proseFloorTools.exportCollection,favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,reader:coreadExportData,
+    focusFree:()=>!focusClockLibrary().busy&&!Object.values(configRestoreActivity(true,focusLibraryRuntime)).some(Boolean),
+    excerptSettings:{read:()=>settings.excerptStudio,write:value=>{settings.excerptStudio=value;saveSettings();}}});
+  const exports={config:()=>exportConfig(),notes:exportPinnedNotesBackup,collection:proseFloorTools.exportCollection,excerpt:()=>lib.exports.excerpt(),favorites:exportTtsFavoritesBackup,audio:ttsExportAudioCache,reader:coreadExportData,
     assistant:proseFloorTools.exportAssistantLibrary,focus:()=>lib.exports.focus(),
     ringtones:async()=>{const blob=await chatRingtone.actions.exportLocal();if(!blob)return toast('没有可导出的本地铃声。','info');ttsDownloadBlob(blob,`qianmu-ringtones-${fileStamp()}.json`);toast('已导出本地铃声。','success');}};
-  const imports={config:(_f,_i,e)=>importConfig(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),collection:proseFloorTools.importCollection,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),
+  const imports={config:(_f,_i,e)=>importConfig(e),notes:(_f,_i,e)=>importPinnedNotesBackup(e),collection:proseFloorTools.importCollection,excerpt:lib.imports.excerpt,favorites:(_f,_i,e)=>importTtsFavoritesBackup(e),audio:(_f,_i,e)=>ttsImportAudioCache(e),
     reader:coreadImportDataFile,assistant:proseFloorTools.importAssistantLibrary,focus:lib.imports.focus,
     ringtones:async(file)=>{const result=await chatRingtone.actions.importLocal(file);toast(`已导入 ${result.added} 个本地铃声${result.skipped?`，${result.skipped} 个已存在或不可用`:''}。`,'success');}};
   // 多项导出时，各项照常生成自己的备份文件，只是先收起来、最后打成一个包。
@@ -30011,6 +30013,7 @@ async function coreadDeleteBook(bookId, options = {}) {
     if (result?.status === 'stale') return false;
     if (result?.status !== 'committed') throw new Error('书籍清理未提交');
     localCommitted = true;
+    coreadDropExcerptDrafts({ startsWith: `reader:${bookId}:` });
     // 账户端：删记忆时让其他设备一并删除；保留记忆时把改写后的档案传上去。封面跟书走，两种都删。结果在书架状态落定后再看。
     const accountRemoval = deleteMemory ? readerChatSync.remove(result.chatKeys || []) : (readerChatSync.request(), null);
     void readerCoverSync.remove([bookId]);
@@ -31537,6 +31540,11 @@ async function coreadExcerptStudio() {
   });
   coreadExcerptStudioState = { namespace, module, studio, portal, unmount };
   return coreadExcerptStudioState;
+}
+// 删笔记、删书时一并删掉成图稿（键 reader:书:笔记）；图由排版台下次整理时清。删不掉只记一笔，不挡删除。
+function coreadDropExcerptDrafts(options) {
+  void resolveImageAccountNamespace().then((namespace) => dropExcerptDrafts({ namespace, ...options }))
+    .catch((error) => console.warn(`[${MODULE_NAME}] excerpt draft cleanup failed`, error));
 }
 function coreadDisposeExcerptStudio() {
   const state = coreadExcerptStudioState;
@@ -33503,6 +33511,7 @@ function coreadDeleteNote(noteId) {
   if (!meta || !Array.isArray(meta.notes)) return;
   meta.notes = meta.notes.filter((n) => n.id !== noteId);
   saveSettings();
+  coreadDropExcerptDrafts({ keys: [`reader:${meta.id}:${noteId}`] });
 }
 
 // 切换当前章书签。
@@ -33587,34 +33596,35 @@ function coreadIsCredentialKey(key) {
     || k.endsWith('authtoken') || k.endsWith('bearertoken') || k.endsWith('clientsecret');
 }
 
-function coreadSanitizePackageValue(value) {
-  if (Array.isArray(value)) return value.map((item) => coreadSanitizePackageValue(item));
+// 只有最外层的 books（书架）另走；里层同名的（如阅读记录按书的 readLog.books）照常带上。
+function coreadSanitizePackageValue(value, top = true) {
+  if (Array.isArray(value)) return value.map((item) => coreadSanitizePackageValue(item, false));
   if (!isPlainObject(value)) return value;
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    if (!coreadPackageSafeKey(key) || coreadIsCredentialKey(key) || key === 'books') continue;
-    out[key] = coreadSanitizePackageValue(item);
+    if (!coreadPackageSafeKey(key) || coreadIsCredentialKey(key) || (top && key === 'books')) continue;
+    out[key] = coreadSanitizePackageValue(item, false);
   }
   return out;
 }
 
 // 深合并时跳过凭据字段；对象数组按 id/name 对齐本机条目，避免导入无密钥版本时清空现有密钥。
-function coreadMergePackageValue(target, source) {
+function coreadMergePackageValue(target, source, top = true) {
   if (!isPlainObject(source)) return target;
   for (const [key, value] of Object.entries(source)) {
-    if (!coreadPackageSafeKey(key) || key === 'books' || key === 'enabled' || coreadIsCredentialKey(key)) continue;
+    if (!coreadPackageSafeKey(key) || (top && key === 'books') || key === 'enabled' || coreadIsCredentialKey(key)) continue;
     if (Array.isArray(value)) {
       const local = Array.isArray(target[key]) ? target[key] : [];
       target[key] = value.map((item, index) => {
         if (!isPlainObject(item)) return item;
         const match = local.find((old) => isPlainObject(old) && ((item.id && old.id === item.id) || (item.name && old.name === item.name))) || local[index];
         const next = isPlainObject(match) ? clone(match) : {};
-        coreadMergePackageValue(next, item);
+        coreadMergePackageValue(next, item, false);
         return next;
       });
     } else if (isPlainObject(value)) {
       if (!isPlainObject(target[key])) target[key] = {};
-      coreadMergePackageValue(target[key], value);
+      coreadMergePackageValue(target[key], value, false);
     } else {
       target[key] = value;
     }
@@ -33641,23 +33651,10 @@ async function coreadExportData(origin) {
   check();
   const prefs = omitConfigConnections({coread:coreadSanitizePackageValue(reader)}).coread;
   const bookMetas = clone(reader.books || []);
-  const {books,chats,images,vectors,audio,retrievalLogs} = await collectCoreadPackageData({bookMetas,blobStore:blobStore.createReaderPackageReader({check}),blobToBase64,check});
+  const pack = await buildCoreadPackage({bookMetas,prefs,blobStore:blobStore.createReaderPackageReader({check}),check});
   check();
-  const payload = {
-    type: 'qianmu-coread', version: 5, exportedAt: new Date().toISOString(), credentialsIncluded: false,
-    prefs,
-    books,
-    chats,
-    images,
-    vectors,
-    audio,
-    retrievalLogs,
-  };
-  const {blob,preservationOnly} = prepareCoreadPackageExport(payload);
-  if (preservationOnly && !await confirmDialog('仅保存保全副本', '此伴读整包超过256 MiB或结构限制，当前版本不能直接恢复。可完整保存原内容供后续整理，不会裁剪资料。是否下载保全副本？')) return;
-  check();
-  ttsDownloadBlob(blob, `qianmu-coread-pack-${preservationOnly ? 'preservation-' : ''}${fileStamp()}.json`);
-  toast(preservationOnly ? '伴读保全副本已导出，当前版本不能直接恢复；请保留原文件和本机资料。' : `伴读数据已打包导出：${books.length} 本书 · ${chats.length} 段对话 · ${images.length} 张插图 · ${audio.length} 条语音。`, preservationOnly ? 'warning' : 'success');
+  ttsDownloadBlob(pack.blob, `qianmu-coread-pack-${fileStamp()}.zip`);
+  toast(coreadPackageExportText(pack), pack.skipped.length ? 'warning' : 'success');
   } catch (error) { toast(`伴读备份未完成：${error?.message || '请保留本机资料并重试。'}`, 'error'); }
   finally { viewGuard?.release(); coreadExportData.busy = false; }
 }
@@ -33694,6 +33691,7 @@ async function coreadImportDataFile(file, origin) {
     readerCoverSync.request();   // 包里带来的封面一并送上账户
     finishCoreadPackageImport({reader, progress, hasPrefs:isPlainObject(data.prefs), check, save:saveSettings, notify:toast,
       preparePrefs:()=>coreadMergePackageValue(clone(reader), omitConfigConnections({coread:data.prefs}).coread),
+      reload:()=>readerLog?.reload(),
       refresh:()=>{renderModal();rerenderMoreIfOpen();}});
     } catch (error) { toast(`伴读导入未完成：${coreadImportProgressText(progress)} ${error?.message || error}`, 'error'); }
     finally { viewGuard?.release(); coreadImportDataFile.busy = false; }
@@ -33702,7 +33700,7 @@ async function coreadImportDataFile(file, origin) {
 function coreadImportData() {
   const origin = document.querySelector('#sd-reader-portal .sd-reader-morepage:not([hidden])') || document.querySelector('#story-director-modal .sd-body');
   const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'application/json,.json'; input.style.display = 'none';
+  input.type = 'file'; input.accept = 'application/zip,.zip,application/json,.json'; input.style.display = 'none';
   document.body.appendChild(input);
   input.addEventListener('change', async () => {
     const file = input.files?.[0]; input.remove();

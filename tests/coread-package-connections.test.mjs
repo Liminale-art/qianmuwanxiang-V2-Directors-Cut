@@ -3,49 +3,33 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
-import {readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,collectCoreadPackageData,prepareCoreadPackageExport,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,buildCoreadPackage,coreadPackageExportText,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport} from '../qianmu-reader-package.js';
 import {omitConfigConnections,configRestoreGuard} from '../qianmu-config-connections.js';
 function fixture(local){
-  let exported;const notices=[];
+  let exported,built;const notices=[],downloads=[];
   const c=vm.createContext({isPlainObject,clone,readCoreadPackageFile,coreadPackageSafeKey,coreadPackageRestoreMessage,applyCoreadPackageData,createCoreadImportProgress,coreadImportProgressText,finishCoreadPackageImport,omitConfigConnections,configRestoreGuard,
     settings:{},storyboardAdmissionEpoch:1,configRestoreActivity:()=>({}),coread:()=>local,readerDialog:{loaded:false},toast:m=>notices.push(m),confirmDialog:async()=>true,base64ToBlob:()=>{throw Error('unexpected media');},MODULE_NAME:'fixture',
     blobStore:{blobStoreAvailable:()=>true,listReaderChatKeys:async()=>[],listReaderImages:async()=>[],listReaderVectorKeys:async()=>[],listAudio:async()=>[],listRetLog:async()=>[]},
     coverRequests:[],readerCoverSync:{request(...args){c.coverRequests.push(args);}},
     saveSettings(){},renderModal(){},rerenderMoreIfOpen(){},fileStamp:()=> 'fixture',
-    document:{createElement:()=>({click(){},remove(){}}),body:{appendChild(){}}},URL:{createObjectURL:()=> 'blob:fixture',revokeObjectURL(){}},setTimeout(){},
-    Blob:class{constructor(parts){exported=JSON.parse(parts[0]);}}});
-  vm.runInContext(['ttsDownloadBlob','coreadIsCredentialKey','coreadSanitizePackageValue','coreadMergePackageValue','coreadImportDataFile','coreadExportData'].map(source).join('\n'),c);
-  c.collectCoreadPackageData=collectCoreadPackageData;
-  c.prepareCoreadPackageExport=payload=>{const prepared=prepareCoreadPackageExport(payload);exported=JSON.parse(JSON.stringify(payload));return prepared;};
+    coreadPackageExportText});
+  vm.runInContext(['coreadIsCredentialKey','coreadSanitizePackageValue','coreadMergePackageValue','coreadImportDataFile','coreadExportData'].map(source).join('\n'),c);
+  // 记下交给打包的设置与书目；只有真的下载了才算导出。
+  c.buildCoreadPackage=async options=>{const pack=await buildCoreadPackage(options);built={prefs:JSON.parse(JSON.stringify(options.prefs)),bookMetas:JSON.parse(JSON.stringify(options.bookMetas)),pack};return pack;};
+  c.ttsDownloadBlob=(blob,name)=>{downloads.push({blob,name});exported=built;};
   c.configRestoreActivity=(includeCleanup=true,ownTransfer=null)=>({transfer:(ownTransfer!==c.coreadExportData&&c.coreadExportData.busy)||(ownTransfer!==c.coreadImportDataFile&&c.coreadImportDataFile.busy),...c.competingActivity});
-  c.blobToBase64=async()=>{throw Error('unexpected media in connection-only fixture');};
   c.createCoreadImportViewGuard=(origin,action)=>({check(){if(c.pageChanged)throw Error(`${action} page changed`);},release(){c.viewReleased=true;}});
   c.blobStore.createReaderPackageWriter=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
   c.blobStore.createReaderPackageReader=({check})=>{assert.equal(typeof check,'function');return c.blobStore;};
-  return {c,notices,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};
+  return {c,notices,downloads,exported:()=>exported,run:prefs=>c.coreadImportDataFile({text:async()=>JSON.stringify({type:'qianmu-coread',version:5,books:[],prefs})})};
 }
-test('non-restorable originals require explicit consent and confirmation cannot outlive their owner or page',async()=>{
-  for(const mode of ['confirm','cancel','page','settings','reader','epoch','activity']){
-    const local=settings(),e=fixture(local),downloads=[];let asks=0;
-    let rec={original:'keep this complete'};for(let i=0;i<42;i++)rec={nested:rec};
-    e.c.blobStore.listReaderChatKeys=async()=>['chat'];e.c.blobStore.getReaderChat=async()=>rec;
-    e.c.ttsDownloadBlob=(blob,name)=>downloads.push({blob,name});
-    e.c.confirmDialog=async(title,text)=>{
-      asks++;assert.match(title,/保全/);assert.match(text,/不能直接恢复/);
-      if(mode==='page')e.c.pageChanged=true;
-      if(mode==='settings')e.c.settings={};if(mode==='reader')e.c.coread=()=>({});
-      if(mode==='epoch')e.c.storyboardAdmissionEpoch++;if(mode==='activity')e.c.competingActivity={voice:true};
-      return mode!=='cancel';
-    };
-    await e.c.coreadExportData();assert.equal(asks,1);assert.equal(e.c.coreadExportData.busy,false);assert.equal(e.c.viewReleased,true);
-    assert.equal(downloads.length,mode==='confirm'?1:0);
-    assert.equal(e.notices.some(n=>n.includes('伴读数据已打包导出')),false,'a preservation copy is never advertised as a normal restorable pack');
-    if(mode==='confirm'){
-      assert.match(downloads[0].name,/preservation/);assert.match(e.notices.at(-1),/不能直接恢复/);
-      const saved=JSON.parse(await downloads[0].blob.text());assert.deepEqual(saved.chats[0].rec,rec);
-      await assert.rejects(()=>readCoreadPackageFile(downloads[0].blob));
-    }
-  }
+test('a deeply nested record no longer forces a preservation copy: the package downloads directly and stays readable',async()=>{
+  const local=settings(),e=fixture(local);let asks=0,rec={original:'keep this complete'};for(let i=0;i<42;i++)rec={nested:rec};
+  e.c.blobStore.listReaderChatKeys=async()=>['chat'];e.c.blobStore.getReaderChat=async()=>rec;e.c.confirmDialog=async()=>{asks++;return true;};
+  await e.c.coreadExportData();
+  assert.equal(asks,0);assert.equal(e.downloads.length,1);assert.equal(e.downloads[0].name,'qianmu-coread-pack-fixture.zip');
+  assert.match(e.notices.at(-1),/伴读数据已打包导出/);assert.equal(e.c.coreadExportData.busy,false);assert.equal(e.c.viewReleased,true);
+  const data=await readCoreadPackageFile(new File([e.downloads[0].blob],'pack.zip'));assert.equal(data.version,6);assert.deepEqual(data.shared.chats.map(item=>item.key),['chat']);
 });
 
 function settings(){
@@ -70,14 +54,14 @@ test('absent recipient connections stay absent instead of accepting source endpo
   for(const key of ['memory','assistant','comic'])assert.equal(JSON.stringify(local[key]),'{}');
 });
 
-test('partially restored originals retain local preferences instead of selecting a possibly unrestored book',async()=>{
+test('a partially restored package still applies its preferences, reloads the live reading log and keeps the committed books',async()=>{
   for(const failure of ['failed','invalid']){
-    const local=settings(),before=structuredClone(local),e=fixture(local);
+    const local=settings(),e=fixture(local);let reloads=0;e.c.readerLog={reload(){reloads++;}};
     e.c.applyCoreadPackageData=async(data,{progress})=>{progress.ok=1;progress[failure]=1;local.books.push({id:'committed',title:'preserve this successful entry'});};
-    await e.run({fontSize:28,currentBookId:'failed-book',collections:[{id:'foreign',name:'incoming'}]});
-    assert.equal(local.fontSize,before.fontSize);assert.equal(local.currentBookId,undefined);assert.deepEqual(local.collections,before.collections);
+    await e.run({fontSize:28,collections:[{id:'foreign',name:'incoming'}]});
+    assert.equal(local.fontSize,28);assert.deepEqual(local.collections.map(item=>item.id),['foreign']);assert.equal(reloads,1);
     assert.equal(local.books[0].id,'committed','do not compensate by throwing away successfully imported originals');
-    assert.match(e.notices.at(-1),/包内阅读偏好未应用/);assert.equal(e.c.coreadImportDataFile.busy,false);
+    assert.match(e.notices.at(-1),/阅读偏好已恢复/);assert.equal(e.c.coreadImportDataFile.busy,false);
   }
 });
 
@@ -110,7 +94,8 @@ test('actual import schedules the first restored shelf before a later write is i
 });
 test('actual reader export strips complete connections from a detached copy and retains reading preferences',async()=>{
   const local=settings(),before=structuredClone(local),e=fixture(local);await e.c.coreadExportData();
-  const result=e.exported();assert.deepEqual(local,before);assert.equal(result.prefs.fontSize,16);assert.equal(result.version,5);
+  const result=e.exported();assert.deepEqual(local,before);assert.equal(result.prefs.fontSize,16);
+  const restored=await readCoreadPackageFile(new File([result.pack.blob],'pack.zip'));assert.equal(restored.version,6);assert.deepEqual(restored.prefs,result.prefs,'the preferences in the file are exactly what was handed over');
   assert.deepEqual(result.prefs.collections,before.collections);
   assert.deepEqual(result.prefs.memory,{});assert.deepEqual(result.prefs.assistant,{});assert.deepEqual(result.prefs.comic,{});
   assert.equal(JSON.stringify(result).includes('synthetic'),false);assert.equal(JSON.stringify(result).includes('https://local.invalid'),false);
@@ -133,8 +118,8 @@ test('the actual export freezes book metadata and preferences together before as
   const pending=e.c.coreadExportData();await new Promise(r=>setImmediate(r));
   local.fontSize=99;local.books[0].title='after';local.books.push({id:'new'});
   release({fullText:'original prose'});await pending;
-  const result=e.exported();assert.equal(result.prefs.fontSize,16);assert.equal(result.books.length,1);
-  assert.equal(result.books[0].meta.title,'before');assert.equal(result.prefs.books,undefined,'the existing preference format excludes book originals');
+  const result=e.exported();assert.equal(result.prefs.fontSize,16);assert.equal(result.bookMetas.length,1);
+  assert.equal(result.bookMetas[0].title,'before');assert.equal(result.prefs.books,undefined,'the existing preference format excludes book originals');
   assert.equal(local.fontSize,99);assert.equal(local.books.length,2,'export cannot overwrite live changes');
 });
 for(const phase of ['save','read'])test('actual export '+phase+' cannot finish under a different state owner',async()=>{

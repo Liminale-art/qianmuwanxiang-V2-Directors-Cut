@@ -246,3 +246,49 @@ test('restore is one append-only operation and refuses any conflicting or invali
     await assert.rejects(f.collection.restore({version: 1, items: [entry('third')]}, {expectedFingerprint: first.fingerprint}), {code: 'text_collection_conflict'});
     assert.equal(f.writes, 1);
 });
+
+test('a full-text item may carry its raw floor source; old items without it load unchanged', async t => {
+    const withRaw = {...entry('raw-one', '状态 HP 10'), raw: '<status>HP 10</status>'};
+    const f = fixture(t, {version: 1, items: [entry(), withRaw]}), opened = await f.collection.open();
+    assert.equal(opened.loaded, true);
+    assert.equal(Object.hasOwn(opened.items[0], 'raw'), false);
+    assert.equal(opened.items[1].raw, '<status>HP 10</status>');
+    const added = await f.collection.add({...input('正文'), raw: '<b>正文</b>', id: 'new'}, {expectedFingerprint: opened.fingerprint});
+    assert.deepEqual(added.items.at(-1), {id: 'new', text: '正文', charName: '角色', userName: '用户', createdAt: later, updatedAt: later, source: null, raw: '<b>正文</b>'});
+    const plain = await f.collection.add({...input('纯文本'), id: 'plain'}, {expectedFingerprint: added.fingerprint});
+    assert.equal(Object.hasOwn(plain.items.at(-1), 'raw'), false, 'a selection without raw stores no raw key');
+    for (const items of [[{...entry(), raw: ''}], [{...entry(), raw: '  '}], [{...entry(), raw: 3}], [{...entry(), raw: null}]]) {
+        f.replace({version: 1, items});
+        await assert.rejects(f.collection.refresh(), {code: 'text_collection_document'});
+    }
+});
+
+test('raw input is validated and capped on write only; editing raw keeps text and raw together', async t => {
+    const {TEXT_COLLECTION_RAW_LIMIT} = await import('../qianmu-text-collection.js');
+    const f = fixture(t, {version: 1, items: [{...entry('one', '旧'), raw: '<b>旧</b>'}]}), opened = await f.collection.open();
+    const options = {expectedFingerprint: opened.fingerprint};
+    for (const raw of ['', '  ', 3, null]) await assert.rejects(f.collection.add({...input('正文'), raw}, options), {code: 'text_collection_input'});
+    await assert.rejects(f.collection.add({...input('正文'), raw: 'x'.repeat(TEXT_COLLECTION_RAW_LIMIT + 1)}, options), {code: 'text_collection_capacity'});
+    await assert.rejects(f.collection.edit('one', {text: '新', raw: 'x'.repeat(TEXT_COLLECTION_RAW_LIMIT + 1)}, options), {code: 'text_collection_capacity'});
+    for (const change of [{text: '新', raw: ''}, {text: '', raw: '<b>新</b>'}, {text: '新', raw: '<b>新</b>', extra: 1}]) {
+        await assert.rejects(f.collection.edit('one', change, options), {code: 'text_collection_input'});
+    }
+    assert.equal(f.writes, 0);
+    assert.deepEqual(await f.collection.edit('one', {text: '旧', raw: '<b>旧</b>'}, options), opened, 'unchanged text and raw write nothing');
+    const edited = await f.collection.edit('one', {text: '新', raw: '<i>新</i>'}, options);
+    assert.deepEqual([edited.items[0].text, edited.items[0].raw, edited.items[0].updatedAt], ['新', '<i>新</i>', later]);
+    const rawOnly = await f.collection.edit('one', {text: '新', raw: '<b>新</b>'}, {expectedFingerprint: edited.fingerprint});
+    assert.equal(rawOnly.items[0].raw, '<b>新</b>', 'a raw-only change is a real edit');
+    const plain = await f.collection.edit('one', '只剩纯文本', {expectedFingerprint: rawOnly.fingerprint});
+    assert.equal(Object.hasOwn(plain.items[0], 'raw'), false, 'a plain-text edit drops raw instead of leaving it out of sync');
+    assert.equal(f.writes, 3);
+});
+
+test('restore treats the same ID with a different raw as a conflict, not the same item', async t => {
+    const base = {...entry('one'), raw: '<b>正文</b>'};
+    const f = fixture(t, {version: 1, items: [base]}), opened = await f.collection.open();
+    const options = {expectedFingerprint: opened.fingerprint};
+    await assert.rejects(f.collection.restore({version: 1, items: [{...base, raw: '<i>正文</i>'}]}, options), {code: 'text_collection_conflict'});
+    await assert.rejects(f.collection.restore({version: 1, items: [entry('one')]}, options), {code: 'text_collection_conflict'});
+    assert.deepEqual(await f.collection.restore({version: 1, items: [structuredClone(base)]}, options).then(state => state.items), [base]);
+});

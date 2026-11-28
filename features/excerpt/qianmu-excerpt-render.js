@@ -1,12 +1,13 @@
 // 书摘成图 · 排版与出图。编辑页与导出用同一个 buildPage：编辑页把它放进影子根（样式与 ST 互不影响），
 // 导出时把同一棵节点序列化进 SVG 的 foreignObject 再画到画布上——所见即所得，竖排、两端对齐、模板 CSS 都由浏览器排。
 // 正文在各页正文框之间流动：逐框用真实排版量出能放下多少字（二分），排不下就加续页。
-import {PAGE_WIDTH, MAX_PAGE_HEIGHT, MAX_PAGES, PAGE_BREAK, pageHeight} from './qianmu-excerpt-doc.js';
+import {PAGE_WIDTH, MAX_PAGES, PAGE_BREAK, pageHeight} from './qianmu-excerpt-doc.js';
 
 export const BASE_CSS = `
 .page{position:relative;width:${PAGE_WIDTH}px;margin:0;overflow:hidden;background:var(--paper);color:var(--ink);font-size:24px;line-height:1.6;box-sizing:border-box;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-kerning:normal}
 .page *{box-sizing:border-box}
 .qm-bg{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none;max-width:none}
+.qm-grain{position:absolute;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;background-repeat:repeat;background-position:0 0}
 .qm-el{position:absolute;margin:0;padding:0}
 .qm-text,.qm-body{white-space:pre-wrap;overflow-wrap:break-word;line-break:strict;hanging-punctuation:none}
 .qm-text{overflow:visible}
@@ -46,17 +47,9 @@ function fontFamily(key, families) {
     return family ? `"${String(family).replace(/["\\]/g, '')}",${FONT_STACKS.serif}` : '';
 }
 
-// 自适应比例时，正文框随正文伸缩，位于正文框下方的元素整体跟着上下移。
-export function shiftFor(page, element, delta) {
-    if (!delta) return {dy: 0, dh: 0};
-    if (element.kind === 'body') return {dy: 0, dh: delta};
-    const bottom = Math.max(...page.elements.filter(item => item.kind === 'body').map(item => item.y + item.h));
-    return Number.isFinite(bottom) && element.y >= bottom - 1 ? {dy: delta, dh: 0} : {dy: 0, dh: 0};
-}
-
-export function elementCss(element, {families, dy = 0, dh = 0, z = 1} = {}) {
+export function elementCss(element, {families, z = 1} = {}) {
     const p = element.props || {};
-    const parts = [`left:${element.x}px`, `top:${element.y + dy}px`, `width:${element.w}px`, `height:${element.h + dh}px`, `z-index:${z}`];
+    const parts = [`left:${element.x}px`, `top:${element.y}px`, `width:${element.w}px`, `height:${element.h}px`, `z-index:${z}`];
     if (element.base) parts.push(element.base);
     const family = fontFamily(p.font, families);
     if (family) parts.push(`font-family:${family}`);
@@ -114,14 +107,13 @@ export function fillParagraphs(document, box, paragraphs, cont) {
 }
 
 export function buildElement(document, doc, page, element, layoutPage, ctx, z) {
-    const {dy, dh} = shiftFor(page, element, layoutPage?.delta || 0);
     const node = document.createElement('div');
     const vertical = element.vertical ? ' qm-v' : '';
     const empty = element.kind === 'image' && !element.image ? ' qm-empty' : '';
     const look = element.kind === 'dialog' ? (element.look === 'bubble' ? ' is-bubble' : ' is-script') : '';
     node.className = `qm-el qm-${element.kind}${vertical}${empty}${look}${element.cls ? ` ${element.cls}` : ''}`;
     node.dataset.id = element.id;
-    node.setAttribute('style', elementCss(element, {families: ctx.families, dy, dh, z}));
+    node.setAttribute('style', elementCss(element, {families: ctx.families, z}));
     if (element.kind === 'text') node.textContent = element.text;
     else if (element.kind === 'dialog') {
         (element.lines || []).forEach((line, index) => {
@@ -140,15 +132,15 @@ export function buildElement(document, doc, page, element, layoutPage, ctx, z) {
             const src = ctx.imageSrc?.(element.image.id);
             if (src) {
                 const img = document.createElement('img');
-                const g = imageGeometry(element.w, element.h + dh, element.image);
+                const g = imageGeometry(element.w, element.h, element.image);
                 img.setAttribute('src', src); img.setAttribute('alt', '');
                 img.setAttribute('style', `left:${g.left}px;top:${g.top}px;width:${g.w}px;height:${g.h}px`);
                 node.append(img);
             }
         } else {
-            const mark = svg(document, 'svg', {viewBox: `0 0 ${Math.max(1, element.w)} ${Math.max(1, element.h + dh)}`, preserveAspectRatio: 'none'});
+            const mark = svg(document, 'svg', {viewBox: `0 0 ${Math.max(1, element.w)} ${Math.max(1, element.h)}`, preserveAspectRatio: 'none'});
             const stroke = {stroke: 'currentColor', 'stroke-width': 1.2, 'vector-effect': 'non-scaling-stroke'};
-            mark.append(svg(document, 'line', {x1: 0, y1: 0, x2: element.w, y2: element.h + dh, ...stroke}), svg(document, 'line', {x1: element.w, y1: 0, x2: 0, y2: element.h + dh, ...stroke}));
+            mark.append(svg(document, 'line', {x1: 0, y1: 0, x2: element.w, y2: element.h, ...stroke}), svg(document, 'line', {x1: element.w, y1: 0, x2: 0, y2: element.h, ...stroke}));
             node.append(mark);
         }
     } else if (element.kind === 'line') {
@@ -164,12 +156,27 @@ export function buildElement(document, doc, page, element, layoutPage, ctx, z) {
     return node;
 }
 
-// 一页的节点树。ctx：families（字体库 id → 已注册的字体名）、imageSrc（图片 id → 地址）。
+export const pageStyle = (doc, height) => `--paper:${doc.paper};--ink:${doc.ink};height:${height}px`;
+
+// 纸面杂色层：一块可平铺的小图（按纸色、颗粒大小生成一次），浓淡用整层透明度调，编辑页与导出同一张图。
+export function grainStyle(doc, ctx) {
+    const amount = doc.grain?.amount || 0, tile = amount > 0 ? ctx.grainTile?.(doc.paper, doc.grain.size) : null;
+    return tile ? `background-image:url("${tile.src}");background-size:${tile.size}px ${tile.size}px;opacity:${Math.round(amount) / 100}` : '';
+}
+export function buildGrain(document, doc, ctx) {
+    const css = grainStyle(doc, ctx);
+    if (!css) return null;
+    const node = document.createElement('div');
+    node.className = 'qm-grain'; node.setAttribute('style', css);
+    return node;
+}
+
+// 一页的节点树。ctx：families（字体库 id → 已注册的字体名）、imageSrc（图片 id → 地址）、grainTile（纸色, 颗粒 → {src, size}）。
 export function buildPage(document, doc, page, layoutPage, ctx = {}) {
     const height = layoutPage?.h || pageHeight(doc);
     const root = document.createElement('div');
     root.className = 'page';
-    root.setAttribute('style', `--paper:${doc.paper};--ink:${doc.ink};height:${height}px`);
+    root.setAttribute('style', pageStyle(doc, height));
     if (doc.bg?.image) {
         const src = ctx.imageSrc?.(doc.bg.image);
         if (src) {
@@ -179,6 +186,8 @@ export function buildPage(document, doc, page, layoutPage, ctx = {}) {
             root.append(img);
         }
     }
+    const grain = buildGrain(document, doc, ctx);
+    if (grain) root.append(grain);
     if (page.decor) {
         const holder = document.createElement('template');
         holder.innerHTML = page.decor;
@@ -186,6 +195,105 @@ export function buildPage(document, doc, page, layoutPage, ctx = {}) {
     }
     page.elements.forEach((element, index) => root.append(buildElement(document, doc, page, element, layoutPage, ctx, index + 1)));
     return root;
+}
+
+// ── 纸面杂色 ───────────────────────────────────────────────────────────────
+// 颗粒颜色随纸色走：取纸的色相，浅纸上偏深、深纸上偏浅，再掺少量反向的点，像纸里的纤维与杂质。
+function hexToHsl(hex) {
+    const raw = String(hex || '').replace('#', '');
+    const [r, g, b] = [0, 2, 4].map(at => (Number.parseInt(raw.slice(at, at + 2), 16) || 0) / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    let h = 0, s = 0;
+    if (d) {
+        s = d / (1 - Math.abs(2 * l - 1));
+        h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        h = (h * 60 + 360) % 360;
+    }
+    return {h, s, l};
+}
+const hsl = ({h, s, l}) => `hsl(${h.toFixed(1)} ${(Math.min(1, Math.max(0, s)) * 100).toFixed(1)}% ${(Math.min(1, Math.max(0, l)) * 100).toFixed(1)}%)`;
+export function grainColors(paper) {
+    const {h, s, l} = hexToHsl(paper);
+    const darker = {h, s: Math.min(1, s * 1.1 + 0.06), l: l * 0.42}, lighter = {h, s: s * 0.7, l: l + (1 - l) * 0.75};
+    return l > 0.45 ? {main: hsl(darker), minor: hsl(lighter)} : {main: hsl({h, s: s * 0.8, l: l + (1 - l) * 0.5}), minor: hsl({h, s, l: l * 0.5})};
+}
+function seeded(seed) {
+    let value = seed >>> 0;
+    return () => {
+        value = (value + 0x6d2b79f5) >>> 0;
+        let t = value;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+export const grainTileSize = size => Math.min(560, Math.round(200 * (0.7 + size * 0.25)));
+// 生成一块可无缝平铺的颗粒图（同一颗粒大小的图案固定，换纸色只换颜色）；返回 PNG 的 data: 地址与边长。
+export function renderGrainTile(document, paper, size) {
+    const k = 0.7 + size * 0.25, tile = grainTileSize(size);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = tile;
+    const context = canvas.getContext('2d');
+    const random = seeded(0x51ed27 + size * 7919), {main, minor} = grainColors(paper);
+    const between = (a, b) => a + random() * (b - a);
+    // 靠边的颗粒在对边再画一次，平铺时接得上。
+    const wrapped = (x, y, reach, draw) => {
+        for (const dx of [0, -tile, tile]) for (const dy of [0, -tile, tile]) {
+            if (dx && (dx < 0 ? x < tile - reach : x > reach)) continue;
+            if (dy && (dy < 0 ? y < tile - reach : y > reach)) continue;
+            draw(x + dx, y + dy);
+        }
+    };
+    const dot = (x, y, r) => { context.beginPath(); context.arc(x, y, r, 0, Math.PI * 2); context.fill(); };
+    // 细密的纸面颗粒
+    for (let index = 0; index < 5200; index++) {
+        const x = random() * tile, y = random() * tile, w = k * between(0.7, 1.3);
+        context.fillStyle = random() < 0.3 ? minor : main; context.globalAlpha = between(0.08, 0.3);
+        wrapped(x, y, w, (px, py) => context.fillRect(px, py, w, w));
+    }
+    // 稍大的浅斑
+    for (let index = 0; index < 380; index++) {
+        const x = random() * tile, y = random() * tile, r = k * between(0.7, 1.6);
+        context.fillStyle = random() < 0.4 ? minor : main; context.globalAlpha = between(0.07, 0.22);
+        wrapped(x, y, r, (px, py) => dot(px, py, r));
+    }
+    // 少量深一点的杂质
+    for (let index = 0; index < 26; index++) {
+        const x = random() * tile, y = random() * tile, r = k * between(0.8, 1.8);
+        context.fillStyle = main; context.globalAlpha = between(0.3, 0.55);
+        wrapped(x, y, r, (px, py) => dot(px, py, r));
+    }
+    // 短纤维
+    context.lineCap = 'round';
+    for (let index = 0; index < 60; index++) {
+        const x = random() * tile, y = random() * tile, length = k * between(6, 22), angle = random() * Math.PI, bend = between(-0.5, 0.5) * length;
+        const ex = Math.cos(angle) * length, ey = Math.sin(angle) * length;
+        context.strokeStyle = random() < 0.5 ? minor : main; context.globalAlpha = between(0.07, 0.2); context.lineWidth = k * between(0.45, 0.9);
+        wrapped(x, y, length + Math.abs(bend), (px, py) => {
+            context.beginPath(); context.moveTo(px, py);
+            context.quadraticCurveTo(px + ex / 2 - Math.sin(angle) * bend, py + ey / 2 + Math.cos(angle) * bend, px + ex, py + ey);
+            context.stroke();
+        });
+    }
+    const src = canvas.toDataURL('image/png');
+    canvas.width = canvas.height = 0;
+    return {src, size: tile};
+}
+// 按（纸色, 颗粒）缓存几块，拖动元素、改字都不会重画。
+export function createGrainTiles(document, limit = 6) {
+    const tiles = new Map();
+    return {
+        get(paper, size) {
+            const key = `${paper}|${size}`;
+            let tile = tiles.get(key);
+            if (tile) { tiles.delete(key); tiles.set(key, tile); return tile; }
+            tile = renderGrainTile(document, paper, size);
+            tiles.set(key, tile);
+            while (tiles.size > limit) tiles.delete(tiles.keys().next().value);
+            return tile;
+        },
+        clear() { tiles.clear(); },
+    };
 }
 
 // ── 测量与分页 ─────────────────────────────────────────────────────────────
@@ -218,80 +326,83 @@ export function createMeasurer(document, css) {
     document.body.append(host);
     let box = null;
     return {
-        prepare(doc, element, ctx, dh) {
+        prepare(doc, element, ctx) {
             page.style.setProperty('--paper', doc.paper); page.style.setProperty('--ink', doc.ink);
             box?.remove();
-            box = buildElement(document, doc, {elements: [element]}, element, {delta: 0, slices: {}}, ctx, 1);
-            box.style.height = `${element.h + dh}px`; box.style.top = '0px';
+            box = buildElement(document, doc, {elements: [element]}, element, {slices: {}}, ctx, 1);
+            box.style.top = '0px';
             page.append(box);
             return box;
+        },
+        // 按框面积与字号粗估能放多少字，只作试排起点。
+        estimate(element) {
+            const style = box.ownerDocument.defaultView.getComputedStyle(box);
+            const size = Number.parseFloat(style.fontSize) || 24, line = Number.parseFloat(style.lineHeight) || size * 1.6;
+            const across = element.vertical ? element.h : element.w, down = element.vertical ? element.w : element.h;
+            return Math.max(1, Math.floor(across / size) * Math.floor(down / line));
         },
         fits(vertical) {
             return vertical ? box.scrollWidth <= box.clientWidth + 1 : box.scrollHeight <= box.clientHeight + 1;
         },
         fill(paragraphs, cont) { fillParagraphs(document, box, paragraphs, cont); },
-        naturalHeight() { box.style.height = 'auto'; const value = box.scrollHeight; return value; },
         dispose() { host.remove(); },
     };
 }
 
-function fitCount(measurer, doc, element, ctx, dh, start, limit) {
+// 量一个框放得下多少字：从估计值（上次这框排到的字数，或按字号与框面积估）起步，先倍增找到上下界再二分。
+// 每次试排只摆约一框的字，比从「剩下的全部」开始二分省得多；结果与逐个二分相同。
+function fitCount(measurer, doc, element, ctx, start, limit, hint) {
     const total = limit - start;
     if (total <= 0) return 0;
-    measurer.prepare(doc, element, ctx, dh);
+    measurer.prepare(doc, element, ctx);
     const body = doc.body;
     const fits = count => {
         const {paragraphs, cont} = bodyParagraphs(body, start, start + count);
         measurer.fill(paragraphs, cont);
         return measurer.fits(element.vertical);
     };
-    if (fits(total)) return total;
-    let low = 0, high = total - 1;
-    while (low < high) {
-        const middle = Math.ceil((low + high) / 2);
-        if (fits(middle)) low = middle; else high = middle - 1;
+    const guess = Math.min(total, Math.max(1, Math.round(hint || measurer.estimate?.(element) || 512)));
+    let low = 0, fail = total + 1, step = Math.max(16, Math.ceil(guess / 10));
+    if (fits(guess)) {
+        low = guess;
+        while (low < total) {
+            const next = Math.min(total, low + step);
+            if (fits(next)) { low = next; step *= 2; } else { fail = next; break; }
+        }
+        if (low === total) return total;
+    } else {
+        fail = guess;
+        while (fail > 1) {
+            const next = Math.max(0, fail - step);
+            if (next === 0) break;
+            if (fits(next)) { low = next; break; }
+            fail = next; step *= 2;
+        }
+    }
+    while (fail - low > 1) {
+        const middle = Math.floor((low + fail) / 2);
+        if (fits(middle)) low = middle; else fail = middle;
     }
     return adjustBreak(body, start, low);
 }
 
-function flowPage(measurer, doc, bodies, ctx, delta, pos, segmentEnd) {
+function flowPage(measurer, doc, bodies, ctx, pos, segmentEnd, hints) {
     const slices = {};
     let cursor = pos;
     for (const element of bodies) {
         if (doc.body[cursor] === '\n' && cursor < segmentEnd) cursor++;
-        const count = fitCount(measurer, doc, element, ctx, delta, cursor, segmentEnd);
+        const count = fitCount(measurer, doc, element, ctx, cursor, segmentEnd, hints?.get(element.id));
+        hints?.set(element.id, count);
         slices[element.id] = {start: cursor, end: cursor + count};
         cursor += count;
     }
     return {slices, cursor};
 }
 
-function solveDelta(measurer, doc, page, bodies, ctx, pos, segmentEnd, baseHeight) {
-    const minHeight = Math.min(...bodies.map(element => element.h));
-    const low = -Math.max(0, minHeight - 48), high = MAX_PAGE_HEIGHT - baseHeight;
-    const reaches = delta => flowPage(measurer, doc, bodies, ctx, delta, pos, segmentEnd).cursor >= segmentEnd;
-    if (segmentEnd <= pos || reaches(low)) return low;
-    if (!reaches(high)) return high;
-    let a = low, b = high;
-    // 只有一个横排正文框时，先量自然高度，通常一两次就定。
-    if (bodies.length === 1 && !bodies[0].vertical) {
-        measurer.prepare(doc, bodies[0], ctx, 0);
-        const start = doc.body[pos] === '\n' ? pos + 1 : pos;
-        const {paragraphs, cont} = bodyParagraphs(doc.body, start, segmentEnd);
-        measurer.fill(paragraphs, cont);
-        const guess = Math.ceil(measurer.naturalHeight() - bodies[0].h) + 2;
-        if (guess > a && guess < b) { if (reaches(guess)) b = guess; else a = guess; }
-    }
-    while (b - a > 4) {
-        const middle = Math.floor((a + b) / 2);
-        if (reaches(middle)) b = middle; else a = middle;
-    }
-    return b;
-}
-
-// 排整份稿：返回每页的高度、伸缩量与各正文框分到的正文区间；需要时在 doc.pages 末尾补续页、去掉排空的自动续页。
-export function layoutDoc(doc, {measurer, ctx = {}, makePage}) {
-    const body = doc.body, auto = doc.ratio === 'auto', baseHeight = pageHeight(doc);
+// 排整份稿：返回每页的高度与各正文框分到的正文区间；需要时在 doc.pages 末尾补续页、去掉排空的自动续页。
+// hints：框 id → 上次排到的字数（同一张排版台里跨次复用，只用来加快试排）。
+export function layoutDoc(doc, {measurer, ctx = {}, makePage, hints = null}) {
+    const body = doc.body, height = pageHeight(doc);
     const pages = [];
     let pos = 0, stuck = false;
     for (let index = 0; ; index++) {
@@ -306,15 +417,14 @@ export function layoutDoc(doc, {measurer, ctx = {}, makePage}) {
         const breakAt = body.indexOf(PAGE_BREAK, pos);
         const segmentEnd = breakAt < 0 ? body.length : breakAt;
         const startedAt = pos;
-        let delta = 0, slices = {};
+        let slices = {};
         if (bodies.length) {
-            if (auto) delta = solveDelta(measurer, doc, page, bodies, ctx, pos, segmentEnd, baseHeight);
-            const flowed = flowPage(measurer, doc, bodies, ctx, delta, pos, segmentEnd);
+            const flowed = flowPage(measurer, doc, bodies, ctx, pos, segmentEnd, hints);
             slices = flowed.slices; pos = flowed.cursor;
             if (pos >= segmentEnd && segmentEnd < body.length) pos = segmentEnd + 1;
             else if (pos === startedAt && pos < body.length) stuck = true;
         }
-        pages.push({id: page.id, h: Math.max(120, baseHeight + delta), delta, slices, start: startedAt,
+        pages.push({id: page.id, h: height, slices, start: startedAt,
             breakBefore: startedAt > 0 && body[startedAt - 1] === PAGE_BREAK ? startedAt - 1 : -1});
         if (stuck) break;
     }

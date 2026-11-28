@@ -3,7 +3,7 @@
 > 由 `scripts/generate-module-map.mjs` 生成，勿手改；新增或删除根目录文件后运行 `node scripts/generate-module-map.mjs`。
 > 只是导航：文件仍平铺在根目录，分组按文件名前缀推断，“首行说明”取自文件开头注释（无则留空）。“发行”指是否列入 `release-files.json`。
 
-根目录文件 444 个，其中 `qianmu-*` 模块 427 个。
+根目录文件 446 个，其中 `qianmu-*` 模块 429 个。
 
 ## 入口、宿主与安装
 
@@ -37,7 +37,7 @@
 | `features/` | 201 |
 | `scripts/` | 159 |
 | `server/` | 66 |
-| `tests/` | 1035 |
+| `tests/` | 1037 |
 | `vendor/noble-hashes-2.4.0/` | 9 |
 | `vendor/zip-js-2.24.0/` | 3 |
 | `workflows/` | 6 |
@@ -299,7 +299,7 @@
 | --- | --- | --- |
 | `qianmu-historical-gallery-consumer.js` | 是 | Optional read-only history consumer. The directory owns source validation; |
 
-## 专注／阅读／文本（61）
+## 专注／阅读／文本（62）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
@@ -355,6 +355,7 @@
 | `qianmu-text-collection-floor.css` | 是 | Only the collection's own message control. Inherit the ST toolbar theme. |
 | `qianmu-text-collection-floor.js` | 是 |  |
 | `qianmu-text-collection-host.js` | 是 |  |
+| `qianmu-text-collection-markup.js` | 是 | 正文收藏「全文」的原文处理：标签规则（与取材同一套模型：屏蔽／提取）只作用在楼层原文上， |
 | `qianmu-text-collection-organization-view.css` | 是 |  |
 | `qianmu-text-collection-organization-view.js` | 是 |  |
 | `qianmu-text-collection-organization.js` | 是 | Classification is part of the collection document, not a second index or |
@@ -458,7 +459,7 @@
 | `qianmu-account-identity.js` | 是 | Account identity is shared by ordinary tools as well as image generation. |
 | `qianmu-account-local-store.js` | 是 | Shared lazy IndexedDB account-document transactions. Callers own schema, namespace and database. |
 | `qianmu-account-mirror.js` | 是 | Mirrors a set of records kept in this browser to ST account files, so they follow the ST account to other |
-| `qianmu-api-quick.css` | 是 | 千幕 API 快切。入口在 ST 的 API 面板里，颜色由脚本从千幕主题抄来（--qm-apiq-*），不跟 ST 主题；面板与快选列表在千幕主题根里。 |
+| `qianmu-api-quick.css` | 是 | 千幕 API 快切。入口、快选、面板一套固定的简洁样式，颜色全取 ST 当前主题（--SmartTheme*），不跟千幕主题；单色，强调色即正文色。 |
 | `qianmu-api-quick.js` | 是 | 千幕 API 快切：入口放在 ST「API 连接」面板的「发送测试消息」旁（千幕图标＋小字），前面一个折叠小箭头展开快速切换； |
 | `qianmu-config-apply.js` | 是 | Synchronous configuration handoff only; independent originals are never read/deleted. |
 | `qianmu-config-connections.js` | 是 | Configuration-package policy only. Never scan/rewrite user prose, prompt text or media. |
@@ -536,11 +537,12 @@
 | `qianmu-service-recovery-action.js` | 是 | Receipt of existing NAI service results only. No generation or task replay. |
 | `qianmu-verified-progress-watch.js` | 是 | Only validated, live-scope progress may renew the idle deadline. A separate |
 
-## 其他模块（13）
+## 其他模块（14）
 
 | 文件 | 发行 | 首行说明 |
 | --- | --- | --- |
 | `qianmu-browser-credentials.js` | 是 | API keys that must stay readable in the browser. |
+| `qianmu-excerpt-backup.js` | 是 | 书摘成图稿的备份：当前账户的成图稿、插图与背景原图，加上设置里的方案与自建模板（它们引用同一批图）。 |
 | `qianmu-excerpt-studio.css` | 是 | 书摘成图 · 排版台。颜色跟随千幕当前主题；页面本身的样式在影子根里，与这里无关。 |
 | `qianmu-excerpt-studio.js` | 是 | 书摘成图 · 排版台：仿演示文稿的编辑页。页面画在影子根里（模板样式与 ST 互不影响）， |
 | `qianmu-floor-count.js` | 是 | 楼层计数：和每个角色一共聊了多少层。只做计数，不读消息内容、不碰记忆与聊天本身。 |

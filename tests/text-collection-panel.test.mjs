@@ -221,6 +221,7 @@ test('local control icons carry their intended glyph instead of an unresolved fa
         '关闭收藏': 'x', '多选收藏': 'list-checks', '删除选中收藏': 'trash',
         '返回收藏列表': 'arrow-left', '管理文件夹': 'folder-plus', '整理收藏': 'tag',
         '复制收藏正文': 'copy', '编辑收藏': 'pencil-simple', '取消编辑': 'arrow-left', '保存收藏': 'check',
+        '标签规则': 'funnel', '删除收藏：one': 'trash',
     };
     for (const [label, glyph] of Object.entries(expected)) {
         const icon = f.dom.get(label).children.find(node => node.tagName === 'SVG');
@@ -585,4 +586,117 @@ test('without a floor locator, or when it fails, the list renders exactly as bef
     const plain = fixture(t, [entry('one')], {locateFloor: () => () => 3});
     await plain.view.open();
     assert.equal(plain.dom.all().some(node => node.classList.contains('qm-collection-floor') && plain.dom.visible(node)), false, 'no jump action: no tag');
+});
+
+test('multi-select button cycles enter → select all loaded → clear and leave; titles follow', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    const multi = f.dom.get('多选收藏'), pressed = () => list(f).querySelectorAll('.qm-collection-entry[aria-pressed="true"]').length;
+    assert.equal(multi.title, '多选收藏');
+    click(f, '多选收藏'); assert.equal(multi.getAttribute('aria-pressed'), 'true'); assert.equal(pressed(), 0);
+    assert.equal(multi.title, '全选已加载收藏'); assert.ok(f.dom.visible(f.dom.get('删除选中收藏')));
+    click(f, '多选收藏'); assert.equal(pressed(), 2); assert.equal(multi.title, '取消多选');
+    click(f, '多选收藏'); assert.equal(multi.getAttribute('aria-pressed'), 'false'); assert.equal(pressed(), 0);
+    assert.equal(multi.title, '多选收藏'); assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    click(f, '多选收藏'); click(f, '选择收藏：one'); click(f, '选择收藏：two');
+    assert.equal(multi.title, '取消多选', 'selecting every row by hand reaches the same last step');
+    assert.equal(f.writes, 0);
+});
+
+test('clicking empty list or panel space leaves multi-select; rows and toolbar controls do not', async t => {
+    const f = fixture(t, [entry('one'), entry('two')], {tagRules: {read: () => undefined, write() {}}}); await f.view.open();
+    const multi = f.dom.get('多选收藏');
+    click(f, '多选收藏'); click(f, '选择收藏：one');
+    f.dom.get('搜索收藏').emit('click'); click(f, '标签规则'); click(f, '标签规则');
+    assert.equal(multi.getAttribute('aria-pressed'), 'true', 'toolbar controls keep the selection');
+    list(f).querySelector('.qm-collection-row').emit('click');
+    assert.equal(multi.getAttribute('aria-pressed'), 'true', 'a row keeps the selection');
+    list(f).emit('click');
+    assert.equal(multi.getAttribute('aria-pressed'), 'false'); assert.equal(f.dom.visible(f.dom.get('删除选中收藏')), false);
+    click(f, '多选收藏'); f.dom.byClass('qm-collection-panel').emit('click');
+    assert.equal(multi.getAttribute('aria-pressed'), 'false', 'the panel background leaves too');
+});
+
+test('each list row ends with a direct delete that hides during multi-select', async t => {
+    const f = fixture(t, [entry('one'), entry('two')]); await f.view.open();
+    const row = list(f).querySelector('.qm-collection-row');
+    assert.equal(row.children.at(-1).getAttribute('aria-label'), '删除收藏：one', 'delete is the last control of the row');
+    click(f, '多选收藏'); assert.equal(f.dom.get('删除收藏：one'), undefined);
+    click(f, '多选收藏'); click(f, '多选收藏');
+    click(f, '删除收藏：one'); await waitReady(f);
+    assert.deepEqual(f.collection.state().items.map(item => item.id), ['two']); assert.equal(f.writes, 1);
+    f.writeHook(() => { throw Object.assign(Error('offline'), {code: 'st_account_storage_unavailable'}); });
+    click(f, '删除收藏：two'); await waitReady(f);
+    assert.equal(f.collection.state().items.length, 1, 'a failed delete keeps the row');
+    assert.notEqual(f.dom.status().textContent, '');
+});
+
+test('a floor tag stays before the row delete button', async t => {
+    const f = fixture(t, [entry('one')], {locateFloor: () => () => 3, onJumpFloor: () => {}}); await f.view.open();
+    const row = list(f).querySelector('.qm-collection-row');
+    assert.deepEqual(row.children.map(node => node.getAttribute('aria-label')), ['阅读收藏：one', '跳到第 3 层', '删除收藏：one']);
+});
+
+test('tag rules sheet edits the same rows as 取材 and saves only named rules', async t => {
+    let stored; const writes = [];
+    const f = fixture(t, [entry('one')], {tagRules: {read: () => stored, write: value => { stored = value; writes.push(structuredClone(value)); }}});
+    await f.view.open();
+    const sheet = f.dom.byClass('qm-collection-rules');
+    assert.equal(f.dom.visible(sheet), false);
+    click(f, '标签规则'); assert.ok(f.dom.visible(sheet));
+    assert.equal(f.dom.get('标签名 1').value, 'thinking', 'unset settings show the default rule');
+    assert.equal(f.dom.get('标签处理 1').value, 'remove');
+    click(f, '添加标签'); const name = f.dom.get('标签名 2'); name.value = ' <status> '; name.emit('change');
+    assert.deepEqual(writes.at(-1), [{name: 'thinking', action: 'remove'}, {name: 'status', action: 'remove'}]);
+    assert.equal(name.value, 'status');
+    const action = f.dom.get('标签处理 2'); action.value = 'extract'; action.emit('change');
+    assert.deepEqual(stored, [{name: 'thinking', action: 'remove'}, {name: 'status', action: 'extract'}]);
+    click(f, '添加标签'); assert.equal(writes.length, 2, 'a blank new row saves nothing yet');
+    click(f, '删除标签 1'); assert.deepEqual(stored, [{name: 'status', action: 'extract'}]);
+    click(f, '删除标签 1'); click(f, '删除标签 1');
+    assert.deepEqual(stored, [], 'deleting every rule stores none'); assert.ok(f.dom.get('标签名 1'), 'one blank row stays to fill');
+    click(f, '标签规则'); assert.equal(f.dom.visible(sheet), false);
+    click(f, '标签规则'); assert.equal(f.dom.get('标签名 1').value, '');
+    assert.equal(f.writes, 0, 'rules never touch the collection document');
+});
+
+test('items with raw read through ST formatting inside a mes_text container; others stay plain paragraphs', async t => {
+    const calls = [];
+    const raw = {...entry('raw', 'HP 10'), raw: '<status>HP 10</status>'};
+    const f = fixture(t, [entry('plain', '甲\n\n乙'), raw, {...entry('broken', '纯文本'), raw: '<x>'}], {formatRaw: (value, meta) => {
+        calls.push([value, meta]); if (value === '<x>') throw Error('formatter failed');
+        return `<div class="bar">${value.replace(/<\/?status>/g, '')}</div>`;
+    }});
+    await f.view.open();
+    click(f, '阅读收藏：raw');
+    const body = text(f).children[0];
+    assert.equal(text(f).children.length, 1);
+    assert.equal(body.className, 'mes_text qm-collection-raw');
+    assert.equal(body.innerHTML, '<div class="bar">HP 10</div>');
+    assert.deepEqual(calls[0], ['<status>HP 10</status>', {charName: '角色甲', source: raw.source}]);
+    click(f, '返回收藏列表'); click(f, '阅读收藏：plain');
+    assert.deepEqual(text(f).children.map(node => [node.tagName, node.textContent]), [['P', '甲'], ['P', '乙']]);
+    click(f, '返回收藏列表'); click(f, '阅读收藏：broken');
+    assert.deepEqual(text(f).children.map(node => node.textContent), ['纯文本'], 'a formatter failure falls back to plain text');
+});
+
+test('editing a raw item edits its source and re-derives the plain text on save', async t => {
+    const f = fixture(t, [{...entry('raw', '旧状态'), raw: '<b>旧状态</b>'}], {formatRaw: value => value.replace(/\*(.+?)\*/g, '<em>$1</em>')});
+    await f.view.open(); click(f, '阅读收藏：raw'); click(f, '编辑收藏');
+    assert.equal(displayed(f), '<b>旧状态</b>', 'the editor shows the raw source');
+    type(f, '<p>*新*状态</p>\n\n<p>第二段 &amp; 尾</p>'); click(f, '保存收藏'); await waitReady(f);
+    const saved = f.collection.state().items[0];
+    assert.equal(saved.raw, '<p>*新*状态</p>\n\n<p>第二段 &amp; 尾</p>');
+    assert.equal(saved.text, '新状态\n\n第二段 & 尾');
+    assert.equal(f.writes, 1);
+});
+
+test('a full-text capture with raw opens the editor on the source and saves raw with its derived text', async t => {
+    const f = fixture(t, null);
+    assert.equal(await f.view.collect({text: '整层', raw: '<b>整层</b>', charName: '角色甲', userName: '读者乙', source: null}), true);
+    assert.equal(displayed(f), '<b>整层</b>');
+    click(f, '保存收藏'); await waitReady(f);
+    const saved = f.collection.state().items[0];
+    assert.deepEqual([saved.text, saved.raw], ['整层', '<b>整层</b>']);
+    assert.equal(f.dom.visible(text(f)), true, 'the saved receipt opens the reader');
+    assert.equal(f.collection.state().needsRefresh, false);
 });

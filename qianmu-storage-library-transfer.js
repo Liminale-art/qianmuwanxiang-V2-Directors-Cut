@@ -44,7 +44,8 @@ const part = (index, total) => total > 1 ? `-${index + 1}of${total}` : '';
 //   vibe()                        => { call, storage, items }：Vibe 文件通道、文件空间模块、当前库条目
 //   focusFree()                   专注语音库此刻能否操作
 //   open(key)                     打开对应库的管理页
-export function createStorageLibraryTransfer({ resolveNamespace, confirm, download, notify, headers = () => ({}), fonts, vibe, focusFree = () => true, open = () => {}, stamp = () => Date.now() }) {
+//   excerptSettings               { read, write }：设置里的书摘成图方案与自建模板
+export function createStorageLibraryTransfer({ resolveNamespace, confirm, download, notify, headers = () => ({}), fonts, vibe, focusFree = () => true, open = () => {}, stamp = () => Date.now(), excerptSettings = null }) {
   let busy = false;
   // 统一的外壳：同一时间只跑一项；全程核对账户没变；失败只提示，不抛到界面外。
   const run = (label, work) => async (...args) => {
@@ -176,6 +177,27 @@ export function createStorageLibraryTransfer({ resolveNamespace, confirm, downlo
     notify('Comfy 工作流与候选方案已恢复；连接、参考图与模型文件请另行核对。', 'success');
   }));
 
+  // ── 书摘成图稿（正文收藏与伴读共用；只取当前账户的）──
+  const withExcerpt = async ({ namespace, guard }, work) => {
+    const [codec, { createExcerptStore }] = await Promise.all([import('./qianmu-excerpt-backup.js'), import('./features/excerpt/qianmu-excerpt-store.js')]);
+    await guard();
+    const store = createExcerptStore({ namespace });
+    try { return await work(codec, store); } finally { store.close(); }
+  };
+  const excerptExport = run('书摘成图稿导出', scope => withExcerpt(scope, async (codec, store) => {
+    const result = await codec.exportExcerptBackup({ store, studio: excerptSettings?.read(), guard: scope.guard });
+    if (!result) return notify('还没有成图稿。', 'info');
+    await scope.guard(); await download(result.blob, `qianmu-excerpt-drafts-${stamp()}.zip`);
+    notify(`已导出 ${result.drafts} 份成图稿、${result.images} 张图。`, 'success');
+  }));
+  const excerptImport = run('书摘成图稿导入', (scope, picked) => withExcerpt(scope, async (codec, store) => {
+    const pack = await codec.readExcerptBackup(picked); await scope.guard();
+    if (await confirm('导入书摘成图稿', `将导入 ${pack.manifest.drafts.length} 份成图稿和 ${pack.manifest.images.length} 张图，同一条的稿保留较新的一份。`) !== true) return;
+    await scope.guard();
+    const result = await codec.restoreExcerptBackup(pack, { store, studio: excerptSettings, guard: scope.guard, warn: (message, error) => console.warn(`[千幕] ${message}`, error) });
+    notify(codec.excerptRestoreText(result), result.failed ? 'warning' : 'success');
+  }));
+
   // ── 字体库（库自己会提示结果）──
   const fontsExport = run('字体库备份', () => fonts.action('export'));
   const fontsImport = run('字体库导入', (_scope, file) => fonts.action('import', { file }));
@@ -212,7 +234,7 @@ export function createStorageLibraryTransfer({ resolveNamespace, confirm, downlo
 
   const file = handler => (picked) => handler(picked);
   return {
-    exports: { characters: () => charactersExport(), vibes: () => vibesExport(), comfy: () => comfyExport(), fonts: () => fontsExport(), focus: () => focusExport() },
-    imports: { characters: file(charactersImport), vibes: file(vibesImport), comfy: file(comfyImport), fonts: file(fontsImport), focus: file(focusImport) },
+    exports: { characters: () => charactersExport(), vibes: () => vibesExport(), comfy: () => comfyExport(), fonts: () => fontsExport(), focus: () => focusExport(), excerpt: () => excerptExport() },
+    imports: { characters: file(charactersImport), vibes: file(vibesImport), comfy: file(comfyImport), fonts: file(fontsImport), focus: file(focusImport), excerpt: file(excerptImport) },
   };
 }

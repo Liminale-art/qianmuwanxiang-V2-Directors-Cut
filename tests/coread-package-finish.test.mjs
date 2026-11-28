@@ -23,9 +23,22 @@ for(const alwaysFail of [false,true])test('throwing save restores old preference
   assert.equal(e.reader.fontSize,16);assert.equal(e.reader.books,e.books);assert.equal(e.reader.newPref,undefined);
   assert.equal(r.persistence,'uncertain');assert.equal(r.preferences,'retained');assert.equal(e.notices[0].level,'error');assert.match(e.notices[0].text,/设置保存结果未确认/);
 });
-test('partial restore skips incoming preferences while keeping committed books scheduled for save',()=>{
-  const e=fixture();e.options.progress.failed=1;e.options.preparePrefs=()=>{throw Error('must not prepare partial preferences');};
-  const r=e.run();assert.equal(r.preferences,'retained');assert.equal(e.reader.fontSize,16);assert.equal(e.calls[0][2],e.books);assert.match(e.notices[0].text,/包内阅读偏好未应用/);
+test('a failed book no longer blocks the package preferences; each part reports its own outcome',()=>{
+  const e=fixture();e.options.progress.failed=1;
+  const r=e.run();assert.equal(r.preferences,'applied');assert.equal(e.reader.fontSize,22);assert.equal(e.reader.newPref,'incoming');assert.equal(e.calls[0][2],e.books);
+  assert.match(e.notices[0].text,/失败 1 项[\s\S]*阅读偏好已恢复。/);assert.equal(e.notices[0].level,'warning');
+});
+test('unreadable package preferences are reported while the books stay restored',()=>{
+  const e=fixture();e.options.hasPrefs=false;e.options.progress.prefsUnreadable=1;
+  const r=e.run();assert.equal(r.preferences,'unchanged');assert.equal(e.reader.fontSize,16);assert.match(e.notices[0].text,/包内阅读偏好无法读取，未应用。/);assert.equal(e.notices[0].level,'warning');
+});
+test('the live reading log is reloaded after preferences change and again after a compensating restore',()=>{
+  const e=fixture(),seen=[];e.options.reload=()=>seen.push(e.reader.fontSize);
+  e.run();assert.deepEqual(seen,[22]);
+  const f=fixture(),later=[];let saves=0;f.options.reload=()=>later.push(f.reader.fontSize);f.options.save=()=>{if(++saves===1)throw Error('host failure');};
+  f.run();assert.deepEqual(later,[22,16]);
+  const g=fixture();g.options.reload=()=>{throw Error('reload failed');};
+  const r=g.run();assert.equal(r.preferences,'applied');assert.match(g.notices[0].text,/阅读记录未能刷新/);assert.equal(g.notices[0].level,'warning');
 });
 test('view failure is reported after successful handoff and does not save or import twice',()=>{
   const e=fixture();e.options.refresh=()=>{throw Error('view failure');};const r=e.run();

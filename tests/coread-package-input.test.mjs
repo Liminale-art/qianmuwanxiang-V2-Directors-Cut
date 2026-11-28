@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {configRestoreGuard} from '../qianmu-config-connections.js';
-import {readCoreadPackageFile,coreadPackageSafeKey,COREAD_PACKAGE_LIMITS,createCoreadImportProgress,coreadImportProgressText,prepareCoreadPackageExport} from '../qianmu-reader-package.js';
+import {readCoreadPackageFile,coreadPackageSafeKey,COREAD_PACKAGE_LIMITS,createCoreadImportProgress,coreadImportProgressText} from '../qianmu-reader-package.js';
 import {isPlainObject,clone} from '../qianmu-storyboard-utils.js';
 import {storyboardFunctionSource as source} from './helpers/storyboard-form-fixture.mjs';
 const file=text=>({size:Buffer.byteLength(text),text:async()=>text});
@@ -51,7 +51,6 @@ for(const key of ['books','chats','images','vectors','audio','retrievalLogs'])te
   c.configRestoreGuard=configRestoreGuard;c.createCoreadImportViewGuard=()=>({check(){},release(){}});vm.runInContext(source('coreadImportDataFile'),c);
   await c.coreadImportDataFile(file(JSON.stringify(value)));
   assert.equal(asked,0);assert.equal(writes,0);assert.match(notices[0],/第 2 项/);assert.equal(c.coreadImportDataFile.busy,false);
-  const prepared=prepareCoreadPackageExport(value);assert.equal(prepared.preservationOnly,true);assert.deepEqual(JSON.parse(await prepared.blob.text()),value);
 });
 
 test('missing prose cannot silently replace a local original with empty text; intentional empty comic remains legal',async()=>{
@@ -84,7 +83,7 @@ test('preflight preserves legacy extra metadata and original identity/progress/m
   for(const version of [undefined,1,'1',2,3,4,5,'5']){
     const value=pack();value.version=version;value.books[0].meta.progress=0.67;
     value.chats[0].rec.legacy={names:{char:'书友'},cursor:71,custom:'do not discard'};
-    const original=JSON.stringify(value),prepared=prepareCoreadPackageExport(value);assert.equal(prepared.preservationOnly,false);
+    const original=JSON.stringify(value);
     const restored=await readCoreadPackageFile(file(original));assert.equal(JSON.stringify(restored),original);assert.equal(JSON.stringify(value),original);
   }
 });
@@ -93,7 +92,6 @@ test('every inline media category rejects damaged encoding before any prose can 
   for(const key of ['books','images','audio'])for(const encoded of ['YR==','YQ=','Y Q==','data:audio/mpeg;base64,YQ==','!!!!']){
     const value=pack();value[key][0][key==='books'?'coverB64':'b64']=encoded;
     await assert.rejects(readCoreadPackageFile(file(JSON.stringify(value))),/媒体编码/);
-    const prepared=prepareCoreadPackageExport(value);assert.equal(prepared.preservationOnly,true);assert.deepEqual(JSON.parse(await prepared.blob.text()),value);
   }
 });
 

@@ -40,7 +40,7 @@ export function renderCoreadPackBarView(targetClass) {
     <span class="sd-reader-packbar-copy"><b>伴读数据打包</b><small>整包迁移与备份 · 不含 API 密钥</small></span>
     <span class="sd-reader-packbar-actions">
       <button type="button" class="sd-reader-pack-export" title="导出伴读数据打包"><i class="fa-solid fa-file-export"></i></button>
-      <label class="sd-reader-pack-import" title="导入伴读数据打包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/json,.json"></label>
+      <label class="sd-reader-pack-import" title="导入伴读数据打包"><i class="fa-solid fa-file-import"></i><input type="file" class="sd-reader-pack-import-input sd-reader-native-file" accept="application/zip,.zip,application/json,.json"></label>
     </span>
   </section>`;
 }

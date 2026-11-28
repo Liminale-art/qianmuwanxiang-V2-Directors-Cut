@@ -85,6 +85,7 @@
     "qianmu-text-collection-panel.css",
     "qianmu-text-collection-capture.js",
     "qianmu-text-collection-capture.css",
+    "qianmu-text-collection-markup.js",
     "qianmu-assistant-history-transfer.js",
     "qianmu-assistant-history-manager.js",
     "qianmu-assistant-history-view.js",
@@ -725,7 +726,8 @@
     "qianmu-toast-liquid.js",
     "qianmu-storage-card.js",
     "qianmu-storage-library-transfer.js",
-    "qianmu-storage-transfer.js"
+    "qianmu-storage-transfer.js",
+    "qianmu-excerpt-backup.js"
   ],
   "directories": [
     "assets",

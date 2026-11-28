@@ -42,7 +42,8 @@ export async function readTextCollectionBackup(file) {
 function canonical(item) {
     return {id: item.id, text: item.text, charName: item.charName, userName: item.userName,
         createdAt: item.createdAt, updatedAt: item.updatedAt,
-        source: item.source === null ? null : {chatId: item.source.chatId, messageId: item.source.messageId}};
+        source: item.source === null ? null : {chatId: item.source.chatId, messageId: item.source.messageId},
+        ...Object.hasOwn(item, 'raw') ? {raw: item.raw} : {}};
 }
 
 // One deterministic copy identity for an actual ID collision. This is import

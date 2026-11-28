@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { STORAGE_TRANSFER_ITEMS, detectStorageFile, buildStoragePack, isStoragePack, openStoragePack, runStorageExport, runStorageImport } from '../qianmu-storage-transfer.js';
+import { STORAGE_TRANSFER_ITEMS, detectStorageFile, buildStoragePack, buildZip, isStoragePack, isItemPack, openStoragePack, readZipDirectory, zipEntryBlob, runStorageExport, runStorageImport } from '../qianmu-storage-transfer.js';
 
 const bytesOf = async blob => [...new Uint8Array(await blob.arrayBuffer())];
 const json = (value, name) => new File([JSON.stringify(value)], name, { type: 'application/json' });
@@ -14,6 +14,7 @@ const SAMPLES = {
   assistant: { type: 'qianmu-assistant-library', version: 1, histories: [] },
   focus: { schema: 'qianmu.focus.library.v1', credentialsIncluded: false, items: [] },
   ringtones: { type: 'qianmu-ringtones', version: 1, sounds: [] },
+  excerpt: { type: 'qianmu-excerpt-studio', version: 1, drafts: [], images: [] },
 };
 const sample = (key, name = `${key}.json`) => json(SAMPLES[key], name);
 
@@ -328,4 +329,44 @@ test('an importer that fails does not stop the ones after it', async () => {
   await harness.run([sample('config'), sample('reader'), sample('notes')]);
   assert.deepEqual(harness.calls.map(call => call.key), ['notes', 'reader', 'config']);
   assert.deepEqual(harness.notices, [['便笺导入未完成：坏了', 'warning']]);
+});
+
+// ── 单项 zip（伴读整包 v6、书摘成图稿）──
+
+test('deflated entries round-trip through the directory reader, stored media stay plain slices', async () => {
+  const text = JSON.stringify({ prose: '月光'.repeat(4000) }), media = new Blob([new Uint8Array([1, 2, 3, 4, 5])], { type: 'image/png' });
+  const zip = await buildZip([{ name: 'manifest.json', blob: new Blob(['{"type":"qianmu-coread"}']) }, { name: 'books/1/book.json', blob: new Blob([text]), deflate: true }, { name: 'books/1/images/1.png', blob: media }]);
+  const entries = await readZipDirectory(zip);
+  assert.deepEqual(entries.map(entry => [entry.name, entry.method]), [['manifest.json', 0], ['books/1/book.json', 8], ['books/1/images/1.png', 0]]);
+  assert.ok(entries[1].compressedSize < entries[1].size, 'repetitive JSON is actually compressed');
+  assert.equal(await (await zipEntryBlob(zip, entries[1])).text(), text);
+  const image = await zipEntryBlob(zip, entries[2], { type: 'image/png' });
+  assert.equal(image.type, 'image/png'); assert.deepEqual(await bytesOf(image), [1, 2, 3, 4, 5]);
+  await assert.rejects(zipEntryBlob(zip, entries[1], { maxBytes: 100 }), /超过读取上限/);
+  assert.equal(await isItemPack(zip), true);
+  assert.equal(await detectStorageFile(zip), 'reader', 'the stored manifest is the head of the file');
+});
+
+test('a declared size that the deflated data does not match is rejected, not truncated', async () => {
+  const zip = await buildZip([{ name: 'manifest.json', blob: new Blob(['{}']) }, { name: 'a.json', blob: new Blob(['x'.repeat(5000)]), deflate: true }]);
+  const [, entry] = await readZipDirectory(zip);
+  await assert.rejects(zipEntryBlob(zip, { ...entry, size: entry.size + 1 }), /大小不符/);
+  await assert.rejects(zipEntryBlob(zip, { ...entry, size: entry.size - 1 }), /超过读取上限|大小不符/);
+  await assert.rejects(zipEntryBlob(zip, { ...entry, method: 12 }), /压缩方式/);
+});
+
+test('an item zip inside the data-management import is routed as one backup, not unpacked', async () => {
+  const item = new File([await buildZip([{ name: 'manifest.json', blob: new Blob([JSON.stringify(SAMPLES.excerpt)]) }, { name: 'drafts/1.json', blob: new Blob(['{"type":"qianmu-config"}']) }])], 'qianmu-excerpt-drafts-1.zip', { type: 'application/zip' });
+  const reader = new File([await buildZip([{ name: 'manifest.json', blob: new Blob([JSON.stringify({ type: 'qianmu-coread', version: 6, books: [] })]) }, { name: 'prefs.json', blob: new Blob(['{}']) }])], 'qianmu-coread-pack-1.zip');
+  const outer = new File([await buildStoragePack([{ name: reader.name, blob: reader }, { name: 'notes.json', blob: sample('notes') }])], 'qianmu-backup-1.zip');
+  const harness = importHarness(allIds);
+  await harness.run([item, outer]);
+  assert.deepEqual(harness.calls.map(call => [call.key, call.name]), [['notes', 'notes.json'], ['excerpt', 'qianmu-excerpt-drafts-1.zip'], ['reader', 'qianmu-coread-pack-1.zip']]);
+  assert.equal(await isItemPack(outer), false);
+  assert.deepEqual(harness.notices, []);
+});
+
+test('more entries than a plain zip can index are refused before building', async () => {
+  const files = Array.from({ length: 0x10000 }, (_, index) => ({ name: `${index}`, blob: new Blob([]) }));
+  await assert.rejects(buildZip(files), /条目过多/);
 });

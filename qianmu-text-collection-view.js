@@ -1,5 +1,5 @@
 import {createTextCollectionPanel, TEXT_COLLECTION_STYLESHEET} from './qianmu-text-collection-panel.js?v=1.59.419';
-import {createTextCollectionCapture, TEXT_COLLECTION_CAPTURE_STYLESHEET} from './qianmu-text-collection-capture.js?v=1.59.419';
+import {createTextCollectionCapture, textCollectionCaptureEntries, TEXT_COLLECTION_CAPTURE_STYLESHEET} from './qianmu-text-collection-capture.js?v=1.59.419';
 import {loadLocalChunk} from './qianmu-feature-runtime.js?v=1.59.425';
 
 // 收藏条目 → 书摘成图的输入：原文、楼层号（只在当前聊天里对得上）、那一层第一次生成的时刻（来源标识里记着）。
@@ -13,7 +13,7 @@ export function excerptInputOf(item, locate) {
 
 // Created once by the account owner, not on every panel open. Only these two
 // local stylesheets and this portal belong to the view.
-export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography, verifyAccount, download, locateFloor, jumpToFloor, excerpt, namespace, notify = () => {}, collectionEnabled}) {
+export async function createTextCollectionView({document, collection, isCurrent, signal, mountPortal, typography, verifyAccount, download, locateFloor, jumpToFloor, excerpt, namespace, notify = () => {}, collectionEnabled, collectionTagRules, formatRaw}) {
     const parent = document.createElement('section'), links = [], loading = new AbortController();
     parent.className = 'qm-collection-portal';
     let panel, capture, studio = null, studioModule = null, detach, disposed = false;
@@ -59,8 +59,10 @@ export async function createTextCollectionView({document, collection, isCurrent,
         })));
         if (disposed || !isCurrent()) throw Error('Collection view is no longer current');
         document.body.append(parent); detach = mountPortal?.(parent); typography?.(parent);
-        panel = createTextCollectionPanel({parent, collection, isCurrent, onExportImage: item => { void openStudio(item); }, locateFloor, onJumpFloor: jumpToFloor, enabled: collectionEnabled});
-        capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, selection) => panel.collect(input, selection)});
+        panel = createTextCollectionPanel({parent, collection, isCurrent, onExportImage: item => { void openStudio(item); }, locateFloor, onJumpFloor: jumpToFloor,
+            enabled: collectionEnabled, tagRules: collectionTagRules, formatRaw});
+        capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, selection) => panel.collect(input, selection),
+            ...textCollectionCaptureEntries(collection)});
         return Object.freeze({parent, panel, capture, dispose});
     } catch (error) { dispose(); throw error; }
 }

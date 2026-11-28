@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createTextCollectionHost} from '../qianmu-text-collection-host.js';
 import {createTextCollectionPanel} from '../qianmu-text-collection-panel.js';
-import {createTextCollectionCapture} from '../qianmu-text-collection-capture.js';
+import {createTextCollectionCapture, textCollectionCaptureEntries} from '../qianmu-text-collection-capture.js';
 import {textCollectionDom} from './helpers/text-collection-dom.mjs';
 import {QIANMU_HIVE_COMMANDS, upgradeProseHiveCommands} from '../qianmu-hive-commands.js';
 
@@ -41,13 +41,15 @@ function fixture(t, extra = {}) {
                 }, close() {},
             };
         },
-        async viewFactory({collection, isCurrent, typography, locateFloor, jumpToFloor, collectionEnabled}) {
+        async viewFactory({collection, isCurrent, typography, locateFloor, jumpToFloor, collectionEnabled, collectionTagRules, formatRaw}) {
             const parent = dom.doc.createElement('section'); dom.doc.body.append(parent);
             parent.style.setProperty = (key, value) => { parent.style[key] = value; };
             parent.style.removeProperty = key => { delete parent.style[key]; };
             typography(parent);
-            const panel = createTextCollectionPanel({parent, collection, isCurrent, locateFloor, onJumpFloor: jumpToFloor, enabled: collectionEnabled});
-            const capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, scope) => panel.collect(input, scope)});
+            const panel = createTextCollectionPanel({parent, collection, isCurrent, locateFloor, onJumpFloor: jumpToFloor,
+                enabled: collectionEnabled, tagRules: collectionTagRules, formatRaw});
+            const capture = createTextCollectionCapture({parent, isCurrent, onSelect: (input, scope) => panel.collect(input, scope),
+                ...textCollectionCaptureEntries(collection)});
             view = {parent, collection, panel, capture, dispose() { capture.dispose(); panel.dispose(); parent.remove(); }};
             return view;
         },
@@ -63,7 +65,7 @@ function fixture(t, extra = {}) {
     };
 }
 
-test('floor choice, editor save, confirmed star, read/back/reopen and whole-floor removal share one real session', async t => {
+test('floor choice, editor save, confirmed star, read/back/reopen and chooser removal share one real session', async t => {
     const f = fixture(t); f.host.refresh(f.root); await turn();
     assert.equal(f.reads, 1); const star = f.star(); assert.equal(f.click(), true);
     await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
@@ -76,8 +78,13 @@ test('floor choice, editor save, confirmed star, read/back/reopen and whole-floo
     f.action('返回收藏列表'); f.action('关闭收藏'); await f.host.open();
     assert.equal(f.reads, 1); assert.equal(f.stores, 1); assert.equal(f.star(), star);
     assert.equal(f.view.parent.style['--qm-prose-size'], '18px');
-    f.action('关闭收藏'); f.click(); await f.dom.wait(() => star.getAttribute('aria-pressed') === 'false');
+    f.action('关闭收藏'); f.click();
+    const id = f.view.collection.state().items[0].id;
+    await f.dom.wait(() => f.dom.get(`删除收藏：${id}`), 'the filled heart opens the chooser with this floor listed');
+    assert.equal(f.writes, 1, 'opening the chooser never removes');
+    f.action(`删除收藏：${id}`); await f.dom.wait(() => star.getAttribute('aria-pressed') === 'false');
     assert.equal(f.writes, 2); assert.equal(f.view.collection.state().items.length, 0);
+    await f.dom.wait(() => !f.dom.get(`删除收藏：${id}`)); assert.ok(f.dom.visible(f.dom.get('全文收藏')), 'the chooser stays open');
     assert.equal(f.reads, 1);
 });
 
@@ -104,7 +111,9 @@ test('prompt-excluded first floor can be saved, linked through hide changes, the
     assert.ok(f.view.collection.state().items[0].source); assert.equal(f.writes, 1);
     f.action('关闭收藏'); message.is_system = true; f.host.refresh(f.root);
     assert.equal(f.star(), star); assert.equal(star.getAttribute('aria-pressed'), 'true');
-    f.click(); await f.dom.wait(() => star.getAttribute('aria-pressed') === 'false');
+    f.click(); const id = f.view.collection.state().items[0].id;
+    await f.dom.wait(() => f.dom.get(`删除收藏：${id}`)); f.action(`删除收藏：${id}`);
+    await f.dom.wait(() => star.getAttribute('aria-pressed') === 'false');
     assert.equal(f.writes, 2); assert.equal(f.reads, 1);
     assert.equal(message.is_system, true); assert.equal(message.mes, '第一段\n\n第二段');
 });
@@ -217,4 +226,48 @@ test('collection switch off: no floor stars or pre-read; the panel switch turns 
     assert.ok(f.star(), 'stars return on the current chat');
     toggle.click();
     assert.deepEqual(saved, [true, false]); assert.equal(f.star(), null);
+});
+
+test('全文 stores the current swipe source after tag rules and reads it back through ST formatting', async t => {
+    let rules; const formatting = [];
+    const f = fixture(t, {collectionTagRules: {read: () => rules, write: value => { rules = value; }}});
+    const message = f.context.chat[0];
+    message.mes = '<thinking>想法</thinking>\n<status>HP 10</status>\n\n*她笑了*';
+    f.context.messageFormatting = (...args) => {
+        formatting.push(args);
+        return args[0].replace(/<status>(.*?)<\/status>/, '<div class="bar"><b>$1</b></div>').replace(/\*(.+?)\*/g, '<p><em>$1</em></p>');
+    };
+    f.renderFloor(); f.host.refresh(f.root); f.click();
+    await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
+    await f.dom.wait(() => f.dom.visible(f.dom.byClass('qm-collection-editor')));
+    f.action('保存收藏'); await f.dom.wait(() => f.star().getAttribute('aria-pressed') === 'true');
+    const saved = f.view.collection.state().items[0];
+    assert.equal(saved.raw, '<status>HP 10</status>\n\n*她笑了*', 'default rule removes thinking, the rest keeps its markup');
+    assert.equal(saved.text, 'HP 10\n\n她笑了', 'plain text comes from the formatted markup');
+    assert.deepEqual(formatting[0], [saved.raw, '角色', false, false, undefined], 'floor 0 is never passed to ST formatting');
+    const body = f.dom.byClass('qm-collection-raw');
+    assert.ok(f.dom.visible(body)); assert.ok(body.classList.contains('mes_text'));
+    assert.equal(body.innerHTML, '<div class="bar"><b>HP 10</b></div>\n\n<p><em>她笑了</em></p>');
+    // 选段 keeps working on the rendered floor's plain paragraphs, never the raw source.
+    f.action('关闭收藏'); f.click(); await f.dom.wait(() => f.dom.get('选段收藏')); f.action('选段收藏');
+    assert.equal(f.dom.get('选择第 1 段').textContent, message.mes.split('\n\n')[0]);
+    rules = [{name: 'status', action: 'extract'}];
+    f.dom.get('关闭收藏范围').click(); f.click(); await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
+    await f.dom.wait(() => f.dom.visible(f.dom.byClass('qm-collection-editor')));
+    assert.equal(f.dom.byClass('qm-collection-editor').textContent, 'HP 10', 'extract keeps only that tag content');
+});
+
+test('a floor later in the chat passes its own index to ST formatting; no formatter keeps plain reading', async t => {
+    const f = fixture(t), first = f.context.chat[0];
+    f.context = {...f.context, chat: [{mes: '开场', is_user: false, send_date: '2026-09-27T00:00:00.000Z'}, first]};
+    f.renderFloor(); f.root.querySelector('.mes').setAttribute('mesid', '1'); f.host.refresh(f.root); f.click();
+    await f.dom.wait(() => f.dom.get('全文收藏')); f.action('全文收藏');
+    await f.dom.wait(() => f.dom.visible(f.dom.byClass('qm-collection-editor')));
+    f.action('保存收藏'); await f.dom.wait(() => f.star().getAttribute('aria-pressed') === 'true');
+    assert.equal(f.view.collection.state().items[0].raw, '第一段\n\n第二段');
+    assert.equal(f.dom.byClass('qm-collection-raw'), undefined, 'without ST formatting the reader shows plain paragraphs');
+    const calls = [];
+    f.context.messageFormatting = (...args) => { calls.push(args); return `<p>${args[0]}</p>`; };
+    f.action('返回收藏列表'); f.action(`阅读收藏：${f.view.collection.state().items[0].id}`);
+    assert.equal(calls.at(-1)[4], 1, 'the located floor index drives ST regex depth');
 });

@@ -66,3 +66,38 @@ test('editing writes ST’s own fields; an empty address or preset removes the f
   assert.throws(() => patchProfile(ctx, 'a', { name: '乙 新名' }), /同名/);
   assert.throws(() => patchProfile(ctx, 'zz', { name: 'x' }), /不存在/);
 });
+
+test('the active connection is lifted out of pinned / groups / recent and listed first', () => {
+  const { profiles } = readProfiles(ctxWith());
+  const state = { pinned: ['a'], groups: [{ id: 'g', name: '工作', ids: ['c'] }] };
+  const out = arrangeProfiles(profiles, state, 'a');
+  assert.equal(out.active.id, 'a'); assert.deepEqual(out.pinned, []);
+  assert.deepEqual(out.groups[0].items.map((p) => p.id), ['c']); assert.deepEqual(out.others.map((p) => p.id), ['b']);
+  assert.equal(arrangeProfiles(profiles, state, 'c').groups[0].items.length, 0, 'out of its group too');
+  assert.equal(arrangeProfiles(profiles, state).active, null);
+  assert.equal(arrangeProfiles(profiles, state, 'gone').active, null);
+});
+
+test('fetched model lists are kept per connection, cleaned and capped; deleting a connection forgets everything about it', async () => {
+  const { MODEL_LIST_CAP, setModels, forgetProfile } = await import('../features/chat/qianmu-chat-api-switch.js');
+  const many = Array.from({ length: MODEL_LIST_CAP + 20 }, (_, i) => `m${i}`);
+  const state = normalizeSwitchState({ models: { a: [' x ', 'x', '', 3, 'y'], b: many, c: [], d: 'nope', '': ['z'] } });
+  assert.deepEqual(state.models.a, ['x', 'y']); assert.equal(state.models.b.length, MODEL_LIST_CAP);
+  assert.deepEqual(Object.keys(state.models).sort(), ['a', 'b'], 'empty or malformed lists are dropped');
+  assert.deepEqual(normalizeSwitchState({ models: ['bad'] }).models, {}); assert.deepEqual(normalizeSwitchState(null).models, {});
+  assert.deepEqual(setModels(state, 'c', ['q']).models.c, ['q']);
+  assert.equal(setModels(state, 'a', []).models.a, undefined, 'an empty list removes the entry');
+  let full = { ...state, pinned: ['a', 'b'], groups: [{ id: 'g', name: '一', ids: ['a', 'b'] }], recent: { a: 1, b: 2 } };
+  full = forgetProfile(full, 'a');
+  assert.deepEqual([full.pinned, full.groups[0].ids, Object.keys(full.recent), Object.keys(full.models)], [['b'], ['b'], ['b'], ['b']]);
+});
+
+test('a typed group name joins the existing group or creates a new one; empty means no group', async () => {
+  const { ensureGroup } = await import('../features/chat/qianmu-chat-api-switch.js');
+  const base = { groups: [{ id: 'g1', name: '工作', ids: [] }] };
+  assert.deepEqual(ensureGroup(base, ' 工作 ').id, 'g1');
+  const made = ensureGroup(base, '新组', () => 'g2');
+  assert.equal(made.id, 'g2'); assert.deepEqual(made.state.groups.map((g) => g.name), ['工作', '新组']);
+  assert.deepEqual(moveToGroup(made.state, 'a', made.id).groups.map((g) => g.ids), [[], ['a']]);
+  assert.equal(ensureGroup(base, '  ').id, '');
+});
